@@ -308,8 +308,20 @@ def entry_origin(dump: dict, surface: str) -> str | None:
 DRIVER_BULLET = "driver"
 
 
-class ConflictingSurfaceDriver(ValueError):
-    """More than one runbook states a different `driver:` for the same surface."""
+class UnsettledSurfaceDriver(ValueError):
+    """The book does not settle which `driver:` exercises a surface.
+
+    Base of every reason `surface_driver` refuses to answer, so that a reader wanting a
+    *grammar* degrades to an undeclared driver by catching this one class and stays correct
+    when a further reason is added. Only the two checks whose job is to report the book
+    catch the subclasses, because the remedies differ and a reader that cannot tell them
+    apart would send the author after the wrong bullet.
+    """
+
+
+class ConflictingSurfaceDriver(UnsettledSurfaceDriver):
+    """More than one runbook marked ``walkthrough: true`` states a different `driver:` for the
+    same surface."""
 
     def __init__(self, surface: str, drivers: list[tuple[str, str]]) -> None:
         self.surface = surface
@@ -318,14 +330,32 @@ class ConflictingSurfaceDriver(ValueError):
         super().__init__(f"surface {surface!r} has conflicting drivers: {named}")
 
 
-def surface_driver(dump: dict, surface: str) -> str | None:
-    """The `driver:` a `runbook` node states for *surface*; ``None`` if no runbook covers it.
+class UndeclaredWalkthroughRunbook(UnsettledSurfaceDriver):
+    """Several runbooks cover one surface and none of them claims to be the walkthrough."""
 
-    Read the same way `entry_origin` reads a runbook's `entry-url:`: any `runbook` node whose
-    `surfaces:` bullet links into this surface states it, at full-book scope, so a runbook
-    filed under a different surface than the one it stands up still counts. Two runbooks
-    naming this surface with different drivers is `ConflictingSurfaceDriver`, not an
-    arbitrary pick — a silently wrong dispatch is worse than a compile-time gap.
+    def __init__(self, surface: str, drivers: list[tuple[str, str]]) -> None:
+        self.surface = surface
+        self.drivers = drivers
+        named = "; ".join(f"{node} drives it with {driver}" for node, driver in drivers)
+        super().__init__(
+            f"surface {surface!r} is covered by several runbooks and none is marked "
+            f"`walkthrough: true`: {named}"
+        )
+
+
+def surface_driver(dump: dict, surface: str) -> str | None:
+    """The `driver:` of the runbook that exercises *surface*; ``None`` if no runbook covers it.
+
+    A runbook's `driver:` states what that runbook drives — that alone says nothing about
+    which runbook is *how the surface is exercised*. A real surface routinely has several
+    runbooks (a lint runbook with `driver: cli`, a browser runbook with `driver: web`, an IaC
+    runbook with `driver: iac`) all correctly naming this surface through `surfaces:`; that is
+    not a disagreement to resolve, it is several true claims. Read the same way `root_path`
+    picks the one server that stands for a surface: the runbook marked ``walkthrough: true``
+    wins, a sole runbook stands in for it, and several unmarked ones with different drivers
+    resolve to no answer — `UndeclaredWalkthroughRunbook`, because dispatching off an arbitrary
+    pick is worse than a compile-time gap. Two runbooks *both* marked ``walkthrough: true`` that
+    still disagree is `ConflictingSurfaceDriver`.
     """
     by_id = {n["id"]: n for n in dump["nodes"]}
     candidates: list[tuple[str, str]] = []
@@ -340,9 +370,18 @@ def surface_driver(dump: dict, surface: str) -> str | None:
         if driver:
             candidates.append((node["id"], driver))
 
+    marked = [(node, driver) for node, driver in candidates
+              if bullet_value(by_id[node]["bullets"], WALKTHROUGH_BULLET).lower()
+              in ("true", "yes")]
+    if marked:
+        marked_drivers = sorted({driver for _node, driver in marked})
+        if len(marked_drivers) > 1:
+            raise ConflictingSurfaceDriver(surface, marked)
+        return marked_drivers[0]
+
     drivers = sorted({driver for _node, driver in candidates})
     if len(drivers) > 1:
-        raise ConflictingSurfaceDriver(surface, candidates)
+        raise UndeclaredWalkthroughRunbook(surface, candidates)
     return drivers[0] if drivers else None
 
 

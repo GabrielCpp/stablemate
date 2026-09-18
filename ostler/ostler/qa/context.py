@@ -315,13 +315,21 @@ def _navigation(head_graph: Graph) -> dict[str, dict[str, Any]]:
     rather than falling back to `--base-url`, which answers a book stating no address and does not
     adjudicate between two the book does state. Doctor reports it against the surface as well.
 
-    Every entry also carries `driver` — the surface's `driver:` (§4.1's D1), read off its
-    `runbook` node(s) by `reach.surface_driver` — for `compile.py`'s dispatch table to key on
-    "who performs this step" instead of inferring it from which check a `does:` bullet happens
-    to declare. A book with no runbook covering the surface, or whose runbooks disagree
-    (`reach.ConflictingSurfaceDriver`), leaves `driver` `None` and records why under
-    `driverError`, the same shape `entryUrlError` already gets — a step whose driver the book
-    does not determine is not defaulted, it becomes a gap.
+    Every entry also carries `driver` — the driver of the runbook that exercises this surface
+    (§4.1's D1), read off its `runbook` node(s) by `reach.surface_driver` — for `compile.py`'s
+    dispatch table to key on "who performs this step" instead of inferring it from which check
+    a `does:` bullet happens to declare. Several runbooks naming the same surface through
+    `surfaces:` with different `driver:` values is normal, not a defect — a lint runbook and a
+    browser runbook and an IaC runbook can all be correct about the same surface — so the one
+    that stands for the surface is the one marked `walkthrough: true`, the same way `root_path`
+    picks a server; a sole runbook stands in for it unmarked. A book with no runbook covering the
+    surface leaves `driver` `None` with no error recorded. A book with several runbooks and none
+    marked (`reach.UndeclaredWalkthroughRunbook`), or with several *marked* runbooks that still
+    disagree (`reach.ConflictingSurfaceDriver`), also leaves `driver` `None`, and records why
+    under `driverError` — the same shape `entryUrlError` already gets — plus which of the two
+    under `driverErrorKind` (`"undeclared-walkthrough-runbook"` or `"conflicting-surface-driver"`),
+    so `compile.py` and the doctor can tell the two apart. A step whose driver the book does not
+    determine is not defaulted, it becomes a gap.
     """
     dump = graph_mod.build(head_graph)
     surfaces = sorted({n["surface"] for n in dump["nodes"] if n.get("surface")})
@@ -331,9 +339,15 @@ def _navigation(head_graph: Graph) -> dict[str, dict[str, Any]]:
         try:
             driver = reach.surface_driver(dump, surface)
             driver_error = None
+            driver_error_kind = None
         except reach.ConflictingSurfaceDriver as exc:
             driver = None
             driver_error = str(exc)
+            driver_error_kind = "conflicting-surface-driver"
+        except reach.UndeclaredWalkthroughRunbook as exc:
+            driver = None
+            driver_error = str(exc)
+            driver_error_kind = "undeclared-walkthrough-runbook"
         # `root_path` needs *driver* before it can be asked: a `mobile` surface has no path
         # grammar to state a root path in (`routes.is_path_addressed`), and asking without
         # driver would get today's web-shaped default back regardless of what this surface
@@ -364,6 +378,7 @@ def _navigation(head_graph: Graph) -> dict[str, dict[str, Any]]:
                 navigation[surface]["entryUrlError"] = entry_url_error
             if driver_error is not None:
                 navigation[surface]["driverError"] = driver_error
+                navigation[surface]["driverErrorKind"] = driver_error_kind
             continue
         try:
             navigation[surface] = reach.reachability(head_graph, surface=surface)
@@ -390,6 +405,7 @@ def _navigation(head_graph: Graph) -> dict[str, dict[str, Any]]:
             navigation[surface]["entryUrlError"] = entry_url_error
         if driver_error is not None:
             navigation[surface]["driverError"] = driver_error
+            navigation[surface]["driverErrorKind"] = driver_error_kind
     return navigation
 
 

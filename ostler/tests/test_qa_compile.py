@@ -2337,6 +2337,44 @@ def test_a_surface_whose_runbooks_disagree_gaps_the_conflict_not_an_absence() ->
     assert "run.md" in gaps[0].detail and "qa.md" in gaps[0].detail
 
 
+def _undeclared_walkthrough_context(oid: str) -> dict:
+    """A surface covered by several runbooks with different drivers, none marked
+    `walkthrough: true`: `qa context` caught `reach.UndeclaredWalkthroughRunbook`, left `driver`
+    unset and recorded why, plus which kind of disagreement it was."""
+    context = _context(
+        _obligation(
+            oid,
+            surface="api-service",
+            nodeType="endpoint",
+            checksDeclared=[
+                {"call": "created", "name": "http_status", "args": {"code": 201, "path": "/api/things"}},
+            ],
+        ),
+    )
+    context["navigation"] = {"api-service": {
+        "driver": None,
+        "driverError": "surface 'api-service' is covered by several runbooks and none is marked "
+                       "`walkthrough: true`: docs/features/acme/ops/run.md drives it with http; "
+                       "docs/features/acme/ops/qa.md drives it with playwright",
+        "driverErrorKind": "undeclared-walkthrough-runbook",
+    }}
+    return context
+
+
+def test_a_surface_with_no_walkthrough_marked_gaps_the_ambiguity_not_a_conflict() -> None:
+    """`conflicting-surface-driver` and `undeclared-walkthrough-runbook` are different defects
+    with different remedies — settle a disagreement between two marked runbooks, versus mark
+    the one that exercises the surface — so this shape, which `driverErrorKind` distinguishes
+    from `_conflicting_driver_context` above, may not be reported under the other kind, nor as
+    `uncompilable-claim`."""
+    oid = "okf:docs/features/acme/api.md#post-things:does:1"
+    source, gaps = compile_plan_gaps(_undeclared_walkthrough_context(oid), story="demo-story")
+    ast.parse(source)
+    assert _gap_kinds(gaps, oid) == ["undeclared-walkthrough-runbook"]
+    assert "run.md" in gaps[0].detail and "qa.md" in gaps[0].detail
+    assert "walkthrough" in gaps[0].detail
+
+
 def test_a_surface_stating_no_driver_at_all_still_gaps_the_absence() -> None:
     """Non-vacuity for the test above: the same context with the conflict record removed — the
     only difference — keeps the kind it always had, so a `conflicting-surface-driver` verdict

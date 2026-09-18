@@ -1,12 +1,14 @@
-### `conflicting-surface-driver` — two runbooks disagree about one surface's `driver:`
+### `conflicting-surface-driver` — two `walkthrough: true` runbooks disagree about one surface's `driver:`
 
-A `runbook` node states `driver:` for every surface its `surfaces:` bullet links into, at
-full-book scope — so more than one runbook can cover the same surface, and this finding
-means two of them do, with different `driver:` values. That is not a detail either reader
-can shrug off: `driver:` is a grammar selector, not a label. The route grammar reachability
-is computed in and the value-kind grammar a node's bullets are held to both need exactly one
-answer per surface, and two runbooks naming two different drivers leaves neither question
-answerable — so both readers treat the surface as if it declared no driver at all until this
+A `runbook` node's `driver:` states what *that runbook* drives. Several runbooks covering
+one surface with different `driver:` values is the ordinary shape of a real service — a lint
+runbook, a browser runbook and an IaC runbook can all be correct about the same code — so
+the book names the one that is *how the surface is exercised* by marking it
+`walkthrough: true`. This finding means two runbooks both make that claim and still state
+different `driver:` values. That is not a detail either reader can shrug off: `driver:` is a
+grammar selector, not a label. The route grammar reachability is computed in and the
+value-kind grammar a node's bullets are held to both need exactly one answer per surface, and
+two marked runbooks naming two different drivers leaves neither question answerable — so both readers treat the surface as if it declared no driver at all until this
 is settled, which quietly widens what every one of that surface's screens and components is
 allowed to say. QA stops too: D1's dispatch table decides what performs a step from the
 surface's `driver:`, so while two are stated every obligation on this surface compiles to a
@@ -25,16 +27,13 @@ against this surface:
    wrong one so both agree.
 2. **The runbooks describe two genuinely different ways of exercising this surface** — a
    deployed stack reached over HTTP and a dev-local CLI wrapper around the same service, say.
-   Both `driver:` values are individually correct, and the format still cannot hold both.
-   A surface is the first path component under `docs/features/`, so every node in one feature
-   directory is on one surface by construction: there is no thin extra node you can add that
-   would separate them, and writing one would be a claim about where the service lives rather
-   than a fix. Decide which driver this surface is actually exercised with — the one a QA walk
-   against it performs — and let only that runbook declare `surfaces:` into it. `surfaces:` is
-   optional on `runbook`, so the other file keeps its own `driver:` and its `## Steps` and goes
-   on documenting how the service is brought up; it simply stops claiming to be the way this
-   surface is exercised. If the two really are separate services, they belong under two feature
-   directories, and then they are two surfaces with one driver each.
+   Both `driver:` values are individually correct, and the surface can still only be walked
+   one way. Decide which one a QA walk against this surface actually performs, and leave
+   `walkthrough: true` on that runbook alone. The other file keeps `surfaces:` and keeps its
+   own `driver:` — both are true claims about what it operates on and what it drives — it
+   simply stops claiming to be the walkthrough. Do **not** strip `surfaces:` to settle this:
+   that bullet is the only join recording which code a runbook covers, and deleting it trades
+   an ambiguity for a lost fact.
 
 Do not silence this by deleting one runbook's `driver:` bullet to make the finding go away.
 `driver:` is a **required** bullet on `runbook` — deleting it trades this finding for

@@ -88,6 +88,7 @@ GAP_KINDS = frozenset({
     "undeclared-entry-url",
     "conflicting-entry-origin",
     "conflicting-surface-driver",
+    "undeclared-walkthrough-runbook",
     "unresolved-extends",
     "undeclared-check-locator",
     "unstated-claim-combiner",
@@ -459,7 +460,8 @@ _BUILT_TARGETS = frozenset({"playwright", "http", "cli"})
 
 
 def _dispatch_target(
-    node_type: str, driver: str | None, driver_error: str | None = None
+    node_type: str, driver: str | None, driver_error: str | None = None,
+    driver_error_kind: str | None = None,
 ) -> tuple[str | None, str, str]:
     """D1's table — or `_OBSERVE_ROW`, for a type nobody performs — read once per obligation.
 
@@ -479,9 +481,12 @@ def _dispatch_target(
     The third element is the gap kind, because this function is the only place that knows
     *which* of those reasons applied and the two callers were deriving it from the target
     alone — a distinction the target cannot carry. It matters for `driver_error`: a surface
-    whose runbooks disagree states two drivers, not none, and the two take different remedies
-    (write a `driver:` versus settle which of two is right), so it is reported as
-    `conflicting-surface-driver` rather than as the absence `uncompilable-claim` describes.
+    whose runbooks disagree states two drivers, not none, and the disagreement takes one of two
+    different remedies depending on *how* it disagreed — `driver_error_kind` says which
+    (`"conflicting-surface-driver"`: two runbooks both marked `walkthrough: true` still disagree,
+    settle which is right; `"undeclared-walkthrough-runbook"`: several runbooks disagree and none
+    is marked, mark the one that exercises the surface) — so it is reported under that kind
+    rather than as the absence `uncompilable-claim` describes.
     """
     row = _OBSERVE_ROW if node_type in _OBSERVED_TYPES else _DISPATCH_TABLE.get(node_type)
     if row is None:
@@ -494,11 +499,21 @@ def _dispatch_target(
     else:
         if driver is None:
             if driver_error:
-                return None, (
-                    "the surface this step's node lives on states more than one `driver:` and "
-                    f"they disagree ({driver_error}) — D1's dispatch table (§4.1) needs one "
-                    "answer per surface and no default adjudicates between two the book states"
-                ), "conflicting-surface-driver"
+                kind = driver_error_kind or "conflicting-surface-driver"
+                if kind == "undeclared-walkthrough-runbook":
+                    detail = (
+                        "the surface this step's node lives on is covered by several runbooks "
+                        f"and none is marked `walkthrough: true` ({driver_error}) — D1's "
+                        "dispatch table (§4.1) cannot tell which one describes how this surface "
+                        "is exercised"
+                    )
+                else:
+                    detail = (
+                        "the surface this step's node lives on states more than one `driver:` and "
+                        f"they disagree ({driver_error}) — D1's dispatch table (§4.1) needs one "
+                        "answer per surface and no default adjudicates between two the book states"
+                    )
+                return None, detail, kind
             return None, (
                 "the surface this step's node lives on states no `driver:` on any `runbook`, so "
                 "D1's dispatch table (§4.1) cannot determine what performs this step"
@@ -1080,7 +1095,9 @@ def compile_plan_gaps(
             # world (`_journey_scenarios`).
             flow_owed.append(obligation)
             continue
-        target, detail, kind = _dispatch_target(node_type, driver, surface_nav.get("driverError"))
+        target, detail, kind = _dispatch_target(
+            node_type, driver, surface_nav.get("driverError"), surface_nav.get("driverErrorKind")
+        )
         if target == "playwright":
             page_owed.append(obligation)
         elif target == "http":
@@ -2582,7 +2599,8 @@ def _journey_scenarios(
             step_surface = str(step.get("surface") or "")
             step_nav = navigation.get(step_surface, {})
             step_target, why, why_kind = _dispatch_target(
-                str(step.get("nodeType") or ""), step_nav.get("driver"), step_nav.get("driverError")
+                str(step.get("nodeType") or ""), step_nav.get("driver"), step_nav.get("driverError"),
+                step_nav.get("driverErrorKind"),
             )
             if step_target is None or step_target not in _BUILT_TARGETS:
                 detail = why

@@ -179,6 +179,7 @@ def run(graph: Graph, epic_filter: str | None = None, check_schema: bool = True,
     ui_data = _ui_graph(graph, resolver)
     if ui_data is not None:
         _check_conflicting_surface_driver(ui_data, f)
+        _check_undeclared_walkthrough_runbook(ui_data, f)
         _check_conflicting_entry_origin(ui_data, f)
         _check_reachability(ui_data, f)
         _check_locators(ui_data, f)
@@ -876,9 +877,10 @@ def _check_bullet_value_kinds(graph: Graph, ui_data: dict | None, f: list[Findin
         if surface not in driver_by_surface:
             try:
                 driver_by_surface[surface] = reach.surface_driver(ui_data, surface)
-            except reach.ConflictingSurfaceDriver:
-                # Already reported by `_check_conflicting_surface_driver`; not this check's
-                # finding to duplicate. Treat as undeclared so this surface's nodes still get
+            except reach.UnsettledSurfaceDriver:
+                # Already reported by `_check_conflicting_surface_driver` or
+                # `_check_undeclared_walkthrough_runbook`; not this check's finding to
+                # duplicate. Treat as undeclared so this surface's nodes still get
                 # checked against the grammar they have always used.
                 driver_by_surface[surface] = None
         return driver_by_surface[surface]
@@ -1346,6 +1348,10 @@ def gap_findings(gaps: list[Gap]) -> list[Finding]:
         elif gap.kind == "conflicting-surface-driver":
             findings.append(
                 Finding("error", "conflicting-surface-driver", message, ref=gap.obligation_id)
+            )
+        elif gap.kind == "undeclared-walkthrough-runbook":
+            findings.append(
+                Finding("error", "undeclared-walkthrough-runbook", message, ref=gap.obligation_id)
             )
         elif gap.kind == "unresolved-extends":
             findings.append(Finding("error", "unresolved-extends", message, ref=gap.obligation_id))
@@ -2639,9 +2645,10 @@ def _check_reachability(data: dict, f: list[Finding]) -> None:
     for surface in sorted(s for s in surfaces if s):
         try:
             driver = reach.surface_driver(data, surface)
-        except reach.ConflictingSurfaceDriver:
-            # Already reported by `_check_conflicting_surface_driver`; not this check's
-            # finding to duplicate. Treat as undeclared so the rest of this surface's
+        except reach.UnsettledSurfaceDriver:
+            # Already reported by `_check_conflicting_surface_driver` or
+            # `_check_undeclared_walkthrough_runbook`; not this check's finding to
+            # duplicate. Treat as undeclared so the rest of this surface's
             # screens still get checked against the grammar they have always used.
             driver = None
         if not routes_mod.is_path_addressed(driver):
@@ -2689,23 +2696,30 @@ def _check_reachability(data: dict, f: list[Finding]) -> None:
 
 
 def _check_conflicting_surface_driver(data: dict, f: list[Finding]) -> None:
-    """Every runbook naming one surface must agree with every other on its `driver:`.
+    """Every runbook marked `walkthrough: true` for one surface must agree with every other
+    marked runbook on its `driver:`.
 
-    `reach.surface_driver` refuses to pick between two runbooks that disagree — correctly,
-    because its two callers each want a *grammar*, and a grammar has exactly one answer per
-    surface or none. `_check_bullet_value_kinds`'s `_driver_for` picks the value-kind
-    grammar a node's bullets are held to; `_check_reachability` picks the route grammar
-    reachability is computed in, and its own docstring says the root is surface-scoped
+    `reach.surface_driver` refuses to pick between two *marked* runbooks that disagree —
+    correctly, because its two callers each want a *grammar*, and a grammar has exactly one
+    answer per surface or none. `_check_bullet_value_kinds`'s `_driver_for` picks the
+    value-kind grammar a node's bullets are held to; `_check_reachability` picks the route
+    grammar reachability is computed in, and its own docstring says the root is surface-scoped
     because "a screen in `web` is not made reachable by a root declared in `legacy`". Two
-    drivers for one surface makes both questions unanswerable, so both readers catch
+    marked drivers for one surface makes both questions unanswerable, so both readers catch
     `reach.ConflictingSurfaceDriver` and degrade to an undeclared driver rather than guess —
     which is the right thing for a grammar-picker to do, but it means neither of them, nor
     any other reader of `surface_driver`, ever tells the author the book disagrees with
     itself. This check exists solely to be the one that does.
 
-    Run once per surface rather than once per runbook: two runbooks disagreeing about one
-    surface is one defect with one remedy (settle which driver is right, or split the
-    surface), not one finding per runbook naming it.
+    Several *unmarked* runbooks naming the same surface with different `driver:` values is not
+    this check's business — that is normal (a lint runbook, a browser runbook and an IaC
+    runbook can all correctly name the same surface) and is `_check_undeclared_walkthrough_runbook`'s
+    concern instead. Both checkers call `reach.surface_driver` and must each ignore the other's
+    exception rather than let it escape unhandled.
+
+    Run once per surface rather than once per runbook: two marked runbooks disagreeing about
+    one surface is one defect with one remedy (settle which driver is right), not one finding
+    per runbook naming it.
     """
     surfaces = sorted({n["surface"] for n in data["nodes"] if n.get("surface")})
     for surface in surfaces:
@@ -2715,11 +2729,50 @@ def _check_conflicting_surface_driver(data: dict, f: list[Finding]) -> None:
             named = "; ".join(f"{node} says `driver: {driver}`" for node, driver in exc.drivers)
             f.append(Finding(
                 "error", "conflicting-surface-driver",
-                f"{surface}: runbooks disagree about this surface's `driver:` — {named} — "
-                f"every check that needs a driver for this surface treats it as undeclared "
-                f"until the runbooks agree",
+                f"{surface}: runbooks marked `walkthrough: true` disagree about this surface's "
+                f"`driver:` — {named} — every check that needs a driver for this surface treats "
+                f"it as undeclared until they agree",
                 ref=surface,
                 related=sorted(node for node, _driver in exc.drivers)))
+        except reach.UndeclaredWalkthroughRunbook:
+            pass
+
+
+def _check_undeclared_walkthrough_runbook(data: dict, f: list[Finding]) -> None:
+    """Several runbooks naming one surface with different `driver:` values must mark exactly
+    one of them `walkthrough: true`.
+
+    A runbook's `driver:` states what that runbook drives, not which runbook is how the
+    surface is exercised — a real surface routinely has several correct runbooks (a lint
+    runbook, a browser runbook, an IaC runbook), and `surfaces:` is the only join recording
+    which code each one operates on. So the remedy is to mark the one that stands for the
+    surface `walkthrough: true`, never to strip `surfaces:` from the others — that bullet is a
+    true claim about what code each runbook covers, and deleting it to silence this finding
+    destroys that claim rather than resolving the ambiguity it flags.
+
+    `reach.surface_driver` raises `reach.UndeclaredWalkthroughRunbook` for exactly this shape;
+    this check is the one that turns the refusal into a finding, the same way
+    `_check_conflicting_surface_driver` does for its own exception. Each checker calls
+    `surface_driver` and must ignore the other's exception rather than let it escape.
+
+    Run once per surface: several unmarked runbooks disagreeing about one surface is one
+    defect with one remedy (mark the walkthrough runbook), not one finding per runbook naming
+    it.
+    """
+    surfaces = sorted({n["surface"] for n in data["nodes"] if n.get("surface")})
+    for surface in surfaces:
+        try:
+            reach.surface_driver(data, surface)
+        except reach.UndeclaredWalkthroughRunbook as exc:
+            f.append(Finding(
+                "error", "undeclared-walkthrough-runbook",
+                f"{surface}: several runbooks cover this surface with different `driver:` "
+                f"values and none is marked `walkthrough: true` — mark the one that is how "
+                f"this surface is exercised, keeping `surfaces:` on the others",
+                ref=surface,
+                related=sorted(node for node, _driver in exc.drivers)))
+        except reach.ConflictingSurfaceDriver:
+            pass
 
 
 def _check_conflicting_entry_origin(data: dict, f: list[Finding]) -> None:

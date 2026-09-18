@@ -24,6 +24,7 @@ File type under `docs/features/<service>/ops/`, `type: runbook` in frontmatter.
 | key | required | what it does |
 | --- | --- | --- |
 | `driver` | **yes** | `web` \| `mobile` \| `http` \| `cli` \| `artifact` \| `iac` \| `none` — held to this vocabulary; an unrecognized spelling is `unknown-driver`, an error, not a permissive default |
+| `walkthrough` | no | `true` on the one runbook that is how the surface named in `surfaces:` is exercised — several runbooks per surface is normal, with different `driver:` values all true at once; a sole runbook stands in for it when unmarked |
 | `environment` | no | link — the environment this boots (default local) |
 | `cli` | no | link — the dev-CLI node it drives with |
 | `surfaces` | no | link — the screen/server/cli/format nodes it exposes |
@@ -64,22 +65,34 @@ operational nodes to the product surfaces.
 recognize is a driver it cannot check `surfaces:` against either, so a typo would otherwise
 be strictly more permissive than a correct spelling.
 
-More than one runbook can name the same surface through `surfaces:`, and every one of them
-must state the same `driver:` for it — `conflicting-surface-driver` catches two that
-disagree. A surface's driver is a grammar selector other checks key on (the route grammar
-reachability is computed in, the value-kind grammar a node's bullets are held to), and a
-grammar has exactly one answer per surface or none; two runbooks naming two different
-drivers for one surface leaves that surface's driver silently treated as undeclared
-everywhere until the runbooks agree. There is no way to hold two — a surface is the first
-path component under `docs/features/`, so the second runbook either states the same driver,
-or drops `surfaces:` (the key is optional) and documents bring-up without claiming to be how
-this surface is exercised.
+More than one runbook can name the same surface through `surfaces:`, and that is the ordinary
+shape, not a defect — a lint runbook stating `driver: cli`, a browser runbook stating
+`driver: web` and an IaC runbook stating `driver: iac` can all correctly cover one surface at
+once. A runbook's `driver:` states what *that runbook* drives; it says nothing on its own
+about which runbook is how the surface is exercised, which is a separate claim the book has to
+make. `walkthrough: true` is that claim: mark it on the one runbook whose `## Steps` actually
+stand up what a QA walk drives, and that runbook's `driver:` is the surface's driver — the
+same way `walkthrough: true` on a [`server`](server.md) node picks the one server `root_path`
+reads. A sole runbook naming the surface stands in for the mark when none is written.
 
-QA treats the disagreement as the defect it is rather than as an absence. D1's dispatch table
-keys on the surface's `driver:` to decide what performs each step, and a surface with two
-answers gets neither — so every obligation on it is gapped `conflicting-surface-driver`, not
-`uncompilable-claim`, whose message would tell the author no runbook states a `driver:` when
-two of them do. No default adjudicates between two the book states.
+Two runbooks *both* marked `walkthrough: true` for one surface that still state different
+`driver:` values is `conflicting-surface-driver` — a surface's driver is a grammar selector
+other checks key on (the route grammar reachability is computed in, the value-kind grammar a
+node's bullets are held to), and a grammar has exactly one answer per surface or none, so two
+marked runbooks disagreeing leaves that surface's driver silently treated as undeclared
+everywhere until they agree. Several *unmarked* runbooks naming one surface with different
+`driver:` values and none of them marked is `undeclared-walkthrough-runbook` instead — the book
+just hasn't said yet which one is the walkthrough. Either way, `surfaces:` stays on every
+runbook that names the surface: it is the only join recording which code a runbook operates
+on, and deleting it to silence one of these findings destroys a true claim rather than
+resolving the ambiguity.
+
+QA treats both shapes as the defects they are rather than as an absence. D1's dispatch table
+keys on the surface's `driver:` to decide what performs each step, and a surface with no
+single answer gets neither — so every obligation on it is gapped `conflicting-surface-driver`
+or `undeclared-walkthrough-runbook`, never `uncompilable-claim`, whose message would tell the
+author no runbook states a `driver:` when several do. No default adjudicates between drivers
+the book states; marking `walkthrough: true` is how the book adjudicates instead.
 
 A surface's address is stated in two places — the `entry-url:` of its `walkthrough: true`
 `server` node, and the `entry-url:` of any `runbook` whose `surfaces:` links into it — and
@@ -145,6 +158,7 @@ type: runbook
 `runbook-missing` (warn, raised when no runbook exists at all), `runbook-bad-reuse`,
 `runbook-bad-kind`, `runbook-incomplete`, `runbook-multi-service`, `runbook-local-only`,
 `no-drivable-surface`, `unknown-driver`, `conflicting-surface-driver`,
+`undeclared-walkthrough-runbook`,
 `conflicting-entry-origin`, `missing-required-bullet`
 on `driver:`, `missing-required-section`, `empty-required-section`. See
 [../doctor-codes.md](../doctor-codes.md).
