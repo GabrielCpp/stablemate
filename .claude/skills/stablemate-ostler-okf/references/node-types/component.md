@@ -21,7 +21,7 @@ Section type. A `### <id>` under a `## Components` heading, normally in a
 
 | key | required | what it does |
 | --- | --- | --- |
-| `selector` | no | a locator, when role+name cannot address it |
+| `selector` | no | a locator, when role+name cannot address it — CSS, or a `scheme=value` self-identifying address |
 | `role` | **yes** | **mints an obligation** — the ARIA role |
 | `name` | **yes** | **mints an obligation** — the accessible name |
 | `placement` | no | viewport bands, e.g. `width 60-100%, x 0-20%` |
@@ -81,7 +81,19 @@ itself mints for each element (`#id`, or `tag.class:nth(i)` for one with no id),
 form it resolves by the ARIA role it recorded rather than by string match, `tag[role="..."]`. Any
 other predicate — an attribute value, a boolean attribute, a pseudo-class — addresses nothing the
 scan ever produces, so a component whose `selector:` uses one reads `missing` on every render,
-not just an unlucky one. A control whose identity depends on a piece of state (`booked`, not
+not just an unlucky one.
+
+Off the web, there is a third spelling: a self-identifying `scheme=value` selector, e.g.
+`selector: testID=widget-table` for a React Native control. It names its own grammar in the
+string itself, so `ostler doctor` can tell it apart from a bare CSS string with no lookup of the
+node's `driver:` — see `is_addressable` in `ostler/vet/placement.py`. The recognized schemes are
+listed there (`testID`, the prop React Native source writes and the representation Maestro's
+`id:` selector resolves against); an unrecognized scheme is rejected rather than guessed at, the
+same as any other unaddressable string. Neither reader above compiles it to a live locator: the
+census has no web render to scan, and this tree has no Maestro/mobile driver yet, so a
+`verify:` against a `testID=` selector compiles to a gap (`uncompilable-claim`) instead of code —
+an honest "documented, not yet runnable" rather than a locator that silently matches nothing. A
+control whose identity depends on a piece of state (`booked`, not
 merely `disabled`) belongs on `states:`, not folded into `selector:` on a second component node
 that exists only to carry it. That does not mean a raw-CSS `locator=` bypasses the census: a
 check's `locator=` is a reference into the book, not a live selector — it must resolve to a
