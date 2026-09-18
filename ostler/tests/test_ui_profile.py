@@ -800,6 +800,54 @@ def test_a_runbook_with_no_driver_bullet_raises_no_unknown_driver(repo: Path):
     assert "unknown-driver" not in errors
 
 
+# ---------------------------------------------------------------------------
+# `conflicting-surface-driver` — every runbook naming one surface must agree on `driver:`
+# ---------------------------------------------------------------------------
+def _write_conflicting_driver_book(repo: Path, driver_a: str, driver_b: str) -> None:
+    """Two runbooks in one feature directory, both `surfaces:`-linked into the same server
+    node — the shape a legitimate dev-local runbook takes alongside the deployed one, and
+    the only shape `reach.surface_driver` ever has two drivers to compare."""
+    write(repo / "docs/features/groom/ops/local.md", ENVIRONMENT)
+    write(repo / "docs/features/groom/http/api.md", API_SERVER)
+    write(repo / "docs/features/groom/ops/deployed.md", (
+        "---\ntype: runbook\nslug: deployed\ntitle: Deployed\n---\n# Deployed\n\n"
+        f"- driver: {driver_a}\n- environment: [local](local.md)\n"
+        "- surfaces: [api](../http/api.md)\n\n"
+        "## Steps\n\n### serve\n- kind: service\n- run: `run`\n"
+    ))
+    write(repo / "docs/features/groom/ops/local-cli.md", (
+        "---\ntype: runbook\nslug: local-cli\ntitle: Local CLI\n---\n# Local CLI\n\n"
+        f"- driver: {driver_b}\n- environment: [local](local.md)\n"
+        "- surfaces: [api](../http/api.md)\n\n"
+        "## Steps\n\n### serve\n- kind: service\n- run: `run --local`\n"
+    ))
+
+
+def test_two_runbooks_disagreeing_on_driver_raise_conflicting_surface_driver(repo: Path):
+    _write_conflicting_driver_book(repo, "http", "cli")
+    report = doctor.run(load(repo))
+    errors = [f for f in report.findings if f.code == "conflicting-surface-driver"]
+    assert len(errors) == 1
+    assert errors[0].severity == "error"
+    assert "groom" in errors[0].message
+    assert "http" in errors[0].message
+    assert "cli" in errors[0].message
+    # The remedy is not complete until both runbooks are read, and `path` names a surface
+    # rather than a file here — so the membership has to travel as a field, the way
+    # `competing-implementations` carries its group.
+    assert errors[0].related == ["docs/features/groom/ops/deployed.md",
+                                 "docs/features/groom/ops/local-cli.md"]
+
+
+def test_two_runbooks_agreeing_on_driver_raise_no_conflicting_surface_driver(repo: Path):
+    # Non-vacuity: the only difference from the conflict fixture above is that both
+    # runbooks now state the same `driver:` — the finding must disappear, not just change.
+    _write_conflicting_driver_book(repo, "http", "http")
+    report = doctor.run(load(repo))
+    codes_seen = {f.code for f in report.findings}
+    assert "conflicting-surface-driver" not in codes_seen
+
+
 def test_a_same_size_rewrite_is_not_served_from_the_parse_cache(repo: Path):
     # The feature book is parsed once per file and cached for the process, because a graph load
     # is 24s on a real book and every node of a workflow run loads one. The key is the content

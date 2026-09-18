@@ -176,6 +176,7 @@ def run(graph: Graph, epic_filter: str | None = None, check_schema: bool = True,
     # rebuild costs more than every other check in this function put together.
     ui_data = _ui_graph(graph, resolver)
     if ui_data is not None:
+        _check_conflicting_surface_driver(ui_data, f)
         _check_reachability(ui_data, f)
         _check_locators(ui_data, f)
         _check_unknown_driver(ui_data, f)
@@ -873,6 +874,9 @@ def _check_bullet_value_kinds(graph: Graph, ui_data: dict | None, f: list[Findin
             try:
                 driver_by_surface[surface] = reach.surface_driver(ui_data, surface)
             except reach.ConflictingSurfaceDriver:
+                # Already reported by `_check_conflicting_surface_driver`; not this check's
+                # finding to duplicate. Treat as undeclared so this surface's nodes still get
+                # checked against the grammar they have always used.
                 driver_by_surface[surface] = None
         return driver_by_surface[surface]
 
@@ -2766,9 +2770,9 @@ def _check_reachability(data: dict, f: list[Finding]) -> None:
         try:
             driver = reach.surface_driver(data, surface)
         except reach.ConflictingSurfaceDriver:
-            # Already reported by `_apply_surface_declarations`'s own check on `driver:`; not
-            # this check's finding to duplicate. Treat as undeclared so the rest of this
-            # surface's screens still get checked against the grammar they have always used.
+            # Already reported by `_check_conflicting_surface_driver`; not this check's
+            # finding to duplicate. Treat as undeclared so the rest of this surface's
+            # screens still get checked against the grammar they have always used.
             driver = None
         if not routes_mod.is_path_addressed(driver):
             # `root_path` derives the root from a *server* contract (`entry-url:` on the
@@ -2812,6 +2816,40 @@ def _check_reachability(data: dict, f: list[Finding]) -> None:
                              f"{screen}: no documented path reaches this screen from {root} — {why}",
                              path=screen, line=node["line"] if node else 0, ref=screen,
                              suggestion="- leads-to: [<this screen>](<path>)"))
+
+
+def _check_conflicting_surface_driver(data: dict, f: list[Finding]) -> None:
+    """Every runbook naming one surface must agree with every other on its `driver:`.
+
+    `reach.surface_driver` refuses to pick between two runbooks that disagree — correctly,
+    because its two callers each want a *grammar*, and a grammar has exactly one answer per
+    surface or none. `_check_bullet_value_kinds`'s `_driver_for` picks the value-kind
+    grammar a node's bullets are held to; `_check_reachability` picks the route grammar
+    reachability is computed in, and its own docstring says the root is surface-scoped
+    because "a screen in `web` is not made reachable by a root declared in `legacy`". Two
+    drivers for one surface makes both questions unanswerable, so both readers catch
+    `reach.ConflictingSurfaceDriver` and degrade to an undeclared driver rather than guess —
+    which is the right thing for a grammar-picker to do, but it means neither of them, nor
+    any other reader of `surface_driver`, ever tells the author the book disagrees with
+    itself. This check exists solely to be the one that does.
+
+    Run once per surface rather than once per runbook: two runbooks disagreeing about one
+    surface is one defect with one remedy (settle which driver is right, or split the
+    surface), not one finding per runbook naming it.
+    """
+    surfaces = sorted({n["surface"] for n in data["nodes"] if n.get("surface")})
+    for surface in surfaces:
+        try:
+            reach.surface_driver(data, surface)
+        except reach.ConflictingSurfaceDriver as exc:
+            named = "; ".join(f"{node} says `driver: {driver}`" for node, driver in exc.drivers)
+            f.append(Finding(
+                "error", "conflicting-surface-driver",
+                f"{surface}: runbooks disagree about this surface's `driver:` — {named} — "
+                f"every check that needs a driver for this surface treats it as undeclared "
+                f"until the runbooks agree",
+                ref=surface,
+                related=sorted(node for node, _driver in exc.drivers)))
 
 
 def _check_unknown_driver(data: dict, f: list[Finding]) -> None:

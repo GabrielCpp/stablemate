@@ -64,6 +64,17 @@ operational nodes to the product surfaces.
 recognize is a driver it cannot check `surfaces:` against either, so a typo would otherwise
 be strictly more permissive than a correct spelling.
 
+More than one runbook can name the same surface through `surfaces:`, and every one of them
+must state the same `driver:` for it — `conflicting-surface-driver` catches two that
+disagree. A surface's driver is a grammar selector other checks key on (the route grammar
+reachability is computed in, the value-kind grammar a node's bullets are held to), and a
+grammar has exactly one answer per surface or none; two runbooks naming two different
+drivers for one surface leaves that surface's driver silently treated as undeclared
+everywhere until the runbooks agree. There is no way to hold two — a surface is the first
+path component under `docs/features/`, so the second runbook either states the same driver,
+or drops `surfaces:` (the key is optional) and documents bring-up without claiming to be how
+this surface is exercised.
+
 `driver:` and `surfaces:` must agree: the driver has to be able to perform against at least
 one of the node types `surfaces:` resolves to — `web` and `mobile` against a `screen`, `http`
 against a `server`, `cli` against a `cli`. A `driver: web` runbook whose `surfaces:` names only
@@ -117,8 +128,9 @@ type: runbook
 
 `runbook-missing` (warn, raised when no runbook exists at all), `runbook-bad-reuse`,
 `runbook-bad-kind`, `runbook-incomplete`, `runbook-multi-service`, `runbook-local-only`,
-`no-drivable-surface`, `unknown-driver`, `missing-required-bullet` on `driver:`, `missing-required-section`,
-`empty-required-section`. See [../doctor-codes.md](../doctor-codes.md).
+`no-drivable-surface`, `unknown-driver`, `conflicting-surface-driver`, `missing-required-bullet`
+on `driver:`, `missing-required-section`, `empty-required-section`. See
+[../doctor-codes.md](../doctor-codes.md).
 
 ## When bullets are not enough
 
