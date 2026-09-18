@@ -179,6 +179,7 @@ def run(graph: Graph, epic_filter: str | None = None, check_schema: bool = True,
     ui_data = _ui_graph(graph, resolver)
     if ui_data is not None:
         _check_conflicting_surface_driver(ui_data, f)
+        _check_conflicting_entry_origin(ui_data, f)
         _check_reachability(ui_data, f)
         _check_locators(ui_data, f)
         _check_unknown_driver(ui_data, f)
@@ -1338,6 +1339,10 @@ def gap_findings(gaps: list[Gap]) -> list[Finding]:
             )
         elif gap.kind == "undeclared-entry-url":
             findings.append(Finding("error", "undeclared-entry-url", message, ref=gap.obligation_id))
+        elif gap.kind == "conflicting-entry-origin":
+            findings.append(
+                Finding("error", "conflicting-entry-origin", message, ref=gap.obligation_id)
+            )
         elif gap.kind == "unresolved-extends":
             findings.append(Finding("error", "unresolved-extends", message, ref=gap.obligation_id))
         elif gap.kind == "undeclared-check-locator":
@@ -2711,6 +2716,40 @@ def _check_conflicting_surface_driver(data: dict, f: list[Finding]) -> None:
                 f"until the runbooks agree",
                 ref=surface,
                 related=sorted(node for node, _driver in exc.drivers)))
+
+
+def _check_conflicting_entry_origin(data: dict, f: list[Finding]) -> None:
+    """Every source stating a surface's `entry-url:` must agree with every other on its origin.
+
+    `reach.entry_origin` refuses to pick between a `server` node and a `runbook` that name
+    different `scheme://host[:port]` for one surface, and its sole reader — `qa context` —
+    catches the refusal, stores `entryUrl: None` and writes the exception's text into
+    `entryUrlError`. Nothing in the repo reads `entryUrlError`, so the report goes nowhere:
+    the degrade is right, but until this check existed no reader told the author the book
+    states the surface's address twice and disagrees with itself.
+
+    Unlike `conflicting-surface-driver`, the degrade is not the end of it. A surface with no
+    `entryUrl` falls back to the operator's `--base-url`, which is an answer for a book that
+    states no address, not an adjudication between two the book does state — so the compiler
+    now gaps `conflicting-entry-origin` for that surface instead of falling back, and this
+    finding is what tells the author which two sources to settle.
+
+    Run once per surface, for the same reason the driver check is: two sources disagreeing
+    about one surface is one defect with one remedy, not one finding per source.
+    """
+    surfaces = sorted({n["surface"] for n in data["nodes"] if n.get("surface")})
+    for surface in surfaces:
+        try:
+            reach.entry_origin(data, surface)
+        except reach.ConflictingEntryOrigin as exc:
+            named = "; ".join(f"{node} says `entry-url:` on {origin}" for node, origin in exc.origins)
+            f.append(Finding(
+                "error", "conflicting-entry-origin",
+                f"{surface}: this surface's address is stated more than once and the "
+                f"statements disagree — {named} — a service has one address, so QA cannot "
+                f"pick between them and every obligation on this surface is gapped",
+                ref=surface,
+                related=sorted(node for node, _origin in exc.origins)))
 
 
 def _check_unknown_driver(data: dict, f: list[Finding]) -> None:

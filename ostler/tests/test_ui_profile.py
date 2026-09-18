@@ -925,3 +925,53 @@ def test_same_as_disagreement_one_finding_for_a_three_member_family(repo: Path):
     assert set(hits[0].related) == {"docs/features/groom/concepts/notify-0.md",
                                      "docs/features/groom/concepts/notify-1.md",
                                      "docs/features/groom/concepts/notify-2.md"}
+
+
+# ---------------------------------------------------------------------------
+# `conflicting-entry-origin` — every source stating a surface's address must agree
+# ---------------------------------------------------------------------------
+def _write_conflicting_origin_book(repo: Path, server_url: str, runbook_url: str) -> None:
+    """A `server` and a `runbook` that both state the surface's address, so `entry_origin`
+    has two sources to compare — the only shape that ever produces a conflict."""
+    write(repo / "docs/features/groom/ops/local.md", ENVIRONMENT)
+    write(repo / "docs/features/groom/http/api.md", (
+        "---\ntype: server\nslug: api\ntitle: API\n---\n# API\n\n"
+        f"- entry-url: {server_url}\n\n## Endpoints\n"
+    ))
+    write(repo / "docs/features/groom/ops/deployed.md", (
+        "---\ntype: runbook\nslug: deployed\ntitle: Deployed\n---\n# Deployed\n\n"
+        "- driver: http\n- environment: [local](local.md)\n"
+        f"- entry-url: {runbook_url}\n"
+        "- surfaces: [api](../http/api.md)\n\n"
+        "## Steps\n\n### serve\n- kind: service\n- run: `run`\n"
+    ))
+
+
+def test_two_sources_disagreeing_on_the_entry_url_raise_conflicting_entry_origin(repo: Path):
+    _write_conflicting_origin_book(repo, "http://127.0.0.1:8787", "http://127.0.0.1:9999")
+    report = doctor.run(load(repo))
+    errors = [f for f in report.findings if f.code == "conflicting-entry-origin"]
+    assert len(errors) == 1
+    assert errors[0].severity == "error"
+    assert "groom" in errors[0].message
+    assert "8787" in errors[0].message
+    assert "9999" in errors[0].message
+    assert errors[0].related == ["docs/features/groom/http/api.md",
+                                 "docs/features/groom/ops/deployed.md"]
+
+
+def test_two_sources_agreeing_on_the_entry_url_raise_no_conflicting_entry_origin(repo: Path):
+    # Non-vacuity: the only difference from the conflict fixture is the port, so a finding
+    # that survives here would be firing on something other than the disagreement.
+    _write_conflicting_origin_book(repo, "http://127.0.0.1:8787", "http://127.0.0.1:8787")
+    report = doctor.run(load(repo))
+    assert "conflicting-entry-origin" not in {f.code for f in report.findings}
+
+
+def test_a_differing_path_under_one_origin_is_not_a_conflicting_entry_origin(repo: Path):
+    # `entry_origin` compares `scheme://host[:port]` and nothing else, because that is all a
+    # target's `base_url` is; two sources naming different paths under one host agree about
+    # the thing being compared.
+    _write_conflicting_origin_book(repo, "http://127.0.0.1:8787/api", "http://127.0.0.1:8787/")
+    report = doctor.run(load(repo))
+    assert "conflicting-entry-origin" not in {f.code for f in report.findings}

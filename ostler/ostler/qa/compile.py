@@ -86,6 +86,7 @@ GAP_KINDS = frozenset({
     "needs-snapshot",
     "needs-out-of-band-observation",
     "undeclared-entry-url",
+    "conflicting-entry-origin",
     "unresolved-extends",
     "undeclared-check-locator",
     "unstated-claim-combiner",
@@ -666,6 +667,29 @@ def _has_screens(navigation: dict[str, Any]) -> bool:
     )
 
 
+def _entry_url_gap(surface: str, navigation: dict[str, Any]) -> tuple[str, str]:
+    """The kind and detail for an obligation whose surface resolved to no address.
+
+    Two different defects reach this point and they take opposite remedies, so they may not
+    share one kind. A surface that states nothing is `undeclared-entry-url`: the book is
+    silent, and `--base-url` is a legitimate answer an operator can supply. A surface whose
+    sources state two disagreeing origins is `conflicting-entry-origin`: the book already
+    answered, twice, and no operator flag adjudicates between two things the book says — so
+    the fallback is refused above and the gap names the real cause. Reporting a conflict as
+    an absence sends the author looking for a bullet that is already there.
+    """
+    conflict = navigation.get(surface, {}).get("entryUrlError")
+    if conflict:
+        return "conflicting-entry-origin", (
+            f"surface {surface!r} states more than one `entry-url:` origin and they disagree "
+            f"({conflict}) — `--base-url` does not adjudicate between two the book states"
+        )
+    return "undeclared-entry-url", (
+        f"surface {surface!r} states no `entry-url:` on a `server` or `runbook` node, "
+        "and no --base-url was passed to fall back on"
+    )
+
+
 def _split_by_entry_url(
     obligations: list[dict[str, Any]],
     navigation: dict[str, Any],
@@ -680,8 +704,9 @@ def _split_by_entry_url(
     state its own address — `navigation[surface]["entryUrl"]`, Phase 2h's per-surface
     resolution in `reach.entry_origin`. A surface with nothing stated falls back to the CLI
     `--base-url` only when one was actually passed (`base_url is not None`); with neither,
-    every obligation on that surface is gapped `undeclared-entry-url` and dropped from the
-    returned list rather than silently compiled against a fixed, unrelated address.
+    every obligation on that surface is gapped and dropped from the returned list rather
+    than silently compiled against a fixed, unrelated address. A surface whose sources
+    *disagree* gets no fallback at all — see `_entry_url_gap`.
 
     The second return value is every surface's resolved address, keyed by surface — the
     caller emits one `target(...)` per entry, never a single one picked among several.
@@ -691,19 +716,18 @@ def _split_by_entry_url(
         surface = str(obligation.get("surface") or "")
         if surface in resolved_by_surface:
             continue
-        entry_url = navigation.get(surface, {}).get("entryUrl") if surface else None
-        resolved_by_surface[surface] = entry_url or base_url
+        surface_nav = navigation.get(surface, {}) if surface else {}
+        entry_url = surface_nav.get("entryUrl")
+        fallback = None if surface_nav.get("entryUrlError") else base_url
+        resolved_by_surface[surface] = entry_url or fallback
 
     kept: list[dict[str, Any]] = []
     for obligation in obligations:
         surface = str(obligation.get("surface") or "")
         url = resolved_by_surface[surface]
         if url is None:
-            gaps.append(Gap(
-                str(obligation["id"]), "undeclared-entry-url",
-                f"surface {surface!r} states no `entry-url:` on a `server` or `runbook` node, "
-                "and no --base-url was passed to fall back on",
-            ))
+            kind, detail = _entry_url_gap(surface, navigation)
+            gaps.append(Gap(str(obligation["id"]), kind, detail))
             continue
         kept.append(obligation)
 
@@ -2578,10 +2602,8 @@ def _journey_scenarios(
                         for oid in ids)
             continue
         if url is None:
-            gaps.extend(Gap(oid, "undeclared-entry-url",
-                            f"surface {surface!r} states no `entry-url:` on a `server` or "
-                            "`runbook` node, and no --base-url was passed to fall back on")
-                        for oid in ids)
+            kind, detail = _entry_url_gap(surface, navigation)
+            gaps.extend(Gap(oid, kind, detail) for oid in ids)
             continue
         arranged = _arrangements(obligations)
         if not arranged and not any(o.get("arrangesNothing") for o in obligations):

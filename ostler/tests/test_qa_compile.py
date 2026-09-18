@@ -2257,6 +2257,52 @@ def test_a_surface_with_no_entry_url_and_no_fallback_gaps_instead_of_guessing() 
     assert "target(" not in source
 
 
+def _conflicting_origin_context(oid: str) -> dict:
+    """A surface whose sources disagreed about its address: `qa context` caught
+    `reach.ConflictingEntryOrigin`, left `entryUrl` unset and recorded why."""
+    context = _context(
+        _obligation(
+            oid,
+            surface="api-service",
+            checksDeclared=[
+                {"call": "created", "name": "http_status", "args": {"code": 201, "path": "/api/things"}},
+            ],
+        ),
+    )
+    context["navigation"] = {"api-service": {
+        "driver": "http",
+        "entryUrlError": "surface 'api-service' has conflicting entry origins: "
+                         "docs/features/acme/api.md says http://localhost:18101; "
+                         "docs/features/acme/ops/run.md says http://localhost:18999",
+    }}
+    return context
+
+
+def test_a_surface_whose_sources_disagree_gaps_the_conflict_not_an_absence() -> None:
+    """Two stated addresses is a different defect from none stated, and it takes a different
+    remedy — so it may not be reported as `undeclared-entry-url`, whose message would send the
+    author looking for a bullet that is already written twice."""
+    oid = "okf:docs/features/acme/api.md#post-things:does:1"
+    source, gaps = _compile_plan_gaps(_conflicting_origin_context(oid), story="demo-story")
+    ast.parse(source)
+    assert _gap_kinds(gaps, oid) == ["conflicting-entry-origin"]
+    assert "18101" in gaps[0].detail
+    assert "18999" in gaps[0].detail
+    assert "target(" not in source
+
+
+def test_a_base_url_does_not_adjudicate_between_two_addresses_the_book_states() -> None:
+    """`--base-url` answers a book that states no address. A book that states two has already
+    answered, twice, and an operator flag is not an adjudication between them — falling back
+    here would compile a plan against a third address nobody wrote down at all."""
+    oid = "okf:docs/features/acme/api.md#post-things:does:1"
+    source, gaps = _compile_plan_gaps(_conflicting_origin_context(oid), story="demo-story",
+                                      base_url="http://localhost:8000")
+    ast.parse(source)
+    assert _gap_kinds(gaps, oid) == ["conflicting-entry-origin"]
+    assert "8000" not in source
+
+
 def test_a_selector_the_census_cannot_read_still_compiles_one_whole_scenario() -> None:
     """Phase 3p': a compile-time gap is a statement about the plan being compiled, and vet's
     render census is a different observer.

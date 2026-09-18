@@ -311,7 +311,9 @@ def _navigation(head_graph: Graph) -> dict[str, dict[str, Any]]:
     `base_url` from the book instead of one CLI flag applied to every surface alike. A book whose
     sources disagree (`reach.ConflictingEntryOrigin`) does not fail context-building either: `entryUrl`
     stays `None` and the conflict is recorded under `entryUrlError`, the same shape `UnknownStart`
-    already gets.
+    already gets. `entryUrlError` is read: `compile.py` gaps that surface `conflicting-entry-origin`
+    rather than falling back to `--base-url`, which answers a book stating no address and does not
+    adjudicate between two the book does state. Doctor reports it against the surface as well.
 
     Every entry also carries `driver` — the surface's `driver:` (§4.1's D1), read off its
     `runbook` node(s) by `reach.surface_driver` — for `compile.py`'s dispatch table to key on

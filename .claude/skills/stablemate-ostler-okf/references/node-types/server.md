@@ -80,10 +80,21 @@ type: server
 - verify: http_status(code=201)
 ```
 
+A surface's address is stated in two places — the `entry-url:` of its `walkthrough: true`
+`server` node, and the `entry-url:` of any `runbook` whose `surfaces:` links into it — and
+every one of them must name the same `scheme://host[:port]`. `conflicting-entry-origin`
+catches two that disagree. A service has one address, so there is no reading under which
+both are true, and QA will not pick: the surface resolves to no entry URL and every
+obligation on it is gapped `conflicting-entry-origin`. `--base-url` does not rescue it
+either — that flag answers a book that states no address, not a book that states two.
+Settle which origin is right, or, if the two really are different services, put them under
+two feature directories.
+
 ## Doctor codes it can trip
 
 `missing-required-section`, `empty-required-section`, `dangling-code-ref`,
-`missing-code-symbol`, plus whatever its `endpoint` children trip. See
+`missing-code-symbol`, `conflicting-entry-origin`, plus whatever its `endpoint` children
+trip. See
 [../doctor-codes.md](../doctor-codes.md).
 
 ## When bullets are not enough

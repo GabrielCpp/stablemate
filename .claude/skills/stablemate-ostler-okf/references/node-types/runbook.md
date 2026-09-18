@@ -75,6 +75,16 @@ path component under `docs/features/`, so the second runbook either states the s
 or drops `surfaces:` (the key is optional) and documents bring-up without claiming to be how
 this surface is exercised.
 
+A surface's address is stated in two places — the `entry-url:` of its `walkthrough: true`
+`server` node, and the `entry-url:` of any `runbook` whose `surfaces:` links into it — and
+every one of them must name the same `scheme://host[:port]`. `conflicting-entry-origin`
+catches two that disagree. A service has one address, so there is no reading under which
+both are true, and QA will not pick: the surface resolves to no entry URL and every
+obligation on it is gapped `conflicting-entry-origin`. `--base-url` does not rescue it
+either — that flag answers a book that states no address, not a book that states two.
+Settle which origin is right, or, if the two really are different services, put them under
+two feature directories.
+
 `driver:` and `surfaces:` must agree: the driver has to be able to perform against at least
 one of the node types `surfaces:` resolves to — `web` and `mobile` against a `screen`, `http`
 against a `server`, `cli` against a `cli`. A `driver: web` runbook whose `surfaces:` names only
@@ -128,7 +138,8 @@ type: runbook
 
 `runbook-missing` (warn, raised when no runbook exists at all), `runbook-bad-reuse`,
 `runbook-bad-kind`, `runbook-incomplete`, `runbook-multi-service`, `runbook-local-only`,
-`no-drivable-surface`, `unknown-driver`, `conflicting-surface-driver`, `missing-required-bullet`
+`no-drivable-surface`, `unknown-driver`, `conflicting-surface-driver`,
+`conflicting-entry-origin`, `missing-required-bullet`
 on `driver:`, `missing-required-section`, `empty-required-section`. See
 [../doctor-codes.md](../doctor-codes.md).
 
