@@ -1,7 +1,7 @@
 """`drivers.DRIVERS` joined back to every table it is the vocabulary for.
 
-One home for all four joins, rather than splitting the doc join into its own file and the
-table joins into `test_routes.py`/`test_acts.py`: they are one question asked of four
+One home for all five joins, rather than splitting the doc joins into their own file and the
+table joins into `test_routes.py`/`test_acts.py`: they are one question asked of five
 different tables — does this table answer for every §4.1 value? — and reading them together
 makes that visible in a way scattering them across three files would not.
 """
@@ -37,6 +37,30 @@ def test_the_runbook_lists_every_driver_value_drivers_declares() -> None:
     """
     parsed = _table_row_values()
     assert parsed, "the §4.1 `driver` row parsed no values at all — the regex found nothing"
+    assert set(parsed) == set(drivers.DRIVERS)
+
+
+def _node_type_page_row_values() -> list[str]:
+    """The backtick-quoted values of the `driver` row on the `runbook` node-type page.
+
+    The **library source** under `base-library/`, not the `.claude/` copy `make agent-install`
+    generates from it: a test that read the generated mirror would pass on a tree whose source
+    had drifted and only fail after somebody regenerated.
+    """
+    page = (Path(__file__).resolve().parents[2]
+            / "base-library/library/skills/ostler/okf/references/node-types/runbook.md")
+    [row] = re.findall(r"^\| `driver` \|(.+)\|$", page.read_text(), re.M)
+    return re.findall(r"`([a-z]+)`", row)
+
+
+def test_the_node_type_page_lists_every_driver_value_drivers_declares() -> None:
+    """The `runbook` node-type page states the vocabulary a fourth time, and it is the copy a
+    book author actually reads — the §4.1 table is ostler's own runbook, and the skill page is
+    what ships to the agent writing the book. An author held to a list the code does not
+    enforce, or free of one it does, is the drift this join exists to make loud.
+    """
+    parsed = _node_type_page_row_values()
+    assert parsed, "the node-type page's `driver` row parsed no values at all"
     assert set(parsed) == set(drivers.DRIVERS)
 
 
