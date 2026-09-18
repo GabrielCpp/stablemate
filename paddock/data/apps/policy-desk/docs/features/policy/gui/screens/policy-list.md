@@ -77,10 +77,10 @@ looking current.
 - verify: visible(locator="#new-policy-link")
 - placement: width 0-40%, x 0-30%, y 0-20%
 - keyboard: `Tab` to the link, `Enter` to follow it.
-- parent: [Policy register](#policy-register)
 - same-as: [New policy link](edit-policy.md#new-policy-link)
 - same-as: [New policy link](new-policy.md#new-policy-link)
 - same-as: [New policy link](policy-detail.md#new-policy-link)
+- parent: [Policy register](#policy-register)
 - code: app/web/src/Nav.tsx::Nav@4b67472aa613
 
 Opens [the new policy form](new-policy.md) as a client route, without reloading the document.

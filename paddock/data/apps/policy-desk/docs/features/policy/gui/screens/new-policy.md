@@ -134,8 +134,8 @@ sent twice.
 - verify: visible(locator="#new-policy-link")
 - placement: width 0-40%, x 0-30%, y 0-20%
 - keyboard: `Tab` to the link, `Enter` to follow it.
-- parent: [New policy form](#new-policy-form)
 - same-as: [New policy link](policy-list.md#new-policy-link)
+- parent: [New policy form](#new-policy-form)
 - code: app/web/src/Nav.tsx::Nav@4b67472aa613
 
 The same `Nav` region [policy-list.md](policy-list.md#new-policy-link) documents, rendered on this
