@@ -416,6 +416,58 @@ def test_six_unrelated_nodes_citing_one_symbol_still_demote(tmp_path: Path):
     assert other_obligation["required"]
 
 
+def test_concepts_chained_by_extends_citing_one_symbol_stay_one_family(tmp_path: Path):
+    """Six `concept` nodes chained by `extends:` are one documented thing, not six owners.
+
+    `extends:` is defined as specialization on all four types that own it — `concept`,
+    `component`, `interaction`, `invocation` — and doctor's `competing-implementations`
+    exclusion asks only whether the edge lands inside the group, with no type filter. So
+    `_family_root` collapses the chain whatever the type: six specializations of one concept
+    citing one symbol never reach `_CONTAINER_FANOUT`, and their obligations stay required.
+    Gate the walk on the two arm types instead and this test demotes all six.
+    """
+    (tmp_path / "docs/features/demo").mkdir(parents=True)
+    (tmp_path / "docs/features/demo/item0.md").write_text(
+        "---\ntype: concept\ntitle: Item 0\n---\n# Item 0\n\n"
+        "- code: `app/service.py::shared`\n",
+        encoding="utf-8",
+    )
+    for index in range(1, 6):
+        (tmp_path / f"docs/features/demo/item{index}.md").write_text(
+            f"---\ntype: concept\ntitle: Item {index}\n---\n# Item {index}\n\n"
+            f"- extends: [Item {index - 1}](item{index - 1}.md)\n"
+            "- code: `app/service.py::shared`\n",
+            encoding="utf-8",
+        )
+    # The same seventh, unrelated node the sibling demotion test carries, and for the same
+    # reason: it keeps the tree-wide required set non-empty so `shared-symbol-floor` cannot
+    # hold these six up on its own and mask what the family walk decided.
+    (tmp_path / "docs/features/demo/other.md").write_text(
+        "---\ntype: concept\ntitle: Other\n---\n# Other\n\n"
+        "- code: `app/other.py::alone`\n",
+        encoding="utf-8",
+    )
+    source = tmp_path / "app/service.py"
+    source.parent.mkdir(parents=True)
+    source.write_text("def shared():\n    return 'old'\n", encoding="utf-8")
+    other = tmp_path / "app/other.py"
+    other.write_text("def alone():\n    return 'old'\n", encoding="utf-8")
+    _git(tmp_path, "init")
+    _git(tmp_path, "config", "user.email", "qa@example.com")
+    _git(tmp_path, "config", "user.name", "QA")
+    _git(tmp_path, "add", ".")
+    _git(tmp_path, "commit", "-m", "base")
+    base = _git(tmp_path, "rev-parse", "HEAD")
+    source.write_text("def shared():\n    return 'new'\n", encoding="utf-8")
+    other.write_text("def alone():\n    return 'new'\n", encoding="utf-8")
+
+    packet = build_context(tmp_path, base=base, source_roots={"demo": ["app"]})
+
+    shared_obligations = [item for item in packet["obligations"] if "/item" in item["node"]]
+    assert len(shared_obligations) == 6
+    assert all(item["required"] for item in shared_obligations), shared_obligations
+
+
 def test_one_path_cited_under_two_owning_keys_is_one_owner(tmp_path: Path):
     """Citing the schema under both `code:` and `openapi:` is one owner, not two — otherwise
     the shared-file demotion would read a single node's double citation as a shared file."""

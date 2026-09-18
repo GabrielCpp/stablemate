@@ -2438,12 +2438,20 @@ def _extends_target(
 
     Returns `(target, malformed)`. `target` is the resolved node when `extends:` names one
     that exists and shares this node's type — an interaction arm extends an interaction, an
-    invocation arm an invocation, never across the two or at a `component`/`concept` (those
-    already use `extends:` for a different purpose and are read by `locators.py` instead).
-    `malformed` is True when `extends:` was stated but the target is missing or of the wrong
-    type, which `_obligations` stamps onto the obligation for `compile.py` to turn into a gap,
-    mirroring `unresolved-precondition`. A node with no `extends:` edge at all returns
-    `(None, False)` — plain absence, not a defect.
+    invocation arm an invocation, never across the two. `malformed` is True when `extends:`
+    was stated but the target is missing or of the wrong type, which `_obligations` stamps
+    onto the obligation for `compile.py` to turn into a gap, mirroring
+    `unresolved-precondition`. A node with no `extends:` edge at all returns `(None, False)`
+    — plain absence, not a defect.
+
+    Nothing here is restricted to the two arm types: `component` and `concept` declare
+    `extends:` too, and all four node-type pages define it the same way — "this node is a
+    specialization of that one". What differs is what a *caller* does with the base. D51's
+    call site in `_obligations` gates on `("interaction", "invocation")` because inheriting a
+    **control identity** — `on:`, `trigger:`, `role:`, `name:`, `keyboard:` — is a fact about
+    an arm, and a component inherits no such thing. `_family_root` asks a different question
+    — "is this one documented thing or two?" — which every specialization answers the same
+    way, so it gates on nothing.
     """
     to_ids = [
         edge.get("to")
@@ -2543,14 +2551,21 @@ def _family_root(node_id: str, owners: set[str], nodes_by_id: dict[str, dict[str
 
     Walks exactly two kinds of declared structure to one root, the same two questions
     `doctor.py`'s `competing-implementations` check asks before calling two nodes
-    independent implementations rather than one: an `interaction`/`invocation` arm's
-    `extends:` base case (D51) — a three-arm split says "these nodes are one documented
-    control" — and a section node's containing file (`path#anchor` collapses to `path`)
+    independent implementations rather than one: an `extends:` base case — a three-arm
+    split says "these nodes are one documented control" — and a section node's containing
+    file (`path#anchor` collapses to `path`)
     — a file plus its own `###` subsections is one documented surface, not several. Both
     say "this is not a second thing, it is the first thing described again," so all
     members must count as one family before the fan-out count runs, the same way a
     citation nobody's own arm makes distinguishing still counts as one control rather
     than three.
+
+    The `extends:` walk is type-agnostic, because doctor's exclusion is: it asks only
+    whether an `extends:` edge lands inside the group, and all four types that own the key
+    — `concept`, `component`, `interaction`, `invocation` — define it as specialization.
+    Gating this walk on the two arm types instead would have counted a component and the
+    component it specializes as two fan-out owners where doctor counts them as one family,
+    which is the whole thing this helper exists to avoid.
 
     The containment walk only collapses onto a file id that is itself one of *owners* —
     mirroring doctor.py's membership check (`b.id.startswith(f"{a.id}#")` where `a` is
@@ -2568,7 +2583,7 @@ def _family_root(node_id: str, owners: set[str], nodes_by_id: dict[str, dict[str
     while current not in seen:
         seen.add(current)
         node = nodes_by_id.get(current)
-        if node is not None and node.get("type") in ("interaction", "invocation"):
+        if node is not None:
             target, _malformed = _extends_target(node, nodes_by_id)
             if target is not None:
                 current = str(target["id"])
