@@ -27,6 +27,7 @@ Section type. A `### <id>` under a `## Components` heading, normally in a
 | `placement` | no | viewport bands, e.g. `width 60-100%, x 0-20%` |
 | `keyboard` | no | **mints an obligation** — how it is reached and operated |
 | `extends` | no | link — the component this specializes |
+| `same-as` | no | link, multi-valued — another node documenting this same component |
 | `parent` | no | link — the component containing it |
 | `exclusive-with` | no | link — a sibling it can never co-render with |
 | `one-per` | no | the iteration variable — one node stands for a whole generated family |
@@ -115,6 +116,13 @@ a greyed-out button and reports that pass as coverage.
 not a way to silence a real same-screen collision. It is a DOM co-render assertion and nothing
 more — it does not mean one control supersedes another.
 
+`same-as:` is different from all three of `extends:`, `parent:` and `exclusive-with:`: it does not
+specialize, nest, or rule out co-rendering — it says this component and the one it names are the
+*same* documented control, written more than once (a shared nav region reachable from two
+screens, say). It is symmetric and must be declared on both sides. Its consumer is the QA obligation packet: a change to the cited symbol maps to every node that cites it, and without `same-as:` one thing written in three places reads as three things and trips the container fan-out demotion that exists to catch sprawl. `same-as:` is the declared fact that collapses them back into one family.
+
+It deliberately has no effect on `competing-implementations`. That check judges only same-file groups, and two sections of one file claiming to be the same documented thing would be the defect, not the exemption.
+
 A control rendered once per member of a collection carries `one-per:`, and its `name:` becomes
 a template with `{…}` holes — see the
 [repeat grammar](../bullet-grammar.md#repeated-controls-one-per--unique-by--variants). A child
@@ -125,7 +133,7 @@ Plus the [shared normative keys](../bullet-grammar.md#keys-that-are-normative-on
 ## Relationships
 
 `parent:` nests it, `extends:` specializes another component, `exclusive-with:` names a
-sibling.
+sibling, `same-as:` names another node documenting this same component.
 
 A component that navigates carries **`leads-to:`** — that edge is what makes the destination
 [`screen`](screen.md) reachable, and its absence is what `unreachable-screen` reports. It is a
@@ -154,7 +162,8 @@ timeout 30 ostler scaffold component save-button --in docs/features/acme/gui/scr
 
 `missing-required-bullet`, `invalid-role`, `unnamed-interactive`, `missing-placement`,
 `malformed-placement`, `ambiguous-locator`, `duplicate-bullet`, `undeclared-obligation`,
-`weak-check`, `stale-defect`, `malformed-defect`, `unaddressable-selector`; with the repeat keys also `static-template`, `unproven-unique-name`, `malformed-template`,
+`weak-check`, `stale-defect`, `malformed-defect`, `unaddressable-selector`,
+`one-way-same-as` if `same-as:` is used; with the repeat keys also `static-template`, `unproven-unique-name`, `malformed-template`,
 `malformed-variants`. See [../doctor-codes.md](../doctor-codes.md).
 
 ## When bullets are not enough

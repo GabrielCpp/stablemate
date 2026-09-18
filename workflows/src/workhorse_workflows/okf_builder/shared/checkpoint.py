@@ -81,6 +81,10 @@ GROUNDED_CODES = frozenset({
     # a fact about the rendering code — deleting the holes to clear the finding writes a
     # literal name the UI never renders.
     "template-outside-repeat",
+    # Whether the two nodes really are one documented thing is a fact about what each one
+    # says, not something the finding's own text can settle — mirroring the suggested
+    # bullet without reading both sides turns a real divergence into a false `same-as:`.
+    "one-way-same-as",
 })
 
 #: The drain's spend order, as code families from upstream to downstream. Scope first — a

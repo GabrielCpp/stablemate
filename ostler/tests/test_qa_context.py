@@ -468,6 +468,70 @@ def test_concepts_chained_by_extends_citing_one_symbol_stay_one_family(tmp_path:
     assert all(item["required"] for item in shared_obligations), shared_obligations
 
 
+def test_concepts_chained_by_same_as_citing_one_symbol_stay_one_family(tmp_path: Path):
+    """Four `concept` nodes reciprocally chained by `same-as:` (A<->B, B<->C, C<->D) are one
+    documented thing written four times, not four owners. `same-as:` is multi-valued and
+    per-edge — B and C each name only their two immediate neighbors, never every member of the
+    family — so `_family_root` must walk the whole connected component and converge every
+    member on one deterministic representative (`min(ids)`), not just a node's own direct
+    same-as targets. All four citing one symbol must never reach `_CONTAINER_FANOUT`, and their
+    obligations stay required."""
+    (tmp_path / "docs/features/demo").mkdir(parents=True)
+    (tmp_path / "docs/features/demo/item0.md").write_text(
+        "---\ntype: concept\ntitle: Item 0\n---\n# Item 0\n\n"
+        "- code: `app/service.py::shared`\n"
+        "- same-as: [Item 1](item1.md)\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "docs/features/demo/item1.md").write_text(
+        "---\ntype: concept\ntitle: Item 1\n---\n# Item 1\n\n"
+        "- code: `app/service.py::shared`\n"
+        "- same-as: [Item 0](item0.md)\n"
+        "- same-as: [Item 2](item2.md)\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "docs/features/demo/item2.md").write_text(
+        "---\ntype: concept\ntitle: Item 2\n---\n# Item 2\n\n"
+        "- code: `app/service.py::shared`\n"
+        "- same-as: [Item 1](item1.md)\n"
+        "- same-as: [Item 3](item3.md)\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "docs/features/demo/item3.md").write_text(
+        "---\ntype: concept\ntitle: Item 3\n---\n# Item 3\n\n"
+        "- code: `app/service.py::shared`\n"
+        "- same-as: [Item 2](item2.md)\n",
+        encoding="utf-8",
+    )
+    # The same unrelated node the extends-chain test carries, and for the same reason: it
+    # keeps the tree-wide required set non-empty so `shared-symbol-floor` cannot hold these
+    # four up on its own and mask what the family walk decided.
+    (tmp_path / "docs/features/demo/other.md").write_text(
+        "---\ntype: concept\ntitle: Other\n---\n# Other\n\n"
+        "- code: `app/other.py::alone`\n",
+        encoding="utf-8",
+    )
+    source = tmp_path / "app/service.py"
+    source.parent.mkdir(parents=True)
+    source.write_text("def shared():\n    return 'old'\n", encoding="utf-8")
+    other = tmp_path / "app/other.py"
+    other.write_text("def alone():\n    return 'old'\n", encoding="utf-8")
+    _git(tmp_path, "init")
+    _git(tmp_path, "config", "user.email", "qa@example.com")
+    _git(tmp_path, "config", "user.name", "QA")
+    _git(tmp_path, "add", ".")
+    _git(tmp_path, "commit", "-m", "base")
+    base = _git(tmp_path, "rev-parse", "HEAD")
+    source.write_text("def shared():\n    return 'new'\n", encoding="utf-8")
+    other.write_text("def alone():\n    return 'new'\n", encoding="utf-8")
+
+    packet = build_context(tmp_path, base=base, source_roots={"demo": ["app"]})
+
+    shared_obligations = [item for item in packet["obligations"] if "/item" in item["node"]]
+    assert len(shared_obligations) == 4
+    assert all(item["required"] for item in shared_obligations), shared_obligations
+
+
 def test_one_path_cited_under_two_owning_keys_is_one_owner(tmp_path: Path):
     """Citing the schema under both `code:` and `openapi:` is one owner, not two — otherwise
     the shared-file demotion would read a single node's double citation as a shared file."""

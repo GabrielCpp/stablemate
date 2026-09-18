@@ -1528,6 +1528,77 @@ def test_competing_implementations_ignores_whole_file_citations(repo: Path):
     assert "competing-implementations" not in all_codes(_run(repo))
 
 
+def test_one_way_same_as_fires_when_the_target_does_not_name_it_back(repo: Path):
+    write(repo / "docs/features/groom/concepts/notify-a.md",
+          "---\ntype: concept\nslug: notify-a\ntitle: Notify A\n---\n# Notify A\n\n"
+          "- same-as: [notify-b](../concepts/notify-b.md)\n")
+    write(repo / "docs/features/groom/concepts/notify-b.md",
+          "---\ntype: concept\nslug: notify-b\ntitle: Notify B\n---\n# Notify B\n\nNothing here.\n")
+    hits = [f for f in _run(repo).findings if f.code == "one-way-same-as"]
+    assert len(hits) == 1 and hits[0].severity == "error"
+    hit = hits[0]
+    assert hit.path == "docs/features/groom/concepts/notify-a.md"
+    assert "notify-b" in hit.message
+    assert hit.suggestion is not None
+    assert "notify-b.md" in hit.suggestion
+    assert "same-as: [Notify A]" in hit.suggestion
+    assert "notify-a.md" in hit.suggestion
+
+
+def test_one_way_same_as_silent_when_both_sides_name_each_other(repo: Path):
+    write(repo / "docs/features/groom/concepts/notify-a.md",
+          "---\ntype: concept\nslug: notify-a\ntitle: Notify A\n---\n# Notify A\n\n"
+          "- same-as: [notify-b](../concepts/notify-b.md)\n")
+    write(repo / "docs/features/groom/concepts/notify-b.md",
+          "---\ntype: concept\nslug: notify-b\ntitle: Notify B\n---\n# Notify B\n\n"
+          "- same-as: [notify-a](../concepts/notify-a.md)\n")
+    assert "one-way-same-as" not in all_codes(_run(repo))
+
+
+def test_one_way_same_as_silent_when_same_as_is_never_used(repo: Path):
+    write(repo / "docs/features/groom/concepts/notify.md",
+          "---\ntype: concept\nslug: notify\ntitle: Notify\n---\n# Notify\n\nNothing here.\n")
+    assert "one-way-same-as" not in all_codes(_run(repo))
+
+
+def test_one_way_same_as_does_not_fire_for_a_dangling_target(repo: Path):
+    """A `same-as:` value that resolves nowhere is `unresolved-relation`'s finding, raised by
+    the document-wide link pass — this check only judges a claim once it lands on a real
+    node, so the two never double-report the same broken bullet."""
+    write(repo / "docs/features/groom/concepts/notify-a.md",
+          "---\ntype: concept\nslug: notify-a\ntitle: Notify A\n---\n# Notify A\n\n"
+          "- same-as: [gone](../concepts/gone.md)\n")
+    codeset = all_codes(_run(repo))
+    assert "unresolved-relation" in codeset
+    assert "one-way-same-as" not in codeset
+
+
+def test_one_way_same_as_is_checked_per_edge_not_per_family(repo: Path):
+    """The addendum's chain: A<->B, B<->C, C<->D, all reciprocated pairwise. No member names
+    every other member — B and C each name only their two immediate neighbors — and that is
+    legal: `same-as:` is a multi-valued, per-edge claim, not a family-wide broadcast, so a
+    reciprocated chain collapses to one family without raising anything here."""
+    write(repo / "docs/features/groom/concepts/notify-a.md",
+          "---\ntype: concept\nslug: notify-a\ntitle: Notify A\n---\n# Notify A\n\n"
+          "- code: `internal/notify.go::Notify`\n"
+          "- same-as: [notify-b](../concepts/notify-b.md)\n")
+    write(repo / "docs/features/groom/concepts/notify-b.md",
+          "---\ntype: concept\nslug: notify-b\ntitle: Notify B\n---\n# Notify B\n\n"
+          "- code: `internal/notify.go::Notify`\n"
+          "- same-as: [notify-a](../concepts/notify-a.md)\n"
+          "- same-as: [notify-c](../concepts/notify-c.md)\n")
+    write(repo / "docs/features/groom/concepts/notify-c.md",
+          "---\ntype: concept\nslug: notify-c\ntitle: Notify C\n---\n# Notify C\n\n"
+          "- code: `internal/notify.go::Notify`\n"
+          "- same-as: [notify-b](../concepts/notify-b.md)\n"
+          "- same-as: [notify-d](../concepts/notify-d.md)\n")
+    write(repo / "docs/features/groom/concepts/notify-d.md",
+          "---\ntype: concept\nslug: notify-d\ntitle: Notify D\n---\n# Notify D\n\n"
+          "- code: `internal/notify.go::Notify`\n"
+          "- same-as: [notify-c](../concepts/notify-c.md)\n")
+    assert "one-way-same-as" not in all_codes(_run(repo))
+
+
 def test_deprecation_without_successor(repo: Path):
     """A concept whose `deprecates:` resolves but that names no `prefers:` and no `rule:`
     reads as "delete this" — usually wrong. A dangling `deprecates:` is `unresolved-relation`'s

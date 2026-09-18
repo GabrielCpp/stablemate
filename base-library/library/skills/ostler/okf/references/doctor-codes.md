@@ -155,6 +155,7 @@ Three scoping rules explain findings that otherwise read as false positives or a
 | `unstamped-citation` | warn | A local `code:` target carries no `@digest` yet. Stamped automatically when a turn that edits this node commits, or by the one-time catalog migration — never hand-write the digest, and never invoke `ostler stamp` yourself. |
 | `unreachable-citation` | warn | A repository-qualified `code:` target names a repository this run was given no checkout for — there is nothing under this run to check the citation against. Pass `--checkout <repository>=<path>`; not a fix to the book. |
 | `unresolved-relation` | error | A relation bullet (`on:`/`parent:`/`extends:`/`detail:`/…) does not resolve. `fixable`. |
+| `one-way-same-as` | error | A `same-as:` claim resolves to a real node, but that node declares no `same-as:` back. Sameness is symmetric and must be written on both occurrences — add the reciprocal bullet, or delete the original if the two nodes are not actually one documented thing. Checked per declared edge, not per family: a reciprocated chain (A↔B, B↔C, C↔D) raises nothing. |
 | `dangling-link` | error | A markdown link's target file does not exist. `fixable`. |
 | `missing-anchor` | error | The link's file exists but the `#anchor` heading is not in it. `fixable`. |
 

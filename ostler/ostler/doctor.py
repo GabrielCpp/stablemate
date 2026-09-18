@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import difflib
 import json
+import os
 import re
 import subprocess
 from collections.abc import Callable
@@ -166,6 +167,7 @@ def run(graph: Graph, epic_filter: str | None = None, check_schema: bool = True,
     _check_ui(graph, f, resolver, checkouts)
     _check_book_captures(graph, f)
     _check_judgment(graph, f, resolver)
+    _check_same_as_symmetry(graph, f, resolver)
     _check_unspecified(graph, f, resolver)
     _check_sensitivity(graph, f)
     _check_runbook(graph, f)
@@ -2186,6 +2188,52 @@ def _check_judgment(graph: Graph, f: list[Finding],
             path=rel, line=node.line, ref=refs_mod.bullet_ref(node.id, "deprecates"),
             suggestion="- prefers: [<winning node>](<path>)   # or a `rule:` stating "
                        "when the deprecated one is still the right call"))
+
+
+def _check_same_as_symmetry(graph: Graph, f: list[Finding],
+                            resolver: links_mod.LinkResolver) -> None:
+    """`one-way-same-as` — a `same-as:` claim declared on one side only.
+
+    Sameness is symmetric: if A declares `- same-as: [B](...)`, a reader who arrives at B
+    and finds no `same-as:` pointing back at A still sees two separate things, while a
+    reader who arrives at A sees one — the exact divergence `same-as:` exists to close, so
+    the claim has to be written on both occurrences. A `same-as:` value that does not
+    resolve at all is not this check's finding: `same-as:` is in `RELATION_KEYS`, so a
+    dangling target is already reported as `unresolved-relation` by the document-wide link
+    pass in `_check_ui`; this only judges a claim once it lands on a real node.
+
+    Per-edge, not per-family: a node need only be named back by the specific node that
+    named it, not by every other member of a larger `same-as:` group. A reciprocated chain
+    (A↔B, B↔C, C↔D) is a legal, cheaper way to write a four-occurrence family and raises
+    nothing here.
+    """
+    by_id = {node.id: node for node in graph.ui_nodes}
+    for node in graph.ui_nodes:
+        if not node.meta.get("same-as"):
+            continue
+        for value in _bullet_values(node.meta.get("same-as")):
+            for _text, href in markdown.extract_refs(value).links:
+                target = resolver.resolve(node.path, href)
+                if target is None or not target.resolved:
+                    continue
+                target_node = by_id.get(target.node_id)
+                if target_node is None:
+                    continue
+                back = _resolved_targets(target_node, "same-as", resolver)
+                if node.id in back:
+                    continue
+                rel = node.path.relative_to(graph.root).as_posix()
+                target_rel = target_node.path.relative_to(graph.root).as_posix()
+                back_href = os.path.relpath(node.path, start=target_node.path.parent)
+                f.append(Finding(
+                    "error", "one-way-same-as",
+                    f"{node.id}: `same-as:` claims '{href}' ({target.node_id}) is the same "
+                    f"documented thing, but {target_rel!r} declares no `same-as:` back — "
+                    f"sameness is symmetric, so the claim must be written on both "
+                    f"occurrences",
+                    path=rel, line=node.line, ref=href,
+                    suggestion=f"on {target_rel}: "
+                               f"- same-as: [{node.title or node.id}]({back_href})"))
 
 
 def _check_unspecified(graph: Graph, f: list[Finding],

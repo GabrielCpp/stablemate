@@ -24,6 +24,7 @@ Section type. A `### <id>` under a `## Interactions` heading, normally in a
 | `keyboard` | **yes** | **mints an obligation** — how it is fired without a pointer |
 | `when` | no | **mints an obligation** — the condition it applies under |
 | `exclusive-with` | no | link — a sibling it can never co-render with |
+| `same-as` | no | link, multi-valued — another node documenting this same interaction |
 | `one-per` | no | the iteration variable — one node stands for a whole generated family |
 | `unique-by` | no | a dot-path whose value is distinct per instance, with the evidence in prose |
 | `variants` | no | `path = token \| token \| …` — a closed per-instance axis from the source |
@@ -51,7 +52,8 @@ Plus the [shared normative keys](../bullet-grammar.md#keys-that-are-normative-on
 ## Relationships
 
 `on:` links the component this acts on. Navigation is recorded on that **component**, with
-`leads-to:` — not here. See [component](component.md#relationships).
+`leads-to:` — not here. See [component](component.md#relationships). `same-as:` names another
+node documenting this same interaction.
 
 ## Minimal example
 
@@ -101,10 +103,18 @@ because its condition differs; inheriting the base arm's acts would arrange the 
 this arm says is false. So a refusal arm extending a success arm writes its own `arrange:`
 bullets, filling the form with the values its own `when:` describes.
 
+`same-as:` is unrelated to that inheritance. `extends:` says this arm is a narrower version of
+another; `same-as:` says this interaction and the one it names are the *same* documented action,
+described again in a second place — never a narrower one, and carrying none of `extends:`'s
+control-identity inheritance. It is symmetric and must be declared on both sides. Its consumer is the QA obligation packet: a change to the cited symbol maps to every node that cites it, and without `same-as:` one thing written in three places reads as three things and trips the container fan-out demotion that exists to catch sprawl. `same-as:` is the declared fact that collapses them back into one family.
+
+It deliberately has no effect on `competing-implementations`. That check judges only same-file groups, and two sections of one file claiming to be the same documented thing would be the defect, not the exemption.
+
 ## Doctor codes it can trip
 
 `missing-required-bullet` (five keys), `undeclared-obligation`, `weak-check`,
-`unstated-precondition`, `compound-normative-bullet`, `unresolved-relation` on `on:`,
+`unstated-precondition`, `compound-normative-bullet`, `unresolved-relation` on `on:` or
+`same-as:`, `one-way-same-as`,
 `ambiguous-locator`, `unparsed-act`, `undeclared-act-locator`, `stale-defect`, `malformed-defect`; with the repeat keys also `static-template`, `unproven-unique-name`,
 `malformed-template`, `malformed-variants`. See [../doctor-codes.md](../doctor-codes.md).
 

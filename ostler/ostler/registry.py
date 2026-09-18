@@ -386,7 +386,7 @@ class UINodeType:
 CODE_GROUNDING_KEYS = frozenset({"code"})
 # Bullet keys naming an inter-node relation the linter resolves at author time. ``environment`` /
 # ``cli`` / ``surfaces`` are the runbook profile's relations (docs/okf-runbook.md §4.1).
-RELATION_KEYS = ("on", "parent", "extends", "steps", "presents", "detail",
+RELATION_KEYS = ("on", "parent", "extends", "same-as", "steps", "presents", "detail",
                  "environment", "cli", "surfaces", "requires", "params", "leads-to",
                  "exclusive-with", "prefers", "deprecates")
 
@@ -903,6 +903,7 @@ UI_TYPES: tuple[UINodeType, ...] = (
         bullet_keys=(
             BulletKey("code", link=True, owns=True),
             BulletKey("extends", link=True),
+            BulletKey("same-as", link=True),
             # The judgment keys. None is normative: a selection rule is not live-provable,
             # and minting an obligation from one would demand evidence no scenario can
             # produce. `rule:` states the selection rule as prose the packet can carry;
@@ -1039,6 +1040,7 @@ UI_TYPES: tuple[UINodeType, ...] = (
             BulletKey("placement"),
             BulletKey("keyboard", normative=True, locator=True),   # how it's reached/operated by keyboard
             BulletKey("extends", link=True),
+            BulletKey("same-as", link=True),
             BulletKey("parent", link=True),
             # Sibling(s) this control can never be in the DOM at the same time as. It is the runtime
             # fact a static role+name check cannot see: two controls that share a locator but never
@@ -1161,6 +1163,7 @@ UI_TYPES: tuple[UINodeType, ...] = (
             # arm still declares its own `when:`/`does:`/`verify:`; only the control identity
             # is inherited, resolved in `qa/context.py`, never re-derived in `compile.py`.
             BulletKey("extends", link=True),
+            BulletKey("same-as", link=True),
             BulletKey("does", required=True, nested=True, normative=True, locator=True),
             BulletKey("code", link=True, owns=True),
             BulletKey("detail", link=True),
@@ -1185,6 +1188,7 @@ UI_TYPES: tuple[UINodeType, ...] = (
             BulletKey("trigger", required=True, locator=True),
             BulletKey("when", normative=True, locator=True, condition=True),
             BulletKey("extends", link=True),
+            BulletKey("same-as", link=True),
             BulletKey("does", required=True, nested=True, normative=True, locator=True),
             BulletKey("emits"),
             BulletKey("consumes"),

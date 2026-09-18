@@ -48,9 +48,18 @@ its grounding so a `verify:` written under one binds to that one.
 An invocation carries no `role:`/`name:`/`keyboard:`: there is no operator to announce
 anything to. If those apply, it is an interaction.
 
+`same-as:` is also not in this type's declared list, and relation keys work on every type
+regardless. It says this invocation and the one it names are the *same* documented job,
+described again in a second place — not a narrower version of it, and not a winner over a
+loser. It is symmetric and must be declared on both sides. Its consumer is the QA obligation packet: a change to the cited symbol maps to every node that cites it, and without `same-as:` one thing written in three places reads as three things and trips the container fan-out demotion that exists to catch sprawl. `same-as:` is the declared fact that collapses them back into one family.
+
+It deliberately has no effect on `competing-implementations`. That check judges only same-file groups, and two sections of one file claiming to be the same documented thing would be the defect, not the exemption. Contrast it with `extends:`
+(a narrower version of the thing it names, though this type documents no such row above) and
+with the judgment keys a `concept` carries for genuinely competing implementations.
+
 ## Relationships
 
-`on:` links the node acted on. `detail:` points at a [`concept`](concept.md) — it is not in
+`on:` links the node acted on. `detail:` and `same-as:` point at another node — neither is in
 this type's declared list, but relation keys work on every type.
 
 ## Minimal example
@@ -76,8 +85,8 @@ timeout 30 ostler scaffold invocation expire-stale-links --in docs/features/acme
 ## Doctor codes it can trip
 
 `missing-required-bullet` (`on:`, `trigger:`, `does:`), `undeclared-obligation`, `weak-check`,
-`unstated-precondition`, `compound-normative-bullet`, `unresolved-relation`. See
-[../doctor-codes.md](../doctor-codes.md).
+`unstated-precondition`, `compound-normative-bullet`, `unresolved-relation`, `one-way-same-as`
+if `same-as:` is used. See [../doctor-codes.md](../doctor-codes.md).
 
 ## When bullets are not enough
 

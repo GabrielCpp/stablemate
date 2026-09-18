@@ -2,7 +2,7 @@
 
 The one type in the registry whose own keys mint **nothing**: no obligation, no required check,
 no QA plan ever asked to prove it. Its body *is* its content, and its bullet vocabulary —
-`code:`, `extends:`, `tests:`, and the judgment keys `rule:` / `prefers:` / `deprecates:` — is
+`code:`, `extends:`, `same-as:`, `tests:`, and the judgment keys `rule:` / `prefers:` / `deprecates:` — is
 grounding and advisory structure around that prose, never a claim.
 
 That is not an oversight in the registry. It is the escape hatch, and this file is the
@@ -38,6 +38,12 @@ without being it, and are worth naming so nobody reaches for them by mistake:
   consumed only by locator-collision suppression — two controls that share a role+name but
   never appear together.
 - **`extends:` is inheritance**, not replacement: this node is a specialization of that one.
+- **`same-as:` is not inheritance or supersession either.** It says the node on each side is the
+  *same documented thing*, written in more than one place — not a narrower version of it and not
+  a winner/loser pair. It is symmetric and must be declared on **both** nodes, and its one consumer is the QA
+  obligation packet, where it collapses the book's own repetition of itself into a single
+  family instead of the sprawl the container fan-out demotion exists to catch. It has no
+  effect on `competing-implementations`, which judges same-file groups only.
 - **`legacySurface`** exists only on epic *seeds*, in the planning layer. It never reaches the
   book.
 - **The `legacy` in doctor's reachability rules** is an unrelated root waiver, not a marker on
@@ -87,6 +93,7 @@ File type under `docs/features/<service>/concepts/`, `type: concept` in frontmat
 | --- | --- | --- |
 | `code` | no | link, **owns** its file — `path::symbol` |
 | `extends` | no | resolves as a link — the concept this one specializes |
+| `same-as` | no | resolves as a link, multi-valued — another node documenting this same thing |
 | `rule` | no | advisory — the selection rule, as prose; mints nothing anywhere |
 | `prefers` | no | resolves as a link — the winning implementation |
 | `deprecates` | no | resolves as a link — the superseded implementation |
@@ -103,7 +110,7 @@ None. `## Methods` and `## Fields` are conventional when the concept is a type w
 
 ## Relationships
 
-Pointed at by `detail:` from any node that needs it, and by prose links from node bodies. Points at another concept with `extends:`.
+Pointed at by `detail:` from any node that needs it, and by prose links from node bodies. Points at another concept with `extends:`. Points at, and is pointed at by, its other documented occurrences with `same-as:`.
 
 ## Minimal example
 
@@ -138,7 +145,8 @@ option, and a new call site reaching for it is a defect.
 ## Doctor codes it can trip
 
 `okf-missing-type`, `dangling-code-ref`, `missing-code-symbol`, `unresolved-relation` on
-`extends:`, `prefers:` or `deprecates:`, and — if it uses the shared normative keys — `undeclared-obligation` and
+`extends:`, `same-as:`, `prefers:` or `deprecates:`, `one-way-same-as` when a `same-as:` claim
+is not reciprocated, and — if it uses the shared normative keys — `undeclared-obligation` and
 `weak-check`. See [../doctor-codes.md](../doctor-codes.md).
 
 Prose is not checked, deliberately. Nothing in this file's body can trip a doctor code, which

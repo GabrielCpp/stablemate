@@ -2466,6 +2466,57 @@ def _extends_target(
     return target, False
 
 
+def _same_as_targets(
+    node: dict[str, Any], nodes_by_id: dict[str, dict[str, Any]]
+) -> list[dict[str, Any]]:
+    """The nodes *node*'s `same-as:` bullet resolves to, in document order.
+
+    Unlike `extends:`, `same-as:` is multi-valued — the motivating case is one shared
+    control documented on several screens, so a node can name two or three siblings at
+    once — and it carries no type restriction: the claim is "this is the same documented
+    thing", not "this is a narrower version of that type". A dangling target is dropped
+    here rather than flagged; that is `unresolved-relation`'s finding, not this reader's.
+    """
+    return [
+        target
+        for edge in node.get("edges") or []
+        if edge.get("via") == "same-as" and edge.get("to")
+        for target in [nodes_by_id.get(str(edge["to"]))]
+        if target is not None
+    ]
+
+
+def _same_as_component(node_id: str, nodes_by_id: dict[str, dict[str, Any]]) -> frozenset[str]:
+    """Every node id reachable from *node_id* by following declared `same-as:` edges,
+    *node_id* included.
+
+    `same-as:` is a symmetric claim — doctor's `one-way-same-as` requires the reciprocal
+    bullet on both ends — so in a conformant book each edge is discoverable from either
+    side by following only forward edges: A's own `same-as:` names B and B's own
+    `same-as:` names A back, so a walk that starts at A reaches B by A's edge and a walk
+    that starts at B reaches A by B's edge. That is what makes this BFS return the *same*
+    set of ids regardless of which member of the family it starts from — the property
+    `_family_root` needs to pick one deterministic root for a family of any size, rather
+    than land on a different node depending on which member a caller happened to ask
+    about first. A one-way declaration (a doctor-flagged defect) can make the two starting
+    points disagree; that is an accepted consequence of the underlying book being wrong,
+    not of this walk.
+    """
+    seen = {node_id}
+    frontier = [node_id]
+    while frontier:
+        current = frontier.pop()
+        node = nodes_by_id.get(current)
+        if node is None:
+            continue
+        for target in _same_as_targets(node, nodes_by_id):
+            target_id = str(target["id"])
+            if target_id not in seen:
+                seen.add(target_id)
+                frontier.append(target_id)
+    return frozenset(seen)
+
+
 def _linked_surface(
     node: dict[str, Any], value: Any, nodes_by_id: dict[str, dict[str, Any]]
 ) -> str:
@@ -2549,16 +2600,18 @@ def _journey_steps(
 def _family_root(node_id: str, owners: set[str], nodes_by_id: dict[str, dict[str, Any]]) -> str:
     """The declared-family root *node_id* belongs to among *owners*, for `_CONTAINER_FANOUT`.
 
-    Walks exactly two kinds of declared structure to one root, the same two questions
+    Walks exactly three kinds of declared structure to one root, the same three questions
     `doctor.py`'s `competing-implementations` check asks before calling two nodes
-    independent implementations rather than one: an `extends:` base case — a three-arm
-    split says "these nodes are one documented control" — and a section node's containing
-    file (`path#anchor` collapses to `path`)
-    — a file plus its own `###` subsections is one documented surface, not several. Both
-    say "this is not a second thing, it is the first thing described again," so all
-    members must count as one family before the fan-out count runs, the same way a
-    citation nobody's own arm makes distinguishing still counts as one control rather
-    than three.
+    independent implementations rather than one: a `same-as:` claim — this node and the
+    node it names are one documented thing, rendered or reached in more than one place, the
+    *declared* answer to the question the fan-out count used to guess at from citation
+    counting alone — an `extends:` base case — a three-arm split says "these nodes are one
+    documented control", a narrower, type-matched version of the same claim — and a section
+    node's containing file (`path#anchor` collapses to `path`) — a file plus its own `###`
+    subsections is one documented surface, not several. All three say "this is not a second
+    thing, it is the first thing described again," so all members must count as one family
+    before the fan-out count runs, the same way a citation nobody's own arm makes
+    distinguishing still counts as one control rather than three.
 
     The `extends:` walk is type-agnostic, because doctor's exclusion is: it asks only
     whether an `extends:` edge lands inside the group, and all four types that own the key
@@ -2566,6 +2619,19 @@ def _family_root(node_id: str, owners: set[str], nodes_by_id: dict[str, dict[str
     Gating this walk on the two arm types instead would have counted a component and the
     component it specializes as two fan-out owners where doctor counts them as one family,
     which is the whole thing this helper exists to avoid.
+
+    `same-as:` is resolved differently from `extends:` because it is multi-valued — the
+    motivating case is one shared control documented on several screens, so a node can name
+    several siblings at once — which makes "follow the target" ambiguous: which of several
+    edges is *the* next hop depends on document order, and a walk that picks one arbitrarily
+    can land two members of the same family on two different roots. So rather than following
+    a single edge, this collapses *every* node reachable over declared `same-as:` edges
+    (`_same_as_component`, transitively, in both directions as declared) into one
+    deterministic representative — `min()` of the ids — before trying `extends:` or
+    containment. `min()` is arbitrary but total and id-derived, so every member of the
+    family computes the same representative independent of where the walk started, which is
+    the only property this needs: a root that's the same for the whole family, not a
+    "correct" one.
 
     The containment walk only collapses onto a file id that is itself one of *owners* —
     mirroring doctor.py's membership check (`b.id.startswith(f"{a.id}#")` where `a` is
@@ -2582,6 +2648,10 @@ def _family_root(node_id: str, owners: set[str], nodes_by_id: dict[str, dict[str
     current = node_id
     while current not in seen:
         seen.add(current)
+        same_as_root = min(_same_as_component(current, nodes_by_id))
+        if same_as_root != current:
+            current = same_as_root
+            continue
         node = nodes_by_id.get(current)
         if node is not None:
             target, _malformed = _extends_target(node, nodes_by_id)
