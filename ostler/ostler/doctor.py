@@ -1710,7 +1710,38 @@ def _check_code_grounding(graph: Graph, f: list[Finding],
                                        "if they no longer hold; the citation is restamped when "
                                        "the turn commits"))
             if not (separator and symbol):
-                continue  # a whole-file unit (a template renders a screen): existence is enough
+                # "Existence is enough" holds only for a node whose subject genuinely IS a
+                # whole file. `registry.UINodeType.kind` is the axis that says so, and not by
+                # coincidence: a `kind == "file"` type (screen, cli, server, concept, format,
+                # flow, runbook, environment, fixture) is declared by a page and documents that
+                # page's whole subject, while a `kind == "section"` type (component, command,
+                # endpoint, interaction, invocation, method, field, step, untyped) is declared
+                # as a *part* under a heading. A whole-file reference names a container; a
+                # reference to a container is not a reference to the part it contains — the same
+                # reasoning `_check_judgment`'s `competing-implementations` already uses to
+                # discount a whole-file ref ("says only 'somewhere in this file'"). So a section
+                # node citing a bare path has not said where it is grounded, only where to start
+                # looking.
+                uitype = registry.UI_TYPES_BY_NAME.get(node.type)
+                if uitype is None or uitype.kind == "file":
+                    continue
+                # …and only where naming a region is *possible*. `inventory.SOURCE_SUFFIXES` is
+                # the set of languages whose declarations this repo can read, and it is the same
+                # set `_declares` gates on — so outside it there is no `path::symbol` an author
+                # could write that `missing-code-symbol` would accept. A component citing
+                # `static/index.html`, a step citing `compose.yml`, a fixture citing a Maestro
+                # `.yaml` are not under-specified citations: they are citations in a grammar with
+                # no parts to name, and an error nobody can act on is not a rule (D-3j).
+                if target.suffix not in inventory.SOURCE_SUFFIXES:
+                    continue
+                f.append(Finding(
+                    "error", "whole-file-code-ref",
+                    f"{node.id}: `code:` target '{ref}' cites the whole of {target_path} — a "
+                    f"`{node.type}` documents a part, and naming the file that contains it says "
+                    f"only where to start looking, not where this node is grounded",
+                    path=rel, line=node.line, ref=ref,
+                    suggestion="cite the specific `path::symbol` this node is grounded in"))
+                continue
             if _SPACE.search(symbol):
                 # The profile admits `path::symbol` **or a `file` region** — and a region is
                 # prose ("notification permission bootstrap"), not a name. There is nothing to
