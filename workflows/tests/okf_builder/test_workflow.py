@@ -944,7 +944,7 @@ title: Dashboard
 # Dashboard
 
 - route: `/dashboard`
-- entry: app root
+- entry: `/dashboard`
 - requires: none
 - params: none
 
