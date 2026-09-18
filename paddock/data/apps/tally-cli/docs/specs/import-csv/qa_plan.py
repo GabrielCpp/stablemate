@@ -246,6 +246,7 @@ def importing_the_same_file_twice_leaves_what_importing_it_once_left(qa: Qa) -> 
             "okf:docs/features/tally/tally.md#import-a-csv:does:2",
         ],
     )
+    after_doc = read(qa, ledger)
 
     # The second import is the assertion. A `merge` that appends instead of merging is
     # indistinguishable from a correct one up to this line: same exit code, same message
@@ -283,11 +284,24 @@ def importing_the_same_file_twice_leaves_what_importing_it_once_left(qa: Qa) -> 
         covers=["ac:2", "okf:docs/features/tally/tally.md#import-a-csv:consistency:1"],
     )
 
+    # The consistency the book asks for is on the file itself, not just the entries the CLI
+    # reports: a second import that merges correctly must leave the on-disk ledger exactly
+    # what the first import left, byte for byte — a merge that re-serialises equivalent
+    # content differently (reordered entries, rewritten floats) would pass every check above
+    # and still fail this one.
+    settled_doc = read(qa, ledger)
+    qa.verify(
+        "unchanged",
+        ({"tally.json": qa.field(after_doc, "sha256")}, {"tally.json": qa.field(settled_doc, "sha256")}),
+        subject="tally.json",
+        covers=["okf:docs/features/tally/tally.md#import-a-csv:consistency:1"],
+    )
+
     # Import writes the ledger file, and so does every other command that changes the tally —
     # the book binds them by name, `persistence: ledger-file`. What the file itself promises is
     # therefore in no one story's diff, and is proved on the way past here: two imports have
     # just run, so whatever they left is what a later process has to be able to read.
-    document = json.loads(qa.field(read(qa, ledger), "text"))
+    document = json.loads(qa.field(settled_doc, "text"))
     qa.check(
         "the ledger is one JSON object carrying a currency string and an entries array",
         isinstance(document, dict)
