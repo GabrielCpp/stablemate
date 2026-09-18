@@ -11,6 +11,7 @@ from ostler import crud, doctor
 from ostler.cli import main
 from ostler.model import load
 from ostler.qa import compile as compile_mod
+from ostler.qa.context import build_context
 
 from conftest import epic_md, story_md, write
 
@@ -604,6 +605,73 @@ def test_a_gap_kind_that_is_not_a_doctor_code_is_translated_not_passed_through()
     # same fact from the book alone. One rule graded two ways by which component noticed it is
     # the drift this bridge exists to avoid.
     assert (finding.severity, finding.code) == ("warn", "undeclared-obligation")
+
+
+def test_undeclared_obligation_fires_per_bullet_even_when_the_node_declares_a_check(repo: Path):
+    """SITE-GAP is per-obligation; SITE-BOOK's `declared` flag is node-wide.
+
+    An `endpoint` with two normative bullets (`does`, `status`) and exactly one `verify:` —
+    bound by document order to `does`, the nearer bullet above it — has *something* declared,
+    so SITE-BOOK's `if check_keys and normative and not declared` never fires: `declared` is a
+    node-wide flag, true the moment any bullet on the node carries a check.
+
+    But `status` itself declares nothing, and `registry.attributed_checks` binds a check to the
+    *nearest* normative bullet above it, not to every normative bullet on the node — so the
+    compiler's per-obligation partition (`qa/compile.py`'s `declared`/`undeclared` split, fed by
+    `checksDeclared` from `qa/context.py`) puts the `status` obligation in `undeclared` while
+    `does` sits in `declared`. Only the full context -> compile -> `gap_findings` path sees
+    this: the discriminator between the two raise sites is the finding's `ref` shape — a bare
+    bullet key when SITE-BOOK fires on a node that declares nothing at all, an indexed
+    obligation id when SITE-GAP fires on one bullet of a node that declares plenty.
+    """
+    write(repo / "docs/features/demo/publisher.md",
+          "---\ntype: concept\ntitle: Publisher\n---\n# Publisher\n\n"
+          "## Methods\n\n### Publish\n- returns: the published revision\n"
+          "- raises: `ManifestConflict` when the revision moved\n")
+    book_only = doctor.run(load(repo))
+    zero_check = next(f for f in book_only.findings if f.code == "undeclared-obligation")
+    assert zero_check.ref == "docs/features/demo/publisher.md#publish#verify"
+
+    (repo / "app").mkdir()
+    source = repo / "app/service.py"
+    source.write_text("def create_thing():\n    return 'old'\n", encoding="utf-8")
+    write(repo / "docs/features/demo/api.md",
+          "---\ntype: server\ntitle: Demo API\n---\n# Demo API\n\n"
+          "- entry-url: http://localhost:8080\n\n"
+          "## Endpoints\n\n### post-things\n"
+          "- method: POST\n"
+          "- path: /api/things\n"
+          "- does:\n"
+          "  - conflict: rejects a duplicate\n"
+          '- verify: http_status(201, title="Created")\n'
+          "- status: 201 on creation\n"
+          "- code: app/service.py::create_thing\n")
+
+    api_findings = [f for f in doctor.run(load(repo)).findings if f.path == "docs/features/demo/api.md"]
+    assert "undeclared-obligation" not in {f.code for f in api_findings}
+
+    subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+    subprocess.run(["git", "config", "user.email", "qa@example.com"], cwd=repo, check=True)
+    subprocess.run(["git", "config", "user.name", "QA"], cwd=repo, check=True)
+    subprocess.run(["git", "add", "-A"], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-q", "-m", "base"], cwd=repo, check=True)
+    base = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=repo, check=True, capture_output=True, text=True
+    ).stdout.strip()
+    source.write_text("def create_thing():\n    return 'new'\n", encoding="utf-8")
+
+    packet = build_context(repo, base=base, source_roots={"demo": ["app"]})
+    _source, gaps = compile_mod.compile_plan_gaps(packet, story="demo-story")
+
+    no_verify = {g.obligation_id: g for g in gaps if g.kind == "no-verify-declared"}
+    assert not any(":does:" in oid for oid in no_verify)
+    status_id = next(oid for oid in no_verify if ":status:" in oid)
+    gap = no_verify[status_id]
+
+    [finding] = doctor.gap_findings([gap])
+    assert (finding.severity, finding.code) == ("warn", "undeclared-obligation")
+    assert re.match(r"^okf:.+:[a-z-]+:\d+$", finding.ref), finding.ref
+    assert finding.ref == gap.obligation_id
 
 
 def test_an_unparsed_fixture_gap_keeps_the_code_doctor_already_raises_for_that_bullet():
