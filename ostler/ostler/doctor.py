@@ -2031,6 +2031,19 @@ def _check_judgment(graph: Graph, f: list[Finding],
         # than competing with it (ids are `path` / `path#anchor`).
         if any(a is not b and b.id.startswith(f"{a.id}#") for a in nodes for b in nodes):
             continue
+        # Same-file only: both remedies below are unwritable across files. `exclusive-with:`
+        # is a *sibling* relation and a DOM co-render assertion (component.md, interaction.md,
+        # concept.md) — members in different files are not siblings and genuinely do co-render,
+        # each on its own screen, so asking for it there manufactures a false claim rather than
+        # stating a real one. The central remedy fares no better: a shared `detail:` concept
+        # would state a selection rule where nothing actually selects between separate screens.
+        # And the grouping itself is not evidence of rivalry to begin with — it keys on `code:`,
+        # whose `owns=True` meaning (registry.py) is "documented against", a relation that is
+        # many-to-one by construction (qa/context.py maps one diff to every citing node; fan-out
+        # is the intended use). Within one file the format still gives the author a writable
+        # remedy, so the check keeps its teeth exactly where a repair exists.
+        if len({node.path for node in nodes}) > 1:
+            continue
         # `extends:` inside the group is declared specialization, not competition.
         group_ids = {node.id for node in nodes}
         if any(_resolved_targets(node, "extends", resolver) & group_ids for node in nodes):

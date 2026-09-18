@@ -1292,13 +1292,21 @@ def _endpoint_file(slug: str, symbol: str, extra: str = "") -> str:
             f"- code: `{symbol}`\n{extra}")
 
 
+def _endpoint_section(slug: str, symbol: str, extra: str = "") -> str:
+    """One `### slug` endpoint, for stacking two siblings under one `## Endpoints` file."""
+    return (f"### {slug}\n- method: POST\n- path: /{slug}\n"
+            f"- does:\n  - state: sends the notification\n- status: `201` on success\n"
+            f"- verify: http_status(code=201, path=\"/{slug}\")\n"
+            f"- code: `{symbol}`\n{extra}\n")
+
+
 def test_competing_implementations_fires_on_unranked_same_type_co_citation(repo: Path):
     """Two endpoints ground themselves in one symbol with no shared `detail:` concept — each
     can be entirely true and a reader reaching either still cannot learn which to use."""
-    write(repo / "docs/features/groom/http/v1.md",
-          _endpoint_file("v1", "internal/notify.go::Notify"))
-    write(repo / "docs/features/groom/http/v2.md",
-          _endpoint_file("v2", "internal/notify.go::Notify"))
+    write(repo / "docs/features/groom/http/api.md",
+          "---\ntype: api\nslug: api\ntitle: API\n---\n# API\n\n## Endpoints\n\n"
+          + _endpoint_section("v1", "internal/notify.go::Notify")
+          + _endpoint_section("v2", "internal/notify.go::Notify"))
     hits = [f for f in _run(repo).findings if f.code == "competing-implementations"]
     assert len(hits) == 1 and hits[0].severity == "warn"
     assert "v1" in hits[0].message and "v2" in hits[0].message
@@ -1312,13 +1320,13 @@ def test_competing_implementations_carries_every_competitor_as_data(repo: Path):
     prose written for a person. `ref` names the group (type *and* symbol), because one symbol
     competed over by two types is two competitions with two remedies.
     """
-    write(repo / "docs/features/groom/http/v1.md",
-          _endpoint_file("v1", "internal/notify.go::Notify"))
-    write(repo / "docs/features/groom/http/v2.md",
-          _endpoint_file("v2", "internal/notify.go::Notify"))
+    write(repo / "docs/features/groom/http/api.md",
+          "---\ntype: api\nslug: api\ntitle: API\n---\n# API\n\n## Endpoints\n\n"
+          + _endpoint_section("v1", "internal/notify.go::Notify")
+          + _endpoint_section("v2", "internal/notify.go::Notify"))
     hit = next(f for f in _run(repo).findings if f.code == "competing-implementations")
-    assert hit.related == ["docs/features/groom/http/v1.md#v1",
-                           "docs/features/groom/http/v2.md#v2"]
+    assert hit.related == ["docs/features/groom/http/api.md#v1",
+                           "docs/features/groom/http/api.md#v2"]
     # `path` is still one arbitrary member; `related` is what makes the other reachable.
     assert hit.path in {member.split("#")[0] for member in hit.related}
     assert hit.ref == "endpoint:internal/notify.go::Notify"
@@ -1328,10 +1336,10 @@ def test_competing_implementations_groups_across_different_stamped_digests(repo:
     """Two citations of the identical symbol, stamped at different points in its history, are
     still one competition — a reader choosing between v1 and v2 does not care which commit
     each bullet's `@digest` was captured against, so grouping must key on the symbol alone."""
-    write(repo / "docs/features/groom/http/v1.md",
-          _endpoint_file("v1", "internal/notify.go::Notify@aaaaaaaaaaaa"))
-    write(repo / "docs/features/groom/http/v2.md",
-          _endpoint_file("v2", "internal/notify.go::Notify@bbbbbbbbbbbb"))
+    write(repo / "docs/features/groom/http/api.md",
+          "---\ntype: api\nslug: api\ntitle: API\n---\n# API\n\n## Endpoints\n\n"
+          + _endpoint_section("v1", "internal/notify.go::Notify@aaaaaaaaaaaa")
+          + _endpoint_section("v2", "internal/notify.go::Notify@bbbbbbbbbbbb"))
     hits = [f for f in _run(repo).findings if f.code == "competing-implementations"]
     assert len(hits) == 1 and hits[0].severity == "warn"
     assert "v1" in hits[0].message and "v2" in hits[0].message
@@ -1355,11 +1363,40 @@ def test_competing_implementations_silent_under_a_shared_detail_concept(repo: Pa
           "---\ntype: concept\nslug: notify\ntitle: Notify\n---\n# Notify\n\n"
           "- rule: reach for v2 unless the call site needs a synchronous send receipt\n")
     detail = "- detail: [notify](../concepts/notify.md)\n"
-    write(repo / "docs/features/groom/http/v1.md",
-          _endpoint_file("v1", "internal/notify.go::Notify", detail))
-    write(repo / "docs/features/groom/http/v2.md",
-          _endpoint_file("v2", "internal/notify.go::Notify", detail))
+    write(repo / "docs/features/groom/http/api.md",
+          "---\ntype: api\nslug: api\ntitle: API\n---\n# API\n\n## Endpoints\n\n"
+          + _endpoint_section("v1", "internal/notify.go::Notify", detail)
+          + _endpoint_section("v2", "internal/notify.go::Notify", detail))
     assert "competing-implementations" not in all_codes(_run(repo))
+
+
+def test_competing_implementations_silent_across_files_with_no_writable_remedy(repo: Path):
+    """Two endpoints in different files that co-cite one symbol are not reported: `exclusive-
+    with:` is a *sibling* relation and a DOM co-render assertion (component.md / interaction.md
+    / concept.md) — members in different files are not siblings and genuinely do co-render, each
+    on its own screen, so the finding would ask the author to write a false claim. The central
+    remedy is no better: a shared `detail:` concept would state a selection rule where nothing
+    actually selects. Same-type co-citation of one symbol across files is not evidence of
+    rivalry to begin with — `code:` is many-to-one by construction (one file, many documenting
+    nodes), which is exactly what `qa context` relies on to fan a diff out to every citing node.
+    """
+    write(repo / "docs/features/groom/http/v1.md",
+          _endpoint_file("v1", "internal/notify.go::Notify"))
+    write(repo / "docs/features/groom/http/v2.md",
+          _endpoint_file("v2", "internal/notify.go::Notify"))
+    assert "competing-implementations" not in all_codes(_run(repo))
+
+
+def test_competing_implementations_fires_for_same_file_siblings_despite_narrowing(repo: Path):
+    """The narrowing to same-file groups does not silence the check where a remedy is still
+    writable: two endpoint sections declared as siblings in one file can name each other under
+    `exclusive-with:` or share a `detail:` concept, so the finding still fires when neither is
+    written."""
+    write(repo / "docs/features/groom/http/api.md",
+          "---\ntype: api\nslug: api\ntitle: API\n---\n# API\n\n## Endpoints\n\n"
+          + _endpoint_section("v1", "internal/notify.go::Notify")
+          + _endpoint_section("v2", "internal/notify.go::Notify"))
+    assert "competing-implementations" in all_codes(_run(repo))
 
 
 def _rival_component(slug: str, name: str, other: str, states: str) -> str:
