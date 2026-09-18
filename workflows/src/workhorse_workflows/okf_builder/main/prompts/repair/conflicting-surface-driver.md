@@ -8,7 +8,9 @@ is computed in and the value-kind grammar a node's bullets are held to both need
 answer per surface, and two runbooks naming two different drivers leaves neither question
 answerable — so both readers treat the surface as if it declared no driver at all until this
 is settled, which quietly widens what every one of that surface's screens and components is
-allowed to say.
+allowed to say. QA stops too: D1's dispatch table decides what performs a step from the
+surface's `driver:`, so while two are stated every obligation on this surface compiles to a
+gap instead of a check. Nothing this surface claims is observed until the runbooks agree.
 
 This usually happens when a second runbook is added for the same service — a dev-local way
 to bring the same thing up alongside the one already documented — and the new file's

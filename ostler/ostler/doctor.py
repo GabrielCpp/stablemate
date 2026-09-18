@@ -1343,6 +1343,10 @@ def gap_findings(gaps: list[Gap]) -> list[Finding]:
             findings.append(
                 Finding("error", "conflicting-entry-origin", message, ref=gap.obligation_id)
             )
+        elif gap.kind == "conflicting-surface-driver":
+            findings.append(
+                Finding("error", "conflicting-surface-driver", message, ref=gap.obligation_id)
+            )
         elif gap.kind == "unresolved-extends":
             findings.append(Finding("error", "unresolved-extends", message, ref=gap.obligation_id))
         elif gap.kind == "undeclared-check-locator":

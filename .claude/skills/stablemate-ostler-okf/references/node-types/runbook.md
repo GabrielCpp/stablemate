@@ -75,6 +75,12 @@ path component under `docs/features/`, so the second runbook either states the s
 or drops `surfaces:` (the key is optional) and documents bring-up without claiming to be how
 this surface is exercised.
 
+QA treats the disagreement as the defect it is rather than as an absence. D1's dispatch table
+keys on the surface's `driver:` to decide what performs each step, and a surface with two
+answers gets neither — so every obligation on it is gapped `conflicting-surface-driver`, not
+`uncompilable-claim`, whose message would tell the author no runbook states a `driver:` when
+two of them do. No default adjudicates between two the book states.
+
 A surface's address is stated in two places — the `entry-url:` of its `walkthrough: true`
 `server` node, and the `entry-url:` of any `runbook` whose `surfaces:` links into it — and
 every one of them must name the same `scheme://host[:port]`. `conflicting-entry-origin`

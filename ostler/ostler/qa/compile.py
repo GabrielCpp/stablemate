@@ -87,6 +87,7 @@ GAP_KINDS = frozenset({
     "needs-out-of-band-observation",
     "undeclared-entry-url",
     "conflicting-entry-origin",
+    "conflicting-surface-driver",
     "unresolved-extends",
     "undeclared-check-locator",
     "unstated-claim-combiner",
@@ -457,7 +458,9 @@ _OBSERVE_ROW: dict[str, str] = {
 _BUILT_TARGETS = frozenset({"playwright", "http", "cli"})
 
 
-def _dispatch_target(node_type: str, driver: str | None) -> tuple[str | None, str]:
+def _dispatch_target(
+    node_type: str, driver: str | None, driver_error: str | None = None
+) -> tuple[str | None, str, str]:
     """D1's table — or `_OBSERVE_ROW`, for a type nobody performs — read once per obligation.
 
     `(target, "")` when it names a target this compiler builds; `(None, detail)` when the
@@ -472,34 +475,47 @@ def _dispatch_target(node_type: str, driver: str | None) -> tuple[str | None, st
     differently with one; for an invariant row it is not information this function needs, so
     it is never turned into a gap here. `interaction`/`endpoint` keep the dict shape and this
     function's existing "no driver, no dispatch" gap for them stays exactly as it was.
+
+    The third element is the gap kind, because this function is the only place that knows
+    *which* of those reasons applied and the two callers were deriving it from the target
+    alone — a distinction the target cannot carry. It matters for `driver_error`: a surface
+    whose runbooks disagree states two drivers, not none, and the two take different remedies
+    (write a `driver:` versus settle which of two is right), so it is reported as
+    `conflicting-surface-driver` rather than as the absence `uncompilable-claim` describes.
     """
     row = _OBSERVE_ROW if node_type in _OBSERVED_TYPES else _DISPATCH_TABLE.get(node_type)
     if row is None:
         return None, (
             f"the book links this step to a {node_type or 'untyped'!r} node, which D1's "
             "dispatch table (§4.1) names no row for"
-        )
+        ), "uncompilable-claim"
     if isinstance(row, str):
         target = row
     else:
         if driver is None:
+            if driver_error:
+                return None, (
+                    "the surface this step's node lives on states more than one `driver:` and "
+                    f"they disagree ({driver_error}) — D1's dispatch table (§4.1) needs one "
+                    "answer per surface and no default adjudicates between two the book states"
+                ), "conflicting-surface-driver"
             return None, (
                 "the surface this step's node lives on states no `driver:` on any `runbook`, so "
                 "D1's dispatch table (§4.1) cannot determine what performs this step"
-            )
+            ), "uncompilable-claim"
         target = row.get(driver)
         if target is None:
             return None, (
                 f"D1's dispatch table (§4.1) names no target for a {node_type} step on a "
                 f"{driver!r}-driven surface"
-            )
+            ), "uncompilable-claim"
     if target not in _BUILT_TARGETS:
         where = "for every driver" if isinstance(row, str) else f"on a {driver!r}-driven surface"
         return target, (
             f"D1's dispatch table (§4.1) names {target!r} for a {node_type} step {where}, "
             f"but this compiler builds no {target} path yet"
-        )
-    return target, ""
+        ), "needs-target-backend"
+    return target, "", ""
 
 
 def _gap_cli_obligations(obligations: list[dict[str, Any]], gaps: list[Gap]) -> None:
@@ -1050,7 +1066,8 @@ def compile_plan_gaps(
             http_owed.append(obligation)
             continue
         surface = str(obligation.get("surface") or "")
-        driver = navigation.get(surface, {}).get("driver")
+        surface_nav = navigation.get(surface, {})
+        driver = surface_nav.get("driver")
         node_type = str(obligation.get("nodeType") or "")
         if node_type == "flow":
             # A flow's own `start:`/`end:` is a claim about what its `steps:` did, and the
@@ -1063,7 +1080,7 @@ def compile_plan_gaps(
             # world (`_journey_scenarios`).
             flow_owed.append(obligation)
             continue
-        target, detail = _dispatch_target(node_type, driver)
+        target, detail, kind = _dispatch_target(node_type, driver, surface_nav.get("driverError"))
         if target == "playwright":
             page_owed.append(obligation)
         elif target == "http":
@@ -1071,11 +1088,6 @@ def compile_plan_gaps(
         elif target == "cli":
             cli_owed.append(obligation)
         else:
-            # `_dispatch_target` already told these two apart and the kind has to keep them
-            # apart: a `None` target means the book left the step's dispatch undetermined —
-            # something an author fixes — while a named target this compiler builds no path
-            # for is a correct book waiting on a backend nobody has written.
-            kind = "needs-target-backend" if target is not None else "uncompilable-claim"
             gaps.append(Gap(str(obligation["id"]), kind, detail))
     http_owed, api_urls = _split_by_entry_url(http_owed, navigation, base_url, gaps)
     page_owed, web_urls = _split_by_entry_url(page_owed, navigation, base_url, gaps)
@@ -2568,11 +2580,13 @@ def _journey_scenarios(
         step_kind = "uncompilable-claim"
         for step in steps:
             step_surface = str(step.get("surface") or "")
-            driver = navigation.get(step_surface, {}).get("driver")
-            step_target, why = _dispatch_target(str(step.get("nodeType") or ""), driver)
+            step_nav = navigation.get(step_surface, {})
+            step_target, why, why_kind = _dispatch_target(
+                str(step.get("nodeType") or ""), step_nav.get("driver"), step_nav.get("driverError")
+            )
             if step_target is None or step_target not in _BUILT_TARGETS:
                 detail = why
-                step_kind = "needs-target-backend" if step_target is not None else "uncompilable-claim"
+                step_kind = why_kind
                 pairs = []
                 break
             pairs.append((step_target, step_surface))

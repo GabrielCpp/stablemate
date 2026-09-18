@@ -2303,6 +2303,53 @@ def test_a_base_url_does_not_adjudicate_between_two_addresses_the_book_states() 
     assert "8000" not in source
 
 
+def _conflicting_driver_context(oid: str) -> dict:
+    """A surface whose runbooks disagreed about what drives it: `qa context` caught
+    `reach.ConflictingSurfaceDriver`, left `driver` unset and recorded why."""
+    context = _context(
+        _obligation(
+            oid,
+            surface="api-service",
+            nodeType="endpoint",
+            checksDeclared=[
+                {"call": "created", "name": "http_status", "args": {"code": 201, "path": "/api/things"}},
+            ],
+        ),
+    )
+    context["navigation"] = {"api-service": {
+        "driver": None,
+        "driverError": "surface 'api-service' has conflicting drivers: "
+                       "docs/features/acme/ops/run.md says http; "
+                       "docs/features/acme/ops/qa.md says playwright",
+    }}
+    return context
+
+
+def test_a_surface_whose_runbooks_disagree_gaps_the_conflict_not_an_absence() -> None:
+    """Two stated drivers is a different defect from none stated, and it takes a different remedy
+    — write a `driver:` versus settle which of two already written is right — so it may not be
+    reported as `uncompilable-claim`, whose message asserts the book states no `driver:` at all
+    and sends the author looking for a bullet that is there twice."""
+    oid = "okf:docs/features/acme/api.md#post-things:does:1"
+    source, gaps = compile_plan_gaps(_conflicting_driver_context(oid), story="demo-story")
+    ast.parse(source)
+    assert _gap_kinds(gaps, oid) == ["conflicting-surface-driver"]
+    assert "run.md" in gaps[0].detail and "qa.md" in gaps[0].detail
+
+
+def test_a_surface_stating_no_driver_at_all_still_gaps_the_absence() -> None:
+    """Non-vacuity for the test above: the same context with the conflict record removed — the
+    only difference — keeps the kind it always had, so a `conflicting-surface-driver` verdict
+    there is a verdict on the disagreement and not on the missing driver both books share."""
+    oid = "okf:docs/features/acme/api.md#post-things:does:1"
+    context = _conflicting_driver_context(oid)
+    del context["navigation"]["api-service"]["driverError"]
+    source, gaps = compile_plan_gaps(context, story="demo-story")
+    ast.parse(source)
+    assert _gap_kinds(gaps, oid) == ["uncompilable-claim"]
+    assert "states no `driver:`" in gaps[0].detail
+
+
 def test_a_selector_the_census_cannot_read_still_compiles_one_whole_scenario() -> None:
     """Phase 3p': a compile-time gap is a statement about the plan being compiled, and vet's
     render census is a different observer.
@@ -2451,16 +2498,18 @@ def test_a_node_nobody_performs_is_observed_by_the_driver_of_its_own_surface() -
     empty — it cannot *perform* an interaction, but it can assert a status on a journey that
     ends at an endpoint."""
     for node_type in ("flow", "component", "screen"):
-        assert _dispatch_target(node_type, "web") == ("playwright", "")
-        assert _dispatch_target(node_type, "http") == ("http", "")
-        assert _dispatch_target(node_type, "cli") == ("cli", "")
+        assert _dispatch_target(node_type, "web") == ("playwright", "", "")
+        assert _dispatch_target(node_type, "http") == ("http", "", "")
+        assert _dispatch_target(node_type, "cli") == ("cli", "", "")
         # `maestro` is a real cell this compiler does not build: a named target plus a detail,
         # never "no row for this type."
-        target, detail = _dispatch_target(node_type, "mobile")
+        target, detail, kind = _dispatch_target(node_type, "mobile")
         assert target == "maestro" and "builds no maestro path yet" in detail
+        assert kind == "needs-target-backend"
     # The performed half is unchanged — the blank cell is still blank.
-    target, detail = _dispatch_target("interaction", "http")
+    target, detail, kind = _dispatch_target("interaction", "http")
     assert target is None and "names no target" in detail
+    assert kind == "uncompilable-claim"
 
 
 def _located_visible(node: str, locators: dict) -> dict:
