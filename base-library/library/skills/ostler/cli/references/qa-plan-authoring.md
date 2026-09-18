@@ -263,6 +263,23 @@ remember to ask for, made the default.
   same declaration — one `qa.verify` whose `covers=` lists all of them satisfies each, and the
   refusal names them together for exactly that reason. Do not write one near-identical
   assertion per id.
+- **Copy the book's `locator=` verbatim — the spelling belongs to the document that wrote
+  it.** A check locator is a reference into the book, and it has two spellings and
+  deliberately no third: `#anchor` for a component declared in the *same* document, and
+  `path/to/doc.md#anchor` for one declared elsewhere, read relative to the document that
+  carries it. So one node is legitimately spelled several ways across a corpus — a flow one
+  directory away writes `../gui/screens/policy-detail.md#policy-heading`, a sibling screen
+  writes `policy-detail.md#policy-heading`, and the page itself writes `#policy-heading`. All
+  three are correct, and none of them is drift. The validator joins declared against invoked
+  on the canonical call string *with its arguments as written*, so a plan that normalises
+  these to one spelling stops matching the two declarations it rewrote, and the obligations
+  they mint go uncovered.
+  This is the one carve-out to the bullet above: **two documents that spell the same node
+  differently need two calls**, even when both assertions run against the identical live
+  element and would otherwise be the near-identical repeat you are told not to write. The
+  calls are not redundant — each names the document whose obligation it answers, and the
+  `covers=` ids say which. Resolving your way out is not available: `#policy-heading` read
+  from the flow's origin means `…/flows/create-policy.md#policy-heading`, which is nothing.
 - **A covered repeat obligation must be sampled.** An obligation minted from a `one-per:`
   node with bindable holes or a `variants:` axis demands at least one
   `qa.instance(OBLIGATION, {"stage.name": "…"})` in the scenario that covers it. The mapping
