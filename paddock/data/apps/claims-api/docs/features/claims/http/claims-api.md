@@ -46,7 +46,7 @@ The journeys that stitch these routes together are [file a claim](../flows/file-
   - answers `200` with `{"status": "ok"}` as soon as the process is serving, reading no ledger and asking for no identity.
 - verify: http_status(200, path="/healthz")
 - verify: json_path("status", equals="ok")
-- code: app/api/service.go@dc8c26a0c022
+- code: app/api/service.go::GetHealth@dc8c26a0c022
 - parent: [Claims API](#claims-api)
 - request:
   - body: none
@@ -87,7 +87,7 @@ The journeys that stitch these routes together are [file a claim](../flows/file-
   that was legitimate an hour ago does not keep filing claims.
 - verify: http_status(401, title="Unauthorized", path="/api/claims")
 - fixture: seeded_accounts — two claim holders and one adjuster exist in the auth emulator, so a request can be made as somebody the service will verify
-- code: app/api/submit.go@6bf2c447cea4
+- code: app/api/submit.go::SubmitClaim@6bf2c447cea4
 - consistency: claim-record — the stored claim comes back under exactly the field names `openapi.yml` declares —
   `policy_number`, `holder_uid`, `incident_date`, `amount_cents` — because the response is a
   conversion into the generated type rather than an object built by hand beside it.
@@ -123,7 +123,7 @@ The journeys that stitch these routes together are [file a claim](../flows/file-
 - authorization: an adjuster reads every claim on file, whoever filed it.
 - verify: count(subject="claims", equals=2)
 - fixture: seeded_accounts — two claim holders and one adjuster exist in the auth emulator, so a request can be made as somebody the service will verify
-- code: app/api/list.go@cf07a3255915
+- code: app/api/list.go::ListClaims@cf07a3255915
 - parent: [Claims API](#claims-api)
 - refs: [claim tenancy](../concepts/claim-tenancy.md)
 - request:
@@ -149,7 +149,7 @@ The journeys that stitch these routes together are [file a claim](../flows/file-
   differently only to whoever is entitled to the difference.
 - verify: http_status(403, title="Not Your Claim", path="/api/claims/cl-1002")
 - fixture: seeded_accounts — two claim holders and one adjuster exist in the auth emulator, so a request can be made as somebody the service will verify
-- code: app/api/get.go@cb7342be20b9
+- code: app/api/get.go::GetClaim@cb7342be20b9
 - parent: [Claims API](#claims-api)
 - refs: [claim tenancy](../concepts/claim-tenancy.md)
 - request:
@@ -180,7 +180,7 @@ The journeys that stitch these routes together are [file a claim](../flows/file-
   read before the claim is looked up, so a holder learns nothing about a claim they may not decide.
 - verify: http_status(403, title="Adjusters Only", path="/api/claims/cl-9999/decision")
 - fixture: seeded_accounts — two claim holders and one adjuster exist in the auth emulator, so a request can be made as somebody the service will verify
-- code: app/api/decide.go@02b79d74d617
+- code: app/api/decide.go::DecideClaim@02b79d74d617
 - concurrency: claim-record — refuses a decision quoting a version other than the claim's current one with
   `409 Stale Decision`, so an adjuster who read the claim, went away and came back does not
   overwrite the decision that landed meanwhile.
@@ -212,7 +212,7 @@ The journeys that stitch these routes together are [file a claim](../flows/file-
   destructive route is the one route whose role gate is provable from both sides.
 - verify: http_status(403, title="Adjusters Only", path="/api/claims")
 - fixture: seeded_accounts — two claim holders and one adjuster exist in the auth emulator, so a request can be made as somebody the service will verify
-- code: app/api/reset.go@555872cde2b6
+- code: app/api/reset.go::ResetClaims@555872cde2b6
 - parent: [Claims API](#claims-api)
 - refs: [claim ledger](../concepts/claim-ledger.md)
 - request:

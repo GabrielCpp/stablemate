@@ -47,7 +47,7 @@ The journeys that stitch these routes together are
   - answers `200` with `{"status": "ok"}` as soon as the process is serving, reading no ledger.
 - verify: http_status(200, path="/healthz")
 - verify: json_path("status", equals="ok")
-- code: app/api/service.go@bcf74ba2ccff
+- code: app/api/service.go::handleHealth@bcf74ba2ccff
 - parent: [Policy desk API](#policy-desk-api)
 - request:
   - body: none
@@ -68,7 +68,7 @@ The journeys that stitch these routes together are
   - gives each policy its `id`, `policy_number`, `holder_email`, `coverage_type`, term, `premium`, `status` and `version`, so the register can be rendered and an edit prepared without a second request.
 - verify: json_path("policies[0].version", absent=false)
 - verify: json_path("policies[0].status", matches="Draft|Cancelled")
-- code: app/api/list.go@99bbc1f4191d
+- code: app/api/list.go::handleList@99bbc1f4191d
 - parent: [Policy desk API](#policy-desk-api)
 - refs: [policy](../concepts/policy.md)
 - request:
@@ -103,7 +103,7 @@ The journeys that stitch these routes together are
   the ledger as it was.
 - verify: http_status(409, title="Duplicate Policy Number", path="/api/policies")
 - verify: count(subject="policies", equals=1)
-- code: app/api/create.go@ff2433233a40
+- code: app/api/create.go::handleCreate@ff2433233a40
 - persistence: policy-record — an accepted policy is written through the ledger before the response is sent, and is
   still on the books after the service restarts.
 - verify: persists(subject="policy pn-1001")
@@ -127,7 +127,7 @@ The journeys that stitch these routes together are
 - verify: json_path("policy.policy_number", equals="PN-1001")
 - errors: `404 Unknown Policy` for an id that is not on the books.
 - verify: http_status(404, title="Unknown Policy", path="/api/policies/missing")
-- code: app/api/service.go@bcf74ba2ccff
+- code: app/api/service.go::handleGet@bcf74ba2ccff
 - parent: [Policy desk API](#policy-desk-api)
 - refs: [policy](../concepts/policy.md)
 - request:
@@ -160,7 +160,7 @@ The journeys that stitch these routes together are
 - verify: json_path("errors.premium", absent=false)
 - errors: `404 Unknown Policy` for an id that is not on the books.
 - verify: http_status(404, title="Unknown Policy", path="/api/policies/missing")
-- code: app/api/update.go@34bfee4c1c18
+- code: app/api/update.go::handleUpdate@34bfee4c1c18
 - concurrency: policy-record — refuses a request quoting a version other than the policy's current one with
   `409 Stale Policy`, so an editor who opened the form, went away, and came back with the number
   they were given does not overwrite the edit that landed meanwhile.
@@ -198,7 +198,7 @@ The journeys that stitch these routes together are
 - verify: http_status(409, title="Stale Policy", path="/api/policies/pn-1001/cancel")
 - errors: `404 Unknown Policy` for an id that is not on the books.
 - verify: http_status(404, title="Unknown Policy", path="/api/policies/missing/cancel")
-- code: app/api/cancel.go@f5ad39316749
+- code: app/api/cancel.go::handleCancel@f5ad39316749
 - parent: [Policy desk API](#policy-desk-api)
 - refs: [policy](../concepts/policy.md)
 - request:
@@ -222,7 +222,7 @@ The journeys that stitch these routes together are
   - is idempotent: resetting books that are already empty answers `204` and changes nothing.
 - verify: http_status(204, path="/api/policies")
 - verify: count(subject="policies", equals=0)
-- code: app/api/service.go@bcf74ba2ccff
+- code: app/api/service.go::handleReset@bcf74ba2ccff
 - parent: [Policy desk API](#policy-desk-api)
 - refs: [policy ledger](../concepts/policy-ledger.md)
 - request:

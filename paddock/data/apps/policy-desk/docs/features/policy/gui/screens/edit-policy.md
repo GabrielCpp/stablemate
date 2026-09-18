@@ -34,7 +34,7 @@ walkthrough can produce.
 - parent: [Edit policy form](#edit-policy-form)
 - states: opens filled from the stored record — the holder, the term and the premium as they stand.
 - verify: visible(locator="#edit-form")
-- code: app/web/src/EditPolicy.tsx@91cd9a44c06e
+- code: app/web/src/EditPolicy.tsx::EditPolicy@91cd9a44c06e
 
 Offers the fields an edit may change, and neither shows nor sends the policy number.
 
@@ -48,7 +48,7 @@ Offers the fields an edit may change, and neither shows nor sends the policy num
 - parent: [Edit policy form](#edit-policy-form)
 - states: present only after a stale save is refused.
 - verify: visible(locator="#stale-policy-alert", text="Stale Policy")
-- code: app/web/src/EditPolicy.tsx@91cd9a44c06e
+- code: app/web/src/EditPolicy.tsx::EditPolicy@91cd9a44c06e
 
 Reports that the policy moved under the form, and says to reload — rather than letting the save look
 as though it landed.
@@ -62,7 +62,7 @@ as though it landed.
 - keyboard: `Tab` to the button, `Enter` or `Space` to submit.
 - verify: visible(locator="#save-policy-button")
 - parent: [Edit policy form](#edit-policy-form)
-- code: app/web/src/EditPolicy.tsx@91cd9a44c06e
+- code: app/web/src/EditPolicy.tsx::EditPolicy@91cd9a44c06e
 
 Submits the edit together with the version the form was opened at.
 
@@ -77,11 +77,12 @@ Submits the edit together with the version the form was opened at.
 - keyboard: `Enter` in any field, or `Enter`/`Space` on the button.
 - verify: focusable(locator="#save-policy-button", activates="Enter")
 - when: the edit is acceptable and the quoted version is the policy's current one.
+- exclusive-with: [refuse-stale-edit](#refuse-stale-edit)
 - does:
   - saves the edit and navigates back to [the detail screen](policy-detail.md), which shows the new values.
 - verify: visible(locator="policy-detail.md#policy-heading", text="Policy PN-1001")
 - verify: visible(locator="policy-detail.md#policy-summary", text="$1350.00")
-- code: app/web/src/EditPolicy.tsx@91cd9a44c06e
+- code: app/web/src/EditPolicy.tsx::EditPolicy@91cd9a44c06e
 
 ### refuse-stale-edit
 
@@ -92,8 +93,9 @@ Submits the edit together with the version the form was opened at.
 - keyboard: `Enter` in any field, or `Enter`/`Space` on the button.
 - verify: focusable(locator="#save-policy-button", activates="Enter")
 - when: the policy has been written since the form was opened.
+- exclusive-with: [save-edit](#save-edit)
 - does:
   - leaves the stored record as it is and says on the form that it moved, rather than navigating away as though the edit had landed.
 - verify: visible(locator="#stale-policy-alert", text="Stale Policy")
 - verify: conflict_on_stale(subject="policy pn-1001", token="version")
-- code: app/web/src/EditPolicy.tsx@91cd9a44c06e
+- code: app/web/src/EditPolicy.tsx::EditPolicy@91cd9a44c06e

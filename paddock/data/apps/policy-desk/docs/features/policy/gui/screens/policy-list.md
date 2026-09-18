@@ -35,7 +35,7 @@ that looks current is the one failure mode a register must not have.
 - keyboard: reachable by `Tab` from the document start, with no shortcut of its own.
 - verify: focusable(locator="#policy-table")
 - parent: [Policy register](#policy-register)
-- code: app/web/src/PolicyList.tsx@1190425978c1
+- code: app/web/src/PolicyList.tsx::PolicyList@1190425978c1
 
 Renders one row per policy on the books, with its number, holder, coverage, premium and status.
 Names each row by its policy number, as a link to that policy's detail screen.
@@ -50,7 +50,7 @@ Names each row by its policy number, as a link to that policy's detail screen.
 - verify: visible(locator="#empty-register-notice", text="No policies are on file yet")
 - parent: [Policy register](#policy-register)
 - exclusive-with: [policy-table](#policy-table)
-- code: app/web/src/PolicyList.tsx@1190425978c1
+- code: app/web/src/PolicyList.tsx::PolicyList@1190425978c1
 
 Stands in for the table when the books are empty, and points at the way to start one.
 
@@ -64,7 +64,7 @@ Stands in for the table when the books are empty, and points at the way to start
 - parent: [Policy register](#policy-register)
 - states: present only after a register read fails.
 - verify: visible(locator="#register-error-alert")
-- code: app/web/src/RegisterError.tsx@94ff0a60334e
+- code: app/web/src/RegisterError.tsx::RegisterError@94ff0a60334e
 
 Says so when the register cannot be re-read, rather than leaving the previous table on screen
 looking current.
@@ -78,7 +78,7 @@ looking current.
 - placement: width 0-40%, x 0-30%, y 0-20%
 - keyboard: `Tab` to the link, `Enter` to follow it.
 - parent: [Policy register](#policy-register)
-- code: app/web/src/Nav.tsx@4b67472aa613
+- code: app/web/src/Nav.tsx::Nav@4b67472aa613
 
 Opens [the new policy form](new-policy.md) as a client route, without reloading the document.
 
@@ -94,4 +94,4 @@ Opens [the new policy form](new-policy.md) as a client route, without reloading 
 - does:
   - navigates to [the policy's detail screen](policy-detail.md) at `/policies/{id}`, client-side, and the detail screen shows that policy rather than the one visited before it.
 - verify: visible(locator="policy-detail.md#policy-heading", text="Policy PN-1001")
-- code: app/web/src/PolicyList.tsx@1190425978c1
+- code: app/web/src/PolicyList.tsx::PolicyList@1190425978c1
