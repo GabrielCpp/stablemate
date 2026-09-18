@@ -22,7 +22,7 @@ independent clients of `api-service`.
 ## Components
 
 ### widget-table
-- selector:
+- selector: testID=widget-table
 - role: list
 - one-per:
 - variants:
@@ -46,18 +46,19 @@ independent clients of `api-service`.
   `renderWidgetTable` switches on. `role:` is `list` and `name:` is `none` because the source
   sets no `accessibilityLabel` on the `FlatList` — the accessible name a screen reader would
   announce for this control simply does not exist in the current code, and stating `none` says
-  that honestly rather than inventing one. The `selector:` bullet is left empty for every
-  component on this screen: React Native addresses controls by `testID`, which is not `#id`,
-  `tag.class` or `[role="..."]` web-DOM syntax, so a fabricated CSS selector would be false and
-  the vocabulary has nowhere honest to put a testID. `verify:`'s `locator=` still resolves
-  against this book's own anchors regardless. `parent:` is
+  that honestly rather than inventing one. Every component on this screen carries a `selector: testID=<value>` bullet: React Native
+  addresses controls by `testID`, not `#id`, `tag.class` or `[role="..."]` web-DOM syntax, and
+  this self-identifying `scheme=value` spelling names that grammar in the string itself rather
+  than fabricating a CSS selector the render census would read as false. No driver in this tree
+  compiles a `testID=` selector yet, so a `verify:` against one gaps rather than runs; `verify:`'s
+  `locator=` still resolves against this book's own anchors regardless. `parent:` is
   [widget-list-screen](#widget-list-screen): the `FlatList` is a direct child of that root
   `View` in the populated branch of the same `WidgetListScreen` function it cites — a region
   of that one render, not an alternative to `new-widget-link` which sits beside it.
 - tests:
 
 ### empty-notice
-- selector:
+- selector: testID=empty-notice
 - role: status
 - one-per:
 - variants:
@@ -80,7 +81,7 @@ independent clients of `api-service`.
 - tests:
 
 ### widgets-alert
-- selector:
+- selector: testID=widgets-alert
 - role: alert
 - one-per:
 - variants:
@@ -102,7 +103,7 @@ independent clients of `api-service`.
 - tests:
 
 ### new-widget-link
-- selector:
+- selector: testID=new-widget-link
 - role: button
 - one-per:
 - variants:
@@ -129,7 +130,7 @@ independent clients of `api-service`.
 - tests:
 
 ### widget-list-screen
-- selector:
+- selector: testID=widget-list-screen
 - role: none
 - one-per:
 - variants:

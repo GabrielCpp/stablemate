@@ -20,7 +20,7 @@ carried, but never substitute an HTTP client for the tap.
 ## Components
 
 ### name-field
-- selector:
+- selector: testID=name-input
 - role: textbox
 - one-per:
 - variants:
@@ -44,7 +44,7 @@ carried, but never substitute an HTTP client for the tap.
 - tests:
 
 ### quantity-field
-- selector:
+- selector: testID=quantity-input
 - role: textbox
 - one-per:
 - variants:
@@ -69,7 +69,7 @@ carried, but never substitute an HTTP client for the tap.
 - tests:
 
 ### name-error
-- selector:
+- selector: testID=name-error
 - role: alert
 - one-per:
 - variants:
@@ -100,7 +100,7 @@ carried, but never substitute an HTTP client for the tap.
 - tests:
 
 ### quantity-error
-- selector:
+- selector: testID=quantity-error
 - role: alert
 - one-per:
 - variants:
@@ -124,7 +124,7 @@ carried, but never substitute an HTTP client for the tap.
 - tests:
 
 ### submit-widget-button
-- selector:
+- selector: testID=submit-widget
 - role: button
 - one-per:
 - variants:
@@ -145,7 +145,7 @@ carried, but never substitute an HTTP client for the tap.
 - tests:
 
 ### new-widget-screen
-- selector:
+- selector: testID=new-widget-screen
 - role: none
 - one-per:
 - variants:
