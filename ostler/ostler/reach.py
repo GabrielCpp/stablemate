@@ -454,13 +454,22 @@ class UnknownStart(ValueError):
     """The requested start names no screen on the surface."""
 
 
-def resolve_start(data: dict, start: str | None) -> str:
-    """*start* as a screen id, or the surface's root when none was given."""
+def resolve_start(data: dict, start: str | None, driver: str | None = None) -> str:
+    """*start* as a screen id, or the surface's root when none was given.
+
+    *driver* decides which of the two ``root_screen`` failures this is. A driver with no path
+    grammar — `mobile` names its screens, `cli` routes nothing — has no root path to state, so
+    quoting one back is quoting a default the book never wrote; the caller is told the surface
+    has no root rather than sent looking for a screen at `/`.
+    """
     screens = screens_of(data)
     if start is None:
-        root = root_screen(data)
+        root = root_screen(data, driver)
         if root is None:
-            path, _ = root_path(data)
+            if not routes_mod.is_path_addressed(driver):
+                named = f"a `{driver}` surface" if driver else "this surface"
+                raise UnknownStart(f"{named} states no root path to start from; pass --from")
+            path, _ = root_path(data, driver)
             raise UnknownStart(f"no screen's `route:` is the root path {path}; pass --from")
         return root
     if start in screens:
@@ -470,7 +479,8 @@ def resolve_start(data: dict, start: str | None) -> str:
                        + (f" — did you mean {hint}?" if hint else ""))
 
 
-def reachability(graph: Graph, *, surface: str | None = None, start: str | None = None) -> dict:
+def reachability(graph: Graph, *, surface: str | None = None, start: str | None = None,
+                 driver: str | None = None) -> dict:
     """Route every documented screen on *surface* from *start*; report the ones with no path.
 
     *start* defaults to the surface's root screen, and a start that names no screen raises rather
@@ -483,7 +493,7 @@ def reachability(graph: Graph, *, surface: str | None = None, start: str | None 
     by_id = {n["id"]: n for n in data["nodes"]}
     edges = navigation_edges(data)
     screens = screens_of(data)
-    start = resolve_start(data, start)
+    start = resolve_start(data, start, driver)
 
     routed: dict[str, list[dict]] = {}
     unreachable: list[str] = []

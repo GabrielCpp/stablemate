@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
+from types import SimpleNamespace
 
-from ostler import graph, reach
+from ostler import cli, graph, reach
 from ostler.model import load
 
 from conftest import present, write
@@ -494,6 +496,69 @@ def test_a_prose_entry_does_not_exempt_a_screen(repo: Path):
     unreachable = [f for f in report.findings if f.code == "unreachable-screen"]
     assert [f.path for f in unreachable] == [ARCHIVE]
     assert "`entry: emailed deep link` is not a route" in unreachable[0].message
+
+
+MOBILE_SCREENS = "docs/features/mobile-app/gui/screens"
+
+
+def _mobile_repo(repo: Path):
+    """A surface whose runbook drives it with `mobile` — screen names, no paths anywhere."""
+    write(repo / MOBILE_SCREENS / "widget-list.md", (
+        "---\ntype: screen\nslug: widget-list\ntitle: Widgets\n---\n# Widgets\n\n"
+        "- route: `WidgetList`\n- requires: none\n- params: none\n"
+    ))
+    write(repo / "docs/features/mobile-app/ops/stack.md", (
+        "---\ntype: runbook\nslug: stack\ntitle: Stack\n---\n# Stack\n\n"
+        "- driver: mobile\n- surfaces: [widget-list](../gui/screens/widget-list.md)\n\n"
+        "## Steps\n\n### serve\n- kind: service\n- run: `metro`\n"
+    ))
+    return load(repo)
+
+
+def test_a_mobile_surface_is_not_told_to_look_for_a_screen_at_the_root_path(repo: Path):
+    """`root_path` has been driver-aware since the route grammars landed, but `resolve_start`
+    never asked for a driver — so the one command a person runs by hand kept the web answer and
+    quoted a `/` no mobile book ever writes. A reader that silently keeps the old answer is
+    worse than one that crashes: nothing fails, and the fabricated path reads as the book's."""
+    import pytest
+
+    data = graph.build(_mobile_repo(repo), surface="mobile-app")
+
+    with pytest.raises(reach.UnknownStart) as exc:
+        reach.resolve_start(data, None, "mobile")
+    assert "`mobile` surface states no root path" in str(exc.value)
+    assert "/" not in str(exc.value).replace("--from", "")
+
+
+def test_the_reach_command_reads_the_surface_driver_off_the_runbook(repo: Path, capsys):
+    """The driver is not the command's to guess and not its to report: `_cmd_reach` resolves it
+    from the book like every other reader, so the message a person sees is this surface's.
+
+    The exit code alone proves nothing — a driver-less read stops here too, having gone looking
+    for a screen at a `/` this book never wrote. What separates them is what it says."""
+    graph_obj = _mobile_repo(repo)
+    args = SimpleNamespace(surface="mobile-app", start=None, target=None, json=True)
+
+    assert cli._cmd_reach(graph_obj, args) == 2
+    assert json.loads(capsys.readouterr().out)["error"] == (
+        "a `mobile` surface states no root path to start from; pass --from")
+
+
+def test_the_reach_command_degrades_when_the_book_does_not_settle_a_driver(repo: Path, capsys):
+    """Two runbooks disagreeing is `doctor`'s finding to raise. This command wants a grammar,
+    so it degrades to none and behaves exactly as it did before drivers existed."""
+    _repo(repo)
+    for slug, driver in (("deployed", "web"), ("local-cli", "cli")):
+        write(repo / f"docs/features/web/ops/{slug}.md", (
+            f"---\ntype: runbook\nslug: {slug}\ntitle: {slug}\n---\n# {slug}\n\n"
+            f"- driver: {driver}\n- surfaces: [landing](../gui/screens/landing.md)\n\n"
+            "## Steps\n\n### serve\n- kind: service\n- run: `serve`\n"
+        ))
+    graph_obj = load(repo)
+    args = SimpleNamespace(surface="web", start=None, target=None, json=True)
+    cli._cmd_reach(graph_obj, args)
+
+    assert json.loads(capsys.readouterr().out)["start"] == LAND
 
 
 def test_reachability_defaults_to_the_root_and_rejects_an_unknown_start(repo: Path):

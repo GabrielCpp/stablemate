@@ -381,7 +381,7 @@ def _navigation(head_graph: Graph) -> dict[str, dict[str, Any]]:
                 navigation[surface]["driverErrorKind"] = driver_error_kind
             continue
         try:
-            navigation[surface] = reach.reachability(head_graph, surface=surface)
+            navigation[surface] = reach.reachability(head_graph, surface=surface, driver=driver)
             navigation[surface]["rootPath"] = root_path
             navigation[surface]["entryUrl"] = entry_url
             navigation[surface]["driver"] = driver

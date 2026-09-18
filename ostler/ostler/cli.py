@@ -1129,15 +1129,33 @@ def _result(res, as_json: bool = False) -> int:
     return 0 if res.ok else 1
 
 
+def _surface_driver(dump: dict, surface: str | None) -> str | None:
+    """The driver whose route grammar this surface is addressed in, or ``None`` when unsettled.
+
+    A book that does not settle one is not this command's to report — `ostler doctor` raises
+    `conflicting-surface-driver` and `undeclared-walkthrough-runbook` on exactly that, and a
+    second voice saying it here would be a second thing to keep in step. A reader that wants a
+    grammar degrades; the reporters speak.
+    """
+    if surface is None:
+        return None
+    try:
+        return reach.surface_driver(dump, surface)
+    except reach.UnsettledSurfaceDriver:
+        return None
+
+
 def _cmd_reach(graph, args) -> int:
     """Route to one screen, or audit the whole surface when no target is given.
 
     Exits non-zero when a route is missing — an unreachable screen is a defect in the book, and a
     caller that shells out to this should stop rather than navigate by URL and paper over it.
     """
-    data = graph_mod.build(graph, surface=args.surface)
+    dump = graph_mod.build(graph)
+    data = graph_mod.subset(dump, args.surface) if args.surface else dump
+    driver = _surface_driver(dump, args.surface)
     try:
-        start = reach.resolve_start(data, args.start)
+        start = reach.resolve_start(data, args.start, driver)
     except reach.UnknownStart as exc:
         # A start that names nothing must not route from nowhere: that reads as "0 reachable",
         # every screen a hole in the book, for a typo in the flag.
@@ -1154,7 +1172,7 @@ def _cmd_reach(graph, args) -> int:
             _out(reach.render_route(path, start, args.target))
         return 1 if path is None else 0
 
-    report = reach.reachability(graph, surface=args.surface, start=start)
+    report = reach.reachability(graph, surface=args.surface, start=start, driver=driver)
     _out(json.dumps(report) if args.json else reach.render_reachability(report))
     return 1 if report["unreachable"] else 0
 
