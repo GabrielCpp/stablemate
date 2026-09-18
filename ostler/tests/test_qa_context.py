@@ -331,6 +331,48 @@ def test_a_files_own_sections_citing_one_symbol_stay_one_family(tmp_path: Path):
     assert len(command_obligations) == 3
 
 
+def test_cli_binaries_key_the_owning_files_binary_by_shared_path(tmp_path: Path):
+    """A `command` section shares its owning `cli` file's `path` (`graph.py`'s `_node_dict`),
+    so `context.py`'s `_cli_binaries` can key a `run:` obligation's tool by that same `source`
+    without walking `parent` pointers. Two `cli` files, one that declares `binary:` and one that
+    leaves it empty — the scaffolded-empty bullet must not be mistaken for a declared value
+    (`_values`, not `key in bullets`), so the second file is simply absent from the map."""
+    (tmp_path / "docs/features/demo").mkdir(parents=True)
+    (tmp_path / "docs/features/demo/tally.md").write_text(
+        "---\ntype: cli\nslug: tally\ntitle: Tally\n---\n# Tally\n\n"
+        "- binary: tally\n- code: `app/tally.py::run`\n\n"
+        "## Commands\n\n"
+        "### init\n- code: `app/tally.py::run`\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "docs/features/demo/unnamed.md").write_text(
+        "---\ntype: cli\nslug: unnamed\ntitle: Unnamed\n---\n# Unnamed\n\n"
+        "- code: `app/unnamed.py::run`\n\n"
+        "## Commands\n\n"
+        "### go\n- code: `app/unnamed.py::run`\n",
+        encoding="utf-8",
+    )
+    for rel, body in (
+        ("app/tally.py", "def run():\n    return 'old'\n"),
+        ("app/unnamed.py", "def run():\n    return 'old'\n"),
+    ):
+        target = tmp_path / rel
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(body, encoding="utf-8")
+    _git(tmp_path, "init")
+    _git(tmp_path, "config", "user.email", "qa@example.com")
+    _git(tmp_path, "config", "user.name", "QA")
+    _git(tmp_path, "add", ".")
+    _git(tmp_path, "commit", "-m", "base")
+    base = _git(tmp_path, "rev-parse", "HEAD")
+    (tmp_path / "app/tally.py").write_text("def run():\n    return 'new'\n", encoding="utf-8")
+    (tmp_path / "app/unnamed.py").write_text("def run():\n    return 'new'\n", encoding="utf-8")
+
+    packet = build_context(tmp_path, base=base, source_roots={"demo": ["app"]})
+
+    assert packet["cliBinaries"] == {"docs/features/demo/tally.md": "tally"}
+
+
 def test_six_unrelated_nodes_citing_one_symbol_still_demote(tmp_path: Path):
     """Six genuinely unrelated nodes — no containment, no `extends:` — citing the same exact
     symbol is the sprawl `_CONTAINER_FANOUT` exists to catch, and family-collapsing must not

@@ -3216,13 +3216,71 @@ def _built_target_probe_cli() -> tuple[dict, str]:
                 {"name": "seeded-ledger", "args": [], "provides": "a ledger"},
             ],
             actsDeclared=[
-                {"call": 'invoke(argv=["tally", "import"])', "name": "invoke",
-                 "args": {"argv": ["tally", "import"]}},
+                {"call": 'invoke(argv=["import"])', "name": "invoke",
+                 "args": {"argv": ["import"]}},
             ],
         )
     )
     context["navigation"][""]["driver"] = "cli"
+    context["cliBinaries"] = {"docs/features/demo/api.md": "tally"}
     return context, oid
+
+
+def test_a_run_with_no_owning_binary_is_uncompilable() -> None:
+    """`argv` names only the arguments — the executable is the owning `cli` file node's own
+    `binary:` bullet, resolved from `context["cliBinaries"]` by the obligation's shared `source`
+    path. A `cli` node with no `binary:` value (its `source` absent from that dict, exactly what
+    `context.py`'s `_cli_binaries` produces when the bullet is empty) leaves a well-formed
+    `run:` with nothing to name as the executable — that is uncompilable, not a guess at
+    `argv[0]`."""
+    oid = "okf:built-target-probe:cli:exit-status:no-binary:1"
+    context = _context(
+        _obligation(
+            oid,
+            nodeType="command",
+            checksDeclared=[{"call": "it", "name": "exit_status", "args": {"code": 0}}],
+            actsDeclared=[
+                {"call": 'invoke(argv=["import"])', "name": "invoke",
+                 "args": {"argv": ["import"]}},
+            ],
+        )
+    )
+    context["navigation"][""]["driver"] = "cli"
+    context["cliBinaries"] = {}  # the owning `cli` node declares no `binary:`
+
+    _source, gaps = compile_plan_gaps(context, story="demo-story")
+
+    assert _gap_kinds(gaps, oid) == ["uncompilable-claim"]
+    (gap,) = [g for g in gaps if g.obligation_id == oid]
+    assert "declares no `binary:`" in gap.detail
+    assert "cannot name the executable this `run:` invokes" in gap.detail
+
+
+def test_an_empty_argv_is_a_legal_bare_invocation() -> None:
+    """`argv=[]` is a real, empty argument list — a bare invocation of the binary with no
+    arguments — not indistinguishable from "no `run:` at all". It must compile to a call with no
+    arguments, never gap as `uncompilable-claim`."""
+    oid = "okf:built-target-probe:cli:exit-status:empty-argv:1"
+    context = _context(
+        _obligation(
+            oid,
+            nodeType="command",
+            checksDeclared=[{"call": "it", "name": "exit_status", "args": {"code": 0}}],
+            fixturesDeclared=[
+                {"name": "seeded-ledger", "args": [], "provides": "a ledger"},
+            ],
+            actsDeclared=[
+                {"call": "invoke(argv=[])", "name": "invoke", "args": {"argv": []}},
+            ],
+        )
+    )
+    context["navigation"][""]["driver"] = "cli"
+    context["cliBinaries"] = {"docs/features/demo/api.md": "tally"}
+
+    source, gaps = compile_plan_gaps(context, story="demo-story")
+
+    assert _gap_kinds(gaps, oid) == []
+    assert 'qa.tool("tally").run()' in source
 
 
 #: One minimal-obligation builder per member of `_BUILT_TARGETS` — the harness direction 2

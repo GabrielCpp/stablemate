@@ -55,7 +55,9 @@ HTTP = "http"
 #: `command`'s performer: a subprocess, not a person or a wire — so what it establishes is the
 #: process that just ran, and `invoke`'s `argv` is typed `str[]`, not `str`, for the reason
 #: `body`'s `value` is typed `scalar` and not `str`: an argv element is not typed prose the way
-#: a form field is, it is one literal token a shell would hand the process unchanged.
+#: a form field is, it is one literal token a shell would hand the process unchanged. `argv`
+#: carries only the arguments — the binary is the owning `cli` node's `binary:` to declare,
+#: never this act's to repeat.
 CLI = "cli"
 
 
@@ -140,9 +142,11 @@ ACTS: tuple[ActSpec, ...] = (
     ActSpec(
         name="invoke",
         params=(ActParam("argv", "str[]", required=True),),
-        establishes="the process this command's binary was run with has exited, with the "
-                    "argv this step names — the only state a subprocess performer can "
-                    "establish, and the fact `exit_status`/`stdout`/`stderr` observe",
+        establishes="the process this command's binary — named by the owning `cli` node's "
+                    "`binary:`, not by this act — was run with the arguments `argv` names, "
+                    "and has exited; that exit and those arguments are the only state a "
+                    "subprocess performer can establish, and the fact "
+                    "`exit_status`/`stdout`/`stderr` observe",
         drivers=(CLI,),
     ),
 )

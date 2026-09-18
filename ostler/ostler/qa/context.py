@@ -931,6 +931,7 @@ def build_context(
     ]
     obligations.sort(key=lambda item: _sort_key(str(item["id"])))
     navigation = _navigation(head_graph)
+    cli_binaries = _cli_binaries(nodes_by_id)
     return {
         "version": 2 if repositories else 1,
         "available": bool(nodes_by_id),
@@ -953,6 +954,14 @@ def build_context(
         "verificationRefs": verification_refs,
         "verificationIndex": verification_index,
         "navigation": navigation,
+        # A `command` obligation's `run:` names only the arguments (`ostler.acts`'s `invoke`)
+        # — the executable is the owning `cli` **file** node's `binary:`, stated once where the
+        # book already says it rather than repeated in every `argv`. `compile.py` resolves a
+        # `run:` obligation's tool by looking its `source` (the shared file path) up here,
+        # rather than re-walking the graph it no longer has once the packet leaves this
+        # process — a `cli` node with no `binary:` value is simply absent, so a `run:` on that
+        # file is uncompilable (`_cli_binaries` below).
+        "cliBinaries": cli_binaries,
         # Each screen file's `route:`, read by the same function the vet driver reads it
         # with. The driver decides whether a photographed page is the screen the book
         # named by comparing that route against a URL; the compiler decides whether that
@@ -1611,6 +1620,30 @@ def _relation_join_key(value: str) -> str:
     """What the fixpoint compares two relation bullets on: the subject, or the whole value."""
     subject, _ = relation_subject(value)
     return subject if subject is not None else value.strip()
+
+
+def _cli_binaries(nodes_by_id: dict[str, dict[str, Any]]) -> dict[str, str]:
+    """Every `cli` file node's declared `binary:`, keyed by the file `path` its `command`
+    sections share.
+
+    A `command` section's own `path` is the owning file's (`_node_dict` in `graph.py`: several
+    section nodes share one file's `path`), so a `run:` obligation minted off that section can
+    be matched back to its file's `binary:` by that same path — no parent walk needed, and no
+    reason to widen the obligation packet with a `binary` field per obligation when one dict
+    keyed by path says it once per file.
+
+    A `cli` node with an empty `binary:` bullet is omitted, not mapped to `""`: `- binary:` is
+    scaffolded onto every `cli` node whether authored or not, so presence of the *key* proves
+    nothing — only a non-empty *value* does (`_values`, not `key in bullets`).
+    """
+    binaries: dict[str, str] = {}
+    for node in nodes_by_id.values():
+        if node.get("type") != "cli" or node.get("kind") != "file":
+            continue
+        values = _values(node.get("bullets", {}).get("binary"))
+        if values and values[0].strip():
+            binaries[str(node["path"])] = values[0].strip()
+    return binaries
 
 
 def _named_subjects(node: dict[str, Any]) -> set[str]:

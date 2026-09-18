@@ -522,35 +522,39 @@ def _gap_cli_obligations(obligations: list[dict[str, Any]], gaps: list[Gap]) -> 
         ))
 
 
-def _cli_action(obligation: dict[str, Any]) -> tuple[str, list[str]] | None:
-    """The `(tool, args)` this obligation's `run:` names, or `None` if it named none.
+def _cli_action(obligation: dict[str, Any]) -> list[str] | None:
+    """The argument list this obligation's `run:` names, or `None` if it named none.
 
     Reads `actsDeclared` the same way `_scenario_body`'s HTTP arm reads it for `body(...)` —
     an obligation's own attributed acts, already bound by document order to the claim this
     obligation is (registry's `attributed_acts`, generic over any `performs=True` key, needs
-    no CLI-specific wiring here). `argv[0]` is the binary a `qa.tool(...)` call resolves — the
-    same executable a `cli` node's own `binary:` bullet names — and the rest is handed to
-    `.run(*argv)` unchanged, the same literal tokens a shell would pass.
+    no CLI-specific wiring here). `argv` carries only the arguments now — the executable is
+    the owning `cli` node's own `binary:` bullet, resolved by the caller from
+    `context["cliBinaries"]`, never from `argv[0]`. An explicit `argv=[]` is a real, empty
+    argument list (a bare invocation of the binary), told apart from "no `run:` at all" by
+    whether an `invoke` row was found, not by whether `argv` is truthy.
     """
     for row in obligation.get("actsDeclared") or []:
         if row.get("name") != "invoke":
             continue
-        argv = [str(a) for a in (row.get("args", {}).get("argv") or [])]
-        if argv:
-            return argv[0], argv[1:]
+        return [str(a) for a in (row.get("args", {}).get("argv") or [])]
     return None
 
 
 def _cli_scenario_body(
-    obligations: list[dict[str, Any]], gaps: list[Gap], covered: set[str],
+    obligations: list[dict[str, Any]], gaps: list[Gap], covered: set[str], binary: str | None,
 ) -> list[str]:
     """Compile every CLI obligation's assertion half — `_scenario_body`'s counterpart for a
     `command` node instead of a route.
 
     There is no reference resolution, capture, or request-body template to arrange here: a
-    `run:` bullet is already the concrete invocation, not something built from a path or a
+    `run:` bullet is already the concrete argument list, not something built from a path or a
     prior response. An obligation whose node declares no `run:` is gapped by
-    `_gap_cli_obligations`, exactly as before, and emits nothing.
+    `_gap_cli_obligations`, exactly as before, and emits nothing. *binary* is the owning `cli`
+    file node's `binary:` value for every obligation in *obligations* (they share one
+    `source`, and `compile_plan_gaps` looked it up once for the whole group) — `None` means
+    that node declared no `binary:`, so even an obligation with a well-formed `run:` is
+    uncompilable: there is nothing to name as the executable.
     """
     lines: list[str] = []
     index = 0
@@ -563,18 +567,27 @@ def _cli_scenario_body(
         lines.append(f"    # {requirement}")
         index += 1
         name = f"observed_{index}"
-        action = _cli_action(obligation)
-        if action is None:
+        argv = _cli_action(obligation)
+        if argv is None:
             lines.append(
                 "    # TODO(arrange): this command declares no `run:` — `usage:`/`flags:`/"
                 "`args:` are prose, not a concrete invocation")
             lines.append(f"    {name} = None  # TODO(arrange): what this scenario observes")
             _gap_cli_obligations([obligation], gaps)
             continue
-        tool, args = action
-        # `argv[0]` chose the tool — `.run(*argv)` takes only what follows it.
-        argv_expr = ", ".join(_lit(a) for a in args)
-        lines.append(f"    {name} = qa.tool({_lit(tool)}).run({argv_expr})")
+        if binary is None:
+            lines.append(
+                "    # TODO(arrange): the owning `cli` node declares no `binary:`, so this "
+                "compiler cannot name the executable this `run:` invokes")
+            lines.append(f"    {name} = None  # TODO(arrange): what this scenario observes")
+            gaps.append(Gap(
+                str(oid), "uncompilable-claim",
+                "the owning `cli` node declares no `binary:`, so the compiler cannot name "
+                "the executable this `run:` invokes",
+            ))
+            continue
+        argv_expr = ", ".join(_lit(a) for a in argv)
+        lines.append(f"    {name} = qa.tool({_lit(binary)}).run({argv_expr})")
 
         assertions: list[str] = []
         whole = True
@@ -983,6 +996,11 @@ def compile_plan_gaps(
     # node compile under two different drivers. Read `navigation` first: each obligation's
     # target is looked up per surface, keyed on the `driver` `_navigation` now stamps there.
     navigation = context.get("navigation", {}) if isinstance(context.get("navigation"), dict) else {}
+    # A `run:` names only the arguments — the executable is the owning `cli` file node's
+    # `binary:`, keyed here by the same `source` path `cli_by_source` below groups on
+    # (`context.py`'s `_cli_binaries`). A source absent from this dict is a `cli` node that
+    # declares no `binary:` value, so every `run:` obligation on that file is uncompilable.
+    cli_binaries = context.get("cliBinaries", {}) if isinstance(context.get("cliBinaries"), dict) else {}
     http_owed: list[dict[str, Any]] = []
     page_owed: list[dict[str, Any]] = []
     cli_owed: list[dict[str, Any]] = []
@@ -1150,11 +1168,13 @@ def compile_plan_gaps(
         cli_by_source.setdefault(str(obligation.get("source", "book")), []).append(obligation)
     for source, cli_obligations in cli_by_source.items():
         cli_scenario_covered: set[str] = set()
-        body_lines = _cli_scenario_body(cli_obligations, gaps, cli_scenario_covered)
+        binary = cli_binaries.get(source)
+        body_lines = _cli_scenario_body(cli_obligations, gaps, cli_scenario_covered, binary)
         if not cli_scenario_covered:
-            # Every declared obligation here turned out to have no `run:` to bind to —
-            # `_cli_scenario_body` already gapped each one and emitted no `qa.verify` for
-            # any of them. A scenario with nothing left to claim is not emitted.
+            # Every declared obligation here turned out to have no `run:` to bind to, or its
+            # `cli` node declared no `binary:` — `_cli_scenario_body` already gapped each one
+            # and emitted no `qa.verify` for any of them. A scenario with nothing left to
+            # claim is not emitted.
             continue
         covered_ids.update(cli_scenario_covered)
         surface = str(cli_obligations[0].get("surface") or "")
