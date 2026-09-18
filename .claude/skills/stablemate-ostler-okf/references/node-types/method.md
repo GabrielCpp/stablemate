@@ -31,6 +31,7 @@ rather than kebabbing it into a slug.
 | `detail` | no | link — an explanatory [`concept`](concept.md) |
 | `verify` | no | a check |
 | `fixture` | no | a fixture |
+| `capture` | no | a capture |
 | `tests` | no | link — the test files covering it |
 
 `does:` is **not nested** here, unlike on an endpoint or interaction: one bullet, one claim,

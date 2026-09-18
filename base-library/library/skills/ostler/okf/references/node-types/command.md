@@ -24,6 +24,7 @@ Section type. A `### <id>` under a `## Commands` heading in a `cli` file. Its id
 | `verify` | no | a check |
 | `fixture` | no | a fixture |
 | `capture` | no | a capture |
+| `tests` | no | link — the test files covering it |
 
 `errors:` and `exits:` are the refusal arm of a command, as an endpoint's `errors:`/`status:`
 are of a route. Both were graded before they were declared here.

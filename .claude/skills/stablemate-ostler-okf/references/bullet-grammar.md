@@ -72,6 +72,28 @@ normative there anyway because the shared set overrides. `declared_keys(type)` �
 recognizes at all — is its own keys plus this shared set; anything outside it that is
 load-bearing on some other type is `unknown-bullet`.
 
+## Relation keys are legal on every type
+
+`RELATION_KEYS` (`registry.py:389`) name another node rather than assert anything about this
+one, and every one of them is accepted wherever it is written, whatever the node type:
+
+```
+on, parent, extends, same-as, steps, presents, detail, environment,
+cli, surfaces, requires, params, leads-to, exclusive-with, prefers, deprecates
+```
+
+`declared_keys(type)` lists only some of them per type — `endpoint` carries `detail`, `concept`
+carries `deprecates`/`extends`/`prefers`/`same-as`, `component` carries five — and that
+distribution is an accident of how each profile was written, not a grammar. It decides nothing:
+`unknown_bullet_keys` (`registry.py:434`) flags an undeclared key only when it is *load-bearing*,
+and `LOAD_BEARING_KEYS` (`registry.py:1343`) subtracts the relation keys wholesale. So a
+node-type page that carries no row for `same-as:` is not saying the key is illegal there — it is
+saying nothing about it, and the key works.
+
+The pages are held to that: a type's page must document every key its own profile makes
+load-bearing, and may additionally carry a row for any relation key, because those are true
+everywhere. A row for anything else is a row for a key nothing reads.
+
 ## Ownership: what `qa context` reads
 
 `owning_keys(type)` (`registry.py:311`) decides which nodes a changed file reaches:

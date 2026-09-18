@@ -14,6 +14,7 @@ Section type. A `### <id>` under the runbook's `## Steps` heading. Its id is `pa
 | key | required | what it does |
 | --- | --- | --- |
 | `kind` | **yes** | `prepare` \| `service` \| `seed` \| `run` \| `health` \| `verify` \| `drive` |
+| `code` | no | link, **owns** its file — the implementation this step exercises |
 | `run` | no | the exact bounded command |
 | `working-directory` | no | cwd, when not the repo root |
 | `timeout` | no | seconds; this step's own ceiling |

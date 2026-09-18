@@ -28,6 +28,8 @@ File type under `docs/features/<service>/ops/`, `type: environment` in frontmatt
 | `config` | no | **owns** the path — the configuration files the stack reads |
 | `verify` | no | a check |
 | `fixture` | no | a fixture |
+| `capture` | no | a capture |
+| `tests` | no | link — the test files covering it |
 
 `code:` is declared here because the QA-context mapper reads `code:` on every node type to find
 a changed path's owner. Without it an environment's own compose files and emulator configs are

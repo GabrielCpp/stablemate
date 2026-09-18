@@ -30,6 +30,7 @@ Section type. A `### <id>` under a `## Components` heading, normally in a
 | `detail` | no | link — an explanatory [`concept`](concept.md) |
 | `verify` | no | a check |
 | `fixture` | no | a fixture |
+| `tests` | no | link — the test files covering it |
 
 `role:` and `name:` are required because they are the same fact twice: the accessibility
 contract a screen reader announces, and the `getByRole(role, {name})` a test locates by. `none`

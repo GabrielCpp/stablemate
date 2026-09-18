@@ -26,6 +26,8 @@ Section type. A `### <id>` under an `## Invocations` heading. Its id is `path#an
 | `on` | **yes** | link — the node this acts on |
 | `trigger` | **yes** | what fires it |
 | `when` | no | **mints an obligation** — the condition it applies under |
+| `extends` | no | link — the base invocation this one narrows |
+| `same-as` | no | link, multi-valued — another node documenting this same job |
 | `does` | **yes** | nested; **mints an obligation** per value |
 | `emits` | no | **mints an obligation** (via the shared set) |
 | `consumes` | no | **mints an obligation** (via the shared set) |
@@ -38,6 +40,7 @@ Section type. A `### <id>` under an `## Invocations` heading. Its id is `path#an
 | `detail` | no | link — an explanatory [`concept`](concept.md) |
 | `verify` | no | a check |
 | `fixture` | no | a fixture |
+| `capture` | no | a capture |
 | `tests` | no | link — the test files covering it |
 
 `emits:`/`consumes:` are normative through the
@@ -48,8 +51,7 @@ its grounding so a `verify:` written under one binds to that one.
 An invocation carries no `role:`/`name:`/`keyboard:`: there is no operator to announce
 anything to. If those apply, it is an interaction.
 
-`same-as:` is also not in this type's declared list, and relation keys work on every type
-regardless. It says this invocation and the one it names are the *same* documented job,
+`same-as:` says this invocation and the one it names are the *same* documented job,
 described again in a second place — not a narrower version of it, and not a winner over a
 loser. It is symmetric and must be declared on both sides. Its consumer is the QA obligation packet: a change to the cited symbol maps to every node that cites it, and without `same-as:` one thing written in three places reads as three things and trips the container fan-out demotion that exists to catch sprawl. `same-as:` is the declared fact that collapses them back into one family.
 
@@ -60,13 +62,12 @@ members that both state a key must state the same value; `doctor`'s `same-as-dis
 finds it when they don't.
 
 It deliberately has no effect on `competing-implementations`. That check judges only same-file groups, and two sections of one file claiming to be the same documented thing would be the defect, not the exemption. Contrast it with `extends:`
-(a narrower version of the thing it names, though this type documents no such row above) and
+(a narrower version of the thing it names) and
 with the judgment keys a `concept` carries for genuinely competing implementations.
 
 ## Relationships
 
-`on:` links the node acted on. `detail:` and `same-as:` point at another node — neither is in
-this type's declared list, but relation keys work on every type.
+`on:` links the node acted on. `detail:`, `extends:` and `same-as:` all point at another node.
 
 ## Minimal example
 

@@ -29,6 +29,8 @@ case rather than lowercasing it into a slug.
 | `code` | no | link, **owns** its file |
 | `verify` | no | a check |
 | `fixture` | no | a fixture |
+| `capture` | no | a capture |
+| `tests` | no | link — the test files covering it |
 
 `type:` alone is not a claim — it is a restatement of the code. The obligations are the three
 below it: what happens when the field is absent, whether absence is legal, and what the value

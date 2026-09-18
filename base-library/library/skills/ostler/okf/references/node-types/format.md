@@ -19,6 +19,7 @@ File type under `docs/features/<service>/formats/`, `type: format` in frontmatte
 | `config` | no | **owns** the path — a configuration file in this format |
 | `code` | no | link, **owns** its file |
 | `detail` | no | link — an explanatory [`concept`](concept.md) |
+| `tests` | no | link — the test files covering it |
 
 `config:` does one thing more than owning: a declared config path is a production unit even
 where `qa context`'s non-production filter would drop it as stack config, so a change to it

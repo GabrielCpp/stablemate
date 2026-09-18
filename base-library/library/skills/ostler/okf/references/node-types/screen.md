@@ -24,6 +24,7 @@ Canonical order — the order `ostler fmt` will put them in.
 | `requires` | yes | nested; each child resolves as a link — the preconditions to be here |
 | `params` | yes | nested; each child resolves as a link — route/query parameters |
 | `entry` | no | this screen is entered from outside in-app navigation |
+| `code` | no | link, **owns** its file — the screen's own implementation |
 | `detail` | no | link — an explanatory [`concept`](concept.md) |
 
 All three required keys are required **even when empty**. A screen that omits `requires:` is

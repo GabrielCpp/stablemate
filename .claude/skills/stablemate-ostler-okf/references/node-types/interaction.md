@@ -32,6 +32,7 @@ Section type. A `### <id>` under a `## Interactions` heading, normally in a
 | `keyboard` | **yes** | **mints an obligation** — how it is fired without a pointer |
 | `when` | no | **mints an obligation** — the condition it applies under |
 | `exclusive-with` | no | link — a sibling it can never co-render with |
+| `extends` | no | link — the base arm this one narrows, inheriting its control identity (`on:`/`trigger:`/`role:`/`name:`/`keyboard:`), none of its arrangements |
 | `same-as` | no | link, multi-valued — another node documenting this same interaction |
 | `one-per` | no | the iteration variable — one node stands for a whole generated family |
 | `unique-by` | no | a dot-path whose value is distinct per instance, with the evidence in prose |
@@ -42,6 +43,7 @@ Section type. A `### <id>` under a `## Interactions` heading, normally in a
 | `verify` | no | a check |
 | `fixture` | no | a fixture |
 | `arrange` | no | an act performed on this node's own surface |
+| `capture` | no | a capture |
 | `tests` | no | link — the test files covering it |
 
 An interaction is by definition operable, so five keys are required. `role:`/`name:` give

@@ -38,6 +38,8 @@ Section type. A `### <id>` under a `## Endpoints` heading in a `server` file. It
 | `verify` | no | a check |
 | `fixture` | no | a fixture |
 | `arrange` | no | an act — a request body member the step's own performer sends |
+| `capture` | no | a capture |
+| `tests` | no | link — the test files covering it |
 
 `emits:`/`consumes:` carry no `normative` flag of their own here — they are normative because
 the [shared set](../bullet-grammar.md#keys-that-are-normative-on-every-type) makes them so on
