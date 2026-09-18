@@ -1095,11 +1095,30 @@ def _ui_nodes(doc: markdown.MarkdownDoc, path: Path, root: Path) -> list[UINode]
 
 
 def _feature_paths(graph: Graph) -> list[Path]:
+    """Every book page under the features root -- a file's membership in the corpus is a claim
+    the file makes, not a property of where it sits, so a candidate must declare a `type` to
+    count (the same rule `doctor._check_conformance` enforces as `okf-missing-type`, and that
+    check walks its own `etype.location` glob independently of this function, so gating here
+    does not silence it). A prose file, a README or a scratch note dropped under `features/`
+    with no frontmatter `type` is not a Concept and must not become a `FeatureRecord` or UI node.
+    """
     froot = graph.doc_roots["features"]
     if not froot.is_dir():
         return []
-    return [p for p in sorted(froot.rglob("*.md"))
-            if p.is_file() and p.name not in registry.RESERVED_FILES]
+    paths = []
+    for p in sorted(froot.rglob("*.md")):
+        if not p.is_file() or p.name in registry.RESERVED_FILES:
+            continue
+        try:
+            # Through the shared cache (`read_doc`), not a fresh `markdown.split` -- every other
+            # reader of this file in the same run (`_feature_doc`, the UI check, conformance)
+            # goes through it too, so gating here must not cost this file a second parse.
+            fm = read_doc(p).frontmatter or {}
+        except OSError:
+            continue
+        if registry.type_of(fm):
+            paths.append(p)
+    return paths
 
 
 def _load_features(graph: Graph) -> None:

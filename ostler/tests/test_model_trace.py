@@ -2,8 +2,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ostler import markdown, trace
+from ostler import doctor, markdown, trace
 from ostler.model import load
+
+from conftest import write
 
 
 def test_markdown_roundtrip_identity():
@@ -29,6 +31,30 @@ def test_exploration_profile_when_no_epics(tmp_path: Path):
     assert graph.profile == "exploration"
     assert graph.org_name == tmp_path.name
     assert len(graph.features) == 1
+
+
+def test_a_typeless_prose_file_under_features_is_not_a_feature_record(repo: Path):
+    """Membership in the OKF book is a claim the file makes (a declared `type:`), not a
+    property of sitting under `docs/features/` -- the same rule `_load_milestones` already
+    applies via `registry.base_type(registry.type_of(fm))`, and the same rule
+    `doctor._check_conformance` enforces independently as `okf-missing-type`.
+
+    A prose file with no frontmatter dropped next to real book pages must not become a
+    `FeatureRecord` or a UI node, real book pages must still load, and the conformance check
+    that would otherwise catch the prose file's missing `type` must keep firing -- proving the
+    gate does not silence `okf-missing-type` by removing the file from its own walk.
+    """
+    write(repo / "docs/features/area/scratch-note.md",
+          "# Just some notes\n\nNo frontmatter here, plain prose scratch note.\n")
+    graph = load(repo)
+    slugs = {r.slug for r in graph.features}
+    assert "scratch-note" not in slugs
+    assert not any("scratch-note" in str(n.path) for n in graph.ui_nodes)
+    assert {"rec", "rec2"} <= slugs  # real book pages are unaffected
+
+    report = doctor.run(graph)
+    missing_type = {f.path for f in report.findings if f.code == "okf-missing-type"}
+    assert "docs/features/area/scratch-note.md" in missing_type
 
 
 def test_org_name_override_from_config(tmp_path: Path):
