@@ -1785,7 +1785,18 @@ def _compile_page_scenarios(
             gaps.extend(Gap(oid, "uncompilable-claim", "no route computed for this screen")
                         for oid in ids)
             continue
-        root_path = str(nav.get("rootPath") or "/")
+        raw_root_path = nav.get("rootPath")
+        if raw_root_path is None:
+            # `reach.root_path` states no path at all for a driver with no path grammar
+            # (`mobile`) — defaulting to `/` here would be exactly the catch-all `reach.py`
+            # itself no longer commits, one call later. A `web`/`http` surface always has a
+            # real `rootPath` by this point (`context.py`'s `_navigation`), so this branch is
+            # reached only by a driver this compiler has no page-scenario grammar for yet.
+            gaps.extend(Gap(oid, "uncompilable-claim",
+                             f"surface {surface!r} states no root path a page scenario can open from")
+                        for oid in ids)
+            continue
+        root_path = str(raw_root_path)
         if source in set(nav.get("undeclared", [])):
             # Amendment 2: reachable, but the screen's `requires:`/`params:` bullets are
             # literally absent — not "none", absent. One gap per screen (kept as designed,
@@ -2789,7 +2800,17 @@ def _web_journey(
                         "step lives")
                     for oid in ids)
         return []
-    lines: list[str] = [f"    qa.goto({_lit(str(nav.get('rootPath') or '/'))})"]
+    # A journey opens from the surface's root path, same as a page scenario — and the same
+    # catch-all this sibling avoids: `nav.get("rootPath") or "/"` would invent a web root for a
+    # driver that states none (`reach.root_path` now returns `None` there on purpose), so a
+    # missing root path gaps the journey instead of opening on a fabricated `/`.
+    raw_root_path = nav.get("rootPath")
+    if raw_root_path is None:
+        gaps.extend(Gap(oid, "uncompilable-claim",
+                        "this surface states no root path a journey can open from")
+                    for oid in ids)
+        return []
+    lines: list[str] = [f"    qa.goto({_lit(str(raw_root_path))})"]
     lines.extend(_walk_hops(hops, node_index, gaps, ids))
     # Recorded before the first step: an observation window opened here holds what the whole
     # journey requested, which is what a flow's claim about the journey needs.

@@ -9,14 +9,18 @@ invented for the declaration.** A kind that re-spells a grammar instead of calli
 recreates the exact defect this module exists to close — as many grammars for one key as it has
 readers.
 
+A ``route:``/``path:`` bullet is *not* one of the entries below, even though ``BulletKey``
+still names its kind ``"route"``: which grammar such a bullet is held to depends on the
+node's surface driver (a browser's path, a mobile navigator's screen name, or no route at
+all — see :data:`ostler.routes.ROUTE_GRAMMAR`), and a single ``VALUE_KINDS`` entry cannot
+speak for a driver it is not given. Rather than pick one driver's grammar here and special-
+case the rest in the caller, ``doctor.py``'s ``_check_bullet_value_kinds`` asks
+:func:`ostler.routes.route_grammar` for the resolved driver's ``(predicate, reason)`` pair
+directly and composes it into this module's message shape itself, for every driver alike.
+``ROUTE_GRAMMAR`` is the single statement of that grammar; this module does not restate it.
+
 Each entry below delegates to an existing reader:
 
-- ``"route"`` — :func:`ostler.routes.is_path_shaped`, the same line the plan compiler already
-  draws between a ``screen.route``/``endpoint.path`` that could not possibly be a path and one
-  that could, with its reason beside it as :data:`ostler.routes.NOT_PATH_SHAPED_REASON`. A
-  parameterised route (``/policies/{id}``, ``/links/:id/edit``) is legal here: it names a
-  family of pages, which ``screen.md`` hands to ``unidentifiable-screen`` downstream, not to
-  this check.
 - ``"door"`` — :func:`ostler.reach.is_route`, the exact predicate that decides whether a
   ``screen.entry`` value seeds reachability, with its reason kept beside it as
   :data:`ostler.reach.NOT_A_ROUTE_REASON`. Prose fails it precisely because the reachability
@@ -44,27 +48,6 @@ from urllib.parse import urlsplit
 from ostler.qa.compile import _HTTP_METHODS
 from ostler.qa.runbook import bullet_text
 from ostler.reach import NOT_A_ROUTE_REASON, is_route
-from ostler.routes import NOT_PATH_SHAPED_REASON, is_path_shaped
-
-
-def _route(value: str) -> str:
-    """A path syntax, literal or parameterised — never a judgement on which of those it is.
-
-    `why_unreadable` answers a *stricter* question for the walk-time reader it serves, which
-    needs one literal URL to compare a screenshot against, so it also rejects a parameterised
-    route. That is `unidentifiable-screen`'s question, asked once a scenario tries to compile,
-    and this kind must not pre-empt it: `screen.md` is explicit that a param route is a legal
-    thing for `route:`/`path:` to say. So this check asks only `is_path_shaped`, which leaves
-    it exactly one way to fail and one reason to give.
-
-    That reason names no bullet. This parser serves `screen.route` *and* `endpoint.path`, and
-    `why_unreadable`'s wording is written for the first — an endpoint told its `route:` is not
-    "a path a browser could show" is sent to a bullet it does not have, about a browser that
-    never renders it.
-    """
-    if is_path_shaped(bullet_text(value)):
-        return ""
-    return NOT_PATH_SHAPED_REASON
 
 
 def _door(value: str) -> str:
@@ -88,7 +71,6 @@ def _http_method(value: str) -> str:
 
 #: kind name -> parser. Returns ``""`` when *value* is acceptable, a short human reason otherwise.
 VALUE_KINDS: dict[str, Callable[[str], str]] = {
-    "route": _route,
     "door": _door,
     "url": _url,
     "http-method": _http_method,

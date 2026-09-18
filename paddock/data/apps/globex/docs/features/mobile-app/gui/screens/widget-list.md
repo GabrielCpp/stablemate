@@ -12,10 +12,9 @@ itself, straight from the device's own network — the same origin
 make the same claims against one API. `mobile-app` never talks to `web-app`; both are
 independent clients of `api-service`.
 
-- route: /
+- route: WidgetList
 - requires:
 - params:
-- entry: /
 - detail:
 
 ## Components

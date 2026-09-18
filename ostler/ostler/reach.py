@@ -24,7 +24,7 @@ import re
 from collections import deque
 from urllib.parse import urlparse
 
-from ostler import graph as graph_mod, markdown
+from ostler import graph as graph_mod, markdown, routes as routes_mod
 from ostler.model import Graph
 from ostler.qa.runbook import bullet_value
 
@@ -221,14 +221,22 @@ def _norm_path(path: str) -> str:
     return path if path == ROOT_PATH else path.rstrip("/") or ROOT_PATH
 
 
-def root_path(data: dict) -> tuple[str, str | None]:
+def root_path(data: dict, driver: str | None = None) -> tuple[str | None, str | None]:
     """``(path, server)`` — where the surface is entered, and the server contract that says so.
 
     The server marked ``walkthrough: true`` wins; a sole server stands in for it; several
     unmarked ones resolve to no contract, because a root read off an arbitrary pick is a root
     the walk will not open. With no contract the root is ``/``, which is what the doctor's
     ``runbook-missing`` already asks the book to state.
+
+    *driver* is the surface's declared ``driver:`` (``surface_driver``), when the caller
+    already knows it. A driver `routes.is_path_addressed` says has no path grammar — today,
+    ``mobile`` — has no root *path* to state at all: ``(None, None)``, rather than inventing
+    ``/`` for a navigator that routes on names. Every other driver, including an undeclared one
+    (``driver=None``), keeps the grammar above unchanged.
     """
+    if not routes_mod.is_path_addressed(driver):
+        return None, None
     servers = [n for n in data["nodes"] if n["type"] == SERVER_TYPE and n["kind"] == "file"]
     marked = [n for n in servers
               if bullet_value(n["bullets"], WALKTHROUGH_BULLET).lower() in ("true", "yes")]
@@ -338,9 +346,16 @@ def surface_driver(dump: dict, surface: str) -> str | None:
     return drivers[0] if drivers else None
 
 
-def root_screen(data: dict) -> str | None:
-    """The screen whose ``route:`` is the surface's root path — the one node a walk starts on."""
-    path, _ = root_path(data)
+def root_screen(data: dict, driver: str | None = None) -> str | None:
+    """The screen whose ``route:`` is the surface's root path — the one node a walk starts on.
+
+    ``None`` both when no screen's ``route:`` matches (a real book gap) and when *driver* has
+    no path grammar to match against at all (``root_path`` already said so by returning no
+    path) — the two are told apart by the caller, which already has *driver* to ask again.
+    """
+    path, _ = root_path(data, driver)
+    if path is None:
+        return None
     for node in data["nodes"]:
         if node["type"] != "screen" or node["kind"] != "file":
             continue
@@ -375,7 +390,7 @@ def reachable_from(edges: list[dict], starts: list[str]) -> set[str]:
     return seen
 
 
-def unreachable_screens(data: dict) -> tuple[list[str], str | None, list[str]]:
+def unreachable_screens(data: dict, driver: str | None = None) -> tuple[list[str], str | None, list[str]]:
     """``(unreachable, root, seeds)``. A ``None`` root means the check could not run, not a pass.
 
     Reachability is transitive, so this is deliberately not "has an inbound edge": a cluster of
@@ -384,8 +399,11 @@ def unreachable_screens(data: dict) -> tuple[list[str], str | None, list[str]]:
     the root rather than from every ``entry:``, because an exemption is a claim about the outside
     world an edge check cannot verify — eight screens each saying "entered from outside" is a
     book with no navigation in it, passing.
+
+    *driver* threads through to ``root_screen``/``root_path`` — see ``root_path`` for what a
+    driver with no path grammar does here.
     """
-    root = root_screen(data)
+    root = root_screen(data, driver)
     if root is None:
         return [], None, []
     seeds = sorted({root, *route_entries(data)})

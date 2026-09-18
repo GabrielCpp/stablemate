@@ -11,7 +11,7 @@ form here is the device's own network POST to
 which is why a Maestro journey through this screen can assert the code the screen's own request
 carried, but never substitute an HTTP client for the tap.
 
-- route: /new
+- route: NewWidget
 - requires:
 - params:
 - detail:

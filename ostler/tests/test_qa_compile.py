@@ -955,6 +955,7 @@ def _arrival_navigation(source: str = _SCREEN, surface: str = "policy", *,
             "start": source,
             "surface": surface,
             "driver": "web",
+            "rootPath": "/",
             "entryUrl": _BASE_URL,
             "counts": {"screens": 1, "reachable": 1, "unreachable": 0, "undeclared": 0, "nav_edges": 0},
             "routes": {} if source in (unreachable or []) else {source: []},
@@ -994,6 +995,28 @@ def test_exclusive_with_pairing_never_shares_a_scenario() -> None:
     assert len(scenario_without) == 1
     assert "No policies are on file yet" not in scenario_without[0]
     assert _gap_kinds(gaps, "okf:policy-list:empty-register-notice:visible:1") == []
+
+
+def test_a_page_scenario_with_no_root_path_gaps_uncompilable_claim_not_a_fabricated_root() -> None:
+    """A driver with no path grammar (`routes.is_path_addressed` says no) states no `rootPath`
+    at all — `reach.root_path` now returns `(None, None)` for it rather than the app root. The
+    catch-all this compiler used to own, `nav.get("rootPath") or "/"`, is gone: a screen on such
+    a surface gaps `uncompilable-claim` naming the missing root, instead of opening a scenario
+    on a fabricated `qa.goto("/")` that claims an address the book never stated."""
+    oid = "okf:policy-list:policy-table:visible:1"
+    node = f"{_SCREEN}#policy-table"
+    nav = _arrival_navigation()
+    nav["policy"]["rootPath"] = None
+    context = _navigation_context(
+        _page_obligation(oid, node, locators={"role": ["table"], "name": ["Policies on file"]},
+                          checks=[_visible("table:Policies on file")]),
+        navigation=nav,
+    )
+    source, gaps = compile_plan_gaps(context, story="demo-story")
+    assert _gap_kinds(gaps, oid) == ["uncompilable-claim"]
+    detail = next(g.detail for g in gaps if g.obligation_id == oid)
+    assert "states no root path" in detail
+    assert "qa.goto(" not in source
 
 
 def test_an_unarranged_states_claim_produces_a_gap_not_a_scenario() -> None:
@@ -2778,6 +2801,43 @@ def test_a_web_journey_arrives_then_clicks_every_step_in_order() -> None:
     assert goto < first < second
     # The claim is observed after the walk, never before it.
     assert second < source.rindex("#things-table")
+
+
+def test_a_web_journey_with_no_root_path_gaps_uncompilable_claim_not_a_fabricated_root() -> None:
+    """The journey side of the same catch-all removal: a driver with no path grammar states no
+    `rootPath`, so the journey gaps `uncompilable-claim` naming the missing root instead of
+    opening on a fabricated `qa.goto("/")` — no step is compiled and no claim is asserted in a
+    world the walk never actually reached."""
+    oid = f"okf:{_FLOW}:end-state"
+    open_thing = f"{_SCREEN}#open-thing"
+    save_thing = f"{_SCREEN}#save-thing"
+    nav = _arrival_navigation()
+    nav["policy"]["rootPath"] = None
+    context = _navigation_context(
+        _flow_obligation(
+            oid, source=_FLOW, surface="policy",
+            steps=[_step(open_thing, "interaction", "policy"),
+                   _step(save_thing, "interaction", "policy")],
+            checks=[_located_visible(f"{_SCREEN}#things-table",
+                                     {"selector": ["#things-table"]})],
+        ),
+        _page_obligation(f"{open_thing}:carrier", open_thing,
+                         locators={"on": ["[open-link](#open-link)"], "trigger": ["click"]},
+                         checks=[]) | {"required": False},
+        _page_obligation(f"{save_thing}:carrier", save_thing,
+                         locators={"on": ["[save-button](#save-button)"], "trigger": ["click"]},
+                         checks=[]) | {"required": False},
+        _page_obligation(f"{_SCREEN}#open-link:carrier", f"{_SCREEN}#open-link",
+                         locators={"selector": ["#open-link"]}, checks=[]) | {"required": False},
+        _page_obligation(f"{_SCREEN}#save-button:carrier", f"{_SCREEN}#save-button",
+                         locators={"selector": ["#save-button"]}, checks=[]) | {"required": False},
+        navigation=nav,
+    )
+    source, gaps = _compile_plan_gaps(context, story="demo-story")
+    assert _gap_kinds(gaps, oid) == ["uncompilable-claim"]
+    detail = next(g.detail for g in gaps if g.obligation_id == oid)
+    assert "root path a journey can open from" in detail
+    assert "qa.goto(" not in source
 
 
 def _unarranged_journey_context(**flow_extra: object) -> tuple[str, dict]:

@@ -10,13 +10,14 @@ import difflib
 import json
 import re
 import subprocess
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from urllib.parse import urlparse
 
 from ostler import (acts, checks, dynamic_registry, freeze, inventory, links as links_mod, markdown,
                     model, registry, schemas, select)
-from ostler import graph as graph_mod, locators as loc_mod, reach
+from ostler import graph as graph_mod, locators as loc_mod, reach, routes as routes_mod
 from ostler.vet import placement as placement_mod
 from ostler import refs as refs_mod
 from ostler.model import Graph, Epic, Story, UINode, read_doc, required_section_problems
@@ -194,7 +195,7 @@ def run(graph: Graph, epic_filter: str | None = None, check_schema: bool = True,
     # stories to read it from.
     _check_fixture_grammar(graph, f)
     _check_entry_properties(graph, f)
-    _check_bullet_value_kinds(graph, f)
+    _check_bullet_value_kinds(graph, ui_data, f)
 
     if graph.profile != "full":
         _check_frozen(graph, report.findings)
@@ -816,7 +817,21 @@ def _check_entry_properties(graph: Graph, f: list[Finding]) -> None:
                         suggestion="one of: " + ", ".join(f"{name}:" for name in spec.properties)))
 
 
-def _check_bullet_value_kinds(graph: Graph, f: list[Finding]) -> None:
+def _route_kind_parser(predicate: Callable[[str], bool], reason: str) -> Callable[[str], str]:
+    """Compose a `routes.route_grammar` pair into a `values.VALUE_KINDS`-shaped parser.
+
+    `ROUTE_GRAMMAR` holds `(predicate, reason)`; every `VALUE_KINDS` entry is a single
+    `Callable[[str], str]` that returns `""` for an acceptable value and a reason otherwise.
+    Two different contracts for the same job — this is where they meet, so `_check_bullet_
+    value_kinds` can treat a `"route"`-kinded key exactly like any other kind once it has
+    the driver's row, rather than growing a third, bespoke shape of its own.
+    """
+    def parse(value: str) -> str:
+        return "" if predicate(runbook_mod.bullet_text(value)) else reason
+    return parse
+
+
+def _check_bullet_value_kinds(graph: Graph, ui_data: dict | None, f: list[Finding]) -> None:
     """A bullet whose key declares a ``value_kind`` must carry a value its kind's parser accepts.
 
     Modeled on ``_check_entry_properties`` — the same shape, a declaration on ``BulletKey``
@@ -828,7 +843,34 @@ def _check_bullet_value_kinds(graph: Graph, f: list[Finding]) -> None:
     Deliberately not a compiler gap kind. `invalid-http-method` and `unidentifiable-screen` are
     consequences at the scenario level, raised only once a plan tries to compile; this is a
     statement about the book alone, true whether or not any scenario ever compiles it.
+
+    ``ui_data`` (the same dump ``_check_reachability`` reads, or ``None`` when the graph would
+    not build — see ``_ui_graph``) is read only to pick the surface's declared driver for a
+    ``"route"``-kinded key: that key is not looked up in ``VALUE_KINDS`` at all. Instead this
+    check asks ``routes.route_grammar(driver)`` directly for the ``(predicate, reason)`` pair
+    the resolved (or unresolved — ``route_grammar(None)`` names the same default grammar every
+    other driver falls back to) driver is held to, and composes the two into the same
+    empty-string-or-reason shape a ``VALUE_KINDS`` parser returns. ``routes.ROUTE_GRAMMAR`` is
+    thereby the single statement of what a ``route:``/``path:`` bullet may say, for every
+    driver at once: adding a row there is sufficient to change what this check accepts, with
+    no second edit here. Every other kind reads ``VALUE_KINDS[key.value_kind]`` unchanged.
     """
+    surface_by_id = {n["id"]: n.get("surface", "") for n in ui_data["nodes"]} if ui_data else {}
+    driver_by_surface: dict[str, str | None] = {}
+
+    def _driver_for(node: UINode) -> str | None:
+        if ui_data is None:
+            return None
+        surface = surface_by_id.get(node.id, "")
+        if not surface:
+            return None
+        if surface not in driver_by_surface:
+            try:
+                driver_by_surface[surface] = reach.surface_driver(ui_data, surface)
+            except reach.ConflictingSurfaceDriver:
+                driver_by_surface[surface] = None
+        return driver_by_surface[surface]
+
     for node in graph.ui_nodes:
         uitype = registry.UI_TYPES_BY_NAME.get(node.type)
         if uitype is None:
@@ -837,7 +879,13 @@ def _check_bullet_value_kinds(graph: Graph, f: list[Finding]) -> None:
         for key in uitype.bullet_keys:
             if not key.value_kind:
                 continue
-            parser = values_mod.VALUE_KINDS[key.value_kind]
+            kind = key.value_kind
+            parser: Callable[[str], str]
+            if kind == "route":
+                predicate, route_reason = routes_mod.route_grammar(_driver_for(node))
+                parser = _route_kind_parser(predicate, route_reason)
+            else:
+                parser = values_mod.VALUE_KINDS[kind]
             for index, value in enumerate(_bullet_values(node.meta.get(key.key, "")), 1):
                 if not value.strip():
                     continue
@@ -2556,20 +2604,39 @@ def _check_reachability(data: dict, f: list[Finding]) -> None:
     """
     surfaces = {n["surface"] for n in data["nodes"] if n["type"] == "screen"}
     for surface in sorted(s for s in surfaces if s):
+        try:
+            driver = reach.surface_driver(data, surface)
+        except reach.ConflictingSurfaceDriver:
+            # Already reported by `_apply_surface_declarations`'s own check on `driver:`; not
+            # this check's finding to duplicate. Treat as undeclared so the rest of this
+            # surface's screens still get checked against the grammar they have always used.
+            driver = None
+        if not routes_mod.is_path_addressed(driver):
+            # `root_path` derives the root from a *server* contract (`entry-url:` on the
+            # `walkthrough: true` server, else `/`) — a `mobile` surface has no server, so the
+            # book today has no bullet that can state which screen a mobile navigator opens
+            # on. `unreachable-screen` is not inapplicable here: a screen no navigation reaches
+            # is exactly as much a defect on mobile as on the web. What is missing is narrower
+            # and it is a debt, not a design choice — this whole surface's reachability check
+            # (both `no-root-screen` and `unreachable-screen`) is given up on until the book
+            # gains a way to state a mobile root (a `driver:`-scoped root bullet, say). Until
+            # then, skip rather than warn: there is no root this check could name as missing.
+            continue
         scoped = graph_mod.subset(data, surface)
         screens = reach.screens_of(scoped)
         if not screens:
             continue
-        unreachable, root, _seeds = reach.unreachable_screens(scoped)
+        unreachable, root, _seeds = reach.unreachable_screens(scoped, driver)
         if root is None:
             # No root means the question is unanswerable, which is not the same as a pass. Warn
             # rather than error: flooding the surface with one error per screen would bury the
             # one fact that matters, which is the root the book has not stated.
-            path, server = reach.root_path(scoped)
+            path, server = reach.root_path(scoped, driver)
             source = (f"the path of {server}'s `entry-url:`" if server
                       else "the app root, no server contract states another")
+            driver_note = f" ({driver} driver)" if driver else ""
             f.append(Finding("warn", "no-root-screen",
-                             f"{surface}: no screen's `route:` is `{path}` ({source}) — "
+                             f"{surface}{driver_note}: no screen's `route:` is `{path}` ({source}) — "
                              f"reachability cannot be checked for this surface",
                              ref=surface, suggestion=f"- route: `{path}`"))
             continue

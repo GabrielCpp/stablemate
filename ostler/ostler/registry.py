@@ -342,15 +342,21 @@ class BulletKey:
                              # a finding the day the check lands. ``doctor`` reads it as
                              # ``unknown-entry-property``.
     value_kind: str = ""    # the name of a parser in ``ostler.values.VALUE_KINDS`` this key's
-                             # value must satisfy. **Empty means no grammar is declared for this
-                             # key** — an honest statement of ignorance, not a licence: every
-                             # other flag on this class says what a value is *for*; this is the
-                             # one that says what it may *say*, and only where a consumer already
-                             # parses it. A kind names a parser some consumer already runs (a
-                             # route reader, a URL splitter, the HTTP-verb table), so the
-                             # declaration cannot drift from the code that reads the value the
-                             # way a hand-written regex beside this table would. ``doctor`` reads
-                             # it as ``unparsable-bullet-value``.
+                             # value must satisfy — with one named exception, ``"route"``: a
+                             # ``route:``/``path:`` bullet's grammar depends on its surface's
+                             # driver, so ``doctor``'s ``_check_bullet_value_kinds`` reads that
+                             # kind from ``ostler.routes.route_grammar(driver)`` directly instead
+                             # of looking it up in ``VALUE_KINDS``, which holds no ``"route"``
+                             # entry for exactly this reason. **Empty means no grammar is
+                             # declared for this key** — an honest statement of ignorance, not a
+                             # licence: every other flag on this class says what a value is
+                             # *for*; this is the one that says what it may *say*, and only
+                             # where a consumer already parses it. A kind names a parser some
+                             # consumer already runs (a URL splitter, the HTTP-verb table, or —
+                             # for ``"route"`` — the per-driver table), so the declaration cannot
+                             # drift from the code that reads the value the way a hand-written
+                             # regex beside this table would. ``doctor`` reads it as
+                             # ``unparsable-bullet-value``.
 
 
 @dataclass(frozen=True)

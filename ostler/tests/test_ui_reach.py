@@ -307,6 +307,54 @@ def test_doctor_warns_rather_than_errors_when_no_screen_is_at_the_root(repo: Pat
     assert "`/`" in warn.message and "no server contract" in warn.message
 
 
+def test_no_root_screen_is_narrowed_to_web_not_disabled(repo: Path):
+    """`no-root-screen` stops firing on a `mobile` surface — it has no server contract to derive
+    a root *path* from — but it must keep firing on a `web` surface with a real, book-stated
+    defect (no screen at the root the book states no root for). Only the first half is what
+    this change was asked to do; the second half is what proves the check was narrowed to a
+    driver with no path grammar rather than disabled outright."""
+    _repo(repo)
+    # Break the web surface's root on purpose: no screen's `route:` is `/` any more.
+    write(repo / SCREENS / "landing.md", LANDING.replace("- route: `/`", "- route: `/home`"))
+    # A mobile surface, `driver: mobile`, whose screen names its route the mobile way.
+    write(repo / "docs/features/mobile/gui/screens/widget-list.md", """\
+---
+type: screen
+slug: widget-list
+title: Widget list
+---
+# Widget list
+
+- route: WidgetList
+- requires: none
+- params: none
+""")
+    write(repo / "docs/features/mobile/ops/qa-stack.md", """\
+---
+type: runbook
+title: QA stack
+---
+
+# QA stack
+
+- driver: mobile
+- surfaces: [Widget list](../gui/screens/widget-list.md)
+
+## Steps
+
+### serve
+
+- kind: service
+- run: ./serve.sh
+""")
+    report = _doctor(repo)
+
+    warnings = [f for f in report.findings if f.code == "no-root-screen"]
+    assert len(warnings) == 1  # web's real gap, and only web's
+    assert warnings[0].ref == "web"
+    assert "mobile" not in {f.ref for f in warnings}
+
+
 def test_the_root_is_the_screen_at_the_route_of_the_server_entry_url(repo: Path):
     """A walk opens the server's `entry-url:`; the screen serving that path is where it starts."""
     _repo(repo)
@@ -352,6 +400,36 @@ def test_several_unmarked_servers_fall_back_to_the_app_root(repo: Path):
 
     assert reach.root_path(data) == ("/", None)
     assert reach.root_screen(data) == LAND
+
+
+def test_root_path_is_unchanged_for_web_and_none_for_a_driver_with_no_path_grammar(repo: Path):
+    """A `web` surface's root path is derived from its server contract exactly as before this
+    change — asserted against a fixture with a real `entry-url:`, so a regression here shows up
+    as a *changed path*, not merely as "still not None". `mobile` (no path grammar,
+    `routes.is_path_addressed` says so) gets `(None, None)` instead of a fabricated root — the
+    server contract this surface has is irrelevant to a driver that does not address by path."""
+    _repo(repo)
+    write(repo / SERVER, _server("http://localhost:3000/app/"))
+    write(repo / SCREENS / "app.md", """\
+---
+type: screen
+slug: app
+title: App
+---
+# App
+
+- route: `/app`
+- requires: none
+- params: none
+""")
+    data = graph.build(load(repo), surface="web")
+    server_id = SERVER
+
+    assert reach.root_path(data, "web") == ("/app", server_id)
+    # Undeclared driver keeps today's web-shaped default, unchanged.
+    assert reach.root_path(data) == ("/app", server_id)
+    # A driver this book has no server contract that could speak for at all.
+    assert reach.root_path(data, "mobile") == (None, None)
 
 
 def test_doctor_flags_a_screen_no_path_reaches(repo: Path):

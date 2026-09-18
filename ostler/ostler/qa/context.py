@@ -326,7 +326,17 @@ def _navigation(head_graph: Graph) -> dict[str, dict[str, Any]]:
     navigation: dict[str, dict[str, Any]] = {}
     for surface in surfaces:
         surface_dump = graph_mod.subset(dump, surface)
-        root_path, _server = reach.root_path(surface_dump)
+        try:
+            driver = reach.surface_driver(dump, surface)
+            driver_error = None
+        except reach.ConflictingSurfaceDriver as exc:
+            driver = None
+            driver_error = str(exc)
+        # `root_path` needs *driver* before it can be asked: a `mobile` surface has no path
+        # grammar to state a root path in (`routes.is_path_addressed`), and asking without
+        # driver would get today's web-shaped default back regardless of what this surface
+        # actually is.
+        root_path, _server = reach.root_path(surface_dump, driver)
         screens = reach.screens_of(surface_dump)
         try:
             entry_url = reach.entry_origin(dump, surface)
@@ -334,12 +344,6 @@ def _navigation(head_graph: Graph) -> dict[str, dict[str, Any]]:
         except reach.ConflictingEntryOrigin as exc:
             entry_url = None
             entry_url_error = str(exc)
-        try:
-            driver = reach.surface_driver(dump, surface)
-            driver_error = None
-        except reach.ConflictingSurfaceDriver as exc:
-            driver = None
-            driver_error = str(exc)
         if not screens:
             navigation[surface] = {
                 "start": "",
