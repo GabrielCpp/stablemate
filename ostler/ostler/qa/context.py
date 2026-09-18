@@ -2626,10 +2626,10 @@ def _journey_steps(
 def _family_root(node_id: str, owners: set[str], nodes_by_id: dict[str, dict[str, Any]]) -> str:
     """The declared-family root *node_id* belongs to among *owners*, for `_CONTAINER_FANOUT`.
 
-    Walks exactly three kinds of declared structure to one root, the same three questions
-    `doctor.py`'s `competing-implementations` check asks before calling two nodes
-    independent implementations rather than one: a `same-as:` claim — this node and the
-    node it names are one documented thing, rendered or reached in more than one place, the
+    Walks exactly three kinds of declared structure to one root, the three questions that
+    settle whether two nodes are independent implementations or one: a `same-as:` claim —
+    this node and the node it names are one documented thing, rendered or reached in more
+    than one place, the
     *declared* answer to the question the fan-out count used to guess at from citation
     counting alone — an `extends:` base case — a three-arm split says "these nodes are one
     documented control", a narrower, type-matched version of the same claim — and a section

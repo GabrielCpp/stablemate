@@ -124,8 +124,6 @@ was written cheaply, without repeating a claim another occurrence already made â
 members that both state a key must state the same value; `doctor`'s `same-as-disagreement`
 finds it when they don't.
 
-It deliberately has no effect on `competing-implementations`. That check judges only same-file groups, and two sections of one file claiming to be the same documented thing would be the defect, not the exemption.
-
 ## Doctor codes it can trip
 
 `missing-required-bullet` (five keys), `undeclared-obligation`, `weak-check`,

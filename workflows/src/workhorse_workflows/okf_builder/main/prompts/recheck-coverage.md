@@ -125,13 +125,15 @@ book is not an empty gap.
    (a step with no real `run:`/`health:`, an unresolved `environment:`/`surfaces:` link, a
    `service` step whose `health:` is a UI shell rather than a real probe). A repo with genuinely
    nothing to boot still needs one `artifact`/`none` runbook — its absence is a gap, not a pass.
-7. **Judgment** — competing implementations with no recorded selection rule. Query the graph for
-   two or more nodes of the *same type* whose `code:` bullets cite an identical `path::symbol`
-   (`ostler graph --surface ‹service› --bullet 'code=<symbol>'` checks one; the doctor's
-   `competing-implementations` warn lists the standing groups) with no shared `detail:` concept
-   between them. For each such group, read the cited source for the evidence that settles the
-   competition — a deprecation annotation, a migrated call site, a comment naming the successor —
-   and emit one `judgment` item per concept, batching that concept's competing nodes:
+7. **Judgment** — competing implementations with no recorded selection rule. **Start from the
+   source, not from the book.** A shared `code:` citation is not evidence of a competition: a
+   citation is a directed dependency, so one container is cited by all its members and one helper
+   by all its callers, and co-citation is guaranteed by construction. What marks a real competition
+   is evidence in the code that two implementations of one job coexist and one is preferred — a
+   deprecation annotation, a migrated call site, a comment naming the successor, two registrations
+   of one route. Where you find that, check whether the book adjudicates it (a shared `detail:`
+   concept, or mutual `exclusive-with:` with the condition each holds under) and emit one
+   `judgment` item per concept, batching that concept's competing nodes:
 
    ```json
    {"kind": "judgment", "target": "<concept-slug>",

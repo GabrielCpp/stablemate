@@ -195,8 +195,7 @@ def bullet_ref(node_id: str, key: str, index: int | None = None) -> str:
     key addresses every one of them at once. Downstream that is not cosmetic: the okf-builder
     drain keys a worklist row on the ref, so N distinct defects collapse into one row with one
     three-attempt budget, and the repair turn reads whichever sibling it lands on, finds it
-    correct, and returns with the finding still standing. One finding, one remedy, one ref —
-    the same invariant ``competing-implementations`` states in :mod:`ostler.doctor`.
+    correct, and returns with the finding still standing. One finding, one remedy, one ref.
 
     ``index`` is **1-based and counts occurrences of that key only**, which is exactly what
     :func:`ostler.registry.normative_claims` returns and what ``qa context`` mints obligation
@@ -243,8 +242,8 @@ def strip_digest(ref: str) -> str:
     The digest marks *freshness* — a fact ``doctor``'s ``stale-citation`` check owns — not
     *which unit* a citation names, so several callers that group or join citations by identity
     (``coverage.citations``'s inventory join, ``backfill``'s dangling/uncovered matching,
-    ``doctor``'s ``competing-implementations`` grouping, ``worklist``'s relocated-trim
-    matching, the workflows-side result ledger's fingerprint) all need the same digest-free key.
+    ``worklist``'s relocated-trim matching, the workflows-side result ledger's fingerprint) all
+    need the same digest-free key.
     A ref that fails to parse (not this package's problem to reject) is returned unchanged,
     the same tolerance :func:`code_refs` already extends.
     """

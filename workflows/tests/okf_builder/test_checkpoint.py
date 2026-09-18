@@ -135,26 +135,26 @@ def test_the_item_order_is_the_drain_order() -> None:
     ]
 
 
-def test_a_group_finding_is_one_item_scoped_to_every_competitor() -> None:
-    """The item a `competing-implementations` turn can actually repair.
+def test_a_group_finding_is_one_item_scoped_to_every_member() -> None:
+    """The item a group-scoped turn can actually repair.
 
     Doctor's finding is already group-scoped, but its `path` names the lowest-sorting member
-    and its `ref` is a *source* citation, so this used to fall through `_node_of` to one
-    document — while the remedy (point every competitor at one concept) spans all of them.
+    and its `ref` names the *defect* — a family root and key — so this used to fall through
+    `_node_of` to one document, while the remedy (make every member agree) spans all of them.
     The repair prompt's "one node" guardrail then correctly refused the other files and the
     turn reported `skipped`, forever.
 
-    So the identity is the citation and the scope is `related`: one item per competition,
-    naming every location it covers and every file they live in.
+    So the identity is the `ref` and the scope is `related`: one item per defect, naming
+    every location it covers and every file they live in.
     """
     a, b = f"{BOOK}/v1.md", f"{BOOK}/v2.md"
-    citation = "acme/notify.go::Notify"
+    citation = f"{a}#v1:consistency"
     members = [f"{a}#v1", f"{b}#v2"]
-    (item,) = _repair_items([{**_finding("competing-implementations", path=a),
+    (item,) = _repair_items([{**_finding("same-as-disagreement", path=a),
                               "ref": citation, "related": members}])
 
     ctx = json.loads(item["context"])
-    assert item["target"] == f"{citation}#competing-implementations"
+    assert item["target"] == f"{citation}#same-as-disagreement"
     assert ctx["citation"] == citation
     assert ctx["related"] == members
     assert ctx["paths"] == [a, b]
@@ -163,18 +163,18 @@ def test_a_group_finding_is_one_item_scoped_to_every_competitor() -> None:
     assert "path" not in ctx and "node" not in ctx
 
 
-def test_two_competitions_sharing_a_document_stay_two_items() -> None:
+def test_two_group_defects_sharing_a_document_stay_two_items() -> None:
     """Keying on the member made the batching wrong in the other direction too.
 
-    Two unrelated competitions whose lowest-sorting member is the same file were one item —
+    Two unrelated group defects whose lowest-sorting member is the same file were one item —
     up to eight of them on the real book — so `attempts` counted a target that meant nothing
-    and one turn was asked for two unrelated concepts.
+    and one turn was asked for two unrelated remedies.
     """
     a = f"{BOOK}/v1.md"
     items = _repair_items([
-        {**_finding("competing-implementations", path=a), "ref": "acme/notify.go::Notify",
+        {**_finding("same-as-disagreement", path=a), "ref": f"{a}#v1:consistency",
          "related": [f"{a}#v1", f"{BOOK}/v2.md#v2"]},
-        {**_finding("competing-implementations", path=a), "ref": "acme/pay.go::Charge",
+        {**_finding("same-as-disagreement", path=a), "ref": f"{a}#v1-charge:idempotency",
          "related": [f"{a}#v1-charge", f"{BOOK}/v3.md#v3"]},
     ])
 

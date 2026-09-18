@@ -66,10 +66,6 @@ GROUNDED_CODES = frozenset({
     # inventory), and re-aiming the citation without reading it points the node at a
     # neighbour that happens to exist.
     "missing-code-symbol",
-    # Whether a competition is settled is a fact about the cited code — a deprecation
-    # annotation, a migrated call site. A selection rule written without reading it is a
-    # ranking nobody made; an unsettled competition is recorded, not resolved by invention.
-    "competing-implementations",
     # The successor is whatever the deprecation evidence in the source actually names;
     # filling `prefers:` from the finding text alone invents a winner.
     "deprecation-without-successor",
@@ -148,9 +144,10 @@ def _related_of(finding: dict) -> list[str]:
     """The book locations a *group* finding is about beyond its own `path` — or `[]`.
 
     Doctor stamps `related` on a finding whose remedy is only complete when every member is
-    edited (`competing-implementations` today). Reading the field rather than the id list in
-    the message is the point: the membership is data, and a consumer that had to recover it
-    from a sentence would be matching prose that exists to be read by a person.
+    edited — `same-as-disagreement` over a family, `conflicting-surface-driver` over a
+    surface. Reading the field rather than the id list in the message is the point: the
+    membership is data, and a consumer that had to recover it from a sentence would be
+    matching prose that exists to be read by a person.
     """
     related = finding.get("related") or []
     return [str(member) for member in related] if isinstance(related, list) else []
@@ -281,15 +278,16 @@ def _repair_items(findings: list[dict]) -> list[dict[str, Any]]:
         path = str(finding.get("path", ""))
         if _related_of(finding):
             # A group finding is about N book locations and `path` names one of them
-            # arbitrarily (doctor's `competing-implementations` picks the lowest-sorting
-            # member). Keying it on `path` addressed a member instead of the defect: the
-            # item moved when that member did, two unrelated competitions that happened to
-            # share a first document were batched into one, and — the reason it could never
-            # be repaired — the other members were out of the item's declared scope, which
-            # the repair prompt's own guardrail then correctly refused to leave.
+            # arbitrarily (doctor picks the lowest-sorting member). Keying it on `path`
+            # addressed a member instead of the defect: the item moved when that member did,
+            # two unrelated defects that happened to share a first document were batched into
+            # one, and — the reason it could never be repaired — the other members were out
+            # of the item's declared scope, which the repair prompt's own guardrail then
+            # correctly refused to leave.
             #
-            # The citation is what the competition is *about*, so it is the identity: stable
-            # while the book is edited, and one item per competition.
+            # The finding's `ref` is what the defect is *about* — the family root and key,
+            # the surface — so it is the identity: stable while the book is edited, and one
+            # item per defect.
             #
             # The path slot is left empty for the same reason: it would put the arbitrary
             # member back into the item's identity. The paths the turn must open come out of

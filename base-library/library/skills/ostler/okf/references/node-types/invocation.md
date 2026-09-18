@@ -53,9 +53,8 @@ was written cheaply, without repeating a claim another occurrence already made â
 members that both state a key must state the same value; `doctor`'s `same-as-disagreement`
 finds it when they don't.
 
-It deliberately has no effect on `competing-implementations`. That check judges only same-file groups, and two sections of one file claiming to be the same documented thing would be the defect, not the exemption. Contrast it with `extends:`
-(a narrower version of the thing it names) and
-with the judgment keys a `concept` carries for genuinely competing implementations.
+Contrast it with `extends:`, which says the node is a narrower version of the thing it
+names rather than another writing of the same thing.
 
 ## Relationships
 

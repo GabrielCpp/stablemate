@@ -54,11 +54,12 @@ class Finding:
     #: The *other* book locations this one finding is also about, `<path>#<node-id>` each.
     #: Empty for the ordinary finding, which is about the one place `path`/`line` name.
     #:
-    #: A group finding — several nodes competing over one symbol — has a remedy that is only
-    #: complete when every member is edited, and `path` can name just one of them. Carrying the
-    #: membership as a field rather than only as prose in `message` is what lets a consumer
-    #: address the group: okf-builder's repair item reads this to put every competitor in scope,
-    #: and without it the only membership list was a sentence it would have had to match.
+    #: A group finding — a `same-as:` family disagreeing about one key, a surface whose
+    #: runbooks disagree about `driver:` — has a remedy that is only complete when every member
+    #: is edited, and `path` can name just one of them. Carrying the membership as a field
+    #: rather than only as prose in `message` is what lets a consumer address the group:
+    #: okf-builder's repair item reads this to put every member in scope, and without it the
+    #: only membership list was a sentence it would have had to match.
     related: list[str] = field(default_factory=list)
 
 
@@ -1872,11 +1873,9 @@ def _check_code_grounding(graph: Graph, f: list[Finding],
                 # page's whole subject, while a `kind == "section"` type (component, command,
                 # endpoint, interaction, invocation, method, field, step, untyped) is declared
                 # as a *part* under a heading. A whole-file reference names a container; a
-                # reference to a container is not a reference to the part it contains — the same
-                # reasoning `_check_judgment`'s `competing-implementations` already uses to
-                # discount a whole-file ref ("says only 'somewhere in this file'"). So a section
-                # node citing a bare path has not said where it is grounded, only where to start
-                # looking.
+                # reference to a container is not a reference to the part it contains. So a
+                # section node citing a bare path has not said where it is grounded, only where
+                # to start looking.
                 uitype = registry.UI_TYPES_BY_NAME.get(node.type)
                 if uitype is None or uitype.kind == "file":
                     continue
@@ -1980,200 +1979,24 @@ def _alternation_conflict(a: checks.CheckCall, b: checks.CheckCall) -> bool:
     return not any(param.name == diffs[0] and param.identifies for param in spec.params)
 
 
-def _declared_alternatives(nodes: list, group_ids: set[str],
-                           resolver: links_mod.LinkResolver) -> bool:
-    """Do *nodes* rule each other out, each saying when it is the one that holds?
-
-    A selection rule is written down one of two ways. *Centrally*: one concept names the
-    alternatives and ranks them, and every competitor points `detail:` at it — the shape the
-    caller's `detail:` test and the finding's own suggestion already know. *Distributively*:
-    each alternative declares that the others do not hold alongside it, and states the
-    condition under which it is the one shown. Both are the rule written down, and a
-    predicate that accepts only the central spelling reports a book that answered the
-    question as a book that did not.
-
-    The reading is deliberately two-part, because `exclusive-with:` alone is not a selection
-    rule. It says *not both*; it does not say *which*. A reader arriving at one of two
-    mutually exclusive nodes still cannot tell whether this is the one their case hits. So
-    every member must also carry a condition — and a group whose members declare exclusivity
-    and state no conditions is still a competition, still warned, and correctly so.
-
-    Exclusivity must be a clique over the group: every member naming every other. A member
-    the others rule out but which rules out nobody has not declared anything, and a partial
-    web leaves some pair of members unadjudicated — which is the whole finding, on a subset.
-
-    What this cannot check is that the value under a condition key *is* a condition rather
-    than a claim about what the node does; the grammar does not separate the two, which is
-    its own open question. Presence is the observable proxy, and it is the weaker half of
-    this test on purpose: an empty `states:` is not a condition, and that much is visible.
-    """
-    for node in nodes:
-        others = group_ids - {node.id}
-        if (_resolved_targets(node, "exclusive-with", resolver) & others) != others:
-            return False
-        if not any(value.strip() for key in registry.CONDITION_KEYS
-                   for value in _bullet_values(node.meta.get(key, ""))):
-            return False
-    return True
-
-
-def _one_parent_tree(nodes: list, group_ids: set[str],
-                     resolver: links_mod.LinkResolver) -> bool:
-    """Do *nodes* hang off a single one of their own under `parent:`?
-
-    Only edges landing inside the group count — a parent elsewhere in the book says nothing
-    about how these members relate to each other — and the answer is yes only when exactly
-    one member has no such edge and every other member walks up to it. Two siblings whose
-    common parent is outside the group are not this shape (they are the shared-parent test's,
-    which runs first); two unrelated nodes are not either, and neither is a group that splits
-    into two chains, which is a competition between two wholes however each is decomposed.
-    """
-    parents: dict[str, str] = {}
-    for node in nodes:
-        inside = _resolved_targets(node, "parent", resolver) & group_ids
-        if inside:
-            parents[node.id] = sorted(inside)[0]
-    roots = [node.id for node in nodes if node.id not in parents]
-    if len(roots) != 1:
-        return False
-    for node in nodes:
-        current, seen = node.id, {node.id}
-        while current in parents:
-            current = parents[current]
-            if current in seen:  # a cycle is `unresolved-relation`'s finding, not a tree
-                return False
-            seen.add(current)
-        if current != roots[0]:
-            return False
-    return True
-
-
 def _check_judgment(graph: Graph, f: list[Finding],
                     resolver: links_mod.LinkResolver) -> None:
-    """The judgment gap: competition the book records without adjudicating.
+    """The judgment gap: a succession the book records without adjudicating.
 
-    Two conformant nodes can both be entirely true and still leave a reader stranded on
-    the one question that bites — *which one do I use?* Structure cannot answer it, so
-    these checks do not try; they find the places where the answer is owed and missing.
-    Both are warns: writing the selection rule is the author's judgment, not a rewrite
-    the finding can dictate.
+    A conformant node can be entirely true and still leave a reader stranded on the one
+    question that bites — *which one do I use?* Structure cannot answer it, so this check
+    does not try; it finds the place where the answer is owed and missing. It is a warn:
+    naming the successor is the author's judgment, not a rewrite the finding can dictate.
+
+    A second check lived here, `competing-implementations`, and grouped same-type nodes by
+    a shared `code:` citation. It is gone, because the grouping could not be evidence: a
+    citation is a directed dependency, and that relation is many-to-one in both directions
+    — one container has many members, one helper has many callers — so co-citation is
+    guaranteed by construction and says nothing about whether two nodes describe one thing.
+    Measured across a large reverse-engineered book, all 257 groups it could form were one
+    of those two shapes and none was a competition. Rivalry is a claim the book makes with
+    `same-as:`, not a number this module can count.
     """
-    # `competing-implementations` — two or more nodes of the *same* type, unrelated by
-    # containment or `extends:`, grounding themselves in one normalized `path::symbol`,
-    # with no shared resolved `detail:` concept. Same-type is load-bearing: an endpoint
-    # and a concept co-citing a symbol is a well-written book (the concept explains the
-    # unit the endpoint serves); two endpoints citing it are alternatives nobody ranked.
-    by_citation: dict[tuple[str, str], list] = {}
-    for node in graph.ui_nodes:
-        for ref in refs_mod.code_refs(node.meta.get("code")):
-            # Only symbol-level citations can compete. A whole-file ref says "somewhere
-            # in this file" — two interactions of one form both live in its component
-            # file without being alternatives — and a region (prose after `::`) is a
-            # description, not a name two nodes could collide on.
-            try:
-                symbol = refs_mod.parse_code_ref(ref).symbol
-            except ValueError:
-                continue
-            if not symbol or _SPACE.search(symbol):
-                continue
-            # Strip the `@digest` stamp before grouping: two citations of the identical
-            # symbol at different stamp states are still the identical competition, not
-            # two separate ones that each look like a lone implementation.
-            key_ref = refs_mod.strip_digest(ref)
-            by_citation.setdefault((node.type, key_ref), []).append(node)
-    for (ntype, ref), nodes in sorted(by_citation.items()):
-        if len(nodes) < 2:
-            continue
-        # Containment: a section node inside the other's file shares its purpose rather
-        # than competing with it (ids are `path` / `path#anchor`).
-        if any(a is not b and b.id.startswith(f"{a.id}#") for a in nodes for b in nodes):
-            continue
-        # Same-file only: both remedies below are unwritable across files. `exclusive-with:`
-        # is a *sibling* relation and a DOM co-render assertion (component.md, interaction.md,
-        # concept.md) — members in different files are not siblings and genuinely do co-render,
-        # each on its own screen, so asking for it there manufactures a false claim rather than
-        # stating a real one. The central remedy fares no better: a shared `detail:` concept
-        # would state a selection rule where nothing actually selects between separate screens.
-        # And the grouping itself is not evidence of rivalry to begin with — it keys on `code:`,
-        # whose `owns=True` meaning (registry.py) is "documented against", a relation that is
-        # many-to-one by construction (qa/context.py maps one diff to every citing node; fan-out
-        # is the intended use). Within one file the format still gives the author a writable
-        # remedy, so the check keeps its teeth exactly where a repair exists.
-        if len({node.path for node in nodes}) > 1:
-            continue
-        # `extends:` inside the group is declared specialization, not competition.
-        group_ids = {node.id for node in nodes}
-        if any(_resolved_targets(node, "extends", resolver) & group_ids for node in nodes):
-            continue
-        # A shared `parent:` says the members are declared parts of one whole — two
-        # components of a server-rendered screen both cite the screen's one renderer
-        # because each is a region of its output, not an alternative to the other.
-        shared_parent: set[str] | None = None
-        for node in nodes:
-            targets = _resolved_targets(node, "parent", resolver)
-            shared_parent = targets if shared_parent is None else shared_parent & targets
-        if shared_parent:
-            continue
-        # The other half of that reading: a member that *is* the parent. `parent:` inside the
-        # group connecting every member into one tree — a bar and its brand link and its action
-        # slot, a form and its save button, a menu and the three channels it reveals — is a
-        # decomposition of one widget, not two rival implementations, and every part cites the
-        # one component that renders the whole because that is where each part lives.
-        #
-        # The shared-parent test above cannot see it: it intersects the members' parents, and
-        # the root of a chain has none inside the group (or none at all), so the intersection
-        # is empty and a whole plus its own parts read as competitors. The remedy printed there
-        # — "write the concept that states the selection rule" — cannot be written for a part
-        # and the thing containing it; the question "which do I use?" does not arise between
-        # them, so this fired where no edit clears it. In a real book it was 11 of 201.
-        if _one_parent_tree(nodes, group_ids, resolver):
-            continue
-        shared: set[str] | None = None
-        for node in nodes:
-            targets = _resolved_targets(node, "detail", resolver)
-            shared = targets if shared is None else shared & targets
-        if shared:
-            continue
-        # The same rule written the other way round. A shared `detail:` concept is the rule
-        # stated once, centrally; members that rule each other out under `exclusive-with:`
-        # and each state the condition they hold under have stated it distributively. Both
-        # answer "which one do I use, and when?", so reading only the first reports a book
-        # that answered the question as a book that did not — and the suggestion below then
-        # asks for a concept restating an exclusion the book already declared, which is the
-        # same claim in two places with nothing relating them.
-        if _declared_alternatives(nodes, group_ids, resolver):
-            continue
-        first = min(nodes, key=lambda n: (str(n.path), n.line))
-        rel = first.path.relative_to(graph.root).as_posix()
-        ids = ", ".join(sorted(group_ids))
-        f.append(Finding(
-            "warn", "competing-implementations",
-            f"{ids}: {len(nodes)} `{ntype}` nodes ground themselves in '{ref}' and neither "
-            f"spelling of the selection rule is written — no shared `detail:` concept, and no "
-            f"mutual `exclusive-with:` with the condition each holds under — so a reader "
-            f"reaching either one cannot learn which to use, or when",
-            # The ref is the *group*, not just the symbol: same-type is what makes a
-            # competition, so one symbol cited by two runbooks and by two endpoints is two
-            # separate findings with two separate remedies. Keyed on the citation alone they
-            # shared a ref — which collapsed them into one worklist item and made one waiver
-            # silently accept both.
-            path=rel, line=first.line, ref=f"{ntype}:{ref}",
-            # `path` can only name one member — the group's remedy is not complete until
-            # every competitor points at the concept, so the membership travels as a field
-            # and not only inside the sentence above.
-            related=sorted(group_ids),
-            # Two remedies, because `_declared_alternatives` above already accepts either.
-            # A suggestion naming only the central one sends a book whose members are states
-            # of one thing to invent a concept for a rule it would have to state per-member
-            # anyway — and the distributive spelling it should have used goes unmentioned to
-            # the one reader (the builder) that only ever sees this string.
-            suggestion="state the selection rule centrally — write the concept and point "
-                       "every competitor at it, `- detail: [<concept>]"
-                       "(../concepts/<slug>.md)` — or distributively, where these are "
-                       "states of one thing rather than rivals: every member naming every "
-                       "other under `- exclusive-with:` *and* each stating the condition "
-                       "it holds under"))
-
     # `deprecation-without-successor` — a concept that resolves a `deprecates:` but names
     # no successor. Only a *resolved* deprecation is asked: a dangling one is already
     # `unresolved-relation`, and stacking a second finding on the same broken link would
@@ -2289,10 +2112,9 @@ def _check_same_as_disagreement(graph: Graph, f: list[Finding],
     one defect, not one per pair and not one per node — anchored on the family root
     (`min()` of the component's ids, the same deterministic representative `_family_root`
     computes for its own `same-as:` stage), naming every declaring member and its values.
-    The `ref` carries that root alongside the key for the reason `competing-implementations`
-    keys on its group rather than on its symbol: two unrelated families disagreeing about
-    `consistency:` are two defects with two remedies, and a shared `ref` would collapse them
-    into one worklist item and let one waiver accept both.
+    The `ref` carries that root alongside the key, not the key alone: two unrelated families
+    disagreeing about `consistency:` are two defects with two remedies, and a shared `ref`
+    would collapse them into one worklist item and let one waiver accept both.
     """
     by_id = {node.id: node for node in graph.ui_nodes}
     adjacency: dict[str, set[str]] = {}

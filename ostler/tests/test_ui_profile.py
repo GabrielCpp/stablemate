@@ -833,8 +833,7 @@ def test_two_runbooks_disagreeing_on_driver_raise_conflicting_surface_driver(rep
     assert "http" in errors[0].message
     assert "cli" in errors[0].message
     # The remedy is not complete until both runbooks are read, and `path` names a surface
-    # rather than a file here — so the membership has to travel as a field, the way
-    # `competing-implementations` carries its group.
+    # rather than a file here — so the membership has to travel as a field.
     assert errors[0].related == ["docs/features/groom/ops/deployed.md",
                                  "docs/features/groom/ops/local-cli.md"]
 

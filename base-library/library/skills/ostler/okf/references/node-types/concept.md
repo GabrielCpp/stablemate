@@ -42,8 +42,7 @@ without being it, and are worth naming so nobody reaches for them by mistake:
   *same documented thing*, written in more than one place — not a narrower version of it and not
   a winner/loser pair. It is symmetric and must be declared on **both** nodes, and its one consumer is the QA
   obligation packet, where it collapses the book's own repetition of itself into a single
-  family instead of the sprawl the container fan-out demotion exists to catch. It has no
-  effect on `competing-implementations`, which judges same-file groups only. The occurrences
+  family instead of the sprawl the container fan-out demotion exists to catch. The occurrences
   must also *agree*: each states the same normative claims, not two different ones. A member
   that omits a key is not a disagreement — silence just means that occurrence was written
   cheaply, without repeating a claim the other already made — but two members that both

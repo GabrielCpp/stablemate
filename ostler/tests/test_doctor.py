@@ -526,7 +526,7 @@ def test_path_scope_keeps_only_that_files_findings(repo: Path):
 
 
 def test_path_scope_keeps_a_group_finding_through_its_related_member():
-    member = doctor.Finding("warn", "competing-implementations", "m",
+    member = doctor.Finding("warn", "same-as-disagreement", "m",
                             path="docs/features/a.md", related=["docs/features/b.md#node-b"])
     other = doctor.Finding("warn", "unparsed-check", "m", path="docs/features/c.md")
     report = doctor.Report(org="acme", profile="full", findings=[member, other])

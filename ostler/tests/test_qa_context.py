@@ -420,9 +420,9 @@ def test_concepts_chained_by_extends_citing_one_symbol_stay_one_family(tmp_path:
     """Six `concept` nodes chained by `extends:` are one documented thing, not six owners.
 
     `extends:` is defined as specialization on all four types that own it — `concept`,
-    `component`, `interaction`, `invocation` — and doctor's `competing-implementations`
-    exclusion asks only whether the edge lands inside the group, with no type filter. So
-    `_family_root` collapses the chain whatever the type: six specializations of one concept
+    `component`, `interaction`, `invocation` — and the walk asks only whether the edge lands
+    inside the group, with no type filter. So `_family_root` collapses the chain whatever
+    the type: six specializations of one concept
     citing one symbol never reach `_CONTAINER_FANOUT`, and their obligations stay required.
     Gate the walk on the two arm types instead and this test demotes all six.
     """

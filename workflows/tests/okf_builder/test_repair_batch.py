@@ -45,14 +45,14 @@ def _row(code: str, path: str, node: str, *lines: int, status: str = "pending") 
 
 def _group_row(path: str) -> dict:
     return {
-        "kind": "fix:competing-implementations",
-        "target": "acme/refund.py::refund#competing-implementations",
+        "kind": "fix:same-as-disagreement",
+        "target": f"{path}#refund:consistency#same-as-disagreement",
         "status": "pending",
         "attempts": 0,
         "context": json.dumps({
-            "code": "competing-implementations", "citation": "acme/refund.py::refund",
+            "code": "same-as-disagreement", "citation": f"{path}#refund:consistency",
             "related": [f"{path}#refund", f"{BOOK}/b.md#refund"], "paths": [path, f"{BOOK}/b.md"],
-            "grounded": False, "findings": [{"code": "competing-implementations", "line": 1}],
+            "grounded": False, "findings": [{"code": "same-as-disagreement", "line": 1}],
         }),
     }
 
