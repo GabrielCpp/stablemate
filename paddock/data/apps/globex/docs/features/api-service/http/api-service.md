@@ -82,6 +82,7 @@ never talk to each other server-to-server.
 - errors: 422 with a `{errors: {field: message}}` body when a blank `name` or a negative
   `quantity` is refused rather than coerced
 - verify: http_status(422, path="/api/widgets")
+- arrange: body(field="name", value="")
 - auth: none
 - fixture:
 - capture:

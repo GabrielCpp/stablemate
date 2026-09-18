@@ -2528,6 +2528,61 @@ def test_a_journey_step_with_a_contradictory_body_is_unarranged() -> None:
     assert oid not in _covers(source)
 
 
+def test_a_journey_step_ignores_its_nodes_refusal_arm_arrangement() -> None:
+    """A journey's steps causally chain, so it can only ever be walking the arm that leaves
+    something for the next step to read back — never the refusal arm (`errors:`/`error:`,
+    `registry.refusal_keys`). The refusal arm's own `arrange: body(...)` states a contradictory
+    value on purpose: if it reached the merge, `_http_body` would refuse the contradiction and
+    this step would gap `unarranged-request-body` instead of compiling."""
+    oid = f"okf:{_FLOW}:end-state"
+    post_node = _step_node(f"{_API}#post-things", {"route": ["POST /api/things"]})
+    post_node["actsDeclared"] = [_body_act("name", "Widget A"), _body_act("quantity", 3)]
+    refusal_arm = _step_node(f"{_API}#post-things", {})
+    refusal_arm["id"] = f"{_API}#post-things:carrier-2"
+    refusal_arm["kind"] = "errors"
+    refusal_arm["actsDeclared"] = [_body_act("name", "Widget B")]
+    context = _navigation_context(
+        _flow_obligation(
+            oid, source=_FLOW, surface="api",
+            steps=[_step(f"{_API}#post-things", "endpoint", "api")],
+            checks=[{"call": "it", "name": "http_status", "args": {"status": 201,
+                                                                   "path": "/api/things"}}],
+        ),
+        post_node,
+        refusal_arm,
+        navigation=_api_navigation(),
+    )
+    source, gaps = _compile_plan_gaps(context, story="demo-story")
+    ast.parse(source)
+    assert oid in _covers(source)
+    assert _gap_kinds(gaps, oid) == []
+    assert 'json_body={"name": "Widget A", "quantity": 3}' in source
+
+
+def test_a_journey_step_whose_node_only_declares_a_refusal_arm_is_unarranged() -> None:
+    """A node whose only declared arm is the refusal arm merges to no acts at all once that arm
+    is excluded — not "nothing declared" the way a step that genuinely needs no body would read,
+    so it withholds the request and gaps exactly as an unbuildable body already does, rather than
+    silently sending `json_body={}`."""
+    oid = f"okf:{_FLOW}:end-state"
+    refusal_only = _step_node(f"{_API}#post-things", {"route": ["POST /api/things"]})
+    refusal_only["kind"] = "errors"
+    refusal_only["actsDeclared"] = [_body_act("name", "Widget B")]
+    context = _navigation_context(
+        _flow_obligation(
+            oid, source=_FLOW, surface="api",
+            steps=[_step(f"{_API}#post-things", "endpoint", "api")],
+            checks=[{"call": "it", "name": "http_status", "args": {"status": 201,
+                                                                   "path": "/api/things"}}],
+        ),
+        refusal_only,
+        navigation=_api_navigation(),
+    )
+    source, gaps = _compile_plan_gaps(context, story="demo-story")
+    assert _gap_kinds(gaps, oid) == ["unarranged-request-body"]
+    assert oid not in _covers(source)
+
+
 def test_a_check_naming_another_steps_path_is_not_about_this_journeys_end() -> None:
     """A journey's claim is about the world its last step left. A check naming some other route
     is a claim about a request this journey did not end on — pointing the driver at the response

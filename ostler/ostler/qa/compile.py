@@ -28,6 +28,7 @@ from typing import Any
 from typing import get_args as _get_args
 
 from ostler import acts as acts_mod
+from ostler import registry
 from ostler.checks import CHECK_BY_NAME
 from ostler.checks import _rooted
 from ostler.markdown import extract_refs
@@ -1195,11 +1196,21 @@ def _acts_by_node(
     twice reaches the state it already reached, while performing an act twice is two
     performances. Filling two fields is two fills, and which order they happen in is the
     book's to state. Two *identical* calls are the one performance two claims share.
+
+    Excludes a `registry.refusal_keys`-flagged arm (an endpoint's/command's/invocation's
+    `errors:`/`error:`) entirely: a journey's steps causally chain, so a journey can only ever
+    be walking the arm that leaves something for the next step to read back, never the one that
+    was refused. Merging both arms into one call would let a refusal arm's own arrangement
+    silently override, or contradict, the arm the journey is actually performing.
     """
     rows_by_node: dict[str, list[tuple[tuple[int, ...], int, dict[str, Any]]]] = {}
     refused: set[str] = set()
     for obligation in obligations:
         node_id = str(obligation.get("node", ""))
+        node_type = str(obligation.get("nodeType", ""))
+        kind = str(obligation.get("kind", ""))
+        if kind in registry.refusal_keys(node_type):
+            continue
         if obligation.get("actsUnparsed"):
             refused.add(node_id)
         position = tuple(int(n) for n in obligation.get("docPosition") or (0, 0))
@@ -2463,11 +2474,16 @@ def _http_journey(
         if wants_body:
             # Node-level here, unlike `_scenario_body`'s arm-level read: a journey step names a
             # node, not an arm, so its body is whatever `arrange: body(...)` bullets the node
-            # carries across all of them — merged by `_acts_by_node` exactly as a step's `fill:`
-            # acts already are. Two arms stating different values for the same field merge to a
-            # contradiction, which `_http_body` also refuses (phase 2 removes this limitation).
+            # carries across its non-refusal arms — merged by `_acts_by_node`, which already
+            # excludes a `registry.refusal_keys` arm (`errors:`/`error:`), exactly as a step's
+            # `fill:` acts already are. Two arms stating different values for the same field
+            # merge to a contradiction, which `_http_body` also refuses. A node whose only arm is
+            # a refusal arm merges to an empty list here — not "nothing declared" the way a step
+            # that genuinely needs no body would read, so it is guarded the same as no body at
+            # all rather than sent as `json_body={}`.
             ref = str(step.get("ref", ""))
-            fields = None if ref in acts_refused else _http_body(acts_by_node.get(ref, []))
+            node_rows = acts_by_node.get(ref, [])
+            fields = None if (ref in acts_refused or not node_rows) else _http_body(node_rows)
             if fields is None:
                 # Same rule as the single-scenario emitter (`_scenario_body`): a step this journey
                 # cannot build a body for is withheld entirely rather than sent with

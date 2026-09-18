@@ -279,6 +279,18 @@ class BulletKey:
     alias: bool = False      # a second accepted spelling of the key declared just above it
                              # (``error`` for ``errors``): recognized and ordered like the
                              # primary, never stubbed by ``scaffold``.
+    refusal: bool = False    # the arm a claim is refused in, not performed in — an endpoint's/
+                             # command's/invocation's ``errors:``/``error:`` today. Still
+                             # ``normative=True`` (it mints its own obligation, checked and gapped
+                             # on its own id), but a reader merging a node's several arms into the
+                             # one call a journey performs (``_acts_by_node``, compile.py) needs
+                             # to tell "arms that jointly describe one call" apart from "outcomes
+                             # that cannot both happen": a journey's steps causally chain, so it
+                             # can only be walking the arm that leaves something for the next step
+                             # to read back — never a refusal. A flag rather than a hand-maintained
+                             # key set beside the compiler, for the same reason as ``condition``:
+                             # the property belongs to the key, and the registry is where key
+                             # properties are declared.
     owns: bool = False       # value names a file (or ``path::symbol``) the node is documented
                              # *against*, so a change to that file reaches the node — what
                              # ``qa context`` reads when it maps a diff onto the book. Distinct
@@ -515,6 +527,19 @@ def address_keys(node_type: str) -> tuple[str, ...]:
     """
     uitype = UI_TYPES_BY_NAME.get(node_type)
     return () if uitype is None else tuple(b.key for b in uitype.bullet_keys if b.address)
+
+
+def refusal_keys(node_type: str) -> tuple[str, ...]:
+    """Every bullet key on `node_type` that states the arm a claim is refused in, not performed in.
+
+    A journey's steps causally chain — a refused create leaves nothing for the next step to
+    read back — so a journey can only be walking the arm that is not one of these.
+    `_acts_by_node` (compile.py) reads this to keep a node's refusal arm out of the one merged
+    call a journey step performs, the same way `condition_keys` keeps `when:`/`states:` apart
+    from the claims they hold under.
+    """
+    uitype = UI_TYPES_BY_NAME.get(node_type)
+    return () if uitype is None else tuple(b.key for b in uitype.bullet_keys if b.refusal)
 
 
 def attributed_fixtures(
@@ -1022,7 +1047,7 @@ UI_TYPES: tuple[UINodeType, ...] = (
             # The refusal arm of a command, as an endpoint's `errors:`/`status:` are of a route:
             # what it prints and the code it leaves with. Both were graded before they were
             # declared here, which is the drift `BulletKey.normative` closes.
-            BulletKey("errors", normative=True),
+            BulletKey("errors", normative=True, refusal=True),
             BulletKey("exits", normative=True),
             BulletKey("code", link=True, owns=True),
             BulletKey("detail", link=True),
@@ -1051,8 +1076,8 @@ UI_TYPES: tuple[UINodeType, ...] = (
             # kept for nobody — and an alias nothing writes is a second name the grammar has
             # to keep answering for with no claim behind it.
             BulletKey("status", normative=True),
-            BulletKey("errors", normative=True),
-            BulletKey("error", normative=True, alias=True),
+            BulletKey("errors", normative=True, refusal=True),
+            BulletKey("error", normative=True, alias=True, refusal=True),
             BulletKey("auth", normative=True),
             BulletKey("authorization", normative=True, alias=True),
             BulletKey("code", link=True, owns=True),
@@ -1138,8 +1163,8 @@ UI_TYPES: tuple[UINodeType, ...] = (
             # kept for nobody — and an alias nothing writes is a second name the grammar has
             # to keep answering for with no claim behind it.
             BulletKey("status", normative=True),
-            BulletKey("errors", normative=True),
-            BulletKey("error", normative=True, alias=True),
+            BulletKey("errors", normative=True, refusal=True),
+            BulletKey("error", normative=True, alias=True, refusal=True),
             BulletKey("auth", normative=True),
             BulletKey("authorization", normative=True, alias=True),
             BulletKey("code", link=True, owns=True),
