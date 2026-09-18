@@ -51,6 +51,18 @@ Plus the [shared normative keys](../bullet-grammar.md#keys-that-are-normative-on
 `environment:`, `cli:` and `surfaces:` all resolve as links. A runbook is what ties the
 operational nodes to the product surfaces.
 
+`driver:` and `surfaces:` must agree: the driver has to be able to perform against at least
+one of the node types `surfaces:` resolves to — `web` and `mobile` against a `screen`, `http`
+against a `server`, `cli` against a `cli`. A `driver: web` runbook whose `surfaces:` names only
+a `server` node is a browser pointed at something with no screen in it — `no-drivable-surface`
+catches exactly that drift, which is easy to leave behind when a book is scaffolded from a
+template and only `surfaces:` gets updated for the app at hand. It fires the same way on a
+runbook that names one of those drivers and no `surfaces:` at all — a performer with
+nothing to perform against. `artifact`, `iac` and `none`
+are exempt: none of the three is held to any node type here, each for its own reason (`artifact`
+names no node type this vocabulary defines at all; `iac` provisions infrastructure no node type
+represents; `none` is the book stating outright that nothing performs against these surfaces).
+
 ## Minimal example
 
 ```bash
@@ -92,7 +104,7 @@ type: runbook
 
 `runbook-missing` (warn, raised when no runbook exists at all), `runbook-bad-reuse`,
 `runbook-bad-kind`, `runbook-incomplete`, `runbook-multi-service`, `runbook-local-only`,
-`missing-required-bullet` on `driver:`, `missing-required-section`,
+`no-drivable-surface`, `missing-required-bullet` on `driver:`, `missing-required-section`,
 `empty-required-section`. See [../doctor-codes.md](../doctor-codes.md).
 
 ## When bullets are not enough

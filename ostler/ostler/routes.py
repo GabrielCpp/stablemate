@@ -250,3 +250,72 @@ def screen_routes(graph: Graph) -> dict[str, str]:
         if route:
             routes.setdefault(node.id.split("#")[0], set()).add(route)
     return {path: next(iter(found)) for path, found in routes.items() if len(found) == 1}
+
+
+#: Which surface node **types** a `driver:` (§4.1 of `docs/okf-runbook.md`) can actually
+#: perform against, keyed the same way `ROUTE_GRAMMAR` is — one row per driver, stated
+#: outright rather than inferred from that table. The two tables answer different questions
+#: and must not be read off each other: `ROUTE_GRAMMAR` says whether a driver addresses a
+#: screen/endpoint *by path*, a fact about navigation; this table says which node *type* a
+#: driver is even capable of exercising, a fact about the surface. `iac` and `cli` share a row
+#: in `ROUTE_GRAMMAR` (`is_never_routed`) because neither has a route grammar — but `cli`
+#: performs against a very real `type: cli` node (the corpus's `tally-cli` app has one), while
+#: `iac` provisions infrastructure no node type here represents at all. Route-less and
+#: surface-less are independent properties; this table does not inherit the other's grouping.
+#:
+#: All seven driver values §4.1 names get a row, each reasoned on its own terms:
+#:
+#: - `web` -> `{"screen"}`, `mobile` -> `{"screen"}`: both drive a screen, one through a
+#:   browser and one through a navigator; neither drives anything else this vocabulary types.
+#: - `http` -> `{"server"}`: an HTTP driver issues requests at a `server` contract.
+#: - `cli` -> `{"cli"}`: it drives a `type: cli` node — the dev-CLI a runbook's own `cli:`
+#:   bullet also links, per `runbook.md`.
+#: - `artifact` -> empty, and settled, not merely unmeasured: this registry has no `type:
+#:   artifact` node at all (`registry.py`'s file-level UI types are `screen`, `cli`, `server`,
+#:   `concept`, `format`, `flow`, `runbook`, `environment`, `fixture`) — there is no node this
+#:   driver could ever be pointed at, the same gap `acts.py`'s `WEB`/`MOBILE`/`HTTP`/`CLI`
+#:   table names for `artifact` on the arrangement side ("an arrangement it could make is an
+#:   arrangement `fixture:` already covers").
+#: - `iac` -> empty, but **measured, not reasoned**: the corpus's one `iac` runbook
+#:   (`depot-infra`'s `preview-the-plan`) declares no `surfaces:` bullet at all, so there is
+#:   nothing to generalize a row from. This is not a claim that infrastructure-as-code drives
+#:   no surface type in general — an `iac` runbook that does declare `surfaces:` would settle
+#:   it either way, and none exists yet.
+#: - `none` -> empty, by construction: `driver: none` is the book stating outright that
+#:   nothing performs against this runbook's surfaces, so there is no type such a driver could
+#:   ever match — asking whether *some* surface matches a set that is empty by the driver's own
+#:   declaration would be checking a claim the book never made.
+#:
+#: A driver this table does not name (an unrecognized spelling, or none declared) also reads as
+#: empty via `performable_surface_types`'s default — unlike `ROUTE_GRAMMAR`'s fallback, which
+#: extends its one general-purpose grammar to an unrecognized driver as the benefit of the
+#: doubt. There is no such general-purpose *surface* grammar to fall back to here: an
+#: unrecognized driver has stated nothing this table could hold it to, so `no-drivable-surface`
+#: has nothing to check and skips it, the same as `iac`/`artifact`/`none`'s stated-empty rows —
+#: for a different reason (nothing declared, vs. declared-and-empty) but the same shape of skip.
+#:
+#: `ROUTE_GRAMMAR` has the matching gap — `artifact` and `none` fall through *its* unrecognized-
+#: driver default today and are silently treated as path-addressed. That is a pre-existing hole
+#: in a table this module already shipped, not something this row set inherits or fixes; it is
+#: a separate row (and a separate change) in `ROUTE_GRAMMAR` itself.
+SURFACE_PERFORMABLE_TYPES: dict[str, frozenset[str]] = {
+    "web": frozenset({"screen"}),
+    "mobile": frozenset({"screen"}),
+    "http": frozenset({"server"}),
+    "cli": frozenset({"cli"}),
+    "artifact": frozenset(),
+    "iac": frozenset(),
+    "none": frozenset(),
+}
+
+
+def performable_surface_types(driver: str | None) -> frozenset[str]:
+    """The surface node types *driver* can perform against; empty when it performs against none.
+
+    `SURFACE_PERFORMABLE_TYPES`'s row for a recognized driver — `artifact`/`iac`/`none`
+    included, each stated empty for its own reason in the table's docstring, not a hole. An
+    unrecognized driver (a typo, or none declared) also reads empty: unlike `route_grammar`,
+    there is no general-purpose fallback grammar to extend to it, because this table states a
+    capability rather than parsing a value every driver must produce something for.
+    """
+    return SURFACE_PERFORMABLE_TYPES.get(driver or "", frozenset())

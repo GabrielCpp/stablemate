@@ -189,6 +189,7 @@ Three scoping rules explain findings that otherwise read as false positives or a
 | `runbook-incomplete` | error | A runbook declares a launch but has no `kind: service` step — nothing starts the system. |
 | `runbook-multi-service` | error | More than one `kind: service` step. A runbook brings up one stack; the rest are `kind: prepare`. |
 | `runbook-local-only` | error | A runbook boots a `local-only: true` environment that points at a non-local host. |
+| `no-drivable-surface` | warn | `driver:` names a performer that cannot exercise any of the node types `surfaces:` resolves to — a `web`/`mobile` driver over a `surfaces:` list with no `screen`, an `http` driver with no `server`, a `cli` driver with no `cli`. Point `surfaces:` at a node of the right type, or fix `driver:`. Also fires when a runbook declares a driver and no `surfaces:` at all — a performer named with nothing to perform against. Skipped when the driver's performable set is empty (`iac`, `artifact`, `none`, or an unrecognized spelling) or when the runbook declares no `driver:` at all. |
 | `check-expression-as-command` | error | A `run:`/`health:` bullet on a `step` (a runbook's or a fixture's) parses as a check expression (`checks.parse_check`), not a shell command — `ensure_stack`/the fixture harness shell this bullet verbatim, so this would fail with a bash syntax error at bring-up time rather than run. Write a shell command that exits non-zero on failure (`curl -fsS <url>`), or move the check onto the `verify:` of the claim it actually observes. |
 
 ## Claims and observations

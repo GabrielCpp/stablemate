@@ -175,6 +175,7 @@ def run(graph: Graph, epic_filter: str | None = None, check_schema: bool = True,
     if ui_data is not None:
         _check_reachability(ui_data, f)
         _check_locators(ui_data, f)
+        _check_runbook_driver_surface(ui_data, f)
     if check_schema:
         _check_conformance(graph, f)
         _check_misplaced_book_pages(graph, f)
@@ -2653,6 +2654,52 @@ def _check_reachability(data: dict, f: list[Finding]) -> None:
                              f"{screen}: no documented path reaches this screen from {root} — {why}",
                              path=screen, line=node["line"] if node else 0, ref=screen,
                              suggestion="- leads-to: [<this screen>](<path>)"))
+
+
+def _check_runbook_driver_surface(data: dict, f: list[Finding]) -> None:
+    """A runbook's `driver:` must be able to perform against at least one of its `surfaces:`.
+
+    `driver:` says who carries out the steps; `surfaces:` says what is stood up — and until
+    `routes.SURFACE_PERFORMABLE_TYPES` existed, nothing read the two against each other, so a
+    book scaffolded from a template could drift: three of the corpus's seven runbooks stayed at
+    `driver: web` over a `surfaces:` list whose only entry was a `type: server` node, a browser
+    driver pointed at something with no screen in it.
+
+    Fires only when the driver's performable set is non-empty (`performable_surface_types`) and
+    **none** of the runbook's resolved surfaces has a type in it. A driver with an empty
+    performable set — `iac`, `artifact`, `none`, or an unrecognized spelling — is skipped: the
+    table has nothing to hold it to, not a green light for every surface. A runbook with no
+    `driver:` at all is skipped too: `missing-required-bullet` already owns that book, and with
+    no driver there is nothing to hold the surfaces to. A runbook that declares a driver and no
+    `surfaces:` at all does fire — it names a performer and then names nothing for it to
+    perform against, which is this same defect stated by omission rather than by mismatch.
+
+    Surface links are read the same way `reach.surface_driver` reads them — the runbook node's
+    own resolved out-edges, filtered to `surfaces:` — rather than re-walking the raw markdown.
+    """
+    by_id = {n["id"]: n for n in data["nodes"]}
+    for node in data["nodes"]:
+        if node["type"] != reach.RUNBOOK_TYPE or node["kind"] != "file":
+            continue
+        driver = runbook_mod.bullet_value(node["bullets"], reach.DRIVER_BULLET).strip().lower()
+        if not driver:
+            continue
+        performable = routes_mod.performable_surface_types(driver)
+        if not performable:
+            continue
+        surfaces = [by_id[edge["to"]] for edge in node["edges"]
+                   if edge["via"] == reach.SURFACES_BULLET and edge["to"] in by_id]
+        surface_types = {s["type"] for s in surfaces}
+        if surface_types & performable:
+            continue
+        performed = ", ".join(sorted(performable))
+        seen = ", ".join(sorted(surface_types)) if surface_types else "none declared"
+        f.append(Finding("warn", "no-drivable-surface",
+                         f"{node['path']}: `driver: {driver}` performs against "
+                         f"{performed} surfaces, but its `surfaces:` resolve to {seen} — "
+                         f"point `surfaces:` at a node of the right type, or fix `driver:`",
+                         path=node["path"], line=node["line"], ref=node["id"],
+                         suggestion=f"- surfaces: [<name>](<path/to/{sorted(performable)[0]}.md>)"))
 
 
 def _check_runbook(graph: Graph, f: list[Finding]) -> None:

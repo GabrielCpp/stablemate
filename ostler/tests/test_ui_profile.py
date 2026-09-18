@@ -677,6 +677,99 @@ def test_runbook_missing_steps_and_driver_is_flagged(repo: Path):
     assert "unresolved-relation" in bad         # `environment:` link is broken
 
 
+# ---------------------------------------------------------------------------
+# `no-drivable-surface` — `driver:` must be able to perform against `surfaces:`
+# ---------------------------------------------------------------------------
+API_SERVER = """\
+---
+type: server
+slug: api
+title: API
+---
+# API
+
+## Endpoints
+"""
+
+DEV_CLI = """\
+---
+type: cli
+slug: tally
+title: Tally
+---
+# Tally
+
+## Commands
+"""
+
+
+def _write_driver_surface_book(repo: Path, driver: str, surface_md: str | None,
+                                surface_rel: str | None) -> None:
+    """A minimal runbook wired to at most one surface node, so `no-drivable-surface` can be
+    exercised without dragging in an entire app's fixtures."""
+    write(repo / "docs/features/groom/ops/local.md", ENVIRONMENT)
+    surfaces_line = f"- surfaces: [surface]({surface_rel})\n" if surface_rel else ""
+    write(repo / "docs/features/groom/ops/rb.md", (
+        "---\ntype: runbook\nslug: rb\ntitle: RB\n---\n# RB\n\n"
+        f"- driver: {driver}\n- environment: [local](local.md)\n{surfaces_line}\n"
+        "## Steps\n\n### serve\n- kind: service\n- run: `run`\n"
+    ))
+    if surface_md is not None and surface_rel is not None:
+        write(repo / "docs/features/groom" / surface_rel.replace("../", ""), surface_md)
+
+
+def test_web_driver_over_server_only_surface_warns(repo: Path):
+    _write_driver_surface_book(repo, "web", API_SERVER, "../http/api.md")
+    report = doctor.run(load(repo))
+    warns = {f.code for f in report.findings if f.severity == "warn"}
+    assert "no-drivable-surface" in warns
+
+
+def test_web_driver_over_screen_surface_is_clean(repo: Path):
+    _write_runbook_trio(repo)
+    report = doctor.run(load(repo))
+    warns = {f.code for f in report.findings if f.severity == "warn"}
+    assert "no-drivable-surface" not in warns
+
+
+def test_iac_driver_with_no_surfaces_is_clean(repo: Path):
+    _write_driver_surface_book(repo, "iac", None, None)
+    report = doctor.run(load(repo))
+    warns = {f.code for f in report.findings if f.severity == "warn"}
+    assert "no-drivable-surface" not in warns
+
+
+def test_runbook_with_no_driver_is_clean_on_no_drivable_surface(repo: Path):
+    write(repo / "docs/features/groom/ops/bad.md",
+          "---\ntype: runbook\nslug: bad\ntitle: Bad\n---\n# Bad\n\n- environment: [x](x.md)\n")
+    report = doctor.run(load(repo))
+    warns = {f.code for f in report.findings if f.severity == "warn"}
+    assert "no-drivable-surface" not in warns
+
+
+def test_cli_driver_over_cli_surface_is_clean(repo: Path):
+    _write_driver_surface_book(repo, "cli", DEV_CLI, "../cli/tally.md")
+    report = doctor.run(load(repo))
+    warns = {f.code for f in report.findings if f.severity == "warn"}
+    assert "no-drivable-surface" not in warns
+
+
+def test_web_driver_with_no_surfaces_at_all_warns(repo: Path):
+    # A performer named with nothing to perform against is the same defect as a mismatch,
+    # stated by omission — `surfaces:` is not a required bullet, so nothing else reports it.
+    _write_driver_surface_book(repo, "web", None, None)
+    report = doctor.run(load(repo))
+    warns = {f.code for f in report.findings if f.severity == "warn"}
+    assert "no-drivable-surface" in warns
+
+
+def test_cli_driver_over_server_surface_warns(repo: Path):
+    _write_driver_surface_book(repo, "cli", API_SERVER, "../http/api.md")
+    report = doctor.run(load(repo))
+    warns = {f.code for f in report.findings if f.severity == "warn"}
+    assert "no-drivable-surface" in warns
+
+
 def test_a_same_size_rewrite_is_not_served_from_the_parse_cache(repo: Path):
     # The feature book is parsed once per file and cached for the process, because a graph load
     # is 24s on a real book and every node of a workflow run loads one. The key is the content
