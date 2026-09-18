@@ -14,7 +14,6 @@ carried, but never substitute an HTTP client for the tap.
 - route: /new
 - requires:
 - params:
-- entry: [open-new-widget](widget-list.md#open-new-widget)
 - detail:
 
 ## Components

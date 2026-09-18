@@ -14,8 +14,7 @@ driven directly.
 - route: /
 - requires:
 - params:
-- entry: direct navigation, or returning from [new-widget](new-widget.md) after a
-  successful submission
+- entry: /
 - detail:
 
 ## Components

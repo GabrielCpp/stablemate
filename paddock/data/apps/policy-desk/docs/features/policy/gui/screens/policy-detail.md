@@ -11,8 +11,7 @@ title: Policy detail
     empty record.
 - params:
   - `id` — the slug of the policy number, such as `pn-1001`.
-- entry: yes; the id is in the path, so this screen is a deep link an operator can be sent
-  directly.
+- entry: `/policies/{id}`
 
 One [policy](../../concepts/policy.md), read from
 [GET /api/policies/{id}](../../http/policy-desk-api.md#get-policy), and the two things that can be

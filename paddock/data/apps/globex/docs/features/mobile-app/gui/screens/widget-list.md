@@ -15,8 +15,7 @@ independent clients of `api-service`.
 - route: /
 - requires:
 - params:
-- entry: app launch (`WidgetList` is the navigator's `initialRouteName`), or returning from
-  [new-widget](new-widget.md) after a successful submission
+- entry: /
 - detail:
 
 ## Components

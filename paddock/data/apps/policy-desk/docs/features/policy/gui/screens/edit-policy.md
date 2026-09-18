@@ -10,8 +10,6 @@ title: Edit policy form
   - the policy exists; the form is filled from the record it is editing.
 - params:
   - `id` — the slug of the policy number, such as `pn-1001`.
-- entry: no; it is reached from
-  [the detail screen's Edit policy link](policy-detail.md#edit-policy-link).
 
 The form that changes a [policy](../../concepts/policy.md) already on the books. It opens filled
 from the record, and it keeps one thing the operator never sees: the `version` the record was at

@@ -10,8 +10,6 @@ title: New policy form
   - none; underwriting a policy needs nothing that came before it.
 - params:
   - none
-- entry: no; it is reached from
-  [the register's New policy link](policy-list.md#new-policy-link).
 
 The form that opens a [policy](../../concepts/policy.md). Its field names are the service's field
 names, so a refusal [POST /api/policies](../../http/policy-desk-api.md#post-policies) makes about

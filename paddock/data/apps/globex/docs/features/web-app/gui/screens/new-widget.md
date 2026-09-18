@@ -14,7 +14,6 @@ request carried, but never substitute an HTTP client for the click.
 - route: /new.html
 - requires:
 - params:
-- entry: [open-new-widget](widget-list.md#open-new-widget)
 - detail:
 
 ## Components

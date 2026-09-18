@@ -10,7 +10,7 @@ title: Seat map
   - none; the showing is public and the page carries no session.
 - params:
   - none
-- entry: yes
+- entry: `/`
 
 The only page the product has. It is rendered on the server by
 [the page renderer](../../concepts/seat-ledger.md) reading the same

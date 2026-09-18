@@ -10,7 +10,7 @@ title: Policy register
   - none; the desk carries no session and the register is the app's front door.
 - params:
   - none
-- entry: yes; it is the app root — `/` redirects here — and the start of both documented journeys.
+- entry: `/policies`
 
 The register is the list of every [policy](../../concepts/policy.md) on the books, read from
 [GET /api/policies](../../http/policy-desk-api.md#get-policies). It is a client route in a single
