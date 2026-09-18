@@ -37,6 +37,7 @@ Section type. A `### <id>` under a `## Endpoints` heading in a `server` file. It
 | `detail` | no | link — an explanatory [`concept`](concept.md) |
 | `verify` | no | a check |
 | `fixture` | no | a fixture |
+| `arrange` | no | an act — a request body member the step's own performer sends |
 
 `emits:`/`consumes:` carry no `normative` flag of their own here — they are normative because
 the [shared set](../bullet-grammar.md#keys-that-are-normative-on-every-type) makes them so on
@@ -53,6 +54,25 @@ binding](../bullet-grammar.md#document-order-is-the-binding).
 ## Relationships
 
 `detail:` points at a `concept`. `openapi:` grounds the route in a spec file it also owns.
+
+## Arranging a request body
+
+`consumes:` describes the shape a route accepts; it is a schema, not a value the run can send.
+A `status:` arm whose method is not GET/DELETE/HEAD/OPTIONS needs an actual request body to
+call the route at all, and only the performer of the step — an HTTP client — can send one, so
+it is arranged the same way a browser step arranges state on its own surface: with `arrange:`,
+using the `body(field*, value*)` act (see
+[check-vocabulary.md](../check-vocabulary.md#the-act-vocabulary--the-other-closed-list)).
+
+```markdown
+- status: 201
+- arrange: body(field="name", value="Widget A")
+- arrange: body(field="quantity", value=3)
+```
+
+`arrange:` binds to the arm it is written under, same as `verify:`. A `status:` arm whose
+method needs a body and arranges none compiles nothing for it — `unarranged-request-body`
+(see [../doctor-codes.md](../doctor-codes.md)).
 
 ## Minimal example
 
@@ -80,7 +100,8 @@ timeout 30 ostler scaffold endpoint create-link --in docs/features/acme/http/lin
 
 `compound-normative-bullet`, `overlong-normative-bullet`, `undeclared-obligation`,
 `weak-check`, `unstated-precondition`, `unparsed-check`, `dangling-code-ref`,
-`missing-code-symbol`, `unknown-book-fixture`. See [../doctor-codes.md](../doctor-codes.md).
+`missing-code-symbol`, `unknown-book-fixture`, `unarranged-request-body`. See
+[../doctor-codes.md](../doctor-codes.md).
 
 ## When bullets are not enough
 

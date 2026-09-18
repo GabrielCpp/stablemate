@@ -203,11 +203,17 @@ call grammar as a check and refused against its own names:
 | `click(locator*)` | a control has been operated once — an expander opened, a row selected | web, mobile |
 | `press(locator*, key*)` | a real keypress has reached a control (focus order, a key-handled shortcut) | web, mobile |
 | `select(locator*, option*)` | a chooser holds a stated option | web |
+| `body(field*, value*)` | a member of the request this step sends carries a stated value | http |
 
-Every argument is a `str`: an act's arguments are what the performer types or points at, so
-`fill(locator="#quantity-field", value="3")` and never `value=3`. `locator=` is a reference into
-the book, the same rule and the same reason as a check's — a raw selector is
-`undeclared-act-locator`.
+**An act's argument type is a property of that act's parameter, not of acts in general.**
+`fill`/`click`/`press`/`select` are all-`str` because their driver is a person: what a browser
+or a device carries out is what the performer types or points at, so
+`fill(locator="#quantity-field", value="3")` and never `value=3`. That reasoning does not
+survive a driver that is not a person — over the wire, `{"quantity": 3}` and `{"quantity": "3"}`
+are different requests, so `body`'s `value` is typed `scalar`, admitting the JSON scalars a
+request body actually carries. `locator=` is a reference into the book, the same rule and the
+same reason as a check's — a raw selector is `undeclared-act-locator`. `body`'s `field=` names a
+member of the request instead: there is no control on a wire for a `locator=` to point at.
 
 **`arrange:` is not `fixture:`.** A fixture arranges the world *beside* the surface — a seeded
 row, a signed-in session — and is right whenever something other than the performer can
