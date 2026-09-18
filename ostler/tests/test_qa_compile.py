@@ -22,6 +22,9 @@ from ostler.qa.compile import (
     MAESTRO,
     PLAYWRIGHT,
     PYTHON,
+    _BUILT_TARGETS,
+    _DISPATCH_TABLE,
+    _OBSERVE_ROW,
     _dispatch_target,
     _unobservable_gap,
     annotate_deferred_obligations as _annotate_deferred_obligations,
@@ -3108,3 +3111,173 @@ def test_a_capture_on_an_obligation_nobody_observed_goes_with_its_obligation() -
     )
     _source, gaps = compile_plan_gaps(context, story="demo-story")
     assert _gap_kinds(gaps, oid) == ["no-verify-declared"]
+
+
+# --- D1 registry tripwire: every target named by the dispatch table is accounted for --------
+#
+# `_BUILT_TARGETS` is a claim, not an observation: it says "this compiler emits a scenario for
+# an obligation dispatched here." Direction 1 below checks the claim is *complete* — no target
+# `_DISPATCH_TABLE`/`_OBSERVE_ROW` can name falls through both `_BUILT_TARGETS` and an explicit,
+# reasoned exclusion. Direction 2 checks the harder half: that every member of `_BUILT_TARGETS`
+# is *true* — driving the compiler at each one and reading the emitted plan, not re-asserting a
+# second hardcoded list of "targets that work" beside the first.
+
+#: Targets D1's table names that this compiler does not build a scenario for, on purpose, each
+#: with the reason and the condition that retires the entry. Anything reachable from
+#: `_DISPATCH_TABLE`/`_OBSERVE_ROW` that is neither in `_BUILT_TARGETS` nor named here is an
+#: undecided cell — a target added to the table with no decision recorded — and fails
+#: `test_every_reachable_dispatch_target_is_built_or_named_as_an_exclusion` below.
+_ACKNOWLEDGED_UNBUILT_TARGETS: dict[str, str] = {
+    "maestro": (
+        "D1's table names `maestro` for an `interaction` on a `mobile`-driven surface, and "
+        "`_OBSERVE_ROW` names it for a `flow`/`component`/`screen` on one too, but this "
+        "compiler builds no maestro path — `_dispatch_target` reports it as "
+        "`needs-target-backend` (measured against the globex fixture: 8 such gaps, "
+        "\"...but this compiler builds no maestro path yet\"). Remove this entry when a "
+        "maestro scenario builder lands."
+    ),
+    "in-process": (
+        "D1's table names `in-process` for every `method`/`invocation` obligation on every "
+        "driver, but this compiler builds no in-process path either — the same "
+        "`needs-target-backend` gap `maestro` gets. Remove this entry when an in-process "
+        "scenario builder lands."
+    ),
+}
+
+
+def test_every_reachable_dispatch_target_is_built_or_named_as_an_exclusion() -> None:
+    """Completeness: nothing D1's table can dispatch to falls through the floor.
+
+    A target that shows up in `_DISPATCH_TABLE` or `_OBSERVE_ROW` with no entry in either
+    `_BUILT_TARGETS` or `_ACKNOWLEDGED_UNBUILT_TARGETS` is a decision nobody recorded — this
+    fails the moment one is added, rather than waiting for a book that exercises it to surface
+    a silent gap nobody meant to ship.
+    """
+    reachable = {target for row in _DISPATCH_TABLE.values() for target in row.values() if target}
+    reachable |= set(_OBSERVE_ROW.values())
+    accounted = _BUILT_TARGETS | set(_ACKNOWLEDGED_UNBUILT_TARGETS)
+    undecided = reachable - accounted
+    assert not undecided, (
+        f"{sorted(undecided)} named by D1's table but neither built ({sorted(_BUILT_TARGETS)}) "
+        f"nor recorded as an acknowledged gap ({sorted(_ACKNOWLEDGED_UNBUILT_TARGETS)}) — decide "
+        "one way or the other"
+    )
+    assert _BUILT_TARGETS.isdisjoint(_ACKNOWLEDGED_UNBUILT_TARGETS), (
+        "a target cannot claim both a builder and an acknowledged absence of one"
+    )
+
+
+def _built_target_probe_playwright() -> tuple[dict, str]:
+    """The smallest obligation D1 dispatches to `playwright`: an `interaction` on a
+    `web`-driven surface, reachable from an arrival with nothing else to arrange."""
+    oid = "okf:built-target-probe:playwright:visible:1"
+    context = _navigation_context(
+        _page_obligation(oid, f"{_SCREEN}#probe",
+                          locators={"role": ["table"], "name": ["Things on file"]},
+                          checks=[_visible("table:Things on file")]),
+        navigation=_arrival_navigation(),
+    )
+    return context, oid
+
+
+def _built_target_probe_http() -> tuple[dict, str]:
+    """The smallest obligation D1 dispatches to `http`: an `endpoint` on the default
+    `http`-driven surface, fully arranged so nothing else could withhold the scenario."""
+    oid = "okf:built-target-probe:http:does:1"
+    context = _context(
+        _obligation(
+            oid,
+            checksDeclared=[_check()],
+            fixturesDeclared=[
+                {"name": "seeded-ledger", "args": [], "provides": "a ledger"},
+            ],
+        )
+    )
+    return context, oid
+
+
+def _built_target_probe_cli() -> tuple[dict, str]:
+    """The smallest obligation D1 dispatches to `cli`: a `command` on a `cli`-driven surface,
+    with a real check (`exit_status`, the verifier `_gap_cli_obligations`'s own docstring says
+    the runtime already supports) and a fixture arranged, so nothing about this obligation is
+    missing except a builder that reads it."""
+    oid = "okf:built-target-probe:cli:exit-status:1"
+    context = _context(
+        _obligation(
+            oid,
+            nodeType="command",
+            checksDeclared=[{"call": "it", "name": "exit_status", "args": {"code": 0}}],
+            fixturesDeclared=[
+                {"name": "seeded-ledger", "args": [], "provides": "a ledger"},
+            ],
+        )
+    )
+    context["navigation"][""]["driver"] = "cli"
+    return context, oid
+
+
+#: One minimal-obligation builder per member of `_BUILT_TARGETS` — the harness direction 2
+#: needs, not a second copy of the claim under test. `test_every_built_target_has_a_probe`
+#: below fails loudly if `_BUILT_TARGETS` ever grows a member this dict has no entry for, so a
+#: newly built target cannot silently skip the behavioural check by having nothing to drive it.
+_BUILT_TARGET_PROBES = {
+    "playwright": _built_target_probe_playwright,
+    "http": _built_target_probe_http,
+    "cli": _built_target_probe_cli,
+}
+
+#: `_BUILT_TARGETS` members direction 2 has *measured* to have no working builder, each with the
+#: reason and the exit condition. This is the known-defect record the brief asks for: `cli` is
+#: in `_BUILT_TARGETS` — a claim that this compiler builds a `cli` path — but every `cli`
+#: obligation is handed unconditionally to `_gap_cli_obligations`, whose entire body appends an
+#: `uncompilable-claim` gap and emits no scenario, so the claim is false. `strict=True` on the
+#: xfail this drives means the entry itself fails the suite the day `cli` starts passing, which
+#: is the point: nobody can leave a stale "known gap" behind once the fix lands.
+_KNOWN_BUILT_TARGET_GAPS: dict[str, str] = {
+    "cli": (
+        "`cli` is in `_BUILT_TARGETS` but has no scenario builder: every `cli`-dispatched "
+        "obligation reaches `_gap_cli_obligations` (compile.py), whose whole body appends an "
+        "`uncompilable-claim` gap unconditionally — there is no code path that emits "
+        "`qa.tool(...).run(...)` for a `command` obligation, even fully arranged. Remove this "
+        "entry when a CLI scenario builder lands (see the `_gap_cli_obligations` docstring, "
+        "which already says the runtime side — `Qa.tool(name).run(*argv)` and its "
+        "`exit_status` verifier — is not what's missing)."
+    ),
+}
+
+
+def test_every_built_target_has_a_probe() -> None:
+    """The probe table direction 2 drives must cover `_BUILT_TARGETS` exactly — a target added
+    there with no probe written is untested, not passing, and this is where that shows up."""
+    assert set(_BUILT_TARGET_PROBES) == _BUILT_TARGETS
+
+
+@pytest.mark.parametrize(
+    "target",
+    [
+        pytest.param(
+            name,
+            marks=(
+                [pytest.mark.xfail(strict=True, reason=_KNOWN_BUILT_TARGET_GAPS[name])]
+                if name in _KNOWN_BUILT_TARGET_GAPS else []
+            ),
+        )
+        for name in sorted(_BUILT_TARGETS)
+    ],
+)
+def test_every_built_target_actually_emits_a_scenario(target: str) -> None:
+    """Direction 2, behavioural: `_BUILT_TARGETS` says this compiler emits a scenario for an
+    obligation dispatched to *target* — so drive the compiler with one and read the plan it
+    hands back, rather than re-asserting a second hardcoded "targets that work" list beside the
+    one under test. A gap where a scenario was claimed is exactly the defect this test exists
+    to catch; a target with a genuinely absent builder is recorded above as a strict xfail
+    instead of weakening this assertion.
+    """
+    context, oid = _BUILT_TARGET_PROBES[target]()
+    source, gaps = compile_plan_gaps(context, story="demo-story")
+    ast.parse(source)
+    assert oid in _covers(source), (
+        f"{target!r} is in _BUILT_TARGETS but the compiler emitted no scenario covering "
+        f"{oid!r} — gaps recorded instead: {_gap_kinds(gaps, oid)}"
+    )
+    assert _gap_kinds(gaps, oid) == []
