@@ -35,6 +35,7 @@ from ostler.markdown import extract_refs
 from ostler.qa import references
 from ostler.routes import literal_route, why_unreadable
 from ostler.qa.outcome import QaOutcome
+from ostler.vet import placement as placement_mod
 
 
 #: Gap kinds that describe the *arrangement* a scenario stands on rather than the observation
@@ -723,6 +724,15 @@ def _page_locator_expr(locators: dict[str, list[str]]) -> str | None:
     # name falls through to `selector:` (which is what `name: none` is telling the book to use),
     # or gaps if it has neither.
     if selector:
+        # A self-identifying `scheme=value` selector (`testID=widget-table`) is a real address,
+        # just not one `qa.by_css` can use: it is not CSS, and handing it to Playwright's
+        # `page.locator()` would either raise on the `=` or, worse, silently compile to a
+        # locator that matches nothing while looking like a working one. This tree has no
+        # driver that resolves a scheme selector yet, so the honest move is to refuse — both
+        # callers of this function turn `None` into an `uncompilable-claim` gap already, which
+        # is the correct outcome: the book named the control, the plan just can't reach it yet.
+        if placement_mod.parse_scheme_selector(selector) is not None:
+            return None
         return f"qa.by_css({_lit(selector)})"
     return None
 

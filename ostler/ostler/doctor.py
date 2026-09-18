@@ -2869,13 +2869,19 @@ def _check_placement(node, rel: str, f: list[Finding]) -> None:
 
 
 def _check_unaddressable_selector(node, rel: str, f: list[Finding]) -> None:
-    """A component's `selector:` names a form `ostler vet`'s render census can never resolve.
+    """A component's `selector:` names a form nothing in this tree can resolve.
 
-    The census matches a documented selector against strings the render scan itself mints
-    (`#id`, `tag.class:nth(i)`) or, for role, the fact the scan recorded on the region — see
-    `placement_mod.is_addressable`. Anything else, most often an attribute-value or boolean-
-    attribute predicate, reads `missing` on every render regardless of what actually rendered,
-    which makes the one defect that would move the finding unmeasurable.
+    `placement_mod.is_addressable` accepts two different kinds of value, for two different
+    reasons, and this check only fires outside both. One is a web-DOM form the render census
+    itself mints (`#id`, `tag.class:nth(i)`) or matches by role — anything else in that
+    grammar reads `missing` on every render regardless of what actually rendered, which is
+    the census-specific defect the message below names. The other is a self-identifying
+    `scheme=value` address (`testID=widget-table`): the census never reads it — there is no
+    web render to scan — but it is not a fabricated locator either, it is the real,
+    documented address a non-web driver (React Native's `testID`, Maestro's `id:`) resolves
+    by. A value that is neither — most often an attribute-value or boolean-attribute
+    predicate typed as if it were CSS, or a scheme this vocabulary does not recognize — names
+    nothing at all, which is what this finding reports.
     """
     values = _bullet_values(node.meta.get("selector", ""))
     for index, raw in enumerate(values, 1):
@@ -2884,10 +2890,13 @@ def _check_unaddressable_selector(node, rel: str, f: list[Finding]) -> None:
             f.append(Finding(
                 "error", "unaddressable-selector",
                 f"{node.id}: `selector:{index}` ({value}) is a form the render scan never "
-                f"mints — the census can only ever read this component as missing",
+                f"mints and no recognized `scheme=value` address either — the census can "
+                f"only ever read this component as missing",
                 path=rel, line=node.line,
                 ref=refs_mod.bullet_ref(node.id, "selector", index),
-                suggestion="address by id, class, or role; if the distinction is a piece of "
+                suggestion="address by id, class, or role; on a surface with no web DOM, "
+                           "by the address its own driver resolves — `testID=<value>`, the "
+                           "prop the source writes; if the distinction is a piece of "
                            "state, record it on `states:` instead — a state distinguishable "
                            "by rendered text still gets `verify: visible(locator=\"#anchor\", "
                            "text=\"...\")`; one that isn't has no check in this book's "

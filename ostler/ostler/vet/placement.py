@@ -172,9 +172,45 @@ _ROLE_SELECTOR = re.compile(r"""^([a-zA-Z][\w-]*)?\[role=["']([\w-]+)["']\]$""")
 #: not a fact the book could know in advance.
 _STRING_SELECTOR = re.compile(r"^(?:#[\w-]+|[a-zA-Z][\w-]*(?:\.[\w-]+)*)$")
 
+#: A self-identifying selector: `scheme=value`, e.g. `testID=widget-table`. It names its own
+#: representation in the string itself, which is the whole point — `is_addressable` can decide
+#: from the selector alone, with no lookup of the node's `driver:` to learn which grammar a bare
+#: string like `widget-table` would have been read under. Bare CSS never contains `=`, so this
+#: form and `_STRING_SELECTOR`/`_ROLE_SELECTOR` can never both match the same value.
+_SCHEME_SELECTOR = re.compile(r"^([A-Za-z][\w-]*)=(.+)$")
+
+#: Scheme spellings a `scheme=value` selector may declare. Each member is a representation a real
+#: source or tool actually addresses controls by — the set grows on the next one showing up in
+#: the corpus, not in anticipation of one:
+#:
+#: - ``testID`` — the prop React Native source writes (`<View testID="widget-table">`, see
+#:   `paddock/data/apps/globex/app/mobile-app/src/screens/WidgetListScreen.tsx`) and the
+#:   representation Maestro's own `id:` selector resolves against.
+#:
+#: An unrecognized scheme is rejected, not passed through: `parse_scheme_selector` returns
+#: `None` for it, so `is_addressable` reads it as unaddressable rather than silently trusting
+#: a typo'd or invented scheme name.
+SELECTOR_SCHEMES: frozenset[str] = frozenset({"testID"})
+
+
+def parse_scheme_selector(selector: str) -> tuple[str, str] | None:
+    """`(scheme, value)` for a self-identifying selector naming a known scheme, else `None`.
+
+    Used by every consumer that needs to tell a self-identifying address apart from a bare CSS
+    string before deciding what to do with it — `is_addressable` (which accepts either), and
+    the locator/compile layers, which must refuse a scheme selector rather than hand it to a
+    CSS engine that would parse `=` as nothing it understands.
+    """
+    matched = _SCHEME_SELECTOR.match(selector)
+    if matched is None:
+        return None
+    scheme, value = matched.group(1), matched.group(2)
+    return (scheme, value) if scheme in SELECTOR_SCHEMES else None
+
 
 def is_addressable(selector: str) -> bool:
-    """Whether *selector* is a form `ostler vet`'s screen census can ever resolve.
+    """Whether *selector* is a form `ostler vet`'s screen census can ever resolve, **or** a
+    self-identifying address the census was never going to resolve for an honest reason.
 
     The census matches a documented selector against strings the render scan mints for each
     element — `#id`, or `tag.class` (optionally the scan's own `:nth(i)` position suffix) — or,
@@ -185,12 +221,28 @@ def is_addressable(selector: str) -> bool:
     component reads `missing` every time, which makes the one defect that would move it
     unmeasurable. This is the rule behind the doctor's `unaddressable-selector` check.
 
-    It is a claim about the *census*, not about the compiled plan: `qa.by_css` compiles any
-    valid CSS, so a `visible(locator=...)` on such a selector is observed by the QA run even
-    while the census stays blind to it. `compile_plan` therefore raises no gap here — a gap
-    reports what the plan being compiled failed to observe, and one observer's blindness is
-    not a channel the other one's report can carry.
+    A `scheme=value` selector (`_SCHEME_SELECTOR`) is accepted too, but for a different reason:
+    the census is a DOM census, and `ostler vet`'s render scan is a fact about *that*
+    representation, not about every representation a control could be addressed in. `testID:` is
+    real — React Native source writes it and Maestro resolves it — it is simply not a fact the
+    web census was ever in a position to confirm or deny, on any render, because it never scans
+    for it. Rejecting it here would repeat the exact defect this grammar exists to fix: a
+    control addressed honestly gets nowhere to say so, and a book falls back to a fabricated CSS
+    selector that is false on its face. So `unaddressable-selector` stays scoped to strings that
+    describe DOM syntax and get it wrong — not to every string the *web* census cannot use.
+
+    It is a claim about the *census*, not about the compiled plan. For a bare CSS form,
+    `qa.by_css` compiles any valid CSS, so a `visible(locator=...)` on such a selector is
+    observed by the QA run even while the census stays blind to it — `compile_plan` raises no
+    gap here, because a gap reports what the plan being compiled failed to observe, and one
+    observer's blindness is not a channel the other one's report can carry. A `scheme=value`
+    form is the opposite case: nothing in this tree compiles it to a live locator yet (there is
+    no `testID`-aware driver), so the compiler *does* gap it — see `placement_mod` usage in
+    `ostler.locators.locator_for` and `ostler.qa.compile._page_locator_expr`. Being addressable
+    here is a claim about honesty, not about executability.
     """
+    if parse_scheme_selector(selector) is not None:
+        return True
     return bool(_ROLE_SELECTOR.match(selector) or _STRING_SELECTOR.match(selector))
 
 

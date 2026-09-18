@@ -31,6 +31,7 @@ from pathlib import Path
 from ostler import graph as graph_mod
 from ostler.model import Graph, UINode
 from ostler.reach import NONE_TOKENS, _screen_of
+from ostler.vet import placement as placement_mod
 
 # Roles a user operates. An interactive control with no accessible name is unusable by assistive
 # tech and unaddressable by `getByRole(role, {name})` — the a11y defect and the automation defect
@@ -297,6 +298,11 @@ def locator_for(node: dict, *, scope: tuple[str, ...] = ()) -> dict:
       each consumer assembles its own matcher (binds substituted, opaques wildcarded).
     - ``css`` — a ``selector:`` fallback for a node with no role. It works, but it couples the suite
       to the DOM and signals a node that assistive tech cannot address either.
+    - ``scheme`` — a self-identifying ``scheme=value`` selector (`testID=widget-table`, see
+      `ostler.vet.placement.parse_scheme_selector`). It is data only, like ``template``: this
+      tree has no driver that compiles a `testID` to a live locator yet, so ``locator`` is
+      empty and a caller that wants a Playwright expression must treat this the same as
+      ``none`` rather than pass the raw string to a CSS engine that would misparse the `=`.
     - ``none`` — nothing to locate by. The node names something the book cannot point at.
 
     Outside a repeated scope a name with ``{…}`` in it is read literally, exactly as before this
@@ -324,6 +330,16 @@ def locator_for(node: dict, *, scope: tuple[str, ...] = ()) -> dict:
         return {"strategy": "role", "locator": call, "role": role,
                 "name": "" if _stated_none(name) else name}
     if selector:
+        # Self-identifying first: a scheme selector carries its own grammar in the string, so
+        # deciding this needs no lookup of the node's own `driver:` — see
+        # `placement_mod.parse_scheme_selector`'s docstring. Checked before the CSS fallback
+        # below, since a `scheme=value` string would otherwise be handed to `locator("...")`
+        # as if `=` were valid CSS syntax, which is exactly the silent-wrong-locator defect
+        # this branch exists to avoid.
+        scheme = placement_mod.parse_scheme_selector(selector)
+        if scheme is not None:
+            return {"strategy": "scheme", "locator": "", "role": "", "name": "",
+                    "scheme": scheme[0], "value": scheme[1]}
         return {"strategy": "css", "locator": f'locator("{_escape(selector)}")',
                 "role": "", "name": ""}
     return {"strategy": "none", "locator": "", "role": "", "name": ""}
@@ -634,6 +650,7 @@ def build(graph: Graph, *, surface: str | None = None, screen: str | None = None
             "by_role": sum(1 for locator in flat if locator["strategy"] == "role"),
             "by_template": sum(1 for locator in flat if locator["strategy"] == "template"),
             "by_css": sum(1 for locator in flat if locator["strategy"] == "css"),
+            "by_scheme": sum(1 for locator in flat if locator["strategy"] == "scheme"),
             "unlocatable": sum(1 for locator in flat if locator["strategy"] == "none"),
         },
     }
@@ -644,10 +661,18 @@ def render(data: dict) -> str:
     for entry in data["screens"]:
         lines.append(entry["screen"])
         for locator in entry["locators"]:
-            mark = {"role": " ", "template": "*", "css": "~", "none": "!"}[locator["strategy"]]
+            mark = {
+                "role": " ", "template": "*", "css": "~", "scheme": "@", "none": "!",
+            }[locator["strategy"]]
             if locator["strategy"] == "template":
                 shown = (f'getByRole("{locator["role"]}") one per {locator["iterates"]}, '
                          f'name from {locator["template"]!r}')
+            elif locator["strategy"] == "scheme":
+                # Data only, like `template` — see `locator_for`'s docstring. There is no
+                # Playwright expression to show, so the report states the address it does have
+                # rather than falling into the generic "(nothing to locate by)" of `none`,
+                # which would misreport a real, honest address as an absent one.
+                shown = f'{locator["scheme"]}={locator["value"]} (no compiled driver yet)'
             else:
                 shown = locator["locator"] or "(nothing to locate by)"
             lines.append(f"  {mark} {locator['node'].split('#')[-1]}: page.{shown}")
@@ -674,7 +699,8 @@ def render(data: dict) -> str:
     counts = data["counts"]
     lines.append(f"\n{counts['locators']} locator(s): {counts['by_role']} by role, "
                  f"{counts.get('by_template', 0)} templated, "
-                 f"{counts['by_css']} by selector, {counts['unlocatable']} unlocatable")
+                 f"{counts['by_css']} by selector, {counts['by_scheme']} by scheme "
+                 f"(uncompiled), {counts['unlocatable']} unlocatable")
     return "\n".join(lines)
 
 
