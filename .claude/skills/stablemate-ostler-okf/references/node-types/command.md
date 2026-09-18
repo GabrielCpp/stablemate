@@ -26,7 +26,7 @@ Section type. A `### <id>` under a `## Commands` heading in a `cli` file. Its id
 | `does` | no | nested; **mints an obligation** per value |
 | `errors` | no | **mints an obligation** — what it prints on refusal |
 | `exits` | no | **mints an obligation** — the code it leaves with |
-| `run` | no | a performed act (repeatable) — one concrete invocation |
+| `run` | no | a performed act (repeatable) — one concrete argument list |
 | `code` | no | link, **owns** its file |
 | `detail` | no | link — an explanatory [`concept`](concept.md) |
 | `verify` | no | a check |
@@ -39,13 +39,17 @@ are of a route. Both were graded before they were declared here.
 **`usage:`/`flags:`/`args:` are prose, not an invocation.** They describe *every* way to call
 the command — `shortener create <url> [--slug SLUG]` is a synopsis, not any one call of it —
 so they cannot compile to a scenario: there is no single argv in a sentence with `<url>` and
-`[--slug SLUG]` still in it. `run:` is the concrete counterpart: one literal invocation per
-value, an act (`ostler.acts`'s `invoke`, `- run: invoke(argv=["shortener", "create",
+`[--slug SLUG]` still in it. `run:` is the concrete counterpart: one literal argument list per
+value, an act (`ostler.acts`'s `invoke`, `- run: invoke(argv=["create",
 "https://example.com"])`) rather than a fixture name, bound to the `exits:`/`verify:` claim
 above it by the same document-order rule `verify:`/`fixture:`/`capture:` already bind by (see
-[bullet-grammar.md](../bullet-grammar.md)). A claim checked with `exits:`/`verify:` and no
-`run:` above it compiles to nothing — QA's compiler gaps it as `uncompilable-claim` and doctor
-raises `unbound-command-claim` on the book itself, before a plan is ever compiled.
+[bullet-grammar.md](../bullet-grammar.md)). `argv` names only the **arguments** — the
+executable is the owning [`cli`](cli.md) file node's own `binary:` bullet, stated once where
+the book already says it, never repeated here; a `cli` node with no `binary:` value makes
+every `run:` on that file uncompilable, gapped rather than guessed. A claim checked with
+`exits:`/`verify:` and no `run:` above it compiles to nothing — QA's compiler gaps it as
+`uncompilable-claim` and doctor raises `unbound-command-claim` on the book itself, before a
+plan is ever compiled.
 
 Plus the [shared normative keys](../bullet-grammar.md#keys-that-are-normative-on-every-type).
 
@@ -70,10 +74,10 @@ timeout 30 ostler scaffold command create --in docs/features/acme/shortener-cli.
 - does: prints the resulting short URL on stdout
 - errors: prints "slug already in use" when --slug is taken
 - exits: 0 on success
-- run: invoke(argv=["shortener", "create", "https://example.com"])
+- run: invoke(argv=["create", "https://example.com"])
 - verify: exit_status(code=0)
 - exits: 2 on a taken slug
-- run: invoke(argv=["shortener", "create", "https://example.com", "--slug", "taken"])
+- run: invoke(argv=["create", "https://example.com", "--slug", "taken"])
 - verify: exit_status(code=2)
 - code: cmd/shortener/create.go::runCreate
 ```
