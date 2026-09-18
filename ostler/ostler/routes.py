@@ -60,17 +60,19 @@ NOT_SCREEN_NAME_SHAPED_REASON = (
 def is_never_routed(route: str) -> bool:
     """Always false — the predicate for a driver that states no routes at all.
 
-    `iac` and `cli` own no node type this book's registry ever admits a `route:`/`path:`
-    bullet on (`screen`, `endpoint`): an `iac` surface provisions infrastructure and a `cli`
-    surface drives a command line, neither of which is a screen a route addresses. So no
-    corpus book today gives this predicate a value to read — it exists so `ROUTE_GRAMMAR`'s
-    row for such a driver names a predicate and a reason like every other row, rather than
-    leaving a hole a caller has to know to special-case. `doctor.py`'s
-    `_check_bullet_value_kinds` calls `route_grammar` for every `route`/`path`-kinded bullet
-    regardless of driver, so this predicate *is* on a real code path, not a hypothetical one
-    — it would run the day a `screen`/`endpoint` node ends up on an `iac`- or `cli`-driven
-    surface, however that came about, and it says no, honestly: a driver that states no
-    routes cannot make an exception for one bullet that showed up anyway.
+    `iac`, `cli`, `artifact` and `none` own no node type this book's registry ever admits a
+    `route:`/`path:` bullet on (`screen`, `endpoint`): an `iac` surface provisions
+    infrastructure, a `cli` surface drives a command line, `artifact` addresses no node type
+    this registry has, and `none` is the book stating outright that nothing performs against
+    these surfaces at all — none of which is a screen a route addresses. So no corpus book
+    today gives this predicate a value to read — it exists so `ROUTE_GRAMMAR`'s row for such a
+    driver names a predicate and a reason like every other row, rather than leaving a hole a
+    caller has to know to special-case. `doctor.py`'s `_check_bullet_value_kinds` calls
+    `route_grammar` for every `route`/`path`-kinded bullet regardless of driver, so this
+    predicate *is* on a real code path, not a hypothetical one — it would run the day a
+    `screen`/`endpoint` node ends up on such a driven surface, however that came about, and it
+    says no, honestly: a driver that states no routes cannot make an exception for one bullet
+    that showed up anyway.
     """
     del route
     return False
@@ -97,7 +99,8 @@ NOT_ROUTED_REASON = "this driver states no routes at all — it owns no screen o
 #: column: adding a row forces the author to answer "does this driver address by path?" on
 #: purpose, rather than inherit an answer from which function object they reused.
 #:
-#: Four rows, three distinct situations — `path_addressed=False` is not one story:
+#: All seven §4.1 values get a row, covering four distinct situations —
+#: `path_addressed=False` is not one story:
 #:
 #: - `web` and `http` share this module's own grammar (`is_path_shaped`) and are path-addressed:
 #:   a browser's URL and an HTTP endpoint's path are the same kind of address, whichever of the
@@ -117,19 +120,30 @@ NOT_ROUTED_REASON = "this driver states no routes at all — it owns no screen o
 #:   nodes it drives, not a collision to "fix". No runbook in the corpus declares `driver: cli`
 #:   yet (seven declare a driver today, `tally-cli` is not one of them); this table only adds the
 #:   vocabulary a future one can use.
+#: - `artifact` and `none` also read `is_never_routed` and are **not** path-addressed, each for
+#:   its own reason rather than one shared with `iac`/`cli`'s node-type argument:
+#:   - `none` is the book stating outright that nothing performs against these surfaces, so
+#:     there is no driver whose addressing scheme a route could be held to — asking for a root
+#:     path here asks for an address the book has said nothing navigates to.
+#:   - `artifact` has no node type in this registry it could ever address at all —
+#:     `SURFACE_PERFORMABLE_TYPES`'s own row for it is empty and settled, not merely
+#:     unmeasured. A driver with nothing to address has no routes to grammar-check.
 #:
-#: A driver this table does not name at all — unrecognized, or no runbook declares one —
-#: falls back to `(is_path_shaped, NOT_PATH_SHAPED_REASON, True)`, the one grammar this module
-#: had before this table existed, so an undeclared surface's bullets are checked, and treated as
-#: path-addressed, exactly as they always were. That fallback is a fourth, deliberately
-#: different case from `iac`/`cli`: those two are *recognized* and *state* they have no routes;
-#: an undeclared driver has stated nothing at all, and keeps the benefit of the doubt.
+#: A driver this table does not name at all — an unrecognized spelling, or no runbook declares
+#: one — falls back to `(is_path_shaped, NOT_PATH_SHAPED_REASON, True)`, the one grammar this
+#: module had before this table existed, so an undeclared surface's bullets are checked, and
+#: treated as path-addressed, exactly as they always were. That fallback now narrows to its one
+#: honest case: every §4.1 value has its own row above, so the default is reachable only by a
+#: spelling *outside* §4.1's vocabulary entirely — a typo, or no driver declared — which has
+#: stated nothing and keeps the benefit of the doubt.
 ROUTE_GRAMMAR: dict[str, tuple[Callable[[str], bool], str, bool]] = {
     "web": (is_path_shaped, NOT_PATH_SHAPED_REASON, True),
     "http": (is_path_shaped, NOT_PATH_SHAPED_REASON, True),
     "mobile": (is_screen_name_shaped, NOT_SCREEN_NAME_SHAPED_REASON, False),
     "iac": (is_never_routed, NOT_ROUTED_REASON, False),
     "cli": (is_never_routed, NOT_ROUTED_REASON, False),
+    "artifact": (is_never_routed, NOT_ROUTED_REASON, False),
+    "none": (is_never_routed, NOT_ROUTED_REASON, False),
 }
 
 #: The fallback row for a driver `ROUTE_GRAMMAR` does not name — see the table's own docstring.
@@ -166,9 +180,9 @@ def is_path_addressed(driver: str | None) -> bool:
     share a predicate without sharing this answer, so the table says it outright instead of
     letting a caller infer it. `web`/`http`, and any driver this table does not recognize (an
     undeclared driver keeps today's grammar), are path-addressed; `mobile` (screen names, not
-    paths) and `iac`/`cli` (no screen or endpoint at all) are not, each for its own stated
-    reason — and asking any of the three for a root *path* would be inventing an address the
-    book has no grammar for.
+    paths) and `iac`/`cli`/`artifact`/`none` (no screen or endpoint at all, each for its own
+    stated reason) are not — and asking any of them for a root *path* would be inventing an
+    address the book has no grammar for.
     """
     _predicate, _reason, path_addressed = ROUTE_GRAMMAR.get(driver or "", _DEFAULT_ROUTE_GRAMMAR)
     return path_addressed
@@ -294,10 +308,9 @@ def screen_routes(graph: Graph) -> dict[str, str]:
 #: has nothing to check and skips it, the same as `iac`/`artifact`/`none`'s stated-empty rows —
 #: for a different reason (nothing declared, vs. declared-and-empty) but the same shape of skip.
 #:
-#: `ROUTE_GRAMMAR` has the matching gap — `artifact` and `none` fall through *its* unrecognized-
-#: driver default today and are silently treated as path-addressed. That is a pre-existing hole
-#: in a table this module already shipped, not something this row set inherits or fixes; it is
-#: a separate row (and a separate change) in `ROUTE_GRAMMAR` itself.
+#: `ROUTE_GRAMMAR` names `artifact` and `none` too, each with its own stated reason beside that
+#: table — a driver with nothing to address, and a book declaring no performer at all, are
+#: neither of them silently path-addressed any more.
 SURFACE_PERFORMABLE_TYPES: dict[str, frozenset[str]] = {
     "web": frozenset({"screen"}),
     "mobile": frozenset({"screen"}),

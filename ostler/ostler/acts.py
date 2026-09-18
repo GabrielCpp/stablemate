@@ -45,10 +45,10 @@ from typing import Any
 
 from ostler.checks import Call, Malformed, Refusal, _typed, literal, parse_call
 
-#: The `driver:` values of §4.1 that can perform an arranged act. `artifact` and `iac`
-#: appear on no act, because an arrangement they could make is an arrangement `fixture:`
-#: already covers — but `http` does perform one: a request body is not beside the request
-#: an HTTP client sends, it IS the request, so no out-of-process fixture can arrange it.
+#: The `driver:` values of §4.1 that can perform an arranged act — the ones that appear on no
+#: `ActSpec.drivers` tuple are `ACT_DRIVER_OMISSIONS`, below, one reason each. `http` does
+#: perform one, though: a request body is not beside the request an HTTP client sends, it IS
+#: the request, so no out-of-process fixture can arrange it.
 WEB = "web"
 MOBILE = "mobile"
 HTTP = "http"
@@ -59,6 +59,21 @@ HTTP = "http"
 #: carries only the arguments — the binary is the owning `cli` node's `binary:` to declare,
 #: never this act's to repeat.
 CLI = "cli"
+
+#: Every §4.1 value that appears on no `ActSpec.drivers` tuple in `ACTS`, mapped to the reason
+#: it appears on none — the omissions half of the declaration `WEB`/`MOBILE`/`HTTP`/`CLI` are
+#: the other half of. `artifact` and `iac` share a reason: each has a performer that could only
+#: arrange, and an arrangement it could make is an arrangement `fixture:` already covers.
+#: `none` is a different reason, not the same one repeated: `driver: none` is the book declaring
+#: that nothing performs against this runbook's surfaces at all, so there is no performer here
+#: to carry out any act in the first place — `artifact`/`iac` have a performer that merely
+#: arranges, `none` has no performer.
+ACT_DRIVER_OMISSIONS: dict[str, str] = {
+    "artifact": "an arrangement it could make is an arrangement `fixture:` already covers",
+    "iac": "an arrangement it could make is an arrangement `fixture:` already covers",
+    "none": "the book declares no performer for this runbook's surfaces, so there is none to "
+            "carry out any act",
+}
 
 
 @dataclass(frozen=True)

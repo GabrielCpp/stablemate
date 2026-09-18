@@ -39,9 +39,9 @@ def test_is_screen_name_shaped_accepts_a_navigator_identifier_and_rejects_a_path
 
 
 def test_is_never_routed_always_says_no() -> None:
-    """The `iac`/`cli` predicate: there is no value it is ever meant to read, so every value —
-    including one shaped like a real path or screen name — is rejected honestly rather than
-    let through by accident."""
+    """The `iac`/`cli`/`artifact`/`none` predicate: there is no value it is ever meant to read,
+    so every value — including one shaped like a real path or screen name — is rejected
+    honestly rather than let through by accident."""
     assert not routes.is_never_routed("/dashboard")
     assert not routes.is_never_routed("WidgetList")
     assert not routes.is_never_routed("")
@@ -50,9 +50,9 @@ def test_is_never_routed_always_says_no() -> None:
 def test_route_grammar_and_path_addressedness_per_driver() -> None:
     """`route_grammar` picks a driver's predicate; `is_path_addressed` states, per driver,
     whether that predicate is being asked to answer a path question at all — the two are
-    read off `ROUTE_GRAMMAR`'s own columns, not inferred from each other. Four rows cover three
-    distinct situations (path-addressed, name-addressed, route-less), plus the fallback for a
-    driver the table does not recognize at all."""
+    read off `ROUTE_GRAMMAR`'s own columns, not inferred from each other. Seven rows cover four
+    distinct situations (path-addressed, name-addressed, and two route-less reasons), plus the
+    fallback for a driver the table does not recognize at all."""
     web_predicate, web_reason = routes.route_grammar("web")
     assert web_predicate is routes.is_path_shaped
     assert web_reason == routes.NOT_PATH_SHAPED_REASON
@@ -78,6 +78,19 @@ def test_route_grammar_and_path_addressedness_per_driver() -> None:
     assert cli_predicate is routes.is_never_routed
     assert cli_reason == routes.NOT_ROUTED_REASON
     assert not routes.is_path_addressed("cli")
+
+    # `artifact` and `none` are also recognized, route-less rows — but each for its own reason,
+    # not `iac`/`cli`'s "no node type is ever theirs to check": `artifact` addresses no node
+    # type this registry has at all, `none` is the book declaring no performer whatsoever.
+    artifact_predicate, artifact_reason = routes.route_grammar("artifact")
+    assert artifact_predicate is routes.is_never_routed
+    assert artifact_reason == routes.NOT_ROUTED_REASON
+    assert not routes.is_path_addressed("artifact")
+
+    driverless_predicate, driverless_reason = routes.route_grammar("none")
+    assert driverless_predicate is routes.is_never_routed
+    assert driverless_reason == routes.NOT_ROUTED_REASON
+    assert not routes.is_path_addressed("none")
 
     # An unrecognized driver, and no driver declared at all (`None`), keep the same
     # `is_path_shaped` default this module always had — a fourth case, distinct from `iac`/`cli`:

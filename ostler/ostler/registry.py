@@ -957,7 +957,7 @@ UI_TYPES: tuple[UINodeType, ...] = (
         name="runbook", kind="file", context="ops",
         required_sections=(SectionSpec("Steps"),),
         bullet_keys=(
-            BulletKey("driver", required=True),   # web|mobile|http|cli|artifact|iac|none (§4.1)
+            BulletKey("driver", required=True),  # one of `ostler.drivers.DRIVERS` (§4.1)
             BulletKey("environment", link=True),  # the `environment` node this boots (default local)
             BulletKey("cli", link=True),          # the dev-CLI `cli` node it drives with
             BulletKey("surfaces", link=True),     # screen/server/cli/format nodes it exposes
