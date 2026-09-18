@@ -5,7 +5,7 @@ title: QA stack
 ---
 # QA stack
 
-- driver: web
+- driver: http
 - surfaces: [Policy desk API](../http/policy-desk-api.md)
 - code: app/api/service.go@bcf74ba2ccff
 - entry-url: http://localhost:18084

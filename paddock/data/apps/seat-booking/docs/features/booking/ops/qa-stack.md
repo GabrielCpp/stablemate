@@ -5,7 +5,7 @@ title: QA stack
 ---
 # QA stack
 
-- driver: web
+- driver: http
 - surfaces: [Seat booking API](../http/seat-booking-api.md)
 - entry-url: http://localhost:18083
 - health-path: /healthz

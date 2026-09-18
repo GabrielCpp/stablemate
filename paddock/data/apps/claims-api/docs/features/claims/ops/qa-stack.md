@@ -5,7 +5,7 @@ title: QA stack
 ---
 # QA stack
 
-- driver: web
+- driver: http
 - environment: [Local auth emulator](auth-emulator.md)
 - surfaces: [Claims API](../http/claims-api.md)
 - code: compose.yml@8061abd30646
