@@ -77,6 +77,8 @@ never talk to each other server-to-server.
 - emits:
 - consumes: `{name: string, quantity: integer}`
 - status: 201
+- arrange: body(field="name", value="Widget A")
+- arrange: body(field="quantity", value=3)
 - errors: 422 with a `{errors: {field: message}}` body when a blank `name` or a negative
   `quantity` is refused rather than coerced
 - verify: http_status(422, path="/api/widgets")
