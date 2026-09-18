@@ -474,8 +474,10 @@ def test_concepts_chained_by_same_as_citing_one_symbol_stay_one_family(tmp_path:
     per-edge — B and C each name only their two immediate neighbors, never every member of the
     family — so `_family_root` must walk the whole connected component and converge every
     member on one deterministic representative (`min(ids)`), not just a node's own direct
-    same-as targets. All four citing one symbol must never reach `_CONTAINER_FANOUT`, and their
-    obligations stay required."""
+    same-as targets. All four citing one symbol must never reach `_CONTAINER_FANOUT`. And
+    because `_obligations` mints its id off the same `_same_as_component` representative, the
+    four members' identical `contract` claims collapse to the one obligation the dedupe step
+    keeps, not four copies of it — required stays true on that one obligation."""
     (tmp_path / "docs/features/demo").mkdir(parents=True)
     (tmp_path / "docs/features/demo/item0.md").write_text(
         "---\ntype: concept\ntitle: Item 0\n---\n# Item 0\n\n"
@@ -528,8 +530,144 @@ def test_concepts_chained_by_same_as_citing_one_symbol_stay_one_family(tmp_path:
     packet = build_context(tmp_path, base=base, source_roots={"demo": ["app"]})
 
     shared_obligations = [item for item in packet["obligations"] if "/item" in item["node"]]
-    assert len(shared_obligations) == 4
+    assert len(shared_obligations) == 1
     assert all(item["required"] for item in shared_obligations), shared_obligations
+
+
+def _same_as_button_screens(
+    tmp_path: Path, names: list[str], *, extra_bullets: dict[str, str] | None = None
+) -> str:
+    """`names` screens, each with a `save-button` component reciprocally `same-as:`-linked to
+    every other member and grounded on its own file — so each enters the packet independently
+    of the relation, the invariant `_same_as_component` collapsing must not disturb. Returns
+    the base sha, after which every screen's own grounding file has changed so every member is
+    `required`.
+
+    `extra_bullets` lets one test add a bullet only some members declare, to exercise the
+    "silence is legal in a family" half of the collapse.
+    """
+    extra_bullets = extra_bullets or {}
+    (tmp_path / "docs/features/demo").mkdir(parents=True)
+    (tmp_path / "app").mkdir()
+    for name in names:
+        others = [other for other in names if other != name]
+        same_as = "".join(
+            f"- same-as: [Save button]({other}.md#save-button)\n" for other in others
+        )
+        (tmp_path / f"docs/features/demo/{name}.md").write_text(
+            f"---\ntype: screen\ntitle: {name}\n---\n# {name}\n\n"
+            "## Components\n\n"
+            "### save-button\n"
+            "- role: button\n"
+            "- name: Save item\n"
+            f"{extra_bullets.get(name, '')}"
+            f"{same_as}"
+            f"- code: app/{name}.py::save_item\n",
+            encoding="utf-8",
+        )
+        (tmp_path / f"app/{name}.py").write_text(
+            "def save_item():\n    return 'old'\n", encoding="utf-8"
+        )
+    _git(tmp_path, "init")
+    _git(tmp_path, "config", "user.email", "qa@example.com")
+    _git(tmp_path, "config", "user.name", "QA")
+    _git(tmp_path, "add", ".")
+    _git(tmp_path, "commit", "-m", "base")
+    base = _git(tmp_path, "rev-parse", "HEAD")
+    for name in names:
+        (tmp_path / f"app/{name}.py").write_text(
+            "def save_item():\n    return 'new'\n", encoding="utf-8"
+        )
+    return base
+
+
+def test_same_as_pair_collapses_onto_the_lower_member_id(tmp_path: Path):
+    """Two screens whose `save-button` is one documented control, `same-as:`-linked, mint one
+    obligation per normative key — not one per occurrence — anchored on `min()` of the family
+    (`screen-a` sorts before `screen-b`)."""
+    base = _same_as_button_screens(tmp_path, ["screen-a", "screen-b"])
+
+    packet = build_context(tmp_path, base=base, source_roots={"demo": ["app"]})
+
+    family_obligations = [
+        item for item in packet["obligations"] if item["node"].endswith("#save-button")
+    ]
+    ids = sorted(item["id"] for item in family_obligations)
+    assert ids == [
+        "okf:docs/features/demo/screen-a.md#save-button:contract",
+        "okf:docs/features/demo/screen-a.md#save-button:name:1",
+        "okf:docs/features/demo/screen-a.md#save-button:role:1",
+    ]
+
+
+def test_same_as_triple_collapses_to_one_obligation_not_three(tmp_path: Path):
+    """A three-member family (`screen-a`/`screen-b`/`screen-c`, each reciprocally `same-as:`
+    the other two) still mints one obligation per key, never three — and because each member's
+    own `_obligations` call computes the representative independently off its own id, the
+    three members landing on the same `screen-a`-rooted ids also shows the id does not depend
+    on which member the walk happened to start from."""
+    base = _same_as_button_screens(tmp_path, ["screen-a", "screen-b", "screen-c"])
+
+    packet = build_context(tmp_path, base=base, source_roots={"demo": ["app"]})
+
+    family_obligations = [
+        item for item in packet["obligations"] if item["node"].endswith("#save-button")
+    ]
+    assert len(family_obligations) == 3
+    assert all(
+        item["id"].startswith("okf:docs/features/demo/screen-a.md#save-button:")
+        for item in family_obligations
+    )
+
+
+def test_same_as_member_contributes_a_key_its_siblings_leave_silent(tmp_path: Path):
+    """`same-as:` exists so a repeat can be written cheaply — a member is allowed to state
+    less than its siblings. `screen-b` (not the family representative) is the only member that
+    writes `keyboard:`; the packet must still owe a `:keyboard:1` obligation, under the
+    representative's id, because every member is visited and dedupe only collapses agreement,
+    it never discards what only one member said."""
+    base = _same_as_button_screens(
+        tmp_path,
+        ["screen-a", "screen-b"],
+        extra_bullets={"screen-b": "- keyboard: Tab then Enter\n"},
+    )
+
+    packet = build_context(tmp_path, base=base, source_roots={"demo": ["app"]})
+
+    family_obligations = [
+        item for item in packet["obligations"] if item["node"].endswith("#save-button")
+    ]
+    ids = sorted(item["id"] for item in family_obligations)
+    assert ids == [
+        "okf:docs/features/demo/screen-a.md#save-button:contract",
+        "okf:docs/features/demo/screen-a.md#save-button:keyboard:1",
+        "okf:docs/features/demo/screen-a.md#save-button:name:1",
+        "okf:docs/features/demo/screen-a.md#save-button:role:1",
+    ]
+    keyboard = next(item for item in family_obligations if item["kind"] == "keyboard")
+    # Minted while visiting screen-b's own bullets, not screen-a's — screen-a never wrote a
+    # `keyboard:` bullet at all, so a design that merged onto the representative node instead
+    # of visiting every member would have missed this obligation entirely.
+    assert keyboard["node"] == "docs/features/demo/screen-b.md#save-button"
+
+
+def test_a_node_with_no_same_as_family_keeps_its_own_obligation_id(tmp_path: Path):
+    """The regression guard for every frozen plan that predates this collapse: a node that
+    declares no `same-as:` is its own one-member family, so `min()` of its component is its
+    own id and its obligation ids are exactly what they were before this change existed."""
+    base = _same_as_button_screens(tmp_path, ["screen-solo"])
+
+    packet = build_context(tmp_path, base=base, source_roots={"demo": ["app"]})
+
+    family_obligations = [
+        item for item in packet["obligations"] if item["node"].endswith("#save-button")
+    ]
+    ids = sorted(item["id"] for item in family_obligations)
+    assert ids == [
+        "okf:docs/features/demo/screen-solo.md#save-button:contract",
+        "okf:docs/features/demo/screen-solo.md#save-button:name:1",
+        "okf:docs/features/demo/screen-solo.md#save-button:role:1",
+    ]
 
 
 def test_one_path_cited_under_two_owning_keys_is_one_owner(tmp_path: Path):

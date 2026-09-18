@@ -56,7 +56,7 @@ defects:
   - id: P1
     story: policy-list
     path: app/web/src/Nav.tsx
-    obligation: okf:docs/features/policy/gui/screens/policy-list.md#new-policy-link:contract
+    obligation: okf:docs/features/policy/gui/screens/edit-policy.md#new-policy-link:contract
     expect: contradicted
     caught_by: run
     why: >
@@ -64,7 +64,10 @@ defects:
       default, so the link is present, focusable and correctly named — and goes nowhere. Every
       screen it leads to is still reachable by its address, so a plan that navigated by URL
       would prove the whole form and never see this; the frozen plan follows the link, so the
-      `contract` check on `new-policy-link` fails and the row is caught.
+      `contract` check on `new-policy-link` fails and the row is caught. The obligation id
+      names `edit-policy.md` because that control is one `same-as:` family written on four
+      screens, and the packet mints one obligation for it under the family's first-sorting
+      member; the defect itself is on the register, as described.
 
   - id: P2
     story: create-policy

@@ -114,6 +114,7 @@ def run_plan(
                 target,
                 root=root,
                 variables=variables,
+                obligation_documents=plan.get("obligationDocuments", {}),
             )
             drivers[target_id] = driver
             driver.start()

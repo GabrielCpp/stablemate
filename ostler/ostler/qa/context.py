@@ -934,6 +934,22 @@ def build_context(
         )
     ]
     obligations.sort(key=lambda item: _sort_key(str(item["id"])))
+    # A `same-as:` family collapses several members' obligations onto one id (`_obligations`'
+    # docstring), so more than one call above can mint the same id — one per member that
+    # states the underlying claim. One member wins every index, rather than the survivors
+    # being a mixture: `same-as-disagreement` refuses a book whose family states a normative
+    # key two ways, so every member's value list for a kind holds the same values, and this
+    # sort is stable, so the member that came first pre-sort is first at every index it
+    # mints. What survives is that one member's list whole.
+    seen_obligation_ids: set[str] = set()
+    deduped_obligations: list[dict[str, Any]] = []
+    for obligation in obligations:
+        obligation_id = str(obligation["id"])
+        if obligation_id in seen_obligation_ids:
+            continue
+        seen_obligation_ids.add(obligation_id)
+        deduped_obligations.append(obligation)
+    obligations = deduped_obligations
     navigation = _navigation(head_graph)
     cli_binaries = _cli_binaries(nodes_by_id)
     return {
@@ -2517,6 +2533,16 @@ def _same_as_component(node_id: str, nodes_by_id: dict[str, dict[str, Any]]) -> 
     return frozenset(seen)
 
 
+def _document_of(node_id: str) -> str:
+    """The document part of a node id — everything ahead of its first `#`.
+
+    Distinct from `drivers._document`, which parses an *obligation* id (`okf:`-prefixed,
+    `.md`-suffixed head required) and reads `""` for one that names no document at all. A
+    node id always names a document; there is no degenerate case to guard here.
+    """
+    return node_id.split("#", 1)[0]
+
+
 def _linked_surface(
     node: dict[str, Any], value: Any, nodes_by_id: dict[str, dict[str, Any]]
 ) -> str:
@@ -2719,12 +2745,59 @@ def _obligations(
     the change reached, which owes all of it; it names the relation keys for a node reached
     only by sharing a subject with one, which is at risk through the record they share and not
     through the refusal shapes it documents on its own account.
+
+    An obligation id is minted off *node*'s `same-as:` family representative
+    (`min(_same_as_component(node["id"], nodes_by_id))`), not off `node["id"]` itself — the
+    family is the relation to collapse on, because `same-as:` is the book's own claim that
+    several occurrences are one documented thing, and `doctor`'s `same-as-disagreement` check
+    (b5762af3) refuses a book where the family disagrees on a `registry.normative_keys` value,
+    which is what makes collapsing the *requirement* sound: nothing discharges a claim no
+    member actually made. It is the requirement alone that check polices. The per-occurrence
+    fields on `base` — `surface`, `locators`, `source` — are the representative's, and
+    `locator:` is normative on no type, so a family whose members are looked at differently
+    (two surfaces, two locators for one control) keeps one way of observing it and drops the
+    rest silently. Every family in the corpus today is single-surface and agrees on its
+    locator; a cross-surface family needs this to carry occupancy the way
+    `occurrenceDocuments` does below, not a representative. `_family_root` is deliberately not used here — it also folds in `extends:` (a
+    specialization, whose narrower claim a base case's evidence must not silently discharge)
+    and file/section containment (a different question about `_CONTAINER_FANOUT`'s fan-out
+    count) — neither belongs in "is this the same documented fact".
+
+    This function still runs once per member: every occurrence keeps minting its own
+    obligations from its own bullets, so a member that states a key its siblings leave silent
+    (legal — `same-as:` exists precisely so a repeat can be written cheaply) still contributes
+    that obligation, under the family id. Nothing here merges the *nodes*; the collapse is
+    entirely in what id two calls to this function produce, and it is `build_context`'s
+    dedupe-by-id, after sorting, that turns byte-identical requirements written on several
+    occurrences into one obligation.
+
+    `nodes_by_id` is `None` only for callers with no graph context (there are none among
+    `context.py`'s own callers today, both of which already pass it); such a caller gets the
+    pre-collapse behavior, minting straight off `node["id"]`.
+
+    `occurrenceDocuments` carries the other half of what the collapse costs a consumer: once
+    an id names a family rather than one occurrence, the id itself can no longer answer "on
+    which document does this obligation sit" — a `_covers_in`-shaped narrowing that used to
+    parse the document out of the id would silently start answering for the representative's
+    document only, which is exactly the defect this field exists to prevent. It is every
+    `<document>` part of the family (`_same_as_component`, not `_family_root` — see above),
+    sorted, and it is always present and never empty: a node in no family still occupies its
+    own document, so the field degrades to that one entry rather than being omitted, and a
+    consumer that reads it never needs a fallback for the solo case.
     """
+    family = (
+        _same_as_component(str(node["id"]), nodes_by_id)
+        if nodes_by_id is not None
+        else frozenset({str(node["id"])})
+    )
+    representative = min(family)
+    occurrence_documents = sorted({_document_of(member) for member in family})
     suffix = "end-state" if journey else "contract"
     base = {
-        "id": f"okf:{node['id']}:{suffix}",
+        "id": f"okf:{representative}:{suffix}",
         "kind": "journey" if journey else "contract",
         "node": node["id"],
+        "occurrenceDocuments": occurrence_documents,
         # D1's dispatch table keys on the link-target node's *type* (interaction, endpoint,
         # command, invocation/method, screen) crossed with the owning surface's `driver:` —
         # compile.py reads this rather than re-deriving it from `checksDeclared`, which is
@@ -2865,7 +2938,7 @@ def _obligations(
         for index, requirement in enumerate(_values(node.get("bullets", {}).get(key)), start=1):
             obligation = {
                 **base,
-                "id": f"okf:{node['id']}:{key.replace(' ', '-')}:{index}",
+                "id": f"okf:{representative}:{key.replace(' ', '-')}:{index}",
                 "kind": key.replace(" ", "-"),
                 "requirement": requirement,
                 "docPosition": [node_line, doc_position.get((key, index), 0)],

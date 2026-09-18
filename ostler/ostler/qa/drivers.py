@@ -58,7 +58,9 @@ def _document(item_id: str) -> str:
     return head if "#" in item_id and head.endswith(".md") else ""
 
 
-def _covers_in(covers: list[str], node_id: str) -> list[str]:
+def _covers_in(
+    covers: list[str], node_id: str, obligation_documents: Mapping[str, list[str]]
+) -> list[str]:
     """The entries of `covers` a placement verdict about `node_id` can speak to.
 
     A vet answers for one screen, so an obligation belonging to *another* document is
@@ -67,9 +69,35 @@ def _covers_in(covers: list[str], node_id: str) -> list[str]:
     document — an acceptance criterion — is kept: it is the scenario's claim as a whole,
     and a component sitting where the book does not put it is exactly the way a vet is
     supposed to make one go red.
+
+    An obligation id can no longer answer "which document" on its own: a `same-as:` family
+    collapses several documents' obligations onto one id (`context.py::_obligations`), so
+    `okf:<representative>:...` names the fact, not any one of the screens that state it.
+    `obligation_documents` is the plan's own record of the family's full occupancy
+    (`plan.py::_obligation_documents`, built from the packet's `occurrenceDocuments`), and
+    this looks the id up in it rather than parsing the id — parsing would silently answer
+    for the representative's document only, and drop the entry on every other member's vet,
+    which is the defect this lookup replaces. A covers entry absent from the mapping is not
+    treated as "no document" (that would reopen the same hole from the other side): it is a
+    plan compiled against a stale or missing `qa-okf-context.json`, and this raises rather
+    than guessing.
     """
     document = _document(node_id)
-    return [item for item in covers if _document(item) in ("", document)]
+    kept = []
+    for item in covers:
+        if _document(item) == "":
+            kept.append(item)
+            continue
+        documents = obligation_documents.get(item)
+        if documents is None:
+            raise DriverBlocked(
+                f"'{item}' in scenario covers has no occurrenceDocuments entry in the "
+                "compiled plan — qa-okf-context.json is stale or missing; re-run `ostler qa "
+                "context` and re-plan"
+            )
+        if document in documents:
+            kept.append(item)
+    return kept
 
 
 #: The context size a browser target gets when its plan declares no `viewport`. It is
@@ -105,12 +133,19 @@ class QaDriver:
         *,
         root: Path,
         variables: dict[str, str],
+        obligation_documents: Mapping[str, list[str]] | None = None,
     ) -> None:
         self.session = session
         self.target_id = target_id
         self.target = target
         self.root = root
         self.variables = variables
+        # Which documents each packet obligation occupies, keyed by its `okf:` id — the
+        # plan's own answer (`plan.py::_obligation_documents`) to a question a family's
+        # collapsed id can no longer answer by being parsed. `None`/omitted only for a
+        # driver built directly, off-plan, by a test that names no document-bearing covers;
+        # a real run always threads it from `v2.py::run_plan`.
+        self.obligation_documents: Mapping[str, list[str]] = obligation_documents or {}
 
     def start(self) -> None:
         return None
@@ -463,7 +498,7 @@ class PythonDriver(QaDriver):
                         # standing beside it in the same scenario — the same fan-out the
                         # plan-assertion branch above already had fixed, missed here because
                         # the plan cannot write a `covers=` on a `qa.vet()` to be narrowed by.
-                        covers=_covers_in(covers, verdict.node_id),
+                        covers=_covers_in(covers, verdict.node_id, self.obligation_documents),
                         step=step,
                     )
                     if not passed:
@@ -1258,6 +1293,7 @@ def create_driver(
     *,
     root: Path,
     variables: dict[str, str],
+    obligation_documents: Mapping[str, list[str]] | None = None,
 ) -> QaDriver:
     """Build the one driver there is.
 
@@ -1266,7 +1302,14 @@ def create_driver(
     calls it per target and because a second driver is a plausible future; a `driver:` key
     on the target is a label for the report, not a dispatch.
     """
-    return PythonDriver(session, target_id, target, root=root, variables=variables)
+    return PythonDriver(
+        session,
+        target_id,
+        target,
+        root=root,
+        variables=variables,
+        obligation_documents=obligation_documents,
+    )
 
 
 def _is_static(path: Path, duration: float) -> bool:

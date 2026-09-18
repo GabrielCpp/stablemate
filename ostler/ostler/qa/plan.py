@@ -99,7 +99,30 @@ def load_plan(plan_file: Path, spec_dir: Path, root: Path) -> tuple[PlanDocument
                 context = loaded
         except json.JSONDecodeError as exc:
             return None, [f"qa-okf-context.json is invalid JSON: {exc}"]
+    # Stamped onto the compiled plan, not read from `document.context` at runtime: the
+    # driver has no book and no packet, only the plan and the scenario it is handed, so
+    # whatever it needs to answer "which documents does this obligation occupy" has to
+    # already be sitting on `data` by the time `run_plan` builds it. `_documented_locators`
+    # is the same shape of lookup, built the same way, for a different question.
+    data["obligationDocuments"] = _obligation_documents(context)
     return PlanDocument(resolved_plan, spec_dir, root, data, context), problems
+
+
+def _obligation_documents(context: dict[str, Any]) -> dict[str, list[str]]:
+    """Which documents each packet obligation occupies, keyed by its id.
+
+    A `same-as:` family collapses several documents' obligations onto one id
+    (`context.py::_obligations`), so the id alone no longer says which document a given
+    entry sits on — `occurrenceDocuments` is the packet's own answer, carried here onto the
+    compiled plan so a runtime consumer (`drivers.py::_covers_in`) can look it up instead of
+    parsing the id, which is sound only for a pre-collapse id and silently wrong for one
+    that now names a family.
+    """
+    return {
+        str(obligation["id"]): list(obligation.get("occurrenceDocuments") or [])
+        for obligation in context.get("obligations", [])
+        if is_mapping(obligation) and obligation.get("id")
+    }
 
 
 def _describe_python_plan(plan_file: Path, root: Path) -> tuple[dict[str, Any] | None, list[str]]:

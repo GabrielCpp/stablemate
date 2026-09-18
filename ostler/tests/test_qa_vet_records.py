@@ -51,12 +51,17 @@ def _region(role: str, selector: str, box: tuple[float, float, float, float]) ->
     }
 
 
-def _driver(repo: Path) -> PythonDriver:
+def _driver(repo: Path, obligation_documents: dict[str, list[str]] | None = None) -> PythonDriver:
     spec = repo / "docs/specs/story-1"
     spec.mkdir(parents=True, exist_ok=True)
     session = QaSession.create(spec, "qa-vet-1", "story-1", {})
     return PythonDriver(
-        session, "web", {"driver": "playwright"}, root=repo, variables={}
+        session,
+        "web",
+        {"driver": "playwright"},
+        root=repo,
+        variables={},
+        obligation_documents=obligation_documents,
     )
 
 
@@ -219,7 +224,15 @@ def test_a_vet_speaks_only_for_the_document_it_photographed(repo: Path) -> None:
             _region("navigation", "nav.toc", (0, 88, 240, 760)),
         ],
     )
-    driver = _driver(repo)
+    driver = _driver(
+        repo,
+        obligation_documents={
+            f"okf:{SCREEN}#loads:does:1": [SCREEN],
+            "okf:docs/features/groom/http/groom.md#get-runs:does:2": [
+                "docs/features/groom/http/groom.md"
+            ],
+        },
+    )
     covers = [
         f"okf:{SCREEN}#loads:does:1",
         "okf:docs/features/groom/http/groom.md#get-runs:does:2",
@@ -234,6 +247,47 @@ def test_a_vet_speaks_only_for_the_document_it_photographed(repo: Path) -> None:
     # The screen's own obligation, plus the criterion that names no document at all —
     # never the HTTP obligation sitting beside them in the same scenario.
     assert failed[0]["covers"] == [f"okf:{SCREEN}#loads:does:1", "ac:1"]
+
+
+def test_a_vet_credits_a_same_as_family_s_obligation_though_the_id_names_another_screen(
+    repo: Path,
+) -> None:
+    """A `same-as:` family collapses onto one id minted for its lexicographic-min member
+    (`context.py::_obligations`), so the id this scenario covers can name a screen other
+    than the one a given vet photographs — `docs/features/groom/gui/screens/other.md`
+    below, never `SCREEN` — while still being the very obligation `SCREEN` states, because
+    the family occupies both documents. `_covers_in` has to credit it by looking the id up
+    in the plan's `occurrenceDocuments` record, not by parsing the document out of the id
+    itself, or every member but the representative loses its own obligation.
+    """
+    _book(repo)
+    shot = _shot(
+        repo,
+        [
+            _region("article", "article.prose", (1180, 88, 250, 760)),
+            _region("navigation", "nav.toc", (0, 88, 240, 760)),
+        ],
+    )
+    family_id = "okf:docs/features/groom/gui/screens/other.md#body:contract"
+    other_document_id = "okf:docs/features/groom/http/groom.md#get-runs:does:2"
+    driver = _driver(
+        repo,
+        obligation_documents={
+            family_id: [SCREEN, "docs/features/groom/gui/screens/other.md"],
+            other_document_id: ["docs/features/groom/http/groom.md"],
+        },
+    )
+    covers = [family_id, other_document_id, "ac:1"]
+
+    result = driver._grade("s-1", covers, _records(shot), "", 0, timed_out=False)
+
+    assert result.status == "failed"
+    failed = [record for record in _asserts(driver) if record["result"] == "FAIL"]
+    assert len(failed) == 1
+    # The family's obligation, credited via SCREEN's own membership in its
+    # occurrenceDocuments, plus the criterion that names no document — never the
+    # obligation whose occurrenceDocuments names a document this vet never photographed.
+    assert failed[0]["covers"] == [family_id, "ac:1"]
 
 
 def test_a_failed_verdict_puts_what_the_page_showed_on_the_ledger(repo: Path) -> None:
