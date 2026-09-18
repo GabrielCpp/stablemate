@@ -142,11 +142,14 @@ def test_the_book_grounds_at_symbol_level() -> None:
 def test_the_book_describes_a_product_with_no_service_in_it() -> None:
     """`claims-api` removed the screen, `depot-infra` removed the process, and this one keeps
     the process but takes away the socket: there is nothing to start and nothing to reach."""
+    from ostler.model import load  # noqa: PLC0415 - a heavy import only this test needs
+    from ostler.qa.runbook import stack_runbooks  # noqa: PLC0415
+
     features = APP / "docs" / "features"
     contexts = {path.parent.name for path in features.rglob("*.md")}
-    assert contexts == {"tally", "concepts", "flows"}, sorted(contexts)
+    assert contexts == {"tally", "concepts", "flows", "ops"}, sorted(contexts)
     assert not (APP / "compose.yml").exists(), "a serviceless fixture may not ship a stack"
-    assert not any((APP / "docs").rglob("ops/*.md")), (
+    assert not stack_runbooks(load(APP)), (
         "this fixture exercises the bring-up's `none` arm — no runbook node may declare a stack"
     )
 
