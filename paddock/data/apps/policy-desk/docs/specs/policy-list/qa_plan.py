@@ -96,10 +96,10 @@ def register_api(qa: Qa) -> None:
         "okf:docs/features/policy/gui/screens/policy-list.md#open-policy:contract",
         "okf:docs/features/policy/gui/screens/policy-list.md#open-policy:does:1",
         "okf:docs/features/policy/gui/screens/policy-list.md#open-policy:keyboard:1",
-        "okf:docs/features/policy/gui/screens/policy-list.md#new-policy-link:contract",
-        "okf:docs/features/policy/gui/screens/policy-list.md#new-policy-link:keyboard:1",
-        "okf:docs/features/policy/gui/screens/policy-list.md#new-policy-link:name:1",
-        "okf:docs/features/policy/gui/screens/policy-list.md#new-policy-link:role:1",
+        "okf:docs/features/policy/gui/screens/edit-policy.md#new-policy-link:contract",
+        "okf:docs/features/policy/gui/screens/edit-policy.md#new-policy-link:keyboard:1",
+        "okf:docs/features/policy/gui/screens/edit-policy.md#new-policy-link:name:1",
+        "okf:docs/features/policy/gui/screens/edit-policy.md#new-policy-link:role:1",
         "okf:docs/features/policy/gui/screens/policy-detail.md:contract",
         "okf:docs/features/policy/gui/screens/policy-detail.md#edit-policy-link:contract",
         "okf:docs/features/policy/gui/screens/policy-detail.md#edit-policy-link:name:1",
@@ -128,12 +128,12 @@ def register_browser(qa: Qa) -> None:
     qa.verify("visible", first_row_link, locator="#open-policy", covers=["ac:2", "okf:docs/features/policy/gui/screens/policy-list.md#policy-table:contract", "okf:docs/features/policy/gui/screens/policy-list.md#policy-table:name:1"])
 
     new_link = qa.by_role("link", name="New policy")
-    qa.verify("visible", new_link, locator="#new-policy-link", covers=["okf:docs/features/policy/gui/screens/policy-list.md#new-policy-link:contract", "okf:docs/features/policy/gui/screens/policy-list.md#new-policy-link:name:1", "okf:docs/features/policy/gui/screens/policy-list.md#new-policy-link:role:1"])
+    qa.verify("visible", new_link, locator="#new-policy-link", covers=["okf:docs/features/policy/gui/screens/edit-policy.md#new-policy-link:contract", "okf:docs/features/policy/gui/screens/edit-policy.md#new-policy-link:name:1", "okf:docs/features/policy/gui/screens/edit-policy.md#new-policy-link:role:1"])
     new_link.focus()
     qa.page.keyboard.press("Enter")
     form = qa.by_css('form[aria-label="New policy"]')
     qa.eventually("the keyboard-operated entry opens the new-policy form", form.is_visible)
-    qa.check("New policy is keyboard-operable and lands on the form as a client route", qa.page.url.endswith("/policies/new"), actual=qa.page.url, expected="/policies/new", covers=["ac:6", "okf:docs/features/policy/gui/screens/policy-list.md#new-policy-link:contract", "okf:docs/features/policy/gui/screens/policy-list.md#new-policy-link:keyboard:1"])
+    qa.check("New policy is keyboard-operable and lands on the form as a client route", qa.page.url.endswith("/policies/new"), actual=qa.page.url, expected="/policies/new", covers=["ac:6", "okf:docs/features/policy/gui/screens/edit-policy.md#new-policy-link:contract", "okf:docs/features/policy/gui/screens/edit-policy.md#new-policy-link:keyboard:1"])
     qa.by_role("link", name="Policies").click()
     qa.eventually("navigating back reaches the register again", table.is_visible)
 
@@ -247,3 +247,79 @@ def underwrite_journey_browser(qa: Qa) -> None:
     qa.verify("visible", journey_heading, locator="../gui/screens/policy-detail.md#policy-heading", text="Policy PN-1001", covers=["okf:docs/features/policy/flows/create-policy.md:start:1", "okf:docs/features/policy/flows/create-policy.md:end:1", "okf:docs/features/policy/flows/create-policy.md:end-state"])
     qa.verify("visible", detail, locator="../gui/screens/policy-detail.md#policy-summary", text="Draft", covers=["okf:docs/features/policy/flows/create-policy.md:start:1", "okf:docs/features/policy/flows/create-policy.md:end:1", "okf:docs/features/policy/flows/create-policy.md:end-state"])
     qa.check("the journey ends on the new policy's detail route, not back on the register", qa.page.url.endswith("/policies/pn-1001"), actual=qa.page.url, expected="/policies/pn-1001", covers=["okf:docs/features/policy/flows/create-policy.md:end:1", "okf:docs/features/policy/flows/create-policy.md:end-state"])
+
+
+@scenario(
+    target=web,
+    mechanism="live",
+    covers=[
+        "okf:docs/features/policy/flows/edit-policy.md:start:1",
+        "okf:docs/features/policy/flows/edit-policy.md:end:1",
+        "okf:docs/features/policy/flows/edit-policy.md:end-state",
+    ],
+    preconditions=["the register is reset and holds one policy created through the documented route"],
+    checkpoints=[
+        "the walk starts on the register rather than on the edit form",
+        "Edit policy is followed from the detail screen the register's row opens",
+        "a save quoting a version the record has since moved past is refused rather than applied",
+        "the accepted retry ends back on the detail screen showing the amended values",
+    ],
+    forbid=["deep-linking to the edit form or the detail screen", "ending the walk on the edit form instead of the amended policy"],
+)
+def amend_journey_browser(qa: Qa) -> None:
+    """Walk the amend journey end to end, from the register the book starts it at.
+
+    The register is this story's screen, so the journey that begins there is owed live
+    evidence by it. The step this walk exists to hold is the one a write-then-read cannot
+    tell apart from an unconditional overwrite: a save whose quoted version the record has
+    already moved past has to be refused, not applied — and only a stale save followed by
+    an accepted one distinguishes compare-and-swap from a plain write.
+    """
+    qa.http.delete("/api/policies", expect_status=204)
+    qa.http.post("/api/policies", json_body=valid_policy("PN-1001"), expect_status=201)
+    qa.goto("/policies")
+    qa.eventually("the walk starts on the register", qa.by_css("main").is_visible)
+    qa.by_role("link", name="PN-1001").click()
+    detail = qa.by_css("dl")
+    qa.eventually("the register's row opens the policy's detail screen", detail.is_visible)
+    qa.by_role("link", name="Edit policy").click()
+    form = qa.by_css('form[aria-label="Edit policy"]')
+    qa.eventually("Edit policy reaches the form from the detail screen", form.is_visible)
+    save = qa.by_role("button", name="Save policy")
+    qa.eventually("the edit form offers its save control", save.is_visible)
+
+    current = qa.field(qa.http.get("/api/policies/pn-1001").json(), "policy")
+    qa.http.put(
+        "/api/policies/pn-1001",
+        json_body={
+            "holder_email": qa.field(current, "holder_email"),
+            "coverage_type": qa.field(current, "coverage_type"),
+            "vehicle_vin": current.get("vehicle_vin", ""),
+            "property_address": current.get("property_address", ""),
+            "start_date": qa.field(current, "start_date"),
+            "end_date": qa.field(current, "end_date"),
+            "premium": qa.field(current, "premium") + 1,
+            "version": qa.field(current, "version"),
+        },
+        expect_status=200,
+    )
+    qa.by_css("#premium").fill("1350")
+    with qa.page.expect_response("**/api/policies/pn-1001") as stale_submission:
+        save.click()
+    alert = qa.by_css('p[role="alert"]')
+    qa.eventually("the stale write is answered with an alert rather than a navigation", alert.is_visible)
+    qa.check("the form reports the write moved out from under it", "Stale Policy" in alert.inner_text())
+    qa.check("the browser stays on the edit route rather than the write silently landing", qa.page.url.endswith("/policies/pn-1001/edit"))
+    qa.verify("conflict_on_stale", stale_submission.value.status, subject="policy pn-1001", token="version", covers=["okf:docs/features/policy/flows/edit-policy.md:start:1", "okf:docs/features/policy/flows/edit-policy.md:end:1", "okf:docs/features/policy/flows/edit-policy.md:end-state"])
+
+    qa.goto("/policies/pn-1001/edit")
+    qa.eventually("re-opening the form reads the record at its current version", form.is_visible)
+    qa.by_css("#premium").fill("1350")
+    save.click()
+    qa.eventually("the accepted retry lands back on the policy summary", detail.is_visible)
+    qa.vet("docs/features/policy/gui/screens/policy-detail.md", name="amend-end", components=["policy-summary"])
+    qa.screenshot("amend-end")
+    amend_heading = qa.by_role("heading", name="Policy PN-1001")
+    qa.verify("visible", amend_heading, locator="../gui/screens/policy-detail.md#policy-heading", text="Policy PN-1001", covers=["okf:docs/features/policy/flows/edit-policy.md:start:1", "okf:docs/features/policy/flows/edit-policy.md:end:1", "okf:docs/features/policy/flows/edit-policy.md:end-state"])
+    qa.verify("visible", detail, locator="../gui/screens/policy-detail.md#policy-summary", text="$1350.00", covers=["okf:docs/features/policy/flows/edit-policy.md:start:1", "okf:docs/features/policy/flows/edit-policy.md:end:1", "okf:docs/features/policy/flows/edit-policy.md:end-state"])
+    qa.check("the journey ends on the amended policy's detail route, not on the edit form", qa.page.url.endswith("/policies/pn-1001"), actual=qa.page.url, expected="/policies/pn-1001", covers=["okf:docs/features/policy/flows/edit-policy.md:end:1", "okf:docs/features/policy/flows/edit-policy.md:end-state"])
