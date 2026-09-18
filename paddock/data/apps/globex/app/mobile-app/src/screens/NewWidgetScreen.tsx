@@ -21,12 +21,18 @@ export function NewWidgetScreen({ navigation }: { navigation: { navigate: (route
   return (
     <View testID="new-widget-screen" style={{ padding: 16 }}>
       <Text>Name</Text>
-      <TextInput testID="name-input" value={name} onChangeText={setName} />
-      {renderFieldError("name-error", errors.name)}
+      <TextInput testID="name-input" accessibilityLabel="Name" value={name} onChangeText={setName} />
+      {renderFieldError("name-error", "Name", errors.name)}
       <Text>Quantity</Text>
-      <TextInput testID="quantity-input" value={quantity} onChangeText={setQuantity} keyboardType="numeric" />
-      {renderFieldError("quantity-error", errors.quantity)}
-      <Pressable testID="submit-widget" onPress={onSubmit}>
+      <TextInput
+        testID="quantity-input"
+        accessibilityLabel="Quantity"
+        value={quantity}
+        onChangeText={setQuantity}
+        keyboardType="numeric"
+      />
+      {renderFieldError("quantity-error", "Quantity", errors.quantity)}
+      <Pressable testID="submit-widget" role="button" onPress={onSubmit}>
         <Text>Add widget</Text>
       </Pressable>
     </View>
@@ -43,10 +49,14 @@ export async function submitNewWidget(name: string, quantity: number) {
 // Renders one field's inline error, or nothing when there isn't one — the same split
 // new.js keeps between clearFieldErrors and showFieldErrors, collapsed into one helper
 // since React re-renders the whole tree rather than mutating two spans in place.
-export function renderFieldError(testID: string, message?: string) {
+//
+// `alert` takes no name from its content, and both fields' alerts can be on screen at
+// once, so the field label is announced with the message rather than left to position:
+// without it the two alerts are indistinguishable to anything that addresses by role.
+export function renderFieldError(testID: string, fieldLabel: string, message?: string) {
   if (!message) return null;
   return (
-    <Text testID={testID} role="alert">
+    <Text testID={testID} role="alert" accessibilityLabel={`${fieldLabel}: ${message}`}>
       {message}
     </Text>
   );

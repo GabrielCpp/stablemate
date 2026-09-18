@@ -31,7 +31,7 @@ export function WidgetListScreen({ navigation }: { navigation: { navigate: (rout
           </View>
         )}
       />
-      <Pressable testID="new-widget-link" onPress={() => navigation.navigate("NewWidget")}>
+      <Pressable testID="new-widget-link" role="button" onPress={() => navigation.navigate("NewWidget")}>
         <Text>Add a widget</Text>
       </Pressable>
     </View>
@@ -57,7 +57,7 @@ export function renderEmptyNotice(navigation: { navigate: (route: string) => voi
       <Text testID="empty-notice" role="status">
         No widgets are on file yet.
       </Text>
-      <Pressable testID="new-widget-link" onPress={() => navigation.navigate("NewWidget")}>
+      <Pressable testID="new-widget-link" role="button" onPress={() => navigation.navigate("NewWidget")}>
         <Text>Add a widget</Text>
       </Pressable>
     </View>
