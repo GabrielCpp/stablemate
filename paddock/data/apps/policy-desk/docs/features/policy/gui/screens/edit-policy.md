@@ -64,6 +64,22 @@ as though it landed.
 
 Submits the edit together with the version the form was opened at.
 
+### new-policy-link
+
+- selector: `#new-policy`
+- role: link
+- name: New policy
+- verify: visible(locator="#new-policy-link")
+- placement: width 0-40%, x 0-30%, y 0-20%
+- keyboard: `Tab` to the link, `Enter` to follow it.
+- parent: [Edit policy form](#edit-policy-form)
+- same-as: [New policy link](policy-list.md#new-policy-link)
+- code: app/web/src/Nav.tsx::Nav@4b67472aa613
+
+The same `Nav` region [policy-list.md](policy-list.md#new-policy-link) documents, rendered on this
+screen too — one nav, four screens. Opens [the new policy form](new-policy.md) as a client route,
+without reloading the document.
+
 ## Interactions
 
 ### save-edit

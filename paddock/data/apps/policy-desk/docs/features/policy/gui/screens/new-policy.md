@@ -126,6 +126,22 @@ of the form.
 Submits the form, and stays disabled while the request is in flight so the same policy number is not
 sent twice.
 
+### new-policy-link
+
+- selector: `#new-policy`
+- role: link
+- name: New policy
+- verify: visible(locator="#new-policy-link")
+- placement: width 0-40%, x 0-30%, y 0-20%
+- keyboard: `Tab` to the link, `Enter` to follow it.
+- parent: [New policy form](#new-policy-form)
+- same-as: [New policy link](policy-list.md#new-policy-link)
+- code: app/web/src/Nav.tsx::Nav@4b67472aa613
+
+The same `Nav` region [policy-list.md](policy-list.md#new-policy-link) documents, rendered on this
+screen too — one nav, four screens. It stays present on the form the link opens, rather than
+disappearing once the operator has followed it here.
+
 ## Interactions
 
 ### submit-new-policy
