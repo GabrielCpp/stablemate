@@ -36,6 +36,7 @@ input. Every human-facing line goes to stderr; stdout carries only what was aske
 - does:
   - Creates the ledger — `tally.json` here, unless `--file` names another — with no entries and
     the given currency.
+- run: invoke(argv=["tally", "init"])
 - verify: created(subject="tally.json")
 - code: tally/cli.py::cmd_init@4d236ca6840e
 - detail: [The ledger file](concepts/ledger-file.md)
@@ -55,6 +56,7 @@ input. Every human-facing line goes to stderr; stdout carries only what was aske
   - `SPENT_ON`: the day, as `YYYY-MM-DD`.
 - does:
   - Records one expense in the ledger.
+- run: invoke(argv=["tally", "add", "alice", "coffee", "350", "2024-01-01"])
 - verify: count(subject="entries in the ledger", equals=1)
 - code: tally/cli.py::cmd_add@4d236ca6840e
 
@@ -70,6 +72,7 @@ input. Every human-facing line goes to stderr; stdout carries only what was aske
   - `PATH`: a CSV file whose header is `who,what,amount_cents,spent_on`.
 - does:
   - Adds every expense in the file that the ledger does not already hold.
+- run: invoke(argv=["tally", "import", "expenses.csv"])
 - verify: created(subject="the rows the ledger did not already hold")
 - code: tally/cli.py::cmd_import@4d236ca6840e
 
@@ -85,6 +88,7 @@ input. Every human-facing line goes to stderr; stdout carries only what was aske
   - none: `report` accepts no positional arguments.
 - does:
   - Totals the ledger, per person and overall.
+- run: invoke(argv=["tally", "report", "--json"])
 - verify: json_path(path="$.total_cents", equals="7450")
 - code: tally/cli.py::cmd_report@4d236ca6840e
 
@@ -97,6 +101,7 @@ input. Every human-facing line goes to stderr; stdout carries only what was aske
   - `PATH`: the CSV file to write.
 - does:
   - Writes every entry in the ledger to `PATH` as CSV.
+- run: invoke(argv=["tally", "export", "out.csv"])
 - verify: created(subject="the exported CSV file")
 - code: tally/cli.py::cmd_export@4d236ca6840e
 
