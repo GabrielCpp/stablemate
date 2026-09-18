@@ -814,3 +814,67 @@ def test_a_same_size_rewrite_is_not_served_from_the_parse_cache(repo: Path):
     reloaded = load(repo)
     assert reloaded.find_ui_node("docs/features/web/login.md#aaa") is None
     assert present(reloaded.find_ui_node("docs/features/web/login.md#bbb")).title == "bbb"
+
+
+# ---------------------------------------------------------------------------
+# `same-as-disagreement` — a `same-as:` family states two values for one normative key
+# ---------------------------------------------------------------------------
+def _write_same_as_concepts(repo: Path, texts: list[str | None]) -> None:
+    """A chain of concepts `notify-0`, `notify-1`, ... each reciprocally `same-as:` its
+    neighbors, with `- consistency: <text>` when *texts[i]* is not None and omitted when it
+    is. A linear chain (0<->1<->2<->...) is one family, same as the addendum in
+    `test_one_way_same_as_is_checked_per_edge_not_per_family`."""
+    n = len(texts)
+    for i, text in enumerate(texts):
+        same_as = "".join(
+            f"- same-as: [notify-{j}](notify-{j}.md)\n"
+            for j in (i - 1, i + 1) if 0 <= j < n
+        )
+        consistency = f"- consistency: {text}\n" if text is not None else ""
+        write(repo / f"docs/features/groom/concepts/notify-{i}.md",
+              f"---\ntype: concept\nslug: notify-{i}\ntitle: Notify {i}\n---\n"
+              f"# Notify {i}\n\n{same_as}{consistency}")
+
+
+def test_same_as_disagreement_on_two_different_values(repo: Path):
+    _write_same_as_concepts(repo, ["at least once", "exactly once"])
+    hits = [f for f in doctor.run(load(repo)).findings if f.code == "same-as-disagreement"]
+    assert len(hits) == 1
+    assert hits[0].severity == "error"
+    assert "notify-0" in hits[0].message and "notify-1" in hits[0].message
+    assert "at least once" in hits[0].message and "exactly once" in hits[0].message
+    assert set(hits[0].related) == {"docs/features/groom/concepts/notify-0.md",
+                                     "docs/features/groom/concepts/notify-1.md"}
+
+
+def test_same_as_disagreement_silent_on_identical_values(repo: Path):
+    _write_same_as_concepts(repo, ["exactly once", "exactly once"])
+    assert "same-as-disagreement" not in codes(doctor.run(load(repo)))
+
+
+def test_same_as_disagreement_silent_when_one_side_omits_the_key(repo: Path):
+    _write_same_as_concepts(repo, ["exactly once", None])
+    assert "same-as-disagreement" not in codes(doctor.run(load(repo)))
+
+
+def test_same_as_disagreement_silent_on_same_values_different_order(repo: Path):
+    write(repo / "docs/features/groom/concepts/notify-0.md",
+          "---\ntype: concept\nslug: notify-0\ntitle: Notify 0\n---\n# Notify 0\n\n"
+          "- same-as: [notify-1](notify-1.md)\n"
+          "- consistency: at least once\n"
+          "- consistency: exactly once\n")
+    write(repo / "docs/features/groom/concepts/notify-1.md",
+          "---\ntype: concept\nslug: notify-1\ntitle: Notify 1\n---\n# Notify 1\n\n"
+          "- same-as: [notify-0](notify-0.md)\n"
+          "- consistency: exactly once\n"
+          "- consistency: at least once\n")
+    assert "same-as-disagreement" not in codes(doctor.run(load(repo)))
+
+
+def test_same_as_disagreement_one_finding_for_a_three_member_family(repo: Path):
+    _write_same_as_concepts(repo, ["at least once", "exactly once", "exactly once"])
+    hits = [f for f in doctor.run(load(repo)).findings if f.code == "same-as-disagreement"]
+    assert len(hits) == 1
+    assert set(hits[0].related) == {"docs/features/groom/concepts/notify-0.md",
+                                     "docs/features/groom/concepts/notify-1.md",
+                                     "docs/features/groom/concepts/notify-2.md"}

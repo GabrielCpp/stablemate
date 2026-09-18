@@ -116,13 +116,19 @@ another; `same-as:` says this interaction and the one it names are the *same* do
 described again in a second place — never a narrower one, and carrying none of `extends:`'s
 control-identity inheritance. It is symmetric and must be declared on both sides. Its consumer is the QA obligation packet: a change to the cited symbol maps to every node that cites it, and without `same-as:` one thing written in three places reads as three things and trips the container fan-out demotion that exists to catch sprawl. `same-as:` is the declared fact that collapses them back into one family.
 
+The occurrences must also *agree*: each states the same normative claims, not two different
+ones. A member that omits a key is not a disagreement — silence just means that occurrence
+was written cheaply, without repeating a claim another occurrence already made — but two
+members that both state a key must state the same value; `doctor`'s `same-as-disagreement`
+finds it when they don't.
+
 It deliberately has no effect on `competing-implementations`. That check judges only same-file groups, and two sections of one file claiming to be the same documented thing would be the defect, not the exemption.
 
 ## Doctor codes it can trip
 
 `missing-required-bullet` (five keys), `undeclared-obligation`, `weak-check`,
 `unstated-precondition`, `compound-normative-bullet`, `unresolved-relation` on `on:` or
-`same-as:`, `one-way-same-as`,
+`same-as:`, `one-way-same-as`, `same-as-disagreement`,
 `ambiguous-locator`, `unparsed-act`, `undeclared-act-locator`, `stale-defect`, `malformed-defect`; with the repeat keys also `static-template`, `unproven-unique-name`,
 `malformed-template`, `malformed-variants`. See [../doctor-codes.md](../doctor-codes.md).
 

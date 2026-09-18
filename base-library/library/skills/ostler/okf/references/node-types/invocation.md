@@ -45,6 +45,12 @@ regardless. It says this invocation and the one it names are the *same* document
 described again in a second place — not a narrower version of it, and not a winner over a
 loser. It is symmetric and must be declared on both sides. Its consumer is the QA obligation packet: a change to the cited symbol maps to every node that cites it, and without `same-as:` one thing written in three places reads as three things and trips the container fan-out demotion that exists to catch sprawl. `same-as:` is the declared fact that collapses them back into one family.
 
+The occurrences must also *agree*: each states the same normative claims, not two different
+ones. A member that omits a key is not a disagreement — silence just means that occurrence
+was written cheaply, without repeating a claim another occurrence already made — but two
+members that both state a key must state the same value; `doctor`'s `same-as-disagreement`
+finds it when they don't.
+
 It deliberately has no effect on `competing-implementations`. That check judges only same-file groups, and two sections of one file claiming to be the same documented thing would be the defect, not the exemption. Contrast it with `extends:`
 (a narrower version of the thing it names, though this type documents no such row above) and
 with the judgment keys a `concept` carries for genuinely competing implementations.
@@ -78,7 +84,8 @@ timeout 30 ostler scaffold invocation expire-stale-links --in docs/features/acme
 
 `missing-required-bullet` (`on:`, `trigger:`, `does:`), `undeclared-obligation`, `weak-check`,
 `unstated-precondition`, `compound-normative-bullet`, `unresolved-relation`, `one-way-same-as`
-if `same-as:` is used. See [../doctor-codes.md](../doctor-codes.md).
+if `same-as:` is used, `same-as-disagreement` if a `same-as:` family disagrees about a shared
+normative key. See [../doctor-codes.md](../doctor-codes.md).
 
 ## When bullets are not enough
 

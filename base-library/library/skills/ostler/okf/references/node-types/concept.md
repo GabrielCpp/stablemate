@@ -43,7 +43,12 @@ without being it, and are worth naming so nobody reaches for them by mistake:
   a winner/loser pair. It is symmetric and must be declared on **both** nodes, and its one consumer is the QA
   obligation packet, where it collapses the book's own repetition of itself into a single
   family instead of the sprawl the container fan-out demotion exists to catch. It has no
-  effect on `competing-implementations`, which judges same-file groups only.
+  effect on `competing-implementations`, which judges same-file groups only. The occurrences
+  must also *agree*: each states the same normative claims, not two different ones. A member
+  that omits a key is not a disagreement — silence just means that occurrence was written
+  cheaply, without repeating a claim the other already made — but two members that both
+  state a key must state the same value; `doctor`'s `same-as-disagreement` finds it when
+  they don't.
 - **`legacySurface`** exists only on epic *seeds*, in the planning layer. It never reaches the
   book.
 - **The `legacy` in doctor's reachability rules** is an unrelated root waiver, not a marker on
@@ -146,7 +151,8 @@ option, and a new call site reaching for it is a defect.
 
 `okf-missing-type`, `dangling-code-ref`, `missing-code-symbol`, `unresolved-relation` on
 `extends:`, `same-as:`, `prefers:` or `deprecates:`, `one-way-same-as` when a `same-as:` claim
-is not reciprocated, and — if it uses the shared normative keys — `undeclared-obligation` and
+is not reciprocated, `same-as-disagreement` if a `same-as:` family disagrees about a shared
+normative key, and — if it uses the shared normative keys — `undeclared-obligation` and
 `weak-check`. See [../doctor-codes.md](../doctor-codes.md).
 
 Prose is not checked, deliberately. Nothing in this file's body can trip a doctor code, which

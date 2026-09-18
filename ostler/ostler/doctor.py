@@ -168,6 +168,7 @@ def run(graph: Graph, epic_filter: str | None = None, check_schema: bool = True,
     _check_book_captures(graph, f)
     _check_judgment(graph, f, resolver)
     _check_same_as_symmetry(graph, f, resolver)
+    _check_same_as_disagreement(graph, f, resolver)
     _check_unspecified(graph, f, resolver)
     _check_sensitivity(graph, f)
     _check_runbook(graph, f)
@@ -2235,6 +2236,114 @@ def _check_same_as_symmetry(graph: Graph, f: list[Finding],
                     path=rel, line=node.line, ref=href,
                     suggestion=f"on {target_rel}: "
                                f"- same-as: [{node.title or node.id}]({back_href})"))
+
+
+def _check_same_as_disagreement(graph: Graph, f: list[Finding],
+                                resolver: links_mod.LinkResolver) -> None:
+    """`same-as-disagreement` — a `same-as:` family states two different values for one
+    normative key.
+
+    `same-as:` says the members are one documented thing, written down more than once —
+    `_check_same_as_symmetry` above already makes the relation reciprocated per edge. What
+    it does not make true is that the occurrences *agree*: a fact stated twice is a fact
+    that can disagree with itself, and nothing before this check ever read the members'
+    bullets against each other.
+
+    **Family** is the transitive closure over declared `same-as:` edges alone, undirected —
+    mirroring `qa/context.py::_same_as_component`, not `_family_root`. `_family_root`
+    collapses three kinds of structure for `_CONTAINER_FANOUT`'s different question (whether
+    two citations are one fan-out owner or two): the `same-as:` component, an `extends:`
+    base case, and a section node's containing file. The other two are wrong here on
+    purpose. `extends:` is specialization, not sameness — a narrower arm's normative claims
+    are its own, and treating a base and its specialization as one fact stated twice would
+    fire on exactly the case `extends:` exists to express. Containment (`path#anchor`
+    collapsing to `path`) puts a file and its own `###` subsections in one group, but they
+    own different bullets by construction — a screen and one of its components do not state
+    the same claim twice, they state two different claims. So this check's grouping is
+    narrower than `_family_root`'s: `same-as:` edges only, nothing else.
+
+    **Scope is `registry.normative_keys(node.type)`** — exactly the keys the QA obligation
+    packet mints one obligation per bullet for (`qa/context.py:2868`), unioned over the
+    family's member types. `parent:` and `same-as:` are relation keys, not normative ones,
+    so they are already outside this set without a hand-maintained exemption list. The
+    boundary matters because the packet is about to collapse a family into one obligation
+    per key; a key that mints nothing cannot be silently discharged by that collapse, and a
+    key this check does not compare is a key the collapse would still discharge safely.
+
+    A `same-as:` target that resolves to something that is not a UI node contributes no
+    edge, mirroring `_check_same_as_symmetry`: this judges a claim only once it lands on a
+    real node, and a target that never does is `unresolved-relation`'s finding. Without that
+    filter an unresolvable id could win `min()` and silently take its whole family with it.
+
+    A member that **omits** a key is not a disagreement — only members that *declare* it
+    (a non-empty value list) are compared. Silence is not a contradiction; `same-as:` exists
+    precisely so one occurrence can be written cheaply without repeating every claim the
+    other already made. Two declaring members disagree when their **sorted** tuple of
+    stripped values differs: sorting means a differing *order* is not a disagreement (the
+    collapse keeps one member's order and no fact is lost) while a differing *count* or
+    *content* is. One finding per (family, key) — a single fact disagreeing with itself is
+    one defect, not one per pair and not one per node — anchored on the family root
+    (`min()` of the component's ids, the same deterministic representative `_family_root`
+    computes for its own `same-as:` stage), naming every declaring member and its values.
+    The `ref` carries that root alongside the key for the reason `competing-implementations`
+    keys on its group rather than on its symbol: two unrelated families disagreeing about
+    `consistency:` are two defects with two remedies, and a shared `ref` would collapse them
+    into one worklist item and let one waiver accept both.
+    """
+    by_id = {node.id: node for node in graph.ui_nodes}
+    adjacency: dict[str, set[str]] = {}
+    for node in graph.ui_nodes:
+        if not node.meta.get("same-as"):
+            continue
+        for target_id in _resolved_targets(node, "same-as", resolver):
+            if target_id not in by_id:
+                continue
+            adjacency.setdefault(node.id, set()).add(target_id)
+            adjacency.setdefault(target_id, set()).add(node.id)
+
+    seen: set[str] = set()
+    for node in graph.ui_nodes:
+        if node.id in seen or node.id not in adjacency:
+            continue
+        component: set[str] = {node.id}
+        frontier = [node.id]
+        while frontier:
+            current = frontier.pop()
+            for neighbor in adjacency.get(current, ()):
+                if neighbor not in component:
+                    component.add(neighbor)
+                    frontier.append(neighbor)
+        seen.update(component)
+        members = [by_id[i] for i in component]
+        if len(members) < 2:
+            continue
+
+        keys: set[str] = set()
+        for member in members:
+            keys.update(registry.normative_keys(member.type))
+
+        root = by_id[min(component)]
+        rel = root.path.relative_to(graph.root).as_posix()
+
+        for key in sorted(keys):
+            declared: list[tuple[UINode, tuple[str, ...]]] = []
+            for member in members:
+                values = tuple(sorted(
+                    v.strip() for v in _bullet_values(member.meta.get(key, "")) if v.strip()))
+                if values:
+                    declared.append((member, values))
+            if len({values for _, values in declared}) < 2:
+                continue
+            declared.sort(key=lambda pair: pair[0].id)
+            stated = "; ".join(
+                f"{member.id} states {list(values)}" for member, values in declared)
+            f.append(Finding(
+                "error", "same-as-disagreement",
+                f"{root.id}: `same-as:` family disagrees about `{key}:` — {stated} — "
+                f"but `same-as:` claims these occurrences are one documented thing, which "
+                f"means one true value; either the claim or one of the occurrences is wrong",
+                path=rel, line=root.line, ref=f"{root.id}:{key}",
+                related=sorted(component)))
 
 
 def _check_unspecified(graph: Graph, f: list[Finding],
