@@ -1,0 +1,15 @@
+{
+  "expo": {
+    "name": "mobile-app",
+    "slug": "globex-mobile-app",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "globexmobile",
+    "ios": {
+      "bundleIdentifier": "com.globex.mobile"
+    },
+    "android": {
+      "package": "com.globex.mobile"
+    }
+  }
+}
