@@ -167,6 +167,7 @@ def run(graph: Graph, epic_filter: str | None = None, check_schema: bool = True,
 
     _check_ui(graph, f, resolver, checkouts)
     _check_book_captures(graph, f)
+    _check_self_relation(graph, f, resolver)
     _check_judgment(graph, f, resolver)
     _check_same_as_symmetry(graph, f, resolver)
     _check_same_as_disagreement(graph, f, resolver)
@@ -1977,6 +1978,44 @@ def _alternation_conflict(a: checks.CheckCall, b: checks.CheckCall) -> bool:
         return False
     spec = checks.CHECK_BY_NAME[a.name]
     return not any(param.name == diffs[0] and param.identifies for param in spec.params)
+
+
+def _check_self_relation(graph: Graph, f: list[Finding],
+                         resolver: links_mod.LinkResolver) -> None:
+    """`self-relation` — a relation bullet whose target resolves to the node it is written on.
+
+    A relation is between two things. `- detail: [this page](this-page.md#this-node)` has a
+    source and a target that are one node, so there is no second thing for the relation to
+    hold between — not an under-specified claim to be filled in later, but an ill-formed one,
+    and every reading of it is false: a node is not a detail of itself, and `exclusive-with:`
+    pointing home says the node rules itself out.
+
+    Checked over every key in `registry.RELATION_KEYS` rather than per key, because nothing
+    about the defect is particular to a key — it is a property of the relation form. A target
+    that does not resolve contributes nothing here; that is `unresolved-relation`'s finding.
+
+    It is not inert. A self-reference reads as a satisfied relation everywhere a consumer walks
+    one, so a check that excludes a group because some member adjudicates another can be
+    cleared by a member adjudicating *itself*. A self-reference both makes a claim that cannot
+    be true and launders whatever reads the edge.
+    """
+    for node in graph.ui_nodes:
+        for key in registry.RELATION_KEYS:
+            for index, value in enumerate(_bullet_values(node.meta.get(key, "")), start=1):
+                for _text, href in markdown.extract_refs(value).links:
+                    target = resolver.resolve(node.path, href)
+                    if target is None or not target.resolved:
+                        continue
+                    if target.node_id != node.id:
+                        continue
+                    rel = node.path.relative_to(graph.root).as_posix()
+                    f.append(Finding(
+                        "error", "self-relation",
+                        f"{node.id}: `{key}: {href}` resolves to this same node — a relation "
+                        f"is between two things, so a node cannot be its own `{key}:` target",
+                        path=rel, line=node.line,
+                        ref=refs_mod.bullet_ref(node.id, key, index),
+                        suggestion=f"point `{key}:` at the other node, or delete the bullet"))
 
 
 def _check_judgment(graph: Graph, f: list[Finding],

@@ -1793,3 +1793,80 @@ def test_a_capture_name_a_reference_could_never_spell_is_refused(repo: Path):
 def test_a_well_formed_capture_bullet_grounds(repo: Path):
     write(repo / "docs/features/groom/http/api.md", _capture_endpoint("claim_id from $.id"))
     assert "unparsed-capture" not in all_codes(_run(repo))
+
+
+def test_self_relation_fires_when_a_relation_bullet_points_at_its_own_node(repo: Path):
+    write(repo / "docs/features/groom/concepts/render-context.md",
+          "---\ntype: concept\nslug: render-context\ntitle: Render Context\n---\n"
+          "# Render Context\n\n- detail: [render-context](render-context.md)\n")
+    hits = [f for f in _run(repo).findings if f.code == "self-relation"]
+    assert len(hits) == 1 and hits[0].severity == "error"
+    hit = hits[0]
+    assert hit.path == "docs/features/groom/concepts/render-context.md"
+    assert "`detail: render-context.md`" in hit.message
+    assert hit.ref.endswith("#detail:1")
+    assert hit.suggestion is not None
+
+
+def test_self_relation_fires_on_any_relation_key_not_just_detail(repo: Path):
+    """Nothing about the defect is particular to a key: a relation is between two things
+    whichever key names it, so the check is quantified over `RELATION_KEYS` rather than
+    written once per key."""
+    write(repo / "docs/features/groom/gui/screens/harness.md",
+          "---\ntype: screen\nslug: harness\ntitle: Harness\n---\n# Harness\n\n"
+          "- route: `/harness`\n\n## Components\n\n### tab\n- role: tab\n"
+          "- exclusive-with: [tab](#tab)\n")
+    hits = [f for f in _run(repo).findings if f.code == "self-relation"]
+    assert len(hits) == 1
+    assert hits[0].ref.endswith("#exclusive-with:1")
+
+
+def test_self_relation_addresses_the_one_bullet_not_the_whole_key(repo: Path):
+    """The remedy is per bullet — repoint this link, or delete it — so a node stating the
+    key twice and self-referencing on the second occurrence is addressed at `:2`. A ref
+    naming only the key would collapse the good bullet and the bad one into one worklist
+    row, and a repair turn landing on the good one returns with the finding standing."""
+    write(repo / "docs/features/groom/concepts/other.md",
+          "---\ntype: concept\nslug: other\ntitle: Other\n---\n# Other\n\nNothing here.\n")
+    write(repo / "docs/features/groom/concepts/schema.md",
+          "---\ntype: concept\nslug: schema\ntitle: Schema\n---\n# Schema\n\n"
+          "- detail: [other](other.md)\n- detail: [schema](schema.md)\n")
+    hits = [f for f in _run(repo).findings if f.code == "self-relation"]
+    assert len(hits) == 1
+    assert hits[0].ref.endswith("#detail:2")
+
+
+def test_self_relation_is_silent_for_a_relation_between_two_nodes(repo: Path):
+    write(repo / "docs/features/groom/concepts/other.md",
+          "---\ntype: concept\nslug: other\ntitle: Other\n---\n# Other\n\nNothing here.\n")
+    write(repo / "docs/features/groom/concepts/schema.md",
+          "---\ntype: concept\nslug: schema\ntitle: Schema\n---\n# Schema\n\n"
+          "- detail: [other](other.md)\n")
+    codeset = all_codes(_run(repo))
+    assert "unresolved-relation" not in codeset
+    assert "self-relation" not in codeset
+
+
+def test_self_relation_does_not_fire_for_a_dangling_target(repo: Path):
+    """A target that resolves nowhere is `unresolved-relation`'s finding. Stacking a second
+    code on one broken bullet gives the author two rows for one edit."""
+    write(repo / "docs/features/groom/concepts/schema.md",
+          "---\ntype: concept\nslug: schema\ntitle: Schema\n---\n# Schema\n\n"
+          "- detail: [gone](gone.md)\n")
+    codeset = all_codes(_run(repo))
+    assert "unresolved-relation" in codeset
+    assert "self-relation" not in codeset
+
+
+def test_self_relation_separates_a_node_from_the_page_it_sits_on(repo: Path):
+    """A link with no anchor resolves to the file's root node, so a `### part` citing its own
+    page is a relation between two different nodes and is legal. The check compares node
+    ids, not files — comparing files would report this, and it is exactly the case
+    `detail:` exists for."""
+    write(repo / "docs/features/groom/gui/screens/harness.md",
+          "---\ntype: screen\nslug: harness\ntitle: Harness\n---\n# Harness\n\n"
+          "- route: `/harness`\n- detail: [tab](#tab)\n\n## Components\n\n### tab\n"
+          "- role: tab\n")
+    codeset = all_codes(_run(repo))
+    assert "unresolved-relation" not in codeset
+    assert "self-relation" not in codeset

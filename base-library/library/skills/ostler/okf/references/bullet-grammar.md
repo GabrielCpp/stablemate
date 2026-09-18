@@ -86,6 +86,15 @@ The pages are held to that: a type's page must document every key its own profil
 load-bearing, and may additionally carry a row for any relation key, because those are true
 everywhere. A row for anything else is a row for a key nothing reads.
 
+**A relation key may not point at the node it is written on.** A relation is between two
+things; a bullet whose target resolves to its own source has no second thing for the relation
+to hold between, and every reading of it is false — a node is not a detail of itself, and
+`exclusive-with:` pointing home says the node rules itself out. `self-relation` reports it on
+every relation key, because nothing about the defect is particular to a key. It is not a
+harmless no-op: a self-reference looks like a satisfied relation to everything that walks the
+edge, so a check that clears a group when one member adjudicates another can be cleared by a
+member adjudicating itself.
+
 ## Ownership: what `qa context` reads
 
 `owning_keys(type)` (`registry.py:311`) decides which nodes a changed file reaches:
