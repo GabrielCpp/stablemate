@@ -412,6 +412,72 @@ def test_a_missing_request_body_is_an_unarranged_request_body() -> None:
     assert oid not in _covers(source)
 
 
+def _body_act(field: str, value: object) -> dict:
+    return {"call": f"body(field={field!r}, value={value!r})", "name": "body",
+            "args": {"field": field, "value": value}}
+
+
+def test_an_arranged_request_body_compiles_to_json_body() -> None:
+    """`arrange: body(field=..., value=...)` under the arm fills what `_check`'s bare POST
+    otherwise withholds — the whole reason `body` exists as an act rather than a new key."""
+    oid = "okf:docs/features/demo/globex.md#post-things:does:1"
+    context = _context(
+        _obligation(
+            oid,
+            locators={"route": ["POST /api/things"]},
+            checksDeclared=[_check()],
+            fixturesDeclared=[{"name": "seeded-ledger", "args": [], "provides": "a ledger"}],
+            actsDeclared=[_body_act("name", "Widget A"), _body_act("quantity", 3)],
+        )
+    )
+    source, gaps = compile_plan_gaps(context, story="demo-story")
+    assert _gap_kinds(gaps, oid) == []
+    assert oid in _covers(source)
+    assert 'json_body={"name": "Widget A", "quantity": 3}' in source
+
+
+def test_a_half_arranged_request_body_is_still_withheld() -> None:
+    """One act the HTTP driver cannot perform poisons the whole body, the same all-or-nothing
+    rule `_performed_lines` already applies to `fill`/`click` — a request half the book
+    declared is neither the body it wrote nor no body."""
+    oid = "okf:docs/features/demo/globex.md#post-things:does:1"
+    context = _context(
+        _obligation(
+            oid,
+            locators={"route": ["POST /api/things"]},
+            checksDeclared=[_check()],
+            fixturesDeclared=[{"name": "seeded-ledger", "args": [], "provides": "a ledger"}],
+            actsDeclared=[
+                _body_act("name", "Widget A"),
+                {"call": 'click(locator="#submit")', "name": "click", "args": {"locator": "#submit"}},
+            ],
+        )
+    )
+    source, gaps = compile_plan_gaps(context, story="demo-story")
+    assert _gap_kinds(gaps, oid) == ["unarranged-request-body"]
+    assert oid not in _covers(source)
+
+
+def test_an_unparsed_act_is_still_an_unarranged_request_body() -> None:
+    """A bullet under `arrange:` that failed to parse is the same absent body as none at all —
+    a compiler that emitted `json_body={}` around it would be filling in for a mistake it
+    never saw, not for what the author actually wrote."""
+    oid = "okf:docs/features/demo/globex.md#post-things:does:1"
+    context = _context(
+        _obligation(
+            oid,
+            locators={"route": ["POST /api/things"]},
+            checksDeclared=[_check()],
+            fixturesDeclared=[{"name": "seeded-ledger", "args": [], "provides": "a ledger"}],
+            actsDeclared=[_body_act("name", "Widget A")],
+            actsUnparsed=[{"value": "body(field=)", "kind": "bad-arguments", "problem": "malformed"}],
+        )
+    )
+    source, gaps = compile_plan_gaps(context, story="demo-story")
+    assert _gap_kinds(gaps, oid) == ["unarranged-request-body"]
+    assert oid not in _covers(source)
+
+
 def test_an_unresolved_path_template_variable_is_an_unresolved_precondition() -> None:
     oid = "okf:docs/features/demo/globex.md#get-thing:does:1"
     context = _context(
@@ -2391,10 +2457,11 @@ def test_a_journeys_claim_is_observed_where_its_last_step_left_the_world() -> No
             checks=[{"call": "it", "name": "http_status", "args": {"status": 200,
                                                                    "path": "/api/things"}}],
         ),
-        # DELETE, not POST: a journey step whose route needs a request body gets withheld
-        # entirely (`unarranged-request-body`, compile.py's `_http_journey`) — no grammar exists
-        # yet to arrange one. This test is about step ordering across two distinct methods, not
-        # about bodies, so both steps use body-exempt verbs.
+        # DELETE, not POST: a journey step whose route needs a request body and arranges none
+        # gets withheld entirely (`unarranged-request-body`, compile.py's `_http_journey`) — see
+        # `test_a_journey_step_sends_the_body_its_node_arranges` for the arranged case. This test
+        # is about step ordering across two distinct methods, not about bodies, so both steps use
+        # body-exempt verbs.
         _step_node(f"{_API}#post-things", {"route": ["DELETE /api/things"]}),
         _step_node(f"{_API}#get-things", {"route": ["GET /api/things"]}),
         navigation=_api_navigation(),
@@ -2409,6 +2476,56 @@ def test_a_journeys_claim_is_observed_where_its_last_step_left_the_world() -> No
     assert 'qa.verify("http_status", observed_2' in source
     assert 'qa.verify("http_status", observed_1' not in source
     assert _gap_kinds(gaps, oid) == []
+
+
+def test_a_journey_step_sends_the_body_its_node_arranges() -> None:
+    """Node-level, unlike the arm-level read in `_scenario_body`'s own tests: a journey step
+    names a node, not an arm, so `_http_journey` reads `acts_by_node` the same way a step's
+    `fill:` acts already are — merged across every obligation sharing that node."""
+    oid = f"okf:{_FLOW}:end-state"
+    post_node = _step_node(f"{_API}#post-things", {"route": ["POST /api/things"]})
+    post_node["actsDeclared"] = [_body_act("name", "Widget A"), _body_act("quantity", 3)]
+    context = _navigation_context(
+        _flow_obligation(
+            oid, source=_FLOW, surface="api",
+            steps=[_step(f"{_API}#post-things", "endpoint", "api")],
+            checks=[{"call": "it", "name": "http_status", "args": {"status": 201,
+                                                                   "path": "/api/things"}}],
+        ),
+        post_node,
+        navigation=_api_navigation(),
+    )
+    source, gaps = _compile_plan_gaps(context, story="demo-story")
+    ast.parse(source)
+    assert oid in _covers(source)
+    assert _gap_kinds(gaps, oid) == []
+    assert 'json_body={"name": "Widget A", "quantity": 3}' in source
+
+
+def test_a_journey_step_with_a_contradictory_body_is_unarranged() -> None:
+    """Phase 1's limitation, named explicitly: two arms of the same node stating different
+    values for the same field merge to a contradiction, not a body any request could carry, so
+    the step withholds the whole request exactly as a half-performable one already does."""
+    oid = f"okf:{_FLOW}:end-state"
+    post_node = _step_node(f"{_API}#post-things", {"route": ["POST /api/things"]})
+    post_node["actsDeclared"] = [_body_act("name", "Widget A")]
+    other_arm = _step_node(f"{_API}#post-things", {})
+    other_arm["id"] = f"{_API}#post-things:carrier-2"
+    other_arm["actsDeclared"] = [_body_act("name", "Widget B")]
+    context = _navigation_context(
+        _flow_obligation(
+            oid, source=_FLOW, surface="api",
+            steps=[_step(f"{_API}#post-things", "endpoint", "api")],
+            checks=[{"call": "it", "name": "http_status", "args": {"status": 201,
+                                                                   "path": "/api/things"}}],
+        ),
+        post_node,
+        other_arm,
+        navigation=_api_navigation(),
+    )
+    source, gaps = _compile_plan_gaps(context, story="demo-story")
+    assert _gap_kinds(gaps, oid) == ["unarranged-request-body"]
+    assert oid not in _covers(source)
 
 
 def test_a_check_naming_another_steps_path_is_not_about_this_journeys_end() -> None:

@@ -16,16 +16,25 @@ The three properties that shape it, each already in force elsewhere:
 * **Its subject is a reference into the book.** `locator=` names a `component` or
   `interaction` by its anchor, the same spelling `visible(locator=…)` uses, so a renamed
   element shows up in the book rather than going green against an element nothing declares.
-* **Its driver is the performer of the step** — the browser here, a device there. Which
-  drivers can perform an act is declared per act (`drivers`), because performability is a
-  relation between what the act needs and what a driver can supply, not a property of the
-  act's name.
+* **Its driver is the performer of the step** — the browser here, a device there, an HTTP
+  client for a request. Which drivers can perform an act is declared per act (`drivers`),
+  because performability is a relation between what the act needs and what a driver can
+  supply, not a property of the act's name.
 * **Its binding is document order**, as `verify:`, `fixture:` and `capture:` already bind:
-  an `arrange:` under a `when:` arranges *that* arm.
+  an `arrange:` under a `when:`, or under an endpoint's `status:` arm, arranges *that* arm.
 
 Each spec carries `establishes:` — the state performing it leaves behind — for `excludes:`'s
 reason on a check: it is the sentence a refusal quotes, and the test of whether a proposed
 act earns a place here at all.
+
+**An act's argument type is a property of that act's parameter, not of acts in general.**
+`fill`/`click`/`press`/`select` are all-`str` because their driver is a person: what a
+browser or a device carries out is what the performer types or points at, and a person types
+"3", not 3. That reasoning does not survive a driver that is not a person. Over the wire,
+`{"quantity": 3}` and `{"quantity": "3"}` are different requests, and an app that requires
+the first refuses the second — so `body`'s `value` is typed `scalar`, admitting the JSON
+scalars a request body actually carries, while `fill`'s `value` stays `str`. `bind()` checks
+each argument against its own parameter's declared type rather than one rule for every act.
 """
 
 from __future__ import annotations
@@ -34,13 +43,15 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
-from ostler.checks import Call, Malformed, Refusal, literal, parse_call
+from ostler.checks import Call, Malformed, Refusal, _typed, literal, parse_call
 
-#: The `driver:` values of §4.1 that address a surface a person operates. An act declares
-#: which of them can perform it; `cli`, `http`, `artifact` and `iac` appear on no act,
-#: because an arrangement they could make is an arrangement `fixture:` already covers.
+#: The `driver:` values of §4.1 that can perform an arranged act. `artifact` and `iac`
+#: appear on no act, because an arrangement they could make is an arrangement `fixture:`
+#: already covers — but `http` does perform one: a request body is not beside the request
+#: an HTTP client sends, it IS the request, so no out-of-process fixture can arrange it.
 WEB = "web"
 MOBILE = "mobile"
+HTTP = "http"
 
 
 @dataclass(frozen=True)
@@ -111,6 +122,16 @@ ACTS: tuple[ActSpec, ...] = (
                     "one there is the steps that reach it, not one act",
         drivers=(WEB,),
     ),
+    ActSpec(
+        name="body",
+        params=(ActParam("field", "str", required=True),
+                ActParam("value", "scalar", required=True)),
+        establishes="a member of the request this step sends carries a stated value — the "
+                    "only state an HTTP performer can establish on the surface it performs "
+                    "on, and the only way a claim about a created resource can name what "
+                    "created it",
+        drivers=(HTTP,),
+    ),
 )
 
 ACT_BY_NAME: dict[str, ActSpec] = {a.name: a for a in ACTS}
@@ -121,7 +142,7 @@ class ActCall:
     """One parsed `arrange:` value: a name from `ACTS` and its bound arguments."""
 
     name: str
-    args: dict[str, str]
+    args: dict[str, Any]
 
     def text(self) -> str:
         """The canonical spelling, argument order taken from the spec — `CheckCall.text`."""
@@ -196,19 +217,19 @@ def bind(name: str, args: Mapping[str, Any]) -> ActCall | Refusal:
     def wrong(message: str) -> Refusal:
         return Refusal("bad-arguments", message, spec.signature())
 
-    bound: dict[str, str] = {}
+    bound: dict[str, Any] = {}
     for key, value in args.items():
         param = spec.param_by_name.get(key)
         if param is None:
             allowed = ", ".join(p.name for p in spec.params)
             return wrong(f"`{spec.name}` has no argument `{key}` — it takes: {allowed}")
-        # Every act argument is a string: a locator is an anchor, and a value typed into a
-        # control is what the user typed. `quantity=3` is not an integer here — the user
-        # types "3" — and admitting one would make the book state a value the driver cannot
-        # deliver without inventing a rendering for it.
-        if not isinstance(value, str) or isinstance(value, bool):
-            return wrong(f"`{spec.name}`: `{key}` is str, got {type(value).__name__} — an "
-                         f"act's arguments are what the performer types or points at")
+        # Per-parameter, not per-act: a locator is an anchor and a value typed into a control
+        # is what the user typed, so `fill`'s `value` stays `str` — but a wire request holds
+        # JSON scalars, so `body`'s `value` admits them. See the module docstring.
+        if not _typed(value, param.type):
+            return wrong(f"`{spec.name}`: `{key}` is {param.type}, got "
+                         f"{type(value).__name__} — an act's arguments are what the "
+                         f"performer types, points at, or sends")
         bound[key] = value
     for param in spec.params:
         if param.required and param.name not in bound:

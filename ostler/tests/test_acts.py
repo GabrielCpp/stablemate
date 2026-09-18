@@ -85,11 +85,57 @@ def test_every_act_declares_at_least_one_driver_that_can_perform_it() -> None:
         assert spec.establishes and spec.establishes[0].islower(), spec.name
 
 
-def test_every_act_names_the_control_it_operates_by_a_locator() -> None:
+def test_every_web_or_mobile_act_names_the_control_it_operates_by_a_locator() -> None:
     """An act with no locator would operate whatever the driver last touched, which is not a
-    statement the book can make about a control."""
+    statement the book can make about a control — true of a person's driver, where the control
+    the performer touches is exactly what the act needs named. `body`'s driver is HTTP: there is
+    no control on a wire, so it names a field instead — see the next test."""
     for spec in acts.ACTS:
-        assert any(p.locator and p.required for p in spec.params), spec.name
+        if acts.WEB in spec.drivers or acts.MOBILE in spec.drivers:
+            assert any(p.locator and p.required for p in spec.params), spec.name
+
+
+def test_body_names_a_field_rather_than_a_control() -> None:
+    """`body`'s subject is a member of the request this step sends, not a component the book
+    declares by anchor — a request field is not a `locator=` name because nothing on the wire
+    is a control the book can point at."""
+    spec = acts.ACT_BY_NAME["body"]
+    assert acts.HTTP in spec.drivers
+    assert acts.WEB not in spec.drivers and acts.MOBILE not in spec.drivers
+    assert not any(p.locator for p in spec.params)
+
+
+def test_body_admits_the_json_scalars_a_request_can_carry() -> None:
+    """`body`'s `value` is typed `scalar`, not `str` like a person-driven act's — a request
+    field's value is whatever the wire will carry it as, and `{"quantity": 3}` and
+    `{"quantity": "3"}` are different requests."""
+    call = acts.parse_act('body(field="quantity", value=3)')
+    assert isinstance(call, acts.ActCall)
+    assert call.args == {"field": "quantity", "value": 3}
+    assert call.text() == 'body(field="quantity", value=3)'
+
+
+def test_body_admits_a_bool_string_or_float_value_too() -> None:
+    for literal in ('body(field="active", value=True)', 'body(field="name", value="Widget A")',
+                    'body(field="price", value=4.5)'):
+        call = acts.parse_act(literal)
+        assert isinstance(call, acts.ActCall), literal
+
+
+def test_body_refuses_a_value_no_json_scalar_can_be() -> None:
+    """A per-parameter check, not the blanket str rule `fill` uses — but `body` still refuses
+    what no scalar in a JSON body could ever be."""
+    refused = acts.bind("body", {"field": "tags", "value": ["a", "b"]})
+    assert isinstance(refused, checks.Refusal)
+    assert "is scalar, got list" in refused.message
+
+
+def test_fill_still_refuses_a_non_string_value_per_its_own_parameter() -> None:
+    """The per-parameter rewrite of `bind()` must not have widened `fill`'s own type: its driver
+    is still a person, and a person types "3", not 3."""
+    refused = acts.bind("fill", {"locator": "#quantity-field", "value": 3})
+    assert isinstance(refused, checks.Refusal)
+    assert "is str, got int" in refused.message
 
 
 def test_the_act_key_is_an_arrangement_the_binding_sees_but_not_a_fixture_name() -> None:

@@ -1237,6 +1237,33 @@ def _performed_lines(rows: list[dict[str, Any]], driver: str) -> list[str] | Non
     return lines
 
 
+def _http_body(rows: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """The request body *rows* arrange, or `None` if any one of them cannot be sent over HTTP.
+
+    All-or-nothing, `_performed_lines`'s rule and for the same reason: a body half the book
+    declared is neither the body it wrote nor no body, so an act this driver cannot perform —
+    or two acts stating different values for the same field, which is not a body any request
+    could carry — withholds the whole request rather than sending a partial or contradictory
+    one.
+    """
+    body: dict[str, Any] = {}
+    for row in rows:
+        spec = acts_mod.ACT_BY_NAME.get(str(row.get("name")))
+        if spec is None or acts_mod.HTTP not in spec.drivers:
+            return None
+        args = row.get("args", {})
+        field, value = args.get("field"), args.get("value")
+        if field in body and body[field] != value:
+            return None
+        body[field] = value
+    return body
+
+
+def _lit_body(fields: dict[str, Any]) -> str:
+    """A `json_body=` dict literal, spelled the way `_lit` spells every value inside it."""
+    return "{" + ", ".join(f"{json.dumps(k)}: {_lit(v)}" for k, v in fields.items()) + "}"
+
+
 def _resolved(
     ref: references.Reference,
     produced_facts: set[tuple[str, str]],
@@ -1308,8 +1335,14 @@ def _scenario_body(obligations: list[dict[str, Any]], gaps: list[Gap], covered: 
                 if not _resolved(ref, produced_facts, produced_captures):
                     gaps.append(Gap(oid, "unresolved-precondition",
                                      f"the path references {ref!r}, not resolvable without running the plan"))
-            body = "" if method in {"GET", "DELETE", "HEAD", "OPTIONS"} else ", json_body={}"
-            if body != "":
+            wants_body = method not in {"GET", "DELETE", "HEAD", "OPTIONS"}
+            # An arrangement is a property of the arm it arranges: this obligation's own
+            # `actsDeclared` (not `_acts_by_node`'s node-level merge) is the 201 arm's body or
+            # the 422 arm's, never both — each `- status:` arm binds only the `arrange: body(...)`
+            # bullets document order puts under it.
+            act_rows = obligation.get("actsDeclared") or []
+            fields = None if (not act_rows or obligation.get("actsUnparsed")) else _http_body(act_rows)
+            if wants_body and fields is None:
                 # A request the compiler cannot construct is not a weaker version of the real
                 # one — `json_body={}` against an endpoint that requires a body gets refused
                 # by the app (422), and that refusal would land in the ledger as a behavioural
@@ -1329,7 +1362,8 @@ def _scenario_body(obligations: list[dict[str, Any]], gaps: list[Gap], covered: 
                 # literal `Http` never touches for resolution.
                 path_expr = f"qa.resolve({_lit(path)})" if path_refs else _lit(path)
                 expect = f", expect_status={status}" if status is not None else ""
-                lines.append(f"    {name} = qa.http.{method.lower()}({path_expr}{expect})")
+                body_kw = f", json_body={_lit_body(fields)}" if wants_body and fields is not None else ""
+                lines.append(f"    {name} = qa.http.{method.lower()}({path_expr}{expect}{body_kw})")
                 action_emitted = True
                 if "{" in path:
                     lines.append("    # TODO(arrange): the path above still carries a template variable")
@@ -2335,7 +2369,7 @@ def _journey_scenarios(
         scenario_covered: set[str] = set()
         if journey_target == "http":
             body = _http_journey(steps, node_index, obligations, ids, gaps, scenario_covered,
-                                 captured)
+                                 captured, acts_by_node=acts_by_node, acts_refused=acts_refused)
         else:
             body = _web_journey(steps, node_index, obligations, ids, gaps, scenario_covered,
                                 captured, nav, screen_routes,
@@ -2393,6 +2427,9 @@ def _http_journey(
     gaps: list[Gap],
     covered: set[str],
     captured: set[tuple[str, str]],
+    *,
+    acts_by_node: dict[str, list[dict[str, Any]]],
+    acts_refused: set[str],
 ) -> list[str]:
     """Perform each `endpoint` step as a request, then assert the flow's claims on the last one.
 
@@ -2421,19 +2458,29 @@ def _http_journey(
                         for oid in ids)
             return []
         method, path = route
-        body_kw = "" if method in {"GET", "DELETE", "HEAD", "OPTIONS"} else ", json_body={}"
-        if body_kw:
-            # Same rule as the single-scenario emitter (`_scenario_body`): a step this journey
-            # cannot build a body for is withheld entirely rather than sent with
-            # `json_body={}` — a journey's own claim is about the world its *last* step left,
-            # so one unbuildable step anywhere in the chain leaves nothing honest for the
-            # final assertions to observe.
-            gaps.extend(Gap(oid, "unarranged-request-body",
-                            f"step {index} is a {method} and the book carries no request body")
-                        for oid in ids)
-            return []
+        wants_body = method not in {"GET", "DELETE", "HEAD", "OPTIONS"}
+        body_kw = ""
+        if wants_body:
+            # Node-level here, unlike `_scenario_body`'s arm-level read: a journey step names a
+            # node, not an arm, so its body is whatever `arrange: body(...)` bullets the node
+            # carries across all of them — merged by `_acts_by_node` exactly as a step's `fill:`
+            # acts already are. Two arms stating different values for the same field merge to a
+            # contradiction, which `_http_body` also refuses (phase 2 removes this limitation).
+            ref = str(step.get("ref", ""))
+            fields = None if ref in acts_refused else _http_body(acts_by_node.get(ref, []))
+            if fields is None:
+                # Same rule as the single-scenario emitter (`_scenario_body`): a step this journey
+                # cannot build a body for is withheld entirely rather than sent with
+                # `json_body={}` — a journey's own claim is about the world its *last* step left,
+                # so one unbuildable step anywhere in the chain leaves nothing honest for the
+                # final assertions to observe.
+                gaps.extend(Gap(oid, "unarranged-request-body",
+                                f"step {index} is a {method} and the book carries no request body")
+                            for oid in ids)
+                return []
+            body_kw = f", json_body={_lit_body(fields)}"
         observed = f"observed_{index}"
-        lines.append(f"    {observed} = qa.http.{method.lower()}({_lit(path)})")
+        lines.append(f"    {observed} = qa.http.{method.lower()}({_lit(path)}{body_kw})")
         if "{" in path:
             lines.append("    # TODO(arrange): the path above still carries a template variable")
             gaps.extend(Gap(oid, "unresolved-precondition",

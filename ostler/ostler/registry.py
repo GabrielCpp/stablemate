@@ -1064,6 +1064,14 @@ UI_TYPES: tuple[UINodeType, ...] = (
             # not being declared meant nobody read them.
             BulletKey("verify", check=True),
             BulletKey("fixture", arrange=True),
+            # The performed arrangement, for state no fixture can reach: a request body is not
+            # beside the request an endpoint's obligation makes, it IS the request, so the
+            # performer of the step (the HTTP client) is the only actor who can state it. Bound
+            # to the arm it sits under exactly as `verify:`/`fixture:` are — `consumes:` above is
+            # the schema, this is the instance. Not on `invocation`: nothing invokes an
+            # invocation through an HTTP client, so a grammar for a body nobody can perform would
+            # bind to no driver.
+            BulletKey("arrange", performs=True),
             BulletKey("capture", capture=True),
             BulletKey("tests", link=True),
         ),
