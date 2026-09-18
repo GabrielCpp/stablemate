@@ -13,6 +13,15 @@ it. Seeds captured from outside the data directory — a greenfield capture take
 live session's workdir — record no `source` and are skipped here: there is no in-tree
 tree for them to have drifted from, which makes them exempt by construction rather than
 by a list of exceptions somebody has to maintain.
+
+The freshness guard above reads the pointer set and walks *outward*, to the tree each
+pointer names. The last test here walks the other way, from the tasks: a task names its
+seed by string, and nothing in `task()` resolves that string. `globex-qa` shipped naming
+`seed="globex"` when no `globex.toml` existed at all — `paddock list` printed the task,
+the corpus gate in `test_app_books.py` counted globex as registered, and the reference
+resolved to nothing until a round tried to load the pointer. A membership claim is only
+as good as the reference it resolves, so both directions are gated: every pointer points
+at a tree that exists, and every task points at a pointer that exists.
 """
 
 from __future__ import annotations
@@ -20,10 +29,15 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from paddock import loader, paths
 from paddock.pointer import Pointer
+from paddock.registry import Task
 
 DATA = Path(__file__).parents[1]
 SEEDS = DATA / "configs" / "seeds"
+
+#: Every task in the tree, loaded the way `paddock list` and a real round load them.
+TASKS = loader.load_all(DATA)
 
 
 def pointers() -> list[Pointer]:
@@ -70,4 +84,25 @@ def test_a_seed_captured_from_a_tracked_app_says_so(pointer: Pointer) -> None:
     assert pointer.source == f"apps/{pointer.name}", (
         f"seed '{pointer.name}' is a frozen fixture with an answer key at {app}/defects.yml "
         f"but records source={pointer.source!r}; re-capture it from that directory"
+    )
+
+
+def test_the_data_directory_ships_tasks_at_all() -> None:
+    """The mirror of the guard above: an empty loader would make the last test vacuous."""
+    assert TASKS, f"no tasks under {paths.tasks_dir(DATA)}"
+
+
+@pytest.mark.parametrize("item", TASKS, ids=[item.name for item in TASKS])
+def test_a_task_names_a_seed_that_exists(item: Task) -> None:
+    """A task's `seed=` is a string nothing resolves at declaration time.
+
+    `task()` validates that the field is non-empty and stops there, so a typo, a rename, or
+    a fixture registered before its seed was ever captured all produce the same thing: a
+    task that lists, that a corpus gate counts, and that dies at `Pointer.load` the first
+    time anybody runs it. This is the resolution `task()` cannot do for itself.
+    """
+    pointer = paths.seed_pointer(DATA, item.seed)
+    assert pointer.is_file(), (
+        f"task '{item.name}' names seed={item.seed!r}, "
+        f"but {pointer} does not exist — capture it, or fix the name"
     )
