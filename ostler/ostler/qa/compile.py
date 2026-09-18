@@ -416,12 +416,24 @@ def book_digest(context: dict[str, Any]) -> str:
 #: A cell this table has no row for, or names no target in — the `—` cells, `endpoint`x`cli`,
 #: `interaction`x`http` — is a gap, never a default (`_dispatch_target` below), the same as a
 #: `driver:` the book never states.
-_DISPATCH_TABLE: dict[str, dict[str, str]] = {
+#:
+#: A row is either a `dict[driver, target]`, for a node type where the driver genuinely picks
+#: among targets (`interaction`, `endpoint`), or a bare `str`, for a node type whose target
+#: does not vary by driver at all. `command`/`invocation`/`method` used to be written as a
+#: dict with the same target copied into every cell — `{web: cli, mobile: cli, http: cli, cli:
+#: cli}` — which is not a lookup, it is a constant with a gate in front of it: a driver-less
+#: surface (no `runbook` at all) gapped on "no driver" even though no driver could ever have
+#: changed the answer. Spelling the row as a plain string makes the invariance a fact about the
+#: table's shape rather than a fact a reader has to notice by diffing four identical values, so
+#: it cannot silently drift back into copied cells — and `_dispatch_target` below skips the
+#: driver check entirely for a `str` row, on purpose: there is no driver-is-missing gap to raise
+#: when no driver could have mattered.
+_DISPATCH_TABLE: dict[str, dict[str, str] | str] = {
     "interaction": {"web": "playwright", "mobile": "maestro"},
     "endpoint": {"web": "http", "mobile": "http", "http": "http"},
-    "command": {"web": "cli", "mobile": "cli", "http": "cli", "cli": "cli"},
-    "invocation": {"web": "in-process", "mobile": "in-process", "http": "in-process", "cli": "in-process"},
-    "method": {"web": "in-process", "mobile": "in-process", "http": "in-process", "cli": "in-process"},
+    "command": "cli",
+    "invocation": "in-process",
+    "method": "in-process",
 }
 #: The node types a book documents that **nobody performs**. A `flow` orders steps that are
 #: performed; a `component` and a `screen` are places a claim is true. D1's table asks "what
@@ -452,6 +464,13 @@ def _dispatch_target(node_type: str, driver: str | None) -> tuple[str | None, st
     emitted," never a default; `(target, detail)` when the table names a real target this
     compiler does not build yet (`maestro`, `in-process`), so the caller can still gap it
     honestly rather than mistake it for "no row for this type."
+
+    A `str` row (`command`, `invocation`, `method`) names its target directly and is read
+    without ever looking at *driver* — see the module comment above `_DISPATCH_TABLE`. A
+    missing `driver:` is real information only for a row that could have resolved
+    differently with one; for an invariant row it is not information this function needs, so
+    it is never turned into a gap here. `interaction`/`endpoint` keep the dict shape and this
+    function's existing "no driver, no dispatch" gap for them stays exactly as it was.
     """
     row = _OBSERVE_ROW if node_type in _OBSERVED_TYPES else _DISPATCH_TABLE.get(node_type)
     if row is None:
@@ -459,43 +478,121 @@ def _dispatch_target(node_type: str, driver: str | None) -> tuple[str | None, st
             f"the book links this step to a {node_type or 'untyped'!r} node, which D1's "
             "dispatch table (§4.1) names no row for"
         )
-    if driver is None:
-        return None, (
-            "the surface this step's node lives on states no `driver:` on any `runbook`, so "
-            "D1's dispatch table (§4.1) cannot determine what performs this step"
-        )
-    target = row.get(driver)
-    if target is None:
-        return None, (
-            f"D1's dispatch table (§4.1) names no target for a {node_type} step on a "
-            f"{driver!r}-driven surface"
-        )
+    if isinstance(row, str):
+        target = row
+    else:
+        if driver is None:
+            return None, (
+                "the surface this step's node lives on states no `driver:` on any `runbook`, so "
+                "D1's dispatch table (§4.1) cannot determine what performs this step"
+            )
+        target = row.get(driver)
+        if target is None:
+            return None, (
+                f"D1's dispatch table (§4.1) names no target for a {node_type} step on a "
+                f"{driver!r}-driven surface"
+            )
     if target not in _BUILT_TARGETS:
+        where = "for every driver" if isinstance(row, str) else f"on a {driver!r}-driven surface"
         return target, (
-            f"D1's dispatch table (§4.1) names {target!r} for a {node_type} step on a "
-            f"{driver!r}-driven surface, but this compiler builds no {target} path yet"
+            f"D1's dispatch table (§4.1) names {target!r} for a {node_type} step {where}, "
+            f"but this compiler builds no {target} path yet"
         )
     return target, ""
 
 
 def _gap_cli_obligations(obligations: list[dict[str, Any]], gaps: list[Gap]) -> None:
-    """Command-linked obligations the CLI path owes evidence for, gapped rather than compiled.
+    """Command-linked obligations with no `run:` for the CLI builder to bind to.
 
-    `ostler_qa.py`'s `Qa.tool(name).run(*argv)` and its `exit_status` verifier already fully
-    support this at runtime — the gap is not there. It is that a `command` node's
-    `usage:`/`flags:`/`args:` bullets are prose ("tally import <file> [--dry-run]"), not a
-    structured argv, and no book in this repo declares a `command` node to check a derivation
-    against. Inventing a parse for untested prose here is the "rewrite the compiler from
-    scratch and it still holds" mistake D1 warns against, so this names the real reason
-    precisely — a CLI-dispatched obligation reaching here is not route-less the way an HTTP
-    one is, and saying so beats routing it through the unrelated "no `route:`" message.
+    A `command` node's `usage:`/`flags:`/`args:` bullets are prose ("tally import <file>
+    [--dry-run]") — a synopsis of every way to call the command, not any one of them — so
+    they never compiled to a concrete `qa.tool(...).run(...)`. `run:` is the concrete
+    counterpart: one literal argv per value, bound to the `exits:`/`verify:` claim above it
+    by the same document-order rule every other `performs:` key uses (`ostler.acts`'s
+    `invoke`). `_cli_scenario_body` below calls this only for the obligations on a node that
+    declared no `run:` for the claim in question — it is no longer the whole CLI population,
+    just the part still missing its argv.
     """
     for obligation in obligations:
         gaps.append(Gap(
             str(obligation["id"]), "uncompilable-claim",
-            "the book states this command's `usage:`/`flags:`/`args:` as prose, not a "
-            "structured invocation this compiler can turn into `qa.tool(...).run(...)`",
+            "this command's node declares no `run:` for this claim — `usage:`/`flags:`/`args:` "
+            "are a prose synopsis, not a structured invocation this compiler can turn into "
+            "`qa.tool(...).run(...)`",
         ))
+
+
+def _cli_action(obligation: dict[str, Any]) -> tuple[str, list[str]] | None:
+    """The `(tool, args)` this obligation's `run:` names, or `None` if it named none.
+
+    Reads `actsDeclared` the same way `_scenario_body`'s HTTP arm reads it for `body(...)` —
+    an obligation's own attributed acts, already bound by document order to the claim this
+    obligation is (registry's `attributed_acts`, generic over any `performs=True` key, needs
+    no CLI-specific wiring here). `argv[0]` is the binary a `qa.tool(...)` call resolves — the
+    same executable a `cli` node's own `binary:` bullet names — and the rest is handed to
+    `.run(*argv)` unchanged, the same literal tokens a shell would pass.
+    """
+    for row in obligation.get("actsDeclared") or []:
+        if row.get("name") != "invoke":
+            continue
+        argv = [str(a) for a in (row.get("args", {}).get("argv") or [])]
+        if argv:
+            return argv[0], argv[1:]
+    return None
+
+
+def _cli_scenario_body(
+    obligations: list[dict[str, Any]], gaps: list[Gap], covered: set[str],
+) -> list[str]:
+    """Compile every CLI obligation's assertion half — `_scenario_body`'s counterpart for a
+    `command` node instead of a route.
+
+    There is no reference resolution, capture, or request-body template to arrange here: a
+    `run:` bullet is already the concrete invocation, not something built from a path or a
+    prior response. An obligation whose node declares no `run:` is gapped by
+    `_gap_cli_obligations`, exactly as before, and emits nothing.
+    """
+    lines: list[str] = []
+    index = 0
+    for obligation in sorted(obligations, key=lambda o: tuple(o.get("docPosition") or (0, 0))):
+        oid = obligation["id"]
+        rows = obligation.get("checksDeclared", [])
+        requirement = " ".join(str(obligation.get("requirement", "")).split())
+        lines.append("")
+        lines.append(f"    # {oid}")
+        lines.append(f"    # {requirement}")
+        index += 1
+        name = f"observed_{index}"
+        action = _cli_action(obligation)
+        if action is None:
+            lines.append(
+                "    # TODO(arrange): this command declares no `run:` — `usage:`/`flags:`/"
+                "`args:` are prose, not a concrete invocation")
+            lines.append(f"    {name} = None  # TODO(arrange): what this scenario observes")
+            _gap_cli_obligations([obligation], gaps)
+            continue
+        tool, args = action
+        # `argv[0]` chose the tool — `.run(*argv)` takes only what follows it.
+        argv_expr = ", ".join(_lit(a) for a in args)
+        lines.append(f"    {name} = qa.tool({_lit(tool)}).run({argv_expr})")
+
+        assertions: list[str] = []
+        whole = True
+        for row in rows:
+            operand, note, kind = _operand(row["name"], name)
+            if note:
+                lines.append(f"    # TODO(arrange): {note}")
+                gaps.append(Gap(oid, kind, note))
+                whole = False
+                continue
+            assertions.append(
+                f"    qa.verify({_lit(row['name'])}, {operand}{_kwargs(row.get('args', {}))}, "
+                f"covers=[{_lit(oid)}])"
+            )
+        if whole:
+            lines.extend(assertions)
+            covered.add(oid)
+    return lines
 
 
 def _declared_captures(obligations: list[dict[str, Any]]) -> set[tuple[str, str]]:
@@ -1046,7 +1143,59 @@ def compile_plan_gaps(
         Gap(o["id"], "no-verify-declared", "the book declares no check for this obligation to prove")
         for o in cli_undeclared
     )
-    _gap_cli_obligations(cli_declared, gaps)
+    _decline_captures(cli_declared, gaps, captured, because=(
+        "the CLI builder does not yet capture a fact out of a tool run"))
+    cli_by_source: dict[str, list[dict[str, Any]]] = {}
+    for obligation in cli_declared:
+        cli_by_source.setdefault(str(obligation.get("source", "book")), []).append(obligation)
+    for source, cli_obligations in cli_by_source.items():
+        cli_scenario_covered: set[str] = set()
+        body_lines = _cli_scenario_body(cli_obligations, gaps, cli_scenario_covered)
+        if not cli_scenario_covered:
+            # Every declared obligation here turned out to have no `run:` to bind to —
+            # `_cli_scenario_body` already gapped each one and emitted no `qa.verify` for
+            # any of them. A scenario with nothing left to claim is not emitted.
+            continue
+        covered_ids.update(cli_scenario_covered)
+        surface = str(cli_obligations[0].get("surface") or "")
+        target_var = _target_var(surface, "cli")
+        if target_var not in emitted_targets:
+            lines.append("")
+            lines.append(f"{target_var} = target({_lit(target_var)}, driver={_lit(PYTHON.name)})")
+            emitted_targets.add(target_var)
+        lines.append("")
+        lines.append("")
+        lines.append("@scenario(")
+        lines.append(f"    target={target_var},")
+        lines.append('    mechanism="live",')
+        lines.append("    covers=[")
+        lines.extend(f"        {_lit(o['id'])}," for o in cli_obligations if o["id"] in cli_scenario_covered)
+        lines.append("    ],")
+        arranged = _arrangements(cli_obligations)
+        if arranged:
+            lines.append("    preconditions=[")
+            lines.extend(f"        {_lit(row['provides'] or row['name'])}," for row in arranged)
+            lines.append("    ],")
+        else:
+            lines.append("    preconditions=[],  # TODO(arrange): what must hold before this scenario runs")
+            gaps.extend(
+                Gap(o["id"], "unresolved-precondition", "no fixture arranged for this obligation")
+                for o in cli_obligations if o["id"] in cli_scenario_covered
+            )
+        lines.append("    checkpoints=[],  # TODO(arrange): what an observer should see it prove")
+        lines.append("    forbid=[],  # TODO: the weaker observations this scenario must not settle for")
+        lines.append(")")
+        lines.append(f"def {_slug(source)}_from_the_book(qa: Qa) -> None:")
+        lines.append(f'    """Obligations {source} owes live evidence for."""')
+        if arranged:
+            lines.append("")
+            lines.extend(
+                f"    qa.fixture({_lit(row['name'])}"
+                + "".join(f", {_lit(arg)}" for arg in row.get("args", []))
+                + ")"
+                for row in arranged
+            )
+        lines.extend(body_lines)
 
     # A `states:` obligation is not withheld by the same rule as every other page claim: a
     # state with neither a check nor a fixture is not book debt, it is an unarranged

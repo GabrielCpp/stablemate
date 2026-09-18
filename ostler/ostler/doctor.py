@@ -3294,6 +3294,34 @@ def _check_ui(graph: Graph, f: list[Finding],
                 ref=refs_mod.bullet_ref(node.id, heavy_key, heavy_index),
                 suggestion=f"- {light_key}:{light_index} …\n- {verify_key}: …"))
 
+        # A `command` node's `usage:`/`flags:`/`args:` are the invocation's prose synopsis — a
+        # set of ways to call it, not any one of them — so a claim checked with `exits:`/
+        # `verify:` still compiles to nothing unless the same claim also binds a `run:`: one
+        # concrete argv, bound by the same document-order rule `attributed_checks` reads above.
+        # `_gap_cli_obligations` (`qa/compile.py`) already withholds the scenario at compile
+        # time for exactly this reason — this is the same defect, caught in the book itself,
+        # before a plan is ever compiled, the way `undeclared-obligation` catches a node with no
+        # check at all rather than waiting for `qa validate` to find nothing bound.
+        # `error`, `uneven-claim-coverage`'s reason: the remedy is mechanical — add the `run:`
+        # this claim names — not a judgment call about prose.
+        if node.type == "command":
+            _, claim_acts = registry.attributed_acts(
+                node.type, node.bullet_order, node.combiners)
+            for claim_key, claim_index in sorted(claim_checks):
+                if claim_acts.get((claim_key, claim_index)):
+                    continue
+                f.append(Finding(
+                    "error", "unbound-command-claim",
+                    f"{node.id}: `{claim_key}:{claim_index}` carries a `{verify_key}:` and no "
+                    f"`run:` for it to bind to — `usage:`/`flags:`/`args:` are a prose "
+                    f"synopsis of every way to call this command, not the one concrete "
+                    f"invocation this claim was checked against, so nothing compiles this "
+                    f"claim to a scenario; add a `run:` with the literal argv this claim "
+                    f"checks",
+                    path=rel, line=node.line,
+                    ref=refs_mod.bullet_ref(node.id, claim_key, claim_index),
+                    suggestion='- run: invoke(argv=["<binary>", "<arg>", …])'))
+
         # Fan-out is sound over a list of parts and unsound over a list of alternatives, and the
         # grammar records neither unless the author says so. Against "page stays put", a check
         # written for the success branch is not uninformative — it is a *refutation*, and an

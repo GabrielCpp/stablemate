@@ -52,6 +52,11 @@ from ostler.checks import Call, Malformed, Refusal, _typed, literal, parse_call
 WEB = "web"
 MOBILE = "mobile"
 HTTP = "http"
+#: `command`'s performer: a subprocess, not a person or a wire — so what it establishes is the
+#: process that just ran, and `invoke`'s `argv` is typed `str[]`, not `str`, for the reason
+#: `body`'s `value` is typed `scalar` and not `str`: an argv element is not typed prose the way
+#: a form field is, it is one literal token a shell would hand the process unchanged.
+CLI = "cli"
 
 
 @dataclass(frozen=True)
@@ -131,6 +136,14 @@ ACTS: tuple[ActSpec, ...] = (
                     "on, and the only way a claim about a created resource can name what "
                     "created it",
         drivers=(HTTP,),
+    ),
+    ActSpec(
+        name="invoke",
+        params=(ActParam("argv", "str[]", required=True),),
+        establishes="the process this command's binary was run with has exited, with the "
+                    "argv this step names — the only state a subprocess performer can "
+                    "establish, and the fact `exit_status`/`stdout`/`stderr` observe",
+        drivers=(CLI,),
     ),
 )
 

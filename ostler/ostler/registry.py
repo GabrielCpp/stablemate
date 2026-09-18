@@ -1049,6 +1049,16 @@ UI_TYPES: tuple[UINodeType, ...] = (
             # declared here, which is the drift `BulletKey.normative` closes.
             BulletKey("errors", normative=True, refusal=True),
             BulletKey("exits", normative=True),
+            # `usage:`/`flags:`/`args:` are the invocation's *prose synopsis* — a set of ways
+            # to call the command, not any one of them — so they cannot compile to a scenario:
+            # there is no single argv in a sentence like "shortener create <url> [--slug SLUG]".
+            # `run:` is the concrete counterpart: one literal invocation per value, repeatable
+            # the same way `does:`/`exits:` are, and `performs=True` for the same reason an
+            # endpoint's/interaction's `arrange:` is — its value is a performance the step's
+            # performer carries out, parsed through the same act vocabulary
+            # (`ostler.acts.parse_act`) and bound to the `exits:`/`verify:` claim above it by
+            # the same document-order rule every other `performs:`/`check:` key already uses.
+            BulletKey("run", performs=True),
             BulletKey("code", link=True, owns=True),
             BulletKey("detail", link=True),
             BulletKey("verify", check=True),

@@ -3153,7 +3153,12 @@ def test_every_reachable_dispatch_target_is_built_or_named_as_an_exclusion() -> 
     fails the moment one is added, rather than waiting for a book that exercises it to surface
     a silent gap nobody meant to ship.
     """
-    reachable = {target for row in _DISPATCH_TABLE.values() for target in row.values() if target}
+    reachable = {
+        target
+        for row in _DISPATCH_TABLE.values()
+        for target in ([row] if isinstance(row, str) else row.values())
+        if target
+    }
     reachable |= set(_OBSERVE_ROW.values())
     accounted = _BUILT_TARGETS | set(_ACKNOWLEDGED_UNBUILT_TARGETS)
     undecided = reachable - accounted
@@ -3198,9 +3203,9 @@ def _built_target_probe_http() -> tuple[dict, str]:
 
 def _built_target_probe_cli() -> tuple[dict, str]:
     """The smallest obligation D1 dispatches to `cli`: a `command` on a `cli`-driven surface,
-    with a real check (`exit_status`, the verifier `_gap_cli_obligations`'s own docstring says
-    the runtime already supports) and a fixture arranged, so nothing about this obligation is
-    missing except a builder that reads it."""
+    with a real check (`exit_status`), a fixture arranged, and a `run:` (`ostler.acts`'s
+    `invoke`) for the check to bind to — so nothing about this obligation is missing except a
+    builder that reads it."""
     oid = "okf:built-target-probe:cli:exit-status:1"
     context = _context(
         _obligation(
@@ -3209,6 +3214,10 @@ def _built_target_probe_cli() -> tuple[dict, str]:
             checksDeclared=[{"call": "it", "name": "exit_status", "args": {"code": 0}}],
             fixturesDeclared=[
                 {"name": "seeded-ledger", "args": [], "provides": "a ledger"},
+            ],
+            actsDeclared=[
+                {"call": 'invoke(argv=["tally", "import"])', "name": "invoke",
+                 "args": {"argv": ["tally", "import"]}},
             ],
         )
     )
@@ -3227,23 +3236,14 @@ _BUILT_TARGET_PROBES = {
 }
 
 #: `_BUILT_TARGETS` members direction 2 has *measured* to have no working builder, each with the
-#: reason and the exit condition. This is the known-defect record the brief asks for: `cli` is
-#: in `_BUILT_TARGETS` — a claim that this compiler builds a `cli` path — but every `cli`
-#: obligation is handed unconditionally to `_gap_cli_obligations`, whose entire body appends an
-#: `uncompilable-claim` gap and emits no scenario, so the claim is false. `strict=True` on the
-#: xfail this drives means the entry itself fails the suite the day `cli` starts passing, which
-#: is the point: nobody can leave a stale "known gap" behind once the fix lands.
-_KNOWN_BUILT_TARGET_GAPS: dict[str, str] = {
-    "cli": (
-        "`cli` is in `_BUILT_TARGETS` but has no scenario builder: every `cli`-dispatched "
-        "obligation reaches `_gap_cli_obligations` (compile.py), whose whole body appends an "
-        "`uncompilable-claim` gap unconditionally — there is no code path that emits "
-        "`qa.tool(...).run(...)` for a `command` obligation, even fully arranged. Remove this "
-        "entry when a CLI scenario builder lands (see the `_gap_cli_obligations` docstring, "
-        "which already says the runtime side — `Qa.tool(name).run(*argv)` and its "
-        "`exit_status` verifier — is not what's missing)."
-    ),
-}
+#: reason and the exit condition. This is the known-defect record the brief asks for.
+#: `strict=True` on the xfail this drives means an entry fails the suite the day its target
+#: starts passing, which is the point: nobody can leave a stale "known gap" behind once the fix
+#: lands. `cli` had an entry here — every `cli`-dispatched obligation reached
+#: `_gap_cli_obligations` unconditionally, which appended an `uncompilable-claim` gap and
+#: emitted no scenario — and it is gone now that `_cli_scenario_body` (compile.py) compiles a
+#: `command` obligation that declares a `run:` into `qa.tool(...).run(...)`.
+_KNOWN_BUILT_TARGET_GAPS: dict[str, str] = {}
 
 
 def test_every_built_target_has_a_probe() -> None:
