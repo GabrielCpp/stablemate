@@ -158,7 +158,8 @@ no scenario is compiled for it.
 ## Doctor codes it can trip
 
 `compound-normative-bullet`, `overlong-normative-bullet`, `undeclared-obligation`,
-`weak-check`, `unstated-precondition`, `unparsed-check`, `dangling-code-ref`,
+`weak-check`, `unstated-precondition`, `unparsed-check`, `misfiled-test-ref`,
+`dangling-code-ref`,
 `missing-code-symbol`, `unknown-book-fixture`, `unarranged-request-body`,
 `invalid-http-method`, `misnested-bullet`, `unarranged-scenario`. See
 [../doctor-codes.md](../doctor-codes.md).

@@ -56,7 +56,8 @@ timeout 30 ostler scaffold method MintSlug --in docs/features/acme/concepts/slug
 
 ## Doctor codes it can trip
 
-`undeclared-obligation`, `weak-check`, `unparsed-check`, `compound-normative-bullet`,
+`undeclared-obligation`, `weak-check`, `unparsed-check`, `misfiled-test-ref`,
+`compound-normative-bullet`,
 `overlong-normative-bullet`, `dangling-code-ref`, `missing-code-symbol`. See
 [../doctor-codes.md](../doctor-codes.md).
 

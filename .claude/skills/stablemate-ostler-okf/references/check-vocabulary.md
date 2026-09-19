@@ -33,7 +33,12 @@ written before, not after `doctor` refuses one.
 
 Arguments are parsed as **literals only**, via `ast` (`checks.py:265-310`) — no expressions, no
 names, no interpolation. A `verify:` whose value is a test path is not a parse failure to fix in
-place: it is a category error, and `parse_check` redirects it to `tests:`.
+place: it is a category error, and `parse_check` redirects it to `tests:`. It is reported under
+its own code, `misfiled-test-ref`, rather than as *unparsed* — the value is well formed, just
+written under the wrong key — and the finding is marked `fixable` exactly when `ostler autofix`
+will perform the move for you: the node's type has to declare a `tests:` key, and the value has
+to prove itself a citation run. A reference a reader can see but a program cannot prove — a
+citation inside an unbalanced code span — is still reported and still yours to move by hand.
 
 ## The vocabulary
 

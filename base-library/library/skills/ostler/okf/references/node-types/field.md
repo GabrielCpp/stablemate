@@ -57,7 +57,8 @@ timeout 30 ostler scaffold field expiresAt --in docs/features/acme/link-export.m
 
 ## Doctor codes it can trip
 
-`weak-check`, `unparsed-check`, `compound-normative-bullet`, `overlong-normative-bullet`,
+`weak-check`, `unparsed-check`, `misfiled-test-ref`, `compound-normative-bullet`,
+`overlong-normative-bullet`,
 `dangling-code-ref`, `missing-code-symbol`. See [../doctor-codes.md](../doctor-codes.md).
 
 Not `undeclared-obligation`: a field is observed through the record that carries it, so its

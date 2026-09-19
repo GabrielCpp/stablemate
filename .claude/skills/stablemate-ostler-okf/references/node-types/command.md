@@ -86,7 +86,8 @@ timeout 30 ostler scaffold command create --in docs/features/acme/shortener-cli.
 ## Doctor codes it can trip
 
 `compound-normative-bullet`, `overlong-normative-bullet`, `undeclared-obligation`,
-`weak-check`, `unparsed-check`, `unparsed-act`, `undeclared-act-locator`,
+`weak-check`, `unparsed-check`, `misfiled-test-ref`, `unparsed-act`,
+`undeclared-act-locator`,
 `unbound-command-claim`, `dangling-code-ref`, `missing-code-symbol`, `unresolved-relation`,
 `unarranged-scenario` — when the file's commands neither arrange a world nor say they need
 none.
