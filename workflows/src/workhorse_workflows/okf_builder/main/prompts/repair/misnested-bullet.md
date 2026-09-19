@@ -37,6 +37,7 @@ properties of one thing, and it fires on a property outside a vocabulary the key
 one fires on a record child whose spelling collides with the node's own grammar, and its remedy
 is to move the bullet out, never to rename it.
 
-**A child of any other spelling is not this finding.** No record key declares a property
-vocabulary yet, so a `- schema:` under `- response:` is unchecked — an undeclared vocabulary is
-held to nothing. Do not delete such a child to clear a finding it did not cause.
+**A child of any other spelling is not this finding.** A child that falls outside the record
+key's own declared property vocabulary — a `- schema:` under `- response:` — is
+`unknown-record-property`, not this one; a record key that declares no vocabulary at all is
+unchecked either way. Do not delete such a child to clear a finding it did not cause.
