@@ -1134,7 +1134,8 @@ UI_TYPES: tuple[UINodeType, ...] = (
             BulletKey("does", nested=True, normative=True, locator=True),
             BulletKey("emits"),
             BulletKey("consumes"),
-            BulletKey("response", nested=True, record=True),
+            BulletKey("response", nested=True, record=True,
+                      properties=("media", "body", "notes", "field")),
             # The route's outcomes, one claim per value — declared here so `fmt` can order them
             # between the effect and its grounding (`does → status → errors → auth → code →
             # verify`) and so a `verify:` written under one binds to it. `error` and `authorization`

@@ -839,10 +839,13 @@ def _check_record_properties(graph: Graph, f: list[Finding]) -> None:
     grammatical and only one is what the author meant, which is why this is reported against the
     nesting rather than resolved in favour of either.
 
-    Only keys the type declares are reported. A child of any other spelling is a property this
-    record's vocabulary has not been written down for, and no vocabulary is declared on any
-    record key yet — an undeclared vocabulary is checked by nothing here for the same reason
-    ``_check_entry_properties`` skips one, and adopting the check is what declaring it means.
+    Only keys the type declares are reported. If the record key also declares a ``properties``
+    vocabulary, a child of any other spelling is checked instead by the arm below, as
+    ``unknown-record-property``: the two are mutually exclusive, since a child spelled like a
+    node key can never also be one the record key admits. A record key with no declared
+    vocabulary leaves a child of any other spelling unchecked by either arm — an undeclared
+    vocabulary is checked by nothing here, for the same reason ``_check_entry_properties`` skips
+    one, and adopting the check is what declaring it means.
 
     Deliberately not a compiler gap kind, on ``_check_bullet_value_kinds``'s reasoning: it is a
     statement about the book alone, true whether or not any scenario ever compiles the node.
@@ -855,15 +858,24 @@ def _check_record_properties(graph: Graph, f: list[Finding]) -> None:
             continue
         rel = _rel_path(graph, node)
         for key, properties in node.records.items():
+            spec = uitype.bullet_by_key.get(key)
+            vocabulary = spec.properties if spec is not None else ()
             for prop in properties:
-                if prop not in uitype.bullet_by_key:
+                if prop in uitype.bullet_by_key:
+                    f.append(Finding(
+                        "error", "misnested-bullet",
+                        f"{node.id}: `{prop}:` is nested under `{key}:`, so it states a property "
+                        f"of `{key}:` and not this node's own `{prop}:`",
+                        path=rel, line=node.line, ref=f"{key}:{prop}",
+                        suggestion=f"promote it to a top-level `- {prop}:` bullet of the node"))
+                    continue
+                if not vocabulary or prop in vocabulary:
                     continue
                 f.append(Finding(
-                    "error", "misnested-bullet",
-                    f"{node.id}: `{prop}:` is nested under `{key}:`, so it states a property of "
-                    f"`{key}:` and not this node's own `{prop}:`",
+                    "error", "unknown-record-property",
+                    f"{node.id}: `{key}:` carries `{prop}:`, which `{key}:` does not admit",
                     path=rel, line=node.line, ref=f"{key}:{prop}",
-                    suggestion=f"promote it to a top-level `- {prop}:` bullet of the node"))
+                    suggestion="one of: " + ", ".join(f"{name}:" for name in vocabulary)))
 
 
 def _route_kind_parser(predicate: Callable[[str], bool], reason: str) -> Callable[[str], str]:

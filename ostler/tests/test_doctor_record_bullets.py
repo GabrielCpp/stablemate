@@ -85,15 +85,59 @@ def test_an_aliased_bullet_key_is_reported_too(repo: Path) -> None:
     assert [f.ref for f in _findings(repo, "misnested-bullet")] == ["response:error"]
 
 
-def test_a_property_the_type_does_not_declare_is_clean(repo: Path) -> None:
-    """No record key declares a vocabulary yet, and an undeclared vocabulary is checked by nothing.
+def test_a_property_spelled_like_no_bullet_key_is_never_misnested(repo: Path) -> None:
+    """`misnested-bullet` fires only for a child spelled like a node bullet key.
 
-    `_check_entry_properties` skips one for the same reason: a key adopts the check by writing
-    its vocabulary down, and until then every book's every property would be a finding about the
-    check's arrival rather than about the book.
+    `schema` matches no bullet key of `endpoint`, so nesting it under `response:` cannot be read
+    as stealing a claim from the node — that reading is `unknown-record-property`'s job now that
+    `response:` declares a vocabulary (see the tests below), not this arm's.
     """
     write(repo / ENDPOINT_PATH, _endpoint_book("media: `application/json`", "schema: AccountList"))
     assert _findings(repo, "misnested-bullet") == []
+
+
+def test_a_property_outside_the_declared_vocabulary_is_reported(repo: Path) -> None:
+    write(repo / ENDPOINT_PATH, _endpoint_book("media: `application/json`", "schema: AccountList"))
+    found = _findings(repo, "unknown-record-property")
+    assert [(f.severity, f.ref) for f in found] == [("error", "response:schema")]
+    assert "`schema:`" in found[0].message
+    assert found[0].suggestion is not None and "media:" in found[0].suggestion
+
+
+def test_each_declared_property_is_clean(repo: Path) -> None:
+    for child in ("media: `application/json`", "body: `{}`", "notes: idempotent",
+                  "field: `ok`; type boolean; required"):
+        write(repo / ENDPOINT_PATH, _endpoint_book(child))
+        assert _findings(repo, "unknown-record-property") == []
+
+
+def test_a_property_repeated_under_one_record_is_clean(repo: Path) -> None:
+    """A response describes its body one field per bullet, so `field:` occurs many times.
+
+    The value of a repeated property is a list rather than a string, and this arm reads the
+    property *names*, so the shape a real book writes has to be clean here for the vocabulary
+    to be usable at all — a check that admitted `field:` once and reported the second one would
+    hold every schema-bearing response in error.
+    """
+    write(repo / ENDPOINT_PATH, _endpoint_book(
+        "media: `application/json`",
+        "field: `ok`; type boolean; required",
+        "field: `count`; type integer; required"))
+    assert _findings(repo, "unknown-record-property") == []
+    assert _endpoint(repo).records["response"]["field"] == [
+        "`ok`; type boolean; required", "`count`; type integer; required"]
+
+
+def test_a_property_spelled_like_a_bullet_key_is_not_also_unknown(repo: Path) -> None:
+    """One child, one finding: `misnested-bullet` and `unknown-record-property` never both fire.
+
+    `error` is a bullet key of `endpoint` (an alias of `errors`), so nesting it under
+    `response:` is reported as `misnested-bullet` — it must not also be reported as an
+    out-of-vocabulary property, even though `error` is not in `response:`'s vocabulary either.
+    """
+    write(repo / ENDPOINT_PATH, _endpoint_book("error: 404 when no such account"))
+    assert [f.ref for f in _findings(repo, "misnested-bullet")] == ["response:error"]
+    assert _findings(repo, "unknown-record-property") == []
 
 
 def test_no_bullet_key_is_both_entries_and_record() -> None:
