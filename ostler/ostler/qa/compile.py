@@ -902,6 +902,37 @@ def _page_locator_expr(locators: dict[str, list[str]]) -> str | None:
     return None
 
 
+def _is_owed_for_dispatch(obligation: dict[str, Any]) -> bool:
+    """Whether an obligation carries something a builder could act on.
+
+    True for anything with a declared check, and — the one exemption D1's gate makes —
+    for a check-less `states:` obligation too: a check is exactly what an unarranged
+    state may be missing, so it still needs to reach a builder to be told apart from
+    plain `no-verify-declared` debt and gapped `unarranged-state` instead. Read by the
+    top-of-loop gate in `compile_plan_gaps` and by every arm downstream of it, so the
+    exemption cannot be honoured in one arm and missed in another.
+    """
+    return bool(obligation.get("checksDeclared")) or obligation.get("kind") == "states"
+
+
+def _unarranged_state_gap(obligation: dict[str, Any]) -> Gap:
+    """The `unarranged-state` gap for one check-less `states:` obligation.
+
+    Shared by every arm a `states:` obligation can dispatch to (`states:` is declared on
+    exactly one node type, `component`, which routes to the page, cli or http builder
+    depending on its surface's driver) — the defect a missing check on a `states:` claim
+    names is the same whichever of them would have arranged it.
+    """
+    state_text = " ".join(str(obligation.get("requirement", "")).split())
+    missing = []
+    if not obligation.get("checksDeclared"):
+        missing.append("no check declared")
+    if not _arrangements([obligation]):
+        missing.append("no fixture arranged")
+    return Gap(obligation["id"], "unarranged-state",
+               f"carries `states:` ({state_text!r}); " + " and ".join(missing))
+
+
 def compile_plan(
     context: dict[str, Any],
     *,
@@ -1071,14 +1102,15 @@ def compile_plan_gaps(
     carried = [o for o in context.get("obligations", []) if isinstance(o, dict)]
     page_acts, page_acts_refused = _acts_by_node(carried)
     for obligation in owed:
-        if not obligation.get("checksDeclared") and obligation.get("kind") != "states":
+        if not _is_owed_for_dispatch(obligation):
             # No claim to dispatch, and no driver to dispatch it to either — a bucket that
             # names a performer cannot also carry the things nothing performs. Gapped as
             # `no-verify-declared` directly below, independent of any driver or entry-url
-            # resolution. A `states:` obligation is the one exception: a check is exactly what
-            # an unarranged state may be missing, and it still needs to reach the page dispatch
-            # table below to be told apart from `no-verify-declared` debt and gapped
-            # `unarranged-state` instead (see the by-node loop in `_compile_page_scenarios`).
+            # resolution. A `states:` obligation is the one exception (`_is_owed_for_dispatch`):
+            # a check is exactly what an unarranged state may be missing, and it still needs to
+            # reach whichever of the page, cli or http builders below its surface dispatches to,
+            # to be told apart from `no-verify-declared` debt and gapped `unarranged-state`
+            # instead (`_unarranged_state_gap`, consumed by all three).
             no_verify_owed.append(obligation)
             continue
         surface = str(obligation.get("surface") or "")
@@ -1144,6 +1176,7 @@ def compile_plan_gaps(
     # assert reads it.
     captured: set[tuple[str, str]] = set()
     for source, obligations in by_source.items():
+        gaps.extend(_unarranged_state_gap(o) for o in obligations if not o.get("checksDeclared"))
         declared = [o for o in obligations if o.get("checksDeclared")]
         if not declared:
             continue
@@ -1202,12 +1235,7 @@ def compile_plan_gaps(
         lines.extend(body_lines)
 
     cli_declared = [o for o in cli_owed if o.get("checksDeclared")]
-    cli_undeclared = [o for o in cli_owed if not o.get("checksDeclared")]
-    debt.extend(cli_undeclared)
-    gaps.extend(
-        Gap(o["id"], "no-verify-declared", "the book declares no check for this obligation to prove")
-        for o in cli_undeclared
-    )
+    gaps.extend(_unarranged_state_gap(o) for o in cli_owed if not o.get("checksDeclared"))
     _decline_captures(cli_declared, gaps, captured, because=(
         "the CLI builder does not yet capture a fact out of a tool run"))
     cli_by_source: dict[str, list[dict[str, Any]]] = {}
@@ -1270,7 +1298,7 @@ def compile_plan_gaps(
     # (`unarranged-state`), so every `states:`-kind obligation reaches it regardless of
     # whether it declares a check.
     page_declared = [
-        o for o in page_owed if o.get("checksDeclared") or o.get("kind") == "states"
+        o for o in page_owed if _is_owed_for_dispatch(o)
     ]
     if page_declared:
         if _has_screens(navigation):
@@ -1870,23 +1898,14 @@ def _compile_page_scenarios(
             state_obs = [o for o in obs if o.get("kind") == "states"]
             rest = [o for o in obs if o.get("kind") != "states"]
             for obligation in state_obs:
-                state_text = " ".join(str(obligation.get("requirement", "")).split())
-                arranged = _arrangements([obligation])
-                if obligation.get("checksDeclared") and arranged:
+                if obligation.get("checksDeclared") and _arrangements([obligation]):
                     state_name = f"{_slug(source)}_{_node_slug(node_id)}_{obligation['id'].rsplit(':', 1)[-1]}"
                     bucket.extend(_arrival_scenario(root_path, source, hops, node_index,
                                                      {node_id: [obligation]}, gaps, covered,
                                                      captured, name=state_name, target_var=target_var,
                                                      screen_routes=screen_routes))
                 else:
-                    missing = []
-                    if not obligation.get("checksDeclared"):
-                        missing.append("no check declared")
-                    if not arranged:
-                        missing.append("no fixture arranged")
-                    gaps.append(Gap(obligation["id"], "unarranged-state",
-                                     f"carries `states:` ({state_text!r}); "
-                                     + " and ".join(missing)))
+                    gaps.append(_unarranged_state_gap(obligation))
             if not rest:
                 continue
             rest_by_node[node_id] = rest

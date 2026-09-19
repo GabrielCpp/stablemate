@@ -1102,6 +1102,47 @@ def test_states_no_longer_withholds_exclusive_with_on_the_same_node() -> None:
     assert _gap_kinds(gaps, state_oid) == ["unarranged-state"]
 
 
+def test_unarranged_state_reaches_the_same_gap_on_every_driver() -> None:
+    """A check-less `states:` obligation on a `component` node dispatches to a different
+    builder per surface driver (D1: `component` x `driver`, `_OBSERVE_ROW`) — web to the
+    page builder, cli and http to their own. All three owe it the same verdict: gapped
+    `unarranged-state`, never `no-verify-declared`, and never dropped. Three packets
+    identical but for the driver, reproducing the defect where the cli arm re-derived
+    "declares no check" by re-filtering `checksDeclared` (mislabeling the gap) and the
+    http arm dropped the obligation on the floor (tripping the totality assert at the
+    close of `compile_plan_gaps` on a legitimate book)."""
+    requirement = "opens on `auto`."
+
+    node = f"{_SCREEN}#coverage-type-select"
+    web_oid = "okf:new-policy:coverage-type-select:states:web"
+    web_obligation = _page_obligation(web_oid, node, kind="states", requirement=requirement,
+                                       locators={"role": ["combobox"], "name": ["Coverage type"]},
+                                       checks=[])
+    web_obligation["nodeType"] = "component"
+    web_context = _navigation_context(web_obligation, navigation=_arrival_navigation())
+    web_source, web_gaps = compile_plan_gaps(web_context, story="demo-story")
+    ast.parse(web_source)
+    assert _gap_kinds(web_gaps, web_oid) == ["unarranged-state"]
+
+    cli_oid = "okf:new-policy:coverage-type-select:states:cli"
+    cli_context = _context(
+        _obligation(cli_oid, nodeType="component", kind="states", requirement=requirement)
+    )
+    cli_context["navigation"][""]["driver"] = "cli"
+    cli_source, cli_gaps = compile_plan_gaps(cli_context, story="demo-story")
+    ast.parse(cli_source)
+    assert _gap_kinds(cli_gaps, cli_oid) == ["unarranged-state"]
+
+    http_oid = "okf:new-policy:coverage-type-select:states:http"
+    http_context = _context(
+        _obligation(http_oid, nodeType="component", kind="states", requirement=requirement)
+    )
+    http_context["navigation"][""]["driver"] = "http"
+    http_source, http_gaps = compile_plan_gaps(http_context, story="demo-story")
+    ast.parse(http_source)
+    assert _gap_kinds(http_gaps, http_oid) == ["unarranged-state"]
+
+
 def test_an_interactions_assertion_never_lands_on_the_arrival_scenario() -> None:
     """A `## Interactions` row's `visible(...)` asserts state *after* the interaction — it must
     never be emitted as an arrival assertion on the screen's own page-load scenario. The
