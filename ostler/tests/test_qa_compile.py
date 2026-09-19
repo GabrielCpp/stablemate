@@ -2257,6 +2257,25 @@ def test_a_surface_with_no_entry_url_and_no_fallback_gaps_instead_of_guessing() 
     assert "target(" not in source
 
 
+def test_a_checkless_obligation_on_a_surface_with_no_entry_url_is_book_debt_not_undeclared_entry_url() -> None:
+    """A bucket that names a performer cannot also carry the things nothing performs: a
+    check-less obligation has no claim for any driver to dispatch, so an unrelated surface with
+    no `entry-url:` must not decide its gap kind. It is `no-verify-declared` regardless of
+    whether the surface's address ever resolved."""
+    oid = "okf:docs/features/acme/api.md#post-things:does:1"
+    context = _context(
+        _obligation(oid, surface="api-service"),
+    )
+    context["navigation"] = {"api-service": {"driver": "http"}}
+    source, gaps = _compile_plan_gaps(context, story="demo-story")
+    ast.parse(source)
+    assert oid not in _covers(source)
+    assert _gap_kinds(gaps, oid) == ["no-verify-declared"]
+    assert "undeclared-entry-url" not in {g.kind for g in gaps}
+    assert "# Book debt." in source
+    assert f"#   {oid}" in source
+
+
 def _conflicting_origin_context(oid: str) -> dict:
     """A surface whose sources disagreed about its address: `qa context` caught
     `reach.ConflictingEntryOrigin`, left `entryUrl` unset and recorded why."""

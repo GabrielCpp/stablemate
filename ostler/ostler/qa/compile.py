@@ -1060,6 +1060,7 @@ def compile_plan_gaps(
     page_owed: list[dict[str, Any]] = []
     cli_owed: list[dict[str, Any]] = []
     flow_owed: list[dict[str, Any]] = []
+    no_verify_owed: list[dict[str, Any]] = []
     # Indexed over every obligation the packet carries, before a single line of dispatch below:
     # an arrangement is a property of the arm it arranges, and the bullet that carries it
     # declares no check of its own, so every filter above and every classification below —
@@ -1071,14 +1072,14 @@ def compile_plan_gaps(
     page_acts, page_acts_refused = _acts_by_node(carried)
     for obligation in owed:
         if not obligation.get("checksDeclared") and obligation.get("kind") != "states":
-            # No claim to dispatch — falls through to the existing `no-verify-declared`
-            # handling below, same as before D1's table existed, regardless of what node
-            # type or driver it names. A `states:` obligation is the one exception: a check
-            # is exactly what an unarranged state may be missing, and it still needs to reach
-            # the page dispatch table below to be told apart from `no-verify-declared` debt
-            # and gapped `unarranged-state` instead (see the by-node loop in
-            # `_compile_page_scenarios`).
-            http_owed.append(obligation)
+            # No claim to dispatch, and no driver to dispatch it to either — a bucket that
+            # names a performer cannot also carry the things nothing performs. Gapped as
+            # `no-verify-declared` directly below, independent of any driver or entry-url
+            # resolution. A `states:` obligation is the one exception: a check is exactly what
+            # an unarranged state may be missing, and it still needs to reach the page dispatch
+            # table below to be told apart from `no-verify-declared` debt and gapped
+            # `unarranged-state` instead (see the by-node loop in `_compile_page_scenarios`).
+            no_verify_owed.append(obligation)
             continue
         surface = str(obligation.get("surface") or "")
         surface_nav = navigation.get(surface, {})
@@ -1106,6 +1107,11 @@ def compile_plan_gaps(
             cli_owed.append(obligation)
         else:
             gaps.append(Gap(str(obligation["id"]), kind, detail))
+    debt: list[dict[str, Any]] = list(no_verify_owed)
+    gaps.extend(
+        Gap(o["id"], "no-verify-declared", "the book declares no check for this obligation to prove")
+        for o in no_verify_owed
+    )
     http_owed, api_urls = _split_by_entry_url(http_owed, navigation, base_url, gaps)
     page_owed, web_urls = _split_by_entry_url(page_owed, navigation, base_url, gaps)
     lines: list[str] = [
@@ -1137,20 +1143,8 @@ def compile_plan_gaps(
     # obligation reaches whichever builder its `(nodeType, surface)` dispatches to. The closing
     # assert reads it.
     captured: set[tuple[str, str]] = set()
-    debt: list[dict[str, Any]] = []
     for source, obligations in by_source.items():
         declared = [o for o in obligations if o.get("checksDeclared")]
-        undeclared = [o for o in obligations if not o.get("checksDeclared")]
-        debt.extend(undeclared)
-        # A scenario claiming an id its body never asserts is refused by `qa validate`, and
-        # rightly: the claim would read as covered in every report while nothing observed it.
-        # An obligation with no declared check is book debt, listed below rather than claimed —
-        # and, so a caller reading `gaps` alone sees the whole owed set accounted for, gapped
-        # here by the same code that declined to emit it, not left to a diff against `owed`.
-        gaps.extend(
-            Gap(o["id"], "no-verify-declared", "the book declares no check for this obligation to prove")
-            for o in undeclared
-        )
         if not declared:
             continue
         scenario_covered: set[str] = set()
@@ -1278,14 +1272,6 @@ def compile_plan_gaps(
     page_declared = [
         o for o in page_owed if o.get("checksDeclared") or o.get("kind") == "states"
     ]
-    page_undeclared = [
-        o for o in page_owed if not o.get("checksDeclared") and o.get("kind") != "states"
-    ]
-    debt.extend(page_undeclared)
-    gaps.extend(
-        Gap(o["id"], "no-verify-declared", "the book declares no check for this obligation to prove")
-        for o in page_undeclared
-    )
     if page_declared:
         if _has_screens(navigation):
             lines.extend(
