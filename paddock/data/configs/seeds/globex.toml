@@ -1,11 +1,11 @@
 name = "globex"
 repo_dir = "globex"
-sha256 = "910565c992324b275130dcd3c4bf4d49b5c1c6be8a137d28b2eba8ff67a34a63"
-bytes = 39234
-head = "575a2e6738082bbaed2b47b0db546b243f1b321a"
+sha256 = "0f48e9d64b3022d799f039f7121d46482bfdc459a704e42273fefd8247f7ec86"
+bytes = 39232
+head = "fd4b203752eaee62744703949fa786195c59616f"
 dirty = true
 url = ""
 note = ""
 source = "apps/globex"
-tree_sha256 = "12f08bff15b330453088e8f4f26c2fbd75c75a582f5c8e1c71234d2d2e888db5"
+tree_sha256 = "1c1ad0c562679c886c300e3f70b1366378b1917e7b7917fca49e82c43f08775f"
 excludes = []

@@ -35,9 +35,9 @@ never talk to each other server-to-server.
 - emits:
 - consumes:
 - status: 200
+- verify: http_status(200, path="/healthz")
 - errors:
 - auth: none
-- verify: http_status(200, path="/healthz")
 - fixture:
 - capture:
 - code: `app/api-service/service.go::Server.handleHealth` @0344dec13901
@@ -55,9 +55,9 @@ never talk to each other server-to-server.
 - emits:
 - consumes:
 - status: 200
+- verify: http_status(200, path="/api/widgets")
 - errors:
 - auth: none
-- verify: http_status(200, path="/api/widgets")
 - fixture:
 - capture:
 - code: `app/api-service/service.go::Server.handleList` @0344dec13901
@@ -73,12 +73,12 @@ never talk to each other server-to-server.
 - does: all
   - create a widget from `name` and `quantity` and assign it the next generated id
   - return the created widget in the response body
-- verify: http_status(201, path="/api/widgets")
-- arrange: body(field="name", value="Widget A")
-- arrange: body(field="quantity", value=3)
 - emits:
 - consumes: `{name: string, quantity: integer}`
 - status: 201
+- verify: http_status(201, path="/api/widgets")
+- arrange: body(field="name", value="Widget A")
+- arrange: body(field="quantity", value=3)
 - errors: 422 with a `{errors: {field: message}}` body when a blank `name` or a negative
   `quantity` is refused rather than coerced
 - verify: http_status(422, path="/api/widgets")

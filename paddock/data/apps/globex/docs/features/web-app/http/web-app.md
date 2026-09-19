@@ -43,9 +43,9 @@ this node documents the files that get served to produce them.
 - emits:
 - consumes:
 - status: 200
+- verify: http_status(200, path="/healthz")
 - errors:
 - auth: none
-- verify: http_status(200, path="/healthz")
 - fixture:
 - capture:
 - code: `app/web-app/main.go::handleHealth` @a84a667463fc
