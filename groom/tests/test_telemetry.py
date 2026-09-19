@@ -1449,6 +1449,43 @@ def test_answering_the_gate_retires_both_pages() -> None:
         assert not {"BLOCKED", "WAITING"} & state.RUNS["run-1"].fired
 
 
+def test_a_stale_replay_of_an_already_answered_gate_does_not_reopen_it() -> None:
+    """The SDK retains zero-valued series for every earlier gate and can replay
+    an old workhorse.wait.active=1 point for a gate that has since been answered
+    and superseded by a later one. Once a wait closes, wait_series resets to
+    None, so the existing "different series" guard (which only compares against
+    the *currently open* series) does not see the replay as stale and reopens
+    the wait with the old gate's path/question — the dashboard and any dispatch
+    reading it then act on a question that was already resolved."""
+    with _TelemetryEnv():
+        now = 1000.0
+
+        def wait_point(value: float, question: str) -> bytes:
+            return _metrics_request(
+                "workhorse.wait.active",
+                value=value,
+                node="program_review",
+                gauge=True,
+                attrs={"wait_kind": "operator", "gate_path": "docs/BLOCKED.md",
+                       "gate_question": question},
+            )
+
+        # Gate 1 opens and is answered.
+        alerts.ingest_metrics(otlp.parse_metrics(wait_point(1, "13 reviews?")), now=now)
+        alerts.ingest_metrics(otlp.parse_metrics(wait_point(0, "13 reviews?")), now=now)
+        # Gate 2 opens — a distinct series (different question) — and is answered too.
+        alerts.ingest_metrics(otlp.parse_metrics(wait_point(1, "14 reviews?")), now=now)
+        alerts.ingest_metrics(otlp.parse_metrics(wait_point(0, "14 reviews?")), now=now)
+        assert state.RUNS["run-1"].wait_kind == ""
+
+        # The SDK replays gate 1's stale active=1 point after both are closed.
+        alerts.ingest_metrics(otlp.parse_metrics(wait_point(1, "13 reviews?")), now=now)
+
+        run = state.RUNS["run-1"]
+        assert run.wait_kind == "", "a replay of an answered gate must not reopen a wait"
+        assert run.wait_gate_question != "13 reviews?"
+
+
 def test_streaming_turn_uses_idleness_not_total_node_age_for_stuck() -> None:
     with _TelemetryEnv(), patch.dict(
         os.environ, {"GROOM_STALL_MIN": "90", "GROOM_STUCK_MIN": "75"}

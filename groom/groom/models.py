@@ -204,6 +204,12 @@ class RunTelemetry:
     wait_elapsed_s: float = 0.0
     # Identity of the currently active gauge series; old zero series remain exported.
     wait_series: tuple[tuple[str, str], ...] | None = None
+    # Every wait series this run has already opened and closed. The SDK retains a
+    # zero-valued gauge series per earlier gate and can replay its stale active=1
+    # point after a *later* gate has since opened and closed too — by then
+    # ``wait_series`` is back to None, so a series recorded here is the only way
+    # to recognise that specific replay as stale rather than a genuinely new wait.
+    closed_wait_series: set[tuple[tuple[str, str], ...]] = field(default_factory=set)
     #: Gate file path the wait is parked on, when `wait_kind` is operator/machine.
     #: Source of truth for the row's `gate_path` (1:1 with telemetry). Empty otherwise.
     wait_gate_path: str = ""

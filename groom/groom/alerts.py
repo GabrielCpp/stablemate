@@ -321,6 +321,7 @@ def _accept_session(run: RunTelemetry, record: dict[str, Any]) -> bool:
     run.wait_gate_path = ""
     run.wait_gate_question = ""
     run.wait_series = None
+    run.closed_wait_series = set()
     run.terminal = ""
     run.terminal_ts = 0.0
     run.last_heartbeat_ts = 0.0
@@ -480,6 +481,16 @@ def ingest_metrics(points: list[dict[str, Any]], now: float | None = None) -> li
                 and (name == "workhorse.wait.elapsed_s"
                      or (name == "workhorse.wait.active" and value < 1))):
             continue
+        # The same replay can also carry a stale active=1 for a gate that has
+        # since been answered and superseded by a later one — by then
+        # ``wait_series`` is back to None (no wait is currently open), so the
+        # guard above cannot see it. ``closed_wait_series`` remembers every
+        # series this run has already opened and closed, independent of what
+        # is open now.
+        if (name == "workhorse.wait.active" and value >= 1
+                and attrs.get("wait_kind")
+                and _wait_series(attrs) in run.closed_wait_series):
+            continue
         if activity := _activity(attrs):
             run.activity = activity
         if name in LIVENESS_METRICS:
@@ -540,6 +551,8 @@ def ingest_metrics(points: list[dict[str, Any]], now: float | None = None) -> li
                         alerts,
                     )
             else:
+                if run.wait_series is not None:
+                    run.closed_wait_series.add(run.wait_series)
                 run.wait_kind = ""
                 run.wait_series = None
                 run.wait_elapsed_s = 0.0
