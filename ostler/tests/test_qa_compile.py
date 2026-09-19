@@ -86,6 +86,10 @@ def _obligation(oid: str, **extra: object) -> dict:
     # one of them arrange a body it has no reason to care about, since there is still no book
     # grammar to arrange one with (`unarranged-request-body`, compile.py's `_scenario_body`).
     # The handful of tests actually about POST/body behavior override this explicitly.
+    # `arrangesNothing` for the same reason: a scenario that neither arranges a world nor says
+    # it needs none compiles to nothing at all (`unarranged-scenario`), so without this default
+    # every test here would have to arrange a state it is not about in order to reach the code
+    # it is about. The tests actually about arrangement override it explicitly.
     base = {
         "id": oid,
         "source": "docs/features/demo/api.md",
@@ -94,6 +98,7 @@ def _obligation(oid: str, **extra: object) -> dict:
         "required": True,
         "locators": {"route": ["GET /api/things"]},
         "checksDeclared": [],
+        "arrangesNothing": True,
     }
     base.update(extra)
     return base
@@ -369,30 +374,46 @@ def test_one_state_two_claims_is_arranged_once() -> None:
     assert source.count('qa.fixture("seeded-ledger"') == 2
 
 
-def test_a_book_that_arranges_nothing_still_says_so_out_loud() -> None:
-    """Silence in the book is plan debt, and it stays visible as a marker rather than becoming
-    an empty `preconditions=[]` a reader would take for a considered answer."""
+def test_a_book_that_says_it_needs_nothing_arranged_gets_an_empty_precondition_list() -> None:
+    """`fixture: none, because ...` is an answer, and the plan states it as one.
+
+    An empty `preconditions=[]` used to be the marker for silence, written with a `TODO(arrange)`
+    beside it. Silence no longer compiles at all, so the empty list is free to mean what it
+    reads as: the book was asked what world these claims hold in and said this one, whichever
+    it is.
+    """
     context = _context(
         _obligation("okf:docs/features/demo/api.md#post-things:does:1", checksDeclared=[_check()])
     )
-    assert "preconditions=[],  # TODO(arrange)" in compile_plan(context, story="demo-story")
+    source = compile_plan(context, story="demo-story")
+    assert "preconditions=[]," in source
+    assert "preconditions=[],  # TODO(arrange)" not in source
 
 
 def _gap_kinds(gaps: list[Gap], oid: str) -> list[str]:
     return [g.kind for g in gaps if g.obligation_id == oid]
 
 
-def test_no_fixture_arranged_is_an_unresolved_precondition() -> None:
+def test_a_scenario_that_arranges_nothing_and_says_nothing_compiles_to_nothing() -> None:
+    """Neither an arrangement nor a stated need for none is the one answer nothing may compile.
+
+    The claim would be observed in whatever world the scenario before it left behind, so the
+    red it eventually went would be evidence about the run order and not about the app. The
+    gap is per obligation and the scenario is not emitted — saying nothing about the claim is
+    honest where a failure nobody caused is not.
+    """
     oid = "okf:docs/features/demo/api.md#get-things:does:1"
     context = _context(
         _obligation(
             oid,
+            arrangesNothing=False,
             locators={"route": ["GET /api/things"]},
             checksDeclared=[{"call": "ok", "name": "http_status", "args": {"code": 200}}],
         )
     )
-    _source, gaps = compile_plan_gaps(context, story="demo-story")
-    assert _gap_kinds(gaps, oid) == ["unresolved-precondition"]
+    source, gaps = compile_plan_gaps(context, story="demo-story")
+    assert _gap_kinds(gaps, oid) == ["unarranged-scenario"]
+    assert "@scenario(" not in source
 
 
 def test_a_missing_request_body_is_an_unarranged_request_body() -> None:

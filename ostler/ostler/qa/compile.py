@@ -96,6 +96,7 @@ GAP_KINDS = frozenset({
     "no-verify-declared",
     "unarranged-state",
     "unarranged-journey",
+    "unarranged-scenario",
     "unarranged-request-body",
     "unarranged-interaction-precondition",
     "unidentifiable-screen",
@@ -928,10 +929,33 @@ def _unarranged_state_gap(obligation: dict[str, Any]) -> Gap:
     missing = []
     if not obligation.get("checksDeclared"):
         missing.append("no check declared")
-    if not _arrangements([obligation]):
+    if _arrangement_of([obligation]).unstated:
         missing.append("no fixture arranged")
     return Gap(obligation["id"], "unarranged-state",
                f"carries `states:` ({state_text!r}); " + " and ".join(missing))
+
+
+def _unarranged_scenario_gap(obligation: dict[str, Any]) -> Gap:
+    """The `unarranged-scenario` gap for a claim whose state nothing established.
+
+    The journey builder's rule (`unarranged-journey`), reached from the http and cli side. A
+    scenario that arranges nothing and does not say it needs nothing observes whatever the
+    scenario before it left behind, so the assertion that goes red is evidence about the run
+    order and not about the app; emitting no scenario says nothing about the claim, which is
+    honest, where a failure nobody caused is not.
+
+    This used to be minted as `unresolved-precondition` with the scenario emitted anyway,
+    which put a compiled `covers=[...]` and a gap on the same obligation. `_ARRANGEMENT_GAPS`
+    exempts that pairing for the scaffolded-click case — a genuine claim observed in a state a
+    scaffold reached — and nothing here is scaffolded: no arrangement ran at all. So the kind
+    joins the `unarranged-*` family, which is outside the exemption because every member of it
+    means the same thing: nothing established the state, so nothing was emitted.
+    """
+    return Gap(obligation["id"], "unarranged-scenario",
+               "this claim's scenario arranges nothing before it observes and does not say it "
+               "needs nothing — add a `fixture:` naming the arrangement, or "
+               "`fixture: none, because ...` saying why the claim holds in whatever world the "
+               "scenario finds")
 
 
 def compile_plan(
@@ -1181,6 +1205,14 @@ def compile_plan_gaps(
         declared = [o for o in obligations if o.get("checksDeclared")]
         if not declared:
             continue
+        arrangement = _arrangement_of(declared)
+        if arrangement.unstated:
+            # Before `_scenario_body`, not after: the body mints its own per-claim gaps, and a
+            # scenario that is not going to be emitted has no per-claim compile debt to report
+            # — one gap per obligation, naming the reason nothing was compiled, the way
+            # `_unarranged_state_gap` and the journey builder both already do.
+            gaps.extend(_unarranged_scenario_gap(o) for o in declared)
+            continue
         scenario_covered: set[str] = set()
         body_lines = _scenario_body(declared, gaps, scenario_covered, captured)
         if not scenario_covered:
@@ -1205,7 +1237,7 @@ def compile_plan_gaps(
         lines.append("    covers=[")
         lines.extend(f"        {_lit(o['id'])}," for o in declared if o["id"] in scenario_covered)
         lines.append("    ],")
-        arranged = _arrangements(declared)
+        arranged = arrangement.rows
         if arranged:
             # The preconditions are the book's own words for the state each fixture leaves
             # behind. A scenario states what must hold before it runs, and the node that owns
@@ -1215,11 +1247,11 @@ def compile_plan_gaps(
                          for row in arranged)
             lines.append("    ],")
         else:
-            lines.append("    preconditions=[],  # TODO(arrange): what must hold before this scenario runs")
-            gaps.extend(
-                Gap(o["id"], "unresolved-precondition", "no fixture arranged for this obligation")
-                for o in declared
-            )
+            # Empty and correct: `arrangement.unstated` was refused above, so reaching here
+            # means the book said `fixture: none, because ...` — the claims hold in whatever
+            # world the scenario finds, and an author asked to arrange one would be inventing
+            # a state the book already declined to need.
+            lines.append("    preconditions=[],")
         lines.append("    checkpoints=[],  # TODO(arrange): what an observer should see it prove")
         lines.append("    forbid=[],  # TODO: the weaker observations this scenario must not settle for")
         lines.append(")")
@@ -1243,6 +1275,10 @@ def compile_plan_gaps(
     for obligation in cli_declared:
         cli_by_source.setdefault(str(obligation.get("source", "book")), []).append(obligation)
     for source, cli_obligations in cli_by_source.items():
+        arrangement = _arrangement_of(cli_obligations)
+        if arrangement.unstated:
+            gaps.extend(_unarranged_scenario_gap(o) for o in cli_obligations)
+            continue
         cli_scenario_covered: set[str] = set()
         binary = cli_binaries.get(source)
         body_lines = _cli_scenario_body(cli_obligations, gaps, cli_scenario_covered, binary)
@@ -1267,17 +1303,13 @@ def compile_plan_gaps(
         lines.append("    covers=[")
         lines.extend(f"        {_lit(o['id'])}," for o in cli_obligations if o["id"] in cli_scenario_covered)
         lines.append("    ],")
-        arranged = _arrangements(cli_obligations)
+        arranged = arrangement.rows
         if arranged:
             lines.append("    preconditions=[")
             lines.extend(f"        {_lit(row['provides'] or row['name'])}," for row in arranged)
             lines.append("    ],")
         else:
-            lines.append("    preconditions=[],  # TODO(arrange): what must hold before this scenario runs")
-            gaps.extend(
-                Gap(o["id"], "unresolved-precondition", "no fixture arranged for this obligation")
-                for o in cli_obligations if o["id"] in cli_scenario_covered
-            )
+            lines.append("    preconditions=[],")
         lines.append("    checkpoints=[],  # TODO(arrange): what an observer should see it prove")
         lines.append("    forbid=[],  # TODO: the weaker observations this scenario must not settle for")
         lines.append(")")
@@ -1422,17 +1454,50 @@ def annotate_deferred_obligations(context: dict[str, Any], *, story: str) -> dic
     return context
 
 
-def _arrangements(obligations: list[dict[str, Any]]) -> list[dict[str, Any]]:
+@dataclass(frozen=True)
+class _Arrangement:
+    """What one scenario's obligations say about the state their claims are observed in.
+
+    Three answers, not two. `rows` non-empty is an arrangement to run. `stated_none` is the
+    book saying in as many words — `fixture: none, because ...` — that the claims hold in
+    whatever world the scenario finds. `unstated` is neither, and it is the one a builder may
+    not compile through: an assertion made in a state nothing established observes whatever
+    the previous scenario left behind, so the red it eventually goes is evidence about the run
+    order and not about the app.
+
+    One value rather than a list, because the distinction used to live in that list's
+    emptiness. An empty list meant both "needs nothing" and "says nothing", the difference
+    was recoverable only from a second flag carried separately on each obligation, and of the
+    three builders that asked the question only the journey builder remembered to read it.
+    """
+
+    rows: list[dict[str, Any]]
+    stated_none: bool
+
+    @property
+    def unstated(self) -> bool:
+        """Neither an arrangement nor a stated need for none — nothing may be compiled."""
+        return not self.rows and not self.stated_none
+
+
+def _arrangement_of(obligations: list[dict[str, Any]]) -> _Arrangement:
     """Every fixture the obligations in one scenario declare, in order, arranged once each.
 
     Deduped on name *and* arguments: two claims documented in the same seeded ledger name one
     arrangement, and running it twice would be a second ledger rather than the one they share.
     Two that differ in an argument are two states, and both are arranged.
+
+    `stated_none` is true when *any* obligation in the scenario carries `arrangesNothing`, on
+    the same reading the rows get: the scenario is one world, and a claim documented as
+    holding in whatever world it finds says so about the world its siblings share.
     """
     rows: list[dict[str, Any]] = []
     for obligation in obligations:
         rows.extend(obligation.get("fixturesDeclared", []))
-    return list({(row["name"], tuple(row.get("args", []))): row for row in rows}.values())
+    return _Arrangement(
+        rows=list({(row["name"], tuple(row.get("args", []))): row for row in rows}.values()),
+        stated_none=any(o.get("arrangesNothing") for o in obligations),
+    )
 
 
 #: How each act in `ostler.acts` is performed against a Playwright locator: the method to
@@ -1462,7 +1527,7 @@ def _acts_by_node(
 
     Ordered by `docPosition` because the obligations themselves are sorted by id, which is
     alphabetical on the bullet key rather than the order the author wrote. Deduped on the
-    canonical call text rather than on `(name, args)` the way `_arrangements` dedupes a
+    canonical call text rather than on `(name, args)` the way `_arrangement_of` dedupes a
     fixture, because the two keys mean different things about repetition: running a fixture
     twice reaches the state it already reached, while performing an act twice is two
     performances. Filling two fields is two fills, and which order they happen in is the
@@ -1899,7 +1964,7 @@ def _compile_page_scenarios(
             state_obs = [o for o in obs if o.get("kind") == "states"]
             rest = [o for o in obs if o.get("kind") != "states"]
             for obligation in state_obs:
-                if obligation.get("checksDeclared") and _arrangements([obligation]):
+                if obligation.get("checksDeclared") and _arrangement_of([obligation]).rows:
                     state_name = f"{_slug(source)}_{_node_slug(node_id)}_{obligation['id'].rsplit(':', 1)[-1]}"
                     bucket.extend(_arrival_scenario(root_path, source, hops, node_index,
                                                      {node_id: [obligation]}, gaps, covered,
@@ -2248,7 +2313,7 @@ def _arrival_scenario(
         "this scenario arrives at the screen and observes what is on it — nothing here performs "
         "an action that would produce a value to bind"))
     ids = sorted(o["id"] for o in obligations)
-    arranged = _arrangements(obligations)
+    arranged = _arrangement_of(obligations).rows
     body: list[str] = []
     if arranged:
         body.extend(
@@ -2292,7 +2357,7 @@ def _arrival_scenario(
     if arranged:
         # The preconditions are the book's own words for the state each fixture leaves behind —
         # the node that owns the claim already said it, so quoting it here beats an author
-        # paraphrasing it (mirrors the http builder's `_arrangements` treatment).
+        # paraphrasing it (mirrors the http builder's `_arrangement_of` treatment).
         precondition_lines = [
             "    preconditions=[",
             *(f"        {_lit(row['provides'] or row['name'])}," for row in arranged),
@@ -2378,7 +2443,7 @@ def _interaction_scenario(
                          "this arm's `extends:` target is missing or not the same node type, "
                          "so its control identity could not be inherited from the base case")
                     for oid in ids)
-    arranged = _arrangements(obligations)
+    arranged = _arrangement_of(obligations).rows
     body: list[str] = []
     if arranged:
         body.extend(
@@ -2643,8 +2708,9 @@ def _journey_scenarios(
             kind, detail = _entry_url_gap(surface, navigation)
             gaps.extend(Gap(oid, kind, detail) for oid in ids)
             continue
-        arranged = _arrangements(obligations)
-        if not arranged and not any(o.get("arrangesNothing") for o in obligations):
+        arrangement = _arrangement_of(obligations)
+        arranged = arrangement.rows
+        if arrangement.unstated:
             # A journey's claims are about the world its steps left behind, and the world its
             # steps left is the world they started in plus the walk. Nothing arranged the start,
             # so the end state would be observed against whatever the previous scenario happened
