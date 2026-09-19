@@ -131,7 +131,8 @@ title: Seeded acme
 See [`../doctor-codes.md`](../doctor-codes.md): `unknown-book-fixture`, `fixture-step-kind`,
 `fixture-step-no-run`, `fixture-arg-mismatch`, `fixture-needs-target-args`,
 `fixture-needs-cycle`, `fixture-undeclared-provides`, `undetermined-provided-fact`,
-`fixture-secret-name`, `unbacked-precondition`.
+`fixture-secret-name`, `unbacked-precondition`, `missing-required-section`,
+`empty-required-section`.
 
 ## When bullets are not enough
 
