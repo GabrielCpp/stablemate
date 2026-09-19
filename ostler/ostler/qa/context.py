@@ -433,7 +433,7 @@ def build_context(
     # the work tree, not the filesystem. Empty means "wherever this repo configures its book",
     # which ostler answers — spelling `docs/features` here would read the wrong tree in a repo
     # that moved it.
-    features_root = features_root or path_mod.features_root_in(root).relative_to(root).as_posix()
+    features_root = path_mod.resolve_features_root(features_root, root)
     source_roots = source_roots or {}
     book_root = _book_root(root, features_root)
     current = load(root, root_overrides={"features": features_root})

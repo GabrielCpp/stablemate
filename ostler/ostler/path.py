@@ -69,6 +69,25 @@ def features_root(graph: Graph, service: str = "") -> Path:
     return base / service if service else base
 
 
+def resolve_features_root(value: str | None, root: Path) -> str:
+    """The `featuresRoot` a QA context packet names, normalised against *root*.
+
+    `value` is whatever a packet's `featuresRoot` field held: `None` when the key is
+    absent or JSON `null`, `""` when a packet was written before the field existed or for
+    a book that is not nested under a service, or a real posix-relative path, possibly
+    padded with whitespace from hand-edited input. `None` and `""` mean the same thing —
+    "this packet names no book" — and both resolve to the book `features_root_in(root)`
+    discovers under *root*; a real value is only stripped, never otherwise reinterpreted.
+
+    This is the one definition of that rule. `qa/context.py`'s `build_context` calls it to
+    decide what to write, and every later reader of the field — `qa/drivers.py` and
+    `cli.py` — calls it to decide what the field means, so a lookup against the same
+    packet agrees everywhere rather than re-deriving its own answer.
+    """
+    stripped = (value or "").strip()
+    return stripped or features_root_in(root).relative_to(root).as_posix()
+
+
 def book_prefix_in(root: Path, features_root: str) -> str:
     """Where a book is nested under *root*, relative to it — `""` when it is not nested.
 

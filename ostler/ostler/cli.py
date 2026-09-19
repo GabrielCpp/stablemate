@@ -1076,23 +1076,24 @@ def _parse_checkouts(raw_checkouts: list[str]) -> dict[str, Path] | None:
     return checkouts
 
 
-def _packet_aim(spec: str) -> str:
-    """The `featuresRoot` the qa context packet in `spec` recorded, or "".
+def _packet_aim(spec: str, root: Path) -> str:
+    """The `featuresRoot` the qa context packet in `spec` recorded, normalised against `root`.
 
     A missing packet is not an error here: with no `--spec` the caller means the book at
-    the repo root, which is a real answer. A packet that predates the field is also "" —
-    and the command says which book it read, so a wrong aim is visible rather than
-    reported as a book that declares nothing.
+    the repo root, which `path_mod.resolve_features_root` also answers for a packet whose
+    `featuresRoot` is absent, null, or blank — the same rule `qa/drivers.py` reads a
+    packet's `featuresRoot` by, so the two agree on what an empty or missing field means.
     """
     if not spec:
-        return ""
+        return path_mod.resolve_features_root(None, root)
     packet = Path(spec) / provenance.CONTEXT_FILE
     if not packet.is_file():
-        return ""
+        return path_mod.resolve_features_root(None, root)
     try:
-        return str(json.loads(packet.read_text(encoding="utf-8")).get("featuresRoot", ""))
+        data = json.loads(packet.read_text(encoding="utf-8"))
     except (OSError, ValueError):
-        return ""
+        return path_mod.resolve_features_root(None, root)
+    return path_mod.resolve_features_root(data.get("featuresRoot"), root)
 
 
 def _out(value="") -> None:
@@ -1800,7 +1801,7 @@ def _cmd_qa(graph, args) -> int:  # noqa: C901 — flat QA subcommand dispatch
         return 0 if result.ok else 1
 
     if op == "stack":
-        aim = _packet_aim(args.spec)
+        aim = _packet_aim(args.spec, root)
         if args.stack_op == "up":
             result = qa_mod.runbook.cmd_stack_up(root, name=args.runbook, features_root=aim)
         else:

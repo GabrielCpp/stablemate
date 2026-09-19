@@ -768,11 +768,12 @@ class PythonDriver(QaDriver):
         compiler recorded which root it used, and `_book` has to agree with it or every
         lookup misses.
 
-        An empty `featuresRoot` is a real, stated answer rather than a missing one — a
-        packet built for a book that is not nested under a service, or one written before
-        this field existed — and is normalised the same way `build_context` itself
-        normalises it before writing the field, so a lookup against either book agrees.
-        Only the *absence* of a packet is treated as no frame at all.
+        An empty or absent `featuresRoot` — a packet built for a book that is not nested
+        under a service, one written before this field existed, or a JSON `null` — is not
+        a stated answer; `path_mod.resolve_features_root` replaces it with the book
+        discovered under `self.root`, the same rule `build_context` applies before writing
+        the field, so a lookup against either book agrees. Only the *absence* of the packet
+        file itself is treated as no frame at all.
         """
         packet = self.session.spec_dir / "qa-okf-context.json"
         if not packet.is_file():
@@ -787,9 +788,7 @@ class PythonDriver(QaDriver):
             data = json.loads(packet.read_text(encoding="utf-8"))
         except (OSError, ValueError) as exc:
             return "", f"QA context packet at {packet} is unreadable: {exc}"
-        features_root = str(data.get("featuresRoot") or "").strip()
-        if not features_root:
-            features_root = path_mod.features_root_in(self.root).relative_to(self.root).as_posix()
+        features_root = path_mod.resolve_features_root(data.get("featuresRoot"), self.root)
         return features_root, None
 
     def _book(self) -> dict[str, list[placement.VettedComponent]]:

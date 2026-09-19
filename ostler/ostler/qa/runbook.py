@@ -515,7 +515,7 @@ def _aimed(root: Path, features_root: str) -> Graph | None:
 
 
 def _aim_label(root: Path, features_root: str) -> str:
-    return features_root or path_mod.features_root_in(root).relative_to(root).as_posix()
+    return path_mod.resolve_features_root(features_root, root)
 
 
 def _graph_for(root: Path, features_root: str) -> Graph:
