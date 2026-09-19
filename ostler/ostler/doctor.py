@@ -209,6 +209,7 @@ def run(graph: Graph, epic_filter: str | None = None, check_schema: bool = True,
     _check_entry_properties(graph, f)
     _check_record_properties(graph, f)
     _check_undeclared_container_properties(graph, f)
+    _check_prose_buried_bullets(graph, f)
     _check_bullet_value_kinds(graph, ui_data, f)
 
     if graph.profile != "full":
@@ -879,6 +880,76 @@ def _check_undeclared_container_properties(graph: Graph, f: list[Finding]) -> No
                     f"declares, so it is invisible rather than merely misplaced",
                     path=rel, line=node.line, ref=f"{key}:{child}", fixable=True,
                     suggestion=f"promote `- {child}:` to a top-level bullet of the node"))
+
+
+def _prose_burial_keys() -> frozenset[str]:
+    """Every key that makes a node's meta subtree normative or observational wherever it surfaces.
+
+    Shared normative keys mint an obligation on every type; `_OBSERVATION_KEYS` (defined later in
+    this module) says what proving one looks like. A book buries both kinds under the same prose
+    paragraph, and neither is more buried than the other, so `_check_prose_buried_bullets` reads
+    them as one set rather than asking twice. Computed lazily, not at import time, because
+    `_OBSERVATION_KEYS` is itself assembled later in the module than this function's own
+    definition needs to sit.
+    """
+    return frozenset(registry.SHARED_NORMATIVE_KEYS) | _OBSERVATION_KEYS
+
+
+def _check_prose_buried_bullets(graph: Graph, f: list[Finding]) -> None:
+    """A numbered list item is prose, and a bullet filed beneath one is invisible to the node.
+
+    `model` gives an undeclared meta key the same flat-subtree fallback whatever the key looks
+    like: every descendant becomes a `"childkey: childvalue"` string in `UINode.meta[key]`,
+    whether the key reads as a plausible bullet the type simply never declared —
+    `_check_undeclared_container_properties`'s case — or is the running text of a numbered list
+    item, which is this one. The container being prose rather than merely undeclared changes
+    nothing about what `model` does with it and nothing about what the grammar can read back out
+    of it: `registry.declared_keys(node.type)` is asked the same question either way, and a key
+    that fails it is unstated no matter what wrote it.
+
+    Scope is the burial, not the parent's shape. `key in declared` and `_BULLET_KEY_SPELLING`
+    both have to fail before a key is even considered, so a genuine declared multi-word key
+    (`consistency rule`, `consistency group`) is excluded before the check ever looks at its
+    children — the same guard `_check_undeclared_container_properties` applies, and for the same
+    reason: a predicate that tested only the spelling would report every one of them. A prose
+    key whose subtree buries nothing `doctor` grades — an ordinary aside, a definition-list
+    idiom — stays silent here, the large legitimate population this check has to leave alone.
+
+    One finding per buried container key, not one per node: a node can carry more than one
+    prose-shaped meta key, and each one that buries a normative or check key is its own defect
+    with its own line and its own `line`. Within one container, though, the finding names every
+    buried child at once — `consistency` and `verify` filed under the same numbered item are one
+    broken container, and an edit that promotes only one of them out leaves the other exactly as
+    buried as it was, so the ref names the whole set and the finding does not read as closed
+    until none of it is.
+
+    Deliberately not a compiler gap kind. Nothing here is undetermined the way an unresolved
+    reference or a missing arrangement is — `compile_plan` never reaches this node's buried
+    bullets to have an opinion about them, because the book itself already states, in a place
+    nothing reads, that they exist. That is a fact about the book, true whether or not any
+    scenario ever compiles this node, so it is a doctor code rather than a `Gap`.
+    """
+    burial_keys = _prose_burial_keys()
+    for node in graph.ui_nodes:
+        declared = registry.declared_keys(node.type)
+        rel = _rel_path(graph, node)
+        for key, value in node.meta.items():
+            if key in declared or _BULLET_KEY_SPELLING.match(key) or not isinstance(value, list):
+                continue
+            children = [item.split(":", 1)[0].strip() for item in value]
+            hits = sorted({child for child in children if child in burial_keys})
+            if not hits:
+                continue
+            named = ", ".join(f"`{child}:`" for child in hits)
+            verb = "is" if len(hits) == 1 else "are"
+            f.append(Finding(
+                "error", "prose-buried-bullet",
+                f"{node.id}: the numbered list item beginning {_prose(key)[:60]!r} is prose, "
+                f"not a key {node.type} declares — {named} filed beneath it {verb} invisible to "
+                f"{node.type}, not merely misplaced",
+                path=rel, line=node.line, ref=",".join(hits),
+                suggestion=f"move {named} out of the numbered list, to a top-level bullet of "
+                           f"the node"))
 
 
 def _check_record_properties(graph: Graph, f: list[Finding]) -> None:
