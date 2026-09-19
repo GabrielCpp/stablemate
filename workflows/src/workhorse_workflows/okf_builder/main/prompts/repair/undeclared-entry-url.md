@@ -7,6 +7,10 @@ surface, via that runbook's own `entry-url:`. This obligation's surface states n
 the compiler cannot resolve where a scenario should even connect, and drops the obligation
 as a gap instead of guessing.
 
+**This finding means the obligation has a check and the compiler has nowhere to send it.**
+If the bullet the finding names carries no `verify:` of its own, you are reading the wrong
+finding: that is `no-verify-declared`, and the repair is a check, not an address.
+
 To repair it, find the surface's own [`server`](server.md) node — the one describing the
 process this obligation's endpoint or screen actually runs inside — and state where it
 listens:
