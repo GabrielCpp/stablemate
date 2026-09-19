@@ -169,8 +169,12 @@ stamps its scratch output `type: spec.qa-okf-context` and writes it into the spe
 if one lands under `docs/features` instead, its file node is correctly suppressed (`spec` is
 not a UI type) but `##` sections inside it still get parsed and seeded into the book as
 `untyped` nodes, with nothing else catching it. `misrooted-book-page` is the doctor code for
-this disagreement between a file's declared type and the root it sits in. See
-[doctor-codes.md](references/doctor-codes.md).
+this disagreement between a file's declared type and the root it sits in, and it covers the
+reverse shape too: a `screen`/`concept`/`flow` page filed under `docs/specs` is under *a* root,
+so the misplaced check passes it, and it never becomes a UI node either, because only files
+under `docs/features` are admitted. It also has no surface — a surface is read from the path,
+`docs/features/<service>/…` — so no driver claims it and it can reach no target a flow compiles
+to. See [doctor-codes.md](references/doctor-codes.md).
 
 **Links are plain markdown path links, never `[[wikilinks]]`** — `[diff](../concepts/diff.md)`,
 `[row](changes-view.md#changes-file-row)`, same-file `[row](#changes-file-row)`. A bare link is

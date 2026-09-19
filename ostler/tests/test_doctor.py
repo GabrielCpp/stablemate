@@ -134,6 +134,36 @@ def test_typed_pages_under_their_own_registered_root_are_not_misrooted(repo: Pat
     assert "misrooted-book-page" not in codes(report)
 
 
+def test_a_ui_typed_page_outside_features_is_flagged_as_misrooted(repo: Path):
+    """The reverse direction: a book page whose type belongs under `features`, filed elsewhere.
+
+    It used to be invisible to every check at once -- `misplaced-book-page` passed it (it IS
+    under a doc root), `misrooted-book-page` skipped it (no `doc_root` was registered for a
+    `UINodeType`), and it never became a UI node, because only files under `docs/features`
+    are admitted. Nothing read it and nothing reported it, and a surface is where the file
+    sits, so it could reach no compile target either.
+    """
+    write(repo / "docs/specs/area/stray.md",
+          "---\ntype: screen\ntitle: Stray\n---\n# Stray\n\n- route: /stray\n")
+    _git_track(repo)
+
+    report = doctor.run(load(repo))
+    finding = next(f for f in report.findings if f.code == "misrooted-book-page")
+    assert finding.path == "docs/specs/area/stray.md"
+    assert "features" in finding.message
+    assert "specs" in finding.message
+
+
+def test_a_ui_typed_page_under_features_is_not_misrooted(repo: Path):
+    """Every `UINodeType`'s registered root is `features`, so an ordinary screen is clean."""
+    write(repo / "docs/features/web/ok.md",
+          "---\ntype: screen\ntitle: Ok\n---\n# Ok\n\n- route: /ok\n")
+    _git_track(repo)
+
+    report = doctor.run(load(repo))
+    assert "misrooted-book-page" not in codes(report)
+
+
 def test_cross_epic_seed_reference_is_flagged(repo: Path):
     # Point epic-a's story at a seed that belongs to epic-b.
     write(repo / "docs/epics/epic-a/epic.md", epic_md(

@@ -382,6 +382,7 @@ class UINodeType:
     """One UI-profile node type. Generalizes ``SEED_META_KEYS`` / ``SEEDS_HEADING`` to any type."""
     name: str
     kind: str                                   # "file" | "section"
+    doc_root: str = "features"                  # the docRoots key a page of this type belongs under
     heading: str = ""                           # section types: parent ``## Heading`` (e.g. "Interactions")
     context: str = ""                           # file types: context folder for scaffold placement
     required_sections: tuple[SectionSpec, ...] = ()   # file types: headings the body must carry
@@ -1401,6 +1402,27 @@ def is_known_type(type_value: str | None) -> bool:
     """True when a declared ``type:`` is a recognized built-in (incl. UI types)."""
     base = base_type(type_value)
     return bool(base) and (base in REGISTRY_BY_NAME or base in UI_TYPES_BY_NAME)
+
+
+def doc_root_of(type_value: str | None) -> str | None:
+    """The docRoots key a page declaring *type_value* belongs under, or None for an unknown type.
+
+    Both registries answer it, which is the point: the five ``EntityType``s carry an explicit
+    ``doc_root`` each, and every ``UINodeType`` carries ``features``, because a book page is where
+    ``graph._surface_of`` reads a surface from — ``rel.parts[0]`` under ``docs/features`` — and a
+    typed page outside that root has no surface, hence no driver, hence no compile target. Asking
+    one registry and skipping the other is what left the reverse case unjoined: a ``type: screen``
+    page under ``docs/specs`` sat inside *a* doc root, so the misplaced check passed it, and had no
+    ``doc_root`` to disagree with, so the misrooted check skipped it.
+    """
+    base = base_type(type_value)
+    if not base:
+        return None
+    entity = REGISTRY_BY_NAME.get(base)
+    if entity is not None:
+        return entity.doc_root
+    uitype = UI_TYPES_BY_NAME.get(base)
+    return uitype.doc_root if uitype is not None else None
 
 
 def type_of(frontmatter: dict | None) -> str | None:

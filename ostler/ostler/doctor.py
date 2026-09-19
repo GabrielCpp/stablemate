@@ -1671,14 +1671,15 @@ def _check_misrooted_book_pages(graph: Graph, f: list[Finding]) -> None:
     doesn't fire (a type is present), `unknown-type` doesn't fire (`spec` is registered), and
     `misplaced-book-page` doesn't fire (the file *is* under a doc root, just the wrong one).
 
-    Only the five built-in `EntityType`s carry a registered `doc_root`, so this check is
-    one-directional by construction: it joins an *entity* type to the root it was found
-    under, and the eleven `UINodeType`s (`screen`, `concept`, `flow`, ...) are skipped
-    entirely, because `REGISTRY_BY_NAME` has no entry to read a `doc_root` off. The reverse
-    case is therefore still unjoined and is not this check's: a `type: screen` page sitting
-    under `docs/specs` raises nothing here, nothing from `misplaced-book-page` (it is under
-    a root), and does not become a UI node at all. A `type:` this registry does not
-    recognize at all is `unknown-type`'s finding, not this one.
+    The join runs in both directions, because `registry.doc_root_of` answers for both
+    registries: the five `EntityType`s carry an explicit root each, and every `UINodeType`
+    carries `features`. A `type: screen` page sitting under `docs/specs` used to raise
+    nothing at all -- not here (no `doc_root` to disagree with), not from
+    `misplaced-book-page` (it *is* under a root), and it never became a UI node either,
+    since `_feature_paths` only admits files under `docs/features`. It was a book page
+    nothing read and nothing reported, and it could reach none of the compile targets,
+    because a surface is where the file sits. A `type:` this registry does not recognize at
+    all is `unknown-type`'s finding, not this one.
     """
     try:
         result = subprocess.run(
@@ -1702,21 +1703,21 @@ def _check_misrooted_book_pages(graph: Graph, f: list[Finding]) -> None:
         declared = registry.type_of(fm)
         if not declared:
             continue
-        entity = registry.REGISTRY_BY_NAME.get(registry.base_type(declared) or "")
-        if entity is None:
+        expected_key = registry.doc_root_of(declared)
+        if expected_key is None:
             continue
         resolved = path.resolve()
         actual_key = next(
             (key for key, root in roots.items() if resolved.is_relative_to(root)), None)
-        if actual_key is None or actual_key == entity.doc_root:
+        if actual_key is None or actual_key == expected_key:
             continue
         if model.find_root(path.parent) != graph.root:
             continue
         f.append(Finding(
             "error", "misrooted-book-page",
             f"{rel}: declares `type: {declared}`, whose registered doc root is "
-            f"`{entity.doc_root}`, but the file sits under `{actual_key}` instead — move it "
-            f"under `{entity.doc_root}` (or delete it, if it was scratch output that should "
+            f"`{expected_key}`, but the file sits under `{actual_key}` instead — move it "
+            f"under `{expected_key}` (or delete it, if it was scratch output that should "
             f"never have landed in the book)",
             path=rel, line=1, ref=declared))
 
