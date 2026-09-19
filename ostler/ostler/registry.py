@@ -1195,8 +1195,8 @@ UI_TYPES: tuple[UINodeType, ...] = (
             # `screen.route` draws. Inert while `normative=False`, same as there.
             BulletKey("method", locator=True, address=True, value_kind="http-method"),
             BulletKey("path", locator=True, address=True, value_kind="route"),
-            BulletKey("channel"),
-            BulletKey("message"),
+            BulletKey("channel", locator=True, address=True),
+            BulletKey("message", nested=True, entries=True, normative=True),
             BulletKey("does", nested=True, normative=True, locator=True),
             BulletKey("emits"),
             BulletKey("consumes"),

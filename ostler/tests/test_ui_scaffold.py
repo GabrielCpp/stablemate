@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ostler import fmt, scaffold
+from ostler import doctor, fmt, scaffold
 from ostler.cli import main
 from ostler.model import load
 
@@ -57,6 +57,25 @@ def test_scaffold_section_creates_heading_if_absent(repo: Path):
     assert res.ok
     text = (repo / "docs/features/groom/http/server.md").read_text()
     assert "## Endpoints" in text and "### get-worker" in text
+
+
+def test_scaffold_endpoints_bare_channel_and_message_raise_no_new_finding(repo: Path):
+    """The corpus shape today: every book's `channel:`/`message:` is a bare scaffold stub with
+    no value, so widening their grammar (locator/address on `channel:`, entries/normative on
+    `message:`) must be invisible until a book actually writes content into one. `doctor` finds
+    the same two unrelated things it always did — nothing naming `channel` or `message`."""
+    write(repo / "docs/features/acme/server.md",
+          "---\ntype: server\ntitle: API\n---\n# API\n\n- code: `app/server.py`\n")
+    write(repo / "app/server.py", "x = 1\n")
+    res = scaffold.scaffold(load(repo), "endpoint", "get-worker", in_file="acme/server.md")
+    assert res.ok
+
+    report = doctor.run(load(repo))
+
+    assert {f.code for f in report.findings} == {
+        "unstamped-citation", "runbook-missing", "unclassified-seed",
+    }
+    assert not any("channel" in f.message or "message" in f.message for f in report.findings)
 
 
 def test_scaffold_section_requires_in(repo: Path):

@@ -4,6 +4,7 @@ import json
 import subprocess
 from pathlib import Path
 
+from ostler import registry
 from ostler.qa.context import (
     CONTEXT_HEADING,
     OWED_HEADING,
@@ -990,6 +991,66 @@ title: Items
                     if k.endswith("#save-item:contract"))
     assert "checksDeclared" not in contract
     assert not any("tests/test_items.py" in row for row in both)
+
+
+def test_a_channel_endpoints_message_mints_one_obligation_per_frame(tmp_path: Path):
+    """`message:` is `nested=True, entries=True, normative=True`: a websocket returns
+    differently-shaped frames, each a thing with its own claims, so the grammar mints one
+    obligation per frame — not one per grandchild (the flat `nested` shape) and not one for
+    the whole block (`record`). The obligation id carries the per-key ordinal, exactly as
+    `does:1`/`does:2` do above, so it is `message:1`/`message:2` here, one per entry, never
+    `message:3` or `message:4` for the frames' own `direction:`/`payload:` children."""
+    (tmp_path / "docs/features/acme/http").mkdir(parents=True)
+    (tmp_path / "app").mkdir()
+    (tmp_path / "docs/features/acme/http/stream.md").write_text(
+        """---
+type: server
+title: Stream
+---
+# Stream
+
+## Endpoints
+
+### stream-updates
+- channel: ws://events
+- message:
+  - update
+    - direction: server-to-client
+    - payload: `Update`
+  - ack
+    - direction: client-to-server
+    - payload: `Ack`
+- code: app/stream.py::stream_updates
+""",
+        encoding="utf-8",
+    )
+    (tmp_path / "app/stream.py").write_text(
+        "def stream_updates():\n    return 1\n", encoding="utf-8"
+    )
+    _git(tmp_path, "init")
+    _git(tmp_path, "config", "user.email", "qa@example.com")
+    _git(tmp_path, "config", "user.name", "QA")
+    _git(tmp_path, "add", ".")
+    _git(tmp_path, "commit", "-m", "base")
+    base = _git(tmp_path, "rev-parse", "HEAD")
+    (tmp_path / "app/stream.py").write_text(
+        "def stream_updates():\n    return 2\n", encoding="utf-8"
+    )
+
+    packet = build_context(tmp_path, base=base, source_roots={"acme": ["app"]})
+    by_id = {item["id"]: item for item in packet["obligations"]}
+    message_obligations = {k: v for k, v in by_id.items() if ":message:" in k}
+
+    assert set(message_obligations) == {
+        "okf:docs/features/acme/http/stream.md#stream-updates:message:1",
+        "okf:docs/features/acme/http/stream.md#stream-updates:message:2",
+    }
+    assert message_obligations[
+        "okf:docs/features/acme/http/stream.md#stream-updates:message:1"
+    ]["requirement"] == "update"
+    assert message_obligations[
+        "okf:docs/features/acme/http/stream.md#stream-updates:message:2"
+    ]["requirement"] == "ack"
 
 
 def test_a_repeated_component_lifts_its_family_contract_onto_the_obligation(tmp_path: Path):
@@ -2254,6 +2315,26 @@ def test_a_locator_key_undeclared_on_the_nodes_type_is_not_read():
     located = _locators(node)
     assert "on" not in located
     assert located["does"] == ["writes the ledger."]
+
+
+def test_channel_is_read_as_an_endpoints_address_locator():
+    """`channel:` carries `locator=True, address=True`, exactly as `method:`/`path:` do, so an
+    endpoint that names a channel is found by the same two readers a routed endpoint is: the
+    registry's own key set, and `_locators`, which is what a planner/compiler reads a node's
+    address off of."""
+    assert "channel" in registry.LOCATOR_KEYS
+    node = {
+        "type": "endpoint",
+        "bullets": {
+            "method": ["GET"],
+            "path": ["/api/things"],
+            "channel": ["ws://events"],
+        },
+    }
+    located = _locators(node)
+    assert located["method"] == ["GET"]
+    assert located["path"] == ["/api/things"]
+    assert located["channel"] == ["ws://events"]
 
 
 def test_an_unstated_claim_combiner_is_stamped_on_every_child(tmp_path: Path):
