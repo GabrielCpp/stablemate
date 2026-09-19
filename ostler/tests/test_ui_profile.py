@@ -422,6 +422,38 @@ def test_a_code_finding_is_located_at_its_node(repo: Path):
     assert finding.ref == "groom/groom/gone.py::Diff"
 
 
+def test_a_section_node_citing_a_whole_source_file_is_flagged(repo: Path):
+    """`code:` on a `kind == "section"` type (here, a `component`) names a *part* of a file, so
+    a bare path with no `::symbol` has said only where to start looking, not where the node is
+    grounded — unlike `concept` (`kind == "file"`), which the earlier whole-file test shows is
+    exempt because its subject genuinely is the whole file."""
+    write(repo / "groom/groom/render.py", "def handler():\n    return 1\n")
+    write(repo / "docs/features/groom/gui/screens/s.md",
+          "---\ntype: screen\nslug: s\ntitle: S\n---\n# S\n\n"
+          "## Components\n\n### body\n"
+          "- role: generic\n- name: none\n"
+          "- code: `groom/groom/render.py`\n")
+    report = doctor.run(load(repo))
+    assert "whole-file-code-ref" in codes(report)
+    finding = next(f for f in report.findings if f.code == "whole-file-code-ref")
+    assert finding.ref == "groom/groom/render.py"
+
+
+def test_a_code_symbol_cited_against_a_non_utf8_source_file_is_flagged(repo: Path):
+    target = repo / "groom/groom/legacy.py"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(b"def broken():\n    return b'\xff\xfe'\n")
+    write(repo / "docs/features/groom/gui/screens/s.md",
+          "---\ntype: screen\nslug: s\ntitle: S\n---\n# S\n\n"
+          "## Components\n\n### body\n"
+          "- role: generic\n- name: none\n"
+          "- code: `groom/groom/legacy.py::broken`\n")
+    report = doctor.run(load(repo))
+    assert "undecodable-code-symbol" in codes(report)
+    finding = next(f for f in report.findings if f.code == "undecodable-code-symbol")
+    assert finding.ref == "groom/groom/legacy.py::broken"
+
+
 def _combined_grounding_refs(repo: Path, name: str) -> str:
     """Write the backing files/dir for all four grounding scenarios under *name*, and return
     a single multi-target `code:` value citing all four (the comma-separated grammar §4.4's

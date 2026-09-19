@@ -272,6 +272,33 @@ def test_resolved_seed_not_required_to_be_covered(repo: Path):
     assert "orphan-seed" not in codes(report)
 
 
+def test_a_story_covering_a_seed_id_unknown_to_the_whole_book_is_flagged(repo: Path):
+    """Unlike `cross-epic-seed` (the id belongs to a sibling epic), `dangling-seed` is what
+    fires when no epic anywhere claims the id at all.
+    """
+    write(repo / "docs/epics/epic-a/epic.md", epic_md(
+        "t-1", "epic-a",
+        seeds=[("seed-a1", "researched", "first"), ("seed-a2", "resolved", "done")],
+        stories=[("01-foo", "Foo", ["seed-ghost"])],
+    ))
+    report = doctor.run(load(repo))
+    assert "dangling-seed" in codes(report)
+    finding = next(f for f in report.findings if f.code == "dangling-seed")
+    assert finding.ref == "seed-ghost"
+
+
+def test_a_story_named_in_the_epic_with_no_story_file_on_disk_is_flagged(repo: Path):
+    write(repo / "docs/epics/epic-a/epic.md", epic_md(
+        "t-1", "epic-a",
+        seeds=[("seed-a1", "researched", "first")],
+        stories=[("01-foo", "Foo", ["seed-a1"]), ("02-ghost", "Ghost", [])],
+    ))
+    report = doctor.run(load(repo))
+    assert "missing-story-file" in codes(report)
+    finding = next(f for f in report.findings if f.code == "missing-story-file")
+    assert finding.ref == "02-ghost"
+
+
 def test_feature_records_parsed(repo: Path):
     graph = load(repo)
     features = {r.key for r in graph.features}
@@ -350,6 +377,31 @@ def test_seedless_epic_no_covers_warning(repo: Path):
           "---\ntype: story\nslug: 01-x\nstatus: Not started\n---\n# Story: X\n")
     warns = {f.code for f in doctor.run(load(repo)).findings if f.severity == "warn"}
     assert "story-covers-no-seed" not in warns
+
+
+def test_a_story_that_covers_no_seed_in_a_seeded_epic_is_flagged(repo: Path):
+    write(repo / "docs/epics/epic-a/epic.md", epic_md(
+        "t-1", "epic-a",
+        seeds=[("seed-a1", "researched", "first")],
+        stories=[("01-foo", "Foo", [])],
+    ))
+    report = doctor.run(load(repo))
+    warns = [f for f in report.findings if f.severity == "warn"]
+    assert "story-covers-no-seed" in {f.code for f in warns}
+    finding = next(f for f in warns if f.code == "story-covers-no-seed")
+    assert finding.ref == "01-foo"
+
+
+def test_an_active_seed_with_no_layers_bullet_is_flagged_unclassified(repo: Path):
+    """`epic_md` never writes a `layers:` bullet, so any active (non-inactive-status) seed it
+    builds already satisfies `not s.layers` — seed-a1 ("researched") in the base `repo`
+    fixture is exactly this shape.
+    """
+    report = doctor.run(load(repo))
+    warns = [f for f in report.findings if f.severity == "warn"]
+    assert "unclassified-seed" in {f.code for f in warns}
+    finding = next(f for f in warns if f.code == "unclassified-seed" and f.ref == "seed-a1")
+    assert finding.suggestion is not None and "seed-a1" in finding.suggestion
 
 
 def test_epic_filter_scopes_findings(repo: Path):
@@ -531,6 +583,103 @@ epics:
 
     assert {m.eid for m in graph.milestones} == {"m0", "m1"}
     assert "epic-without-milestone" not in codes(report)
+
+
+def test_an_epic_assigned_to_no_milestone_is_flagged(repo: Path):
+    write(repo / "docs/milestones/foundation.md", """---
+type: milestone
+id: m0
+title: Foundation
+status: planned
+dependsOn: []
+epics:
+  - epic-a
+---
+# Foundation
+""")
+
+    report = doctor.run(load(repo))
+
+    assert "epic-without-milestone" in codes(report)
+    finding = next(f for f in report.findings if f.code == "epic-without-milestone")
+    assert finding.ref == "epic-b"
+
+
+def test_a_milestone_depending_on_an_unknown_milestone_is_flagged(repo: Path):
+    write(repo / "docs/milestones/foundation.md", """---
+type: milestone
+id: m0
+title: Foundation
+status: planned
+dependsOn:
+  - no-such-milestone
+epics:
+  - epic-a
+  - epic-b
+---
+# Foundation
+""")
+
+    report = doctor.run(load(repo))
+
+    assert "dangling-milestone-dependency" in codes(report)
+    finding = next(f for f in report.findings if f.code == "dangling-milestone-dependency")
+    assert finding.ref == "no-such-milestone"
+
+
+def test_a_milestone_listing_an_unknown_epic_is_flagged(repo: Path):
+    write(repo / "docs/milestones/foundation.md", """---
+type: milestone
+id: m0
+title: Foundation
+status: planned
+dependsOn: []
+epics:
+  - epic-a
+  - epic-b
+  - epic-ghost
+---
+# Foundation
+""")
+
+    report = doctor.run(load(repo))
+
+    assert "dangling-milestone-epic" in codes(report)
+    finding = next(f for f in report.findings if f.code == "dangling-milestone-epic")
+    assert finding.ref == "epic-ghost"
+
+
+def test_an_epic_assigned_to_two_milestones_at_once_is_flagged(repo: Path):
+    write(repo / "docs/milestones/foundation.md", """---
+type: milestone
+id: m0
+title: Foundation
+status: planned
+dependsOn: []
+epics:
+  - epic-a
+---
+# Foundation
+""")
+    write(repo / "docs/milestones/feature.md", """---
+type: milestone
+id: m1
+title: Feature
+status: planned
+dependsOn: []
+epics:
+  - epic-a
+  - epic-b
+---
+# Feature
+""")
+
+    report = doctor.run(load(repo))
+
+    assert "epic-in-multiple-milestones" in codes(report)
+    finding = next(f for f in report.findings if f.code == "epic-in-multiple-milestones")
+    assert finding.ref == "epic-a"
+    assert "foundation" in finding.message and "feature" in finding.message
 
 
 def test_backlog_item_cannot_belong_to_multiple_milestones(repo: Path):
@@ -785,6 +934,28 @@ def test_gap_findings_reports_a_compile_plan_gap_as_a_doctor_finding():
     assert finding == doctor.Finding(
         "error", "unresolved-precondition",
         f"{oid}: the book carries no request body", ref=oid,
+    )
+
+
+def test_an_unresolved_extends_gap_is_reported_as_a_doctor_finding():
+    """`unresolved-extends` is minted by `qa.compile.compile_plan_gaps`, not by any check
+    `doctor.run` performs on its own walk — `census.py`'s own bridge note says so
+    ("gap_findings has no product caller; gaps surface via qa compile-plan only"), so the
+    only way to exercise the code -> Finding translation is to build the `Gap` directly, the
+    same way every other Gap-based code above is tested.
+    """
+    oid = "okf:docs/features/demo/api.md#refuse-act:does:1"
+    gap = compile_mod.Gap(
+        oid, "unresolved-extends",
+        "this arm's `extends:` target is missing or not the same node type, so its control "
+        "identity could not be inherited from the base case")
+
+    [finding] = doctor.gap_findings([gap])
+
+    assert finding == doctor.Finding(
+        "error", "unresolved-extends",
+        f"{oid}: this arm's `extends:` target is missing or not the same node type, so its "
+        "control identity could not be inherited from the base case", ref=oid,
     )
 
 

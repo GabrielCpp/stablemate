@@ -205,6 +205,47 @@ def test_an_extending_arm_with_its_own_arrangement_is_not_a_finding(repo: Path):
     assert "unarranged-extending-arm" not in all_codes(_run(repo))
 
 
+def test_an_interaction_that_extends_a_component_instead_of_an_interaction_is_flagged(
+        repo: Path):
+    """`extends:` can only inherit control identity from another arm of the *same* node type —
+    a component is a real, resolvable target, just the wrong kind of one.
+    """
+    write(repo / "docs/features/groom/gui/screens/s.md", _ARM_BOOK
+          + "### act-bad\n- on: [btn](#btn)\n- trigger: click\n- role: button\n- name: Go\n"
+          "- keyboard: Enter\n- when: `name` non-empty\n"
+          '- arrange: fill(locator="#field", value="Widget A")\n'
+          "- does:\n  - state: go\n"
+          '- verify: http_status(201, path="/api/widgets")\n'
+          "- extends: [btn](#btn)\n")
+    report = _run(repo)
+    assert "extends-type-mismatch" in codes(report)
+    finding = next(f for f in report.findings if f.code == "extends-type-mismatch")
+    assert finding.ref == "docs/features/groom/gui/screens/s.md#act-bad#extends"
+
+
+def test_a_selector_written_as_a_css_attribute_predicate_is_flagged_unaddressable(repo: Path):
+    """`ostler vet`'s render scan never mints an attribute-value or boolean-attribute string, so
+    a selector shaped like one can never be matched against a real census, however accurate a
+    description of the DOM it is.
+    """
+    _screen_with(repo, '- role: generic\n- name: none\n- selector: [data-state="booked"]\n')
+    report = _run(repo)
+    assert "unaddressable-selector" in codes(report)
+    finding = next(f for f in report.findings if f.code == "unaddressable-selector")
+    assert finding.ref == "docs/features/groom/gui/screens/s.md#body#selector:1"
+
+
+def test_a_states_bullet_claiming_the_control_is_disabled_with_no_check_is_flagged(repo: Path):
+    """`visible(...)` passes on a greyed-out button, so an unavailability claim needs its own
+    `actionable(...)`/`inert(...)` observer — with none in the book, the claim is unverified.
+    """
+    _screen_with(repo, "- role: generic\n- name: none\n- states: disabled until valid\n")
+    report = _run(repo)
+    assert "unchecked-availability-state" in all_codes(report)
+    finding = next(f for f in report.findings if f.code == "unchecked-availability-state")
+    assert finding.ref == "docs/features/groom/gui/screens/s.md#body#states:1"
+
+
 def test_a_scaffolded_empty_arrange_bullet_does_not_count_as_an_arrangement(repo: Path):
     # Every authorable key is scaffolded onto a node as an empty bullet, so reading key
     # *presence* would make this book — which arranges nothing — indistinguishable from one

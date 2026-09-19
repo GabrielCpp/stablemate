@@ -105,6 +105,27 @@ def test_fires_on_a_command_against_its_exits_bullet(repo: Path):
     assert "exits:1" in hits[0].message
 
 
+def test_a_command_claim_checked_with_no_run_bullet_to_bind_to_is_flagged(repo: Path):
+    """`usage:`/`flags:`/`args:` describe every way to call the command, not the one concrete
+    invocation a claim was checked against — so a checked claim with no `run:` at all compiles
+    to nothing.
+    """
+    write(repo / "docs/features/acme/shortener-cli.md",
+          "---\ntype: cli\nslug: shortener\ntitle: Shortener\n---\n# Shortener\n\n"
+          "- binary: `shortener`\n\n"
+          "## Commands\n\n### create\n"
+          "- usage: shortener create <url>\n"
+          "- args: url — the URL to shorten\n"
+          "- does: mints a short link for the given URL\n"
+          "- exits: 0 on success\n"
+          "- verify: exit_status(code=0)\n"
+          "- code: `shortener/cli.py::create`\n")
+    report = _run(repo)
+    hits = [f for f in report.findings if f.code == "unbound-command-claim"]
+    assert len(hits) == 1, report.findings
+    assert hits[0].ref == "docs/features/acme/shortener-cli.md#create#exits:1"
+
+
 def test_silent_on_an_invocation_correctly_bound_under_status(repo: Path):
     write(repo / "docs/features/acme/cli/wh.md",
           "---\ntype: cli\nslug: wh\ntitle: WH\n---\n# WH\n\n"
