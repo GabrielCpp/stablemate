@@ -24,6 +24,7 @@ import hashlib
 import json
 import re
 from dataclasses import dataclass
+from dataclasses import field
 from pathlib import Path
 from typing import Any
 from typing import get_args as _get_args
@@ -34,7 +35,7 @@ from ostler.checks import CHECK_BY_NAME
 from ostler.checks import _rooted
 from ostler.markdown import extract_refs
 from ostler.qa import references
-from ostler.routes import literal_route, why_unreadable
+from ostler.routes import is_screen_name_shaped, literal_route, why_unreadable
 from ostler.qa.outcome import QaOutcome
 from ostler.vet import placement as placement_mod
 
@@ -158,9 +159,19 @@ class Plan:
     decide which outcome it has before it can read `source` at all — an `Optional` return
     lets a caller skip that decision and read a `None` field, or worse, read an empty string
     the type system accepts and the plan format rejects only once someone tries to run it.
+
+    `files` carries every auxiliary file a scenario in `source` reaches for at run time —
+    today, only a maestro scenario's own flow YAML — keyed by the path relative to the plan
+    file's own directory. `source` never embeds one inline: a Maestro flow is a document the
+    `maestro` CLI reads on its own, not a Python literal, so it has to exist beside the plan
+    as a real file for the scenario's `qa.maestro.run(qa.spec_dir / ...)` call to open —
+    `pathlib` itself is off the plan-lint allowlist (see `lint.ALLOWED_IMPORT_MODULES`), so
+    the generated line builds the `Path` off `qa.spec_dir`, the one `Path` the harness already
+    hands the plan, rather than importing the module to construct one from scratch.
     """
     source: str
     gaps: list[Gap]
+    files: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -235,8 +246,11 @@ PLAYWRIGHT = DriverSpec("playwright", frozenset({"page", "response", "body", "ke
 
 #: Maestro drives a mobile UI: it can see the rendered screen and read back a subject value
 #: from it, but has no notion of an HTTP response or body, and no keyboard to dispatch a
-#: press through — touch has no Tab order. Named here so the compiler can refer to it; it
-#: has no compile path of its own yet (see `ostler.qa.harness.ostler_qa` for its runtime).
+#: press through — touch has no Tab order. Its `"page"` claims each compile a command into a
+#: generated flow YAML *and* a `qa.verify(name, result.exit_code == 0, **args, covers=[...])`
+#: call against the run that executed it (see `ostler.qa.harness.ostler_qa` for the runtime);
+#: its `"subject"` claims — `exit_status` against the flow run's own result — go through
+#: `_operand` like every other driver's do, with no command of their own to embed.
 MAESTRO = DriverSpec("maestro", frozenset({"page", "subject"}))
 
 
@@ -495,11 +509,11 @@ _OBSERVED_TYPES = frozenset({"flow", "component", "screen", "field"})
 _OBSERVE_ROW: dict[str, str] = {
     "web": "playwright", "mobile": "maestro", "http": "http", "cli": "cli",
 }
-#: Targets this compiler actually builds a compile path for. `maestro` and `in-process` are
-#: correct cells in D1's table (D9: mobile is a row in the table, not a backend to build) that
-#: this compiler leaves inert until a book exercises them — `_dispatch_target` still names the
+#: Targets this compiler actually builds a compile path for. `in-process` is a correct cell in
+#: D1's table (a `method`/`invocation` node's own claim, compiled where its owner is compiled)
+#: this compiler leaves inert until a book exercises it — `_dispatch_target` still names the
 #: target so the gap it returns says exactly what the table says, not "no row for this."
-_BUILT_TARGETS = frozenset({"playwright", "http", "cli"})
+_BUILT_TARGETS = frozenset({"playwright", "http", "cli", "maestro"})
 
 
 def _dispatch_target(
@@ -691,6 +705,133 @@ def _cli_scenario_body(
         if whole:
             lines.extend(assertions)
             covered.add(oid)
+    return lines
+
+
+def _maestro_scenario_body(
+    obligations: list[dict[str, Any]], node_index: dict[str, dict[str, list[str]]],
+    gaps: list[Gap], covered: set[str], files: dict[str, str],
+    screen_routes: dict[str, str],
+) -> list[str]:
+    """Compile every mobile obligation's own Maestro flow — `_cli_scenario_body`'s counterpart
+    for a `mobile`-driven surface instead of a `command` node.
+
+    `qa context` already resolved each check row's `locates` to the node it names, in this
+    file or another, so there is no navigation or cross-node lookup to arrange here — only
+    whether every row this obligation declares can be addressed by a `testID=` selector or a
+    `name:` Maestro can match on. An obligation with one unaddressable row emits nothing at
+    all, the all-or-nothing rule `_cli_scenario_body` applies to a missing `run:`. The flow
+    itself is written to `files`, keyed by a path relative to the plan; the scenario's own
+    Python body only opens it (`qa.maestro.run(qa.spec_dir / ...)`) and asserts against the
+    run's own result the same way every other driver's subject claims do. A `page`-channel
+    check compiles its own `assertVisible`/… command into the flow YAML, so the operand its
+    own `qa.verify(name, result.exit_code == 0, **args, covers=[...])` call observes is that
+    same run's exit code — the declared check's own name and arguments are still what the
+    call states, matching `ostler qa validate`'s `verify:`-bullet lookup, and only the operand
+    it collapses to a verdict differs from a Playwright locator's `.is_visible()`. Each such
+    call is paired with a `qa.vet(...)` on whichever documented screen its checks named, since
+    a scenario that drives a UI and vets no screen is refused.
+
+    A `does:` obligation with no `actsDeclared` at all (a bare tap-to-navigate, e.g.
+    `open-new-widget`) still carries the trigger's own `on:` link at the obligation's top
+    level — the same shape `_web_journey` resolves for a journey step. Resolved the same
+    way here: the `on:` href names another node in this packet, `node_index` gives that
+    node's own locators, and a `tapOn` on it stands in for the missing `actsDeclared` row.
+    """
+    lines: list[str] = []
+    index = 0
+    for obligation in sorted(obligations, key=lambda o: tuple(o.get("docPosition") or (0, 0))):
+        oid = str(obligation["id"])
+        requirement = " ".join(str(obligation.get("requirement", "")).split())
+        lines.append("")
+        lines.append(f"    # {oid}")
+        lines.append(f"    # {requirement}")
+        index += 1
+        name = f"observed_{index}"
+
+        commands: list[str] = []
+        whole = True
+        acts_declared = obligation.get("actsDeclared") or []
+        if acts_declared:
+            for row in acts_declared:
+                spec = acts_mod.ACT_BY_NAME.get(str(row.get("name")))
+                if spec is None or acts_mod.MOBILE not in spec.drivers:
+                    gaps.append(Gap(oid, "uncompilable-claim",
+                                     f"`{row.get('name')}` arranges this obligation's interaction "
+                                     "and the mobile driver cannot perform it"))
+                    whole = False
+                    break
+                locator = _maestro_act_locator(row)
+                if locator is None:
+                    gaps.append(Gap(oid, "uncompilable-claim",
+                                     f"`{row.get('name')}` points at a subject with no `testID=` "
+                                     "selector and no `name:` for the mobile driver to address"))
+                    whole = False
+                    break
+                commands.extend(_maestro_act_commands(spec.name, locator, row.get("args", {})))
+        else:
+            on_value = next(iter(obligation.get("locators", {}).get("on", [])), None)
+            if on_value is not None:
+                source = str(obligation.get("source", ""))
+                on_href = next(iter(extract_refs(on_value).links), (None, None))[1]
+                on_label = (on_href or on_value or "").lstrip("#") or on_value
+                on_node_id = f"{source}#{on_href.lstrip('#')}" if on_href else ""
+                on_locator = _maestro_locator(node_index.get(on_node_id, {}))
+                if on_locator is None:
+                    gaps.append(Gap(oid, "uncompilable-claim",
+                                     f"`on:` names {on_label!r}, which declares no `testID=` "
+                                     "selector and no `name:` for the mobile driver to address"))
+                    whole = False
+                else:
+                    commands.extend(_maestro_act_commands("click", on_locator, {}))
+
+        assertions: list[str] = []
+        python_lines: list[str] = []
+        documents: list[str] = []
+        if whole:
+            for row in obligation.get("checksDeclared", []):
+                channel = _observes(str(row.get("name")))
+                if channel == "subject":
+                    operand, note, kind = _operand(str(row["name"]), name)
+                    if note:
+                        gaps.append(Gap(oid, kind, note))
+                        whole = False
+                        continue
+                    python_lines.append(
+                        f"    qa.verify({_lit(row['name'])}, {operand}"
+                        f"{_kwargs(row.get('args', {}))}, covers=[{_lit(oid)}])"
+                    )
+                    continue
+                if channel != "page":
+                    gaps.append(_unobservable_gap(oid, row.get("name"), MAESTRO))
+                    whole = False
+                    continue
+                locator = _maestro_check_locator(row, obligation, gaps)
+                if locator is None:
+                    whole = False
+                    continue
+                assertions.extend(
+                    _maestro_check_commands(str(row["name"]), locator, row.get("args", {}))
+                )
+                document = _check_document(row, obligation)
+                if document and document not in documents:
+                    documents.append(document)
+                python_lines.append(
+                    f"    qa.verify({_lit(row['name'])}, {name}.exit_code == 0"
+                    f"{_kwargs(row.get('args', {}))}, covers=[{_lit(oid)}])"
+                )
+        if not whole or not (commands or assertions or python_lines):
+            continue
+        flow_path = f"maestro/{_slug(oid)}.yaml"
+        files[flow_path] = _maestro_flow_yaml([*commands, *assertions])
+        lines.append(f"    {name} = qa.maestro.run(qa.spec_dir / {_lit(flow_path)})")
+        lines.extend(python_lines)
+        if assertions:
+            lines.extend(
+                f"    qa.vet({_lit(document)})"
+                for document in _vettable(documents, screen_routes, [oid], gaps, mobile=True)
+            )
+        covered.add(oid)
     return lines
 
 
@@ -956,6 +1097,109 @@ def _page_locator_expr(locators: dict[str, list[str]]) -> str | None:
     return None
 
 
+#: The `appId:` every generated Maestro flow opens with. A real flow addresses a real installed
+#: package, which this compiler never learns from the book (D9: the packet carries no bundle
+#: identity for a mobile surface) — so this is a placeholder an author replaces once they wire
+#: a real device up, the same role a `TODO(arrange)` line plays everywhere else in this file.
+_MAESTRO_APP_ID = "com.example.mobile-app"
+
+
+def _maestro_locator(locators: dict[str, list[str]]) -> tuple[str, str] | None:
+    """A `(Maestro selector key, value)` pair built from a node's own book-declared locators.
+
+    The opposite preference from `_page_locator_expr`: Maestro addresses a view by `id:`
+    (matched against the platform's `testID`/`resource-id`), so a `selector: testID=…` — the
+    one scheme `_page_locator_expr` refuses outright — is exactly the address this driver wants,
+    and is preferred over `name:` for the same reason `_page_locator_expr` prefers `role`+`name`
+    over a CSS selector: it is the address least likely to drift under a copy change.
+    """
+    selector = _bullet_value(next(iter(locators.get("selector", [])), None))
+    if selector:
+        parsed = placement_mod.parse_scheme_selector(selector)
+        if parsed is not None and parsed[0] == "testID":
+            return "id", parsed[1]
+    name = _bullet_value(next(iter(locators.get("name", [])), None))
+    if name:
+        return "text", name
+    return None
+
+
+def _maestro_flow_yaml(commands: list[str]) -> str:
+    return "\n".join([f'appId: "{_MAESTRO_APP_ID}"', "---", *commands]) + "\n"
+
+
+def _maestro_act_commands(
+    act_name: str, locator: tuple[str, str], args: dict[str, Any],
+) -> list[str]:
+    key, value = locator
+    tap = ["- tapOn:", f'    {key}: "{value}"']
+    if act_name == "fill":
+        return [*tap, f'- inputText: "{args.get("value", "")}"']
+    if act_name == "press":
+        return [*tap, f'- pressKey: "{args.get("key", "")}"']
+    return tap
+
+
+def _maestro_check_commands(
+    check_name: str, locator: tuple[str, str], args: dict[str, Any],
+) -> list[str]:
+    key, value = locator
+    block = ["- assertVisible:", f'    {key}: "{value}"']
+    if check_name == "actionable":
+        block.append("    enabled: true")
+    elif check_name == "inert":
+        block.append("    enabled: false")
+    text = args.get("text")
+    if check_name == "visible" and isinstance(text, str):
+        block.append(f'    text: "{text}"')
+    return block
+
+
+def _maestro_act_locator(row: dict[str, Any]) -> tuple[str, str] | None:
+    located = (row.get("locates") or {}).get("locator") or {}
+    return _maestro_locator(located.get("locators") or {})
+
+
+def _maestro_check_locator(
+    row: dict[str, Any], obligation: dict[str, Any], gaps: list[Gap],
+) -> tuple[str, str] | None:
+    """The `(id|text, value)` pair a `page`-channel check's `verify:` row addresses.
+
+    Mirrors `_check_operand`'s own `locates`/self-`locators` fallback, trading Playwright's
+    `_page_locator_expr` for `_maestro_locator` — the packet already resolved a check's own
+    `locates` param to the node it names (`qa context`'s job, not this compiler's), so there is
+    no cross-node lookup to arrange here, only whether that node's locators address by `id:` or
+    `text:`.
+    """
+    oid = str(obligation["id"])
+    located = row.get("locates") or {}
+    if not located:
+        locator = _maestro_locator(obligation.get("locators", {}))
+        if locator is None:
+            gaps.append(Gap(oid, "uncompilable-claim",
+                             f"`{row.get('name')}` declares no `locator=` and this obligation's "
+                             "own node states no `testID=` selector and no `name:` to fall back "
+                             "on"))
+        return locator
+    param = sorted(located)[0]
+    target = located[param]
+    node_id = str(target.get("node", ""))
+    if not node_id:
+        gaps.append(Gap(
+            oid, "undeclared-check-locator",
+            f"`{row.get('name')}` points `{param}=` at "
+            f"`{row.get('args', {}).get(param)}`, which names no component or interaction this "
+            "book declares — there is nothing to point a driver at, so nothing is emitted"))
+        return None
+    locator = _maestro_locator(target.get("locators", {}))
+    if locator is None:
+        gaps.append(Gap(
+            oid, "uncompilable-claim",
+            f"`{node_id}` is what `{param}=` names, and it declares no `testID=` selector and "
+            "no `name:` — so the book says what to look at and not how to address it"))
+    return locator
+
+
 def _is_owed_for_dispatch(obligation: dict[str, Any]) -> bool:
     """Whether an obligation carries something a builder could act on.
 
@@ -1180,6 +1424,7 @@ def compile_plan_gaps(
     http_owed: list[dict[str, Any]] = []
     page_owed: list[dict[str, Any]] = []
     cli_owed: list[dict[str, Any]] = []
+    mobile_owed: list[dict[str, Any]] = []
     flow_owed: list[dict[str, Any]] = []
     no_verify_owed: list[dict[str, Any]] = []
     # Indexed over every obligation the packet carries, before a single line of dispatch below:
@@ -1227,6 +1472,8 @@ def compile_plan_gaps(
             http_owed.append(obligation)
         elif target == "cli":
             cli_owed.append(obligation)
+        elif target == "maestro":
+            mobile_owed.append(obligation)
         else:
             gaps.append(Gap(str(obligation["id"]), kind, detail))
     debt: list[dict[str, Any]] = list(no_verify_owed)
@@ -1265,6 +1512,9 @@ def compile_plan_gaps(
     # obligation reaches whichever builder its `(nodeType, surface)` dispatches to. The closing
     # assert reads it.
     captured: set[tuple[str, str]] = set()
+    files: dict[str, str] = {}
+    node_index = _node_locator_index(context)
+    screen_routes = _screen_routes(context)
     for source, obligations in by_source.items():
         gaps.extend(_unarranged_state_gap(o) for o in obligations if not o.get("checksDeclared"))
         declared = [o for o in obligations if o.get("checksDeclared")]
@@ -1390,6 +1640,67 @@ def compile_plan_gaps(
             )
         lines.extend(body_lines)
 
+    mobile_declared = [o for o in mobile_owed if o.get("checksDeclared") or o.get("actsDeclared")]
+    gaps.extend(_unarranged_state_gap(o) for o in mobile_owed
+                if not o.get("checksDeclared") and not o.get("actsDeclared"))
+    _decline_captures(mobile_declared, gaps, captured, because=(
+        "the mobile builder does not yet capture a fact out of a Maestro flow run"))
+    mobile_by_source: dict[str, list[dict[str, Any]]] = {}
+    for obligation in mobile_declared:
+        mobile_by_source.setdefault(str(obligation.get("source", "book")), []).append(obligation)
+    for source, mobile_obligations in mobile_by_source.items():
+        arrangement = _arrangement_of(mobile_obligations)
+        if arrangement.unstated:
+            gaps.extend(_unarranged_scenario_gap(o) for o in mobile_obligations)
+            continue
+        mobile_scenario_covered: set[str] = set()
+        body_lines = _maestro_scenario_body(
+            mobile_obligations, node_index, gaps, mobile_scenario_covered, files, screen_routes
+        )
+        if not mobile_scenario_covered:
+            continue
+        covered_ids.update(mobile_scenario_covered)
+        surface = str(mobile_obligations[0].get("surface") or "")
+        target_var = _target_var(surface, "mobile")
+        if target_var not in emitted_targets:
+            lines.append("")
+            lines.append(
+                f"{target_var} = target({_lit(target_var)}, driver={_lit(MAESTRO.name)}, "
+                f"app_id={_lit(_MAESTRO_APP_ID)})"
+            )
+            emitted_targets.add(target_var)
+        lines.append("")
+        lines.append("")
+        lines.append("@scenario(")
+        lines.append(f"    target={target_var},")
+        lines.append('    mechanism="live",')
+        lines.append("    covers=[")
+        lines.extend(
+            f"        {_lit(o['id'])}," for o in mobile_obligations if o["id"] in mobile_scenario_covered
+        )
+        lines.append("    ],")
+        arranged = arrangement.rows
+        if arranged:
+            lines.append("    preconditions=[")
+            lines.extend(f"        {_lit(row['provides'] or row['name'])}," for row in arranged)
+            lines.append("    ],")
+        else:
+            lines.append("    preconditions=[],")
+        lines.append("    checkpoints=[],  # TODO(arrange): what an observer should see it prove")
+        lines.append("    forbid=[],  # TODO: the weaker observations this scenario must not settle for")
+        lines.append(")")
+        lines.append(f"def {_slug(source)}_from_the_book(qa: Qa) -> None:")
+        lines.append(f'    """Obligations {source} owes live evidence for."""')
+        if arranged:
+            lines.append("")
+            lines.extend(
+                f"    qa.fixture({_lit(row['name'])}"
+                + "".join(f", {_lit(arg)}" for arg in row.get("args", []))
+                + ")"
+                for row in arranged
+            )
+        lines.extend(body_lines)
+
     # A `states:` obligation is not withheld by the same rule as every other page claim: a
     # state with neither a check nor a fixture is not book debt, it is an unarranged
     # arrangement — the by-node loop below tells the two apart and gaps accordingly
@@ -1419,7 +1730,7 @@ def compile_plan_gaps(
     # already assigned, and reading that off `emitted_targets` rather than re-assigning it is
     # only correct once every place-scoped builder above has run.
     lines.extend(_journey_scenarios(context, flow_owed, gaps, covered_ids, navigation,
-                                    web_urls, api_urls, emitted_targets, captured,
+                                    web_urls, api_urls, emitted_targets, captured, files,
                                     acts_by_node=page_acts, acts_refused=page_acts_refused))
 
     if debt:
@@ -1479,7 +1790,7 @@ def compile_plan_gaps(
 
     if not emitted_targets:
         return Refusal(gaps)
-    return Plan("\n".join(lines).rstrip() + "\n", gaps)
+    return Plan("\n".join(lines).rstrip() + "\n", gaps, files=files)
 
 
 def deferred_obligations(context: dict[str, Any], *, story: str) -> dict[str, Gap]:
@@ -2195,11 +2506,28 @@ def _check_document(row: dict[str, Any], obligation: dict[str, Any]) -> str:
     return str(obligation.get("source", ""))
 
 
+def _why_unmatchable_screen_name(route: str) -> str:
+    """Why *route* is not a screen name a Maestro flow's own report could be compared against.
+
+    The mobile counterpart of `ostler.routes.why_unreadable`, held to the same driver-keyed
+    grammar `_vettable` reads for a `mobile` document (`is_screen_name_shaped`, per
+    `ostler.routes.ROUTE_GRAMMAR`) instead of the web `literal_route` grammar that function was
+    written for: a route this driver can compare a rendered screen's own name against, or one
+    of the reasons it cannot.
+    """
+    text = route.strip()
+    if not text:
+        return "the book states no single `route:` for it"
+    return f"its `route:` (`{text}`) is not a navigator screen name a Maestro run could match"
+
+
 def _vettable(
     documents: list[str],
     screen_routes: dict[str, str],
     ids: list[str],
     gaps: list[Gap],
+    *,
+    mobile: bool = False,
 ) -> list[str]:
     """*documents* a vet can establish as its subject, with a gap for each one it cannot.
 
@@ -2215,14 +2543,19 @@ def _vettable(
     scenario that cannot say which screen it ended on is a plan defect, and the plan is where
     it gets said — `ostler doctor` reads these gaps, and a note buried in a run's evidence
     reaches nobody deciding whether the book is compilable.
+
+    `mobile=True` holds the route to `ostler.routes.ROUTE_GRAMMAR`'s `mobile` row instead of
+    its `web`/`http` one — a React Navigation screen name (`is_screen_name_shaped`), never a
+    `/`-prefixed path, since a navigator that routes on names has no path for a Maestro flow's
+    own report to state.
     """
     keep: list[str] = []
     for document in documents:
         route = screen_routes.get(document, "")
-        if literal_route(route):
+        if is_screen_name_shaped(route.strip()) if mobile else literal_route(route):
             keep.append(document)
             continue
-        why = why_unreadable(route)
+        why = _why_unmatchable_screen_name(route) if mobile else why_unreadable(route)
         gaps.extend(Gap(oid, "unidentifiable-screen",
                         f"this scenario ends on {document}, and {why} — so nothing can say the "
                         "page it photographed is that screen, and its placement verdicts are "
@@ -2678,6 +3011,7 @@ def _journey_scenarios(
     api_urls: dict[str, str],
     emitted_targets: set[str],
     captured: set[tuple[str, str]],
+    files: dict[str, str],
     *,
     acts_by_node: dict[str, list[dict[str, Any]]],
     acts_refused: set[str],
@@ -2759,19 +3093,22 @@ def _journey_scenarios(
             continue
         journey_target, surface = pairs[0]
         nav = navigation.get(surface, {}) if surface else {}
+        url: str | None = ""
         if journey_target == "http":
             kind, driver_name = "api", PYTHON.name
             url = api_urls.get(surface) or nav.get("entryUrl")
         elif journey_target == "playwright":
             kind, driver_name = "web", PLAYWRIGHT.name
             url = web_urls.get(surface) or nav.get("entryUrl")
+        elif journey_target == "maestro":
+            kind, driver_name = "mobile", MAESTRO.name
         else:
             gaps.extend(Gap(oid, "needs-target-backend",
                             f"D1's table names {journey_target!r} for every step of this "
                             "journey, and this compiler builds no journey path for it")
                         for oid in ids)
             continue
-        if url is None:
+        if journey_target != "maestro" and url is None:
             kind, detail = _entry_url_gap(surface, navigation)
             gaps.extend(Gap(oid, kind, detail) for oid in ids)
             continue
@@ -2795,6 +3132,9 @@ def _journey_scenarios(
         if journey_target == "http":
             body = _http_journey(steps, node_index, obligations, ids, gaps, scenario_covered,
                                  captured, acts_by_node=acts_by_node, acts_refused=acts_refused)
+        elif journey_target == "maestro":
+            body = _maestro_journey(steps, node_index, obligations, ids, gaps, scenario_covered,
+                                    files, screen_routes)
         else:
             body = _web_journey(steps, node_index, obligations, ids, gaps, scenario_covered,
                                 captured, nav, screen_routes,
@@ -2811,11 +3151,18 @@ def _journey_scenarios(
         ]
         target_var = _target_var(surface, kind)
         if target_var not in emitted_targets:
-            lines.extend([
-                "",
-                f"{target_var} = target({_lit(target_var)}, driver={_lit(driver_name)}, "
-                f"base_url={_lit(url)})",
-            ])
+            if journey_target == "maestro":
+                lines.extend([
+                    "",
+                    f"{target_var} = target({_lit(target_var)}, driver={_lit(driver_name)}, "
+                    f"app_id={_lit(_MAESTRO_APP_ID)})",
+                ])
+            else:
+                lines.extend([
+                    "",
+                    f"{target_var} = target({_lit(target_var)}, driver={_lit(driver_name)}, "
+                    f"base_url={_lit(url)})",
+                ])
             emitted_targets.add(target_var)
         lines.extend([
             "",
@@ -3071,6 +3418,113 @@ def _web_journey(
         *assertions,
     ]
 
+
+def _maestro_journey(
+    steps: list[dict[str, Any]],
+    node_index: dict[str, dict[str, list[str]]],
+    obligations: list[dict[str, Any]],
+    ids: list[str],
+    gaps: list[Gap],
+    covered: set[str],
+    files: dict[str, str],
+    screen_routes: dict[str, str],
+) -> list[str]:
+    """Walk a flow's `interaction` steps as Maestro `tapOn` commands, then assert the flow's
+    own claims in the same flow file.
+
+    Mirrors `_web_journey`'s walk with no arrival: a mobile surface states no root path to
+    open from (Maestro's own `appId:` line is what launches the app), so the whole journey —
+    every step's tap plus the flow's own assertions — is one flow file this scenario opens
+    once, the same all-in-one-file shape `_maestro_scenario_body` writes for a single
+    obligation. A step names another node by `ref`; `node_index` gives that node's own `on:`
+    link the same way `_web_journey` reads it, resolved to a `tapOn` by `_maestro_locator`
+    rather than `_page_locator_expr`.
+
+    As in `_maestro_scenario_body`, a `page`-channel check compiles its own assertion command
+    into the flow file rather than into this function, so each such check's own
+    `qa.verify(name, result_name.exit_code == 0, **args, covers=[oid])` observes the shared
+    flow's exit code under that check's own declared name and arguments — the same operand
+    every check row sharing this journey's one flow observes, since a Maestro run fails at its
+    first unmet assertion and the ones after it never got to run. The documented screens the
+    journey's checks named each get a `qa.vet(...)` call.
+    """
+    commands: list[str] = []
+    for index, step in enumerate(steps, start=1):
+        node_type = str(step.get("nodeType") or "")
+        if node_type != "interaction":
+            gaps.extend(Gap(oid, "uncompilable-claim",
+                            f"step {index} names a {node_type or 'untyped'} node, which is a "
+                            "place rather than an action; this builder performs only "
+                            "`interaction` steps")
+                        for oid in ids)
+            return []
+        ref = str(step.get("ref", ""))
+        locators = node_index.get(ref, {})
+        on_value = next(iter(locators.get("on", [])), None)
+        on_href = next(iter(extract_refs(on_value or "").links), (None, None))[1]
+        on_label = (on_href or on_value or "").lstrip("#") or on_value
+        on_node_id = f"{ref.split('#')[0]}#{on_href.lstrip('#')}" if on_href else ""
+        locator = _maestro_locator(node_index.get(on_node_id, {}))
+        if locator is None:
+            gaps.extend(Gap(oid, "uncompilable-claim",
+                            f"step {index} acts on {on_label!r}, which declares no `testID=` "
+                            "selector and no `name:` to address it by; every step after it "
+                            "would run in a world this journey never reached")
+                        for oid in ids)
+            return []
+        commands.extend(_maestro_act_commands("click", locator, {}))
+    assertions: list[str] = []
+    python_lines: list[str] = []
+    page_oids: list[str] = []
+    documents: list[str] = []
+    result_name = "journey_result"
+    for obligation in obligations:
+        oid = str(obligation["id"])
+        for row in obligation.get("checksDeclared", []):
+            channel = _observes(str(row.get("name")))
+            if channel == "subject":
+                operand, note, kind = _operand(str(row["name"]), result_name)
+                if note:
+                    gaps.append(Gap(oid, kind, note))
+                    continue
+                python_lines.append(
+                    f"    qa.verify({_lit(row['name'])}, {operand}"
+                    f"{_kwargs(row.get('args', {}))}, covers=[{_lit(oid)}])"
+                )
+                covered.add(oid)
+                continue
+            if channel != "page":
+                gaps.append(_unobservable_gap(oid, row.get("name"), MAESTRO))
+                continue
+            locator = _maestro_check_locator(row, obligation, gaps)
+            if locator is None:
+                continue
+            assertions.extend(
+                _maestro_check_commands(str(row["name"]), locator, row.get("args", {}))
+            )
+            document = _check_document(row, obligation)
+            if document and document not in documents:
+                documents.append(document)
+            if oid not in page_oids:
+                page_oids.append(oid)
+            python_lines.append(
+                f"    qa.verify({_lit(row['name'])}, {result_name}.exit_code == 0"
+                f"{_kwargs(row.get('args', {}))}, covers=[{_lit(oid)}])"
+            )
+            covered.add(oid)
+    if not covered:
+        return []
+    flow_path = f"maestro/{_slug('-'.join(ids))}.yaml"
+    files[flow_path] = _maestro_flow_yaml([*commands, *assertions])
+    lines = [f"    {result_name} = qa.maestro.run(qa.spec_dir / {_lit(flow_path)})", *python_lines]
+    if page_oids:
+        lines.extend(
+            f"    qa.vet({_lit(document)})"
+            for document in _vettable(documents, screen_routes, page_oids, gaps, mobile=True)
+        )
+    return lines
+
+
 def cmd_compile_plan(
     spec_dir: Path,
     *,
@@ -3150,6 +3604,10 @@ def cmd_compile_plan(
         )
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(source, encoding="utf-8")
+    for relpath, content in result.files.items():
+        aux = out.parent / relpath
+        aux.parent.mkdir(parents=True, exist_ok=True)
+        aux.write_text(content, encoding="utf-8")
     return QaOutcome(
         ok=True,
         message=(f"Compiled {len(declared)} of {len(owed)} owed obligations into {out}.\n"

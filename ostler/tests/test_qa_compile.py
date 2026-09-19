@@ -2723,9 +2723,7 @@ def test_a_node_nobody_performs_is_observed_by_the_driver_of_its_own_surface() -
         assert _dispatch_target(node_type, "web") == ("playwright", "", "")
         assert _dispatch_target(node_type, "http") == ("http", "", "")
         assert _dispatch_target(node_type, "cli") == ("cli", "", "")
-        target, detail, kind = _dispatch_target(node_type, "mobile")
-        assert target == "maestro" and "builds no maestro path yet" in detail
-        assert kind == "needs-target-backend"
+        assert _dispatch_target(node_type, "mobile") == ("maestro", "", "")
     target, detail, kind = _dispatch_target("interaction", "http")
     assert target is None and "names no target" in detail
     assert kind == "uncompilable-claim"
@@ -3106,11 +3104,12 @@ def test_a_journey_across_two_targets_has_no_scenario_shape_to_fit_into() -> Non
     assert "http on 'api'" in gap.detail and "playwright on 'policy'" in gap.detail
 
 
-def test_a_mobile_step_is_a_backend_nobody_built_not_a_book_nobody_finished() -> None:
-    """D1's table names `maestro` for an interaction on a mobile surface, and this compiler
-    builds no maestro path. The book that wrote that step is finished and correct — nothing in
-    it would change if someone repaired it — so the gap says the harness ran out, not the
-    author. `uncompilable-claim` would have aimed an okf-builder repair turn at a good page."""
+def test_a_mobile_step_with_no_selector_is_the_books_to_finish_not_a_backend_gap() -> None:
+    """D1's table names `maestro` for an interaction on a mobile surface, and this compiler now
+    builds that path — so a mobile step whose own node states no `testID=` selector and no
+    `name:` to fall back on gaps `uncompilable-claim`, the book's own gap, rather than
+    `needs-target-backend`: the backend exists, and there is nothing wrong here a maestro
+    builder could have compiled around."""
     oid = f"okf:{_SCREEN}#open-thing:does:1"
     navigation = _arrival_navigation()
     navigation["policy"]["driver"] = "mobile"
@@ -3121,9 +3120,9 @@ def test_a_mobile_step_is_a_backend_nobody_built_not_a_book_nobody_finished() ->
     )
     result = _compile_plan_gaps(context, story="demo-story")
     assert isinstance(result, Refusal)
-    assert _gap_kinds(result.gaps, oid) == ["needs-target-backend"]
+    assert _gap_kinds(result.gaps, oid) == ["uncompilable-claim"]
     [gap] = [g for g in result.gaps if g.obligation_id == oid]
-    assert "builds no maestro path yet" in gap.detail
+    assert "testID" in gap.detail and "name:" in gap.detail
 
 
 def test_a_step_whose_driver_the_book_never_states_is_still_the_books_to_fix() -> None:
@@ -3144,10 +3143,11 @@ def test_a_step_whose_driver_the_book_never_states_is_still_the_books_to_fix() -
     assert _gap_kinds(result.gaps, oid) == ["uncompilable-claim"]
 
 
-def test_a_journey_walked_entirely_on_an_unbuilt_target_says_so() -> None:
+def test_a_mobile_journey_step_with_no_selector_gaps_uncompilable_claim() -> None:
     """Every step dispatches to one target, so there is no crossing to report — the single
-    target is one this compiler has no backend for. The journey reports the backend, not the
-    crossing, because the two are fixed by building different things."""
+    target is `maestro`, which this compiler now builds. A step whose node states no
+    `testID=`/`name:` to address it by is still `uncompilable-claim`, the book's own gap: the
+    backend exists, and no maestro builder could have addressed a view the book never named."""
     oid = f"okf:{_FLOW}:end-state"
     navigation = _arrival_navigation()
     navigation["policy"]["driver"] = "mobile"
@@ -3161,7 +3161,7 @@ def test_a_journey_walked_entirely_on_an_unbuilt_target_says_so() -> None:
     )
     result = _compile_plan_gaps(context, story="demo-story")
     assert isinstance(result, Refusal)
-    assert _gap_kinds(result.gaps, oid) == ["needs-target-backend"]
+    assert _gap_kinds(result.gaps, oid) == ["uncompilable-claim"]
 
 
 def test_a_web_journey_arrives_then_clicks_every_step_in_order() -> None:
@@ -3592,14 +3592,6 @@ def test_a_capture_on_an_obligation_nobody_observed_goes_with_its_obligation() -
 #: undecided cell — a target added to the table with no decision recorded — and fails
 #: `test_every_reachable_dispatch_target_is_built_or_named_as_an_exclusion` below.
 _ACKNOWLEDGED_UNBUILT_TARGETS: dict[str, str] = {
-    "maestro": (
-        "D1's table names `maestro` for an `interaction` on a `mobile`-driven surface, and "
-        "`_OBSERVE_ROW` names it for a `flow`/`component`/`screen` on one too, but this "
-        "compiler builds no maestro path — `_dispatch_target` reports it as "
-        "`needs-target-backend` (measured against the globex fixture: 8 such gaps, "
-        "\"...but this compiler builds no maestro path yet\"). Remove this entry when a "
-        "maestro scenario builder lands."
-    ),
     "in-process": (
         "D1's table names `in-process` for every `method`/`invocation` obligation on every "
         "driver, but this compiler builds no in-process path either — the same "
@@ -3748,6 +3740,28 @@ def test_an_empty_argv_is_a_legal_bare_invocation() -> None:
     assert 'qa.tool("tally").run()' in source
 
 
+def _built_target_probe_maestro() -> tuple[dict, str]:
+    """The smallest obligation D1 dispatches to `maestro`: an `interaction` on a
+    `mobile`-driven surface, its own node carrying a `testID=` selector so the check
+    resolves a locator, and its screen's `route:` shaped as a navigator screen name so
+    `qa.vet` has a document to compare against — nothing about this obligation is missing
+    except a builder that reads it."""
+    oid = "okf:built-target-probe:maestro:visible:1"
+    navigation = _arrival_navigation()
+    navigation["policy"]["driver"] = "mobile"
+    context = _navigation_context(
+        _page_obligation(oid, f"{_SCREEN}#probe",
+                          locators={"selector": ["testID=probe-widget"]},
+                          checks=[_visible("table:Things on file")],
+                          fixtures=[
+                              {"name": "seeded-ledger", "args": [], "provides": "a ledger"},
+                          ]),
+        navigation=navigation,
+        screen_routes={_SCREEN: "Probe"},
+    )
+    return context, oid
+
+
 #: One minimal-obligation builder per member of `_BUILT_TARGETS` — the harness direction 2
 #: needs, not a second copy of the claim under test. `test_every_built_target_has_a_probe`
 #: below fails loudly if `_BUILT_TARGETS` ever grows a member this dict has no entry for, so a
@@ -3756,6 +3770,7 @@ _BUILT_TARGET_PROBES = {
     "playwright": _built_target_probe_playwright,
     "http": _built_target_probe_http,
     "cli": _built_target_probe_cli,
+    "maestro": _built_target_probe_maestro,
 }
 
 #: `_BUILT_TARGETS` members direction 2 has *measured* to have no working builder, each with the
