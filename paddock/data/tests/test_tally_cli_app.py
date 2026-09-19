@@ -147,7 +147,7 @@ def test_the_book_describes_a_product_with_no_service_in_it() -> None:
 
     features = APP / "docs" / "features"
     contexts = {path.parent.name for path in features.rglob("*.md")}
-    assert contexts == {"tally", "concepts", "flows", "ops"}, sorted(contexts)
+    assert contexts == {"tally", "concepts", "flows", "ops", "fixtures"}, sorted(contexts)
     assert not (APP / "compose.yml").exists(), "a serviceless fixture may not ship a stack"
     assert not stack_runbooks(load(APP)), (
         "this fixture exercises the bring-up's `none` arm — no runbook node may declare a stack"

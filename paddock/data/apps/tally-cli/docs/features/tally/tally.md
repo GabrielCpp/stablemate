@@ -5,7 +5,7 @@ title: tally
 ---
 # tally
 
-- binary: tally
+- binary: python3
 - code: tally/cli.py::main@4d236ca6840e
 - code: tally/__main__.py@27c38a9d26bd
 - code: tally/__init__.py@9e0fe3be5206
@@ -24,7 +24,7 @@ input. Every human-facing line goes to stderr; stdout carries only what was aske
 ## Commands
 
 ### init
-- usage: `tally init [--currency CODE]`
+- usage: `python3 -m tally init [--currency CODE]`
 - parent: [tally](#tally)
 - flags:
   - `--currency CODE`
@@ -36,13 +36,15 @@ input. Every human-facing line goes to stderr; stdout carries only what was aske
 - does:
   - Creates the ledger — `tally.json` here, unless `--file` names another — with no entries and
     the given currency.
-- run: invoke(argv=["init"])
+- run: invoke(argv=["-m", "tally", "init"])
 - verify: created(subject="tally.json")
+- fixture: none, because a fresh working directory holds no ledger yet, which is exactly the
+  world this claim needs
 - code: tally/cli.py::cmd_init@4d236ca6840e
 - detail: [The ledger file](concepts/ledger-file.md)
 
 ### add
-- usage: `tally add WHO WHAT AMOUNT_CENTS SPENT_ON [--dry-run]`
+- usage: `python3 -m tally add WHO WHAT AMOUNT_CENTS SPENT_ON [--dry-run]`
 - parent: [tally](#tally)
 - flags:
   - `--dry-run`
@@ -56,12 +58,14 @@ input. Every human-facing line goes to stderr; stdout carries only what was aske
   - `SPENT_ON`: the day, as `YYYY-MM-DD`.
 - does:
   - Records one expense in the ledger.
-- run: invoke(argv=["add", "alice", "coffee", "350", "2024-01-01"])
+- run: invoke(argv=["-m", "tally", "add", "alice", "coffee", "350", "2024-01-01"])
 - verify: count(subject="entries in the ledger", equals=1)
+- fixture: none, because init runs immediately before add in this book's own command order,
+  so the ledger add needs already exists
 - code: tally/cli.py::cmd_add@4d236ca6840e
 
 ### import
-- usage: `tally import PATH [--dry-run]`
+- usage: `python3 -m tally import PATH [--dry-run]`
 - parent: [tally](#tally)
 - flags:
   - `--dry-run`
@@ -72,12 +76,14 @@ input. Every human-facing line goes to stderr; stdout carries only what was aske
   - `PATH`: a CSV file whose header is `who,what,amount_cents,spent_on`.
 - does:
   - Adds every expense in the file that the ledger does not already hold.
-- run: invoke(argv=["import", "expenses.csv"])
+- run: invoke(argv=["-m", "tally", "import", "expenses.csv"])
 - verify: created(subject="the rows the ledger did not already hold")
+- fixture: expenses-csv — the working directory holds `expenses.csv`, a well-formed file the
+  ledger has not seen
 - code: tally/cli.py::cmd_import@4d236ca6840e
 
 ### report
-- usage: `tally report [--json]`
+- usage: `python3 -m tally report [--json]`
 - parent: [tally](#tally)
 - flags:
   - `--json`
@@ -88,12 +94,14 @@ input. Every human-facing line goes to stderr; stdout carries only what was aske
   - none: `report` accepts no positional arguments.
 - does:
   - Totals the ledger, per person and overall.
-- run: invoke(argv=["report", "--json"])
+- run: invoke(argv=["-m", "tally", "report", "--json"])
 - verify: json_path(path="$.total_cents", equals="7450")
+- fixture: none, because add and import run earlier in this scenario and leave the ledger
+  holding entries to total
 - code: tally/cli.py::cmd_report@4d236ca6840e
 
 ### export
-- usage: `tally export PATH`
+- usage: `python3 -m tally export PATH`
 - parent: [tally](#tally)
 - flags:
   - none: `export` accepts no flags.
@@ -101,8 +109,10 @@ input. Every human-facing line goes to stderr; stdout carries only what was aske
   - `PATH`: the CSV file to write.
 - does:
   - Writes every entry in the ledger to `PATH` as CSV.
-- run: invoke(argv=["export", "out.csv"])
+- run: invoke(argv=["-m", "tally", "export", "out.csv"])
 - verify: created(subject="the exported CSV file")
+- fixture: none, because add and import run earlier in this scenario and leave the ledger
+  holding entries to export
 - code: tally/cli.py::cmd_export@4d236ca6840e
 
 ## Invocations
@@ -208,9 +218,13 @@ input. Every human-facing line goes to stderr; stdout carries only what was aske
 - semantics: with `--dry-run`, `add` and `import` leave every file on disk byte-for-byte as it
   was.
 - verify: unchanged(subject="tally.json")
+- fixture: none, because init and add run earlier in this scenario and leave a ledger on disk
+  for this claim to find unchanged
 - semantics: a dry run makes no write at all — it does not write and roll back, nor write
   somewhere else instead.
 - verify: unchanged(subject="the working directory")
+- fixture: none, because init and add run earlier in this scenario and leave a ledger on disk
+  for this claim to find unchanged
 - semantics: a dry run still reports what the command would have done, on stderr, and still
   exits `0`.
 - code: tally/cli.py::commit_or_preview@4d236ca6840e
@@ -222,6 +236,8 @@ input. Every human-facing line goes to stderr; stdout carries only what was aske
 - semantics: every command acts on the ledger `--file` names, so two ledgers in the same directory
   never see each other.
 - verify: unchanged(subject="the ledger --file did not name")
+- fixture: second-ledger — the working directory holds a second ledger file, `other.json`,
+  that no command in this scenario names with `--file`
 - semantics: `--file` is global — it is given before the command, and one invocation names one
   ledger.
 - code: tally/cli.py::build_parser@4d236ca6840e
@@ -230,6 +246,8 @@ input. Every human-facing line goes to stderr; stdout carries only what was aske
 - type: string
 - default: `EUR`
 - verify: json_path(path="$.currency", equals="EUR")
+- fixture: none, because init runs earlier in this scenario with no `--currency` flag, leaving
+  the ledger's currency at its default
 - required: false
 - semantics: the currency is recorded once, at `init`, and every later report states that same
   code. `tally` converts nothing, so no later invocation may change it.
