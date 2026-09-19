@@ -70,6 +70,32 @@ def test_missing_required_section(repo: Path):
     assert finding.fixable and finding.suggestion == "## Commands"
 
 
+def test_empty_required_section(repo: Path):
+    """A server's `## Endpoints` heading exists but carries no prose."""
+    write(repo / "docs/features/api/api.md",
+          "---\ntype: server\nslug: api\ntitle: API\n---\n# API\n\n## Endpoints\n")
+    report = _run(repo)
+    hits = [f for f in report.findings if f.code == "empty-required-section"]
+    assert len(hits) == 1
+    assert "Endpoints" in hits[0].message
+
+
+def test_filled_required_section_not_flagged(repo: Path):
+    """The same book, but `## Endpoints` says something — no finding at all."""
+    write(repo / "docs/features/api/api.md",
+          "---\ntype: server\nslug: api\ntitle: API\n---\n# API\n\n"
+          "## Endpoints\n\n`GET /widgets` lists the widgets.\n")
+    assert "empty-required-section" not in codes(_run(repo))
+
+
+def test_empty_required_section_excludes_sub_headings(repo: Path):
+    """A `## Commands` with only a `### <id>` sub-heading and no prose is still empty."""
+    write(repo / "docs/features/workhorse/workhorse.md",
+          "---\ntype: cli\nslug: wh\ntitle: WH\n---\n# WH\n\n"
+          "- binary: `wh`\n\n## Commands\n\n### run\n")
+    assert "empty-required-section" in codes(_run(repo))
+
+
 def test_missing_required_bullet(repo: Path):
     # an interaction requires on/trigger/does
     write(repo / "docs/features/groom/gui/screens/s.md",

@@ -960,7 +960,7 @@ UI_TYPES: tuple[UINodeType, ...] = (
     ),
     UINodeType(
         name="cli", kind="file", context="",
-        required_sections=(SectionSpec("Commands"),),
+        required_sections=(SectionSpec("Commands", filled=True),),
         bullet_keys=(
             BulletKey("binary"),
             BulletKey("code", link=True, owns=True),
@@ -970,7 +970,7 @@ UI_TYPES: tuple[UINodeType, ...] = (
     ),
     UINodeType(
         name="server", kind="file", context="http",
-        required_sections=(SectionSpec("Endpoints"),),
+        required_sections=(SectionSpec("Endpoints", filled=True),),
         bullet_keys=(
             BulletKey("code", link=True, owns=True),
             BulletKey("openapi", link=True, owns=True),
@@ -1050,7 +1050,7 @@ UI_TYPES: tuple[UINodeType, ...] = (
     # ---- operational surface: how the system is run/observed (docs/okf-runbook.md) ----
     UINodeType(
         name="runbook", kind="file", context="ops",
-        required_sections=(SectionSpec("Steps"),),
+        required_sections=(SectionSpec("Steps", filled=True),),
         bullet_keys=(
             BulletKey("driver", required=True),  # one of `ostler.drivers.DRIVERS` (§4.1)
             BulletKey("walkthrough"),
@@ -1372,7 +1372,7 @@ UI_TYPES: tuple[UINodeType, ...] = (
     # fixture's own steps to `{seed, run, verify}`, a narrower set than a runbook's `STEP_KINDS`.
     UINodeType(
         name="fixture", kind="file", context="fixtures",
-        required_sections=(SectionSpec("Steps"),),
+        required_sections=(SectionSpec("Steps", filled=True),),
         bullet_keys=(
             # `args:`, not `params:` — `params` is already a `RELATION_KEYS` entry checked
             # node-type-independently for `relation-without-subject`, and a fixture's own
