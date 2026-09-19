@@ -161,6 +161,17 @@ is the doctor code for exactly that: it walks the tracked tree independently of 
 flags a typed page none of them cover. See
 [doctor-codes.md](references/doctor-codes.md).
 
+**And it belongs under the *right* doc root, not merely *a* doc root.** Each built-in type has
+one registered home (`epic`→`epics`, `story`→`epics`, `milestone`→`milestones`,
+`feature`/the UI profile types→`features`, `spec.*`→`specs`); a page inside the wrong one is
+just as invisible as a page inside none. The concrete way this happens: `ostler qa context`
+stamps its scratch output `type: spec.qa-okf-context` and writes it into the specs directory —
+if one lands under `docs/features` instead, its file node is correctly suppressed (`spec` is
+not a UI type) but `##` sections inside it still get parsed and seeded into the book as
+`untyped` nodes, with nothing else catching it. `misrooted-book-page` is the doctor code for
+this disagreement between a file's declared type and the root it sits in. See
+[doctor-codes.md](references/doctor-codes.md).
+
 **Links are plain markdown path links, never `[[wikilinks]]`** — `[diff](../concepts/diff.md)`,
 `[row](changes-view.md#changes-file-row)`, same-file `[row](#changes-file-row)`. A bare link is
 **neutral**; meaning lives in the prose beside it. Two optional relation bullets layer a name on

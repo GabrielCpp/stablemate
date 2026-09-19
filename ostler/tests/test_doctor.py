@@ -98,6 +98,42 @@ def test_misplaced_book_page_emits_nothing_outside_a_git_repository(repo: Path):
     assert "misplaced-book-page" not in codes(report)
 
 
+def test_a_spec_typed_page_under_features_is_flagged_as_misrooted(repo: Path):
+    """`spec.*` is registered under `docs/specs`, not `docs/features` -- and unlike a page
+    outside every root, a `spec.qa-okf-context.md` dropped under `docs/features` (the shape
+    `ostler qa context` writing its scratch output to the wrong directory would produce) IS
+    under a doc root, so `misplaced-book-page` never fires. Its file node is suppressed
+    (`spec` is not a `UINodeType`) but `_parse_ui_nodes` still recurses into its `##`
+    sections, seeding `untyped` nodes into the book with nothing else catching the mismatch
+    between the declared type's registered root and the root the file actually sits under.
+    """
+    write(repo / "docs/features/area/scratch.md",
+          "---\ntype: spec.qa-okf-context\ntitle: Scratch\n---\n# Scratch\n\n"
+          "## Changed Code\n\n- `a.py` (modified): foo\n")
+    _git_track(repo)
+
+    report = doctor.run(load(repo))
+    assert "misrooted-book-page" in codes(report)
+    finding = next(f for f in report.findings if f.code == "misrooted-book-page")
+    assert finding.path == "docs/features/area/scratch.md"
+    assert finding.severity == "error"
+    assert "spec.qa-okf-context" in finding.message
+    assert "specs" in finding.message
+
+
+def test_typed_pages_under_their_own_registered_root_are_not_misrooted(repo: Path):
+    """The predicate is "inside a doc root that disagrees with the type", never "inside any
+    doc root but `docs/features`" -- a real `spec.*` page under `docs/specs` (its registered
+    home) must not be flagged.
+    """
+    write(repo / "docs/specs/plan/plan.md",
+          "---\ntype: spec.plan\ntitle: Plan\n---\n# Plan\n\nBody.\n")
+    _git_track(repo)
+
+    report = doctor.run(load(repo))
+    assert "misrooted-book-page" not in codes(report)
+
+
 def test_cross_epic_seed_reference_is_flagged(repo: Path):
     # Point epic-a's story at a seed that belongs to epic-b.
     write(repo / "docs/epics/epic-a/epic.md", epic_md(

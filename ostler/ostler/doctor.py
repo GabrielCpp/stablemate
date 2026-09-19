@@ -188,6 +188,7 @@ def run(graph: Graph, epic_filter: str | None = None, check_schema: bool = True,
     if check_schema:
         _check_conformance(graph, f)
         _check_misplaced_book_pages(graph, f)
+        _check_misrooted_book_pages(graph, f)
     # Before the epic trim below: a suppression decided against a finding the trim had already
     # dropped would read as "no longer fires", and the trim keeps findings by epic, which a UI
     # finding does not carry.
@@ -1611,6 +1612,74 @@ def _check_misplaced_book_pages(graph: Graph, f: list[Finding]) -> None:
             f"configured doc root (`graph.doc_roots`), so no book check ever reads it — "
             f"move it under the doc root its type belongs to, or remove `type:` if it "
             f"was never meant to be a book page",
+            path=rel, line=1, ref=declared))
+
+
+def _check_misrooted_book_pages(graph: Graph, f: list[Finding]) -> None:
+    """A typed page can sit inside *a* doc root and still be inside the *wrong* one.
+
+    `_check_misplaced_book_pages` catches a page that moved outside every root; this is the
+    sibling case it deliberately does not cover: a file whose declared `type:` and the root
+    it was actually found under disagree. `_feature_paths` admits any file under
+    `docs/features` that declares *some* type -- it does not ask whether that type's
+    registered `doc_root` (`registry.REGISTRY_BY_NAME[base].doc_root`) is `features` at all.
+    `type: spec.qa-okf-context` (registered under `specs`) committed under `docs/features`
+    is the concrete case this was written for -- `committed`, because enumeration is
+    `git ls-files` (the sibling's docstring carries that reasoning), and `ostler qa context`
+    writes its scratch files untracked, so this fires on the durable form of the defect and
+    deliberately not on the transient one: its file-level node is correctly suppressed
+    (`spec` is not a `UINodeType`), but `_parse_ui_nodes` still recurses into its `##`
+    sections, seeding `untyped` UI nodes with no finding anywhere -- `okf-missing-type`
+    doesn't fire (a type is present), `unknown-type` doesn't fire (`spec` is registered), and
+    `misplaced-book-page` doesn't fire (the file *is* under a doc root, just the wrong one).
+
+    Only the five built-in `EntityType`s carry a registered `doc_root`, so this check is
+    one-directional by construction: it joins an *entity* type to the root it was found
+    under, and the eleven `UINodeType`s (`screen`, `concept`, `flow`, ...) are skipped
+    entirely, because `REGISTRY_BY_NAME` has no entry to read a `doc_root` off. The reverse
+    case is therefore still unjoined and is not this check's: a `type: screen` page sitting
+    under `docs/specs` raises nothing here, nothing from `misplaced-book-page` (it is under
+    a root), and does not become a UI node at all. A `type:` this registry does not
+    recognize at all is `unknown-type`'s finding, not this one.
+    """
+    try:
+        result = subprocess.run(
+            ["git", "ls-files", "-z", "--", "*.md"],
+            cwd=graph.root, capture_output=True, timeout=30)
+    except (OSError, subprocess.SubprocessError):
+        return
+    if result.returncode != 0:
+        return
+    roots = {key: root.resolve() for key, root in graph.doc_roots.items() if root.is_dir()}
+    for rel in result.stdout.decode("utf-8", "replace").split("\0"):
+        if not rel:
+            continue
+        path = graph.root / rel
+        if path.name in registry.RESERVED_FILES or not path.is_file():
+            continue
+        try:
+            fm = dict(read_doc(path).frontmatter or {})
+        except OSError:
+            continue
+        declared = registry.type_of(fm)
+        if not declared:
+            continue
+        entity = registry.REGISTRY_BY_NAME.get(registry.base_type(declared) or "")
+        if entity is None:
+            continue
+        resolved = path.resolve()
+        actual_key = next(
+            (key for key, root in roots.items() if resolved.is_relative_to(root)), None)
+        if actual_key is None or actual_key == entity.doc_root:
+            continue
+        if model.find_root(path.parent) != graph.root:
+            continue
+        f.append(Finding(
+            "error", "misrooted-book-page",
+            f"{rel}: declares `type: {declared}`, whose registered doc root is "
+            f"`{entity.doc_root}`, but the file sits under `{actual_key}` instead — move it "
+            f"under `{entity.doc_root}` (or delete it, if it was scratch output that should "
+            f"never have landed in the book)",
             path=rel, line=1, ref=declared))
 
 
