@@ -92,7 +92,22 @@ def test_checks_lists_the_vocabulary_without_a_book(tmp_path: Path, capsys):
 
 
 def _minimal_packet() -> dict:
-    return {"story": "demo-story", "obligations": [], "navigation": {"": {"driver": "http"}}}
+    return {
+        "story": "demo-story",
+        "obligations": [
+            {
+                "id": "okf:docs/features/demo/api.md#get-things:does:1",
+                "source": "docs/features/demo/api.md",
+                "nodeType": "endpoint",
+                "requirement": "returns the record",
+                "required": True,
+                "locators": {"route": ["GET /api/things"]},
+                "checksDeclared": [{"call": "ok", "name": "http_status", "args": {"code": 200}}],
+                "arrangesNothing": True,
+            }
+        ],
+        "navigation": {"": {"driver": "http"}},
+    }
 
 
 def test_a_relative_out_is_read_against_the_root_not_the_working_directory(
@@ -116,7 +131,8 @@ def test_a_relative_out_is_read_against_the_root_not_the_working_directory(
 
     assert main(["-C", str(root), "qa", "compile-plan",
                  "--spec", "docs/specs/demo",
-                 "--out", "docs/specs/demo/qa_plan.py"]) == 0
+                 "--out", "docs/specs/demo/qa_plan.py",
+                 "--base-url", "http://localhost:8000"]) == 0
     capsys.readouterr()
 
     assert (spec / "qa_plan.py").is_file()

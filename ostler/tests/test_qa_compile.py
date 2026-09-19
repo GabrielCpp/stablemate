@@ -22,6 +22,8 @@ from ostler.qa.compile import (
     MAESTRO,
     PLAYWRIGHT,
     PYTHON,
+    Plan,
+    Refusal,
     _BUILT_TARGETS,
     _DISPATCH_TABLE,
     _OBSERVE_ROW,
@@ -65,8 +67,11 @@ def compile_plan_gaps(
     story: str,
     run_id: str | None = None,
     base_url: str | None = _BASE_URL,
-) -> tuple[str, list[Gap]]:
-    return _compile_plan_gaps(context, story=story, run_id=run_id, base_url=base_url)
+) -> tuple[str | None, list[Gap]]:
+    result = _compile_plan_gaps(context, story=story, run_id=run_id, base_url=base_url)
+    if isinstance(result, Refusal):
+        return None, result.gaps
+    return result.source, result.gaps
 
 
 def cmd_compile_plan(
@@ -213,10 +218,8 @@ def test_an_obligation_with_no_declared_check_is_book_debt_not_coverage() -> Non
 
 def test_a_source_document_owing_nothing_observable_emits_no_scenario() -> None:
     context = _context(_obligation("okf:docs/features/demo/api.md#post-things:does:1"))
-    source = compile_plan(context, story="demo-story")
-    ast.parse(source)
-    assert "@scenario(" not in source
-    assert "# Book debt." in source
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(result, Refusal)
 
 
 def test_an_obligation_the_change_does_not_owe_is_not_compiled() -> None:
@@ -227,7 +230,9 @@ def test_an_obligation_the_change_does_not_owe_is_not_compiled() -> None:
             checksDeclared=[{"call": "ok", "name": "http_status", "args": {"code": 200, "path": "/api/things"}}],
         )
     )
-    assert _covers(compile_plan(context, story="demo-story")) == set()
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(result, Refusal)
+    assert result.gaps == []
 
 
 def test_a_check_needing_a_subject_the_book_never_gave_compiles_to_a_marker() -> None:
@@ -241,14 +246,12 @@ def test_a_check_needing_a_subject_the_book_never_gave_compiles_to_a_marker() ->
             ],
         )
     )
-    source, gaps = compile_plan_gaps(context, story="demo-story")
-    ast.parse(source)
+    result = _compile_plan_gaps(context, story="demo-story", base_url=_BASE_URL)
     # Nothing invented, and nothing half-claimed either: the sibling `http_status` row compiles,
     # but the two bullets are one claim, so the obligation withdraws whole and stands as its gap.
     oid = "okf:docs/features/demo/api.md#post-things:persistence:1"
-    assert "needs-snapshot" in _gap_kinds(gaps, oid)
-    assert oid not in _covers(source)
-    assert "qa.verify(" not in source
+    assert isinstance(result, Refusal)
+    assert "needs-snapshot" in _gap_kinds(result.gaps, oid)
 
 
 def test_the_command_writes_the_plan_and_reports_the_debt(tmp_path: Path) -> None:
@@ -292,7 +295,7 @@ def test_the_command_reports_gaps_in_doctors_own_finding_shape(tmp_path: Path) -
     spec.mkdir()
     (spec / "qa-okf-context.json").write_text(json.dumps(context), encoding="utf-8")
     result = cmd_compile_plan(spec)
-    assert result.ok
+    assert not result.ok
     [gap] = result.data["gaps"]
     assert gap == {
         "severity": "error",
@@ -300,6 +303,54 @@ def test_the_command_reports_gaps_in_doctors_own_finding_shape(tmp_path: Path) -
         "message": "the book carries no request body",
         "ref": oid,
     }
+
+
+def test_the_command_writes_no_file_when_nothing_compiled(tmp_path: Path) -> None:
+    """A `Refusal` is not a plan with nothing in it — writing an empty or comment-only file
+    over `out` would let a later run believe a plan already exists there, when what actually
+    happened is that nothing here compiled to one at all."""
+    oid = "okf:docs/features/demo/api.md#get-things:does:1"
+    context = _context(
+        _obligation(
+            oid,
+            arrangesNothing=False,
+            locators={"route": ["GET /api/things"]},
+            checksDeclared=[{"call": "ok", "name": "http_status", "args": {"code": 200}}],
+        )
+    )
+    spec = tmp_path / "spec"
+    spec.mkdir()
+    (spec / "qa-okf-context.json").write_text(json.dumps(context), encoding="utf-8")
+    out = spec / "qa_plan.py"
+    result = cmd_compile_plan(spec, out=out)
+    assert not result.ok
+    assert not out.exists()
+
+
+def test_the_command_reports_the_ledger_even_on_a_refusal(tmp_path: Path) -> None:
+    """`owed`/`declared`/`debt`/`gaps` are the same ledger a caller reads on a success — a
+    `Refusal` still owes a reader the count of what the book asked for and what it declared,
+    not just the gaps that explain why none of it reached a scenario."""
+    oid = "okf:docs/features/demo/api.md#get-things:does:1"
+    context = _context(
+        _obligation(
+            oid,
+            arrangesNothing=False,
+            locators={"route": ["GET /api/things"]},
+            checksDeclared=[{"call": "ok", "name": "http_status", "args": {"code": 200}}],
+        )
+    )
+    spec = tmp_path / "spec"
+    spec.mkdir()
+    (spec / "qa-okf-context.json").write_text(json.dumps(context), encoding="utf-8")
+    result = cmd_compile_plan(spec)
+    assert not result.ok
+    assert result.data["owed"] == 1
+    assert result.data["declared"] == 1
+    assert result.data["debt"] == []
+    [gap] = result.data["gaps"]
+    assert gap["code"] == "unarranged-scenario"
+    assert gap["ref"] == oid
 
 
 def test_the_command_refuses_to_overwrite_an_authored_plan(tmp_path: Path) -> None:
@@ -411,9 +462,46 @@ def test_a_scenario_that_arranges_nothing_and_says_nothing_compiles_to_nothing()
             checksDeclared=[{"call": "ok", "name": "http_status", "args": {"code": 200}}],
         )
     )
-    source, gaps = compile_plan_gaps(context, story="demo-story")
-    assert _gap_kinds(gaps, oid) == ["unarranged-scenario"]
-    assert "@scenario(" not in source
+    result = _compile_plan_gaps(context, story="demo-story", base_url=_BASE_URL)
+    assert _gap_kinds(result.gaps, oid) == ["unarranged-scenario"]
+    assert isinstance(result, Refusal)
+
+
+def test_a_refusal_carries_every_gap_and_is_never_also_a_plan() -> None:
+    """`Refusal` and `Plan` are a sum, not two views of the same result — a caller that gets a
+    `Refusal` back must never find a `Plan` underneath it, and the gap that explains why nothing
+    compiled must be the whole of what `compile_plan_gaps` hands back, not a value alongside a
+    `source` a caller could read instead of asking which case it has."""
+    oid = "okf:docs/features/demo/api.md#get-things:does:1"
+    context = _context(
+        _obligation(
+            oid,
+            arrangesNothing=False,
+            locators={"route": ["GET /api/things"]},
+            checksDeclared=[{"call": "ok", "name": "http_status", "args": {"code": 200}}],
+        )
+    )
+    result = _compile_plan_gaps(context, story="demo-story", base_url=_BASE_URL)
+    assert isinstance(result, Refusal)
+    assert not isinstance(result, Plan)
+    assert _gap_kinds(result.gaps, oid) == ["unarranged-scenario"]
+
+
+def test_a_compiling_context_yields_a_plan_whose_source_declares_a_scenario() -> None:
+    """`Plan.source` is a plan file the plan format admits — at least one `@scenario(` — never
+    the empty, decorator-free module `compile_plan_gaps` used to hand back for "nothing
+    compiled". If this obligation's arrangement and check compile at all, the source it lands
+    in must actually declare the scenario carrying them."""
+    context = _context(
+        _obligation(
+            "okf:docs/features/demo/api.md#post-things:does:1",
+            checksDeclared=[_check()],
+            fixturesDeclared=[{"name": "seeded-ledger", "args": [], "provides": "a ledger"}],
+        )
+    )
+    result = _compile_plan_gaps(context, story="demo-story", base_url=_BASE_URL)
+    assert isinstance(result, Plan)
+    assert "@scenario(" in result.source
 
 
 def test_a_missing_request_body_is_an_unarranged_request_body() -> None:
@@ -431,9 +519,9 @@ def test_a_missing_request_body_is_an_unarranged_request_body() -> None:
             fixturesDeclared=[{"name": "seeded-ledger", "args": [], "provides": "a ledger"}],
         )
     )
-    source, gaps = compile_plan_gaps(context, story="demo-story")
-    assert _gap_kinds(gaps, oid) == ["unarranged-request-body"]
-    assert oid not in _covers(source)
+    result = _compile_plan_gaps(context, story="demo-story", base_url=_BASE_URL)
+    assert isinstance(result, Refusal)
+    assert _gap_kinds(result.gaps, oid) == ["unarranged-request-body"]
 
 
 def _body_act(field: str, value: object) -> dict:
@@ -455,6 +543,7 @@ def test_an_arranged_request_body_compiles_to_json_body() -> None:
         )
     )
     source, gaps = compile_plan_gaps(context, story="demo-story")
+    assert source is not None
     assert _gap_kinds(gaps, oid) == []
     assert oid in _covers(source)
     assert 'json_body={"name": "Widget A", "quantity": 3}' in source
@@ -477,9 +566,9 @@ def test_a_half_arranged_request_body_is_still_withheld() -> None:
             ],
         )
     )
-    source, gaps = compile_plan_gaps(context, story="demo-story")
-    assert _gap_kinds(gaps, oid) == ["unarranged-request-body"]
-    assert oid not in _covers(source)
+    result = _compile_plan_gaps(context, story="demo-story", base_url=_BASE_URL)
+    assert isinstance(result, Refusal)
+    assert _gap_kinds(result.gaps, oid) == ["unarranged-request-body"]
 
 
 def test_an_unparsed_act_is_still_an_unarranged_request_body() -> None:
@@ -497,9 +586,9 @@ def test_an_unparsed_act_is_still_an_unarranged_request_body() -> None:
             actsUnparsed=[{"value": "body(field=)", "kind": "bad-arguments", "problem": "malformed"}],
         )
     )
-    source, gaps = compile_plan_gaps(context, story="demo-story")
-    assert _gap_kinds(gaps, oid) == ["unarranged-request-body"]
-    assert oid not in _covers(source)
+    result = _compile_plan_gaps(context, story="demo-story", base_url=_BASE_URL)
+    assert isinstance(result, Refusal)
+    assert _gap_kinds(result.gaps, oid) == ["unarranged-request-body"]
 
 
 def test_an_unresolved_path_template_variable_is_an_unresolved_precondition() -> None:
@@ -577,10 +666,10 @@ def test_an_unrecognized_method_is_an_invalid_http_method_not_uncompilable() -> 
             fixturesDeclared=[{"name": "seeded-ledger", "args": [], "provides": "a ledger"}],
         )
     )
-    source, gaps = compile_plan_gaps(context, story="demo-story")
-    assert _gap_kinds(gaps, oid) == ["invalid-http-method"]
-    assert oid not in _covers(source)
-    [gap] = [g for g in gaps if g.obligation_id == oid]
+    result = _compile_plan_gaps(context, story="demo-story", base_url=_BASE_URL)
+    assert isinstance(result, Refusal)
+    assert _gap_kinds(result.gaps, oid) == ["invalid-http-method"]
+    [gap] = [g for g in result.gaps if g.obligation_id == oid]
     assert "FROB" in gap.detail
 
 
@@ -658,6 +747,7 @@ def test_every_single_observation_verb_compiles_for_real(verb: str, args: dict) 
         )
     )
     source, gaps = compile_plan_gaps(context, story="demo-story")
+    assert source is not None
     assert _gap_kinds(gaps, oid) == []
     assert f'qa.verify("{verb}"' in source
 
@@ -669,6 +759,7 @@ def test_checkpoints_and_forbid_scaffolding_never_appear_in_the_gap_report() -> 
     oid = "okf:docs/features/demo/globex.md#post-things:does:1"
     context = _context(_obligation(oid, checksDeclared=[_check()]))
     source, gaps = compile_plan_gaps(context, story="demo-story")
+    assert source is not None
     assert "checkpoints=[],  # TODO" in source
     assert "forbid=[],  # TODO" in source
     assert {g.kind for g in gaps} <= {"unresolved-precondition", "uncompilable-claim"}
@@ -760,6 +851,7 @@ def test_a_dollar_capture_with_no_route_credits_nothing_and_still_gaps() -> None
         ),
     )
     source, gaps = compile_plan_gaps(context, story="demo-story")
+    assert source is not None
     assert "qa.capture_field(" not in source
     assert "unresolved-precondition" in _gap_kinds(gaps, referencing)
 
@@ -880,10 +972,9 @@ def test_a_checkless_obligation_never_reaches_the_scenario_body() -> None:
     it is the code that gaps it, so it still lands in `{emitted, gap}` like every owed id."""
     oid = "okf:docs/features/demo/globex.md#post-things:does:2"
     context = _context(_obligation(oid))
-    source, gaps = compile_plan_gaps(context, story="demo-story")
-    assert _gap_kinds(gaps, oid) == ["no-verify-declared"]
-    assert "# Book debt." in source
-    assert f"#   {oid}" in source
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(result, Refusal)
+    assert _gap_kinds(result.gaps, oid) == ["no-verify-declared"]
 
 
 # --- Screen page-scenario compilation (slice 4) -----------------------------------------------
@@ -1007,6 +1098,7 @@ def test_exclusive_with_pairing_never_shares_a_scenario() -> None:
         navigation=_arrival_navigation(),
     )
     source, gaps = compile_plan_gaps(context, story="demo-story")
+    assert source is not None
     ast.parse(source)
     scenarios = source.split("@scenario(")[1:]
     scenario_with = [s for s in scenarios if "text=No policies are on file yet" in s]
@@ -1033,11 +1125,11 @@ def test_a_page_scenario_with_no_root_path_gaps_uncompilable_claim_not_a_fabrica
                           checks=[_visible("table:Policies on file")]),
         navigation=nav,
     )
-    source, gaps = compile_plan_gaps(context, story="demo-story")
-    assert _gap_kinds(gaps, oid) == ["uncompilable-claim"]
-    detail = next(g.detail for g in gaps if g.obligation_id == oid)
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(result, Refusal)
+    assert _gap_kinds(result.gaps, oid) == ["uncompilable-claim"]
+    detail = next(g.detail for g in result.gaps if g.obligation_id == oid)
     assert "states no root path" in detail
-    assert "qa.goto(" not in source
 
 
 def test_an_unarranged_states_claim_produces_a_gap_not_a_scenario() -> None:
@@ -1060,6 +1152,7 @@ def test_an_unarranged_states_claim_produces_a_gap_not_a_scenario() -> None:
         navigation=_arrival_navigation(),
     )
     source, gaps = compile_plan_gaps(context, story="demo-story")
+    assert source is not None
     ast.parse(source)
     assert "combobox:Coverage type" in source
     assert _gap_kinds(gaps, oid) == []
@@ -1088,6 +1181,7 @@ def test_a_fully_arranged_states_claim_compiles_its_own_scenario() -> None:
         navigation=_arrival_navigation(),
     )
     source, gaps = compile_plan_gaps(context, story="demo-story")
+    assert source is not None
     ast.parse(source)
     assert _gap_kinds(gaps, state_oid) == []
     assert "status:Loading" in source
@@ -1116,6 +1210,7 @@ def test_states_no_longer_withholds_exclusive_with_on_the_same_node() -> None:
         navigation=_arrival_navigation(),
     )
     source, gaps = compile_plan_gaps(context, story="demo-story")
+    assert source is not None
     ast.parse(source)
     assert "textbox:Vehicle VIN" in source
     assert "@scenario(" in source
@@ -1141,27 +1236,27 @@ def test_unarranged_state_reaches_the_same_gap_on_every_driver() -> None:
                                        checks=[])
     web_obligation["nodeType"] = "component"
     web_context = _navigation_context(web_obligation, navigation=_arrival_navigation())
-    web_source, web_gaps = compile_plan_gaps(web_context, story="demo-story")
-    ast.parse(web_source)
-    assert _gap_kinds(web_gaps, web_oid) == ["unarranged-state"]
+    web_result = _compile_plan_gaps(web_context, story="demo-story")
+    assert isinstance(web_result, Refusal)
+    assert _gap_kinds(web_result.gaps, web_oid) == ["unarranged-state"]
 
     cli_oid = "okf:new-policy:coverage-type-select:states:cli"
     cli_context = _context(
         _obligation(cli_oid, nodeType="component", kind="states", requirement=requirement)
     )
     cli_context["navigation"][""]["driver"] = "cli"
-    cli_source, cli_gaps = compile_plan_gaps(cli_context, story="demo-story")
-    ast.parse(cli_source)
-    assert _gap_kinds(cli_gaps, cli_oid) == ["unarranged-state"]
+    cli_result = _compile_plan_gaps(cli_context, story="demo-story", base_url=_BASE_URL)
+    assert isinstance(cli_result, Refusal)
+    assert _gap_kinds(cli_result.gaps, cli_oid) == ["unarranged-state"]
 
     http_oid = "okf:new-policy:coverage-type-select:states:http"
     http_context = _context(
         _obligation(http_oid, nodeType="component", kind="states", requirement=requirement)
     )
     http_context["navigation"][""]["driver"] = "http"
-    http_source, http_gaps = compile_plan_gaps(http_context, story="demo-story")
-    ast.parse(http_source)
-    assert _gap_kinds(http_gaps, http_oid) == ["unarranged-state"]
+    http_result = _compile_plan_gaps(http_context, story="demo-story", base_url=_BASE_URL)
+    assert isinstance(http_result, Refusal)
+    assert _gap_kinds(http_result.gaps, http_oid) == ["unarranged-state"]
 
 
 def test_an_interactions_assertion_never_lands_on_the_arrival_scenario() -> None:
@@ -1188,6 +1283,7 @@ def test_an_interactions_assertion_never_lands_on_the_arrival_scenario() -> None
         navigation=_arrival_navigation(),
     )
     source, gaps = compile_plan_gaps(context, story="demo-story")
+    assert source is not None
     ast.parse(source)
     scenarios = source.split("@scenario(")[1:]
     arrival = [s for s in scenarios if "_arrival(" in s]
@@ -1222,12 +1318,11 @@ def test_a_subject_only_verb_on_a_page_obligation_is_a_gap_not_a_silent_drop() -
                                   {"call": "the count", "name": "unchanged", "args": {"of": "policy.count"}}]),
         navigation=_arrival_navigation(),
     )
-    source, gaps = compile_plan_gaps(context, story="demo-story")
-    ast.parse(source)
-    assert oid not in _covers(source)
-    kinds = _gap_kinds(gaps, oid)
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(result, Refusal)
+    kinds = _gap_kinds(result.gaps, oid)
     assert "uncompilable-claim" in kinds
-    [gap] = [g for g in gaps if g.obligation_id == oid and g.kind == "uncompilable-claim"]
+    [gap] = [g for g in result.gaps if g.obligation_id == oid and g.kind == "uncompilable-claim"]
     assert "unchanged" in gap.detail
     assert "not observable from the playwright driver" in gap.detail
 
@@ -1319,10 +1414,9 @@ def test_an_unreachable_screen_is_a_finding_not_a_compile_target() -> None:
                           checks=[_visible("table:Policies on file")]),
         navigation=_arrival_navigation(unreachable=[_SCREEN]),
     )
-    source, gaps = compile_plan_gaps(context, story="demo-story")
-    assert "@scenario(" not in source
-    assert "web = target(" not in source or "table:Policies on file" not in source
-    kinds = _gap_kinds(gaps, oid)
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(result, Refusal)
+    kinds = _gap_kinds(result.gaps, oid)
     assert kinds == ["unreachable-screen"]
 
 
@@ -1342,9 +1436,8 @@ def test_a_zero_screen_book_grows_no_playwright_target() -> None:
             }
         },
     )
-    source, _gaps = compile_plan_gaps(context, story="demo-story")
-    assert 'target("web"' not in source
-    assert "@scenario(" not in source
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(result, Refusal)
 
 
 def test_navigation_is_keyed_by_surface_even_for_a_single_surface_book() -> None:
@@ -1369,6 +1462,7 @@ def test_navigation_is_keyed_by_surface_even_for_a_single_surface_book() -> None
         },
     )
     source, gaps = compile_plan_gaps(context, story="demo-story")
+    assert source is not None
     ast.parse(source)
     assert "table:Policies on file" in source
     assert "table:Claims on file" in source
@@ -1461,6 +1555,7 @@ def test_a_compiled_plan_never_hands_playwright_an_unconstructible_locator() -> 
         navigation=_arrival_navigation(source=screen),
     )
     source, _gaps = compile_plan_gaps(context, story="demo-story")
+    assert source is not None
     ast.parse(source)
 
     calls = _locator_calls(source)
@@ -1508,6 +1603,7 @@ def test_an_unavailable_role_set_degrades_to_a_selector_never_to_skipped_validat
         navigation=_arrival_navigation(source=screen),
     )
     source, _gaps = compile_plan_gaps(context, story="demo-story")
+    assert source is not None
     ast.parse(source)
     assert 'by_role("generic"' not in source
     assert 'by_css("dl")' in source
@@ -1539,6 +1635,7 @@ def test_a_check_is_pointed_at_the_component_its_locator_names() -> None:
         navigation=_arrival_navigation(),
     )
     source, gaps = compile_plan_gaps(context, story="demo-story")
+    assert source is not None
     ast.parse(source)
     assert "#name-error" in source
     assert 'name="New policy"' not in source
@@ -1565,10 +1662,9 @@ def test_a_check_locator_that_names_no_component_compiles_to_nothing() -> None:
         ),
         navigation=_arrival_navigation(),
     )
-    source, gaps = compile_plan_gaps(context, story="demo-story")
-    ast.parse(source)
-    assert "@scenario(" not in source
-    assert _gap_kinds(gaps, oid) == ["undeclared-check-locator"]
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(result, Refusal)
+    assert _gap_kinds(result.gaps, oid) == ["undeclared-check-locator"]
 
 
 def test_a_named_component_with_no_addressable_locator_is_an_uncompilable_claim() -> None:
@@ -1582,9 +1678,9 @@ def test_a_named_component_with_no_addressable_locator_is_an_uncompilable_claim(
         ),
         navigation=_arrival_navigation(),
     )
-    source, gaps = compile_plan_gaps(context, story="demo-story")
-    ast.parse(source)
-    assert _gap_kinds(gaps, oid) == ["uncompilable-claim"]
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(result, Refusal)
+    assert _gap_kinds(result.gaps, oid) == ["uncompilable-claim"]
 
 
 def test_an_undetermined_claim_combiner_emits_no_code_at_all() -> None:
@@ -1604,10 +1700,9 @@ def test_an_undetermined_claim_combiner_emits_no_code_at_all() -> None:
             ],
         )
     )
-    source, gaps = compile_plan_gaps(context, story="demo-story")
-    ast.parse(source)
-    assert _covers(source) == set()
-    assert _gap_kinds(gaps, oid) == ["unstated-claim-combiner"]
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(result, Refusal)
+    assert _gap_kinds(result.gaps, oid) == ["unstated-claim-combiner"]
 
 
 def test_an_interactions_check_is_pointed_at_the_component_it_names() -> None:
@@ -1634,6 +1729,7 @@ def test_an_interactions_check_is_pointed_at_the_component_it_names() -> None:
         navigation=_arrival_navigation(),
     )
     source, gaps = compile_plan_gaps(context, story="demo-story")
+    assert source is not None
     ast.parse(source)
     interactions = [s for s in source.split("@scenario(")[1:] if "submit_new_policy(" in s]
     assert len(interactions) == 1
@@ -1666,12 +1762,9 @@ def test_an_interaction_with_no_on_locator_emits_no_assertion() -> None:
                                            {"role": ["table"], "name": ["Policies on file"]})]),
         navigation=_arrival_navigation(),
     )
-    source, gaps = compile_plan_gaps(context, story="demo-story")
-    ast.parse(source)
-    assert "submit_new_policy(" not in source
-    assert 'qa.by_role("table", name="Policies on file")' not in source
-    assert interaction_oid not in _covers(source)
-    assert _gap_kinds(gaps, interaction_oid) == ["unresolved-precondition"]
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(result, Refusal)
+    assert _gap_kinds(result.gaps, interaction_oid) == ["unresolved-precondition"]
 
 
 def test_the_scaffold_click_gap_does_not_claim_does_is_unresolved() -> None:
@@ -1811,6 +1904,7 @@ def test_interaction_arms_with_an_unarranged_when_emit_no_assertion() -> None:
         navigation=_arrival_navigation(),
     )
     source, gaps = compile_plan_gaps(context, story="demo-story")
+    assert source is not None
     ast.parse(source)
     assert "#widget-table" not in source
     assert "#name-error" not in source
@@ -1864,6 +1958,7 @@ def test_an_arranged_interaction_arm_performs_its_acts_and_compiles_its_assertio
         navigation=_arrival_navigation(),
     )
     source, gaps = compile_plan_gaps(context, story="demo-story")
+    assert source is not None
     ast.parse(source)
     lines = source.splitlines()
     fills = [i for i, line in enumerate(lines) if ".fill(" in line]
@@ -1915,6 +2010,7 @@ def test_an_act_whose_subject_has_no_locator_withholds_the_whole_arrangement() -
         navigation=_arrival_navigation(),
     )
     source, gaps = compile_plan_gaps(context, story="demo-story")
+    assert source is not None
     ast.parse(source)
     assert ".fill(" not in source
     assert _gap_kinds(gaps, submit_oid) == ["unarranged-interaction-precondition"]
@@ -1956,6 +2052,7 @@ def test_an_arms_acts_reach_the_builder_from_the_bullet_that_declares_no_check()
         navigation=_arrival_navigation(),
     )
     source, gaps = compile_plan_gaps(context, story="demo-story")
+    assert source is not None
     ast.parse(source)
     lines = source.splitlines()
     fills = [i for i, line in enumerate(lines) if ".fill(" in line]
@@ -2004,7 +2101,9 @@ def test_a_journey_step_performs_its_own_acts_before_it_triggers_it() -> None:
                          locators={"selector": ["#name-field"]}, checks=[]) | {"required": False},
         navigation=_arrival_navigation(),
     )
-    source, gaps = _compile_plan_gaps(context, story="demo-story")
+    _result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(_result, Plan)
+    source, gaps = _result.source, _result.gaps
     ast.parse(source)
     assert oid in _covers(source), [g for g in gaps if g.obligation_id == oid]
     journey = source.split("@scenario(")[-1]
@@ -2041,6 +2140,7 @@ def test_a_wrapped_book_bullet_still_compiles_to_valid_python() -> None:
         navigation=_arrival_navigation(),
     )
     source, _gaps = compile_plan_gaps(context, story="demo-story")
+    assert source is not None
     ast.parse(source)
     interactions = [s for s in source.split("@scenario(")[1:] if "submit_new_policy(" in s]
     assert len(interactions) == 1
@@ -2092,6 +2192,7 @@ def test_every_emitted_assertion_is_legal_against_the_checks_own_signature() -> 
         navigation=_arrival_navigation(),
     )
     source, _ = compile_plan_gaps(context, story="demo-story")
+    assert source is not None
     emitted = _verify_calls(source)
     assert emitted
     for name, args in emitted:
@@ -2128,6 +2229,7 @@ def test_an_arrival_photographs_the_screen_it_arrived_at() -> None:
         navigation=_arrival_navigation(),
     )
     source, _ = compile_plan_gaps(context, story="demo-story")
+    assert source is not None
     assert _vetted(source) == [_SCREEN]
 
 
@@ -2157,6 +2259,7 @@ def test_an_interaction_photographs_the_screen_its_checks_name() -> None:
         screen_routes={_SCREEN: "/new-policy", elsewhere: "/policies"},
     )
     source, _ = compile_plan_gaps(context, story="demo-story")
+    assert source is not None
     interactions = [s for s in source.split("@scenario(")[1:] if "submit_new_policy(" in s]
     assert len(interactions) == 1
     # Read off the fragment, not its tree: a scenario split from its decorator is not a
@@ -2193,6 +2296,7 @@ def test_an_obligation_half_of_whose_checks_compile_is_claimed_by_nobody() -> No
         navigation=_arrival_navigation(),
     )
     source, gaps = compile_plan_gaps(context, story="demo-story")
+    assert source is not None
     ast.parse(source)
     assert oid not in _covers(source)
     assert "#name-error" not in source
@@ -2236,7 +2340,9 @@ def test_a_two_surface_book_compiles_two_different_base_urls() -> None:
                         "entryUrl": "http://localhost:18102"},
         },
     )
-    source, gaps = _compile_plan_gaps(context, story="demo-story")
+    _result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(_result, Plan)
+    source, gaps = _result.source, _result.gaps
     ast.parse(source)
     assert gaps == []
     assert 'api_service_api = target("api_service_api", driver="python", ' \
@@ -2278,7 +2384,9 @@ def test_two_surfaces_sharing_one_driver_kind_each_keep_their_own_address() -> N
             "zulu-service": {"driver": "http", "entryUrl": "http://localhost:18202"},
         },
     )
-    source, gaps = _compile_plan_gaps(context, story="demo-story")
+    _result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(_result, Plan)
+    source, gaps = _result.source, _result.gaps
     ast.parse(source)
     assert gaps == []
     assert 'alpha_service_api = target("alpha_service_api", driver="python", ' \
@@ -2310,13 +2418,9 @@ def test_a_surface_with_no_entry_url_and_no_fallback_gaps_instead_of_guessing() 
     # (otherwise the dispatch table itself gaps the obligation first, as `uncompilable-claim`,
     # before ever reaching the entry-url check this test targets).
     context["navigation"] = {"api-service": {"driver": "http"}}
-    source, gaps = _compile_plan_gaps(context, story="demo-story")
-    ast.parse(source)
-    assert oid not in _covers(source)
-    assert "qa.http.post" not in source
-    assert _gap_kinds(gaps, oid) == ["undeclared-entry-url"]
-    # The obligation was dropped before target emission, so nothing compiles a target for it.
-    assert "target(" not in source
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(result, Refusal)
+    assert _gap_kinds(result.gaps, oid) == ["undeclared-entry-url"]
 
 
 def test_a_checkless_obligation_on_a_surface_with_no_entry_url_is_book_debt_not_undeclared_entry_url() -> None:
@@ -2329,13 +2433,10 @@ def test_a_checkless_obligation_on_a_surface_with_no_entry_url_is_book_debt_not_
         _obligation(oid, surface="api-service"),
     )
     context["navigation"] = {"api-service": {"driver": "http"}}
-    source, gaps = _compile_plan_gaps(context, story="demo-story")
-    ast.parse(source)
-    assert oid not in _covers(source)
-    assert _gap_kinds(gaps, oid) == ["no-verify-declared"]
-    assert "undeclared-entry-url" not in {g.kind for g in gaps}
-    assert "# Book debt." in source
-    assert f"#   {oid}" in source
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(result, Refusal)
+    assert _gap_kinds(result.gaps, oid) == ["no-verify-declared"]
+    assert "undeclared-entry-url" not in {g.kind for g in result.gaps}
 
 
 def _conflicting_origin_context(oid: str) -> dict:
@@ -2364,12 +2465,11 @@ def test_a_surface_whose_sources_disagree_gaps_the_conflict_not_an_absence() -> 
     remedy — so it may not be reported as `undeclared-entry-url`, whose message would send the
     author looking for a bullet that is already written twice."""
     oid = "okf:docs/features/acme/api.md#post-things:does:1"
-    source, gaps = _compile_plan_gaps(_conflicting_origin_context(oid), story="demo-story")
-    ast.parse(source)
-    assert _gap_kinds(gaps, oid) == ["conflicting-entry-origin"]
-    assert "18101" in gaps[0].detail
-    assert "18999" in gaps[0].detail
-    assert "target(" not in source
+    result = _compile_plan_gaps(_conflicting_origin_context(oid), story="demo-story")
+    assert isinstance(result, Refusal)
+    assert _gap_kinds(result.gaps, oid) == ["conflicting-entry-origin"]
+    assert "18101" in result.gaps[0].detail
+    assert "18999" in result.gaps[0].detail
 
 
 def test_a_base_url_does_not_adjudicate_between_two_addresses_the_book_states() -> None:
@@ -2377,11 +2477,10 @@ def test_a_base_url_does_not_adjudicate_between_two_addresses_the_book_states() 
     answered, twice, and an operator flag is not an adjudication between them — falling back
     here would compile a plan against a third address nobody wrote down at all."""
     oid = "okf:docs/features/acme/api.md#post-things:does:1"
-    source, gaps = _compile_plan_gaps(_conflicting_origin_context(oid), story="demo-story",
-                                      base_url="http://localhost:8000")
-    ast.parse(source)
-    assert _gap_kinds(gaps, oid) == ["conflicting-entry-origin"]
-    assert "8000" not in source
+    result = _compile_plan_gaps(_conflicting_origin_context(oid), story="demo-story",
+                                base_url="http://localhost:8000")
+    assert isinstance(result, Refusal)
+    assert _gap_kinds(result.gaps, oid) == ["conflicting-entry-origin"]
 
 
 def _conflicting_driver_context(oid: str) -> dict:
@@ -2412,10 +2511,10 @@ def test_a_surface_whose_runbooks_disagree_gaps_the_conflict_not_an_absence() ->
     reported as `uncompilable-claim`, whose message asserts the book states no `driver:` at all
     and sends the author looking for a bullet that is there twice."""
     oid = "okf:docs/features/acme/api.md#post-things:does:1"
-    source, gaps = compile_plan_gaps(_conflicting_driver_context(oid), story="demo-story")
-    ast.parse(source)
-    assert _gap_kinds(gaps, oid) == ["conflicting-surface-driver"]
-    assert "run.md" in gaps[0].detail and "qa.md" in gaps[0].detail
+    result = _compile_plan_gaps(_conflicting_driver_context(oid), story="demo-story")
+    assert isinstance(result, Refusal)
+    assert _gap_kinds(result.gaps, oid) == ["conflicting-surface-driver"]
+    assert "run.md" in result.gaps[0].detail and "qa.md" in result.gaps[0].detail
 
 
 def _undeclared_walkthrough_context(oid: str) -> dict:
@@ -2449,11 +2548,11 @@ def test_a_surface_with_no_walkthrough_marked_gaps_the_ambiguity_not_a_conflict(
     from `_conflicting_driver_context` above, may not be reported under the other kind, nor as
     `uncompilable-claim`."""
     oid = "okf:docs/features/acme/api.md#post-things:does:1"
-    source, gaps = compile_plan_gaps(_undeclared_walkthrough_context(oid), story="demo-story")
-    ast.parse(source)
-    assert _gap_kinds(gaps, oid) == ["undeclared-walkthrough-runbook"]
-    assert "run.md" in gaps[0].detail and "qa.md" in gaps[0].detail
-    assert "walkthrough" in gaps[0].detail
+    result = _compile_plan_gaps(_undeclared_walkthrough_context(oid), story="demo-story")
+    assert isinstance(result, Refusal)
+    assert _gap_kinds(result.gaps, oid) == ["undeclared-walkthrough-runbook"]
+    assert "run.md" in result.gaps[0].detail and "qa.md" in result.gaps[0].detail
+    assert "walkthrough" in result.gaps[0].detail
 
 
 def test_a_surface_stating_no_driver_at_all_still_gaps_the_absence() -> None:
@@ -2463,10 +2562,10 @@ def test_a_surface_stating_no_driver_at_all_still_gaps_the_absence() -> None:
     oid = "okf:docs/features/acme/api.md#post-things:does:1"
     context = _conflicting_driver_context(oid)
     del context["navigation"]["api-service"]["driverError"]
-    source, gaps = compile_plan_gaps(context, story="demo-story")
-    ast.parse(source)
-    assert _gap_kinds(gaps, oid) == ["uncompilable-claim"]
-    assert "states no `driver:`" in gaps[0].detail
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(result, Refusal)
+    assert _gap_kinds(result.gaps, oid) == ["uncompilable-claim"]
+    assert "states no `driver:`" in result.gaps[0].detail
 
 
 def test_a_selector_the_census_cannot_read_still_compiles_one_whole_scenario() -> None:
@@ -2489,7 +2588,9 @@ def test_a_selector_the_census_cannot_read_still_compiles_one_whole_scenario() -
         ),
         navigation=_arrival_navigation(),
     )
-    source, gaps = _compile_plan_gaps(context, story="demo-story")
+    _result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(_result, Plan)
+    source, gaps = _result.source, _result.gaps
     ast.parse(source)
     assert oid in _covers(source)
     assert _gap_kinds(gaps, oid) == []
@@ -2539,7 +2640,9 @@ def test_a_page_claim_about_the_response_its_click_provoked_compiles_whole() -> 
                                    "args": {"path": "detail", "equals": "name is required"}}]),
         navigation=_arrival_navigation(),
     )
-    source, gaps = _compile_plan_gaps(context, story="demo-story")
+    _result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(_result, Plan)
+    source, gaps = _result.source, _result.gaps
     ast.parse(source)
     assert oid in _covers(source)
     # (`unresolved-precondition` is this fixture's own, and orthogonal: it is about reaching
@@ -2565,7 +2668,9 @@ def test_an_arrival_claim_about_a_response_opens_its_window_before_the_navigatio
                                   _http_status(200, "/api/policies")]),
         navigation=_arrival_navigation(),
     )
-    source, gaps = _compile_plan_gaps(context, story="demo-story")
+    _result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(_result, Plan)
+    source, gaps = _result.source, _result.gaps
     ast.parse(source)
     assert oid in _covers(source)
     assert _gap_kinds(gaps, oid) == []
@@ -2586,12 +2691,9 @@ def test_an_obligation_naming_two_routes_is_two_claims_and_emits_nothing_executa
                                   _http_status(200, "/api/agents")]),
         navigation=_arrival_navigation(),
     )
-    source, gaps = _compile_plan_gaps(context, story="demo-story")
-    ast.parse(source)
-    assert oid not in _covers(source)
-    assert "uncompilable-claim" in _gap_kinds(gaps, oid)
-    assert "response_for(" not in source
-    assert "qa.window()" not in source
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(result, Refusal)
+    assert "uncompilable-claim" in _gap_kinds(result.gaps, oid)
 
 
 def test_a_page_scenario_with_no_http_claim_binds_no_window() -> None:
@@ -2604,8 +2706,9 @@ def test_a_page_scenario_with_no_http_claim_binds_no_window() -> None:
                           checks=[_visible("table:Policies on file")]),
         navigation=_arrival_navigation(),
     )
-    source, _gaps = _compile_plan_gaps(context, story="demo-story")
-    assert "qa.window()" not in source
+    _result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(_result, Plan)
+    assert "qa.window()" not in _result.source
 
 
 def test_a_node_nobody_performs_is_observed_by_the_driver_of_its_own_surface() -> None:
@@ -2695,14 +2798,11 @@ def test_a_flow_that_names_no_steps_has_no_walk_to_compile() -> None:
                     locators={}, checksDeclared=[_visible("table:Policies on file")]),
         navigation=_arrival_navigation(),
     )
-    source, gaps = _compile_plan_gaps(context, story="demo-story")
-    ast.parse(source)
-    assert _gap_kinds(gaps, oid) == ["uncompilable-claim"]
-    [gap] = [g for g in gaps if g.obligation_id == oid]
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(result, Refusal)
+    assert _gap_kinds(result.gaps, oid) == ["uncompilable-claim"]
+    [gap] = [g for g in result.gaps if g.obligation_id == oid]
     assert "`steps:`" in gap.detail and "names no steps to walk" in gap.detail
-    # Nothing executable, and in particular no arrival scenario standing in for the journey.
-    assert oid not in _covers(source)
-    assert "qa.goto(" not in source
 
 
 def test_a_journeys_claim_is_observed_where_its_last_step_left_the_world() -> None:
@@ -2727,7 +2827,9 @@ def test_a_journeys_claim_is_observed_where_its_last_step_left_the_world() -> No
         _step_node(f"{_API}#get-things", {"route": ["GET /api/things"]}),
         navigation=_api_navigation(),
     )
-    source, gaps = _compile_plan_gaps(context, story="demo-story")
+    _result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(_result, Plan)
+    source, gaps = _result.source, _result.gaps
     ast.parse(source)
     assert oid in _covers(source)
     post = source.index('observed_1 = qa.http.delete("/api/things"')
@@ -2756,7 +2858,9 @@ def test_a_journey_step_sends_the_body_its_node_arranges() -> None:
         post_node,
         navigation=_api_navigation(),
     )
-    source, gaps = _compile_plan_gaps(context, story="demo-story")
+    _result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(_result, Plan)
+    source, gaps = _result.source, _result.gaps
     ast.parse(source)
     assert oid in _covers(source)
     assert _gap_kinds(gaps, oid) == []
@@ -2784,9 +2888,9 @@ def test_a_journey_step_with_a_contradictory_body_is_unarranged() -> None:
         other_arm,
         navigation=_api_navigation(),
     )
-    source, gaps = _compile_plan_gaps(context, story="demo-story")
-    assert _gap_kinds(gaps, oid) == ["unarranged-request-body"]
-    assert oid not in _covers(source)
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(result, Refusal)
+    assert _gap_kinds(result.gaps, oid) == ["unarranged-request-body"]
 
 
 def test_a_journey_step_ignores_its_nodes_refusal_arm_arrangement() -> None:
@@ -2813,7 +2917,9 @@ def test_a_journey_step_ignores_its_nodes_refusal_arm_arrangement() -> None:
         refusal_arm,
         navigation=_api_navigation(),
     )
-    source, gaps = _compile_plan_gaps(context, story="demo-story")
+    _result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(_result, Plan)
+    source, gaps = _result.source, _result.gaps
     ast.parse(source)
     assert oid in _covers(source)
     assert _gap_kinds(gaps, oid) == []
@@ -2839,9 +2945,9 @@ def test_a_journey_step_whose_node_only_declares_a_refusal_arm_is_unarranged() -
         refusal_only,
         navigation=_api_navigation(),
     )
-    source, gaps = _compile_plan_gaps(context, story="demo-story")
-    assert _gap_kinds(gaps, oid) == ["unarranged-request-body"]
-    assert oid not in _covers(source)
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(result, Refusal)
+    assert _gap_kinds(result.gaps, oid) == ["unarranged-request-body"]
 
 
 def test_a_journey_step_with_an_unrecognized_method_is_an_invalid_http_method() -> None:
@@ -2860,9 +2966,9 @@ def test_a_journey_step_with_an_unrecognized_method_is_an_invalid_http_method() 
         post_node,
         navigation=_api_navigation(),
     )
-    source, gaps = _compile_plan_gaps(context, story="demo-story")
-    assert _gap_kinds(gaps, oid) == ["invalid-http-method"]
-    assert oid not in _covers(source)
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(result, Refusal)
+    assert _gap_kinds(result.gaps, oid) == ["invalid-http-method"]
 
 
 def test_a_check_naming_another_steps_path_is_not_about_this_journeys_end() -> None:
@@ -2884,11 +2990,10 @@ def test_a_check_naming_another_steps_path_is_not_about_this_journeys_end() -> N
         _step_node(f"{_API}#get-health", {"route": ["GET /healthz"]}),
         navigation=_api_navigation(),
     )
-    source, gaps = _compile_plan_gaps(context, story="demo-story")
-    ast.parse(source)
-    assert oid not in _covers(source)
-    assert "uncompilable-claim" in _gap_kinds(gaps, oid)
-    [gap] = [g for g in gaps if g.obligation_id == oid and g.kind == "uncompilable-claim"]
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(result, Refusal)
+    assert "uncompilable-claim" in _gap_kinds(result.gaps, oid)
+    [gap] = [g for g in result.gaps if g.obligation_id == oid and g.kind == "uncompilable-claim"]
     assert "/healthz" in gap.detail and "its last step left" in gap.detail
 
 
@@ -2911,13 +3016,12 @@ def test_a_journey_across_two_targets_has_no_scenario_shape_to_fit_into() -> Non
         _step_node(f"{_API}#post-things", {"route": ["POST /api/things"]}),
         navigation=navigation,
     )
-    source, gaps = _compile_plan_gaps(context, story="demo-story")
-    ast.parse(source)
-    assert _gap_kinds(gaps, oid) == ["needs-multi-target-runtime"]
-    [gap] = [g for g in gaps if g.obligation_id == oid]
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(result, Refusal)
+    assert _gap_kinds(result.gaps, oid) == ["needs-multi-target-runtime"]
+    [gap] = [g for g in result.gaps if g.obligation_id == oid]
     assert "binds one driver to one service" in gap.detail
     assert "http on 'api'" in gap.detail and "playwright on 'policy'" in gap.detail
-    assert oid not in _covers(source)
 
 
 def test_a_mobile_step_is_a_backend_nobody_built_not_a_book_nobody_finished() -> None:
@@ -2933,12 +3037,11 @@ def test_a_mobile_step_is_a_backend_nobody_built_not_a_book_nobody_finished() ->
                     checksDeclared=[_visible("table:Things on file")]),
         navigation=navigation,
     )
-    source, gaps = _compile_plan_gaps(context, story="demo-story")
-    ast.parse(source)
-    assert _gap_kinds(gaps, oid) == ["needs-target-backend"]
-    [gap] = [g for g in gaps if g.obligation_id == oid]
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(result, Refusal)
+    assert _gap_kinds(result.gaps, oid) == ["needs-target-backend"]
+    [gap] = [g for g in result.gaps if g.obligation_id == oid]
     assert "builds no maestro path yet" in gap.detail
-    assert oid not in _covers(source)
 
 
 def test_a_step_whose_driver_the_book_never_states_is_still_the_books_to_fix() -> None:
@@ -2954,8 +3057,9 @@ def test_a_step_whose_driver_the_book_never_states_is_still_the_books_to_fix() -
                     checksDeclared=[_visible("table:Things on file")]),
         navigation=navigation,
     )
-    _source, gaps = _compile_plan_gaps(context, story="demo-story")
-    assert _gap_kinds(gaps, oid) == ["uncompilable-claim"]
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(result, Refusal)
+    assert _gap_kinds(result.gaps, oid) == ["uncompilable-claim"]
 
 
 def test_a_journey_walked_entirely_on_an_unbuilt_target_says_so() -> None:
@@ -2973,10 +3077,9 @@ def test_a_journey_walked_entirely_on_an_unbuilt_target_says_so() -> None:
         ),
         navigation=navigation,
     )
-    source, gaps = _compile_plan_gaps(context, story="demo-story")
-    ast.parse(source)
-    assert _gap_kinds(gaps, oid) == ["needs-target-backend"]
-    assert oid not in _covers(source)
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(result, Refusal)
+    assert _gap_kinds(result.gaps, oid) == ["needs-target-backend"]
 
 
 def test_a_web_journey_arrives_then_clicks_every_step_in_order() -> None:
@@ -3006,7 +3109,9 @@ def test_a_web_journey_arrives_then_clicks_every_step_in_order() -> None:
                          locators={"selector": ["#save-button"]}, checks=[]) | {"required": False},
         navigation=_arrival_navigation(),
     )
-    source, gaps = _compile_plan_gaps(context, story="demo-story")
+    _result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(_result, Plan)
+    source, gaps = _result.source, _result.gaps
     ast.parse(source)
     assert oid in _covers(source), [g for g in gaps if g.obligation_id == oid]
     goto = source.index("qa.goto(")
@@ -3047,11 +3152,11 @@ def test_a_web_journey_with_no_root_path_gaps_uncompilable_claim_not_a_fabricate
                          locators={"selector": ["#save-button"]}, checks=[]) | {"required": False},
         navigation=nav,
     )
-    source, gaps = _compile_plan_gaps(context, story="demo-story")
-    assert _gap_kinds(gaps, oid) == ["uncompilable-claim"]
-    detail = next(g.detail for g in gaps if g.obligation_id == oid)
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(result, Refusal)
+    assert _gap_kinds(result.gaps, oid) == ["uncompilable-claim"]
+    detail = next(g.detail for g in result.gaps if g.obligation_id == oid)
     assert "root path a journey can open from" in detail
-    assert "qa.goto(" not in source
 
 
 def _unarranged_journey_context(**flow_extra: object) -> tuple[str, dict]:
@@ -3078,10 +3183,9 @@ def test_a_journey_that_arranges_nothing_compiles_to_no_scenario() -> None:
     nothing about the app. The gap removes the case rather than routing it: no scenario is
     emitted, and the obligation is reported unmet with the reason."""
     oid, context = _unarranged_journey_context()
-    source, gaps = _compile_plan_gaps(context, story="demo-story")
-    ast.parse(source)
-    assert _gap_kinds(gaps, oid) == ["unarranged-journey"]
-    assert oid not in _covers(source)
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(result, Refusal)
+    assert _gap_kinds(result.gaps, oid) == ["unarranged-journey"]
 
 
 def test_a_journey_that_says_it_needs_no_arrangement_compiles() -> None:
@@ -3089,7 +3193,9 @@ def test_a_journey_that_says_it_needs_no_arrangement_compiles() -> None:
     that is a different packet from the author who never looked — which is the whole reason
     `arrangesNothing` is carried beside `fixturesDeclared` rather than folded into it."""
     oid, context = _unarranged_journey_context(arrangesNothing=True)
-    source, gaps = _compile_plan_gaps(context, story="demo-story")
+    _result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(_result, Plan)
+    source, gaps = _result.source, _result.gaps
     ast.parse(source)
     assert _gap_kinds(gaps, oid) == []
     assert oid in _covers(source)
@@ -3114,6 +3220,7 @@ def test_a_scenario_ending_on_a_parameterised_route_vets_nothing() -> None:
         screen_routes={_SCREEN: "/policies/:id/edit"},
     )
     source, gaps = compile_plan_gaps(context, story="demo-story")
+    assert source is not None
     assert _vetted(source) == []
     unidentifiable = [gap for gap in gaps if gap.kind == "unidentifiable-screen"]
     assert [gap.obligation_id for gap in unidentifiable] == [oid]
@@ -3138,6 +3245,7 @@ def test_a_screen_the_book_states_no_route_for_vets_nothing() -> None:
         screen_routes={},
     )
     source, gaps = compile_plan_gaps(context, story="demo-story")
+    assert source is not None
     assert _vetted(source) == []
     detail = next(gap.detail for gap in gaps if gap.kind == "unidentifiable-screen")
     assert "no single `route:`" in detail
@@ -3192,15 +3300,14 @@ def test_a_fixture_bullet_that_did_not_parse_is_not_the_journey_that_arranges_no
     context = _navigation_context(obligation, _step_node(f"{_API}#post-things", {}),
                                   navigation=_api_navigation())
 
-    source, gaps = _compile_plan_gaps(context, story="demo-story")
+    result = _compile_plan_gaps(context, story="demo-story")
 
-    ast.parse(source)
-    assert _gap_kinds(gaps, oid) == ["unparsed-fixture"]
-    [gap] = [g for g in gaps if g.obligation_id == oid]
+    assert isinstance(result, Refusal)
+    assert _gap_kinds(result.gaps, oid) == ["unparsed-fixture"]
+    [gap] = [g for g in result.gaps if g.obligation_id == oid]
     assert "Seeded Ledger" in gap.detail and "is not a fixture name" in gap.detail
     # Not the undecided case's code, and nothing compiled against a state nobody established.
-    assert "unarranged-journey" not in {g.kind for g in gaps}
-    assert oid not in _covers(source)
+    assert "unarranged-journey" not in {g.kind for g in result.gaps}
 
 
 def test_a_fixture_providing_a_fact_of_undetermined_source_compiles_nothing() -> None:
@@ -3229,13 +3336,12 @@ def test_a_fixture_providing_a_fact_of_undetermined_source_compiles_nothing() ->
     context = _navigation_context(obligation, _step_node(f"{_API}#post-things", {}),
                                   navigation=_api_navigation())
 
-    source, gaps = _compile_plan_gaps(context, story="demo-story")
+    result = _compile_plan_gaps(context, story="demo-story")
 
-    ast.parse(source)
-    assert _gap_kinds(gaps, oid) == ["undetermined-provided-fact"]
-    [gap] = [g for g in gaps if g.obligation_id == oid]
+    assert isinstance(result, Refusal)
+    assert _gap_kinds(result.gaps, oid) == ["undetermined-provided-fact"]
+    [gap] = [g for g in result.gaps if g.obligation_id == oid]
     assert "seeded-ledger" in gap.detail and "seeded-ledger.total" in gap.detail
-    assert oid not in _covers(source)
 
 
 def test_a_fixture_whose_provided_facts_all_state_a_source_compiles() -> None:
@@ -3255,9 +3361,9 @@ def test_a_fixture_whose_provided_facts_all_state_a_source_compiles() -> None:
     context = _navigation_context(obligation, _step_node(f"{_API}#post-things", {}),
                                   navigation=_api_navigation())
 
-    _, gaps = _compile_plan_gaps(context, story="demo-story")
+    result = _compile_plan_gaps(context, story="demo-story")
 
-    assert "undetermined-provided-fact" not in {g.kind for g in gaps}
+    assert "undetermined-provided-fact" not in {g.kind for g in result.gaps}
 
 
 def test_a_verify_bullet_the_parser_refused_is_not_a_node_that_declared_no_check() -> None:
@@ -3281,16 +3387,15 @@ def test_a_verify_bullet_the_parser_refused_is_not_a_node_that_declared_no_check
     ]
     context = _navigation_context(obligation, navigation=_arrival_navigation())
 
-    source, gaps = _compile_plan_gaps(context, story="demo-story")
+    result = _compile_plan_gaps(context, story="demo-story")
 
-    ast.parse(source)
-    assert _gap_kinds(gaps, oid) == ["unparsed-check-bullet"]
-    [gap] = [g for g in gaps if g.obligation_id == oid]
+    assert isinstance(result, Refusal)
+    assert _gap_kinds(result.gaps, oid) == ["unparsed-check-bullet"]
+    [gap] = [g for g in result.gaps if g.obligation_id == oid]
     assert "visble(table:Policies on file)" in gap.detail
     assert "names no check in the vocabulary" in gap.detail
     # Not the advice to declare what is already declared, and nothing asserted on its behalf.
-    assert "no-verify-declared" not in {g.kind for g in gaps}
-    assert oid not in _covers(source)
+    assert "no-verify-declared" not in {g.kind for g in result.gaps}
 
 
 def test_a_capture_bullet_the_parser_refused_gaps_where_it_was_written() -> None:
@@ -3311,7 +3416,9 @@ def test_a_capture_bullet_the_parser_refused_gaps_where_it_was_written() -> None
     ]
     context = _navigation_context(obligation, navigation=_arrival_navigation())
 
-    source, gaps = _compile_plan_gaps(context, story="demo-story")
+    _result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(_result, Plan)
+    source, gaps = _result.source, _result.gaps
 
     ast.parse(source)
     [gap] = [g for g in gaps if g.kind == "unparsed-capture-bullet"]
@@ -3341,13 +3448,14 @@ def test_a_capture_no_builder_can_emit_stands_beside_the_claim_rather_than_again
         )
     )
     covered: set[str] = set()
-    source, gaps = _compile_plan_gaps(
+    result = _compile_plan_gaps(
         context, story="demo-story", base_url=_BASE_URL, covered_ids=covered)
 
-    assert _gap_kinds(gaps, oid) == ["uncaptured-declaration"]
+    assert isinstance(result, Plan)
+    assert _gap_kinds(result.gaps, oid) == ["uncaptured-declaration"]
     assert oid in covered
-    assert "qa.capture_field(" not in source
-    assert "widget_id" in source  # the TODO says what went unbound, so it is not silent
+    assert "qa.capture_field(" not in result.source
+    assert "widget_id" in result.source  # the TODO says what went unbound, so it is not silent
 
 
 def test_a_declared_capture_that_no_builder_accounts_for_is_refused() -> None:
@@ -3552,6 +3660,7 @@ def test_an_empty_argv_is_a_legal_bare_invocation() -> None:
     context["cliBinaries"] = {"docs/features/demo/api.md": "tally"}
 
     source, gaps = compile_plan_gaps(context, story="demo-story")
+    assert source is not None
 
     assert _gap_kinds(gaps, oid) == []
     assert 'qa.tool("tally").run()' in source
@@ -3607,6 +3716,7 @@ def test_every_built_target_actually_emits_a_scenario(target: str) -> None:
     """
     context, oid = _BUILT_TARGET_PROBES[target]()
     source, gaps = compile_plan_gaps(context, story="demo-story")
+    assert source is not None
     ast.parse(source)
     assert oid in _covers(source), (
         f"{target!r} is in _BUILT_TARGETS but the compiler emitted no scenario covering "

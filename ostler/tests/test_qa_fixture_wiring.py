@@ -153,8 +153,8 @@ def _build(root: Path, *, capture: bool) -> tuple[dict, str]:
 
 def test_fixture_wiring_resolves_every_reference_over_a_real_book(tmp_path: Path) -> None:
     packet, _base = _build(tmp_path, capture=True)
-    _source, gaps = compile_plan_gaps(packet, story="demo-story")
-    reference_gaps = [g for g in gaps if g.kind == "unresolved-precondition"]
+    result = compile_plan_gaps(packet, story="demo-story")
+    reference_gaps = [g for g in result.gaps if g.kind == "unresolved-precondition"]
     assert reference_gaps == []
 
 
@@ -177,8 +177,8 @@ def test_fixture_wiring_compiled_source_captures_before_it_is_consumed(tmp_path:
 
 def test_fixture_wiring_gaps_a_reference_with_no_producing_capture(tmp_path: Path) -> None:
     packet, _base = _build(tmp_path, capture=False)
-    _source, gaps = compile_plan_gaps(packet, story="demo-story")
-    reference_gaps = [g for g in gaps if g.kind == "unresolved-precondition"]
+    result = compile_plan_gaps(packet, story="demo-story")
+    reference_gaps = [g for g in result.gaps if g.kind == "unresolved-precondition"]
     assert len(reference_gaps) == 1
 
 
@@ -248,9 +248,9 @@ def test_fixture_wiring_gaps_a_provided_fact_whose_source_the_book_leaves_open(
           SEEDED_ACME.replace("    - from: [seed-it](#seed-it)\n    - read: account.id\n", ""))
     packet = build_context(tmp_path, base=base, source_roots={"acme": ["app"]})
 
-    _source, gaps = compile_plan_gaps(packet, story="demo-story")
+    result = compile_plan_gaps(packet, story="demo-story")
 
-    undetermined = [g for g in gaps if g.kind == "undetermined-provided-fact"]
-    assert undetermined, [g.kind for g in gaps]
+    undetermined = [g for g in result.gaps if g.kind == "undetermined-provided-fact"]
+    assert undetermined, [g.kind for g in result.gaps]
     # Reached through `needs:`: the endpoint arranges `seeded-globex`, which needs `seeded-acme`.
     assert all("seeded-acme.id" in g.detail for g in undetermined)

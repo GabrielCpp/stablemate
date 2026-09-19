@@ -143,6 +143,45 @@ class Gap:
     kind: str
     detail: str
 
+
+@dataclass(frozen=True)
+class Plan:
+    """`compile_plan_gaps` succeeded: `source` is a plan the plan format admits.
+
+    `source` is always a plan file `plan.py` accepts as a plan — at least one `@scenario`
+    over at least one non-empty `targets` mapping, never the empty module `compile_plan_gaps`
+    used to hand back when nothing compiled. `gaps` still carries whatever obligations this
+    compilation could not cover; a `Plan` says a scenario exists, not that every obligation
+    got one.
+
+    This is a sum with `Refusal` rather than a `source: str | None` because a caller has to
+    decide which outcome it has before it can read `source` at all — an `Optional` return
+    lets a caller skip that decision and read a `None` field, or worse, read an empty string
+    the type system accepts and the plan format rejects only once someone tries to run it.
+    """
+    source: str
+    gaps: list[Gap]
+
+
+@dataclass(frozen=True)
+class Refusal:
+    """`compile_plan_gaps` minted no scenario: `gaps` is the whole account of why.
+
+    Every obligation this compilation owed evidence for is accounted for in `gaps` — that is
+    what makes the refusal legible instead of just an empty file: a reader who wants to know
+    why nothing compiled reads this list, not a diff against what the compiler could have
+    produced.
+
+    This is a sum with `Plan` rather than a `source: str | None` for the same reason `Plan`
+    gives: a caller must decide which outcome it holds before touching `source`, and an
+    optional string invites reading a `None` — or an empty-but-present string — as if it were
+    a plan, one step before handing it to a plan format that rejects it.
+    """
+    gaps: list[Gap]
+
+
+Compilation = Plan | Refusal
+
 #: What each check is handed is declared on the check itself (`CheckSpec.observes` and
 #: `.out_of_band`, in `ostler.checks`), not guessed here from its name — `_operand` below
 #: never compares against a literal check name. A `"response"` check reads the HTTP
@@ -976,9 +1015,20 @@ def compile_plan(
     a surface's book states none *and* a caller explicitly passed this. Left `None`, a surface
     with nothing to say compiles an `undeclared-entry-url` gap instead of silently defaulting
     to a fixed address that has nothing to do with the surface being tested.
+
+    Its own signature has no way to say "nothing compiled" — a `-> str` promises a string, not
+    a `Compilation` — so it asserts it got a `Plan` rather than inventing a silent `""` a
+    caller could mistake for one. Nothing in the product calls it: it is re-exported from
+    `ostler.qa` and used by tests over books that compile, so a refusal here is a defect in
+    the caller's book, not a case to route around. A caller whose context might compile to
+    nothing calls `compile_plan_gaps` and decides.
     """
-    source, _gaps = compile_plan_gaps(context, story=story, run_id=run_id, base_url=base_url)
-    return source
+    result = compile_plan_gaps(context, story=story, run_id=run_id, base_url=base_url)
+    assert isinstance(result, Plan), (
+        "compile_plan has no way to report a refusal — call compile_plan_gaps directly if "
+        "the context might compile to nothing"
+    )
+    return result.source
 
 
 def compile_plan_gaps(
@@ -988,18 +1038,20 @@ def compile_plan_gaps(
     run_id: str | None = None,
     base_url: str | None = None,
     covered_ids: set[str] | None = None,
-) -> tuple[str, list[Gap]]:
-    """`compile_plan`'s source, plus the structured gap report it compiled alongside it.
+) -> Compilation:
+    """Compile the book into a plan, or refuse and say why nothing compiled.
 
-    Same rendering, same TODO markers in the source — this is the one place that also
-    hands back *why* each conditional TODO fired, as `(obligation id, gap kind, detail)`,
-    for a caller (`doctor`) that wants to map book debt to obligations without re-parsing
-    the compiled Python. `covered_ids`, if a caller passes a set in, is populated as a
-    side effect with every id a `covers=[...]` was actually emitted for —
-    `deferred_obligations` below is the caller that needs it, to tell a gapped-but-still-
-    covered obligation (the `open-new-widget` `_ARRANGEMENT_GAPS` shape) from one this
-    compiler produced no evidence for at all. Not a return value: every existing caller
-    unpacks a 2-tuple, and this is opt-in rather than a break to all of them.
+    Returns a `Plan` carrying the rendered `qa_plan.py` source plus the structured gap
+    report compiled alongside it, or a `Refusal` carrying only the gaps, when not one
+    `@scenario` was emitted. Every gap is `(obligation id, gap kind, detail)`, for a caller
+    (`doctor`) that wants to map book debt to obligations without re-parsing the compiled
+    Python — a `Refusal`'s gaps serve the same reader, they just are not accompanied by a
+    plan the format would accept.
+
+    `covered_ids`, if a caller passes a set in, is populated as a side effect with every id
+    a `covers=[...]` was actually emitted for — `deferred_obligations` below is the caller
+    that needs it, to tell a gapped-but-still-covered obligation (the `open-new-widget`
+    `_ARRANGEMENT_GAPS` shape) from one this compiler produced no evidence for at all.
     """
     gaps: list[Gap] = []
     # Every id an emitted `covers=[...]` actually names — filled in by the same code that
@@ -1412,7 +1464,9 @@ def compile_plan_gaps(
         f"compiled scenario: {sorted(contradicted)!r}"
     )
 
-    return "\n".join(lines).rstrip() + "\n", gaps
+    if not emitted_targets:
+        return Refusal(gaps)
+    return Plan("\n".join(lines).rstrip() + "\n", gaps)
 
 
 def deferred_obligations(context: dict[str, Any], *, story: str) -> dict[str, Gap]:
@@ -1428,9 +1482,9 @@ def deferred_obligations(context: dict[str, Any], *, story: str) -> dict[str, Ga
     preconditions that do not exist.
     """
     covered: set[str] = set()
-    _source, gaps = compile_plan_gaps(context, story=story, covered_ids=covered)
+    result = compile_plan_gaps(context, story=story, covered_ids=covered)
     deferred: dict[str, Gap] = {}
-    for gap in gaps:
+    for gap in result.gaps:
         if gap.obligation_id in covered:
             continue
         deferred.setdefault(gap.obligation_id, gap)
@@ -3031,7 +3085,7 @@ def cmd_compile_plan(
                          data={"status": "invalid", "problems": [str(exc)]})
 
     story_name = story or str(packet.get("story", "") or "story")
-    source, gaps = compile_plan_gaps(packet, story=story_name, run_id=run_id, base_url=base_url)
+    result = compile_plan_gaps(packet, story=story_name, run_id=run_id, base_url=base_url)
 
     owed = _owed(packet)
     declared = [o for o in owed if o.get("checksDeclared")]
@@ -3040,8 +3094,8 @@ def cmd_compile_plan(
     # `checksDeclared` — `no-verify-declared` is the gap the compiler itself mints for exactly
     # that obligation, in the order it walked them, so this reads the id off the gap instead.
     owed_ids = [str(o["id"]) for o in owed]
-    no_verify_ids = {gap.obligation_id for gap in gaps if gap.kind == "no-verify-declared"}
-    data = {
+    no_verify_ids = {gap.obligation_id for gap in result.gaps if gap.kind == "no-verify-declared"}
+    data: dict[str, Any] = {
         "owed": len(owed),
         "declared": len(declared),
         "debt": [oid for oid in owed_ids if oid in no_verify_ids],
@@ -3052,9 +3106,25 @@ def cmd_compile_plan(
         # this is the shape for one that only has this command's JSON output to read.
         "gaps": [
             {"severity": "error", "code": gap.kind, "message": gap.detail, "ref": gap.obligation_id}
-            for gap in gaps
+            for gap in result.gaps
         ],
     }
+
+    if isinstance(result, Refusal):
+        by_kind: dict[str, int] = {}
+        for gap in result.gaps:
+            by_kind[gap.kind] = by_kind.get(gap.kind, 0) + 1
+        problems = [f"{kind}: {count}" for kind, count in sorted(by_kind.items())]
+        return QaOutcome(
+            ok=False,
+            message=(
+                "no scenario compiled — nothing this book states could be turned into "
+                f"executable evidence ({len(result.gaps)} gap(s))"
+            ),
+            status="invalid",
+            data={**data, "problems": problems},
+        )
+    source = result.source
 
     if out is None:
         return QaOutcome(ok=True, message=source, status="passed", data={**data, "plan": source})

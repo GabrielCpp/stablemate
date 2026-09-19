@@ -727,9 +727,9 @@ def test_undeclared_obligation_fires_per_bullet_even_when_the_node_declares_a_ch
     source.write_text("def create_thing():\n    return 'new'\n", encoding="utf-8")
 
     packet = build_context(repo, base=base, source_roots={"demo": ["app"]})
-    _source, gaps = compile_mod.compile_plan_gaps(packet, story="demo-story")
+    result = compile_mod.compile_plan_gaps(packet, story="demo-story")
 
-    no_verify = {g.obligation_id: g for g in gaps if g.kind == "no-verify-declared"}
+    no_verify = {g.obligation_id: g for g in result.gaps if g.kind == "no-verify-declared"}
     assert not any(":does:" in oid for oid in no_verify)
     status_id = next(oid for oid in no_verify if ":status:" in oid)
     gap = no_verify[status_id]
