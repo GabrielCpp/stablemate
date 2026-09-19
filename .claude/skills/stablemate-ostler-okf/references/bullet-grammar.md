@@ -320,6 +320,41 @@ inventing a garbage type from prose. An `untyped` node declares no bullet keys, 
 nothing and is checked for nothing; a claim written in one is `unminted-claim`'s to find. It is
 not a type an author picks: if the content has a type, give the heading its type.
 
+## A numbered list item is prose, and what nests under it is invisible
+
+A `1. …` item in a numbered ladder, procedure, or decision list is running text, not a bullet
+key — the same fallback that reads an undeclared `- key:` container also applies here, so
+anything nested under the item folds into a flattened string on the section's parsed meta and
+never reaches the node's own bullets. This holds for every node type, because the defect is in
+the shape of the container, not in what the node happens to declare: a `consistency:` or
+`verify:` bullet filed a level too deep is unminted and unchecked no matter which type buries it,
+which is why this lives on the shared grammar page rather than one type's own reference.
+
+The distinction from an undeclared-but-plausible container (a `- request:` bullet on a type that
+never declared `request:`) is the shape of the parent, not the outcome: both bury a child, but a
+prose item was never a candidate bullet in the first place, so promoting it is not "the type
+forgot this key" — it is "this sentence was never a key."
+
+Before — the claim and its check are inside the ladder item, so nothing outside this paragraph
+ever sees them:
+
+```markdown
+1. A cap signal is classified before a timeout, so the message never claims a wait that never
+   happened.
+   - consistency: A cap signal is classified as a scheduled-reset cap before `timed_out`.
+   - verify: omits(subject="cap failure message", text="Timeout waiting for result")
+```
+
+After — the claim and its check are pulled out to the node's own top-level bullets, where the
+grammar reads them:
+
+```markdown
+1. A cap signal is classified before a timeout, so the message never claims a wait that never
+   happened.
+- consistency: A cap signal is classified as a scheduled-reset cap before `timed_out`.
+- verify: omits(subject="cap failure message", text="Timeout waiting for result")
+```
+
 ## Mechanical and judgment
 
 Everything above is the **mechanical** surface: enforced, orderable, gradeable. It is
