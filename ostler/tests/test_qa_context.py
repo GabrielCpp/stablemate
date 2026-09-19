@@ -2823,3 +2823,74 @@ def test_an_arrange_bullet_the_act_parser_rejects_is_carried_not_dropped(tmp_pat
     assert [row["call"] for row in when["actsDeclared"]] == [
         'fill(locator="#quantity-field", value="3")'
     ]
+
+
+def test_a_book_rooted_below_its_checkout_is_reported(tmp_path: Path):
+    """A root below the checkout top level is reported, at `error`, naming that top level.
+
+    The entry discriminates on rooting alone. What it is worth is measured elsewhere: rooting a
+    book below its checkout leaves every changed path spelled from the top level while the book
+    cites its own, so nothing matches and the packet arrives with no obligations at all. The
+    entry is the only thing in the packet that separates that from a book that genuinely owes
+    nothing.
+    """
+    book = tmp_path / "service"
+    (book / "docs/features/demo").mkdir(parents=True)
+    (book / "app").mkdir()
+    (book / "docs/features/demo/item.md").write_text(
+        """---
+type: concept
+title: Item
+---
+# Item
+
+- code: app/service.py::create_item
+""",
+        encoding="utf-8",
+    )
+    (book / "app/service.py").write_text("def create_item():\n    return 'old'\n", encoding="utf-8")
+    _git(tmp_path, "init")
+    _git(tmp_path, "config", "user.email", "qa@example.com")
+    _git(tmp_path, "config", "user.name", "QA")
+    _git(tmp_path, "add", ".")
+    _git(tmp_path, "commit", "-m", "base")
+    base = _git(tmp_path, "rev-parse", "HEAD")
+
+    entries = [
+        finding
+        for finding in build_context(book, base=base)["healthFindings"]
+        if finding["kind"] == "unrooted-diff-scope"
+    ]
+
+    assert [finding["severity"] for finding in entries] == ["error"]
+    assert str(tmp_path.resolve()) in entries[0]["message"]
+
+
+def test_a_book_rooted_at_its_checkout_reports_no_diff_scope_entry(tmp_path: Path):
+    """The negative arm: the entry must discriminate, not fire on every book."""
+    (tmp_path / "docs/features/demo").mkdir(parents=True)
+    (tmp_path / "app").mkdir()
+    (tmp_path / "docs/features/demo/item.md").write_text(
+        """---
+type: concept
+title: Item
+---
+# Item
+
+- code: app/service.py::create_item
+""",
+        encoding="utf-8",
+    )
+    (tmp_path / "app/service.py").write_text(
+        "def create_item():\n    return 'old'\n", encoding="utf-8"
+    )
+    _git(tmp_path, "init")
+    _git(tmp_path, "config", "user.email", "qa@example.com")
+    _git(tmp_path, "config", "user.name", "QA")
+    _git(tmp_path, "add", ".")
+    _git(tmp_path, "commit", "-m", "base")
+    base = _git(tmp_path, "rev-parse", "HEAD")
+
+    packet = build_context(tmp_path, base=base)
+
+    assert [f for f in packet["healthFindings"] if f["kind"] == "unrooted-diff-scope"] == []
