@@ -97,8 +97,8 @@ _CODE_FAMILIES: tuple[frozenset[str], ...] = (
                "missing-anchor", "unresolved-relation"}),
     frozenset({"compound-normative-bullet", "overlong-normative-bullet",
                "unminted-claim", "relation-without-subject"}),
-    frozenset({"unparsed-check", "weak-check", "undeclared-obligation",
-               "unstated-precondition"}),
+    frozenset({"unparsed-check", "misfiled-test-ref", "weak-check",
+               "undeclared-obligation", "unstated-precondition"}),
     frozenset({"missing-placement", "malformed-placement", "ambiguous-locator",
                "unnamed-interactive", "unreachable-screen", "no-root-screen"}),
 )
