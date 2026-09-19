@@ -939,17 +939,43 @@ def test_one_discriminating_check_answers_the_claim_it_was_written_under(repo: P
     assert "weak-check" not in all_codes(_run(repo))
 
 
-def test_a_pattern_that_admits_any_value_is_insensitive_not_weak(repo: Path):
-    # `matches=".*"` names a real field and is not one of `weak-check`'s two static
-    # shapes (a bare 2xx status, a presence-only path) — it only fails experimentally,
-    # by surviving the mutation it should have caught.
+def test_a_pattern_that_admits_any_value_is_weak_not_insensitive(repo: Path):
+    # `matches=".*"` accepts `_OTHER`, the value a real defect would leave behind, so it
+    # is a presence assertion wearing a value assertion's syntax — the same claim
+    # `absent=false` already makes outright. `weak-check`'s two static shapes widen to a
+    # third, and `insensitive-check` never gets to find it experimentally.
     write(repo / "docs/features/groom/concepts/publisher.md",
           _method('json_path(path="$.state", matches=".*")'))
     found = all_codes(_run(repo))
-    assert "weak-check" not in found
-    finding = next(f for f in _run(repo).findings if f.code == "insensitive-check")
+    assert "insensitive-check" not in found
+    finding = next(f for f in _run(repo).findings if f.code == "weak-check")
     assert finding.severity == "error"
-    assert "#publish:returns:1" in finding.ref
+    assert "#publish#returns:1" in finding.ref
+
+
+def test_a_plus_pattern_that_admits_any_value_is_weak_not_insensitive(repo: Path):
+    write(repo / "docs/features/groom/concepts/publisher.md",
+          _method('json_path(path="$.state", matches=".+")'))
+    found = all_codes(_run(repo))
+    assert "insensitive-check" not in found
+    finding = next(f for f in _run(repo).findings if f.code == "weak-check")
+    assert finding.severity == "error"
+
+
+def test_a_discriminating_pattern_stays_a_check_not_a_stamp(repo: Path):
+    write(repo / "docs/features/groom/concepts/publisher.md",
+          _method('json_path(path="$.level", matches="^(INFO|DEBUG|TRACE)$")'))
+    found = all_codes(_run(repo))
+    assert "weak-check" not in found
+    assert "insensitive-check" not in found
+
+
+def test_an_equals_check_is_unaffected_by_the_matches_predicate(repo: Path):
+    write(repo / "docs/features/groom/concepts/publisher.md",
+          _method('json_path(path="$.state", equals="published")'))
+    found = all_codes(_run(repo))
+    assert "weak-check" not in found
+    assert "insensitive-check" not in found
 
 
 def test_a_pattern_no_witness_can_be_invented_for_has_no_result(repo: Path):

@@ -2862,14 +2862,20 @@ def _rubber_stamp(call: checks.CheckCall) -> str:
     field is the test of whether a check earns a place in the vocabulary at all, so a
     check it cannot describe has no business being judged here.
 
-    Two legal spellings reach this. A 2xx `http_status` naming neither route nor title:
+    Three legal spellings reach this. A 2xx `http_status` naming neither route nor title:
     its one required argument is satisfied by any working request, so it observes only
-    that the scenario got this far. And `json_path(absent=false)`, the one way left to
-    spell presence now that `checks.bind` refuses a `json_path` carrying no comparison
-    at all. Every other check compares something the moment its arguments are bound.
+    that the scenario got this far. `json_path(absent=false)`, the one way left to spell
+    presence now that `checks.bind` refuses a `json_path` carrying no comparison at all.
+    And a `json_path(matches=...)` whose pattern is loose enough to accept
+    `sensitivity._OTHER` — `matches_admits_other` decides that the same way
+    `sensitivity._plan` decides whether to bother perturbing the value at all, so a claim
+    never reads as sensitive here and insensitive there. Every other check compares
+    something the moment its arguments are bound.
     """
     if call.name == "json_path":
-        if {"equals", "matches"} & set(call.args) or call.args.get("absent") is True:
+        matches = call.args.get("matches")
+        admits_other = matches is not None and sensitivity.matches_admits_other(str(matches))
+        if not admits_other and ({"equals", "matches"} & set(call.args) or call.args.get("absent") is True):
             return ""
         return (f"`{call.text()}` asserts the field is present without saying what it "
                 f"holds, which admits {checks.CHECK_BY_NAME[call.name].excludes}")
@@ -4290,6 +4296,13 @@ def _check_sensitivity(graph: Graph, f: list[Finding]) -> None:
 
     Skips `undeclared` claims (no `verify:` at all) — that is `undeclared-obligation`'s finding,
     not this one's; asking sensitivity of a claim with no check would just repeat it.
+
+    A `json_path(matches=...)` whose pattern admits `sensitivity._OTHER` is skipped the
+    same way: `sensitivity._plan` drops its value mutation, so it never enters `report` as
+    `insensitive`, and `_rubber_stamp` above already reports it as `weak-check`. That is the
+    same split `unwitnessed-check` below draws in the other direction — a claim this rule
+    cannot speak to belongs to the finding built to speak to it, not to a `reasons or ...`
+    that would blur the two into one wrong verdict.
 
     Skips `unwitnessed` claims for the opposite reason, into `unwitnessed-check` below: there
     the experiment did not run, so there is nothing to report about the check. This used to

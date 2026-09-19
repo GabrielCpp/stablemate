@@ -47,6 +47,25 @@ _VERIFIERS = _harness.VERIFIERS
 _OTHER = "∅ not what was claimed"
 
 
+def matches_admits_other(pattern: str) -> bool:
+    """Whether a `json_path(matches=...)` pattern would let `_OTHER` through.
+
+    A `matches=` check is a value assertion only if the pattern actually excludes something —
+    otherwise it is a presence assertion wearing a value assertion's syntax, the same claim
+    `absent=false` makes outright. The question is computable directly against the verifier's
+    own comparison (`re.search(pattern, value)`) rather than approximated by a list of
+    "vacuous" spellings (`.*`, `.+`, `^.{0,4000}$`, ...): whatever a pattern accepts, if it
+    accepts `_OTHER` too then no value the field could hold would falsify the claim, which is
+    what makes the check a rubber stamp.
+
+    `doctor._rubber_stamp` and this module's `_plan` both call this rather than each deciding
+    it their own way, for the reason `path.resolve_features_root` is the one place that
+    decides where the features root is: two readers computing the same fact from the same
+    input will disagree eventually if the fact is written down twice.
+    """
+    return re.search(pattern, _OTHER) is not None
+
+
 class _Response:
     """The little of a response a verifier reads: a status, a body, the route that answered."""
 
@@ -154,11 +173,12 @@ class Trial:
     def sensitive(self) -> bool:
         """Green on the witness, and red under *every* mutation the call is meant to catch.
 
-        A survivor is a defect this call admits, so one is enough to disqualify it: an
-        `any(flipped)` rule would score `json_path("claim.status", matches=".*")` sensitive
-        off the field-absence mutation alone, while the mutation that matters — the field
-        holding something else — walks straight past it. `_plan` lists only mutations the
-        call is expected to catch, which is what makes "all of them" the honest bar.
+        A survivor is a defect this call admits, so one is enough to disqualify it: a
+        `visible` verifier that checked only presence, ignoring the `text=` it was given,
+        would let an `any(flipped)` rule score it sensitive off the element-disappearing
+        mutation alone, while the mutation that matters — the element reading something
+        else — walks straight past it. `_plan` lists only mutations the call is expected
+        to catch, which is what makes "all of them" the honest bar.
         """
         return self.witnessed and bool(self.flipped) and not self.survived
 
@@ -401,7 +421,10 @@ def _plan(call: checks.CheckCall) -> tuple[Any, list[tuple[str, Any]], str]:
     Every mutation listed is one the call is *expected* to catch — a claim's own field gone
     or altered, a different route, a ledger that moved. A mutation the check is allowed to
     stay green under (an `except_fields` entry changing) is not a perturbation of the claim
-    and is not listed: the survivors are meant to read as defects.
+    and is not listed: the survivors are meant to read as defects. The same rule drops
+    `json_path`'s "holds something else" mutation when `matches_admits_other` says the
+    declared pattern would let it through — that survivor is `_rubber_stamp`'s finding, not
+    this experiment's, the same way `absent=false` already routes there instead of here.
     """
     args = call.args
     name = call.name
@@ -437,7 +460,9 @@ def _plan(call: checks.CheckCall) -> tuple[Any, list[tuple[str, Any]], str]:
         else:
             value = "x"
         witness = _set_path({}, path, value)
-        mutations = [("the field holds something else", _set_path({}, path, _OTHER))]
+        mutations = []
+        if "matches" not in args or not matches_admits_other(str(args["matches"])):
+            mutations.append(("the field holds something else", _set_path({}, path, _OTHER)))
         if "matches" not in args or _matching(str(args.get("matches", ""))) is not None:
             mutations.append(("the field is not there at all", _drop_path(_set_path({}, path, value), path)))
         return witness, mutations, ""

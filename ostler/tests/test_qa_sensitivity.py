@@ -137,21 +137,41 @@ def test_a_check_nothing_could_falsify_is_insensitive(monkeypatch: pytest.Monkey
     "call",
     [
         'json_path(path="claim.status", matches=".*")',
+        'json_path(path="claim.status", matches=".+")',
         'json_path(path="claim.status", matches=".")',
     ],
 )
-def test_a_pattern_that_admits_any_value_is_insensitive(call: str) -> None:
-    """The shape a lax rule blesses: a stamp rescued by the mutation it was not written for.
+def test_a_pattern_that_admits_any_value_gets_no_value_mutation(call: str) -> None:
+    """A pattern loose enough to accept `_OTHER` is a presence assertion, not a value one.
 
-    Both patterns parse, and both notice the field going missing — which is enough for an
-    `any(flipped)` rule to call them discriminating. Neither can tell one value from
-    another, so the mutation that matters survives, and that is what has to disqualify them.
+    `absent=false` is only defeated by absence, and a `matches=` pattern that would still
+    match whatever the field-changed mutation writes is the same claim in different syntax:
+    listing that mutation here would score the call sensitive or insensitive on a
+    perturbation its own comparison never rejected, which is not a fact about the check.
+    `doctor._rubber_stamp` reports this shape as `weak-check` instead.
     """
     trial = _trial(call)
     assert trial.witnessed
     assert trial.flipped == ("the field is not there at all",)
-    assert trial.survived == ("the field holds something else",)
-    assert not trial.sensitive
+    assert not trial.survived
+    assert trial.sensitive
+
+
+@pytest.mark.parametrize(
+    "call",
+    [
+        'json_path(path="claim.status", matches="^(INFO|DEBUG|TRACE)$")',
+        'json_path(path="claim.status", equals="INFO")',
+    ],
+)
+def test_a_discriminating_check_still_gets_the_value_mutation(call: str) -> None:
+    """A pattern (or an `equals=`) that rejects `_OTHER` is a real value assertion, and the
+    mutation that would falsify it stays in the experiment."""
+    trial = _trial(call)
+    assert trial.witnessed
+    assert trial.flipped == ("the field holds something else", "the field is not there at all")
+    assert not trial.survived
+    assert trial.sensitive
 
 
 def test_a_pattern_no_string_can_be_invented_for_is_unwitnessed_not_green() -> None:
@@ -181,16 +201,32 @@ def test_a_claim_no_trial_could_witness_has_no_result_rather_than_a_bad_one() ->
 
 def test_one_witnessed_survivor_makes_the_claim_insensitive_not_unwitnessed() -> None:
     """A result beats a missing one: a perturbation did run, and the check did survive it."""
+    stamp = sensitivity.Trial(
+        call='visible(locator="text=Draft", text="Draft")',
+        witnessed=True, flipped=(), survived=("the element is not on the page",),
+    )
     report = sensitivity.ClaimReport(
         claim="okf:policies.md#issue:returns:1",
         path="docs/policies.md",
         line=12,
         trials=(
             _trial(r'omits(subject="detail", matches="(?=x)(?!x)")'),
-            _trial('json_path(path="claim.status", matches=".*")'),
+            stamp,
         ),
     )
     assert report.status == "insensitive"
+
+
+@pytest.mark.parametrize("pattern", [".*", ".+", ".", "^.{0,4000}$"])
+def test_matches_admits_other_is_true_for_a_vacuous_pattern(pattern: str) -> None:
+    assert sensitivity.matches_admits_other(pattern)
+
+
+@pytest.mark.parametrize(
+    "pattern", ["^(INFO|DEBUG|TRACE)$", r"^\d+$", "Draft|Active", r"eyJ[A-Za-z0-9_-]{6,}"]
+)
+def test_matches_admits_other_is_false_for_a_discriminating_pattern(pattern: str) -> None:
+    assert not sensitivity.matches_admits_other(pattern)
 
 
 def test_a_synthesized_witness_is_a_member_of_the_language() -> None:
