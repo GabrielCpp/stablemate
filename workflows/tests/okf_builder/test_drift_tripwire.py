@@ -51,7 +51,6 @@ DEFAULT_PROMPT_CODES = frozenset({
     "dangling-link",
     "directory-code-ref",
     "duplicate-container-heading",
-    "empty-required-section",
     "extends-type-mismatch",
     "fixture-arg-mismatch",
     "fixture-needs-cycle",
