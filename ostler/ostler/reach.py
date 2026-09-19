@@ -90,7 +90,8 @@ def preconditions(node: dict) -> dict:
     for raw in _values(meta.get(PARAM_BULLET, "")):
         if _is_none(raw):
             continue
-        name, _, source = raw.partition(":")
+        idx = markdown.label_colon_index(raw)
+        name, source = (raw[:idx], raw[idx + 1:]) if idx != -1 else (raw, "")
         links = markdown.extract_refs(source).links
         params.append({"name": name.strip(), "text": source.strip(),
                        "from": links[0][1] if links else ""})

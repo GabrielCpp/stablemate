@@ -2,10 +2,39 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ostler import doctor, markdown, trace
+from ostler import doctor, markdown, model, trace
 from ostler.model import load
 
 from conftest import write
+
+
+BULLET_CODE_SPAN_DOC = """# Section
+
+## Notes
+
+- `GET /a:b` is the route
+- does: fetch `https://x` and render it
+- The `:443` counterpart: same TLS setup as before
+- answers `200` with `{"status": "ok"}` as soon as the process is serving
+"""
+
+
+def test_bullet_pairs_skips_a_bullet_whose_only_colon_is_inside_a_code_span():
+    section = markdown.split(BULLET_CODE_SPAN_DOC).section("Notes")
+    pairs = model._bullet_pairs(section)
+    assert pairs == [
+        ("does", "fetch `https://x` and render it", 1),
+        ("the `:443` counterpart", "same TLS setup as before", 2),
+    ]
+
+
+def test_meta_from_bullets_skips_bullets_with_no_key_outside_a_code_span():
+    section = markdown.split(BULLET_CODE_SPAN_DOC).section("Notes")
+    meta = model._meta_from_bullets(section)
+    assert meta == {
+        "does": "fetch `https://x` and render it",
+        "the `:443` counterpart": "same TLS setup as before",
+    }
 
 
 def test_markdown_roundtrip_identity():

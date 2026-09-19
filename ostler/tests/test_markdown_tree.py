@@ -277,3 +277,43 @@ def test_table_records_and_column_lookup():
     assert table.records[0] == {"Placeholder": "`acme`", "Stands for": "a client repo"}
     assert table.column("placeholder") == ["`acme`", "`web-app`"]
     assert table.column("nope") == []
+
+
+def test_label_colon_index_skips_a_colon_inside_a_code_span():
+    text = "The `:443` counterpart: same TLS setup as before"
+    assert markdown.label_colon_index(text) == len("The `:443` counterpart")
+
+
+def test_label_colon_index_finds_the_real_separator_after_a_code_span():
+    text = "does: fetch `https://x` and render it"
+    assert markdown.label_colon_index(text) == len("does")
+
+
+def test_label_colon_index_is_absent_when_every_colon_is_inside_a_code_span():
+    text = 'answers `200` with `{"status": "ok"}` as soon as the process is serving'
+    assert markdown.label_colon_index(text) == -1
+
+
+def test_label_colon_index_matches_a_multi_backtick_span_by_its_run_length():
+    text = "``a:b``: value"
+    assert markdown.label_colon_index(text) == len("``a:b``")
+
+
+def test_bullet_label_is_empty_when_the_only_colon_is_inside_a_code_span():
+    bullet = markdown.Bullet(text="`GET /a:b` is the route", line_start=0, line_end=1)
+    assert bullet.label == ""
+    assert bullet.value == ""
+
+
+def test_bullet_label_and_value_see_past_a_code_span_before_the_separator():
+    bullet = markdown.Bullet(
+        text="The `:443` counterpart: same TLS setup as before", line_start=0, line_end=1)
+    assert bullet.label == "the `:443` counterpart"
+    assert bullet.value == "same TLS setup as before"
+
+
+def test_bullet_label_and_value_still_parse_a_code_span_after_the_separator():
+    bullet = markdown.Bullet(
+        text="does: fetch `https://x` and render it", line_start=0, line_end=1)
+    assert bullet.label == "does"
+    assert bullet.value == "fetch `https://x` and render it"

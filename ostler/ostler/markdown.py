@@ -210,6 +210,51 @@ def all_code_spans(text: str) -> list[str]:
     ]
 
 
+def label_colon_index(text: str) -> int:
+    """Index of the first ``:`` outside every inline code span, or ``-1`` if there is none.
+
+    A ``- key: value`` bullet's separator is the first colon *outside* backticks — one inside
+    a span, like `` `:443` ``, is code content, not the key/value split, and a bullet whose
+    only colons are all inside spans has no key at all. Inline tokens carry no source
+    offsets (see ``_remembering_source_pos`` above, which exists because of exactly that), so
+    this cannot be built on ``_inline_children`` the way its siblings are; it instead applies
+    CommonMark's own code-span rule directly — a span opens at a run of backticks and closes
+    at the next run of the *same* length, and a run with no matching close is not a span at
+    all, just literal backtick characters.
+    """
+    i, n = 0, len(text)
+    while i < n:
+        ch = text[i]
+        if ch == ":":
+            return i
+        if ch == "`":
+            run_start = i
+            while i < n and text[i] == "`":
+                i += 1
+            run_len = i - run_start
+            close = _closing_backtick_run(text, i, run_len)
+            i = close + run_len if close is not None else run_start + 1
+        else:
+            i += 1
+    return -1
+
+
+def _closing_backtick_run(text: str, start: int, run_len: int) -> int | None:
+    """Index of the next backtick run of exactly *run_len*, or ``None`` if there is none."""
+    i, n = start, len(text)
+    while i < n:
+        if text[i] == "`":
+            j = i
+            while j < n and text[j] == "`":
+                j += 1
+            if j - i == run_len:
+                return i
+            i = j
+        else:
+            i += 1
+    return None
+
+
 def prose_text(text: str) -> str:
     """A value's prose: link *text* without its href, code spans measured as nothing.
 
@@ -289,13 +334,14 @@ class Bullet:
         formatting. The parser is the right place to know that, so a caller can ask for a
         labelled bullet instead of pattern-matching the rendered line.
         """
-        key, sep, _ = self.text.partition(":")
-        return key.strip().strip(_EMPHASIS).lower() if sep else ""
+        idx = label_colon_index(self.text)
+        return self.text[:idx].strip().strip(_EMPHASIS).lower() if idx != -1 else ""
 
     @property
     def value(self) -> str:
-        """Everything after the first ``:`` of a ``- key: value`` bullet."""
-        return self.text.partition(":")[2].strip()
+        """Everything after the first ``:`` outside a code span of a ``- key: value`` bullet."""
+        idx = label_colon_index(self.text)
+        return self.text[idx + 1:].strip() if idx != -1 else ""
 
     @property
     def bracketed(self) -> tuple[str, str]:

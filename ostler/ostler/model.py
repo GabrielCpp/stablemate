@@ -467,7 +467,8 @@ def _combiner(bullet: markdown.Bullet) -> str:
     if not bullet.children:
         return ""
     text = bullet.text.strip()
-    value = text.partition(":")[2].strip().lower() if ":" in text else ""
+    idx = markdown.label_colon_index(text)
+    value = text[idx + 1:].strip().lower() if idx != -1 else ""
     return value if value in registry.CLAIM_COMBINERS else ""
 
 
@@ -520,9 +521,10 @@ def _fold_bullets(bullets: "list[markdown.Bullet]") -> dict[str, str | list[str]
     folded: dict[str, str | list[str]] = {}
     for bullet in bullets:
         text = bullet.text.strip()
-        if ":" not in text:
+        idx = markdown.label_colon_index(text)
+        if idx == -1:
             continue
-        key, _, value = text.partition(":")
+        key, value = text[:idx], text[idx + 1:]
         key = key.strip().lower()
         nested = [item.text.strip() for child in bullet.children for item in child.walk()]
         values = [item for item in (value.strip(), *nested) if item]
@@ -551,9 +553,10 @@ def _entries_from_bullets(section: markdown.Section,
     found: dict[str, list[Entry]] = {}
     for bullet in section.bullets:
         text = bullet.text.strip()
-        if ":" not in text:
+        idx = markdown.label_colon_index(text)
+        if idx == -1:
             continue
-        key = text.partition(":")[0].strip().lower()
+        key = text[:idx].strip().lower()
         spec = uitype.bullet_by_key.get(key)
         if spec is None or not spec.entries:
             continue
@@ -603,9 +606,10 @@ def _bullet_pairs(section: markdown.Section,
     pairs: list[tuple[str, str, int]] = []
     for position, bullet in enumerate(section.bullets):
         text = bullet.text.strip()
-        if ":" not in text:
+        idx = markdown.label_colon_index(text)
+        if idx == -1:
             continue
-        key, _, value = text.partition(":")
+        key, value = text[:idx], text[idx + 1:]
         key = key.strip().lower()
         nested = _nested_values(key, bullet, uitype)
         own = "" if _combiner(bullet) else value.strip()
@@ -618,16 +622,18 @@ def _meta_from_bullets(section: markdown.Section,
                        uitype: "registry.UINodeType | None" = None) -> dict[str, str | list[str]]:
     """Parse the leading `- key: value` metadata bullets of a section into an ordered dict.
 
-    Keys are lowercased; the first ``:`` separates key and value (so ``blocked by: a, b`` keeps the
-    spaced key). Bullets without a ``:`` are ignored. ``uitype`` is passed through to
-    :func:`_nested_values` — see :func:`_bullet_pairs` for what it changes.
+    Keys are lowercased; the first ``:`` outside any code span separates key and value (so
+    ``blocked by: a, b`` keeps the spaced key). Bullets with no such ``:`` are ignored.
+    ``uitype`` is passed through to :func:`_nested_values` — see :func:`_bullet_pairs` for
+    what it changes.
     """
     meta: dict[str, str | list[str]] = {}
     for bullet in section.bullets:
         text = bullet.text.strip()
-        if ":" not in text:
+        idx = markdown.label_colon_index(text)
+        if idx == -1:
             continue
-        key, _, value = text.partition(":")
+        key, value = text[:idx], text[idx + 1:]
         key = key.strip().lower()
         value = "" if _combiner(bullet) else value.strip()
         nested = _nested_values(key, bullet, uitype)

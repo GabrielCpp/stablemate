@@ -207,8 +207,11 @@ def _secrets_of(meta: dict) -> dict[str, str]:
     """
     secrets: dict[str, str] = {}
     for item in _children(meta, "secrets"):
-        name, sep, recipe = item.partition(":")
-        if not sep or not name.strip() or not recipe.strip():
+        idx = markdown.label_colon_index(item)
+        if idx == -1:
+            continue
+        name, recipe = item[:idx], item[idx + 1:]
+        if not name.strip() or not recipe.strip():
             continue
         secrets[name.strip()] = recipe.strip()
     return secrets

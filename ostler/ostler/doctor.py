@@ -3061,7 +3061,9 @@ def _remote_services(meta: dict) -> list[str]:
         children = [children]
     remote = []
     for child in children:
-        url = str(child).partition(":")[2].strip().strip("`").strip()
+        text = str(child)
+        idx = markdown.label_colon_index(text)
+        url = text[idx + 1:].strip().strip("`").strip() if idx != -1 else ""
         host = urlparse(url).hostname if "://" in url else ""
         if not host:
             continue
