@@ -1,7 +1,7 @@
 ### `unparsable-bullet-value` — a bullet's value does not parse as the kind its key declares
 
-Some bullet keys declare a `value_kind`: `screen.route`/`endpoint.path` (`route`), `screen.entry`
-(`door`), `server.entry-url`/`runbook.entry-url` (`url`), `endpoint.method` (`http-method`). A
+Some bullet keys declare a `value_kind`: `screen.route`/`endpoint.path` (`route`),
+`server.entry-url`/`runbook.entry-url` (`url`), `endpoint.method` (`http-method`). A
 role — `required:`, `locator:`, whatever else the key is *for* — says nothing about what the
 value may *say*. Declaring a key required only checks that it is present; it does not stop an
 author from writing prose, a typo, or a placeholder into it, and nothing short of parsing the
@@ -14,19 +14,13 @@ Fix the bullet by writing a value of the kind its message names:
 - path: /widgets
 ```
 
-```markdown
-- entry: /login
-```
-
-**A prose `entry:` is not required — delete it, or write the real route.** `entry:` is optional:
-it exists to say *this screen is reached from outside in-app navigation*, and stating that
-exempts the screen from the reachability check. Prose like `entry: no; it is reached from
-dashboard` looks like it is answering that question, but `screen.md` is explicit that a value here
-is a claim the reachability check can act on, not a note to a future reader — "documents nothing
-the check can use." If the screen really is reached in-app, the fix is to delete the bullet, not
-to write around it: an unwritten `entry:` lets the reachability walk find the screen the way a
-user would; a prose one silently claims exemption from that walk while asserting nothing the walk
-can verify.
+**`screen.entry` is not one of these keys.** It declared the `door` kind once, which made prose
+its only illegal spelling — and prose is the one thing that key exists to say. `entry:` says by
+what *means* the screen is reached from outside in-app navigation; the address is `route:`, which
+every screen already states, so the only value the route grammar left legal was a copy of the
+sibling above it. A prose `entry:` is never this finding. It does not seed the reachability walk
+either — a walk can open an address and cannot open a description — so the screen stays
+`unreachable-screen` until something links to it, which is an omission, not a parse error.
 
 A parameterised route is **not** this defect: `/policies/{id}` and `/links/:id/edit` parse fine as
 `route`-kind values — they name a family of pages, which is a legal thing for `screen.route`/
