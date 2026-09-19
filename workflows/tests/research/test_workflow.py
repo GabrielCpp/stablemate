@@ -267,6 +267,7 @@ def _drive(
     answer: str = "",
     readme: str = "",
     makefile: str = "",
+    uncommitted_files: dict[str, str] | None = None,
     **inputs: Any,
 ) -> _Run:
     """Drive `Research` against a real repo until it terminates, parks, or halts.
@@ -283,6 +284,10 @@ def _drive(
     `makefile` is real, committed content — the lint/test gate is not one of the
     substituted nodes (`run_gate` runs for real, against this repo), so a test that
     wants it dirty has to give it an actual failing target rather than a scripted reply.
+
+    `uncommitted_files` writes real, **uncommitted** content — unlike `makefile`, which
+    is committed before the drive starts. It is how a test states "the engineer's turn
+    left this on disk", the same shape as a real `build-experiment` turn's edits.
     """
     waited: list[Path] = []
     checkpoints: list[dict[str, Any]] = []
@@ -314,6 +319,10 @@ def _drive(
             (repo / "Makefile").write_text(makefile)
             _git(repo, "add", "-A")
             _git(repo, "commit", "-qm", "add Makefile")
+        for rel_path, content in (uncommitted_files or {}).items():
+            path = repo / rel_path
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(content)
         agent = _Agent(script)
         nodes = nodes or _Nodes()
         result: Any = None
@@ -814,6 +823,34 @@ def test_a_code_review_verdict_of_revise_is_repaired_before_the_rehearsal_runs()
     turns = outcome.agent.args_for("build-experiment")
     assert len(turns) == 2, outcome.agent.counts()
     assert "the control isn't shuffled" in turns[1]["fix_reason"], turns[1]
+    assert outcome.nodes.counts()["dry_run"] == 1, outcome.nodes.counts()
+
+
+def test_an_approved_build_s_code_files_are_committed_before_the_rehearsal_runs():
+    """An engineer's turn writes `code_files` to disk but does not commit them, and a
+    gate is entitled to refuse to run against an uncommitted tree (a reproducibility
+    guard: pin the commit a run measured before trusting its result). Leaving the
+    commit to the next agent that happens to remember it is how a program burns build
+    fixes and program reviews on a fault the workflow could have closed itself; the
+    approved build's files must already be committed by the time the rehearsal sees
+    them."""
+    outcome = _run(
+        _script(
+            **{
+                "build-experiment": [
+                    {
+                        "status": "ok",
+                        "command": ["python", "src/experiment.py"],
+                        "code_files": ["src/experiment.py"],
+                    }
+                ],
+                "gate-check": [{"status": "approved"}],
+            }
+        ),
+        uncommitted_files={"src/experiment.py": "print('measure')\n"},
+    )
+
+    assert "feat(G1): build experiment" in outcome.subjects, outcome.subjects
     assert outcome.nodes.counts()["dry_run"] == 1, outcome.nodes.counts()
 
 
