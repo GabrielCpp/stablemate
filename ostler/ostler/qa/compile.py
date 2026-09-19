@@ -1125,7 +1125,7 @@ def _maestro_locator(locators: dict[str, list[str]]) -> tuple[str, str] | None:
 
 
 def _maestro_flow_yaml(commands: list[str]) -> str:
-    return "\n".join([f'appId: "{_MAESTRO_APP_ID}"', "---", *commands]) + "\n"
+    return "\n".join([f'appId: "{_MAESTRO_APP_ID}"', "---", "- launchApp", *commands]) + "\n"
 
 
 def _maestro_act_commands(
@@ -3432,11 +3432,12 @@ def _maestro_journey(
     """Walk a flow's `interaction` steps as Maestro `tapOn` commands, then assert the flow's
     own claims in the same flow file.
 
-    Mirrors `_web_journey`'s walk with no arrival: a mobile surface states no root path to
-    open from (Maestro's own `appId:` line is what launches the app), so the whole journey —
-    every step's tap plus the flow's own assertions — is one flow file this scenario opens
-    once, the same all-in-one-file shape `_maestro_scenario_body` writes for a single
-    obligation. A step names another node by `ref`; `node_index` gives that node's own `on:`
+    Mirrors `_web_journey`'s walk with no arrival: the flow's own `- launchApp` command opens
+    the app, but a mobile surface still states no *route* to open a deeper screen at, so the
+    walk starts from the entry screen rather than jumping — the whole journey, every step's
+    tap plus the flow's own assertions, is one flow file this scenario opens once, the same
+    all-in-one-file shape `_maestro_scenario_body` writes for a single obligation. A step
+    names another node by `ref`; `node_index` gives that node's own `on:`
     link the same way `_web_journey` reads it, resolved to a `tapOn` by `_maestro_locator`
     rather than `_page_locator_expr`.
 

@@ -14,6 +14,7 @@ import re
 from pathlib import Path
 
 import pytest
+import yaml
 
 from ostler import checks
 from ostler.qa.compile import (
@@ -3820,3 +3821,33 @@ def test_every_built_target_actually_emits_a_scenario(target: str) -> None:
         f"{oid!r} — gaps recorded instead: {_gap_kinds(gaps, oid)}"
     )
     assert _gap_kinds(gaps, oid) == []
+
+
+def test_a_generated_flow_matches_the_hand_written_reference_flows_shape() -> None:
+    """Held against `browse-and-add-widget.flow.yaml`, a hand-written flow a fixture author
+    wrote for globex's own mobile app, not against a second expected-text blob this file's
+    author would write from the same belief as the generator itself. A generator checked only
+    against its own author's expected output is checked against that belief, not against the
+    format — which is exactly how `_maestro_flow_yaml` shipped for a time emitting no
+    `launchApp` at all: every existing test here asserted strings the generator's own author
+    typed, and none of them read the one document in this tree that independently states what
+    a real flow looks like.
+    """
+    reference_path = (
+        Path(__file__).resolve().parents[2] / "paddock" / "data" / "apps" / "globex"
+        / "app" / "mobile-app" / ".maestro" / "browse-and-add-widget.flow.yaml"
+    )
+    reference = yaml.safe_load_all(reference_path.read_text())
+    reference_header, reference_commands = reference
+    assert "appId" in reference_header
+    assert reference_commands[0] == "launchApp"
+
+    context, oid = _built_target_probe_maestro()
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(result, Plan)
+    assert result.files, "expected a maestro obligation to write its own flow file"
+    (flow_text,) = result.files.values()
+
+    flow_header, flow_commands = yaml.safe_load_all(flow_text)
+    assert "appId" in flow_header
+    assert flow_commands[0] == "launchApp"
