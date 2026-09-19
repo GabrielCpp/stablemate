@@ -14,8 +14,8 @@ Section type. A `### <id>` under a `## Endpoints` heading in a `server` file. It
 | --- | --- | --- |
 | `method` | no | the HTTP method |
 | `path` | no | the route path |
-| `channel` | no | the channel, for non-HTTP transports |
-| `message` | no | the message shape, for non-HTTP transports |
+| `channel` | no | locator — the channel, for non-HTTP transports |
+| `message` | no | nested, entries; **mints an obligation** per frame |
 | `does` | no | nested; **mints an obligation** per value |
 | `emits` | no | **mints an obligation** (via the shared set) |
 | `consumes` | no | **mints an obligation** (via the shared set) |
@@ -75,6 +75,33 @@ The route this endpoint answers on. It declares the same `route` value kind `scr
 does, and is held to the same bar: it must spell a path. A parameterised path (`/links/{id}`)
 is ordinary and legal here — an endpoint is a route *family* by nature, and nothing downstream
 asks an endpoint to identify one page.
+
+## `channel` and `message`
+
+An endpoint answers one address family or the other — `method:`/`path:` for HTTP, or
+`channel:` for a non-HTTP transport such as a websocket. `channel:` carries `locator=True,
+address=True`, exactly as `method:`/`path:` do: it is where the endpoint is reached, not
+something claimed about it, so like them it is inert while `normative=False`.
+
+`message:` is `nested`, `entries`: a list of things that have claims, not a flat list and not
+a record. A channel returns differently-shaped frames — each with its own direction, trigger
+and payload — so a direct child of `message:` is one frame, and that frame's own bullets are
+its grandchildren. `entries` mints one obligation per frame, never one for the whole block and
+never one per grandchild.
+
+```markdown
+- channel: ws://events
+- message:
+  - update
+    - direction: server-to-client
+    - payload: `Update`
+  - ack
+    - direction: client-to-server
+    - payload: `Ack`
+```
+
+Two frames, two obligations — `update` and `ack` — each carrying its own `direction:`/
+`payload:` as properties, not as claims of their own.
 
 ## `response`
 
