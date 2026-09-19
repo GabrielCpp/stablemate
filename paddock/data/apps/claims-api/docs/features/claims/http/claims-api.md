@@ -51,7 +51,6 @@ The journeys that stitch these routes together are [file a claim](../flows/file-
 - request:
   - body: none
 - response:
-  - status: `200`
   - media: `application/json`
   - body: `{"status": "ok"}`
 
@@ -101,10 +100,8 @@ The journeys that stitch these routes together are [file a claim](../flows/file-
 - request:
   - body: `{"policy_number": str, "incident_date": str, "amount_cents": int, "description": str}`
 - response:
-  - status: `201`
   - media: `application/json`
   - body: `{"claim": {…}}`
-  - errors: `401 Unauthorized`, `422` field errors, `409 Duplicate Claim`
 
 ### list-claims
 
@@ -115,6 +112,10 @@ The journeys that stitch these routes together are [file a claim](../flows/file-
 - verify: http_status(200, path="/api/claims")
 - verify: json_path("claims[0].version", absent=false)
 - verify: json_path("claims[0].status", matches="Submitted|Approved|Denied")
+- errors: `401 Unauthorized` when the request carries no verified identity. The identity is
+  read before the ledger is, so an unauthenticated call learns nothing about what is on file.
+- verify: http_status(401, title="Unauthorized", path="/api/claims")
+- fixture: seeded_accounts — two claim holders and one adjuster exist in the auth emulator, so a request can be made as somebody the service will verify
 - authorization: a holder reads only the claims whose `holder_uid` is the subject of their own
   token. The list is scoped by the verified identity rather than by a query parameter, so there is
   no way to ask for someone else's.
@@ -122,17 +123,14 @@ The journeys that stitch these routes together are [file a claim](../flows/file-
 - verify: json_path("claims[0].holder_uid", absent=false)
 - authorization: an adjuster reads every claim on file, whoever filed it.
 - verify: count(subject="claims", equals=2)
-- fixture: seeded_accounts — two claim holders and one adjuster exist in the auth emulator, so a request can be made as somebody the service will verify
 - code: app/api/list.go::ListClaims@cf07a3255915
 - parent: [Claims API](#claims-api)
 - refs: [claim tenancy](../concepts/claim-tenancy.md)
 - request:
   - body: none
 - response:
-  - status: `200`
   - media: `application/json`
   - body: `{"claims": [{"id": str, "policy_number": str, "holder_uid": str, "incident_date": str, "amount_cents": int, "description": str, "status": str, "version": int, "decision_note"?: str}, …]}`
-  - errors: `401 Unauthorized`
 
 ### get-claim
 
@@ -144,11 +142,14 @@ The journeys that stitch these routes together are [file a claim](../flows/file-
 - verify: json_path("claim.id", equals="cl-1001")
 - errors: `404 No Such Claim` for an id that is not on the books.
 - verify: http_status(404, title="No Such Claim", path="/api/claims/cl-9999")
+- errors: `401 Unauthorized` when the request carries no verified identity, decided before the
+  claim is looked up.
+- verify: http_status(401, title="Unauthorized", path="/api/claims/cl-9999")
+- fixture: seeded_accounts — two claim holders and one adjuster exist in the auth emulator, so a request can be made as somebody the service will verify
 - authorization: `403 Not Your Claim` when the claim is on file and belongs to another holder.
   The refusal is decided after the lookup, so an id that exists and an id that does not answer
   differently only to whoever is entitled to the difference.
 - verify: http_status(403, title="Not Your Claim", path="/api/claims/cl-1002")
-- fixture: seeded_accounts — two claim holders and one adjuster exist in the auth emulator, so a request can be made as somebody the service will verify
 - code: app/api/get.go::GetClaim@cb7342be20b9
 - parent: [Claims API](#claims-api)
 - refs: [claim tenancy](../concepts/claim-tenancy.md)
@@ -156,10 +157,8 @@ The journeys that stitch these routes together are [file a claim](../flows/file-
   - path variables: `id` — the claim's own identifier, such as `cl-1001`.
   - body: none
 - response:
-  - status: `200`
   - media: `application/json`
   - body: `{"claim": {…}}`
-  - errors: `401 Unauthorized`, `403 Not Your Claim`, `404 No Such Claim`
 
 ### decide-claim
 
@@ -176,10 +175,13 @@ The journeys that stitch these routes together are [file a claim](../flows/file-
 - verify: json_path("errors.decision", absent=false)
 - errors: `404 No Such Claim` for an id that is not on the books.
 - verify: http_status(404, title="No Such Claim", path="/api/claims/cl-9999/decision")
+- errors: `401 Unauthorized` when the request carries no verified identity, decided before the
+  role and the claim both.
+- verify: http_status(401, title="Unauthorized", path="/api/claims/cl-9999/decision")
+- fixture: seeded_accounts — two claim holders and one adjuster exist in the auth emulator, so a request can be made as somebody the service will verify
 - authorization: `403 Adjusters Only` unless the token carries the `adjuster` role. The role is
   read before the claim is looked up, so a holder learns nothing about a claim they may not decide.
 - verify: http_status(403, title="Adjusters Only", path="/api/claims/cl-9999/decision")
-- fixture: seeded_accounts — two claim holders and one adjuster exist in the auth emulator, so a request can be made as somebody the service will verify
 - code: app/api/decide.go::DecideClaim@02b79d74d617
 - concurrency: claim-record — refuses a decision quoting a version other than the claim's current one with
   `409 Stale Decision`, so an adjuster who read the claim, went away and came back does not
@@ -195,10 +197,8 @@ The journeys that stitch these routes together are [file a claim](../flows/file-
   - path variables: `id` — the claim's own identifier.
   - body: `{"decision": "approve"|"deny", "version": int, "note"?: str}`
 - response:
-  - status: `200`
   - media: `application/json`
   - body: `{"claim": {…}}`
-  - errors: `401 Unauthorized`, `403 Adjusters Only`, `404 No Such Claim`, `409 Stale Decision`, `422` field errors
 
 ### reset-claims
 
@@ -218,7 +218,6 @@ The journeys that stitch these routes together are [file a claim](../flows/file-
 - request:
   - body: none
 - response:
-  - status: `204`
   - media: none
   - body: empty
 

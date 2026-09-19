@@ -205,6 +205,7 @@ def a_decision_quoting_a_spent_version_is_refused(qa: Qa) -> None:
         "okf:docs/features/claims/http/claims-api.md#decide-claim:authorization:1",
         "okf:docs/features/claims/http/claims-api.md#decide-claim:errors:1",
         "okf:docs/features/claims/http/claims-api.md#decide-claim:errors:2",
+        "okf:docs/features/claims/http/claims-api.md#decide-claim:errors:3",
     ],
     preconditions=[
         "cl-1001 is on file at version 1, filed by the holder who is refused below",
@@ -215,6 +216,7 @@ def a_decision_quoting_a_spent_version_is_refused(qa: Qa) -> None:
         "a decision outside approve/deny is refused 422 with errors.decision",
         "a version that is not a positive number is refused 422 with errors.version",
         "an id that is not on the books is refused 404 No Such Claim",
+        "the same id is refused 401 Unauthorized when the request carries no identity at all",
     ],
     forbid=[
         "proving the role rule with an id whose absence could explain the refusal",
@@ -241,6 +243,10 @@ def only_an_adjuster_decides_and_only_in_the_documented_shape(qa: Qa) -> None:
     missing = qa.http.post("/api/claims/cl-9999/decision", json_body={"decision": "approve", "version": 1}, headers=bearer(qa, adjuster), expect_status=404)
     qa.verify("http_status", missing, code=404, title="No Such Claim", path="/api/claims/cl-9999/decision", covers=["ac:5", "okf:docs/features/claims/http/claims-api.md#decide-claim:errors:2"])
 
+    anonymous = qa.http.post("/api/claims/cl-9999/decision", json_body={"decision": "approve", "version": 1}, expect_status=401)
+    qa.verify("http_status", anonymous, code=401, title="Unauthorized", path="/api/claims/cl-9999/decision", covers=["okf:docs/features/claims/http/claims-api.md#decide-claim:errors:3"])
+    qa.check("the unknown id is refused 401 without an identity and 404 with an adjuster's", anonymous.status == 401 and missing.status == 404, covers=["okf:docs/features/claims/http/claims-api.md#decide-claim:errors:3"])
+
     survived = qa.field(qa.http.get("/api/claims/cl-1001", headers=bearer(qa, adjuster), expect_status=200).json(), "claim")
     qa.verify("unchanged", (qa.field(who, "claim"), survived), subject="claim cl-1001", covers=["ac:4", "okf:docs/features/claims/http/claims-api.md#decide-claim:authorization:1"])
-    json.dump({"forbidden": forbidden.json(), "unknown_word": unknown_word.json(), "bad_version": bad_version.json(), "missing": missing.json()}, qa.artifact("steps/refused-decisions.json", kind="json").open("w"))
+    json.dump({"forbidden": forbidden.json(), "unknown_word": unknown_word.json(), "bad_version": bad_version.json(), "missing": missing.json(), "anonymous": anonymous.json()}, qa.artifact("steps/refused-decisions.json", kind="json").open("w"))

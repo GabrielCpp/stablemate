@@ -39,7 +39,6 @@ confirming a hold has to quote the number the caller was given.
 - request:
   - body: none
 - response:
-  - status: `200`
   - media: `application/json`
   - body: `{"status": "ok"}`
 
@@ -69,7 +68,6 @@ confirming a hold has to quote the number the caller was given.
 - request:
   - body: none
 - response:
-  - status: `200`
   - media: `application/json`
   - body: `{"seats": [{"id": str, "row": str, "number": int, "state": str, "version": int, "booking"?: {"id": str, "name": str}}, …]}`
   - notes: `booking` is present only on a `booked` seat, and is the map's only field that tells one
@@ -98,10 +96,8 @@ confirming a hold has to quote the number the caller was given.
   - path variables: `seat` — a seat id such as `A1`; rows `A`-`C`, numbers `1`-`4`.
   - body: none
 - response:
-  - status: `201`
   - media: `application/json`
   - body: `{"hold": {"id": str, "seat": str, "version": int}}`
-  - errors: `409 Seat Unavailable`, `404 No Such Seat`
 
 ### delete-seat-hold
 
@@ -120,6 +116,9 @@ confirming a hold has to quote the number the caller was given.
 - errors: `409 Seat Not Held` when the seat is free or already booked, so a release cannot undo a
   confirmed booking.
 - verify: http_status(409, title="Seat Not Held", path="/api/seats/B1/hold")
+- errors: `404 No Such Seat` for a seat id this showing does not have, decided before the hold
+  is examined.
+- verify: http_status(404, title="No Such Seat", path="/api/seats/Z9/hold")
 - code: app/hold.py::release@1169d541ddf9
 - parent: [Seat booking API](#seat-booking-api)
 - refs: [seat](../concepts/seat.md)
@@ -127,10 +126,8 @@ confirming a hold has to quote the number the caller was given.
   - path variables: `seat` — a seat id such as `A1`.
   - body: none
 - response:
-  - status: `204`
   - media: none
   - body: empty
-  - errors: `409 Seat Not Held`, `404 No Such Seat`
 
 ### post-seat-booking
 
@@ -149,6 +146,9 @@ confirming a hold has to quote the number the caller was given.
   never held, so a booking cannot be conjured out of a free seat. Quoting any other version is the
   stale-hold refusal above, not this one — the version is compared first.
 - verify: http_status(409, title="Seat Not Held", path="/api/seats/C4/booking")
+- errors: `404 No Such Seat` for a seat id this showing does not have, decided before the
+  version and the hold both.
+- verify: http_status(404, title="No Such Seat", path="/api/seats/Z9/booking")
 - code: app/confirm.py::confirm@a5c9610c4a38
 - concurrency: seat-record — refuses a request quoting a version other than the seat's current one with
   `409 Stale Hold`, so a caller who lost the seat and came back with the number it was given does
@@ -166,11 +166,8 @@ confirming a hold has to quote the number the caller was given.
   - path variables: `seat` — a seat id such as `A1`.
   - body: `{"version": int, "name": str}`
 - response:
-  - status: `201`
   - media: `application/json`
   - body: `{"booking": {"id": str, "seat": str, "name": str}}`
-  - errors: `400 Version Required`, `400 Name Required`, `409 Seat Not Held`, `409 Stale Hold`,
-    `404 No Such Seat`
 
 ### delete-showing
 
@@ -192,7 +189,6 @@ confirming a hold has to quote the number the caller was given.
 - request:
   - body: none
 - response:
-  - status: `204`
   - media: none
   - body: empty
 

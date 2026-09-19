@@ -52,7 +52,6 @@ The journeys that stitch these routes together are
 - request:
   - body: none
 - response:
-  - status: `200`
   - media: `application/json`
   - body: `{"status": "ok"}`
 
@@ -74,7 +73,6 @@ The journeys that stitch these routes together are
 - request:
   - body: none
 - response:
-  - status: `200`
   - media: `application/json`
   - body: `{"policies": [{"id": str, "policy_number": str, "holder_email": str, "coverage_type": str, "vehicle_vin"?: str, "property_address"?: str, "start_date": str, "end_date": str, "premium": number, "status": str, "version": int}, …]}`
 
@@ -112,10 +110,8 @@ The journeys that stitch these routes together are
 - request:
   - body: `{"policy_number": str, "holder_email": str, "coverage_type": str, "vehicle_vin"?: str, "property_address"?: str, "start_date": str, "end_date": str, "premium": number}`
 - response:
-  - status: `201`
   - media: `application/json`
   - body: `{"policy": {…}}`
-  - errors: `422` field errors, `409 Duplicate Policy Number`
 
 ### get-policy
 
@@ -134,10 +130,8 @@ The journeys that stitch these routes together are
   - path variables: `id` — the slug of the policy number, such as `pn-1001`.
   - body: none
 - response:
-  - status: `200`
   - media: `application/json`
   - body: `{"policy": {…}}`
-  - errors: `404 Unknown Policy`
 
 ### put-policy
 
@@ -172,10 +166,8 @@ The journeys that stitch these routes together are
   - path variables: `id` — the slug of the policy number.
   - body: `{"holder_email": str, "coverage_type": str, "vehicle_vin"?: str, "property_address"?: str, "start_date": str, "end_date": str, "premium": number, "version": int}`
 - response:
-  - status: `200`
   - media: `application/json`
   - body: `{"policy": {…}}`
-  - errors: `400 Version Required`, `409 Stale Policy`, `422` field errors, `404 Unknown Policy`
 
 ### post-policy-cancel
 
@@ -205,10 +197,8 @@ The journeys that stitch these routes together are
   - path variables: `id` — the slug of the policy number.
   - body: `{"version": int, "confirm": str}`
 - response:
-  - status: `200`
   - media: `application/json`
   - body: `{"policy": {…}}`
-  - errors: `422` `errors.confirm`, `400 Version Required`, `409 Stale Policy`, `404 Unknown Policy`
 
 ### delete-policies
 
@@ -228,7 +218,6 @@ The journeys that stitch these routes together are
 - request:
   - body: none
 - response:
-  - status: `204`
   - media: none
   - body: empty
 

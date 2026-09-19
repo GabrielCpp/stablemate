@@ -99,6 +99,7 @@ def two_holders_file_one_claim_each(qa: Qa) -> dict:
         "okf:docs/features/claims/http/claims-api.md#list-claims:does:1",
         "okf:docs/features/claims/http/claims-api.md#list-claims:authorization:1",
         "okf:docs/features/claims/http/claims-api.md#list-claims:authorization:2",
+        "okf:docs/features/claims/http/claims-api.md#list-claims:errors:1",
         "okf:docs/features/claims/concepts/claim-tenancy.md:contract",
         "okf:docs/features/claims/http/claims-api.md#list-claims:contract",
         "okf:docs/features/claims/flows/file-a-claim.md:start:1",
@@ -114,6 +115,7 @@ def two_holders_file_one_claim_each(qa: Qa) -> dict:
         "holder B's register holds exactly their own claim, and it is a different one",
         "the adjuster's register holds both",
         "a holder with nothing on file is answered 200 with an empty register, not a refusal",
+        "a request carrying no identity is refused 401 Unauthorized, learning nothing about the ledger",
     ],
     forbid=[
         "reading one holder's register and inferring the other's from it",
@@ -142,6 +144,9 @@ def a_register_holds_the_claims_of_whoever_asked(qa: Qa) -> None:
 
     everything = qa.field(qa.http.get("/api/claims", headers=bearer(qa, qa.field(who, "adjuster")), expect_status=200).json(), "claims")
     qa.verify("count", everything, subject="claims", equals=2, covers=["ac:1", "okf:docs/features/claims/http/claims-api.md#list-claims:authorization:2"])
+    anonymous = qa.http.get("/api/claims", expect_status=401)
+    qa.verify("http_status", anonymous, code=401, title="Unauthorized", path="/api/claims", covers=["okf:docs/features/claims/http/claims-api.md#list-claims:errors:1"])
+
     qa.check("the adjuster's register is in the order the claims were written", [qa.field(claim, "id") for claim in everything] == ["cl-1001", "cl-1002"], covers=["okf:docs/features/claims/concepts/claim-tenancy.md:contract"])
 
     # An empty register is a register, not a 404: the adjuster empties the desk and holder A
@@ -194,6 +199,7 @@ def a_claim_answers_to_its_holder_and_to_an_adjuster(qa: Qa) -> None:
         "ac:5",
         "okf:docs/features/claims/http/claims-api.md#get-claim:authorization:1",
         "okf:docs/features/claims/http/claims-api.md#get-claim:errors:1",
+        "okf:docs/features/claims/http/claims-api.md#get-claim:errors:2",
         "okf:docs/features/claims/concepts/claim-tenancy.md:contract",
     ],
     preconditions=[
@@ -204,6 +210,7 @@ def a_claim_answers_to_its_holder_and_to_an_adjuster(qa: Qa) -> None:
         "a stranger's claim is refused 403 Not Your Claim",
         "an id that is not on the books is refused 404 No Such Claim",
         "the two refusals are told apart by the same caller in the same run",
+        "the same unknown id is refused 401 without an identity and 404 with one",
     ],
     forbid=["reading the refusal for an id that does and does not exist as one case"],
 )
@@ -217,5 +224,8 @@ def a_stranger_is_refused_differently_from_a_claim_that_is_not_there(qa: Qa) -> 
     missing = qa.http.get("/api/claims/cl-9999", headers=bearer(qa, qa.field(who, "a")), expect_status=404)
     qa.verify("http_status", missing, code=404, title="No Such Claim", path="/api/claims/cl-9999", covers=["ac:5", "okf:docs/features/claims/http/claims-api.md#get-claim:errors:1"])
     qa.check("one caller is answered 403 for a claim that exists and 404 for one that does not", forbidden.status != missing.status, covers=["ac:5", "okf:docs/features/claims/http/claims-api.md#get-claim:authorization:1", "okf:docs/features/claims/http/claims-api.md#get-claim:errors:1"])
-    json.dump({"forbidden": forbidden.json(), "missing": missing.json()}, qa.artifact("steps/refusals.json", kind="json").open("w"))
+    anonymous = qa.http.get("/api/claims/cl-9999", expect_status=401)
+    qa.verify("http_status", anonymous, code=401, title="Unauthorized", path="/api/claims/cl-9999", covers=["okf:docs/features/claims/http/claims-api.md#get-claim:errors:2"])
+    qa.check("the same id that is not on the books is refused 401 without an identity and 404 with one", anonymous.status == 401 and missing.status == 404, covers=["okf:docs/features/claims/http/claims-api.md#get-claim:errors:2"])
+    json.dump({"forbidden": forbidden.json(), "missing": missing.json(), "anonymous": anonymous.json()}, qa.artifact("steps/refusals.json", kind="json").open("w"))
 
