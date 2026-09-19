@@ -108,6 +108,12 @@ property of the response, and this endpoint's own `status:` claim — the one a 
 to — is then absent. Both readings are grammatical, so the nesting is reported rather than
 guessed at: `misnested-bullet`, remedied by promoting the bullet to the node's top level.
 
+`response:` admits exactly four properties: `media:` (the content type), `body:` (an example
+or a shape), `notes:` (anything else true of the response as a whole) and `field:` (one named
+member of the body, repeated once per member). A child spelled any other way — `- schema: …` —
+is a property this record's vocabulary does not carry, reported as `unknown-record-property`;
+spell it as one of the four, or move the fact to the bullet that actually owns it.
+
 ## Arranging a request body
 
 `consumes:` describes the shape a route accepts; it is a schema, not a value the run can send.
