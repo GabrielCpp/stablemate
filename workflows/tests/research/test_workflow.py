@@ -1386,6 +1386,38 @@ def test_a_probe_order_is_written_and_the_ladder_is_read_again():
     assert probe and probe[0]["gate_id"] == "P1", outcome.history
 
 
+def test_a_probe_ordered_for_a_blocked_design_does_not_reach_the_lead_yet():
+    """`probe_first` defers the gate-level question until the probe is scored -- it does
+    not resolve anything about the blocked gate the way `recharter` does. Routing it to
+    `lead_review` immediately forces a premature revive/new_direction verdict on a gate
+    that cannot yet be judged, and since `revive` always returns to `program_review`, the
+    two states volley forever without the probe ever running."""
+    outcome = _run(
+        _script(
+            **{
+                "select-next-gate": [
+                    {"gate_id": "G3", "gate_doc_path": f"{PROGRAM_DIR}/gates/G3.md"},
+                    {"gate_id": "none"},
+                ],
+                "design-experiment": [
+                    {"status": "blocked", "notes": "the n=1 rehearsal wrote no result file"},
+                ],
+                "program-review": [
+                    {
+                        "verdict": "probe_first",
+                        "reason": "measure before rebuilding",
+                        "probe": {"gate_id": "P1", "question": "does A5' restore collect_prefix?"},
+                    },
+                ],
+                "program-recharter": [{"status": "written", "probe_doc_path": "P1.md"}],
+            }
+        )
+    )
+
+    assert outcome.agent.counts()["research-lead-review"] == 0, outcome.agent.counts()
+    assert outcome.agent.counts()["select-next-gate"] == 2, outcome.agent.counts()
+
+
 def test_a_recharter_is_checked_in_code_and_spends_its_own_budget():
     """The lead's `why_resolvable` is prose and is never trusted: the written numbers
     are read back and the effect is compared to seed noise. A target that clears it

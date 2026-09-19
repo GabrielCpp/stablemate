@@ -1695,7 +1695,7 @@ class Research(Workflow):
         )
         self._persist(spent)
         self._publish(f"record {event.replace('_', ' ')} decision")
-        if escalation:
+        if escalation and review.verdict != "probe_first":
             return Continue(
                 result,
                 self.lead_review,
