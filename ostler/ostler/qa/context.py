@@ -1534,6 +1534,15 @@ def _revision_text(root: Path, revision: str, path: str) -> str:
 
 
 def _working_text(root: Path, path: str) -> str:
+    """The working tree's text at `path`, or "" when it is absent or not decodable as UTF-8.
+
+    The empty string is deliberate and is the same answer `_revision_text` gives for the
+    other side of a diff, so the two agree about what "unreadable" means and a binary file
+    does not read as a file that changed. It is not a claim that the file is missing:
+    existence is asked of the filesystem by `_grounding_exists`, precisely so a `code:`
+    bullet citing a binary or undecodable file stays satisfiable rather than becoming
+    permanently ungrounded.
+    """
     candidate = root / path
     try:
         return candidate.read_text(encoding="utf-8")
