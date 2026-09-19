@@ -167,7 +167,7 @@ timeout 30 ostler scaffold component save-button --in docs/features/acme/gui/scr
 
 `missing-required-bullet`, `invalid-role`, `unnamed-interactive`, `missing-placement`,
 `malformed-placement`, `ambiguous-locator`, `duplicate-bullet`, `undeclared-obligation`,
-`weak-check`, `stale-defect`, `malformed-defect`, `unaddressable-selector`,
+`weak-check`, `stale-defect`, `malformed-defect`, `unaddressable-selector`, `unresolved-relation` on any of its link keys,
 `one-way-same-as` if `same-as:` is used, `same-as-disagreement` if a `same-as:` family
 disagrees about a shared normative key; with the repeat keys also `static-template`, `unproven-unique-name`, `malformed-template`,
 `malformed-variants`. See [../doctor-codes.md](../doctor-codes.md).
