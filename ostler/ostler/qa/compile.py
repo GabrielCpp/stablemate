@@ -480,13 +480,15 @@ _DISPATCH_TABLE: dict[str, dict[str, str] | str] = {
     "method": "in-process",
 }
 #: The node types a book documents that **nobody performs**. A `flow` orders steps that are
-#: performed; a `component` and a `screen` are places a claim is true. D1's table asks "what
-#: performs this step", and for these there is no step to perform — only a check to run, which
-#: is emitted by whatever drives the surface the claim's subject lives on. So they key on the
-#: `driver:` alone, with no action type to cross it with, and `context.py` stamps a flow's
-#: `surface` from the node its own `start:`/`end:` bullet names (`_linked_surface`) so a journey
-#: that crosses surfaces is observed on the one it actually ends on.
-_OBSERVED_TYPES = frozenset({"flow", "component", "screen"})
+#: performed; a `component`, a `screen`, and a `field` are places a claim is true. D1's table
+#: asks "what performs this step", and for these there is no step to perform — only a check to
+#: run, which is emitted by whatever drives the surface the claim's subject lives on. So they
+#: key on the `driver:` alone, with no action type to cross it with, and `context.py` stamps a
+#: flow's `surface` from the node its own `start:`/`end:` bullet names (`_linked_surface`) so a
+#: journey that crosses surfaces is observed on the one it actually ends on. Membership here is
+#: about whether the claim is observable where the node sits, not whether the node carries a
+#: locator of its own: `flow` and `field` declare none at all, `component` declares six.
+_OBSERVED_TYPES = frozenset({"flow", "component", "screen", "field"})
 #: Every driver can observe, which is what makes this a row and not a table: an `http` driver
 #: cannot *perform* an interaction (`_DISPATCH_TABLE` leaves that cell empty on purpose) but it
 #: can assert a status on a journey that ends at an endpoint.
@@ -528,9 +530,20 @@ def _dispatch_target(
     settle which is right; `"undeclared-walkthrough-runbook"`: several runbooks disagree and none
     is marked, mark the one that exercises the surface) — so it is reported under that kind
     rather than as the absence `uncompilable-claim` describes.
+
+    A `concept` node has no row for a different reason than an unrouted type does: it is a
+    definition, not a place a claim is observed, so the detail says that rather than inviting a
+    row D1's table does not owe it. The kind stays `uncompilable-claim` either way — a concept's
+    claim still fails to compile, and this is one more reason among the several that kind
+    already carries, not a new fact about the claim's fate.
     """
     row = _OBSERVE_ROW if node_type in _OBSERVED_TYPES else _DISPATCH_TABLE.get(node_type)
     if row is None:
+        if node_type == "concept":
+            return None, (
+                "the book links this step to a 'concept' node — a definition, not a place a "
+                "claim can be observed, so D1's dispatch table (§4.1) owes it no row"
+            ), "uncompilable-claim"
         return None, (
             f"the book links this step to a {node_type or 'untyped'!r} node, which D1's "
             "dispatch table (§4.1) names no row for"

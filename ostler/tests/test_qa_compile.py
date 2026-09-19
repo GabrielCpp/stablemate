@@ -2712,26 +2712,108 @@ def test_a_page_scenario_with_no_http_claim_binds_no_window() -> None:
 
 
 def test_a_node_nobody_performs_is_observed_by_the_driver_of_its_own_surface() -> None:
-    """A `flow` orders steps that are performed; a `component` and a `screen` are places a claim
-    is true. None of the three is a step, so there is no action to cross with a driver — only a
-    check, run by whatever drives the surface the claim's subject lives on. That makes them a
-    single row (`_OBSERVE_ROW`), not a table: every driver can observe, which is why an `http`
-    driver lands a target here while `_DISPATCH_TABLE` deliberately leaves `interaction`x`http`
-    empty — it cannot *perform* an interaction, but it can assert a status on a journey that
-    ends at an endpoint."""
-    for node_type in ("flow", "component", "screen"):
+    """A `flow` orders steps that are performed; a `component`, a `screen`, and a `field` are
+    places a claim is true. None of the four is a step, so there is no action to cross with a
+    driver — only a check, run by whatever drives the surface the claim's subject lives on.
+    That makes them a single row (`_OBSERVE_ROW`), not a table: every driver can observe, which
+    is why an `http` driver lands a target here while `_DISPATCH_TABLE` deliberately leaves
+    `interaction`x`http` empty — it cannot *perform* an interaction, but it can assert a status
+    on a journey that ends at an endpoint."""
+    for node_type in ("flow", "component", "screen", "field"):
         assert _dispatch_target(node_type, "web") == ("playwright", "", "")
         assert _dispatch_target(node_type, "http") == ("http", "", "")
         assert _dispatch_target(node_type, "cli") == ("cli", "", "")
-        # `maestro` is a real cell this compiler does not build: a named target plus a detail,
-        # never "no row for this type."
         target, detail, kind = _dispatch_target(node_type, "mobile")
         assert target == "maestro" and "builds no maestro path yet" in detail
         assert kind == "needs-target-backend"
-    # The performed half is unchanged — the blank cell is still blank.
     target, detail, kind = _dispatch_target("interaction", "http")
     assert target is None and "names no target" in detail
     assert kind == "uncompilable-claim"
+
+
+def test_a_concept_node_gets_its_own_gap_message_not_a_generic_no_row_for() -> None:
+    """`concept` names no row in `_OBSERVE_ROW` or `_DISPATCH_TABLE` either, exactly like an
+    unrouted type — but it is unrouted for a different reason: a concept is a definition, not a
+    place a claim is observed, so no row is owed and the generic "names no row for" phrasing
+    would mislead an author into adding one. The kind stays `uncompilable-claim`, the same kind
+    an unrouted type already gets, because the author-facing consequence is identical: this
+    claim will not compile."""
+    target, detail, kind = _dispatch_target("concept", "web")
+    assert target is None
+    assert kind == "uncompilable-claim"
+    assert "definition" in detail
+    assert "names no row for" not in detail
+    other_target, other_detail, other_kind = _dispatch_target("widget", "web")
+    assert other_target is None
+    assert other_kind == "uncompilable-claim"
+    assert "names no row for" in other_detail
+    assert "definition" not in other_detail
+
+
+def test_a_field_claim_compiles_on_the_screen_it_sits_on() -> None:
+    """A `field` node's own claim, on a `web`-driven surface, compiles to a real Playwright
+    observation rather than to `uncompilable-claim` — the end-to-end counterpart of the
+    dispatch-level assertion above, run through the page builder the way a `component`'s claim
+    already is."""
+    oid = "okf:policy-list:vin-field:visible:1"
+    context = _navigation_context(
+        _page_obligation(oid, f"{_SCREEN}#vin-field",
+                          locators={"role": ["textbox"], "name": ["Vehicle VIN"]},
+                          checks=[_visible("textbox:Vehicle VIN")]),
+        navigation=_arrival_navigation(),
+    )
+    context["obligations"][0]["nodeType"] = "field"
+    source, gaps = compile_plan_gaps(context, story="demo-story")
+    assert source is not None
+    ast.parse(source)
+    assert "textbox:Vehicle VIN" in source
+    assert _gap_kinds(gaps, oid) == []
+
+
+def test_a_field_claim_on_a_cli_surface_compiles_through_the_cli_builder() -> None:
+    """The same claim, on a `cli`-driven surface: `field` reaches the cli builder through
+    `_OBSERVE_ROW` exactly as `command` reaches it through `_DISPATCH_TABLE`'s invariant row."""
+    oid = "okf:built-target-probe:field:exit-status:1"
+    context = _context(
+        _obligation(
+            oid,
+            nodeType="field",
+            checksDeclared=[{"call": "it", "name": "exit_status", "args": {"code": 0}}],
+            fixturesDeclared=[
+                {"name": "seeded-ledger", "args": [], "provides": "a ledger"},
+            ],
+            actsDeclared=[
+                {"call": 'invoke(argv=["import"])', "name": "invoke",
+                 "args": {"argv": ["import"]}},
+            ],
+        )
+    )
+    context["navigation"][""]["driver"] = "cli"
+    context["cliBinaries"] = {"docs/features/demo/api.md": "tally"}
+    source, gaps = compile_plan_gaps(context, story="demo-story")
+    assert source is not None
+    ast.parse(source)
+    assert _gap_kinds(gaps, oid) == []
+
+
+def test_a_concept_claim_still_does_not_compile_with_the_new_message() -> None:
+    """Even with a well-formed check declared, a `concept` claim still fails to compile — the
+    change is the message, not the outcome."""
+    oid = "okf:docs/features/demo/concepts/policy.md:contract:1"
+    context = _context(
+        _obligation(
+            oid,
+            nodeType="concept",
+            checksDeclared=[
+                {"call": "created", "name": "http_status", "args": {"code": 201, "path": "/api/x"}},
+            ],
+        )
+    )
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(result, Refusal)
+    assert _gap_kinds(result.gaps, oid) == ["uncompilable-claim"]
+    (gap,) = [g for g in result.gaps if g.obligation_id == oid]
+    assert "definition" in gap.detail
 
 
 def _located_visible(node: str, locators: dict) -> dict:
