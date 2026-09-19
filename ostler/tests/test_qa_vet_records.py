@@ -54,6 +54,9 @@ def _region(role: str, selector: str, box: tuple[float, float, float, float]) ->
 def _driver(repo: Path, obligation_documents: dict[str, list[str]] | None = None) -> PythonDriver:
     spec = repo / "docs/specs/story-1"
     spec.mkdir(parents=True, exist_ok=True)
+    (spec / "qa-okf-context.json").write_text(
+        json.dumps({"featuresRoot": "docs/features"}), encoding="utf-8"
+    )
     session = QaSession.create(spec, "qa-vet-1", "story-1", {})
     return PythonDriver(
         session,
@@ -161,6 +164,60 @@ def test_a_vet_of_a_screen_the_book_does_not_document_fails_the_scenario(repo: P
 
     assert result.status == "failed"
     assert "does not document" in result.message
+    assert _asserts(driver) == []
+
+
+def test_a_vet_spelled_in_the_packet_s_frame_resolves_against_a_book_rooted_elsewhere(
+    repo: Path,
+) -> None:
+    """The defect this closes: a compiled plan spells `qa.vet(...)` relative to the
+    packet's `featuresRoot`, not to the checkout's own default `docs/features`. A book
+    nested under a service directory has to resolve there too, or every scenario in that
+    service aborts against a book that was never the one the plan spoke of."""
+    nested_screen = "shed/docs/features/groom/gui/screens/s.md"
+    write(
+        repo / nested_screen,
+        "---\ntype: screen\nslug: s\ntitle: S\n---\n# S\n\n"
+        "## Components\n\n"
+        "### body\n- role: article\n- selector: `article.prose`\n"
+        "- placement: width 60-100%\n",
+    )
+    spec = repo / "docs/specs/story-1"
+    spec.mkdir(parents=True, exist_ok=True)
+    (spec / "qa-okf-context.json").write_text(
+        json.dumps({"featuresRoot": "shed/docs/features"}), encoding="utf-8"
+    )
+    session = QaSession.create(spec, "qa-vet-1", "story-1", {})
+    driver = PythonDriver(
+        session, "web", {"driver": "playwright"}, root=repo, variables={}
+    )
+    shot = _shot(repo, [_region("article", "article.prose", (0, 88, 1400, 760))])
+
+    result = driver._grade("s-1", [], _records(shot, nested_screen), "", 0, timed_out=False)
+
+    assert result.status == "passed" and result.failures == 0
+    assert _asserts(driver)[0]["result"] == "PASS"
+
+
+def test_with_no_qa_context_packet_a_vet_reports_the_missing_frame_as_a_problem(
+    repo: Path,
+) -> None:
+    """No packet means no stated frame to resolve `qa.vet`'s argument against. The honest
+    outcome is a problem naming that, not a silent fall back to the checkout's own book and
+    not an empty verdict list that reads as a pass."""
+    _book(repo)
+    spec = repo / "docs/specs/story-1"
+    spec.mkdir(parents=True, exist_ok=True)
+    session = QaSession.create(spec, "qa-vet-1", "story-1", {})
+    driver = PythonDriver(
+        session, "web", {"driver": "playwright"}, root=repo, variables={}
+    )
+    shot = _shot(repo, [_region("article", "article.prose", (0, 88, 1400, 760))])
+
+    result = driver._grade("s-1", [], _records(shot), "", 0, timed_out=False)
+
+    assert result.status == "failed"
+    assert "qa-okf-context.json" in result.message
     assert _asserts(driver) == []
 
 

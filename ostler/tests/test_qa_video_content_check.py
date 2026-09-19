@@ -56,6 +56,9 @@ def _region(role: str, selector: str, box: tuple[float, float, float, float]) ->
 def _driver(repo: Path) -> PythonDriver:
     spec = repo / "docs/specs/story-1"
     spec.mkdir(parents=True, exist_ok=True)
+    (spec / "qa-okf-context.json").write_text(
+        json.dumps({"featuresRoot": "docs/features"}), encoding="utf-8"
+    )
     session = QaSession.create(spec, "qa-video-1", "story-1", {})
     return PythonDriver(
         session, "web", {"driver": "playwright"}, root=repo, variables={}

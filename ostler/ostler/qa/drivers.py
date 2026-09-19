@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Any
 
 
+from ostler import path as path_mod
 from ostler.model import load as load_graph
 from ostler.routes import arrived_at, literal_route, screen_routes
 from ostler.qa import book_fixtures as qa_book_fixtures
@@ -185,6 +186,7 @@ class PythonDriver(QaDriver):
         # The documented screens, read on the first `vet` record and kept for the target.
         self._screens: dict[str, list[placement.VettedComponent]] | None = None
         self._routes: dict[str, str] = {}
+        self._book_problem: str | None = None
         # Built once per driver, not once per scenario: `load_graph` walks the whole book,
         # and a suite of scenarios shares one `self.root` — recomputing it per `_execute`
         # call re-pays that cost every scenario for a graph that never changed underneath it.
@@ -743,18 +745,63 @@ class PythonDriver(QaDriver):
 
     # -- vetting -----------------------------------------------------------------------
 
+    def _packet_features_root(self) -> tuple[str, str | None]:
+        """The frame a `qa.vet` argument is spelled in — the packet's `featuresRoot` — or
+        the reason there is none.
+
+        A node is addressed by a path relative to a root that is a parameter of the call
+        that built the plan, not a property of the node, so `_book` cannot recover that
+        root from `self.root`: the same node has a different name at every root, and
+        `self.root` is only ever the checkout, which is not in general where the book the
+        plan was compiled against lives. The packet beside the session's spec is where the
+        compiler recorded which root it used, and `_book` has to agree with it or every
+        lookup misses.
+
+        An empty `featuresRoot` is a real, stated answer rather than a missing one — a
+        packet built for a book that is not nested under a service, or one written before
+        this field existed — and is normalised the same way `build_context` itself
+        normalises it before writing the field, so a lookup against either book agrees.
+        Only the *absence* of a packet is treated as no frame at all.
+        """
+        packet = self.session.spec_dir / "qa-okf-context.json"
+        if not packet.is_file():
+            return "", (
+                f"no QA context packet at {packet} — a compiled plan's `qa.vet` arguments "
+                "are spelled against the book the packet's `featuresRoot` names, and with "
+                "no packet there is no root to resolve them against; run `ostler qa "
+                "context` for this spec before `qa run`, or pass `--spec` at a directory "
+                "it wrote"
+            )
+        try:
+            data = json.loads(packet.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            return "", f"QA context packet at {packet} is unreadable: {exc}"
+        features_root = str(data.get("featuresRoot") or "").strip()
+        if not features_root:
+            features_root = path_mod.features_root_in(self.root).relative_to(self.root).as_posix()
+        return features_root, None
+
     def _book(self) -> dict[str, list[placement.VettedComponent]]:
-        """The documented screens, read once per target and kept.
+        """The documented screens, read once per target and kept, keyed the way a compiled
+        plan spells its `qa.vet` arguments — see `_packet_features_root`.
 
         The graph is loaded here rather than handed down from the CLI because `qa run` also
         arrives through `ostler.api`, and a table built in only one of the two entry points
         would leave the other's runs silently unvetted — which is the exact failure mode
-        this whole change exists to remove.
+        this whole change exists to remove. Both entry points reach this the same way,
+        through `self.session.spec_dir`.
+
+        When the packet naming the frame is missing, `_screens` stays empty and
+        `_book_problem` carries why — `_vet` reports that rather than trying `self.root`'s
+        own book, which would silently vet against a frame the plan never spoke.
         """
         if self._screens is None:
-            graph = load_graph(self.root)
-            self._screens = placement.screen_components(graph)
-            self._routes = screen_routes(graph)
+            self._screens = {}
+            features_root, self._book_problem = self._packet_features_root()
+            if self._book_problem is None:
+                graph = load_graph(self.root, root_overrides={"features": features_root})
+                self._screens = placement.screen_components(graph)
+                self._routes = screen_routes(graph)
         return self._screens
 
     def _arrival(self, scenario_id: str, screen: str, record: dict[str, Any]) -> str | None:
@@ -795,15 +842,18 @@ class PythonDriver(QaDriver):
         """Register one photographed screen against the screen the book documents.
 
         Anything that makes the registration vacuous — an unknown screen, a screen with no
-        addressable component, a sidecar that is not there — is a *problem*, not an empty
-        verdict list. A vacuous vet that reports zero disagreements is indistinguishable from
-        a screen that is correct, and that is the shape of evidence this replaces.
+        addressable component, a sidecar that is not there, a run with no stated frame to
+        read the book in — is a *problem*, not an empty verdict list. A vacuous vet that
+        reports zero disagreements is indistinguishable from a screen that is correct, and
+        that is the shape of evidence this replaces.
         """
         screen = str(record.get("screen", ""))
         shot = Path(str(record.get("screenshot", "")))
         regions_path = Path(str(record.get("regions", "")))
         layout_path = shot.with_suffix(".layout.json")
         components = self._book().get(screen)
+        if self._book_problem is not None:
+            return [], [self._book_problem]
         if components is None:
             return [], [
                 f"scenario '{scenario_id}' vets '{screen}', which the book does not document "
