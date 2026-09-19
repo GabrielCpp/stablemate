@@ -260,6 +260,52 @@ def test_arming_a_job_directory_that_does_not_exist_yet_is_not_an_error(tmp_path
     assert not armed.exists()
 
 
+def test_scope_cgroup_wait_ignores_the_launching_cgroup_until_it_actually_moves(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+):
+    """`systemd-run --scope` moves its pid into a new cgroup after a D-Bus round trip, not
+    at fork. Reading `/proc/<pid>/cgroup` before that migration reads the *launching*
+    cgroup, whose `memory.peak` is a shared, ever-growing high-water mark unrelated to the
+    job (this is the "9667 MB on every job" defect diagnosed in
+    docs/maskbus/PROGRESS.md, 2026-09-15). The wait must not settle for the pre-migration
+    reading even when it is offered first."""
+    readings = iter(["session.slice", "session.slice", "run-u123.scope"])
+    scope_peak = tmp_path / "run-u123.scope" / "memory.peak"
+    scope_peak.parent.mkdir()
+    scope_peak.write_text("42", encoding="utf-8")
+    monkeypatch.setattr(
+        job, "_cgroup_peak_path_for",
+        lambda line: scope_peak if line == "run-u123.scope" else None,
+    )
+
+    path = job._wait_for_scope_cgroup(
+        1234,
+        is_alive=lambda pid: True,
+        read_cgroup=lambda pid: next(readings),
+        timeout=1.0,
+        poll_s=0.0,
+    )
+
+    assert path == scope_peak
+
+
+def test_scope_cgroup_wait_gives_up_once_the_process_is_gone(tmp_path: Path):
+    """A job that never migrates (systemd-run failed, or the command was too fast to
+    catch) must not block the supervisor for the full timeout once the pid is dead."""
+    calls = []
+
+    def read_cgroup(pid: int) -> str:
+        calls.append(pid)
+        return "session.slice"
+
+    path = job._wait_for_scope_cgroup(
+        1234, is_alive=lambda pid: False, read_cgroup=read_cgroup, timeout=5.0, poll_s=0.0,
+    )
+
+    assert path is None
+    assert len(calls) == 2, "one reading to establish 'before', one to see it hasn't moved"
+
+
 def _await_running(job_dir: Path, timeout: float = 20.0) -> None:
     deadline = time.time() + timeout
     while time.time() < deadline:

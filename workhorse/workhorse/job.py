@@ -91,6 +91,7 @@ import signal
 import subprocess
 import sys
 import time
+from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
@@ -692,9 +693,13 @@ def supervise(job_dir: Path | str) -> int:
             start_new_session=True,
         )
         _write_json(directory / CHILD_NAME, {"pid": proc.pid, "pgid": proc.pid})
-        # Resolved while the command is alive: `/proc/<pid>/cgroup` is gone the moment it
-        # exits, and a `--collect`ed scope takes its counters with it.
-        peak_path = _cgroup_peak_path(proc.pid) if tier == "premium" else None
+        # Waited for, not resolved immediately: `systemd-run --scope` only moves `proc.pid`
+        # into its own transient scope after a D-Bus round trip, so reading its cgroup right
+        # after `Popen` returns reads the *launching* cgroup — a shared, ever-growing peak
+        # that belongs to the whole session, not this job. `/proc/<pid>/cgroup` is gone the
+        # moment the process exits, and a `--collect`ed scope takes its counters with it, so
+        # this has to happen before the poll loop, while the command is still alive.
+        peak_path = _wait_for_scope_cgroup(proc.pid) if tier == "premium" else None
 
         announced = 0.0
         while proc.poll() is None:
@@ -752,15 +757,56 @@ def _kill_request(directory: Path) -> str:
         return ""
 
 
-def _cgroup_peak_path(pid: int) -> Path | None:
-    """Where the kernel keeps `memory.peak` for the scope `pid` runs in, if it does."""
+def _current_cgroup(pid: int) -> str:
+    """The `pid`'s current cgroup line from `/proc`, or `""` if it cannot be read."""
     try:
-        line = Path(f"/proc/{pid}/cgroup").read_text(encoding="utf-8").strip()
+        return Path(f"/proc/{pid}/cgroup").read_text(encoding="utf-8").strip()
     except OSError:
-        return None
-    relative = line.split(":")[-1] if line else ""
+        return ""
+
+
+def _cgroup_peak_path_for(cgroup_line: str) -> Path | None:
+    """Where the kernel keeps `memory.peak` for the cgroup named by `cgroup_line`, if any."""
+    relative = cgroup_line.split(":")[-1] if cgroup_line else ""
     peak = Path("/sys/fs/cgroup") / relative.lstrip("/") / "memory.peak"
     return peak if peak.exists() else None
+
+
+def _cgroup_peak_path(pid: int) -> Path | None:
+    """Where the kernel keeps `memory.peak` for the scope `pid` runs in, if it does."""
+    return _cgroup_peak_path_for(_current_cgroup(pid))
+
+
+def _wait_for_scope_cgroup(
+    pid: int,
+    *,
+    is_alive: Callable[[int], bool] = lambda pid: _pgid_alive(pid),
+    read_cgroup: Callable[[int], str] = _current_cgroup,
+    timeout: float = 5.0,
+    poll_s: float = 0.02,
+) -> Path | None:
+    """Wait for `pid` to be moved into its own `systemd-run --scope`, then return its `memory.peak`.
+
+    `systemd-run --scope` forks, then only *after* a D-Bus round trip to the user manager
+    does it move itself into the transient scope it just created — so `pid`'s cgroup right
+    after `Popen` returns is still whatever cgroup launched it (the supervisor's own
+    session), not the job's. Reading `memory.peak` from that cgroup reads a live, shared,
+    ever-growing high-water mark that belongs to every process that has ever passed through
+    that session, not this job — which is why unrelated jobs of wildly different sizes have
+    been seen to report the identical, implausibly large peak (docs/maskbus/PROGRESS.md,
+    2026-09-15 G0 finding). Waiting for the cgroup line to actually change is the only way
+    to know the migration has happened before trusting anything read from it.
+    """
+    before = read_cgroup(pid)
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        current = read_cgroup(pid)
+        if current and current != before:
+            return _cgroup_peak_path_for(current)
+        if not is_alive(pid):
+            return None
+        time.sleep(poll_s)
+    return None
 
 
 def _read_peak_mb(path: Path | None) -> float:
