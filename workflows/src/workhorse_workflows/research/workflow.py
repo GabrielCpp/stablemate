@@ -748,7 +748,7 @@ class Research(Workflow):
         set_identity(self.ctx.repo_dir, "Research Agent", "research-agent@local")
         commit_paths(
             build.cwd or self.ctx.repo_dir,
-            f"feat({gate_id}): build experiment",
+            f"feat({gate_id.lower()}): build experiment",
             *build.code_files,
         )
         rehearsal = self.call(

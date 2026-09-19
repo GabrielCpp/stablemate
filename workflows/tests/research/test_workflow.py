@@ -95,7 +95,29 @@ def _program_repo(root: Path) -> Path:
     _git(repo, "config", "user.name", "Test")
     _git(repo, "add", "-A")
     _git(repo, "commit", "-qm", "seed")
+    _install_commit_msg_hook(repo)
     return repo
+
+
+def _install_commit_msg_hook(repo: Path) -> None:
+    """Reject a git subject whose `type(scope):` scope is not lowercase.
+
+    Mirrors the commit convention a real target repo enforces (see
+    `docs/maskbus/AGENTS.md`'s `.githooks/commit-msg`, which many programs turn on with
+    `core.hooksPath`). A gate id like `G1` or `P1` is a fine program-facing name and a
+    bad git scope; a workflow that writes `feat({gate_id}): ...` verbatim must lowercase
+    it, and only a repo that actually enforces this convention would ever catch it not
+    doing so.
+    """
+    hooks_dir = repo / ".git" / "hooks"
+    hook = hooks_dir / "commit-msg"
+    hook.write_text(
+        "#!/usr/bin/env python3\n"
+        "import re, sys\n"
+        "subject = open(sys.argv[1]).readline()\n"
+        "sys.exit(0 if re.match(r'\\w+(\\([a-z0-9][a-z0-9/-]*\\))?: ', subject) else 1)\n"
+    )
+    hook.chmod(0o755)
 
 
 class _Agent:
@@ -318,7 +340,7 @@ def _drive(
         if makefile:
             (repo / "Makefile").write_text(makefile)
             _git(repo, "add", "-A")
-            _git(repo, "commit", "-qm", "add Makefile")
+            _git(repo, "commit", "-qm", "chore: add Makefile")
         for rel_path, content in (uncommitted_files or {}).items():
             path = repo / rel_path
             path.parent.mkdir(parents=True, exist_ok=True)
@@ -850,7 +872,7 @@ def test_an_approved_build_s_code_files_are_committed_before_the_rehearsal_runs(
         uncommitted_files={"src/experiment.py": "print('measure')\n"},
     )
 
-    assert "feat(G1): build experiment" in outcome.subjects, outcome.subjects
+    assert "feat(g1): build experiment" in outcome.subjects, outcome.subjects
     assert outcome.nodes.counts()["dry_run"] == 1, outcome.nodes.counts()
 
 
