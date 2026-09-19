@@ -3594,43 +3594,44 @@ def _check_ui(graph: Graph, f: list[Finding],
                         path=rel, line=node.line,
                         ref=refs_mod.bullet_ref(node.id, key, index)))
 
-        # The other half of `undeclared-obligation`: a node that mints nothing at all, yet one
-        # of its bullets reads like a claim — a status code, an error name, a lifecycle verb, a
-        # `must` — under a key this type never grades (`meaning:`, `behaviour:`, an `errors:` on
-        # a concept). Nothing will ever ask a plan to prove it, and the author, who wrote a
-        # requirement, believes something does. Only asked of a node that mints *nothing*: one
-        # that mints at least one obligation is already in QA's sight, and its prose is the
-        # descriptive half of the book. Bullets only — `UINode` carries no prose, so a paragraph
-        # is not read.
+        # The other half of `undeclared-obligation`: a bullet that reads like a claim — a status
+        # code, an error name, a lifecycle verb, a `must` — under a key this type never grades
+        # (`meaning:`, `behaviour:`, an `errors:` on a concept). Nothing will ever ask a plan to
+        # prove it, and the author, who wrote a requirement, believes something does. Asked of
+        # every node, not only one that mints nothing: minting is a property of a bullet, not of
+        # the node, so a `persistence:` bullet already in QA's sight says nothing about whether
+        # this node's `errors:` bullet is — a node-wide flag would let the one satisfied bullet
+        # vouch for its siblings. The type's own normative and declared keys are exempt by
+        # construction, so what is left examined is only the author's free vocabulary. Bullets
+        # only — `UINode` carries no prose, so a paragraph is not read.
         # A `warn`, for the usual reason: where the claim belongs is the author's call.
-        if not normative:
-            instrumented = (frozenset(registry.normative_keys(node.type))
-                            | frozenset(registry.RELATION_KEYS)
-                            | frozenset(registry.check_keys(node.type))
-                            | frozenset(registry.arrange_keys(node.type))
-                            | _OBSERVATION_KEYS)
-            # Every key the type declares is exempt, the descriptive ones included: `backing:`
-            # on an environment or `trigger:` on an interaction holds description because the
-            # profile says so. What is left is the author's own vocabulary and the keys of an
-            # untyped section — the places a requirement hides with nothing reading it.
-            instrumented |= registry.declared_keys(node.type)
-            minted = ", ".join(f"`{k}:`" for k in registry.normative_keys(node.type))
-            for key, value, _line in node.bullet_order:
-                if key in instrumented:
-                    continue
-                signal = next((s for v in _bullet_values(value) if (s := _sounds_normative(v))), "")
-                if not signal:
-                    continue
-                f.append(Finding(
-                    "warn", "unminted-claim",
-                    f"{node.id}: `{key}:` reads like a claim ({signal}) but {node.type} mints no "
-                    f"obligation from it — nothing will ask a QA plan to prove it; move it under "
-                    f"a normative key ({minted}) or into prose",
-                    # No index: the `break` below makes this deliberately one finding per
-                    # node — the remedy is a decision about the node's vocabulary, not a
-                    # rewrite of one bullet.
-                    path=rel, line=node.line, ref=refs_mod.bullet_ref(node.id, key)))
-                break
+        instrumented = (frozenset(registry.normative_keys(node.type))
+                        | frozenset(registry.RELATION_KEYS)
+                        | frozenset(registry.check_keys(node.type))
+                        | frozenset(registry.arrange_keys(node.type))
+                        | _OBSERVATION_KEYS)
+        # Every key the type declares is exempt, the descriptive ones included: `backing:`
+        # on an environment or `trigger:` on an interaction holds description because the
+        # profile says so. What is left is the author's own vocabulary and the keys of an
+        # untyped section — the places a requirement hides with nothing reading it.
+        instrumented |= registry.declared_keys(node.type)
+        minted = ", ".join(f"`{k}:`" for k in registry.normative_keys(node.type))
+        for key, value, _line in node.bullet_order:
+            if key in instrumented:
+                continue
+            signal = next((s for v in _bullet_values(value) if (s := _sounds_normative(v))), "")
+            if not signal:
+                continue
+            f.append(Finding(
+                "warn", "unminted-claim",
+                f"{node.id}: `{key}:` reads like a claim ({signal}) but {node.type} mints no "
+                f"obligation from it — nothing will ask a QA plan to prove it; move it under "
+                f"a normative key ({minted}) or into prose",
+                # No index: the `break` below makes this deliberately one finding per
+                # node — the remedy is a decision about the node's vocabulary, not a
+                # rewrite of one bullet.
+                path=rel, line=node.line, ref=refs_mod.bullet_ref(node.id, key)))
+            break
 
         check_keys = registry.check_keys(node.type)
         declared = 0

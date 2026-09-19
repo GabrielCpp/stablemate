@@ -254,7 +254,7 @@ def warm_index(book: Path, directory: Path) -> None:
 UNKNOWN_BULLET_ALLOWED_TESTS = frozenset({
     "tests/test_ui_doctor.py::test_an_undeclared_bullet_key_is_a_warning",
     "tests/test_ui_doctor.py::test_a_claim_under_a_non_normative_key_is_reported",
-    "tests/test_ui_doctor.py::test_a_node_that_mints_is_not_asked_about_its_prose",
+    "tests/test_ui_doctor.py::test_a_minting_node_is_still_asked_about_its_other_bullets",
 })
 
 

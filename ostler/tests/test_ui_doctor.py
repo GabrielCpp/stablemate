@@ -1138,12 +1138,24 @@ def test_a_trigger_only_interaction_is_not_reported(repo: Path):
     assert "unminted-claim" not in all_codes(_run(repo))
 
 
-def test_a_node_that_mints_is_not_asked_about_its_prose(repo: Path):
-    # Once a node mints one obligation it is in QA's sight; its other bullets are context.
+def test_a_minting_node_is_still_asked_about_its_other_bullets(repo: Path):
+    """The `persistence:` bullet being in QA's sight says nothing about whether `errors:` is —
+    before this, a node-wide flag let one satisfied bullet vouch for its siblings."""
+    # A node that mints is still asked about each of its other bullets, one at a time.
     write(repo / "docs/features/groom/concepts/lease.md",
           "---\ntype: concept\nslug: lease\ntitle: Lease\n---\n# Lease\n\n"
           "- persistence: the lease row is written once\n"
           "- errors: `409` when the lease is held by another worker\n")
+    hits = [f for f in _run(repo).findings if f.code == "unminted-claim"]
+    assert [f.ref for f in hits] == ["docs/features/groom/concepts/lease.md#errors"]
+
+
+def test_a_minting_nodes_declared_keys_are_still_exempt(repo: Path):
+    # `rule:` is a declared key of `concept`, so it stays exempt even though it names a status.
+    write(repo / "docs/features/groom/concepts/lease.md",
+          "---\ntype: concept\nslug: lease\ntitle: Lease\n---\n# Lease\n\n"
+          "- persistence: the lease row is written once\n"
+          "- rule: prefer the newer lease when both return `409`\n")
     assert "unminted-claim" not in all_codes(_run(repo))
 
 
