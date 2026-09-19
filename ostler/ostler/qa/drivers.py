@@ -188,19 +188,25 @@ class PythonDriver(QaDriver):
         self._routes: dict[str, str] = {}
         self._book_problem: str | None = None
         # Built once per driver, not once per scenario: `load_graph` walks the whole book,
-        # and a suite of scenarios shares one `self.root` — recomputing it per `_execute`
-        # call re-pays that cost every scenario for a graph that never changed underneath it.
+        # and a suite of scenarios shares one root and one frame — recomputing it per
+        # `_execute` call re-pays that cost every scenario for a graph that never changed
+        # underneath it.
         self._book_fixtures_cache: dict[str, dict[str, Any]] | None = None
 
     def start(self) -> None:
         self.launcher.preflight(self)
         # Fixture problems block the same way tool problems do, and for the same reason:
-        # a fixture naming a tool the repo never opted into is not a fixture that will
-        # fail loudly later, it is a declaration nothing behind it can honour.
+        # a fixture naming a tool the repo never opted into, or a book fixture resolved
+        # against the wrong frame, is not a fixture that will fail loudly later, it is a
+        # declaration nothing behind it can honour.
         problems = [
             *qa_tools.preflight_errors(self.root),
             *qa_fixtures.preflight_errors(self.root),
         ]
+        try:
+            self._resolved_book_fixtures()
+        except DriverBlocked as exc:
+            problems.append(str(exc))
         if problems:
             raise DriverBlocked("; ".join(problems))
         driver = str(self.target.get("driver", "python"))
@@ -291,7 +297,12 @@ class PythonDriver(QaDriver):
 
     def _resolved_book_fixtures(self) -> dict[str, dict[str, Any]]:
         if self._book_fixtures_cache is None:
-            self._book_fixtures_cache = qa_book_fixtures.resolved(load_graph(self.root))
+            features_root, problem = self._packet_features_root()
+            if problem is not None:
+                raise DriverBlocked(problem)
+            self._book_fixtures_cache = qa_book_fixtures.resolved(
+                load_graph(self.root, root_overrides={"features": features_root})
+            )
         return self._book_fixtures_cache
 
     def interpreter(self) -> Path:

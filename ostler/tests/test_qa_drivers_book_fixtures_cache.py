@@ -7,6 +7,7 @@ a single driver's lifetime.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -38,6 +39,9 @@ title: Seeded acme
 def _driver(repo: Path) -> PythonDriver:
     spec = repo / "docs/specs/story-1"
     spec.mkdir(parents=True, exist_ok=True)
+    (spec / "qa-okf-context.json").write_text(
+        json.dumps({"featuresRoot": "docs/features"}), encoding="utf-8"
+    )
     session = QaSession.create(spec, "qa-cache-1", "story-1", {})
     return PythonDriver(session, "api", {"driver": "python"}, root=repo, variables={})
 
@@ -53,9 +57,9 @@ def test_resolved_book_fixtures_is_built_once_and_reused(
     calls: list[Path] = []
     real_load_graph = drivers_mod.load_graph
 
-    def _counting_load_graph(root: Path) -> Graph:
+    def _counting_load_graph(root: Path, *, root_overrides: dict[str, str] | None = None) -> Graph:
         calls.append(root)
-        return real_load_graph(root)
+        return real_load_graph(root, root_overrides=root_overrides)
 
     monkeypatch.setattr(drivers_mod, "load_graph", _counting_load_graph)
 
