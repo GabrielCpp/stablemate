@@ -7,6 +7,12 @@ trusts it is trusting an unverified sentence. The finding names the normative ke
 type *does* mint from; those are the two destinations, and choosing between them is a
 fact about the code, not a wording preference:
 
+This finding can arrive on a node that mints obligations elsewhere — one that already
+has a `persistence:` or a `does:` in QA's sight. That other bullet minting is not a
+reason to dismiss this one: minting is a property of the bullet the finding names, not
+of the node it sits on, and a satisfied sibling proves nothing about this bullet's
+claim. The three remedies below apply unchanged to the one bullet the `ref` names.
+
 1. **Open the node's `code:` targets and find the claim in the source.** Does the code
    actually enforce it — a validation branch, a guard, a constraint the tests could
    observe? Then it is a real obligation filed under the wrong key: **move it under one
