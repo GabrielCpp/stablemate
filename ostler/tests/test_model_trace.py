@@ -140,7 +140,7 @@ def test_a_flags_entry_with_its_own_properties_parses_as_one_value(tmp_path: Pat
 
 
 def test_an_entrys_properties_land_on_the_entry_and_not_in_meta(tmp_path: Path) -> None:
-    """Stopping at the entry (2aj) kept the two shapes apart; it also dropped the properties.
+    """Stopping at the entry kept the two shapes apart; it also dropped the properties.
 
     `UINode.meta` has nowhere to put them — its value type is a scalar or a flat list of
     scalars, and widening it is legal in Python and illegal in the artifact, since every

@@ -431,8 +431,8 @@ def test_an_entry_property_the_key_does_not_admit_is_reported(repo: Path, monkey
 def test_a_key_that_declares_no_property_vocabulary_admits_anything(repo: Path, monkeypatch) -> None:
     """A key with an empty `properties` tuple — the default, and other entries=True keys'
 
-    shipped state — admits anything. `provides:` itself now ships `("from", "read")`
-    (2ae), so this test clears it back to `()` to exercise the no-vocabulary case
+    shipped state — admits anything. `provides:` itself now ships `("from", "read")`,
+    so this test clears it back to `()` to exercise the no-vocabulary case
     directly, rather than relying on a key that happens to still default to it.
     """
     _declare_provides_properties(monkeypatch)

@@ -298,7 +298,7 @@ def test_a_config_file_shared_by_two_nodes_is_context_evidence(tmp_path: Path):
 
 def test_a_files_own_sections_citing_one_symbol_stay_one_family(tmp_path: Path):
     """A `cli` file and its own `### ` command sections, all citing the same exact symbol,
-    are one documented surface, not four independent owners (2n) — `_family_root` collapses
+    are one documented surface, not four independent owners — `_family_root` collapses
     a section id `path#anchor` onto its containing file id when that file is itself one of
     the citers, so the raw citer count (4) never reaches `_CONTAINER_FANOUT` and the
     obligations stay required."""

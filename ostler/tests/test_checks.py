@@ -223,7 +223,7 @@ def test_a_load_bearing_key_is_one_some_type_instruments() -> None:
     """`verify:` and `code:` are the keys an author expects machinery behind; `meaning:` is
     nobody's, and `parent:`/`detail:` are resolved on every type alike with no locator use, so
     neither is in the set. `on:` *is* — it resolves like any relation, but a `qa/context.py`
-    planner also reads it off the obligation as a control's locator (3aa), so excluding it here
+    planner also reads it off the obligation as a control's locator, so excluding it here
     would leave `unknown-bullet` blind on the same undeclared-type reads that fix closes."""
     assert {"verify", "code", "does", "status", "fixture", "on"} <= registry.LOAD_BEARING_KEYS
     assert not {"meaning", "parent", "detail"} & registry.LOAD_BEARING_KEYS
