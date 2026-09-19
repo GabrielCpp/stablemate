@@ -14,6 +14,7 @@ import subprocess
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 from urllib.parse import urlparse
 
 from ostler import (acts, checks, dynamic_registry, freeze, inventory, links as links_mod, markdown,
@@ -3772,9 +3773,8 @@ def _check_ui(graph: Graph, f: list[Finding],
                 declared += 1
                 parsed = checks.parse_check(value)
                 if isinstance(parsed, checks.Refusal):
-                    f.append(Finding(
-                        "error", "unparsed-check",
-                        f"{node.id}: `{key}:{index}` ({value}) {parsed.message}",
+                    said: dict[str, Any] = dict(
+                        message=f"{node.id}: `{key}:{index}` ({value}) {parsed.message}",
                         path=rel, line=node.line,
                         ref=refs_mod.bullet_ref(node.id, key, index),
                         # Composed by the refusal, because the refusal is what classified the
@@ -3782,7 +3782,15 @@ def _check_ui(graph: Graph, f: list[Finding],
                         # check under its own signature, and only a value whose check nobody
                         # can name gets the whole vocabulary. Re-deriving any of that here is
                         # how the message and the suggestion came to contradict each other.
-                        suggestion=parsed.bullet(key)))
+                        suggestion=parsed.bullet(key))
+                    if parsed.kind == "misfiled-test-ref":
+                        f.append(Finding("error", "misfiled-test-ref", **said,
+                                         fixable=(key == "verify"
+                                                  and "tests" in registry.declared_keys(
+                                                      node.type)
+                                                  and checks.relocatable_to_tests(value))))
+                    else:
+                        f.append(Finding("error", "unparsed-check", **said))
                     continue
                 # A locator argument is a reference into the book, not a string the driver
                 # happens to accept: written as free text it type-checks, runs, and goes green

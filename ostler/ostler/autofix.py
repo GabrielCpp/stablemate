@@ -42,8 +42,8 @@ import tokenize
 from dataclasses import dataclass
 from pathlib import Path
 
-from ostler import markdown, refs, registry
-from ostler.checks import CheckCall, parse_check, parse_expression
+from ostler import markdown, registry
+from ostler.checks import CheckCall, parse_check, parse_expression, relocatable_to_tests
 from ostler.fmt import _target_files
 from ostler.model import Graph, _file_main_section, _inline_type
 
@@ -52,24 +52,6 @@ _DRIFTED_KEY = "verify"
 _TARGET_KEY = "tests"
 
 _HEADING_TO_TYPE_LOWER = {h.lower(): t for h, t in registry.UI_HEADING_TO_TYPE.items()}
-
-
-def _is_test_citation_run(value: str) -> bool:
-    """True when a `verify:` value is provably the `tests:` citation form.
-
-    Every clause narrows, none guesses: a parsing check is a check (left alone); a value
-    opening with prose is a sentence for a human to judge; a citation without a file
-    extension could be a module path or a stray identifier rather than a test file.
-    """
-    if isinstance(parse_check(value), CheckCall):
-        return False
-    spans = markdown.leading_code_spans(value)
-    if not spans or any(isinstance(parse_check(span), CheckCall) for span in spans):
-        # A check wrapped in inline code is an observation, not a citation: its dotted
-        # `path="$.a"` reads as a file extension to the test below.
-        return False
-    cited = [ref for span in spans if (ref := refs.normalize_ref(span))]
-    return bool(cited) and all(Path(refs.ref_path(ref)).suffix for ref in cited)
 
 
 def _unwrap_code_span(value: str) -> str:
@@ -159,7 +141,7 @@ def _fix_bullet(bullet: markdown.Bullet, uitype: registry.UINodeType | None,
     marker, _, rest = head.partition("-")
     _, _, value = rest.partition(":")
     owns_tests = uitype is not None and _TARGET_KEY in uitype.bullet_by_key
-    if owns_tests and _is_test_citation_run(bullet.value):
+    if owns_tests and relocatable_to_tests(bullet.value):
         fixed = f"{marker}- {_TARGET_KEY}:{value}"
         return (bullet.line_start, bullet.line_start + 1, [fixed])
     fixed = _colon_keywords_as_equals(_unwrap_code_span(value))

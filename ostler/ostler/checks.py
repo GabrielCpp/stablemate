@@ -32,7 +32,10 @@ import re
 import warnings
 from collections.abc import Mapping
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
+
+from ostler import markdown, refs
 
 CheckValue = str | int | float | bool | list[str]
 
@@ -582,6 +585,35 @@ _SOFT_BREAK = re.compile(r"[ \t]*\n[ \t]*")
 _CODE_SPAN = re.compile(r"^(`+)((?:(?!\1).)*)\1$", re.DOTALL)
 
 
+def relocatable_to_tests(value: str) -> bool:
+    """True when a `verify:` value is *provably* the `tests:` citation form.
+
+    The proof `ostler autofix` acts on, and the widest arm of the classification above, are
+    the same question asked for two purposes: which key does this value belong under, and may
+    a program move it there unattended. Held as two definitions in two modules they answered
+    differently — a value spelling two citations in one bullet was classified `not-a-call` and
+    handed the whole vocabulary, then silently relocated by `autofix` anyway. One definition,
+    stated once, is what keeps the sentence and the rewrite from disagreeing.
+
+    Every clause narrows, none guesses: anything parsing as a call is a call — asked of the
+    grammar directly, because asking `parse_check` would ask the classification that asks
+    this; a value opening with prose is a sentence for a human to judge; a citation without a
+    file extension could be a module path or a stray identifier rather than a test file.
+
+    Classification is the wider of the two by design — `foo_test.go::TestX` written with an
+    unbalanced code span is a test reference nobody can dispute and a rewrite nobody should
+    attempt — so this is a sufficient condition for the refusal and a necessary one for the
+    fix, never the reverse.
+    """
+    if parse_call(_unwrap(value)) is not None:
+        return False
+    spans = markdown.leading_code_spans(value)
+    if not spans or any(parse_call(_unwrap(span)) is not None for span in spans):
+        return False
+    cited = [ref for span in spans if (ref := refs.normalize_ref(span))]
+    return bool(cited) and all(Path(refs.ref_path(ref)).suffix for ref in cited)
+
+
 def _not_a_call(text: str) -> Refusal:
     """Why this value is not a check — naming the likeliest mistake when it is recognisable.
 
@@ -610,7 +642,8 @@ def _not_a_call(text: str) -> Refusal:
                 f"`{text}`: `{spec.name}` is a known check, but its arguments did not "
                 f"parse — they are written `name=value`",
                 spec.signature())
-    if "::" in text or text.rsplit(".", 1)[-1] in _TEST_REF_SUFFIXES:
+    if "::" in text or text.rsplit(".", 1)[-1] in _TEST_REF_SUFFIXES \
+            or relocatable_to_tests(text):
         return Refusal(
             "misfiled-test-ref",
             f"`{text}` is a code/test reference, not a check — a test id says which code "
