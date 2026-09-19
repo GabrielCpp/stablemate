@@ -88,12 +88,24 @@ timeout 30 ostler scaffold invocation expire-stale-links --in docs/features/acme
 - fixture: link_last_followed_91_days_ago
 ```
 
+`invocation` declares no `response:` key at all, yet books written against an HTTP-shaped
+invocation still nest a `- response:` block with `- status:`/`- errors:` children under it —
+`status:` and `errors:` are bullet keys this type *does* declare. Because `response:` is not a
+key `invocation` recognizes, those children fall back to the flat-subtree grammar and flatten
+into strings nothing reads as this node's own `status:`/`errors:` claims; the claims a scenario
+is actually held to are then absent. `misnested-bullet` fires on this shape exactly as it does
+when the buried child sits under a *declared* record on another type, except the message says
+the parent (`response:`) is undeclared, because that is why the child is invisible rather than
+merely misplaced. Fix it by promoting `status:`/`errors:` to top-level bullets of the node.
+
 ## Doctor codes it can trip
 
 `missing-required-bullet` (`on:`, `trigger:`, `does:`), `undeclared-obligation`, `weak-check`,
 `unstated-precondition`, `compound-normative-bullet`, `unresolved-relation`, `one-way-same-as`
 if `same-as:` is used, `same-as-disagreement` if a `same-as:` family disagrees about a shared
-normative key, `misbound-status-check`. See [../doctor-codes.md](../doctor-codes.md).
+normative key, `misbound-status-check`, `misnested-bullet` if a child spelled like a declared
+bullet key is buried under a key `invocation` does not declare (`response:`, most commonly).
+See [../doctor-codes.md](../doctor-codes.md).
 
 ## When bullets are not enough
 

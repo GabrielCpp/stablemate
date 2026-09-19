@@ -110,6 +110,14 @@ member of the body, repeated once per member). A child spelled any other way —
 is a property this record's vocabulary does not carry, reported as `unknown-record-property`;
 spell it as one of the four, or move the fact to the bullet that actually owns it.
 
+The same collision fires under a key `endpoint` never declared at all. `request:` is not a
+bullet key of this type, so `- method:` and `- path:` written under it are not read as this
+node's own `method:`/`path:` — they flatten into the same strings an undeclared key's children
+always flatten into, and nothing consults them there. `misnested-bullet` fires for this shape
+too, because the buried child is spelled like a bullet key `endpoint` does declare; the message
+says the parent is undeclared, since that is why the child is invisible rather than merely
+misplaced. The remedy is the same: promote `method:`/`path:` to top-level bullets of the node.
+
 ## Arranging a request body
 
 `consumes:` describes the shape a route accepts; it is a schema, not a value the run can send.
