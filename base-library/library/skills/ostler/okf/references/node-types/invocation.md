@@ -85,7 +85,7 @@ timeout 30 ostler scaffold invocation expire-stale-links --in docs/features/acme
 `missing-required-bullet` (`on:`, `trigger:`, `does:`), `undeclared-obligation`, `weak-check`,
 `unstated-precondition`, `compound-normative-bullet`, `unresolved-relation`, `one-way-same-as`
 if `same-as:` is used, `same-as-disagreement` if a `same-as:` family disagrees about a shared
-normative key. See [../doctor-codes.md](../doctor-codes.md).
+normative key, `misbound-status-check`. See [../doctor-codes.md](../doctor-codes.md).
 
 ## When bullets are not enough
 

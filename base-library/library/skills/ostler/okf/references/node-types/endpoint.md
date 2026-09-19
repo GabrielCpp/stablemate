@@ -44,7 +44,11 @@ scaffold` stubs only the primary; prefer the primary in new writing.
 The outcome keys are declared in this order so `fmt` can place them between the effect and its
 grounding — `does → status → errors → auth → code → verify` — and so a `verify:` written under
 one binds to that one. See [document order is the
-binding](../bullet-grammar.md#document-order-is-the-binding).
+binding](../bullet-grammar.md#document-order-is-the-binding). Writing every claim first and
+every `verify:` last still parses — `fmt` does not reorder prose — but it hands each check to
+whichever claim happens to sit last above it rather than the one it actually observes; when
+the check is `http_status(...)` and the code it names belongs to `status:` instead, `doctor`
+catches it as `misbound-status-check`.
 
 ## Relationships
 
@@ -161,7 +165,8 @@ no scenario is compiled for it.
 `weak-check`, `unstated-precondition`, `unparsed-check`, `misfiled-test-ref`,
 `dangling-code-ref`,
 `missing-code-symbol`, `unknown-book-fixture`, `unarranged-request-body`,
-`invalid-http-method`, `misnested-bullet`, `unarranged-scenario`. See
+`invalid-http-method`, `misnested-bullet`, `unarranged-scenario`,
+`misbound-status-check`. See
 [../doctor-codes.md](../doctor-codes.md).
 
 ## When bullets are not enough
