@@ -19,6 +19,7 @@ File type with **no context folder** (`context=""`): it lives under
 | `binary` | no | the executable name as invoked |
 | `code` | no | resolves as a link, and **owns** its file — `path::symbol` |
 | `detail` | no | link — an explanatory [`concept`](concept.md) |
+| `verify` | no | a check — what observing this CLI's claims looks like |
 
 `binary:` deliberately does not own: naming an executable is not grounding it. `code:` is what
 makes `qa context` attribute a change under that path to this node.

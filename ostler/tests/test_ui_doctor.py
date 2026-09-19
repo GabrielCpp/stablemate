@@ -1168,16 +1168,20 @@ def test_an_untyped_section_with_a_status_bullet_is_reported(repo: Path):
 
 
 def test_an_undeclared_bullet_key_is_a_warning(repo: Path):
-    """A `verify:` on a concept is read by nobody — `check_keys("concept")` is empty — while
-    the author who wrote it believes the claim above is observed. A warn, not an error: where
-    the observation belongs is the author's call."""
+    """A `route:` on a concept is read by nobody — only a screen declares it — while the author
+    who wrote it believes the concept is addressable. A warn, not an error: whether the bullet
+    belongs on a screen instead or was never a route is the author's call.
+
+    A wholly invented key is *not* this finding — `unknown_bullet_keys` returns `[]` for one,
+    because a book is free to write a word the registry has never heard of. What it catches is a
+    key the registry does know, typed onto a type that does not read it."""
     write(repo / "docs/features/groom/concepts/diff.md",
           "---\ntype: concept\nslug: diff\ntitle: Diff\n---\n# Diff\n\n"
           "- code: `groom/diff.py::Diff`\n- verify: absent(subject=\"the row\")\n"
-          "- meaning: the author's own word, which no type declares and nothing polices\n")
+          "- route: /diff\n")
     report = _run(repo)
     hits = [f for f in report.findings if f.code == "unknown-bullet"]
-    assert [f.ref for f in hits] == ["docs/features/groom/concepts/diff.md#verify"]
+    assert [f.ref for f in hits] == ["docs/features/groom/concepts/diff.md#route"]
     assert hits[0].severity == "warn"
     assert "concept declares" in hits[0].message
 

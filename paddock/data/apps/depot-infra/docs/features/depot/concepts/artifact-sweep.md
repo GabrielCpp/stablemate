@@ -8,8 +8,11 @@ title: The artifact sweep
 - code: pulumi/scheduler.go@931bfec8fb63
 - extends:
 - consistency: artifact-sweep-job — the plan contains exactly one Cloud Scheduler job — the artifact sweep.
+- verify: count(subject="Cloud Scheduler jobs in the plan", equals=1)
 - consistency: artifact-sweep-job — the sweep runs nightly at 03:00 in `Etc/UTC`, stated as an absolute zone so the
   hour does not move under a machine's local time.
+- verify: json_path(path="$.inputs.schedule", equals="0 3 * * *")
+- verify: json_path(path="$.inputs.timeZone", equals="Etc/UTC")
 
 Artifacts expire because something deletes them on a schedule. That something is a scheduler job
 declared in this program, and it is the piece of the depot most easily lost: nothing fails when it

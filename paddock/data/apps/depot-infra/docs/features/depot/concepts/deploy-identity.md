@@ -9,9 +9,11 @@ title: The deploy identity
 - extends:
 - consistency: deploy-identity — the deploy identity's only grant is a bucket-level grant on the artifact store,
   naming an object-level role.
+- verify: json_path(path="$.inputs.role", equals="roles/storage.objectAdmin")
 - consistency: deploy-identity — no project-level role is granted to the deploy identity anywhere in the plan.
 - consistency: deploy-token — the deploy token reaches the secret version as a secret value, so the plan
   reports it as `[secret]` rather than as the token itself.
+- verify: json_path(path="$.inputs.secretData", equals="[secret]")
 
 One service account publishes artifacts, and it is the only identity in the stack that writes. What
 makes it safe to hand to a pipeline is not that it exists but what it does *not* hold: the account

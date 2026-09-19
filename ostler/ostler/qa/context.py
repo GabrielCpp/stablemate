@@ -813,9 +813,15 @@ def build_context(
         # regression attribution) and proves nothing about the product. What is worth a warning
         # is an impacted contract whose obligations name no observation, because every scenario
         # written against it is then free to assert something weaker than the claim. Only for a
-        # type that *has* a `verify:` key: a screen or a concept carries no `verify:` at all, and
-        # a warning it can never clear is one an author learns to page past.
-        if registry.check_keys(str(node.get("type", ""))) and not _declared_checks(node):
+        # type that *has* a `verify:` key — a check names no subject, so its subject is the node
+        # its bullet hangs under, which is every authorable type but `step` (whose `verify:`
+        # observes the step, not the product) and `untyped` (which declares no keys at all).
+        node_type = str(node.get("type", ""))
+        node_bullets = node.get("bullets", {})
+        has_obligation = any(
+            _values(node_bullets.get(key)) for key in registry.normative_keys(node_type)
+        )
+        if has_obligation and registry.check_keys(node_type) and not _declared_checks(node):
             health.append(
                 {
                     "kind": "missing-declared-check",

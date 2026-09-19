@@ -101,6 +101,7 @@ File type under `docs/features/<service>/concepts/`, `type: concept` in frontmat
 | `rule` | no | advisory — the selection rule, as prose; mints nothing anywhere |
 | `prefers` | no | resolves as a link — the winning implementation |
 | `deprecates` | no | resolves as a link — the superseded implementation |
+| `verify` | no | a check — what observing this concept's claims looks like |
 | `tests` | no | resolves as a link — the test files covering this concept |
 
 Plus the [shared normative keys](../bullet-grammar.md#keys-that-are-normative-on-every-type).

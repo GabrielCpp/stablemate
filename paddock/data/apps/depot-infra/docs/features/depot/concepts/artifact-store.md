@@ -13,6 +13,7 @@ title: The artifact store
   stack cannot take the published artifacts with it.
 - consistency: artifact-bucket — the plan keeps object versioning on for the artifact bucket.
 - consistency: artifact-bucket — the readers binding on the artifact bucket lists exactly the build group.
+- verify: json_path(path="$.bucket", equals="depot-artifacts-example")
 - consistency: artifact-bucket — no member of that binding is `allUsers` or `allAuthenticatedUsers` — the
   artifact store is not public, and no plan may make it so.
 

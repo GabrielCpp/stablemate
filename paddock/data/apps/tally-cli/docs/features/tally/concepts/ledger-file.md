@@ -10,6 +10,7 @@ title: The ledger file
 - extends:
 - persistence: ledger-file — a command that changes the tally has written the whole ledger before it exits, so
   the next process reads back exactly what the previous one left.
+- verify: persists(subject="the ledger file")
 - consistency: ledger-file — the file is one JSON object, with a `currency` string and an `entries` array.
 - consistency: ledger-file — a reader never observes half a ledger — a write goes to a temporary path and is
   renamed over the file.

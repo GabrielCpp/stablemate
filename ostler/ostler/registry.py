@@ -889,6 +889,7 @@ UI_TYPES: tuple[UINodeType, ...] = (
             # legal value was a copy of the sibling above it, which is what the corpus filled in.
             BulletKey("entry", locator=True),
             BulletKey("detail", link=True),
+            BulletKey("verify", check=True),
         ),
     ),
     UINodeType(
@@ -898,6 +899,7 @@ UI_TYPES: tuple[UINodeType, ...] = (
             BulletKey("binary"),
             BulletKey("code", link=True, owns=True),
             BulletKey("detail", link=True),
+            BulletKey("verify", check=True),
         ),
     ),
     UINodeType(
@@ -907,6 +909,7 @@ UI_TYPES: tuple[UINodeType, ...] = (
             BulletKey("code", link=True, owns=True),
             BulletKey("openapi", link=True, owns=True),
             BulletKey("detail", link=True),
+            BulletKey("verify", check=True),
             # The walkthrough launch contract. okf-builder has read these off a server node since
             # it was written — the launch contract is documentation, not configuration, which is
             # what lets the walk run standalone — but they were registered nowhere, so the doctor
@@ -936,6 +939,7 @@ UI_TYPES: tuple[UINodeType, ...] = (
             BulletKey("rule"),
             BulletKey("prefers", link=True),
             BulletKey("deprecates", link=True),
+            BulletKey("verify", check=True),
             # The test files covering this node, as on `flow` and for the same reader: the
             # regression node attributes a failing suite test back to the node that owns it.
             # Declared on every type that can carry a `verify:` observation, because the books
@@ -956,6 +960,7 @@ UI_TYPES: tuple[UINodeType, ...] = (
             BulletKey("config", owns=True),
             BulletKey("code", link=True, owns=True),
             BulletKey("detail", link=True),
+            BulletKey("verify", check=True),
             BulletKey("tests", link=True),
         ),
     ),
@@ -987,6 +992,7 @@ UI_TYPES: tuple[UINodeType, ...] = (
             BulletKey("cli", link=True),          # the dev-CLI `cli` node it drives with
             BulletKey("surfaces", link=True),     # screen/server/cli/format nodes it exposes
             BulletKey("code", link=True, owns=True),  # launch entry point `path::symbol`
+            BulletKey("verify", check=True),
             # The durable-stack contract: what a QA session needs to bring this runbook up and
             # decide whether an already-serving one may be adopted. Read by `ostler.qa.runbook`,
             # which folds these plus the `## Steps` sections into the manifest `ensure_stack`
@@ -1321,6 +1327,7 @@ UI_TYPES: tuple[UINodeType, ...] = (
                       properties=("from", "read", "is")),
             # Another fixture this one composes on top of, before its own steps run.
             BulletKey("needs", nested=True, link=True),
+            BulletKey("verify", check=True),
             # Environment variable NAMES this fixture's steps read — never values or mint
             # recipes. The harness resolves each from its own environment at run time; a
             # name declared here that is absent there is an environment fault, not a

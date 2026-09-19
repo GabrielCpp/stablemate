@@ -34,6 +34,7 @@ Canonical order — the order `ostler fmt` will put them in.
 | `entry` | no | by what means this screen is entered from outside in-app navigation |
 | `code` | no | link, **owns** its file — the screen's own implementation |
 | `detail` | no | link — an explanatory [`concept`](concept.md) |
+| `verify` | no | a check — what observing this screen's claims looks like |
 
 All three required keys are required **even when empty**. A screen that omits `requires:` is
 indistinguishable from one that is genuinely unconditional, and reachability cannot tell

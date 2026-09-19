@@ -21,6 +21,7 @@ File type under `docs/features/<service>/ops/`, `type: runbook` in frontmatter.
 | `cli` | no | link — the dev-CLI node it drives with |
 | `surfaces` | no | link — the screen/server/cli/format nodes it exposes |
 | `code` | no | link, **owns** its file — the launch entry point |
+| `verify` | no | a check — what observing this runbook's claims looks like |
 | `entry-url` | no | base of the HTTP readiness probe; its path names the surface's root [`screen`](screen.md) — falls back for `surfaces:`' `base_url` in a compiled QA plan when that surface's own `server` states none |
 | `health-path` | no | joined onto `entry-url` (default `/`) |
 | `identity` | no | substring of the health **body** proving the stack is ours |
