@@ -17,7 +17,7 @@ rather than kebabbing it into a slug.
 | `sig` | no | the signature |
 | `abstract` | no | `true` when it has no implementation here |
 | `does` | no | **mints an obligation** |
-| `raises` | no | **mints an obligation** — what it throws and when |
+| `raises` | no | **mints an obligation** — what it throws and when, or [its own emptiness](../bullet-grammar.md#a-claim-that-states-its-own-emptiness) |
 | `returns` | no | **mints an obligation** — what it gives back |
 | `code` | no | link, **owns** its file |
 | `detail` | no | link — an explanatory [`concept`](concept.md) |

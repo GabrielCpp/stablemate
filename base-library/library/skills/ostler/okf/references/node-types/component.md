@@ -17,7 +17,7 @@ Section type. A `### <id>` under a `## Components` heading, normally in a
 | `role` | **yes** | **mints an obligation** — the ARIA role |
 | `name` | **yes** | **mints an obligation** — the accessible name |
 | `placement` | no | viewport bands, e.g. `width 60-100%, x 0-20%` |
-| `keyboard` | no | **mints an obligation** — how it is reached and operated |
+| `keyboard` | no | **mints an obligation** — how it is reached and operated, or [its own emptiness](../bullet-grammar.md#a-claim-that-states-its-own-emptiness) |
 | `extends` | no | link — the component this specializes |
 | `same-as` | no | link, multi-valued — another node documenting this same component |
 | `parent` | no | link — the component containing it |

@@ -131,6 +131,32 @@ emitted — by **repeating the key**, not by rewording:
 - errors: 409 when the supplied version token is stale
 ```
 
+## A claim that states its own emptiness
+
+Two normative keys can say there is nothing there, and mean it as a finished claim rather than
+a blank: `raises:` on a [`method`](node-types/method.md), and `keyboard:` on a
+[`component`](node-types/component.md) or an [`interaction`](node-types/interaction.md). No
+exception leaves this method; this control is read rather than operated. There is no behaviour
+left for a check to bind to — nothing to provoke, no keystroke to send — so the bullet mints no
+obligation, and neither `undeclared-obligation` nor `uneven-claim-coverage` asks it for a check.
+
+The spelling is `none` or `nothing` **and the reason**:
+
+```markdown
+- raises: nothing, because a refusal is a returned message rather than an error
+- keyboard: none, because the badge is read rather than operated
+```
+
+A bare `- raises: none` is a blank left blank — forgotten, not decided — and stays an open claim
+that owes its check. The `because` is what turns the absence into a fact somebody stands behind,
+and it is the whole difference between the two readings. It is also why the rule is scoped to
+these two keys rather than written over any value that starts with `none`: on `does:` or
+`states:`, an absence is a fact about the *subject*, still there to be read and still provable.
+
+`fixture:` spells its own emptiness the same way for the same reason, but it is an arrangement
+rather than a claim — see [`unarranged-journey`](doctor-codes.md) — so it owes no check either
+way.
+
 ## Document order is the binding
 
 A `verify:`, a `fixture:` or a `capture:` binds to a claim by **position**, not by name

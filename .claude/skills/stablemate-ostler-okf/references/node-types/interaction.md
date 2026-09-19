@@ -29,7 +29,7 @@ Section type. A `### <id>` under a `## Interactions` heading, normally in a
 | `trigger` | **yes** | what fires it |
 | `role` | **yes** | the ARIA role of the control |
 | `name` | **yes** | its accessible name |
-| `keyboard` | **yes** | **mints an obligation** — how it is fired without a pointer |
+| `keyboard` | **yes** | **mints an obligation** — how it is fired without a pointer, or [its own emptiness](../bullet-grammar.md#a-claim-that-states-its-own-emptiness) |
 | `when` | no | **mints an obligation** — the condition it applies under |
 | `exclusive-with` | no | link — a sibling it can never co-render with |
 | `extends` | no | link — the base arm this one narrows, inheriting its control identity (`on:`/`trigger:`/`role:`/`name:`/`keyboard:`), none of its arrangements |
