@@ -208,6 +208,7 @@ def run(graph: Graph, epic_filter: str | None = None, check_schema: bool = True,
     _check_fixture_grammar(graph, f)
     _check_entry_properties(graph, f)
     _check_record_properties(graph, f)
+    _check_undeclared_container_properties(graph, f)
     _check_bullet_value_kinds(graph, ui_data, f)
 
     if graph.profile != "full":
@@ -828,6 +829,56 @@ def _check_entry_properties(graph: Graph, f: list[Finding]) -> None:
                         f"`{key}:` does not admit",
                         path=rel, line=node.line, ref=f"{key}:{prop}",
                         suggestion="one of: " + ", ".join(f"{name}:" for name in spec.properties)))
+
+
+#: A bullet key is spelled like this: a lowercase letter followed by up to 24 more lowercase
+#: letters, digits or hyphens. `_check_undeclared_container_properties` uses it to tell a genuine
+#: `- childkey: value` line apart from a numbered-list item whose "key" is a run of prose.
+_BULLET_KEY_SPELLING = re.compile(r"^[a-z][a-z0-9-]{0,24}$")
+
+
+def _check_undeclared_container_properties(graph: Graph, f: list[Finding]) -> None:
+    """A bullet key the node type does not declare can still bury a bullet key it does.
+
+    `_check_record_properties` catches this when the parent key is itself declared and marked
+    ``record=True`` — the grammar that governs its children is known, so a child spelled like a
+    node key is unambiguous. A key the type never declared has no grammar on file at all, so
+    `model` falls back to treating it as a plain nested list: every descendant, flattened to
+    `"childkey: childvalue"` strings, lands in `UINode.meta[key]` exactly as an undeclared key's
+    children always do — there is no raw markdown to walk here, and no `record:`/`entries:`
+    distinction to consult, because none was ever declared.
+
+    That fallback is why a child key the node type *does* declare can still hide inside an
+    undeclared parent: `- request:` on an `endpoint` is not itself a bullet the type recognizes,
+    so its `- method:`/`- path:` children arrive as flattened strings under `meta["request"]`
+    rather than as the top-level `method:`/`path:` bullets the type is grading against. The
+    parent key being undeclared is *why* the child is invisible, not merely misplaced, which the
+    message says explicitly — the reader needs to know the fix promotes the child out from under
+    a key the node's own type never wrote down.
+
+    One finding per buried child key, not one per parent, matching `_check_record_properties`.
+    A `ref` names one subject so the finding can be closed on its own: promoting `method:` and
+    leaving `path:` under the same parent discharges half the problem, and a ref naming the set
+    would still fire afterwards with a subject that is now partly false.
+    """
+    for node in graph.ui_nodes:
+        declared = registry.declared_keys(node.type)
+        rel = _rel_path(graph, node)
+        for key, value in node.meta.items():
+            if key in declared or not _BULLET_KEY_SPELLING.match(key) or not isinstance(value, list):
+                continue
+            children = [item.split(":", 1)[0].strip() for item in value]
+            hits = [child for child in children if child in declared]
+            if not hits:
+                continue
+            for child in hits:
+                f.append(Finding(
+                    "error", "misnested-bullet",
+                    f"{node.id}: `{child}:` nested under `{key}:` is a property spelling of "
+                    f"{node.type}'s own `{child}:` bullet, but `{key}:` is not a key {node.type} "
+                    f"declares, so it is invisible rather than merely misplaced",
+                    path=rel, line=node.line, ref=f"{key}:{child}", fixable=True,
+                    suggestion=f"promote `- {child}:` to a top-level bullet of the node"))
 
 
 def _check_record_properties(graph: Graph, f: list[Finding]) -> None:

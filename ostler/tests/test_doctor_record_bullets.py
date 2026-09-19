@@ -140,6 +140,73 @@ def test_a_property_spelled_like_a_bullet_key_is_not_also_unknown(repo: Path) ->
     assert _findings(repo, "unknown-record-property") == []
 
 
+def _endpoint_book_with(container_key: str, *children: str) -> str:
+    body = "\n".join(f"  - {child}" for child in children)
+    return f"""---
+type: server
+title: Acme accounts
+---
+# Acme accounts
+
+## Endpoints
+
+### list-accounts
+- {container_key}:
+{body}
+- authorization: an adjuster reads every account on file.
+"""
+
+
+def test_a_bullet_key_buried_under_an_undeclared_container_is_reported(repo: Path) -> None:
+    """`request:` is not a bullet key `endpoint` declares, so its `method:`/`path:` children
+    fall back to the flat-subtree grammar and land in `meta["request"]` as strings — not as the
+    top-level `method:`/`path:` bullets the type actually grades against. One finding per buried
+    child, so each can be closed on its own.
+    """
+    write(repo / ENDPOINT_PATH, _endpoint_book_with("request", "method: GET", "path: /api/accounts"))
+    found = _findings(repo, "misnested-bullet")
+    assert [(f.severity, f.ref) for f in found] == [
+        ("error", "request:method"), ("error", "request:path")]
+    assert "request" in found[0].message and "not a key" in found[0].message
+    assert all(f.suggestion is not None and f.fixable for f in found)
+
+
+def test_the_buried_child_key_is_absent_from_top_level_meta(repo: Path) -> None:
+    """A finding on this branch names a genuinely invisible claim, not a duplicated one.
+
+    If `method:`/`path:` also appeared at the node's own top level, the child key would not be
+    buried — it would be duplicated, which is the too-wide signal this branch must not produce.
+    """
+    write(repo / ENDPOINT_PATH, _endpoint_book_with("request", "method: GET", "path: /api/accounts"))
+    node = _endpoint(repo)
+    assert "method" not in node.meta
+    assert "path" not in node.meta
+
+
+def test_a_child_spelled_like_no_bullet_key_does_not_widen_the_container(repo: Path) -> None:
+    """A container key that never happens to bury a declared spelling stays unreported."""
+    write(repo / ENDPOINT_PATH, _endpoint_book_with("request", "protocol: HTTP/1.1"))
+    assert _findings(repo, "misnested-bullet") == []
+
+
+def test_a_declared_container_is_not_also_read_by_this_branch(repo: Path) -> None:
+    """`response:` is declared and `record=True`, so `_check_record_properties` owns it already;
+    this branch only ever looks at keys `endpoint` never wrote down."""
+    write(repo / ENDPOINT_PATH, _endpoint_book("status: 200"))
+    found = _findings(repo, "misnested-bullet")
+    assert [f.ref for f in found] == ["response:status"]
+
+
+def test_a_prose_parent_spelled_like_no_bullet_key_never_fires(repo: Path) -> None:
+    """The key-ish clause is load-bearing: without it, a numbered-list item whose 'key' is a
+    sentence of prose would be misread as a container bullet, and the promote-to-top-level
+    remedy would be wrong advice for it — that shape belongs to a different finding entirely.
+    """
+    write(repo / ENDPOINT_PATH, _endpoint_book_with(
+        "when the account is missing", "status: 404", "errors: no such account"))
+    assert _findings(repo, "misnested-bullet") == []
+
+
 def test_no_bullet_key_is_both_entries_and_record() -> None:
     """The two say different things about one child, so a key that set both would have no shape."""
     both = [(uitype.name, key.key)
