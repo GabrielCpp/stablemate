@@ -2410,6 +2410,22 @@ _OBSERVATION_KEYS: frozenset[str] = frozenset(
 #: Matched with `fullmatch` against one code span, so it needs no boundary assertions: a span
 #: reading `500ms` or `v1.400` is not the whole of it and simply does not match.
 _STATUS_CODE = re.compile(r"[1-5]\d{2}")
+#: `http_status`/`exit_status` are the only checks in the vocabulary whose one required
+#: argument is a number a normative bullet already states in prose — a status code on
+#: `status:`, an exit code on `exits:` — which is what makes `misbound-status-check`'s
+#: reading provable rather than merely suspicious: the check names a code that is absent
+#: from the claim it bound to and present, verbatim, on a sibling bullet of the same node.
+_STATUS_LIKE_CHECKS = frozenset({"http_status", "exit_status"})
+#: The bullet key, per type, that states the same code a status-shaped `verify:` observes —
+#: `command`'s `exits:`, `endpoint`/`invocation`'s `status:`. Only these three types declare
+#: one (`registry.UI_TYPES`). `errors:` is deliberately not among the values here even though
+#: `endpoint` also declares it: `errors:` is prose about the refusal arm, not a closed list of
+#: codes, and a real book legitimately writes `http_status(401, …)` in its *text* — "a stale
+#: token is rejected the way an anonymous call is (401)" — while binding the actual 401 check
+#: correctly elsewhere. Reading `errors:` as a donor would call that a misbinding; it would
+#: also make this code a suppression list, quietly cleared by mentioning a number in prose
+#: rather than by fixing where the check sits.
+_STATUS_DONOR_KEY = {"command": "exits", "endpoint": "status", "invocation": "status"}
 #: Read out of code spans on `_STATUS_CODE`'s reasoning, and matched with `search` rather than
 #: `fullmatch` because a span naming a failure often qualifies it — `SlugCollisionError (409)`,
 #: `errors.ManifestConflict`. The boundary assertions stay for that reason.
@@ -2422,6 +2438,16 @@ _SEMICOLON_CLAUSE = re.compile(r";\s+(?:\S+\s+){2}\S")
 #: rule that fires on `- does: creates the page and its slug` is a rule people learn to ignore.
 _CLAUSE_AND = re.compile(r"[,;]\s+and\b")
 _ANY_AND = re.compile(r"\band\b")
+
+
+def _code_in_text(code: int, text: str) -> bool:
+    """True when *code* appears in *text* as its own number, not as a run inside a longer one.
+
+    A plain substring test would let a check for `2` match inside a claim reading `"200"`.
+    Digit-boundary assertions rather than `\\b`, because `\\b` also accepts a boundary
+    against a letter and would still pass `2` against `"v2"`.
+    """
+    return re.search(rf"(?<!\d){code}(?!\d)", text) is not None
 
 
 def _status_codes(value: str) -> list[str]:
@@ -3860,6 +3886,49 @@ def _check_ui(graph: Graph, f: list[Finding],
                 path=rel, line=node.line,
                 ref=refs_mod.bullet_ref(node.id, heavy_key, heavy_index),
                 suggestion=f"- {light_key}:{light_index} …\n- {verify_key}: …"))
+
+        donor_key = _STATUS_DONOR_KEY.get(node.type)
+        if donor_key:
+            _, indexed_claim_checks = registry.attributed_check_bullets(
+                node.type, node.bullet_order, node.combiners)
+            by_verify_index: dict[int, list[tuple[tuple[str, int], str]]] = {}
+            for claim_pos, values in indexed_claim_checks.items():
+                for verify_index, value in values:
+                    by_verify_index.setdefault(verify_index, []).append((claim_pos, value))
+            donor_bullets = list(enumerate(_bullet_values(node.meta.get(donor_key, "")), 1))
+            for verify_index in sorted(by_verify_index):
+                entries = by_verify_index[verify_index]
+                value = entries[0][1]
+                parsed = checks.parse_check(value)
+                if isinstance(parsed, checks.Refusal) or parsed.name not in _STATUS_LIKE_CHECKS:
+                    continue
+                code = parsed.args.get("code")
+                if not isinstance(code, int) or isinstance(code, bool):
+                    continue
+                if any(_code_in_text(code, claim_universe.get(claim_pos, ""))
+                       for claim_pos, _ in entries):
+                    continue
+                donor = next(
+                    (db for db in donor_bullets if _code_in_text(code, db[1])), None)
+                if donor is None:
+                    continue
+                donor_index, donor_value = donor
+                claim_names = ", ".join(
+                    f"{claim_key}:{claim_index}"
+                    for claim_key, claim_index in sorted({cp for cp, _ in entries}))
+                f.append(Finding(
+                    "error", "misbound-status-check",
+                    f"{node.id}: `{verify_key}:{verify_index}` ({value}) names {code}, which is "
+                    f"absent from `{claim_names}` — the claim(s) document order bound "
+                    f"it to — but present, verbatim, on this node's own `{donor_key}:"
+                    f"{donor_index}` ({_prose(donor_value)[:60]}); the check was written after "
+                    f"every claim and landed on the last one above it rather than the bullet "
+                    f"naming its own code",
+                    path=rel, line=node.line,
+                    ref=refs_mod.bullet_ref(node.id, verify_key, verify_index),
+                    fixable=True,
+                    suggestion=(f"- {donor_key}:{donor_index} …\n"
+                                f"- {verify_key}: {value}")))
 
         # A `command` node's `usage:`/`flags:`/`args:` are the invocation's prose synopsis — a
         # set of ways to call it, not any one of them — so a claim checked with `exits:`/

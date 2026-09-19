@@ -683,6 +683,25 @@ def attributed_checks(
     return _attributed(node_type, bullet_order, combiners, check_keys(node_type))
 
 
+def attributed_check_bullets(
+    node_type: str, bullet_order: Iterable[Sequence[Any]], combiners: Mapping[int, str]
+) -> tuple[list[tuple[int, str]], dict[tuple[str, int], list[tuple[int, str]]]]:
+    """`attributed_checks`, keeping each check's own authored `verify:` index beside its value.
+
+    `attributed_checks` throws the authored bullet away the moment a check fans out across a
+    nested `all` list's children: its per-claim half is keyed by *claim*, and a fanned check's
+    value is filed under every claim it fans to with nothing left to say those several filings
+    came from one bullet. That is fine for a reader that only asks "is this claim covered" —
+    but a reader that REPORTS against the check's own bullet, so a book can be pointed at the
+    one line to fix, needs the bullet's identity back, and a fan-out makes that identity
+    non-invertible from the claim side: reconstructing "the nth authored check" from the shape
+    of the claim map assumes one check per claim, which is exactly what `does: all` breaks.
+    `misbound-status-check` is that reader. Same engine as `attributed_checks`, same walk,
+    over the same `check_keys(node_type)` — only the index survives here.
+    """
+    return _attributed_indexed(node_type, bullet_order, combiners, check_keys(node_type))
+
+
 #: `raises:`/`keyboard:` bullets whose own value can say there is nothing here — no error
 #: leaves this method, no key operates this control — and, unlike every other normative key,
 #: that answer is itself a complete claim with nothing behind it left to check: there is no
@@ -855,12 +874,40 @@ def _attributed(
     its children is a gap `doctor` reports as `unobserved-branch`. A group that states no word
     is `unstated-claim-combiner` — undetermined, and it keeps the historical fan-out only so
     the finding is the thing the author reads rather than a silent change of meaning.
+
+    A thin projection over `_attributed_indexed`: the values it returns, index dropped. Kept
+    separate from that engine because every existing caller here parses a bare value and knows
+    nothing of authored-bullet identity — `attributed_check_bullets` is the one caller that
+    needs the index back, and it is the one place fan-out is invertible from.
+    """
+    contract, per_bullet = _attributed_indexed(node_type, bullet_order, combiners, keys)
+    return (
+        [value for _, value in contract],
+        {claim: [value for _, value in values] for claim, values in per_bullet.items()},
+    )
+
+
+def _attributed_indexed(
+    node_type: str,
+    bullet_order: Iterable[Sequence[Any]],
+    combiners: Mapping[int, str],
+    keys: Sequence[str],
+) -> tuple[list[tuple[int, str]], dict[tuple[str, int], list[tuple[int, str]]]]:
+    """`_attributed`'s engine: the same walk, keeping each value's own authored per-key index.
+
+    There is exactly one walk of document order that decides which normative bullet a check,
+    fixture, act or capture binds to; `_attributed` and `attributed_check_bullets` are two
+    projections of it, not two binders that could drift apart. The index is 1-based, counts
+    occurrences of the *attached* key alone (not the normative bullet it binds to), in document
+    order — the same count `refs.bullet_ref(node.id, key, index)` mints an obligation id from —
+    so a caller that needs to point at the authored bullet a value came from can.
     """
     normative = set(normative_keys(node_type))
     observing = set(keys)
-    contract: list[str] = []
-    per_bullet: dict[tuple[str, int], list[str]] = {}
+    contract: list[tuple[int, str]] = []
+    per_bullet: dict[tuple[str, int], list[tuple[int, str]]] = {}
     counts: dict[str, int] = {}
+    observed_counts: dict[str, int] = {}
     owner: list[tuple[str, int]] = []
     authored = -1
     for row in bullet_order:
@@ -871,12 +918,14 @@ def _attributed(
                 owner, authored = [], bullet
             owner.append((key, counts[key]))
         elif key in observing:
+            observed_counts[key] = observed_counts.get(key, 0) + 1
+            index = observed_counts[key]
             if not owner:
-                contract.append(value)
+                contract.append((index, value))
             if combiners.get(authored) == "branches":
                 continue
             for target in owner:
-                per_bullet.setdefault(target, []).append(value)
+                per_bullet.setdefault(target, []).append((index, value))
     return contract, per_bullet
 
 
