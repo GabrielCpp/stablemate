@@ -149,12 +149,20 @@ timeout 30 ostler scaffold endpoint create-link --in docs/features/acme/http/lin
 - fixture: signed_in_editor
 ```
 
+The `fixture:` bullet is also what makes the endpoint's claims observable at all. An
+endpoint's checks run in a scenario compiled per book file, and that scenario's world is
+whatever the file's `fixture:` bullets arrange — so a file whose endpoints arrange nothing
+is observed against whatever the scenario before it left behind. An endpoint whose claims
+hold in whatever world the scenario finds says so with a reason: `- fixture: none, because
+the route lists whatever is there`. A file that states neither is `unarranged-scenario`, and
+no scenario is compiled for it.
+
 ## Doctor codes it can trip
 
 `compound-normative-bullet`, `overlong-normative-bullet`, `undeclared-obligation`,
 `weak-check`, `unstated-precondition`, `unparsed-check`, `dangling-code-ref`,
 `missing-code-symbol`, `unknown-book-fixture`, `unarranged-request-body`,
-`invalid-http-method`, `misnested-bullet`. See
+`invalid-http-method`, `misnested-bullet`, `unarranged-scenario`. See
 [../doctor-codes.md](../doctor-codes.md).
 
 ## When bullets are not enough
