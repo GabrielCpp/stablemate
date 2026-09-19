@@ -2,9 +2,10 @@
 
 A plan written by looking at the code tests what the code already does. The book is the
 only artefact that says what the code is *supposed* to do, and — unlike the code — it says
-it in a grammar: `verify:` values are parsed calls (`checks.parse_check`), `route:` and
-`entry:` are addresses, and `attributed_checks` already binds each call to the one claim it
-observes. That is enough to emit the assertion half of a plan mechanically, with every
+it in a grammar: `verify:` values are parsed calls (`checks.parse_check`), `route:` is an
+address, and `attributed_checks` already binds each call to the one claim it observes.
+(`entry:` is not an address — `route:` is the key that holds one, and `entry:` says by what
+means the screen is reached from outside in-app navigation, in whatever words fit.) That is enough to emit the assertion half of a plan mechanically, with every
 `covers=` list correct by construction rather than by an author's recollection.
 
 What the book does *not* carry is the arrangement: how to reach the state the assertion

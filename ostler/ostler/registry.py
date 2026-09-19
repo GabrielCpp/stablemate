@@ -860,10 +860,15 @@ UI_TYPES: tuple[UINodeType, ...] = (
             BulletKey("route", required=True, locator=True, address=True, value_kind="route"),
             BulletKey("requires", required=True, nested=True, link=True),
             BulletKey("params", required=True, nested=True, link=True, locator=True),
-            # Optional, and a claim when present: this screen is entered from outside in-app
-            # navigation (app root, emailed deep link, OAuth callback) and the value says how.
-            # It exempts the screen from the reachability check, so it is not a silencer.
-            BulletKey("entry", locator=True, value_kind="door"),
+            # Optional: this screen is entered from outside in-app navigation (app root, emailed
+            # deep link, OAuth callback), and the value says *how* — not where. Where is `route:`
+            # above, which is `required=True`, so every screen already states its address and an
+            # `entry:` that restates it adds nothing. It carries no `value_kind` for that reason.
+            # It used to carry `"door"` (= `reach.is_route`), which made prose illegal — and
+            # `reach.prose_entry` was already written to consume exactly that prose, so the two
+            # modules disagreed in writing about the same key. Held to the route grammar the only
+            # legal value was a copy of the sibling above it, which is what the corpus filled in.
+            BulletKey("entry", locator=True),
             BulletKey("detail", link=True),
         ),
     ),

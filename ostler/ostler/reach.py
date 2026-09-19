@@ -213,7 +213,6 @@ def is_route(value: str) -> bool:
 
 #: Why `is_route` said no, in the book's own terms — kept beside the predicate it describes so
 #: a caller reporting the reason and a change to the rule stay one edit apart, not two files.
-NOT_A_ROUTE_REASON = "it is prose, not a route (a leading `/`) or an absolute `http(s)://` URL"
 
 
 def _norm_path(path: str) -> str:

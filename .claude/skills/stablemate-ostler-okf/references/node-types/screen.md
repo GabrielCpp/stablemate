@@ -31,7 +31,7 @@ Canonical order — the order `ostler fmt` will put them in.
 | `route` | yes | the path this screen is addressed by |
 | `requires` | yes | nested; each child resolves as a link — the preconditions to be here |
 | `params` | yes | nested; each child resolves as a link — route/query parameters |
-| `entry` | no | this screen is entered from outside in-app navigation |
+| `entry` | no | by what means this screen is entered from outside in-app navigation |
 | `code` | no | link, **owns** its file — the screen's own implementation |
 | `detail` | no | link — an explanatory [`concept`](concept.md) |
 
@@ -43,17 +43,22 @@ Reachability starts at the **root**: the screen whose `route:` is the path of th
 server `entry-url:` (the [`server`](runbook.md) marked `walkthrough: true`), or `/` when no
 contract states one. Every other screen has to be reached from it by `leads-to:` hops.
 
-`entry:` is a claim, not a silencer. It says the screen is reached from outside in-app
-navigation — an emailed deep link, an OAuth callback — and its value is the **route** that
-does it: `entry: /reset/:token`, or an absolute URL. Only a route-valued `entry:` seeds
-reachability, because a walk can open an address and cannot open a description. Prose there
-("reached by typing the URL", "the app root") documents nothing the check can use, so the
-screen stays `unreachable-screen` until a component links to it or the value becomes a route
-&mdash; and the prose itself is now the finding, not merely an omission: `entry:` declares the
-`door` value kind, so a value that is not a route or an absolute URL is `unparsable-bullet-value`
-(see [../doctor-codes.md](../doctor-codes.md)). Stating the key is not the same as saying
-something with it. Where the screen genuinely has no outside door, **delete the bullet** &mdash;
-`entry:` is optional, and an unwritten claim is honest where an unusable one is not.
+`entry:` says the screen is reached from outside in-app navigation &mdash; an emailed deep
+link, an OAuth callback, a URL the operator types &mdash; and the value says by what **means**.
+Not where: where is `route:` above, which is required on every screen, so the address is
+already written down and an `entry:` that repeats it states nothing twice. `entry: /policies`
+on a screen whose `route:` is `/policies` is the shape to delete.
+
+The value takes whatever form says the means. A route or absolute URL (`entry: /reset/:token`)
+additionally **seeds reachability** &mdash; a walk can open an address, so the screen counts as
+reached without a `leads-to:` hop into it. Prose (`entry: the app root, typed by hand`) does
+not seed the walk, because there is nothing there to open; it is read, but the screen stays
+`unreachable-screen` until a component links to it. Both spellings are legal: the key was
+briefly held to a route grammar, which made prose `unparsable-bullet-value` and left the only
+legal value a copy of the `route:` above it &mdash; the grammar is retired.
+
+Where the screen genuinely has no outside door, **delete the bullet**: `entry:` is optional,
+and an unwritten claim is honest where an invented one is not.
 
 `route:` declares the `route` value kind: it must spell a path, and a value that is not one
 at all (prose, a bare framework route name) is `unparsable-bullet-value`. A *parameterised* path

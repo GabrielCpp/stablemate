@@ -61,13 +61,16 @@ def test_a_valid_http_method_is_clean(repo: Path) -> None:
     assert _findings(repo, "unparsable-bullet-value") == []
 
 
-def test_a_prose_entry_is_reported(repo: Path) -> None:
+def test_a_prose_entry_is_clean(repo: Path) -> None:
+    """`entry:` says by what means the screen is reached, and a means is not an address.
+
+    It was held to a route grammar once, which made this the only illegal spelling of the
+    one thing the key exists to say. `reach.prose_entry` reads exactly this value, so the
+    grammar and the consumer disagreed in writing about the same bullet.
+    """
     write(repo / SCREEN_PATH, _screen_book(entry="no; it is reached from the dashboard"))
-    found = _findings(repo, "unparsable-bullet-value")
-    entry_findings = [f for f in found if "#entry:" in f.ref]
-    assert len(entry_findings) == 1
-    assert "entry: no; it is reached from the dashboard" in entry_findings[0].message
-    assert "door" in entry_findings[0].message
+    found = [f for f in _findings(repo, "unparsable-bullet-value") if "#entry:" in f.ref]
+    assert found == []
 
 
 def test_a_route_valued_entry_is_clean(repo: Path) -> None:

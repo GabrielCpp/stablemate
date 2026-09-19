@@ -21,10 +21,6 @@ directly and composes it into this module's message shape itself, for every driv
 
 Each entry below delegates to an existing reader:
 
-- ``"door"`` — :func:`ostler.reach.is_route`, the exact predicate that decides whether a
-  ``screen.entry`` value seeds reachability, with its reason kept beside it as
-  :data:`ostler.reach.NOT_A_ROUTE_REASON`. Prose fails it precisely because the reachability
-  walk already treats prose as unusable.
 - ``"url"`` — an absolute URL: ``urlsplit`` with a ``http``/``https`` scheme and a non-empty
   netloc. No existing consumer parses ``server.entry-url``/``runbook.entry-url`` today beyond
   using it as a base to join a health path onto, so this is the one kind stated directly rather
@@ -47,13 +43,6 @@ from urllib.parse import urlsplit
 
 from ostler.qa.compile import _HTTP_METHODS
 from ostler.qa.runbook import bullet_text
-from ostler.reach import NOT_A_ROUTE_REASON, is_route
-
-
-def _door(value: str) -> str:
-    if is_route(bullet_text(value)):
-        return ""
-    return NOT_A_ROUTE_REASON
 
 
 def _url(value: str) -> str:
@@ -71,7 +60,6 @@ def _http_method(value: str) -> str:
 
 #: kind name -> parser. Returns ``""`` when *value* is acceptable, a short human reason otherwise.
 VALUE_KINDS: dict[str, Callable[[str], str]] = {
-    "door": _door,
     "url": _url,
     "http-method": _http_method,
 }
