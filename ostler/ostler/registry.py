@@ -245,10 +245,28 @@ REGISTRY_BY_NAME: dict[str, EntityType] = {t.name: t for t in REGISTRY}
 # (skeleton).
 @dataclass(frozen=True)
 class BulletKey:
-    """One recognized metadata bullet inside a UI node (``- key: value``)."""
+    """One recognized metadata bullet inside a UI node (``- key: value``).
+
+    ``nested``, ``entries`` and ``record`` are the three container grammars, and what separates
+    them is what a *child* is. ``nested`` alone: the value is a flat list of claims and every
+    descendant at any depth is one of them. ``nested`` with ``entries``: a list of *things that
+    have claims*, so a direct child is one value and a grandchild is that value's property.
+    ``nested`` with ``record``: **one** thing with named properties, so a direct child is a
+    ``- name: value`` property of this bullet — not a value of the key, and not an item of a
+    list. A key is at most one of the two; both are meaningful only where ``nested`` is set.
+
+    The third shape is the endpoint's ``response:``. Written under the first, ``- media:`` and
+    ``- body:`` flatten to the *strings* ``"media: ..."`` and ``"body: ..."``, recoverable only
+    by splitting on a colon that occurs inside every JSON body a book writes there; written
+    under the second, ``media`` would be an entry headline rather than a key. Flattening the
+    properties up to the node instead is not the same statement: ``arrange:`` already means a
+    request body the step's own performer sends, so a top-level ``body:`` could not say which
+    side of the call it describes. The container is part of what the child says.
+    """
     key: str
     required: bool = False
     nested: bool = False   # ``does:`` — value is a nested-bullet list, one child per effect
+    record: bool = False
     entries: bool = False  # ``provides:``/``flags:`` — the nested-bullet list is one of *things
                            # that have claims*, not one of claims: each direct child is one value
                            # (``count — the number of widgets the directory holds``), and its own
@@ -1109,6 +1127,7 @@ UI_TYPES: tuple[UINodeType, ...] = (
             BulletKey("does", nested=True, normative=True, locator=True),
             BulletKey("emits"),
             BulletKey("consumes"),
+            BulletKey("response", nested=True, record=True),
             # The route's outcomes, one claim per value — declared here so `fmt` can order them
             # between the effect and its grounding (`does → status → errors → auth → code →
             # verify`) and so a `verify:` written under one binds to it. `error` and `authorization`

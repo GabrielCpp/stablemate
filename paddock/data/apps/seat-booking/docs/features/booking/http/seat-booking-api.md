@@ -34,13 +34,13 @@ confirming a hold has to quote the number the caller was given.
   - answers `200` with `{"status": "ok"}` as soon as the process is serving, reading no ledger.
 - verify: http_status(200, path="/healthz")
 - verify: json_path("status", equals="ok")
+- response:
+  - media: `application/json`
+  - body: `{"status": "ok"}`
 - code: app/service.py::Handler.do_GET@75821d833adb
 - parent: [Seat booking API](#seat-booking-api)
 - request:
   - body: none
-- response:
-  - media: `application/json`
-  - body: `{"status": "ok"}`
 
 ### get-seat-map
 
@@ -62,17 +62,17 @@ confirming a hold has to quote the number the caller was given.
   - lists a taken seat with its state rather than dropping it, so the map keeps its shape as seats are sold.
 - verify: count(subject="seats", equals=12)
 - verify: json_path("seats[0].state", equals="booked")
-- code: app/booking.py::seat_map@e84e914263db
-- parent: [Seat booking API](#seat-booking-api)
-- refs: [seat](../concepts/seat.md)
-- request:
-  - body: none
 - response:
   - media: `application/json`
   - body: `{"seats": [{"id": str, "row": str, "number": int, "state": str, "version": int, "booking"?: {"id": str, "name": str}}, …]}`
   - notes: `booking` is present only on a `booked` seat, and is the map's only field that tells one
     booking from another — the field
     [post-seat-booking](#post-seat-booking)'s durability claim is observed through.
+- code: app/booking.py::seat_map@e84e914263db
+- parent: [Seat booking API](#seat-booking-api)
+- refs: [seat](../concepts/seat.md)
+- request:
+  - body: none
 
 ### post-seat-hold
 
@@ -83,6 +83,9 @@ confirming a hold has to quote the number the caller was given.
   - moves a free seat to `held`, bumps its version, and returns the hold id together with the version the caller must quote to confirm.
 - verify: http_status(201, path="/api/seats/A1/hold")
 - verify: json_path("hold.version", equals=1)
+- response:
+  - media: `application/json`
+  - body: `{"hold": {"id": str, "seat": str, "version": int}}`
 - errors: `409 Seat Unavailable` when the seat is already held or already booked, and leaves the
   ledger as it was.
 - verify: http_status(409, title="Seat Unavailable", path="/api/seats/A1/hold")
@@ -95,9 +98,6 @@ confirming a hold has to quote the number the caller was given.
 - request:
   - path variables: `seat` — a seat id such as `A1`; rows `A`-`C`, numbers `1`-`4`.
   - body: none
-- response:
-  - media: `application/json`
-  - body: `{"hold": {"id": str, "seat": str, "version": int}}`
 
 ### delete-seat-hold
 
@@ -113,6 +113,9 @@ confirming a hold has to quote the number the caller was given.
   - touches the released seat and no other — every other seat keeps its state, its version and its booking.
 - verify: unchanged(subject="seats", except_fields=["A1.state", "A1.version", "A1.hold"])
 - verify: keys_unchanged(subject="seats")
+- response:
+  - media: none
+  - body: empty
 - errors: `409 Seat Not Held` when the seat is free or already booked, so a release cannot undo a
   confirmed booking.
 - verify: http_status(409, title="Seat Not Held", path="/api/seats/B1/hold")
@@ -125,9 +128,6 @@ confirming a hold has to quote the number the caller was given.
 - request:
   - path variables: `seat` — a seat id such as `A1`.
   - body: none
-- response:
-  - media: none
-  - body: empty
 
 ### post-seat-booking
 
@@ -138,6 +138,9 @@ confirming a hold has to quote the number the caller was given.
   - turns a held seat into a booking under the given name, bumps its version, and returns the booking id.
 - verify: http_status(201, path="/api/seats/A1/booking")
 - verify: json_path("booking.name", equals="Dana Okonkwo")
+- response:
+  - media: `application/json`
+  - body: `{"booking": {"id": str, "seat": str, "name": str}}`
 - errors: `400 Version Required` when the body carries no integer `version`.
 - verify: http_status(400, title="Version Required", path="/api/seats/A1/booking")
 - errors: `400 Name Required` when the body carries no non-blank `name`.
@@ -165,9 +168,6 @@ confirming a hold has to quote the number the caller was given.
 - request:
   - path variables: `seat` — a seat id such as `A1`.
   - body: `{"version": int, "name": str}`
-- response:
-  - media: `application/json`
-  - body: `{"booking": {"id": str, "seat": str, "name": str}}`
 
 ### delete-showing
 
@@ -183,14 +183,14 @@ confirming a hold has to quote the number the caller was given.
   - is idempotent: resetting a showing that is already empty answers `204` and changes nothing.
 - verify: http_status(204, path="/api/showing")
 - verify: unchanged(subject="seats", except_fields=[])
+- response:
+  - media: none
+  - body: empty
 - code: app/service.py::Handler._reset_showing@75821d833adb
 - parent: [Seat booking API](#seat-booking-api)
 - refs: [seat ledger](../concepts/seat-ledger.md)
 - request:
   - body: none
-- response:
-  - media: none
-  - body: empty
 
 The showing is twelve seats and there is no second one, so every hold and every booking spends a
 finite resource that nothing else returns. That is fine for an audience and wrong for anything that

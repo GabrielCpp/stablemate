@@ -18,6 +18,7 @@ Each recognized bullet is a `BulletKey` (`registry.py:230-258`). A key can carry
 | `required` | The type must carry the bullet, even to say `none`. Absent → `missing-required-bullet` (error, fixable by `scaffold`). |
 | `nested` | The value is a nested-bullet list, one child per effect (`does:`). Each child is counted separately. |
 | `entries` | The nested list is one of *things that have claims*, not one of claims (`provides:`, `flags:`). Each direct child is one value; that child's own children are **its properties**, not further values of this key. Meaningful only with `nested`. |
+| `record` | The nested block is **one thing with named properties**, not a list of anything (`response:` on an endpoint). Each direct child is a `- name: value` property of this bullet. Meaningful only with `nested`, and never with `entries` — the two say different things about the same child. A child spelled like a bullet key of the node type is `misnested-bullet`. |
 | `properties` | The property vocabulary an `entries` key admits. Empty means *undeclared, so unchecked* — not "no property allowed". A property outside a declared vocabulary is `unknown-entry-property`. |
 | `link` | The value is a reference `ostler` resolves — a doc link or a code ref. Unresolvable → `dangling-link` / `unresolved-relation` / `missing-anchor`. |
 | `check` | The value is a named check from `ostler.checks` — an **observation**. Parsed and grounded against the vocabulary. |

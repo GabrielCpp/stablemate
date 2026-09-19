@@ -46,13 +46,13 @@ The journeys that stitch these routes together are [file a claim](../flows/file-
   - answers `200` with `{"status": "ok"}` as soon as the process is serving, reading no ledger and asking for no identity.
 - verify: http_status(200, path="/healthz")
 - verify: json_path("status", equals="ok")
+- response:
+  - media: `application/json`
+  - body: `{"status": "ok"}`
 - code: app/api/service.go::GetHealth@dc8c26a0c022
 - parent: [Claims API](#claims-api)
 - request:
   - body: none
-- response:
-  - media: `application/json`
-  - body: `{"status": "ok"}`
 
 ### submit-claim
 
@@ -63,6 +63,9 @@ The journeys that stitch these routes together are [file a claim](../flows/file-
 - verify: http_status(201, path="/api/claims")
 - verify: json_path("claim.status", equals="Submitted")
 - verify: json_path("claim.version", equals="1")
+- response:
+  - media: `application/json`
+  - body: `{"claim": {…}}`
 - errors: `422` with an `errors` object keyed by field name for every rule the submission is
   refused by — a blank policy number, an incident date that is not a calendar date, an amount that
   is not a positive number of cents, and a blank description.
@@ -99,9 +102,6 @@ The journeys that stitch these routes together are [file a claim](../flows/file-
 - refs: [claim ledger](../concepts/claim-ledger.md)
 - request:
   - body: `{"policy_number": str, "incident_date": str, "amount_cents": int, "description": str}`
-- response:
-  - media: `application/json`
-  - body: `{"claim": {…}}`
 
 ### list-claims
 
@@ -112,6 +112,9 @@ The journeys that stitch these routes together are [file a claim](../flows/file-
 - verify: http_status(200, path="/api/claims")
 - verify: json_path("claims[0].version", absent=false)
 - verify: json_path("claims[0].status", matches="Submitted|Approved|Denied")
+- response:
+  - media: `application/json`
+  - body: `{"claims": [{"id": str, "policy_number": str, "holder_uid": str, "incident_date": str, "amount_cents": int, "description": str, "status": str, "version": int, "decision_note"?: str}, …]}`
 - errors: `401 Unauthorized` when the request carries no verified identity. The identity is
   read before the ledger is, so an unauthenticated call learns nothing about what is on file.
 - verify: http_status(401, title="Unauthorized", path="/api/claims")
@@ -128,9 +131,6 @@ The journeys that stitch these routes together are [file a claim](../flows/file-
 - refs: [claim tenancy](../concepts/claim-tenancy.md)
 - request:
   - body: none
-- response:
-  - media: `application/json`
-  - body: `{"claims": [{"id": str, "policy_number": str, "holder_uid": str, "incident_date": str, "amount_cents": int, "description": str, "status": str, "version": int, "decision_note"?: str}, …]}`
 
 ### get-claim
 
@@ -140,6 +140,9 @@ The journeys that stitch these routes together are [file a claim](../flows/file-
   - returns the one claim the id names, with the version a decision has to quote.
 - verify: http_status(200, path="/api/claims/cl-1001")
 - verify: json_path("claim.id", equals="cl-1001")
+- response:
+  - media: `application/json`
+  - body: `{"claim": {…}}`
 - errors: `404 No Such Claim` for an id that is not on the books.
 - verify: http_status(404, title="No Such Claim", path="/api/claims/cl-9999")
 - errors: `401 Unauthorized` when the request carries no verified identity, decided before the
@@ -156,9 +159,6 @@ The journeys that stitch these routes together are [file a claim](../flows/file-
 - request:
   - path variables: `id` — the claim's own identifier, such as `cl-1001`.
   - body: none
-- response:
-  - media: `application/json`
-  - body: `{"claim": {…}}`
 
 ### decide-claim
 
@@ -169,6 +169,9 @@ The journeys that stitch these routes together are [file a claim](../flows/file-
 - verify: http_status(200, path="/api/claims/cl-1001/decision")
 - verify: json_path("claim.status", equals="Approved")
 - verify: json_path("claim.version", equals="2")
+- response:
+  - media: `application/json`
+  - body: `{"claim": {…}}`
 - errors: `422` with `errors.decision` for a decision outside `approve`/`deny`, and
   `errors.version` when no positive integer version is quoted.
 - verify: http_status(422, path="/api/claims/cl-1001/decision")
@@ -196,9 +199,6 @@ The journeys that stitch these routes together are [file a claim](../flows/file-
 - request:
   - path variables: `id` — the claim's own identifier.
   - body: `{"decision": "approve"|"deny", "version": int, "note"?: str}`
-- response:
-  - media: `application/json`
-  - body: `{"claim": {…}}`
 
 ### reset-claims
 
@@ -208,6 +208,9 @@ The journeys that stitch these routes together are [file a claim](../flows/file-
   - empties the ledger — every claim dropped, numbering back to `cl-1001` — and answers `204` with no body.
 - verify: http_status(204, path="/api/claims")
 - verify: count(subject="claims", equals=0)
+- response:
+  - media: none
+  - body: empty
 - authorization: `403 Adjusters Only` unless the token carries the `adjuster` role, so the one
   destructive route is the one route whose role gate is provable from both sides.
 - verify: http_status(403, title="Adjusters Only", path="/api/claims")
@@ -217,9 +220,6 @@ The journeys that stitch these routes together are [file a claim](../flows/file-
 - refs: [claim ledger](../concepts/claim-ledger.md)
 - request:
   - body: none
-- response:
-  - media: none
-  - body: empty
 
 A claim number is spent the moment it is issued and nothing returns it, and one holder may file
 only once per policy per incident date. Anything that drives this service more than once — a QA

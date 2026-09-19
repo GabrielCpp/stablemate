@@ -1,0 +1,42 @@
+### `misnested-bullet` — a bullet key is nested under a record, where it states something else
+
+A **record** key holds one thing with named properties: its direct children are that thing's
+`- name: value` properties, not claims of the node. `response:` on an endpoint is the one such
+key today.
+
+```markdown
+- response:
+  - media: `application/json`
+  - body: `{"claim": {"id": str, "status": str}}`
+```
+
+This fires when one of those children is spelled like a bullet key the node type itself
+declares. `- status: 200` written under `- response:` reads as a property of the response, and
+the endpoint's own `status:` — the claim a scenario is held to, the one that mints an
+obligation — is then absent from the node. Both readings are grammatical and only one is what
+the author meant, which is why the nesting is reported rather than resolved in favour of
+either.
+
+Fix it by promoting the bullet, keeping its value:
+
+```markdown
+- response:
+  - media: `application/json`
+- status: 200 with the claim in the body
+```
+
+Mind where it lands. `fmt` orders bullets by the type's canonical order, and a `verify:`,
+`fixture:` or `arrange:` binds to the nearest claim **above** it — so a promoted `status:`
+placed below an existing arm's grounding steals that grounding from the claim it was written
+for. Promote it into its canonical position and leave every attached bullet under the claim it
+already had.
+
+**This is not `unknown-entry-property`.** That code is about an `entries:`-shaped key
+(`provides:`, `flags:`), whose children are *things that have claims* rather than the
+properties of one thing, and it fires on a property outside a vocabulary the key declared. This
+one fires on a record child whose spelling collides with the node's own grammar, and its remedy
+is to move the bullet out, never to rename it.
+
+**A child of any other spelling is not this finding.** No record key declares a property
+vocabulary yet, so a `- schema:` under `- response:` is unchecked — an undeclared vocabulary is
+held to nothing. Do not delete such a child to clear a finding it did not cause.

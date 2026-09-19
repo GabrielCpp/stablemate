@@ -19,6 +19,7 @@ Section type. A `### <id>` under a `## Endpoints` heading in a `server` file. It
 | `does` | no | nested; **mints an obligation** per value |
 | `emits` | no | **mints an obligation** (via the shared set) |
 | `consumes` | no | **mints an obligation** (via the shared set) |
+| `response` | no | a record — what comes back, as named properties |
 | `status` | no | **mints an obligation** — the route's outcomes, one claim per value |
 | `errors` | no | **mints an obligation** — the refusal arm |
 | `error` | no | alias of `errors` |
@@ -71,6 +72,34 @@ does, and is held to the same bar: it must spell a path. A parameterised path (`
 is ordinary and legal here — an endpoint is a route *family* by nature, and nothing downstream
 asks an endpoint to identify one page.
 
+## `response`
+
+`response:` is a **record**: one thing with named properties, written as a nested block whose
+direct children are `- name: value` pairs.
+
+```markdown
+- response:
+  - media: `application/json`
+  - body: `{"claim": {"id": str, "status": str}}`
+```
+
+It is the third container shape the grammar has, and the distinction is what a *child* is.
+`does:` is a flat list of claims, so every descendant is itself a value. `provides:`/`flags:`
+are lists of things that have claims, so a direct child is one value and a grandchild is that
+value's property. A record is *one* thing, so a direct child is a property of it. Written as
+the first shape — which is what an undeclared key falls back to — `- media:` and `- body:`
+flatten into the strings `"media: ..."` and `"body: ..."`, and splitting them back apart means
+picking a colon, which every JSON body written here has several of.
+
+`response:` states nothing normative and mints no obligation. What the route answers with is
+already claimed by `status:` and `errors:` above it, and a second claim about one fact is a
+fact that can disagree with itself.
+
+**Do not nest a bullet key under it.** `- status: 200` written under `- response:` is a
+property of the response, and this endpoint's own `status:` claim — the one a scenario is held
+to — is then absent. Both readings are grammatical, so the nesting is reported rather than
+guessed at: `misnested-bullet`, remedied by promoting the bullet to the node's top level.
+
 ## Arranging a request body
 
 `consumes:` describes the shape a route accepts; it is a schema, not a value the run can send.
@@ -117,7 +146,7 @@ timeout 30 ostler scaffold endpoint create-link --in docs/features/acme/http/lin
 `compound-normative-bullet`, `overlong-normative-bullet`, `undeclared-obligation`,
 `weak-check`, `unstated-precondition`, `unparsed-check`, `dangling-code-ref`,
 `missing-code-symbol`, `unknown-book-fixture`, `unarranged-request-body`,
-`invalid-http-method`. See
+`invalid-http-method`, `misnested-bullet`. See
 [../doctor-codes.md](../doctor-codes.md).
 
 ## When bullets are not enough

@@ -96,7 +96,10 @@ INDEX_DIR_NAME = "ostler-index"
 #: properties, which ``meta`` has no shape for. The same case as 7, and it presented the same
 #: way: ``replace(node, path=path)`` on an entry pickled before the field raised
 #: ``AttributeError: 'UINode' object has no attribute 'entries'`` across thirty tests.
-SCHEMA_VERSION = 8
+#: 9: a stored ``UINode`` carries ``records`` — a ``record=True`` key's named properties,
+#: the third container grammar. Again the same case as 7 and 8, and it presented the same
+#: way: twenty-seven tests on entries pickled before the field.
+SCHEMA_VERSION = 9
 
 #: How long an entry may go unwritten before a prune removes it. Two weeks: long enough
 #: that an occasional book survives a quiet fortnight, short enough that an unattended

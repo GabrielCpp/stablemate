@@ -206,6 +206,7 @@ def run(graph: Graph, epic_filter: str | None = None, check_schema: bool = True,
     # stories to read it from.
     _check_fixture_grammar(graph, f)
     _check_entry_properties(graph, f)
+    _check_record_properties(graph, f)
     _check_bullet_value_kinds(graph, ui_data, f)
 
     if graph.profile != "full":
@@ -826,6 +827,43 @@ def _check_entry_properties(graph: Graph, f: list[Finding]) -> None:
                         f"`{key}:` does not admit",
                         path=rel, line=node.line, ref=f"{key}:{prop}",
                         suggestion="one of: " + ", ".join(f"{name}:" for name in spec.properties)))
+
+
+def _check_record_properties(graph: Graph, f: list[Finding]) -> None:
+    """A property nested under a ``record=True`` key may not be a bullet key the node declares.
+
+    A record's children are properties of the one thing its key names, so a child spelled like a
+    key of the node itself states nothing the node is held to: ``- status: 200`` written under
+    ``- response:`` is a property of the response, and the endpoint's own ``status:`` claim — the
+    one that mints an obligation a scenario has to prove — is absent. The two readings are both
+    grammatical and only one is what the author meant, which is why this is reported against the
+    nesting rather than resolved in favour of either.
+
+    Only keys the type declares are reported. A child of any other spelling is a property this
+    record's vocabulary has not been written down for, and no vocabulary is declared on any
+    record key yet — an undeclared vocabulary is checked by nothing here for the same reason
+    ``_check_entry_properties`` skips one, and adopting the check is what declaring it means.
+
+    Deliberately not a compiler gap kind, on ``_check_bullet_value_kinds``'s reasoning: it is a
+    statement about the book alone, true whether or not any scenario ever compiles the node.
+    """
+    for node in graph.ui_nodes:
+        if not node.records:
+            continue
+        uitype = registry.UI_TYPES_BY_NAME.get(node.type)
+        if uitype is None:
+            continue
+        rel = _rel_path(graph, node)
+        for key, properties in node.records.items():
+            for prop in properties:
+                if prop not in uitype.bullet_by_key:
+                    continue
+                f.append(Finding(
+                    "error", "misnested-bullet",
+                    f"{node.id}: `{prop}:` is nested under `{key}:`, so it states a property of "
+                    f"`{key}:` and not this node's own `{prop}:`",
+                    path=rel, line=node.line, ref=f"{key}:{prop}",
+                    suggestion=f"promote it to a top-level `- {prop}:` bullet of the node"))
 
 
 def _route_kind_parser(predicate: Callable[[str], bool], reason: str) -> Callable[[str], str]:

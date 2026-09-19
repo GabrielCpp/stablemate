@@ -47,13 +47,13 @@ The journeys that stitch these routes together are
   - answers `200` with `{"status": "ok"}` as soon as the process is serving, reading no ledger.
 - verify: http_status(200, path="/healthz")
 - verify: json_path("status", equals="ok")
+- response:
+  - media: `application/json`
+  - body: `{"status": "ok"}`
 - code: app/api/service.go::handleHealth@bcf74ba2ccff
 - parent: [Policy desk API](#policy-desk-api)
 - request:
   - body: none
-- response:
-  - media: `application/json`
-  - body: `{"status": "ok"}`
 
 ### get-policies
 
@@ -67,14 +67,14 @@ The journeys that stitch these routes together are
   - gives each policy its `id`, `policy_number`, `holder_email`, `coverage_type`, term, `premium`, `status` and `version`, so the register can be rendered and an edit prepared without a second request.
 - verify: json_path("policies[0].version", absent=false)
 - verify: json_path("policies[0].status", matches="Draft|Cancelled")
+- response:
+  - media: `application/json`
+  - body: `{"policies": [{"id": str, "policy_number": str, "holder_email": str, "coverage_type": str, "vehicle_vin"?: str, "property_address"?: str, "start_date": str, "end_date": str, "premium": number, "status": str, "version": int}, …]}`
 - code: app/api/list.go::handleList@99bbc1f4191d
 - parent: [Policy desk API](#policy-desk-api)
 - refs: [policy](../concepts/policy.md)
 - request:
   - body: none
-- response:
-  - media: `application/json`
-  - body: `{"policies": [{"id": str, "policy_number": str, "holder_email": str, "coverage_type": str, "vehicle_vin"?: str, "property_address"?: str, "start_date": str, "end_date": str, "premium": number, "status": str, "version": int}, …]}`
 
 ### post-policies
 
@@ -86,6 +86,9 @@ The journeys that stitch these routes together are
 - verify: json_path("policy.status", equals="Draft")
 - verify: json_path("policy.version", equals="1")
 - verify: json_path("policy.id", equals="pn-1001")
+- response:
+  - media: `application/json`
+  - body: `{"policy": {…}}`
 - errors: `422` with an `errors` object keyed by field name for every rule
   [`Validate`](../concepts/policy.md#validate) decides — a blank policy number, a malformed holder
   email, a coverage type outside the enum, a missing VIN on auto coverage, a missing address on home
@@ -109,9 +112,6 @@ The journeys that stitch these routes together are
 - refs: [policy](../concepts/policy.md)
 - request:
   - body: `{"policy_number": str, "holder_email": str, "coverage_type": str, "vehicle_vin"?: str, "property_address"?: str, "start_date": str, "end_date": str, "premium": number}`
-- response:
-  - media: `application/json`
-  - body: `{"policy": {…}}`
 
 ### get-policy
 
@@ -121,6 +121,9 @@ The journeys that stitch these routes together are
   - returns the one policy the id names, with the version an edit has to quote.
 - verify: http_status(200, path="/api/policies/pn-1001")
 - verify: json_path("policy.policy_number", equals="PN-1001")
+- response:
+  - media: `application/json`
+  - body: `{"policy": {…}}`
 - errors: `404 Unknown Policy` for an id that is not on the books.
 - verify: http_status(404, title="Unknown Policy", path="/api/policies/missing")
 - code: app/api/service.go::handleGet@bcf74ba2ccff
@@ -129,9 +132,6 @@ The journeys that stitch these routes together are
 - request:
   - path variables: `id` — the slug of the policy number, such as `pn-1001`.
   - body: none
-- response:
-  - media: `application/json`
-  - body: `{"policy": {…}}`
 
 ### put-policy
 
@@ -145,6 +145,9 @@ The journeys that stitch these routes together are
   - touches the edited policy and no other — every other record keeps its fields, its status and its version.
 - verify: unchanged(subject="policy pn-1002", except_fields=[])
 - verify: keys_unchanged(subject="policies")
+- response:
+  - media: `application/json`
+  - body: `{"policy": {…}}`
 - errors: `400 Version Required` when the body carries no integer `version`, so an edit that simply
   omits the token is refused rather than treated as a fresh write.
 - verify: http_status(400, title="Version Required", path="/api/policies/pn-1001")
@@ -165,9 +168,6 @@ The journeys that stitch these routes together are
 - request:
   - path variables: `id` — the slug of the policy number.
   - body: `{"holder_email": str, "coverage_type": str, "vehicle_vin"?: str, "property_address"?: str, "start_date": str, "end_date": str, "premium": number, "version": int}`
-- response:
-  - media: `application/json`
-  - body: `{"policy": {…}}`
 
 ### post-policy-cancel
 
@@ -180,6 +180,9 @@ The journeys that stitch these routes together are
 - does:
   - keeps the cancelled policy on the books rather than dropping it: `GET /api/policies` still lists it, with status `Cancelled`, so the register keeps its shape as policies are cancelled.
 - verify: persists(subject="policy pn-1001")
+- response:
+  - media: `application/json`
+  - body: `{"policy": {…}}`
 - errors: `422` with `errors.confirm` when the body's `confirm` is not the policy's own number, so a
   cancellation is typed out rather than clicked through.
 - verify: http_status(422, path="/api/policies/pn-1001/cancel")
@@ -196,9 +199,6 @@ The journeys that stitch these routes together are
 - request:
   - path variables: `id` — the slug of the policy number.
   - body: `{"version": int, "confirm": str}`
-- response:
-  - media: `application/json`
-  - body: `{"policy": {…}}`
 
 ### delete-policies
 
@@ -212,14 +212,14 @@ The journeys that stitch these routes together are
   - is idempotent: resetting books that are already empty answers `204` and changes nothing.
 - verify: http_status(204, path="/api/policies")
 - verify: count(subject="policies", equals=0)
+- response:
+  - media: none
+  - body: empty
 - code: app/api/service.go::handleReset@bcf74ba2ccff
 - parent: [Policy desk API](#policy-desk-api)
 - refs: [policy ledger](../concepts/policy-ledger.md)
 - request:
   - body: none
-- response:
-  - media: none
-  - body: empty
 
 A policy number is unique across the whole book and there is no second book, so every creation
 spends an identity nothing else returns. That is fine for a desk and wrong for anything that drives

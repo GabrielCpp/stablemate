@@ -194,6 +194,7 @@ class UINode:
     # put, since its values are scalars or flat lists. `meta[key]` is derived from these (the
     # headlines), so the two spellings of one bullet cannot drift apart. See `Entry`.
     entries: dict[str, list[Entry]] = field(default_factory=dict)
+    records: dict[str, dict[str, str | list[str]]] = field(default_factory=dict)
     links: list = field(default_factory=list)                # (text, href) inside the node's region
     data: dict = field(default_factory=dict)                 # frontmatter (file nodes)
 
@@ -562,6 +563,37 @@ def _entries_from_bullets(section: markdown.Section,
             continue
         found.setdefault(key, []).extend(_entries(bullet))
     return found
+
+
+def _records_from_bullets(section: markdown.Section,
+                          uitype: "registry.UINodeType | None"
+                          ) -> dict[str, dict[str, str | list[str]]]:
+    """Every ``record=True`` key of a section, with the named properties `meta` flattens away.
+
+    The fold :func:`_entries` applies to an entry's own children, applied one level higher: a
+    record is *one* thing with properties, so the bullet's direct children are the properties and
+    there is no headline level in between. `meta[key]` is left alone — it holds the same flat
+    subtree walk it held before the key was declared, which is lossless and nothing reads as a
+    claim — so this is what a reader consults to find out what the record actually states.
+
+    Two bullets of one record key fold together, because they are two spellings of the one thing
+    the key names, and a property written on both becomes a list exactly as a repeated key does
+    at the section's top level.
+    """
+    if uitype is None:
+        return {}
+    children: dict[str, list[markdown.Bullet]] = {}
+    for bullet in section.bullets:
+        text = bullet.text.strip()
+        idx = markdown.label_colon_index(text)
+        if idx == -1:
+            continue
+        key = text[:idx].strip().lower()
+        spec = uitype.bullet_by_key.get(key)
+        if spec is None or not spec.record:
+            continue
+        children.setdefault(key, []).extend(bullet.children)
+    return {key: _fold_bullets(bullets) for key, bullets in children.items()}
 
 
 def _nested_values(key: str, bullet: markdown.Bullet, uitype: "registry.UINodeType | None") -> list[str]:
@@ -1312,6 +1344,7 @@ def _promote_section(section: markdown.Section, rel: str, path: Path, offset: in
         line=offset + section.line_start + 1,
         meta=_meta_from_bullets(section, uitype), bullet_order=_bullet_pairs(section, uitype),
         entries=_entries_from_bullets(section, uitype), combiners=_bullet_combiners(section),
+        records=_records_from_bullets(section, uitype),
         bullet_lines={i: offset + bullet.line_start + 1 for i, bullet in enumerate(section.bullets)},
         links=section.refs.links,
     ))
@@ -1338,6 +1371,7 @@ def _parse_ui_nodes(doc: markdown.MarkdownDoc, path: Path, root: Path) -> list[U
         order = _bullet_pairs(main, ftype) if main else []
         combiners = _bullet_combiners(main) if main else {}
         entries = _entries_from_bullets(main, ftype) if main else {}
+        records = _records_from_bullets(main, ftype) if main else {}
         # The file node's own region = its H1 content up to the first `## Heading` child, so its
         # links don't overlap the section nodes' links (keeps the linter from double-reporting).
         if main is not None:
@@ -1351,6 +1385,7 @@ def _parse_ui_nodes(doc: markdown.MarkdownDoc, path: Path, root: Path) -> list[U
             type=ftype.name, kind="file", id=rel, path=path, level=1, parent="",
             title=str(fm.get("title") or (main.title if main else rel)),
             line=line, meta=meta, bullet_order=order, entries=entries, combiners=combiners,
+            records=records,
             bullet_lines={i: offset + bullet.line_start + 1 for i, bullet in enumerate(main.bullets)} if main else {},
             links=markdown.extract_refs(text).links, data=fm,
         ))
