@@ -338,6 +338,10 @@ def _wait_series(attrs: dict[str, Any]) -> tuple[tuple[str, str], ...]:
     return tuple(sorted((key, str(value)) for key, value in attrs.items()))
 
 
+def _wait_series_node(series: tuple[tuple[str, str], ...] | None) -> str:
+    return dict(series).get("node", "") if series is not None else ""
+
+
 def ingest_spans(spans: list[dict[str, Any]], now: float | None = None) -> list[Alert]:
     """Fold decoded spans into the hot cache and evaluate the ingest-driven
     rules. Returns the alerts that newly fired (already deduped)."""
@@ -512,9 +516,17 @@ def ingest_metrics(points: list[dict[str, Any]], now: float | None = None) -> li
         elif name == "workhorse.node.active":
             if value >= 1:
                 if run.current_node != node:
-                    # Moved to a different node: whatever it was parked in, it is
-                    # demonstrably not parked there now.
                     run.fired.discard("STUCK")
+                    if run.wait_kind and _wait_series_node(run.wait_series) not in ("", node):
+                        if run.wait_series is not None:
+                            run.closed_wait_series.add(run.wait_series)
+                        run.wait_kind = ""
+                        run.wait_series = None
+                        run.wait_elapsed_s = 0.0
+                        run.wait_gate_path = ""
+                        run.wait_gate_question = ""
+                        run.fired.discard("BLOCKED")
+                        run.fired.discard("WAITING")
                 run.current_node = node
             elif run.current_node == node:
                 # Only the node that closed clears the pointer — a stale 0 for an

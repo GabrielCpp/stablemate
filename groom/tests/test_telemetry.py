@@ -1486,6 +1486,45 @@ def test_a_stale_replay_of_an_already_answered_gate_does_not_reopen_it() -> None
         assert run.wait_gate_question != "13 reviews?"
 
 
+def test_a_wait_never_explicitly_closed_clears_once_the_run_moves_to_another_node() -> None:
+    """A resume that finds its gate already answered while the process was down skips
+    its own otel.wait() block entirely, so nobody ever emits the workhorse.wait.active=0
+    point for the wait the earlier (crashed) session opened. That series then sits at
+    active=1 forever in groom's cache even though the run is plainly executing again --
+    a wait blocks the driver loop, so node.active for any other node is proof enough
+    that the wait is over."""
+    with _TelemetryEnv():
+        now = 1000.0
+        alerts.ingest_metrics(
+            otlp.parse_metrics(
+                _metrics_request(
+                    "workhorse.wait.active",
+                    value=1,
+                    node="program_review",
+                    gauge=True,
+                    attrs={"wait_kind": "operator", "gate_path": "docs/BLOCKED.md",
+                           "gate_question": "14 reviews?"},
+                )
+            ),
+            now=now,
+        )
+        assert state.RUNS["run-1"].wait_kind == "operator"
+
+        alerts.ingest_metrics(
+            otlp.parse_metrics(
+                _metrics_request(
+                    "workhorse.node.active", value=1, node="define-new-direction", gauge=True
+                )
+            ),
+            now=now + 60,
+        )
+
+        run = state.RUNS["run-1"]
+        assert run.wait_kind == "", "running a different node proves the wait is over"
+        assert run.wait_gate_path == ""
+        assert not {"BLOCKED", "WAITING"} & run.fired
+
+
 def test_streaming_turn_uses_idleness_not_total_node_age_for_stuck() -> None:
     with _TelemetryEnv(), patch.dict(
         os.environ, {"GROOM_STALL_MIN": "90", "GROOM_STUCK_MIN": "75"}
