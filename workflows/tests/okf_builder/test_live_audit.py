@@ -487,6 +487,56 @@ def compiled_book(tmp_path: Path) -> Path:
     return root
 
 
+@pytest.fixture
+def compiled_book_with_no_compiling_obligation(tmp_path: Path) -> Path:
+    """A single-root book like `compiled_book`, but missing `get-thing` — the only node in
+    that book that ever declares a `verify:`. With it gone, `create-thing`'s `no-verify-
+    declared` gap is the whole of what the book owes, so `compile_plan_gaps` mints no
+    `@scenario` at all: this is the `Refusal` branch `compiled_book` never reaches.
+    """
+    root = tmp_path / "book"
+    root.mkdir()
+    _git(root, "init")
+    _git(root, "config", "user.email", "qa@example.com")
+    _git(root, "config", "user.name", "QA")
+    (root / CREATE_PATH).parent.mkdir(parents=True, exist_ok=True)
+    (root / CREATE_PATH).write_text(CREATE_NODE, encoding="utf-8")
+    (root / SERVER_PATH).parent.mkdir(parents=True, exist_ok=True)
+    (root / SERVER_PATH).write_text(SERVER_NODE, encoding="utf-8")
+    (root / RUNBOOK_PATH).parent.mkdir(parents=True, exist_ok=True)
+    (root / RUNBOOK_PATH).write_text(RUNBOOK_NODE, encoding="utf-8")
+    (root / "app/service.py").parent.mkdir(parents=True, exist_ok=True)
+    (root / "app/service.py").write_text(
+        "def create_thing():\n    return 'thing'\n", encoding="utf-8",
+    )
+    return root
+
+
+def test_compiled_book_that_compiles_no_scenario_reports_blocked_with_the_gaps(
+    logger: logging.Logger,
+    compiled_book_with_no_compiling_obligation: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When `compile_plan_gaps` refuses the whole book — no obligation compiles to a
+    scenario — `audit_one_spec` must report `blocked` with the gaps that explain why,
+    never a plan file written from a `Refusal` it has no `source` to write."""
+    monkeypatch.setattr(live_audit_flow, "ensure_stack", lambda *a, **k: _fake_stack_ready())
+    monkeypatch.setattr(live_audit_flow, "run_qa_plan", lambda *a, **k: _fake_run("passed"))
+
+    report = audit_one_spec(
+        logger, BOOK_TARGET,
+        docs_path=str(compiled_book_with_no_compiling_obligation),
+        repo_dir=str(compiled_book_with_no_compiling_obligation),
+    )
+
+    assert report.status == "blocked"
+    assert "no scenario compiled" in (report.notes or "")
+    assert not (
+        compiled_book_with_no_compiling_obligation
+        / live_audit_flow._COMPILED_RUN_ROOT / "book" / "qa_plan.py"
+    ).exists()
+
+
 def test_compiled_book_reports_blocked_obligations_with_gap_details(
     logger: logging.Logger, compiled_book: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:

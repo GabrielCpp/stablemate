@@ -28,7 +28,7 @@ from typing import Any
 from ostler import model
 from ostler.path import features_root as features_root_of, specs_root_in
 from ostler.qa import runbook
-from ostler.qa.compile import compile_plan_gaps
+from ostler.qa.compile import Refusal, compile_plan_gaps
 from ostler.qa.context import book_context
 from ostler.qa.plan import load_plan, resolve_spec_dir
 from ostler.refs import code_refs
@@ -304,10 +304,10 @@ def audit_one_spec(
                 notes="; ".join(problems) or "plan could not be loaded",
             )
         if document.context:
-            _source, gap_list = compile_plan_gaps(document.context, story=document.story)
+            result = compile_plan_gaps(document.context, story=document.story)
             gaps = tuple(
                 {"obligation_id": g.obligation_id, "kind": g.kind, "detail": g.detail}
-                for g in gap_list
+                for g in result.gaps
             )
         context = document.context
         all_scenarios = [s for s in document.data.get("scenarios", []) if isinstance(s, dict)]
@@ -321,11 +321,18 @@ def audit_one_spec(
         context, note = _book_context_or_note(graph, docs_root, repo_root)
         if not context:
             return LiveAuditReport(spec_dir=spec_dir, status="blocked", stack=stack, notes=note)
+        result = compile_plan_gaps(context, story=BOOK_TARGET)
+        if isinstance(result, Refusal):
+            kinds = sorted({g.kind for g in result.gaps})
+            return LiveAuditReport(
+                spec_dir=spec_dir, status="blocked", stack=stack,
+                notes=(f"no scenario compiled from the book: {len(result.gaps)} gap(s) across "
+                       f"{', '.join(kinds) or 'no kinds'}"),
+            )
         run_dir = docs_root / _COMPILED_RUN_ROOT / "book"
         run_dir.mkdir(parents=True, exist_ok=True)
-        source, gap_list = compile_plan_gaps(context, story=BOOK_TARGET)
         plan_path = run_dir / "qa_plan.py"
-        plan_path.write_text(source, encoding="utf-8")
+        plan_path.write_text(result.source, encoding="utf-8")
         (run_dir / "qa-okf-context.json").write_text(json.dumps(context), encoding="utf-8")
         document, problems = load_plan(plan_path, run_dir, docs_root)
         if document is None:
@@ -335,9 +342,9 @@ def audit_one_spec(
             )
         gaps = tuple(
             {"obligation_id": g.obligation_id, "kind": g.kind, "detail": g.detail}
-            for g in gap_list
+            for g in result.gaps
         )
-        gapped_ids = {g.obligation_id for g in gap_list}
+        gapped_ids = {g.obligation_id for g in result.gaps}
         resolved_spec_dir = run_dir
         all_scenarios = [s for s in document.data.get("scenarios", []) if isinstance(s, dict)]
         # A compiled scenario with any gapped check still gets a function body (compile.py
