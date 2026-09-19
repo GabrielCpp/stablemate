@@ -14,7 +14,8 @@ The seam under test:
 
 * ``index.epoch_inputs(root)`` — the material of every global input, one entry per label in
   ``index.EPOCH_LABELS``: the tool version, the schemas, the dynamic kind registry, the
-  config files ostler reads and the freeze manifest.
+  config files ostler reads, the freeze manifest and the field-name shape of every stored
+  dataclass (``index.dataclass_shape_digest``).
 * ``index.epoch(root)`` — one combined hash over exactly that mapping, and a pure function
   of it. No per-input granularity: a partial invalidation that is subtly wrong costs more
   than a recompute, so any change to any input busts every entry.
@@ -35,6 +36,7 @@ module rather than binding it at import.
 
 from __future__ import annotations
 
+import dataclasses
 import importlib
 import os
 import time
@@ -70,7 +72,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 
 #: Every global input the epoch is required to cover, in the spelling the store declares.
 EXPECTED_EPOCH_LABELS = frozenset(
-    {"version", "schemas", "kinds", "config", "freeze"}
+    {"version", "schemas", "kinds", "config", "freeze", "shape"}
 )
 
 PAYLOAD = {"frontmatter": {"type": "feature"}, "nodes": ["screen/save"]}
@@ -180,6 +182,98 @@ def test_editing_a_global_input_on_disk_invalidates_every_entry(tmp_path, label,
 
     assert index.epoch(root) != before, f"the {label} input is not in the epoch"
     assert store(root, directory).get(doc) is None
+
+
+# ---------------------------------------------------------------------------
+# The shape digest: a class name is not a schema
+# ---------------------------------------------------------------------------
+@dataclasses.dataclass
+class _ShapeItemBefore:
+    """A nested stored class, before a field lands on it.
+
+    Module-level, not nested inside a test function: ``typing.get_type_hints`` resolves a
+    string annotation — ``from __future__ import annotations`` turns every one of them into
+    a string — against the defining module's globals, so a class local to a test function is
+    invisible to a forward reference naming it from inside a container field.
+    """
+
+    headline: str
+
+
+@dataclasses.dataclass
+class _ShapeItemAfter:
+    headline: str
+    note: str
+
+
+@dataclasses.dataclass
+class _ShapeContainerBefore:
+    items: dict[str, list[_ShapeItemBefore]]
+
+
+@dataclasses.dataclass
+class _ShapeContainerAfter:
+    items: dict[str, list[_ShapeItemAfter]]
+
+
+def test_adding_a_field_to_a_stored_dataclass_moves_the_shape_digest():
+    """The failure this digest exists to prevent, reproduced on a throwaway pair of classes.
+
+    ``UINode`` gained ``combiners``, then ``entries``, then ``records`` — three times, a field
+    landed on a dataclass whose instances are pickled into the index, and three times a stale
+    entry came back as the *old* shape wearing the *new* class's name: ``isinstance(payload,
+    UINode)`` is true either way, so the reader accepted the pickle and only failed later, when
+    something asked the old instance for the new attribute (``AttributeError: 'UINode' object
+    has no attribute 'records'``, across twenty-seven tests on 2026-09-18). The class's name
+    never changed, so a check keyed on the name — which is exactly what an ``isinstance`` shape
+    check is — cannot see the difference.
+
+    ``dataclass_shape_digest`` is built from the classes' own field names instead of anything a
+    human has to remember to update, so this test proves the mechanism on synthetic classes
+    rather than on ``UINode`` itself: mutating the real class would only show that *this
+    particular* field addition happens to be caught, not that the digest generalises.
+    """
+
+    @dataclasses.dataclass
+    class Before:
+        headline: str
+        properties: dict
+
+    @dataclasses.dataclass
+    class After:
+        headline: str
+        properties: dict
+        records: dict
+
+    assert index.dataclass_shape_digest(Before) != index.dataclass_shape_digest(After)
+
+
+def test_the_shape_digest_reaches_a_dataclass_nested_inside_a_container_field():
+    """A field added several containers deep must still move the digest.
+
+    ``UINode.entries`` is ``dict[str, list[Entry]]`` — the field that broke is not on the root
+    class the caller passes in, it is on a dataclass reachable only by unwrapping a ``dict``
+    and a ``list``. A digest that only looked at the root class's own fields would have missed
+    exactly the case this module exists to catch.
+    """
+    assert index.dataclass_shape_digest(
+        _ShapeContainerBefore
+    ) != index.dataclass_shape_digest(_ShapeContainerAfter)
+
+
+def test_the_shape_digest_is_a_pure_function_of_the_classes_it_is_given():
+    """Deterministic and salt-free, unlike ``hash()`` on a string, which is salted per run.
+
+    Calling it twice over the same classes in the same process must agree, and calling it a
+    second time proves nothing was memoized on the class object along the way.
+    """
+
+    @dataclasses.dataclass
+    class Shape:
+        a: str
+        b: int
+
+    assert index.dataclass_shape_digest(Shape) == index.dataclass_shape_digest(Shape)
 
 
 # ---------------------------------------------------------------------------
@@ -532,3 +626,42 @@ def test_every_parse_product_is_served_from_the_store():
     # `model.py` is exempt: its call to the splitter *is* the cache fill.
     assert "markdown.split" not in sources["links.py"], (
         "links.py splits markdown for itself again instead of going through the accessor")
+
+
+def test_the_shape_digest_reaches_every_dataclass_a_production_caller_stores():
+    """The roots are a list, and a list left behind is the failure the digest was built to end.
+
+    `dataclass_shape_digest` generalises over *fields* — a field added anywhere in the graph
+    moves the hash with no edit — but not over *stored types*: `_shape_material` names its
+    roots, and a type nobody named is covered by nothing. When the digest first landed it
+    named two, and the store had four production callers handing it a dataclass. The two it
+    missed are the two that matter most on a source checkout: `api.Snapshot` carries the whole
+    planning `Graph`, and `inventory._SymbolTable` is read back behind `isinstance(payload,
+    _SymbolTable)` — a check keyed on the class's name, which is the exact shape that cannot
+    see a field arrive.
+    """
+    from ostler import api, index, inventory, model
+
+    reached = index._reachable_dataclasses(
+        (model.UINode, model._DocProducts, api.Snapshot, inventory._SymbolTable))
+
+    assert {api.Snapshot, inventory._SymbolTable, model.Graph, model.Entry} <= reached
+    assert index._shape_material() == index.dataclass_shape_digest(*reached)
+
+
+def test_every_module_that_stores_a_payload_is_a_shape_root():
+    """A new storing module is the one change the digest cannot notice for itself."""
+    package = REPO_ROOT / "ostler" / "ostler"
+    storing = {path.stem for path in package.rglob("*.py")
+               if path.stem != "index"
+               and any(call in path.read_text(encoding="utf-8")
+                       for call in (".put_key(", ".put("))}
+    rooted = (REPO_ROOT / "ostler" / "ostler" / "index.py").read_text(encoding="utf-8")
+    material = rooted.split("def _shape_material()")[1].split("\ndef ")[0]
+
+    missing = sorted(name for name in storing if name not in material)
+
+    assert not missing, (
+        f"these modules store a payload but are not named in _shape_material: {missing} — "
+        "either add the dataclass they store to the roots, or say in the docstring why the "
+        "payload has no field names to hash")

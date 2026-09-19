@@ -23,10 +23,15 @@ Three rules carry the whole design.
 
 *One epoch hash.* :func:`epoch` is a single combined hash over every global input —
 the tool version, the bundled schemas, the dynamic kind registry, the config files ostler
-reads and the freeze manifest. Any change to any one of them invalidates
+reads, the freeze manifest, and the field-name shape of every dataclass a payload pickles
+(:func:`dataclass_shape_digest`). Any change to any one of them invalidates
 every entry. There is deliberately no per-input granularity: recomputing a book is cheap
 next to the cost of getting a partial invalidation subtly wrong, and a wrong partial
-invalidation is silent.
+invalidation is silent. The shape input is what makes that last guarantee hold for the
+payload's own classes: a class *name* says nothing about the bytes a pickle of it carries,
+so an entry pickled before a field was added still names the right class and still passes
+a shape check that only looks at the name. Hashing the field names themselves closes that
+gap mechanically — see the note on :data:`SCHEMA_VERSION`.
 
 *The entry key is the repo-name-qualified repo-relative path plus the content sha.*
 Repo-relative rather than absolute is load-bearing — two worktrees of one repo, and the
@@ -46,11 +51,13 @@ by an older one, and misreading it is worse than recomputing it.
 
 from __future__ import annotations
 
+import dataclasses
 import hashlib
 import json
 import os
 import pickle
 import time
+import typing
 from collections.abc import Iterator
 from contextlib import contextmanager
 from importlib import metadata
@@ -72,13 +79,21 @@ CONFIG_KEY = "ostler_index_dir"
 #: XDG semantics — deleting it at any point costs time and never correctness.
 INDEX_DIR_NAME = "ostler-index"
 
-#: The on-disk layout of an entry file. Bump for any change a reader on either side of it
-#: would get *wrong* — an older reader meeting a new layout, and equally a newer reader
-#: meeting an entry pickled from a class that has since gained a field. The epoch carries
-#: the ostler version, which catches that second case for an installed build but not for a
-#: source checkout, where the version is ``unknown`` and never moves. So a field added to a
-#: stored dataclass (`UINode`, `_DocProducts`) is a bump here too; it costs one
-#: recomputation and is the only lever that invalidates a stale entry deterministically.
+#: The on-disk layout of an entry file — the shape of the pickled ``{schema_version, value}``
+#: envelope itself, and any semantic change to a stored field that leaves its *name* alone
+#: (see 5, below). Bump for a change a reader on either side of it would get *wrong* — an
+#: older reader meeting a new layout, and equally a newer reader meeting an entry whose
+#: meaning moved under an unchanged name.
+#:
+#: A field *added* to a stored dataclass (`UINode`, `_DocProducts`, or anything reachable
+#: from them) is no longer this lever. Three times running — 7, 8 and 9 below — that exact
+#: change was made and this comment's own warning went unheeded, because a class name is not
+#: a schema: an entry pickled from the old shape still names the right class, so the
+#: isinstance check on the way back in still passes, and the reader is the one left asking
+#: an old node for an attribute it never had. `epoch_inputs`'s ``"shape"`` entry
+#: (:func:`dataclass_shape_digest`, hashed over every reachable dataclass's field names) is
+#: the fix: it moves whenever a field moves, so it invalidates a stale entry the moment the
+#: shape changes rather than the moment somebody remembers to bump this number by hand.
 #: 4: the behavior verdict memo (:mod:`ostler.behavior_memo`) writes entries under this
 #: version; a build that does not know them must miss on them rather than read them.
 #: 5: a stored entry carries its file's ``ui_nodes``, and a node's ``id`` is now the anchor
@@ -87,18 +102,19 @@ INDEX_DIR_NAME = "ostler-index"
 #: before that change hands back the old, colliding ids forever on a source checkout, where
 #: the version in the epoch never moves.
 #: 6: an entry carries its file's ``links`` (:func:`ostler.model.read_links`), a field added to
-#: the stored ``_DocProducts``.
+#: the stored ``_DocProducts`` — before the shape digest existed to catch this on its own.
 #: 7: a stored ``UINode`` carries ``combiners`` — the word each nested claim list stated about
 #: how its children combine. A field added to a pickled class, and the case this note warns
-#: about: the class name did not change, so the shape check on the way back in still passes and
-#: an older entry hands back a node the reader then asks for an attribute it has never had.
+#: about: the class name did not change, so the shape check on the way back in still passed and
+#: an older entry handed back a node the reader then asked for an attribute it had never had.
 #: 8: a stored ``UINode`` carries ``entries`` — an ``entries=True`` key's items with their own
 #: properties, which ``meta`` has no shape for. The same case as 7, and it presented the same
 #: way: ``replace(node, path=path)`` on an entry pickled before the field raised
 #: ``AttributeError: 'UINode' object has no attribute 'entries'`` across thirty tests.
 #: 9: a stored ``UINode`` carries ``records`` — a ``record=True`` key's named properties,
 #: the third container grammar. Again the same case as 7 and 8, and it presented the same
-#: way: twenty-seven tests on entries pickled before the field.
+#: way: twenty-seven tests on entries pickled before the field. The third repetition is what
+#: moved the fix from this comment into `dataclass_shape_digest`.
 SCHEMA_VERSION = 9
 
 #: How long an entry may go unwritten before a prune removes it. Two weeks: long enough
@@ -145,6 +161,7 @@ EPOCH_LABELS: tuple[str, ...] = (
     "kinds",
     "config",
     "freeze",
+    "shape",
 )
 
 _PAYLOAD_KEY = "value"
@@ -192,6 +209,71 @@ def _absent() -> str:
     file" hash differently — creating an empty file is a real edit.
     """
     return "absent"
+
+
+def _nested_types(annotation: object) -> list[type]:
+    """Every concrete type named inside a (possibly generic) type annotation.
+
+    ``list[Entry]``, ``dict[str, list[Entry]]`` and ``Path | None`` all name a type this
+    walks into; a bare type is returned as itself. This is how :func:`dataclass_shape_digest`
+    finds a nested dataclass without either party naming it explicitly.
+    """
+    origin = typing.get_origin(annotation)
+    if origin is not None:
+        found: list[type] = []
+        for arg in typing.get_args(annotation):
+            found.extend(_nested_types(arg))
+        return found
+    if isinstance(annotation, type):
+        return [annotation]
+    return []
+
+
+def _reachable_dataclasses(roots: tuple[type, ...]) -> set[type[Any]]:
+    """Every dataclass reachable from *roots* through a field's type, *roots* included.
+
+    Resolved through ``typing.get_type_hints`` rather than ``field.type`` directly, so a
+    module written with ``from __future__ import annotations`` — every field is a string —
+    still yields real classes to recurse into.
+    """
+    seen: set[type[Any]] = set()
+    stack: list[type[Any]] = list(roots)
+    while stack:
+        candidate = stack.pop()
+        if not dataclasses.is_dataclass(candidate) or candidate in seen:
+            continue
+        seen.add(candidate)
+        hints = typing.get_type_hints(candidate)
+        for f in dataclasses.fields(candidate):
+            stack.extend(_nested_types(hints.get(f.name, f.type)))
+    return seen
+
+
+def dataclass_shape_digest(*roots: type) -> str:
+    """A stable digest over the field *names* of *roots* and every dataclass reachable from them.
+
+    This is the mechanism the module docstring's note on :data:`SCHEMA_VERSION` used to ask a
+    human to reproduce by hand: a class's *name* says nothing about the shape of the bytes a
+    pickle of it carries, so a reader that only checks the name accepts an entry written by a
+    class that has since gained (or lost) a field — and the field the entry never wrote is
+    read back as an ``AttributeError`` on first use, not as a miss. This digest is that shape,
+    computed from the classes themselves rather than asserted about them, so a field added
+    anywhere in the reachable graph moves the digest and busts every entry mechanically.
+
+    Field *names*, not their types or their values or the class's docstring or methods —
+    those change on nearly every edit and hashing them would evict the cache on commits that
+    do not touch what gets pickled. ``hashlib`` rather than ``hash()``: the digest has to
+    agree across processes, and ``hash()`` on a string is salted per interpreter run.
+    """
+    types_ = sorted(
+        _reachable_dataclasses(roots), key=lambda tp: f"{tp.__module__}.{tp.__qualname__}"
+    )
+    chunks: list[bytes] = []
+    for tp in types_:
+        chunks.append(f"{tp.__module__}.{tp.__qualname__}".encode("utf-8"))
+        for f in dataclasses.fields(tp):
+            chunks.append(f.name.encode("utf-8"))
+    return _sha(*chunks)
 
 
 # ---------------------------------------------------------------------------
@@ -254,6 +336,28 @@ def _freeze_material(root: Path) -> str:
     return _sha(json.dumps(frozen, sort_keys=True, default=str).encode("utf-8"))
 
 
+def _shape_material() -> str:
+    """The stored dataclasses' field-name digest, as an epoch input.
+
+    The roots are one per production caller that hands :meth:`Store.put` or
+    :meth:`Store.put_key` a dataclass — ``model`` stores a ``_DocProducts`` of ``UINode``,
+    ``api`` a ``Snapshot`` of the whole planning ``Graph``, ``inventory`` a ``_SymbolTable``.
+    :func:`dataclass_shape_digest` walks the rest of the graph from there, so a new *field*
+    needs no edit here and a new *stored type* is the one thing that does. ``behavior_memo``
+    is deliberately absent from the roots: it stores dicts of primitives, which have no field
+    names to hash and no attribute to fail on.
+
+    Imported lazily: all three modules import this one, so importing them back at module
+    scope would be circular. By the time anything calls :func:`epoch` they are already on
+    ``sys.modules`` — imported fresh here if they somehow are not.
+    """
+    from ostler import api, inventory, model
+
+    return dataclass_shape_digest(
+        model.UINode, model._DocProducts, api.Snapshot, inventory._SymbolTable
+    )
+
+
 def epoch_inputs(root: Path) -> dict[str, str]:
     """The material of every global input, one entry per label in :data:`EPOCH_LABELS`.
 
@@ -267,6 +371,7 @@ def epoch_inputs(root: Path) -> dict[str, str]:
         "kinds": _kinds_material(root),
         "config": _config_material(root),
         "freeze": _freeze_material(root),
+        "shape": _shape_material(),
     }
 
 
