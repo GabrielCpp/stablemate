@@ -117,9 +117,7 @@ NOT_ROUTED_REASON = "this driver states no routes at all — it owns no screen o
 #:   than falling through to the default as if the driver were merely unrecognized. `cli` reuses
 #:   a word `tally-cli` (the corpus's one `cli`-shaped app) already spends on a *node* type
 #:   (`type: cli`) — deliberate, the same way `web` already names both a driver and the family of
-#:   nodes it drives, not a collision to "fix". No runbook in the corpus declares `driver: cli`
-#:   yet (seven declare a driver today, `tally-cli` is not one of them); this table only adds the
-#:   vocabulary a future one can use.
+#:   nodes it drives, not a collision to "fix".
 #: - `artifact` and `none` also read `is_never_routed` and are **not** path-addressed, each for
 #:   its own reason rather than one shared with `iac`/`cli`'s node-type argument:
 #:   - `none` is the book stating outright that nothing performs against these surfaces, so
