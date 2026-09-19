@@ -719,6 +719,23 @@ def self_declared_empty(value: str) -> bool:
     return first_word in {"none", "nothing"} and "because" in value.lower()
 
 
+def states_no_claim(key: str, value: str) -> bool:
+    """True when this bullet, on this key, mints no obligation because it says there is none.
+
+    The one place that question is answered. `normative_claims` asks it to leave the bullet out
+    of the claim universe `uneven-claim-coverage` binds checks against; `doctor`'s node-wide
+    normative counter asks it so `undeclared-obligation` does not demand a check for a bullet
+    that says there is nothing to check. Two readers deciding the same thing from the same input
+    disagree unless they share one definition, and this disagreement is silent: a node reads as
+    owing an observation it has already accounted for.
+
+    Both halves are load-bearing. The key has to be one whose emptiness is a complete claim
+    (`_SELF_DECLARABLE_EMPTY_KEYS`), and the value has to state the reason (`self_declared_empty`)
+    — a bare `none` is a blank left blank and still owes its check.
+    """
+    return key in _SELF_DECLARABLE_EMPTY_KEYS and self_declared_empty(value)
+
+
 def normative_claims(
     node_type: str, bullet_order: Iterable[Sequence[Any]]
 ) -> dict[tuple[str, int], str]:
@@ -739,8 +756,8 @@ def normative_claims(
     nothing can observe on its own — that is `uneven-claim-coverage` and
     `unstated-precondition`'s reason for calling this rather than `normative_keys` directly.
 
-    Also excludes a `raises:`/`keyboard:` bullet whose value self-declares empty
-    (`self_declared_empty`) for the same reason: `uneven-claim-coverage` asks whether every
+    Also excludes a bullet that `states_no_claim` — a `raises:`/`keyboard:` value that
+    self-declares empty — for the same reason: `uneven-claim-coverage` asks whether every
     claim on a node has a check bound to it, and a claim that there is nothing to raise or
     operate has no behavior left for a check to bind to. Left in, the rule demanded a `verify:`
     the book cannot write and the two already-bound checks on the node's other claim — proving
@@ -756,7 +773,7 @@ def normative_claims(
         key, value = str(row[0]), str(row[1])
         if key in normative:
             counts[key] = counts.get(key, 0) + 1
-            if key in _SELF_DECLARABLE_EMPTY_KEYS and self_declared_empty(value):
+            if states_no_claim(key, value):
                 continue
             claims[(key, counts[key])] = value
     return claims

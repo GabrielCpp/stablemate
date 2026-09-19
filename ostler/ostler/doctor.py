@@ -3676,7 +3676,8 @@ def _check_ui(graph: Graph, f: list[Finding],
             # repair drain collapses them into one worklist row, and the turn reads whichever
             # sibling it lands on. See `refs.bullet_ref`.
             for index, value in enumerate(_bullet_values(node.meta.get(key, "")), 1):
-                normative += 1
+                if not registry.states_no_claim(key, value):
+                    normative += 1
                 length = len(_prose(value))
                 if length > MAX_NORMATIVE_PROSE:
                     f.append(Finding(

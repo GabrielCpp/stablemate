@@ -803,6 +803,43 @@ def test_a_bare_none_on_raises_is_still_the_light_sibling(repo: Path):
     assert "raises:1" in finding.message
 
 
+def test_a_node_whose_only_claim_self_declares_empty_owes_no_check(repo: Path):
+    # `undeclared-obligation` and `uneven-claim-coverage` read the same question — is this
+    # bullet a claim — and used to read it through different definitions: the coverage rule
+    # asked `registry.states_no_claim`, the node-wide counter counted every normative bullet.
+    # A node whose one bullet says there is nothing to raise was then told to declare a check
+    # for it, which is the check the book cannot write.
+    write(repo / "docs/features/groom/concepts/publisher.md",
+          "---\ntype: concept\nslug: publisher\ntitle: Publisher\n---\n# Publisher\n\n"
+          "## Methods\n\n### Publish\n"
+          "- raises: nothing at all, because a refusal is a returned message rather than "
+          "an error.\n")
+    assert "undeclared-obligation" not in all_codes(_run(repo))
+
+
+def test_a_node_whose_only_claim_is_a_bare_none_still_owes_a_check(repo: Path):
+    # The reason is what turns the blank into a fact, so the two rules stay in step on the
+    # half that is *not* excluded too: a bare `none` is an open claim in both of them.
+    write(repo / "docs/features/groom/concepts/publisher.md",
+          "---\ntype: concept\nslug: publisher\ntitle: Publisher\n---\n# Publisher\n\n"
+          "## Methods\n\n### Publish\n"
+          "- raises: none\n")
+    assert "undeclared-obligation" in all_codes(_run(repo))
+
+
+def test_a_live_claim_beside_a_self_declared_empty_one_still_owes_a_check(repo: Path):
+    # The exclusion is per bullet, not per node: the node still states a real claim, and
+    # dropping the whole node from the rule would make emptiness a way to go green.
+    write(repo / "docs/features/groom/concepts/publisher.md",
+          "---\ntype: concept\nslug: publisher\ntitle: Publisher\n---\n# Publisher\n\n"
+          "## Methods\n\n### Publish\n"
+          "- returns: the published revision\n"
+          "- raises: nothing at all, because a refusal is a returned message rather than "
+          "an error.\n")
+    finding = next(f for f in _run(repo).findings if f.code == "undeclared-obligation")
+    assert "1 normative bullet " in finding.message
+
+
 def test_a_check_that_cannot_go_red_is_reported(repo: Path):
     # Declared, parsed, bound — and green against the defect too. Presence without a value is
     # `json_path`'s own `excludes:` sentence, so the rule is that sentence made computable.
