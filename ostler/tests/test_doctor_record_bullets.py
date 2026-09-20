@@ -171,6 +171,33 @@ def test_a_bullet_key_buried_under_an_undeclared_container_is_reported(repo: Pat
     assert all(f.suggestion is not None and f.fixable for f in found)
 
 
+def test_a_backtick_quoted_child_key_is_still_read_as_the_node_bullet_it_spells(repo: Path) -> None:
+    """The book quotes a child key in backticks as often as it writes it bare — `` `status`:
+    200 `` says the same key as `status: 200`. A slice that kept the backticks would test
+    `` `status` `` against `endpoint`'s declared keys and never match, leaving the buried claim
+    unreported for no reason but its own markdown. `status` is declared by `endpoint` and is not
+    also stated at the node's own top level here, so the buried spelling is genuinely invisible.
+    """
+    write(repo / ENDPOINT_PATH, _endpoint_book_with(
+        "request", "`status`: 200", "protocol: HTTP/1.1"))
+    found = _findings(repo, "misnested-bullet")
+    assert [(f.severity, f.ref) for f in found] == [("error", "request:status")]
+    assert "status" in found[0].message
+
+
+def test_a_buried_child_the_node_also_states_at_top_level_is_not_reported(repo: Path) -> None:
+    """An undeclared container has no grammar of its own, so nothing here can tell whether a
+    buried child restates the node's own claim or replaces it. Where `authorization:` is also
+    stated at the node's own top level, the buried `authorization:` under `request:` might be a
+    harmless echo or a contradiction — either reading is grammatical, and an undeclared parent
+    gives no way to choose between them, so the check stays silent rather than accuse the book
+    of losing a claim that its own top level still states.
+    """
+    write(repo / ENDPOINT_PATH, _endpoint_book_with(
+        "request", "authorization: an adjuster too", "protocol: HTTP/1.1"))
+    assert _findings(repo, "misnested-bullet") == []
+
+
 def test_the_buried_child_key_is_absent_from_top_level_meta(repo: Path) -> None:
     """A finding on this branch names a genuinely invisible claim, not a duplicated one.
 

@@ -839,7 +839,8 @@ _BULLET_KEY_SPELLING = re.compile(r"^[a-z][a-z0-9-]{0,24}$")
 
 
 def _check_undeclared_container_properties(graph: Graph, f: list[Finding]) -> None:
-    """A bullet key the node type does not declare can still bury a bullet key it does.
+    """A bullet key the node type does not declare can still bury a bullet key it does — and
+    replace it, not merely restate it, when the node states no top-level claim of its own.
 
     `_check_record_properties` catches this when the parent key is itself declared and marked
     ``record=True`` — the grammar that governs its children is known, so a child spelled like a
@@ -853,14 +854,27 @@ def _check_undeclared_container_properties(graph: Graph, f: list[Finding]) -> No
     undeclared parent: `- request:` on an `endpoint` is not itself a bullet the type recognizes,
     so its `- method:`/`- path:` children arrive as flattened strings under `meta["request"]`
     rather than as the top-level `method:`/`path:` bullets the type is grading against. The
-    parent key being undeclared is *why* the child is invisible, not merely misplaced, which the
-    message says explicitly — the reader needs to know the fix promotes the child out from under
-    a key the node's own type never wrote down.
+    book quotes a child key in backticks as often as it writes it bare, so the slice is
+    unquoted before it is tested — the child's spelling, not its markdown, is what has to match.
+
+    An undeclared parent's grammar being unknown cuts both ways, though: nothing here can tell
+    a restatement from a replacement, so a child is only invisible — and only reported — when
+    the node makes no top-level claim of that key itself. Where the node states the key at its
+    own top level too, the buried child might duplicate that claim or might contradict it, and
+    an undeclared container has no grammar to say which, so the check stays silent rather than
+    accuse the book of losing a claim it never lost. The parent key being undeclared and the
+    node's own claim being absent are both *why* the child is invisible, not merely misplaced,
+    which the message says explicitly — the reader needs to know the fix promotes the child out
+    from under a key the node's own type never wrote down.
 
     One finding per buried child key, not one per parent, matching `_check_record_properties`.
     A `ref` names one subject so the finding can be closed on its own: promoting `method:` and
     leaving `path:` under the same parent discharges half the problem, and a ref naming the set
-    would still fire afterwards with a subject that is now partly false.
+    would still fire afterwards with a subject that is now partly false. `ref` names the child by
+    its bare spelling, the stable identifier a reader closes the finding by, regardless of
+    whether the book happened to quote it. The message spells it the same way, backticked once:
+    a child the book already quoted is not quoted twice, so a finding reads the same whichever
+    spelling the page used.
     """
     for node in graph.ui_nodes:
         declared = registry.declared_keys(node.type)
@@ -868,18 +882,23 @@ def _check_undeclared_container_properties(graph: Graph, f: list[Finding]) -> No
         for key, value in node.meta.items():
             if key in declared or not _BULLET_KEY_SPELLING.match(key) or not isinstance(value, list):
                 continue
-            children = [item.split(":", 1)[0].strip() for item in value]
-            hits = [child for child in children if child in declared]
+            hits = []
+            for item in value:
+                raw = item.split(":", 1)[0].strip()
+                bare = raw.strip("`")
+                if bare in declared and bare not in node.meta:
+                    hits.append((raw, bare))
             if not hits:
                 continue
-            for child in hits:
+            for raw, bare in hits:
+                quoted = raw if raw.startswith("`") and raw.endswith("`") else f"`{raw}`"
                 f.append(Finding(
                     "error", "misnested-bullet",
-                    f"{node.id}: `{child}:` nested under `{key}:` is a property spelling of "
-                    f"{node.type}'s own `{child}:` bullet, but `{key}:` is not a key {node.type} "
+                    f"{node.id}: {quoted}: nested under `{key}:` is a property spelling of "
+                    f"{node.type}'s own `{bare}:` bullet, but `{key}:` is not a key {node.type} "
                     f"declares, so it is invisible rather than merely misplaced",
-                    path=rel, line=node.line, ref=f"{key}:{child}", fixable=True,
-                    suggestion=f"promote `- {child}:` to a top-level bullet of the node"))
+                    path=rel, line=node.line, ref=f"{key}:{bare}", fixable=True,
+                    suggestion=f"promote `- {bare}:` to a top-level bullet of the node"))
 
 
 def _prose_burial_keys() -> frozenset[str]:
