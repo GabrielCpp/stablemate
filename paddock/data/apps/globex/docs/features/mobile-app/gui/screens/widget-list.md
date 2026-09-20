@@ -93,7 +93,7 @@ independent clients of `api-service`.
 - states: shown — visible whenever the directory read itself fails, carrying the reason rather
   than an empty table that would read as a directory with nothing in it
 - verify: visible(locator="#widgets-alert", text="Could not read the widget directory.")
-- fixture: api-service-unavailable — the directory read fails
+- fixture: api-service-unavailable
 - code: `app/mobile-app/src/screens/WidgetListScreen.tsx::renderErrorAlert` @b9711279c5dc
 - detail: `role="alert"` is set explicitly in source, mirroring
   [web-app](../../../web-app/gui/screens/widget-list.md#load-alert)'s `p[role="alert"]`; `name:`

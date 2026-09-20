@@ -24,7 +24,7 @@ rather than left as unlinked prose.
   reads its API origin from `app/web-app/static/config.js`, not from process environment,
   because the fetch is made by the page, not by the web-app process.
 - tests:
-- fixture: `docker compose up --build`
+- fixture:
 - capture:
 - persistence: widget — a widget created before a restart of this environment does not
   survive it (the store is in-process and reinitializes empty on the next `docker compose up`)

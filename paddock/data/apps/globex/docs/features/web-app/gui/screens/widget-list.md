@@ -79,7 +79,7 @@ driven directly.
 - states: shown — visible whenever the directory read itself fails, carrying the reason rather
   than an empty table that would read as a directory with nothing in it
 - verify: visible(locator="#load-alert", text="Could not read the widget directory.")
-- fixture: api-service-unavailable — the directory read fails
+- fixture: api-service-unavailable
 - code: `app/web-app/static/app.js::loadWidgets` @81b0f35cee96
 - detail:
 - tests:
