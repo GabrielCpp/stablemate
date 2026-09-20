@@ -683,6 +683,50 @@ def test_a_path_addressed_surface_never_consults_a_launch_screen(repo: Path):
     assert reach.resolve_start(data, None, "web", surface="web") == LAND
 
 
+def _cli_repo_with_no_screens(repo: Path):
+    """A `cli` surface: a `type: cli` node under its own directory, no screens anywhere — the
+    shape `workflows`, `farrier` and `workhorse` actually take in this repo's own book."""
+    write(repo / "docs/features/toolbox/toolbox.md", (
+        "---\ntype: cli\nslug: toolbox\ntitle: Toolbox\n---\n# Toolbox\n\n"
+        "- binary: `toolbox`\n"
+    ))
+    write(repo / "docs/features/toolbox/ops/stack.md", (
+        "---\ntype: runbook\nslug: stack\ntitle: Stack\n---\n# Stack\n\n"
+        "- driver: cli\n- surfaces: [toolbox](../toolbox.md)\n\n"
+        "## Steps\n\n### serve\n- kind: service\n- run: `toolbox --help`\n"
+    ))
+    return load(repo)
+
+
+def test_a_surface_with_no_screens_says_so_instead_of_launch_screen_or_a_root_path(repo: Path):
+    """An empty domain is not a failed search: `workflows`, `farrier` and `workhorse` in this
+    repo's own book each declare zero screens under `driver: cli`, and neither `--from` nor
+    `launch-screen:` names anything to repair when there is no screen for either to point at."""
+    import pytest
+
+    data = graph.build(_cli_repo_with_no_screens(repo), surface="toolbox")
+
+    with pytest.raises(reach.UnknownStart) as exc:
+        reach.resolve_start(data, None, "cli", surface="toolbox")
+
+    message = str(exc.value)
+    assert "declares no screens" in message
+    assert "launch-screen" not in message
+    assert "--from" not in message
+
+
+def test_the_reach_command_reports_no_screens_for_a_cli_surface(repo: Path, capsys):
+    """The same empty-domain message, through `_cmd_reach` the way a person actually runs it."""
+    graph_obj = _cli_repo_with_no_screens(repo)
+    args = SimpleNamespace(surface="toolbox", start=None, target=None, json=True)
+
+    assert cli._cmd_reach(graph_obj, args) == 2
+    error = json.loads(capsys.readouterr().out)["error"]
+    assert "declares no screens" in error
+    assert "launch-screen" not in error
+    assert "--from" not in error
+
+
 def test_the_reach_command_degrades_when_the_book_does_not_settle_a_driver(repo: Path, capsys):
     """Two runbooks disagreeing is `doctor`'s finding to raise. This command wants a grammar,
     so it degrades to none and behaves exactly as it did before drivers existed."""

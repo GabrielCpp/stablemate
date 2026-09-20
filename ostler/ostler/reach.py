@@ -618,6 +618,11 @@ def resolve_start(data: dict, start: str | None, driver: str | None = None, *,
                   surface: str | None = None) -> str:
     """*start* as a screen id, or the surface's root when none was given.
 
+    A surface with no screens at all is told that directly: a search that finds nothing because
+    there was nothing to find is a different fact from a search that finds nothing because the
+    thing it wanted was missing, and `launch-screen:`, `--from` and a root path are all repairs
+    for the latter — none of them names anything when there is no screen to point at.
+
     *driver* decides which of the two ``root_screen`` failures this is. A driver with no path
     grammar — `mobile` names its screens, `cli` routes nothing — has no root path to state, but
     when *surface* is given it may still state where it starts via `launch-screen:`, so that is
@@ -628,6 +633,9 @@ def resolve_start(data: dict, start: str | None, driver: str | None = None, *,
     """
     screens = screens_of(data)
     if start is None:
+        if not screens:
+            named = f"a `{driver}` surface" if driver else "this surface"
+            raise UnknownStart(f"{named} declares no screens; there is nothing to start from")
         root = root_screen(data, driver)
         if root is None:
             if not routes_mod.is_path_addressed(driver):
