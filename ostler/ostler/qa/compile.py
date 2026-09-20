@@ -3564,7 +3564,11 @@ def _http_journey(
         whole = True
         for row in obligation.get("checksDeclared", []):
             named = row.get("args", {}).get("path")
-            if isinstance(named, str) and named != last_path:
+            if (
+                isinstance(named, str)
+                and named != last_path
+                and _observes(row.get("name")) == "response"
+            ):
                 note = (f"`{row.get('name')}` names `path={named}`, and this journey ended on "
                         f"`{last_path}` — a journey's claim is about the world its last step "
                         "left, so there is no response here this check is about")

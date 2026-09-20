@@ -3223,6 +3223,33 @@ def test_a_check_naming_another_steps_path_is_not_about_this_journeys_end() -> N
     assert "/healthz" in gap.detail and "its last step left" in gap.detail
 
 
+def test_a_journeys_json_path_check_is_not_about_a_route_at_all() -> None:
+    """`json_path.path` is an identifier into the response *document*, not a route — unlike
+    `http_status.path`, which the guard above this one withholds a journey's own `verify:` for.
+    A `json_path` naming a document path that happens to differ from the journey's last route is
+    not a claim about some other request; it compiles."""
+    oid = f"okf:{_FLOW}:end-state"
+    context = _navigation_context(
+        _flow_obligation(
+            oid, source=_FLOW, surface="api",
+            steps=[_step(f"{_API}#post-things", "endpoint", "api"),
+                   _step(f"{_API}#get-things", "endpoint", "api")],
+            checks=[{"call": "it", "name": "json_path",
+                     "args": {"path": "$.widgets[0].status", "equals": "Draft"}}],
+        ),
+        _step_node(f"{_API}#post-things", {"route": ["DELETE /api/things"]}),
+        _step_node(f"{_API}#get-things", {"route": ["GET /api/things"]}),
+        navigation=_api_navigation(),
+    )
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(result, Plan)
+    source, gaps = result.source, result.gaps
+    ast.parse(source)
+    assert oid in _covers(source)
+    assert 'qa.verify("json_path", observed_2.json()' in source
+    assert _gap_kinds(gaps, oid) == []
+
+
 def test_a_journey_across_two_targets_has_no_scenario_shape_to_fit_into() -> None:
     """A target is the pairing of a driver with a service, and `@scenario(target=...)` binds
     exactly one. The reason says that — a fact about the harness — rather than claiming no
