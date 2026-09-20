@@ -1156,7 +1156,7 @@ def _cmd_reach(graph, args) -> int:
     data = graph_mod.subset(dump, args.surface) if args.surface else dump
     driver = _surface_driver(dump, args.surface)
     try:
-        start = reach.resolve_start(data, args.start, driver)
+        start = reach.resolve_start(data, args.start, driver, surface=args.surface)
     except reach.UnknownStart as exc:
         # A start that names nothing must not route from nowhere: that reads as "0 reachable",
         # every screen a hole in the book, for a typo in the flag.

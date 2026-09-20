@@ -501,16 +501,76 @@ def test_a_prose_entry_does_not_exempt_a_screen(repo: Path):
 MOBILE_SCREENS = "docs/features/mobile-app/gui/screens"
 
 
-def _mobile_repo(repo: Path):
-    """A surface whose runbook drives it with `mobile` — screen names, no paths anywhere."""
+def _mobile_repo(repo: Path, launch_screen: bool = False):
+    """A surface whose runbook drives it with `mobile` — screen names, no paths anywhere.
+
+    *launch_screen* adds a `launch-screen:` bullet naming the same screen `surfaces:` already
+    names, the shape a real mobile runbook takes.
+    """
     write(repo / MOBILE_SCREENS / "widget-list.md", (
         "---\ntype: screen\nslug: widget-list\ntitle: Widgets\n---\n# Widgets\n\n"
         "- route: `WidgetList`\n- requires: none\n- params: none\n"
     ))
+    launch = ("- launch-screen: [widget-list](../gui/screens/widget-list.md)\n"
+              if launch_screen else "")
     write(repo / "docs/features/mobile-app/ops/stack.md", (
         "---\ntype: runbook\nslug: stack\ntitle: Stack\n---\n# Stack\n\n"
-        "- driver: mobile\n- surfaces: [widget-list](../gui/screens/widget-list.md)\n\n"
+        "- driver: mobile\n- surfaces: [widget-list](../gui/screens/widget-list.md)\n"
+        f"{launch}\n"
         "## Steps\n\n### serve\n- kind: service\n- run: `metro`\n"
+    ))
+    return load(repo)
+
+
+def _mobile_repo_with_an_unusable_launch_screen(repo: Path):
+    """A `mobile` runbook whose `launch-screen:` names a component rather than a screen.
+
+    `surface_launch_screen` resolves the link and returns the document it names, with no check
+    that the document is a screen on the surface — so this is the shape that reaches
+    `resolve_start` with a settled answer it cannot start from.
+    """
+    write(repo / MOBILE_SCREENS / "widget-list.md", (
+        "---\ntype: screen\nslug: widget-list\ntitle: Widgets\n---\n# Widgets\n\n"
+        "- route: `WidgetList`\n- requires: none\n- params: none\n"
+    ))
+    write(repo / "docs/features/mobile-app/gui/components/toolbar.md", (
+        "---\ntype: component\nslug: toolbar\ntitle: Toolbar\n---\n# Toolbar\n\n"
+        "- renders: a row of actions\n"
+    ))
+    write(repo / "docs/features/mobile-app/ops/stack.md", (
+        "---\ntype: runbook\nslug: stack\ntitle: Stack\n---\n# Stack\n\n"
+        "- driver: mobile\n- surfaces: [widget-list](../gui/screens/widget-list.md)\n"
+        "- launch-screen: [toolbar](../gui/components/toolbar.md)\n\n"
+        "## Steps\n\n### serve\n- kind: service\n- run: `metro`\n"
+    ))
+    return load(repo)
+
+
+def _mobile_repo_with_conflicting_launch_screens(repo: Path):
+    """Two `walkthrough: true` runbooks over `mobile-app`, each naming a different
+    `launch-screen:` — the shape `surface_launch_screen` reports as `ConflictingSurfaceLaunchScreen`
+    rather than picking one."""
+    write(repo / MOBILE_SCREENS / "widget-list.md", (
+        "---\ntype: screen\nslug: widget-list\ntitle: Widgets\n---\n# Widgets\n\n"
+        "- route: `WidgetList`\n- requires: none\n- params: none\n"
+    ))
+    write(repo / MOBILE_SCREENS / "new-widget.md", (
+        "---\ntype: screen\nslug: new-widget\ntitle: New widget\n---\n# New widget\n\n"
+        "- route: `NewWidget`\n- requires: none\n- params: none\n"
+    ))
+    write(repo / "docs/features/mobile-app/ops/legacy.md", (
+        "---\ntype: runbook\nslug: legacy\ntitle: Legacy\n---\n# Legacy\n\n"
+        "- driver: mobile\n- walkthrough: true\n"
+        "- surfaces: [widget-list](../gui/screens/widget-list.md)\n"
+        "- launch-screen: [widget-list](../gui/screens/widget-list.md)\n\n"
+        "## Steps\n\n### serve\n- kind: service\n- run: `metro`\n"
+    ))
+    write(repo / "docs/features/mobile-app/ops/current.md", (
+        "---\ntype: runbook\nslug: current\ntitle: Current\n---\n# Current\n\n"
+        "- driver: mobile\n- walkthrough: true\n"
+        "- surfaces: [widget-list](../gui/screens/widget-list.md)\n"
+        "- launch-screen: [new-widget](../gui/screens/new-widget.md)\n\n"
+        "## Steps\n\n### serve\n- kind: service\n- run: `metro --current`\n"
     ))
     return load(repo)
 
@@ -535,13 +595,92 @@ def test_the_reach_command_reads_the_surface_driver_off_the_runbook(repo: Path, 
     from the book like every other reader, so the message a person sees is this surface's.
 
     The exit code alone proves nothing — a driver-less read stops here too, having gone looking
-    for a screen at a `/` this book never wrote. What separates them is what it says."""
+    for a screen at a `/` this book never wrote. What separates them is what it says.
+
+    `_mobile_repo` states no `launch-screen:` here, so `_cmd_reach`'s `surface` still leaves
+    this surface with no start to report — the message just names the bullet that could have
+    settled it, since `_cmd_reach` now passes `surface` through to `resolve_start`."""
     graph_obj = _mobile_repo(repo)
     args = SimpleNamespace(surface="mobile-app", start=None, target=None, json=True)
 
     assert cli._cmd_reach(graph_obj, args) == 2
     assert json.loads(capsys.readouterr().out)["error"] == (
-        "a `mobile` surface states no root path to start from; pass --from")
+        "a `mobile` surface states no `launch-screen:` on its runbook and no root path "
+        "to start from; pass --from")
+
+
+def test_a_mobile_surfaces_launch_screen_is_the_start(repo: Path):
+    """The fact `surface_launch_screen` already resolves was simply unwired: once `resolve_start`
+    is given `surface`, a `mobile` surface's `launch-screen:` becomes its start."""
+    data = graph.build(_mobile_repo(repo, launch_screen=True), surface="mobile-app")
+
+    assert reach.resolve_start(data, None, "mobile", surface="mobile-app") == (
+        f"{MOBILE_SCREENS}/widget-list.md")
+
+
+def test_a_mobile_surface_with_no_launch_screen_still_raises_unknown_start(repo: Path):
+    """No `launch-screen:` and no root path leaves nothing to start from — the message must
+    name `launch-screen:` so the operator knows which bullet would have settled it."""
+    import pytest
+
+    data = graph.build(_mobile_repo(repo), surface="mobile-app")
+
+    with pytest.raises(reach.UnknownStart) as exc:
+        reach.resolve_start(data, None, "mobile", surface="mobile-app")
+    assert "`launch-screen:`" in str(exc.value)
+
+
+def test_a_stated_launch_screen_that_is_not_a_screen_says_so(repo: Path):
+    """`surface_launch_screen` type-checks nothing, so a `launch-screen:` naming a component
+    comes back settled and unusable. Telling the reader the book "states no `launch-screen:`"
+    would send them to add a bullet that is already there — the message has to name what the
+    book did state, because a stated-but-wrong declaration and an absent one are repaired at
+    different lines."""
+    import pytest
+
+    data = graph.build(_mobile_repo_with_an_unusable_launch_screen(repo), surface="mobile-app")
+
+    with pytest.raises(reach.UnknownStart) as exc:
+        reach.resolve_start(data, None, "mobile", surface="mobile-app")
+
+    message = str(exc.value)
+    assert "docs/features/mobile-app/gui/components/toolbar.md" in message
+    assert "not a screen on this surface" in message
+    assert "states no `launch-screen:`" not in message
+
+
+def test_a_conflicting_launch_screen_is_reported_as_unknown_start(repo: Path):
+    """`surface_launch_screen` raises `ConflictingSurfaceLaunchScreen` when two walkthrough
+    runbooks disagree; `resolve_start` must not let that escape past `UnknownStart` — every
+    caller catches only the one exception, so the unsettled reason has to be folded in."""
+    import pytest
+
+    data = graph.build(_mobile_repo_with_conflicting_launch_screens(repo), surface="mobile-app")
+
+    with pytest.raises(reach.UnknownStart) as exc:
+        reach.resolve_start(data, None, "mobile", surface="mobile-app")
+    assert "conflicting launch screens" in str(exc.value)
+
+
+def test_a_mobile_surface_with_no_surface_argument_keeps_the_original_message(repo: Path):
+    """`resolve_start` called the way every caller called it before this change — with no
+    `surface` — must behave exactly as before: `launch-screen:` is never consulted."""
+    import pytest
+
+    data = graph.build(_mobile_repo(repo, launch_screen=True), surface="mobile-app")
+
+    with pytest.raises(reach.UnknownStart) as exc:
+        reach.resolve_start(data, None, "mobile")
+    assert str(exc.value) == "a `mobile` surface states no root path to start from; pass --from"
+
+
+def test_a_path_addressed_surface_never_consults_a_launch_screen(repo: Path):
+    """`web` has a path grammar, so `resolve_start` must still resolve its root screen and
+    never so much as ask `surface_launch_screen` — passing `surface` through must not change
+    a path-addressed surface's answer."""
+    data = graph.build(_repo(repo), surface="web")
+
+    assert reach.resolve_start(data, None, "web", surface="web") == LAND
 
 
 def test_the_reach_command_degrades_when_the_book_does_not_settle_a_driver(repo: Path, capsys):

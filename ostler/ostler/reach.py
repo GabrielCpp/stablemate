@@ -614,13 +614,17 @@ class UnknownStart(ValueError):
     """The requested start names no screen on the surface."""
 
 
-def resolve_start(data: dict, start: str | None, driver: str | None = None) -> str:
+def resolve_start(data: dict, start: str | None, driver: str | None = None, *,
+                  surface: str | None = None) -> str:
     """*start* as a screen id, or the surface's root when none was given.
 
     *driver* decides which of the two ``root_screen`` failures this is. A driver with no path
-    grammar — `mobile` names its screens, `cli` routes nothing — has no root path to state, so
-    quoting one back is quoting a default the book never wrote; the caller is told the surface
-    has no root rather than sent looking for a screen at `/`.
+    grammar — `mobile` names its screens, `cli` routes nothing — has no root path to state, but
+    when *surface* is given it may still state where it starts via `launch-screen:`, so that is
+    consulted first; only when that bullet is silent, unsettled, or names something that is not
+    a screen on the surface is the caller told so, rather than sent looking for a screen at `/`.
+    Each of those three is reported in its own words: a message that says the book stated
+    nothing, where the book stated something unusable, sends the reader to the wrong line.
     """
     screens = screens_of(data)
     if start is None:
@@ -628,6 +632,24 @@ def resolve_start(data: dict, start: str | None, driver: str | None = None) -> s
         if root is None:
             if not routes_mod.is_path_addressed(driver):
                 named = f"a `{driver}` surface" if driver else "this surface"
+                if surface is not None:
+                    try:
+                        launch_screen = surface_launch_screen(data, surface)
+                    except UnsettledSurfaceLaunchScreen as exc:
+                        raise UnknownStart(
+                            f"{named} has an unsettled `launch-screen:`: {exc}"
+                        ) from exc
+                    if launch_screen is not None:
+                        if launch_screen in screens:
+                            return launch_screen
+                        raise UnknownStart(
+                            f"{named} states `launch-screen:` {launch_screen}, which is not a "
+                            "screen on this surface; pass --from"
+                        )
+                    raise UnknownStart(
+                        f"{named} states no `launch-screen:` on its runbook and no root path "
+                        "to start from; pass --from"
+                    )
                 raise UnknownStart(f"{named} states no root path to start from; pass --from")
             path, _ = root_path(data, driver)
             raise UnknownStart(f"no screen's `route:` is the root path {path}; pass --from")
@@ -643,9 +665,10 @@ def reachability(graph: Graph, *, surface: str | None = None, start: str | None 
                  driver: str | None = None) -> dict:
     """Route every documented screen on *surface* from *start*; report the ones with no path.
 
-    *start* defaults to the surface's root screen, and a start that names no screen raises rather
-    than routing from nowhere: a typo in ``--from`` used to yield "0 reachable" — every screen
-    reported as a hole in the book, with the book untouched.
+    *start* defaults to the surface's root screen — or, for a surface with no path grammar, its
+    `launch-screen:` — and a start that names no screen raises rather than routing from nowhere:
+    a typo in ``--from`` used to yield "0 reachable" — every screen reported as a hole in the
+    book, with the book untouched.
     The unreachable list is the actionable half: each entry is a screen the book documents but
     never says how to arrive at, which is exactly the missing coverage a walk cannot close on its own.
     """
@@ -653,7 +676,7 @@ def reachability(graph: Graph, *, surface: str | None = None, start: str | None 
     by_id = {n["id"]: n for n in data["nodes"]}
     edges = navigation_edges(data)
     screens = screens_of(data)
-    start = resolve_start(data, start, driver)
+    start = resolve_start(data, start, driver, surface=surface)
 
     routed: dict[str, list[dict]] = {}
     unreachable: list[str] = []
