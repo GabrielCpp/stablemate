@@ -22,6 +22,7 @@ runbook's own job is only to bring mobile-app up.
 - entry-url:
 - health-path:
 - identity:
+- bundle-id: com.globex.mobile
 - reuse:
 - fresh:
 - boot-timeout:
