@@ -59,8 +59,9 @@ target is its node type paired with the `driver:` of the surface it lives on, so
 walks a mobile app and then a web app — or drives an api and then a browser — names two. One
 compiled scenario binds one driver to one service, so there is no shape for that journey yet,
 and the compiler says so with `needs-multi-target-runtime` rather than asking anyone to change
-the book. The same holds for a step whose single target has no backend here (`maestro`,
-`in-process`): that is `needs-target-backend`. **Neither is a defect in the flow.** Write the
+the book. The same holds for a journey whose steps all share one target this compiler builds
+no *journey* path for (every step dispatches to `cli`): that is `needs-target-backend`.
+**Neither is a defect in the flow.** Write the
 journey the user actually performs; a journey that is really two, performed by two people or
 two sittings, is two flows, and splitting it to make the compiler happy records a walk nobody
 takes.
