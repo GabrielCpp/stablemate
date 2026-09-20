@@ -342,7 +342,7 @@ Completion marker for the node, written by `_write_done` after its step files.
 - `next` — type `string | null`, required.
 - semantics: Always `null` under pyflow because there is no node graph and therefore no edge to
   name.
-- verify: json_path(path="$.next", matches="^None$")
+- verify: json_path(path="$.next", matches="^null$")
 - semantics: What runs next is whatever [`Continue`](workflow-format.md#transition) the enclosing
   state returns, and that transition is recorded in the checkpoint, not here.
 - verify: persists(subject="the enclosing state's next transition in checkpoint.json")

@@ -54,7 +54,7 @@ validation returns to the same agent state through an operator-awaiting context 
 - does: requires exactly one milestone sourced by the prepared roadmap
 - verify: count(subject="roadmap-owned milestones", equals=1)
 - does: requires the roadmap to be the milestone's sole source item
-- verify: json_path(path="$.sourceItems", matches="^\\['docs/roadmaps/account-access\\.md'\\]$")
+- verify: json_path(path="$.sourceItems", matches="^\\[\"docs/roadmaps/account-access\\.md\"\\]$")
 - does: requires the milestone epic list to preserve the prepared order
 - verify: unchanged(subject="milestone epics", except_fields=[])
 - does: rejects creation or modification of unrelated milestone documents

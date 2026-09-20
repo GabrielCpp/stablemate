@@ -17,7 +17,7 @@ only when `run_dir` is a directory on the current machine; all misses preserve a
 ### field: run_dir
 - type: `Path | None`
 - default: `None`
-- verify: json_path(path="$.run_dir", matches="^None$")
+- verify: json_path(path="$.run_dir", matches="^null$")
 - required: true
 - verify: json_path(path="$.run_dir", matches=".+")
 - semantics: the one locally existing run directory accepted from groom, or `None` for every miss

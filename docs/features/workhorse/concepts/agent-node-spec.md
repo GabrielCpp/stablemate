@@ -118,7 +118,7 @@ workflow-format file or a backend request.
 - default: `None`
 - required: false
 - semantics: limits how many failed turns are reframed from scratch in a fresh session before the recovery ladder gives up on the node
-- verify: json_path(path="$.retries", matches="^(None|[0-9]+)$")
+- verify: json_path(path="$.retries", matches="^(null|[0-9]+)$")
 - semantics: `None` uses the run's `resilience.max_rephrase_attempts` setting
 - verify: json_path(path="$.retries", equals="None")
 - semantics: `0` disables reframing when a node delivers a file whose caller can use a partial artifact more cheaply than starting a fresh full-price session
@@ -136,7 +136,7 @@ workflow-format file or a backend request.
 - default: `None`
 - required: false
 - semantics: caps retries for transient rate-limit, overload, and network failures during the node's turn
-- verify: json_path(path="$.invoke_retries", matches="^(None|[0-9]+)$")
+- verify: json_path(path="$.invoke_retries", matches="^(null|[0-9]+)$")
 - semantics: `None` uses the run's `resilience.max_invoke_retries` setting, whose days-long budget lets an unattended run ride out a provider outage
 - verify: json_path(path="$.invoke_retries", equals="None")
 - semantics: a spending-cap wait is not limited by this field because recovery waits for the cap to clear rather than stopping the turn

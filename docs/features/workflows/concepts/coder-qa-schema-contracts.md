@@ -63,7 +63,7 @@ so an omitted decision is retried rather than silently routed.
 ### method: DryRunGate
 - sig: `DryRunGate(status: Literal["passed", "failed"] = "failed", notes: str = "", scenarios: list[str] = [], verified: list[str] = []) -> DryRunGate`
 - does: records the scenarios demanded by a plan repair or draft and the scenarios proved by scratch evidence
-- verify: json_path(path="$.scenarios", matches="^\\['[^']+'")
+- verify: json_path(path="$.scenarios", matches="^\\[\"[^\"]+\"")
 - returns: a failed-by-default gate unless every demanded dry-run condition is later established
 - verify: json_path(path="$.status", equals="failed")
 - code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::DryRunGate` @2e918886779f
@@ -143,7 +143,7 @@ so an omitted decision is retried rather than silently routed.
 - does: reports an authored or repaired plan and names scenarios changed or dry-run proved by that turn
 - verify: json_path(path="$.status", matches="^(done|blocked)$")
 - returns: a plan result whose scenario lists are claims consumed by the dry-run gate
-- verify: json_path(path="$.repaired_scenarios", matches="^\\[(?:'[^']+'(?:, )?)*\\]$")
+- verify: json_path(path="$.repaired_scenarios", matches="^\\[(?:\"[^\"]+\"(?:, )?)*\\]$")
 - code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::QaPlanResult` @2e918886779f
 
 ### method: QaFinding

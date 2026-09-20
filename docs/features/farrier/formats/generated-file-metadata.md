@@ -91,9 +91,9 @@ that, then `make agent-install` to regenerate this file.
 - default: omitted when the source has no tags
 - verify: json_path(path="$.metadata.tags", absent=true)
 - required: false
-- verify: json_path(path="$.metadata.tags", matches="^\\['web', 'tests'\\]$")
+- verify: json_path(path="$.metadata.tags", matches="^\\[\"web\", \"tests\"\\]$")
 - semantics: normalized source tags, lowercased, deduplicated, and order-preserving
-- verify: json_path(path="$.metadata.tags", matches="^\\['web', 'tests'\\]$")
+- verify: json_path(path="$.metadata.tags", matches="^\\[\"web\", \"tests\"\\]$")
 - code: `farrier/farrier/renderer.py::skill_metadata_block` @c90fc5d746a8
 - detail: [generated-file metadata fields](../concepts/generated-file-metadata-fields.md)
 

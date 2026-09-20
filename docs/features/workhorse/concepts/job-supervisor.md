@@ -268,7 +268,7 @@ elapsed-time overruns only touch `wake` at doubled estimate multiples and never 
 #### field: exit_code
 - type: `int | None`
 - required: true
-- verify: json_path(path="$.exit_code", matches="^(None|-?[0-9]+)$")
+- verify: json_path(path="$.exit_code", matches="^(null|-?[0-9]+)$")
 - semantics: command exit code for a completed command
 - verify: json_path(path="$.exit_code", equals=3)
 - semantics: `null` when the supervisor lost the command

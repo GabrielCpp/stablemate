@@ -56,7 +56,7 @@ detached before provider shutdown.
 ### forced
 - type: `bool | None`
 - default: `None` — auto mode uses the collector probe
-- verify: json_path(path="OtelSettings.forced", matches="^None$")
+- verify: json_path(path="OtelSettings.forced", matches="^null$")
 - required: false
 - verify: json_path(path="OtelSettings.forced.required", equals=false)
 - semantics: `true` forces telemetry on and `false` forces it off

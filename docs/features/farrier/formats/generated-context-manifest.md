@@ -71,7 +71,7 @@ contains the fields below; maps and lists are empty when no matching selections 
 - default: `{}`
 - required: false
 - semantics: each tagged selected-skill alias is mapped to its normalized declared tags
-- verify: json_path(path="$.instruction_tags", matches="^\\{'.+': \\['[a-z0-9][a-z0-9 _-]*'")
+- verify: json_path(path="$.instruction_tags", matches="^\\{\".+\": \\[\"[a-z0-9][a-z0-9 _-]*\"")
 - semantics: untagged skills are omitted from `instruction_tags`
 - verify: omits(subject="instruction_tags", matches="untagged skill aliases")
 - semantics: aliases in `instruction_tags` match the keys in `instructions`
@@ -94,9 +94,9 @@ contains the fields below; maps and lists are empty when no matching selections 
 - default: `[]`
 - required: false
 - semantics: sorted skill lookup keys used by run-time `isUsingInstruction` checks
-- verify: json_path(path="$.used_skills", matches="^\\[(?:'[^']+'(?:, )?)+\\]$")
+- verify: json_path(path="$.used_skills", matches="^\\[(?:\"[^\"]+\"(?:, )?)+\\]$")
 - semantics: the list includes every alias exposed by the skill lookup, not only canonical source ids
-- verify: json_path(path="$.used_skills", matches="^\\[(?:'[^']+'(?:, )?)+\\]$")
+- verify: json_path(path="$.used_skills", matches="^\\[(?:\"[^\"]+\"(?:, )?)+\\]$")
 - code: `farrier/farrier/renderer.py::Renderer.context_manifest` @c90fc5d746a8
 - detail: [context manifest fields](../concepts/context-manifest-fields.md)
 

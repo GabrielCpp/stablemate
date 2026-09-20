@@ -100,7 +100,7 @@ and `workhorse/tests/test_stream_subprocess.py::test_an_at_boundary_request_does
 - does: registers the supplied subprocess as the currently streaming process
 - verify: created(subject="registered active subprocess handle")
 - returns: `None`
-- verify: json_path(path="return", matches="^None$")
+- verify: json_path(path="return", matches="^null$")
 - code: `workhorse/workhorse/runner/process.py::ActiveProcess.set` @e578ccf7bac0
 
 ### clear
@@ -108,7 +108,7 @@ and `workhorse/tests/test_stream_subprocess.py::test_an_at_boundary_request_does
 - does: removes the currently registered subprocess
 - verify: removed(subject="registered active subprocess handle")
 - returns: `None`
-- verify: json_path(path="return", matches="^None$")
+- verify: json_path(path="return", matches="^null$")
 - code: `workhorse/workhorse/runner/process.py::ActiveProcess.clear` @e578ccf7bac0
 
 ### terminate

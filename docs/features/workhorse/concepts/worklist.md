@@ -100,7 +100,7 @@ names.
 - default: `kind` defaults to `""`
 - verify: json_path(path="$.kind", equals="")
 - default: `order` defaults to `None`
-- verify: json_path(path="$.order", matches="^None$")
+- verify: json_path(path="$.order", matches="^null$")
 - default: `payload` defaults to `{}`
 - verify: json_path(path="$.payload", matches="^\\{\\}$")
 - required: false for every declared field

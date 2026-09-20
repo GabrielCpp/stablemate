@@ -48,7 +48,7 @@ exclusive checkout. `merge_ref` aborts a conflicted merge before reporting failu
 - does: returns the URL of the remote named `origin`
 - verify: json_path(path="$.result", equals="https://example.com/repo.git")
 - returns: `None` when the repository is invalid, Git fails, or no `origin` remote exists
-- verify: json_path(path="$.result", matches="^None$")
+- verify: json_path(path="$.result", matches="^null$")
 - code: `workflows/src/workhorse_workflows/kit/git.py::origin_url` @7590b93bc951
 
 ### local_branch_exists
@@ -84,7 +84,7 @@ exclusive checkout. `merge_ref` aborts a conflicted merge before reporting failu
 - does: reads the active branch without substituting a trunk name
 - verify: json_path(path="$.result", equals="feature")
 - returns: the active branch name, or `None` for detached HEAD, an empty name, or Git failure
-- verify: json_path(path="$.result", matches="^(feature|None)$")
+- verify: json_path(path="$.result", matches="^(feature|null)$")
 - code: `workflows/src/workhorse_workflows/kit/git.py::active_branch` @7590b93bc951
 
 ### checkout
@@ -210,7 +210,7 @@ exclusive checkout. `merge_ref` aborts a conflicted merge before reporting failu
 - does: resolves the best common ancestor of all supplied refs
 - verify: json_path(path="$.result", matches="^[0-9a-f]{40}$")
 - returns: the merge-base SHA, or `None` when Git cannot resolve one
-- verify: json_path(path="$.result", matches="^None$")
+- verify: json_path(path="$.result", matches="^null$")
 - code: `workflows/src/workhorse_workflows/kit/git.py::merge_base` @7590b93bc951
 
 ### trunk_base

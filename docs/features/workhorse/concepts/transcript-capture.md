@@ -96,7 +96,7 @@ only the byte ceiling.
 - does: opens a visit-keyed pending stream tee when capture is enabled and no store has yet been proven
 - verify: created(subject="visit-keyed pending transcript tee")
 - returns: a live `Tee`, or `None` when there is no valid visit or capture is disabled
-- verify: json_path(path="$.result", matches="^(Tee|None)$")
+- verify: json_path(path="$.result", matches="^(Tee|null)$")
 - code: `workhorse/workhorse/runner/transcript.py::tee_begin` @d9061fde5052
 
 ### capture

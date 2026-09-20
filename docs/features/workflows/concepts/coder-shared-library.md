@@ -119,11 +119,11 @@ permissive result models that ignore unknown keys and drop null values before ap
 
 - sig: `failed_assertions(log_path: Path) -> dict[str, list[str]]`
 - does: considers only assertion records whose case-insensitive trimmed `result` is `FAIL`
-- verify: json_path(path="$.copy-link", matches="^\\['copy-link-1'\\]$")
+- verify: json_path(path="$.copy-link", matches="^\\[\"copy-link-1\"\\]$")
 - does: ignores failed records without a non-empty trimmed scenario name
 - verify: json_path(path="$.", absent=true)
 - returns: scenario names mapped to failed assertion ids in log order, using `?` when an id is absent
-- verify: json_path(path="$.copy-link", matches="^\\['copy-link-1', '\\?'\\]$")
+- verify: json_path(path="$.copy-link", matches="^\\[\"copy-link-1\", \"\\?\"\\]$")
 - code: `workflows/src/workhorse_workflows/coder/shared/qa_support.py::failed_assertions` @dd46fb252212
 
 ### scored_run_log
