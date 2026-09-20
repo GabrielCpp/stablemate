@@ -214,6 +214,49 @@ def test_a_pattern_no_string_can_be_invented_for_is_unwitnessed_not_green() -> N
     assert "no leaking value" in trial.note
 
 
+def test_an_anchored_omits_pattern_is_no_longer_falsely_insensitive() -> None:
+    """The real book shape: `omits(matches="^(agent|name):")` forbids a value that *starts*
+    with the leak. Framing it (`"… agent: …"`) puts the leak in the middle, which the anchor
+    no longer matches, so that mutation does not violate the claim and must not be the one
+    offered — a check cannot be blamed for surviving a perturbation it was never obliged to
+    catch."""
+    trial = _trial(r'omits(subject="detail", matches="^(agent|name):")')
+    assert trial.witnessed
+    assert trial.sensitive
+    assert not trial.survived
+
+
+def test_an_unanchored_omits_pattern_still_gets_perturbed_and_still_reads_sensitive() -> None:
+    """The fix narrows the arm rather than turns it off: a pattern with no anchor to lose
+    still gets the framed leak, and the check is still expected to catch it."""
+    trial = _trial(r'omits(subject="detail", matches="eyJ[A-Za-z0-9_-]{6,}")')
+    assert trial.witnessed
+    assert trial.sensitive
+    assert not trial.survived
+
+
+def test_an_omits_text_leak_keeps_the_framed_mutation() -> None:
+    """`_verify_omits` checks `text=` with substring containment (`args["text"] in haystack`),
+    which has no anchor for framing to break, so the framed form stays a legal perturbation
+    for every `text=` claim, the same as before this fix."""
+    trial = _trial('omits(subject="detail", text="secret")')
+    assert trial.witnessed
+    assert trial.sensitive
+    assert not trial.survived
+
+
+def test_an_omits_pattern_with_no_legal_perturbation_is_not_measured(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When neither the framed nor the bare leak would violate the claim, the honest outcome
+    is no perturbation at all, not one that proves nothing: this is the same "not measured"
+    shape `_matching` returning `None` already gets, reached here for a different reason."""
+    monkeypatch.setattr(sensitivity, "_matching", lambda pattern: "not a match")
+    trial = _trial('omits(subject="detail", matches="^only-this$")')
+    assert not trial.witnessed
+    assert "no perturbation" in trial.note
+
+
 def test_a_claim_no_trial_could_witness_has_no_result_rather_than_a_bad_one() -> None:
     """`unwitnessed` is the absence of a result, not a weaker `insensitive`.
 

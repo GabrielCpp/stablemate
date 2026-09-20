@@ -432,7 +432,12 @@ def _plan(call: checks.CheckCall) -> tuple[Any, list[tuple[str, Any]], str]:
     declared pattern would let it through — that survivor is `_rubber_stamp`'s finding, not
     this experiment's, the same way `absent=false` already routes there instead of here.
     `emitted(count=0)` drops "nothing was emitted" for the same reason: that mutation is the
-    claim itself, not a defect a `count=0` denial forbids.
+    claim itself, not a defect a `count=0` denial forbids. `omits(matches=...)` follows the
+    same rule from the opposite direction: framing the leak (`f"… {leak} …"`) is a legal
+    perturbation only when the pattern still matches it, since `_verify_omits` checks
+    `matches=` with `re.search` and an anchor (`^`) can make the framed form miss what the
+    bare leak `_matching` built would have hit. `text=` is checked by substring containment
+    instead, which has no anchor to lose, so framing it is always legal.
     """
     args = call.args
     name = call.name
@@ -561,15 +566,25 @@ def _plan(call: checks.CheckCall) -> tuple[Any, list[tuple[str, Any]], str]:
         return witness, mutations, ""
     if name == "omits":
         subject = str(args["subject"])
-        leak = str(args["text"]) if "text" in args else _matching(str(args.get("matches", "")))
+        pattern = str(args["matches"]) if "matches" in args else None
+        leak = str(args["text"]) if "text" in args else _matching(pattern or "")
         if leak is None:
             return None, [], f"no leaking value can be invented for /{args.get('matches')}/"
         clean = "a message that says nothing it may not"
+        framed = f"… {leak} …"
+        if pattern is None or re.search(pattern, framed):
+            tainted = framed
+        elif re.search(pattern, leak):
+            tainted = leak
+        else:
+            tainted = None
+        if tainted is None:
+            return None, [], f"no perturbation of /{pattern}/ would itself violate the claim"
         if _PATHLIKE.match(subject):
             return _set_path({}, subject, clean), [
-                ("the subject carries what it may not", _set_path({}, subject, f"… {leak} …")),
+                ("the subject carries what it may not", _set_path({}, subject, tainted)),
             ], ""
-        return clean, [("the observation carries what it may not", f"… {leak} …")], ""
+        return clean, [("the observation carries what it may not", tainted)], ""
     if name == "exit_status":
         code = _int(args["code"])
         return SimpleNamespace(exit_code=code), [
