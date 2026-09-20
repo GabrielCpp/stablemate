@@ -562,7 +562,7 @@ def test_section_nodes_loaded_with_anchor_and_meta(repo: Path):
     assert row.id == "docs/features/groom/gui/screens/changes-view.md#changes-file-row"
     assert row.meta["selector"] == "`div.tree-file`"
     # its extends: link is captured
-    assert any("design-system.md#tree-node" in href for _, href in row.links)
+    assert any("design-system.md#tree-node" in href for _, href, _ in row.links)
 
     inters = graph.ui_nodes_of_type("interaction")
     assert [i.anchor for i in inters] == ["click-file-opens-diff"]

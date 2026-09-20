@@ -115,7 +115,13 @@ INDEX_DIR_NAME = "ostler-index"
 #: the third container grammar. Again the same case as 7 and 8, and it presented the same
 #: way: twenty-seven tests on entries pickled before the field. The third repetition is what
 #: moved the fix from this comment into `dataclass_shape_digest`.
-SCHEMA_VERSION = 9
+#: 10: a stored ``UINode``'s ``links`` widened from ``(text, href)`` to ``(text, href, line)``,
+#: so a graph edge can say which bullet key owns it. No field was added or removed, and
+#: `dataclass_shape_digest` hashes field *names* — so the digest that was supposed to end this
+#: series did not move, and nine paddock tests read 2-tuples out of entries written before the
+#: change. The digest reads fewer inputs than the distinction it is asked to draw: a field's
+#: value shape is not its name, and only a name change is visible to it.
+SCHEMA_VERSION = 10
 
 #: How long an entry may go unwritten before a prune removes it. Two weeks: long enough
 #: that an occasional book survives a quiet fortnight, short enough that an unattended

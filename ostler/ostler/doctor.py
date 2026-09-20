@@ -1211,7 +1211,7 @@ def _check_fixture_needs_cycles(graph: Graph, fixtures: dict[str, UINode], f: li
     """
     edges: dict[str, list[str]] = {node_id: [] for node_id in fixtures}
     for node in fixtures.values():
-        for _text, href in node.links:
+        for _text, href, _line in node.links:
             target = graph.find_ui_node(graph.resolve_doc_ref(href, origin=node.path))
             if target is not None and target.id in fixtures:
                 edges[node.id].append(target.id)
@@ -3289,7 +3289,7 @@ def _check_runbook_environment(graph: Graph, node, rel: str, f: list[Finding]) -
     env-var assignment, a profile name, a sentence), so reading intent out of it would both
     miss `prod-eu` and libel `GROOM_BIND=127.0.0.1`. A host is a fact.
     """
-    for _text, href in node.links:
+    for _text, href, _line in node.links:
         # Through `resolve_doc_ref`, because a runbook cites its environment the way every
         # other doc cites: relative to itself. A raw `href` lookup only ever finds the
         # citation that happened to be written as a node id.

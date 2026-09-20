@@ -35,7 +35,7 @@ def _trace_ui(graph: Graph, token: str) -> list[str] | None:
            f"  file:  {rel}:{node.line}"]
 
     # outbound edges — every doc link in the node's region, with resolution status
-    for _text, href in node.links:
+    for _text, href, _line in node.links:
         target = resolver.resolve(node.path, href)
         if target is None:
             continue
@@ -51,7 +51,7 @@ def _trace_ui(graph: Graph, token: str) -> list[str] | None:
     for other in graph.ui_nodes:
         if other is node:
             continue
-        for _text, href in other.links:
+        for _text, href, _line in other.links:
             target = resolver.resolve(other.path, href)
             if target is not None and target.node_id == node.id:
                 out.append(f"  ← referenced by  {other.type}  {other.id}")

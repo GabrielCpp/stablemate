@@ -195,7 +195,7 @@ def migrate_context(graph: Graph, node_type: str, service: str) -> EditPlan:
         citing_old = node.path.resolve()
         citing_new = moves_map.get(citing_old, citing_old)
         text = current_text(citing_old)
-        for _text, href in node.links:
+        for _text, href, _line in node.links:
             style, target_id, anchor = _href_style_and_target(root, href, citing_old)
             new_target_id = old_to_new_id.get(target_id, target_id)
             if new_target_id == target_id and citing_new == citing_old:

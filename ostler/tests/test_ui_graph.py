@@ -84,6 +84,53 @@ def test_graph_edges_resolve(repo: Path):
                for e in data["edges"])
 
 
+TARGET = """\
+---
+type: concept
+slug: target
+title: Target
+---
+# Target
+
+A target.
+"""
+
+MULTI_VIA = """\
+---
+type: concept
+slug: multi
+title: Multi
+---
+# Multi
+
+- alpha: [t](target.md)
+- beta: [t](target.md)
+- gamma: nested value continues
+  and a link to [g](target.md#g) sits on the next line
+- omega: final bullet with no link of its own
+
+Trailing prose links to [t](target.md) again, and even cites
+[g](target.md#g) a second time, well past every bullet.
+"""
+
+
+def test_graph_edges_attribute_by_link_position(repo: Path):
+    """`via` follows where a link sits, not what its href is.
+
+    ``alpha:`` and ``beta:`` carry the same href — each edge keeps its own bullet, not
+    whichever bullet the href hit first. ``gamma:`` is a multi-line bullet whose link sits on
+    its continuation line, below the bullet's own start line, and still resolves to ``gamma``.
+    The trailing prose repeats both hrefs past every bullet, including ``omega:``'s span, and
+    both come out ``"prose"`` rather than borrowing ``omega``'s key.
+    """
+    write(repo / "docs/features/demo/target.md", TARGET)
+    write(repo / "docs/features/demo/multi.md", MULTI_VIA)
+    data = graph.build(load(repo))
+    node = next(n for n in data["nodes"] if n["id"].endswith("multi.md"))
+    edges = node["edges"]
+    assert [e["via"] for e in edges] == ["alpha", "beta", "gamma", "prose", "prose"]
+
+
 def test_graph_scopes_by_type_and_surface(repo: Path):
     g = _repo(repo)
     concepts = graph.build(g, etype="concept")

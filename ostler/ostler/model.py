@@ -195,7 +195,7 @@ class UINode:
     # headlines), so the two spellings of one bullet cannot drift apart. See `Entry`.
     entries: dict[str, list[Entry]] = field(default_factory=dict)
     records: dict[str, dict[str, str | list[str]]] = field(default_factory=dict)
-    links: list = field(default_factory=list)                # (text, href) inside the node's region
+    links: list[tuple[str, str, int]] = field(default_factory=list)  # (text, href, line) inside the node's region
     data: dict = field(default_factory=dict)                 # frontmatter (file nodes)
 
 
@@ -1346,7 +1346,8 @@ def _promote_section(section: markdown.Section, rel: str, path: Path, offset: in
         entries=_entries_from_bullets(section, uitype), combiners=_bullet_combiners(section),
         records=_records_from_bullets(section, uitype),
         bullet_lines={i: offset + bullet.line_start + 1 for i, bullet in enumerate(section.bullets)},
-        links=section.refs.links,
+        links=[(text, href, offset + section.line_start + link_line)
+               for text, href, link_line in markdown.iter_links(section.text)],
     ))
     # container_type applies only to a container's direct children, so it resets on descent.
     for sub in section.children:
@@ -1387,7 +1388,8 @@ def _parse_ui_nodes(doc: markdown.MarkdownDoc, path: Path, root: Path) -> list[U
             line=line, meta=meta, bullet_order=order, entries=entries, combiners=combiners,
             records=records,
             bullet_lines={i: offset + bullet.line_start + 1 for i, bullet in enumerate(main.bullets)} if main else {},
-            links=markdown.extract_refs(text).links, data=fm,
+            links=[(t, h, line + link_line - 1) for t, h, link_line in markdown.iter_links(text)],
+            data=fm,
         ))
 
     # Recurse the heading tree: the H1's children (or the doc's root sections) hang off the file node.

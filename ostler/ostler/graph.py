@@ -36,35 +36,53 @@ def _surface_of(node: UINode, features_root: Path) -> str:
     return rel.parts[0] if rel.parts else ""
 
 
-def _edge_sources(node: UINode) -> dict[str, str]:
-    """Map each href in the node's bullets to the bullet key that carried it.
+def _edge_sources(node: UINode) -> list[str]:
+    """For each of ``node.links``, in the same order, the bullet key that owns its line.
 
     ``node.links`` is flat: once extracted, a ``leads-to:`` link and a passing prose mention are
     the same shape. Anything that traverses the graph *as navigation* needs them apart — following
-    an ``extends:`` edge does not move a user between screens. The parsed bullet values keep their
-    raw markdown, so re-extracting links from them recovers the attribution without changing how
-    nodes are parsed. An href in two bullets keeps the first; prose links match nothing here and
-    the caller defaults them.
+    an ``extends:`` edge does not move a user between screens. ``node.bullet_lines`` gives each
+    top-level bullet's own start line, so the bullets partition the node's lines into ``[start_i,
+    start_{i+1})`` spans in document order; a link's line places it in exactly one span, and
+    ``node.bullet_order`` maps that bullet's index to its key. Position alone over-claims twice:
+    the last bullet's span is unbounded, so it would also take a link sitting below it — ordinary
+    prose, or a link belonging to a nested child heading whose own span runs past every bullet of
+    its parent — and a bullet written ``- [thing](thing.md): what it does`` carries a link in its
+    *label*, which names the bullet rather than being a value the key holds. So a link counts for
+    a bullet only if it is also in that key's parsed value; anything else is ``"prose"``.
     """
-    via: dict[str, str] = {}
-    for key, value in node.meta.items():
-        values = value if isinstance(value, list) else [value]
-        for item in values:
-            for _text, href in markdown.extract_refs(str(item)).links:
-                via.setdefault(href, key)
-    return via
+    starts = sorted(node.bullet_lines.items(), key=lambda pair: pair[1])
+    key_by_index = {idx: key for key, _raw, idx in node.bullet_order}
+
+    def _held(key: str) -> set[tuple[str, str]]:
+        value = node.meta.get(key, "")
+        items = value if isinstance(value, list) else [value]
+        return {pair for item in items for pair in markdown.extract_refs(str(item)).links}
+
+    def _via(line: int, text: str, href: str) -> str:
+        for pos, (idx, start) in enumerate(starts):
+            end = starts[pos + 1][1] if pos + 1 < len(starts) else None
+            if line < start or (end is not None and line >= end):
+                continue
+            key = key_by_index.get(idx)
+            if key is None or (text, href) not in _held(key):
+                return "prose"
+            return key
+        return "prose"
+
+    return [_via(line, text, href) for text, href, line in node.links]
 
 
 def _node_dict(node: UINode, resolver: LinkResolver, graph: Graph, features_root: Path,
                path_cache: dict[Path, tuple[str, str]]) -> dict:
     edges = []
     via = _edge_sources(node)
-    for text, href in node.links:
+    for (text, href, _line), source in zip(node.links, via, strict=True):
         lt = resolver.resolve(node.path, href)
         if lt is None:  # a URL or a code ref (`path::symbol`), not a graph edge
             continue
         edges.append({"text": text, "href": href, "to": lt.node_id, "resolves": lt.resolved,
-                      "via": via.get(href, "prose")})
+                      "via": source})
     # Several section nodes share one file's `path`; a book runs this per node, so computing the
     # same relative path and surface once per file (instead of once per heading) is most of the
     # saving on a file with many `### id` sections.
