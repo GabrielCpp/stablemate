@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pytest
@@ -265,6 +266,40 @@ def test_a_synthesized_witness_is_a_member_of_the_language() -> None:
     assert sensitivity._matching("eyJ[A-Za-z0-9_-]{6,}") == "eyJ------"
     assert sensitivity._matching("Draft|Active") == "Draft"
     assert sensitivity._matching(r"Bearer \w+") == "Bearer a"
+
+
+@pytest.mark.parametrize(
+    ("pattern", "witness"),
+    [
+        ("^(true|false)$", "true"),
+        (r"(^|/)\.\.(/|$)", "../"),
+        (r"^(references|scripts)/[^/\\]+(?:/[^/\\]+)*$", "references/-"),
+    ],
+)
+def test_an_alternation_the_whole_pattern_must_see_is_witnessed(pattern: str, witness: str) -> None:
+    """A `|` inside a group (`^(true|false)$`), one at the top level with no group at all
+    (`(^|/)..(/|$)`), and one nested behind a non-capturing group all reach `_synthesize`
+    whole now, rather than a fragment the caller cut at the first `|` — which for the first
+    of these left `_synthesize` an unclosed group and a None."""
+    built = sensitivity._matching(pattern)
+    assert built is not None
+    assert built == witness
+    assert re.search(pattern, built)
+
+
+def test_a_pattern_this_harness_cannot_synthesize_still_returns_none() -> None:
+    """A lookahead is a real regex feature `_synthesize` never attempted: its vocabulary is
+    literals, classes, groups and counted repeats, and `(?=foo)` is none of those — the `(`
+    arm reads the `?=foo` body as a group whose own attempt to synthesize a witness for
+    `=foo` cannot then be reconciled with the lookahead by `re.search`, so this stays None
+    rather than a guess `_matching` cannot back up."""
+    assert sensitivity._matching("(?=foo)bar") is None
+
+
+def test_a_matches_check_with_an_alternation_is_now_witnessed() -> None:
+    trial = _trial('json_path(path="claim.status", matches="^(true|false)$")')
+    assert trial.witnessed, trial.note
+    assert trial.sensitive
 
 
 def test_the_benchmark_corpus_declares_no_check_that_cannot_go_red() -> None:

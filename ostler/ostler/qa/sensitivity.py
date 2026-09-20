@@ -325,12 +325,18 @@ def _matching(pattern: str) -> str | None:
     accepts by accident would credit sensitivity the experiment never showed. So everything
     built here is checked against the pattern itself before it is returned, and a shape the
     builder does not understand returns None rather than a guess.
+
+    The whole pattern goes to `_synthesize`, alternation included: a top-level `|` or one
+    nested inside a group is `_synthesize`'s own concern, not something split out here first.
+    The `re.search` guard is what turns a synthesized guess into a true member of the
+    language — it is run against the untouched, original pattern, so a witness this function
+    returns is one the production check would itself accept.
     """
     for candidate in (pattern, *pattern.split("|")):
         plain = candidate.strip("^$")
         if re.escape(plain) == plain and re.search(pattern, plain):
             return plain
-    built = _synthesize(pattern.split("|")[0])
+    built = _synthesize(pattern)
     return built if built is not None and re.search(pattern, built) else None
 
 

@@ -980,13 +980,14 @@ def test_an_equals_check_is_unaffected_by_the_matches_predicate(repo: Path):
 
 def test_a_pattern_no_witness_can_be_invented_for_has_no_result(repo: Path):
     # `insensitive-check` is a result: a perturbation ran and the check survived it. Here
-    # nothing ran — the synthesizer cannot invent a member of a closed alternation, so the
-    # experiment was never performed, and "not measured" is not "measured and failed".
+    # nothing ran — the synthesizer has no zero-width assertion, so it cannot invent a
+    # member of a language whose length is pinned by a lookahead, and the experiment was
+    # never performed. "Not measured" is not "measured and failed".
     # The finding falls on the *more* discriminating pattern, which is why it is a warn
     # about the harness and not an error about the book: the one edit that would silence
     # it is the edit that would make `insensitive-check` genuinely true.
     write(repo / "docs/features/groom/concepts/publisher.md",
-          _method('json_path(path="$.lang", matches="^(fr|en)$")'))
+          _method('json_path(path="$.lang", matches="^(?=.{2}$)[a-z]+$")'))
     found = all_codes(_run(repo))
     assert "insensitive-check" not in found
     finding = next(f for f in _run(repo).findings if f.code == "unwitnessed-check")
