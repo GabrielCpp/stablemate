@@ -494,3 +494,49 @@ def test_node_provides_and_dollar_captures_are_namespaced_apart(tmp_path: Path) 
         module, "a-capture-and-a-provide-share-no-namespace", tmp_path, book_fixtures=book_fixtures,
     )
     assert code == 0, stdout
+
+
+SCENARIO_FRAME_SCENARIO = '''\
+@scenario(target=api, mechanism="live", covers=["ac:1"])
+def the_fixture_frame_and_the_tool_call_land_in_one_place(qa: Qa) -> None:
+    """`working-directory: scenario:` and `qa.tool(...).run(..., cwd=qa.scenario_id)` must
+    resolve to the exact same directory, not merely two directories under `qa.dir`."""
+    qa.fixture("seeded-acme")
+    fixture_cwd = qa.resolve("@seeded-acme.fixture_cwd")
+    tool = qa.tool("sh")
+    done = tool.run("-c", "pwd", cwd=qa.scenario_id)
+    qa.check(
+        "fixture cwd-frame and qa.tool cwd=qa.scenario_id are the same directory",
+        fixture_cwd == done.stdout.strip(),
+        actual=(fixture_cwd, done.stdout.strip()),
+    )
+'''
+
+
+def test_the_scenario_frame_and_a_tool_run_land_in_the_same_directory(tmp_path: Path) -> None:
+    script = tmp_path / "seed.sh"
+    _seed_step(script, '#!/bin/sh\nprintf \'{"cwd": "%s"}\' "$(pwd)"\n')
+    module = _write(tmp_path, SCENARIO_FRAME_SCENARIO)
+    book_fixtures = {
+        "seeded-acme": {
+            "steps": [{"kind": "seed", "id": "seed-it", "command": str(script), "cwd-frame": "scenario"}],
+            "args": [], "provides": [{"key": "fixture_cwd", "from": "seed-it", "read": "cwd"}],
+            "needs": [], "secrets": [],
+        }
+    }
+    context = json.dumps(
+        {
+            "root": str(tmp_path),
+            "spec_dir": str(tmp_path),
+            "qa_dir": str(tmp_path / "qa"),
+            "book_fixtures": _with_resolved_timeouts(book_fixtures),
+            "tools": {"sh": "sh"},
+        }
+    )
+    code, stdout, records = _harness(
+        "run", str(module), "the-fixture-frame-and-the-tool-call-land-in-one-place", context,
+        env={"PATH": "/usr/bin:/bin"}, records_to=tmp_path / "records.jsonl",
+    )
+    checks = [r for r in records if r.get("type") == "assert"]
+    assert code == 0, (stdout, records)
+    assert checks and all(c["passed"] for c in checks), (stdout, checks)

@@ -3738,7 +3738,7 @@ def test_an_empty_argv_is_a_legal_bare_invocation() -> None:
     assert source is not None
 
     assert _gap_kinds(gaps, oid) == []
-    assert 'qa.tool("tally").run()' in source
+    assert 'qa.tool("tally").run(cwd=qa.scenario_id)' in source
 
 
 def _built_target_probe_maestro() -> tuple[dict, str]:

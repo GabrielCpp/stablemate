@@ -114,6 +114,7 @@ ORG_GRAPH_CODES = frozenset({
     "runbook-local-only",
     "runbook-missing",
     "runbook-multi-service",
+    "runbook-scenario-frame",
     "story-covers-no-seed",
     "story-fixture-stray",
     "story-section-order",

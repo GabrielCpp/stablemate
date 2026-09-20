@@ -125,6 +125,42 @@ def test_working_directory_comes_back_absolute(repo: Path) -> None:
     assert manifest["repo_root"] == str(repo.resolve())
 
 
+def test_scenario_frame_token_is_carried_as_a_marker_not_a_resolved_path(tmp_path: Path) -> None:
+    """No scenario directory exists at manifest-build time, so `_step_command` must not
+    invent a fake absolute path for the token — it hands the frame on as a marker for
+    the harness to resolve at run time."""
+    node = model.UINode(
+        type="step", kind="section", id="fixtures/f.md#seed-it", path=tmp_path / "f.md",
+        meta={"run": "./seed.sh", "working-directory": "scenario:"},
+    )
+    step = rb.step_command(node, tmp_path, ".")
+    assert step is not None
+    assert step["cwd-frame"] == "scenario"
+    assert "working-directory" not in step
+
+
+def test_a_stated_path_still_resolves_checkout_relative(tmp_path: Path) -> None:
+    node = model.UINode(
+        type="step", kind="section", id="ops/qa-stack.md#build", path=tmp_path / "qa-stack.md",
+        meta={"run": "make build", "working-directory": "services/api"},
+    )
+    step = rb.step_command(node, tmp_path, ".")
+    assert step is not None
+    assert step["working-directory"] == str((tmp_path / "services" / "api").resolve())
+    assert "cwd-frame" not in step
+
+
+def test_an_absent_working_directory_still_resolves_to_the_default_cwd(tmp_path: Path) -> None:
+    node = model.UINode(
+        type="step", kind="section", id="ops/qa-stack.md#build", path=tmp_path / "qa-stack.md",
+        meta={"run": "make build"},
+    )
+    step = rb.step_command(node, tmp_path, "app")
+    assert step is not None
+    assert step["working-directory"] == str((tmp_path / "app").resolve())
+    assert "cwd-frame" not in step
+
+
 def test_every_step_is_the_mapping_form(repo: Path) -> None:
     # A bare string gets `_run_step`'s *boot* timeout and a mapping gets STEP_TIMEOUT_S, so
     # one shape is what keeps `- make build` from meaning something else than `- run: …`.
@@ -512,6 +548,18 @@ def test_doctor_reports_a_check_expression_on_a_run_bullet(tmp_path: Path) -> No
                  "### smoke\n\n- kind: run\n"
                  '- run: http_status(200, path="/healthz")\n')
     assert "check-expression-as-command" in codes(tmp_path)
+
+
+def test_doctor_reports_the_scenario_frame_token_on_a_runbook_step(tmp_path: Path) -> None:
+    """A runbook step runs at bring-up, before any scenario exists — the token names a
+    frame that is not there yet, unlike on a fixture step, where it is exactly right."""
+    (tmp_path / ".git").mkdir()
+    make_runbook(tmp_path, "---\ntype: runbook\n---\n\n# QA\n\n- driver: web\n"
+                 "- entry-url: http://localhost:1\n\n## Steps\n\n### serve\n\n"
+                 "- kind: service\n- run: ./serve.sh\n\n"
+                 "### seed\n\n- kind: seed\n- run: ./seed.sh\n"
+                 "- working-directory: scenario:\n")
+    assert "runbook-scenario-frame" in codes(tmp_path)
 
 
 def test_doctor_stays_quiet_on_a_real_command(tmp_path: Path) -> None:

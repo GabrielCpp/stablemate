@@ -11,10 +11,10 @@ The harness (`ostler.qa.harness.ostler_qa`) is stdlib-only and cannot import thi
 or anything else outside the standard library — it runs under the *project's* own
 interpreter, where ostler is not installed. So the planning happens here, ostler-side,
 and the result is a plain JSON-safe dict handed across the process boundary as
-`context["book_fixtures"]`. It carries `steps` (kind, command, cwd, timeout), the
-declared `args`/`provides`/`secrets` names, and `needs` bindings with their `name=value`
-args resolved to strings — but never a reference's *value*: `@node.key` and `$name`
-substitution is the harness's own runtime job, not this module's.
+`context["book_fixtures"]`. It carries `steps` (kind, command, cwd or cwd-frame, timeout),
+the declared `args`/`provides`/`secrets` names, and `needs` bindings with their
+`name=value` args resolved to strings — but never a reference's *value*: `@node.key` and
+`$name` substitution is the harness's own runtime job, not this module's.
 
 **Secrets are NAMES only.** This dict is exactly what lands in the harness's context
 JSON, so a fixture's `secrets:` bullet must never carry anything but the environment
@@ -162,9 +162,12 @@ def _steps_of(graph: Graph, node: UINode) -> list[dict[str, Any]]:
             "kind": kind,
             "id": step_id,
             "command": command["run"],
-            "cwd": command["working-directory"],
             "timeout": boot_timeout(str(command.get("timeout", "")), default=STEP_TIMEOUT_S),
         }
+        if "cwd-frame" in command:
+            entry["cwd-frame"] = command["cwd-frame"]
+        else:
+            entry["cwd"] = command["working-directory"]
         steps.append(entry)
     return steps
 

@@ -327,6 +327,18 @@ def test_fixture_step_run_is_check_expression_as_command(repo: Path) -> None:
     assert [f.severity for f in found] == ["error"]
 
 
+def test_fixture_step_scenario_frame_token_is_not_a_doctor_finding(repo: Path) -> None:
+    """A fixture step runs inside a scenario, so `scenario:` names something real —
+    `runbook-scenario-frame` fires only on a runbook step, where no scenario exists."""
+    _stack(repo)
+    write(repo / "docs/features/acme/fixtures/seeded-acme.md",
+          "---\ntype: fixture\ntitle: Seeded acme\n---\n# Seeded acme\n\n"
+          "- provides:\n  - id — the seeded account's id\n\n"
+          "## Steps\n\n### seed-it\n\n- kind: seed\n"
+          "- run: ./scripts/seed-acme.sh\n- working-directory: scenario:\n")
+    assert _findings(repo, "runbook-scenario-frame") == []
+
+
 def test_fixture_checks_are_skipped_with_no_stack_runbook(repo: Path) -> None:
     """No runbook claims a stack — nothing a fixture arranges state in front of, so the
     fixture-grammar checks stay silent even over an otherwise-broken fixture book."""

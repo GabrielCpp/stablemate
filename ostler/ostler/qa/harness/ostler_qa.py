@@ -1674,12 +1674,25 @@ class Qa:
         )
         self._recorder.emit({"type": "fixture_fault", **asdict(fault)})
 
+    @property
+    def scenario_dir(self) -> Path:
+        """This scenario's own directory under `self.dir`, created on demand.
+
+        The `working-directory: scenario:` frame resolves here, and `qa.tool(...).run(...,
+        cwd=qa.scenario_id)` resolves to this same directory through `Tool._cwd` — one
+        formula, so a fixture step carrying the frame and the command it arranges for land
+        in the same place.
+        """
+        resolved = (self.dir.resolve() / self.scenario_id).resolve()
+        resolved.mkdir(parents=True, exist_ok=True)
+        return resolved
+
     def _run_book_step(
         self, fixture: str, index: int, step: Mapping[str, Any], env: Mapping[str, str],
     ) -> "ToolResult":
         kind = str(step.get("kind", ""))
         command = str(step.get("command", ""))
-        cwd = str(step.get("cwd") or self.root)
+        cwd = str(self.scenario_dir) if step.get("cwd-frame") == "scenario" else str(step.get("cwd") or self.root)
         # book_fixtures.py resolves this to an always-valid float ostler-side (stack.boot_timeout),
         # so the harness reads it as-is rather than re-parsing or re-defaulting a raw value here.
         timeout = float(step["timeout"])

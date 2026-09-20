@@ -686,8 +686,8 @@ def _cli_scenario_body(
                 "the executable this `run:` invokes",
             ))
             continue
-        argv_expr = ", ".join(_lit(a) for a in argv)
-        lines.append(f"    {name} = qa.tool({_lit(binary)}).run({argv_expr})")
+        call_args = ", ".join([*(_lit(a) for a in argv), "cwd=qa.scenario_id"])
+        lines.append(f"    {name} = qa.tool({_lit(binary)}).run({call_args})")
 
         assertions: list[str] = []
         whole = True

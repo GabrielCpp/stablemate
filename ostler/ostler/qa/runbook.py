@@ -139,13 +139,33 @@ def steps_of(graph: Graph, runbook: UINode) -> list[UINode]:
     return [n for n in graph.ui_nodes if n.type == "step" and owned(n)]
 
 
+#: `working-directory:` value that names a fixture step's own scenario directory rather than
+#: a checkout-relative path — the same directory `Tool._cwd(qa.scenario_id)` resolves and
+#: creates in the harness. Meaningful only on a fixture step, which runs inside a scenario;
+#: a runbook step carrying it trips the doctor's `runbook-scenario-frame` instead, because a
+#: runbook step runs at bring-up, before any scenario exists to name.
+SCENARIO_FRAME_TOKEN = "scenario:"
+
+
+def is_scenario_frame(value: str) -> bool:
+    """Whether a `working-directory:` bullet states the scenario-frame token."""
+    return value.strip() == SCENARIO_FRAME_TOKEN
+
+
 def _step_command(node: UINode, root: Path, default_cwd: str) -> dict[str, str] | None:
-    """One `step` node as the mapping `stack._run_step` reads, or None when it has no command.
+    """One `step` node as the mapping `stack._run_step`/`book_fixtures` reads, or None when it
+    has no command.
 
     Always the mapping form, never a bare string: `_run_step` gives a bare string the
     *boot* timeout (30s by default) and a mapping without one `STEP_TIMEOUT_S` (600s), so
     `- make build` and `- run: make build` mean different things. Emitting one shape means
     an author never meets that asymmetry.
+
+    A `working-directory: scenario:` bullet is carried as the `"cwd-frame": "scenario"` marker
+    instead of a resolved path — the scenario directory does not exist at manifest-build time,
+    so there is nothing here to resolve it against; the harness (`Qa._run_book_step`) resolves
+    the marker at run time. Every other value, stated or absent, keeps exactly today's
+    checkout-relative meaning under the `"working-directory"` key.
     """
     command = bullet_value(node.meta, "run")
     if not command or checks.is_check_expression(command):
@@ -164,10 +184,11 @@ def _step_command(node: UINode, root: Path, default_cwd: str) -> dict[str, str] 
     if exports:
         command = f"{exports} {command}"
     cwd = bullet_value(node.meta, "working-directory")
-    step: dict[str, str] = {
-        "run": command,
-        "working-directory": str((root / (cwd or default_cwd or ".")).resolve()),
-    }
+    step: dict[str, str] = {"run": command}
+    if is_scenario_frame(cwd):
+        step["cwd-frame"] = "scenario"
+    else:
+        step["working-directory"] = str((root / (cwd or default_cwd or ".")).resolve())
     timeout = bullet_value(node.meta, "timeout")
     if timeout:
         step["timeout"] = timeout
@@ -267,8 +288,11 @@ def _from_runbook(graph: Graph, runbook: UINode) -> dict[str, Any]:
                 # Same backstop as `_step_command`'s: a check expression here is a book
                 # defect the doctor already reports (`check-expression-as-command`), not a
                 # gate this reader should hand to bash.
-                phases["health"].append({"run": gate, "working-directory": step["working-directory"]
-                                         if step else manifest["app_cwd"]})
+                phases["health"].append({
+                    "run": gate,
+                    "working-directory": step.get("working-directory", manifest["app_cwd"])
+                    if step else manifest["app_cwd"],
+                })
             continue
         if step:
             phases[phase].append(step)

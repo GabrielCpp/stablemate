@@ -3236,6 +3236,7 @@ def _check_runbook(graph: Graph, f: list[Finding]) -> None:
             if kind == "service":
                 services.append(step)
             _check_step_command_bullets(step, rel, f)
+            _check_step_not_scenario_frame(step, rel, f)
 
         if node.id not in stacks:
             # A procedure runbook: its steps and its environment are still checked above and
@@ -3326,6 +3327,27 @@ def _check_step_command_bullets(step: UINode, rel: str, f: list[Finding]) -> Non
             f"the claim it actually observes",
             path=rel, line=step.line, ref=refs_mod.bullet_ref(step.id, key),
             suggestion=f"- {key}: curl -fsS <url>"))
+
+
+def _check_step_not_scenario_frame(step: UINode, rel: str, f: list[Finding]) -> None:
+    """A runbook step's `working-directory: scenario:` names a frame that does not exist yet.
+
+    The token means "this scenario's own directory" (`runbook.SCENARIO_FRAME_TOKEN`), which
+    is only meaningful on a *fixture* step — a fixture runs inside a scenario. A runbook step
+    runs at bring-up, before any scenario has been created, so the same token here names
+    nothing: `error`, the same bar `check-expression-as-command` holds, so an author sees
+    this before bring-up runs into it.
+    """
+    value = runbook_mod.bullet_value(step.meta, "working-directory")
+    if not runbook_mod.is_scenario_frame(value):
+        return
+    f.append(Finding(
+        "error", "runbook-scenario-frame",
+        f"{step.id}: `working-directory: {runbook_mod.SCENARIO_FRAME_TOKEN}` names a "
+        f"scenario's own directory, but this step runs at bring-up, before any scenario "
+        f"exists to name — state a path, or drop the bullet to run at the checkout root",
+        path=rel, line=step.line, ref=refs_mod.bullet_ref(step.id, "working-directory"),
+        suggestion="- working-directory: <path>"))
 
 
 #: Hosts a `local-only: true` environment may name. `*.localhost` and `*.local` resolve on the
