@@ -6,9 +6,13 @@ single book names as unenforced every checker some other book or profile exercis
 is not hypothetical: it is how twenty-nine planning-graph codes came to carry written
 excuses, all of which this file's first green run deleted.
 
-So the corpus is the unit. It covers both profiles (globex is the tree's only
-`exploration` book) and both fixture tiers, and a code still unentered after all six runs
-is one nothing in this repo enforces.
+So the corpus is the unit. Every book in it now runs the `full` profile — the one that
+enters every checker — and a code still unentered after all six runs is one nothing in
+this repo enforces. The corpus carried an `exploration` book until globex gained a story
+layer; it no longer needs one, because `exploration` runs a strict subset (`doctor.py`
+returns early at its one profile gate) and so can enter no checker `full` does not. The
+early-return branch itself is observed by `test_model_trace.py`, `test_ui_known_defect.py`
+and `test_census.py`, which is where a claim about one code path belongs.
 """
 
 from __future__ import annotations
@@ -39,14 +43,14 @@ def corpus() -> census.Census:
     )
 
 
-def test_the_corpus_covers_more_than_one_profile(corpus: census.Census) -> None:
+def test_the_corpus_enters_every_checker_a_profile_can_gate(corpus: census.Census) -> None:
     """The precondition of every other assertion here, asserted rather than assumed.
 
-    Half of `doctor` is gated on the `full` profile. A corpus that lost its one
-    `exploration` book would still pass the two gates below — with the fixture-grammar tier
-    unobserved — and nothing would say so.
+    Half of `doctor` is gated on the `full` profile. A corpus that drifted to books which
+    all stop at the profile gate would still pass the two gates below — with everything
+    behind that gate unentered — and nothing would say so.
     """
-    assert set(corpus.profile.split("+")) == {"exploration", "full"}, corpus.profile
+    assert "full" in set(corpus.profile.split("+")), corpus.profile
     assert corpus.runs >= 2
 
 

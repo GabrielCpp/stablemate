@@ -25,11 +25,11 @@ remembers this file. What the two gates are for:
   That is not hypothetical — it is what the first scored round did.
 
 What this file deliberately does **not** claim: that a clean `doctor` means every checker
-ran. `globex` is the tree's only `exploration`-profile book, and `doctor.run` returns
-early for any profile but `full` (`doctor.py:180`), so the whole fixture tier — including
-`_check_fixture_call_args`, which reads exactly the bullets those two defects were in —
-is never entered for it. This gate makes the checks that *do* run visible; it does not
-make them complete.
+ran. `doctor.run` returns early at its one profile gate for any profile but `full`, so a
+book with no epics is graded on a strict subset of the checks. Every app here now carries
+a story layer and so runs `full`, but that is a property of the corpus today, not one this
+gate asserts — `test_census_corpus.py` is where it is asserted. This gate makes the checks
+that *do* run visible; it does not make them complete.
 
 The same tree-derived shape catches a second, unrelated way a book goes silent: it can be
 clean and still be reachable by nothing outside its own directory. `globex` was that too —
