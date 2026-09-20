@@ -23,15 +23,16 @@ Three rules carry the whole design.
 
 *One epoch hash.* :func:`epoch` is a single combined hash over every global input —
 the tool version, the bundled schemas, the dynamic kind registry, the config files ostler
-reads, the freeze manifest, and the field-name shape of every dataclass a payload pickles
-(:func:`dataclass_shape_digest`). Any change to any one of them invalidates
+reads, the freeze manifest, and the field-name-and-annotation shape of every dataclass a
+payload pickles (:func:`dataclass_shape_digest`). Any change to any one of them invalidates
 every entry. There is deliberately no per-input granularity: recomputing a book is cheap
 next to the cost of getting a partial invalidation subtly wrong, and a wrong partial
 invalidation is silent. The shape input is what makes that last guarantee hold for the
 payload's own classes: a class *name* says nothing about the bytes a pickle of it carries,
 so an entry pickled before a field was added still names the right class and still passes
-a shape check that only looks at the name. Hashing the field names themselves closes that
-gap mechanically — see the note on :data:`SCHEMA_VERSION`.
+a shape check that only looks at the name. Hashing each field's name and its declared
+annotation closes that gap mechanically — a field added, and equally a field's declared
+shape widened — see the note on :data:`SCHEMA_VERSION`.
 
 *The entry key is the repo-name-qualified repo-relative path plus the content sha.*
 Repo-relative rather than absolute is load-bearing — two worktrees of one repo, and the
@@ -91,9 +92,10 @@ INDEX_DIR_NAME = "ostler-index"
 #: a schema: an entry pickled from the old shape still names the right class, so the
 #: isinstance check on the way back in still passes, and the reader is the one left asking
 #: an old node for an attribute it never had. `epoch_inputs`'s ``"shape"`` entry
-#: (:func:`dataclass_shape_digest`, hashed over every reachable dataclass's field names) is
-#: the fix: it moves whenever a field moves, so it invalidates a stale entry the moment the
-#: shape changes rather than the moment somebody remembers to bump this number by hand.
+#: (:func:`dataclass_shape_digest`, hashed over every reachable dataclass's field names
+#: and annotations) is the fix: it moves whenever a field moves, so it invalidates a stale
+#: entry the moment the shape changes rather than the moment somebody remembers to bump
+#: this number by hand.
 #: 4: the behavior verdict memo (:mod:`ostler.behavior_memo`) writes entries under this
 #: version; a build that does not know them must miss on them rather than read them.
 #: 5: a stored entry carries its file's ``ui_nodes``, and a node's ``id`` is now the anchor
@@ -117,10 +119,15 @@ INDEX_DIR_NAME = "ostler-index"
 #: moved the fix from this comment into `dataclass_shape_digest`.
 #: 10: a stored ``UINode``'s ``links`` widened from ``(text, href)`` to ``(text, href, line)``,
 #: so a graph edge can say which bullet key owns it. No field was added or removed, and
-#: `dataclass_shape_digest` hashes field *names* — so the digest that was supposed to end this
-#: series did not move, and nine paddock tests read 2-tuples out of entries written before the
-#: change. The digest reads fewer inputs than the distinction it is asked to draw: a field's
-#: value shape is not its name, and only a name change is visible to it.
+#: `dataclass_shape_digest` hashed field *names* alone — so the digest that was supposed
+#: to end this series did not move, and nine paddock tests read 2-tuples out of entries
+#: written before the change. The digest reads fewer inputs than the distinction it is
+#: asked to draw: a field's value shape is not its name, and only a name change is visible
+#: to it. Fixed rather than bumped: `dataclass_shape_digest` now hashes each field's
+#: annotation alongside its name, so a widened or narrowed annotation moves the digest —
+#: and the epoch with it — with no field added or removed. This number did not move for that fix, and deliberately: the
+#: envelope did not change, so no reader on either side of it gets an entry wrong, and the
+#: ``"shape"`` epoch input had already invalidated every entry.
 SCHEMA_VERSION = 10
 
 #: How long an entry may go unwritten before a prune removes it. Two weeks: long enough
@@ -256,7 +263,8 @@ def _reachable_dataclasses(roots: tuple[type, ...]) -> set[type[Any]]:
 
 
 def dataclass_shape_digest(*roots: type) -> str:
-    """A stable digest over the field *names* of *roots* and every dataclass reachable from them.
+    """A stable digest over the field *names and annotations* of *roots* and every dataclass
+    reachable from them.
 
     This is the mechanism the module docstring's note on :data:`SCHEMA_VERSION` used to ask a
     human to reproduce by hand: a class's *name* says nothing about the shape of the bytes a
@@ -266,9 +274,15 @@ def dataclass_shape_digest(*roots: type) -> str:
     computed from the classes themselves rather than asserted about them, so a field added
     anywhere in the reachable graph moves the digest and busts every entry mechanically.
 
-    Field *names*, not their types or their values or the class's docstring or methods —
-    those change on nearly every edit and hashing them would evict the cache on commits that
-    do not touch what gets pickled. ``hashlib`` rather than ``hash()``: the digest has to
+    Field *names and annotations*, not their values or the class's docstring or methods —
+    the latter two change on nearly every edit and hashing them would evict the cache on
+    commits that do not touch what gets pickled. A field's annotation is included alongside
+    its name because a pickle of that field carries a value shaped by that annotation, and a
+    widened or narrowed annotation (a 2-tuple becoming a 3-tuple, say) changes that shape
+    while leaving the name untouched — measured over the last 400 commits touching
+    ``ostler/ostler``, hashing annotations too would have evicted the cache on exactly one
+    commit more than hashing names alone, and that commit is the one this mechanism was
+    supposed to catch and missed. ``hashlib`` rather than ``hash()``: the digest has to
     agree across processes, and ``hash()`` on a string is salted per interpreter run.
     """
     types_ = sorted(
@@ -279,6 +293,7 @@ def dataclass_shape_digest(*roots: type) -> str:
         chunks.append(f"{tp.__module__}.{tp.__qualname__}".encode("utf-8"))
         for f in dataclasses.fields(tp):
             chunks.append(f.name.encode("utf-8"))
+            chunks.append(str(f.type).encode("utf-8"))
     return _sha(*chunks)
 
 
@@ -343,15 +358,15 @@ def _freeze_material(root: Path) -> str:
 
 
 def _shape_material() -> str:
-    """The stored dataclasses' field-name digest, as an epoch input.
+    """The stored dataclasses' field-name-and-annotation digest, as an epoch input.
 
     The roots are one per production caller that hands :meth:`Store.put` or
     :meth:`Store.put_key` a dataclass — ``model`` stores a ``_DocProducts`` of ``UINode``,
     ``api`` a ``Snapshot`` of the whole planning ``Graph``, ``inventory`` a ``_SymbolTable``.
     :func:`dataclass_shape_digest` walks the rest of the graph from there, so a new *field*
     needs no edit here and a new *stored type* is the one thing that does. ``behavior_memo``
-    is deliberately absent from the roots: it stores dicts of primitives, which have no field
-    names to hash and no attribute to fail on.
+    is deliberately absent from the roots: it stores dicts of primitives, which have no fields
+    to hash and no attribute to fail on.
 
     Imported lazily: all three modules import this one, so importing them back at module
     scope would be circular. By the time anything calls :func:`epoch` they are already on

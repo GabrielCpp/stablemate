@@ -14,8 +14,8 @@ The seam under test:
 
 * ``index.epoch_inputs(root)`` — the material of every global input, one entry per label in
   ``index.EPOCH_LABELS``: the tool version, the schemas, the dynamic kind registry, the
-  config files ostler reads, the freeze manifest and the field-name shape of every stored
-  dataclass (``index.dataclass_shape_digest``).
+  config files ostler reads, the freeze manifest and the field-name-and-annotation shape of every
+  stored dataclass (``index.dataclass_shape_digest``).
 * ``index.epoch(root)`` — one combined hash over exactly that mapping, and a pure function
   of it. No per-input granularity: a partial invalidation that is subtly wrong costs more
   than a recompute, so any change to any input busts every entry.
@@ -228,10 +228,11 @@ def test_adding_a_field_to_a_stored_dataclass_moves_the_shape_digest():
     never changed, so a check keyed on the name — which is exactly what an ``isinstance`` shape
     check is — cannot see the difference.
 
-    ``dataclass_shape_digest`` is built from the classes' own field names instead of anything a
-    human has to remember to update, so this test proves the mechanism on synthetic classes
-    rather than on ``UINode`` itself: mutating the real class would only show that *this
-    particular* field addition happens to be caught, not that the digest generalises.
+    ``dataclass_shape_digest`` is built from the classes' own field names and annotations
+    rather than anything a human has to remember to update, so this test proves the
+    mechanism on synthetic classes rather than on ``UINode`` itself: mutating the real
+    class would only show that *this particular* field addition happens to be caught, not
+    that the digest generalises.
     """
 
     @dataclasses.dataclass
@@ -244,6 +245,29 @@ def test_adding_a_field_to_a_stored_dataclass_moves_the_shape_digest():
         headline: str
         properties: dict
         records: dict
+
+    assert index.dataclass_shape_digest(Before) != index.dataclass_shape_digest(After)
+
+
+def test_widening_a_fields_annotation_moves_the_shape_digest():
+    """Incident 10, reproduced on a throwaway pair of classes.
+
+    ``UINode.links`` widened from ``(text, href)`` to ``(text, href, line)`` — the field kept
+    its name, so a digest built from names alone did not move, and nine paddock tests read
+    2-tuples out of entries pickled before the change. The digest now reads each field's
+    annotation alongside its name, so two classes with identical field names but a different
+    annotation on one field must disagree.
+    """
+
+    @dataclasses.dataclass
+    class Before:
+        headline: str
+        links: tuple[str, str]
+
+    @dataclasses.dataclass
+    class After:
+        headline: str
+        links: tuple[str, str, int]
 
     assert index.dataclass_shape_digest(Before) != index.dataclass_shape_digest(After)
 
