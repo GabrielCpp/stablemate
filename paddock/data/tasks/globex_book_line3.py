@@ -42,6 +42,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+import _greenfield as gf
 from _stablemate import TrialError
 from paddock import Run, Score, step, task
 
@@ -318,8 +319,6 @@ def arrange(run: Run) -> None:
 
 
 def _asker(run: Run) -> Any:
-    import _greenfield as gf
-
     return gf.Judge(
         gf.get_backend(run.param("ask_cli") or None),
         gf.AgentResilience.from_env(), gf.SYSTEM_CLOCK,
@@ -328,8 +327,6 @@ def _asker(run: Run) -> Any:
 
 
 def _judge_agent(run: Run) -> Any:
-    import _greenfield as gf
-
     return gf.Judge(
         gf.get_backend(run.param("judge_cli") or None),
         gf.AgentResilience.from_env(), gf.SYSTEM_CLOCK,
@@ -341,14 +338,12 @@ def _judge_agent(run: Run) -> Any:
 def ask(run: Run) -> None:
     """Put the question to one agent per trial, `cwd`'d to that trial's tree alone.
 
-    A direct backend turn (`_greenfield.call_agent`), not a `workhorse-coder` CLI round —
-    the brief this probe answers is a single question-answering turn, not a build/test
-    workflow, and every judging call in this tree already reaches the backend the same
-    way. The tree copied by `arrange` has no `app/` in it, so `cwd` cannot lead the agent
+    A direct backend turn (`_greenfield.call_agent`), not a `workhorse-coder` CLI round:
+    this probe puts one question and reads one answer, with no build, test or repair loop
+    for a workflow to drive, and every judging call in this tree already reaches the
+    backend the same way. The tree copied by `arrange` has no `app/` in it, so `cwd` cannot lead the agent
     to source regardless of what it tries.
     """
-    import _greenfield as gf
-
     matrix = _read_matrix(run)
     if not matrix:
         raise TrialError("arrange recorded no trials")
@@ -395,8 +390,6 @@ def judge(run: Run) -> None:
     states: the agent CLI a judge reads through writes session transcripts into whatever
     tree it is pointed at, and `score` must find the stage untouched.
     """
-    import _greenfield as gf
-
     matrix = _read_matrix(run)
     if not matrix:
         raise TrialError("arrange recorded no trials")

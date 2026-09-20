@@ -2,8 +2,9 @@
 
 This only covers the deterministic half of the task: that the module loads and registers
 cleanly, and that `arrange`'s perturbations do exactly what the module claims they do. The
-`ask` and `judge` steps invoke a real agent and are out of scope here — the brief this
-module answers is explicit that this probe is authored and unit-tested, not run.
+`ask` and `judge` steps invoke a real agent, so they are out of scope for a unit test: what
+they return is a model's answer, and a suite that called them would grade the model, not
+this module.
 
 Perturbations are checked with `ostler`'s own `surfaces-referenced-by-story` query, not by
 re-parsing the markdown a second time in this file — a test that parsed links the same way
