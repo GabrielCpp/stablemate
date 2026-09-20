@@ -2940,34 +2940,42 @@ def _check_reachability(data: dict, f: list[Finding]) -> None:
             # duplicate. Treat as undeclared so the rest of this surface's
             # screens still get checked against the grammar they have always used.
             driver = None
-        if not routes_mod.is_path_addressed(driver):
-            # `root_path` derives the root from a *server* contract (`entry-url:` on the
-            # `walkthrough: true` server, else `/`) — a `mobile` surface has no server, so the
-            # book today has no bullet that can state which screen a mobile navigator opens
-            # on. `unreachable-screen` is not inapplicable here: a screen no navigation reaches
-            # is exactly as much a defect on mobile as on the web. What is missing is narrower
-            # and it is a debt, not a design choice — this whole surface's reachability check
-            # (both `no-root-screen` and `unreachable-screen`) is given up on until the book
-            # gains a way to state a mobile root (a `driver:`-scoped root bullet, say). Until
-            # then, skip rather than warn: there is no root this check could name as missing.
-            continue
         scoped = graph_mod.subset(data, surface)
         screens = reach.screens_of(scoped)
         if not screens:
             continue
-        unreachable, root, _seeds = reach.unreachable_screens(scoped, driver)
+        unreachable, root, _seeds, reason = reach.unreachable_screens(
+            scoped, driver, surface=surface)
         if root is None:
             # No root means the question is unanswerable, which is not the same as a pass. Warn
             # rather than error: flooding the surface with one error per screen would bury the
             # one fact that matters, which is the root the book has not stated.
-            path, server = reach.root_path(scoped, driver)
-            source = (f"the path of {server}'s `entry-url:`" if server
-                      else "the app root, no server contract states another")
             driver_note = f" ({driver} driver)" if driver else ""
-            f.append(Finding("warn", "no-root-screen",
-                             f"{surface}{driver_note}: no screen's `route:` is `{path}` ({source}) — "
-                             f"reachability cannot be checked for this surface",
-                             ref=surface, suggestion=f"- route: `{path}`"))
+            if reason == reach.NO_PATH_ROOT:
+                path, server = reach.root_path(scoped, driver)
+                source = (f"the path of {server}'s `entry-url:`" if server
+                          else "the app root, no server contract states another")
+                f.append(Finding("warn", "no-root-screen",
+                                 f"{surface}{driver_note}: no screen's `route:` is `{path}` "
+                                 f"({source}) — reachability cannot be checked for this surface",
+                                 ref=surface, suggestion=f"- route: `{path}`"))
+            else:
+                if reason == reach.UNSETTLED_LAUNCH_SCREEN:
+                    reason_note = "has an unsettled `launch-screen:` on its runbook"
+                elif reason == reach.LAUNCH_SCREEN_NOT_SCREEN:
+                    reason_note = (
+                        "states a `launch-screen:` on its runbook that is not a screen on it")
+                elif reason == reach.NO_LAUNCH_SCREEN:
+                    reason_note = "states no `launch-screen:` on its runbook"
+                else:
+                    raise AssertionError(
+                        f"surface {surface!r} passes a surface to unreachable_screens, so "
+                        f"surface_root cannot return {reason!r}"
+                    )
+                f.append(Finding("warn", "no-root-screen",
+                                 f"{surface}{driver_note}: {reason_note} — reachability cannot "
+                                 f"be checked for this surface",
+                                 ref=surface, suggestion="- launch-screen: [<screen>](<path>)"))
             continue
         for screen in unreachable:
             node = next((n for n in scoped["nodes"] if n["id"] == screen), None)

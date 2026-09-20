@@ -309,16 +309,17 @@ def test_doctor_warns_rather_than_errors_when_no_screen_is_at_the_root(repo: Pat
     assert "`/`" in warn.message and "no server contract" in warn.message
 
 
-def test_no_root_screen_is_narrowed_to_web_not_disabled(repo: Path):
-    """`no-root-screen` stops firing on a `mobile` surface — it has no server contract to derive
-    a root *path* from — but it must keep firing on a `web` surface with a real, book-stated
-    defect (no screen at the root the book states no root for). Only the first half is what
-    this change was asked to do; the second half is what proves the check was narrowed to a
-    driver with no path grammar rather than disabled outright."""
+def test_no_root_screen_now_also_fires_on_a_mobile_surface(repo: Path):
+    """`no-root-screen` must keep firing on a `web` surface with a real, book-stated defect (no
+    screen at the root the book states no root for) — and, now that a mobile surface can state
+    its root via `launch-screen:`, a mobile surface that has not settled one gets the same
+    warning too, in its own words: no mention of `route:` or `/`, a suggestion naming
+    `launch-screen:` instead."""
     _repo(repo)
     # Break the web surface's root on purpose: no screen's `route:` is `/` any more.
     write(repo / SCREENS / "landing.md", LANDING.replace("- route: `/`", "- route: `/home`"))
-    # A mobile surface, `driver: mobile`, whose screen names its route the mobile way.
+    # A mobile surface, `driver: mobile`, whose screen names its route the mobile way, with no
+    # `launch-screen:` stated on its runbook.
     write(repo / "docs/features/mobile/gui/screens/widget-list.md", """\
 ---
 type: screen
@@ -352,9 +353,13 @@ title: QA stack
     report = _doctor(repo)
 
     warnings = [f for f in report.findings if f.code == "no-root-screen"]
-    assert len(warnings) == 1  # web's real gap, and only web's
-    assert warnings[0].ref == "web"
-    assert "mobile" not in {f.ref for f in warnings}
+    assert {f.ref for f in warnings} == {"web", "mobile"}
+    web_warn = next(f for f in warnings if f.ref == "web")
+    assert "`/`" in web_warn.message and "no server contract" in web_warn.message
+    mobile_warn = next(f for f in warnings if f.ref == "mobile")
+    assert "`launch-screen:`" in mobile_warn.message
+    assert "route:" not in mobile_warn.message and "`/`" not in mobile_warn.message
+    assert "launch-screen:" in mobile_warn.suggestion
 
 
 def test_the_root_is_the_screen_at_the_route_of_the_server_entry_url(repo: Path):
@@ -786,3 +791,66 @@ def test_none_with_a_reason_still_reads_as_none(repo: Path):
         "- requires:\n  - none — public route, no auth guard, no route loader"))
     pre = reach.preconditions(_by_id(repo)[LAND])
     assert pre["declared"] and pre["guards"] == []
+
+
+def _mobile_repo_with_an_unreachable_screen(repo: Path):
+    """A mobile surface with a settled `launch-screen:` and a second screen no navigation
+    reaches from it — the shape `unreachable-screen` exists to catch, now that a mobile
+    surface's root can be stated at all."""
+    write(repo / MOBILE_SCREENS / "widget-list.md", (
+        "---\ntype: screen\nslug: widget-list\ntitle: Widgets\n---\n# Widgets\n\n"
+        "- route: `WidgetList`\n- requires: none\n- params: none\n"
+    ))
+    write(repo / MOBILE_SCREENS / "widget-detail.md", (
+        "---\ntype: screen\nslug: widget-detail\ntitle: Widget detail\n---\n# Widget detail\n\n"
+        "- route: `WidgetDetail`\n- requires: none\n- params: none\n"
+    ))
+    write(repo / "docs/features/mobile-app/ops/stack.md", (
+        "---\ntype: runbook\nslug: stack\ntitle: Stack\n---\n# Stack\n\n"
+        "- driver: mobile\n"
+        "- surfaces: [widget-list](../gui/screens/widget-list.md)\n"
+        "- launch-screen: [widget-list](../gui/screens/widget-list.md)\n\n"
+        "## Steps\n\n### serve\n- kind: service\n- run: `metro`\n"
+    ))
+    return load(repo)
+
+
+def test_a_settled_mobile_launch_screen_gets_its_reachability_checked(repo: Path):
+    """The debt `_check_reachability` used to skip is paid: a mobile surface with a settled
+    `launch-screen:` is now walked like any other surface, and a screen no navigation reaches
+    from it is reported as `unreachable-screen`."""
+    _mobile_repo_with_an_unreachable_screen(repo)
+    report = _doctor(repo)
+
+    unreachable = [f for f in report.findings if f.code == "unreachable-screen"]
+    assert [f.path for f in unreachable] == [f"{MOBILE_SCREENS}/widget-detail.md"]
+    assert f"from {MOBILE_SCREENS}/widget-list.md" in unreachable[0].message
+    assert "no-root-screen" not in {f.code for f in report.findings}
+
+
+def test_a_mobile_surface_with_no_launch_screen_gets_no_root_screen_not_route(repo: Path):
+    """No `launch-screen:` on a mobile surface's runbook is a `no-root-screen` warning that names
+    the bullet the book is missing — never `route:` or `/`, which this driver has no grammar
+    for at all."""
+    _mobile_repo(repo)
+    report = _doctor(repo)
+
+    warn = next(f for f in report.findings if f.code == "no-root-screen")
+    assert warn.ref == "mobile-app"
+    assert "route:" not in warn.message and "`/`" not in warn.message
+    assert "`launch-screen:`" in warn.message
+    assert "launch-screen:" in warn.suggestion
+    assert "unreachable-screen" not in {f.code for f in report.findings}
+
+
+def test_a_path_addressed_surfaces_findings_are_unchanged(repo: Path):
+    """The pre-existing `web` behaviour must come out byte-identical: this change only adds
+    reachability checking to a driver that had none, it does not touch the one that already
+    worked."""
+    _repo(repo)
+    report = _doctor(repo)
+
+    unreachable = [f for f in report.findings if f.code == "unreachable-screen"]
+    assert [f.path for f in unreachable] == [ARCHIVE]
+    assert "no-root-screen" not in {f.code for f in report.findings}
+

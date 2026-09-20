@@ -589,8 +589,62 @@ def reachable_from(edges: list[dict], starts: list[str]) -> set[str]:
     return seen
 
 
-def unreachable_screens(data: dict, driver: str | None = None) -> tuple[list[str], str | None, list[str]]:
-    """``(unreachable, root, seeds)``. A ``None`` root means the check could not run, not a pass.
+NO_PATH_ROOT = "no-path-root"
+NO_SURFACE = "no-surface"
+UNSETTLED_LAUNCH_SCREEN = "unsettled-launch-screen"
+NO_LAUNCH_SCREEN = "no-launch-screen"
+LAUNCH_SCREEN_NOT_SCREEN = "launch-screen-not-screen"
+
+
+def surface_root(data: dict, driver: str | None = None, *,
+                 surface: str | None = None
+                 ) -> tuple[str | None, str, UnsettledSurfaceLaunchScreen | str | None]:
+    """``(root, reason, detail)`` — the start screen, why there is none, and the evidence for why.
+
+    *reason* is ``""`` on success, else one of the five stable tokens above, each naming exactly
+    one of the ways a surface can fail to state where it starts. A path-addressed driver
+    (`routes.is_path_addressed`) is answered the way it always has been — a screen whose
+    ``route:`` is the surface's root path (`root_screen`/`root_path`), or ``NO_PATH_ROOT`` when
+    no screen's does. A driver with no path grammar has no root *path* to consult at all, so it
+    is answered from `launch-screen:` instead, read via `surface_launch_screen` — which needs
+    *surface* to know which runbook to ask, hence ``NO_SURFACE`` when the caller has not given
+    one. That bullet is then reported in its own words exactly as it can fail: unsettled between
+    walkthrough runbooks (``UNSETTLED_LAUNCH_SCREEN``), stated nowhere (``NO_LAUNCH_SCREEN``), or
+    naming something that is not a screen on this surface (``LAUNCH_SCREEN_NOT_SCREEN``).
+
+    *detail* is the evidence a caller needs to render the failure without asking the question
+    again: the caught `UnsettledSurfaceLaunchScreen` itself for ``UNSETTLED_LAUNCH_SCREEN`` (kept
+    as the exception, not its text, so a caller that wants `raise ... from` still can), the
+    offending launch-screen id for ``LAUNCH_SCREEN_NOT_SCREEN``, and ``None`` for every other
+    reason — the other three name a fact that needs no further grounding.
+
+    This is the one place that decision is made; `resolve_start` and `unreachable_screens` both
+    read it rather than each drawing the distinctions again.
+    """
+    if routes_mod.is_path_addressed(driver):
+        root = root_screen(data, driver)
+        return (root, "", None) if root is not None else (None, NO_PATH_ROOT, None)
+    if surface is None:
+        return None, NO_SURFACE, None
+    try:
+        launch_screen = surface_launch_screen(data, surface)
+    except UnsettledSurfaceLaunchScreen as exc:
+        return None, UNSETTLED_LAUNCH_SCREEN, exc
+    if launch_screen is None:
+        return None, NO_LAUNCH_SCREEN, None
+    if launch_screen not in screens_of(data):
+        return None, LAUNCH_SCREEN_NOT_SCREEN, launch_screen
+    return launch_screen, "", None
+
+
+def unreachable_screens(data: dict, driver: str | None = None, *,
+                        surface: str | None = None
+                        ) -> tuple[list[str], str | None, list[str], str]:
+    """``(unreachable, root, seeds, reason)``. A ``None`` root means the check could not run.
+
+    A ``None`` root is not the same as a pass; *reason* is the `surface_root` token that says why
+    there is none, so a caller that must report the failure does not have to ask `surface_root`
+    the same question again. It is ``""`` when *root* is not ``None``.
 
     Reachability is transitive, so this is deliberately not "has an inbound edge": a cluster of
     screens that link to each other but hangs off nothing is exactly the shape a broken navigation
@@ -599,15 +653,15 @@ def unreachable_screens(data: dict, driver: str | None = None) -> tuple[list[str
     world an edge check cannot verify — eight screens each saying "entered from outside" is a
     book with no navigation in it, passing.
 
-    *driver* threads through to ``root_screen``/``root_path`` — see ``root_path`` for what a
-    driver with no path grammar does here.
+    *driver* and *surface* thread through to `surface_root` — see there for what a driver with
+    no path grammar does, and what *surface* is for.
     """
-    root = root_screen(data, driver)
+    root, reason, _detail = surface_root(data, driver, surface=surface)
     if root is None:
-        return [], None, []
+        return [], None, [], reason
     seeds = sorted({root, *route_entries(data)})
     reached = reachable_from(navigation_edges(data), seeds)
-    return sorted(set(screens_of(data)) - reached), root, seeds
+    return sorted(set(screens_of(data)) - reached), root, seeds, ""
 
 
 class UnknownStart(ValueError):
@@ -636,31 +690,28 @@ def resolve_start(data: dict, start: str | None, driver: str | None = None, *,
         if not screens:
             named = f"a `{driver}` surface" if driver else "this surface"
             raise UnknownStart(f"{named} declares no screens; there is nothing to start from")
-        root = root_screen(data, driver)
+        root, reason, detail = surface_root(data, driver, surface=surface)
         if root is None:
-            if not routes_mod.is_path_addressed(driver):
-                named = f"a `{driver}` surface" if driver else "this surface"
-                if surface is not None:
-                    try:
-                        launch_screen = surface_launch_screen(data, surface)
-                    except UnsettledSurfaceLaunchScreen as exc:
-                        raise UnknownStart(
-                            f"{named} has an unsettled `launch-screen:`: {exc}"
-                        ) from exc
-                    if launch_screen is not None:
-                        if launch_screen in screens:
-                            return launch_screen
-                        raise UnknownStart(
-                            f"{named} states `launch-screen:` {launch_screen}, which is not a "
-                            "screen on this surface; pass --from"
-                        )
-                    raise UnknownStart(
-                        f"{named} states no `launch-screen:` on its runbook and no root path "
-                        "to start from; pass --from"
-                    )
-                raise UnknownStart(f"{named} states no root path to start from; pass --from")
-            path, _ = root_path(data, driver)
-            raise UnknownStart(f"no screen's `route:` is the root path {path}; pass --from")
+            named = f"a `{driver}` surface" if driver else "this surface"
+            if reason == NO_PATH_ROOT:
+                path, _ = root_path(data, driver)
+                raise UnknownStart(f"no screen's `route:` is the root path {path}; pass --from")
+            if reason == UNSETTLED_LAUNCH_SCREEN:
+                cause = detail if isinstance(detail, UnsettledSurfaceLaunchScreen) else None
+                raise UnknownStart(
+                    f"{named} has an unsettled `launch-screen:`: {detail}"
+                ) from cause
+            if reason == LAUNCH_SCREEN_NOT_SCREEN:
+                raise UnknownStart(
+                    f"{named} states `launch-screen:` {detail}, which is not a "
+                    "screen on this surface; pass --from"
+                )
+            if reason == NO_LAUNCH_SCREEN:
+                raise UnknownStart(
+                    f"{named} states no `launch-screen:` on its runbook and no root path "
+                    "to start from; pass --from"
+                )
+            raise UnknownStart(f"{named} states no root path to start from; pass --from")
         return root
     if start in screens:
         return start
