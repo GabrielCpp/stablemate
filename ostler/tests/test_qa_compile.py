@@ -3250,6 +3250,54 @@ def test_a_journeys_json_path_check_is_not_about_a_route_at_all() -> None:
     assert _gap_kinds(gaps, oid) == []
 
 
+def test_two_surfaces_with_same_named_flows_compile_to_distinct_scenario_names() -> None:
+    """`_slug` names a compiled scenario from its book's path, and a stem alone throws away the
+    directory the surface lives in. `web-app/flows/browse-and-add-widget.md` and
+    `mobile-app/flows/browse-and-add-widget.md` share a stem but are two different books — so
+    the two journeys they compile to must land on two different `def` names, or the plan they
+    land in fails to import at all (`ValueError: duplicate scenario id`)."""
+    web_api = "web-app/http/api.md"
+    mobile_api = "mobile-app/http/api.md"
+    web_flow = "web-app/flows/browse-and-add-widget.md"
+    mobile_flow = "mobile-app/flows/browse-and-add-widget.md"
+    navigation = {
+        "web_app": {"start": web_api, "surface": "web_app", "driver": "http",
+                    "entryUrl": _BASE_URL, "counts": {}, "routes": {}, "unreachable": [],
+                    "undeclared": []},
+        "mobile_app": {"start": mobile_api, "surface": "mobile_app", "driver": "http",
+                       "entryUrl": _BASE_URL, "counts": {}, "routes": {}, "unreachable": [],
+                       "undeclared": []},
+    }
+    web_oid = f"okf:{web_flow}:end-state"
+    mobile_oid = f"okf:{mobile_flow}:end-state"
+    context = _navigation_context(
+        _flow_obligation(
+            web_oid, source=web_flow, surface="web_app",
+            steps=[_step(f"{web_api}#post-things", "endpoint", "web_app")],
+            checks=[{"call": "it", "name": "http_status", "args": {"status": 200,
+                                                                    "path": "/api/things"}}],
+        ),
+        _flow_obligation(
+            mobile_oid, source=mobile_flow, surface="mobile_app",
+            steps=[_step(f"{mobile_api}#post-things", "endpoint", "mobile_app")],
+            checks=[{"call": "it", "name": "http_status", "args": {"status": 200,
+                                                                    "path": "/api/things"}}],
+        ),
+        _step_node(f"{web_api}#post-things", {"route": ["DELETE /api/things"]}),
+        _step_node(f"{mobile_api}#post-things", {"route": ["DELETE /api/things"]}),
+        navigation=navigation,
+    )
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(result, Plan)
+    source, gaps = result.source, result.gaps
+    ast.parse(source)
+    names = re.findall(r"^def (\w+_journey)\(qa: Qa\) -> None:$", source, re.MULTILINE)
+    assert len(names) == 2
+    assert len(set(names)) == 2
+    assert _gap_kinds(gaps, web_oid) == []
+    assert _gap_kinds(gaps, mobile_oid) == []
+
+
 def test_a_journey_across_two_targets_has_no_scenario_shape_to_fit_into() -> None:
     """A target is the pairing of a driver with a service, and `@scenario(target=...)` binds
     exactly one. The reason says that — a fact about the harness — rather than claiming no

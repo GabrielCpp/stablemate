@@ -456,7 +456,7 @@ def _prose_comment(text: str, *, label: str = "") -> list[str]:
 
 
 def _slug(path: str) -> str:
-    stem = path.rsplit("/", 1)[-1].removesuffix(".md")
+    stem = path.removesuffix(".md")
     ident = _IDENT.sub("_", stem).strip("_").lower()
     return ident or "book"
 
