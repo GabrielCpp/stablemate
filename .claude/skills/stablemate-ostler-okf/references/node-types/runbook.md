@@ -33,6 +33,7 @@ File type under `docs/features/<service>/ops/`, `type: runbook` in frontmatter.
 | `entry-url` | no | base of the HTTP readiness probe; its path names the surface's root [`screen`](screen.md) — falls back for `surfaces:`' `base_url` in a compiled QA plan when that surface's own `server` states none |
 | `health-path` | no | joined onto `entry-url` (default `/`) |
 | `identity` | no | substring of the health **body** proving the stack is ours |
+| `bundle-id` | no | the mobile package/bundle id a Maestro flow addresses — the surface's `walkthrough: true` runbook wins over several unmarked ones, the same way `driver` resolves |
 | `reuse` | no | `if-fresh` (default) \| `always` \| `never` |
 | `fresh` | no | a command exiting 0 iff a serving stack reflects current code |
 | `boot-timeout` | no | seconds; ceiling on bring-up |
@@ -104,6 +105,15 @@ obligation on it is gapped `conflicting-entry-origin`. `--base-url` does not res
 either — that flag answers a book that states no address, not a book that states two.
 Settle which origin is right, or, if the two really are different services, put them under
 two feature directories.
+
+A mobile surface's package identity is stated the same way its `driver:` is — on whichever
+runbook's `surfaces:` links into it, resolved by `reach.surface_bundle_id` exactly as
+`reach.surface_driver` resolves `driver:`. The `walkthrough: true` runbook wins; a sole
+runbook stands in for it unmarked; several unmarked runbooks stating different `bundle-id:`
+values leave it undeclared, and two marked ones that still disagree leave it undeclared too
+— there is no default bundle id, so a surface with no settled answer is gapped
+`undeclared-bundle-id` and no Maestro flow is emitted for it rather than opened against a
+placeholder package that does not exist on the device.
 
 `driver:` and `surfaces:` must agree: the driver has to be able to perform against at least
 one of the node types `surfaces:` resolves to — `web` and `mobile` against a `screen`, `http`
