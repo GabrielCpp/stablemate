@@ -534,14 +534,6 @@ def build_context(
                 raise ValueError(f"duplicate source repository id {repository.id!r}")
             seen_repositories.add(repository.id)
             checkout = Path(repository.checkout).resolve()
-            note = _unrooted_diff_note(checkout)
-            if note is not None:
-                health.append({
-                    "kind": "unrooted-diff-scope",
-                    "severity": "error",
-                    "repository": repository.id,
-                    "message": note,
-                })
             roots: dict[str, list[str]] = {}
             for scope in repository.scopes:
                 roots.setdefault(scope.surface, []).append(scope.root)
@@ -567,9 +559,6 @@ def build_context(
                 "scopes": [scope.model_dump(mode="json") for scope in repository.scopes],
             })
     else:
-        note = _unrooted_diff_note(root)
-        if note is not None:
-            health.append({"kind": "unrooted-diff-scope", "severity": "error", "message": note})
         changes_all = _changed_units(root, base, head, source_roots)
 
     changes = [
@@ -1394,29 +1383,18 @@ def _serialized_graph(
     return nodes, edges, ends, locators_mod.scopes(data), details
 
 
-def _unrooted_diff_note(checkout: Path) -> str | None:
-    """None when *checkout* is its git checkout's own top level; else why a diff off it is not one.
+def _in_book(path: str, offset: str) -> str | None:
+    """*path*, spelled from the repository top level, rebased onto the book root *offset*
+    names — or `None` when *path* falls outside the book root entirely.
 
-    `_changed_units` reads paths off `git diff`, which git always spells relative to the
-    repository's top level regardless of the invoking cwd; `_revision_text`/`_working_text`
-    then resolve those same repo-root-relative strings against *checkout* itself. Handed a
-    subdirectory instead of the checkout root, every path doubles under *checkout* and reads
-    as untracked on both sides of the diff — `_changed_units` returns nothing, not "nothing
-    changed" but "nothing was looked at", and the packet built from it reads as a book that
-    owns no obligations rather than as a book nobody read. An absence is not an event.
+    `offset` is `""` when the book root *is* the repository top level, in which case every
+    path is already in the book's frame. Otherwise it is the book root's own path from the
+    top level, with a trailing `/`, and a top-level path that does not start with it names a
+    change the book does not cover — not an error, just not this book's to own.
     """
-    try:
-        toplevel = _git(checkout, "rev-parse", "--show-toplevel").strip()
-    except RuntimeError:
-        return None
-    if not toplevel or Path(toplevel).resolve() == checkout.resolve():
-        return None
-    return (
-        f"{checkout} is not its git checkout's top level ({toplevel}) — a diff read from "
-        "here cannot resolve the paths `git diff` reports, so every changed file reads as "
-        "untracked and this scan cannot see what the book owes; root it at the repository "
-        "top level instead"
-    )
+    if not offset:
+        return path
+    return path[len(offset):] if path.startswith(offset) else None
 
 
 def _changed_units(
@@ -1425,6 +1403,12 @@ def _changed_units(
     head: str,
     source_roots: dict[str, list[str]],
 ) -> list[ChangedUnit]:
+    toplevel = Path(_git(root, "rev-parse", "--show-toplevel").strip()).resolve()
+    resolved_root = root.resolve()
+    offset = (
+        "" if resolved_root == toplevel
+        else f"{resolved_root.relative_to(toplevel).as_posix()}/"
+    )
     args = ["diff", "--find-renames", "--unified=0", base]
     if head != "WORKTREE":
         args.append(head)
@@ -1434,11 +1418,13 @@ def _changed_units(
     diff = _git(root, *args)
     units: dict[str, dict[str, Any]] = {}
     for patched in _patch_set(diff):
-        old_path = patched.source_file.removeprefix("a/")
-        new_path = patched.target_file.removeprefix("b/")
-        path = new_path if new_path != "/dev/null" else old_path
+        old_top = patched.source_file.removeprefix("a/")
+        new_top = patched.target_file.removeprefix("b/")
+        book_path = _in_book(new_top if new_top != "/dev/null" else old_top, offset)
+        if book_path is None:
+            continue
         unit = units.setdefault(
-            path, {"base": set(), "head": set(), "old": old_path, "new": new_path}
+            book_path, {"base": set(), "head": set(), "old": old_top, "new": new_top}
         )
         for hunk in patched:
             unit["base"].update(range(hunk.source_start, hunk.source_start + hunk.source_length))
@@ -1452,44 +1438,57 @@ def _changed_units(
         fields = line.split("\t")
         status_code = fields[0]
         if status_code.startswith("R") and len(fields) >= 3:
-            old, new = fields[1], fields[2]
+            old_top, new_top = fields[1], fields[2]
         elif len(fields) >= 2:
-            old = "/dev/null" if status_code == "A" else fields[1]
-            new = "/dev/null" if status_code == "D" else fields[1]
+            old_top = "/dev/null" if status_code == "A" else fields[1]
+            new_top = "/dev/null" if status_code == "D" else fields[1]
         else:
             continue
-        path = new if new != "/dev/null" else old
-        units.setdefault(path, {"base": set(), "head": set(), "old": old, "new": new})
+        book_path = _in_book(new_top if new_top != "/dev/null" else old_top, offset)
+        if book_path is None:
+            continue
+        units.setdefault(book_path, {"base": set(), "head": set(), "old": old_top, "new": new_top})
     if head == "WORKTREE":
         untracked_args = ["ls-files", "--others", "--exclude-standard"]
         if configured:
             untracked_args.extend(["--", *configured])
-        for path in _git(root, *untracked_args).splitlines():
-            text = _working_text(root, path)
+        for book_path in _git(root, *untracked_args).splitlines():
+            top_path = f"{offset}{book_path}"
+            text = _working_text(toplevel, top_path)
             units.setdefault(
-                path,
+                book_path,
                 {
                     "base": set(),
                     "head": set(range(1, len(text.splitlines()) + 1)),
                     "old": "/dev/null",
-                    "new": path,
+                    "new": top_path,
                 },
             )
     output: list[ChangedUnit] = []
-    for path, item in sorted(units.items()):
-        base_text = _revision_text(root, base, item["old"])
+    for book_path, item in sorted(units.items()):
+        base_text = _revision_text(toplevel, base, item["old"])
         head_text = (
-            _working_text(root, item["new"])
+            _working_text(toplevel, item["new"])
             if head == "WORKTREE"
-            else _revision_text(root, head, item["new"])
+            else _revision_text(toplevel, head, item["new"])
         )
-        if not base_text and not head_text:
-            # Nothing readable on either side: a compiled artifact, a binary asset, or an empty
-            # file. None of the three can be grounded — there is no symbol to cite and no
-            # behaviour to verify — so leaving them in only makes the ownership gate unwinnable,
-            # the same failure mode `_is_generated_unit` exists to prevent. A *deleted source*
-            # file is not caught here: its base side still reads as text, and losing a
-            # documented symbol is a real obligation.
+        # A side with a real (non-`/dev/null`) path that turns out not to exist at all is not
+        # the same state as a side that exists and reads empty — the first is a path this scan
+        # resolved wrong, the second is `_revision_text`/`_working_text` correctly reporting a
+        # compiled artifact, a binary asset, or an empty file. Only the second is nothing to
+        # cite and no behaviour to verify, the same failure mode `_is_generated_unit` exists to
+        # prevent; the first must not be silently folded into it. A *deleted source* file is
+        # not caught by either check: its base side still reads as text, and losing a
+        # documented symbol is a real obligation.
+        base_missing = item["old"] not in ("", "/dev/null") and not _revision_holds(
+            toplevel, base, item["old"]
+        )
+        head_missing = item["new"] not in ("", "/dev/null") and not (
+            (toplevel / item["new"]).is_file()
+            if head == "WORKTREE"
+            else _revision_holds(toplevel, head, item["new"])
+        )
+        if not base_text and not head_text and not base_missing and not head_missing:
             continue
         status = "modified"
         if item["old"] == "/dev/null":
@@ -1498,16 +1497,18 @@ def _changed_units(
             status = "deleted"
         elif item["old"] != item["new"]:
             status = "renamed"
+        book_old = "" if item["old"] == "/dev/null" else (_in_book(item["old"], offset) or "")
+        book_new = "" if item["new"] == "/dev/null" else (_in_book(item["new"], offset) or "")
         output.append(
             ChangedUnit(
-                path=path,
-                base_path="" if item["old"] == "/dev/null" else item["old"],
-                head_path="" if item["new"] == "/dev/null" else item["new"],
+                path=book_path,
+                base_path=book_old,
+                head_path=book_new,
                 status=status,
                 base_lines=tuple(sorted(item["base"])),
                 head_lines=tuple(sorted(item["head"])),
-                base_symbols=tuple(_symbols_for_lines(base_text, item["base"], item["old"])),
-                head_symbols=tuple(_symbols_for_lines(head_text, item["head"], item["new"])),
+                base_symbols=tuple(_symbols_for_lines(base_text, item["base"], book_old)),
+                head_symbols=tuple(_symbols_for_lines(head_text, item["head"], book_new)),
             )
         )
     return output

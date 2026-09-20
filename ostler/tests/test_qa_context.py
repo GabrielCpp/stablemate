@@ -2829,14 +2829,15 @@ def test_an_arrange_bullet_the_act_parser_rejects_is_carried_not_dropped(tmp_pat
     ]
 
 
-def test_a_book_rooted_below_its_checkout_is_reported(tmp_path: Path):
-    """A root below the checkout top level is reported, at `error`, naming that top level.
+def test_a_book_rooted_below_its_checkout_sees_its_own_changed_files(tmp_path: Path):
+    """A book rooted below its checkout's top level still sees what changed under it.
 
-    The entry discriminates on rooting alone. What it is worth is measured elsewhere: rooting a
-    book below its checkout leaves every changed path spelled from the top level while the book
-    cites its own, so nothing matches and the packet arrives with no obligations at all. The
-    entry is the only thing in the packet that separates that from a book that genuinely owes
-    nothing.
+    `git diff` always spells its output relative to the checkout's top level, never the cwd
+    it was run from; a book below that top level has to rebase those paths onto its own root
+    before anything downstream — `_surface_owner`, the `code:` join, `_is_generated_unit` —
+    can recognize them. This is the case `test_a_book_rooted_below_its_checkout_is_reported`
+    used to name a health finding for, back when the mismatch went unhandled and every change
+    under such a book read as invisible rather than as changed.
     """
     book = tmp_path / "service"
     (book / "docs/features/demo").mkdir(parents=True)
@@ -2859,19 +2860,19 @@ title: Item
     _git(tmp_path, "add", ".")
     _git(tmp_path, "commit", "-m", "base")
     base = _git(tmp_path, "rev-parse", "HEAD")
+    (book / "app/service.py").write_text("def create_item():\n    return 'new'\n", encoding="utf-8")
 
-    entries = [
-        finding
-        for finding in build_context(book, base=base)["healthFindings"]
-        if finding["kind"] == "unrooted-diff-scope"
-    ]
+    packet = build_context(book, base=base)
 
-    assert [finding["severity"] for finding in entries] == ["error"]
-    assert str(tmp_path.resolve()) in entries[0]["message"]
+    assert [f for f in packet["healthFindings"] if f["kind"] == "unrooted-diff-scope"] == []
+    paths = [change["path"] for change in packet["changedCode"]]
+    assert paths == ["app/service.py"], paths
+    direct_nodes = {row["node"]: row["reasons"] for row in packet["directNodes"]}
+    assert direct_nodes["docs/features/demo/item.md"][0]["ref"] == "app/service.py::create_item"
 
 
 def test_a_book_rooted_at_its_checkout_reports_no_diff_scope_entry(tmp_path: Path):
-    """The negative arm: the entry must discriminate, not fire on every book."""
+    """The kind no longer fires at all, for a book at its checkout's root or below it."""
     (tmp_path / "docs/features/demo").mkdir(parents=True)
     (tmp_path / "app").mkdir()
     (tmp_path / "docs/features/demo/item.md").write_text(
@@ -2898,6 +2899,31 @@ title: Item
     packet = build_context(tmp_path, base=base)
 
     assert [f for f in packet["healthFindings"] if f["kind"] == "unrooted-diff-scope"] == []
+
+
+def test_changed_units_outside_the_book_root_are_not_a_unit_of_this_book(tmp_path: Path):
+    """A path the top-level diff reports that falls outside the book root is not this book's
+    to own — dropped from `_changed_units`'s own output, not surfaced as any kind of error."""
+    from ostler.qa.context import _changed_units
+
+    book = tmp_path / "service"
+    (book / "app").mkdir(parents=True)
+    (tmp_path / "other").mkdir()
+    (book / "app/service.py").write_text("def create_item():\n    return 'old'\n", encoding="utf-8")
+    (tmp_path / "other/tool.py").write_text("def run():\n    return 'old'\n", encoding="utf-8")
+    _git(tmp_path, "init")
+    _git(tmp_path, "config", "user.email", "qa@example.com")
+    _git(tmp_path, "config", "user.name", "QA")
+    _git(tmp_path, "add", ".")
+    _git(tmp_path, "commit", "-m", "base")
+    base = _git(tmp_path, "rev-parse", "HEAD")
+    (book / "app/service.py").write_text("def create_item():\n    return 'new'\n", encoding="utf-8")
+    (tmp_path / "other/tool.py").write_text("def run():\n    return 'new'\n", encoding="utf-8")
+
+    units = _changed_units(book, base, "WORKTREE", {})
+
+    paths = [unit.path for unit in units]
+    assert paths == ["app/service.py"], paths
 
 
 def _write_navigation_environment(repo: Path) -> None:
