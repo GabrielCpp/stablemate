@@ -96,6 +96,7 @@ GAP_KINDS = frozenset({
     "undeclared-check-locator",
     "unstated-claim-combiner",
     "no-verify-declared",
+    "precondition-discharged-by-arrangement",
     "unarranged-state",
     "unarranged-journey",
     "unarranged-scenario",
@@ -139,6 +140,15 @@ class Gap:
     unresolved reference, a template variable, a request body the book never wrote), and
     `uncompilable-claim` for a node with no action to observe at all — no fixture or
     capture could supply one, so it is not a precondition gap.
+
+    `precondition-discharged-by-arrangement` is neither: a check-less `when:` obligation
+    never reaches a builder at all, because `when:` states a condition the node's other
+    claims hold under, not an observable claim of its own — there is nothing for a check to
+    prove, so folding it into `no-verify-declared` would send an author looking for an
+    unfalsifiable check. The nearest existing gap is `unarranged-interaction-precondition`,
+    minted by the interaction builder for a `when:` precondition it reaches but cannot
+    arrange; this kind instead covers a `when:` that never reaches that builder, because the
+    obligation carries no check to dispatch on in the first place.
 
     Which of those two a kind is decides whether it may stand beside a compiled claim for the
     same id — see `_ARRANGEMENT_GAPS` above and the mirror assert in `compile_plan_gaps`.
@@ -1570,10 +1580,19 @@ def compile_plan_gaps(
             mobile_owed.append(obligation)
         else:
             gaps.append(Gap(str(obligation["id"]), kind, detail))
-    debt: list[dict[str, Any]] = list(no_verify_owed)
+    when_owed = [o for o in no_verify_owed if o.get("kind") == "when"]
+    debt: list[dict[str, Any]] = [o for o in no_verify_owed if o.get("kind") != "when"]
     gaps.extend(
         Gap(o["id"], "no-verify-declared", "the book declares no check for this obligation to prove")
-        for o in no_verify_owed
+        for o in debt
+    )
+    gaps.extend(
+        Gap(o["id"], "precondition-discharged-by-arrangement",
+            "this `when:` states a condition under which the node's claims hold, not an "
+            "observable claim, so no check is expected to prove it — a `when:` precondition "
+            "the compiler tried and failed to arrange is reported separately as "
+            "`unarranged-interaction-precondition`")
+        for o in when_owed
     )
     http_owed, api_urls = _split_by_entry_url(http_owed, navigation, base_url, gaps)
     page_owed, web_urls = _split_by_entry_url(page_owed, navigation, base_url, gaps)

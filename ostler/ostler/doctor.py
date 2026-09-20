@@ -1614,6 +1614,12 @@ def gap_findings(gaps: list[Gap]) -> list[Finding]:
             findings.append(
                 Finding("warn", "undeclared-obligation", message, ref=gap.obligation_id)
             )
+        elif gap.kind == "precondition-discharged-by-arrangement":
+            findings.append(
+                Finding(
+                    "warn", "precondition-discharged-by-arrangement", message, ref=gap.obligation_id
+                )
+            )
         else:
             findings.append(Finding("error", "uncompilable-claim", message, ref=gap.obligation_id))
     return findings

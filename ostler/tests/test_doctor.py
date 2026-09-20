@@ -822,6 +822,25 @@ def test_a_gap_kind_that_is_not_a_doctor_code_is_translated_not_passed_through()
     assert (finding.severity, finding.code) == ("warn", "undeclared-obligation")
 
 
+def test_a_when_guarded_gap_keeps_its_own_code_rather_than_undeclared_obligation():
+    """`precondition-discharged-by-arrangement` is its own doctor code, not a second spelling
+    of `undeclared-obligation`: the two name different defects. `undeclared-obligation` says
+    the book owes a check and did not write one; this kind says no check was ever owed,
+    because the bullet states a condition rather than an observable claim. Grading them the
+    same code would tell an author the fix is a check, for the one obligation where it is not.
+    """
+    oid = "okf:docs/features/demo/api.md#submit-widget:when:1"
+    gap = compile_mod.Gap(
+        oid, "precondition-discharged-by-arrangement",
+        "this `when:` states a condition under which the node's claims hold, not an "
+        "observable claim, so no check is expected to prove it",
+    )
+
+    [finding] = doctor.gap_findings([gap])
+
+    assert (finding.severity, finding.code) == ("warn", "precondition-discharged-by-arrangement")
+
+
 def test_undeclared_obligation_fires_per_bullet_even_when_the_node_declares_a_check(repo: Path):
     """SITE-GAP is per-obligation; SITE-BOOK's `declared` flag is node-wide.
 

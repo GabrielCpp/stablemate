@@ -68,6 +68,7 @@ DORMANT_UNREACHABLE: dict[str, str] = {
     "needs-out-of-band-observation": _BRIDGE,
     "needs-snapshot": _BRIDGE,
     "needs-target-backend": _BRIDGE,
+    "precondition-discharged-by-arrangement": _BRIDGE,
     "screen-preconditions-undeclared": _BRIDGE,
     "unarranged-interaction-precondition": _BRIDGE,
     "unarranged-journey": _BRIDGE,

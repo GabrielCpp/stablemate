@@ -978,6 +978,42 @@ def test_a_checkless_obligation_never_reaches_the_scenario_body() -> None:
     assert _gap_kinds(result.gaps, oid) == ["no-verify-declared"]
 
 
+def test_a_when_guarded_checkless_obligation_is_not_book_debt() -> None:
+    """`when:` states a condition the node's other claims hold under, not a claim of its own —
+    there is nothing for a check to prove, so a check-less `when:` obligation is not the same
+    defect `no-verify-declared` names ("the book declares no check for this obligation to
+    prove"), which would send an author looking for a check nothing could ever fail.
+    `precondition-discharged-by-arrangement` is the kind that names the actual reason: the
+    condition is discharged by arrangement (`arrange:`/`fixture:`), not by observation."""
+    oid = "okf:docs/features/demo/globex.md#submit-widget:when:1"
+    context = _context(_obligation(oid, kind="when"))
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(result, Refusal)
+    assert _gap_kinds(result.gaps, oid) == ["precondition-discharged-by-arrangement"]
+
+
+def test_a_when_guarded_checkless_obligation_is_left_out_of_the_book_debt_listing() -> None:
+    """The compiled plan's `# Book debt` comment tells an author to go add a `verify:` — the
+    right instruction for a checkless `does:`, and the wrong one for a checkless `when:`, which
+    is discharged by arrangement rather than by a check at all. A `when:` obligation reaching
+    `no_verify_owed` must therefore be gapped under its own kind without landing in that
+    listing, while an ordinary checkless obligation still does."""
+    debt_oid = "okf:docs/features/demo/globex.md#post-things:does:2"
+    when_oid = "okf:docs/features/demo/globex.md#submit-widget:when:1"
+    compiled_oid = "okf:docs/features/demo/globex.md#post-things:does:1"
+    context = _context(
+        _obligation(compiled_oid, checksDeclared=[_check()]),
+        _obligation(debt_oid),
+        _obligation(when_oid, kind="when"),
+    )
+    source, gaps = compile_plan_gaps(context, story="demo-story")
+    assert source is not None
+    assert debt_oid in source
+    assert when_oid not in source
+    assert _gap_kinds(gaps, debt_oid) == ["no-verify-declared"]
+    assert _gap_kinds(gaps, when_oid) == ["precondition-discharged-by-arrangement"]
+
+
 # --- Screen page-scenario compilation (slice 4) -----------------------------------------------
 #
 # A screen's `visible(...)` bullets are addressed by navigating there, not by parsing its
