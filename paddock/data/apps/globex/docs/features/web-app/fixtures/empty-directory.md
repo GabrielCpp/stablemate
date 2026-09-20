@@ -22,7 +22,7 @@ what lets this fixture run after [widgets-on-hand](widgets-on-hand.md) in either
 
 - kind: run
 - run: docker compose restart api-service
-- working-directory: paddock/data/apps/globex
+- working-directory: `.`
 
 ### confirm-it-is-empty
 

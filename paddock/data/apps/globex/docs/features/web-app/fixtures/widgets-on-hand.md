@@ -30,7 +30,7 @@ nothing. Every fixture here establishes its own precondition for that reason, an
 
 - kind: run
 - run: docker compose up -d --wait api-service
-- working-directory: paddock/data/apps/globex
+- working-directory: `.`
 
 ### seed-one-widget
 

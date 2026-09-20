@@ -24,7 +24,7 @@ not a value any check could reference.
 
 - kind: run
 - run: docker compose stop api-service
-- working-directory: paddock/data/apps/globex
+- working-directory: `.`
 
 ### confirm-it-is-down
 
