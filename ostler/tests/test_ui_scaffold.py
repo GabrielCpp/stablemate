@@ -2,13 +2,78 @@
 
 from __future__ import annotations
 
+import difflib
 from pathlib import Path
 
-from ostler import doctor, fmt, scaffold
+import pytest
+from ostler import doctor, fmt, registry, scaffold
 from ostler.cli import main
 from ostler.model import load
 
 from conftest import write
+
+#: Every `kind == "section"` type in the registry, mapped to a file-level type whose page
+#: can host it. A section scaffolds into an existing file, so the host has to be created
+#: first; `registry.UI_TYPES` names eight such types, where `scaffold.py`'s own module
+#: docstring lists five.
+_SECTION_HOSTS: dict[str, str] = {
+    "component": "screen",
+    "interaction": "screen",
+    "command": "cli",
+    "endpoint": "server",
+    "invocation": "server",
+    "method": "concept",
+    "field": "format",
+    "step": "runbook",
+}
+
+#: Every scaffoldable type, read off the registry rather than listed here, so a type added
+#: later is covered without anyone remembering this file. `untyped` is excluded because it
+#: is not authorable: it is what a heading naming no type is called, not something
+#: `scaffold` can be asked for.
+SCAFFOLDABLE_TYPES = sorted(t.name for t in registry.UI_TYPES if t.name != "untyped")
+
+
+def _scaffold_type(repo: Path, name: str) -> Path:
+    """Scaffold one instance of `name`, creating a host file first if it is section-level.
+
+    Returns the path of the file the type's own content landed in, so the caller can diff
+    exactly that file against what `fmt` would make of it.
+    """
+    uitype = registry.ui_type(name)
+    assert uitype is not None
+    if uitype.kind == "file":
+        res = scaffold.scaffold(load(repo), name, name, service="acme")
+        assert res.ok, res.message
+        return res.paths[0]
+    host = _SECTION_HOSTS[name]
+    host_res = scaffold.scaffold(load(repo), host, host, service="acme")
+    assert host_res.ok, host_res.message
+    in_file = host_res.paths[0].relative_to(load(repo).doc_roots["features"]).as_posix()
+    res = scaffold.scaffold(load(repo), name, name, in_file=in_file)
+    assert res.ok, res.message
+    return host_res.paths[0]
+
+
+@pytest.mark.parametrize("type_name", SCAFFOLDABLE_TYPES)
+def test_scaffold_output_is_canonical_for_every_type(repo: Path, type_name: str):
+    """The claim in `scaffold.py`'s module docstring — scaffolded output already matches
+    `ostler fmt` — is a guarantee held *by construction* across two separate modules
+    (`scaffold.py` composes, `fmt.py` canonicalises) and nothing forces them to agree.
+    `scaffold.py`'s own `_bullet_stubs` docstring records that the guarantee already failed
+    once, for a subset of stub families. This asserts it for every type the registry
+    declares, deriving the list from `registry.UI_TYPES` rather than naming types by hand,
+    so a type added later is covered automatically.
+    """
+    target = _scaffold_type(repo, type_name)
+    before = target.read_text(encoding="utf-8")
+    after = fmt.format_text(before)
+    if after != before:
+        diff = "\n".join(difflib.unified_diff(
+            before.splitlines(), after.splitlines(),
+            fromfile="scaffolded", tofile="fmt-canonical", lineterm="",
+        ))
+        pytest.fail(f"scaffolded '{type_name}' is not fmt-canonical:\n{diff}")
 
 
 def test_scaffold_file_level_screen_placement(repo: Path):
