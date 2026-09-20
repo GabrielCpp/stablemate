@@ -174,6 +174,38 @@ def test_a_discriminating_check_still_gets_the_value_mutation(call: str) -> None
     assert trial.sensitive
 
 
+def test_a_denial_of_emission_is_not_asked_to_notice_its_own_claim() -> None:
+    """`emitted(count=0)` claims nothing was emitted, so "nothing was emitted" is the claim
+    itself, not a defect it forbids: listing it as a mutation used to make the check survive
+    by construction and report `insensitive-check` on a working denial."""
+    trial = sensitivity.trial(checks.CheckCall("emitted", {"event": "x", "count": 0}))
+    assert trial.witnessed
+    assert trial.flipped == ("one more was emitted",)
+    assert not trial.survived
+    assert trial.sensitive
+
+
+def test_a_positive_emission_count_still_gets_both_mutations() -> None:
+    """A `count=` above zero is still falsified by silence, so `emitted`'s narrowing must not
+    drop "nothing was emitted" for anything but the `count=0` denial."""
+    trial = sensitivity.trial(checks.CheckCall("emitted", {"event": "x", "count": 2}))
+    assert trial.witnessed
+    assert trial.flipped == ("nothing was emitted", "one more was emitted")
+    assert not trial.survived
+    assert trial.sensitive
+
+
+def test_an_emitted_check_with_no_declared_count_is_unchanged() -> None:
+    """No `count=` argument means only the implicit `want = 1`, which is still a positive
+    count: it must keep getting the "nothing was emitted" mutation, same as before this
+    check's `count=0` denial was given its own case."""
+    trial = sensitivity.trial(checks.CheckCall("emitted", {"event": "x"}))
+    assert trial.witnessed
+    assert trial.flipped == ("nothing was emitted",)
+    assert not trial.survived
+    assert trial.sensitive
+
+
 def test_a_pattern_no_string_can_be_invented_for_is_unwitnessed_not_green() -> None:
     """Reporting a guess as a witness would credit sensitivity the experiment never showed."""
     trial = _trial(r'omits(subject="detail", matches="(?=x)(?!x)")')

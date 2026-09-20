@@ -425,6 +425,8 @@ def _plan(call: checks.CheckCall) -> tuple[Any, list[tuple[str, Any]], str]:
     `json_path`'s "holds something else" mutation when `matches_admits_other` says the
     declared pattern would let it through — that survivor is `_rubber_stamp`'s finding, not
     this experiment's, the same way `absent=false` already routes there instead of here.
+    `emitted(count=0)` drops "nothing was emitted" for the same reason: that mutation is the
+    claim itself, not a defect a `count=0` denial forbids.
     """
     args = call.args
     name = call.name
@@ -545,7 +547,9 @@ def _plan(call: checks.CheckCall) -> tuple[Any, list[tuple[str, Any]], str]:
     if name == "emitted":
         want = _int(args["count"]) if "count" in args else 1
         witness = [{"event": i} for i in range(want)]
-        mutations = [("nothing was emitted", [])]
+        mutations = []
+        if want != 0:
+            mutations.append(("nothing was emitted", []))
         if "count" in args:
             mutations.append(("one more was emitted", [{"event": i} for i in range(want + 1)]))
         return witness, mutations, ""
