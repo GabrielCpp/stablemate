@@ -1338,6 +1338,8 @@ def _promote_section(section: markdown.Section, rel: str, path: Path, offset: in
     anchor = anchors[section.line_start]                # the rendered anchor, unique in this doc
     node_id = f"{rel}#{anchor}"
     uitype = registry.UI_TYPES_BY_NAME.get(ntype)
+    own_end = min((c.line_start for c in section.children), default=section.line_end)
+    own_text = "\n".join(section.body_lines[section.line_start:own_end])
     nodes.append(UINode(
         type=ntype, kind="section", id=node_id, path=path, anchor=anchor,
         title=ntitle, level=section.level, parent=parent_id,
@@ -1347,7 +1349,7 @@ def _promote_section(section: markdown.Section, rel: str, path: Path, offset: in
         records=_records_from_bullets(section, uitype),
         bullet_lines={i: offset + bullet.line_start + 1 for i, bullet in enumerate(section.bullets)},
         links=[(text, href, offset + section.line_start + link_line)
-               for text, href, link_line in markdown.iter_links(section.text)],
+               for text, href, link_line in markdown.iter_links(own_text)],
     ))
     # container_type applies only to a container's direct children, so it resets on descent.
     for sub in section.children:
