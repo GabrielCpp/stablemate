@@ -252,7 +252,7 @@ PYTHON = DriverSpec("python", frozenset({"response", "body", "subject"}))
 
 #: The Playwright driver renders a real page and can also observe the response/body of any
 #: navigation or fetch it drives (`page.expect_response`) — but it never holds a bare
-#: in-process "subject" value the way the python driver does. `"keyboard"` is here and
+#: python-held "subject" value the way the python driver does. `"keyboard"` is here and
 #: nowhere else: it is not a read of the page but a real keypress dispatched at it
 #: (`page.keyboard.press`), and only this driver can fire one.
 PLAYWRIGHT = DriverSpec("playwright", frozenset({"page", "response", "body", "keyboard"}))
@@ -490,42 +490,42 @@ def book_digest(context: dict[str, Any]) -> str:
 #:
 #: A row is either a `dict[driver, target]`, for a node type where the driver genuinely picks
 #: among targets (`interaction`, `endpoint`), or a bare `str`, for a node type whose target
-#: does not vary by driver at all. `command`/`invocation`/`method` used to be written as a
-#: dict with the same target copied into every cell — `{web: cli, mobile: cli, http: cli, cli:
-#: cli}` — which is not a lookup, it is a constant with a gate in front of it: a driver-less
-#: surface (no `runbook` at all) gapped on "no driver" even though no driver could ever have
-#: changed the answer. Spelling the row as a plain string makes the invariance a fact about the
-#: table's shape rather than a fact a reader has to notice by diffing four identical values, so
-#: it cannot silently drift back into copied cells — and `_dispatch_target` below skips the
-#: driver check entirely for a `str` row, on purpose: there is no driver-is-missing gap to raise
-#: when no driver could have mattered.
+#: does not vary by driver at all. `command` used to be written as a dict with the same target
+#: copied into every cell — `{web: cli, mobile: cli, http: cli, cli: cli}` — which is not a
+#: lookup, it is a constant with a gate in front of it: a driver-less surface (no `runbook` at
+#: all) gapped on "no driver" even though no driver could ever have changed the answer. Spelling
+#: the row as a plain string makes the invariance a fact about the table's shape rather than a
+#: fact a reader has to notice by diffing four identical values, so it cannot silently drift
+#: back into copied cells — and `_dispatch_target` below skips the driver check entirely for a
+#: `str` row, on purpose: there is no driver-is-missing gap to raise when no driver could have
+#: mattered.
 _DISPATCH_TABLE: dict[str, dict[str, str] | str] = {
     "interaction": {"web": "playwright", "mobile": "maestro"},
     "endpoint": {"web": "http", "mobile": "http", "http": "http"},
     "command": "cli",
-    "invocation": "in-process",
-    "method": "in-process",
 }
 #: The node types a book documents that **nobody performs**. A `flow` orders steps that are
-#: performed; a `component`, a `screen`, and a `field` are places a claim is true. D1's table
-#: asks "what performs this step", and for these there is no step to perform — only a check to
-#: run, which is emitted by whatever drives the surface the claim's subject lives on. So they
-#: key on the `driver:` alone, with no action type to cross it with, and `context.py` stamps a
-#: flow's `surface` from the node its own `start:`/`end:` bullet names (`_linked_surface`) so a
-#: journey that crosses surfaces is observed on the one it actually ends on. Membership here is
-#: about whether the claim is observable where the node sits, not whether the node carries a
-#: locator of its own: `flow` and `field` declare none at all, `component` declares six.
-_OBSERVED_TYPES = frozenset({"flow", "component", "screen", "field"})
+#: performed; a `component`, a `screen`, and a `field` are places a claim is true. A `method`
+#: and an `invocation` belong here for the same reason: the book cites the symbol, but nothing
+#: calls it and inspects a return value — the claim is observed through whatever surface
+#: exercises it (an HTTP request against a `method`'s endpoint, a CLI run of the command an
+#: `invocation` documents), and no check verb in `ostler.checks` means "call this function".
+#: D1's table asks "what performs this step", and for these there is no step to perform — only
+#: a check to run, which is emitted by whatever drives the surface the claim's subject lives on.
+#: So they key on the `driver:` alone, with no action type to cross it with, and `context.py`
+#: stamps a flow's `surface` from the node its own `start:`/`end:` bullet names
+#: (`_linked_surface`) so a journey that crosses surfaces is observed on the one it actually
+#: ends on. Membership here is about whether the claim is observable where the node sits, not
+#: whether the node carries a locator of its own: `flow` and `field` declare none at all,
+#: `component` declares six.
+_OBSERVED_TYPES = frozenset({"flow", "component", "screen", "field", "invocation", "method"})
 #: Every driver can observe, which is what makes this a row and not a table: an `http` driver
 #: cannot *perform* an interaction (`_DISPATCH_TABLE` leaves that cell empty on purpose) but it
 #: can assert a status on a journey that ends at an endpoint.
 _OBSERVE_ROW: dict[str, str] = {
     "web": "playwright", "mobile": "maestro", "http": "http", "cli": "cli",
 }
-#: Targets this compiler actually builds a compile path for. `in-process` is a correct cell in
-#: D1's table (a `method`/`invocation` node's own claim, compiled where its owner is compiled)
-#: this compiler leaves inert until a book exercises it — `_dispatch_target` still names the
-#: target so the gap it returns says exactly what the table says, not "no row for this."
+#: Targets this compiler actually builds a compile path for.
 _BUILT_TARGETS = frozenset({"playwright", "http", "cli", "maestro"})
 
 
@@ -538,11 +538,11 @@ def _dispatch_target(
     `(target, "")` when it names a target this compiler builds; `(None, detail)` when the
     table has no row, no cell, or no `driver:` to key on — a gap, per D1's "a step whose driver the book does not determine is not
     emitted," never a default; `(target, detail)` when the table names a real target this
-    compiler does not build yet (`maestro`, `in-process`), so the caller can still gap it
-    honestly rather than mistake it for "no row for this type."
+    compiler does not build yet (`maestro`), so the caller can still gap it honestly rather
+    than mistake it for "no row for this type."
 
-    A `str` row (`command`, `invocation`, `method`) names its target directly and is read
-    without ever looking at *driver* — see the module comment above `_DISPATCH_TABLE`. A
+    A `str` row (`command`) names its target directly and is read without ever looking at
+    *driver* — see the module comment above `_DISPATCH_TABLE`. A
     missing `driver:` is real information only for a row that could have resolved
     differently with one; for an invariant row it is not information this function needs, so
     it is never turned into a gap here. `interaction`/`endpoint` keep the dict shape and this

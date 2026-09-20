@@ -3632,14 +3632,13 @@ def test_a_capture_on_an_obligation_nobody_observed_goes_with_its_obligation() -
 #: `_DISPATCH_TABLE`/`_OBSERVE_ROW` that is neither in `_BUILT_TARGETS` nor named here is an
 #: undecided cell — a target added to the table with no decision recorded — and fails
 #: `test_every_reachable_dispatch_target_is_built_or_named_as_an_exclusion` below.
-_ACKNOWLEDGED_UNBUILT_TARGETS: dict[str, str] = {
-    "in-process": (
-        "D1's table names `in-process` for every `method`/`invocation` obligation on every "
-        "driver, but this compiler builds no in-process path either — the same "
-        "`needs-target-backend` gap `maestro` gets. Remove this entry when an in-process "
-        "scenario builder lands."
-    ),
-}
+#:
+#: Empty today: every target `_DISPATCH_TABLE`/`_OBSERVE_ROW` can name is a member of
+#: `_BUILT_TARGETS`, so there is no acknowledged-unbuilt target to record. The dict stays —
+#: it is the recorded-decision slot the completeness test checks against — and a target added
+#: to the table with no builder behind it goes here, with its reason and the condition that
+#: retires it.
+_ACKNOWLEDGED_UNBUILT_TARGETS: dict[str, str] = {}
 
 
 def test_every_reachable_dispatch_target_is_built_or_named_as_an_exclusion() -> None:
@@ -3779,6 +3778,40 @@ def test_an_empty_argv_is_a_legal_bare_invocation() -> None:
 
     assert _gap_kinds(gaps, oid) == []
     assert 'qa.tool("tally").run(cwd=qa.scenario_id)' in source
+
+
+def test_an_invocation_on_a_cli_driven_surface_compiles_to_a_real_scenario() -> None:
+    """`invocation` is one of `_OBSERVED_TYPES` — nobody performs it, the claim is observed
+    through whatever drives its surface — so a `cli`-driven surface routes it through
+    `_OBSERVE_ROW` to the same `cli` target `command` reaches through `_DISPATCH_TABLE`. Since
+    `cli` is a member of `_BUILT_TARGETS`, this must compile to a real scenario rather than
+    gap as `needs-target-backend` (no backend) or `uncompilable-claim` (nothing to compile)."""
+    oid = "okf:built-target-probe:invocation:cli:exit-status:1"
+    context = _context(
+        _obligation(
+            oid,
+            nodeType="invocation",
+            checksDeclared=[{"call": "it", "name": "exit_status", "args": {"code": 0}}],
+            fixturesDeclared=[
+                {"name": "seeded-ledger", "args": [], "provides": "a ledger"},
+            ],
+            actsDeclared=[
+                {"call": 'invoke(argv=["import"])', "name": "invoke",
+                 "args": {"argv": ["import"]}},
+            ],
+        )
+    )
+    context["navigation"][""]["driver"] = "cli"
+    context["cliBinaries"] = {"docs/features/demo/api.md": "tally"}
+
+    source, gaps = compile_plan_gaps(context, story="demo-story")
+    assert source is not None
+
+    assert _gap_kinds(gaps, oid) == []
+    assert "needs-target-backend" not in {g.kind for g in gaps}
+    assert "uncompilable-claim" not in {g.kind for g in gaps}
+    assert oid in _covers(source)
+    assert 'qa.tool("tally").run("import", cwd=qa.scenario_id)' in source
 
 
 def _built_target_probe_maestro() -> tuple[dict, str]:
