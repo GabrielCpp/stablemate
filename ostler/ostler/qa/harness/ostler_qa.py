@@ -994,6 +994,20 @@ def _scalar_equal(observed: Any, expected: Any) -> bool:
     return False
 
 
+def _matchable(value: Any) -> str:
+    """*value* rendered the way a `json_path(matches=...)` pattern is written against.
+
+    The book documents a JSON document, so a pattern is authored against JSON's own
+    spelling of a value: `None` reads `null`, `True` reads `true`, `['a']` reads `["a"]`.
+    A `str` is exempt from that encoding — it is matched as itself, with no surrounding
+    quotes added, because `json.dumps` would wrap it in `"..."` and silently fail every
+    plain string and substring pattern the book already has.
+    """
+    if isinstance(value, str):
+        return value
+    return json.dumps(value)
+
+
 def _verify_json_path(observed: Any, args: Mapping[str, Any]) -> tuple[bool, Any, Any]:
     resolved, value = _resolve_path(observed, args["path"])
     if "absent" in args:
@@ -1014,7 +1028,8 @@ def _verify_json_path(observed: Any, args: Mapping[str, Any]) -> tuple[bool, Any
     if "equals" in args:
         return _scalar_equal(value, args["equals"]), value, args["equals"]
     if "matches" in args:
-        return re.search(args["matches"], str(value)) is not None, value, f"~ {args['matches']}"
+        return (re.search(args["matches"], _matchable(value)) is not None, value,
+                f"~ {args['matches']}")
     # Unreachable through `ostler.checks.bind`, which refuses a `json_path` with no
     # comparison at validate time — presence alone passes on the default the defect also
     # produces, so it is not an assertion. A call that arrives here anyway got past the

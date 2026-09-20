@@ -349,9 +349,23 @@ class CheckCall:
         """
         spec = CHECK_BY_NAME[self.name]
         parts = [
-            f"{p.name}={literal(self.args[p.name])}" for p in spec.params if p.name in self.args
+            f"{p.name}={_spelled(self.args[p.name], p)}"
+            for p in spec.params if p.name in self.args
         ]
         return f"{self.name}({', '.join(parts)})"
+
+
+def _spelled(value: CheckValue, param: CheckParam) -> str:
+    """*value*'s literal spelling, restoring the JSONPath root `_rooted` strips.
+
+    `_rooted` maps only `$` (and `$.`) to `""`, so an empty path argument can only have
+    come from the root token — rendering it back is lossless, not a guess, and it is what
+    keeps a re-rendered `verify:` call quoting the book's own `path="$"` instead of the
+    internal, walker-facing `path=""` a reader cannot map back to anything they wrote.
+    """
+    if param.path and value == "":
+        return '"$"'
+    return literal(value)
 
 
 def _rooted(value: CheckValue) -> CheckValue:

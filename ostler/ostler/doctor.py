@@ -2864,6 +2864,22 @@ def _sounds_normative(value: str) -> str:
     return ""
 
 
+#: A bare, word-bounded `None`/`True`/`False` in a `matches=` pattern — evidence the pattern was
+#: authored against `str(value)`/`repr(value)` rather than the JSON encoding `_matchable` (in
+#: `ostler/qa/harness/ostler_qa.py`) actually matches against: `json.dumps` never emits these
+#: three spellings, so a pattern that names one can only ever fail against a live document and
+#: was written against something else. Deliberately narrower than every repr/JSON difference —
+#: a bare `'` inside a pattern is not tested here, because a string-typed field can legitimately
+#: contain one (an apostrophe in prose, a quoted key in a JSON-shaped string value), so that
+#: shape is authoring judgment this check does not try to automate.
+_REPR_LITERAL = re.compile(r"\b(?:None|True|False)\b")
+
+
+def _matches_repr_spelled(pattern: str) -> bool:
+    """Whether *pattern*, a `json_path(matches=...)` value, is spelled against Python `repr`."""
+    return bool(_REPR_LITERAL.search(pattern))
+
+
 def _rubber_stamp(call: checks.CheckCall) -> str:
     """Why this call would stay green against the defect its bullet describes, or "".
 
@@ -4200,6 +4216,18 @@ def _check_ui(graph: Graph, f: list[Finding],
                     f"meant to catch — {stamps[0]}",
                     path=rel, line=node.line, ref=claim,
                     suggestion=f'- {verify_key}: json_path(path="…", equals="…")'))
+            repr_spelled = [c for c in calls if c.name == "json_path"
+                             and _matches_repr_spelled(str(c.args.get("matches", "")))]
+            if repr_spelled:
+                call = repr_spelled[0]
+                f.append(Finding(
+                    "error", "matches-repr-spelling",
+                    f"{claim}: `{call.text()}` spells its pattern against Python's `repr` — "
+                    f"the book documents a JSON document, so `None`/`True`/`False` never "
+                    f"appear in the value this pattern is matched against; write `null`/"
+                    f"`true`/`false`",
+                    path=rel, line=node.line, ref=claim,
+                    suggestion='- ' + verify_key + ': json_path(path="…", matches="^null$")'))
 
         # A prose-driven heuristic, `warn` for `compound-normative-bullet`'s reason — the
         # remedy is authoring judgment, not a rewrite a tool can compute — and meant to be
