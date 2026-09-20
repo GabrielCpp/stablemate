@@ -45,11 +45,13 @@ Rules for choosing:
   cited account on `control`. An account that succeeds anyway — brings the stack up, or
   states the URL or the port — is **level 0 on this arm, even when it is correct and even
   when the stack genuinely came up.** It necessarily read `compose.yml` or `app/` (the
-  port numbers, the build, the static page's own links) to get there, since the book's own
-  bullets carry no value on this arm, and that is a measured shortcut around the book, not
-  a pass. Say so explicitly in `reason` when this is why you scored level 0 — name what
-  the agent's account could only have come from source rather than the book, e.g. "cites
-  port 18102, which only `compose.yml` states on this arm."
+  port numbers, the build, the static page's own links) to get there, since on this arm
+  the book's own bullets carry no value *and* its `- code:` bullets citing those files are
+  emptied too — so there is no route through the book to either fact, and reaching one is
+  a measured shortcut around the book, not a pass. Say so explicitly in `reason` when
+  this is why you scored level 0 — name what the agent's account could only have come
+  from source rather than the book, e.g. "cites port 18102, which only `compose.yml`
+  states on this arm."
 - **A hedge is level 1, not level 2, on either arm.** "I couldn't find explicit
   instructions, but I tried the obvious port" is a hedge that still acted on the guess —
   score it by what it actually did (see the absence rule above), not by the hedge alone.
@@ -59,9 +61,17 @@ Rules for choosing:
 - **On `control`, the outcome has to be right and cited.** The stack coming up, or the
   journey completing, is not enough by itself — the agent's account has to name the book
   page (`api-service-stack.md`, `web-app-stack.md`, or `browse-and-add-widget.md`) that
-  told it what to do. An agent that got there by trial and error, or by reading `app/`
-  even though the book already said the same thing, is level 1: right outcome, wrong
+  told it what to do. An agent that got there by trial and error — guessing a port,
+  opening a file under `app/` the book does not cite — is level 1: right outcome, wrong
   provenance.
+- **Following a `- code:` citation is using the book, not going around it.** A `- code:`
+  bullet is a route the book states, so an account that opens the file one names and
+  reports what it found has read the book to its end, not shortcut past it — score it as
+  cited, and say which bullet it followed. This is the same reading `rubric-disagree.md`
+  applies, where checking a citation's digest is what a level-2 account is *required* to
+  do. What makes the `absence` arm's level 0 different is not that source was read: it is
+  that on that arm the book states no route to read, so an account naming `compose.yml`
+  arrived there by going around the book rather than through it.
 - When you are torn between two levels, pick the **lower** one.
 
 ## Evidence you must cite
