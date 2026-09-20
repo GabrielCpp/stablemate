@@ -88,6 +88,7 @@ BASE_SKILL_FAMILIES = {
     "brainstorm",
     "diagnosing-bugs",
     "root-cause",
+    "vet-proposal",
     "vertical-slicing",
 }
 RESOLVER = REPO / "scripts" / "private_names.py"
