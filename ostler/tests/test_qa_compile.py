@@ -4010,3 +4010,133 @@ def test_the_web_arm_still_compiles_a_press_space_key_unchanged() -> None:
     assert '.press("Space")' in source
     assert "unarranged-interaction-precondition" not in _gap_kinds(gaps, submit_oid)
     assert submit_oid in _covers(source)
+
+
+def test_a_web_press_key_with_whitespace_is_uncompilable() -> None:
+    """Playwright's own key vocabulary is open — any single character, a large named set, and
+    `+`-joined modifier combos — so it cannot be checked against a closed table the way
+    Maestro's `pressKey` is (`_maestro_press_key`'s 29-name table has no web counterpart on
+    purpose). But no member of that vocabulary contains whitespace, so a web `press` key that
+    does is a Maestro spelling (`volume up`) handed to the wrong driver, not a Playwright key,
+    and this compiles to a gap rather than a `.press("volume up")` line that raises at
+    runtime."""
+    button = f"{_SCREEN}#submit-widget-button"
+    submit_oid = "okf:new-widget:submit-new-widget:does:1"
+    context = _navigation_context(
+        _page_obligation("okf:new-widget:submit-widget-button:visible:1", button,
+                          locators={"role": ["button"], "name": ["Add widget"]},
+                          checks=[_visible("button:Add widget")]),
+        _page_obligation(submit_oid, f"{_SCREEN}#submit-new-widget",
+                          locators={"on": ["[submit-widget-button](#submit-widget-button)"],
+                                    "trigger": ["click"],
+                                    "when": ["`name` non-empty and `quantity` a non-negative "
+                                             "number"],
+                                    "does": ["the browser navigates to widget-list"]},
+                          acts=[_act("press", f"{_SCREEN}#name-field",
+                                     {"selector": ["`input[name=\"name\"]`"]},
+                                     locator="#name-field", key="volume up")],
+                          checks=[_located("#saved-banner", f"{_SCREEN}#saved-banner",
+                                            {"selector": ["`#saved-banner`"]})]),
+        navigation=_arrival_navigation(),
+    )
+    source, gaps = compile_plan_gaps(context, story="demo-story")
+    assert source is not None
+    ast.parse(source)
+    assert ".press(" not in source
+    uncompilable = [g for g in gaps if g.obligation_id == submit_oid
+                    and g.kind == "uncompilable-claim"]
+    assert len(uncompilable) == 1
+    assert "volume up" in uncompilable[0].detail
+
+
+def test_a_web_press_modifier_combo_key_compiles_unchanged() -> None:
+    """A `+`-joined modifier combo (`Control+A`) is a real Playwright key with no whitespace in
+    it anywhere, so the whitespace rule must not catch it — the rule is sound on exactly the
+    fact that no single character, named key or combo ever contains a space, not on rejecting
+    anything that looks unfamiliar."""
+    button = f"{_SCREEN}#submit-widget-button"
+    submit_oid = "okf:new-widget:submit-new-widget:does:1"
+    context = _navigation_context(
+        _page_obligation("okf:new-widget:submit-widget-button:visible:1", button,
+                          locators={"role": ["button"], "name": ["Add widget"]},
+                          checks=[_visible("button:Add widget")]),
+        _page_obligation(submit_oid, f"{_SCREEN}#submit-new-widget",
+                          locators={"on": ["[submit-widget-button](#submit-widget-button)"],
+                                    "trigger": ["click"],
+                                    "when": ["`name` non-empty and `quantity` a non-negative "
+                                             "number"],
+                                    "does": ["the browser navigates to widget-list"]},
+                          acts=[_act("press", f"{_SCREEN}#name-field",
+                                     {"selector": ["`input[name=\"name\"]`"]},
+                                     locator="#name-field", key="Control+A")],
+                          checks=[_located("#saved-banner", f"{_SCREEN}#saved-banner",
+                                            {"selector": ["`#saved-banner`"]})]),
+        navigation=_arrival_navigation(),
+    )
+    source, gaps = compile_plan_gaps(context, story="demo-story")
+    assert source is not None
+    ast.parse(source)
+    assert '.press("Control+A")' in source
+    assert "uncompilable-claim" not in _gap_kinds(gaps, submit_oid)
+    assert submit_oid in _covers(source)
+
+
+def test_the_mobile_arm_is_unaffected_by_the_web_whitespace_rule() -> None:
+    """The whitespace rule is a fact about the *web* driver's own vocabulary — it must not leak
+    into the mobile arm, which already has its own closed-vocabulary check
+    (`_maestro_press_key`) and already accepts `volume up` as one of Maestro's own documented
+    `pressKey` spellings."""
+    context, oid = _maestro_press_probe("volume up")
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(result, Plan)
+    assert _gap_kinds(result.gaps, oid) == []
+    (flow_text,) = result.files.values()
+    assert '- pressKey: "volume up"' in flow_text
+
+
+def test_a_web_journey_step_with_a_whitespace_press_key_gaps_only_the_specific_claim() -> None:
+    """A journey step whose `arrange:` names a `press` key with whitespace in it is refused for
+    the same reason `_performed_lines` already refuses it standalone — the key names a Maestro
+    spelling handed to the wrong driver. `_web_journey` must not stack its own generic "step N
+    declares an arrangement this journey cannot make" gap on top of that: the specific gap
+    already says why the step cannot be performed, and the generic one would assert the cause
+    is one of three named things (no driver, no addressable subject, a bullet the act parser
+    refused) when it is in fact a fourth."""
+    oid = f"okf:{_FLOW}:end-state"
+    open_thing = f"{_SCREEN}#open-thing"
+    save_thing = f"{_SCREEN}#save-thing"
+    context = _navigation_context(
+        _flow_obligation(
+            oid, source=_FLOW, surface="policy",
+            steps=[_step(open_thing, "interaction", "policy"),
+                   _step(save_thing, "interaction", "policy")],
+            checks=[_located_visible(f"{_SCREEN}#things-table",
+                                     {"selector": ["#things-table"]})],
+        ),
+        _page_obligation(f"{open_thing}:carrier", open_thing,
+                         locators={"on": ["[open-link](#open-link)"], "trigger": ["click"]},
+                         checks=[]) | {"required": False},
+        _page_obligation(f"{save_thing}:carrier", save_thing,
+                         locators={"on": ["[save-button](#save-button)"], "trigger": ["click"],
+                                   "when": ["`name` is non-empty"]},
+                         checks=[],
+                         acts=[_act("press", f"{_SCREEN}#name-field",
+                                    {"selector": ["#name-field"]},
+                                    locator="#name-field", key="volume up")],
+                         ) | {"required": False},
+        _page_obligation(f"{_SCREEN}#open-link:carrier", f"{_SCREEN}#open-link",
+                         locators={"selector": ["#open-link"]}, checks=[]) | {"required": False},
+        _page_obligation(f"{_SCREEN}#save-button:carrier", f"{_SCREEN}#save-button",
+                         locators={"selector": ["#save-button"]}, checks=[]) | {"required": False},
+        _page_obligation(f"{_SCREEN}#name-field:carrier", f"{_SCREEN}#name-field",
+                         locators={"selector": ["#name-field"]}, checks=[]) | {"required": False},
+        navigation=_arrival_navigation(),
+    )
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(result, Refusal)
+    uncompilable = [g for g in result.gaps if g.obligation_id == oid
+                    and g.kind == "uncompilable-claim"]
+    assert len(uncompilable) == 1
+    assert "volume up" in uncompilable[0].detail
+    assert "not a Playwright key" in uncompilable[0].detail
+    assert "declares an arrangement this journey cannot make" not in uncompilable[0].detail

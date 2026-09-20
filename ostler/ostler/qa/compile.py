@@ -2003,28 +2003,52 @@ def _acts_by_node(
     return ordered, refused
 
 
-def _performed_lines(rows: list[dict[str, Any]], driver: str) -> list[str] | None:
+def _performed_lines(
+    rows: list[dict[str, Any]], driver: str, gaps: list[Gap], ids: list[str]
+) -> tuple[list[str] | None, bool]:
     """The calls that perform *rows* in order, or `None` if any one of them cannot be performed.
+
+    The second element is whether this call already minted its own `uncompilable-claim` gap for
+    the refusal (the web `press`-with-whitespace case below) — a caller that mints a second,
+    generic gap for the same obligation when this is `True` would be asserting a cause the book
+    did not actually have.
 
     All-or-nothing on purpose. A `when:` is arranged by the whole sequence the book wrote; half
     of it establishes a state no arm declares, which is neither the documented precondition nor
     the page's accidental default — so an act this driver cannot perform, or whose subject has
     no locator to address, withholds the entire arrangement rather than emitting a prefix of it.
     The caller then keeps the gap that says the precondition is unarranged, which is true.
+
+    A web `press` is the one row here whose *value* — not its driver or its locator, both
+    already covered above — can still make the call uncompilable: Playwright's key vocabulary
+    is open (any single character, a large named set, `+`-joined modifier combos), so it
+    cannot be checked against a closed table the way Maestro's `pressKey` is. But no key in
+    that vocabulary contains whitespace, and 20 of Maestro's 29 documented names do — so a
+    book's `press` key with whitespace in it names a Maestro spelling handed to the wrong
+    driver, not a Playwright key, and this driver's own `uncompilable-claim` is minted for it
+    here rather than in the closed-vocabulary check that does not apply to this driver.
     """
     lines: list[str] = []
     for row in rows:
         spec = acts_mod.ACT_BY_NAME.get(str(row.get("name")))
         if spec is None or driver not in spec.drivers:
-            return None
+            return None, False
         located = (row.get("locates") or {}).get("locator") or {}
         expr = _page_locator_expr(located.get("locators") or {})
         if expr is None:
-            return None
+            return None, False
+        if driver == acts_mod.WEB and spec.name == "press":
+            book_key = str(row.get("args", {}).get("key", ""))
+            if any(ch.isspace() for ch in book_key):
+                gaps.extend(Gap(oid, "uncompilable-claim",
+                                f"`press` names key {book_key!r}, which contains whitespace "
+                                "and so is not a Playwright key")
+                            for oid in ids)
+                return None, True
         method, value_param = _ACT_METHODS[spec.name]
         argument = "" if value_param is None else _lit(row.get("args", {}).get(value_param, ""))
         lines.append(f"    {expr}.{method}({argument})  # arrange: {row['call']}")
-    return lines
+    return lines, False
 
 
 def _http_body(rows: list[dict[str, Any]]) -> dict[str, Any] | None:
@@ -2924,7 +2948,9 @@ def _interaction_scenario(
     # no out-of-process fixture can type into this form. `arrange:` is where the book states
     # those performances, and they go here — after arrival, before the trigger — because that
     # is the window in which they are preconditions of the interaction rather than part of it.
-    performed = _performed_lines(node_acts, acts_mod.WEB) if node_acts else None
+    performed, _ = (
+        _performed_lines(node_acts, acts_mod.WEB, gaps, ids) if node_acts else (None, False)
+    )
     # A bullet the act parser refused is carried onto the packet rather than dropped, and it
     # is an arrangement this scenario does not know how to make — the same standing as an act
     # with no locator, so it withholds the whole sequence too.
@@ -3459,14 +3485,17 @@ def _web_journey(
         # `_interaction_scenario` uses when it compiles this interaction on its own, and the
         # reason a journey through a form reaches the screen the form's `does:` names rather
         # than the refusal the empty form earns.
-        performed = _performed_lines(acts_by_node.get(ref, []), acts_mod.WEB)
+        performed, performed_gap_minted = _performed_lines(
+            acts_by_node.get(ref, []), acts_mod.WEB, gaps, ids
+        )
         if performed is None or ref in acts_refused:
-            gaps.extend(Gap(oid, "uncompilable-claim",
-                            f"step {index} declares an arrangement this journey cannot make — "
-                            "an act with no driver or no addressable subject, or a bullet the "
-                            "act parser refused; every step after it would run in a world this "
-                            "journey never reached")
-                        for oid in ids)
+            if not performed_gap_minted:
+                gaps.extend(Gap(oid, "uncompilable-claim",
+                                f"step {index} declares an arrangement this journey cannot make — "
+                                "an act with no driver or no addressable subject, or a bullet the "
+                                "act parser refused; every step after it would run in a world this "
+                                "journey never reached")
+                            for oid in ids)
             return []
         lines.extend(performed)
         lines.append(f"    {expr}.click()  # step {index}: {_trailing_comment(trigger_value)}")
