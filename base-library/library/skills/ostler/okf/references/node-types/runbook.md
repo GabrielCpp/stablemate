@@ -26,6 +26,7 @@ File type under `docs/features/<service>/ops/`, `type: runbook` in frontmatter.
 | `health-path` | no | joined onto `entry-url` (default `/`) |
 | `identity` | no | substring of the health **body** proving the stack is ours |
 | `bundle-id` | no | the mobile package/bundle id a Maestro flow addresses — the surface's `walkthrough: true` runbook wins over several unmarked ones, the same way `driver` resolves |
+| `launch-screen` | no | link — the screen a cold `- launchApp` opens on; resolves the same `walkthrough: true` way `bundle-id`/`driver` do |
 | `reuse` | no | `if-fresh` (default) \| `always` \| `never` |
 | `fresh` | no | a command exiting 0 iff a serving stack reflects current code |
 | `boot-timeout` | no | seconds; ceiling on bring-up |
@@ -106,6 +107,19 @@ values leave it undeclared, and two marked ones that still disagree leave it und
 — there is no default bundle id, so a surface with no settled answer is gapped
 `undeclared-bundle-id` and no Maestro flow is emitted for it rather than opened against a
 placeholder package that does not exist on the device.
+
+A Maestro flow always opens with a bare `- launchApp`, which lands on whatever screen the
+app happens to launch on — the book states which one that is with `launch-screen:`, a link
+to the [`screen`](screen.md) node, resolved by `reach.surface_launch_screen` the same
+`walkthrough: true` way `bundle-id:`/`driver:` are. A surface with no settled `launch-screen:`
+— none stated, several unmarked runbooks disagreeing, or two marked ones that still disagree
+— gaps every one of its mobile obligations `undeclared-launch-screen`, no Maestro flow emitted.
+A `launch-screen:` that *is* settled does not make every mobile obligation reachable: an
+obligation whose own page is a different screen than the one named has no stated way from the
+one to the other and gaps `unreachable-from-launch` instead — this states only the cold-launch
+case; a warm relaunch, an auth gate, onboarding or a deep link are a flow's own `arrange:`, not
+a second `launch-screen:`. A journey is checked only at its first step, since a journey
+navigates by definition.
 
 `driver:` and `surfaces:` must agree: the driver has to be able to perform against at least
 one of the node types `surfaces:` resolves to — `web` and `mobile` against a `screen`, `http`

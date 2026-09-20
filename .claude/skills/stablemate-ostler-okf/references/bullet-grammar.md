@@ -80,7 +80,8 @@ one, and every one of them is accepted wherever it is written, whatever the node
 
 ```
 on, parent, extends, same-as, steps, presents, detail, environment,
-cli, surfaces, requires, params, leads-to, exclusive-with, prefers, deprecates
+cli, surfaces, requires, params, leads-to, exclusive-with, prefers, deprecates,
+launch-screen
 ```
 
 `declared_keys(type)` lists only some of them per type — `endpoint` carries `detail`, `concept`
