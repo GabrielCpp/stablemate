@@ -2966,3 +2966,102 @@ def test_navigation_carries_bundle_id_through_the_unknown_start_exception_path(r
     assert navigation["groom"]["bundleId"] == "com.example.mobile-app"
     assert "error" in navigation["groom"]
     assert navigation["groom"]["counts"]["unreachable"] == 1
+
+
+def test_navigation_carries_launch_screen_through_the_screenless_stub_branch(repo: Path):
+    """A surface with no screen nodes at all takes `_navigation`'s screenless-stub branch —
+    `reach.screens_of` counts every `screen` file under the surface's own directory, so a
+    surface with none has nothing a `launch-screen:` could name either; the stub still carries
+    `launchScreen` (here, correctly `None`, since no screen exists to resolve to) the same way
+    it already carries `driver`/`bundleId` through this branch, rather than dropping the key."""
+    _write_navigation_environment(repo)
+    write(repo / "docs/features/groom/cli/tally.md", (
+        "---\ntype: cli\nslug: tally\ntitle: Tally\n---\n# Tally\n\n## Commands\n"
+    ))
+    write(repo / "docs/features/groom/ops/rb.md", (
+        "---\ntype: runbook\nslug: rb\ntitle: RB\n---\n# RB\n\n"
+        "- driver: mobile\n- environment: [local](local.md)\n"
+        "- surfaces: [tally](../cli/tally.md)\n"
+        "- bundle-id: com.example.mobile-app\n\n"
+        "## Steps\n\n### serve\n- kind: service\n- run: `run`\n"
+    ))
+    navigation = _navigation(load(repo))
+    assert navigation["groom"]["launchScreen"] is None
+    assert navigation["groom"]["counts"]["screens"] == 0
+    assert "launchScreenError" not in navigation["groom"]
+
+
+def test_navigation_carries_launch_screen_through_the_reachability_success_path(repo: Path):
+    _write_navigation_environment(repo)
+    write(repo / "docs/features/groom/gui/screens/dashboard.md", (
+        "---\ntype: screen\nslug: dashboard\ntitle: Dashboard\n---\n# Dashboard\n\n"
+        "- route: `/`\n- requires: none\n- params: none\n"
+    ))
+    write(repo / "docs/features/groom/ops/rb.md", (
+        "---\ntype: runbook\nslug: rb\ntitle: RB\n---\n# RB\n\n"
+        "- driver: web\n- environment: [local](local.md)\n"
+        "- surfaces: [dashboard](../gui/screens/dashboard.md)\n"
+        "- bundle-id: com.example.mobile-app\n"
+        "- launch-screen: [dashboard](../gui/screens/dashboard.md)\n\n"
+        "## Steps\n\n### serve\n- kind: service\n- run: `run`\n"
+    ))
+    navigation = _navigation(load(repo))
+    assert navigation["groom"]["launchScreen"] == "docs/features/groom/gui/screens/dashboard.md"
+    assert navigation["groom"]["counts"]["screens"] == 1
+    assert navigation["groom"]["counts"]["reachable"] == 1
+    assert "launchScreenError" not in navigation["groom"]
+
+
+def test_navigation_carries_launch_screen_through_the_unknown_start_exception_path(repo: Path):
+    _write_navigation_environment(repo)
+    write(repo / "docs/features/groom/gui/screens/dashboard.md", (
+        "---\ntype: screen\nslug: dashboard\ntitle: Dashboard\n---\n# Dashboard\n\n"
+        "- route: `/dashboard`\n- requires: none\n- params: none\n"
+    ))
+    write(repo / "docs/features/groom/ops/rb.md", (
+        "---\ntype: runbook\nslug: rb\ntitle: RB\n---\n# RB\n\n"
+        "- driver: web\n- environment: [local](local.md)\n"
+        "- surfaces: [dashboard](../gui/screens/dashboard.md)\n"
+        "- bundle-id: com.example.mobile-app\n"
+        "- launch-screen: [dashboard](../gui/screens/dashboard.md)\n\n"
+        "## Steps\n\n### serve\n- kind: service\n- run: `run`\n"
+    ))
+    navigation = _navigation(load(repo))
+    assert navigation["groom"]["launchScreen"] == "docs/features/groom/gui/screens/dashboard.md"
+    assert "error" in navigation["groom"]
+    assert navigation["groom"]["counts"]["unreachable"] == 1
+
+
+def test_navigation_reports_conflicting_launch_screen_error_without_raising(repo: Path):
+    """A surface whose two `runbook`s both state a `launch-screen:` and disagree, with neither
+    marked `walkthrough: true`, must not raise past `_navigation` — the same
+    `undeclared-walkthrough-runbook` degrade `_navigation`'s driver/bundle-id handling already
+    pins, now pinned for `launchScreen` too."""
+    _write_navigation_environment(repo)
+    write(repo / "docs/features/groom/gui/screens/dashboard.md", (
+        "---\ntype: screen\nslug: dashboard\ntitle: Dashboard\n---\n# Dashboard\n\n"
+        "- route: `/`\n- requires: none\n- params: none\n"
+    ))
+    write(repo / "docs/features/groom/gui/screens/settings.md", (
+        "---\ntype: screen\nslug: settings\ntitle: Settings\n---\n# Settings\n\n"
+        "- route: `/settings`\n- requires: none\n- params: none\n"
+    ))
+    write(repo / "docs/features/groom/ops/legacy.md", (
+        "---\ntype: runbook\nslug: legacy\ntitle: Legacy\n---\n# Legacy\n\n"
+        "- driver: mobile\n- environment: [local](local.md)\n"
+        "- surfaces: [dashboard](../gui/screens/dashboard.md)\n"
+        "- bundle-id: com.example.mobile-app\n"
+        "- launch-screen: [dashboard](../gui/screens/dashboard.md)\n\n"
+        "## Steps\n\n### serve\n- kind: service\n- run: `run`\n"
+    ))
+    write(repo / "docs/features/groom/ops/current.md", (
+        "---\ntype: runbook\nslug: current\ntitle: Current\n---\n# Current\n\n"
+        "- driver: mobile\n- environment: [local](local.md)\n"
+        "- surfaces: [dashboard](../gui/screens/dashboard.md)\n"
+        "- bundle-id: com.example.mobile-app\n"
+        "- launch-screen: [settings](../gui/screens/settings.md)\n\n"
+        "## Steps\n\n### serve\n- kind: service\n- run: `run --current`\n"
+    ))
+    navigation = _navigation(load(repo))
+    assert navigation["groom"].get("launchScreen") is None
+    assert navigation["groom"]["launchScreenErrorKind"] == "undeclared-walkthrough-runbook"

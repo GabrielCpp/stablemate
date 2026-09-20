@@ -339,6 +339,17 @@ def _navigation(head_graph: Graph) -> dict[str, dict[str, Any]]:
     disagree, also leave it `None` and record why under `bundleIdError` plus which of the two
     under `bundleIdErrorKind` (`"undeclared-walkthrough-runbook"` or
     `"conflicting-surface-bundle-id"`), the same shape `driverError`/`driverErrorKind` already get.
+
+    Every entry also carries `launchScreen` — the screen `launch-screen:` names on the runbook
+    that exercises this surface, read off it by `reach.surface_launch_screen` the same way
+    `bundleId` is — for `compile.py` to know which screen a cold `launchApp` actually opens on,
+    since Maestro's own `- launchApp` names no screen and the book otherwise has no way to say
+    one. A book with no runbook stating one leaves `launchScreen` `None` with no error recorded;
+    several unmarked runbooks that disagree, or several *marked* ones that still disagree, also
+    leave it `None` and record why under `launchScreenError` plus which of the two under
+    `launchScreenErrorKind` (`"undeclared-walkthrough-runbook"` or
+    `"conflicting-surface-launch-screen"`), the same shape `bundleIdError`/`bundleIdErrorKind`
+    already get.
     """
     dump = graph_mod.build(head_graph)
     surfaces = sorted({n["surface"] for n in dump["nodes"] if n.get("surface")})
@@ -369,6 +380,18 @@ def _navigation(head_graph: Graph) -> dict[str, dict[str, Any]]:
             bundle_id = None
             bundle_id_error = str(exc)
             bundle_id_error_kind = "undeclared-walkthrough-runbook"
+        try:
+            launch_screen = reach.surface_launch_screen(dump, surface)
+            launch_screen_error = None
+            launch_screen_error_kind = None
+        except reach.ConflictingSurfaceLaunchScreen as exc:
+            launch_screen = None
+            launch_screen_error = str(exc)
+            launch_screen_error_kind = "conflicting-surface-launch-screen"
+        except reach.UndeclaredWalkthroughLaunchScreenRunbook as exc:
+            launch_screen = None
+            launch_screen_error = str(exc)
+            launch_screen_error_kind = "undeclared-walkthrough-runbook"
         # `root_path` needs *driver* before it can be asked: a `mobile` surface has no path
         # grammar to state a root path in (`routes.is_path_addressed`), and asking without
         # driver would get today's web-shaped default back regardless of what this surface
@@ -389,6 +412,7 @@ def _navigation(head_graph: Graph) -> dict[str, dict[str, Any]]:
                 "entryUrl": entry_url,
                 "driver": driver,
                 "bundleId": bundle_id,
+                "launchScreen": launch_screen,
                 "counts": {
                     "screens": 0, "reachable": 0, "unreachable": 0, "undeclared": 0, "nav_edges": 0,
                 },
@@ -404,6 +428,9 @@ def _navigation(head_graph: Graph) -> dict[str, dict[str, Any]]:
             if bundle_id_error is not None:
                 navigation[surface]["bundleIdError"] = bundle_id_error
                 navigation[surface]["bundleIdErrorKind"] = bundle_id_error_kind
+            if launch_screen_error is not None:
+                navigation[surface]["launchScreenError"] = launch_screen_error
+                navigation[surface]["launchScreenErrorKind"] = launch_screen_error_kind
             continue
         try:
             navigation[surface] = reach.reachability(head_graph, surface=surface, driver=driver)
@@ -411,6 +438,7 @@ def _navigation(head_graph: Graph) -> dict[str, dict[str, Any]]:
             navigation[surface]["entryUrl"] = entry_url
             navigation[surface]["driver"] = driver
             navigation[surface]["bundleId"] = bundle_id
+            navigation[surface]["launchScreen"] = launch_screen
         except reach.UnknownStart as exc:
             navigation[surface] = {
                 "start": "",
@@ -419,6 +447,7 @@ def _navigation(head_graph: Graph) -> dict[str, dict[str, Any]]:
                 "entryUrl": entry_url,
                 "driver": driver,
                 "bundleId": bundle_id,
+                "launchScreen": launch_screen,
                 "counts": {
                     "screens": len(screens), "reachable": 0,
                     "unreachable": len(screens), "undeclared": 0, "nav_edges": 0,
@@ -436,6 +465,9 @@ def _navigation(head_graph: Graph) -> dict[str, dict[str, Any]]:
         if bundle_id_error is not None:
             navigation[surface]["bundleIdError"] = bundle_id_error
             navigation[surface]["bundleIdErrorKind"] = bundle_id_error_kind
+        if launch_screen_error is not None:
+            navigation[surface]["launchScreenError"] = launch_screen_error
+            navigation[surface]["launchScreenErrorKind"] = launch_screen_error_kind
     return navigation
 
 

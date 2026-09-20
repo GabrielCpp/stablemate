@@ -307,6 +307,7 @@ def entry_origin(dump: dict, surface: str) -> str | None:
 
 DRIVER_BULLET = "driver"
 BUNDLE_ID_BULLET = "bundle-id"
+LAUNCH_SCREEN_BULLET = "launch-screen"
 
 
 class UnsettledSurfaceDriver(ValueError):
@@ -455,6 +456,93 @@ def surface_bundle_id(dump: dict, surface: str) -> str | None:
     if len(bundle_ids) > 1:
         raise UndeclaredWalkthroughBundleIdRunbook(surface, candidates)
     return bundle_ids[0] if bundle_ids else None
+
+
+class UnsettledSurfaceLaunchScreen(ValueError):
+    """The book does not settle which screen `launch-screen:` names for a surface.
+
+    Base of every reason `surface_launch_screen` refuses to answer, mirroring
+    `UnsettledSurfaceDriver`/`UnsettledSurfaceBundleId` — a reader wanting a launch screen
+    degrades to an undeclared one by catching this one class and stays correct when a further
+    reason is added.
+    """
+
+
+class ConflictingSurfaceLaunchScreen(UnsettledSurfaceLaunchScreen):
+    """More than one runbook marked ``walkthrough: true`` states a different `launch-screen:`
+    for the same surface."""
+
+    def __init__(self, surface: str, screens: list[tuple[str, str]]) -> None:
+        self.surface = surface
+        self.screens = screens
+        named = "; ".join(f"{node} says {screen}" for node, screen in screens)
+        super().__init__(f"surface {surface!r} has conflicting launch screens: {named}")
+
+
+class UndeclaredWalkthroughLaunchScreenRunbook(UnsettledSurfaceLaunchScreen):
+    """Several runbooks cover one surface and none of them claims to be the walkthrough."""
+
+    def __init__(self, surface: str, screens: list[tuple[str, str]]) -> None:
+        self.surface = surface
+        self.screens = screens
+        named = "; ".join(f"{node} states {screen}" for node, screen in screens)
+        super().__init__(
+            f"surface {surface!r} is covered by several runbooks and none is marked "
+            f"`walkthrough: true`: {named}"
+        )
+
+
+def surface_launch_screen(dump: dict, surface: str) -> str | None:
+    """The screen `launch-screen:` names for the runbook that exercises *surface*; ``None`` if
+    none covers it.
+
+    Cloned from `surface_bundle_id`, with one difference: `launch-screen:` is authored as a
+    markdown link (the same way `surfaces:` is), not a bare string, since it names another
+    node rather than stating a literal value — so this reads the link's own href out of
+    `bullet_value` and resolves it against the node's own edges by href, rather than by
+    `edge["via"]`: a node whose `launch-screen:` points at a screen already named in its own
+    `surfaces:` shares that href with the `surfaces:` edge, and `graph._edge_sources` tags the
+    first bullet to claim an href as every edge's `via` for that href — matching by href instead
+    survives that collision, since every edge sharing an href resolves to the same target
+    regardless of which bullet is credited. The returned string is the target document's path
+    with no `#anchor`, the same spelling `screen_routes()` keys on and obligations carry as
+    `source`, so a caller can compare the two directly. The runbook marked ``walkthrough: true``
+    wins; a sole runbook stands in for it; several unmarked ones with different launch screens
+    resolve to no answer — `UndeclaredWalkthroughLaunchScreenRunbook`, because dispatching off
+    an arbitrary pick is worse than a compile-time gap. Two runbooks *both* marked
+    ``walkthrough: true`` that still disagree is `ConflictingSurfaceLaunchScreen`.
+    """
+    by_id = {n["id"]: n for n in dump["nodes"]}
+    candidates: list[tuple[str, str]] = []
+
+    for node in dump["nodes"]:
+        if node["type"] != RUNBOOK_TYPE or node["kind"] != "file":
+            continue
+        targets = {edge["to"] for edge in node["edges"] if edge["via"] == SURFACES_BULLET}
+        if not any(by_id.get(target, {}).get("surface") == surface for target in targets):
+            continue
+        launch_screen_raw = bullet_value(node["bullets"], LAUNCH_SCREEN_BULLET).strip()
+        launch_screen_links = markdown.extract_refs(launch_screen_raw).links
+        if launch_screen_links:
+            _text, href = launch_screen_links[0]
+            launch_targets = {edge["to"] for edge in node["edges"] if edge["href"] == href}
+            if launch_targets:
+                screen = sorted(launch_targets)[0].split("#")[0]
+                candidates.append((node["id"], screen))
+
+    marked = [(node, screen) for node, screen in candidates
+              if bullet_value(by_id[node]["bullets"], WALKTHROUGH_BULLET).lower()
+              in ("true", "yes")]
+    if marked:
+        marked_screens = sorted({screen for _node, screen in marked})
+        if len(marked_screens) > 1:
+            raise ConflictingSurfaceLaunchScreen(surface, marked)
+        return marked_screens[0]
+
+    screens = sorted({screen for _node, screen in candidates})
+    if len(screens) > 1:
+        raise UndeclaredWalkthroughLaunchScreenRunbook(surface, candidates)
+    return screens[0] if screens else None
 
 
 def root_screen(data: dict, driver: str | None = None) -> str | None:

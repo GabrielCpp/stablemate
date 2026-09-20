@@ -1037,6 +1037,96 @@ def test_a_surface_with_no_bundle_id_at_all_resolves_to_none(repo: Path):
     assert reach.surface_bundle_id(dump, "groom") is None
 
 
+SETTINGS_SCREEN = ("---\ntype: screen\nslug: settings\ntitle: Settings\n---\n# Settings\n\n"
+                    "- route: `/settings`\n- requires: none\n- params: none\n")
+
+
+def _write_conflicting_launch_screen_book(repo: Path, walkthrough_a: bool = True,
+                                           walkthrough_b: bool = True) -> None:
+    """Two runbooks in one feature directory, both `surfaces:`-linked into the same screen
+    node, each stating a *different* `launch-screen:` — the only shape
+    `reach.surface_launch_screen` ever has two launch screens to compare.
+
+    Cloned from `_write_conflicting_bundle_id_book`: `reach.surface_launch_screen` is cloned
+    from `surface_bundle_id`, so it resolves the walkthrough-marked runbook the same way and
+    raises the same two ways on disagreement, except the value compared is a link to a screen
+    node rather than a bare string."""
+    write(repo / "docs/features/groom/ops/local.md", ENVIRONMENT)
+    write(repo / "docs/features/groom/gui/screens/dashboard.md", DASHBOARD)
+    write(repo / "docs/features/groom/gui/screens/settings.md", SETTINGS_SCREEN)
+    walk_a = "- walkthrough: true\n" if walkthrough_a else ""
+    walk_b = "- walkthrough: true\n" if walkthrough_b else ""
+    write(repo / "docs/features/groom/ops/legacy.md", (
+        "---\ntype: runbook\nslug: legacy\ntitle: Legacy\n---\n# Legacy\n\n"
+        f"- driver: mobile\n{walk_a}- environment: [local](local.md)\n"
+        "- surfaces: [dashboard](../gui/screens/dashboard.md)\n"
+        "- bundle-id: com.example.mobile-app\n"
+        "- launch-screen: [dashboard](../gui/screens/dashboard.md)\n\n"
+        "## Steps\n\n### serve\n- kind: service\n- run: `run`\n"
+    ))
+    write(repo / "docs/features/groom/ops/current.md", (
+        "---\ntype: runbook\nslug: current\ntitle: Current\n---\n# Current\n\n"
+        f"- driver: mobile\n{walk_b}- environment: [local](local.md)\n"
+        "- surfaces: [dashboard](../gui/screens/dashboard.md)\n"
+        "- bundle-id: com.example.mobile-app\n"
+        "- launch-screen: [settings](../gui/screens/settings.md)\n\n"
+        "## Steps\n\n### serve\n- kind: service\n- run: `run --current`\n"
+    ))
+
+
+def test_one_marked_runbook_among_disagreeing_launch_screens_is_clean_and_wins(repo: Path):
+    _write_conflicting_launch_screen_book(repo, walkthrough_a=False, walkthrough_b=True)
+    dump = graph.build(load(repo))
+    assert reach.surface_launch_screen(dump, "groom") == (
+        "docs/features/groom/gui/screens/settings.md"
+    )
+
+
+def test_disagreeing_launch_screens_with_none_marked_raise_undeclared_walkthrough_runbook(
+        repo: Path):
+    _write_conflicting_launch_screen_book(repo, walkthrough_a=False, walkthrough_b=False)
+    dump = graph.build(load(repo))
+    with pytest.raises(reach.UndeclaredWalkthroughLaunchScreenRunbook) as excinfo:
+        reach.surface_launch_screen(dump, "groom")
+    assert "legacy.md" in str(excinfo.value) and "current.md" in str(excinfo.value)
+
+
+def test_two_runbooks_both_marked_walkthrough_disagreeing_raise_conflicting_launch_screen(
+        repo: Path):
+    _write_conflicting_launch_screen_book(repo)
+    dump = graph.build(load(repo))
+    with pytest.raises(reach.ConflictingSurfaceLaunchScreen) as excinfo:
+        reach.surface_launch_screen(dump, "groom")
+    assert "legacy.md" in str(excinfo.value) and "current.md" in str(excinfo.value)
+
+
+def test_sole_unmarked_runbook_is_clean_and_its_launch_screen_wins(repo: Path):
+    """Real-book shape: only one runbook names this surface at all, so there is nothing to
+    disagree with even though it carries no `walkthrough: true` mark — the same shape
+    `test_sole_unmarked_runbook_is_clean_and_its_bundle_id_wins` pins for `bundle-id:`."""
+    write(repo / "docs/features/groom/ops/local.md", ENVIRONMENT)
+    write(repo / "docs/features/groom/gui/screens/dashboard.md", DASHBOARD)
+    write(repo / "docs/features/groom/ops/web.md", (
+        "---\ntype: runbook\nslug: web\ntitle: Web runbook\n---\n# Web runbook\n\n"
+        "- driver: mobile\n- environment: [local](local.md)\n"
+        "- surfaces: [dashboard](../gui/screens/dashboard.md)\n"
+        "- bundle-id: com.example.mobile-app\n"
+        "- launch-screen: [dashboard](../gui/screens/dashboard.md)\n\n"
+        "## Steps\n\n### serve\n- kind: service\n- run: `run`\n"
+    ))
+    dump = graph.build(load(repo))
+    assert reach.surface_launch_screen(dump, "groom") == (
+        "docs/features/groom/gui/screens/dashboard.md"
+    )
+
+
+def test_a_surface_with_no_launch_screen_at_all_resolves_to_none(repo: Path):
+    """The trio's RUNBOOK states no `launch-screen:`, so nothing is a candidate."""
+    _write_runbook_trio(repo)
+    dump = graph.build(load(repo))
+    assert reach.surface_launch_screen(dump, "groom") is None
+
+
 @pytest.mark.parametrize(("marked", "code"), [
     (False, "undeclared-walkthrough-runbook"),
     (True, "conflicting-surface-driver"),

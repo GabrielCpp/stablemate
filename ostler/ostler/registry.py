@@ -404,10 +404,11 @@ class UINodeType:
 # claim. ``verify:`` is now ``check=True`` (``ostler.checks``), and its grounding is the vocabulary.
 CODE_GROUNDING_KEYS = frozenset({"code"})
 # Bullet keys naming an inter-node relation the linter resolves at author time. ``environment`` /
-# ``cli`` / ``surfaces`` are the runbook profile's relations (docs/okf-runbook.md §4.1).
+# ``cli`` / ``surfaces`` / ``launch-screen`` are the runbook profile's relations
+# (docs/okf-runbook.md §4.1).
 RELATION_KEYS = ("on", "parent", "extends", "same-as", "steps", "presents", "detail",
-                 "environment", "cli", "surfaces", "requires", "params", "leads-to",
-                 "exclusive-with", "prefers", "deprecates")
+                 "environment", "cli", "surfaces", "launch-screen", "requires", "params",
+                 "leads-to", "exclusive-with", "prefers", "deprecates")
 
 # Normative on every node type, whatever it is.
 SHARED_NORMATIVE_KEYS = ("consistency", "consistency rule", "consistency group", "persistence",
@@ -1067,6 +1068,7 @@ UI_TYPES: tuple[UINodeType, ...] = (
             BulletKey("health-path"),             # joined onto `entry-url` (default `/`)
             BulletKey("identity"),                # substring of the health *body* proving it is ours
             BulletKey("bundle-id"),               # mobile package/bundle id Maestro launches
+            BulletKey("launch-screen", link=True), # screen a cold `launchApp` opens on
             BulletKey("reuse"),                   # if-fresh (default) | always | never
             BulletKey("fresh"),                   # exit 0 ⇔ a serving stack reflects current code
             BulletKey("boot-timeout"),            # seconds; ceiling on bring-up

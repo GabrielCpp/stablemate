@@ -110,6 +110,8 @@ GAP_KINDS = frozenset({
     "needs-target-backend",
     "needs-multi-target-runtime",
     "invalid-http-method",
+    "undeclared-launch-screen",
+    "unreachable-from-launch",
 })
 
 #: The kinds that say *this compiler* ran out, not that the book did. Every other kind names
@@ -712,7 +714,7 @@ def _cli_scenario_body(
 def _maestro_scenario_body(
     obligations: list[dict[str, Any]], node_index: dict[str, dict[str, list[str]]],
     gaps: list[Gap], covered: set[str], files: dict[str, str],
-    screen_routes: dict[str, str], bundle_id: str,
+    screen_routes: dict[str, str], bundle_id: str, launch_screen: str,
 ) -> list[str]:
     """Compile every mobile obligation's own Maestro flow — `_cli_scenario_body`'s counterpart
     for a `mobile`-driven surface instead of a `command` node.
@@ -738,11 +740,25 @@ def _maestro_scenario_body(
     level — the same shape `_web_journey` resolves for a journey step. Resolved the same
     way here: the `on:` href names another node in this packet, `node_index` gives that
     node's own locators, and a `tapOn` on it stands in for the missing `actsDeclared` row.
+
+    Each obligation's own page is also checked against *launch_screen* before anything else
+    about it is compiled: a bare `- launchApp` opens on that one screen, so an obligation
+    whose own page is a different one has no stated way to reach it and gaps
+    `unreachable-from-launch` rather than compiling a flow that opens on the wrong screen and
+    asserts against it anyway.
     """
     lines: list[str] = []
     index = 0
     for obligation in sorted(obligations, key=lambda o: tuple(o.get("docPosition") or (0, 0))):
         oid = str(obligation["id"])
+        page = str(obligation.get("source", ""))
+        if page != launch_screen:
+            gaps.append(Gap(
+                oid, "unreachable-from-launch",
+                f"a cold `launchApp` opens on {launch_screen!r}, not {page!r}, and nothing "
+                "in this obligation's own flow gets from the one to the other",
+            ))
+            continue
         requirement = " ".join(str(obligation.get("requirement", "")).split())
         lines.append("")
         lines.append(f"    # {oid}")
@@ -944,6 +960,25 @@ def _bundle_id_gap(surface: str, navigation: dict[str, Any]) -> tuple[str, str]:
         )
     return "undeclared-bundle-id", (
         f"surface {surface!r} states no `bundle-id:` on a `runbook` node"
+    )
+
+
+def _launch_screen_gap(surface: str, navigation: dict[str, Any]) -> tuple[str, str]:
+    """The kind and detail for a mobile obligation whose surface resolved to no launch screen.
+
+    Unlike `_entry_url_gap`, there is no operator override for which screen a cold
+    `launchApp` opens on, so an absent `launch-screen:` and disagreeing runbooks both land on
+    the same `undeclared-launch-screen` kind — the remedy for either is the same: state one
+    `launch-screen:` the walkthrough runbook agrees on.
+    """
+    error = navigation.get(surface, {}).get("launchScreenError")
+    if error:
+        return "undeclared-launch-screen", (
+            f"surface {surface!r} states more than one `launch-screen:` and its runbooks "
+            f"disagree ({error})"
+        )
+    return "undeclared-launch-screen", (
+        f"surface {surface!r} states no `launch-screen:` on a `runbook` node"
     )
 
 
@@ -1718,10 +1753,15 @@ def compile_plan_gaps(
             kind, detail = _bundle_id_gap(surface, navigation)
             gaps.extend(Gap(str(o["id"]), kind, detail) for o in mobile_obligations)
             continue
+        launch_screen = navigation.get(surface, {}).get("launchScreen") if surface else None
+        if launch_screen is None:
+            kind, detail = _launch_screen_gap(surface, navigation)
+            gaps.extend(Gap(str(o["id"]), kind, detail) for o in mobile_obligations)
+            continue
         mobile_scenario_covered: set[str] = set()
         body_lines = _maestro_scenario_body(
             mobile_obligations, node_index, gaps, mobile_scenario_covered, files, screen_routes,
-            bundle_id,
+            bundle_id, launch_screen,
         )
         if not mobile_scenario_covered:
             continue
@@ -3208,6 +3248,11 @@ def _journey_scenarios(
             kind, detail = _bundle_id_gap(surface, navigation)
             gaps.extend(Gap(oid, kind, detail) for oid in ids)
             continue
+        launch_screen = nav.get("launchScreen")
+        if journey_target == "maestro" and launch_screen is None:
+            kind, detail = _launch_screen_gap(surface, navigation)
+            gaps.extend(Gap(oid, kind, detail) for oid in ids)
+            continue
         arrangement = _arrangement_of(obligations)
         arranged = arrangement.rows
         if arrangement.unstated:
@@ -3233,8 +3278,12 @@ def _journey_scenarios(
                 "the `journey_target == \"maestro\" and bundle_id is None` branch above "
                 "already gapped and skipped this journey"
             )
+            assert launch_screen is not None, (
+                "the `journey_target == \"maestro\" and launch_screen is None` branch above "
+                "already gapped and skipped this journey"
+            )
             body = _maestro_journey(steps, node_index, obligations, ids, gaps, scenario_covered,
-                                    files, screen_routes, bundle_id)
+                                    files, screen_routes, bundle_id, launch_screen)
         else:
             body = _web_journey(steps, node_index, obligations, ids, gaps, scenario_covered,
                                 captured, nav, screen_routes,
@@ -3532,6 +3581,7 @@ def _maestro_journey(
     files: dict[str, str],
     screen_routes: dict[str, str],
     bundle_id: str,
+    launch_screen: str,
 ) -> list[str]:
     """Walk a flow's `interaction` steps as Maestro `tapOn` commands, then assert the flow's
     own claims in the same flow file.
@@ -3552,8 +3602,22 @@ def _maestro_journey(
     every check row sharing this journey's one flow observes, since a Maestro run fails at its
     first unmet assertion and the ones after it never got to run. The documented screens the
     journey's checks named each get a `qa.vet(...)` call.
+
+    Only the *first* step's own page is checked against `launch_screen`: a cold `launchApp`
+    opens on that one screen, so a journey that starts anywhere else has no stated way in — but
+    a journey navigates by definition, so every step after the first is expected to be on some
+    other screen and is never gapped for it.
     """
     commands: list[str] = []
+    if steps:
+        first_page = str(steps[0].get("ref", "")).split("#")[0]
+        if first_page != launch_screen:
+            gaps.extend(Gap(oid, "unreachable-from-launch",
+                            f"a cold `launchApp` opens on {launch_screen!r}, not "
+                            f"{first_page!r}, and nothing before this journey's first step "
+                            "gets from the one to the other")
+                        for oid in ids)
+            return []
     for index, step in enumerate(steps, start=1):
         node_type = str(step.get("nodeType") or "")
         if node_type != "interaction":

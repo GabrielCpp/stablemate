@@ -3115,6 +3115,7 @@ def test_a_mobile_step_with_no_selector_is_the_books_to_finish_not_a_backend_gap
     navigation = _arrival_navigation()
     navigation["policy"]["driver"] = "mobile"
     navigation["policy"]["bundleId"] = "com.example.mobile-app"
+    navigation["policy"]["launchScreen"] = _SCREEN
     context = _navigation_context(
         _obligation(oid, nodeType="interaction", source=_SCREEN, surface="policy",
                     checksDeclared=[_visible("table:Things on file")]),
@@ -3154,6 +3155,7 @@ def test_a_mobile_journey_step_with_no_selector_gaps_uncompilable_claim() -> Non
     navigation = _arrival_navigation()
     navigation["policy"]["driver"] = "mobile"
     navigation["policy"]["bundleId"] = "com.example.mobile-app"
+    navigation["policy"]["launchScreen"] = _SCREEN
     context = _navigation_context(
         _flow_obligation(
             oid, source=_FLOW, surface="policy",
@@ -3753,6 +3755,7 @@ def _built_target_probe_maestro() -> tuple[dict, str]:
     navigation = _arrival_navigation()
     navigation["policy"]["driver"] = "mobile"
     navigation["policy"]["bundleId"] = "com.example.mobile-app"
+    navigation["policy"]["launchScreen"] = _SCREEN
     context = _navigation_context(
         _page_obligation(oid, f"{_SCREEN}#probe",
                           locators={"selector": ["testID=probe-widget"]},
@@ -3907,6 +3910,84 @@ def test_a_surface_whose_runbooks_disagree_on_bundle_id_also_gaps_undeclared_bun
     assert "com.acme.legacy" in gap.detail and "com.acme.current" in gap.detail
 
 
+def test_a_surface_with_no_launch_screen_gaps_undeclared_launch_screen_and_emits_no_maestro() -> None:
+    """Mirrors `test_a_surface_with_no_bundle_id_gaps_undeclared_bundle_id_and_emits_no_maestro`:
+    a settled `bundle-id:` is not enough on its own — a mobile obligation whose surface names
+    no `launch-screen:` still compiles no flow, because the compiler has no way to know which
+    screen a cold `- launchApp` opens on and refuses to guess one."""
+    context, oid = _built_target_probe_maestro()
+    context["navigation"]["policy"]["launchScreen"] = None
+
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(result, Refusal)
+    assert _gap_kinds(result.gaps, oid) == ["undeclared-launch-screen"]
+
+
+def test_an_obligation_off_the_launch_screen_gaps_unreachable_from_launch() -> None:
+    """A settled `launch-screen:` does not make every mobile obligation reachable: this
+    obligation's own page (`_SCREEN`, via `_built_target_probe_maestro`) is a *different*
+    screen than the one the surface's `launch-screen:` now names, and the book states no way
+    from the one to the other — so it gaps `unreachable-from-launch` rather than compiling a
+    flow that opens on the wrong screen and asserts against it anyway."""
+    context, oid = _built_target_probe_maestro()
+    other_screen = "docs/features/policy/gui/screens/other.md"
+    context["navigation"]["policy"]["launchScreen"] = other_screen
+
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(result, Refusal)
+    assert _gap_kinds(result.gaps, oid) == ["unreachable-from-launch"]
+    (gap,) = [g for g in result.gaps if g.obligation_id == oid]
+    assert other_screen in gap.detail and _SCREEN in gap.detail
+
+
+def test_a_mobile_journey_starting_on_the_launch_screen_compiles_end_to_end() -> None:
+    """The globex shape, pinned directly: a journey whose *first* step's own page is the
+    surface's settled `launch-screen:` still walks and compiles a flow — exercising
+    `_maestro_journey`'s own first-step-only check, which the standalone obligation path
+    `_built_target_probe_maestro` drives never reaches."""
+    oid = f"okf:{_FLOW}:end-state"
+    open_thing = f"{_SCREEN}#open-thing"
+    save_thing = f"{_SCREEN}#save-thing"
+    navigation = _arrival_navigation()
+    navigation["policy"]["driver"] = "mobile"
+    navigation["policy"]["bundleId"] = "com.example.mobile-app"
+    navigation["policy"]["launchScreen"] = _SCREEN
+    context = _navigation_context(
+        _flow_obligation(
+            oid, source=_FLOW, surface="policy",
+            steps=[_step(open_thing, "interaction", "policy"),
+                   _step(save_thing, "interaction", "policy")],
+            checks=[_located_visible(f"{_SCREEN}#things-table",
+                                     {"selector": ["testID=things-table"]})],
+        ),
+        _page_obligation(f"{open_thing}:carrier", open_thing,
+                         locators={"on": ["[open-link](#open-link)"]}, checks=[])
+            | {"required": False},
+        _page_obligation(f"{save_thing}:carrier", save_thing,
+                         locators={"on": ["[save-button](#save-button)"]}, checks=[])
+            | {"required": False},
+        _page_obligation(f"{_SCREEN}#open-link:carrier", f"{_SCREEN}#open-link",
+                         locators={"selector": ["testID=open-link"]}, checks=[])
+            | {"required": False},
+        _page_obligation(f"{_SCREEN}#save-button:carrier", f"{_SCREEN}#save-button",
+                         locators={"selector": ["testID=save-button"]}, checks=[])
+            | {"required": False},
+        navigation=navigation,
+        screen_routes={_SCREEN: "Things"},
+    )
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(result, Plan)
+    assert _gap_kinds(result.gaps, oid) == []
+    assert oid in _covers(result.source)
+
+    (flow_text,) = result.files.values()
+    flow_header, flow_commands = yaml.safe_load_all(flow_text)
+    assert flow_commands[0] == "launchApp"
+    tap_ids = [c["tapOn"]["id"] for c in flow_commands
+              if isinstance(c, dict) and "tapOn" in c]
+    assert tap_ids == ["open-link", "save-button"]
+
+
 def _maestro_press_probe(book_key: str) -> tuple[dict, str]:
     """`_built_target_probe_maestro`'s obligation, with a `press` act added on a control
     of its own — the smallest fixture that puts a book-stated `key=` through the mobile
@@ -3915,6 +3996,7 @@ def _maestro_press_probe(book_key: str) -> tuple[dict, str]:
     navigation = _arrival_navigation()
     navigation["policy"]["driver"] = "mobile"
     navigation["policy"]["bundleId"] = "com.example.mobile-app"
+    navigation["policy"]["launchScreen"] = _SCREEN
     press_node = f"{_SCREEN}#probe-field"
     context = _navigation_context(
         _page_obligation(oid, f"{_SCREEN}#probe",

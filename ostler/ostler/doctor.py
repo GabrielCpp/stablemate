@@ -1517,6 +1517,14 @@ def gap_findings(gaps: list[Gap]) -> list[Finding]:
             findings.append(Finding("error", "undeclared-entry-url", message, ref=gap.obligation_id))
         elif gap.kind == "undeclared-bundle-id":
             findings.append(Finding("error", "undeclared-bundle-id", message, ref=gap.obligation_id))
+        elif gap.kind == "undeclared-launch-screen":
+            findings.append(
+                Finding("error", "undeclared-launch-screen", message, ref=gap.obligation_id)
+            )
+        elif gap.kind == "unreachable-from-launch":
+            findings.append(
+                Finding("error", "unreachable-from-launch", message, ref=gap.obligation_id)
+            )
         elif gap.kind == "conflicting-entry-origin":
             findings.append(
                 Finding("error", "conflicting-entry-origin", message, ref=gap.obligation_id)
