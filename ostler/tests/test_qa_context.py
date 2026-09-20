@@ -1238,6 +1238,51 @@ title: Items
     assert "missing-declared-check" not in {f["kind"] for f in packet["healthFindings"]}
 
 
+def test_a_check_on_one_normative_key_does_not_silence_another(tmp_path: Path):
+    """A node with two normative keys and one `verify:` must warn on the uncovered key alone.
+
+    `keyboard:` and `does:` are both normative on `interaction`. The `verify:` here is written
+    under `does:` alone, so it covers that claim and leaves `keyboard:`'s claim uncovered — a
+    node-level predicate that asks only "does this node carry any `verify:`" cannot see that,
+    because it does."""
+    (tmp_path / "docs/features/acme/screens").mkdir(parents=True)
+    (tmp_path / "app").mkdir()
+    doc = tmp_path / "docs/features/acme/screens/items.md"
+    body = """---
+type: screen
+slug: items
+title: Items
+---
+# Items
+
+## Interactions
+
+### save-item
+- on: [items](#items)
+- trigger: click
+- keyboard: Enter
+- does:
+  - request: persist the item
+- verify: persists(subject="the item")
+- code: app/items.py::save_item
+"""
+    doc.write_text(body, encoding="utf-8")
+    (tmp_path / "app/items.py").write_text("def save_item():\n    return 1\n", encoding="utf-8")
+    _git(tmp_path, "init")
+    _git(tmp_path, "config", "user.email", "qa@example.com")
+    _git(tmp_path, "config", "user.name", "QA")
+    _git(tmp_path, "add", ".")
+    _git(tmp_path, "commit", "-m", "base")
+    base = _git(tmp_path, "rev-parse", "HEAD")
+    (tmp_path / "app/items.py").write_text("def save_item():\n    return 2\n", encoding="utf-8")
+
+    packet = build_context(tmp_path, base=base, source_roots={"acme": ["app"]})
+    findings = [f for f in packet["healthFindings"] if f["kind"] == "missing-declared-check"]
+
+    assert len(findings) == 1
+    assert findings[0]["key"] == "keyboard"
+
+
 def test_the_tenth_case_of_a_bullet_sorts_after_the_second():
     """Sorting obligation ids as plain strings puts `:10` between `:1` and `:2`.
 

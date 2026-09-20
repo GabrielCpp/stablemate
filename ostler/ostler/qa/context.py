@@ -906,25 +906,37 @@ def build_context(
                 grounded.add(node_id)
         # Not "this node cites no test": a test citation is diagnostic (`tests:`, read by
         # regression attribution) and proves nothing about the product. What is worth a warning
-        # is an impacted contract whose obligations name no observation, because every scenario
-        # written against it is then free to assert something weaker than the claim. Only for a
-        # type that *has* a `verify:` key — a check names no subject, so its subject is the node
-        # its bullet hangs under, which is every authorable type but `step` (whose `verify:`
-        # observes the step, not the product) and `untyped` (which declares no keys at all).
+        # is an impacted contract's normative claim that names no observation, because a
+        # scenario written against it is then free to assert something weaker than the claim.
+        # A check names no subject, so its subject is its position — the run of normative
+        # bullets it sits under, which `registry.attributed_checks` binds it to, the engine
+        # `compile_plan` reads for its own `checksDeclared`/`no-verify-declared` split — so
+        # coverage is a fact per claim, not per node: one `verify:` above one claim leaves
+        # every sibling claim on the same node uncovered. Only for a type that *has* a
+        # `verify:` key, which is every authorable type but `step` (whose `verify:` observes
+        # the step, not the product) and `untyped` (which declares no keys at all).
         node_type = str(node.get("type", ""))
         node_bullets = node.get("bullets", {})
-        has_obligation = any(
-            _values(node_bullets.get(key)) for key in registry.normative_keys(node_type)
+        combiners = {int(pos): str(word) for pos, word in (node.get("combiners") or {}).items()}
+        _, checks_per_bullet = registry.attributed_checks(
+            node_type, node.get("bulletOrder") or [], combiners
         )
-        if has_obligation and registry.check_keys(node_type) and not _declared_checks(node):
-            health.append(
-                {
-                    "kind": "missing-declared-check",
-                    "severity": "warning",
-                    "node": node_id,
-                    "message": "impacted contract declares no `verify:` check to fulfil it",
-                }
-            )
+        if registry.check_keys(node_type):
+            for key in registry.normative_keys(node_type):
+                for index in range(1, len(_values(node_bullets.get(key))) + 1):
+                    if not checks_per_bullet.get((key, index)):
+                        health.append(
+                            {
+                                "kind": "missing-declared-check",
+                                "severity": "warning",
+                                "node": node_id,
+                                "key": key,
+                                "message": (
+                                    f"impacted contract's `{key}:` claim declares no "
+                                    "`verify:` check to fulfil it"
+                                ),
+                            }
+                        )
     demoted_symbols: frozenset[str] | set[str] = shared_symbols
     required_contracts = {
         node_id
@@ -2229,22 +2241,6 @@ def _reaches_a_required_contract(ref: str, required_contracts: set[str]) -> bool
     if "#" in ref:
         return False
     return any(contract.startswith(f"{ref}#") for contract in required_contracts)
-
-
-def _declared_checks(node: dict[str, Any]) -> list[dict[str, Any]]:
-    """The observations a node declares, one row per parsed `verify:` bullet.
-
-    Silent on a bullet that does not parse — and that silence is what makes a book with one
-    malformed bullet look like a book with none, which is the opposite of what the packet is
-    for. `_unparsed_checks` below carries the refusal for the readers that have to tell those
-    two books apart; this list stays the parsed rows alone. `call` is `CheckCall.text()`, the
-    canonical spelling, because it is the string `qa validate` compares a scenario's
-    invocation against; the split `name`/`args` are there so the harness does not re-parse.
-    """
-    declared: list[dict[str, Any]] = []
-    for key in registry.check_keys(str(node.get("type", ""))):
-        declared.extend(_parse_checks(_values(node.get("bullets", {}).get(key))))
-    return _dedup_checks(declared)
 
 
 #: What a check row carries about a `(locator)` argument, resolved against the book at packet
