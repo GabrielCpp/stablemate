@@ -306,6 +306,7 @@ def entry_origin(dump: dict, surface: str) -> str | None:
 
 
 DRIVER_BULLET = "driver"
+BUNDLE_ID_BULLET = "bundle-id"
 
 
 class UnsettledSurfaceDriver(ValueError):
@@ -383,6 +384,77 @@ def surface_driver(dump: dict, surface: str) -> str | None:
     if len(drivers) > 1:
         raise UndeclaredWalkthroughRunbook(surface, candidates)
     return drivers[0] if drivers else None
+
+
+class UnsettledSurfaceBundleId(ValueError):
+    """The book does not settle which `bundle-id:` addresses a surface.
+
+    Base of every reason `surface_bundle_id` refuses to answer, mirroring
+    `UnsettledSurfaceDriver` — a reader wanting a bundle id degrades to an undeclared one by
+    catching this one class and stays correct when a further reason is added.
+    """
+
+
+class ConflictingSurfaceBundleId(UnsettledSurfaceBundleId):
+    """More than one runbook marked ``walkthrough: true`` states a different `bundle-id:` for
+    the same surface."""
+
+    def __init__(self, surface: str, bundle_ids: list[tuple[str, str]]) -> None:
+        self.surface = surface
+        self.bundle_ids = bundle_ids  # [(node_id, bundle_id), ...], found-order
+        named = "; ".join(f"{node} says {bundle_id}" for node, bundle_id in bundle_ids)
+        super().__init__(f"surface {surface!r} has conflicting bundle ids: {named}")
+
+
+class UndeclaredWalkthroughBundleIdRunbook(UnsettledSurfaceBundleId):
+    """Several runbooks cover one surface and none of them claims to be the walkthrough."""
+
+    def __init__(self, surface: str, bundle_ids: list[tuple[str, str]]) -> None:
+        self.surface = surface
+        self.bundle_ids = bundle_ids
+        named = "; ".join(f"{node} states {bundle_id}" for node, bundle_id in bundle_ids)
+        super().__init__(
+            f"surface {surface!r} is covered by several runbooks and none is marked "
+            f"`walkthrough: true`: {named}"
+        )
+
+
+def surface_bundle_id(dump: dict, surface: str) -> str | None:
+    """The `bundle-id:` of the runbook that exercises *surface*; ``None`` if none covers it.
+
+    Cloned from `surface_driver`: several runbooks legitimately name the same surface through
+    `surfaces:`, so that alone is not a disagreement. The runbook marked ``walkthrough: true``
+    wins; a sole runbook stands in for it; several unmarked ones with different bundle ids
+    resolve to no answer — `UndeclaredWalkthroughBundleIdRunbook`, because dispatching off an
+    arbitrary pick is worse than a compile-time gap. Two runbooks *both* marked
+    ``walkthrough: true`` that still disagree is `ConflictingSurfaceBundleId`.
+    """
+    by_id = {n["id"]: n for n in dump["nodes"]}
+    candidates: list[tuple[str, str]] = []
+
+    for node in dump["nodes"]:
+        if node["type"] != RUNBOOK_TYPE or node["kind"] != "file":
+            continue
+        targets = {edge["to"] for edge in node["edges"] if edge["via"] == SURFACES_BULLET}
+        if not any(by_id.get(target, {}).get("surface") == surface for target in targets):
+            continue
+        bundle_id = bullet_value(node["bullets"], BUNDLE_ID_BULLET).strip()
+        if bundle_id:
+            candidates.append((node["id"], bundle_id))
+
+    marked = [(node, bundle_id) for node, bundle_id in candidates
+              if bullet_value(by_id[node]["bullets"], WALKTHROUGH_BULLET).lower()
+              in ("true", "yes")]
+    if marked:
+        marked_bundle_ids = sorted({bundle_id for _node, bundle_id in marked})
+        if len(marked_bundle_ids) > 1:
+            raise ConflictingSurfaceBundleId(surface, marked)
+        return marked_bundle_ids[0]
+
+    bundle_ids = sorted({bundle_id for _node, bundle_id in candidates})
+    if len(bundle_ids) > 1:
+        raise UndeclaredWalkthroughBundleIdRunbook(surface, candidates)
+    return bundle_ids[0] if bundle_ids else None
 
 
 def root_screen(data: dict, driver: str | None = None) -> str | None:

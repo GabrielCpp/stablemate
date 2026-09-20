@@ -89,6 +89,7 @@ GAP_KINDS = frozenset({
     "needs-out-of-band-observation",
     "undeclared-entry-url",
     "conflicting-entry-origin",
+    "undeclared-bundle-id",
     "conflicting-surface-driver",
     "undeclared-walkthrough-runbook",
     "unresolved-extends",
@@ -711,7 +712,7 @@ def _cli_scenario_body(
 def _maestro_scenario_body(
     obligations: list[dict[str, Any]], node_index: dict[str, dict[str, list[str]]],
     gaps: list[Gap], covered: set[str], files: dict[str, str],
-    screen_routes: dict[str, str],
+    screen_routes: dict[str, str], bundle_id: str,
 ) -> list[str]:
     """Compile every mobile obligation's own Maestro flow — `_cli_scenario_body`'s counterpart
     for a `mobile`-driven surface instead of a `command` node.
@@ -823,7 +824,7 @@ def _maestro_scenario_body(
         if not whole or not (commands or assertions or python_lines):
             continue
         flow_path = f"maestro/{_slug(oid)}.yaml"
-        files[flow_path] = _maestro_flow_yaml([*commands, *assertions])
+        files[flow_path] = _maestro_flow_yaml([*commands, *assertions], bundle_id)
         lines.append(f"    {name} = qa.maestro.run(qa.spec_dir / {_lit(flow_path)})")
         lines.extend(python_lines)
         if assertions:
@@ -913,6 +914,25 @@ def _entry_url_gap(surface: str, navigation: dict[str, Any]) -> tuple[str, str]:
     return "undeclared-entry-url", (
         f"surface {surface!r} states no `entry-url:` on a `server` or `runbook` node, "
         "and no --base-url was passed to fall back on"
+    )
+
+
+def _bundle_id_gap(surface: str, navigation: dict[str, Any]) -> tuple[str, str]:
+    """The kind and detail for a mobile obligation whose surface resolved to no bundle id.
+
+    Unlike `_entry_url_gap`, there is no `--base-url`-shaped operator override for a mobile
+    package identity, so an absent bundle id and disagreeing runbooks both land on the same
+    `undeclared-bundle-id` kind — the remedy for either is the same: state one `bundle-id:`
+    the walkthrough runbook agrees on.
+    """
+    error = navigation.get(surface, {}).get("bundleIdError")
+    if error:
+        return "undeclared-bundle-id", (
+            f"surface {surface!r} states more than one `bundle-id:` and its runbooks disagree "
+            f"({error})"
+        )
+    return "undeclared-bundle-id", (
+        f"surface {surface!r} states no `bundle-id:` on a `runbook` node"
     )
 
 
@@ -1097,13 +1117,6 @@ def _page_locator_expr(locators: dict[str, list[str]]) -> str | None:
     return None
 
 
-#: The `appId:` every generated Maestro flow opens with. A real flow addresses a real installed
-#: package, which this compiler never learns from the book (D9: the packet carries no bundle
-#: identity for a mobile surface) — so this is a placeholder an author replaces once they wire
-#: a real device up, the same role a `TODO(arrange)` line plays everywhere else in this file.
-_MAESTRO_APP_ID = "com.example.mobile-app"
-
-
 def _maestro_locator(locators: dict[str, list[str]]) -> tuple[str, str] | None:
     """A `(Maestro selector key, value)` pair built from a node's own book-declared locators.
 
@@ -1124,8 +1137,8 @@ def _maestro_locator(locators: dict[str, list[str]]) -> tuple[str, str] | None:
     return None
 
 
-def _maestro_flow_yaml(commands: list[str]) -> str:
-    return "\n".join([f'appId: "{_MAESTRO_APP_ID}"', "---", "- launchApp", *commands]) + "\n"
+def _maestro_flow_yaml(commands: list[str], bundle_id: str) -> str:
+    return "\n".join([f'appId: "{bundle_id}"', "---", "- launchApp", *commands]) + "\n"
 
 
 def _maestro_act_commands(
@@ -1653,20 +1666,26 @@ def compile_plan_gaps(
         if arrangement.unstated:
             gaps.extend(_unarranged_scenario_gap(o) for o in mobile_obligations)
             continue
+        surface = str(mobile_obligations[0].get("surface") or "")
+        bundle_id = navigation.get(surface, {}).get("bundleId") if surface else None
+        if bundle_id is None:
+            kind, detail = _bundle_id_gap(surface, navigation)
+            gaps.extend(Gap(str(o["id"]), kind, detail) for o in mobile_obligations)
+            continue
         mobile_scenario_covered: set[str] = set()
         body_lines = _maestro_scenario_body(
-            mobile_obligations, node_index, gaps, mobile_scenario_covered, files, screen_routes
+            mobile_obligations, node_index, gaps, mobile_scenario_covered, files, screen_routes,
+            bundle_id,
         )
         if not mobile_scenario_covered:
             continue
         covered_ids.update(mobile_scenario_covered)
-        surface = str(mobile_obligations[0].get("surface") or "")
         target_var = _target_var(surface, "mobile")
         if target_var not in emitted_targets:
             lines.append("")
             lines.append(
                 f"{target_var} = target({_lit(target_var)}, driver={_lit(MAESTRO.name)}, "
-                f"app_id={_lit(_MAESTRO_APP_ID)})"
+                f"app_id={_lit(bundle_id)})"
             )
             emitted_targets.add(target_var)
         lines.append("")
@@ -3112,6 +3131,11 @@ def _journey_scenarios(
             kind, detail = _entry_url_gap(surface, navigation)
             gaps.extend(Gap(oid, kind, detail) for oid in ids)
             continue
+        bundle_id = nav.get("bundleId")
+        if journey_target == "maestro" and bundle_id is None:
+            kind, detail = _bundle_id_gap(surface, navigation)
+            gaps.extend(Gap(oid, kind, detail) for oid in ids)
+            continue
         arrangement = _arrangement_of(obligations)
         arranged = arrangement.rows
         if arrangement.unstated:
@@ -3133,8 +3157,12 @@ def _journey_scenarios(
             body = _http_journey(steps, node_index, obligations, ids, gaps, scenario_covered,
                                  captured, acts_by_node=acts_by_node, acts_refused=acts_refused)
         elif journey_target == "maestro":
+            assert bundle_id is not None, (
+                "the `journey_target == \"maestro\" and bundle_id is None` branch above "
+                "already gapped and skipped this journey"
+            )
             body = _maestro_journey(steps, node_index, obligations, ids, gaps, scenario_covered,
-                                    files, screen_routes)
+                                    files, screen_routes, bundle_id)
         else:
             body = _web_journey(steps, node_index, obligations, ids, gaps, scenario_covered,
                                 captured, nav, screen_routes,
@@ -3155,7 +3183,7 @@ def _journey_scenarios(
                 lines.extend([
                     "",
                     f"{target_var} = target({_lit(target_var)}, driver={_lit(driver_name)}, "
-                    f"app_id={_lit(_MAESTRO_APP_ID)})",
+                    f"app_id={_lit(bundle_id)})",
                 ])
             else:
                 lines.extend([
@@ -3428,6 +3456,7 @@ def _maestro_journey(
     covered: set[str],
     files: dict[str, str],
     screen_routes: dict[str, str],
+    bundle_id: str,
 ) -> list[str]:
     """Walk a flow's `interaction` steps as Maestro `tapOn` commands, then assert the flow's
     own claims in the same flow file.
@@ -3516,7 +3545,7 @@ def _maestro_journey(
     if not covered:
         return []
     flow_path = f"maestro/{_slug('-'.join(ids))}.yaml"
-    files[flow_path] = _maestro_flow_yaml([*commands, *assertions])
+    files[flow_path] = _maestro_flow_yaml([*commands, *assertions], bundle_id)
     lines = [f"    {result_name} = qa.maestro.run(qa.spec_dir / {_lit(flow_path)})", *python_lines]
     if page_oids:
         lines.extend(

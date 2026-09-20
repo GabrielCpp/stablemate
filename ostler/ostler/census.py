@@ -75,6 +75,7 @@ DORMANT_UNREACHABLE: dict[str, str] = {
     "unarranged-scenario": _BRIDGE,
     "unarranged-state": _BRIDGE,
     "uncompilable-claim": _BRIDGE,
+    "undeclared-bundle-id": _BRIDGE,
     "undeclared-entry-url": _BRIDGE,
     "unidentifiable-screen": _BRIDGE,
     "unresolved-extends": _BRIDGE,

@@ -3114,6 +3114,7 @@ def test_a_mobile_step_with_no_selector_is_the_books_to_finish_not_a_backend_gap
     oid = f"okf:{_SCREEN}#open-thing:does:1"
     navigation = _arrival_navigation()
     navigation["policy"]["driver"] = "mobile"
+    navigation["policy"]["bundleId"] = "com.example.mobile-app"
     context = _navigation_context(
         _obligation(oid, nodeType="interaction", source=_SCREEN, surface="policy",
                     checksDeclared=[_visible("table:Things on file")]),
@@ -3152,6 +3153,7 @@ def test_a_mobile_journey_step_with_no_selector_gaps_uncompilable_claim() -> Non
     oid = f"okf:{_FLOW}:end-state"
     navigation = _arrival_navigation()
     navigation["policy"]["driver"] = "mobile"
+    navigation["policy"]["bundleId"] = "com.example.mobile-app"
     context = _navigation_context(
         _flow_obligation(
             oid, source=_FLOW, surface="policy",
@@ -3750,6 +3752,7 @@ def _built_target_probe_maestro() -> tuple[dict, str]:
     oid = "okf:built-target-probe:maestro:visible:1"
     navigation = _arrival_navigation()
     navigation["policy"]["driver"] = "mobile"
+    navigation["policy"]["bundleId"] = "com.example.mobile-app"
     context = _navigation_context(
         _page_obligation(oid, f"{_SCREEN}#probe",
                           locators={"selector": ["testID=probe-widget"]},
@@ -3851,3 +3854,54 @@ def test_a_generated_flow_matches_the_hand_written_reference_flows_shape() -> No
     flow_header, flow_commands = yaml.safe_load_all(flow_text)
     assert "appId" in flow_header
     assert flow_commands[0] == "launchApp"
+
+
+def test_the_compiled_maestro_target_and_flow_carry_the_books_own_bundle_id() -> None:
+    """Both `appId:` sites — the flow YAML header and `target(..., app_id=...)` in the
+    compiled plan — must thread the surface's *own* `bundleId`, not a fixed placeholder.
+    Varying the value away from every other maestro fixture's `com.example.mobile-app` is
+    what tells apart "reads the book" from "hardcodes one string that happens to match"."""
+    context, oid = _built_target_probe_maestro()
+    context["navigation"]["policy"]["bundleId"] = "com.acme.groom"
+
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(result, Plan)
+    assert _gap_kinds(result.gaps, oid) == []
+    assert 'app_id="com.acme.groom"' in result.source
+
+    assert result.files, "expected a maestro obligation to write its own flow file"
+    (flow_text,) = result.files.values()
+    flow_header, _flow_commands = yaml.safe_load_all(flow_text)
+    assert flow_header["appId"] == "com.acme.groom"
+
+
+def test_a_surface_with_no_bundle_id_gaps_undeclared_bundle_id_and_emits_no_maestro() -> None:
+    """A mobile obligation whose surface names no `bundle-id:` must not compile against
+    `_MAESTRO_APP_ID`'s old placeholder — it gaps `undeclared-bundle-id` and the plan carries
+    no scenario, no `target(driver=maestro, ...)`, and no flow file for it."""
+    context, oid = _built_target_probe_maestro()
+    context["navigation"]["policy"]["bundleId"] = None
+
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(result, Refusal)
+    assert _gap_kinds(result.gaps, oid) == ["undeclared-bundle-id"]
+
+
+def test_a_surface_whose_runbooks_disagree_on_bundle_id_also_gaps_undeclared_bundle_id() -> None:
+    """The collapsed design: unlike `entry-url:` (absence vs. `conflicting-entry-origin`) or
+    `driver:` (absence vs. `conflicting-surface-driver`/`undeclared-walkthrough-runbook`), a
+    disagreeing `bundle-id:` has no operator-override shape a distinct kind would let an
+    operator act on differently — so `reach.surface_bundle_id`'s error still lands on the same
+    `undeclared-bundle-id` kind as an outright absence, with the disagreement itself named in
+    the gap's detail."""
+    context, oid = _built_target_probe_maestro()
+    context["navigation"]["policy"]["bundleId"] = None
+    context["navigation"]["policy"]["bundleIdError"] = (
+        "rb-a.md says com.acme.legacy; rb-b.md says com.acme.current"
+    )
+
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(result, Refusal)
+    assert _gap_kinds(result.gaps, oid) == ["undeclared-bundle-id"]
+    (gap,) = [g for g in result.gaps if g.obligation_id == oid]
+    assert "com.acme.legacy" in gap.detail and "com.acme.current" in gap.detail

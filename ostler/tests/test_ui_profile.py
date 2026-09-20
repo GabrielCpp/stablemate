@@ -944,6 +944,99 @@ def test_several_runbooks_agreeing_on_driver_with_none_marked_is_clean(repo: Pat
     assert reach.surface_driver(dump, "groom") == "web"
 
 
+def _write_conflicting_bundle_id_book(repo: Path, bundle_id_a: str, bundle_id_b: str,
+                                       walkthrough_a: bool = True,
+                                       walkthrough_b: bool = True) -> None:
+    """Two runbooks in one feature directory, both `surfaces:`-linked into the same screen
+    node, each stating its own `bundle-id:` — the only shape `reach.surface_bundle_id` ever
+    has two bundle ids to compare.
+
+    `reach.surface_bundle_id` is cloned from `surface_driver`: the `walkthrough: true` runbook
+    wins, a sole runbook stands in for it unmarked, and disagreement with no runbook marked is
+    `UndeclaredWalkthroughBundleIdRunbook` while disagreement between two marked ones is
+    `ConflictingSurfaceBundleId`. Unlike `driver:`, no doctor.py static checker inspects this
+    directly (there is no `_check_conflicting_surface_bundle_id`) — the only reader is
+    `qa.context.navigation()`, so the tests below call `reach.surface_bundle_id` directly rather
+    than reading `doctor.run`'s findings the way the driver tests above do."""
+    write(repo / "docs/features/groom/ops/local.md", ENVIRONMENT)
+    write(repo / "docs/features/groom/gui/screens/dashboard.md", DASHBOARD)
+    walk_a = "- walkthrough: true\n" if walkthrough_a else ""
+    walk_b = "- walkthrough: true\n" if walkthrough_b else ""
+    write(repo / "docs/features/groom/ops/legacy.md", (
+        "---\ntype: runbook\nslug: legacy\ntitle: Legacy\n---\n# Legacy\n\n"
+        f"- driver: mobile\n{walk_a}- environment: [local](local.md)\n"
+        "- surfaces: [dashboard](../gui/screens/dashboard.md)\n"
+        f"- bundle-id: {bundle_id_a}\n\n"
+        "## Steps\n\n### serve\n- kind: service\n- run: `run`\n"
+    ))
+    write(repo / "docs/features/groom/ops/current.md", (
+        "---\ntype: runbook\nslug: current\ntitle: Current\n---\n# Current\n\n"
+        f"- driver: mobile\n{walk_b}- environment: [local](local.md)\n"
+        "- surfaces: [dashboard](../gui/screens/dashboard.md)\n"
+        f"- bundle-id: {bundle_id_b}\n\n"
+        "## Steps\n\n### serve\n- kind: service\n- run: `run --current`\n"
+    ))
+
+
+def test_one_marked_runbook_among_disagreeing_bundle_ids_is_clean_and_wins(repo: Path):
+    _write_conflicting_bundle_id_book(repo, "com.example.legacy", "com.example.current",
+                                       walkthrough_a=False, walkthrough_b=True)
+    dump = graph.build(load(repo))
+    assert reach.surface_bundle_id(dump, "groom") == "com.example.current"
+
+
+def test_disagreeing_bundle_ids_with_none_marked_raise_undeclared_walkthrough_bundle_id_runbook(
+        repo: Path):
+    _write_conflicting_bundle_id_book(repo, "com.example.legacy", "com.example.current",
+                                       walkthrough_a=False, walkthrough_b=False)
+    dump = graph.build(load(repo))
+    with pytest.raises(reach.UndeclaredWalkthroughBundleIdRunbook) as excinfo:
+        reach.surface_bundle_id(dump, "groom")
+    assert "legacy.md" in str(excinfo.value) and "current.md" in str(excinfo.value)
+
+
+def test_two_runbooks_both_marked_walkthrough_disagreeing_raise_conflicting_surface_bundle_id(
+        repo: Path):
+    _write_conflicting_bundle_id_book(repo, "com.example.legacy", "com.example.current")
+    dump = graph.build(load(repo))
+    with pytest.raises(reach.ConflictingSurfaceBundleId) as excinfo:
+        reach.surface_bundle_id(dump, "groom")
+    assert "legacy.md" in str(excinfo.value) and "current.md" in str(excinfo.value)
+
+
+def test_several_agreeing_bundle_ids_with_none_marked_is_clean(repo: Path):
+    """Non-vacuity vs. the undeclared-walkthrough fixture above: the only difference is that
+    both runbooks now state the same `bundle-id:` — several correct runbooks naming one
+    surface the same way is not a disagreement, marked or not."""
+    _write_conflicting_bundle_id_book(repo, "com.example.legacy", "com.example.legacy",
+                                       walkthrough_a=False, walkthrough_b=False)
+    dump = graph.build(load(repo))
+    assert reach.surface_bundle_id(dump, "groom") == "com.example.legacy"
+
+
+def test_sole_unmarked_runbook_is_clean_and_its_bundle_id_wins(repo: Path):
+    """Real-book shape: only one runbook names this surface at all, so there is nothing to
+    disagree with even though it carries no `walkthrough: true` mark."""
+    write(repo / "docs/features/groom/ops/local.md", ENVIRONMENT)
+    write(repo / "docs/features/groom/gui/screens/dashboard.md", DASHBOARD)
+    write(repo / "docs/features/groom/ops/web.md", (
+        "---\ntype: runbook\nslug: web\ntitle: Web runbook\n---\n# Web runbook\n\n"
+        "- driver: mobile\n- environment: [local](local.md)\n"
+        "- surfaces: [dashboard](../gui/screens/dashboard.md)\n"
+        "- bundle-id: com.example.mobile-app\n\n"
+        "## Steps\n\n### serve\n- kind: service\n- run: `run`\n"
+    ))
+    dump = graph.build(load(repo))
+    assert reach.surface_bundle_id(dump, "groom") == "com.example.mobile-app"
+
+
+def test_a_surface_with_no_bundle_id_at_all_resolves_to_none(repo: Path):
+    """The trio's RUNBOOK states no `bundle-id:`, so nothing is a candidate."""
+    _write_runbook_trio(repo)
+    dump = graph.build(load(repo))
+    assert reach.surface_bundle_id(dump, "groom") is None
+
+
 @pytest.mark.parametrize(("marked", "code"), [
     (False, "undeclared-walkthrough-runbook"),
     (True, "conflicting-surface-driver"),

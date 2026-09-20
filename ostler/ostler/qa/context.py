@@ -330,6 +330,15 @@ def _navigation(head_graph: Graph) -> dict[str, dict[str, Any]]:
     under `driverErrorKind` (`"undeclared-walkthrough-runbook"` or `"conflicting-surface-driver"`),
     so `compile.py` and the doctor can tell the two apart. A step whose driver the book does not
     determine is not defaulted, it becomes a gap.
+
+    Every entry also carries `bundleId` — the mobile package/bundle id of the runbook that
+    exercises this surface, read off its `runbook` node(s) by `reach.surface_bundle_id` the same
+    way `driver` is — for `compile.py` to address a Maestro flow's real app instead of a
+    placeholder. A book with no runbook stating one leaves `bundleId` `None` with no error
+    recorded; several unmarked runbooks that disagree, or several *marked* ones that still
+    disagree, also leave it `None` and record why under `bundleIdError` plus which of the two
+    under `bundleIdErrorKind` (`"undeclared-walkthrough-runbook"` or
+    `"conflicting-surface-bundle-id"`), the same shape `driverError`/`driverErrorKind` already get.
     """
     dump = graph_mod.build(head_graph)
     surfaces = sorted({n["surface"] for n in dump["nodes"] if n.get("surface")})
@@ -348,6 +357,18 @@ def _navigation(head_graph: Graph) -> dict[str, dict[str, Any]]:
             driver = None
             driver_error = str(exc)
             driver_error_kind = "undeclared-walkthrough-runbook"
+        try:
+            bundle_id = reach.surface_bundle_id(dump, surface)
+            bundle_id_error = None
+            bundle_id_error_kind = None
+        except reach.ConflictingSurfaceBundleId as exc:
+            bundle_id = None
+            bundle_id_error = str(exc)
+            bundle_id_error_kind = "conflicting-surface-bundle-id"
+        except reach.UndeclaredWalkthroughBundleIdRunbook as exc:
+            bundle_id = None
+            bundle_id_error = str(exc)
+            bundle_id_error_kind = "undeclared-walkthrough-runbook"
         # `root_path` needs *driver* before it can be asked: a `mobile` surface has no path
         # grammar to state a root path in (`routes.is_path_addressed`), and asking without
         # driver would get today's web-shaped default back regardless of what this surface
@@ -367,6 +388,7 @@ def _navigation(head_graph: Graph) -> dict[str, dict[str, Any]]:
                 "rootPath": root_path,
                 "entryUrl": entry_url,
                 "driver": driver,
+                "bundleId": bundle_id,
                 "counts": {
                     "screens": 0, "reachable": 0, "unreachable": 0, "undeclared": 0, "nav_edges": 0,
                 },
@@ -379,12 +401,16 @@ def _navigation(head_graph: Graph) -> dict[str, dict[str, Any]]:
             if driver_error is not None:
                 navigation[surface]["driverError"] = driver_error
                 navigation[surface]["driverErrorKind"] = driver_error_kind
+            if bundle_id_error is not None:
+                navigation[surface]["bundleIdError"] = bundle_id_error
+                navigation[surface]["bundleIdErrorKind"] = bundle_id_error_kind
             continue
         try:
             navigation[surface] = reach.reachability(head_graph, surface=surface, driver=driver)
             navigation[surface]["rootPath"] = root_path
             navigation[surface]["entryUrl"] = entry_url
             navigation[surface]["driver"] = driver
+            navigation[surface]["bundleId"] = bundle_id
         except reach.UnknownStart as exc:
             navigation[surface] = {
                 "start": "",
@@ -392,6 +418,7 @@ def _navigation(head_graph: Graph) -> dict[str, dict[str, Any]]:
                 "rootPath": root_path,
                 "entryUrl": entry_url,
                 "driver": driver,
+                "bundleId": bundle_id,
                 "counts": {
                     "screens": len(screens), "reachable": 0,
                     "unreachable": len(screens), "undeclared": 0, "nav_edges": 0,
@@ -406,6 +433,9 @@ def _navigation(head_graph: Graph) -> dict[str, dict[str, Any]]:
         if driver_error is not None:
             navigation[surface]["driverError"] = driver_error
             navigation[surface]["driverErrorKind"] = driver_error_kind
+        if bundle_id_error is not None:
+            navigation[surface]["bundleIdError"] = bundle_id_error
+            navigation[surface]["bundleIdErrorKind"] = bundle_id_error_kind
     return navigation
 
 

@@ -1515,6 +1515,8 @@ def gap_findings(gaps: list[Gap]) -> list[Finding]:
             )
         elif gap.kind == "undeclared-entry-url":
             findings.append(Finding("error", "undeclared-entry-url", message, ref=gap.obligation_id))
+        elif gap.kind == "undeclared-bundle-id":
+            findings.append(Finding("error", "undeclared-bundle-id", message, ref=gap.obligation_id))
         elif gap.kind == "conflicting-entry-origin":
             findings.append(
                 Finding("error", "conflicting-entry-origin", message, ref=gap.obligation_id)

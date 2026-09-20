@@ -5,6 +5,7 @@ import subprocess
 from pathlib import Path
 
 from ostler import registry
+from ostler.model import load
 from ostler.qa.context import (
     CONTEXT_HEADING,
     OWED_HEADING,
@@ -14,6 +15,7 @@ from ostler.qa.context import (
     _book_root,
     _is_generated_unit,
     _locators,
+    _navigation,
     _sort_key,
     _verification_refs,
     build_context,
@@ -22,6 +24,8 @@ from ostler.qa.context import (
     select_obligations,
     validate_context,
 )
+
+from conftest import write
 
 
 def test_story_criteria_keep_functional_and_non_functional_classification(tmp_path: Path):
@@ -2894,3 +2898,71 @@ title: Item
     packet = build_context(tmp_path, base=base)
 
     assert [f for f in packet["healthFindings"] if f["kind"] == "unrooted-diff-scope"] == []
+
+
+def _write_navigation_environment(repo: Path) -> None:
+    """The `environment:` node the tests below share — `_navigation`'s `bundleId` must reach
+    both shapes it builds per surface: the screen-less stub (no `screen` nodes at all) and the
+    `reach.reachability`/`UnknownStart` dict (a surface with screens, on both the success path
+    and the exception path)."""
+    write(repo / "docs/features/groom/ops/local.md", (
+        "---\ntype: environment\nslug: local\ntitle: Local\n---\n# Local\n\n"
+        "- selector: `GROOM_BIND=127.0.0.1`\n- services:\n  - dashboard: `http://127.0.0.1:8787`\n"
+        "- local-only: true\n"
+    ))
+
+
+def test_navigation_carries_bundle_id_through_the_screenless_stub_branch(repo: Path):
+    _write_navigation_environment(repo)
+    write(repo / "docs/features/groom/cli/tally.md", (
+        "---\ntype: cli\nslug: tally\ntitle: Tally\n---\n# Tally\n\n## Commands\n"
+    ))
+    write(repo / "docs/features/groom/ops/rb.md", (
+        "---\ntype: runbook\nslug: rb\ntitle: RB\n---\n# RB\n\n"
+        "- driver: mobile\n- environment: [local](local.md)\n"
+        "- surfaces: [tally](../cli/tally.md)\n"
+        "- bundle-id: com.example.mobile-app\n\n"
+        "## Steps\n\n### serve\n- kind: service\n- run: `run`\n"
+    ))
+    navigation = _navigation(load(repo))
+    assert navigation["groom"]["bundleId"] == "com.example.mobile-app"
+    assert navigation["groom"]["counts"]["screens"] == 0
+
+
+def test_navigation_carries_bundle_id_through_the_reachability_success_path(repo: Path):
+    _write_navigation_environment(repo)
+    write(repo / "docs/features/groom/gui/screens/dashboard.md", (
+        "---\ntype: screen\nslug: dashboard\ntitle: Dashboard\n---\n# Dashboard\n\n"
+        "- route: `/`\n- requires: none\n- params: none\n"
+    ))
+    write(repo / "docs/features/groom/ops/rb.md", (
+        "---\ntype: runbook\nslug: rb\ntitle: RB\n---\n# RB\n\n"
+        "- driver: web\n- environment: [local](local.md)\n"
+        "- surfaces: [dashboard](../gui/screens/dashboard.md)\n"
+        "- bundle-id: com.example.mobile-app\n\n"
+        "## Steps\n\n### serve\n- kind: service\n- run: `run`\n"
+    ))
+    navigation = _navigation(load(repo))
+    assert navigation["groom"]["bundleId"] == "com.example.mobile-app"
+    assert navigation["groom"]["counts"]["screens"] == 1
+    assert navigation["groom"]["counts"]["reachable"] == 1
+    assert "error" not in navigation["groom"]
+
+
+def test_navigation_carries_bundle_id_through_the_unknown_start_exception_path(repo: Path):
+    _write_navigation_environment(repo)
+    write(repo / "docs/features/groom/gui/screens/dashboard.md", (
+        "---\ntype: screen\nslug: dashboard\ntitle: Dashboard\n---\n# Dashboard\n\n"
+        "- route: `/dashboard`\n- requires: none\n- params: none\n"
+    ))
+    write(repo / "docs/features/groom/ops/rb.md", (
+        "---\ntype: runbook\nslug: rb\ntitle: RB\n---\n# RB\n\n"
+        "- driver: web\n- environment: [local](local.md)\n"
+        "- surfaces: [dashboard](../gui/screens/dashboard.md)\n"
+        "- bundle-id: com.example.mobile-app\n\n"
+        "## Steps\n\n### serve\n- kind: service\n- run: `run`\n"
+    ))
+    navigation = _navigation(load(repo))
+    assert navigation["groom"]["bundleId"] == "com.example.mobile-app"
+    assert "error" in navigation["groom"]
+    assert navigation["groom"]["counts"]["unreachable"] == 1

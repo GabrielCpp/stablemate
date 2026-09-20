@@ -1066,6 +1066,7 @@ UI_TYPES: tuple[UINodeType, ...] = (
             BulletKey("entry-url", value_kind="url"),  # base of the HTTP readiness probe
             BulletKey("health-path"),             # joined onto `entry-url` (default `/`)
             BulletKey("identity"),                # substring of the health *body* proving it is ours
+            BulletKey("bundle-id"),               # mobile package/bundle id Maestro launches
             BulletKey("reuse"),                   # if-fresh (default) | always | never
             BulletKey("fresh"),                   # exit 0 ⇔ a serving stack reflects current code
             BulletKey("boot-timeout"),            # seconds; ceiling on bring-up
