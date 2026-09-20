@@ -336,6 +336,34 @@ def test_the_one_of_rule_holds_on_both_sides_of_the_binding() -> None:
         assert isinstance(checks.bind("json_path", {"path": "$.item.id", **args}), checks.CheckCall)
 
 
+def test_an_unparsable_pattern_is_refused_at_bind_not_at_the_harness() -> None:
+    """`matches=` is a regular expression, not free prose, and the two checks that declare it
+    are the only ones the grammar marks that way. An author's typo used to reach `re.error` at
+    whichever consumer compiled it first; it now surfaces as `bad-arguments` where the call is
+    bound, on both sides of the binding check."""
+    for name, args in (
+        ("json_path", {"path": "$.item.id", "matches": "[a-z"}),
+        ("omits", {"subject": "$.detail", "matches": "[a-z"}),
+    ):
+        refused = checks.bind(name, args)
+        assert isinstance(refused, checks.Refusal)
+        assert refused.kind == "bad-arguments"
+
+
+def test_a_pattern_that_compiles_still_binds() -> None:
+    call = checks.bind("json_path", {"path": "$.item.id", "matches": "^[a-z]+$"})
+    assert isinstance(call, checks.CheckCall)
+    assert call.args == {"path": "item.id", "matches": "^[a-z]+$"}
+
+
+def test_only_a_declared_pattern_argument_is_compiled() -> None:
+    """The flag, not the name, is what gates the compile: `omits`' `text=` is plain prose and
+    must bind even though `[` alone is not a parsable regular expression."""
+    call = checks.bind("omits", {"subject": "$.detail", "text": "an id like [redacted]"})
+    assert isinstance(call, checks.CheckCall)
+    assert call.args == {"subject": "detail", "text": "an id like [redacted]"}
+
+
 def test_a_one_of_spec_shows_the_choice_in_its_signature() -> None:
     """The signature is what a refusal offers an author as the shape that would be accepted,
     and an optional-looking argument list does not say that one of them is mandatory."""

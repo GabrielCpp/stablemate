@@ -85,6 +85,12 @@ class CheckParam:
     #: that flag — it marks a document path, not a role. `locator` is right where it appears
     #: and silent everywhere else.
     identifies: bool = False
+    #: Whether the value is a regular expression the grammar compiles, rather than free
+    #: prose. It has to be declared here rather than inferred from the argument's name,
+    #: because a name is not a type: another check could gain a string argument called
+    #: `matches` that is not a pattern, or a pattern argument spelled some other name, and
+    #: either would silently break an inference keyed on spelling.
+    pattern: bool = False
 
 
 #: What a check's compiled call is handed: `response` for the HTTP response object,
@@ -174,7 +180,7 @@ CHECKS: tuple[CheckSpec, ...] = (
         params=(
             CheckParam("path", "str", required=True, path=True, identifies=True),
             CheckParam("equals", "scalar"),
-            CheckParam("matches", "str"),
+            CheckParam("matches", "str", pattern=True),
             CheckParam("absent", "bool"),
         ),
         one_of=("equals", "matches", "absent"),
@@ -294,7 +300,7 @@ CHECKS: tuple[CheckSpec, ...] = (
         params=(
             CheckParam("subject", "str", required=True, path=True, identifies=True),
             CheckParam("text", "str"),
-            CheckParam("matches", "str"),
+            CheckParam("matches", "str", pattern=True),
         ),
         one_of=("text", "matches"),
         excludes="a value the response was never supposed to carry — a refusal quoting the "
@@ -712,6 +718,11 @@ def bind(name: str, args: Mapping[str, Any]) -> CheckCall | Refusal:
             return wrong(f"`{name}` has no argument `{key}` — it takes: {allowed}")
         if not _typed(value, param.type):
             return wrong(f"`{name}`: `{key}` is {param.type}, got {type(value).__name__}")
+        if param.pattern:
+            try:
+                re.compile(value)
+            except re.error as exc:
+                return wrong(f"`{name}`: `{key}` is not a valid regular expression — {exc}")
         bound[key] = _rooted(value) if param.path else value
     for param in spec.params:
         if param.required and param.name not in bound:
