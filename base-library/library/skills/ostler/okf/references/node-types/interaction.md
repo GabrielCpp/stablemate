@@ -121,7 +121,8 @@ finds it when they don't.
 `missing-required-bullet` (five keys), `undeclared-obligation`, `weak-check`,
 `unstated-precondition`, `compound-normative-bullet`, `unresolved-relation` on `on:` or
 `same-as:`, `one-way-same-as`, `same-as-disagreement`,
-`ambiguous-locator`, `unparsed-act`, `undeclared-act-locator`, `stale-defect`, `malformed-defect`; with the repeat keys also `static-template`, `unproven-unique-name`,
+`ambiguous-locator`, `unparsed-act`, `undeclared-act-locator`, `stale-defect`, `malformed-defect`,
+`precondition-discharged-by-arrangement` (a check-less `when:`, from `qa compile-plan`); with the repeat keys also `static-template`, `unproven-unique-name`,
 `malformed-template`, `malformed-variants`. See [../doctor-codes.md](../doctor-codes.md).
 
 ## When bullets are not enough

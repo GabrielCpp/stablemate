@@ -104,7 +104,8 @@ merely misplaced. Fix it by promoting `status:`/`errors:` to top-level bullets o
 `unstated-precondition`, `compound-normative-bullet`, `unresolved-relation`, `one-way-same-as`
 if `same-as:` is used, `same-as-disagreement` if a `same-as:` family disagrees about a shared
 normative key, `misbound-status-check`, `misnested-bullet` if a child spelled like a declared
-bullet key is buried under a key `invocation` does not declare (`response:`, most commonly).
+bullet key is buried under a key `invocation` does not declare (`response:`, most commonly),
+`precondition-discharged-by-arrangement` (a check-less `when:`, from `qa compile-plan`).
 See [../doctor-codes.md](../doctor-codes.md).
 
 ## When bullets are not enough
