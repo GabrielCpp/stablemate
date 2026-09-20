@@ -24,7 +24,7 @@ Section type. A `### <id>` under the runbook's `## Steps` heading. Its id is `pa
 | `kind` | **yes** | `prepare` \| `service` \| `seed` \| `run` \| `health` \| `verify` \| `drive` |
 | `code` | no | link, **owns** its file — the implementation this step exercises |
 | `run` | no | the exact bounded command |
-| `working-directory` | no | cwd, when not the repo root |
+| `working-directory` | no | cwd, when not the repo root — or `scenario:`, on a **fixture** step only, for that scenario's own directory |
 | `timeout` | no | seconds; this step's own ceiling |
 | `env` | no | nested; the env-var wiring this step needs |
 | `health` | no | service/health steps: the real readiness signal |
@@ -51,6 +51,15 @@ a check on the *product* — "the widget list shows the seeded row" — it does 
 boot step at all; put it under the `verify:` of the claim (a `screen`'s `visible(...)`, an
 `http`'s `http_status(...)`) that the check actually observes. The doctor's
 `check-expression-as-command` catches the mistake before bring-up ever runs.
+
+**`working-directory: scenario:` is a fixture-only frame, not a path.** A `fixture` step
+runs inside a scenario, so the token stands for that scenario's own directory — the same
+directory `qa.tool(...).run(..., cwd=qa.scenario_id)` runs a compiled CLI call in, so a
+fixture and the command it arranges for land in one place instead of racing over the
+checkout root. A **runbook** step has no such frame: it runs at bring-up, before any
+scenario exists, so the same token there names nothing and trips the doctor's
+`runbook-scenario-frame`. Every other `working-directory:` value, on either kind of step,
+keeps its ordinary checkout-relative meaning.
 
 A `step` declares **no normative keys of its own**. It mints nothing; the runbook it belongs
 to carries the contract. The
@@ -83,8 +92,10 @@ timeout 30 ostler scaffold step serve --in docs/features/acme/ops/links-local.md
 ## Doctor codes it can trip
 
 `missing-required-bullet` on `kind:`, `runbook-bad-kind`, `check-expression-as-command` (a
-`run:`/`health:` value that parses as a check call), and — raised against the enclosing
-runbook — `runbook-incomplete` (no `kind: service` step) and `runbook-multi-service` (more
+`run:`/`health:` value that parses as a check call), `runbook-scenario-frame` (a
+**runbook** step's `working-directory:` states the fixture-only `scenario:` token), and —
+raised against the enclosing runbook — `runbook-incomplete` (no `kind: service` step) and
+`runbook-multi-service` (more
 than one). See [../doctor-codes.md](../doctor-codes.md).
 
 ## When bullets are not enough
