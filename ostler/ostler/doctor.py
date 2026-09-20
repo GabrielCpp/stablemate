@@ -1020,18 +1020,37 @@ def _check_record_properties(graph: Graph, f: list[Finding]) -> None:
                     suggestion="one of: " + ", ".join(f"{name}:" for name in vocabulary)))
 
 
-def _route_kind_parser(predicate: Callable[[str], bool], reason: str) -> Callable[[str], str]:
-    """Compose a `routes.route_grammar` pair into a `values.VALUE_KINDS`-shaped parser.
+def _driven_kind_parser(predicate: Callable[[str], bool], reason: str) -> Callable[[str], str]:
+    """Compose a `*_grammar(driver)` pair into a `values.VALUE_KINDS`-shaped parser.
 
-    `ROUTE_GRAMMAR` holds `(predicate, reason)`; every `VALUE_KINDS` entry is a single
-    `Callable[[str], str]` that returns `""` for an acceptable value and a reason otherwise.
-    Two different contracts for the same job — this is where they meet, so `_check_bullet_
-    value_kinds` can treat a `"route"`-kinded key exactly like any other kind once it has
-    the driver's row, rather than growing a third, bespoke shape of its own.
+    `route_grammar`/`selector_grammar` each hold `(predicate, reason)`; every `VALUE_KINDS`
+    entry is a single `Callable[[str], str]` that returns `""` for an acceptable value and a
+    reason otherwise. Two different contracts for the same job — this is where they meet, so
+    `_check_bullet_value_kinds` can treat a driver-decided kind exactly like any other kind
+    once it has the driver's row, rather than growing a third, bespoke shape of its own.
     """
     def parse(value: str) -> str:
         return "" if predicate(runbook_mod.bullet_text(value)) else reason
     return parse
+
+
+#: Kinds whose grammar depends on the node's surface driver rather than living in
+#: `values.VALUE_KINDS` — see `values.py`'s module docstring for why a single `VALUE_KINDS`
+#: entry cannot speak for a driver it is not given. Each entry is the kind's own
+#: `*_grammar(driver) -> (predicate, reason)` reader. `_check_bullet_value_kinds` reports
+#: `"route"`'s rejection as `unparsable-bullet-value` — the value never parsed as *any*
+#: driver's route grammar — and `"selector"`'s as `conflicting-selector-driver` instead:
+#: `is_addressable` already accepted the value as a real address in *some* representation,
+#: so a row here is not "this did not parse," it is "this parsed against the wrong surface"
+#: — the same distinction `conflicting-surface-driver` draws for two runbooks naming
+#: different drivers, applied here to one bullet and the driver its own surface already
+#: settled on. The Finding code for each is a literal at its own call site below, not a
+#: value threaded through this table, so `census.py` and the okf-builder drift tripwire —
+#: both of which read codes off the AST rather than by running the module — can still see it.
+_DRIVER_VALUE_KINDS: dict[str, Callable[[str | None], tuple[Callable[[str], bool], str]]] = {
+    "route": routes_mod.route_grammar,
+    "selector": placement_mod.selector_grammar,
+}
 
 
 def _check_bullet_value_kinds(graph: Graph, ui_data: dict | None, f: list[Finding]) -> None:
@@ -1049,14 +1068,18 @@ def _check_bullet_value_kinds(graph: Graph, ui_data: dict | None, f: list[Findin
 
     ``ui_data`` (the same dump ``_check_reachability`` reads, or ``None`` when the graph would
     not build — see ``_ui_graph``) is read only to pick the surface's declared driver for a
-    ``"route"``-kinded key: that key is not looked up in ``VALUE_KINDS`` at all. Instead this
-    check asks ``routes.route_grammar(driver)`` directly for the ``(predicate, reason)`` pair
-    the resolved (or unresolved — ``route_grammar(None)`` names the same default grammar every
-    other driver falls back to) driver is held to, and composes the two into the same
-    empty-string-or-reason shape a ``VALUE_KINDS`` parser returns. ``routes.ROUTE_GRAMMAR`` is
-    thereby the single statement of what a ``route:``/``path:`` bullet may say, for every
-    driver at once: adding a row there is sufficient to change what this check accepts, with
-    no second edit here. Every other kind reads ``VALUE_KINDS[key.value_kind]`` unchanged.
+    key in ``_DRIVER_VALUE_KINDS`` (``"route"``, ``"selector"``): such a key is not looked up
+    in ``VALUE_KINDS`` at all. Instead this check asks that kind's own ``*_grammar(driver)``
+    directly for the ``(predicate, reason)`` pair the resolved (or unresolved — every
+    ``*_grammar(None)`` names the same default grammar an undeclared driver has always fallen
+    back to) driver is held to, and composes the two into the same empty-string-or-reason
+    shape a ``VALUE_KINDS`` parser returns. ``routes.ROUTE_GRAMMAR``/``placement.
+    SELECTOR_GRAMMAR`` are thereby the single statement of what such a bullet may say, for
+    every driver at once: adding a row to one of them is sufficient to change what this check
+    accepts, with no second edit here. Every other kind reads ``VALUE_KINDS[key.value_kind]``
+    unchanged, and is always reported as ``unparsable-bullet-value``; ``"selector"`` is
+    reported as ``conflicting-selector-driver`` instead, by its own literal ``Finding`` call
+    below.
     """
     surface_by_id = {n["id"]: n.get("surface", "") for n in ui_data["nodes"]} if ui_data else {}
     driver_by_surface: dict[str, str | None] = {}
@@ -1088,9 +1111,11 @@ def _check_bullet_value_kinds(graph: Graph, ui_data: dict | None, f: list[Findin
                 continue
             kind = key.value_kind
             parser: Callable[[str], str]
-            if kind == "route":
-                predicate, route_reason = routes_mod.route_grammar(_driver_for(node))
-                parser = _route_kind_parser(predicate, route_reason)
+            selector_driver_conflict = kind == "selector"
+            if kind in _DRIVER_VALUE_KINDS:
+                grammar = _DRIVER_VALUE_KINDS[kind]
+                predicate, driver_reason = grammar(_driver_for(node))
+                parser = _driven_kind_parser(predicate, driver_reason)
             else:
                 parser = values_mod.VALUE_KINDS[kind]
             for index, value in enumerate(_bullet_values(node.meta.get(key.key, "")), 1):
@@ -1099,12 +1124,19 @@ def _check_bullet_value_kinds(graph: Graph, ui_data: dict | None, f: list[Findin
                 reason = parser(value)
                 if not reason:
                     continue
-                f.append(Finding(
-                    "error", "unparsable-bullet-value",
-                    f"{node.id}: `{key.key}: {value}` does not parse as a `{key.value_kind}` "
-                    f"value — {reason}",
-                    path=rel, line=node.line,
-                    ref=refs_mod.bullet_ref(node.id, key.key, index)))
+                ref = refs_mod.bullet_ref(node.id, key.key, index)
+                if selector_driver_conflict:
+                    f.append(Finding(
+                        "error", "conflicting-selector-driver",
+                        f"{node.id}: `{key.key}: {value}` conflicts with this node's surface "
+                        f"driver — {reason}",
+                        path=rel, line=node.line, ref=ref))
+                else:
+                    f.append(Finding(
+                        "error", "unparsable-bullet-value",
+                        f"{node.id}: `{key.key}: {value}` does not parse as a "
+                        f"`{key.value_kind}` value — {reason}",
+                        path=rel, line=node.line, ref=ref))
 
 
 def _check_fixture_grammar(graph: Graph, f: list[Finding]) -> None:

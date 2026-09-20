@@ -19,6 +19,16 @@ case the rest in the caller, ``doctor.py``'s ``_check_bullet_value_kinds`` asks
 directly and composes it into this module's message shape itself, for every driver alike.
 ``ROUTE_GRAMMAR`` is the single statement of that grammar; this module does not restate it.
 
+A ``selector:`` bullet on a ``component`` is the same story with a different table: whether a
+given string is CSS, a self-identifying ``scheme=value`` address, or neither is
+:func:`ostler.vet.placement.is_addressable`'s question, deliberately driver-blind — but
+*which of the two representations* the surface's own driver can query is not, and depends on
+the node's driver the same way a route's does. ``doctor.py`` asks
+:func:`ostler.vet.placement.selector_grammar` for that pair the same way it asks
+``route_grammar``, and reports a mismatch as ``conflicting-selector-driver`` rather than
+``unparsable-bullet-value`` — the value parsed fine, against the wrong representation.
+``SELECTOR_GRAMMAR`` is that grammar's single statement.
+
 Each entry below delegates to an existing reader:
 
 - ``"url"`` — an absolute URL: ``urlsplit`` with a ``http``/``https`` scheme and a non-empty

@@ -360,21 +360,25 @@ class BulletKey:
                              # a finding the day the check lands. ``doctor`` reads it as
                              # ``unknown-entry-property``.
     value_kind: str = ""    # the name of a parser in ``ostler.values.VALUE_KINDS`` this key's
-                             # value must satisfy — with one named exception, ``"route"``: a
-                             # ``route:``/``path:`` bullet's grammar depends on its surface's
-                             # driver, so ``doctor``'s ``_check_bullet_value_kinds`` reads that
-                             # kind from ``ostler.routes.route_grammar(driver)`` directly instead
-                             # of looking it up in ``VALUE_KINDS``, which holds no ``"route"``
-                             # entry for exactly this reason. **Empty means no grammar is
+                             # value must satisfy — with two named exceptions, ``"route"`` and
+                             # ``"selector"``: each bullet's grammar depends on its surface's
+                             # driver, so ``doctor``'s ``_check_bullet_value_kinds`` reads the
+                             # kind from ``ostler.routes.route_grammar(driver)`` or
+                             # ``ostler.vet.placement.selector_grammar(driver)`` directly instead
+                             # of looking it up in ``VALUE_KINDS``, which holds neither entry for
+                             # exactly this reason. **Empty means no grammar is
                              # declared for this key** — an honest statement of ignorance, not a
                              # licence: every other flag on this class says what a value is
                              # *for*; this is the one that says what it may *say*, and only
                              # where a consumer already parses it. A kind names a parser some
                              # consumer already runs (a URL splitter, the HTTP-verb table, or —
-                             # for ``"route"`` — the per-driver table), so the declaration cannot
-                             # drift from the code that reads the value the way a hand-written
-                             # regex beside this table would. ``doctor`` reads it as
-                             # ``unparsable-bullet-value``.
+                             # for ``"route"``/``"selector"`` — a per-driver table), so the
+                             # declaration cannot drift from the code that reads the value the
+                             # way a hand-written regex beside this table would. ``doctor``
+                             # reads it as ``unparsable-bullet-value`` for a plain
+                             # ``VALUE_KINDS`` kind, or ``unparsable-bullet-value``/
+                             # ``conflicting-selector-driver`` for the driver-decided ones —
+                             # see ``_check_bullet_value_kinds``.
 
 
 @dataclass(frozen=True)
@@ -1115,7 +1119,7 @@ UI_TYPES: tuple[UINodeType, ...] = (
     UINodeType(
         name="component", kind="section", heading="Components",
         bullet_keys=(
-            BulletKey("selector", locator=True),
+            BulletKey("selector", locator=True, value_kind="selector"),
             # Required, because they are the same fact twice: the accessibility contract a screen
             # reader announces, and the `getByRole(role, {name})` a test locates by. `none` is a
             # legitimate value — a decorative or purely presentational element has no accessible

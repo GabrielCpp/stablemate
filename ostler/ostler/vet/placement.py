@@ -19,6 +19,8 @@ from __future__ import annotations
 
 import re
 
+from collections.abc import Callable
+
 from pydantic import BaseModel, ConfigDict
 
 from ostler.model import Graph, UINode
@@ -244,6 +246,169 @@ def is_addressable(selector: str) -> bool:
     if parse_scheme_selector(selector) is not None:
         return True
     return bool(_ROLE_SELECTOR.match(selector) or _STRING_SELECTOR.match(selector))
+
+
+def is_web_representable(selector: str) -> bool:
+    """Whether *selector* could be handed to a web DOM driver — false for a `scheme=value`
+    address written against a component whose surface a browser drives.
+
+    `is_addressable` already settled that a `scheme=value` selector is an honest address; this
+    predicate asks the narrower, driver-specific question `unaddressable-selector` deliberately
+    does not: *which* representation it names. `testID=widget-table` is real on a React Native
+    surface and meaningless on a web one — `qa.by_css` would either raise on the `=` or compile
+    something that matches nothing, and a book that wrote it there swapped the two surfaces'
+    selectors, not merely picked a form the driver cannot use.
+    """
+    return parse_scheme_selector(selector) is None
+
+
+#: Why `is_web_representable` said no, as a statement about the *value* — kept beside the
+#: predicate for the same reason `routes.py` keeps its reasons beside theirs.
+NOT_WEB_REPRESENTABLE_REASON = (
+    "it is a `scheme=value` address (a non-web selector, e.g. `testID=...`), and this "
+    "component's surface is driven by a browser, which queries the DOM, not a scheme"
+)
+
+#: DOM syntax a `selector:` written for a web surface uses and a mobile surface's driver
+#: (Maestro) cannot query: an id or class (`#name`, `.field`), an attribute-value or boolean
+#: attribute predicate (`[data-state="booked"]`, `[disabled]`), a combinator (`div > span`,
+#: `a ~ b`), or a compound tag selector (`input.field`, `button#submit`). Matched, never
+#: inferred from what a value fails to be — see `is_mobile_representable`'s docstring for why.
+_DOM_LEADING_ID_OR_CLASS = re.compile(r"^[#.][A-Za-z_-]")
+_DOM_ATTRIBUTE_PREDICATE = re.compile(r"\[[^\]]*\]")
+_DOM_COMBINATOR = re.compile(r"[>~]")
+_DOM_COMPOUND_TAG = re.compile(r"^[A-Za-z][\w-]*[.#][\w-]+")
+
+
+def is_mobile_representable(selector: str) -> bool:
+    """Whether *selector* could be a Maestro address — false only for a string that
+    unmistakably names DOM syntax instead.
+
+    The asymmetric half of the pair with `is_web_representable`: a web selector rejects one
+    named form (`scheme=value`) and accepts everything else, because CSS is close to
+    unconstrained and this module is not in the business of validating it (`is_addressable`
+    already owns that). A mobile selector cannot be held to the same shape — Maestro resolves a
+    control by its `id:` (a `testID=` scheme address) or by its **visible text**, so a bare word
+    or a whole sentence (`Submit`, `Create new widget`) is a legitimate mobile selector, not a
+    gap in the grammar. Rejecting every string that is not a recognized scheme would reject
+    every one of those too, which is a large false-positive rate for a check meant to catch a
+    real swap. So this predicate rejects only what positively names the wrong representation —
+    a leading `#`/`.` identifier, an attribute predicate, a `>`/`~` combinator, or a
+    `tag.class`/`tag#id` compound — and takes the benefit of the doubt on everything else,
+    scheme selectors and plain text alike.
+    """
+    text = selector.strip()
+    return not (
+        _DOM_LEADING_ID_OR_CLASS.match(text)
+        or _DOM_ATTRIBUTE_PREDICATE.search(text)
+        or _DOM_COMBINATOR.search(text)
+        or _DOM_COMPOUND_TAG.match(text)
+    )
+
+
+#: Why `is_mobile_representable` said no — kept beside the predicate for the same reason
+#: `NOT_WEB_REPRESENTABLE_REASON` is kept beside `is_web_representable`.
+NOT_MOBILE_REPRESENTABLE_REASON = (
+    "it is DOM syntax (an id, a class, an attribute predicate, a combinator, or a "
+    "tag.class/tag#id compound), and this component's surface is driven by Maestro, which "
+    "resolves a control by a `scheme=value` address (e.g. `testID=...`) or by its visible "
+    "text, never by CSS"
+)
+
+
+def is_never_selected(selector: str) -> bool:
+    """Always false — the predicate for a driver whose surface renders nothing to query.
+
+    `cli`, `iac`, `artifact` and `none` own no `screen` node this book's registry ever
+    admits a `component` section, and therefore a `selector:` bullet, under
+    (`routes.SURFACE_PERFORMABLE_TYPES`): a `cli` surface is a command line, `iac` provisions
+    infrastructure, `artifact` addresses no node type this registry has, and `none` is the book
+    stating outright that nothing performs against these surfaces at all — none of which is a
+    screen a selector locates a control on. `http` is not in this group: the same top-level
+    surface directory an `http` runbook names can also carry `web`-rendered `screen`/`component`
+    nodes (a browser-driven GUI served by the API the runbook stands up), so `http` reads
+    `is_web_representable` instead, the same as `web` — see `routes.ROUTE_GRAMMAR`'s identical
+    grouping. So no corpus book today gives this predicate a value to read, the same standing
+    `routes.is_never_routed` has and for the same reason: `doctor.py`'s `_check_bullet_value_kinds`
+    calls `selector_grammar` for every `selector`-kinded bullet regardless of driver, so this
+    predicate *is* on a real code path, not a hypothetical one — it would run the day a
+    `component` ends up on such a driven surface, however that came about, and it says no,
+    honestly: a driver that renders nothing to query cannot make an exception for one bullet
+    that showed up anyway.
+    """
+    del selector
+    return False
+
+
+#: Why `is_never_selected` said no — kept beside the predicate for the same reason the other
+#: two reasons above are kept beside theirs.
+NEVER_SELECTED_REASON = (
+    "this driver renders nothing to query — it owns no `screen`/`component` node at all"
+)
+
+
+#: Which grammar a `selector:` bullet is held to, keyed by the surface's declared `driver:`
+#: (`reach.surface_driver`) — one parser per driver, never a grammar invented for this table,
+#: per `values.py`'s rule that a declared kind names the parser its consumer already uses.
+#: Unlike `routes.ROUTE_GRAMMAR`, this table does not also state a `path_addressed`-shaped
+#: column: nothing downstream of a `selector:` bullet asks a question that needs one.
+#:
+#: `is_addressable`/`unaddressable-selector` stays driver-blind on purpose — it accepts a form
+#: *no* real driver in this tree can be certain is wrong (a bare CSS string is legal on `web`
+#: and `http`; a `scheme=value` string is legal wherever `SELECTOR_SCHEMES` says it is). This
+#: table asks the narrower, second question that check deliberately leaves open: given *this*
+#: node's own surface driver, is the value even the right representation? A `web` component
+#: with `selector: testID=widget-table` and a `mobile` component with `selector: #name` both
+#: clear `is_addressable` — each string is well-formed in some representation — and both are
+#: still wrong, because it is the wrong one for the surface that renders the node.
+#:
+#: - `web` and `http` read `is_web_representable`: reject a `scheme=value` selector, accept any
+#:   other string (CSS is close to unconstrained, and `is_addressable` already validates its
+#:   shape). `http` is grouped with `web` rather than the never-selected drivers below because a
+#:   surface — the first path component under `docs/features/` (`graph._surface_of`) — can
+#:   legitimately host an `http`-driven API runbook alongside real `web`-rendered `screen`/
+#:   `component` nodes it serves; `routes.ROUTE_GRAMMAR` makes this identical call for `route:`.
+#: - `mobile` reads `is_mobile_representable`: reject only a string that unmistakably names DOM
+#:   syntax; accept a scheme selector and a bare word or phrase alike, because Maestro resolves
+#:   by `id:` or by visible text and a legitimate mobile selector is often neither CSS nor a
+#:   scheme.
+#: - `cli`, `iac`, `artifact` and `none` read `is_never_selected`: none of them owns a `screen`/
+#:   `component` node this registry ever admits a `selector:` bullet on, so there is no
+#:   grammar here to satisfy, and the row says so rather than falling through to the default
+#:   as if the driver were merely unrecognized.
+#:
+#: A driver this table does not name at all — an unrecognized spelling, or no runbook declares
+#: one — falls back to `(lambda _: True, "", ...)`-shaped acceptance: benefit of the doubt,
+#: the same fallback `routes._DEFAULT_ROUTE_GRAMMAR` gives an undeclared driver.
+SELECTOR_GRAMMAR: dict[str, tuple[Callable[[str], bool], str]] = {
+    "web": (is_web_representable, NOT_WEB_REPRESENTABLE_REASON),
+    "mobile": (is_mobile_representable, NOT_MOBILE_REPRESENTABLE_REASON),
+    "http": (is_web_representable, NOT_WEB_REPRESENTABLE_REASON),
+    "cli": (is_never_selected, NEVER_SELECTED_REASON),
+    "iac": (is_never_selected, NEVER_SELECTED_REASON),
+    "artifact": (is_never_selected, NEVER_SELECTED_REASON),
+    "none": (is_never_selected, NEVER_SELECTED_REASON),
+}
+
+#: The fallback row for a driver `SELECTOR_GRAMMAR` does not name — see the table's own
+#: docstring.
+_DEFAULT_SELECTOR_GRAMMAR: tuple[Callable[[str], bool], str] = (lambda _selector: True, "")
+
+
+def selector_grammar(driver: str | None) -> tuple[Callable[[str], bool], str]:
+    """The `(predicate, reason)` pair *driver* is held to for a `selector:` bullet.
+
+    `SELECTOR_GRAMMAR`'s row for a recognized driver (the five never-selected drivers
+    included — their row is `is_never_selected`, not a hole); the default accept-anything
+    grammar for a driver the table does not name at all (an unrecognized value, or none
+    declared). This is the table's only production reader: `doctor.py`'s
+    `_check_bullet_value_kinds` calls it, per node, for whatever driver `reach.surface_driver`
+    resolves the node's surface to, and applies the pair directly, the same shape
+    `routes.route_grammar` is read in. Adding a row here is therefore sufficient on its own to
+    change what the `conflicting-selector-driver` check accepts; nothing else needs to be told.
+    """
+    predicate, reason = SELECTOR_GRAMMAR.get(driver or "", _DEFAULT_SELECTOR_GRAMMAR)
+    return predicate, reason
 
 
 def _region_tags(region: RegionBox) -> set[str]:
