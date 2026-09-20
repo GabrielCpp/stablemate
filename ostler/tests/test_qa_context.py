@@ -13,6 +13,7 @@ from ostler.qa.context import (
     _acceptance_criteria,
     _book_relative,
     _book_root,
+    _graph_at_revision,
     _is_generated_unit,
     _locators,
     _navigation,
@@ -3136,3 +3137,80 @@ def test_navigation_reports_conflicting_launch_screen_error_without_raising(repo
     navigation = _navigation(load(repo))
     assert navigation["groom"].get("launchScreen") is None
     assert navigation["groom"]["launchScreenErrorKind"] == "undeclared-walkthrough-runbook"
+
+
+def test_a_features_root_absent_at_base_is_an_empty_graph_not_an_error(tmp_path: Path):
+    """The features root can genuinely not exist yet at `base` — added or renamed between
+    base and head — and `_graph_at_revision` must answer with the empty graph silently, the
+    same way `book_context` asks for one on purpose when `base` is the empty tree. This test
+    passing is itself the result: it proves the fix for the corrupted-blob case below did not
+    turn this legitimate, ordinary mode into a failure.
+    """
+    (tmp_path / "app").mkdir()
+    (tmp_path / "app/service.py").write_text("def create_item():\n    return 1\n", "utf-8")
+    _git(tmp_path, "init")
+    _git(tmp_path, "config", "user.email", "qa@example.com")
+    _git(tmp_path, "config", "user.name", "QA")
+    _git(tmp_path, "add", ".")
+    _git(tmp_path, "commit", "-m", "base, no features root yet")
+    base = _git(tmp_path, "rev-parse", "HEAD")
+
+    graph = _graph_at_revision(tmp_path, base, "docs/features")
+
+    assert graph.ui_nodes == []
+
+
+def test_a_listed_path_with_no_readable_blob_raises_instead_of_shrinking(tmp_path: Path):
+    """A path `ls-tree` names but whose blob the object store cannot produce is corruption,
+    not "nothing to graph": the old bare `except RuntimeError: continue` dropped it and
+    returned a graph that looked exactly like the legitimate empty one above. It must raise,
+    naming the revision and the path, instead.
+    """
+    (tmp_path / "docs/features/demo").mkdir(parents=True)
+    feature = tmp_path / "docs/features/demo/item.md"
+    feature.write_text(
+        "---\ntype: concept\ntitle: Item\n---\n# Item\n\n- code: app/service.py::create_item\n",
+        encoding="utf-8",
+    )
+    _git(tmp_path, "init")
+    _git(tmp_path, "config", "user.email", "qa@example.com")
+    _git(tmp_path, "config", "user.name", "QA")
+    _git(tmp_path, "add", ".")
+    _git(tmp_path, "commit", "-m", "base")
+    base = _git(tmp_path, "rev-parse", "HEAD")
+    blob = _git(tmp_path, "rev-parse", f"{base}:docs/features/demo/item.md")
+    object_path = tmp_path / ".git/objects" / blob[:2] / blob[2:]
+    assert object_path.is_file(), object_path
+    object_path.unlink()
+
+    try:
+        _graph_at_revision(tmp_path, base, "docs/features")
+    except RuntimeError as exc:
+        message = str(exc)
+        assert base in message
+        assert "docs/features/demo/item.md" in message
+    else:
+        raise AssertionError("expected a RuntimeError for the unreadable blob")
+
+
+def test_a_filename_git_would_quote_is_not_dropped(tmp_path: Path):
+    """`ls-tree` without `-z` shell-quotes a filename holding a newline, so
+    `line.endswith(".md")` used to be False and the file was silently dropped before `git
+    show` was ever tried. `-z` NUL-delimits instead of quoting, so the file must survive.
+    """
+    (tmp_path / "docs/features/demo").mkdir(parents=True)
+    weird = tmp_path / "docs/features/demo/weird\nname.md"
+    weird.write_text(
+        "---\ntype: concept\ntitle: Weird\n---\n# Weird\n\n- code: app/service.py::create_item\n",
+        encoding="utf-8",
+    )
+    _git(tmp_path, "init")
+    _git(tmp_path, "config", "user.email", "qa@example.com")
+    _git(tmp_path, "config", "user.name", "QA")
+    _git(tmp_path, "add", ".")
+    _git(tmp_path, "commit", "-m", "base")
+    base = _git(tmp_path, "rev-parse", "HEAD")
+
+    graph = _graph_at_revision(tmp_path, base, "docs/features")
+
+    assert [node.id for node in graph.ui_nodes]

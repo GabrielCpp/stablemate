@@ -1368,6 +1368,21 @@ def cmd_context_validate(spec_dir: Path) -> QaOutcome:
 
 
 def _graph_at_revision(root: Path, revision: str, features_root: str) -> Graph:
+    """The base-side graph at `revision`, built from every `.md` file under `features_root`.
+
+    An empty `Graph` is a legitimate answer — `book_context` asks for one on purpose when
+    `base` is the empty tree — so this cannot return one on faith the way `_revision_text`
+    returns `""`. It asks `_revision_holds`, its companion here exactly as it is `_changed_units`'s,
+    whether `features_root` exists at `revision` at all: absent there is the ordinary case
+    of a features root added or renamed between base and head, and yields the empty graph
+    silently. Present but unreadable is different — `ls-tree` named a path whose blob the
+    object store cannot produce, which is corruption, not a mode this function should
+    disguise as "nothing to graph" — and that raises instead.
+
+    `ls-tree` runs `-z` so a NUL, not a shell-quoted newline or tab, separates entries: a
+    quoted filename otherwise fails `.endswith(".md")` before `git show` is ever tried and
+    the file vanishes from the graph with no signal at all.
+    """
     current = load(root)
     graph = Graph(
         root=root,
@@ -1375,12 +1390,17 @@ def _graph_at_revision(root: Path, revision: str, features_root: str) -> Graph:
         profile=current.profile,
         doc_roots={**current.doc_roots, "features": root / features_root},
     )
-    result = _git(root, "ls-tree", "-r", "--name-only", revision, "--", features_root)
-    for rel in sorted(line for line in result.splitlines() if line.endswith(".md")):
+    if not _revision_holds(root, revision, features_root):
+        return graph
+    result = _git(root, "ls-tree", "-r", "-z", "--name-only", revision, "--", features_root)
+    entries = [entry for entry in result.split("\0") if entry]
+    for rel in sorted(entry for entry in entries if entry.endswith(".md")):
         try:
             text = _git(root, "show", f"{revision}:{rel}")
-        except RuntimeError:
-            continue
+        except RuntimeError as exc:
+            raise RuntimeError(
+                f"{revision} lists {rel} under {features_root} but its blob is unreadable: {exc}"
+            ) from exc
         graph.ui_nodes.extend(_parse_ui_nodes(markdown.split(text), root / rel, root))
     return graph
 
