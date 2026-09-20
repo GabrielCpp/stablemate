@@ -84,6 +84,7 @@ def _spec(tmp_path: Path) -> Path:
                     }
                 ],
                 "bookFiles": book_files(tmp_path, "docs/features"),
+                "storyFile": None,
             }
         ),
         encoding="utf-8",

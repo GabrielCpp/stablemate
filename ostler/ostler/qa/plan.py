@@ -19,7 +19,7 @@ from ostler import checks
 from ostler import path as path_mod
 from ostler.model import load as load_graph
 from ostler.qa.compile import book_digest
-from ostler.qa.context import book_files
+from ostler.qa.context import book_files, story_file_record
 from ostler.qa.harness_host import default_interpreter, describe, load_harness_module
 from ostler.untyped import is_mapping
 from ostler.vet import placement
@@ -212,6 +212,58 @@ def _book_drift_problems(context: dict[str, Any], root: Path) -> list[str]:
     ]
 
 
+def _story_drift_problems(context: dict[str, Any], root: Path) -> list[str]:
+    """`stale-context:` problems for a packet whose recorded `storyFile` disagrees with the tree.
+
+    Guards the same link `_book_drift_problems` guards for `bookFiles`, but for the second
+    input `build_context` reads from outside `featuresRoot`: the story markdown file its
+    `story` and `acceptanceCriteria` keys were parsed from. `stale-context:`, not
+    `stale-plan:`, because the disagreement is between the packet and its own source, not
+    between the plan and the packet — fixed the same way, by `ostler qa context`.
+
+    The current digest is computed by calling `story_file_record` — the same producer
+    function `build_context` called to write the recorded one — rather than reimplementing
+    its hashing scheme here, for the reason `_book_drift_problems` calls `book_files`
+    instead of hashing independently: producer and consumer cannot then diverge.
+
+    A packet with no `storyFile` key at all predates this guard. Unlike a missing
+    `bookFiles`, this is not necessarily also caught by `_book_drift_problems`: `storyFile`
+    was added in a later commit than `bookFiles`, so a packet generated in between carries
+    a valid `bookFiles` and no `storyFile` — for that packet the book-drift check is
+    satisfied and would say nothing, so this guard has to refuse it on its own account
+    rather than lean on the other one.
+    """
+    if "storyFile" not in context:
+        return [
+            "stale-context: qa-okf-context.json predates the story-drift guard "
+            "(no storyFile) — run `ostler qa context` to regenerate the packet"
+        ]
+    recorded = context["storyFile"]
+    if recorded is None:
+        return []
+    if not is_mapping(recorded) or "path" not in recorded or "sha256" not in recorded:
+        return [
+            "stale-context: qa-okf-context.json 'storyFile' must be a mapping with "
+            "'path' and 'sha256'"
+        ]
+    recorded_path = str(recorded["path"])
+    recorded_sha256 = str(recorded["sha256"])
+    story_path = Path(recorded_path)
+    resolved = story_path if story_path.is_absolute() else root / recorded_path
+    current = story_file_record(root, resolved)
+    if current is None:
+        return [
+            f"stale-context: the story file this packet was generated from is gone "
+            f"({recorded_path}) — run `ostler qa context` to regenerate the packet"
+        ]
+    if current["sha256"] != recorded_sha256:
+        return [
+            f"stale-context: the story file has changed since this packet was generated "
+            f"({recorded_path}) — run `ostler qa context` to regenerate the packet"
+        ]
+    return []
+
+
 def validate_v2(document: PlanDocument) -> list[str]:  # noqa: C901
     plan, spec_dir = document.data, document.spec_dir
     problems: list[str] = []
@@ -248,6 +300,7 @@ def validate_v2(document: PlanDocument) -> list[str]:  # noqa: C901
             )
     if document.context:
         problems.extend(_book_drift_problems(document.context, document.root))
+        problems.extend(_story_drift_problems(document.context, document.root))
 
     name = document.path.name
     try:

@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from ostler.qa.compile import book_digest
-from ostler.qa.context import book_files
+from ostler.qa.context import book_files, story_file_record
 from ostler.qa.evidence_map import build_evidence_map
 from ostler.qa.harness_host import load_harness_module
 from ostler.qa.plan import load_plan, resolve_spec_dir, validate_v2
@@ -98,6 +98,7 @@ def _spec(tmp_path: Path) -> Path:
                     }
                 ],
                 "bookFiles": book_files(tmp_path, "docs/features"),
+                "storyFile": None,
             }
         ),
         encoding="utf-8",
@@ -136,6 +137,7 @@ title: Reader
                 "healthFindings": [],
                 "obligations": [],
                 "bookFiles": book_files(tmp_path, "docs/features"),
+                "storyFile": None,
             }
         ),
         encoding="utf-8",
@@ -297,6 +299,122 @@ def test_a_packet_with_no_book_files_is_refused_as_predating_the_guard(tmp_path:
         item.startswith("stale-context:") and "predates the book-drift guard" in item
         for item in reported
     ), reported
+
+
+def _spec_with_story_file(tmp_path: Path, content: str = "# Story 1\n") -> tuple[Path, Path]:
+    """`_spec`, plus a real story file on disk whose digest the packet's `storyFile` records.
+
+    Returns `(spec, story_file)` so a test can rewrite or delete the story file afterward.
+    """
+    story_file = tmp_path / "docs/specs/story-1/story.md"
+    story_file.parent.mkdir(parents=True, exist_ok=True)
+    story_file.write_text(content, encoding="utf-8")
+    spec = tmp_path / "docs/specs/story-1"
+    (spec / "qa-okf-context.json").write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "available": True,
+                "acceptanceCriteria": [],
+                "healthFindings": [],
+                "obligations": [
+                    {
+                        "id": OBLIGATION,
+                        "kind": "contract",
+                        "node": "item",
+                        "source": "docs/features/demo/item.md",
+                        "requirement": "item is emitted",
+                        "evidenceRequired": "live",
+                        "reasons": [],
+                    }
+                ],
+                "bookFiles": book_files(tmp_path, "docs/features"),
+                "storyFile": story_file_record(tmp_path, story_file),
+            }
+        ),
+        encoding="utf-8",
+    )
+    return spec, story_file
+
+
+def test_a_packet_whose_story_file_is_unchanged_validates_clean(tmp_path: Path) -> None:
+    spec, _story_file = _spec_with_story_file(tmp_path)
+    document, problems = load_plan(_plan(spec), spec, tmp_path)
+    assert not problems and document is not None
+    assert validate_v2(document) == []
+
+
+def test_editing_the_story_file_after_the_packet_is_written_is_caught_and_named(
+    tmp_path: Path,
+) -> None:
+    spec, story_file = _spec_with_story_file(tmp_path)
+    document, problems = load_plan(_plan(spec), spec, tmp_path)
+    assert not problems and document is not None
+    story_file.write_text("# Story 1 (revised)\n", encoding="utf-8")
+    reported = validate_v2(document)
+    assert any(
+        item.startswith("stale-context:") and "changed" in item and "story.md" in item
+        for item in reported
+    ), reported
+
+
+def test_deleting_the_story_file_after_the_packet_is_written_is_caught(tmp_path: Path) -> None:
+    spec, story_file = _spec_with_story_file(tmp_path)
+    document, problems = load_plan(_plan(spec), spec, tmp_path)
+    assert not problems and document is not None
+    story_file.unlink()
+    reported = validate_v2(document)
+    assert any(
+        item.startswith("stale-context:") and "gone" in item and "story.md" in item
+        for item in reported
+    ), reported
+
+
+def test_a_packet_whose_story_file_is_none_validates_clean(tmp_path: Path) -> None:
+    spec = _spec_with_book_file(tmp_path)
+    context_path = spec / "qa-okf-context.json"
+    context = json.loads(context_path.read_text(encoding="utf-8"))
+    context["storyFile"] = None
+    context_path.write_text(json.dumps(context), encoding="utf-8")
+    document, problems = load_plan(_plan(spec), spec, tmp_path)
+    assert not problems and document is not None
+    assert validate_v2(document) == []
+
+
+def test_a_packet_predating_the_story_drift_guard_is_refused(tmp_path: Path) -> None:
+    spec = _spec_with_book_file(tmp_path)
+    context_path = spec / "qa-okf-context.json"
+    context = json.loads(context_path.read_text(encoding="utf-8"))
+    del context["storyFile"]
+    context_path.write_text(json.dumps(context), encoding="utf-8")
+    document, problems = load_plan(_plan(spec), spec, tmp_path)
+    assert not problems and document is not None
+    reported = validate_v2(document)
+    assert any(
+        item.startswith("stale-context:") and "predates the story-drift guard" in item
+        for item in reported
+    ), reported
+
+
+def test_a_packet_with_bookfiles_but_no_story_file_key_is_refused_on_story_alone(
+    tmp_path: Path,
+) -> None:
+    """The intermediate-era packet: `bookFiles` was added in an earlier commit than
+    `storyFile`, so a packet generated in between carries a valid `bookFiles` and no
+    `storyFile` key at all. The book-drift check must stay silent — its own input is
+    present and current — while the story-drift check refuses on its own account."""
+    spec = _spec_with_book_file(tmp_path)
+    context_path = spec / "qa-okf-context.json"
+    context = json.loads(context_path.read_text(encoding="utf-8"))
+    del context["storyFile"]
+    context_path.write_text(json.dumps(context), encoding="utf-8")
+    document, problems = load_plan(_plan(spec), spec, tmp_path)
+    assert not problems and document is not None
+    reported = validate_v2(document)
+    assert reported == [
+        "stale-context: qa-okf-context.json predates the story-drift guard "
+        "(no storyFile) — run `ostler qa context` to regenerate the packet"
+    ], reported
 
 
 def test_ac_only_browser_scenario_can_vet_book_screen_outside_packet(
@@ -1220,6 +1338,7 @@ def _repeat_spec(tmp_path: Path, **repeat_overrides: Any) -> Path:
                     }
                 ],
                 "bookFiles": book_files(tmp_path, "docs/features"),
+                "storyFile": None,
             }
         ),
         encoding="utf-8",

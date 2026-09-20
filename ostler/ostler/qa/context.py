@@ -236,6 +236,25 @@ def book_files(root: Path, features_root: str) -> list[dict[str, str]]:
     return files
 
 
+def story_file_record(root: Path, story_file: Path | None) -> dict[str, str] | None:
+    """The packet's record of the story file its `story` and `acceptanceCriteria` keys were
+    derived from — `None` when there was no story file to derive them from.
+
+    `qa/plan.py` recomputes this at validate time the same way it recomputes `bookFiles`: it
+    hashes the file named here again and refuses a packet whose story moved underneath it,
+    because `acceptanceCriteria` is load-bearing in validate and a stale set would otherwise
+    be graded against silently.
+    """
+    if story_file is None or not story_file.is_file():
+        return None
+    try:
+        rel = story_file.resolve().relative_to(root).as_posix()
+    except ValueError:
+        rel = story_file.resolve().as_posix()
+    digest = hashlib.sha256(story_file.read_bytes()).hexdigest()
+    return {"path": rel, "sha256": digest}
+
+
 def _book_relative(path: str, book_root: str) -> str:
     """*path* (relative to `root`) rebased onto `book_root`; unchanged outside it."""
     if not book_root or not path:
@@ -522,6 +541,7 @@ def build_context(
     source_roots = source_roots or {}
     book_root = _book_root(root, features_root)
     book_files_list = book_files(root, features_root)
+    story_file_record_value = story_file_record(root, story_file)
     current = load(root, root_overrides={"features": features_root})
     base_graph = _graph_at_revision(root, base, features_root)
     head_graph = current if head == "WORKTREE" else _graph_at_revision(root, head, features_root)
@@ -1062,6 +1082,7 @@ def build_context(
         # the aim was ever known.
         "featuresRoot": features_root,
         "bookFiles": book_files_list,
+        "storyFile": story_file_record_value,
         "changedCode": changed_code,
         **({"changedUnits": changed_code, "repositories": repository_rows} if repositories else {}),
         "directNodes": [
