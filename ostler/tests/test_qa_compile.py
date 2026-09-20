@@ -3905,3 +3905,108 @@ def test_a_surface_whose_runbooks_disagree_on_bundle_id_also_gaps_undeclared_bun
     assert _gap_kinds(result.gaps, oid) == ["undeclared-bundle-id"]
     (gap,) = [g for g in result.gaps if g.obligation_id == oid]
     assert "com.acme.legacy" in gap.detail and "com.acme.current" in gap.detail
+
+
+def _maestro_press_probe(book_key: str) -> tuple[dict, str]:
+    """`_built_target_probe_maestro`'s obligation, with a `press` act added on a control
+    of its own — the smallest fixture that puts a book-stated `key=` through the mobile
+    driver's own `pressKey` vocabulary rather than Playwright's."""
+    oid = "okf:built-target-probe:maestro:press:1"
+    navigation = _arrival_navigation()
+    navigation["policy"]["driver"] = "mobile"
+    navigation["policy"]["bundleId"] = "com.example.mobile-app"
+    press_node = f"{_SCREEN}#probe-field"
+    context = _navigation_context(
+        _page_obligation(oid, f"{_SCREEN}#probe",
+                          locators={"selector": ["testID=probe-widget"]},
+                          checks=[_visible("table:Things on file")],
+                          fixtures=[
+                              {"name": "seeded-ledger", "args": [], "provides": "a ledger"},
+                          ],
+                          acts=[_act("press", press_node,
+                                     {"selector": ["testID=probe-field"]},
+                                     locator="#probe-field", key=book_key)]),
+        navigation=navigation,
+        screen_routes={_SCREEN: "Probe"},
+    )
+    return context, oid
+
+
+def test_a_documented_press_key_compiles_to_its_own_documented_spelling() -> None:
+    """A book stated in ordinary title-case prose (`Enter`) is not the same string as Maestro's
+    own lowercase `enter`, so the compiled flow must emit the documented spelling regardless of
+    which casing the book happened to use — with no gap, since the physical key is real."""
+    context, oid = _maestro_press_probe("Enter")
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(result, Plan)
+    assert _gap_kinds(result.gaps, oid) == []
+    (flow_text,) = result.files.values()
+    assert '- pressKey: "enter"' in flow_text
+
+
+def test_a_documented_multi_word_press_key_compiles_to_its_own_documented_spelling() -> None:
+    """The same normalization holds for a two-word key: `Volume Up` in the book's own prose
+    still resolves against Maestro's own `volume up` and is emitted spelled that way."""
+    context, oid = _maestro_press_probe("Volume Up")
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(result, Plan)
+    assert _gap_kinds(result.gaps, oid) == []
+    (flow_text,) = result.files.values()
+    assert '- pressKey: "volume up"' in flow_text
+
+
+def test_an_already_canonical_press_key_round_trips_unchanged() -> None:
+    """A book that already writes the documented spelling (`home`) is not a special case this
+    canonicalization has to detour around — it normalizes to itself and compiles the same way."""
+    context, oid = _maestro_press_probe("home")
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(result, Plan)
+    assert _gap_kinds(result.gaps, oid) == []
+    (flow_text,) = result.files.values()
+    assert '- pressKey: "home"' in flow_text
+
+
+def test_a_key_playwright_has_and_maestro_does_not_is_an_uncompilable_claim() -> None:
+    """`Space` is a real Playwright key (several web books already state it) and is nowhere in
+    Maestro's own `pressKey` table — the mobile driver cannot perform this claim, so it gaps
+    `uncompilable-claim` naming the key, emits no `pressKey` line, and (the shared `whole =
+    False`/`break` semantics the two neighbouring act gaps already use) withholds the rest of
+    this obligation's flow rather than emitting a partial one."""
+    context, oid = _maestro_press_probe("Space")
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(result, Refusal)
+    assert _gap_kinds(result.gaps, oid) == ["uncompilable-claim"]
+    (gap,) = [g for g in result.gaps if g.obligation_id == oid]
+    assert "Space" in gap.detail
+
+
+def test_the_web_arm_still_compiles_a_press_space_key_unchanged() -> None:
+    """The same `press(key="Space")` a mobile book cannot state is exactly what a web book
+    already states and this repo's own Playwright arm has always compiled unchanged — proving
+    this defect's fix is a fact about the *mobile* driver's own vocabulary, not a change to the
+    `press` act itself, which both drivers still declare (`acts.py`)."""
+    button = f"{_SCREEN}#submit-widget-button"
+    submit_oid = "okf:new-widget:submit-new-widget:does:1"
+    context = _navigation_context(
+        _page_obligation("okf:new-widget:submit-widget-button:visible:1", button,
+                          locators={"role": ["button"], "name": ["Add widget"]},
+                          checks=[_visible("button:Add widget")]),
+        _page_obligation(submit_oid, f"{_SCREEN}#submit-new-widget",
+                          locators={"on": ["[submit-widget-button](#submit-widget-button)"],
+                                    "trigger": ["click"],
+                                    "when": ["`name` non-empty and `quantity` a non-negative "
+                                             "number"],
+                                    "does": ["the browser navigates to widget-list"]},
+                          acts=[_act("press", f"{_SCREEN}#name-field",
+                                     {"selector": ["`input[name=\"name\"]`"]},
+                                     locator="#name-field", key="Space")],
+                          checks=[_located("#saved-banner", f"{_SCREEN}#saved-banner",
+                                            {"selector": ["`#saved-banner`"]})]),
+        navigation=_arrival_navigation(),
+    )
+    source, gaps = compile_plan_gaps(context, story="demo-story")
+    assert source is not None
+    ast.parse(source)
+    assert '.press("Space")' in source
+    assert "unarranged-interaction-precondition" not in _gap_kinds(gaps, submit_oid)
+    assert submit_oid in _covers(source)

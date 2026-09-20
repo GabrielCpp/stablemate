@@ -769,7 +769,18 @@ def _maestro_scenario_body(
                                      "selector and no `name:` for the mobile driver to address"))
                     whole = False
                     break
-                commands.extend(_maestro_act_commands(spec.name, locator, row.get("args", {})))
+                act_args = row.get("args", {})
+                if spec.name == "press":
+                    book_key = str(act_args.get("key", ""))
+                    canonical_key = _maestro_press_key(book_key)
+                    if canonical_key is None:
+                        gaps.append(Gap(oid, "uncompilable-claim",
+                                         f"`press` names key {book_key!r}, which is not one of "
+                                         "Maestro's `pressKey` keys"))
+                        whole = False
+                        break
+                    act_args = {**act_args, "key": canonical_key}
+                commands.extend(_maestro_act_commands(spec.name, locator, act_args))
         else:
             on_value = next(iter(obligation.get("locators", {}).get("on", [])), None)
             if on_value is not None:
@@ -1139,6 +1150,41 @@ def _maestro_locator(locators: dict[str, list[str]]) -> tuple[str, str] | None:
 
 def _maestro_flow_yaml(commands: list[str], bundle_id: str) -> str:
     return "\n".join([f'appId: "{bundle_id}"', "---", "- launchApp", *commands]) + "\n"
+
+
+#: The `pressKey` values Maestro's own device driver accepts, spelled exactly as
+#: https://docs.maestro.dev/reference/commands-available/presskey.md states them (read
+#: 2026-09-19) — including that page's own inconsistent casing (`home`, `enter`, `volume up`
+#: lowercase; `Remote Dpad Up`, `TV Input HDMI 1` title case), which is the documented spelling
+#: and therefore what this driver must emit. `press` is declared on both `WEB` and `MOBILE` in
+#: `acts.py`, but sharing a name across two drivers does not make them share a vocabulary:
+#: Playwright's `keyboard.press` takes key names from an entirely different set (`Space`,
+#: `ArrowDown`, `Control+A`, …) that this constant says nothing about, so this set is stated
+#: here, as a fact about the mobile driver's own `pressKey` command, not on `ActSpec` in
+#: `acts.py` where it would wrongly read as a fact about the act itself.
+_MAESTRO_PRESS_KEYS: frozenset[str] = frozenset({
+    "home", "lock", "enter", "backspace", "volume up", "volume down", "back", "power", "tab",
+    "Remote Dpad Up", "Remote Dpad Down", "Remote Dpad Left", "Remote Dpad Right",
+    "Remote Dpad Center", "Remote Media Play Pause", "Remote Media Stop", "Remote Media Next",
+    "Remote Media Previous", "Remote Media Rewind", "Remote Media Fast Forward",
+    "Remote System Navigation Up", "Remote System Navigation Down", "Remote Button A",
+    "Remote Button B", "Remote Menu", "TV Input", "TV Input HDMI 1", "TV Input HDMI 2",
+    "TV Input HDMI 3",
+})
+#: `_MAESTRO_PRESS_KEYS`, keyed by its own casefolded, whitespace-collapsed spelling — the
+#: normalization `_maestro_press_key` looks a book's key up under, so a book that writes
+#: `Enter` or `VOLUME  UP` for the same physical key a mobile book states as `enter`/`volume up`
+#: still resolves, while the canonical, documented spelling is always what gets emitted.
+_MAESTRO_PRESS_KEYS_BY_NORMAL: dict[str, str] = {
+    " ".join(key.casefold().split()): key for key in _MAESTRO_PRESS_KEYS
+}
+
+
+def _maestro_press_key(key: str) -> str | None:
+    """*key*, canonicalized to Maestro's own documented spelling, or `None` if it names no
+    `pressKey` key at all under that normalization."""
+    normal = " ".join(key.casefold().split())
+    return _MAESTRO_PRESS_KEYS_BY_NORMAL.get(normal)
 
 
 def _maestro_act_commands(
