@@ -668,6 +668,17 @@ class UnknownStart(ValueError):
     """The requested start names no screen on the surface."""
 
 
+class NoScreens(UnknownStart):
+    """*start* was ``None`` and the surface declares no screens at all.
+
+    An empty domain is not a failed search — the caller asked the open question ("reach any
+    screen") and got a true, vacuous answer, not a typo to correct. A subclass rather than a new
+    `reason` string so a caller that only ever handled `UnknownStart` keeps working unchanged,
+    while one that must tell the two apart — `_cmd_reach`, which answers this on stdout with exit
+    0 rather than `error:` on stderr with exit 2 — can catch it by type instead of matching text.
+    """
+
+
 def resolve_start(data: dict, start: str | None, driver: str | None = None, *,
                   surface: str | None = None) -> str:
     """*start* as a screen id, or the surface's root when none was given.
@@ -689,7 +700,7 @@ def resolve_start(data: dict, start: str | None, driver: str | None = None, *,
     if start is None:
         if not screens:
             named = f"a `{driver}` surface" if driver else "this surface"
-            raise UnknownStart(f"{named} declares no screens; there is nothing to start from")
+            raise NoScreens(f"{named} declares no screens; there is nothing to start from")
         root, reason, detail = surface_root(data, driver, surface=surface)
         if root is None:
             named = f"a `{driver}` surface" if driver else "this surface"

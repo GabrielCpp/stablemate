@@ -1150,13 +1150,19 @@ def _cmd_reach(graph, args) -> int:
     """Route to one screen, or audit the whole surface when no target is given.
 
     Exits non-zero when a route is missing — an unreachable screen is a defect in the book, and a
-    caller that shells out to this should stop rather than navigate by URL and paper over it.
+    caller that shells out to this should stop rather than navigate by URL and paper over it. A
+    surface whose driver declares no screens at all is a different fact, not a defect: nothing was
+    asked for and missed, so that case is reported on stdout with exit 0 rather than `error:` with
+    exit 2. Naming a start that does not resolve is still a failed search either way.
     """
     dump = graph_mod.build(graph)
     data = graph_mod.subset(dump, args.surface) if args.surface else dump
     driver = _surface_driver(dump, args.surface)
     try:
         start = reach.resolve_start(data, args.start, driver, surface=args.surface)
+    except reach.NoScreens as exc:
+        _out(json.dumps({"start": None, "message": str(exc)}) if args.json else str(exc))
+        return 0
     except reach.UnknownStart as exc:
         # A start that names nothing must not route from nowhere: that reads as "0 reachable",
         # every screen a hole in the book, for a typo in the flag.

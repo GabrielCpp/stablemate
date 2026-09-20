@@ -721,15 +721,19 @@ def test_a_surface_with_no_screens_says_so_instead_of_launch_screen_or_a_root_pa
 
 
 def test_the_reach_command_reports_no_screens_for_a_cli_surface(repo: Path, capsys):
-    """The same empty-domain message, through `_cmd_reach` the way a person actually runs it."""
+    """The same empty-domain message, through `_cmd_reach` the way a person actually runs it —
+    on stdout with exit 0, since asking the open question and finding nothing to start from is
+    not the same fact as a route that fails."""
     graph_obj = _cli_repo_with_no_screens(repo)
     args = SimpleNamespace(surface="toolbox", start=None, target=None, json=True)
 
-    assert cli._cmd_reach(graph_obj, args) == 2
-    error = json.loads(capsys.readouterr().out)["error"]
-    assert "declares no screens" in error
-    assert "launch-screen" not in error
-    assert "--from" not in error
+    assert cli._cmd_reach(graph_obj, args) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["start"] is None
+    message = payload["message"]
+    assert "declares no screens" in message
+    assert "launch-screen" not in message
+    assert "--from" not in message
 
 
 def test_the_reach_command_degrades_when_the_book_does_not_settle_a_driver(repo: Path, capsys):
