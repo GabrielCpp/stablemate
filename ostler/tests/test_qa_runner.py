@@ -22,6 +22,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 from ostler.artifact.kinds import _qa_evidence_vet
+from ostler.qa.context import book_files
 from ostler.qa.plan import RETIRED_YAML, _validate_background, load_plan, validate_v2
 from ostler.qa.evidence_map import build_evidence_map
 from ostler.qa.run import cmd_run, cmd_validate
@@ -82,6 +83,7 @@ def _spec(tmp_path: Path) -> Path:
                         "reasons": [],
                     }
                 ],
+                "bookFiles": book_files(tmp_path, "docs/features"),
             }
         ),
         encoding="utf-8",

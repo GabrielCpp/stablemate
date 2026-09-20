@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from ostler.qa.compile import book_digest
+from ostler.qa.context import book_files
 from ostler.qa.evidence_map import build_evidence_map
 from ostler.qa.harness_host import load_harness_module
 from ostler.qa.plan import load_plan, resolve_spec_dir, validate_v2
@@ -96,6 +97,7 @@ def _spec(tmp_path: Path) -> Path:
                         "reasons": [],
                     }
                 ],
+                "bookFiles": book_files(tmp_path, "docs/features"),
             }
         ),
         encoding="utf-8",
@@ -106,20 +108,6 @@ def _spec(tmp_path: Path) -> Path:
 def _ac_spec(tmp_path: Path) -> Path:
     spec = tmp_path / "docs/specs/story-1"
     spec.mkdir(parents=True)
-    (spec / "qa-okf-context.json").write_text(
-        json.dumps(
-            {
-                "version": 1,
-                "available": True,
-                "acceptanceCriteria": [
-                    {"id": "ac:1", "requirement": "The reader is keyboard operable."}
-                ],
-                "healthFindings": [],
-                "obligations": [],
-            }
-        ),
-        encoding="utf-8",
-    )
     (tmp_path / "docs/features/demo").mkdir(parents=True)
     (tmp_path / "docs/features/demo/reader.md").write_text(
         """---
@@ -135,6 +123,21 @@ title: Reader
 - role: article
 - name: Reader content
 """,
+        encoding="utf-8",
+    )
+    (spec / "qa-okf-context.json").write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "available": True,
+                "acceptanceCriteria": [
+                    {"id": "ac:1", "requirement": "The reader is keyboard operable."}
+                ],
+                "healthFindings": [],
+                "obligations": [],
+                "bookFiles": book_files(tmp_path, "docs/features"),
+            }
+        ),
         encoding="utf-8",
     )
     return spec
@@ -222,6 +225,78 @@ def test_a_plan_compiled_from_a_different_book_is_stale(tmp_path: Path) -> None:
     assert not problems and document is not None
     reported = validate_v2(document)
     assert any(item.startswith("stale-plan:") for item in reported)
+
+
+def _spec_with_book_file(tmp_path: Path, content: str = "content-1") -> Path:
+    """`_spec`, plus a real book file on disk whose digest the packet's `bookFiles` records.
+
+    The file is written before `_spec` builds the packet, so `book_files` picks it up —
+    unlike `_ac_spec`, which writes its packet before its book file exists on purpose, to
+    exercise the late-write case (`test_ac_only_browser_scenario_can_vet_book_screen_outside_packet`).
+    """
+    (tmp_path / "docs/features/demo").mkdir(parents=True)
+    (tmp_path / "docs/features/demo/item.md").write_text(content, encoding="utf-8")
+    return _spec(tmp_path)
+
+
+def test_a_packet_whose_book_is_unchanged_validates_clean(tmp_path: Path) -> None:
+    spec = _spec_with_book_file(tmp_path)
+    document, problems = load_plan(_plan(spec), spec, tmp_path)
+    assert not problems and document is not None
+    assert validate_v2(document) == []
+
+
+def test_editing_a_book_file_after_the_packet_is_written_is_caught_and_named(
+    tmp_path: Path,
+) -> None:
+    spec = _spec_with_book_file(tmp_path)
+    document, problems = load_plan(_plan(spec), spec, tmp_path)
+    assert not problems and document is not None
+    (tmp_path / "docs/features/demo/item.md").write_text("content-2", encoding="utf-8")
+    reported = validate_v2(document)
+    assert any(
+        item.startswith("stale-context:") and "changed" in item and "demo/item.md" in item
+        for item in reported
+    ), reported
+
+
+def test_adding_a_book_file_after_the_packet_is_written_is_caught(tmp_path: Path) -> None:
+    spec = _spec_with_book_file(tmp_path)
+    document, problems = load_plan(_plan(spec), spec, tmp_path)
+    assert not problems and document is not None
+    (tmp_path / "docs/features/demo/new.md").write_text("new content", encoding="utf-8")
+    reported = validate_v2(document)
+    assert any(
+        item.startswith("stale-context:") and "added" in item and "demo/new.md" in item
+        for item in reported
+    ), reported
+
+
+def test_deleting_a_book_file_after_the_packet_is_written_is_caught(tmp_path: Path) -> None:
+    spec = _spec_with_book_file(tmp_path)
+    document, problems = load_plan(_plan(spec), spec, tmp_path)
+    assert not problems and document is not None
+    (tmp_path / "docs/features/demo/item.md").unlink()
+    reported = validate_v2(document)
+    assert any(
+        item.startswith("stale-context:") and "removed" in item and "demo/item.md" in item
+        for item in reported
+    ), reported
+
+
+def test_a_packet_with_no_book_files_is_refused_as_predating_the_guard(tmp_path: Path) -> None:
+    spec = _spec_with_book_file(tmp_path)
+    context_path = spec / "qa-okf-context.json"
+    context = json.loads(context_path.read_text(encoding="utf-8"))
+    del context["bookFiles"]
+    context_path.write_text(json.dumps(context), encoding="utf-8")
+    document, problems = load_plan(_plan(spec), spec, tmp_path)
+    assert not problems and document is not None
+    reported = validate_v2(document)
+    assert any(
+        item.startswith("stale-context:") and "predates the book-drift guard" in item
+        for item in reported
+    ), reported
 
 
 def test_ac_only_browser_scenario_can_vet_book_screen_outside_packet(
@@ -1144,6 +1219,7 @@ def _repeat_spec(tmp_path: Path, **repeat_overrides: Any) -> Path:
                         "repeat": repeat,
                     }
                 ],
+                "bookFiles": book_files(tmp_path, "docs/features"),
             }
         ),
         encoding="utf-8",

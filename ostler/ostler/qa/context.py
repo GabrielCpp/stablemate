@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import subprocess
@@ -211,6 +212,28 @@ def _book_root(root: Path, features_root: str) -> str:
     depend on the caller repeating a mapping the book already implies.
     """
     return path_mod.book_prefix_in(root, features_root)
+
+
+def book_files(root: Path, features_root: str) -> list[dict[str, str]]:
+    """Every `*.md` file under the book at *features_root*, with its path and sha256.
+
+    Paths are relative to the book directory (`root / features_root`) and the list is
+    sorted, so two runs against the same tree agree byte-for-byte. This is the evidence
+    `qa/plan.py`'s book-drift check recomputes against: it diffs the recorded list here
+    against a fresh call on the current tree and names exactly which files moved.
+    """
+    book_dir = root / features_root if features_root else root
+    files: list[dict[str, str]] = []
+    if not book_dir.is_dir():
+        return files
+    for path in book_dir.rglob("*.md"):
+        if not path.is_file():
+            continue
+        rel = path.relative_to(book_dir).as_posix()
+        digest = hashlib.sha256(path.read_bytes()).hexdigest()
+        files.append({"path": rel, "sha256": digest})
+    files.sort(key=lambda item: item["path"])
+    return files
 
 
 def _book_relative(path: str, book_root: str) -> str:
@@ -498,6 +521,7 @@ def build_context(
     features_root = path_mod.resolve_features_root(features_root, root)
     source_roots = source_roots or {}
     book_root = _book_root(root, features_root)
+    book_files_list = book_files(root, features_root)
     current = load(root, root_overrides={"features": features_root})
     base_graph = _graph_at_revision(root, base, features_root)
     head_graph = current if head == "WORKTREE" else _graph_at_revision(root, head, features_root)
@@ -1037,6 +1061,7 @@ def build_context(
         # a flag the caller must keep in sync or guesses from its cwd. This is the one place
         # the aim was ever known.
         "featuresRoot": features_root,
+        "bookFiles": book_files_list,
         "changedCode": changed_code,
         **({"changedUnits": changed_code, "repositories": repository_rows} if repositories else {}),
         "directNodes": [

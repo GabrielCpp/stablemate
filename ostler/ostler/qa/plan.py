@@ -16,11 +16,19 @@ from urllib.parse import urlsplit
 import yaml
 
 from ostler import checks
+from ostler import path as path_mod
 from ostler.model import load as load_graph
 from ostler.qa.compile import book_digest
+from ostler.qa.context import book_files
 from ostler.qa.harness_host import default_interpreter, describe, load_harness_module
 from ostler.untyped import is_mapping
 from ostler.vet import placement
+
+#: How many drifted filenames a `stale-context:` book-drift problem names before it falls
+#: back to a count. A wholesale book move or rename can touch every file under
+#: `docs/features`, and printing all of them would drown the rest of `validate`'s output in
+#: one line.
+_BOOK_DRIFT_NAME_LIMIT = 20
 
 #: Read off the harness rather than restated, because `describe` produces these values and
 #: this module judges them: a second spelling of any of them is a gate that quietly stops
@@ -145,6 +153,65 @@ def _describe_python_plan(plan_file: Path, root: Path) -> tuple[dict[str, Any] |
     return data, problems
 
 
+def _book_drift_problems(context: dict[str, Any], root: Path) -> list[str]:
+    """`stale-context:` problems for a packet whose recorded `bookFiles` disagree with the tree.
+
+    A distinct prefix from `stale-plan:` on purpose — the two name different links with
+    different repairs. `stale-plan:` (above) is the plan disagreeing with the packet, fixed
+    by `ostler qa compile-plan`; this is the packet disagreeing with the *book*, fixed by
+    `ostler qa context`. `book_digest`, behind `stale-plan:`, hashes the sorted
+    owed-obligation ids and derives them *from the packet itself*, so it can never catch the
+    book having changed underneath a packet that still parses the same obligations out of
+    it. `bookFiles` is the packet's own per-file record of the book it was generated from
+    (`context.py::build_context`); this recomputes the same digests from the tree on disk
+    right now and compares, so a book edited after the packet was written is refused rather
+    than silently kept vouching for.
+    """
+    recorded = context.get("bookFiles")
+    if recorded is None:
+        return [
+            "stale-context: qa-okf-context.json predates the book-drift guard "
+            "(no bookFiles) — run `ostler qa context` to regenerate the packet"
+        ]
+    if not isinstance(recorded, list):
+        return ["stale-context: qa-okf-context.json 'bookFiles' must be a list"]
+    recorded_by_path = {
+        str(entry["path"]): str(entry["sha256"])
+        for entry in recorded
+        if is_mapping(entry) and "path" in entry and "sha256" in entry
+    }
+    features_root = path_mod.resolve_features_root(context.get("featuresRoot"), root)
+    current_by_path = {entry["path"]: entry["sha256"] for entry in book_files(root, features_root)}
+    changed = sorted(
+        path
+        for path in recorded_by_path.keys() & current_by_path.keys()
+        if recorded_by_path[path] != current_by_path[path]
+    )
+    removed = sorted(recorded_by_path.keys() - current_by_path.keys())
+    added = sorted(current_by_path.keys() - recorded_by_path.keys())
+    if not changed and not removed and not added:
+        return []
+
+    def _named(label: str, paths: list[str]) -> str:
+        shown = paths[:_BOOK_DRIFT_NAME_LIMIT]
+        names = ", ".join(shown)
+        remainder = len(paths) - len(shown)
+        if remainder > 0:
+            names += f" (+{remainder} more)"
+        return f"{label}: {names}"
+
+    parts = [
+        _named(label, paths)
+        for label, paths in (("changed", changed), ("removed", removed), ("added", added))
+        if paths
+    ]
+    return [
+        "stale-context: the book has changed since this packet was generated — "
+        + "; ".join(parts)
+        + " — run `ostler qa context` to regenerate the packet"
+    ]
+
+
 def validate_v2(document: PlanDocument) -> list[str]:  # noqa: C901
     plan, spec_dir = document.data, document.spec_dir
     problems: list[str] = []
@@ -179,6 +246,8 @@ def validate_v2(document: PlanDocument) -> list[str]:  # noqa: C901
                 "stale-plan: this plan was compiled from a different book "
                 f"(book={book[:12]}, current book={current[:12]}) — recompile it"
             )
+    if document.context:
+        problems.extend(_book_drift_problems(document.context, document.root))
 
     name = document.path.name
     try:
