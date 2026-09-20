@@ -2958,6 +2958,115 @@ def test_a_journeys_claim_is_observed_where_its_last_step_left_the_world() -> No
     assert _gap_kinds(gaps, oid) == []
 
 
+def test_a_journey_step_captures_a_field_its_own_verify_then_reads_back() -> None:
+    """A `$.`-rooted capture on a step's node is a fact the *flow's own* `verify:` — running in
+    this same scenario, after every step — is entitled to read back, the same way a strictly
+    later obligation reads a `_scenario_body` capture back. `qa.capture_field(...)` is emitted
+    right after the step that produces it, before the flow's own assertion that references it,
+    and the reference resolves with no gap."""
+    oid = f"okf:{_FLOW}:end-state"
+    post_node = _step_node(f"{_API}#post-things", {"route": ["POST /api/things"]})
+    post_node["actsDeclared"] = [_body_act("name", "Widget A")]
+    post_node["capturesDeclared"] = [{"name": "widget_id", "from": "$.thing.id"}]
+    context = _navigation_context(
+        _flow_obligation(
+            oid, source=_FLOW, surface="api",
+            steps=[_step(f"{_API}#post-things", "endpoint", "api")],
+            checks=[{"call": "it", "name": "http_status",
+                    "args": {"status": 201, "path": "/api/things", "detail": "$widget_id"}}],
+        ),
+        post_node,
+        navigation=_api_navigation(),
+    )
+    _result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(_result, Plan)
+    source, gaps = _result.source, _result.gaps
+    ast.parse(source)
+    assert oid in _covers(source)
+    capture = source.index('qa.capture_field("widget_id", observed_1.json(), "thing.id")')
+    verify = source.index('qa.verify("http_status"')
+    assert capture < verify
+    assert 'detail=qa.resolve("$widget_id")' in source
+    assert _gap_kinds(gaps, oid) == []
+
+
+def test_a_journeys_own_verify_referencing_nothing_captured_withdraws_it() -> None:
+    """`$name` names a fact a `capture:` bullet must actually have produced in this same walk —
+    a flow's own `verify:` that names one nothing captured is `unresolved-precondition`, the same
+    as any other reference a `_scenario_body` obligation cannot resolve, and — because a
+    `verify:` set is a conjunction — the whole obligation withdraws rather than emitting the
+    rows that happened to resolve on their own."""
+    oid = f"okf:{_FLOW}:end-state"
+    post_node = _step_node(f"{_API}#post-things", {"route": ["POST /api/things"]})
+    post_node["actsDeclared"] = [_body_act("name", "Widget A")]
+    context = _navigation_context(
+        _flow_obligation(
+            oid, source=_FLOW, surface="api",
+            steps=[_step(f"{_API}#post-things", "endpoint", "api")],
+            checks=[{"call": "it", "name": "http_status",
+                    "args": {"status": 201, "path": "/api/things", "detail": "$widget_id"}}],
+        ),
+        post_node,
+        navigation=_api_navigation(),
+    )
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(result, Refusal)
+    assert _gap_kinds(result.gaps, oid) == ["unresolved-precondition"]
+
+
+def test_a_journeys_own_verify_withdraws_wholesale_not_row_by_row() -> None:
+    """Two rows on the same flow obligation, only one of which references a capture nothing
+    produced: the conjunction rule withdraws both, not just the one that referenced it — the
+    same `whole`-obligation rule `_scenario_body` applies to a row `_operand` cannot observe,
+    carried here to a row a reference cannot resolve."""
+    oid = f"okf:{_FLOW}:end-state"
+    post_node = _step_node(f"{_API}#post-things", {"route": ["POST /api/things"]})
+    post_node["actsDeclared"] = [_body_act("name", "Widget A")]
+    context = _navigation_context(
+        _flow_obligation(
+            oid, source=_FLOW, surface="api",
+            steps=[_step(f"{_API}#post-things", "endpoint", "api")],
+            checks=[
+                {"call": "it", "name": "http_status",
+                 "args": {"status": 201, "path": "/api/things", "detail": "$widget_id"}},
+                {"call": "it", "name": "http_status",
+                 "args": {"code": 201, "path": "/api/things"}},
+            ],
+        ),
+        post_node,
+        navigation=_api_navigation(),
+    )
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(result, Refusal)
+    assert _gap_kinds(result.gaps, oid) == ["unresolved-precondition"]
+
+
+def test_a_capture_on_a_step_the_journey_cannot_compile_is_still_declined() -> None:
+    """A step whose node carries no `route:` withholds the whole journey (`uncompilable-claim`),
+    exactly as `test_a_flow_that_names_no_steps_has_no_walk_to_compile`'s sibling cases do — and
+    a `capture:` declared on that same node names a response this journey never holds either.
+    `_decline_captures_by_node` gaps it (`uncaptured-declaration`) rather than leaving it neither
+    emitted nor gapped, which is what the totality assert in `compile_plan_gaps` would otherwise
+    catch."""
+    oid = f"okf:{_FLOW}:end-state"
+    post_node = _step_node(f"{_API}#post-things", {})
+    post_node["capturesDeclared"] = [{"name": "widget_id", "from": "$.thing.id"}]
+    context = _navigation_context(
+        _flow_obligation(
+            oid, source=_FLOW, surface="api",
+            steps=[_step(f"{_API}#post-things", "endpoint", "api")],
+            checks=[{"call": "it", "name": "http_status",
+                    "args": {"status": 201, "path": "/api/things"}}],
+        ),
+        post_node,
+        navigation=_api_navigation(),
+    )
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(result, Refusal)
+    assert _gap_kinds(result.gaps, oid) == ["uncompilable-claim"]
+    assert _gap_kinds(result.gaps, post_node["id"]) == ["uncaptured-declaration"]
+
+
 def test_a_journey_step_sends_the_body_its_node_arranges() -> None:
     """Node-level, unlike the arm-level read in `_scenario_body`'s own tests: a journey step
     names a node, not an arm, so `_http_journey` reads `acts_by_node` the same way a step's

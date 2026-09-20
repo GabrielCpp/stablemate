@@ -917,6 +917,36 @@ def _decline_captures(
             ))
 
 
+def _decline_captures_by_node(
+    node_ids: list[str],
+    captures_by_node: dict[str, list[tuple[str, dict[str, Any]]]],
+    gaps: list[Gap],
+    captured: set[tuple[str, str]],
+    *,
+    because: str,
+) -> None:
+    """Gap the captures `_captures_by_node` attaches to *node_ids*, by node rather than obligation.
+
+    The journey-step mirror of `_decline_captures`: a step's capture is filed against the node
+    a `steps:` entry names, not against the flow obligation walking it, so this reads
+    `_captures_by_node`'s `(obligation id, row)` pairs instead of an obligation's own
+    `capturesDeclared` list. Both land in the same `captured` set `_decline_captures` writes,
+    so the totality assert in `compile_plan_gaps` sees one accounting no matter which of the
+    two declined a given pair.
+    """
+    for node_id in node_ids:
+        for oid, capture in captures_by_node.get(node_id, []):
+            name = capture.get("name")
+            if not name:
+                continue
+            captured.add((oid, str(name)))
+            gaps.append(Gap(
+                oid, "uncaptured-declaration",
+                f"capture {str(name)!r} from {str(capture.get('from', ''))!r} is declared on "
+                f"this node and {because}",
+            ))
+
+
 def _has_screens(navigation: dict[str, Any]) -> bool:
     """Condition 1: a book with zero screen nodes on every surface grows no Playwright target.
 
@@ -1540,6 +1570,7 @@ def compile_plan_gaps(
     # can see: the form still needs filling either way.
     carried = [o for o in context.get("obligations", []) if isinstance(o, dict)]
     page_acts, page_acts_refused = _acts_by_node(carried)
+    captures_by_node = _captures_by_node(carried)
     for obligation in owed:
         if not _is_owed_for_dispatch(obligation):
             # No claim to dispatch, and no driver to dispatch it to either — a bucket that
@@ -1855,7 +1886,8 @@ def compile_plan_gaps(
     # only correct once every place-scoped builder above has run.
     lines.extend(_journey_scenarios(context, flow_owed, gaps, covered_ids, navigation,
                                     web_urls, api_urls, emitted_targets, captured, files,
-                                    acts_by_node=page_acts, acts_refused=page_acts_refused))
+                                    acts_by_node=page_acts, acts_refused=page_acts_refused,
+                                    captures_by_node=captures_by_node))
 
     if debt:
         lines.append("")
@@ -2060,6 +2092,46 @@ def _acts_by_node(
         for node_id, rows in rows_by_node.items()
     }
     return ordered, refused
+
+
+def _captures_by_node(
+    obligations: list[dict[str, Any]],
+) -> dict[str, list[tuple[str, dict[str, Any]]]]:
+    """Every node's declared captures, each tagged with its owning obligation id, in book order.
+
+    The capture-side mirror of `_acts_by_node` — read that docstring first. Built from every
+    obligation the packet carries, ordered by `docPosition` rather than the alphabetical id
+    sort `obligations` arrives in, for the same reason: which bullet happens to carry a check
+    is not what decides which captures a builder can see.
+
+    Excludes a `registry.refusal_keys`-flagged arm, the same exclusion `_acts_by_node` applies
+    and for the same causal-chain reason: a journey walks only the arm that leaves something
+    for the next step to read back, so a capture declared on the arm that was refused — the
+    request the journey never sent — names a fact the walk never produced. Merging a refusal
+    arm's capture into the one a journey actually performs would credit a fact that is not
+    there at runtime.
+
+    Rows keep their owning obligation id, unlike `_acts_by_node`'s deduped, id-less rows: the
+    `captured` set the totality assert in `compile_plan_gaps` reads is keyed by `(obligation
+    id, capture name)`, and collapsing that identity away here — the way `_acts_by_node`
+    collapses acts down to deduped call text — would leave nothing to key an emit or a decline
+    against.
+    """
+    rows_by_node: dict[str, list[tuple[tuple[int, ...], int, str, dict[str, Any]]]] = {}
+    for obligation in obligations:
+        node_id = str(obligation.get("node", ""))
+        node_type = str(obligation.get("nodeType", ""))
+        kind = str(obligation.get("kind", ""))
+        if kind in registry.refusal_keys(node_type):
+            continue
+        oid = str(obligation.get("id", ""))
+        position = tuple(int(n) for n in obligation.get("docPosition") or (0, 0))
+        for index, row in enumerate(obligation.get("capturesDeclared") or []):
+            rows_by_node.setdefault(node_id, []).append((position, index, oid, row))
+    return {
+        node_id: [(oid, row) for _, _, oid, row in sorted(rows, key=lambda entry: entry[:2])]
+        for node_id, rows in rows_by_node.items()
+    }
 
 
 def _performed_lines(
@@ -3165,6 +3237,7 @@ def _journey_scenarios(
     *,
     acts_by_node: dict[str, list[dict[str, Any]]],
     acts_refused: set[str],
+    captures_by_node: dict[str, list[tuple[str, dict[str, Any]]]],
 ) -> list[str]:
     """One scenario per flow: walk its `steps:` in order, then observe what the walk left.
 
@@ -3291,7 +3364,8 @@ def _journey_scenarios(
         scenario_covered: set[str] = set()
         if journey_target == "http":
             body = _http_journey(steps, node_index, obligations, ids, gaps, scenario_covered,
-                                 captured, acts_by_node=acts_by_node, acts_refused=acts_refused)
+                                 captured, acts_by_node=acts_by_node, acts_refused=acts_refused,
+                                 captures_by_node=captures_by_node)
         elif journey_target == "maestro":
             assert bundle_id is not None, (
                 "the `journey_target == \"maestro\" and bundle_id is None` branch above "
@@ -3370,27 +3444,42 @@ def _http_journey(
     *,
     acts_by_node: dict[str, list[dict[str, Any]]],
     acts_refused: set[str],
+    captures_by_node: dict[str, list[tuple[str, dict[str, Any]]]],
 ) -> list[str]:
     """Perform each `endpoint` step as a request, then assert the flow's claims on the last one.
 
-    The steps are performed, not asserted. A step's own `verify:` is its own obligation and is
-    compiled where that obligation lives — restating it here would file one observation against
-    two claims. What this asserts is the *flow's* own `verify:`, against the response the last
-    step produced, because a journey's claim is about the world its last step left and that
-    response is the only thing this scenario honestly holds at the end.
+    The steps are performed, not asserted — a step's own `verify:` is its own obligation and is
+    compiled where that obligation lives, so restating it here would file one observation
+    against two claims. What this asserts is the *flow's* own `verify:`, against the response
+    the last step produced, because a journey's claim is about the world its last step left and
+    that response is the only thing this scenario honestly holds at the end.
 
     Which makes a check naming some other `path=` a finding rather than a target: it is a claim
     about a request this journey did not end on, and pointing the driver at the response it does
     hold would answer a question nobody asked. Gapped, not re-aimed.
+
+    A `$.`-rooted capture on a step's node is different from a step's `verify:`: it is not the
+    step's own claim, it is a fact the step's response leaves behind for a *later* claim to
+    read — and the flow's own `verify:` is exactly such a later claim, running in this same
+    scenario. So it is emitted here, right after the step that produces it, the same way
+    `_scenario_body` emits a `$.`-rooted capture right after the `observed_N` it reads — see the
+    comment there for why crediting `produced_captures` without the call behind it is a defect
+    and not a shortcut. A capture this journey cannot perform (a UI-locator capture on an HTTP
+    step, or a capture on a step whose node this journey never reaches at all) is declined here
+    instead, so every declared capture still ends up either emitted or declined and the totality
+    assert in `compile_plan_gaps` holds.
     """
     _decline_captures(obligations, gaps, captured, because=(
-        "a journey performs its steps and asserts the flow's own claim; a step's capture is "
-        "emitted where that step's own obligation is compiled, not restated here"))
+        "a journey performs its steps and asserts the flow's own claim; a capture declared on "
+        "the flow node itself names no response this scenario ever holds"))
     lines: list[str] = []
     observed = ""
     last_path = ""
+    produced_captures: set[str] = set()
     for index, step in enumerate(steps, start=1):
-        step_locators = node_index.get(str(step.get("ref", "")), {})
+        ref = str(step.get("ref", ""))
+        remaining_refs = [str(s.get("ref", "")) for s in steps[index - 1:]]
+        step_locators = node_index.get(ref, {})
         route = _route({"locators": step_locators})
         if route is None:
             bad_method = _invalid_method({"locators": step_locators})
@@ -3404,6 +3493,9 @@ def _http_journey(
                                 f"step {index} ({step.get('href')!r}) states no `method:`/`path:` "
                                 "for this journey to perform")
                             for oid in ids)
+            _decline_captures_by_node(remaining_refs, captures_by_node, gaps, captured, because=(
+                "this journey could not compile the node this step names, so it holds no "
+                "response to capture the field from"))
             return []
         method, path = route
         wants_body = method not in {"GET", "DELETE", "HEAD", "OPTIONS"}
@@ -3418,7 +3510,6 @@ def _http_journey(
             # a refusal arm merges to an empty list here — not "nothing declared" the way a step
             # that genuinely needs no body would read, so it is guarded the same as no body at
             # all rather than sent as `json_body={}`.
-            ref = str(step.get("ref", ""))
             node_rows = acts_by_node.get(ref, [])
             fields = None if (ref in acts_refused or not node_rows) else _http_body(node_rows)
             if fields is None:
@@ -3430,6 +3521,10 @@ def _http_journey(
                 gaps.extend(Gap(oid, "unarranged-request-body",
                                 f"step {index} is a {method} and the book carries no request body")
                             for oid in ids)
+                _decline_captures_by_node(remaining_refs, captures_by_node, gaps, captured,
+                                          because=("this journey could not build this step's "
+                                                    "request body, so it holds no response to "
+                                                    "capture the field from"))
                 return []
             body_kw = f", json_body={_lit_body(fields)}"
         observed = f"observed_{index}"
@@ -3440,6 +3535,29 @@ def _http_journey(
                             f"step {index}'s path still carries a template variable")
                         for oid in ids)
         last_path = path
+        for cap_oid, capture in captures_by_node.get(ref, []):
+            cname = capture.get("name")
+            if not cname:
+                continue
+            source_path = str(capture.get("from", ""))
+            if source_path.startswith("$"):
+                lines.append(
+                    f'    qa.capture_field({_lit(cname)}, {observed}.json(), '
+                    f'{_lit(str(_rooted(source_path)))})'
+                )
+                produced_captures.add(str(cname))
+                captured.add((cap_oid, str(cname)))
+            else:
+                because = ("names a UI locator, not a response field, and this builder holds a "
+                           "response")
+                lines.append(
+                    f"    # TODO(arrange): capture {cname!r} from {source_path!r} {because}")
+                captured.add((cap_oid, str(cname)))
+                gaps.append(Gap(
+                    cap_oid, "uncaptured-declaration",
+                    f"capture {str(cname)!r} from {source_path!r} is declared on this node and "
+                    f"{because}",
+                ))
     for obligation in obligations:
         oid = str(obligation["id"])
         assertions: list[str] = []
@@ -3452,6 +3570,18 @@ def _http_journey(
                         "left, so there is no response here this check is about")
                 lines.append(f"    # TODO(arrange): {note}")
                 gaps.append(Gap(oid, "uncompilable-claim", note))
+                whole = False
+                continue
+            row_resolved = True
+            for ref_found in references.find_references(json.dumps(row.get("args", {}))):
+                if isinstance(ref_found, references.CaptureRef) and not _resolved(
+                    ref_found, set(), produced_captures
+                ):
+                    gaps.append(Gap(oid, "unresolved-precondition",
+                                    f"a verify argument references {ref_found!r}, not resolvable "
+                                    "without running the plan"))
+                    row_resolved = False
+            if not row_resolved:
                 whole = False
                 continue
             operand, note, gap_kind = _operand(str(row.get("name")), observed)
