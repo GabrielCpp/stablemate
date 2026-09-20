@@ -3984,6 +3984,7 @@ def _check_ui(graph: Graph, f: list[Finding],
                 declared += 1
                 parsed = checks.parse_check(value)
                 if isinstance(parsed, checks.Refusal):
+                    node_keys = registry.declared_keys(node.type)
                     said: dict[str, Any] = dict(
                         message=f"{node.id}: `{key}:{index}` ({value}) {parsed.message}",
                         path=rel, line=node.line,
@@ -3993,12 +3994,11 @@ def _check_ui(graph: Graph, f: list[Finding],
                         # check under its own signature, and only a value whose check nobody
                         # can name gets the whole vocabulary. Re-deriving any of that here is
                         # how the message and the suggestion came to contradict each other.
-                        suggestion=parsed.bullet(key))
+                        suggestion=parsed.bullet(key, node_keys))
                     if parsed.kind == "misfiled-test-ref":
                         f.append(Finding("error", "misfiled-test-ref", **said,
                                          fixable=(key == "verify"
-                                                  and "tests" in registry.declared_keys(
-                                                      node.type)
+                                                  and "tests" in node_keys
                                                   and checks.relocatable_to_tests(value))))
                     else:
                         f.append(Finding("error", "unparsed-check", **said))

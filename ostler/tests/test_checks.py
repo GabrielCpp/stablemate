@@ -59,9 +59,9 @@ def test_list_arguments_round_trip() -> None:
     ("value", "fragment"),
     [
         ("Test_Service_Publish_ShouldConflict", "not a check call"),
-        # A test reference is the mistake this vocabulary replaced, so its refusal says where
-        # the reference belongs rather than only that a call was expected.
-        ("api/publish.go::Publish", "Put it on `tests:`"),
+        # A test reference is the mistake this vocabulary replaced, so its refusal says what
+        # the value is rather than only that a call was expected.
+        ("api/publish.go::Publish", "is a code/test reference, not a check"),
         ("a sentence about the manifest", "not a check call"),
         ("http_status()", "requires `code: int`"),
         ('http_status(409, reason="x")', "has no argument `reason`"),
@@ -505,9 +505,54 @@ def test_the_suggestion_cannot_contradict_the_message_it_travels_with() -> None:
         refused = checks.parse_check(value)
         assert isinstance(refused, checks.Refusal)
         assert refused.relocates_to == "tests"
-        assert "Put it on `tests:`" in refused.message
+        assert "Put it on `tests:`" not in refused.message
         assert refused.bullet("verify").startswith("- tests: ")
         assert "http_status(" not in refused.bullet("verify")
+
+
+def test_the_message_never_names_a_destination_key() -> None:
+    """`parse_check` sees only the value, never the node it sits in, so it cannot know which
+    key a relocated value may legally land on — that is a property of the container, not of
+    the value. The message states only what the value is and what belongs on `verify:`; the
+    proposed destination travels solely as `relocates_to`, for a caller that holds the node to
+    accept or override."""
+    refused = checks.parse_check("api/publish.go::Publish")
+    assert isinstance(refused, checks.Refusal)
+    assert "tests:" not in refused.message
+    assert "`ostler checks` lists the vocabulary" in refused.message
+
+
+def test_a_relocation_the_nodes_type_cannot_hold_falls_back_to_its_own_key() -> None:
+    """`screen` declares `verify:` and never `tests:` (`registry.declared_keys`), so a caller
+    that hands the node's own keys to `bullet` must not be offered `- tests: …`, a key `screen`
+    has no way to carry. Nor may the suggestion restate the offending value under `verify:`:
+    that is a no-op spelled as a remedy. With nowhere legal to move it, the value is simply not
+    a call, and the remedy is the vocabulary — the same bullet the `not-a-call` arm composes."""
+    refused = checks.parse_check("`e2e/dash_test.go::TestDash`")
+    assert isinstance(refused, checks.Refusal)
+    assert refused.kind == "misfiled-test-ref"
+    assert refused.relocates_to == "tests"
+
+    screen_keys = registry.declared_keys("screen")
+    assert "tests" not in screen_keys
+    offered = refused.bullet("verify", screen_keys)
+    assert offered.startswith("- verify: ")
+    assert "e2e/dash_test.go" not in offered
+    sentence = checks.parse_check("a sentence about the manifest")
+    assert isinstance(sentence, checks.Refusal)
+    assert offered == sentence.bullet("verify")
+
+
+def test_a_relocation_the_nodes_type_does_hold_is_offered() -> None:
+    """`concept` declares both `verify:` and `tests:`, so the same classification, handed
+    `concept`'s own keys, still proposes the move — unaffected by the fallback the case above
+    exercises."""
+    refused = checks.parse_check("`e2e/dash_test.go::TestDash`")
+    assert isinstance(refused, checks.Refusal)
+
+    concept_keys = registry.declared_keys("concept")
+    assert "tests" in concept_keys
+    assert refused.bullet("verify", concept_keys) == "- tests: e2e/dash_test.go::TestDash"
 
 
 def test_the_reference_page_prints_the_signatures_the_tool_prints() -> None:

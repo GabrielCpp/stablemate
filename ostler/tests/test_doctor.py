@@ -13,7 +13,7 @@ from ostler.model import load
 from ostler.qa import compile as compile_mod
 from ostler.qa.context import build_context
 
-from conftest import epic_md, story_md, write
+from conftest import epic_md, screen_md, story_md, write
 
 FOO_STORY = "docs/epics/epic-a/stories/01-foo/story.md"
 
@@ -923,6 +923,38 @@ def test_an_unparsed_check_gap_keeps_the_code_doctor_already_raises_for_that_bul
 
     assert (finding.severity, finding.code) == ("error", "unparsed-check")
     assert finding.ref == oid
+
+
+def test_a_misfiled_test_ref_on_a_type_with_no_tests_key_does_not_suggest_one(repo: Path):
+    """`screen` declares `verify:` and never `tests:` — the message must not send the author to
+    a key the type cannot hold, and the suggestion beside it must offer the check vocabulary
+    rather than either `- tests: …` or the offending value restated under its own key."""
+    write(repo / "docs/features/ui/dash.md", screen_md(
+        "dash", "Dash", entry=True,
+        body="\n- verify: `e2e/dash_test.go::TestDash`\n"))
+
+    report = doctor.run(load(repo))
+
+    finding = next(f for f in report.findings if f.code == "misfiled-test-ref")
+    assert "tests:" not in finding.message
+    assert finding.suggestion.startswith("- verify: ")
+    assert "e2e/dash_test.go" not in finding.suggestion
+    assert "http_status(" in finding.suggestion
+    assert finding.fixable is False
+
+
+def test_a_misfiled_test_ref_on_a_type_that_declares_tests_still_offers_it(repo: Path):
+    """`concept` declares both `verify:` and `tests:`, so the same finding on a `concept` page
+    keeps proposing the move — unaffected by the fallback the `screen` case above exercises."""
+    write(repo / "docs/features/concepts/widget.md", (
+        "---\ntype: concept\nslug: widget\ntitle: Widget\n---\n\n# Widget\n\n"
+        "- verify: `e2e/dash_test.go::TestDash`\n"))
+
+    report = doctor.run(load(repo))
+
+    finding = next(f for f in report.findings if f.code == "misfiled-test-ref")
+    assert finding.suggestion == "- tests: e2e/dash_test.go::TestDash"
+    assert finding.fixable is True
 
 
 def test_gap_findings_reports_a_compile_plan_gap_as_a_doctor_finding():

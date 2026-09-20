@@ -504,8 +504,22 @@ class Refusal:
     #: found on. Empty when the value stays put and only its spelling was wrong.
     relocates_to: str = ""
 
-    def bullet(self, key: str) -> str:
-        """The suggested replacement bullet for a value found under *key*."""
+    def bullet(self, key: str, declared: frozenset[str] | None = None) -> str:
+        """The suggested replacement bullet for a value found under *key*.
+
+        A refusal can classify a value as belonging under a different key, but it was handed
+        only the value — never the node — so it cannot know whether that key is one the node's
+        type actually declares. Naming a key the node provably cannot hold is a second defect
+        riding on the first, and only the caller, which does hold the node, can rule it out.
+        *declared* is that node's own keys, offered by a caller that has them. When the
+        proposed key is among them the move is offered; when it is not, this node has nowhere
+        legal to put the value, which is the `not-a-call` case reached by a different route —
+        so it gets that arm's remedy, the vocabulary. Restating the offending value under its
+        own key instead would spell a no-op as a suggestion, and would borrow the empty
+        `relocates_to`'s meaning, which is that the value stays and only its spelling is wrong.
+        """
+        if declared is not None and self.relocates_to and self.relocates_to not in declared:
+            return f"- {key}: {_vocabulary()}"
         return f"- {self.relocates_to or key}: {self.form}"
 
 
@@ -667,9 +681,8 @@ def _not_a_call(text: str) -> Refusal:
         return Refusal(
             "misfiled-test-ref",
             f"`{text}` is a code/test reference, not a check — a test id says which code "
-            f"ran, not what was observed. Put it on `tests:` and declare the observation "
-            f"here as a call, e.g. `visible(locator=…)`; `ostler checks` lists the "
-            f"vocabulary",
+            f"ran, not what was observed. Declare the observation here as a call, e.g. "
+            f"`visible(locator=…)`; `ostler checks` lists the vocabulary",
             text, relocates_to="tests")
     return Refusal("not-a-call",
                    f"`{text}` is not a check call — expected `name(arg=…)`; see "
