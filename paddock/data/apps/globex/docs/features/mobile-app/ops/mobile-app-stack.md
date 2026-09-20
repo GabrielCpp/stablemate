@@ -23,6 +23,7 @@ runbook's own job is only to bring mobile-app up.
 - health-path:
 - identity:
 - bundle-id: com.globex.mobile
+- launch-screen: [widget-list](../gui/screens/widget-list.md)
 - reuse:
 - fresh:
 - boot-timeout:
