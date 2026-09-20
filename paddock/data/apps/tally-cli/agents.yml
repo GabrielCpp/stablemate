@@ -58,9 +58,10 @@ services:
 # driver, the same as it would be for a compiled binary: `python3 -m tally`, over a process
 # boundary, reading an exit code and two streams.
 #
-# `qa.tool` runs at the repo root and cannot be given a working directory, which is why the
-# CLI takes `--file`: a scenario names its own ledger under the evidence directory instead of
-# racing every other scenario for `tally.json` in one shared cwd.
+# A compiled `qa.tool(...).run(...)` call always carries a per-scenario `cwd`, so `tally.json`
+# already lands in one scenario's own directory rather than racing every other scenario for it
+# in a shared cwd — the CLI still takes `--file` so a scenario can name a *second* ledger
+# beside the default one, in that same directory.
 #
 # The definition of `python3` lives in the pinned task config under `paddock/data/configs/`,
 # not on the machine — a frozen fixture that resolved a tool through `~/.config` would

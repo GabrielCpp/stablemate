@@ -23,10 +23,10 @@ this fixture to the commands that need it is their own `fixture:` bullet, not a 
 
 - kind: seed
 - run: sh -c 'printf "who,what,amount_cents,spent_on\nbob,dinner,4600,2024-01-02\ncarol,taxi,2500,2024-01-03\n" > expenses.csv'
-- working-directory: .
+- working-directory: scenario:
 
 ### confirm-it-landed
 
 - kind: verify
 - run: test -f expenses.csv
-- working-directory: .
+- working-directory: scenario:

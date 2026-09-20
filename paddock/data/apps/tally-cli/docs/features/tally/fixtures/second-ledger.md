@@ -19,10 +19,10 @@ alone — without it, "unchanged" has nothing to check.
 
 - kind: seed
 - run: sh -c 'printf "{\"currency\": \"USD\", \"entries\": []}" > other.json'
-- working-directory: .
+- working-directory: scenario:
 
 ### confirm-it-landed
 
 - kind: verify
 - run: test -f other.json
-- working-directory: .
+- working-directory: scenario:
