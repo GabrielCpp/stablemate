@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import cast
 
 import pytest
 
 from paddock import loader
 from paddock.registry import TaskError
+from paddock.runner import Run
 
 GOOD = '''
 """A task that does nothing, twice."""
@@ -100,3 +102,31 @@ def test_an_unknown_task_names_the_ones_that_exist(data_dir: Path) -> None:
     write(data_dir, "demo", GOOD)
     with pytest.raises(TaskError, match="known: demo"):
         loader.load_named(data_dir, "missing")
+
+
+def test_a_sibling_import_inside_a_step_body_resolves_when_the_step_runs(data_dir: Path) -> None:
+    """A step that imports its sibling lazily, not at module top level, still resolves.
+
+    `python tasks/thing.py` would resolve this import whenever the function ran, not only
+    while the module was being defined, so the loader must too.
+    """
+    (data_dir / "tasks" / "_sibling.py").write_text(
+        'VALUE = "from the sibling"\n', encoding="utf-8",
+    )
+    body = '''
+"""A task whose step imports its sibling from inside the function body."""
+from paddock import Score, step, task
+
+task(name="lazy-import", seed="acme", config="configs/test.toml")
+
+@step()
+def uses_sibling(run):
+    import _sibling
+    return _sibling.VALUE
+
+def score(run):
+    return Score(headline="fine")
+'''
+    path = write(data_dir, "lazy_import", body)
+    loaded = loader.load_path(path)
+    assert loaded.steps[0].fn(cast(Run, None)) == "from the sibling"

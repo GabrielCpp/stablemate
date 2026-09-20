@@ -5,18 +5,18 @@ are data belonging to the repo being benchmarked, not code shipped with paddock,
 data directory is selectable with `--data-dir`. So they are loaded by path, each under a
 private module name, with the registry reset around the import.
 
-The module gets its own directory on `sys.path` for the duration of the import — the one
-narrow case the sys.path rule allows, because this stands in for the interpreter: a task
-that grows a `_helpers.py` beside it imports it exactly as `python tasks/thing.py` would,
-and would otherwise resolve in a hand-run and fail only here.
+The module's own directory goes on `sys.path` for the life of the process — the one narrow
+case the sys.path rule allows, because this stands in for the interpreter: a task that
+grows a `_helpers.py` beside it imports it exactly as `python tasks/thing.py` would,
+including from inside a function body that runs later, not only at module import time. The
+directory is added once, idempotently, and never removed — a `finally`-scoped remove would
+put it back exactly where a step's lazy sibling import breaks again.
 """
 
 from __future__ import annotations
 
 import importlib.util
 import sys
-from collections.abc import Iterator
-from contextlib import contextmanager
 from pathlib import Path
 from types import ModuleType
 
@@ -24,14 +24,10 @@ from paddock import paths
 from paddock.registry import REGISTRY, ScoreFn, Task, TaskError, collect
 
 
-@contextmanager
-def _script_dir_on_path(directory: Path) -> Iterator[None]:
-    saved = sys.path[:]
-    sys.path.insert(0, str(directory))
-    try:
-        yield
-    finally:
-        sys.path[:] = saved
+def _put_script_dir_on_path(directory: Path) -> None:
+    entry = str(directory)
+    if entry not in sys.path:
+        sys.path.insert(0, entry)
 
 
 def task_paths(data_dir: Path) -> list[Path]:
@@ -51,8 +47,8 @@ def load_path(path: Path) -> Task:
     REGISTRY.reset()
     sys.modules[module_name] = module
     try:
-        with _script_dir_on_path(path.parent):
-            spec.loader.exec_module(module)
+        _put_script_dir_on_path(path.parent)
+        spec.loader.exec_module(module)
         score: ScoreFn | None = getattr(module, "score", None)
         if score is not None and not callable(score):
             raise TaskError(f"{path}: `score` is defined but is not callable")
