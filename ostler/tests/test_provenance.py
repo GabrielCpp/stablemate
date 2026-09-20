@@ -8,7 +8,7 @@ import pytest
 from ostler import Ostler, crud, query as query_mod
 from ostler.cli import main
 from ostler.model import load
-from ostler.provenance import commit_story, node_provenance, story_provenance
+from ostler.provenance import commit_story, node_provenance, story_for_node, story_provenance
 
 def _git(root: Path, *args: str) -> str:
     result = subprocess.run(
@@ -146,6 +146,78 @@ def test_node_provenance_reads_reverse_story_roles_and_commits(tmp_path: Path) -
     assert result["stories"][0]["story"]["id"] == story_id
     assert result["stories"][0]["roles"] == ["direct", "contract"]
     assert len(result["stories"][0]["commits"]) == 2
+
+
+def _link_story_to_node(docs: Path, slug: str, node_id: str) -> None:
+    graph = load(docs)
+    found = graph.find_story(slug)
+    assert found is not None
+    story_md = found[1].story_md
+    assert story_md is not None
+    story_md.write_text(
+        story_md.read_text(encoding="utf-8") + f"\n[See]({node_id})\n", encoding="utf-8"
+    )
+
+
+def test_node_provenance_reports_a_story_that_links_the_node_with_no_packet(
+    tmp_path: Path,
+) -> None:
+    docs, source, story_id, node_id = _fixture(tmp_path)
+    spec = docs / Ostler(docs).spec_path(story_id)
+    (spec / "qa-okf-context.json").unlink()
+    _link_story_to_node(docs, "create-invoice", node_id)
+
+    result = node_provenance(load(docs), node_id, {"api-service": source})[0]
+
+    assert len(result["stories"]) == 1
+    row = result["stories"][0]
+    assert row["story"]["id"] == story_id
+    assert row["roles"] == ["book"]
+    assert row["contextPath"] == ""
+    assert row["commits"] == []
+
+
+def test_node_provenance_merges_a_story_found_by_both_packet_and_book_link(
+    tmp_path: Path,
+) -> None:
+    docs, source, story_id, node_id = _fixture(tmp_path)
+    _link_story_to_node(docs, "create-invoice", node_id)
+
+    result = node_provenance(load(docs), node_id, {"api-service": source})[0]
+
+    assert len(result["stories"]) == 1
+    row = result["stories"][0]
+    assert row["story"]["id"] == story_id
+    assert row["roles"] == ["direct", "contract", "book"]
+
+
+def test_node_provenance_warns_when_no_context_packet_exists_anywhere(
+    tmp_path: Path,
+) -> None:
+    docs, source, story_id, node_id = _fixture(tmp_path)
+    spec = docs / Ostler(docs).spec_path(story_id)
+    (spec / "qa-okf-context.json").unlink()
+
+    result = node_provenance(load(docs), node_id, {"api-service": source})[0]
+
+    graph = load(docs)
+    specs_root = graph.doc_roots["specs"].relative_to(graph.root).as_posix()
+    assert any(specs_root in warning for warning in result["warnings"])
+
+
+def test_story_for_node_warns_when_the_node_declares_no_code_targets(
+    tmp_path: Path,
+) -> None:
+    docs, source, _story_id, node_id = _fixture(tmp_path)
+    (docs / "docs/features/billing/create.md").write_text(
+        "---\ntype: concept\nslug: create\ntitle: Create invoice\n---\n"
+        "# Create invoice\n\nNo code targets here.\n", encoding="utf-8",
+    )
+
+    result = story_for_node(load(docs), node_id, {"api-service": source})[0]
+
+    assert result["node"]["codeRefs"] == []
+    assert any("code:" in warning for warning in result["warnings"])
 
 
 def test_node_provenance_survives_a_node_removed_from_the_current_graph(

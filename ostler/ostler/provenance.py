@@ -231,14 +231,53 @@ def _node_row(graph: Graph, node: UINode) -> dict[str, Any]:
     }
 
 
+def _story_key(story_row: dict[str, Any]) -> str:
+    return str(story_row.get("id") or story_row.get("slug") or "")
+
+
+def _book_stories_citing(graph: Graph, node_id: str) -> dict[str, dict[str, Any]]:
+    """Every story whose own ``doc_refs`` resolve to this node, keyed by story identity.
+
+    Inverts the same relation :func:`ostler.query._surfaces_referenced` reads forward: a
+    story cites a node by linking to it, and a link resolves through
+    :meth:`Graph.resolve_doc_ref` exactly as a reader's click would. A resolved identity is
+    matched against the node's own id, not against the raw href, so an origin-relative link,
+    a root-anchored one, and the id copied verbatim out of the book all land on the same row.
+    """
+    found: dict[str, dict[str, Any]] = {}
+    for epic in graph.epics:
+        for story in epic.stories:
+            for href in story.doc_refs:
+                ident = graph.resolve_doc_ref(href, origin=story.story_md)
+                if not ident:
+                    continue
+                cited = graph.find_ui_node(ident)
+                if cited is None or cited.id != node_id:
+                    continue
+                row = _story_row(epic.name, story)
+                found[_story_key(row)] = row
+    return found
+
+
 def node_provenance(
     graph: Graph, node_ref: str, checkouts: dict[str, Path]
 ) -> list[dict[str, Any]]:
     node = graph.find_ui_node(node_ref)
     node_id = node.id if node is not None else node_ref
-    stories: list[dict[str, Any]] = []
+    warnings: list[str] = []
+    if node is None:
+        warnings.append(
+            f"{node_ref!r} resolved to no node in the book, so only the raw id was matched"
+        )
+    stories_by_key: dict[str, dict[str, Any]] = {}
     specs_root = graph.doc_roots["specs"]
-    for context_path in sorted(specs_root.glob(f"*/{CONTEXT_FILE}")):
+    context_paths = sorted(specs_root.glob(f"*/{CONTEXT_FILE}"))
+    if not context_paths:
+        warnings.append(
+            f"no {CONTEXT_FILE} was found under {specs_root.relative_to(graph.root).as_posix()},"
+            " so only the book's own links were read"
+        )
+    for context_path in context_paths:
         try:
             packet = json.loads(context_path.read_text(encoding="utf-8"))
         except (OSError, ValueError):
@@ -263,16 +302,35 @@ def node_provenance(
         identity: dict[str, Any] = raw_identity if isinstance(raw_identity, dict) else {}
         story_ref = str(identity.get("id") or identity.get("slug") or context_path.parent.name)
         provenance = story_provenance(graph, story_ref, checkouts)
-        stories.append(
-            {
-                "story": provenance[0]["story"] if provenance else identity,
-                "roles": roles,
-                "reasons": direct[0].get("reasons", []) if direct else [],
-                "commits": provenance[0]["commits"] if provenance else [],
-                "contextPath": context_path.relative_to(graph.root).as_posix(),
-            }
-        )
-    return [{"node": _node_row(graph, node) if node else {"id": node_id}, "stories": stories}]
+        story_row = provenance[0]["story"] if provenance else identity
+        stories_by_key[_story_key(story_row)] = {
+            "story": story_row,
+            "roles": roles,
+            "reasons": direct[0].get("reasons", []) if direct else [],
+            "commits": provenance[0]["commits"] if provenance else [],
+            "contextPath": context_path.relative_to(graph.root).as_posix(),
+        }
+    if node is not None:
+        for key, book_row in _book_stories_citing(graph, node_id).items():
+            existing = stories_by_key.get(key)
+            if existing is None:
+                stories_by_key[key] = {
+                    "story": book_row,
+                    "roles": ["book"],
+                    "reasons": [],
+                    "commits": [],
+                    "contextPath": "",
+                }
+            elif "book" not in existing["roles"]:
+                existing["roles"] = [*existing["roles"], "book"]
+    stories = [stories_by_key[key] for key in sorted(stories_by_key)]
+    return [
+        {
+            "node": _node_row(graph, node) if node else {"id": node_id},
+            "stories": stories,
+            "warnings": warnings,
+        }
+    ]
 
 
 def checkout_for(repository: str, checkouts: dict[str, Path],
@@ -334,6 +392,10 @@ def story_for_node(
         return []
     row = _node_row(graph, node)
     warnings: list[str] = []
+    if not row["codeRefs"]:
+        warnings.append(
+            f"node {row['id']!r} declares no code: targets, so there is no commit history to read"
+        )
     by_checkout: dict[Path, dict[str, list[str]]] = {}
     for ref in row["codeRefs"]:
         try:
