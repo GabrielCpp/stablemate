@@ -171,9 +171,9 @@ TEST_SUBJECT = "test-subject"
 #: turn can make, it is building the snapshot/out-of-band capability itself, which is
 #: deliberately out of scope for this drain.
 #: `needs-target-backend` and `needs-multi-target-runtime` are the same shape one level up:
-#: D1's dispatch table names a target for the step (mobile/maestro, in-process) that this
-#: compiler builds no path for, or names a *different* target for each step of one journey,
-#: which `@scenario(target=...)` binds one of. Both say the book is already right and the
+#: a journey whose steps all share one target this compiler builds no *journey* path for
+#: (`cli`), or names a *different* target for each step of one journey, which
+#: `@scenario(target=...)` binds one of. Both say the book is already right and the
 #: harness is what is missing, so sending them to a repair turn would aim an agent at a
 #: correct page and ask it to change something.
 NON_ACTIONABLE_CODES = frozenset({
