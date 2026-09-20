@@ -31,12 +31,17 @@ two files restating the same facts one bullet down. Round 3 found the fact state
 time, on pages the runbook perturbation never touches at all: the web-app node's own
 `entry-url:`, the `local` environment's `services:` block, that same node's `persistence:`
 bullet (whose wrapped second line names the up-command), and the first `run:` bullet in a
-fixture that brings the stack up as a precondition. `BRING_UP_BULLETS` below is the full
-table this round arrived at — see its docstring for exactly why each row is there and,
-just as load-bearingly, why `18101` and two of `widgets-on-hand.md`'s three `run:` bullets
-are deliberately left standing. Do not narrow this table back down without rereading every
-page under `docs/` for the string `18102` and the phrase `docker compose up`, the way this
-round did.
+fixture that brings the stack up as a precondition. Round 4 found it stated a fourth way,
+which no sweep for its spelling can see: all three bring-up pages cite `compose.yml` in a
+`- code:` bullet, and that is the file port 18102 and the up-command live in. A citation
+is a route, and in an OKF book routing a reader to a fact and stating it are the same
+claim. `BRING_UP_BULLETS` below is the full
+table these rounds arrived at — see its docstring for exactly why each row is there and,
+just as load-bearingly, why `18101`, two of `widgets-on-hand.md`'s three `run:` bullets and
+the mobile runbook's own `code:` bullet are deliberately left standing. Do not narrow this
+table back down without rereading every page under `docs/` for the string `18102` and the
+phrase `docker compose up`, *and* opening every `- code:` bullet's cited file to see
+whether it carries either, the way these rounds did.
 
 `journey` has no `absence` arm, on purpose. An OKF book states a journey twice by
 construction: once as a flow page (`start:` and `steps:`), and again as the interaction
@@ -159,9 +164,13 @@ LINES = (
                 "but carries no value: not just the two runbooks' `run:` and `entry-url:` "
                 "(and the `health:`/`produces:`/`stop:` bullets that restate the same "
                 "facts), but the web-app node's own `entry-url:`, the `local` "
-                "environment's `services:` block, its `persistence:` bullet, and the "
-                "first `run:` bullet in `widgets-on-hand.md`. Nowhere left in the book "
-                "states port 18102 or the up-command, so a correct answer plainly says "
+                "environment's `services:` block, its `persistence:` bullet, the "
+                "first `run:` bullet in `widgets-on-hand.md`, and every `code:` bullet "
+                "that cited `compose.yml` or `app/web-app/main.go` — the two files both "
+                "facts actually live in, so leaving those citations standing "
+                "would route a reader straight to them. Nowhere left in the book "
+                "states port 18102 or the up-command, and nothing left in it cites a "
+                "file that does, so a correct answer plainly says "
                 "the book does not state how to bring the stack up or which URL to load, "
                 "rather than reading `compose.yml` or `app/` to find out. (Port 18101 — "
                 "api-service's own address, a different fact from the one this line asks "
@@ -277,8 +286,36 @@ def _strip_list_bullet(text: str, path: Path, key: str) -> str:
     return stripped
 
 
-#: Every bullet, across every page, that could hand an agent the web-app landing URL or
-#: the up-command without reading either runbook. `(file, key, kind)`; `kind` picks
+def _strip_code_bullet_citing(
+    text: str, path: Path, cited: str, *, occurrences: int
+) -> str:
+    """Empty every `- code: `<cited>`` bullet on a page, keyed on the file it cites.
+
+    `BRING_UP_BULLETS` cannot express this: its unit is `(file, key)`, and a page's
+    `- code:` bullets do not all cite the same file — `web-app/http/web-app.md` has four,
+    and only the two naming `app/web-app/main.go` reach the port. Emptying the other two
+    would strip citations to files carrying neither fact, against this module's own
+    discipline of leaving a non-routing fact standing. So the match is on the cited path,
+    and a `::symbol` suffix counts as citing the file it narrows: a symbol suffix narrows
+    what is cited, not what a reader who opens that file can see.
+
+    `occurrences` is the exact count expected, the same refusal the other strippers make.
+    """
+    pattern = re.compile(r"^- code: `([^`]+)`.*$", re.MULTILINE)
+    matches = [m for m in pattern.finditer(text) if m.group(1).split("::", 1)[0] == cited]
+    if len(matches) != occurrences:
+        raise TrialError(
+            f"expected exactly {occurrences} `- code:` bullet(s) citing {cited} in "
+            f"{path}, found {len(matches)}"
+        )
+    for match in reversed(matches):
+        text = text[: match.start()] + "- code:" + text[match.end() :]
+    return text
+
+
+#: Every bullet, across every page, that states the web-app landing URL or the
+#: up-command, or that routes a reader to a file which does. `(file, key, kind)`;
+#: `kind` picks
 #: `_strip_scalar_bullet` (`"scalar"`), the first-match-only variant of it (`"scalar-first"`
 #: — `widgets-on-hand.md` alone, see below), or `_strip_list_bullet` (`"list"`).
 #:
@@ -302,6 +339,13 @@ def _strip_list_bullet(text: str, path: Path, key: str) -> str:
 #:     from the one this line tests (the web-app landing screen and how to reach it), so
 #:     they are left standing on every arm, deliberately, and `18101` is never asserted
 #:     absent anywhere in this module.
+#:
+#: Round 4 found the fact reachable a fourth way, which no sweep for its spelling can
+#: see, and which this table cannot express: a `- code:` bullet routes a reader to a
+#: file, and `compose.yml` and `app/web-app/main.go` are where both facts live. That
+#: half of the sweep is `CODE_BULLET_ROUTES` below, keyed on the path a bullet cites
+#: rather than on its key, because a page's `- code:` bullets do not all cite the same
+#: file and only the ones that reach the fact should go.
 BRING_UP_BULLETS: tuple[tuple[str, str, str], ...] = (
     ("features/api-service/ops/api-service-stack.md", "run", "scalar"),
     ("features/api-service/ops/api-service-stack.md", "entry-url", "scalar"),
@@ -319,6 +363,30 @@ BRING_UP_BULLETS: tuple[tuple[str, str, str], ...] = (
     ("features/web-app/fixtures/widgets-on-hand.md", "run", "scalar-first"),
 )
 
+#: The other half of the sweep: every `- code:` bullet whose cited file carries port 18102
+#: or the up-command, as `(file, cited-path, occurrences)`. A citation is a route, and in
+#: an OKF book routing a reader to a fact and stating it are the same claim — so with
+#: these standing, an agent that opens `compose.yml` has followed the book rather than
+#: gone around it, and this arm's premise is false.
+#:
+#: These five are the whole set: every one of the book's 40 `- code:` bullets was resolved
+#: and each of its 23 distinct cited files opened, rather than grepped for by name. Three
+#: cite `compose.yml`, where both facts are written plainly; two — on one page — cite
+#: `app/web-app/main.go`, where the port is the `-addr` flag's default, which is why no
+#: sweep over `docs/` for the spelling `18102` ever saw it.
+#:
+#: `mobile-app/ops/mobile-app-stack.md`'s `- code:` bullet, and `web-app.md`'s other two
+#: (`static/config.js`, `static/styles.css`), are deliberately absent: their files carry
+#: neither fact, so they route to neither, and emptying them would perturb more of the
+#: book than this line asks about.
+CODE_BULLET_ROUTES: tuple[tuple[str, str, int], ...] = (
+    ("features/api-service/ops/api-service-stack.md", "compose.yml", 1),
+    ("features/api-service/ops/local.md", "compose.yml", 1),
+    ("features/web-app/ops/web-app-stack.md", "compose.yml", 1),
+    ("features/web-app/http/web-app.md", "app/web-app/main.go", 2),
+)
+
+
 #: How many `- run:` bullets `widgets-on-hand.md` has in total — `_strip_scalar_bullet`'s
 #: `occurrences` for the one `"scalar-first"` row above, so a fourth `run:` bullet added to
 #: that fixture later fails this arm loudly instead of silently emptying the wrong one.
@@ -326,7 +394,7 @@ WIDGETS_ON_HAND_RUN_BULLETS = 3
 
 
 def _apply_bring_up_absence(docs_root: Path) -> dict[str, Any]:
-    """Empty every bullet in `BRING_UP_BULLETS`, across however many files it spans."""
+    """Empty every bullet in `BRING_UP_BULLETS` and `CODE_BULLET_ROUTES`."""
     by_path: dict[str, list[tuple[str, str]]] = {}
     for rel, key, kind in BRING_UP_BULLETS:
         by_path.setdefault(rel, []).append((key, kind))
@@ -348,7 +416,18 @@ def _apply_bring_up_absence(docs_root: Path) -> dict[str, Any]:
                 raise TrialError(f"unknown bullet kind {kind!r} for {key!r} in {path}")
         path.write_text(text, encoding="utf-8")
         touched.append(f"docs/{rel}")
-    return {"emptied_bullets": [key for _, key, _ in BRING_UP_BULLETS], "files": sorted(touched)}
+    for rel, cited, occurrences in CODE_BULLET_ROUTES:
+        path = docs_root / rel
+        text = _strip_code_bullet_citing(
+            path.read_text(encoding="utf-8"), path, cited, occurrences=occurrences
+        )
+        path.write_text(text, encoding="utf-8")
+        touched.append(f"docs/{rel}")
+    return {
+        "emptied_bullets": [key for _, key, _ in BRING_UP_BULLETS],
+        "emptied_citations": sorted({cited for _, cited, _ in CODE_BULLET_ROUTES}),
+        "files": sorted(set(touched)),
+    }
 
 
 def _perturb(docs_root: Path, line: Line, arm: str) -> tuple[dict[str, Any], str]:

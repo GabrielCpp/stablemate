@@ -12,6 +12,7 @@ from __future__ import annotations
 import contextlib
 import importlib.util
 import json
+import re
 import sys
 from collections.abc import Iterator
 from pathlib import Path
@@ -201,6 +202,42 @@ def test_bring_up_absence_states_neither_18102_nor_the_up_command_anywhere_in_th
         "address, a different fact from the one this line tests"
     )
 
+
+def test_bring_up_absence_leaves_no_code_bullet_routing_to_18102_or_the_up_command(
+    tmp_path: Path,
+) -> None:
+    """The round 4 defect, and the half of the sweep above that reads the book's routes
+    rather than its spelling. The test above asserts no page *states* the two facts; it
+    passed for three rounds while all three bring-up pages still carried
+    `- code: `compose.yml``, which is exactly where both facts live. A citation is a
+    route, and in an OKF book routing a reader to a fact and stating it are the same
+    claim — so an agent that opened `compose.yml` on this arm had followed the book, not
+    gone around it, and the arm's premise was false. This walks every surviving `- code:`
+    bullet and opens the file it cites, so the next fact that hides one hop away fails
+    here instead of being scored as a shortcut."""
+    run = _run(tmp_path)
+    TASK.arrange(run)
+    line = TASK.LINES_BY_NAME["bring-up"]
+    tree = TASK._tree_dir(run, TASK._slug(line, "absence"))
+
+    bullet = re.compile(r"^- code: `([^`]+)`", re.MULTILINE)
+    resolved = 0
+    for page in sorted((tree / "docs").rglob("*.md")):
+        for match in bullet.finditer(page.read_text(encoding="utf-8")):
+            cited = tree / match.group(1).split("::", 1)[0]
+            if not cited.is_file():
+                continue
+            resolved += 1
+            text = cited.read_text(encoding="utf-8", errors="ignore")
+            assert "18102" not in text, f"{page} cites {cited.name}, which states 18102"
+            assert "docker compose up" not in text, (
+                f"{page} cites {cited.name}, which states the up-command"
+            )
+
+    assert resolved, (
+        "no `- code:` bullet resolved to a file in the tree — this sweep would pass "
+        "vacuously, so it is not yet checking anything"
+    )
 
 # ── _appraise: pure, no agent involved ───────────────────────────────────────────────────
 
