@@ -53,6 +53,16 @@ and needed.
 Excludes a field asserted by presence rather than value, which passes on the default the defect
 also produces.
 
+**`matches=` is a regex matched against the value's JSON spelling, not its Python spelling.**
+The book documents a JSON document, so the harness renders the resolved value with
+`json.dumps` before running the pattern against it — `None` reads `null`, `True`/`False` read
+`true`/`false`, and a list or dict element quotes with `"`, not `'`. A `str` value is the one
+exemption: it is matched as itself, unquoted, because `json.dumps` would wrap it in `"..."` and
+silently fail every plain-string and substring pattern the book already has. A pattern spelling
+`None`/`True`/`False` as a bare token can only have been written against `str`/`repr` and is
+permanently unsatisfiable; `matches-repr-spelling` is the doctor code for that specific, provable
+case (see [doctor-codes.md](doctor-codes.md)).
+
 ### `unchanged(subject*=<str>, except_fields=<str[]>)`
 Excludes collateral damage outside the field under test — the defect a diff that masks the whole
 object before comparing cannot see.
