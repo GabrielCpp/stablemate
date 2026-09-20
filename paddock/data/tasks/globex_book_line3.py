@@ -342,19 +342,23 @@ def ask(run: Run) -> None:
     this probe puts one question and reads one answer, with no build, test or repair loop
     for a workflow to drive, and every judging call in this tree already reaches the
     backend the same way. The tree copied by `arrange` has no `app/` in it, so `cwd` cannot lead the agent
-    to source regardless of what it tries.
+    to source regardless of what it tries. Persisted after every trial, like
+    `globex_book_disagree.ask`: a trial whose `answer` is already non-empty is skipped, so
+    an interrupted round resumes rather than re-paying for trials that already finished.
     """
     matrix = _read_matrix(run)
     if not matrix:
         raise TrialError("arrange recorded no trials")
     asker = _asker(run)
     for trial in matrix:
+        if trial["answer"]:
+            continue
         tree = _tree_dir(run, trial["id"])
         prompt = gf.render(QUESTION_TEMPLATE, node=f"docs/{trial['node']}")
         trial["answer"] = gf.call_agent(
             asker, prompt, node_id=f"ask_{trial['id']}", repo=tree,
         )
-    _write_matrix(run, matrix)
+        _write_matrix(run, matrix)
 
 
 def _appraise(text: str, repo: Path) -> dict[str, Any]:
@@ -388,7 +392,10 @@ def judge(run: Run) -> None:
     Graded over a `shutil.copytree` scratch copy of the trial's tree, never the tree
     `ask` used directly — the read-only-guard lesson `_okfbuild.judge_book` already
     states: the agent CLI a judge reads through writes session transcripts into whatever
-    tree it is pointed at, and `score` must find the stage untouched.
+    tree it is pointed at, and `score` must find the stage untouched. Persisted after
+    every trial, like `globex_book_disagree.judge`: a trial whose `reason` is already
+    non-empty is skipped, so an interrupted round resumes rather than re-judging trials
+    that were already graded.
     """
     matrix = _read_matrix(run)
     if not matrix:
@@ -400,6 +407,8 @@ def judge(run: Run) -> None:
     judge_agent = _judge_agent(run)
     scale = "\n".join(f"  {n} {name} — {d}" for n, (name, d) in LEVELS.items())
     for trial in matrix:
+        if trial["reason"]:
+            continue
         tree = _tree_dir(run, trial["id"])
         scratch = run.workdir(f"judge-{trial['id']}") / "repo"
         shutil.copytree(tree, scratch, symlinks=True)
@@ -413,7 +422,7 @@ def judge(run: Run) -> None:
             judge_agent, prompt, node_id=f"judge_{trial['id']}", repo=scratch,
         )
         trial.update(_appraise(text, scratch))
-    _write_matrix(run, matrix)
+        _write_matrix(run, matrix)
 
 
 def score(run: Run) -> Score:
