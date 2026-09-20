@@ -989,7 +989,7 @@ UI_TYPES: tuple[UINodeType, ...] = (
             BulletKey("launch"),                  # the bring-up command
             BulletKey("entry-url", value_kind="url"),  # base URL the app serves on
             BulletKey("health-path"),             # readiness path under `entry-url` (default `/`)
-            BulletKey("working-directory"),       # cwd for `launch`, relative to the repo root
+            BulletKey("working-directory"),       # cwd for `launch`, relative to the subject's root
             BulletKey("identity"),                # substring of the health body proving it is ours
             BulletKey("stop"),                    # teardown recipe
             BulletKey("boot-timeout"),            # seconds; ceiling on bring-up
@@ -1360,7 +1360,7 @@ UI_TYPES: tuple[UINodeType, ...] = (
         bullet_keys=(
             BulletKey("kind", required=True),   # prepare|service|seed|run|health|verify|drive
             BulletKey("run"),                   # the exact bounded command
-            BulletKey("working-directory"),     # cwd, when not the repo root
+            BulletKey("working-directory"),     # cwd, when not the subject's root
             BulletKey("timeout"),               # seconds; this step's own ceiling
             BulletKey("env", nested=True),      # env-var wiring this step needs
             BulletKey("health"),                # service/health steps: the real readiness signal
