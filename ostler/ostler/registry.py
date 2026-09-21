@@ -1356,7 +1356,7 @@ UI_TYPES: tuple[UINodeType, ...] = (
     UINodeType(
         name="step", kind="section", heading="Steps",
         bullet_keys=(
-            BulletKey("kind", required=True),   # prepare|service|seed|run|health|verify|drive
+            BulletKey("kind", required=True),   # prepare|service|seed|run|health|verify|drive|teardown
             BulletKey("run"),                   # the exact bounded command
             BulletKey("working-directory"),     # cwd, when not the subject's root
             BulletKey("timeout"),               # seconds; this step's own ceiling

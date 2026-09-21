@@ -961,3 +961,21 @@ def test_cmd_stack_up_outcome_is_unchanged_for_success_and_failure(
     assert len(outcome.data["stacks"]) == 2
     assert outcome.data["stacks"][0]["ready"] == "yes"
     assert outcome.data["stacks"][1]["ready"] == "no"
+
+
+def test_a_teardown_step_is_legal_and_is_not_a_bring_up_phase(tmp_path: Path) -> None:
+    """A book documenting a whole lifecycle has to file its shutdown targets somewhere.
+
+    Filed as `prepare` they run before the launch, so the bring-up destroys what it needs.
+    `kind:` is required on a step, so leaving it off is not the author's way out.
+    """
+    (tmp_path / ".git").mkdir()
+    make_runbook(tmp_path, "---\ntype: runbook\n---\n\n# QA\n\n- driver: web\n"
+                 "- entry-url: http://localhost:1\n\n## Steps\n\n"
+                 "### build\n\n- kind: prepare\n- run: make\n\n"
+                 "### serve\n\n- kind: service\n- run: ./serve.sh\n\n"
+                 "### wipe\n\n- kind: teardown\n- run: docker compose down -v\n")
+    assert "runbook-bad-kind" not in codes(tmp_path)
+    manifest = rb.load_stack(graph=model.load(tmp_path))
+    assert [step["run"] for step in manifest["prepare"]] == ["make"]
+    assert "docker compose down -v" not in repr(manifest)

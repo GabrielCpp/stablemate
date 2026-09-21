@@ -161,6 +161,7 @@ A `### <id>` under the runbook's `## Steps`. Document order is execution order.
 | `seed` | `seed` | after the stack answers: fixtures, accounts, sample data |
 | `health` | `health` | a readiness gate beyond the HTTP probe |
 | `run` / `verify` / `drive` | — | exercise the system once it is up. **Not** bring-up phases: that is the QA plan's job, and the reader skips them |
+| `teardown` | — | stop a stack, remove a container, drop a volume. Also not a bring-up phase, and the reader skips it. A book documenting a whole lifecycle files its shutdown and maintenance targets here, because filed as `prepare` they run *before* the launch and destroy what the launch needs |
 
 ### 4.2 The other bullets
 

@@ -10,7 +10,7 @@ The declaration belongs where every other executable fact about this system alre
 `ostler.registry` has carried an operational profile since the UI profile was written —
 `runbook` (context `ops`, a required `## Steps` section, `driver`/`environment`/`surfaces`)
 and `environment` (`services`, `backing`, `local-only`) — and the `step` section type's
-`kind:` vocabulary (`prepare|service|seed|run|health|verify|drive`) is a superset of the
+`kind:` vocabulary (`prepare|service|seed|run|health|verify|drive|teardown`) is a superset of the
 phases `stack.ensure_stack` runs, down to `run:` and `working-directory:` being the same
 two key names `stack._run_step` reads. It had no reader. This is that reader.
 
@@ -51,8 +51,9 @@ from ostler.qa import stack as stack_mod
 from ostler.qa.outcome import QaOutcome
 
 #: `step.kind` values that are a phase of the durable stack, mapped to their manifest key.
-#: `run`/`verify`/`drive` are runbook steps that are *not* stack phases — they exercise the
-#: system once it is up, which is the QA plan's job, not the bring-up's — and are skipped.
+#: `run`/`verify`/`drive`/`teardown` are runbook steps that are *not* stack phases — they act
+#: on the system once it is up, which is the QA plan's job or an operator's, not the
+#: bring-up's — and are skipped.
 STEP_PHASES: dict[str, str] = {
     "prepare": "prepare",
     "service": "launch",
@@ -60,7 +61,15 @@ STEP_PHASES: dict[str, str] = {
     "health": "health",
 }
 #: Every `kind:` the profile recognizes; the doctor rejects anything else.
-STEP_KINDS: frozenset[str] = frozenset(STEP_PHASES) | {"run", "verify", "drive"}
+#:
+#: `teardown` is here because a book that documents a whole lifecycle has to file its
+#: shutdown and volume-removal targets somewhere, and every other word was worse. `kind:` is
+#: required on a step, so leaving it off is not available; `run` is what the QA plan drives,
+#: which a command that deletes a database is not; and `prepare` is the one an author
+#: actually reaches for, which puts `docker down -v` in the phase that runs *before* the
+#: launch. A runbook whose `prepare` list ended in a teardown target tore down what its own
+#: earlier steps had built, and the bring-up then failed against nothing.
+STEP_KINDS: frozenset[str] = frozenset(STEP_PHASES) | {"run", "verify", "drive", "teardown"}
 #: The adoption policies `stack.ensure_stack` understands.
 REUSE_POLICIES: frozenset[str] = frozenset({"if-fresh", "always", "never"})
 
