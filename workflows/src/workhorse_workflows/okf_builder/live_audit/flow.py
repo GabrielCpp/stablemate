@@ -205,7 +205,7 @@ def _strict_mode_violation_gaps(
 def _book_context_or_note(
     graph: Any, docs_root: Path, repo_root: Path
 ) -> tuple[dict[str, Any], str]:
-    """`book_context` against *repo_root*, or ("", note) when the layout cannot support it.
+    """`book_context` against *repo_root*, or ({}, note) when the layout cannot support it.
 
     `book_context` diffs one repo's git history against its own empty tree; a docs tree
     that does not live inside `repo_root` — the split docs-repo/checkout layout a
@@ -219,9 +219,10 @@ def _book_context_or_note(
         )
     except ValueError:
         return {}, (
-            "this book's docs root is not inside its checkout's git history (a separate "
-            "docs repo) — compiling a plan from the book itself is not yet supported for "
-            "that layout; author a qa_plan.py for this spec dir instead"
+            f"this book's docs root {features_root_of(graph)} is not inside the checkout "
+            f"{repo_root} whose git history a plan would be diffed against — compiling a "
+            "plan from the book itself is not yet supported for that layout; author a "
+            "qa_plan.py for this spec dir instead"
         )
     return book_context(repo_root, features_root=features_root_rel), ""
 
