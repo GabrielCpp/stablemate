@@ -495,6 +495,59 @@ def test_ensure_stack_stops_retrying_a_health_gate_at_the_documented_window(monk
     assert attempts == ["health[0]"] * 4   # bounded, and the second gate never ran
 
 
+def test_a_stack_with_no_entry_url_gates_against_its_bring_up_ceiling(monkeypatch) -> None:
+    """Without an `entry_url` the gates *are* the readiness proof, so they get `boot_timeout`.
+
+    Boot returns after one poll interval on that path, having observed only that the launch
+    has not exited. A launch that builds containers is minutes from ready at that moment, and
+    the 120s slack window was measured for gates converging *after* a proof. The bring-up
+    ceiling the manifest already states is the one stated fact about the launch's cost.
+    """
+    attempts: list[str] = []
+
+    def run_step(_step, _cwd, _to, _logger, *, label):
+        attempts.append(label)
+        return False, "still building"
+
+    monkeypatch.setattr(stack, "health_probe", lambda *_a, **_kw: "nothing is serving")
+    monkeypatch.setattr(stack, "_run_step", run_step)
+    monkeypatch.setattr(
+        stack, "boot_app",
+        lambda *_a, **_kw: {"boot_ok": "yes", "entry_url": "", "app_pid": "9", "app_pgid": "9"},
+    )
+
+    out = stack.ensure_stack(
+        {"launch": "make up", "boot_timeout": "22", "health": ["make stack-health"]},
+        logger=LOG, clock=FakeClock(),
+    )
+    assert out["ready"] == "no"
+    # A 22s window at 5s between attempts: t=0, 5, 10, 15, 20, and the expiry check.
+    assert attempts == ["health[0]"] * 6
+
+
+def test_a_declared_health_timeout_outranks_the_bring_up_ceiling(monkeypatch) -> None:
+    attempts: list[str] = []
+
+    def run_step(_step, _cwd, _to, _logger, *, label):
+        attempts.append(label)
+        return False, "still building"
+
+    monkeypatch.setattr(stack, "health_probe", lambda *_a, **_kw: "nothing is serving")
+    monkeypatch.setattr(stack, "_run_step", run_step)
+    monkeypatch.setattr(
+        stack, "boot_app",
+        lambda *_a, **_kw: {"boot_ok": "yes", "entry_url": "", "app_pid": "9", "app_pgid": "9"},
+    )
+
+    out = stack.ensure_stack(
+        {"launch": "make up", "boot_timeout": "600", "health_timeout": "12",
+         "health": ["make stack-health"]},
+        logger=LOG, clock=FakeClock(),
+    )
+    assert out["ready"] == "no"
+    assert attempts == ["health[0]"] * 4
+
+
 def test_ensure_stack_reports_a_failed_launch(monkeypatch) -> None:
     monkeypatch.setattr(stack, "health_probe", lambda *_a, **_kw: "nothing is serving")
     monkeypatch.setattr(
