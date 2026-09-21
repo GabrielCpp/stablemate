@@ -13,7 +13,7 @@ Section type. A `### <id>` under the runbook's `## Steps` heading. Its id is `pa
 
 | key | required | what it does |
 | --- | --- | --- |
-| `kind` | **yes** | `prepare` \| `service` \| `seed` \| `run` \| `health` \| `verify` \| `drive` |
+| `kind` | **yes** | `prepare` \| `service` \| `seed` \| `run` \| `health` \| `verify` \| `drive` \| `teardown` |
 | `code` | no | link, **owns** its file — the implementation this step exercises |
 | `run` | no | the exact bounded command |
 | `working-directory` | no | cwd, when not the repo root — or `scenario:`, on a **fixture** step only, for that scenario's own directory |

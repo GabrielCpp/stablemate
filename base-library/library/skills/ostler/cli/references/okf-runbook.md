@@ -77,6 +77,9 @@ title: QA stack
 `prepare` (before launch) · `service` (**exactly one**, the command that starts it) · `seed`
 (after it answers) · `health` (a readiness gate beyond the HTTP probe). `run`/`verify`/`drive`
 are not bring-up phases — that is the QA plan's job, and the reader skips them.
+`teardown` (stop a stack, drop a volume) is not a phase either. A lifecycle book files its
+shutdown targets there, because filed as `prepare` they run before the launch and destroy
+what it needs.
 
 A step's `env:` children are ordinary shell assignments prefixed onto the command. Use them for
 wiring — a port, a profile, a fixture path. A **credential** goes in the runbook's `secrets:`
