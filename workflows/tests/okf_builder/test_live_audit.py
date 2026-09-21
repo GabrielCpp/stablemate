@@ -421,7 +421,6 @@ title: App server
 
 - launch: `python -m app.service`
 - entry-url: http://localhost:8000
-- walkthrough: true
 """
 
 SERVER_PATH = "docs/features/app/server.md"

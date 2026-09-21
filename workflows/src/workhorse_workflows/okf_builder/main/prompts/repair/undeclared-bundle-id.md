@@ -1,10 +1,13 @@
 ### `undeclared-bundle-id` — this mobile surface states no package a Maestro flow can open
 
 `ostler qa compile-plan` reads a mobile target's `appId:` off the book, per surface,
-rather than from a placeholder applied to every surface alike — the `runbook` node whose
-`surfaces:` bullet points into this surface, via that runbook's own `bundle-id:`. This
-obligation's surface states none, so the compiler cannot address a real installed package
-and drops the obligation as a gap instead of guessing.
+rather than from a placeholder applied to every surface alike — from the `runbook` nodes
+whose `surfaces:` bullet points into this surface, taking the first non-empty
+`bundle-id:` among them in driver order (`web`, `mobile`, `http`, `cli`, `artifact`,
+`iac`, `none`, then a runbook with no driver, ties broken by node id). So one runbook
+stating the id is enough, and several runbooks covering the surface is not itself a
+problem. This obligation's surface states none anywhere, so the compiler cannot address a
+real installed package and drops the obligation as a gap instead of guessing.
 
 **This finding means the obligation has a check or act and the compiler has no package to
 launch it in.** If the bullet the finding names carries no `verify:`/`does:` of its own,
@@ -25,7 +28,8 @@ package/bundle identifier the app is really built and installed under — an
 clean and then every Maestro flow against it fails to launch, which is a worse failure
 than the gap this finding already is.
 
-If several runbooks cover this surface and disagree on the bundle id, mark the one that
-actually exercises it `walkthrough: true` rather than leaving the disagreement standing —
-the same remedy `conflicting-surface-driver`/`undeclared-walkthrough-runbook` already ask
-for.
+State it on the one runbook that actually stands the app up, not on every runbook that
+happens to name the surface. A lint runbook and an IaC runbook can both cover a mobile
+surface without ever installing the app, and a bundle id copied onto them is a claim the
+book cannot back — the resolution only needs the first one, and the runbook whose
+`## Steps` install and launch the package is the one that knows the string.

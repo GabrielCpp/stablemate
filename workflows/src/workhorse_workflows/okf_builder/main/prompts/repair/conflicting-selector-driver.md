@@ -22,10 +22,15 @@ To repair it, look at which side is actually wrong:
    the other platform's version of the same screen. Rewrite it in the representation this
    surface's driver reads: CSS for `web`, a `scheme=value` address (or the control's visible
    text) for `mobile`.
-2. **The surface's `driver:` itself is wrong** — a `runbook` marked `walkthrough: true` states
-   the wrong driver for what it actually stands up. Fix `driver:` on that runbook instead;
-   once it names the platform this surface really is, the selector this finding already names
-   the right platform is held to may turn out to have been correct all along.
+2. **The surface's `driver:` itself is wrong** — the runbook the engine resolves the driver
+   from states the wrong one for what it actually stands up. A surface's driver is the first
+   non-empty `driver:` among the runbooks whose `surfaces:` names it, ranked in the order
+   `web`, `mobile`, `http`, `cli`, `artifact`, `iac`, `none` (a runbook with no or an unknown
+   driver ranks last) and tie-broken by node id — so the runbook to read is the highest-ranked
+   one covering this surface, and several runbooks covering it with different drivers is
+   normal, not a defect. Fix `driver:` on that runbook instead; once it names the platform
+   this surface really is, the selector this finding holds to the wrong platform's grammar may
+   turn out to have been correct all along.
 3. **The surface renders nothing to query at all** — `cli`, `iac`, `artifact`, or `none` —
    and still carries a `component`/`screen` node with a `selector:`. No driver here ever
    addresses a control, so the fix is to remove the `component` node (and the `screen` it sits

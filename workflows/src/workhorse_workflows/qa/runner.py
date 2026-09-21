@@ -165,7 +165,7 @@ def ensure_stack(
         return StackStatus(
             ready="none",
             notes=("The book describes a served surface but declares no stack — no stack "
-                   "`runbook` node and no `walkthrough: true` server — so QA would run "
+                   "`runbook` node and no `server` node — so QA would run "
                    "against nothing. Author the runbook that brings it up; `ostler doctor` "
                    "reports this as `runbook-missing`."),
         )

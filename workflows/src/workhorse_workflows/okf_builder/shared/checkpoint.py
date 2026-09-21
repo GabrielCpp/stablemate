@@ -144,10 +144,10 @@ def _related_of(finding: dict) -> list[str]:
     """The book locations a *group* finding is about beyond its own `path` — or `[]`.
 
     Doctor stamps `related` on a finding whose remedy is only complete when every member is
-    edited — `same-as-disagreement` over a family, `conflicting-surface-driver` over a
-    surface. Reading the field rather than the id list in the message is the point: the
-    membership is data, and a consumer that had to recover it from a sentence would be
-    matching prose that exists to be read by a person.
+    edited — `same-as-disagreement` over a family of nodes that must agree. Reading the
+    field rather than the id list in the message is the point: the membership is data, and a
+    consumer that had to recover it from a sentence would be matching prose that exists to be
+    read by a person.
     """
     related = finding.get("related") or []
     return [str(member) for member in related] if isinstance(related, list) else []

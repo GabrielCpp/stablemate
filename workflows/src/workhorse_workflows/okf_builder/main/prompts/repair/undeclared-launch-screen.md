@@ -3,11 +3,13 @@
 A Maestro flow always opens with a bare `- launchApp`, which lands on whatever screen the app
 happens to launch on — not on whatever screen the obligation being compiled is about. The
 book states which screen that is with the `runbook`'s own `launch-screen:`, resolved by
-`reach.surface_launch_screen` the same `walkthrough: true` way `bundle-id:`/`driver:` already
-are. This surface states none — absent on every runbook covering it, or several runbooks
-disagreeing with none (or two) marked `walkthrough: true` — so the compiler cannot know what
-screen a cold launch actually opens on and drops every mobile obligation on this surface as a
-gap instead of guessing.
+`reach.surface_launch_screen` the same way `bundle-id:`/`driver:` already are: the first
+non-empty value among the runbooks whose `surfaces:` names this surface, in driver order
+(`web`, `mobile`, `http`, `cli`, `artifact`, `iac`, `none`, then a runbook with no driver,
+ties broken by node id). One runbook stating it is enough. This surface states it nowhere —
+absent on every runbook covering it — so the compiler cannot know what screen a cold launch
+actually opens on and drops every mobile obligation on this surface as a gap instead of
+guessing.
 
 **This finding means the obligation has a check or act and the compiler has nothing to say a
 cold launch opens where the obligation needs.** If the bullet the finding names carries no
@@ -30,9 +32,11 @@ A guessed screen compiles clean and then either hides a real defect (an obligati
 wrong screen wrongly passes) or wrongly gaps a screen the app really does open on, both worse
 than the gap this finding already is.
 
-If several runbooks cover this surface and disagree on the launch screen, mark the one that
-actually exercises it `walkthrough: true` rather than leaving the disagreement standing — the
-same remedy `conflicting-surface-driver`/`undeclared-walkthrough-runbook` already ask for.
+State it on the one runbook that actually stands the app up, not on every runbook that
+happens to name the surface. A runbook that lints or provisions a mobile surface never cold
+launches it, and a `launch-screen:` copied onto it is a claim the book cannot back — the
+resolution only needs the first one, and the runbook whose `## Steps` launch the app is the
+one that has seen which screen comes up.
 
 **Warm relaunch, an auth gate, onboarding, or a deep link are not this bullet's job.**
 `launch-screen:` states only the cold-launch case; every other starting condition is a flow's
