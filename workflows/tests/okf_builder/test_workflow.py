@@ -1052,6 +1052,64 @@ def test_a_code_verdict_files_a_seed_and_records_the_defect_on_the_nodes(
     assert head.count("- known-defect:") == 1 and tail.count("- known-defect:") == 1, text
 
 
+class _CapturedHandoff(Exception):
+    """Raised in place of actually driving `LiveAudit`, carrying what it was called with.
+
+    `prepare` names the service's source subtree `<checkout>/<service>` (`source_root`),
+    distinct from the checkout itself (`repo_root`) the moment a book holds more than one
+    surface directory — `booked`'s fixture already shapes the repo this way (the git root
+    is `.../acme`, the source subtree `.../acme/acme`). `LiveAudit`'s own `repo_dir` means
+    the checkout, not a source subtree (`audit_one_spec`'s docstring), so a handoff that
+    passes `source_root` there resolves `find_repo_root` on a directory with no `.git`,
+    and `features_root_of(...).relative_to(repo_root)` raises inside the sub-flow with a
+    misleading "separate docs repo" complaint. This intercepts the handoff before any of
+    that runs and pins what `semantic_audit` actually sent.
+    """
+
+    def __init__(self, kwargs: dict[str, Any]) -> None:
+        super().__init__("captured live-audit handoff")
+        self.kwargs = kwargs
+
+
+def _ctx(env: RunEnv) -> dict[str, Any]:
+    checkpoint = parse_checkpoint((env.run_dir / ArtifactWriter.CHECKPOINT_FILE).read_text())
+    assert isinstance(checkpoint, PyflowCheckpoint)
+    return checkpoint.ctx
+
+
+def test_semantic_audit_hands_live_audit_the_checkout_not_the_source_subtree(
+    booked: Path, tmp_path: Path
+) -> None:
+    """`semantic_audit` must call `handoff(LiveAudit, docs_path=repo_root, repo_dir=repo_root)`,
+    not `repo_dir=source_root` — the regression that blocked every multi-surface book's
+    audit with a "separate docs repo" note the checkout never earned.
+
+    `booked` already gives `repo_root` and `source_root` different values (a nested
+    `<checkout>/<service>` subtree), which is what makes this test two-sided: passing
+    `source_root` for `repo_dir` and passing `repo_root` both satisfy an assertion that
+    only checks the two are equal to each other, so the fixture asserting they *differ*
+    is the guard against a fixture that would pass either way.
+    """
+    from workhorse_workflows.okf_builder.main import flow as main_flow
+
+    def _capture(**kwargs: Any) -> Any:
+        raise _CapturedHandoff(kwargs)
+
+    env = _env(tmp_path)
+    agent = _Agent(booked)
+    with (
+        patch.object(main_flow, "LiveAudit", _capture),
+        pytest.raises(_CapturedHandoff) as excinfo,
+    ):
+        _drive(env, agent)
+
+    ctx = _ctx(env)
+    assert ctx["repo_root"] != ctx["source_root"], ctx
+    kwargs = excinfo.value.kwargs
+    assert kwargs["repo_dir"] == ctx["repo_root"], kwargs
+    assert kwargs["docs_path"] == ctx["repo_root"], kwargs
+
+
 def test_a_story_verdict_with_no_story_parks_with_the_chain_on_the_gate(
     dirty: Path, tmp_path: Path
 ) -> None:

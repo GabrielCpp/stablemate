@@ -1166,7 +1166,7 @@ class OkfBuilder(Workflow):
         recorded result. That is what makes looping back through this same state cheap
         rather than a full re-run.
         """
-        result = self.handoff(LiveAudit, docs_path=self.ctx.repo_root, repo_dir=self.ctx.source_root)
+        result = self.handoff(LiveAudit, docs_path=self.ctx.repo_root, repo_dir=self.ctx.repo_root)
         reports = [LiveAuditReport.model_validate(r) for r in result["reports"]]
         # `report.gaps` is checked independently of `report.status` and `report.scenarios`:
         # a book compiled from its own obligations (no authored plan) can come back with
