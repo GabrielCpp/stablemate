@@ -114,10 +114,10 @@ MECHANISMS = ("live", "fixture")
 class DriverSpec:
     """A driver's declared observation channels — a capability, not a bare name.
 
-    Duplicated in `ostler.qa.compile`, which this file cannot import: this harness is
-    stdlib-only and runs under the *target project's* interpreter, where `ostler` is not
-    installed (see `DEFAULT_VIEWPORT` in `ostler.qa.drivers` for the same pattern). The two
-    declarations have to agree by hand.
+    This is the single declaration. `ostler.qa.compile` cannot import this file — this
+    harness is stdlib-only and runs under the *target project's* interpreter, where `ostler`
+    is not installed (see `DEFAULT_VIEWPORT` in `ostler.qa.drivers` for the same pattern) —
+    so it reads `DRIVERS` by path instead, with `ostler.qa.harness_host.load_harness_module`.
     """
     name: str
     observes: frozenset[str]

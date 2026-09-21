@@ -35,6 +35,7 @@ from ostler.checks import CHECK_BY_NAME
 from ostler.checks import _rooted
 from ostler.markdown import extract_refs
 from ostler.qa import references
+from ostler.qa.harness_host import load_harness_module
 from ostler.routes import is_screen_name_shaped, literal_route, why_unreadable
 from ostler.qa.outcome import QaOutcome
 from ostler.vet import placement as placement_mod
@@ -237,25 +238,33 @@ Compilation = Plan | Refusal
 class DriverSpec:
     """A driver's declared observation channels — the other half of the observability relation.
 
-    Duplicated in `ostler.qa.harness.ostler_qa`, which cannot import from here: that harness
+    Read off `ostler.qa.harness.ostler_qa`, which cannot be imported from here: that harness
     is stdlib-only and runs under the *target project's* interpreter, where `ostler` is not
-    installed (see `ostler.qa.drivers.DEFAULT_VIEWPORT` for the same pattern). The two
-    declarations have to agree by hand.
+    installed (see `ostler.qa.drivers.DEFAULT_VIEWPORT` for the same pattern). This module
+    loads it by path instead, with `load_harness_module`, the way `ostler.qa.plan` reads
+    `DRIVERS`/`DRIVER_NAMES` off the same module.
     """
     name: str
     observes: frozenset[str]
 
 
+#: Read off the harness rather than restated — a driver the harness stops declaring raises a
+#: `KeyError` here at import, instead of a second spelling quietly drifting from the first.
+_harness = load_harness_module("ostler_qa")
+_OBSERVES: dict[str, frozenset[str]] = {
+    driver.name: frozenset(driver.observes) for driver in _harness.DRIVERS
+}
+
 #: The python driver drives HTTP calls directly: it can read the response line/headers, a
 #: decoded body, and a subject already held by the scenario. It cannot hold a rendered page.
-PYTHON = DriverSpec("python", frozenset({"response", "body", "subject"}))
+PYTHON = DriverSpec("python", _OBSERVES["python"])
 
 #: The Playwright driver renders a real page and can also observe the response/body of any
 #: navigation or fetch it drives (`page.expect_response`) — but it never holds a bare
 #: python-held "subject" value the way the python driver does. `"keyboard"` is here and
 #: nowhere else: it is not a read of the page but a real keypress dispatched at it
 #: (`page.keyboard.press`), and only this driver can fire one.
-PLAYWRIGHT = DriverSpec("playwright", frozenset({"page", "response", "body", "keyboard"}))
+PLAYWRIGHT = DriverSpec("playwright", _OBSERVES["playwright"])
 
 #: Maestro drives a mobile UI: it can see the rendered screen and read back a subject value
 #: from it, but has no notion of an HTTP response or body, and no keyboard to dispatch a
@@ -264,7 +273,7 @@ PLAYWRIGHT = DriverSpec("playwright", frozenset({"page", "response", "body", "ke
 #: call against the run that executed it (see `ostler.qa.harness.ostler_qa` for the runtime);
 #: its `"subject"` claims — `exit_status` against the flow run's own result — go through
 #: `_operand` like every other driver's do, with no command of their own to embed.
-MAESTRO = DriverSpec("maestro", frozenset({"page", "subject"}))
+MAESTRO = DriverSpec("maestro", _OBSERVES["maestro"])
 
 
 def _observes(name: str | None) -> str | None:
