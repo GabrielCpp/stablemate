@@ -287,7 +287,7 @@ def audit_one_spec(
     graph = model.load(docs_root)
     own_repository = book_repository(features_root_of(graph))
 
-    stack = ensure_stack(logger, docs_path, repo_dir)
+    stack = ensure_stack(logger, docs_path, repo_dir, near=str(docs_root / spec_dir))
     if stack.ready in ("none", "no"):
         return LiveAuditReport(spec_dir=spec_dir, status="blocked", stack=stack, notes=stack.notes)
 

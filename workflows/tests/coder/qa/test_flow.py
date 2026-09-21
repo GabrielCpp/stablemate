@@ -1698,15 +1698,17 @@ def test_a_refusal_says_what_the_book_declares_not_to_author_one(
     assert "qa-stack" in status.notes or "second-stack" in status.notes
 
 
-def test_a_shared_environment_refusal_names_the_environment_not_a_missing_runbook(
+def test_a_shared_environment_brings_both_runbooks_up_together(
     docs: Path,
     write: Callable[[Path, str], Path],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Two stack runbooks bound to one `environment:` node have a manifest each, not none.
 
-    `select_stack` chooses both; `load_stack` still refuses, because it hands back a
-    single manifest and a caller here would rather refuse than pick one at random. The
-    note has to say that the environment is shared, not that nothing was authored.
+    `select_stack` chooses both; `load_stacks` hands back one manifest per runbook. This
+    runner used to refuse rather than pick one at random — it no longer has to pick: both
+    manifests come up, in document order, the same policy `ostler qa stack up` already
+    used for a book like this one.
     """
     log = logging.getLogger("test")
     write(
@@ -1725,11 +1727,19 @@ def test_a_shared_environment_refusal_names_the_environment_not_a_missing_runboo
     )
     _stack_runbook(docs, write, name="second-stack", port=2222, env_href="local")
 
+    calls: list[str] = []
+
+    def _up(manifest: dict[str, Any], *, repo_root: str, logger: logging.Logger) -> dict[str, Any]:
+        calls.append(manifest["source"])
+        return {"ready": "yes", "entry_url": manifest.get("entry_url", "http://x")}
+
+    monkeypatch.setattr(qa_stack, "ensure_stack", _up)
+
     status = qa_nodes.ensure_stack(log, str(docs))
 
-    assert status.ready == "none", status
-    assert "Author the runbook" not in status.notes
-    assert "local" in status.notes
+    assert status.ready == "yes", status
+    assert len(calls) == 2, calls
+    assert "(2 services)" in status.notes, status.notes
 
 
 def test_a_book_that_serves_nothing_runs_qa_without_a_stack(

@@ -21,8 +21,9 @@ import logging
 import subprocess
 from pathlib import Path
 
-from ostler import Ostler, model
-from ostler.qa import runbook, stack
+from ostler import Ostler, graph as graph_mod, model, path as path_mod
+from ostler.model import Graph, UINode
+from ostler.qa import runbook
 
 from workhorse_workflows.coder.shared.schemas.qa import QaPlanRun, QaStatus, StackStatus
 from workhorse_workflows.kit import find_docs_root
@@ -43,33 +44,107 @@ RUN_STATUSES: dict[str, QaStatus] = {
 SECRET_MINT_TIMEOUT_S = 60.0
 
 
+def _entry_result(
+    results: list[dict],
+    runbooks: tuple[UINode, ...],
+    near: str,
+    graph: Graph,
+) -> dict:
+    """Of a successful bring-up, the result the caller actually needs to drive.
+
+    With one manifest there is only one answer. With several, `near` — the spec under
+    audit — says which surface the caller is about to drive, and the manifest whose
+    runbook sits in that same surface is the one whose `entry_url` (and process handles)
+    the caller wants; every other manifest came up only because the environment needs it
+    serving too. Falls back to the last result when `near` is absent or names no surface
+    among the runbooks, the same "last one" a single-manifest caller always got.
+    """
+    if near and len(results) > 1:
+        near_path = Path(near)
+        features_root = path_mod.features_root(graph)
+        near_abs = near_path if near_path.is_absolute() else graph.root / near_path
+        target_surface = graph_mod.surface_of(near_abs, features_root)
+        if target_surface:
+            for result, node in zip(results, runbooks, strict=False):
+                if graph_mod.surface_of(node.path, features_root) == target_surface:
+                    return result
+    return results[-1]
+
+
+def _merge_secrets(manifests: list[dict]) -> tuple[dict[str, str], str]:
+    """Every manifest's mint recipes in one namespace, or the reason there cannot be one.
+
+    A QA run substitutes secrets by bare name into one process environment, so two stack
+    runbooks that mint different recipes under one name are asking for two values of a
+    single variable and only one of them can be live. Neither is more right than the
+    other, so this refuses rather than picking: a run that silently took the first would
+    drive the second service with the first service's credential and fail somewhere with
+    no mention of a secret.
+
+    The refusal is a debt, not the fix. A name is unique only within the scope that
+    issues it, and here two issuing scopes share one flat run namespace — the vocabulary
+    has no way to say *whose* secret a name is. It goes when a secret reference can name
+    its service; until then this is the honest answer, and it fires only on a book that
+    declares the collision.
+    """
+    secrets: dict[str, str] = {}
+    sources: dict[str, str] = {}
+    for manifest in manifests:
+        source = manifest.get("source", "?")
+        for name, recipe in (manifest.get("secrets") or {}).items():
+            if name in secrets and secrets[name] != recipe:
+                return {}, (
+                    f"The stack declares secret {name!r} twice with different mint "
+                    f"recipes: {sources[name]} and {source}. A QA run substitutes "
+                    "secrets by name into one environment, so it cannot hold both. "
+                    "Give them distinct names, or declare one recipe both services use.")
+            secrets[name] = recipe
+            sources.setdefault(name, source)
+    return secrets, ""
+
+
 def ensure_stack(
     logger: logging.Logger,
     docs_path: str = "",
     repo_dir: str = "",
+    near: str = "",
 ) -> StackStatus:
     """Bring the durable QA stack up (or adopt one already serving) before the runner.
 
     A long-running stack has to start *outside* any agent turn, or the turn's teardown kills
-    it mid-build. The lifecycle is `ostler.qa.stack.ensure_stack` and the recipe is
-    `ostler.qa.runbook.load_stack`, which reads it off the book's `runbook` node — this
+    it mid-build. The lifecycle is `ostler.qa.runbook.bring_up_stacks` (which owns the
+    one-at-a-time, stop-at-the-first-failure bring-up policy) and the recipe is
+    `ostler.qa.runbook.load_stacks`, which reads it off the book's `runbook` nodes — this
     function is only the outcome's translator.
 
-    An empty manifest is two different answers, split by what the book describes. `none`
-    means the book serves something but declares no way to bring it up, and unlike the
-    `skip` it replaces it is not a pass: a repo that never authored a runbook used to run
-    QA against nothing and say so only in a log line, which is how one story spent an
+    `near` is the filesystem path of the spec under audit. It is passed straight through to
+    `load_stacks`, which uses it only to narrow an *ambiguous* selection (several stack
+    runbooks across several environments) to the one environment `near`'s surface belongs
+    to; it plays no part once a selection has already resolved. This function additionally
+    uses it, on a successful multi-manifest bring-up, to pick which manifest's `entry_url`
+    to report — see `_entry_result`.
+
+    An empty manifest list is two different answers, split by what the book describes.
+    `none` means the book serves something but declares no way to bring it up, and unlike
+    the `skip` it replaces it is not a pass: a repo that never authored a runbook used to
+    run QA against nothing and say so only in a log line, which is how one story spent an
     entire run's budget discovering it. `unneeded` means the book serves nothing — the
     same `has_served_surface` test the doctor's `runbook-missing` gates on — so the empty
     manifest is the repo's documented topology, not a gap. Collapsing the two was how an
     artifact-only repo got told, every lap, to author a runbook its own doctor said it
     did not need: the setup fixer could not comply, the operator gate could not clear it,
     and the story escalated forever.
+
+    A book with several stack runbooks bound to *one* environment used to be a third
+    refusal here — this runner would not pick which one to skip. It no longer refuses:
+    `load_stacks` hands back one manifest per runbook and they come up together, in
+    document order, the same policy `ostler qa stack up` already used.
     """
     root = find_docs_root(docs_path, repo_dir)
     graph = model.load(root)
-    manifest = runbook.load_stack(root, graph=graph, logger=logger)
-    if not manifest:
+    manifests, selection = runbook.load_stacks(
+        graph, near=Path(near) if near else None, logger=logger)
+    if not manifests:
         if not runbook.has_served_surface(graph):
             return StackStatus(
                 ready="unneeded",
@@ -77,7 +152,6 @@ def ensure_stack(
                        "stack is its documented topology. QA scenarios invoke the repo's "
                        "commands directly; there is nothing to bring up first."),
             )
-        selection = runbook.select_stack(graph)
         if selection.reason == "ambiguous":
             return StackStatus(
                 ready="none",
@@ -88,15 +162,6 @@ def ensure_stack(
                        "system to a shared `environment:` node, or say which one to bring "
                        "up — there is no missing runbook to author here."),
             )
-        if len(selection.runbooks) > 1:
-            ids = ", ".join(node.id for node in selection.runbooks)
-            return StackStatus(
-                ready="none",
-                notes=(f"The book declares {len(selection.runbooks)} stack runbooks bound "
-                       f"to one environment ({selection.environment}): {ids}. This runner "
-                       "brings up a single manifest and refuses to pick which one to skip "
-                       "— there is no missing runbook to author here."),
-            )
         return StackStatus(
             ready="none",
             notes=("The book describes a served surface but declares no stack — no stack "
@@ -105,22 +170,34 @@ def ensure_stack(
                    "reports this as `runbook-missing`."),
         )
 
-    result = stack.ensure_stack(manifest, repo_root=str(root), logger=logger)
+    results = runbook.bring_up_stacks(manifests, repo_root=str(root), logger=logger)
+    last = results[-1]
+    if last.get("ready") == "yes":
+        chosen = _entry_result(results, selection.runbooks, near, graph)
+        common = {
+            "app_pid": chosen.get("app_pid", ""),
+            "app_pgid": chosen.get("app_pgid", ""),
+            "entry_url": chosen.get("entry_url", ""),
+            "failed_step": chosen.get("failed_step", ""),
+        }
+        how = "adopted" if chosen.get("adopted") == "yes" else "brought up"
+        where = ", ".join(r.get("entry_url") or "(no entry url)" for r in results)
+        plural = "" if len(results) == 1 else f" ({len(results)} services)"
+        return StackStatus(
+            ready="yes", notes=f"Stack {how} and healthy at {where}{plural}.", **common)
+
     common = {
-        "app_pid": result.get("app_pid", ""),
-        "app_pgid": result.get("app_pgid", ""),
-        "entry_url": result.get("entry_url", ""),
-        "failed_step": result.get("failed_step", ""),
+        "app_pid": last.get("app_pid", ""),
+        "app_pgid": last.get("app_pgid", ""),
+        "entry_url": last.get("entry_url", ""),
+        "failed_step": last.get("failed_step", ""),
     }
-    if result["ready"] == "yes":
-        how = "adopted" if result.get("adopted") == "yes" else "brought up"
-        where = result.get("entry_url") or "(no url)"
-        return StackStatus(ready="yes", notes=f"Stack {how} and healthy at {where}.", **common)
-    step = result.get("failed_step", "unknown")
+    step = last.get("failed_step", "unknown")
     # The step's own message goes in the notes, because the notes are what the setup
     # fixer is briefed with: told only *which* step failed, it re-derives the failure
     # from scratch — an expensive turn spent rediscovering a line the stack already had.
-    error = (result.get("error") or "").strip()
+    error = (last.get("error") or "").strip()
+    manifest = last.get("manifest") or {}
     return StackStatus(
         ready="no",
         notes=(
@@ -216,8 +293,14 @@ def run_qa_plan(
     """
     docs_root = find_docs_root(docs_path, repo_dir)
     plan = plan_file if plan_file is not None else str(Path(spec_dir) / QA_PLAN_FILE)
-    manifest = runbook.load_stack(docs_root, logger=logger)
-    minted, error = _mint_qa_secrets(manifest.get("secrets") or {}, docs_root, logger)
+    docs_graph = model.load(docs_root)
+    near = str(docs_root / spec_dir) if spec_dir else ""
+    manifests, _selection = runbook.load_stacks(
+        docs_graph, near=Path(near) if near else None, logger=logger)
+    secrets, collision = _merge_secrets(manifests)
+    if collision:
+        return QaPlanRun(status="blocked", notes=collision)
+    minted, error = _mint_qa_secrets(secrets, docs_root, logger)
     if error:
         logger.warning("QA secret refresh failed: %s", error)
         return QaPlanRun(status="blocked", notes=f"QA secret refresh failed: {error}")
