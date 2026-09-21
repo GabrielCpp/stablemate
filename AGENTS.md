@@ -153,7 +153,7 @@ redundant one, and a finding from either is a finding.
 
 ---
 
-# Commit and push
+# Commit
 
 Land the work that is finished right now. Not the session's whole diff — the
 concern that just became complete.
@@ -187,8 +187,7 @@ Run the repo's gate, not just the test you were staring at:
 make lint          # ruff + ty + basedpyright, every subproject in one pass, from the root
 ```
 
-plus the affected test package. The gate belongs on the *near* side of the push,
-because pushing is what makes a failure everyone's problem.
+plus the affected test package.
 
 ## 4. Stage by explicit path
 
@@ -254,49 +253,6 @@ an unreleasable commit in.
 Do not create a branch, switch branches, or open a PR unless you were asked to.
 The work goes onto whatever branch is checked out.
 
-## 7. Push it now — over HTTPS, with `gh` holding the credential
+## 7. Keep your commit local by default
 
-```bash
-GIT_TERMINAL_PROMPT=0 timeout 120 git -c credential.helper='!gh auth git-credential' \
-  push "https://github.com/$(gh repo view --json nameWithOwner -q .nameWithOwner).git" \
-  "HEAD:refs/heads/$(git branch --show-current)"
-```
-
-Right after the commit, before starting the next concern. A local commit is still
-invisible to review, to CI and to release-please, and it still dies with the
-machine — which for an agent run in a throwaway container is the normal ending,
-not the unlucky one.
-
-**Do not push over the remote's `git@` URL.** The SSH key is the human's, it is
-usually passphrase-protected, and an agent that reaches for it either hangs on a
-prompt nobody can answer or spends the user's key on its own behalf. `gh` is
-already authenticated for this account, so the explicit `https://` URL above is
-what an agent pushes with — the remote itself is left alone, and the token lives
-in the one push that uses it. It never goes into `.git/config`, a commit message
-or a PR body, and `git remote set-url` with a token in it is how it gets there.
-
-`git push -u` cannot set upstream through an ad-hoc URL. Do it once, separately,
-so `git status` still reports ahead/behind:
-
-```bash
-git branch --set-upstream-to="origin/$(git branch --show-current)"
-```
-
-**When the push is rejected, reconcile — do not force.** The remote moved, which
-is information: fetch, rebase onto the new tip, re-run the gate, push again.
-`--force` onto a shared branch discards whatever moved it, which in a repo
-several agents push to is somebody else's committed work.
-
-**A push that hangs is not a push that failed.** The commit is finished, the work
-looks done, and nothing says otherwise — so bound every push with `timeout`, as the
-command above does. When it errors out rather than landing, leave the commit local
-and say which transport you tried and how it failed. An unpushed commit the user
-knows about is recoverable; a silent hang nobody was told about is not.
-
-## 8. If the change touches code a live run is holding
-
-A push does not reach a run that is already going. If you changed anything under
-`workflows/` or `workhorse/` and a run is in flight, the commit is not the last
-step — reload each run that holds the old copy, rather than restarting it. The
-procedure is in the `workhorse-scripting` skill
-(`references/reloading-a-live-run.md`).
+You may be working in a local repository or one with a remote so keep your commit local by default.

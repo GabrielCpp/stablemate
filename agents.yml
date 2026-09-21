@@ -91,16 +91,6 @@ template:
   commit_scopes: "`core`, `workhorse`, `workflows`, `farrier`, `ostler`, `groom`, `saddlebag`, `base-library`, `paddock`, `docs`, `scripts`"
   commit_extra_scopes: "`deps`, `release`, `ci`, `lint`, `hooks`"
 
-  # commit-and-push: the step that only stablemate has — a push does not reach a
-  # run that is already going.
-  commit_epilogue: |
-    ## 8. If the change touches code a live run is holding
-
-    A push does not reach a run that is already going. If you changed anything under
-    `workflows/` or `workhorse/` and a run is in flight, the commit is not the last
-    step — reload each run that holds the old copy, rather than restarting it. The
-    procedure is in the `workhorse-scripting` skill
-    (`references/reloading-a-live-run.md`).
 
 
 # The root AGENTS.md is generated, not hand-written: one policy per standing
