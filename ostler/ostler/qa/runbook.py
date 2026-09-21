@@ -390,6 +390,29 @@ def environment_of(node: UINode, resolver: links_mod.LinkResolver) -> str:
     return ""
 
 
+def _environment_is_local_only(graph: Graph, environment_id: str) -> bool:
+    """Whether the `environment` node *environment_id* declares itself `local-only: true`.
+
+    Same truthy spelling `doctor.py`'s `runbook-local-only` check already reads this bullet
+    with, so the two readers of one declaration agree on what it means.
+    """
+    node = graph.find_ui_node(environment_id)
+    if node is None:
+        return False
+    return bullet_value(node.meta, "local-only") in ("true", "yes")
+
+
+def _selection_for(stacks: list[UINode], resolver: links_mod.LinkResolver,
+                   environment: str) -> StackSelection:
+    """Every stack runbook bound to *environment*, as a resolved selection.
+
+    The environment is the unit, so a selection names all of its runbooks, never the one
+    that happened to decide it.
+    """
+    selected = tuple(node for node in stacks if environment_of(node, resolver) == environment)
+    return StackSelection(runbooks=selected, environment=environment)
+
+
 def select_stack(graph: Graph, name: str = "", *, near: Path | None = None) -> StackSelection:
     """Which runbooks bring this book's system up, or why the question has no answer.
 
@@ -411,6 +434,14 @@ def select_stack(graph: Graph, name: str = "", *, near: Path | None = None) -> S
     it, including ones in other surfaces. That is the point — a web surface and the API it
     calls are one system — so the narrowing only picks the environment; the selection
     itself stays book-wide.
+
+    Whatever candidates survive that narrowing are filtered once more by `local-only`,
+    and only then does the refusal fire: a QA bring-up must never boot a non-local system
+    by accident, so when exactly one candidate is declared `local-only: true`, that
+    declaration is the book's own answer to which one QA is for. Two or zero declaring it
+    settle nothing, so the refusal stands. It runs last because it is a safety filter over
+    whatever ambiguity remains, not a selector — `near` knows which surface is under audit
+    and this does not, so a book-wide `local-only` environment must never outrank it.
     """
     runbooks = graph.ui_nodes_of_type("runbook")
     if name:
@@ -429,23 +460,22 @@ def select_stack(graph: Graph, name: str = "", *, near: Path | None = None) -> S
         return StackSelection(runbooks=tuple(stacks), environment=environments.pop())
     ambiguous = StackSelection(reason="ambiguous",
                                candidates=tuple(node.id for node in stacks))
-    if near is None:
-        return ambiguous
-    features_root = path_mod.features_root(graph)
-    near_path = near if near.is_absolute() else graph.root / near
-    surface = graph_mod.surface_of(near_path, features_root)
-    if not surface:
-        return ambiguous
-    narrowed = [node for node in stacks
-                if graph_mod.surface_of(node.path, features_root) == surface]
-    if not narrowed:
-        return ambiguous
-    narrowed_environments = {environment_of(node, resolver) for node in narrowed}
-    if len(narrowed_environments) != 1 or "" in narrowed_environments:
-        return ambiguous
-    env = narrowed_environments.pop()
-    selected = tuple(node for node in stacks if environment_of(node, resolver) == env)
-    return StackSelection(runbooks=selected, environment=env)
+    candidates = environments
+    if near is not None:
+        features_root = path_mod.features_root(graph)
+        near_path = near if near.is_absolute() else graph.root / near
+        surface = graph_mod.surface_of(near_path, features_root)
+        narrowed = [node for node in stacks
+                    if surface and graph_mod.surface_of(node.path, features_root) == surface]
+        if narrowed:
+            candidates = {environment_of(node, resolver) for node in narrowed}
+    if len(candidates) == 1 and "" not in candidates:
+        return _selection_for(stacks, resolver, next(iter(candidates)))
+    local_only = {env for env in candidates
+                  if env and _environment_is_local_only(graph, env)}
+    if len(local_only) == 1:
+        return _selection_for(stacks, resolver, next(iter(local_only)))
+    return ambiguous
 
 
 def select_runbook(graph: Graph, name: str = "") -> UINode | None:

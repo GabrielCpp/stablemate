@@ -420,9 +420,84 @@ def test_a_name_that_matches_nothing_is_distinct_from_a_bookless_book(tmp_path: 
     assert not outcome.ok and outcome.status == "unknown-runbook"
 
 
-def _environment(root: Path, surface: str, name: str) -> None:
+def _local_stack_runbook(root: Path, name: str, port: int, env: str) -> None:
+    """One stack runbook under `app/ops`, bound to the named environment file."""
+    make_runbook(root, f"---\ntype: runbook\n---\n\n# {name}\n\n"
+                 f"- driver: web\n- entry-url: http://localhost:{port}\n"
+                 f"- environment: [{env}]({env}.md)\n\n"
+                 "## Steps\n\n### serve\n\n- kind: service\n- run: ./serve.sh\n"
+                 "- health: curl -fsS localhost\n", name=name)
+
+
+def _environment_file(root: Path, env: str, *, local_only: bool) -> None:
+    """One `environment` node under `app/ops`, its `local-only` bullet set explicitly."""
+    write(root / "docs" / "features" / "app" / "ops" / f"{env}.md",
+          f"---\ntype: environment\n---\n\n# {env}\n\n"
+          f"- local-only: {'true' if local_only else 'false'}\n")
+
+
+def test_the_local_only_environment_resolves_an_otherwise_ambiguous_book(
+        tmp_path: Path) -> None:
+    """Two stack runbooks bind to `local`, one to `staging`, and only `local` is declared
+    `local-only: true`. That declaration is the book's own answer to which system QA boots,
+    so it resolves the same book that would otherwise be a refusal — and every runbook
+    bound to `local`, not just one of them, comes up with it.
+    """
+    (tmp_path / ".git").mkdir()
+    _environment_file(tmp_path, "local", local_only=True)
+    _environment_file(tmp_path, "staging", local_only=False)
+    _local_stack_runbook(tmp_path, "api-stack", 1111, "local")
+    _local_stack_runbook(tmp_path, "web-stack", 2222, "local")
+    _local_stack_runbook(tmp_path, "worker-stack", 3333, "staging")
+    selection = rb.select_stack(model.load(tmp_path))
+    assert selection.reason == ""
+    assert selection.environment.endswith("local.md")
+    assert len(selection.runbooks) == 2
+    assert {n.path.stem for n in selection.runbooks} == {"api-stack", "web-stack"}
+
+
+def test_two_local_only_environments_stay_ambiguous(tmp_path: Path) -> None:
+    """The control case: both candidate environments declaring `local-only: true` must not
+    collapse the ambiguity, or the filter would just be picking one of them rather than
+    reading a declaration the author actually narrowed to one.
+    """
+    (tmp_path / ".git").mkdir()
+    _environment_file(tmp_path, "local", local_only=True)
+    _environment_file(tmp_path, "staging", local_only=True)
+    _local_stack_runbook(tmp_path, "api-stack", 1111, "local")
+    _local_stack_runbook(tmp_path, "web-stack", 2222, "staging")
+    selection = rb.select_stack(model.load(tmp_path))
+    assert selection.reason == "ambiguous"
+
+
+def test_neither_local_only_environment_stays_ambiguous(tmp_path: Path) -> None:
+    (tmp_path / ".git").mkdir()
+    _environment_file(tmp_path, "local", local_only=False)
+    _environment_file(tmp_path, "staging", local_only=False)
+    _local_stack_runbook(tmp_path, "api-stack", 1111, "local")
+    _local_stack_runbook(tmp_path, "web-stack", 2222, "staging")
+    selection = rb.select_stack(model.load(tmp_path))
+    assert selection.reason == "ambiguous"
+
+
+def test_a_single_local_only_environment_still_early_returns(tmp_path: Path) -> None:
+    """A book with one environment never reaches the `local-only` filter at all — it
+    resolves earlier, on every stack runbook sharing that one environment.
+    """
+    (tmp_path / ".git").mkdir()
+    _environment_file(tmp_path, "local", local_only=True)
+    _local_stack_runbook(tmp_path, "api-stack", 1111, "local")
+    _local_stack_runbook(tmp_path, "web-stack", 2222, "local")
+    selection = rb.select_stack(model.load(tmp_path))
+    assert selection.reason == ""
+    assert selection.environment.endswith("local.md")
+    assert len(selection.runbooks) == 2
+
+
+def _environment(root: Path, surface: str, name: str, *, local_only: bool = True) -> None:
     write(root / "docs" / "features" / surface / "ops" / f"{name}.md",
-          f"---\ntype: environment\n---\n\n# {name}\n\n- local-only: true\n")
+          f"---\ntype: environment\n---\n\n# {name}\n\n"
+          f"- local-only: {'true' if local_only else 'false'}\n")
 
 
 def _stack_runbook(root: Path, surface: str, name: str, port: int, env_href: str) -> None:
@@ -493,6 +568,28 @@ def test_an_explicit_name_wins_over_near(tmp_path: Path) -> None:
     selection = rb.select_stack(graph, name="api-stack", near=near)
     assert selection.reason == ""
     assert [n.path.stem for n in selection.runbooks] == ["api-stack"]
+
+
+def test_near_outranks_a_lone_local_only_environment_elsewhere(tmp_path: Path) -> None:
+    """The surface under audit decides, even when the only `local-only` environment in the
+    book belongs to another surface. `near` knows which surface QA is exercising and the
+    `local-only` filter does not, so a book-wide declaration must never pull the bring-up
+    across to a system the spec has nothing to do with.
+    """
+    (tmp_path / ".git").mkdir()
+    _environment(tmp_path, "web-app", "staging", local_only=False)
+    _environment(tmp_path, "api-service", "devbox", local_only=True)
+    _stack_runbook(tmp_path, "web-app", "web-stack", 1111, "staging.md")
+    _stack_runbook(tmp_path, "api-service", "api-stack", 2222, "devbox.md")
+    graph = model.load(tmp_path)
+
+    assert rb.select_stack(graph).environment.endswith("devbox.md")
+
+    near = tmp_path / "docs" / "features" / "web-app" / "specs" / "home.md"
+    selection = rb.select_stack(graph, near=near)
+    assert selection.reason == ""
+    assert [n.path.stem for n in selection.runbooks] == ["web-stack"]
+    assert selection.environment.endswith("staging.md")
 
 
 def test_near_is_a_no_op_when_the_book_already_resolves(tmp_path: Path) -> None:
