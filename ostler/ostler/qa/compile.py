@@ -89,10 +89,7 @@ GAP_KINDS = frozenset({
     "needs-snapshot",
     "needs-out-of-band-observation",
     "undeclared-entry-url",
-    "conflicting-entry-origin",
     "undeclared-bundle-id",
-    "conflicting-surface-driver",
-    "undeclared-walkthrough-runbook",
     "unresolved-extends",
     "undeclared-check-locator",
     "unstated-claim-combiner",
@@ -538,10 +535,7 @@ _OBSERVE_ROW: dict[str, str] = {
 _BUILT_TARGETS = frozenset({"playwright", "http", "cli", "maestro"})
 
 
-def _dispatch_target(
-    node_type: str, driver: str | None, driver_error: str | None = None,
-    driver_error_kind: str | None = None,
-) -> tuple[str | None, str, str]:
+def _dispatch_target(node_type: str, driver: str | None) -> tuple[str | None, str, str]:
     """D1's table — or `_OBSERVE_ROW`, for a type nobody performs — read once per obligation.
 
     `(target, "")` when it names a target this compiler builds; `(None, detail)` when the
@@ -559,13 +553,7 @@ def _dispatch_target(
 
     The third element is the gap kind, because this function is the only place that knows
     *which* of those reasons applied and the two callers were deriving it from the target
-    alone — a distinction the target cannot carry. It matters for `driver_error`: a surface
-    whose runbooks disagree states two drivers, not none, and the disagreement takes one of two
-    different remedies depending on *how* it disagreed — `driver_error_kind` says which
-    (`"conflicting-surface-driver"`: two runbooks both marked `walkthrough: true` still disagree,
-    settle which is right; `"undeclared-walkthrough-runbook"`: several runbooks disagree and none
-    is marked, mark the one that exercises the surface) — so it is reported under that kind
-    rather than as the absence `uncompilable-claim` describes.
+    alone — a distinction the target cannot carry.
 
     A `concept` node has no row for a different reason than an unrouted type does: it is a
     definition, not a place a claim is observed, so the detail says that rather than inviting a
@@ -588,22 +576,6 @@ def _dispatch_target(
         target = row
     else:
         if driver is None:
-            if driver_error:
-                kind = driver_error_kind or "conflicting-surface-driver"
-                if kind == "undeclared-walkthrough-runbook":
-                    detail = (
-                        "the surface this step's node lives on is covered by several runbooks "
-                        f"and none is marked `walkthrough: true` ({driver_error}) — D1's "
-                        "dispatch table (§4.1) cannot tell which one describes how this surface "
-                        "is exercised"
-                    )
-                else:
-                    detail = (
-                        "the surface this step's node lives on states more than one `driver:` and "
-                        f"they disagree ({driver_error}) — D1's dispatch table (§4.1) needs one "
-                        "answer per surface and no default adjudicates between two the book states"
-                    )
-                return None, detail, kind
             return None, (
                 "the surface this step's node lives on states no `driver:` on any `runbook`, so "
                 "D1's dispatch table (§4.1) cannot determine what performs this step"
@@ -970,62 +942,39 @@ def _has_screens(navigation: dict[str, Any]) -> bool:
     )
 
 
-def _entry_url_gap(surface: str, navigation: dict[str, Any]) -> tuple[str, str]:
+def _entry_url_gap(surface: str) -> tuple[str, str]:
     """The kind and detail for an obligation whose surface resolved to no address.
 
-    Two different defects reach this point and they take opposite remedies, so they may not
-    share one kind. A surface that states nothing is `undeclared-entry-url`: the book is
-    silent, and `--base-url` is a legitimate answer an operator can supply. A surface whose
-    sources state two disagreeing origins is `conflicting-entry-origin`: the book already
-    answered, twice, and no operator flag adjudicates between two things the book says — so
-    the fallback is refused above and the gap names the real cause. Reporting a conflict as
-    an absence sends the author looking for a bullet that is already there.
+    One defect reaches this point: the book states no address anywhere on the surface and no
+    `--base-url` was passed. The engine reads the address off the surface's own runbooks in
+    §4.1 driver order and falls back to its `server` node, so several stated origins settle
+    to one rather than arriving here as a disagreement.
     """
-    conflict = navigation.get(surface, {}).get("entryUrlError")
-    if conflict:
-        return "conflicting-entry-origin", (
-            f"surface {surface!r} states more than one `entry-url:` origin and they disagree "
-            f"({conflict}) — `--base-url` does not adjudicate between two the book states"
-        )
     return "undeclared-entry-url", (
         f"surface {surface!r} states no `entry-url:` on a `server` or `runbook` node, "
         "and no --base-url was passed to fall back on"
     )
 
 
-def _bundle_id_gap(surface: str, navigation: dict[str, Any]) -> tuple[str, str]:
+def _bundle_id_gap(surface: str) -> tuple[str, str]:
     """The kind and detail for a mobile obligation whose surface resolved to no bundle id.
 
     Unlike `_entry_url_gap`, there is no `--base-url`-shaped operator override for a mobile
-    package identity, so an absent bundle id and disagreeing runbooks both land on the same
-    `undeclared-bundle-id` kind — the remedy for either is the same: state one `bundle-id:`
-    the walkthrough runbook agrees on.
+    package identity — the remedy is to state a `bundle-id:` on a `runbook` covering the
+    surface.
     """
-    error = navigation.get(surface, {}).get("bundleIdError")
-    if error:
-        return "undeclared-bundle-id", (
-            f"surface {surface!r} states more than one `bundle-id:` and its runbooks disagree "
-            f"({error})"
-        )
     return "undeclared-bundle-id", (
         f"surface {surface!r} states no `bundle-id:` on a `runbook` node"
     )
 
 
-def _launch_screen_gap(surface: str, navigation: dict[str, Any]) -> tuple[str, str]:
+def _launch_screen_gap(surface: str) -> tuple[str, str]:
     """The kind and detail for a mobile obligation whose surface resolved to no launch screen.
 
     Unlike `_entry_url_gap`, there is no operator override for which screen a cold
-    `launchApp` opens on, so an absent `launch-screen:` and disagreeing runbooks both land on
-    the same `undeclared-launch-screen` kind — the remedy for either is the same: state one
-    `launch-screen:` the walkthrough runbook agrees on.
+    `launchApp` opens on — the remedy is to state a `launch-screen:` on a `runbook` covering
+    the surface.
     """
-    error = navigation.get(surface, {}).get("launchScreenError")
-    if error:
-        return "undeclared-launch-screen", (
-            f"surface {surface!r} states more than one `launch-screen:` and its runbooks "
-            f"disagree ({error})"
-        )
     return "undeclared-launch-screen", (
         f"surface {surface!r} states no `launch-screen:` on a `runbook` node"
     )
@@ -1046,8 +995,7 @@ def _split_by_entry_url(
     resolution in `reach.entry_origin`. A surface with nothing stated falls back to the CLI
     `--base-url` only when one was actually passed (`base_url is not None`); with neither,
     every obligation on that surface is gapped and dropped from the returned list rather
-    than silently compiled against a fixed, unrelated address. A surface whose sources
-    *disagree* gets no fallback at all — see `_entry_url_gap`.
+    than silently compiled against a fixed, unrelated address.
 
     The second return value is every surface's resolved address, keyed by surface — the
     caller emits one `target(...)` per entry, never a single one picked among several.
@@ -1059,7 +1007,7 @@ def _split_by_entry_url(
             continue
         surface_nav = navigation.get(surface, {}) if surface else {}
         entry_url = surface_nav.get("entryUrl")
-        fallback = None if surface_nav.get("entryUrlError") else base_url
+        fallback = base_url
         resolved_by_surface[surface] = entry_url or fallback
 
     kept: list[dict[str, Any]] = []
@@ -1067,7 +1015,7 @@ def _split_by_entry_url(
         surface = str(obligation.get("surface") or "")
         url = resolved_by_surface[surface]
         if url is None:
-            kind, detail = _entry_url_gap(surface, navigation)
+            kind, detail = _entry_url_gap(surface)
             gaps.append(Gap(str(obligation["id"]), kind, detail))
             continue
         kept.append(obligation)
@@ -1607,9 +1555,7 @@ def compile_plan_gaps(
             # world (`_journey_scenarios`).
             flow_owed.append(obligation)
             continue
-        target, detail, kind = _dispatch_target(
-            node_type, driver, surface_nav.get("driverError"), surface_nav.get("driverErrorKind")
-        )
+        target, detail, kind = _dispatch_target(node_type, driver)
         if target == "playwright":
             page_owed.append(obligation)
         elif target == "http":
@@ -1809,12 +1755,12 @@ def compile_plan_gaps(
         surface = str(mobile_obligations[0].get("surface") or "")
         bundle_id = navigation.get(surface, {}).get("bundleId") if surface else None
         if bundle_id is None:
-            kind, detail = _bundle_id_gap(surface, navigation)
+            kind, detail = _bundle_id_gap(surface)
             gaps.extend(Gap(str(o["id"]), kind, detail) for o in mobile_obligations)
             continue
         launch_screen = navigation.get(surface, {}).get("launchScreen") if surface else None
         if launch_screen is None:
-            kind, detail = _launch_screen_gap(surface, navigation)
+            kind, detail = _launch_screen_gap(surface)
             gaps.extend(Gap(str(o["id"]), kind, detail) for o in mobile_obligations)
             continue
         mobile_scenario_covered: set[str] = set()
@@ -3303,8 +3249,7 @@ def _journey_scenarios(
             step_surface = str(step.get("surface") or "")
             step_nav = navigation.get(step_surface, {})
             step_target, why, why_kind = _dispatch_target(
-                str(step.get("nodeType") or ""), step_nav.get("driver"), step_nav.get("driverError"),
-                step_nav.get("driverErrorKind"),
+                str(step.get("nodeType") or ""), step_nav.get("driver")
             )
             if step_target is None or step_target not in _BUILT_TARGETS:
                 detail = why
@@ -3341,17 +3286,17 @@ def _journey_scenarios(
                         for oid in ids)
             continue
         if journey_target != "maestro" and url is None:
-            kind, detail = _entry_url_gap(surface, navigation)
+            kind, detail = _entry_url_gap(surface)
             gaps.extend(Gap(oid, kind, detail) for oid in ids)
             continue
         bundle_id = nav.get("bundleId")
         if journey_target == "maestro" and bundle_id is None:
-            kind, detail = _bundle_id_gap(surface, navigation)
+            kind, detail = _bundle_id_gap(surface)
             gaps.extend(Gap(oid, kind, detail) for oid in ids)
             continue
         launch_screen = nav.get("launchScreen")
         if journey_target == "maestro" and launch_screen is None:
-            kind, detail = _launch_screen_gap(surface, navigation)
+            kind, detail = _launch_screen_gap(surface)
             gaps.extend(Gap(oid, kind, detail) for oid in ids)
             continue
         arrangement = _arrangement_of(obligations)

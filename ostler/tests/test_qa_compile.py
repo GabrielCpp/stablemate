@@ -2476,9 +2476,9 @@ def test_a_checkless_obligation_on_a_surface_with_no_entry_url_is_book_debt_not_
     assert "undeclared-entry-url" not in {g.kind for g in result.gaps}
 
 
-def _conflicting_origin_context(oid: str) -> dict:
-    """A surface whose sources disagreed about its address: `qa context` caught
-    `reach.ConflictingEntryOrigin`, left `entryUrl` unset and recorded why."""
+def _settled_origin_context(oid: str, entry_url: str) -> dict:
+    """A surface whose address the engine settled on: several sources may have stated one, and
+    `qa context` read them in §4.1 driver order and put the winner in `entryUrl`."""
     context = _context(
         _obligation(
             oid,
@@ -2488,76 +2488,40 @@ def _conflicting_origin_context(oid: str) -> dict:
             ],
         ),
     )
-    context["navigation"] = {"api-service": {
-        "driver": "http",
-        "entryUrlError": "surface 'api-service' has conflicting entry origins: "
-                         "docs/features/acme/api.md says http://localhost:18101; "
-                         "docs/features/acme/ops/run.md says http://localhost:18999",
-    }}
+    context["navigation"] = {"api-service": {"driver": "http", "entryUrl": entry_url}}
     return context
 
 
-def test_a_surface_whose_sources_disagree_gaps_the_conflict_not_an_absence() -> None:
-    """Two stated addresses is a different defect from none stated, and it takes a different
-    remedy — so it may not be reported as `undeclared-entry-url`, whose message would send the
-    author looking for a bullet that is already written twice."""
+def test_an_address_the_book_states_outranks_the_operators_base_url() -> None:
+    """`--base-url` answers a book that states no address. A book that states one has already
+    answered, and an operator flag is not an override of it — falling back here would compile a
+    plan against an address the book never wrote down."""
     oid = "okf:docs/features/acme/api.md#post-things:does:1"
-    result = _compile_plan_gaps(_conflicting_origin_context(oid), story="demo-story")
-    assert isinstance(result, Refusal)
-    assert _gap_kinds(result.gaps, oid) == ["conflicting-entry-origin"]
-    assert "18101" in result.gaps[0].detail
-    assert "18999" in result.gaps[0].detail
+    result = _compile_plan_gaps(_settled_origin_context(oid, "http://localhost:18101"),
+                                story="demo-story", base_url="http://localhost:8000")
+    assert isinstance(result, Plan)
+    assert result.gaps == []
+    assert 'base_url="http://localhost:18101"' in result.source
+    assert "localhost:8000" not in result.source
 
 
-def test_a_base_url_does_not_adjudicate_between_two_addresses_the_book_states() -> None:
-    """`--base-url` answers a book that states no address. A book that states two has already
-    answered, twice, and an operator flag is not an adjudication between them — falling back
-    here would compile a plan against a third address nobody wrote down at all."""
+def test_a_surface_stating_no_address_compiles_against_the_base_url() -> None:
+    """Non-vacuity for the test above: the same obligation with the surface's own address
+    removed — the only difference — takes the operator's flag rather than gapping, so the
+    verdict there is a verdict on the book outranking the flag and not on the flag being
+    unusable."""
     oid = "okf:docs/features/acme/api.md#post-things:does:1"
-    result = _compile_plan_gaps(_conflicting_origin_context(oid), story="demo-story",
-                                base_url="http://localhost:8000")
-    assert isinstance(result, Refusal)
-    assert _gap_kinds(result.gaps, oid) == ["conflicting-entry-origin"]
+    context = _settled_origin_context(oid, "http://localhost:18101")
+    del context["navigation"]["api-service"]["entryUrl"]
+    result = _compile_plan_gaps(context, story="demo-story", base_url="http://localhost:8000")
+    assert isinstance(result, Plan)
+    assert result.gaps == []
+    assert 'base_url="http://localhost:8000"' in result.source
 
 
-def _conflicting_driver_context(oid: str) -> dict:
-    """A surface whose runbooks disagreed about what drives it: `qa context` caught
-    `reach.ConflictingSurfaceDriver`, left `driver` unset and recorded why."""
-    context = _context(
-        _obligation(
-            oid,
-            surface="api-service",
-            nodeType="endpoint",
-            checksDeclared=[
-                {"call": "created", "name": "http_status", "args": {"code": 201, "path": "/api/things"}},
-            ],
-        ),
-    )
-    context["navigation"] = {"api-service": {
-        "driver": None,
-        "driverError": "surface 'api-service' has conflicting drivers: "
-                       "docs/features/acme/ops/run.md says http; "
-                       "docs/features/acme/ops/qa.md says playwright",
-    }}
-    return context
-
-
-def test_a_surface_whose_runbooks_disagree_gaps_the_conflict_not_an_absence() -> None:
-    """Two stated drivers is a different defect from none stated, and it takes a different remedy
-    — write a `driver:` versus settle which of two already written is right — so it may not be
-    reported as `uncompilable-claim`, whose message asserts the book states no `driver:` at all
-    and sends the author looking for a bullet that is there twice."""
-    oid = "okf:docs/features/acme/api.md#post-things:does:1"
-    result = _compile_plan_gaps(_conflicting_driver_context(oid), story="demo-story")
-    assert isinstance(result, Refusal)
-    assert _gap_kinds(result.gaps, oid) == ["conflicting-surface-driver"]
-    assert "run.md" in result.gaps[0].detail and "qa.md" in result.gaps[0].detail
-
-
-def _undeclared_walkthrough_context(oid: str) -> dict:
-    """A surface covered by several runbooks with different drivers, none marked
-    `walkthrough: true`: `qa context` caught `reach.UndeclaredWalkthroughRunbook`, left `driver`
-    unset and recorded why, plus which kind of disagreement it was."""
+def _driverless_context(oid: str) -> dict:
+    """A surface no runbook states a `driver:` for: the engine reads every runbook covering the
+    surface, so `driver` is `None` only when none of them states one at all."""
     context = _context(
         _obligation(
             oid,
@@ -2568,41 +2532,31 @@ def _undeclared_walkthrough_context(oid: str) -> dict:
             ],
         ),
     )
-    context["navigation"] = {"api-service": {
-        "driver": None,
-        "driverError": "surface 'api-service' is covered by several runbooks and none is marked "
-                       "`walkthrough: true`: docs/features/acme/ops/run.md drives it with http; "
-                       "docs/features/acme/ops/qa.md drives it with playwright",
-        "driverErrorKind": "undeclared-walkthrough-runbook",
-    }}
+    context["navigation"] = {"api-service": {"driver": None}}
     return context
 
 
-def test_a_surface_with_no_walkthrough_marked_gaps_the_ambiguity_not_a_conflict() -> None:
-    """`conflicting-surface-driver` and `undeclared-walkthrough-runbook` are different defects
-    with different remedies — settle a disagreement between two marked runbooks, versus mark
-    the one that exercises the surface — so this shape, which `driverErrorKind` distinguishes
-    from `_conflicting_driver_context` above, may not be reported under the other kind, nor as
-    `uncompilable-claim`."""
+def test_a_surface_stating_no_driver_at_all_gaps_the_absence() -> None:
+    """D1's dispatch table (§4.1) has nothing to look the performer up by, so the obligation
+    cannot be compiled — and the message says the book states no `driver:`, which is the
+    remedy: write one on a runbook covering the surface."""
     oid = "okf:docs/features/acme/api.md#post-things:does:1"
-    result = _compile_plan_gaps(_undeclared_walkthrough_context(oid), story="demo-story")
-    assert isinstance(result, Refusal)
-    assert _gap_kinds(result.gaps, oid) == ["undeclared-walkthrough-runbook"]
-    assert "run.md" in result.gaps[0].detail and "qa.md" in result.gaps[0].detail
-    assert "walkthrough" in result.gaps[0].detail
-
-
-def test_a_surface_stating_no_driver_at_all_still_gaps_the_absence() -> None:
-    """Non-vacuity for the test above: the same context with the conflict record removed — the
-    only difference — keeps the kind it always had, so a `conflicting-surface-driver` verdict
-    there is a verdict on the disagreement and not on the missing driver both books share."""
-    oid = "okf:docs/features/acme/api.md#post-things:does:1"
-    context = _conflicting_driver_context(oid)
-    del context["navigation"]["api-service"]["driverError"]
-    result = _compile_plan_gaps(context, story="demo-story")
+    result = _compile_plan_gaps(_driverless_context(oid), story="demo-story")
     assert isinstance(result, Refusal)
     assert _gap_kinds(result.gaps, oid) == ["uncompilable-claim"]
     assert "states no `driver:`" in result.gaps[0].detail
+
+
+def test_a_surface_whose_runbooks_settled_on_a_driver_compiles_the_claim() -> None:
+    """Non-vacuity for the test above: the same obligation with a settled `driver:` — the only
+    difference — compiles, so the gap there is a verdict on the absence and not on the shape of
+    the obligation."""
+    oid = "okf:docs/features/acme/api.md#post-things:does:1"
+    context = _driverless_context(oid)
+    context["navigation"]["api-service"] = {"driver": "http", "entryUrl": "http://localhost:18101"}
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(result, Plan)
+    assert result.gaps == []
 
 
 def test_a_selector_the_census_cannot_read_still_compiles_one_whole_scenario() -> None:
@@ -4141,26 +4095,6 @@ def test_a_surface_with_no_bundle_id_gaps_undeclared_bundle_id_and_emits_no_maes
     result = _compile_plan_gaps(context, story="demo-story")
     assert isinstance(result, Refusal)
     assert _gap_kinds(result.gaps, oid) == ["undeclared-bundle-id"]
-
-
-def test_a_surface_whose_runbooks_disagree_on_bundle_id_also_gaps_undeclared_bundle_id() -> None:
-    """The collapsed design: unlike `entry-url:` (absence vs. `conflicting-entry-origin`) or
-    `driver:` (absence vs. `conflicting-surface-driver`/`undeclared-walkthrough-runbook`), a
-    disagreeing `bundle-id:` has no operator-override shape a distinct kind would let an
-    operator act on differently — so `reach.surface_bundle_id`'s error still lands on the same
-    `undeclared-bundle-id` kind as an outright absence, with the disagreement itself named in
-    the gap's detail."""
-    context, oid = _built_target_probe_maestro()
-    context["navigation"]["policy"]["bundleId"] = None
-    context["navigation"]["policy"]["bundleIdError"] = (
-        "rb-a.md says com.acme.legacy; rb-b.md says com.acme.current"
-    )
-
-    result = _compile_plan_gaps(context, story="demo-story")
-    assert isinstance(result, Refusal)
-    assert _gap_kinds(result.gaps, oid) == ["undeclared-bundle-id"]
-    (gap,) = [g for g in result.gaps if g.obligation_id == oid]
-    assert "com.acme.legacy" in gap.detail and "com.acme.current" in gap.detail
 
 
 def test_a_surface_with_no_launch_screen_gaps_undeclared_launch_screen_and_emits_no_maestro() -> None:

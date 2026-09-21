@@ -1131,19 +1131,15 @@ def _result(res, as_json: bool = False) -> int:
 
 
 def _surface_driver(dump: dict, surface: str | None) -> str | None:
-    """The driver whose route grammar this surface is addressed in, or ``None`` when unsettled.
+    """The driver whose route grammar this surface is addressed in, or ``None`` when it states none.
 
-    A book that does not settle one is not this command's to report — `ostler doctor` raises
-    `conflicting-surface-driver` and `undeclared-walkthrough-runbook` on exactly that, and a
-    second voice saying it here would be a second thing to keep in step. A reader that wants a
-    grammar degrades; the reporters speak.
+    `reach.surface_driver` reads the surface's own runbooks in §4.1 driver order, so a surface
+    covered by several settles on one without this command adjudicating anything. ``None``
+    here means no runbook covering the surface states a `driver:` at all.
     """
     if surface is None:
         return None
-    try:
-        return reach.surface_driver(dump, surface)
-    except reach.UnsettledSurfaceDriver:
-        return None
+    return reach.surface_driver(dump, surface)
 
 
 def _cmd_reach(graph, args) -> int:

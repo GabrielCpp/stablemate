@@ -3104,11 +3104,11 @@ def test_navigation_carries_launch_screen_through_the_unknown_start_exception_pa
     assert navigation["groom"]["counts"]["unreachable"] == 1
 
 
-def test_navigation_reports_conflicting_launch_screen_error_without_raising(repo: Path):
-    """A surface whose two `runbook`s both state a `launch-screen:` and disagree, with neither
-    marked `walkthrough: true`, must not raise past `_navigation` — the same
-    `undeclared-walkthrough-runbook` degrade `_navigation`'s driver/bundle-id handling already
-    pins, now pinned for `launchScreen` too."""
+def test_navigation_settles_a_launch_screen_two_runbooks_state_differently(repo: Path):
+    """Two `runbook`s covering one surface may each state a `launch-screen:`. Neither is marked
+    and neither needs to be: `_navigation` reads them in §4.1 driver order, ties broken by node
+    id, so `current.md` outranks `legacy.md` and the surface settles on one start screen rather
+    than losing the key to a disagreement."""
     _write_navigation_environment(repo)
     write(repo / "docs/features/groom/gui/screens/dashboard.md", (
         "---\ntype: screen\nslug: dashboard\ntitle: Dashboard\n---\n# Dashboard\n\n"
@@ -3135,10 +3135,8 @@ def test_navigation_reports_conflicting_launch_screen_error_without_raising(repo
         "## Steps\n\n### serve\n- kind: service\n- run: `run --current`\n"
     ))
     navigation = _navigation(load(repo))
-    assert navigation["groom"].get("launchScreen") is None
-    assert navigation["groom"]["launchScreenErrorKind"] == "undeclared-walkthrough-runbook"
-
-
+    assert navigation["groom"]["launchScreen"] == "docs/features/groom/gui/screens/settings.md"
+    assert "launchScreenError" not in navigation["groom"]
 def test_a_features_root_absent_at_base_is_an_empty_graph_not_an_error(tmp_path: Path):
     """The features root can genuinely not exist yet at `base` — added or renamed between
     base and head — and `_graph_at_revision` must answer with the empty graph silently, the

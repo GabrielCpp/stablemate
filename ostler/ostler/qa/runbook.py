@@ -25,9 +25,9 @@ surface", and a greenfield run that tried to make one a feature Concept bought a
 surface either — that is what the context is for — so it can own a bring-up recipe without
 ever having to declare an observation.
 
-**The fallback.** okf-builder's walkthrough has read a launch contract off an OKF `server`
+**The fallback.** okf-builder's walk has read a launch contract off an OKF `server`
 node since it was written (`launch:`/`entry-url:`/`health-path:`/`working-directory:`/
-`identity:`/`stop:`/`boot-timeout:`, on the one server marked `walkthrough: true`). That is
+`identity:`/`stop:`/`boot-timeout:`, on the book's `server` node). That is
 the same contract in a thinner shape, so a book with no runbook still yields a stack from
 it, and the walk and the coder QA lane share one derivation instead of two.
 """
@@ -83,7 +83,7 @@ def bullet_text(text: str) -> str:
     A backticked value is the value, and the rest of the line is commentary: these bullets
     are prose documentation as much as they are interface, and `` - identity: `"ok"` — the
     health body `` is how one is actually written. Unbackticked there is no boundary, so the
-    first line is all of it. This is the same reading okf-builder's walkthrough already
+    first line is all of it. This is the same reading okf-builder's walk already
     applies to the `server` contract — one book must not mean two things to two readers.
 
     The string-level half of :func:`bullet_value`, split out so a caller holding a raw value
@@ -326,7 +326,7 @@ def _from_runbook(graph: Graph, runbook: UINode) -> dict[str, Any]:
 
 
 def _from_server(graph: Graph, server: UINode) -> dict[str, Any]:
-    """The thinner walkthrough contract, as the same manifest."""
+    """The thinner `server` contract, as the same manifest."""
     root = system_root(graph)
     meta = server.meta
     working = bullet_value(meta, "working-directory") or "."
@@ -419,26 +419,6 @@ def _environment_is_local_only(graph: Graph, environment_id: str) -> bool:
     return bullet_value(node.meta, "local-only") in ("true", "yes")
 
 
-def _environment_is_walkthrough(graph: Graph, environment_id: str) -> bool:
-    """Whether the `environment` node *environment_id* declares itself `walkthrough: true`.
-
-    Same truthy spelling `select_server` already reads this bullet with on `server` nodes,
-    so the two readers of one marker idiom agree on what it means.
-
-    An environment that declares `local-only: false` is never a walkthrough, whatever its
-    `walkthrough` bullet says. The two bullets are not peers: the first states a fact about
-    the system, the second states a preference among systems, and a preference cannot make
-    a production environment local. An absent `local-only` is not a `false` one, so a book
-    that declares neither is left to its own mark.
-    """
-    node = graph.find_ui_node(environment_id)
-    if node is None:
-        return False
-    if bullet_value(node.meta, "local-only").lower() in ("false", "no"):
-        return False
-    return bullet_value(node.meta, "walkthrough").lower() in ("true", "yes")
-
-
 def _selection_for(stacks: list[UINode], resolver: links_mod.LinkResolver,
                    environment: str) -> StackSelection:
     """Every stack runbook bound to *environment*, as a resolved selection.
@@ -482,13 +462,13 @@ def select_stack(graph: Graph, name: str = "", *, near: Path | None = None) -> S
     never outrank it.
 
     When more than one candidate survives the `local-only` filter — two honestly local
-    environments, say two docker-compose profiles — `walkthrough: true` on one of them is
-    the book's own tiebreak: exactly one candidate marked settles it, same as `local-only`
-    settled the filter. It runs last, behind `local-only`, because it is a selector among
-    eligible candidates, not a safety check — a `walkthrough: true` on a non-local
-    environment must never let it outrank a local-only sibling, and where no sibling
-    declares itself local at all, a mark on an environment declared `local-only: false`
-    still selects nothing.
+    environments, say two docker-compose profiles — the engine takes the first by node id,
+    which is the environment page's repo-relative path. The book is not asked to break that
+    tie: every survivor is a local environment this book says QA may boot, so the choice
+    between them is about which one the tooling happens to start, not about the system being
+    described, and a marker bullet asking the author to answer it was a question about the
+    tooling wearing a book page's clothes. Ordering by a path the repo already fixes is what
+    makes the same book resolve to the same environment on every machine.
     """
     runbooks = graph.ui_nodes_of_type("runbook")
     if name:
@@ -522,10 +502,9 @@ def select_stack(graph: Graph, name: str = "", *, near: Path | None = None) -> S
         candidates = local_only
     if len(candidates) == 1 and "" not in candidates:
         return _selection_for(stacks, resolver, next(iter(candidates)))
-    marked = {env for env in candidates
-              if env and _environment_is_walkthrough(graph, env)}
-    if len(marked) == 1:
-        return _selection_for(stacks, resolver, next(iter(marked)))
+    named = sorted(env for env in candidates if env)
+    if named:
+        return _selection_for(stacks, resolver, named[0])
     return ambiguous
 
 
@@ -541,15 +520,20 @@ def select_runbook(graph: Graph, name: str = "") -> UINode | None:
 
 
 def select_server(graph: Graph) -> UINode | None:
-    """The one `server` node marked `walkthrough: true`, or None.
+    """The `server` node whose launch contract this book's QA falls back to, or None.
 
-    Marking more than one is an authoring error the doctor reports; here it resolves to
-    "no contract" rather than an arbitrary pick, because a walk against the wrong service
-    is worse than a walk that says it has nowhere to go.
+    A sole server is it. Where a book declares several, the first by id: they are servers of
+    one book, so the fallback contract is read off whichever the engine reaches first rather
+    than off whichever one an author remembered to mark.
+
+    A `server` node stating no `launch:` is not a candidate. It documents a service's
+    contract without saying how the service starts, so there is nothing for a bring-up to
+    fall back *to* — and a book with only such a node still owes `runbook-missing`, which
+    gates on this function returning None.
     """
-    marked = [n for n in graph.ui_nodes_of_type("server")
-              if bullet_value(n.meta, "walkthrough").lower() in ("true", "yes")]
-    return marked[0] if len(marked) == 1 else None
+    servers = sorted((n for n in graph.ui_nodes_of_type("server")
+                      if bullet_value(n.meta, "launch")), key=lambda n: n.id)
+    return servers[0] if servers else None
 
 
 def has_served_surface(graph: Graph) -> bool:
@@ -571,12 +555,12 @@ def load_stack(root: Path | None = None, *, name: str = "", near: Path | None = 
                logger: logging.Logger | None = None) -> dict[str, Any]:
     """The manifest `ensure_stack` takes, read from the book's ops nodes.
 
-    Returns ``{}`` when the book declares neither a runbook nor a walkthrough server —
+    Returns ``{}`` when the book declares neither a runbook nor a `server` node —
     the only honest "nothing to bring up" left, and one the doctor reports as
     `runbook-missing` rather than leaving it to be discovered by a QA run that passes
     against nothing. Also returns ``{}`` on a refusal — several stack runbooks and no
     name given, or several bound to one environment — rather than falling back to the
-    walkthrough server, which would bring up the wrong system and call it a pass. A
+    server contract, which would bring up the wrong system and call it a pass. A
     caller that needs to tell those cases apart, or that wants every manifest a
     multi-runbook environment covers, reads `select_stack` or `load_stacks` instead.
 
@@ -603,10 +587,10 @@ def load_stack(root: Path | None = None, *, name: str = "", near: Path | None = 
                     len(selection.candidates), ", ".join(selection.candidates))
         return {}
     server = select_server(graph)
-    if server is not None and bullet_value(server.meta, "launch"):
-        log.info("no runbook; falling back to the walkthrough contract on %s", server.id)
+    if server is not None:
+        log.info("no runbook; falling back to the server contract on %s", server.id)
         return _from_server(graph, server)
-    log.info("the book declares no runbook and no walkthrough server — nothing to bring up")
+    log.info("the book declares no runbook and no `server` node — nothing to bring up")
     return {}
 
 
@@ -620,7 +604,7 @@ def load_stacks(graph: Graph, *, name: str = "", near: Path | None = None,
     one manifest would have to invent a single health check no author wrote — and then
     report the wrong service when it failed.
 
-    The fallback to a `walkthrough: true` server stays where it was, reached only when the
+    The fallback to the `server` contract stays where it was, reached only when the
     book declares no stack runbook at all. A book that declares several and named none has
     not fallen back to anything; it has been refused.
     """
@@ -638,10 +622,10 @@ def load_stacks(graph: Graph, *, name: str = "", near: Path | None = None,
                     len(selection.candidates), ", ".join(selection.candidates))
         return [], selection
     server = select_server(graph)
-    if server is not None and bullet_value(server.meta, "launch"):
-        log.info("no runbook; falling back to the walkthrough contract on %s", server.id)
+    if server is not None:
+        log.info("no runbook; falling back to the server contract on %s", server.id)
         return [_from_server(graph, server)], selection
-    log.info("the book declares no runbook and no walkthrough server — nothing to bring up")
+    log.info("the book declares no runbook and no `server` node — nothing to bring up")
     return [], selection
 
 
@@ -690,7 +674,7 @@ def _refusal(root: Path, features_root: str, selection: StackSelection,
                          where, len(selection.candidates), ", ".join(selection.candidates))))
     return QaOutcome(
         ok=True, status="none", data=data,
-        message=("the book under {} declares no runbook and no walkthrough server — "
+        message=("the book under {} declares no runbook and no `server` node — "
                  "nothing to {}".format(where, verb)))
 
 

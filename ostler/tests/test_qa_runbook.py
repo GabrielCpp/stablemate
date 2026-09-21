@@ -308,7 +308,7 @@ def test_empty_when_the_book_declares_nothing(tmp_path: Path) -> None:
     assert rb.load_stack(tmp_path) == {}
 
 
-def test_falls_back_to_the_walkthrough_server(tmp_path: Path) -> None:
+def test_falls_back_to_the_books_server(tmp_path: Path) -> None:
     (tmp_path / ".git").mkdir()
     write(tmp_path / "docs" / "features" / "api" / "server.md", """---
 type: server
@@ -321,7 +321,6 @@ title: API
 - entry-url: http://localhost:3000/
 - health-path: /health
 - working-directory: api
-- walkthrough: true
 """)
     manifest = rb.load_stack(tmp_path)
     assert manifest["launch"] == "npm start"
@@ -329,14 +328,17 @@ title: API
     assert manifest["app_cwd"] == str((tmp_path / "api").resolve())
 
 
-def test_two_marked_servers_resolve_to_nothing(tmp_path: Path) -> None:
-    # A walk against the wrong service is worse than a walk that says it has nowhere to go.
+def test_several_servers_fall_back_to_the_first_by_id(tmp_path: Path) -> None:
+    # They are servers of one book. A walk against some service the book describes beats a
+    # walk that says it has nowhere to go, so the fallback contract is read off whichever
+    # the engine reaches first rather than off whichever one an author remembered to mark —
+    # and the order is by id, so the same book resolves the same way on every machine.
     (tmp_path / ".git").mkdir()
-    for slug in ("one", "two"):
+    for slug, port in (("one", 3001), ("two", 3002)):
         write(tmp_path / "docs" / "features" / "api" / f"{slug}.md",
               f"---\ntype: server\ntitle: {slug}\n---\n\n# {slug}\n\n"
-              "- launch: npm start\n- entry-url: http://localhost:3000\n- walkthrough: true\n")
-    assert rb.load_stack(tmp_path) == {}
+              f"- launch: npm start\n- entry-url: http://localhost:{port}\n")
+    assert rb.load_stack(tmp_path)["entry_url"] == "http://localhost:3001"
 
 
 def test_named_runbook_selects_and_a_wrong_name_does_not_guess(tmp_path: Path) -> None:
@@ -431,11 +433,34 @@ def test_an_environment_link_is_resolved_not_compared_as_text(tmp_path: Path) ->
     assert len(selection.runbooks) == 2
 
 
-def test_several_environments_and_no_name_is_a_refusal_not_an_absence(tmp_path: Path) -> None:
-    # Opposite findings want opposite fixes: "write a runbook" is the wrong instruction to
-    # hand someone whose book declares two.
+def test_several_environments_and_no_name_settle_on_the_first_by_path(tmp_path: Path) -> None:
+    """`local` and `staging` are both environments this book says QA may boot, so which of
+    them the bring-up starts is a question about the tooling, not about the system being
+    described. The engine answers it itself, by path order, and brings up every stack
+    runbook bound to the one it took.
+    """
     (tmp_path / ".git").mkdir()
     _two_stacks(tmp_path, environments=("local", "staging"))
+    selection = rb.select_stack(model.load(tmp_path))
+    assert selection.reason == ""
+    assert selection.environment.endswith("local.md")
+    assert [n.path.stem for n in selection.runbooks] == ["api-stack"]
+
+
+def test_stack_runbooks_binding_no_environment_are_a_refusal_not_an_absence(
+        tmp_path: Path) -> None:
+    """The refusal that is left, and the only one: two stack runbooks, neither naming an
+    `environment:`. There is no node to read and no name to order by, so nothing in the
+    book says whether these are one system or two, and the bring-up asks rather than
+    guessing. Opposite findings want opposite fixes: "write a runbook" is the wrong
+    instruction to hand someone whose book already has two.
+    """
+    (tmp_path / ".git").mkdir()
+    for name, port in (("api-stack", 1111), ("web-stack", 2222)):
+        make_runbook(tmp_path, f"---\ntype: runbook\n---\n\n# {name}\n\n"
+                     f"- driver: web\n- entry-url: http://localhost:{port}\n\n"
+                     "## Steps\n\n### serve\n\n- kind: service\n- run: ./serve.sh\n"
+                     "- health: curl -fsS localhost\n", name=name)
     selection = rb.select_stack(model.load(tmp_path))
     assert selection.reason == "ambiguous"
     assert len(selection.candidates) == 2
@@ -445,10 +470,12 @@ def test_several_environments_and_no_name_is_a_refusal_not_an_absence(tmp_path: 
     assert rb.cmd_stack_down(tmp_path).status == "ambiguous"
 
 
-def test_a_refusal_does_not_fall_back_to_the_walkthrough_server(tmp_path: Path) -> None:
-    """`load_stack` used to read a refusal as an absence and fall through to whichever
-    server was marked `walkthrough: true`, bringing up one service and reporting success
-    against six surfaces it never served.
+def test_a_settled_stack_outranks_a_servers_launch_contract(tmp_path: Path) -> None:
+    """`load_stack` falls through to a `server` node only when nothing in the book resolves
+    to a stack at all. Once the environments settle — here on `local`, the first by path —
+    the runbook bound to it is the manifest, and a service documented on some other surface
+    stays out of it. The old failure was the other way round: the server came up instead,
+    and reported success against six surfaces it never served.
     """
     (tmp_path / ".git").mkdir()
     _two_stacks(tmp_path, environments=("local", "staging"))
@@ -461,9 +488,8 @@ title: Other
 
 - launch: npm start
 - entry-url: http://localhost:9000/
-- walkthrough: true
 """)
-    assert rb.load_stack(tmp_path) == {}
+    assert rb.load_stack(tmp_path)["entry_url"] == "http://localhost:1111"
 
 
 def test_a_single_environment_with_two_runbooks_has_no_single_manifest(tmp_path: Path) -> None:
@@ -494,9 +520,8 @@ def _local_stack_runbook(root: Path, name: str, port: int, env: str) -> None:
                  "- health: curl -fsS localhost\n", name=name)
 
 
-def _environment_file(root: Path, env: str, *, local_only: bool | None,
-                      walkthrough: bool = False) -> None:
-    """One `environment` node under `app/ops`, its bullets set explicitly.
+def _environment_file(root: Path, env: str, *, local_only: bool | None) -> None:
+    """One `environment` node under `app/ops`, its `local-only` bullet set explicitly.
 
     `local_only=None` writes no `local-only` bullet at all, which is a different book from
     one declaring `false` — an absent declaration is not a declaration of absence.
@@ -504,36 +529,34 @@ def _environment_file(root: Path, env: str, *, local_only: bool | None,
     bullets = ""
     if local_only is not None:
         bullets += f"- local-only: {'true' if local_only else 'false'}\n"
-    if walkthrough:
-        bullets += "- walkthrough: true\n"
     write(root / "docs" / "features" / "app" / "ops" / f"{env}.md",
           f"---\ntype: environment\n---\n\n# {env}\n\n{bullets}")
 
 
-def test_the_local_only_environment_resolves_an_otherwise_ambiguous_book(
-        tmp_path: Path) -> None:
-    """Two stack runbooks bind to `local`, one to `staging`, and only `local` is declared
-    `local-only: true`. That declaration is the book's own answer to which system QA boots,
-    so it resolves the same book that would otherwise be a refusal — and every runbook
-    bound to `local`, not just one of them, comes up with it.
+def test_the_local_only_environment_outranks_the_path_order(tmp_path: Path) -> None:
+    """Two stack runbooks bind to `staging`, one to `prod`, and only `staging` is declared
+    `local-only: true`. A QA bring-up must never boot a non-local system by accident, so
+    that declaration is read before the path order — which, left to itself, would have
+    taken `prod`. Every runbook bound to `staging` comes up with it, not just one of them.
     """
     (tmp_path / ".git").mkdir()
-    _environment_file(tmp_path, "local", local_only=True)
-    _environment_file(tmp_path, "staging", local_only=False)
-    _local_stack_runbook(tmp_path, "api-stack", 1111, "local")
-    _local_stack_runbook(tmp_path, "web-stack", 2222, "local")
-    _local_stack_runbook(tmp_path, "worker-stack", 3333, "staging")
+    _environment_file(tmp_path, "prod", local_only=False)
+    _environment_file(tmp_path, "staging", local_only=True)
+    _local_stack_runbook(tmp_path, "api-stack", 1111, "staging")
+    _local_stack_runbook(tmp_path, "web-stack", 2222, "staging")
+    _local_stack_runbook(tmp_path, "worker-stack", 3333, "prod")
     selection = rb.select_stack(model.load(tmp_path))
     assert selection.reason == ""
-    assert selection.environment.endswith("local.md")
-    assert len(selection.runbooks) == 2
+    assert selection.environment.endswith("staging.md")
     assert {n.path.stem for n in selection.runbooks} == {"api-stack", "web-stack"}
 
 
-def test_two_local_only_environments_stay_ambiguous(tmp_path: Path) -> None:
-    """The control case: both candidate environments declaring `local-only: true` must not
-    collapse the ambiguity, or the filter would just be picking one of them rather than
-    reading a declaration the author actually narrowed to one.
+def test_two_local_only_environments_settle_on_the_first_by_path(tmp_path: Path) -> None:
+    """Two honestly local environments — two docker-compose profiles, say — both survive
+    the filter, and the book has nothing further to say about which of them the tooling
+    starts. Asking it to answer would be a question about the tooling wearing a book page's
+    clothes, so the engine takes the first by id — the environment page's own path in the
+    book — and the same book therefore resolves to the same environment on every machine.
     """
     (tmp_path / ".git").mkdir()
     _environment_file(tmp_path, "local", local_only=True)
@@ -541,17 +564,25 @@ def test_two_local_only_environments_stay_ambiguous(tmp_path: Path) -> None:
     _local_stack_runbook(tmp_path, "api-stack", 1111, "local")
     _local_stack_runbook(tmp_path, "web-stack", 2222, "staging")
     selection = rb.select_stack(model.load(tmp_path))
-    assert selection.reason == "ambiguous"
+    assert selection.reason == ""
+    assert selection.environment.endswith("local.md")
+    assert {n.path.stem for n in selection.runbooks} == {"api-stack"}
 
 
-def test_neither_local_only_environment_stays_ambiguous(tmp_path: Path) -> None:
+def test_a_book_declaring_no_local_only_anywhere_still_settles(tmp_path: Path) -> None:
+    """The filter keeps nothing when no candidate declares itself local, and keeping
+    nothing must not mean discarding everything: an absent `local-only` is silence, not a
+    refusal, and silence must not cost a book its own environments. The path order settles
+    it exactly as it does when every candidate declares itself local.
+    """
     (tmp_path / ".git").mkdir()
-    _environment_file(tmp_path, "local", local_only=False)
+    _environment_file(tmp_path, "local", local_only=None)
     _environment_file(tmp_path, "staging", local_only=False)
     _local_stack_runbook(tmp_path, "api-stack", 1111, "local")
-    _local_stack_runbook(tmp_path, "web-stack", 2222, "staging")
+    _local_stack_runbook(tmp_path, "worker-stack", 3333, "staging")
     selection = rb.select_stack(model.load(tmp_path))
-    assert selection.reason == "ambiguous"
+    assert selection.reason == ""
+    assert selection.environment.endswith("local.md")
 
 
 def test_a_single_local_only_environment_still_early_returns(tmp_path: Path) -> None:
@@ -566,105 +597,6 @@ def test_a_single_local_only_environment_still_early_returns(tmp_path: Path) -> 
     assert selection.reason == ""
     assert selection.environment.endswith("local.md")
     assert len(selection.runbooks) == 2
-
-
-def test_walkthrough_resolves_between_two_local_only_environments(tmp_path: Path) -> None:
-    """The payoff: two local-only docker-compose profiles are both eligible after the
-    `local-only` filter, and only `walkthrough: true` on one of them says which a QA
-    bring-up boots — resolving to it with every stack runbook bound to it, not just one.
-    """
-    (tmp_path / ".git").mkdir()
-    _environment_file(tmp_path, "local", local_only=True, walkthrough=True)
-    _environment_file(tmp_path, "staging", local_only=True)
-    _local_stack_runbook(tmp_path, "api-stack", 1111, "local")
-    _local_stack_runbook(tmp_path, "web-stack", 2222, "local")
-    _local_stack_runbook(tmp_path, "worker-stack", 3333, "staging")
-    selection = rb.select_stack(model.load(tmp_path))
-    assert selection.reason == ""
-    assert selection.environment.endswith("local.md")
-    assert {n.path.stem for n in selection.runbooks} == {"api-stack", "web-stack"}
-
-
-def test_two_local_only_environments_neither_marked_stay_ambiguous(tmp_path: Path) -> None:
-    """The control: its passing is the result. Without `walkthrough` marking either
-    environment, two `local-only` candidates must still refuse — proving the new marker
-    is what resolves the payoff case above, not the `local-only` filter collapsing on its
-    own.
-    """
-    (tmp_path / ".git").mkdir()
-    _environment_file(tmp_path, "local", local_only=True)
-    _environment_file(tmp_path, "staging", local_only=True)
-    _local_stack_runbook(tmp_path, "api-stack", 1111, "local")
-    _local_stack_runbook(tmp_path, "worker-stack", 3333, "staging")
-    selection = rb.select_stack(model.load(tmp_path))
-    assert selection.reason == "ambiguous"
-
-
-def test_local_only_outranks_a_walkthrough_mark_on_a_non_local_environment(
-        tmp_path: Path) -> None:
-    """The safety ordering: `staging` is marked `walkthrough: true` but is not `local-only`,
-    while `local` is `local-only: true` and unmarked. The bring-up must resolve to `local`
-    — never to `staging` — or a book could make a QA run boot a non-local system just by
-    marking it. This is the test that fails if the filter and the selector are ever
-    reordered.
-    """
-    (tmp_path / ".git").mkdir()
-    _environment_file(tmp_path, "local", local_only=True)
-    _environment_file(tmp_path, "staging", local_only=False, walkthrough=True)
-    _local_stack_runbook(tmp_path, "api-stack", 1111, "local")
-    _local_stack_runbook(tmp_path, "worker-stack", 3333, "staging")
-    selection = rb.select_stack(model.load(tmp_path))
-    assert selection.reason == ""
-    assert selection.environment.endswith("local.md")
-    assert {n.path.stem for n in selection.runbooks} == {"api-stack"}
-
-
-def test_two_walkthrough_marks_among_local_only_candidates_stay_ambiguous(
-        tmp_path: Path) -> None:
-    """Marking more than one eligible environment `walkthrough: true` is as unresolved as
-    marking none — the book has to narrow it to exactly one, same as `local-only` itself.
-    """
-    (tmp_path / ".git").mkdir()
-    _environment_file(tmp_path, "local", local_only=True, walkthrough=True)
-    _environment_file(tmp_path, "staging", local_only=True, walkthrough=True)
-    _local_stack_runbook(tmp_path, "api-stack", 1111, "local")
-    _local_stack_runbook(tmp_path, "worker-stack", 3333, "staging")
-    selection = rb.select_stack(model.load(tmp_path))
-    assert selection.reason == "ambiguous"
-
-
-def test_a_walkthrough_mark_settles_a_book_that_declares_no_local_only(
-        tmp_path: Path) -> None:
-    """Neither environment says anything about being local, so the safety filter has
-    nothing to keep and every candidate stays eligible. The mark is then the only thing
-    the book says about which one QA boots, and it settles it — an absent `local-only` is
-    silence, not a refusal, and silence must not cost the book its own answer.
-    """
-    (tmp_path / ".git").mkdir()
-    _environment_file(tmp_path, "local", local_only=None, walkthrough=True)
-    _environment_file(tmp_path, "staging", local_only=None)
-    _local_stack_runbook(tmp_path, "api-stack", 1111, "local")
-    _local_stack_runbook(tmp_path, "worker-stack", 3333, "staging")
-    selection = rb.select_stack(model.load(tmp_path))
-    assert selection.reason == ""
-    assert selection.environment.endswith("local.md")
-
-
-def test_a_walkthrough_mark_cannot_select_an_environment_declared_non_local(
-        tmp_path: Path) -> None:
-    """The paired case, and the one with teeth: no candidate declares itself local, so the
-    filter again keeps everything — but the marked environment declares `local-only: false`
-    outright. A preference among systems cannot overturn a stated fact about one, so the
-    mark selects nothing and the refusal stands. Without this the marker would be a way to
-    talk a QA bring-up into booting a production environment the book had already refused.
-    """
-    (tmp_path / ".git").mkdir()
-    _environment_file(tmp_path, "prod", local_only=False, walkthrough=True)
-    _environment_file(tmp_path, "staging", local_only=None)
-    _local_stack_runbook(tmp_path, "api-stack", 1111, "prod")
-    _local_stack_runbook(tmp_path, "worker-stack", 3333, "staging")
-    selection = rb.select_stack(model.load(tmp_path))
-    assert selection.reason == "ambiguous"
 
 
 def _environment(root: Path, surface: str, name: str, *, local_only: bool = True) -> None:
@@ -682,11 +614,15 @@ def _stack_runbook(root: Path, surface: str, name: str, port: int, env_href: str
           "- health: curl -fsS localhost\n")
 
 
-def test_near_narrows_an_ambiguous_selection_to_its_shared_environment(tmp_path: Path) -> None:
+def test_near_narrows_the_selection_to_its_surfaces_environment(tmp_path: Path) -> None:
     """web-app and api-service bind to different environments; mobile-app binds to the same
     environment as web-app despite sitting in a third surface. Naming no runbook, a spec
     under web-app should pull in both runbooks sharing web-app's environment — including
     the one that lives in mobile-app — and leave api-service out.
+
+    The baseline is what makes that a narrowing rather than a coincidence: with no spec to
+    go on, the book-wide order takes api-service's `staging`, which is the environment the
+    spec under audit has nothing to do with.
     """
     (tmp_path / ".git").mkdir()
     _environment(tmp_path, "web-app", "local")
@@ -697,8 +633,8 @@ def test_near_narrows_an_ambiguous_selection_to_its_shared_environment(tmp_path:
     graph = model.load(tmp_path)
 
     baseline = rb.select_stack(graph)
-    assert baseline.reason == "ambiguous"
-    assert len(baseline.candidates) == 3
+    assert baseline.environment.endswith("api-service/ops/staging.md")
+    assert [n.path.stem for n in baseline.runbooks] == ["api-stack"]
 
     near = tmp_path / "docs" / "features" / "web-app" / "specs" / "home.md"
     selection = rb.select_stack(graph, near=near)
@@ -707,7 +643,12 @@ def test_near_narrows_an_ambiguous_selection_to_its_shared_environment(tmp_path:
     assert selection.environment.endswith("local.md")
 
 
-def test_near_stays_ambiguous_when_its_surface_spans_two_environments(tmp_path: Path) -> None:
+def test_near_narrowing_to_two_environments_falls_through_to_the_path_order(
+        tmp_path: Path) -> None:
+    """`near` narrows to the surface's own environments and stops there. When the surface
+    itself spans two, the narrowing has nothing left to decide, and the same order that
+    settles a book-wide tie settles this one — `local.md` before `staging.md`.
+    """
     (tmp_path / ".git").mkdir()
     _environment(tmp_path, "web-app", "local")
     _environment(tmp_path, "web-app", "staging")
@@ -716,10 +657,16 @@ def test_near_stays_ambiguous_when_its_surface_spans_two_environments(tmp_path: 
     graph = model.load(tmp_path)
     near = tmp_path / "docs" / "features" / "web-app" / "specs" / "home.md"
     selection = rb.select_stack(graph, near=near)
-    assert selection.reason == "ambiguous"
+    assert selection.reason == ""
+    assert selection.environment.endswith("local.md")
+    assert [n.path.stem for n in selection.runbooks] == ["web-stack-a"]
 
 
-def test_near_outside_the_features_root_stays_ambiguous(tmp_path: Path) -> None:
+def test_near_outside_the_features_root_leaves_the_book_wide_answer(tmp_path: Path) -> None:
+    """A path that is not under `docs/features/` names no surface, so there is nothing to
+    narrow by — `near` is simply not an argument this selection can use. The book-wide
+    answer stands, rather than an unusable hint turning into a refusal.
+    """
     (tmp_path / ".git").mkdir()
     _environment(tmp_path, "web-app", "local")
     _environment(tmp_path, "api-service", "staging")
@@ -727,7 +674,8 @@ def test_near_outside_the_features_root_stays_ambiguous(tmp_path: Path) -> None:
     _stack_runbook(tmp_path, "api-service", "api-stack", 2222, "staging.md")
     graph = model.load(tmp_path)
     selection = rb.select_stack(graph, near=tmp_path / "README.md")
-    assert selection.reason == "ambiguous"
+    assert selection == rb.select_stack(graph)
+    assert selection.environment.endswith("api-service/ops/staging.md")
 
 
 def test_an_explicit_name_wins_over_near(tmp_path: Path) -> None:
@@ -823,11 +771,11 @@ def test_doctor_asks_for_no_stack_from_a_book_with_nothing_to_serve(tmp_path: Pa
     assert "runbook-missing" not in codes(tmp_path)
 
 
-def test_doctor_stays_quiet_when_a_walkthrough_server_declares_it(tmp_path: Path) -> None:
+def test_doctor_stays_quiet_when_a_server_declares_a_launch(tmp_path: Path) -> None:
     (tmp_path / ".git").mkdir()
     write(tmp_path / "docs" / "features" / "api" / "server.md",
           "---\ntype: server\ntitle: API\n---\n\n# API\n\n- launch: npm start\n"
-          "- entry-url: http://localhost:3000\n- walkthrough: true\n")
+          "- entry-url: http://localhost:3000\n")
     assert "runbook-missing" not in codes(tmp_path)
 
 

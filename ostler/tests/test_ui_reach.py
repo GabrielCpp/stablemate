@@ -283,7 +283,7 @@ def _codes(report, severity: str = "error"):
 SERVER = "docs/features/web/http/web.md"
 
 
-def _server(entry_url: str, marked: bool = True) -> str:
+def _server(entry_url: str) -> str:
     return f"""\
 ---
 type: server
@@ -294,7 +294,6 @@ title: Web
 
 - launch: `npm start`
 - entry-url: `{entry_url}` — the local stand-in
-{"- walkthrough: true" if marked else ""}
 """
 
 
@@ -397,16 +396,19 @@ def test_a_server_entry_url_with_no_matching_screen_names_the_server(repo: Path)
     assert "`/admin`" in warn.message and SERVER in warn.message
 
 
-def test_several_unmarked_servers_fall_back_to_the_app_root(repo: Path):
-    """Two contracts and no `walkthrough: true`: a root read off an arbitrary pick is not a root."""
+def test_several_servers_settle_on_the_first_by_node_id(repo: Path):
+    """Two contracts on one surface: the engine reads the root off the first by node id
+    rather than leaving a surface that plainly states an address rootless. `static.md` sorts
+    before `web.md`, so its `/static` is the path a walk opens by construction — and no
+    screen sits there, which is what `root_screen` reporting nothing means here."""
     _repo(repo)
-    write(repo / SERVER, _server("http://localhost:3000/app", marked=False))
+    write(repo / SERVER, _server("http://localhost:3000/app"))
     write(repo / "docs/features/web/http/static.md",
-          _server("http://localhost:8080/static", marked=False).replace("slug: web", "slug: static"))
+          _server("http://localhost:8080/static").replace("slug: web", "slug: static"))
     data = graph.build(load(repo), surface="web")
 
-    assert reach.root_path(data) == ("/", None)
-    assert reach.root_screen(data) == LAND
+    assert reach.root_path(data) == ("/static", "docs/features/web/http/static.md")
+    assert reach.root_screen(data) is None
 
 
 def test_root_path_is_unchanged_for_web_and_none_for_a_driver_with_no_path_grammar(repo: Path):
@@ -551,10 +553,10 @@ def _mobile_repo_with_an_unusable_launch_screen(repo: Path):
     return load(repo)
 
 
-def _mobile_repo_with_conflicting_launch_screens(repo: Path):
-    """Two `walkthrough: true` runbooks over `mobile-app`, each naming a different
-    `launch-screen:` — the shape `surface_launch_screen` reports as `ConflictingSurfaceLaunchScreen`
-    rather than picking one."""
+def _mobile_repo_with_two_launch_screens(repo: Path):
+    """Two runbooks over `mobile-app`, each naming a different `launch-screen:` — the shape
+    `surface_launch_screen` settles by node id (`current.md` before `legacy.md`) rather than
+    refusing to pick one."""
     write(repo / MOBILE_SCREENS / "widget-list.md", (
         "---\ntype: screen\nslug: widget-list\ntitle: Widgets\n---\n# Widgets\n\n"
         "- route: `WidgetList`\n- requires: none\n- params: none\n"
@@ -565,14 +567,14 @@ def _mobile_repo_with_conflicting_launch_screens(repo: Path):
     ))
     write(repo / "docs/features/mobile-app/ops/legacy.md", (
         "---\ntype: runbook\nslug: legacy\ntitle: Legacy\n---\n# Legacy\n\n"
-        "- driver: mobile\n- walkthrough: true\n"
+        "- driver: mobile\n"
         "- surfaces: [widget-list](../gui/screens/widget-list.md)\n"
         "- launch-screen: [widget-list](../gui/screens/widget-list.md)\n\n"
         "## Steps\n\n### serve\n- kind: service\n- run: `metro`\n"
     ))
     write(repo / "docs/features/mobile-app/ops/current.md", (
         "---\ntype: runbook\nslug: current\ntitle: Current\n---\n# Current\n\n"
-        "- driver: mobile\n- walkthrough: true\n"
+        "- driver: mobile\n"
         "- surfaces: [widget-list](../gui/screens/widget-list.md)\n"
         "- launch-screen: [new-widget](../gui/screens/new-widget.md)\n\n"
         "## Steps\n\n### serve\n- kind: service\n- run: `metro --current`\n"
@@ -654,17 +656,15 @@ def test_a_stated_launch_screen_that_is_not_a_screen_says_so(repo: Path):
     assert "states no `launch-screen:`" not in message
 
 
-def test_a_conflicting_launch_screen_is_reported_as_unknown_start(repo: Path):
-    """`surface_launch_screen` raises `ConflictingSurfaceLaunchScreen` when two walkthrough
-    runbooks disagree; `resolve_start` must not let that escape past `UnknownStart` — every
-    caller catches only the one exception, so the unsettled reason has to be folded in."""
-    import pytest
+def test_two_launch_screens_settle_on_one_start_rather_than_refusing(repo: Path):
+    """Two runbooks correctly covering one surface is a real book's shape, so `resolve_start`
+    must hand back a start rather than a refusal — the ranked read settles it by node id, and
+    the screen `current.md` names is the one a cold launch opens."""
+    data = graph.build(_mobile_repo_with_two_launch_screens(repo), surface="mobile-app")
 
-    data = graph.build(_mobile_repo_with_conflicting_launch_screens(repo), surface="mobile-app")
-
-    with pytest.raises(reach.UnknownStart) as exc:
-        reach.resolve_start(data, None, "mobile", surface="mobile-app")
-    assert "conflicting launch screens" in str(exc.value)
+    assert reach.resolve_start(data, None, "mobile", surface="mobile-app") == (
+        "docs/features/mobile-app/gui/screens/new-widget.md"
+    )
 
 
 def test_a_mobile_surface_with_no_surface_argument_keeps_the_original_message(repo: Path):

@@ -981,7 +981,7 @@ UI_TYPES: tuple[UINodeType, ...] = (
             BulletKey("openapi", link=True, owns=True),
             BulletKey("detail", link=True),
             BulletKey("verify", check=True),
-            # The walkthrough launch contract. okf-builder has read these off a server node since
+            # The launch contract. okf-builder has read these off a server node since
             # it was written — the launch contract is documentation, not configuration, which is
             # what lets the walk run standalone — but they were registered nowhere, so the doctor
             # could not see them and no skill specified them. Registering an existing de-facto
@@ -993,7 +993,6 @@ UI_TYPES: tuple[UINodeType, ...] = (
             BulletKey("identity"),                # substring of the health body proving it is ours
             BulletKey("stop"),                    # teardown recipe
             BulletKey("boot-timeout"),            # seconds; ceiling on bring-up
-            BulletKey("walkthrough"),             # `true` on the one server the walk drives
         ),
     ),
     UINodeType(
@@ -1058,7 +1057,6 @@ UI_TYPES: tuple[UINodeType, ...] = (
         required_sections=(SectionSpec("Steps", filled=True),),
         bullet_keys=(
             BulletKey("driver", required=True),  # one of `ostler.drivers.DRIVERS` (§4.1)
-            BulletKey("walkthrough"),
             BulletKey("environment", link=True),  # the `environment` node this boots (default local)
             BulletKey("cli", link=True),          # the dev-CLI `cli` node it drives with
             BulletKey("surfaces", link=True),     # screen/server/cli/format nodes it exposes
@@ -1092,7 +1090,6 @@ UI_TYPES: tuple[UINodeType, ...] = (
             BulletKey("services", nested=True),   # one child per service: its env-scoped URL/host
             BulletKey("backing", nested=True),    # backing projects/DBs/buckets/emulators
             BulletKey("local-only"),              # `true` → tooling must refuse without an override
-            BulletKey("walkthrough"),             # `true` on the one environment a QA bring-up boots
             # The stack files this environment materializes — compose files, emulator
             # configs, seed scripts. Declared because the QA-context mapper already reads
             # `code:` on every node type to find a changed path's owner, so without it an

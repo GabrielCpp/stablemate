@@ -24,7 +24,7 @@ import re
 from collections import deque
 from urllib.parse import urlparse
 
-from ostler import graph as graph_mod, markdown, routes as routes_mod
+from ostler import drivers as drivers_mod, graph as graph_mod, markdown, routes as routes_mod
 from ostler.model import Graph
 from ostler.qa.runbook import bullet_value
 
@@ -46,7 +46,6 @@ ROUTE_BULLET = "route"
 ROOT_PATH = "/"
 SERVER_TYPE = "server"
 ENTRY_URL_BULLET = "entry-url"
-WALKTHROUGH_BULLET = "walkthrough"
 # The literal that means "declared, and empty". Anything else is a real precondition.
 NONE = "none"
 # The spellings authors actually use for it. Recognizing only the canonical one is not the strict
@@ -224,9 +223,10 @@ def _norm_path(path: str) -> str:
 def root_path(data: dict, driver: str | None = None) -> tuple[str | None, str | None]:
     """``(path, server)`` — where the surface is entered, and the server contract that says so.
 
-    The server marked ``walkthrough: true`` wins; a sole server stands in for it; several
-    unmarked ones resolve to no contract, because a root read off an arbitrary pick is a root
-    the walk will not open. With no contract the root is ``/``, which is what the doctor's
+    A sole server states it, and where a book has several the engine takes the first by id
+    rather than asking the author to mark one — every server on one surface serves the same
+    surface, so the disagreement the old marker adjudicated was between statements that were
+    already meant to agree. With no server at all the root is ``/``, which is what the doctor's
     ``runbook-missing`` already asks the book to state.
 
     *driver* is the surface's declared ``driver:`` (``surface_driver``), when the caller
@@ -237,10 +237,10 @@ def root_path(data: dict, driver: str | None = None) -> tuple[str | None, str | 
     """
     if not routes_mod.is_path_addressed(driver):
         return None, None
-    servers = [n for n in data["nodes"] if n["type"] == SERVER_TYPE and n["kind"] == "file"]
-    marked = [n for n in servers
-              if bullet_value(n["bullets"], WALKTHROUGH_BULLET).lower() in ("true", "yes")]
-    chosen = marked[0] if len(marked) == 1 else (servers[0] if len(servers) == 1 else None)
+    servers = sorted((n for n in data["nodes"]
+                      if n["type"] == SERVER_TYPE and n["kind"] == "file"),
+                     key=lambda n: n["id"])
+    chosen = servers[0] if servers else None
     if chosen is None:
         return ROOT_PATH, None
     url = bullet_value(chosen["bullets"], ENTRY_URL_BULLET)
@@ -251,58 +251,10 @@ RUNBOOK_TYPE = "runbook"
 SURFACES_BULLET = "surfaces"
 
 
-class ConflictingEntryOrigin(ValueError):
-    """More than one book source states a different origin for the same surface's entry URL."""
-
-    def __init__(self, surface: str, origins: list[tuple[str, str]]) -> None:
-        self.surface = surface
-        self.origins = origins  # [(node_id, origin), ...], in the order each source was found
-        named = "; ".join(f"{node} says {origin}" for node, origin in origins)
-        super().__init__(f"surface {surface!r} has conflicting entry origins: {named}")
-
-
 def _origin(url: str) -> str:
     """``scheme://host[:port]`` off a full ``entry-url:`` value; empty when it has none."""
     parsed = urlparse(url)
     return f"{parsed.scheme}://{parsed.netloc}" if parsed.scheme and parsed.netloc else ""
-
-
-def entry_origin(dump: dict, surface: str) -> str | None:
-    """The ``scheme://host[:port]`` a QA walk should open for *surface*; ``None`` if the book
-    states none.
-
-    Two kinds of source state it, and both are read at full-book scope so a runbook filed under
-    a different surface than the one it stands up still counts: the surface's own ``server`` node
-    (the same one ``root_path`` already selects — the one marked ``walkthrough: true``, or the
-    sole server) via its ``entry-url:``; and any ``runbook`` node whose ``surfaces:`` bullet links
-    into this surface, via that runbook's own ``entry-url:``. When those sources name more than
-    one distinct origin, that is ``ConflictingEntryOrigin`` rather than an arbitrary pick — a
-    silently wrong base URL is worse than a compile-time gap.
-    """
-    by_id = {n["id"]: n for n in dump["nodes"]}
-    candidates: list[tuple[str, str]] = []
-
-    surface_dump = graph_mod.subset(dump, surface)
-    _path, server_id = root_path(surface_dump)
-    if server_id is not None:
-        origin = _origin(bullet_value(by_id[server_id]["bullets"], ENTRY_URL_BULLET))
-        if origin:
-            candidates.append((server_id, origin))
-
-    for node in dump["nodes"]:
-        if node["type"] != RUNBOOK_TYPE or node["kind"] != "file":
-            continue
-        targets = {edge["to"] for edge in node["edges"] if edge["via"] == SURFACES_BULLET}
-        if not any(by_id.get(target, {}).get("surface") == surface for target in targets):
-            continue
-        origin = _origin(bullet_value(node["bullets"], ENTRY_URL_BULLET))
-        if origin:
-            candidates.append((node["id"], origin))
-
-    origins = sorted({origin for _node, origin in candidates})
-    if len(origins) > 1:
-        raise ConflictingEntryOrigin(surface, candidates)
-    return origins[0] if origins else None
 
 
 DRIVER_BULLET = "driver"
@@ -310,239 +262,120 @@ BUNDLE_ID_BULLET = "bundle-id"
 LAUNCH_SCREEN_BULLET = "launch-screen"
 
 
-class UnsettledSurfaceDriver(ValueError):
-    """The book does not settle which `driver:` exercises a surface.
+def _driver_rank(driver: str) -> int:
+    """Where *driver* sits in §4.1's own order; past the end when it names nothing there."""
+    try:
+        return drivers_mod.DRIVERS.index(driver)
+    except ValueError:
+        return len(drivers_mod.DRIVERS)
 
-    Base of every reason `surface_driver` refuses to answer, so that a reader wanting a
-    *grammar* degrades to an undeclared driver by catching this one class and stays correct
-    when a further reason is added. Only the two checks whose job is to report the book
-    catch the subclasses, because the remedies differ and a reader that cannot tell them
-    apart would send the author after the wrong bullet.
+
+def surface_runbooks(dump: dict, surface: str) -> list[dict]:
+    """Every `runbook` node covering *surface*, in the order the engine consults them.
+
+    A real surface routinely has several runbooks — a lint runbook with `driver: cli`, a browser
+    runbook with `driver: web`, an IaC runbook with `driver: iac` — all correctly naming it
+    through `surfaces:`. That was never a disagreement to adjudicate, and the book used to be
+    asked to settle it by marking one runbook as the one a walk drives. Asking an author to mark
+    which of their own true statements the tooling should read is a question about the tooling,
+    not about the system they are describing, so the engine answers it here instead.
+
+    The order is §4.1's own driver order — `web` first, `none` last — which already ranks how far
+    into a running system each driver reaches: the runbook that drives a browser is what stands
+    for the surface a browser walks, and a lint runbook does not become that by being the one
+    somebody remembered to mark. A driver the vocabulary does not name, or none at all, sorts
+    last rather than out, so a book mid-edit still gets an answer. Ties inside one driver fall to
+    node id, so every machine reading one book reaches the same runbook.
     """
+    by_id = {n["id"]: n for n in dump["nodes"]}
+    covering: list[dict] = []
+    for node in dump["nodes"]:
+        if node["type"] != RUNBOOK_TYPE or node["kind"] != "file":
+            continue
+        targets = {edge["to"] for edge in node["edges"] if edge["via"] == SURFACES_BULLET}
+        if any(by_id.get(target, {}).get("surface") == surface for target in targets):
+            covering.append(node)
+    return sorted(covering, key=lambda n: (
+        _driver_rank(bullet_value(n["bullets"], DRIVER_BULLET).strip().lower()), n["id"]))
 
 
-class ConflictingSurfaceDriver(UnsettledSurfaceDriver):
-    """More than one runbook marked ``walkthrough: true`` states a different `driver:` for the
-    same surface."""
+def _surface_value(dump: dict, surface: str, key: str) -> str | None:
+    """The first non-empty *key* stated by any runbook covering *surface*, in consult order.
 
-    def __init__(self, surface: str, drivers: list[tuple[str, str]]) -> None:
-        self.surface = surface
-        self.drivers = drivers  # [(node_id, driver), ...], in the order each source was found
-        named = "; ".join(f"{node} says {driver}" for node, driver in drivers)
-        super().__init__(f"surface {surface!r} has conflicting drivers: {named}")
+    Every scalar the launch contract carries is read this way, so `driver:`, `bundle-id:` and
+    `entry-url:` cannot resolve to three different runbooks' idea of the same system. A runbook
+    silent on one key does not veto the rest: the next one down states it, which is what makes a
+    surface whose browser runbook omits `bundle-id:` still addressable by its mobile one.
+    """
+    for node in surface_runbooks(dump, surface):
+        value = bullet_value(node["bullets"], key).strip()
+        if value:
+            return value
+    return None
 
 
-class UndeclaredWalkthroughRunbook(UnsettledSurfaceDriver):
-    """Several runbooks cover one surface and none of them claims to be the walkthrough."""
+def entry_origin(dump: dict, surface: str) -> str | None:
+    """The ``scheme://host[:port]`` a QA walk should open for *surface*; ``None`` if the book
+    states none.
 
-    def __init__(self, surface: str, drivers: list[tuple[str, str]]) -> None:
-        self.surface = surface
-        self.drivers = drivers
-        named = "; ".join(f"{node} drives it with {driver}" for node, driver in drivers)
-        super().__init__(
-            f"surface {surface!r} is covered by several runbooks and none is marked "
-            f"`walkthrough: true`: {named}"
-        )
+    Two kinds of source state it, and both are read at full-book scope so a runbook filed under
+    a different surface than the one it stands up still counts: any `runbook` whose `surfaces:`
+    links into this surface, via its own `entry-url:`, and then the surface's own `server` node
+    via that node's. The runbook is asked first because it is the thing a QA session actually
+    brings up, so the address it serves on is the address a walk can reach; the server node
+    states the same fact one remove from the process that makes it true.
+    """
+    origin = _origin(_surface_value(dump, surface, ENTRY_URL_BULLET) or "")
+    if origin:
+        return origin
+    by_id = {n["id"]: n for n in dump["nodes"]}
+    _path, server_id = root_path(graph_mod.subset(dump, surface))
+    if server_id is None:
+        return None
+    return _origin(bullet_value(by_id[server_id]["bullets"], ENTRY_URL_BULLET)) or None
 
 
 def surface_driver(dump: dict, surface: str) -> str | None:
-    """The `driver:` of the runbook that exercises *surface*; ``None`` if no runbook covers it.
+    """The `driver:` of the runbook that exercises *surface*; ``None`` if none states one.
 
-    A runbook's `driver:` states what that runbook drives — that alone says nothing about
-    which runbook is *how the surface is exercised*. A real surface routinely has several
-    runbooks (a lint runbook with `driver: cli`, a browser runbook with `driver: web`, an IaC
-    runbook with `driver: iac`) all correctly naming this surface through `surfaces:`; that is
-    not a disagreement to resolve, it is several true claims. Read the same way `root_path`
-    picks the one server that stands for a surface: the runbook marked ``walkthrough: true``
-    wins, a sole runbook stands in for it, and several unmarked ones with different drivers
-    resolve to no answer — `UndeclaredWalkthroughRunbook`, because dispatching off an arbitrary
-    pick is worse than a compile-time gap. Two runbooks *both* marked ``walkthrough: true`` that
-    still disagree is `ConflictingSurfaceDriver`.
+    A runbook's `driver:` states what that runbook drives, which alone says nothing about which
+    runbook is *how the surface is exercised*. `surface_runbooks` is what answers that, and this
+    reads the winner's bullet.
     """
-    by_id = {n["id"]: n for n in dump["nodes"]}
-    candidates: list[tuple[str, str]] = []
-
-    for node in dump["nodes"]:
-        if node["type"] != RUNBOOK_TYPE or node["kind"] != "file":
-            continue
-        targets = {edge["to"] for edge in node["edges"] if edge["via"] == SURFACES_BULLET}
-        if not any(by_id.get(target, {}).get("surface") == surface for target in targets):
-            continue
-        driver = bullet_value(node["bullets"], DRIVER_BULLET).strip().lower()
-        if driver:
-            candidates.append((node["id"], driver))
-
-    marked = [(node, driver) for node, driver in candidates
-              if bullet_value(by_id[node]["bullets"], WALKTHROUGH_BULLET).lower()
-              in ("true", "yes")]
-    if marked:
-        marked_drivers = sorted({driver for _node, driver in marked})
-        if len(marked_drivers) > 1:
-            raise ConflictingSurfaceDriver(surface, marked)
-        return marked_drivers[0]
-
-    drivers = sorted({driver for _node, driver in candidates})
-    if len(drivers) > 1:
-        raise UndeclaredWalkthroughRunbook(surface, candidates)
-    return drivers[0] if drivers else None
-
-
-class UnsettledSurfaceBundleId(ValueError):
-    """The book does not settle which `bundle-id:` addresses a surface.
-
-    Base of every reason `surface_bundle_id` refuses to answer, mirroring
-    `UnsettledSurfaceDriver` — a reader wanting a bundle id degrades to an undeclared one by
-    catching this one class and stays correct when a further reason is added.
-    """
-
-
-class ConflictingSurfaceBundleId(UnsettledSurfaceBundleId):
-    """More than one runbook marked ``walkthrough: true`` states a different `bundle-id:` for
-    the same surface."""
-
-    def __init__(self, surface: str, bundle_ids: list[tuple[str, str]]) -> None:
-        self.surface = surface
-        self.bundle_ids = bundle_ids  # [(node_id, bundle_id), ...], found-order
-        named = "; ".join(f"{node} says {bundle_id}" for node, bundle_id in bundle_ids)
-        super().__init__(f"surface {surface!r} has conflicting bundle ids: {named}")
-
-
-class UndeclaredWalkthroughBundleIdRunbook(UnsettledSurfaceBundleId):
-    """Several runbooks cover one surface and none of them claims to be the walkthrough."""
-
-    def __init__(self, surface: str, bundle_ids: list[tuple[str, str]]) -> None:
-        self.surface = surface
-        self.bundle_ids = bundle_ids
-        named = "; ".join(f"{node} states {bundle_id}" for node, bundle_id in bundle_ids)
-        super().__init__(
-            f"surface {surface!r} is covered by several runbooks and none is marked "
-            f"`walkthrough: true`: {named}"
-        )
+    driver = _surface_value(dump, surface, DRIVER_BULLET)
+    return driver.lower() if driver else None
 
 
 def surface_bundle_id(dump: dict, surface: str) -> str | None:
-    """The `bundle-id:` of the runbook that exercises *surface*; ``None`` if none covers it.
-
-    Cloned from `surface_driver`: several runbooks legitimately name the same surface through
-    `surfaces:`, so that alone is not a disagreement. The runbook marked ``walkthrough: true``
-    wins; a sole runbook stands in for it; several unmarked ones with different bundle ids
-    resolve to no answer — `UndeclaredWalkthroughBundleIdRunbook`, because dispatching off an
-    arbitrary pick is worse than a compile-time gap. Two runbooks *both* marked
-    ``walkthrough: true`` that still disagree is `ConflictingSurfaceBundleId`.
-    """
-    by_id = {n["id"]: n for n in dump["nodes"]}
-    candidates: list[tuple[str, str]] = []
-
-    for node in dump["nodes"]:
-        if node["type"] != RUNBOOK_TYPE or node["kind"] != "file":
-            continue
-        targets = {edge["to"] for edge in node["edges"] if edge["via"] == SURFACES_BULLET}
-        if not any(by_id.get(target, {}).get("surface") == surface for target in targets):
-            continue
-        bundle_id = bullet_value(node["bullets"], BUNDLE_ID_BULLET).strip()
-        if bundle_id:
-            candidates.append((node["id"], bundle_id))
-
-    marked = [(node, bundle_id) for node, bundle_id in candidates
-              if bullet_value(by_id[node]["bullets"], WALKTHROUGH_BULLET).lower()
-              in ("true", "yes")]
-    if marked:
-        marked_bundle_ids = sorted({bundle_id for _node, bundle_id in marked})
-        if len(marked_bundle_ids) > 1:
-            raise ConflictingSurfaceBundleId(surface, marked)
-        return marked_bundle_ids[0]
-
-    bundle_ids = sorted({bundle_id for _node, bundle_id in candidates})
-    if len(bundle_ids) > 1:
-        raise UndeclaredWalkthroughBundleIdRunbook(surface, candidates)
-    return bundle_ids[0] if bundle_ids else None
-
-
-class UnsettledSurfaceLaunchScreen(ValueError):
-    """The book does not settle which screen `launch-screen:` names for a surface.
-
-    Base of every reason `surface_launch_screen` refuses to answer, mirroring
-    `UnsettledSurfaceDriver`/`UnsettledSurfaceBundleId` — a reader wanting a launch screen
-    degrades to an undeclared one by catching this one class and stays correct when a further
-    reason is added.
-    """
-
-
-class ConflictingSurfaceLaunchScreen(UnsettledSurfaceLaunchScreen):
-    """More than one runbook marked ``walkthrough: true`` states a different `launch-screen:`
-    for the same surface."""
-
-    def __init__(self, surface: str, screens: list[tuple[str, str]]) -> None:
-        self.surface = surface
-        self.screens = screens
-        named = "; ".join(f"{node} says {screen}" for node, screen in screens)
-        super().__init__(f"surface {surface!r} has conflicting launch screens: {named}")
-
-
-class UndeclaredWalkthroughLaunchScreenRunbook(UnsettledSurfaceLaunchScreen):
-    """Several runbooks cover one surface and none of them claims to be the walkthrough."""
-
-    def __init__(self, surface: str, screens: list[tuple[str, str]]) -> None:
-        self.surface = surface
-        self.screens = screens
-        named = "; ".join(f"{node} states {screen}" for node, screen in screens)
-        super().__init__(
-            f"surface {surface!r} is covered by several runbooks and none is marked "
-            f"`walkthrough: true`: {named}"
-        )
+    """The `bundle-id:` a Maestro flow launches for *surface*; ``None`` if none states one."""
+    return _surface_value(dump, surface, BUNDLE_ID_BULLET)
 
 
 def surface_launch_screen(dump: dict, surface: str) -> str | None:
-    """The screen `launch-screen:` names for the runbook that exercises *surface*; ``None`` if
-    none covers it.
+    """The screen `launch-screen:` names for *surface*; ``None`` if no runbook names one.
 
-    Cloned from `surface_bundle_id`, with one difference: `launch-screen:` is authored as a
-    markdown link (the same way `surfaces:` is), not a bare string, since it names another
-    node rather than stating a literal value — so this reads the link's own href out of
-    `bullet_value` and resolves it against the node's own edges by href, rather than by
-    `edge["via"]`: a node whose `launch-screen:` points at a screen already named in its own
-    `surfaces:` shares that href with the `surfaces:` edge, and `graph._edge_sources` tags the
-    first bullet to claim an href as every edge's `via` for that href — matching by href instead
-    survives that collision, since every edge sharing an href resolves to the same target
-    regardless of which bullet is credited. The returned string is the target document's path
-    with no `#anchor`, the same spelling `screen_routes()` keys on and obligations carry as
-    `source`, so a caller can compare the two directly. The runbook marked ``walkthrough: true``
-    wins; a sole runbook stands in for it; several unmarked ones with different launch screens
-    resolve to no answer — `UndeclaredWalkthroughLaunchScreenRunbook`, because dispatching off
-    an arbitrary pick is worse than a compile-time gap. Two runbooks *both* marked
-    ``walkthrough: true`` that still disagree is `ConflictingSurfaceLaunchScreen`.
+    Read in `surface_runbooks` order like every other launch-contract scalar, with one
+    difference: `launch-screen:` is authored as a markdown link (the same way `surfaces:` is),
+    not a bare string, since it names another node rather than stating a literal value — so this
+    reads the link's own href out of `bullet_value` and resolves it against the node's own edges
+    by href, rather than by `edge["via"]`: a node whose `launch-screen:` points at a screen
+    already named in its own `surfaces:` shares that href with the `surfaces:` edge, and
+    `graph._edge_sources` tags the first bullet to claim an href as every edge's `via` for that
+    href — matching by href instead survives that collision, since every edge sharing an href
+    resolves to the same target regardless of which bullet is credited. The returned string is
+    the target document's path with no `#anchor`, the same spelling `screen_routes()` keys on
+    and obligations carry as `source`, so a caller can compare the two directly.
     """
-    by_id = {n["id"]: n for n in dump["nodes"]}
-    candidates: list[tuple[str, str]] = []
-
-    for node in dump["nodes"]:
-        if node["type"] != RUNBOOK_TYPE or node["kind"] != "file":
+    for node in surface_runbooks(dump, surface):
+        raw = bullet_value(node["bullets"], LAUNCH_SCREEN_BULLET).strip()
+        links = markdown.extract_refs(raw).links
+        if not links:
             continue
-        targets = {edge["to"] for edge in node["edges"] if edge["via"] == SURFACES_BULLET}
-        if not any(by_id.get(target, {}).get("surface") == surface for target in targets):
-            continue
-        launch_screen_raw = bullet_value(node["bullets"], LAUNCH_SCREEN_BULLET).strip()
-        launch_screen_links = markdown.extract_refs(launch_screen_raw).links
-        if launch_screen_links:
-            _text, href = launch_screen_links[0]
-            launch_targets = {edge["to"] for edge in node["edges"] if edge["href"] == href}
-            if launch_targets:
-                screen = sorted(launch_targets)[0].split("#")[0]
-                candidates.append((node["id"], screen))
-
-    marked = [(node, screen) for node, screen in candidates
-              if bullet_value(by_id[node]["bullets"], WALKTHROUGH_BULLET).lower()
-              in ("true", "yes")]
-    if marked:
-        marked_screens = sorted({screen for _node, screen in marked})
-        if len(marked_screens) > 1:
-            raise ConflictingSurfaceLaunchScreen(surface, marked)
-        return marked_screens[0]
-
-    screens = sorted({screen for _node, screen in candidates})
-    if len(screens) > 1:
-        raise UndeclaredWalkthroughLaunchScreenRunbook(surface, candidates)
-    return screens[0] if screens else None
+        _text, href = links[0]
+        targets = {edge["to"] for edge in node["edges"] if edge["href"] == href}
+        if targets:
+            return sorted(targets)[0].split("#")[0]
+    return None
 
 
 def root_screen(data: dict, driver: str | None = None) -> str | None:
@@ -591,32 +424,29 @@ def reachable_from(edges: list[dict], starts: list[str]) -> set[str]:
 
 NO_PATH_ROOT = "no-path-root"
 NO_SURFACE = "no-surface"
-UNSETTLED_LAUNCH_SCREEN = "unsettled-launch-screen"
 NO_LAUNCH_SCREEN = "no-launch-screen"
 LAUNCH_SCREEN_NOT_SCREEN = "launch-screen-not-screen"
 
 
 def surface_root(data: dict, driver: str | None = None, *,
                  surface: str | None = None
-                 ) -> tuple[str | None, str, UnsettledSurfaceLaunchScreen | str | None]:
+                 ) -> tuple[str | None, str, str | None]:
     """``(root, reason, detail)`` — the start screen, why there is none, and the evidence for why.
 
-    *reason* is ``""`` on success, else one of the five stable tokens above, each naming exactly
+    *reason* is ``""`` on success, else one of the four stable tokens above, each naming exactly
     one of the ways a surface can fail to state where it starts. A path-addressed driver
     (`routes.is_path_addressed`) is answered the way it always has been — a screen whose
     ``route:`` is the surface's root path (`root_screen`/`root_path`), or ``NO_PATH_ROOT`` when
     no screen's does. A driver with no path grammar has no root *path* to consult at all, so it
     is answered from `launch-screen:` instead, read via `surface_launch_screen` — which needs
     *surface* to know which runbook to ask, hence ``NO_SURFACE`` when the caller has not given
-    one. That bullet is then reported in its own words exactly as it can fail: unsettled between
-    walkthrough runbooks (``UNSETTLED_LAUNCH_SCREEN``), stated nowhere (``NO_LAUNCH_SCREEN``), or
-    naming something that is not a screen on this surface (``LAUNCH_SCREEN_NOT_SCREEN``).
+    one. That bullet is then reported in its own words exactly as it can fail: stated nowhere
+    (``NO_LAUNCH_SCREEN``), or naming something that is not a screen on this surface
+    (``LAUNCH_SCREEN_NOT_SCREEN``).
 
     *detail* is the evidence a caller needs to render the failure without asking the question
-    again: the caught `UnsettledSurfaceLaunchScreen` itself for ``UNSETTLED_LAUNCH_SCREEN`` (kept
-    as the exception, not its text, so a caller that wants `raise ... from` still can), the
-    offending launch-screen id for ``LAUNCH_SCREEN_NOT_SCREEN``, and ``None`` for every other
-    reason — the other three name a fact that needs no further grounding.
+    again: the offending launch-screen id for ``LAUNCH_SCREEN_NOT_SCREEN``, and ``None`` for
+    every other reason — the rest name a fact that needs no further grounding.
 
     This is the one place that decision is made; `resolve_start` and `unreachable_screens` both
     read it rather than each drawing the distinctions again.
@@ -626,10 +456,7 @@ def surface_root(data: dict, driver: str | None = None, *,
         return (root, "", None) if root is not None else (None, NO_PATH_ROOT, None)
     if surface is None:
         return None, NO_SURFACE, None
-    try:
-        launch_screen = surface_launch_screen(data, surface)
-    except UnsettledSurfaceLaunchScreen as exc:
-        return None, UNSETTLED_LAUNCH_SCREEN, exc
+    launch_screen = surface_launch_screen(data, surface)
     if launch_screen is None:
         return None, NO_LAUNCH_SCREEN, None
     if launch_screen not in screens_of(data):
@@ -691,10 +518,10 @@ def resolve_start(data: dict, start: str | None, driver: str | None = None, *,
     *driver* decides which of the two ``root_screen`` failures this is. A driver with no path
     grammar — `mobile` names its screens, `cli` routes nothing — has no root path to state, but
     when *surface* is given it may still state where it starts via `launch-screen:`, so that is
-    consulted first; only when that bullet is silent, unsettled, or names something that is not
-    a screen on the surface is the caller told so, rather than sent looking for a screen at `/`.
-    Each of those three is reported in its own words: a message that says the book stated
-    nothing, where the book stated something unusable, sends the reader to the wrong line.
+    consulted first; only when that bullet is silent, or names something that is not a screen on
+    the surface, is the caller told so, rather than sent looking for a screen at `/`. Each of
+    those two is reported in its own words: a message that says the book stated nothing, where
+    the book stated something unusable, sends the reader to the wrong line.
     """
     screens = screens_of(data)
     if start is None:
@@ -707,11 +534,6 @@ def resolve_start(data: dict, start: str | None, driver: str | None = None, *,
             if reason == NO_PATH_ROOT:
                 path, _ = root_path(data, driver)
                 raise UnknownStart(f"no screen's `route:` is the root path {path}; pass --from")
-            if reason == UNSETTLED_LAUNCH_SCREEN:
-                cause = detail if isinstance(detail, UnsettledSurfaceLaunchScreen) else None
-                raise UnknownStart(
-                    f"{named} has an unsettled `launch-screen:`: {detail}"
-                ) from cause
             if reason == LAUNCH_SCREEN_NOT_SCREEN:
                 raise UnknownStart(
                     f"{named} states `launch-screen:` {detail}, which is not a "

@@ -835,188 +835,116 @@ def test_a_runbook_with_no_driver_bullet_raises_no_unknown_driver(repo: Path):
 
 
 # ---------------------------------------------------------------------------
-# `conflicting-surface-driver` — every runbook naming one surface must agree on `driver:`
+# ranked surface resolution — several runbooks may cover one surface, and §4.1's
+# driver order settles which one a surface's launch contract is read off
 # ---------------------------------------------------------------------------
-def _write_conflicting_driver_book(repo: Path, driver_a: str, driver_b: str,
-                                    walkthrough_a: bool = True, walkthrough_b: bool = True) -> None:
+def _write_two_runbook_book(repo: Path, driver_a: str, driver_b: str) -> None:
     """Two runbooks in one feature directory, both `surfaces:`-linked into the same server
     node — the shape a legitimate dev-local runbook takes alongside the deployed one, and
-    the only shape `reach.surface_driver` ever has two drivers to compare. Each may be marked
-    `walkthrough: true` independently, since that is what now decides which of two disagreeing
-    drivers wins."""
+    the only shape `reach.surface_driver` ever has two drivers to choose between."""
     write(repo / "docs/features/groom/ops/local.md", ENVIRONMENT)
     write(repo / "docs/features/groom/http/api.md", API_SERVER)
-    walk_a = "- walkthrough: true\n" if walkthrough_a else ""
-    walk_b = "- walkthrough: true\n" if walkthrough_b else ""
     write(repo / "docs/features/groom/ops/deployed.md", (
         "---\ntype: runbook\nslug: deployed\ntitle: Deployed\n---\n# Deployed\n\n"
-        f"- driver: {driver_a}\n{walk_a}- environment: [local](local.md)\n"
+        f"- driver: {driver_a}\n- environment: [local](local.md)\n"
         "- surfaces: [api](../http/api.md)\n\n"
         "## Steps\n\n### serve\n- kind: service\n- run: `run`\n"
     ))
     write(repo / "docs/features/groom/ops/local-cli.md", (
         "---\ntype: runbook\nslug: local-cli\ntitle: Local CLI\n---\n# Local CLI\n\n"
-        f"- driver: {driver_b}\n{walk_b}- environment: [local](local.md)\n"
+        f"- driver: {driver_b}\n- environment: [local](local.md)\n"
         "- surfaces: [api](../http/api.md)\n\n"
         "## Steps\n\n### serve\n- kind: service\n- run: `run --local`\n"
     ))
 
 
-def test_two_runbooks_both_marked_walkthrough_disagreeing_raise_conflicting_surface_driver(
-        repo: Path):
-    _write_conflicting_driver_book(repo, "http", "cli")
-    report = doctor.run(load(repo))
-    errors = [f for f in report.findings if f.code == "conflicting-surface-driver"]
-    assert len(errors) == 1
-    assert errors[0].severity == "error"
-    assert "groom" in errors[0].message
-    assert "http" in errors[0].message
-    assert "cli" in errors[0].message
-    # The remedy is not complete until both runbooks are read, and `path` names a surface
-    # rather than a file here — so the membership has to travel as a field.
-    assert errors[0].related == ["docs/features/groom/ops/deployed.md",
-                                 "docs/features/groom/ops/local-cli.md"]
-    assert "undeclared-walkthrough-runbook" not in {f.code for f in report.findings}
-
-
-def test_two_runbooks_agreeing_on_driver_raise_no_conflicting_surface_driver(repo: Path):
-    # Non-vacuity: the only difference from the conflict fixture above is that both
-    # runbooks now state the same `driver:` — the finding must disappear, not just change.
-    _write_conflicting_driver_book(repo, "http", "http")
-    report = doctor.run(load(repo))
-    codes_seen = {f.code for f in report.findings}
-    assert "conflicting-surface-driver" not in codes_seen
-    assert "undeclared-walkthrough-runbook" not in codes_seen
-
-
-# ---------------------------------------------------------------------------
-# `undeclared-walkthrough-runbook` — several runbooks disagreeing on `driver:` must mark
-# exactly one `walkthrough: true`
-# ---------------------------------------------------------------------------
-def test_one_marked_runbook_among_disagreeing_drivers_is_clean_and_wins(repo: Path):
-    # Real-book shape: a lint runbook and a browser runbook both correctly name the same
-    # surface with different `driver:` values — that is not a defect. Marking the browser one
-    # `walkthrough: true` settles which is how the surface is exercised.
-    _write_conflicting_driver_book(repo, "cli", "web", walkthrough_a=False, walkthrough_b=True)
-    report = doctor.run(load(repo))
-    codes_seen = {f.code for f in report.findings}
-    assert "conflicting-surface-driver" not in codes_seen
-    assert "undeclared-walkthrough-runbook" not in codes_seen
+@pytest.mark.parametrize(("driver_a", "driver_b"), [("http", "cli"), ("cli", "http")])
+def test_two_runbooks_naming_one_surface_settle_on_the_earlier_driver_in_section_4_1(
+        repo: Path, driver_a: str, driver_b: str):
+    # A lint runbook beside a browser runbook is a real book's shape, not a defect: each
+    # correctly names the code it operates on. The engine reads the surface's contract off
+    # the one whose `driver:` comes first in `drivers.DRIVERS` — §4.1's own UI-forward order
+    # — so which file the author happened to write first changes nothing.
+    _write_two_runbook_book(repo, driver_a, driver_b)
     dump = graph.build(load(repo))
-    assert reach.surface_driver(dump, "groom") == "web"
+    assert reach.surface_driver(dump, "groom") == "http"
+    # Non-vacuity: a surface-scoped error would mean some check still treats two correct
+    # runbooks as a defect. Findings against the fixture's own files are another matter.
+    surface_errors = [f for f in doctor.run(load(repo)).findings
+                      if f.severity == "error" and f.ref == "groom"]
+    assert not surface_errors
 
 
-def test_disagreeing_drivers_with_none_marked_raise_undeclared_walkthrough_runbook(repo: Path):
-    # Non-vacuity: the only difference from the clean fixture above is that neither runbook is
-    # marked `walkthrough: true` — the finding must appear, naming both runbooks.
-    _write_conflicting_driver_book(repo, "cli", "web", walkthrough_a=False, walkthrough_b=False)
-    report = doctor.run(load(repo))
-    errors = [f for f in report.findings if f.code == "undeclared-walkthrough-runbook"]
-    assert len(errors) == 1
-    assert errors[0].severity == "error"
-    assert errors[0].related == ["docs/features/groom/ops/deployed.md",
-                                 "docs/features/groom/ops/local-cli.md"]
-    assert "conflicting-surface-driver" not in {f.code for f in report.findings}
+def test_two_runbooks_stating_the_same_driver_settle_on_it(repo: Path):
+    # Non-vacuity for the ranking above: with one driver stated twice there is no ranking to
+    # perform, and the answer must still be that driver rather than None.
+    _write_two_runbook_book(repo, "http", "http")
+    dump = graph.build(load(repo))
+    assert reach.surface_driver(dump, "groom") == "http"
 
 
-def test_sole_unmarked_runbook_is_clean_and_its_driver_wins(repo: Path):
-    # Non-vacuity vs. the two-runbook fixtures above: this book has only one runbook naming
-    # the surface, so there is nothing to disagree with even though it is unmarked.
+def test_a_sole_runbook_settles_its_own_driver(repo: Path):
+    # Non-vacuity vs. the two-runbook fixtures: this book has only one runbook naming the
+    # surface, so the ranking has a single candidate to rank.
     _write_driver_surface_book(repo, "cli", DEV_CLI, "../cli/tally.md")
-    report = doctor.run(load(repo))
-    codes_seen = {f.code for f in report.findings}
-    assert "conflicting-surface-driver" not in codes_seen
-    assert "undeclared-walkthrough-runbook" not in codes_seen
     dump = graph.build(load(repo))
     assert reach.surface_driver(dump, "groom") == "cli"
 
 
-def test_several_runbooks_agreeing_on_driver_with_none_marked_is_clean(repo: Path):
-    # Non-vacuity vs. the undeclared-walkthrough fixture above: the only difference is that
-    # both runbooks now state the same `driver:` — several correct runbooks naming one
-    # surface the same way is not a disagreement, marked or not.
-    _write_conflicting_driver_book(repo, "web", "web", walkthrough_a=False, walkthrough_b=False)
-    report = doctor.run(load(repo))
-    codes_seen = {f.code for f in report.findings}
-    assert "conflicting-surface-driver" not in codes_seen
-    assert "undeclared-walkthrough-runbook" not in codes_seen
-    dump = graph.build(load(repo))
-    assert reach.surface_driver(dump, "groom") == "web"
-
-
-def _write_conflicting_bundle_id_book(repo: Path, bundle_id_a: str, bundle_id_b: str,
-                                       walkthrough_a: bool = True,
-                                       walkthrough_b: bool = True) -> None:
+def _write_two_mobile_runbook_book(repo: Path, bundle_id_a: str | None,
+                                    bundle_id_b: str | None) -> None:
     """Two runbooks in one feature directory, both `surfaces:`-linked into the same screen
-    node, each stating its own `bundle-id:` — the only shape `reach.surface_bundle_id` ever
-    has two bundle ids to compare.
+    node and both `driver: mobile`, each stating its own `bundle-id:` (or none, when the
+    argument is None).
 
-    `reach.surface_bundle_id` is cloned from `surface_driver`: the `walkthrough: true` runbook
-    wins, a sole runbook stands in for it unmarked, and disagreement with no runbook marked is
-    `UndeclaredWalkthroughBundleIdRunbook` while disagreement between two marked ones is
-    `ConflictingSurfaceBundleId`. Unlike `driver:`, no doctor.py static checker inspects this
-    directly (there is no `_check_conflicting_surface_bundle_id`) — the only reader is
-    `qa.context.navigation()`, so the tests below call `reach.surface_bundle_id` directly rather
-    than reading `doctor.run`'s findings the way the driver tests above do."""
+    Both rank equally under §4.1, so the tie falls to the node id — `current.md` sorts before
+    `legacy.md`. Unlike `driver:`, no doctor.py check inspects a bundle id, so these tests
+    call `reach.surface_bundle_id` directly rather than reading `doctor.run`'s findings."""
     write(repo / "docs/features/groom/ops/local.md", ENVIRONMENT)
     write(repo / "docs/features/groom/gui/screens/dashboard.md", DASHBOARD)
-    walk_a = "- walkthrough: true\n" if walkthrough_a else ""
-    walk_b = "- walkthrough: true\n" if walkthrough_b else ""
+    bundle_a = f"- bundle-id: {bundle_id_a}\n" if bundle_id_a else ""
+    bundle_b = f"- bundle-id: {bundle_id_b}\n" if bundle_id_b else ""
     write(repo / "docs/features/groom/ops/legacy.md", (
         "---\ntype: runbook\nslug: legacy\ntitle: Legacy\n---\n# Legacy\n\n"
-        f"- driver: mobile\n{walk_a}- environment: [local](local.md)\n"
+        "- driver: mobile\n- environment: [local](local.md)\n"
         "- surfaces: [dashboard](../gui/screens/dashboard.md)\n"
-        f"- bundle-id: {bundle_id_a}\n\n"
+        f"{bundle_a}\n"
         "## Steps\n\n### serve\n- kind: service\n- run: `run`\n"
     ))
     write(repo / "docs/features/groom/ops/current.md", (
         "---\ntype: runbook\nslug: current\ntitle: Current\n---\n# Current\n\n"
-        f"- driver: mobile\n{walk_b}- environment: [local](local.md)\n"
+        "- driver: mobile\n- environment: [local](local.md)\n"
         "- surfaces: [dashboard](../gui/screens/dashboard.md)\n"
-        f"- bundle-id: {bundle_id_b}\n\n"
+        f"{bundle_b}\n"
         "## Steps\n\n### serve\n- kind: service\n- run: `run --current`\n"
     ))
 
 
-def test_one_marked_runbook_among_disagreeing_bundle_ids_is_clean_and_wins(repo: Path):
-    _write_conflicting_bundle_id_book(repo, "com.example.legacy", "com.example.current",
-                                       walkthrough_a=False, walkthrough_b=True)
+def test_two_runbooks_stating_different_bundle_ids_settle_by_node_id(repo: Path):
+    _write_two_mobile_runbook_book(repo, "com.example.legacy", "com.example.current")
     dump = graph.build(load(repo))
     assert reach.surface_bundle_id(dump, "groom") == "com.example.current"
 
 
-def test_disagreeing_bundle_ids_with_none_marked_raise_undeclared_walkthrough_bundle_id_runbook(
-        repo: Path):
-    _write_conflicting_bundle_id_book(repo, "com.example.legacy", "com.example.current",
-                                       walkthrough_a=False, walkthrough_b=False)
-    dump = graph.build(load(repo))
-    with pytest.raises(reach.UndeclaredWalkthroughBundleIdRunbook) as excinfo:
-        reach.surface_bundle_id(dump, "groom")
-    assert "legacy.md" in str(excinfo.value) and "current.md" in str(excinfo.value)
-
-
-def test_two_runbooks_both_marked_walkthrough_disagreeing_raise_conflicting_surface_bundle_id(
-        repo: Path):
-    _write_conflicting_bundle_id_book(repo, "com.example.legacy", "com.example.current")
-    dump = graph.build(load(repo))
-    with pytest.raises(reach.ConflictingSurfaceBundleId) as excinfo:
-        reach.surface_bundle_id(dump, "groom")
-    assert "legacy.md" in str(excinfo.value) and "current.md" in str(excinfo.value)
-
-
-def test_several_agreeing_bundle_ids_with_none_marked_is_clean(repo: Path):
-    """Non-vacuity vs. the undeclared-walkthrough fixture above: the only difference is that
-    both runbooks now state the same `bundle-id:` — several correct runbooks naming one
-    surface the same way is not a disagreement, marked or not."""
-    _write_conflicting_bundle_id_book(repo, "com.example.legacy", "com.example.legacy",
-                                       walkthrough_a=False, walkthrough_b=False)
+def test_a_bundle_id_falls_through_to_the_next_runbook_when_the_first_is_silent(repo: Path):
+    # The three scalars are read down one ranked order, per key: the top runbook settles the
+    # ones it states, and a key it says nothing about falls to the next runbook rather than
+    # resolving to None beside a book that plainly states it.
+    _write_two_mobile_runbook_book(repo, "com.example.legacy", None)
     dump = graph.build(load(repo))
     assert reach.surface_bundle_id(dump, "groom") == "com.example.legacy"
 
 
-def test_sole_unmarked_runbook_is_clean_and_its_bundle_id_wins(repo: Path):
-    """Real-book shape: only one runbook names this surface at all, so there is nothing to
-    disagree with even though it carries no `walkthrough: true` mark."""
+def test_two_runbooks_stating_the_same_bundle_id_settle_on_it(repo: Path):
+    """Non-vacuity for the tiebreak above: one value stated twice is not a choice, and the
+    answer must still be that value."""
+    _write_two_mobile_runbook_book(repo, "com.example.legacy", "com.example.legacy")
+    dump = graph.build(load(repo))
+    assert reach.surface_bundle_id(dump, "groom") == "com.example.legacy"
+
+
+def test_a_sole_runbook_settles_its_own_bundle_id(repo: Path):
+    """Real-book shape: only one runbook names this surface at all."""
     write(repo / "docs/features/groom/ops/local.md", ENVIRONMENT)
     write(repo / "docs/features/groom/gui/screens/dashboard.md", DASHBOARD)
     write(repo / "docs/features/groom/ops/web.md", (
@@ -1041,69 +969,56 @@ SETTINGS_SCREEN = ("---\ntype: screen\nslug: settings\ntitle: Settings\n---\n# S
                     "- route: `/settings`\n- requires: none\n- params: none\n")
 
 
-def _write_conflicting_launch_screen_book(repo: Path, walkthrough_a: bool = True,
-                                           walkthrough_b: bool = True) -> None:
+def _write_two_launch_screen_runbook_book(repo: Path, launch_a: str | None,
+                                           launch_b: str | None) -> None:
     """Two runbooks in one feature directory, both `surfaces:`-linked into the same screen
-    node, each stating a *different* `launch-screen:` — the only shape
-    `reach.surface_launch_screen` ever has two launch screens to compare.
+    node, each stating its own `launch-screen:` (or none, when the argument is None).
 
-    Cloned from `_write_conflicting_bundle_id_book`: `reach.surface_launch_screen` is cloned
-    from `surface_bundle_id`, so it resolves the walkthrough-marked runbook the same way and
-    raises the same two ways on disagreement, except the value compared is a link to a screen
-    node rather than a bare string."""
+    Cloned from `_write_two_mobile_runbook_book`: `reach.surface_launch_screen` reads the
+    same ranked order, except the value compared is a link to a screen node rather than a
+    bare string."""
     write(repo / "docs/features/groom/ops/local.md", ENVIRONMENT)
     write(repo / "docs/features/groom/gui/screens/dashboard.md", DASHBOARD)
     write(repo / "docs/features/groom/gui/screens/settings.md", SETTINGS_SCREEN)
-    walk_a = "- walkthrough: true\n" if walkthrough_a else ""
-    walk_b = "- walkthrough: true\n" if walkthrough_b else ""
+    line_a = f"- launch-screen: [{launch_a}](../gui/screens/{launch_a}.md)\n" if launch_a else ""
+    line_b = f"- launch-screen: [{launch_b}](../gui/screens/{launch_b}.md)\n" if launch_b else ""
     write(repo / "docs/features/groom/ops/legacy.md", (
         "---\ntype: runbook\nslug: legacy\ntitle: Legacy\n---\n# Legacy\n\n"
-        f"- driver: mobile\n{walk_a}- environment: [local](local.md)\n"
+        "- driver: mobile\n- environment: [local](local.md)\n"
         "- surfaces: [dashboard](../gui/screens/dashboard.md)\n"
         "- bundle-id: com.example.mobile-app\n"
-        "- launch-screen: [dashboard](../gui/screens/dashboard.md)\n\n"
+        f"{line_a}\n"
         "## Steps\n\n### serve\n- kind: service\n- run: `run`\n"
     ))
     write(repo / "docs/features/groom/ops/current.md", (
         "---\ntype: runbook\nslug: current\ntitle: Current\n---\n# Current\n\n"
-        f"- driver: mobile\n{walk_b}- environment: [local](local.md)\n"
+        "- driver: mobile\n- environment: [local](local.md)\n"
         "- surfaces: [dashboard](../gui/screens/dashboard.md)\n"
         "- bundle-id: com.example.mobile-app\n"
-        "- launch-screen: [settings](../gui/screens/settings.md)\n\n"
+        f"{line_b}\n"
         "## Steps\n\n### serve\n- kind: service\n- run: `run --current`\n"
     ))
 
 
-def test_one_marked_runbook_among_disagreeing_launch_screens_is_clean_and_wins(repo: Path):
-    _write_conflicting_launch_screen_book(repo, walkthrough_a=False, walkthrough_b=True)
+def test_two_runbooks_stating_different_launch_screens_settle_by_node_id(repo: Path):
+    _write_two_launch_screen_runbook_book(repo, "dashboard", "settings")
     dump = graph.build(load(repo))
     assert reach.surface_launch_screen(dump, "groom") == (
         "docs/features/groom/gui/screens/settings.md"
     )
 
 
-def test_disagreeing_launch_screens_with_none_marked_raise_undeclared_walkthrough_runbook(
-        repo: Path):
-    _write_conflicting_launch_screen_book(repo, walkthrough_a=False, walkthrough_b=False)
+def test_a_launch_screen_falls_through_to_the_next_runbook_when_the_first_is_silent(repo: Path):
+    _write_two_launch_screen_runbook_book(repo, "dashboard", None)
     dump = graph.build(load(repo))
-    with pytest.raises(reach.UndeclaredWalkthroughLaunchScreenRunbook) as excinfo:
-        reach.surface_launch_screen(dump, "groom")
-    assert "legacy.md" in str(excinfo.value) and "current.md" in str(excinfo.value)
+    assert reach.surface_launch_screen(dump, "groom") == (
+        "docs/features/groom/gui/screens/dashboard.md"
+    )
 
 
-def test_two_runbooks_both_marked_walkthrough_disagreeing_raise_conflicting_launch_screen(
-        repo: Path):
-    _write_conflicting_launch_screen_book(repo)
-    dump = graph.build(load(repo))
-    with pytest.raises(reach.ConflictingSurfaceLaunchScreen) as excinfo:
-        reach.surface_launch_screen(dump, "groom")
-    assert "legacy.md" in str(excinfo.value) and "current.md" in str(excinfo.value)
-
-
-def test_sole_unmarked_runbook_is_clean_and_its_launch_screen_wins(repo: Path):
-    """Real-book shape: only one runbook names this surface at all, so there is nothing to
-    disagree with even though it carries no `walkthrough: true` mark — the same shape
-    `test_sole_unmarked_runbook_is_clean_and_its_bundle_id_wins` pins for `bundle-id:`."""
+def test_a_sole_runbook_settles_its_own_launch_screen(repo: Path):
+    """Real-book shape: only one runbook names this surface at all — the same shape
+    `test_a_sole_runbook_settles_its_own_bundle_id` pins for `bundle-id:`."""
     write(repo / "docs/features/groom/ops/local.md", ENVIRONMENT)
     write(repo / "docs/features/groom/gui/screens/dashboard.md", DASHBOARD)
     write(repo / "docs/features/groom/ops/web.md", (
@@ -1127,23 +1042,18 @@ def test_a_surface_with_no_launch_screen_at_all_resolves_to_none(repo: Path):
     assert reach.surface_launch_screen(dump, "groom") is None
 
 
-@pytest.mark.parametrize(("marked", "code"), [
-    (False, "undeclared-walkthrough-runbook"),
-    (True, "conflicting-surface-driver"),
-])
-def test_an_unsettled_surface_driver_is_reported_not_raised_past_the_grammar_readers(
-        repo: Path, marked: bool, code: str):
-    # The fixtures above put no screen on the disputed surface, so neither
-    # `_check_bullet_value_kinds` nor `_check_reachability` ever asks for its driver and
-    # neither ever sees the refusal. A surface that carries a screen makes both ask. Both
-    # want a *grammar*, which an unsettled surface cannot give, so both must degrade to an
-    # undeclared driver and let the two reporting checks speak — whichever reason the
-    # refusal carries. A reader that knows only one reason crashes the whole run on the
-    # next one, which is a defect the book's author can neither see nor repair.
-    _write_conflicting_driver_book(repo, "cli", "web", walkthrough_a=marked, walkthrough_b=marked)
+def test_a_surface_carrying_a_screen_resolves_its_driver_for_both_grammar_readers(repo: Path):
+    # The fixtures above put no screen on the surface, so neither `_check_bullet_value_kinds`
+    # nor `_check_reachability` ever asks for its driver. A surface that carries a screen
+    # makes both ask, and both want a *grammar* — one answer per surface. The ranking is what
+    # gives them one where two runbooks cover the surface, so neither reader degrades and the
+    # run reports nothing about the two runbooks both being correct.
+    _write_two_runbook_book(repo, "cli", "web")
     write(repo / "docs/features/groom/gui/screens/dashboard.md", DASHBOARD)
-    report = doctor.run(load(repo))
-    assert [f.code for f in report.findings if f.code == code] == [code]
+    dump = graph.build(load(repo))
+    assert reach.surface_driver(dump, "groom") == "web"
+    codes_seen = codes(doctor.run(load(repo)))
+    assert "unknown-driver" not in codes_seen
 
 
 def test_a_same_size_rewrite_is_not_served_from_the_parse_cache(repo: Path):
@@ -1227,50 +1137,46 @@ def test_same_as_disagreement_one_finding_for_a_three_member_family(repo: Path):
 
 
 # ---------------------------------------------------------------------------
-# `conflicting-entry-origin` — every source stating a surface's address must agree
+# entry origin — a runbook's `entry-url:` settles a surface's address, the server's backs it
 # ---------------------------------------------------------------------------
-def _write_conflicting_origin_book(repo: Path, server_url: str, runbook_url: str) -> None:
+def _write_two_origin_book(repo: Path, server_url: str, runbook_url: str | None) -> None:
     """A `server` and a `runbook` that both state the surface's address, so `entry_origin`
-    has two sources to compare — the only shape that ever produces a conflict."""
+    has two sources to rank — the only shape where the ranking is observable."""
     write(repo / "docs/features/groom/ops/local.md", ENVIRONMENT)
     write(repo / "docs/features/groom/http/api.md", (
         "---\ntype: server\nslug: api\ntitle: API\n---\n# API\n\n"
         f"- entry-url: {server_url}\n\n## Endpoints\n"
     ))
+    entry = f"- entry-url: {runbook_url}\n" if runbook_url else ""
     write(repo / "docs/features/groom/ops/deployed.md", (
         "---\ntype: runbook\nslug: deployed\ntitle: Deployed\n---\n# Deployed\n\n"
         "- driver: http\n- environment: [local](local.md)\n"
-        f"- entry-url: {runbook_url}\n"
+        f"{entry}"
         "- surfaces: [api](../http/api.md)\n\n"
         "## Steps\n\n### serve\n- kind: service\n- run: `run`\n"
     ))
 
 
-def test_two_sources_disagreeing_on_the_entry_url_raise_conflicting_entry_origin(repo: Path):
-    _write_conflicting_origin_book(repo, "http://127.0.0.1:8787", "http://127.0.0.1:9999")
-    report = doctor.run(load(repo))
-    errors = [f for f in report.findings if f.code == "conflicting-entry-origin"]
-    assert len(errors) == 1
-    assert errors[0].severity == "error"
-    assert "groom" in errors[0].message
-    assert "8787" in errors[0].message
-    assert "9999" in errors[0].message
-    assert errors[0].related == ["docs/features/groom/http/api.md",
-                                 "docs/features/groom/ops/deployed.md"]
+def test_a_runbook_entry_url_outranks_the_servers(repo: Path):
+    # A runbook says how the surface is brought up here and now; a `server` node states the
+    # contract the service publishes. When they differ, the one QA walks against is the one
+    # the runbook is about to start.
+    _write_two_origin_book(repo, "http://127.0.0.1:8787", "http://127.0.0.1:9999")
+    dump = graph.build(load(repo))
+    assert reach.entry_origin(dump, "groom") == "http://127.0.0.1:9999"
 
 
-def test_two_sources_agreeing_on_the_entry_url_raise_no_conflicting_entry_origin(repo: Path):
-    # Non-vacuity: the only difference from the conflict fixture is the port, so a finding
-    # that survives here would be firing on something other than the disagreement.
-    _write_conflicting_origin_book(repo, "http://127.0.0.1:8787", "http://127.0.0.1:8787")
-    report = doctor.run(load(repo))
-    assert "conflicting-entry-origin" not in {f.code for f in report.findings}
+def test_a_surface_with_no_runbook_entry_url_falls_back_to_the_server(repo: Path):
+    # Non-vacuity for the ranking above: with the runbook silent the answer must be the
+    # server's address rather than None.
+    _write_two_origin_book(repo, "http://127.0.0.1:8787", None)
+    dump = graph.build(load(repo))
+    assert reach.entry_origin(dump, "groom") == "http://127.0.0.1:8787"
 
 
-def test_a_differing_path_under_one_origin_is_not_a_conflicting_entry_origin(repo: Path):
-    # `entry_origin` compares `scheme://host[:port]` and nothing else, because that is all a
-    # target's `base_url` is; two sources naming different paths under one host agree about
-    # the thing being compared.
-    _write_conflicting_origin_book(repo, "http://127.0.0.1:8787/api", "http://127.0.0.1:8787/")
-    report = doctor.run(load(repo))
-    assert "conflicting-entry-origin" not in {f.code for f in report.findings}
+def test_entry_origin_keeps_only_the_origin_of_what_a_source_states(repo: Path):
+    # `entry_origin` returns `scheme://host[:port]` and nothing else, because that is all a
+    # target's `base_url` is — the path a source writes after it is not part of the answer.
+    _write_two_origin_book(repo, "http://127.0.0.1:8787/api", "http://127.0.0.1:9999/v2")
+    dump = graph.build(load(repo))
+    assert reach.entry_origin(dump, "groom") == "http://127.0.0.1:9999"

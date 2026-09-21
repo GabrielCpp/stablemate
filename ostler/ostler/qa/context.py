@@ -349,103 +349,45 @@ def _navigation(head_graph: Graph) -> dict[str, dict[str, Any]]:
     raised as an exception that would take context-building down with it.
 
     Every entry also carries `entryUrl` — the surface's `scheme://host[:port]`, read off its
-    `server`/`runbook` nodes by `reach.entry_origin` — for `compile.py` to resolve a `target(...)`'s
-    `base_url` from the book instead of one CLI flag applied to every surface alike. A book whose
-    sources disagree (`reach.ConflictingEntryOrigin`) does not fail context-building either: `entryUrl`
-    stays `None` and the conflict is recorded under `entryUrlError`, the same shape `UnknownStart`
-    already gets. `entryUrlError` is read: `compile.py` gaps that surface `conflicting-entry-origin`
-    rather than falling back to `--base-url`, which answers a book stating no address and does not
-    adjudicate between two the book does state. Doctor reports it against the surface as well.
+    `runbook`/`server` nodes by `reach.entry_origin` — for `compile.py` to resolve a
+    `target(...)`'s `base_url` from the book instead of one CLI flag applied to every surface
+    alike. A surface whose sources state several addresses resolves to the first one
+    `reach.surface_runbooks` reaches rather than to an error: they are addresses of one system,
+    and which of them the engine opens is not a question the book is asked to answer.
 
     Every entry also carries `driver` — the driver of the runbook that exercises this surface
     (§4.1's D1), read off its `runbook` node(s) by `reach.surface_driver` — for `compile.py`'s
     dispatch table to key on "who performs this step" instead of inferring it from which check
     a `does:` bullet happens to declare. Several runbooks naming the same surface through
     `surfaces:` with different `driver:` values is normal, not a defect — a lint runbook and a
-    browser runbook and an IaC runbook can all be correct about the same surface — so the one
-    that stands for the surface is the one marked `walkthrough: true`, the same way `root_path`
-    picks a server; a sole runbook stands in for it unmarked. A book with no runbook covering the
-    surface leaves `driver` `None` with no error recorded. A book with several runbooks and none
-    marked (`reach.UndeclaredWalkthroughRunbook`), or with several *marked* runbooks that still
-    disagree (`reach.ConflictingSurfaceDriver`), also leaves `driver` `None`, and records why
-    under `driverError` — the same shape `entryUrlError` already gets — plus which of the two
-    under `driverErrorKind` (`"undeclared-walkthrough-runbook"` or `"conflicting-surface-driver"`),
-    so `compile.py` and the doctor can tell the two apart. A step whose driver the book does not
-    determine is not defaulted, it becomes a gap.
+    browser runbook and an IaC runbook can all be correct about the same surface — and the
+    engine picks between them by §4.1's own driver order (`reach.surface_runbooks`) rather than
+    asking the book to mark one. A book with no runbook covering the surface leaves `driver`
+    `None`, and a step whose driver the book states nowhere is not defaulted: it becomes a gap.
 
     Every entry also carries `bundleId` — the mobile package/bundle id of the runbook that
     exercises this surface, read off its `runbook` node(s) by `reach.surface_bundle_id` the same
     way `driver` is — for `compile.py` to address a Maestro flow's real app instead of a
-    placeholder. A book with no runbook stating one leaves `bundleId` `None` with no error
-    recorded; several unmarked runbooks that disagree, or several *marked* ones that still
-    disagree, also leave it `None` and record why under `bundleIdError` plus which of the two
-    under `bundleIdErrorKind` (`"undeclared-walkthrough-runbook"` or
-    `"conflicting-surface-bundle-id"`), the same shape `driverError`/`driverErrorKind` already get.
-
-    Every entry also carries `launchScreen` — the screen `launch-screen:` names on the runbook
-    that exercises this surface, read off it by `reach.surface_launch_screen` the same way
-    `bundleId` is — for `compile.py` to know which screen a cold `launchApp` actually opens on,
-    since Maestro's own `- launchApp` names no screen and the book otherwise has no way to say
-    one. A book with no runbook stating one leaves `launchScreen` `None` with no error recorded;
-    several unmarked runbooks that disagree, or several *marked* ones that still disagree, also
-    leave it `None` and record why under `launchScreenError` plus which of the two under
-    `launchScreenErrorKind` (`"undeclared-walkthrough-runbook"` or
-    `"conflicting-surface-launch-screen"`), the same shape `bundleIdError`/`bundleIdErrorKind`
-    already get.
+    placeholder — and `launchScreen`, the screen `launch-screen:` names on that runbook, read by
+    `reach.surface_launch_screen`, for `compile.py` to know which screen a cold `launchApp`
+    actually opens on, since Maestro's own `- launchApp` names no screen and the book otherwise
+    has no way to say one. Both are `None` when no runbook covering the surface states them.
     """
     dump = graph_mod.build(head_graph)
     surfaces = sorted({n["surface"] for n in dump["nodes"] if n.get("surface")})
     navigation: dict[str, dict[str, Any]] = {}
     for surface in surfaces:
         surface_dump = graph_mod.subset(dump, surface)
-        try:
-            driver = reach.surface_driver(dump, surface)
-            driver_error = None
-            driver_error_kind = None
-        except reach.ConflictingSurfaceDriver as exc:
-            driver = None
-            driver_error = str(exc)
-            driver_error_kind = "conflicting-surface-driver"
-        except reach.UndeclaredWalkthroughRunbook as exc:
-            driver = None
-            driver_error = str(exc)
-            driver_error_kind = "undeclared-walkthrough-runbook"
-        try:
-            bundle_id = reach.surface_bundle_id(dump, surface)
-            bundle_id_error = None
-            bundle_id_error_kind = None
-        except reach.ConflictingSurfaceBundleId as exc:
-            bundle_id = None
-            bundle_id_error = str(exc)
-            bundle_id_error_kind = "conflicting-surface-bundle-id"
-        except reach.UndeclaredWalkthroughBundleIdRunbook as exc:
-            bundle_id = None
-            bundle_id_error = str(exc)
-            bundle_id_error_kind = "undeclared-walkthrough-runbook"
-        try:
-            launch_screen = reach.surface_launch_screen(dump, surface)
-            launch_screen_error = None
-            launch_screen_error_kind = None
-        except reach.ConflictingSurfaceLaunchScreen as exc:
-            launch_screen = None
-            launch_screen_error = str(exc)
-            launch_screen_error_kind = "conflicting-surface-launch-screen"
-        except reach.UndeclaredWalkthroughLaunchScreenRunbook as exc:
-            launch_screen = None
-            launch_screen_error = str(exc)
-            launch_screen_error_kind = "undeclared-walkthrough-runbook"
+        driver = reach.surface_driver(dump, surface)
+        bundle_id = reach.surface_bundle_id(dump, surface)
+        launch_screen = reach.surface_launch_screen(dump, surface)
         # `root_path` needs *driver* before it can be asked: a `mobile` surface has no path
         # grammar to state a root path in (`routes.is_path_addressed`), and asking without
         # driver would get today's web-shaped default back regardless of what this surface
         # actually is.
         root_path, _server = reach.root_path(surface_dump, driver)
         screens = reach.screens_of(surface_dump)
-        try:
-            entry_url = reach.entry_origin(dump, surface)
-            entry_url_error = None
-        except reach.ConflictingEntryOrigin as exc:
-            entry_url = None
-            entry_url_error = str(exc)
+        entry_url = reach.entry_origin(dump, surface)
         if not screens:
             navigation[surface] = {
                 "start": "",
@@ -462,17 +404,6 @@ def _navigation(head_graph: Graph) -> dict[str, dict[str, Any]]:
                 "unreachable": [],
                 "undeclared": [],
             }
-            if entry_url_error is not None:
-                navigation[surface]["entryUrlError"] = entry_url_error
-            if driver_error is not None:
-                navigation[surface]["driverError"] = driver_error
-                navigation[surface]["driverErrorKind"] = driver_error_kind
-            if bundle_id_error is not None:
-                navigation[surface]["bundleIdError"] = bundle_id_error
-                navigation[surface]["bundleIdErrorKind"] = bundle_id_error_kind
-            if launch_screen_error is not None:
-                navigation[surface]["launchScreenError"] = launch_screen_error
-                navigation[surface]["launchScreenErrorKind"] = launch_screen_error_kind
             continue
         try:
             navigation[surface] = reach.reachability(head_graph, surface=surface, driver=driver)
@@ -499,17 +430,6 @@ def _navigation(head_graph: Graph) -> dict[str, dict[str, Any]]:
                 "undeclared": [],
                 "error": str(exc),
             }
-        if entry_url_error is not None:
-            navigation[surface]["entryUrlError"] = entry_url_error
-        if driver_error is not None:
-            navigation[surface]["driverError"] = driver_error
-            navigation[surface]["driverErrorKind"] = driver_error_kind
-        if bundle_id_error is not None:
-            navigation[surface]["bundleIdError"] = bundle_id_error
-            navigation[surface]["bundleIdErrorKind"] = bundle_id_error_kind
-        if launch_screen_error is not None:
-            navigation[surface]["launchScreenError"] = launch_screen_error
-            navigation[surface]["launchScreenErrorKind"] = launch_screen_error_kind
     return navigation
 
 
