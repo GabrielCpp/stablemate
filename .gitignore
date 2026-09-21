@@ -254,6 +254,13 @@ docs/backload.md
 **/qa/qa-session.json
 # <<< farrier: QA evidence <<<
 
+# A QA round's output inside a paddock fixture app. The `docs/specs` entry above carries a
+# slash, so git anchors it to this file's own directory and it never reached the copy a round
+# writes under a fixture — the plan module, the rendered Maestro flows and the evidence are all
+# re-derivable from the task module, and the generated plan trips ruff, so an untracked round
+# fails `make lint` for everyone.
+paddock/data/apps/*/docs/specs/
+
 .agents/runs/
 .agents/worktrees/
 .agents/workflows/
