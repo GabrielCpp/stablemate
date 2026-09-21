@@ -708,6 +708,25 @@ def test_unstamped_and_unreachable_citations_queue_no_repair_row() -> None:
     assert _repair_items(findings) == []
 
 
+def test_an_unwitnessed_check_queues_no_repair_row_but_a_sibling_finding_still_does() -> None:
+    """`unwitnessed-check` reports the sensitivity harness's reach, not a book defect.
+
+    The control is the second finding on the same node: `missing-code-symbol` is still
+    returned, which proves the filter dropped `unwitnessed-check` by its code and not by
+    swallowing the node it stands on.
+    """
+    doc = f"{BOOK}/billing.md"
+    findings = [
+        {**_finding("unwitnessed-check", path=doc), "ref": f"{doc}#charge#code"},
+        {**_finding("missing-code-symbol", severity="error", path=doc), "ref": f"{doc}#charge#code"},
+    ]
+
+    items = _repair_items(findings)
+
+    assert len(items) == 1
+    assert items[0]["kind"] == "fix:missing-code-symbol"
+
+
 def _stub_ostler(monkeypatch, findings: list[dict]) -> None:
     """Point `checkpoint_book` at a fake `Ostler`/`scoped_findings` instead of a real book.
 

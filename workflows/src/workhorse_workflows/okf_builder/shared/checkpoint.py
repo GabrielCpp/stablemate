@@ -176,6 +176,15 @@ TEST_SUBJECT = "test-subject"
 #: `@scenario(target=...)` binds one of. Both say the book is already right and the
 #: harness is what is missing, so sending them to a repair turn would aim an agent at a
 #: correct page and ask it to change something.
+#: `unwitnessed-check` belongs to the same family for its own reason: it says `ostler qa
+#: sensitivity` could not build a witness observation any check on the claim accepts, so no
+#: perturbation was ever tried — a statement about the sensitivity harness's reach, not an
+#: obligation the book owes a proof of. `doctor.py` says as much twice, once in the finding's
+#: own `suggestion` and once in the `#:` docstring excluding it from `OBLIGATION_CODES`. The
+#: one edit that would silence it — a looser pattern the witness synthesizer can satisfy — is
+#: the edit that makes `insensitive-check` true of the same claim, so a repair turn aimed here
+#: can only make the book worse. It is a `warn` that never blocks: a book can be finished and
+#: correct with `unwitnessed-check` standing on it.
 NON_ACTIONABLE_CODES = frozenset({
     "unstamped-citation",
     "unreachable-citation",
@@ -183,6 +192,7 @@ NON_ACTIONABLE_CODES = frozenset({
     "needs-out-of-band-observation",
     "needs-target-backend",
     "needs-multi-target-runtime",
+    "unwitnessed-check",
 })
 
 #: `stale-citation` is a turn's to repair, but never through this path: `coverage.py`'s
