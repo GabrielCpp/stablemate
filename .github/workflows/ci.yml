@@ -5,10 +5,11 @@
 # PR is the worst possible place to discover it — the fix has to land, re-trigger
 # release-please and re-open the PR before anything can ship.
 #
-# `make test` already chains lint (ruff + ty) and the repo's own guards — check-public,
-# check-no-env, check-parsers, check-portability — so this file deliberately adds no
-# steps of its own beyond the two the runner cannot infer: the browser binary, and the
-# hooks check below.
+# `make test` chains lint (ruff + ty) and every package suite, so this file adds no steps
+# of its own beyond the two the runner cannot infer: the browser binary, and the hooks
+# check below. It does NOT chain the repo's own guards — check-public, check-no-env,
+# check-parsers, check-portability are their own targets and nothing here invokes them,
+# so no job in this workflow enforces them.
 
 name: ci
 

@@ -13,7 +13,7 @@ to nobody — the copies are what make it visible. Run ``make vendor`` in the sa
 as the core change and every tool that carries it bumps.
 
     make vendor         write the copies
-    make check-vendor   fail if they have drifted (runs as part of `make test`)
+    make check-vendor   fail if they have drifted
 
 Byte-identical is the whole contract: nothing here rewrites imports, which is why every
 import inside ``stablemate_core`` must be relative (see its ``__init__``).

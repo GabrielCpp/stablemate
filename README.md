@@ -334,7 +334,7 @@ resume, sub-flows, operator gates, and telemetry labels.
 ```bash
 make install                         # once per clone: venv + git hooks + test browsers
 make sync                            # just the venv, when that is all that changed
-make test                            # every suite + the benchmark tests + check-public
+make test                            # lint + every suite, the benchmark tests included
 make build                           # wheels + sdists for ostler, workhorse, farrier, workflows
 make -C farrier check                # inspect a built wheel's contents
 make -C <pkg> test                   # one package (core, workhorse, workflows, ostler, farrier, groom, saddlebag, paddock)
@@ -354,9 +354,10 @@ or installs the root itself.) Use `uv run --package <name>` to run within a
 specific member.
 
 `make test` is the aggregate: lint, then every member's suite — paddock's benchmark
-tests included, because a benchmark whose scoring is wrong is worse than none — then
-the repo guards, among them `make check-public`, which asserts that no private overlay
-name reached this public repo and that the base library still stands alone. `make okf-verify` is separate and slower: it
+tests included, because a benchmark whose scoring is wrong is worse than none. The
+repo guards are separate targets and are not part of it, among them `make check-public`,
+which asserts that no private overlay name reached this public repo and that the base
+library still stands alone. `make okf-verify` is separate and slower: it
 checks every OKF book's coverage against its source.
 
 Each package that ships is independently versioned and released from CI. Nothing is

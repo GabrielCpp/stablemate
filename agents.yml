@@ -68,10 +68,10 @@ template:
   private_names_script: "scripts/private_names.py"
   private_names_env: "STABLEMATE_PRIVATE_NAMES"
   private_names_install: "make install"
-  check_public_command: "make check-public    # also runs as part of `make test`"
+  check_public_command: "make check-public    # from the repo root, on its own"
 
   # no-shell-scripts: the guard that is both the sweep and the PreToolUse hook.
-  check_no_shell_command: "make check-no-shell   # also runs as part of `make test`"
+  check_no_shell_command: "make check-no-shell   # from the repo root, on its own"
   check_no_shell_script: "scripts/check_no_shell.py"
 
   # python-lint-clean / commit-and-push: the one gate command.

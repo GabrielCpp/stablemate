@@ -64,7 +64,7 @@ that what this repo publishes stands alone — that nothing tracked here depends
 on the private overlay to work.
 
 ```bash
-make check-public    # also runs as part of `make test`
+make check-public    # from the repo root, on its own
 ```
 
 Both failure modes are invisible on the one machine where the private overlay is
@@ -100,7 +100,7 @@ are named in the guard's `ALLOWED` set, and adding to it is a decision somebody
 makes on purpose, not a step in getting a task done.
 
 ```bash
-make check-no-shell   # also runs as part of `make test`
+make check-no-shell   # from the repo root, on its own
 ```
 
 Two enforcement points, one rule, one file —

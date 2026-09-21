@@ -12,8 +12,8 @@ What these tests hold that to:
   than synthesized at build time because release-please decides what to ship from the
   paths a commit touched, and byte-identical because two copies of a config writer are
   only safe while they are the same file;
-* `make check-vendor` — already part of `make test` — covers all three copies, so the
-  drift guard comes for free and no new gate is introduced;
+* `make check-vendor` — the existing target — covers all three copies, so the drift
+  guard comes for free and no new gate is introduced;
 * the vendored package is importable as `ostler._vendor.stablemate_core` and its
   cache-directory resolver is reachable from ostler code;
 * `platformdirs` and `tomli-w` are declared, annotated as the *vendored package's*

@@ -82,7 +82,7 @@ lint: ## Lint every subproject in one pass: ruff (style, imports) + ty + basedpy
 	uv run --all-packages basedpyright -p pyproject.toml
 
 .PHONY: test
-test: ## Run every package suite and repo guard exactly as CI does
+test: ## Run lint and every package suite, exactly as CI does (the check-* guards are their own targets)
 	$(MAKE) lint
 	$(MAKE) -C core test
 	$(MAKE) -C workhorse test

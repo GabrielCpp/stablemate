@@ -28,7 +28,7 @@ there, runnable by hand when you are working out why a commit was blocked.
 | Command | What it does |
 | --- | --- |
 | `make lint` | ruff + ty + basedpyright over the whole workspace. Zero findings is the bar. |
-| `make test` | lint, then every package's suite, then the repo's guards. |
+| `make test` | lint, then every package's suite. The `check-*` guards are their own targets. |
 | `make -C <pkg> test` | one package (`core`, `workhorse`, `workflows`, `ostler`, `farrier`, `groom`, `saddlebag`, `paddock`). |
 
 Run `make lint` from the **repo root**, not from a package: a member that lints itself
@@ -86,7 +86,7 @@ belongs, and it is outside that package: `workhorse/cli/run.py` and
 `workhorse/supervisor.py` translate `$FOO` into `--params` once, on the way in.
 
 ```bash
-make check-no-env    # runs as part of make test
+make check-no-env    # from the repo root, on its own
 ```
 
 `workflows/README.md` has the full rule, including `Workflow.injects` for the ambient
@@ -105,13 +105,13 @@ source instead, so **with no list configured this guard is a no-op** and you wil
 see it. That is the expected experience for an outside contributor.
 
 ```bash
-make check-public    # runs as part of make test
+make check-public    # from the repo root, on its own
 ```
 
 ## Other guards
 
-`make test` also runs these. Each exists because its failure mode is invisible on the
-machine where the code was written:
+Each is its own target, run deliberately rather than swept up by `make test`. Each
+exists because its failure mode is invisible on the machine where the code was written:
 
 | Guard | Rule |
 | --- | --- |

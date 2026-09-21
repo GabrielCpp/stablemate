@@ -148,8 +148,8 @@ process that must outlive its node has to be started detached and owned explicit
 
 `os.environ`, `os.getenv` and their kin are **prohibited** anywhere under
 `src/workhorse_workflows/`. Everything a node or a state needs is an argument, or a field
-on the `Workflow` subclass (settable with `--param`). `make check-no-env` enforces it, and
-it runs as part of `make test`. What that target runs is
+on the `Workflow` subclass (settable with `--param`). `make check-no-env` enforces it, as
+its own target from the repo root. What that target runs is
 **[scripts/check_no_env.py](scripts/check_no_env.py)**, installed beside this skill so the
 rule travels with the guard; point it at another workflow repo by declaring that repo's
 package under `[check-no-env]` in its `.agent-checks.toml`.

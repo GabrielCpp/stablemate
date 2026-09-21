@@ -23,7 +23,7 @@ once, on the way in. The one allowlisted module is `kit/credentials.py`, and for
 opposite reason — a secret must *never* become a checkpointed `--param`.
 
 ```bash
-make check-no-env    # from the repo root; also runs as part of `make test`
+make check-no-env    # from the repo root, on its own
 ```
 
 The full rule, including `Workflow.injects` for the ambient paths
@@ -71,7 +71,7 @@ applying a rule the block does not clear walks toward a person instead of lappin
 The branch, the vocabulary and the argument all live in `coder/shared/resolution.py`.
 
 ```bash
-make check-no-giveup    # from the repo root; also runs as part of `make test`
+make check-no-giveup    # from the repo root, on its own
 ```
 
 This guard is narrow: it stops the specific vocabulary of a deleted give-up pattern from

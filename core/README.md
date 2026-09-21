@@ -55,7 +55,7 @@ The copies are committed rather than synthesized during the wheel build, for a r
 reason: release-please decides which package to bump from the paths a commit touched, so
 a fix committed only under `core/` touches no released package and would ship to nobody.
 Running `make vendor` in the same commit is what makes every tool release it. Editing a
-copy directly is caught by `make check-vendor`, which runs as part of `make test`.
+copy directly is caught by `make check-vendor`, its own target from the repo root.
 
 Two consequences to keep in mind when changing anything here:
 
