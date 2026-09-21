@@ -1092,6 +1092,7 @@ UI_TYPES: tuple[UINodeType, ...] = (
             BulletKey("services", nested=True),   # one child per service: its env-scoped URL/host
             BulletKey("backing", nested=True),    # backing projects/DBs/buckets/emulators
             BulletKey("local-only"),              # `true` → tooling must refuse without an override
+            BulletKey("walkthrough"),             # `true` on the one environment a QA bring-up boots
             # The stack files this environment materializes — compose files, emulator
             # configs, seed scripts. Declared because the QA-context mapper already reads
             # `code:` on every node type to find a changed path's owner, so without it an

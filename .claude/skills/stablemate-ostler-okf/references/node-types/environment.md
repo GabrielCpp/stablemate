@@ -24,6 +24,7 @@ File type under `docs/features/<service>/ops/`, `type: environment` in frontmatt
 | `services` | no | nested; one child per service, its env-scoped URL/host |
 | `backing` | no | nested; backing projects, DBs, buckets, emulators |
 | `local-only` | no | `true` — tooling must refuse to target it without an override |
+| `walkthrough` | no | `true` on the one environment a QA bring-up boots when several are eligible |
 | `code` | no | link, **owns** its file — the stack files it materializes |
 | `config` | no | **owns** the path — the configuration files the stack reads |
 | `verify` | no | a check |

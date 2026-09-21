@@ -429,11 +429,20 @@ def _local_stack_runbook(root: Path, name: str, port: int, env: str) -> None:
                  "- health: curl -fsS localhost\n", name=name)
 
 
-def _environment_file(root: Path, env: str, *, local_only: bool) -> None:
-    """One `environment` node under `app/ops`, its `local-only` bullet set explicitly."""
+def _environment_file(root: Path, env: str, *, local_only: bool | None,
+                      walkthrough: bool = False) -> None:
+    """One `environment` node under `app/ops`, its bullets set explicitly.
+
+    `local_only=None` writes no `local-only` bullet at all, which is a different book from
+    one declaring `false` — an absent declaration is not a declaration of absence.
+    """
+    bullets = ""
+    if local_only is not None:
+        bullets += f"- local-only: {'true' if local_only else 'false'}\n"
+    if walkthrough:
+        bullets += "- walkthrough: true\n"
     write(root / "docs" / "features" / "app" / "ops" / f"{env}.md",
-          f"---\ntype: environment\n---\n\n# {env}\n\n"
-          f"- local-only: {'true' if local_only else 'false'}\n")
+          f"---\ntype: environment\n---\n\n# {env}\n\n{bullets}")
 
 
 def test_the_local_only_environment_resolves_an_otherwise_ambiguous_book(
@@ -492,6 +501,105 @@ def test_a_single_local_only_environment_still_early_returns(tmp_path: Path) -> 
     assert selection.reason == ""
     assert selection.environment.endswith("local.md")
     assert len(selection.runbooks) == 2
+
+
+def test_walkthrough_resolves_between_two_local_only_environments(tmp_path: Path) -> None:
+    """The payoff: two local-only docker-compose profiles are both eligible after the
+    `local-only` filter, and only `walkthrough: true` on one of them says which a QA
+    bring-up boots — resolving to it with every stack runbook bound to it, not just one.
+    """
+    (tmp_path / ".git").mkdir()
+    _environment_file(tmp_path, "local", local_only=True, walkthrough=True)
+    _environment_file(tmp_path, "staging", local_only=True)
+    _local_stack_runbook(tmp_path, "api-stack", 1111, "local")
+    _local_stack_runbook(tmp_path, "web-stack", 2222, "local")
+    _local_stack_runbook(tmp_path, "worker-stack", 3333, "staging")
+    selection = rb.select_stack(model.load(tmp_path))
+    assert selection.reason == ""
+    assert selection.environment.endswith("local.md")
+    assert {n.path.stem for n in selection.runbooks} == {"api-stack", "web-stack"}
+
+
+def test_two_local_only_environments_neither_marked_stay_ambiguous(tmp_path: Path) -> None:
+    """The control: its passing is the result. Without `walkthrough` marking either
+    environment, two `local-only` candidates must still refuse — proving the new marker
+    is what resolves the payoff case above, not the `local-only` filter collapsing on its
+    own.
+    """
+    (tmp_path / ".git").mkdir()
+    _environment_file(tmp_path, "local", local_only=True)
+    _environment_file(tmp_path, "staging", local_only=True)
+    _local_stack_runbook(tmp_path, "api-stack", 1111, "local")
+    _local_stack_runbook(tmp_path, "worker-stack", 3333, "staging")
+    selection = rb.select_stack(model.load(tmp_path))
+    assert selection.reason == "ambiguous"
+
+
+def test_local_only_outranks_a_walkthrough_mark_on_a_non_local_environment(
+        tmp_path: Path) -> None:
+    """The safety ordering: `staging` is marked `walkthrough: true` but is not `local-only`,
+    while `local` is `local-only: true` and unmarked. The bring-up must resolve to `local`
+    — never to `staging` — or a book could make a QA run boot a non-local system just by
+    marking it. This is the test that fails if the filter and the selector are ever
+    reordered.
+    """
+    (tmp_path / ".git").mkdir()
+    _environment_file(tmp_path, "local", local_only=True)
+    _environment_file(tmp_path, "staging", local_only=False, walkthrough=True)
+    _local_stack_runbook(tmp_path, "api-stack", 1111, "local")
+    _local_stack_runbook(tmp_path, "worker-stack", 3333, "staging")
+    selection = rb.select_stack(model.load(tmp_path))
+    assert selection.reason == ""
+    assert selection.environment.endswith("local.md")
+    assert {n.path.stem for n in selection.runbooks} == {"api-stack"}
+
+
+def test_two_walkthrough_marks_among_local_only_candidates_stay_ambiguous(
+        tmp_path: Path) -> None:
+    """Marking more than one eligible environment `walkthrough: true` is as unresolved as
+    marking none — the book has to narrow it to exactly one, same as `local-only` itself.
+    """
+    (tmp_path / ".git").mkdir()
+    _environment_file(tmp_path, "local", local_only=True, walkthrough=True)
+    _environment_file(tmp_path, "staging", local_only=True, walkthrough=True)
+    _local_stack_runbook(tmp_path, "api-stack", 1111, "local")
+    _local_stack_runbook(tmp_path, "worker-stack", 3333, "staging")
+    selection = rb.select_stack(model.load(tmp_path))
+    assert selection.reason == "ambiguous"
+
+
+def test_a_walkthrough_mark_settles_a_book_that_declares_no_local_only(
+        tmp_path: Path) -> None:
+    """Neither environment says anything about being local, so the safety filter has
+    nothing to keep and every candidate stays eligible. The mark is then the only thing
+    the book says about which one QA boots, and it settles it — an absent `local-only` is
+    silence, not a refusal, and silence must not cost the book its own answer.
+    """
+    (tmp_path / ".git").mkdir()
+    _environment_file(tmp_path, "local", local_only=None, walkthrough=True)
+    _environment_file(tmp_path, "staging", local_only=None)
+    _local_stack_runbook(tmp_path, "api-stack", 1111, "local")
+    _local_stack_runbook(tmp_path, "worker-stack", 3333, "staging")
+    selection = rb.select_stack(model.load(tmp_path))
+    assert selection.reason == ""
+    assert selection.environment.endswith("local.md")
+
+
+def test_a_walkthrough_mark_cannot_select_an_environment_declared_non_local(
+        tmp_path: Path) -> None:
+    """The paired case, and the one with teeth: no candidate declares itself local, so the
+    filter again keeps everything — but the marked environment declares `local-only: false`
+    outright. A preference among systems cannot overturn a stated fact about one, so the
+    mark selects nothing and the refusal stands. Without this the marker would be a way to
+    talk a QA bring-up into booting a production environment the book had already refused.
+    """
+    (tmp_path / ".git").mkdir()
+    _environment_file(tmp_path, "prod", local_only=False, walkthrough=True)
+    _environment_file(tmp_path, "staging", local_only=None)
+    _local_stack_runbook(tmp_path, "api-stack", 1111, "prod")
+    _local_stack_runbook(tmp_path, "worker-stack", 3333, "staging")
+    selection = rb.select_stack(model.load(tmp_path))
+    assert selection.reason == "ambiguous"
 
 
 def _environment(root: Path, surface: str, name: str, *, local_only: bool = True) -> None:

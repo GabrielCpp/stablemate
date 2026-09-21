@@ -402,6 +402,26 @@ def _environment_is_local_only(graph: Graph, environment_id: str) -> bool:
     return bullet_value(node.meta, "local-only") in ("true", "yes")
 
 
+def _environment_is_walkthrough(graph: Graph, environment_id: str) -> bool:
+    """Whether the `environment` node *environment_id* declares itself `walkthrough: true`.
+
+    Same truthy spelling `select_server` already reads this bullet with on `server` nodes,
+    so the two readers of one marker idiom agree on what it means.
+
+    An environment that declares `local-only: false` is never a walkthrough, whatever its
+    `walkthrough` bullet says. The two bullets are not peers: the first states a fact about
+    the system, the second states a preference among systems, and a preference cannot make
+    a production environment local. An absent `local-only` is not a `false` one, so a book
+    that declares neither is left to its own mark.
+    """
+    node = graph.find_ui_node(environment_id)
+    if node is None:
+        return False
+    if bullet_value(node.meta, "local-only").lower() in ("false", "no"):
+        return False
+    return bullet_value(node.meta, "walkthrough").lower() in ("true", "yes")
+
+
 def _selection_for(stacks: list[UINode], resolver: links_mod.LinkResolver,
                    environment: str) -> StackSelection:
     """Every stack runbook bound to *environment*, as a resolved selection.
@@ -439,9 +459,19 @@ def select_stack(graph: Graph, name: str = "", *, near: Path | None = None) -> S
     and only then does the refusal fire: a QA bring-up must never boot a non-local system
     by accident, so when exactly one candidate is declared `local-only: true`, that
     declaration is the book's own answer to which one QA is for. Two or zero declaring it
-    settle nothing, so the refusal stands. It runs last because it is a safety filter over
-    whatever ambiguity remains, not a selector — `near` knows which surface is under audit
-    and this does not, so a book-wide `local-only` environment must never outrank it.
+    settle nothing, so the refusal stands. It runs right after `near` because it is a
+    safety filter over whatever ambiguity remains, not a selector — `near` knows which
+    surface is under audit and this does not, so a book-wide `local-only` environment must
+    never outrank it.
+
+    When more than one candidate survives the `local-only` filter — two honestly local
+    environments, say two docker-compose profiles — `walkthrough: true` on one of them is
+    the book's own tiebreak: exactly one candidate marked settles it, same as `local-only`
+    settled the filter. It runs last, behind `local-only`, because it is a selector among
+    eligible candidates, not a safety check — a `walkthrough: true` on a non-local
+    environment must never let it outrank a local-only sibling, and where no sibling
+    declares itself local at all, a mark on an environment declared `local-only: false`
+    still selects nothing.
     """
     runbooks = graph.ui_nodes_of_type("runbook")
     if name:
@@ -469,12 +499,16 @@ def select_stack(graph: Graph, name: str = "", *, near: Path | None = None) -> S
                     if surface and graph_mod.surface_of(node.path, features_root) == surface]
         if narrowed:
             candidates = {environment_of(node, resolver) for node in narrowed}
-    if len(candidates) == 1 and "" not in candidates:
-        return _selection_for(stacks, resolver, next(iter(candidates)))
     local_only = {env for env in candidates
                   if env and _environment_is_local_only(graph, env)}
-    if len(local_only) == 1:
-        return _selection_for(stacks, resolver, next(iter(local_only)))
+    if local_only:
+        candidates = local_only
+    if len(candidates) == 1 and "" not in candidates:
+        return _selection_for(stacks, resolver, next(iter(candidates)))
+    marked = {env for env in candidates
+              if env and _environment_is_walkthrough(graph, env)}
+    if len(marked) == 1:
+        return _selection_for(stacks, resolver, next(iter(marked)))
     return ambiguous
 
 
