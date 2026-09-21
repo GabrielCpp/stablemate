@@ -198,7 +198,7 @@ def _pending_gate(path: Path, kind: str, since: str) -> list[dict[str, object]]:
     """What this run is blocked on, for the channel's `questions` verb."""
     if answered(path):
         return []
-    return [{"path": str(path), "question": _gate_question(path), "kind": kind, "since": since}]
+    return [{"path": str(path), "question": _wait_question(path), "kind": kind, "since": since}]
 
 
 def _gate_question(path: Path) -> str:
@@ -210,11 +210,11 @@ def _gate_question(path: Path) -> str:
 
 
 def _wait_question(path: Path) -> str:
-    """The open question on `path`, bounded, for a span every watcher receives.
+    """The open question on `path`, bounded, for the readers this run tells.
 
     A gate accumulates every exchange it has ever held, so its whole text is the wrong
-    payload for a notification. Watchers get the question now open and the gate's path,
-    and read the rest from disk when they want it.
+    payload for a wait span or a `questions` reply. Both carry the gate's path, so a
+    reader that wants the history reads it from disk.
     """
     return gates.latest_question(_gate_question(path))
 

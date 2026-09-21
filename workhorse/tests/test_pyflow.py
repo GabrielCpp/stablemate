@@ -875,7 +875,7 @@ def test_a_parked_wait_lists_its_gate_for_the_questions_verb_and_clears_it_after
                 "questions": [
                     {
                         "path": str(ask),
-                        "question": "STATUS: AWAITING_OPERATOR\n\nwhich branch?\n",
+                        "question": "which branch?",
                         "kind": "operator",
                         "since": "2026-01-01T12:00:00",
                     }
