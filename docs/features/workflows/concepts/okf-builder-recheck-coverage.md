@@ -11,7 +11,8 @@ The `enumerate_surfaces` heading on
 [the same page](okf-builder-main-build-machine.md#enumerate_surfaces) is a name retained from the
 pre-pyflow `workflows/workflows/okf-builder/workflow.yaml`, which carried `enumerate-surfaces` as
 its own state and seeded the rest of the build from the entry-point surfaces — the diagram in
-`workflows/docs/okf-builder.dot` still shows the old name. The port to `pyflow` collapsed that
+`workflows/docs/okf-builder.dot`, generated from the registered flows, carries only `recheck`
+now; the book's heading is the sole place the old name survives. The port to `pyflow` collapsed that
 state into `OkfBuilder.recheck`: the docstring on line 1128 reads "the only coverage judgement
 left to an agent", and the role it now plays is precisely the adjudication of the computed
 missing list the YAML split across two states. The book kept both headings, so two `method`
