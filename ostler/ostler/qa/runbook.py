@@ -41,6 +41,7 @@ from pathlib import Path
 from typing import Any
 
 from ostler import checks
+from ostler import graph as graph_mod
 from ostler import links as links_mod
 from ostler import markdown
 from ostler import model
@@ -389,11 +390,13 @@ def environment_of(node: UINode, resolver: links_mod.LinkResolver) -> str:
     return ""
 
 
-def select_stack(graph: Graph, name: str = "") -> StackSelection:
+def select_stack(graph: Graph, name: str = "", *, near: Path | None = None) -> StackSelection:
     """Which runbooks bring this book's system up, or why the question has no answer.
 
     With `name`, the runbook whose slug/id matches it — named explicitly, so a procedure
-    runbook is the caller's business.
+    runbook is the caller's business. `near` is ignored whenever `name` is given: an
+    explicit name is the caller saying which system, and asking it to also infer one from
+    a path would just be a second, contradictory way of answering the same question.
 
     Without, **the environment is the unit, not the runbook.** A book describing one
     service has one stack runbook and the two units coincide; a book describing a web
@@ -402,7 +405,12 @@ def select_stack(graph: Graph, name: str = "") -> StackSelection:
     which is a thing the author wrote down, not an inference — so every stack runbook
     sharing one environment comes up together. Stack runbooks bound to *different*
     environments are genuinely several systems, and picking one of those is the caller's
-    to do by name.
+    to do by name — or, when `near` names the spec under audit, by *derivation*: the
+    surface `near` sits in says which of that book's environments is the one to bring up,
+    and every stack runbook anywhere in the book bound to that environment comes up with
+    it, including ones in other surfaces. That is the point — a web surface and the API it
+    calls are one system — so the narrowing only picks the environment; the selection
+    itself stays book-wide.
     """
     runbooks = graph.ui_nodes_of_type("runbook")
     if name:
@@ -419,8 +427,25 @@ def select_stack(graph: Graph, name: str = "") -> StackSelection:
     environments = {environment_of(node, resolver) for node in stacks}
     if len(environments) == 1 and "" not in environments:
         return StackSelection(runbooks=tuple(stacks), environment=environments.pop())
-    return StackSelection(reason="ambiguous",
-                          candidates=tuple(node.id for node in stacks))
+    ambiguous = StackSelection(reason="ambiguous",
+                               candidates=tuple(node.id for node in stacks))
+    if near is None:
+        return ambiguous
+    features_root = path_mod.features_root(graph)
+    near_path = near if near.is_absolute() else graph.root / near
+    surface = graph_mod.surface_of(near_path, features_root)
+    if not surface:
+        return ambiguous
+    narrowed = [node for node in stacks
+                if graph_mod.surface_of(node.path, features_root) == surface]
+    if not narrowed:
+        return ambiguous
+    narrowed_environments = {environment_of(node, resolver) for node in narrowed}
+    if len(narrowed_environments) != 1 or "" in narrowed_environments:
+        return ambiguous
+    env = narrowed_environments.pop()
+    selected = tuple(node for node in stacks if environment_of(node, resolver) == env)
+    return StackSelection(runbooks=selected, environment=env)
 
 
 def select_runbook(graph: Graph, name: str = "") -> UINode | None:
@@ -460,7 +485,7 @@ def has_served_surface(graph: Graph) -> bool:
     return bool(graph.ui_nodes_of_type("screen") or graph.ui_nodes_of_type("server"))
 
 
-def load_stack(root: Path | None = None, *, name: str = "",
+def load_stack(root: Path | None = None, *, name: str = "", near: Path | None = None,
                graph: Graph | None = None,
                logger: logging.Logger | None = None) -> dict[str, Any]:
     """The manifest `ensure_stack` takes, read from the book's ops nodes.
@@ -480,7 +505,7 @@ def load_stack(root: Path | None = None, *, name: str = "",
     """
     log = logger or logging.getLogger(__name__)
     graph = graph if graph is not None else model.load(root or Path.cwd())
-    selection = select_stack(graph, name)
+    selection = select_stack(graph, name, near=near)
     if len(selection.runbooks) == 1:
         log.info("stack declared by runbook %s", selection.runbooks[0].id)
         return _from_runbook(graph, selection.runbooks[0])
@@ -504,7 +529,7 @@ def load_stack(root: Path | None = None, *, name: str = "",
     return {}
 
 
-def load_stacks(graph: Graph, *, name: str = "",
+def load_stacks(graph: Graph, *, name: str = "", near: Path | None = None,
                 logger: logging.Logger | None = None,
                 ) -> tuple[list[dict[str, Any]], StackSelection]:
     """Every manifest this book's bring-up covers, with the selection that produced it.
@@ -519,7 +544,7 @@ def load_stacks(graph: Graph, *, name: str = "",
     not fallen back to anything; it has been refused.
     """
     log = logger or logging.getLogger(__name__)
-    selection = select_stack(graph, name)
+    selection = select_stack(graph, name, near=near)
     if selection.runbooks:
         for node in selection.runbooks:
             log.info("stack declared by runbook %s", node.id)

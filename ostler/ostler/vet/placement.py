@@ -365,7 +365,7 @@ NEVER_SELECTED_REASON = (
 #: - `web` and `http` read `is_web_representable`: reject a `scheme=value` selector, accept any
 #:   other string (CSS is close to unconstrained, and `is_addressable` already validates its
 #:   shape). `http` is grouped with `web` rather than the never-selected drivers below because a
-#:   surface — the first path component under `docs/features/` (`graph._surface_of`) — can
+#:   surface — the first path component under `docs/features/` (`graph.surface_of`) — can
 #:   legitimately host an `http`-driven API runbook alongside real `web`-rendered `screen`/
 #:   `component` nodes it serves; `routes.ROUTE_GRAMMAR` makes this identical call for `route:`.
 #: - `mobile` reads `is_mobile_representable`: reject only a string that unmistakably names DOM

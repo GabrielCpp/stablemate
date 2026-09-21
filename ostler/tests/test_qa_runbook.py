@@ -420,6 +420,91 @@ def test_a_name_that_matches_nothing_is_distinct_from_a_bookless_book(tmp_path: 
     assert not outcome.ok and outcome.status == "unknown-runbook"
 
 
+def _environment(root: Path, surface: str, name: str) -> None:
+    write(root / "docs" / "features" / surface / "ops" / f"{name}.md",
+          f"---\ntype: environment\n---\n\n# {name}\n\n- local-only: true\n")
+
+
+def _stack_runbook(root: Path, surface: str, name: str, port: int, env_href: str) -> None:
+    write(root / "docs" / "features" / surface / "ops" / f"{name}.md",
+          f"---\ntype: runbook\n---\n\n# {name}\n\n"
+          f"- driver: web\n- entry-url: http://localhost:{port}\n"
+          f"- environment: [env]({env_href})\n\n"
+          "## Steps\n\n### serve\n\n- kind: service\n- run: ./serve.sh\n"
+          "- health: curl -fsS localhost\n")
+
+
+def test_near_narrows_an_ambiguous_selection_to_its_shared_environment(tmp_path: Path) -> None:
+    """web-app and api-service bind to different environments; mobile-app binds to the same
+    environment as web-app despite sitting in a third surface. Naming no runbook, a spec
+    under web-app should pull in both runbooks sharing web-app's environment — including
+    the one that lives in mobile-app — and leave api-service out.
+    """
+    (tmp_path / ".git").mkdir()
+    _environment(tmp_path, "web-app", "local")
+    _environment(tmp_path, "api-service", "staging")
+    _stack_runbook(tmp_path, "web-app", "web-stack", 1111, "local.md")
+    _stack_runbook(tmp_path, "api-service", "api-stack", 2222, "staging.md")
+    _stack_runbook(tmp_path, "mobile-app", "mobile-stack", 3333, "../../web-app/ops/local.md")
+    graph = model.load(tmp_path)
+
+    baseline = rb.select_stack(graph)
+    assert baseline.reason == "ambiguous"
+    assert len(baseline.candidates) == 3
+
+    near = tmp_path / "docs" / "features" / "web-app" / "specs" / "home.md"
+    selection = rb.select_stack(graph, near=near)
+    assert selection.reason == ""
+    assert {n.path.stem for n in selection.runbooks} == {"web-stack", "mobile-stack"}
+    assert selection.environment.endswith("local.md")
+
+
+def test_near_stays_ambiguous_when_its_surface_spans_two_environments(tmp_path: Path) -> None:
+    (tmp_path / ".git").mkdir()
+    _environment(tmp_path, "web-app", "local")
+    _environment(tmp_path, "web-app", "staging")
+    _stack_runbook(tmp_path, "web-app", "web-stack-a", 1111, "local.md")
+    _stack_runbook(tmp_path, "web-app", "web-stack-b", 2222, "staging.md")
+    graph = model.load(tmp_path)
+    near = tmp_path / "docs" / "features" / "web-app" / "specs" / "home.md"
+    selection = rb.select_stack(graph, near=near)
+    assert selection.reason == "ambiguous"
+
+
+def test_near_outside_the_features_root_stays_ambiguous(tmp_path: Path) -> None:
+    (tmp_path / ".git").mkdir()
+    _environment(tmp_path, "web-app", "local")
+    _environment(tmp_path, "api-service", "staging")
+    _stack_runbook(tmp_path, "web-app", "web-stack", 1111, "local.md")
+    _stack_runbook(tmp_path, "api-service", "api-stack", 2222, "staging.md")
+    graph = model.load(tmp_path)
+    selection = rb.select_stack(graph, near=tmp_path / "README.md")
+    assert selection.reason == "ambiguous"
+
+
+def test_an_explicit_name_wins_over_near(tmp_path: Path) -> None:
+    (tmp_path / ".git").mkdir()
+    _environment(tmp_path, "web-app", "local")
+    _environment(tmp_path, "api-service", "staging")
+    _stack_runbook(tmp_path, "web-app", "web-stack", 1111, "local.md")
+    _stack_runbook(tmp_path, "api-service", "api-stack", 2222, "staging.md")
+    graph = model.load(tmp_path)
+    near = tmp_path / "docs" / "features" / "web-app" / "specs" / "home.md"
+    selection = rb.select_stack(graph, name="api-stack", near=near)
+    assert selection.reason == ""
+    assert [n.path.stem for n in selection.runbooks] == ["api-stack"]
+
+
+def test_near_is_a_no_op_when_the_book_already_resolves(tmp_path: Path) -> None:
+    (tmp_path / ".git").mkdir()
+    _two_stacks(tmp_path, environments=("local", "local"))
+    graph = model.load(tmp_path)
+    without_near = rb.select_stack(graph)
+    near = tmp_path / "docs" / "features" / "app" / "specs" / "home.md"
+    with_near = rb.select_stack(graph, near=near)
+    assert with_near == without_near
+
+
 def test_a_nested_book_resolves_paths_against_the_system_it_describes(tmp_path: Path) -> None:
     # A book is a description, and a description is not located in its subject. `.` means
     # the root of the system the book is about, not the checkout the book was read from —

@@ -27,10 +27,10 @@ def _rel(path: Path, root: Path) -> str:
         return path.as_posix()
 
 
-def _surface_of(node: UINode, features_root: Path) -> str:
-    """The service a node belongs to: the first path component under ``docs/features/``."""
+def surface_of(node_path: Path, features_root: Path) -> str:
+    """The service a path belongs to: the first path component under ``docs/features/``."""
     try:
-        rel = node.path.relative_to(features_root)
+        rel = node_path.relative_to(features_root)
     except ValueError:
         return ""
     return rel.parts[0] if rel.parts else ""
@@ -88,7 +88,7 @@ def _node_dict(node: UINode, resolver: LinkResolver, graph: Graph, features_root
     # saving on a file with many `### id` sections.
     cached = path_cache.get(node.path)
     if cached is None:
-        cached = (_rel(node.path, graph.root), _surface_of(node, features_root))
+        cached = (_rel(node.path, graph.root), surface_of(node.path, features_root))
         path_cache[node.path] = cached
     rel, surface = cached
     return {

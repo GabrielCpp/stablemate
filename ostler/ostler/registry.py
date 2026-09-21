@@ -1490,7 +1490,7 @@ def doc_root_of(type_value: str | None) -> str | None:
 
     Both registries answer it, which is the point: the five ``EntityType``s carry an explicit
     ``doc_root`` each, and every ``UINodeType`` carries ``features``, because a book page is where
-    ``graph._surface_of`` reads a surface from — ``rel.parts[0]`` under ``docs/features`` — and a
+    ``graph.surface_of`` reads a surface from — ``rel.parts[0]`` under ``docs/features`` — and a
     typed page outside that root has no surface, hence no driver, hence no compile target. Asking
     one registry and skipping the other is what left the reverse case unjoined: a ``type: screen``
     page under ``docs/specs`` sat inside *a* doc root, so the misplaced check passed it, and had no
