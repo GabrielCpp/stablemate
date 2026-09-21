@@ -380,6 +380,39 @@ def test_several_environments_and_no_name_is_a_refusal_not_an_absence(tmp_path: 
     assert rb.cmd_stack_down(tmp_path).status == "ambiguous"
 
 
+def test_a_refusal_does_not_fall_back_to_the_walkthrough_server(tmp_path: Path) -> None:
+    """`load_stack` used to read a refusal as an absence and fall through to whichever
+    server was marked `walkthrough: true`, bringing up one service and reporting success
+    against six surfaces it never served.
+    """
+    (tmp_path / ".git").mkdir()
+    _two_stacks(tmp_path, environments=("local", "staging"))
+    write(tmp_path / "docs" / "features" / "other" / "server.md", """---
+type: server
+title: Other
+---
+
+# Other
+
+- launch: npm start
+- entry-url: http://localhost:9000/
+- walkthrough: true
+""")
+    assert rb.load_stack(tmp_path) == {}
+
+
+def test_a_single_environment_with_two_runbooks_has_no_single_manifest(tmp_path: Path) -> None:
+    """globex's shape: two runbooks, one environment. `select_stack` chooses both, but
+    `load_stack` returns one manifest, so it refuses rather than picking one at random.
+    """
+    (tmp_path / ".git").mkdir()
+    _two_stacks(tmp_path, environments=("local", "local"))
+    assert rb.load_stack(tmp_path) == {}
+    manifests, selection = rb.load_stacks(model.load(tmp_path))
+    assert selection.reason == ""
+    assert len(manifests) == 2
+
+
 def test_a_name_that_matches_nothing_is_distinct_from_a_bookless_book(tmp_path: Path) -> None:
     (tmp_path / ".git").mkdir()
     _two_stacks(tmp_path, environments=("local", "local"))

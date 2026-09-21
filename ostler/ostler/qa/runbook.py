@@ -468,7 +468,11 @@ def load_stack(root: Path | None = None, *, name: str = "",
     Returns ``{}`` when the book declares neither a runbook nor a walkthrough server —
     the only honest "nothing to bring up" left, and one the doctor reports as
     `runbook-missing` rather than leaving it to be discovered by a QA run that passes
-    against nothing.
+    against nothing. Also returns ``{}`` on a refusal — several stack runbooks and no
+    name given, or several bound to one environment — rather than falling back to the
+    walkthrough server, which would bring up the wrong system and call it a pass. A
+    caller that needs to tell those cases apart, or that wants every manifest a
+    multi-runbook environment covers, reads `select_stack` or `load_stacks` instead.
 
     Every `working-directory` comes back absolute. The manifest is authored repo-relative
     because that is what an author means; nothing downstream resolves it, so an unresolved
@@ -476,12 +480,21 @@ def load_stack(root: Path | None = None, *, name: str = "",
     """
     log = logger or logging.getLogger(__name__)
     graph = graph if graph is not None else model.load(root or Path.cwd())
-    runbook = select_runbook(graph, name)
-    if runbook is not None:
-        log.info("stack declared by runbook %s", runbook.id)
-        return _from_runbook(graph, runbook)
-    if name:
+    selection = select_stack(graph, name)
+    if len(selection.runbooks) == 1:
+        log.info("stack declared by runbook %s", selection.runbooks[0].id)
+        return _from_runbook(graph, selection.runbooks[0])
+    if len(selection.runbooks) > 1:
+        log.warning("%d stack runbooks share environment %s; load_stack returns one "
+                    "manifest, use load_stacks", len(selection.runbooks),
+                    selection.environment)
+        return {}
+    if selection.reason == "no-such-name":
         log.warning("no runbook named %r in the book", name)
+        return {}
+    if selection.reason == "ambiguous":
+        log.warning("%d stack runbooks across several environments and none named: %s",
+                    len(selection.candidates), ", ".join(selection.candidates))
         return {}
     server = select_server(graph)
     if server is not None and bullet_value(server.meta, "launch"):
