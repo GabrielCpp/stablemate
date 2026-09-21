@@ -687,3 +687,59 @@ def test_doctor_stays_quiet_on_a_real_command(tmp_path: Path) -> None:
                  "- kind: service\n- run: ./serve.sh\n"
                  "- health: curl -fsS http://localhost:1/healthz\n")
     assert "check-expression-as-command" not in codes(tmp_path)
+
+
+def test_bring_up_stacks_stops_at_the_first_failure(tmp_path: Path, monkeypatch) -> None:
+    (tmp_path / ".git").mkdir()
+    _two_stacks(tmp_path, environments=("local", "local"))
+    manifests, _ = rb.load_stacks(model.load(tmp_path))
+    assert len(manifests) == 2
+
+    calls: list[str] = []
+
+    def fake_ensure_stack(manifest, *, repo_root, logger):
+        calls.append(manifest["source"])
+        return {"ready": "no", "failed_step": "health", "error": "never answered"}
+
+    monkeypatch.setattr(rb.stack_mod, "ensure_stack", fake_ensure_stack)
+    results = rb.bring_up_stacks(manifests, repo_root=str(tmp_path), logger=None)
+
+    assert calls == [manifests[0]["source"]]
+    assert len(results) == 1
+    assert results[0]["ready"] == "no"
+
+
+def test_cmd_stack_up_outcome_is_unchanged_for_success_and_failure(
+    tmp_path: Path, monkeypatch
+) -> None:
+    (tmp_path / ".git").mkdir()
+    _two_stacks(tmp_path, environments=("local", "local"))
+
+    def fake_ensure_stack_ok(manifest, *, repo_root, logger):
+        return {"ready": "yes", "adopted": "no", "entry_url": manifest["entry_url"],
+                "app_pid": "123", "app_pgid": "123"}
+
+    monkeypatch.setattr(rb.stack_mod, "ensure_stack", fake_ensure_stack_ok)
+    outcome = rb.cmd_stack_up(tmp_path)
+    assert outcome.ok
+    assert outcome.message == (
+        "stack brought up and healthy at http://localhost:1111, http://localhost:2222 "
+        "(2 services)")
+    assert outcome.data["stacks"][0]["ready"] == "yes"
+    assert outcome.data["stacks"][1]["ready"] == "yes"
+    assert outcome.data["entry_url"] == "http://localhost:2222"
+
+    def fake_ensure_stack_fails_second(manifest, *, repo_root, logger):
+        if manifest["source"].endswith("web-stack.md"):
+            return {"ready": "no", "failed_step": "health", "error": "never answered"}
+        return {"ready": "yes", "adopted": "no", "entry_url": manifest["entry_url"]}
+
+    monkeypatch.setattr(rb.stack_mod, "ensure_stack", fake_ensure_stack_fails_second)
+    outcome = rb.cmd_stack_up(tmp_path)
+    assert not outcome.ok
+    assert outcome.message == (
+        "stack bring-up failed for 'docs/features/app/ops/web-stack.md' at step 'health': "
+        "never answered")
+    assert len(outcome.data["stacks"]) == 2
+    assert outcome.data["stacks"][0]["ready"] == "yes"
+    assert outcome.data["stacks"][1]["ready"] == "no"

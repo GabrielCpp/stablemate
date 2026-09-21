@@ -613,6 +613,28 @@ def _refusal(root: Path, features_root: str, selection: StackSelection,
                  "nothing to {}".format(where, verb)))
 
 
+def bring_up_stacks(manifests: list[dict[str, Any]], *, repo_root: str,
+                    logger: logging.Logger | None = None) -> list[dict[str, Any]]:
+    """Bring every manifest up in document order, stopping at the first that fails.
+
+    A multi-service environment comes up one runbook at a time, in document order, and
+    stops at the first that will not go healthy — the later services in a stack are the
+    ones that call the earlier, so continuing past a failure only produces a second,
+    derived failure to read. The caller inspects the last element of the returned list to
+    see whether the whole bring-up succeeded: its `ready` is `"yes"` only when every
+    manifest passed came up; otherwise it is the failing result.
+    """
+    log = logger or logging.getLogger(__name__)
+    results: list[dict[str, Any]] = []
+    for manifest in manifests:
+        result = stack_mod.ensure_stack(
+            manifest, repo_root=manifest.get("repo_root", repo_root), logger=log)
+        results.append({**result, "manifest": manifest, "source": manifest.get("source", "")})
+        if result.get("ready") != "yes":
+            break
+    return results
+
+
 def cmd_stack_up(root: Path, *, name: str = "", features_root: str = "",
                  logger: logging.Logger | None = None) -> QaOutcome:
     """`ostler qa stack up` — bring the book's declared stack to ready, or say why not.
@@ -624,27 +646,23 @@ def cmd_stack_up(root: Path, *, name: str = "", features_root: str = "",
     A multi-service environment comes up one runbook at a time, in document order, and
     stops at the first that will not go healthy — the later services in a stack are the
     ones that call the earlier, so continuing past a failure only produces a second,
-    derived failure to read.
+    derived failure to read. See :func:`bring_up_stacks`, which owns the loop.
     """
     log = logger or logging.getLogger(__name__)
     manifests, selection = load_stacks(_graph_for(root, features_root), name=name, logger=log)
     refused = _refusal(root, features_root, selection, "bring up")
     if refused is not None and not manifests:
         return refused
-    results: list[dict[str, Any]] = []
-    for manifest in manifests:
-        result = stack_mod.ensure_stack(
-            manifest, repo_root=manifest.get("repo_root", str(root)), logger=log)
-        results.append({**result, "manifest": manifest, "source": manifest.get("source", "")})
-        if result.get("ready") != "yes":
-            return QaOutcome(
-                ok=False,
-                message="stack bring-up failed for '{}' at step '{}'{}".format(
-                    manifest.get("source", "?"), result.get("failed_step", "unknown"),
-                    f": {result['error'].strip()}" if result.get("error") else ""),
-                data={**result, "manifest": manifest, "stacks": results,
-                      "source": manifest.get("source", "")})
+    results = bring_up_stacks(manifests, repo_root=str(root), logger=log)
     last = results[-1]
+    manifest = last["manifest"]
+    if last.get("ready") != "yes":
+        return QaOutcome(
+            ok=False,
+            message="stack bring-up failed for '{}' at step '{}'{}".format(
+                manifest.get("source", "?"), last.get("failed_step", "unknown"),
+                f": {last['error'].strip()}" if last.get("error") else ""),
+            data={**last, "stacks": results, "source": manifest.get("source", "")})
     how = "adopted" if last.get("adopted") == "yes" else "brought up"
     where = ", ".join(r.get("entry_url") or "(no entry url)" for r in results)
     plural = "" if len(results) == 1 else f" ({len(results)} services)"
@@ -692,6 +710,7 @@ __all__ = [
     "REUSE_POLICIES",
     "STEP_KINDS",
     "STEP_PHASES",
+    "bring_up_stacks",
     "bullet_value",
     "cmd_stack_down",
     "cmd_stack_up",
