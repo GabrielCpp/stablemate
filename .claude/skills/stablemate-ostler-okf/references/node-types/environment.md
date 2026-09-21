@@ -24,7 +24,6 @@ File type under `docs/features/<service>/ops/`, `type: environment` in frontmatt
 | `services` | no | nested; one child per service, its env-scoped URL/host |
 | `backing` | no | nested; backing projects, DBs, buckets, emulators |
 | `local-only` | no | `true` — tooling must refuse to target it without an override |
-| `walkthrough` | no | `true` on the one environment a QA bring-up boots when several are eligible |
 | `code` | no | link, **owns** its file — the stack files it materializes |
 | `config` | no | **owns** the path — the configuration files the stack reads |
 | `verify` | no | a check |
@@ -56,6 +55,13 @@ None.
 ## Relationships
 
 Pointed at by a runbook's `environment:`. Nothing points outward from here except `code:`.
+
+A QA bring-up that is not told which environment to boot picks one itself: it narrows to the
+environments declared `local-only: true` and takes the first by page path. Nothing in the book
+marks the choice, because there is nothing for an author to decide — a bring-up creates and
+destroys a stack, and `local-only: true` is already the claim that doing so to this one is
+safe. So an environment file just states what that environment *is*: its hostnames, its
+services, its backing stores.
 
 ## Minimal example
 

@@ -24,7 +24,6 @@ File type under `docs/features/<service>/ops/`, `type: runbook` in frontmatter.
 | key | required | what it does |
 | --- | --- | --- |
 | `driver` | **yes** | `web` \| `mobile` \| `http` \| `cli` \| `artifact` \| `iac` \| `none` — held to this vocabulary; an unrecognized spelling is `unknown-driver`, an error, not a permissive default |
-| `walkthrough` | no | `true` on the one runbook that is how the surface named in `surfaces:` is exercised — several runbooks per surface is normal, with different `driver:` values all true at once; a sole runbook stands in for it when unmarked |
 | `environment` | no | link — the environment this boots (default local) |
 | `cli` | no | link — the dev-CLI node it drives with |
 | `surfaces` | no | link — the screen/server/cli/format nodes it exposes |
@@ -33,8 +32,8 @@ File type under `docs/features/<service>/ops/`, `type: runbook` in frontmatter.
 | `entry-url` | no | base of the HTTP readiness probe; its path names the surface's root [`screen`](screen.md) — falls back for `surfaces:`' `base_url` in a compiled QA plan when that surface's own `server` states none |
 | `health-path` | no | joined onto `entry-url` (default `/`) |
 | `identity` | no | substring of the health **body** proving the stack is ours |
-| `bundle-id` | no | the mobile package/bundle id a Maestro flow addresses — the surface's `walkthrough: true` runbook wins over several unmarked ones, the same way `driver` resolves |
-| `launch-screen` | no | link — the screen a cold `- launchApp` opens on; resolves the same `walkthrough: true` way `bundle-id`/`driver` do |
+| `bundle-id` | no | the mobile package/bundle id a Maestro flow addresses — resolved across the runbooks naming the surface the same ranked way `driver` is |
+| `launch-screen` | no | link — the screen a cold `- launchApp` opens on; resolves the same ranked way `bundle-id`/`driver` do |
 | `reuse` | no | `if-fresh` (default) \| `always` \| `never` |
 | `fresh` | no | a command exiting 0 iff a serving stack reflects current code |
 | `boot-timeout` | no | seconds; ceiling on bring-up |
@@ -71,57 +70,41 @@ be strictly more permissive than a correct spelling.
 More than one runbook can name the same surface through `surfaces:`, and that is the ordinary
 shape, not a defect — a lint runbook stating `driver: cli`, a browser runbook stating
 `driver: web` and an IaC runbook stating `driver: iac` can all correctly cover one surface at
-once. A runbook's `driver:` states what *that runbook* drives; it says nothing on its own
-about which runbook is how the surface is exercised, which is a separate claim the book has to
-make. `walkthrough: true` is that claim: mark it on the one runbook whose `## Steps` actually
-stand up what a QA walk drives, and that runbook's `driver:` is the surface's driver — the
-same way `walkthrough: true` on a [`server`](server.md) node picks the one server `root_path`
-reads. A sole runbook naming the surface stands in for the mark when none is written.
+once. A runbook's `driver:` states what *that runbook* drives; which of them stands for the
+surface is a separate question, and the engine answers it with nothing for an author to write
+down. It ranks the runbooks naming the surface by their declared `driver:`, in the vocabulary's
+own order — `web`, `mobile`, `http`, `cli`, `artifact`, `iac`, `none`, with a runbook that
+states no driver or an unrecognized one ranking last — and breaks a tie on node id.
+`reach.surface_driver` then answers with the first non-empty `driver:` down that ranking, so
+the browser runbook outranks the lint runbook for the same surface. That is the right reading
+for QA rather than an arbitrary one: a walk exercises the product the way a user does, and
+"a linter also covers this surface" is the narrower claim of the two.
 
-Two runbooks *both* marked `walkthrough: true` for one surface that still state different
-`driver:` values is `conflicting-surface-driver` — a surface's driver is a grammar selector
-other checks key on (the route grammar reachability is computed in, the value-kind grammar a
-node's bullets are held to), and a grammar has exactly one answer per surface or none, so two
-marked runbooks disagreeing leaves that surface's driver silently treated as undeclared
-everywhere until they agree. Several *unmarked* runbooks naming one surface with different
-`driver:` values and none of them marked is `undeclared-walkthrough-runbook` instead — the book
-just hasn't said yet which one is the walkthrough. Either way, `surfaces:` stays on every
-runbook that names the surface: it is the only join recording which code a runbook operates
-on, and deleting it to silence one of these findings destroys a true claim rather than
-resolving the ambiguity.
+So several runbooks naming one surface with different `driver:` values is simply normal, never
+a finding, and there is nothing to mark to settle it. `surfaces:` stays on every runbook that
+names the surface — it is the only join recording which code a runbook operates on, and a
+runbook that does not really operate on a surface should not be naming it to begin with.
 
-QA treats both shapes as the defects they are rather than as an absence. D1's dispatch table
-keys on the surface's `driver:` to decide what performs each step, and a surface with no
-single answer gets neither — so every obligation on it is gapped `conflicting-surface-driver`
-or `undeclared-walkthrough-runbook`, never `uncompilable-claim`, whose message would tell the
-author no runbook states a `driver:` when several do. No default adjudicates between drivers
-the book states; marking `walkthrough: true` is how the book adjudicates instead.
-
-A surface's address is stated in two places — the `entry-url:` of its `walkthrough: true`
-`server` node, and the `entry-url:` of any `runbook` whose `surfaces:` links into it — and
-every one of them must name the same `scheme://host[:port]`. `conflicting-entry-origin`
-catches two that disagree. A service has one address, so there is no reading under which
-both are true, and QA will not pick: the surface resolves to no entry URL and every
-obligation on it is gapped `conflicting-entry-origin`. `--base-url` does not rescue it
-either — that flag answers a book that states no address, not a book that states two.
-Settle which origin is right, or, if the two really are different services, put them under
-two feature directories.
+A surface's address can be stated in two places — the `entry-url:` of any `runbook` whose
+`surfaces:` links into it, ranked the same way `driver:` is, and the `entry-url:` of the
+surface's [`server`](server.md) node — and the runbook's wins. The runbook is the thing QA
+actually brings up, so its address is the one the stack will be listening on; the server node
+states the address the service has in the abstract, which is the right answer only when no
+runbook states one at all. A feature with several `server` nodes resolves off the sole one, or
+off the first by node id where there are several.
 
 A mobile surface's package identity is stated the same way its `driver:` is — on whichever
-runbook's `surfaces:` links into it, resolved by `reach.surface_bundle_id` exactly as
-`reach.surface_driver` resolves `driver:`. The `walkthrough: true` runbook wins; a sole
-runbook stands in for it unmarked; several unmarked runbooks stating different `bundle-id:`
-values leave it undeclared, and two marked ones that still disagree leave it undeclared too
-— there is no default bundle id, so a surface with no settled answer is gapped
-`undeclared-bundle-id` and no Maestro flow is emitted for it rather than opened against a
-placeholder package that does not exist on the device.
+runbook's `surfaces:` links into it, resolved by `reach.surface_bundle_id` walking exactly the
+ranking `reach.surface_driver` walks and taking the first non-empty `bundle-id:`. There is no
+default bundle id, so a surface no runbook states one for is gapped `undeclared-bundle-id` and
+no Maestro flow is emitted for it, rather than opened against a placeholder package that does
+not exist on the device.
 
 A Maestro flow always opens with a bare `- launchApp`, which lands on whatever screen the
 app happens to launch on — the book states which one that is with `launch-screen:`, a link
-to the [`screen`](screen.md) node, resolved by `reach.surface_launch_screen` the same
-`walkthrough: true` way `bundle-id:`/`driver:` are. A surface with no settled `launch-screen:`
-— none stated, several unmarked runbooks disagreeing, or two marked ones that still disagree
-— gaps every one of its mobile obligations `undeclared-launch-screen`, no Maestro flow emitted.
+to the [`screen`](screen.md) node, resolved by `reach.surface_launch_screen` down the same
+ranking `bundle-id:`/`driver:` walk. A surface no runbook states a `launch-screen:` for gaps
+every one of its mobile obligations `undeclared-launch-screen`, no Maestro flow emitted.
 A `launch-screen:` that *is* settled does not make every mobile obligation reachable: an
 obligation whose own page is a different screen than the one named has no stated way from the
 one to the other and gaps `unreachable-from-launch` instead — this states only the cold-launch
@@ -182,9 +165,7 @@ type: runbook
 
 `runbook-missing` (warn, raised when no runbook exists at all), `runbook-bad-reuse`,
 `runbook-bad-kind`, `runbook-incomplete`, `runbook-multi-service`, `runbook-local-only`,
-`no-drivable-surface`, `unknown-driver`, `conflicting-surface-driver`,
-`undeclared-walkthrough-runbook`,
-`conflicting-entry-origin`, `missing-required-bullet`
+`no-drivable-surface`, `unknown-driver`, `missing-required-bullet`
 on `driver:`, `missing-required-section`, `empty-required-section`. See
 [../doctor-codes.md](../doctor-codes.md).
 

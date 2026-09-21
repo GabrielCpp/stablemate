@@ -33,8 +33,8 @@ indistinguishable from one that is genuinely unconditional, and reachability can
 "nothing to satisfy" from "nobody wrote it down" — so state `none`.
 
 Reachability starts at the **root**: the screen whose `route:` is the path of the surface's
-server `entry-url:` (the [`server`](runbook.md) marked `walkthrough: true`), or `/` when no
-contract states one. Every other screen has to be reached from it by `leads-to:` hops.
+entry URL — the `entry-url:` of a [`runbook`](runbook.md) naming the surface, and failing that
+the one its [`server`](server.md) node states — or `/` when no contract states one. Every other screen has to be reached from it by `leads-to:` hops.
 
 `entry:` says the screen is reached from outside in-app navigation &mdash; an emailed deep
 link, an OAuth callback, a URL the operator types &mdash; and the value says by what **means**.

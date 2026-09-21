@@ -26,9 +26,8 @@ File type under `docs/features/<service>/http/`, `type: server` in frontmatter.
 | `identity` | no | substring of the health body proving the stack is ours |
 | `stop` | no | teardown recipe |
 | `boot-timeout` | no | seconds; ceiling on bring-up |
-| `walkthrough` | no | `true` on the one server the walk drives |
 
-The eight keys from `launch:` down are the **walkthrough launch contract**. They are
+The seven keys from `launch:` down are the **fallback launch contract**. They are
 documentation, not configuration — that is what lets a walk run standalone from the book. A
 [`runbook`](runbook.md) node supersedes them; this is the fallback for a service that has none.
 
@@ -73,21 +72,19 @@ type: server
 - verify: http_status(code=201)
 ```
 
-A surface's address is stated in two places — the `entry-url:` of its `walkthrough: true`
-`server` node, and the `entry-url:` of any `runbook` whose `surfaces:` links into it — and
-every one of them must name the same `scheme://host[:port]`. `conflicting-entry-origin`
-catches two that disagree. A service has one address, so there is no reading under which
-both are true, and QA will not pick: the surface resolves to no entry URL and every
-obligation on it is gapped `conflicting-entry-origin`. `--base-url` does not rescue it
-either — that flag answers a book that states no address, not a book that states two.
-Settle which origin is right, or, if the two really are different services, put them under
-two feature directories.
+A surface's address can be stated in two places — the `entry-url:` of any `runbook` whose
+`surfaces:` links into it, and the `entry-url:` here — and the runbook's wins. The runbook is
+the thing QA actually brings up, so its address is the one the stack will be listening on;
+this node states the address the service has when nothing brought it up, which is the right
+answer only when no runbook states one. A book with several `server` nodes in one feature
+resolves a surface's root path and entry origin off the sole one, or, where there are several,
+off the first by node id — nothing marks one, and a feature whose servers genuinely have
+different addresses is two services under one directory, which is the thing to split.
 
 ## Doctor codes it can trip
 
 `missing-required-section`, `empty-required-section`, `dangling-code-ref`,
-`missing-code-symbol`, `conflicting-entry-origin`, plus whatever its `endpoint` children
-trip. See
+`missing-code-symbol`, plus whatever its `endpoint` children trip. See
 [../doctor-codes.md](../doctor-codes.md).
 
 ## When bullets are not enough

@@ -119,6 +119,12 @@ then the recipe is already talking to whatever it was pointed at. The evidence i
 name, a sentence), so reading intent out of it would both miss `prod-eu` and libel
 `APP_BIND=127.0.0.1`.
 
+A QA bring-up that is not told which environment to boot picks one itself: it narrows to the
+environments declared `local-only: true` and takes the first by page path. Nothing in the book marks
+the choice — a bring-up creates and destroys a stack, and `local-only: true` is already the
+claim that doing so to this one is safe. An environment file just states what that environment
+*is*: its hostnames, its services, its backing stores.
+
 ## 4. `step`
 
 A `### <id>` under the runbook's `## Steps`. Document order is execution order.
@@ -189,11 +195,12 @@ Wiring that is *not* a secret — a port, a profile, a fixture path — is a ste
 
 okf-builder's walkthrough has read a thinner version of this contract off an OKF `server` node
 since it was written: `launch:`, `entry-url:`, `health-path:`, `working-directory:`,
-`identity:`, `stop:`, `boot-timeout:`, on the one server marked `walkthrough: true`. Those
-bullets are registered on the `server` type and read by the same reader, so a book with no
-runbook still yields a stack, and the walk and the QA lane share one derivation. Marking more
-than one server resolves to *no* contract rather than an arbitrary pick — a walk against the
-wrong service is worse than a walk that says it has nowhere to go.
+`identity:`, `stop:`, `boot-timeout:`. Those bullets are registered on the `server` type and
+read by the same reader, so a book with no runbook still yields a stack, and the walk and the
+QA lane share one derivation. The contract is the feature's sole `server` node, or, where a
+feature documents several, the first by node id — nothing in the book marks one, because a
+feature whose servers answer on genuinely different addresses is two services filed under one
+directory, and splitting it is the fix rather than picking between them.
 
 Not every runbook is a stack. `runbook` is the general ops type — "preview the plan",
 "rotate the keys", "restore last night's dump" — and a procedure that starts nothing is a
@@ -206,7 +213,7 @@ and a book carrying only procedures still gets `runbook-missing`.
 
 | code | severity | when |
 | --- | --- | --- |
-| `runbook-missing` | warn | the book has a `screen` or a `server`, and no runbook or walkthrough server says how it comes up |
+| `runbook-missing` | warn | the book has a `screen` or a `server`, and neither a runbook nor a `server` launch contract says how it comes up |
 | `runbook-bad-kind` | error | a `kind:` outside §4.1 |
 | `runbook-bad-reuse` | error | a `reuse:` outside `if-fresh`/`always`/`never` |
 | `runbook-incomplete` | error | a stack runbook with no `kind: service` step, or nothing proving readiness (neither `entry-url:` nor a service `health:`) |
