@@ -77,6 +77,26 @@ def ensure_stack(
                        "stack is its documented topology. QA scenarios invoke the repo's "
                        "commands directly; there is nothing to bring up first."),
             )
+        selection = runbook.select_stack(graph)
+        if selection.reason == "ambiguous":
+            return StackStatus(
+                ready="none",
+                notes=(f"The book declares {len(selection.candidates)} stack runbooks "
+                       "across several environments and names none, so bring-up would "
+                       "have to guess which system to start: "
+                       f"{', '.join(selection.candidates)}. Bind the ones that serve one "
+                       "system to a shared `environment:` node, or say which one to bring "
+                       "up — there is no missing runbook to author here."),
+            )
+        if len(selection.runbooks) > 1:
+            ids = ", ".join(node.id for node in selection.runbooks)
+            return StackStatus(
+                ready="none",
+                notes=(f"The book declares {len(selection.runbooks)} stack runbooks bound "
+                       f"to one environment ({selection.environment}): {ids}. This runner "
+                       "brings up a single manifest and refuses to pick which one to skip "
+                       "— there is no missing runbook to author here."),
+            )
         return StackStatus(
             ready="none",
             notes=("The book describes a served surface but declares no stack — no stack "

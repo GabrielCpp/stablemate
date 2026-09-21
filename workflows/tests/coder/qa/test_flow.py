@@ -1662,6 +1662,76 @@ def test_an_empty_manifest_splits_on_whether_the_book_serves_anything(
     assert "served surface" in status.notes
 
 
+def _stack_runbook(root: Path, write: Callable[[Path, str], Path], *, name: str, port: int,
+                   env_href: str = "") -> None:
+    """A second stack runbook under `app/ops`, distinct from the `docs` fixture's own."""
+    environment = f"- environment: [{env_href}]({env_href}.md)\n" if env_href else ""
+    write(
+        root / "docs" / "features" / "app" / "ops" / f"{name}.md",
+        f"---\ntype: runbook\ntitle: {name}\n---\n\n# {name}\n\n- driver: web\n"
+        f"- entry-url: http://localhost:{port}\n{environment}\n"
+        "## Steps\n\n### serve\n\n- kind: service\n- run: true\n- health: true\n",
+    )
+
+
+def test_a_refusal_says_what_the_book_declares_not_to_author_one(
+    docs: Path,
+    write: Callable[[Path, str], Path],
+) -> None:
+    """Several stack runbooks and no name given is a refusal, not an absence.
+
+    `load_stack` reads that shape as an empty manifest too, and used to be reported the
+    same way as a book with no stack at all — sending the reader to author a runbook one
+    of several already on the page. The note has to name what is actually there instead.
+    """
+    log = logging.getLogger("test")
+    write(
+        docs / "docs" / "features" / "app" / "server.md",
+        "---\ntype: server\ntitle: App server\n---\n\n# App server\n",
+    )
+    _stack_runbook(docs, write, name="second-stack", port=2222)
+
+    status = qa_nodes.ensure_stack(log, str(docs))
+
+    assert status.ready == "none", status
+    assert "Author the runbook" not in status.notes
+    assert "qa-stack" in status.notes or "second-stack" in status.notes
+
+
+def test_a_shared_environment_refusal_names_the_environment_not_a_missing_runbook(
+    docs: Path,
+    write: Callable[[Path, str], Path],
+) -> None:
+    """Two stack runbooks bound to one `environment:` node have a manifest each, not none.
+
+    `select_stack` chooses both; `load_stack` still refuses, because it hands back a
+    single manifest and a caller here would rather refuse than pick one at random. The
+    note has to say that the environment is shared, not that nothing was authored.
+    """
+    log = logging.getLogger("test")
+    write(
+        docs / "docs" / "features" / "app" / "server.md",
+        "---\ntype: server\ntitle: App server\n---\n\n# App server\n",
+    )
+    write(
+        docs / "docs" / "features" / "app" / "ops" / "local.md",
+        "---\ntype: environment\ntitle: local\n---\n\n# local\n\n- local-only: true\n",
+    )
+    write(
+        docs / RUNBOOK_REL,
+        "---\ntype: runbook\ntitle: QA stack\n---\n\n# QA stack\n\n- driver: web\n"
+        "- environment: [local](local.md)\n\n"
+        "## Steps\n\n### serve\n\n- kind: service\n- run: true\n- health: true\n",
+    )
+    _stack_runbook(docs, write, name="second-stack", port=2222, env_href="local")
+
+    status = qa_nodes.ensure_stack(log, str(docs))
+
+    assert status.ready == "none", status
+    assert "Author the runbook" not in status.notes
+    assert "local" in status.notes
+
+
 def test_a_book_that_serves_nothing_runs_qa_without_a_stack(
     docs: Path,
     ostler: Callable[..., _Ostler],
