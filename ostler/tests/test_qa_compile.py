@@ -1623,6 +1623,25 @@ def test_a_compiled_plan_never_hands_playwright_an_unconstructible_locator() -> 
                 "under Playwright's strict mode"
 
 
+def test_a_bullet_value_wrapped_across_source_lines_still_compiles() -> None:
+    """A long `name:` is prose an author wraps at the margin, and the reader hands back the
+    newlines. Every line break in one is the author's typography — the accessible name is
+    what a screen reader announces, which has no margin — so the value folds to one line
+    instead of being read as a shape no bullet value can have."""
+    screen = "docs/features/policy/gui/screens/policy-list.md"
+    context = _navigation_context(
+        _page_obligation("okf:policy-list:wrapped:visible:1", f"{screen}#wrapped",
+                          locators={"role": ["button"],
+                                    "name": ["`Cancel the policy and\nrefund the remaining term`"]},
+                          checks=[_visible("button:Cancel the policy")]),
+        navigation=_arrival_navigation(source=screen),
+    )
+    source, _gaps = compile_plan_gaps(context, story="demo-story")
+    assert source is not None
+    ast.parse(source)
+    assert '"Cancel the policy and refund the remaining term"' in source
+
+
 def test_an_unavailable_role_set_degrades_to_a_selector_never_to_skipped_validation(monkeypatch) -> None:
     """Finding 9: when Playwright's `AriaRole` set cannot be derived (the `qa` extra missing, or
     a future playwright release moving the private module), `_MATCHABLE_ROLES` is `None` — and

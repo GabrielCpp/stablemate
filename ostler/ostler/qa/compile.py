@@ -1076,11 +1076,17 @@ _NONE_SENTINEL = "none"
 
 
 def _bullet_value(raw: str | None) -> str | None:
-    """*raw*, stripped of a wrapping code span, with the book's `none` sentinel read as absent."""
+    """*raw* as one line, stripped of a wrapping code span, with `none` read as absent.
+
+    A bullet value is prose, so an author wraps a long one across source lines the way every
+    other markdown paragraph wraps, and the reader hands the newlines back verbatim. Those
+    line breaks are the author's margin, not part of the role or the accessible name being
+    named, so the value is folded to one line before anything else looks at it.
+    """
     if raw is None:
         return None
-    match = _CODE_SPAN.match(raw)
-    assert match is not None, "_CODE_SPAN matches any string (its inner group is `.*?`)"
+    match = _CODE_SPAN.match(" ".join(raw.split()))
+    assert match is not None, "_CODE_SPAN matches any single line (its inner group is `.*?`)"
     value = match.group(1).strip()
     if not value or value.lower() == _NONE_SENTINEL:
         return None
