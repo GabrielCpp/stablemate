@@ -1,25 +1,5 @@
 #!/usr/bin/env python3
-"""Refuse a commit that carries QA evidence, or anything else oversized, into history.
-
-Runs as a `pre-commit` hook, and installs beside the `ostler` skill so it travels to
-every repo that takes ostler's QA loop. It reads the *index*, not the worktree: what is
-staged is exactly what the commit would contain.
-
-The failure it exists to prevent is not hypothetical. One client repo committed 2,167
-files and 297 MB of Playwright traces, videos and screenshots, because a dry run wrote
-to a sibling of the ignored `qa/` directory and the ignore line never followed. Nothing
-told anyone until a clone took minutes. Both rules below are needed: at the 1.5 MB
-threshold the size rule catches the videos and the traces and lets the other two
-thousand small files through, and the evidence rule is what catches ignore drift and a
-deliberate `git add -f`.
-
-Neither rule may be silenced with `--no-verify` and stay honest — the escape hatch is a
-**tracked** allowlist of path globs, `[check-staged-files] allow` in `.agent-checks.toml`,
-so an exception reaches review as a diff somebody approved.
-
-Run:
-    python3 <this script> [--root DIR]
-"""
+"""Refuse a commit that carries QA evidence, or anything else oversized, into history."""
 
 from __future__ import annotations
 
@@ -30,20 +10,13 @@ import tomllib
 from fnmatch import fnmatch
 from pathlib import Path
 
-#: Repo-local declarations, read from the root of whatever repo is being checked.
 CONFIG = ".agent-checks.toml"
 TABLE = "check-staged-files"
 
-#: A staged blob larger than this is refused. Generous on purpose: source does not reach
-#: it, and the artifacts that motivated the rule (a trace zip, a webm) clear it easily.
 MAX_BYTES = 1_500_000
 
-#: The directory a repo ignores. Scratch nests *inside* it — `qa/<label>/` — so one
-#: ignore line covers the ledger and every rehearsal.
 QA_DIRNAME = "qa"
 
-#: Written by a run itself, never by hand. Their presence under a `qa/` directory is what
-#: distinguishes evidence from source code that merely lives in a package called `qa`.
 ARTIFACT_DIRS = frozenset({"steps", "asserts", "traces", "videos", "screenshots"})
 LEDGER_FILES = frozenset({"qa-run.ndjson", "run-manifest.json", "qa-session.json"})
 
@@ -66,11 +39,7 @@ def declarations(root: Path) -> dict:
 
 
 def staged_paths(root: Path) -> list[str]:
-    """Repo-relative POSIX paths the commit would add or change.
-
-    Deletions and renames-away are excluded: removing a 300 MB trace is the fix, and a
-    hook that refuses the fix is worse than no hook.
-    """
+    """Repo-relative POSIX paths the commit would add or change."""
     out = _git(root, "diff", "--cached", "--name-only", "--diff-filter=ACMR", "-z")
     return [entry for entry in out.split("\0") if entry]
 
@@ -82,14 +51,7 @@ def staged_size(root: Path, path: str) -> int:
 
 
 def is_qa_evidence(root: Path, path: str) -> bool:
-    """Whether a staged path sits in a QA scratch directory rather than in source.
-
-    A bare `qa` component is not enough — `ostler/ostler/qa/session.py` and
-    `workflows/.../coder/qa/nodes/qa.py` are code, and a hook that refused them would be
-    turned off within a day. What marks a directory as evidence is what a run puts in it:
-    one of the artifact subdirectories, or a ledger file, either staged in this commit or
-    already sitting on disk beside it.
-    """
+    """Whether a staged path sits in a QA scratch directory rather than in source."""
     parts = path.split("/")
     for index, part in enumerate(parts):
         if part != QA_DIRNAME:
