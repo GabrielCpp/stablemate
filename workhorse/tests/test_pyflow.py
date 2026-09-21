@@ -618,7 +618,7 @@ def test_await_writes_the_ask_and_checkpoints_before_it_waits():
             ("end", "start", 1, "resumed"),
         ], observed[0]
         assert observed[0]["waits"] == [("start", 1, "operator", "start")]
-        assert fake.gates == [(str(ask), observed[0]["ask"])]
+        assert fake.gates == [(str(ask), "which branch?")]
         assert fake.waits == [
             ("start", 1, "operator", "start"),
             ("end", 1, "completed", ""),
@@ -914,7 +914,7 @@ def test_resume_re_parks_on_the_gate_the_checkpoint_was_waiting_on():
             assert drive(Blocks(), env, resume) == "STATUS: ANSWERED\n\nmain\n"
         finally:
             otel.install(previous)
-        assert fake.gates == [(str(ask), "STATUS: AWAITING_OPERATOR\n\nwhich branch?\n")]
+        assert fake.gates == [(str(ask), "which branch?")]
         assert clock.slept == [env.config.await_poll_s], clock.slept
 
 

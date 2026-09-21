@@ -156,3 +156,29 @@ def test_re_arming_adds_the_status_line_a_hand_written_gate_never_had():
     assert rearmed.startswith("STATUS: AWAITING_OPERATOR")
     assert "notes a human pasted in" in rearmed
     assert "which release?" in rearmed
+
+
+def test_latest_question_drops_the_settled_history():
+    """A gate answered twice still has one open question, and that is what a watcher gets."""
+    text = (
+        "STATUS: AWAITING_OPERATOR\n\n"
+        "## Questions from the agent\n\nwhich branch?\n\n"
+        "## Operator answers\n\nmain\n\n"
+        "## Questions from the agent\n\nwhich release?\n"
+    )
+    assert gates.latest_question(text) == "which release?"
+
+
+def test_latest_question_is_capped_so_one_gate_cannot_flood_a_frame():
+    """Every watcher of a run receives this string, so its size is bounded here."""
+    text = "STATUS: AWAITING_OPERATOR\n\n## Questions from the agent\n\n" + ("x" * 5000)
+    bounded = gates.latest_question(text, limit=100)
+
+    assert len(bounded) < 200
+    assert bounded.startswith("x" * 100)
+    assert "read the gate file" in bounded
+
+
+def test_latest_question_on_a_gate_with_no_heading_returns_the_whole_body():
+    """A hand-written gate has no heading, and the body is the question."""
+    assert gates.latest_question("please pick a branch\n") == "please pick a branch"

@@ -209,6 +209,16 @@ def _gate_question(path: Path) -> str:
         return ""
 
 
+def _wait_question(path: Path) -> str:
+    """The open question on `path`, bounded, for a span every watcher receives.
+
+    A gate accumulates every exchange it has ever held, so its whole text is the wrong
+    payload for a notification. Watchers get the question now open and the gate's path,
+    and read the rest from disk when they want it.
+    """
+    return gates.latest_question(_gate_question(path))
+
+
 def _consume_answer(
     request: Request, path: Path, channel: ControlChannel, log: logging.Logger
 ) -> None:
@@ -321,7 +331,7 @@ def drive(
                 parked = False
             if parked:
                 env.log.info("[workhorse] resume → still parked on %s", gate)
-                with otel.wait("operator", state, str(gate), _gate_question(gate)):
+                with otel.wait("operator", state, str(gate), _wait_question(gate)):
                     _park(gate, env, kind="operator")
     else:
         wf._seal(wf.setup())
@@ -421,7 +431,7 @@ def drive(
                 outcome.kind,
                 spec.name,
                 str(outcome.path),
-                _gate_question(outcome.path) if outcome.kind == "operator" else "",
+                _wait_question(outcome.path) if outcome.kind == "operator" else "",
             ):
                 _park(outcome.path, env, kind=outcome.kind)
         state, params, why = outcome.state, outcome.params, outcome.reason

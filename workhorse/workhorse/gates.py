@@ -10,6 +10,7 @@ _STATUS_RE = re.compile(r"^STATUS:[ \t]*(\S+)", re.MULTILINE)
 _SCOPE_RE = re.compile(r"^SCOPE:[ \t]*(\S+)", re.MULTILINE)
 _MARKDOWN = MarkdownIt("commonmark")
 _QUESTION_HEADINGS = {"question from the agent", "questions from the agent"}
+_QUESTION_LIMIT = 8000
 
 
 def _has_question_heading(text: str) -> bool:
@@ -20,6 +21,31 @@ def _has_question_heading(text: str) -> bool:
         if " ".join(title.content.split()).casefold() in _QUESTION_HEADINGS:
             return True
     return False
+
+
+def latest_question(text: str, limit: int = _QUESTION_LIMIT) -> str:
+    """The newest question on an append-only gate, capped at `limit` characters.
+
+    A gate file grows with every exchange, and a run that has been answered a dozen
+    times carries megabytes of settled history. What a watcher needs is the question
+    now open, so this returns the span from the last `## Questions from the agent`
+    heading to the next heading of the same level or above. The full text stays on
+    disk, and every reader of this value is handed the gate's path beside it.
+    """
+    tokens = _MARKDOWN.parse(text)
+    lines = text.splitlines()
+    start, end, selected = 0, len(lines), False
+    for opening, title in zip(tokens, tokens[1:], strict=False):
+        if opening.type != "heading_open" or title.type != "inline" or opening.map is None:
+            continue
+        if opening.tag == "h2" and " ".join(title.content.split()).casefold() in _QUESTION_HEADINGS:
+            start, end, selected = opening.map[1], len(lines), True
+        elif selected and opening.tag in ("h1", "h2"):
+            end = min(end, opening.map[0])
+    question = _STATUS_RE.sub("", "\n".join(lines[start:end]), count=1).strip()
+    if len(question) <= limit:
+        return question
+    return question[:limit].rstrip() + "\n\n[truncated; read the gate file for the rest]"
 
 
 def status_of(text: str) -> str:
