@@ -1,36 +1,4 @@
-"""The QA evidence gate: can the runner's claimed pass be checked, and does it check out?
-
-Ports `verify_qa_evidence.py`. This is the gate the sentinel gate's docstring defers to —
-**the one that fails closed**. Everything else in the QA flow treats "I could not run" as
-"nothing to object to"; here a check that cannot be evaluated is itself a problem, because
-the whole point is that a prompt mandate ("diff every element, verify the save flow") is
-not evidence that QA did it.
-
-Two properties are worth naming because they are easy to break by tidying:
-
-* **It can only reject.** A claimed status other than `passed` passes straight through
-  (mapped to `invalid` if it is not one of the machine's own three), and a pass that fails
-  any check becomes `invalid` rather than `failed` — routing back to planning/context
-  repair, where a malformed proof belongs, instead of to the fix loop, which cannot act on
-  it. No path here upgrades anything.
-* **Every problem accumulates.** The script built one `problems` list across nine
-  independent checks and emitted them together, so one re-QA sees the whole set rather than
-  peeling them off one per pass. The helpers below are split for legibility only and are
-  called in the script's original order, because that order is the order of the note.
-
-The one shape that changes is the ostler call. `Ostler(root).artifact_vet(...)` answers in
-a `QaOutcome` whose `status` distinguishes `clean` from `problems` from `error`; the
-function turns `error` into the `[ostler] … could not run` problem itself, since "the
-contract could not be evaluated" is a verdict about the *gate*, not about ostler.
-
-Plain, undecorated function — `coder.qa.nodes.evidence.verify_qa_evidence` is a thin
-`@blueprint.node` wrapper around it, unchanged in name, checkpoint or telemetry. The
-proof shape this checks (OKF obligation packets, `behavioral|parity|data-entry|transient`
-UI acceptance criteria, `ostler vet` visual-fidelity reports) is coder's own story-QA
-evidence contract, not a family-neutral one — this still moved verbatim per the settled
-decision so both lanes call one copy, but `QaResult`/`QaStatus` stay imported from
-`coder.shared.schemas.qa` for the same reason `runner.py` leaves them there.
-"""
+"""The QA evidence gate: can the runner's claimed pass be checked, and does it check out?"""
 from __future__ import annotations
 
 import json
@@ -46,36 +14,21 @@ from workhorse_workflows.coder.shared.schemas.qa import QaResult, QaStatus
 from workhorse_workflows.kit import find_repo_root
 from workhorse_workflows.qa.support import QA_PLAN_FILE, failed_assertions, scored_run_log
 
-#: The runner-written proof, relative to the story's spec dir.
 EVIDENCE_FILE = "qa-evidence.json"
 
-#: The runner-rendered, reviewer-facing account of the same run, beside the evidence. It is
-#: what a person reads instead of the ledger, so a pass that ships without it — or with one
-#: rendered from some other run — is a pass nobody can check by hand.
 REPORT = REPORT_FILE
 
-#: The three machine statuses that are preserved verbatim, keyed by what the runner
-#: spelled. Anything else claimed — including nothing at all — is `invalid`, because an
-#: unstated verdict is not a verdict. A map rather than a set because the value is the arm
-#: `QaResult.status` carries, and the lookup is what makes that a typed answer.
 PASSTHROUGH_STATUSES: dict[str, QaStatus] = {
     "failed": "failed",
     "blocked": "blocked",
     "invalid": "invalid",
 }
 
-#: What a criterion is allowed to be. Each kind carries its own extra proof obligation.
 CRITERION_KINDS = ("behavioral", "parity", "data-entry", "transient")
 
 
 def _run_log_tally(spec_dir: Path) -> tuple[int, int]:
-    """`(passing, failing)` assertion counts from the QA run log (`qa/qa-run.ndjson`).
-
-    The log is the ground truth the runner wrote: one `{"kind": "assert", "result": …}`
-    record per checked assertion. Used to admit an un-modeled infra/CLI story on its real
-    command proof when it has no OKF criteria/obligations — so a missing or empty log
-    tallies to `(0, 0)` and is correctly rejected rather than waved through.
-    """
+    """`(passing, failing)` assertion counts from the QA run log (`qa/qa-run.ndjson`)."""
     log_path = spec_dir / "qa" / "qa-run.ndjson"
     if not log_path.is_file():
         return (0, 0)
@@ -96,11 +49,7 @@ def _run_log_tally(spec_dir: Path) -> tuple[int, int]:
 
 
 def _exists(ref: Any, root: Path, spec_dir: Path) -> bool:
-    """Resolve an evidence reference against the likely roots and confirm it is a real file.
-
-    Four roots rather than one because QA writes references from wherever it happened to be
-    standing: absolute, repo-relative, spec-relative, and relative to the spec's parent.
-    """
+    """Resolve an evidence reference against the likely roots and confirm it is a real file."""
     if not ref or not str(ref).strip():
         return False
     text = str(ref).strip()
@@ -111,12 +60,7 @@ def _exists(ref: Any, root: Path, spec_dir: Path) -> bool:
 
 
 def _artifact_problems(spec_dir: Path, data: dict) -> tuple[list[str], dict, dict]:
-    """The four machine-owned files exist and parse, and the evidence points at the log.
-
-    Returns the problems along with the two parsed documents later checks need — an
-    unparsable one yields `{}` and its own problem, so a downstream check sees "empty"
-    rather than raising a second time on the same file.
-    """
+    """The four machine-owned files exist and parse, and the evidence points at the log."""
     problems: list[str] = []
     plan_path = spec_dir / QA_PLAN_FILE
     context_path = spec_dir / "qa-okf-context.json"
@@ -162,19 +106,7 @@ def _artifact_problems(spec_dir: Path, data: dict) -> tuple[list[str], dict, dic
 
 
 def _obligation_problems(context: dict, data: dict) -> list[str]:
-    """Every obligation the OKF context *required* has a passing verdict with executed logs.
-
-    The emphasis is the whole check. A packet carries two kinds of member: the nodes this
-    story built or touched, and the nodes the graph closure walked to on its way to them —
-    an endpoint nobody has written yet, a screen with no `code:` behind it. The builder
-    marks the second kind `"required": false`, and `ostler qa validate` already refuses a
-    plan that writes scenarios for them. Demanding evidence for them here anyway is not a
-    stricter gate, it is an unsatisfiable one: the planner is told to leave them out and
-    then failed for having left them out, which routes back to planning and loops forever.
-
-    Absent the key an obligation is required, because a packet written before the flag
-    existed says nothing about which of its members are real.
-    """
+    """Every obligation the OKF context *required* has a passing verdict with executed logs."""
     problems: list[str] = []
     evidence_obligations = data.get("obligations") if isinstance(data, dict) else None
     obligation_by_id = {
@@ -303,12 +235,11 @@ def _criteria_problems(criteria: list, root: Path, spec_dir: Path) -> list[str]:
         if verdict not in ("pass", "fail"):
             problems.append(f"{cid}: missing/invalid `verdict` (expected Pass|Fail).")
 
-        # A Pass-overall cannot coexist with a failing criterion.
         if verdict == "fail":
             problems.append(f"{cid}: verdict is Fail — QA cannot pass overall while this AC fails.")
             continue
         if verdict != "pass":
-            continue  # already flagged above
+            continue
 
         evidence = criterion.get("evidence") or []
         if isinstance(evidence, str):
@@ -329,15 +260,7 @@ def _criteria_problems(criteria: list, root: Path, spec_dir: Path) -> list[str]:
 
 
 def _unsupported_pass_problems(criteria: list, spec_dir: Path) -> list[str]:
-    """A criterion may not be Pass while a scenario it rests on failed an assertion.
-
-    The hole this closes is not a wrong verdict but a silent one: `log_refs` are written by
-    the assessor, so a criterion can cite four passing assertions from a scenario and simply
-    omit the two that failed — leaving a Pass that reads as fully proven and no machine
-    disagreeing with it. The scenario, not the individual ref, is the unit of proof: an
-    assertion that failed inside it is evidence *against* the criterion the scenario covers,
-    whether or not the citation acknowledges it.
-    """
+    """A criterion may not be Pass while a scenario it rests on failed an assertion."""
     failures = failed_assertions(scored_run_log(spec_dir))
     if not failures:
         return []
@@ -365,14 +288,7 @@ def _unsupported_pass_problems(criteria: list, spec_dir: Path) -> list[str]:
 def _visual_fidelity_problems(
     data: dict, root: Path, spec_dir: Path
 ) -> tuple[list[str], list[str]]:
-    """Returns `(problems, vet_notes)` for the per-state `ostler vet` claims.
-
-    Only `missingCount` is a regression signal, and that asymmetry is the whole reason this
-    check exists rather than just trusting `ostler vet`'s exit code: vet exits non-zero for
-    any disagreement bucket, and its `unlabeled` bucket conflates real gaps with legitimate
-    role-less native elements. `unexpected`/`unlabeled` are therefore recorded as a note on
-    a passing gate, not as a problem.
-    """
+    """Returns `(problems, vet_notes)` for the per-state `ostler vet` claims."""
     problems: list[str] = []
     vet_notes: list[str] = []
     visual_fidelity = data.get("visual_fidelity") if isinstance(data, dict) else None
@@ -430,14 +346,7 @@ def _visual_fidelity_problems(
 
 
 def _report_problems(spec_dir: Path, data: dict) -> list[str]:
-    """`qa-report.md` exists and was rendered from the run the evidence claims.
-
-    The report is the per-criterion, per-obligation account a reviewer reads; the evidence
-    is the machine's. The runner writes both at the end of the same run and stamps the run
-    id into each, so the only legitimate state is "both present, same id". A missing report
-    means the run never finished its bookkeeping (or someone deleted it); a different id
-    means the report describes an earlier run than the one being passed.
-    """
+    """`qa-report.md` exists and was rendered from the run the evidence claims."""
     report_path = spec_dir / REPORT
     if not report_path.is_file():
         return [f"{REPORT} is missing — the runner writes it after every run; re-run QA."]
@@ -455,13 +364,7 @@ def _report_problems(spec_dir: Path, data: dict) -> list[str]:
 
 
 def _run_id_problems(data: dict, manifest: dict, criteria: list) -> list[str]:
-    """Every Pass cites at least one artifact this execution actually produced.
-
-    Replaces mtime forensics: instead of asking how old a file is, ask whether the run
-    manifest lists it under the same `runId` the evidence claims. Additional reference
-    evidence — old-side archives, accepted-divergence records — may legitimately be older
-    and is not required to appear in the manifest.
-    """
+    """Every Pass cites at least one artifact this execution actually produced."""
     run_id = str(data.get("runId", "")).strip()
     if not run_id:
         return ["qa-evidence.json has no runner-produced runId."]
@@ -509,16 +412,9 @@ def verify_qa_evidence(
     claimed_notes: str = "",
     repo_dir: str = "",
 ) -> QaResult:
-    """Check a claimed QA pass against the proof on disk; downgrade to `invalid` if it lies.
-
-    Runs after `ostler qa run` and can only reject that runner pass. Malformed or missing
-    deterministic proof is `invalid` rather than a product failure, so routing returns to
-    planning/context repair; an auditor never gets an opportunity to upgrade it.
-    """
+    """Check a claimed QA pass against the proof on disk; downgrade to `invalid` if it lies."""
     claimed = claimed_status.strip().lower()
 
-    # Only a runner pass is eligible for evidence verification. Preserve the other
-    # three machine statuses exactly; a missing status is itself invalid.
     if claimed != "passed":
         status = PASSTHROUGH_STATUSES.get(claimed, "invalid")
         logger.info("claimed status '%s' is not 'passed' — passing through as '%s'", claimed, status)
@@ -549,7 +445,7 @@ def verify_qa_evidence(
 
     try:
         data = json.loads(evidence_path.read_text(encoding="utf-8"))
-    except Exception as exc:  # any parse error fails the gate
+    except Exception as exc:
         logger.warning("%s is not valid JSON: %s", EVIDENCE_FILE, exc)
         return QaResult(
             status="invalid",
@@ -563,18 +459,6 @@ def verify_qa_evidence(
     if not isinstance(obligations, list):
         obligations = []
 
-    # A story proves itself through `criteria` (UI acceptance checks) OR `obligations` (OKF
-    # contract/command checks). A surface the OKF graph does not model as a feature — an
-    # infra or CLI story whose changed code has no feature-node owner — produces neither:
-    # the diff→OKF mapper finds no obligations, so the runner records empty arrays even for
-    # a genuine pass. Its real proof is the command assertions in the run log. Requiring
-    # OKF-structured proof there rejects a valid infra story for lacking evidence it
-    # categorically cannot have.
-    #
-    # So: empty criteria AND empty obligations is acceptable ONLY when the run log shows
-    # real passing assertions and zero failures. That preserves the anti-vacuity property —
-    # an empty or failing log is still invalid — while letting an un-modeled surface commit
-    # on its actual command proof.
     if not criteria and not obligations:
         passed, failed = _run_log_tally(spec_path)
         if passed == 0 or failed > 0:
@@ -597,10 +481,6 @@ def verify_qa_evidence(
 
     problems, context, manifest = _artifact_problems(spec_path, data)
 
-    # Ostler's runner-aware artifact contract is a mandatory deterministic check: it
-    # validates hashes, exact manifest paths, terminal ledger records and passing assertion
-    # refs. A contract that cannot be evaluated cannot validate a pass, so a failure to run
-    # it is itself a problem.
     vetted = Ostler(root).artifact_vet("qa-evidence", spec_dir)
     if vetted.data.get("error"):
         problems.append(

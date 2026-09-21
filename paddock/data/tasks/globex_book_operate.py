@@ -1,74 +1,4 @@
-"""operate: can an agent bring globex up and drive it, with nothing but the book and a
-browser?
-
-`globex_book_line3` measures whether an agent can *read* the book. This module measures
-whether it can *act* on it — §1 lines 1 and 2 of the OKF acceptance test: bring the stack
-up and reach a screen, then drive a documented journey end to end. Both lines are asked
-with a Playwright MCP wired into the trial's own `cwd`, against the *whole* seed —
-`docs/`, `app/` and `compose.yml` together — because line 1 and 2 are about operating a
-running stack, not reading source in place of the book.
-
-Two lines, three trials total — not four, and not symmetric:
-
-    bring-up — reach the web-app landing screen and report the URL and how it knew
-               (control and absence)
-    journey  — drive `browse-and-add-widget` end to end and report each step
-               (control only — see below)
-
-    control  — the book is unperturbed
-    absence  — the book's statement of the thing under test is stripped to an empty
-               bullet value, key left in place so the book's grammar stays legal
-
-The `absence` arm is the load-bearing one, exactly as it is in `line3`, and the asymmetry
-is sharper here: an agent that succeeds on `absence` anyway did not get lucky, it read
-`compose.yml` or `app/` to find a port or a step the book no longer states — a measured
-shortcut around the book, not a pass. The rubric scores that at level 0 even when the
-agent's stack came up and the journey completed, and says so.
-
-`bring-up`'s `absence` arm does not stop at the two runbooks. Round 1 emptied only their
-`run:`/`entry-url:` bullets; round 2 found `health:`, `produces:` and `stop:` in the same
-two files restating the same facts one bullet down. Round 3 found the fact stated a third
-time, on pages the runbook perturbation never touches at all: the web-app node's own
-`entry-url:`, the `local` environment's `services:` block, that same node's `persistence:`
-bullet (whose wrapped second line names the up-command), and the first `run:` bullet in a
-fixture that brings the stack up as a precondition. Round 4 found it stated a fourth way,
-which no sweep for its spelling can see: all three bring-up pages cite `compose.yml` in a
-`- code:` bullet, and that is the file port 18102 and the up-command live in. A citation
-is a route, and in an OKF book routing a reader to a fact and stating it are the same
-claim. `BRING_UP_BULLETS` below is the full
-table these rounds arrived at — see its docstring for exactly why each row is there and,
-just as load-bearingly, why `18101`, two of `widgets-on-hand.md`'s three `run:` bullets and
-the mobile runbook's own `code:` bullet are deliberately left standing. Do not narrow this
-table back down without rereading every page under `docs/` for the string `18102` and the
-phrase `docker compose up`, *and* opening every `- code:` bullet's cited file to see
-whether it carries either, the way these rounds did.
-
-`journey` has no `absence` arm, on purpose. An OKF book states a journey twice by
-construction: once as a flow page (`start:` and `steps:`), and again as the interaction
-graph its screens declare (`browse-and-add-widget.md` and
-`mobile-app/flows/browse-and-add-widget.md` both state the identical journey, and
-`web-app/gui/screens/new-widget.md` names its own arrival interaction and the screen that
-reaches it, which is the same path in different words). Emptying the flow page's `start:`
-and `steps:` — which round 1 and round 2 both did — left the graph standing, so an agent
-reading the screens instead of the flow page reconstructed the same journey from the book,
-not from source, and the rubric had no way to tell that apart from a shortcut. The only way
-to make "the book does not state this journey" true would be to gut both screen pages too,
-at which point the agent cannot drive a browser at all and the arm has stopped being an
-absence arm — it would be testing whether an agent can act with no book at all, which is a
-different, and much less interesting, question than this line asks. So `journey` measures
-only whether an agent, given an intact book, drives the flow it states and cites the page
-that states it; whether the book's account can be made to disagree with what driving the
-app actually shows is a separate probe — the app-disagrees-with-the-book case, §1 line 4 of
-the acceptance test — and belongs to whatever module ends up covering that line, not here.
-
-Unlike `line3`, this module's trials are expensive — each one brings a docker compose
-stack up and drives a real browser through it — and globex's book hardcodes ports 18101
-and 18102, so trials cannot run concurrently and a stack left over from the last one
-blocks the next. `ask` and `judge` therefore run a plain serial loop, tear the stack down
-before and after every trial (`_teardown_stack`), and persist the ledger after each trial
-rather than once at the end — an interruption partway through a three-trial round must not
-discard the trials that already finished and already cost real money.
-"""
+"""operate: can an agent bring globex up and drive it, with nothing but the book and a browser?"""
 
 from __future__ import annotations
 
@@ -83,9 +13,6 @@ import _greenfield as gf
 from _stablemate import TrialError
 from paddock import Run, Score, step, task
 
-#: Same config `globex_book_line3` pins for the same seed — see that module's `CONFIG`
-#: comment for why a live power ladder over one vendor's config, rather than a single
-#: fixed profile, is the right default for a probe like this one.
 CONFIG = "configs/opencode.toml"
 
 task(
@@ -94,24 +21,17 @@ task(
     config=CONFIG,
 )
 
-#: The two runbooks — still the pages a correct `control` account has to cite, and still
-#: where `bring-up`'s `absence` arm does most of its stripping.
 BRING_UP_DOCS = (
     "features/api-service/ops/api-service-stack.md",
     "features/web-app/ops/web-app-stack.md",
 )
 
-#: The one flow page `journey` asks about. No longer perturbed on any arm — `journey` is
-#: control-only, see the module docstring.
 JOURNEY_DOC = "features/web-app/flows/browse-and-add-widget.md"
 
 
 @dataclass(frozen=True, slots=True)
 class Line:
-    """One row of the probe matrix — what to ask, which arms to run it on, and what each
-    arm expects back. `arms` is per-line, not global, because `journey` runs `control`
-    only — see the module docstring for why an `absence` arm for it is not a state an OKF
-    book can hold."""
+    """One row of the probe matrix — what to ask, which arms to run it on, and what each arm expects back."""
 
     name: str
     question: str
@@ -195,9 +115,6 @@ LINES = (
 
 LINES_BY_NAME = {line.name: line for line in LINES}
 
-#: `claude`'s CLI reads `.mcp.json` from its `cwd` and nothing else — `ClaudeBackend.run_turn`
-#: passes no MCP flag, so wiring Playwright into a trial happens by writing this file into
-#: the trial tree's root, the same shape the repo's own root `.mcp.json` uses.
 MCP_JSON: dict[str, Any] = {
     "mcpServers": {
         "playwright": {
@@ -207,12 +124,6 @@ MCP_JSON: dict[str, Any] = {
     }
 }
 
-#: The bench's two containers, named by `compose.yml`'s pinned project (`globex-bench`)
-#: and its two services — stopped by name as well as by `compose down`, because a stack
-#: started from a *different* trial tree's copy of the same compose file is still `docker
-#: compose down`-able from here (the project name is what compose keys containers by, not
-#: the directory it was started from), but naming them directly is what lets teardown
-#: also clean up a stack some earlier, unrelated invocation left running.
 BENCH_CONTAINERS = ("globex-bench-api-service-1", "globex-bench-web-app-1")
 
 LEVELS: dict[int, tuple[str, str]] = {
@@ -238,31 +149,13 @@ LEVELS: dict[int, tuple[str, str]] = {
 }
 MAX_LEVEL = max(LEVELS)
 
-#: Where the round's ledger lives inside the stage — named explicitly, like `line3`'s
-#: `TRIALS`, because `ask`, `judge` and `score` all need the one location `arrange` wrote
-#: to and `run.artifacts` is relative to whichever step is currently running.
 TRIALS = ("artifacts", "trials")
 
 
 def _strip_scalar_bullet(
     text: str, path: Path, key: str, *, occurrences: int = 1, only_first: bool = False,
 ) -> str:
-    """Empty a `- key: value` bullet's value, keeping the key — a legal, empty bullet.
-
-    A bullet's value may wrap onto indented continuation lines rather than staying on one
-    line (`local.md`'s `persistence:` is the case that forced this: its second line is the
-    one that names the up-command) — the pattern below swallows any line that follows,
-    indented by exactly the two spaces a continuation uses, up to but not including the
-    next `- `-prefixed bullet, so a wrapped value is emptied in full rather than leaving
-    its second line stated.
-
-    `occurrences` is the exact count of matching bullets expected in `text`; a count that
-    does not match raises, the same refusal `_strip_list_bullet` makes, so a page whose
-    shape changed under this module fails loudly rather than silently stripping the wrong
-    bullet or none at all. `only_first` empties only the first match (in document order)
-    and leaves the rest — `widgets-on-hand.md` has three `- run:` bullets and only the
-    first one brings the stack up; the other two are curl calls this line does not test.
-    """
+    """Empty a `- key: value` bullet's value, keeping the key — a legal, empty bullet."""
     pattern = re.compile(rf"^- {re.escape(key)}: .+(?:\n(?:  (?!- ).*))*", re.MULTILINE)
     matches = list(pattern.finditer(text))
     if len(matches) != occurrences:
@@ -289,18 +182,7 @@ def _strip_list_bullet(text: str, path: Path, key: str) -> str:
 def _strip_code_bullet_citing(
     text: str, path: Path, cited: str, *, occurrences: int
 ) -> str:
-    """Empty every `- code: `<cited>`` bullet on a page, keyed on the file it cites.
-
-    `BRING_UP_BULLETS` cannot express this: its unit is `(file, key)`, and a page's
-    `- code:` bullets do not all cite the same file — `web-app/http/web-app.md` has four,
-    and only the two naming `app/web-app/main.go` reach the port. Emptying the other two
-    would strip citations to files carrying neither fact, against this module's own
-    discipline of leaving a non-routing fact standing. So the match is on the cited path,
-    and a `::symbol` suffix counts as citing the file it narrows: a symbol suffix narrows
-    what is cited, not what a reader who opens that file can see.
-
-    `occurrences` is the exact count expected, the same refusal the other strippers make.
-    """
+    """Empty every `- code: `<cited>`` bullet on a page, keyed on the file it cites."""
     pattern = re.compile(r"^- code: `([^`]+)`.*$", re.MULTILINE)
     matches = [m for m in pattern.finditer(text) if m.group(1).split("::", 1)[0] == cited]
     if len(matches) != occurrences:
@@ -313,39 +195,6 @@ def _strip_code_bullet_citing(
     return text
 
 
-#: Every bullet, across every page, that states the web-app landing URL or the
-#: up-command, or that routes a reader to a file which does. `(file, key, kind)`;
-#: `kind` picks
-#: `_strip_scalar_bullet` (`"scalar"`), the first-match-only variant of it (`"scalar-first"`
-#: — `widgets-on-hand.md` alone, see below), or `_strip_list_bullet` (`"list"`).
-#:
-#: The two runbooks carry five each — `run:` and `entry-url:` are the obvious two;
-#: `health:` restates the full URL, `produces:` restates the bare port, and `stop:` names
-#: the tool and the service, from which the up-command is a one-word inference.
-#:
-#: Three more pages restate the same two facts outside the runbooks entirely, found by
-#: rereading every page under `docs/` for the string `18102` and the phrase `docker
-#: compose up` rather than trusting the runbook perturbation to be exhaustive:
-#:   - `web-app/http/web-app.md`'s own `entry-url:` — the node the runbooks link to states
-#:     the same port a second time.
-#:   - `api-service/ops/local.md`'s `services:` block. Both children are emptied together
-#:     — emptying the whole container is simpler and more honest than surgically removing
-#:     only the `web-app:` child while leaving `api-service:` (18101) standing beside it.
-#:   - That same node's `persistence:` bullet, whose value wraps onto a second, indented
-#:     line that names the up-command in passing.
-#:   - `web-app/fixtures/widgets-on-hand.md`'s *first* `- run:` bullet only — the one that
-#:     brings api-service up as this fixture's precondition. Its other two `- run:`
-#:     bullets are curl calls against `18101`, api-service's own address: a different fact
-#:     from the one this line tests (the web-app landing screen and how to reach it), so
-#:     they are left standing on every arm, deliberately, and `18101` is never asserted
-#:     absent anywhere in this module.
-#:
-#: Round 4 found the fact reachable a fourth way, which no sweep for its spelling can
-#: see, and which this table cannot express: a `- code:` bullet routes a reader to a
-#: file, and `compose.yml` and `app/web-app/main.go` are where both facts live. That
-#: half of the sweep is `CODE_BULLET_ROUTES` below, keyed on the path a bullet cites
-#: rather than on its key, because a page's `- code:` bullets do not all cite the same
-#: file and only the ones that reach the fact should go.
 BRING_UP_BULLETS: tuple[tuple[str, str, str], ...] = (
     ("features/api-service/ops/api-service-stack.md", "run", "scalar"),
     ("features/api-service/ops/api-service-stack.md", "entry-url", "scalar"),
@@ -363,22 +212,6 @@ BRING_UP_BULLETS: tuple[tuple[str, str, str], ...] = (
     ("features/web-app/fixtures/widgets-on-hand.md", "run", "scalar-first"),
 )
 
-#: The other half of the sweep: every `- code:` bullet whose cited file carries port 18102
-#: or the up-command, as `(file, cited-path, occurrences)`. A citation is a route, and in
-#: an OKF book routing a reader to a fact and stating it are the same claim — so with
-#: these standing, an agent that opens `compose.yml` has followed the book rather than
-#: gone around it, and this arm's premise is false.
-#:
-#: These five are the whole set: every one of the book's 40 `- code:` bullets was resolved
-#: and each of its 23 distinct cited files opened, rather than grepped for by name. Three
-#: cite `compose.yml`, where both facts are written plainly; two — on one page — cite
-#: `app/web-app/main.go`, where the port is the `-addr` flag's default, which is why no
-#: sweep over `docs/` for the spelling `18102` ever saw it.
-#:
-#: `mobile-app/ops/mobile-app-stack.md`'s `- code:` bullet, and `web-app.md`'s other two
-#: (`static/config.js`, `static/styles.css`), are deliberately absent: their files carry
-#: neither fact, so they route to neither, and emptying them would perturb more of the
-#: book than this line asks about.
 CODE_BULLET_ROUTES: tuple[tuple[str, str, int], ...] = (
     ("features/api-service/ops/api-service-stack.md", "compose.yml", 1),
     ("features/api-service/ops/local.md", "compose.yml", 1),
@@ -387,9 +220,6 @@ CODE_BULLET_ROUTES: tuple[tuple[str, str, int], ...] = (
 )
 
 
-#: How many `- run:` bullets `widgets-on-hand.md` has in total — `_strip_scalar_bullet`'s
-#: `occurrences` for the one `"scalar-first"` row above, so a fourth `run:` bullet added to
-#: that fixture later fails this arm loudly instead of silently emptying the wrong one.
 WIDGETS_ON_HAND_RUN_BULLETS = 3
 
 
@@ -470,23 +300,7 @@ def _tree_dir(run: Run, trial_id: str) -> Path:
 
 
 def _teardown_stack(run: Run, tree: Path, phase: str) -> None:
-    """Tear down anything holding globex's hardcoded ports 18101 and 18102.
-
-    globex's book pins both services to fixed ports rather than letting compose pick free
-    ones, so two trials cannot run concurrently and a stack a previous trial (or a
-    previous round) left running blocks the next `docker compose up` cold. Called before
-    every trial and after it, success or failure, never only once at the end of the loop:
-    `docker compose down --remove-orphans` in the trial's own tree, by compose's own
-    bookkeeping, and `docker rm -f` on the two containers by their pinned names, in case
-    something started them outside this tree entirely. Both are tolerant of "no such
-    container" / "no such service" — the common case is that there is nothing to tear
-    down, and that is success, not an error.
-
-    `phase` (e.g. `"before"`/`"after"`) names which call this is in the log, so the
-    before-teardown record — the one that answers "did this trial start from a clean
-    stack?" — survives the after-teardown call within the same trial instead of being
-    overwritten by it.
-    """
+    """Tear down anything holding globex's hardcoded ports 18101 and 18102."""
     run.cli("docker", "compose", "down", "--remove-orphans", cwd=tree,
            log_name=f"teardown-{phase}-compose-{tree.name}")
     for name in BENCH_CONTAINERS:
@@ -495,15 +309,7 @@ def _teardown_stack(run: Run, tree: Path, phase: str) -> None:
 
 @step()
 def arrange(run: Run) -> None:
-    """Build one perturbed tree per (line, arm), each a full copy of the seed.
-
-    Unlike `line3`, `docs/` alone will not do: `bring-up` and `journey` both need
-    `docker compose up --build` to actually work, which needs `app/` and `compose.yml`
-    alongside the book. So the *whole* seed is copied per trial, only `docs/` is
-    perturbed, and a `.mcp.json` wiring Playwright is written into the tree's root — the
-    `claude` CLI reads that file from its `cwd`, and `cwd` is the only lever
-    `ClaudeBackend.run_turn` has for handing a trial its own MCP server.
-    """
+    """Build one perturbed tree per (line, arm), each a full copy of the seed."""
     matrix: list[dict[str, Any]] = []
     for line in LINES:
         for arm in line.arms:
@@ -546,20 +352,7 @@ def _judge_agent(run: Run) -> Any:
 
 @step()
 def ask(run: Run) -> None:
-    """Put one question to an agent per trial, `cwd`'d to that trial's tree alone.
-
-    Written to `trials.json` after every trial rather than once after the loop, and a
-    trial whose `answer` is already non-empty is skipped: each trial here brings a docker
-    stack up and drives a real browser through it, minutes of real cost per trial, so an
-    interruption partway through a three-trial round must not discard the trials that
-    already finished — and a rerun must resume rather than pay for them again. The stack
-    is torn down (`_teardown_stack`) before the question is put and again after, whether
-    the agent answered or not — the after-teardown sits in a `finally`. `gf.call_agent`
-    itself never raises (it retries and returns `""` on total failure), but nothing else
-    in this loop body is guaranteed not to, and a trial that raised for any other reason
-    is exactly the one most likely to have left a half-built stack holding 18101/18102
-    and blocking every trial after it, this round and the next.
-    """
+    """Put one question to an agent per trial, `cwd`'d to that trial's tree alone."""
     matrix = _read_matrix(run)
     if not matrix:
         raise TrialError("arrange recorded no trials")
@@ -580,12 +373,7 @@ def ask(run: Run) -> None:
 
 
 def _appraise(text: str, repo: Path) -> dict[str, Any]:
-    """Parse one judge response and apply the citation cap — pure, so tests need no agent.
-
-    Mirrors `globex_book_line3._appraise` and `_greenfield.judge_one`: an `earned` verdict
-    whose cited paths do not resolve under `repo`, or that cites nothing at all, is capped
-    at `hedged` and flagged.
-    """
+    """Parse one judge response and apply the citation cap — pure, so tests need no agent."""
     from workhorse.runner import extract as wh_extract
 
     parsed = wh_extract.parse_json_from_text(text, ["level", "evidence", "reason"]) or {}
@@ -605,16 +393,7 @@ def _appraise(text: str, repo: Path) -> dict[str, Any]:
 
 @step()
 def judge(run: Run) -> None:
-    """Grade each trial's answer against the perturbation `arrange` recorded.
-
-    Persisted after every trial, and a trial whose `reason` is already non-empty is
-    skipped — the same reason `ask` persists per trial rather than once at the end: this
-    step hands a judge agent a whole trial tree, `app/` and `compose.yml` included, to
-    check the answer's citations against, and that read alone is not free. Graded over a
-    `shutil.copytree` scratch copy of the trial's tree, never the tree `ask` used
-    directly, so a judge agent's own session state never lands in what `score` later
-    reads as the trial's evidence.
-    """
+    """Grade each trial's answer against the perturbation `arrange` recorded."""
     matrix = _read_matrix(run)
     if not matrix:
         raise TrialError("arrange recorded no trials")
@@ -644,11 +423,7 @@ def judge(run: Run) -> None:
 
 
 def score(run: Run) -> Score:
-    """Recompute the score from `trials.json` alone — no rereading of any tree.
-
-    Read-only, like `globex_book_line3.score`: every field this needs was already
-    persisted by `judge`, so scoring a sealed result later needs nothing but that file.
-    """
+    """Recompute the score from `trials.json` alone — no rereading of any tree."""
     ledger = _trials_dir(run) / "trials.json"
     if not ledger.is_file():
         return Score(headline="operate: no trials recorded — the round did not reach arrange",

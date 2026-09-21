@@ -1,30 +1,14 @@
-"""What the author's main graph validates: its node returns, and its agent replies.
-
-Same convention as `survey`: every `*_ok` / `has_*` / `committed` output was a
-`"yes"`/`"no"` **string** in the YAML, because a `branch` node compares rendered text.
-A Python state branches with `if`, so these are `bool` — the strings were an artifact of
-the engine, and nothing on disk carried them.
-
-Two names differ from the YAML's outputs, both to avoid a collision inside one package:
-`StorySplit` (the YAML's `split_result`) is not survey's `SplitResult`, and the
-tri-state verifiers share one `VerifyReport` rather than carrying
-`reconcile_*`/`integrity_*` field names twice.
-"""
+"""What the author's main graph validates: its node returns, and its agent replies."""
 from __future__ import annotations
 
 from typing import Literal
 
 from workhorse_workflows.author.shared.schemas._base import AuthorResult
 
-# ── node returns ────────────────────────────────────────────────────────────
 
 
 class Config(AuthorResult):
-    """`load_config` — the author's paths, decided once at the top of the run.
-
-    Every path but `repo_root` is **repo-relative**, exactly as the script emitted it,
-    so a `cfg` checkpointed on one machine still resolves on another.
-    """
+    """`load_config` — the author's paths, decided once at the top of the run."""
 
     repo_root: str = ""
     backlog_path: str = ""
@@ -35,11 +19,7 @@ class Config(AuthorResult):
 
 
 class RunContext(Config):
-    """The author's `self.ctx` — the paths `load_config` resolved.
-
-    Written once by `setup()`, restored verbatim on resume. Anything that changes as
-    the run progresses is a state parameter instead, not a field here.
-    """
+    """The author's `self.ctx` — the paths `load_config` resolved."""
 
 
 class AuthorStep(AuthorResult):
@@ -60,11 +40,7 @@ class AuthorStep(AuthorResult):
 
 
 class EpicChoice(AuthorResult):
-    """`select_epic` — the next unauthored epic, or that none is left.
-
-    `has_epic` false is not a failure: an empty todo means the backlog is fully
-    decomposed, and the flow moves on to the whole-repo checks.
-    """
+    """`select_epic` — the next unauthored epic, or that none is left."""
 
     has_epic: bool = False
     epic: str = ""
@@ -109,12 +85,7 @@ class StoryMutation(AuthorResult):
 
 
 class Defects(AuthorResult):
-    """The four validators' shared shape: does it hold, and if not, what is wrong.
-
-    `validate_story`, `check_story_grounding`, `validate_coverage` and
-    `validate_artifacts` all emitted exactly this pair under their own two names.
-    `errors` is the operator- and agent-facing text, one finding per line.
-    """
+    """The four validators' shared shape: does it hold, and if not, what is wrong."""
 
     ok: bool = False
     errors: str = ""
@@ -128,13 +99,7 @@ class RoadmapStatus(AuthorResult):
 
 
 class VerifyReport(AuthorResult):
-    """The two tri-state verifiers: `verify_reconcile` and `verify_integrity`.
-
-    The YAML's `yes`/`no`/`skip` is two booleans here. `skipped` true means the check
-    could not run (no baseline ref, ostler unusable) and the flow proceeds — these are
-    fail-open by design, since a missing baseline is not a defect in the epics.
-    `report` is the multi-line preamble the resolver prompt reads.
-    """
+    """The two tri-state verifiers: `verify_reconcile` and `verify_integrity`."""
 
     holds: bool = False
     skipped: bool = False
@@ -143,12 +108,7 @@ class VerifyReport(AuthorResult):
 
 
 class Feedback(AuthorResult):
-    """`check_story_feedback` — an un-consumed operator note dropped into the run's inbox.
-
-    The non-blocking counterpart to the operator gate: it never halts and never asks.
-    Polling it is what consumes it — the oldest outstanding message is replied to on the
-    way out — so each dropped note buys exactly one rework pass.
-    """
+    """`check_story_feedback` — an un-consumed operator note dropped into the run's inbox."""
 
     present: bool = False
     scope: str = "story"
@@ -175,7 +135,6 @@ class Committed(AuthorResult):
     committed: bool = False
 
 
-# ── agent replies ───────────────────────────────────────────────────────────
 
 
 class WriteEpicResult(AuthorResult):
@@ -186,11 +145,7 @@ class WriteEpicResult(AuthorResult):
 
 
 class StorySplit(AuthorResult):
-    """`main/prompts/split-stories.md` — an epic's seeds grouped into story-sized units.
-
-    `status` `standoff` is the splitter refusing the rework it was asked for; that
-    escalates to the coverage gate, where the resolver can see both sides.
-    """
+    """`main/prompts/split-stories.md` — an epic's seeds grouped into story-sized units."""
 
     status: str = ""
     notes: str = ""
@@ -206,16 +161,7 @@ class MockupResult(AuthorResult):
 
 
 class MockupGate(AuthorResult):
-    """Whether the story touches a surface somebody has to design.
-
-    Decided from the `layers:` and `design:` on the seeds the story covers — see
-    `nodes/stories.py::check_mockup_needed`. ``required`` defaults true so a missing story,
-    a missing seed or an unclassified one preserves the design turn rather than skipping a
-    mockup on a guess.
-
-    ``layers``/``services`` are the union over those seeds, carried here so the decision is
-    legible in the checkpoint and in telemetry rather than only in prose.
-    """
+    """Whether the story touches a surface somebody has to design."""
 
     required: bool = True
     layers: list[str] = []
@@ -231,13 +177,7 @@ class WriteStoryResult(AuthorResult):
 
 
 class AuditFinding(AuthorResult):
-    """One defect the story auditor is willing to fail the story over.
-
-    `kind` is intentionally closed on the four axes `<flow>/prompts/audit-story.md` judges: it lets
-    the consumer and later static tooling tell a journey gap from an ungrounded claim without
-    scraping prose. `target` is the section or line of the story the finding is against — a
-    defect the auditor cannot point at is not a defect.
-    """
+    """One defect the story auditor is willing to fail the story over."""
 
     id: str = ""
     kind: Literal["journey", "chrome", "transient-feedback", "grounding"] = "grounding"
@@ -247,13 +187,7 @@ class AuditFinding(AuthorResult):
 
 
 class AuditResult(AuthorResult):
-    """`<flow>/prompts/audit-story.md` — the story read back against its epic and seeds.
-
-    `findings` is what the verdict is read from, not `status`: an empty list is a pass by
-    construction. Free-text `status` alone let each audit lap raise one *different* objection
-    with nothing able to check whether the pass was exhaustive, which made 87 of 144 stories
-    in one run take exactly two audits. `notes` is the summary, not the verdict.
-    """
+    """`<flow>/prompts/audit-story.md` — the story read back against its epic and seeds."""
 
     status: str = ""
     findings: list[AuditFinding] = []

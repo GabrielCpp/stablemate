@@ -1,15 +1,4 @@
-"""No `load_graph` call in `ostler.qa.drivers` resolves the book unframed.
-
-`self.root` is the checkout, not the book a compiled plan speaks about — that book can
-live anywhere else in the tree, named only by the QA context packet's `featuresRoot`.
-`e9e1d153` framed one of two `load_graph` call sites through `_packet_features_root()`
-and left the other one reading `self.root`'s own book, which silently passed for the
-checkout's own (fixture-less) book and only broke on a book that lived elsewhere.
-
-Checked structurally, over the module's own AST, rather than by grepping source text for
-a string: a *third* `load_graph` call added next month fails this test on the day it is
-written, whether or not its author remembers this story.
-"""
+"""No `load_graph` call in `ostler.qa.drivers` resolves the book unframed."""
 
 from __future__ import annotations
 

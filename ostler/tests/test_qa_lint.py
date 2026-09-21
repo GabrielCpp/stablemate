@@ -1,9 +1,4 @@
-"""`ostler qa lint` — the AST allowlist a `qa_plan.py` must pass before it may import.
-
-Every banned construct gets its own case: a blocklist proves itself by naming the thing it
-caught, but an allowlist proves itself by naming everything it did *not* have to catch —
-the clean-plan case is the one that would silently regress if the allowlist grew too broad.
-"""
+"""`ostler qa lint` — the AST allowlist a `qa_plan.py` must pass before it may import."""
 
 from __future__ import annotations
 
@@ -112,11 +107,7 @@ def test_a_filesystem_method_names_the_verb_and_the_alternative() -> None:
 
 
 def test_open_stays_available_because_it_is_how_evidence_is_written() -> None:
-    """`qa.artifact(...).open("w")` is the corpus's one sanctioned write, and it survives.
-
-    It is not a hole while `pathlib` is unimportable: the only paths a plan holds are the
-    ones `qa` handed it, so the only files it can open are its own.
-    """
+    """`qa.artifact(...).open("w")` is the corpus's one sanctioned write, and it survives."""
     source = (
         "import json\n"
         "from ostler_qa import Qa, plan, scenario, target\n"
@@ -155,8 +146,6 @@ def test_a_settle_statement_names_the_verb_and_the_repair() -> None:
     problems = lint_source(BANNED_CASES["bare_wait_for"])
     assert "`wait_for(...)`" in problems[0]
     assert "qa.eventually" in problems[0]
-    # The callable it asks for has to be one the allowlist admits, and the obvious spelling is
-    # the lambda `eventually`'s own docstring uses.
     assert "lambda" in problems[0]
 
 
@@ -177,11 +166,7 @@ def test_a_settle_is_flagged_wherever_it_sits_not_only_at_the_end() -> None:
 
 
 def test_a_settle_used_as_a_value_is_left_alone() -> None:
-    """Handling the result is the opposite of betting the trial on it.
-
-    `expect_response` is deliberately not caught by the `expect` root-walk either — it is a
-    context manager that hands back a response, not an assertion that raises.
-    """
+    """Handling the result is the opposite of betting the trial on it."""
     assert lint_source('handle = row.wait_for(state="visible")\n') == []
     assert lint_source(
         'with qa.page.expect_response("**/api/policies") as got:\n'
@@ -228,8 +213,6 @@ def test_an_assertion_that_reads_a_named_field_by_subscript_is_rejected() -> Non
 
 
 def test_the_evidence_arguments_are_read_the_same_way_as_the_condition() -> None:
-    # `actual=` is evaluated on the way into the call, so a plan that fixed only the
-    # condition still dies on the argument that was supposed to explain the failure.
     problems = lint_source(EVIDENCE_SUBSCRIPT_PLAN, filename="qa_plan.py")
 
     assert len(problems) == 1
@@ -250,14 +233,7 @@ HELPER_PLAN = SUBSCRIPT_PLAN.replace(
 
 
 def test_a_helper_that_subscripts_for_the_assertion_is_rejected_too() -> None:
-    """The bypass that survived a benchmark round.
-
-    Scoped to the assertion call, the rule policed the last line of the read and left every
-    line leading to it open: a plan wrote its own field walker, handed the result to
-    `qa.check` as an ordinary value, and the `KeyError` it raises kills the scenario exactly
-    as the inline subscript would have. The raise does not care which line it happened on,
-    so neither does the rule.
-    """
+    """The bypass that survived a benchmark round."""
     problems = lint_source(HELPER_PLAN, filename="qa_plan.py")
 
     assert len(problems) == 1
@@ -274,13 +250,9 @@ SLICE_PLAN = SUBSCRIPT_PLAN.replace(
 
 
 def test_list_indexing_and_slicing_outside_an_assertion_stay_allowed() -> None:
-    """The widening is to every line, not to every subscript. A position in a list the plan
-    itself just built is not a guess at how the product spells a field."""
+    """The widening is to every line, not to every subscript."""
     assert lint_source(SLICE_PLAN, filename="qa_plan.py") == []
 
 
 def test_indexing_something_the_plan_already_shaped_is_left_alone() -> None:
-    # A slice of a captured stream is not a claim about how the product spells a field,
-    # and a rule that flagged it would push authors to route it through `qa.field` for
-    # nothing.
     assert lint_source(INDEX_PLAN, filename="qa_plan.py") == []

@@ -1,13 +1,4 @@
-"""Operator gate context files: what state one is in, and the answer/restart orchestration.
-
-The STATUS line itself is read and written through :mod:`workhorse.gates` — the one
-implementation of that header, shared with the workflow nodes on the other side of it.
-It used to be retyped here, and "must stay byte-compatible with what the workflow writes"
-was a comment rather than something the code could hold to.
-
-The **state names** below are still this side's business: they are the cycle an operator
-gate goes through, which the shared reader deliberately knows nothing about.
-"""
+"""Operator gate context files: what state one is in, and the answer/restart orchestration."""
 
 from __future__ import annotations
 
@@ -37,11 +28,7 @@ def is_awaiting(text: str) -> bool:
 
 
 def extract_question(text: str) -> str:
-    """Extract the latest human-facing question from the append-only gate.
-
-    Preserve the full section, including nested headings and fenced examples.
-    Unstructured questions are returned intact.
-    """
+    """Extract the latest human-facing question from the append-only gate."""
     tokens = _MARKDOWN.parse(text)
     lines = text.splitlines()
     start = 0
@@ -60,10 +47,7 @@ def extract_question(text: str) -> str:
 
 
 def apply_answer(text: str, answer: str) -> str:
-    """Flip STATUS to ANSWERED and append the operator's answer, mirroring
-    what a human editing the file by hand would do — so await_operator.py's
-    existing state machine picks it up completely unmodified.
-    """
+    """Flip STATUS to ANSWERED and append the operator's answer, mirroring what a human editing the file by hand would do — so await_operator.py's existing state machine picks it up completely unmodified."""
     new_text = gate_file.set_status(text, ANSWERED)
     answer = answer.strip()
     if answer:
@@ -80,25 +64,7 @@ async def answer_gate(
     native: bool = False,
     allow_headerless: bool = False,
 ) -> AnswerResult:
-    """Write an operator's answer into a gate file.
-
-    ``await_operator.py`` blocks in place on the normal path (watching this
-    file via inotify instead of exiting), so the container is almost always
-    still running and just needs the write to wake it up — no restart. A
-    ``docker start`` is only issued when the container has actually stopped
-    (the inotify-unavailable fallback, or a container that predates this
-    redesign), so this remains correct either way.
-
-    A **native** run shares groom's host, so ``workspace_volume`` is a host path
-    read/written directly (``groom.localfs``) and there is no container to restart —
-    the run's own inotify wakes it the moment the file is written.
-
-    Scoped to a single (container, file) pair — never assumes a workflow has
-    only one live gate. Re-checks the file is still AWAITING_OPERATOR under a
-    per-gate lock immediately before writing, so a second browser tab racing
-    to answer the same gate gets a clean rejection instead of clobbering the
-    first tab's write.
-    """
+    """Write an operator's answer into a gate file."""
     if not workspace_volume:
         return AnswerResult(ok=False, message="unknown workspace volume for this container")
 
@@ -121,8 +87,6 @@ async def answer_gate(
 
         state.clear_gate(container_id, file_path)
 
-        # A native run is never docker-managed: its await_operator inotify wakes on
-        # the write above, so there is nothing to (re)start.
         if native:
             return AnswerResult(ok=True, message="answered")
 

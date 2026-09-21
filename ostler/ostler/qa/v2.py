@@ -23,20 +23,7 @@ def run_plan(
     only: list[str] | None = None,
     qa_dirname: str = QA_DIRNAME,
 ) -> tuple[str, str, dict[str, Any]]:
-    """Execute a validated plan and return ``(status, message, summary)``.
-
-    ``only`` runs just the named scenarios — the rest of the plan is skipped, and so are the
-    targets none of them use. ``qa_dirname`` is the spec-relative ledger directory: ``qa``
-    for a scored run, ``qa/<label>`` for a dry run. Build the latter with
-    :func:`ostler.qa.session.scratch_dirname` and never by hand — this function joins what
-    it is given onto the spec directory and validates nothing.
-
-    Together they are the dry run a planner uses to find out whether a scenario it just wrote
-    actually resolves, without paying for the whole plan and without leaving anything the
-    evidence gate would later read as a result: anywhere but ``qa`` itself no
-    ``qa-evidence.json`` is written at all, so a plan tuned until it passed cannot become its
-    own proof.
-    """
+    """Execute a validated plan and return ``(status, message, summary)``."""
     plan = document.data
     spec_dir = document.spec_dir
     scored = qa_dirname == QA_DIRNAME
@@ -50,9 +37,6 @@ def run_plan(
         selected = [scenario for scenario in selected if str(scenario["id"]) in set(only)]
     wanted_targets = {str(scenario["target"]) for scenario in selected}
 
-    # After selection, not before. This used to run against every target the plan declares,
-    # so a one-scenario dry run of an HTTP check was blocked by a mobile toolchain it would
-    # never have touched — and the block reads as a plan defect, not a machine one.
     runtime_problems = check_runtime_requirements(document, targets=wanted_targets)
     if runtime_problems:
         message = "QA run blocked:\n" + "\n".join(f"  - {item}" for item in runtime_problems)
@@ -64,7 +48,6 @@ def run_plan(
     qa_dir.mkdir(parents=True)
     if scored:
         (spec_dir / "qa-evidence.json").unlink(missing_ok=True)
-        # A report left over from the last run would describe a run that is not this one.
         (spec_dir / REPORT_FILE).unlink(missing_ok=True)
 
     secret_values = {
@@ -75,8 +58,6 @@ def run_plan(
         f"input.{name}": str((spec_dir / str(path)).resolve())
         for name, path in plan.get("inputs", {}).items()
     }
-    # Resolved, because a daemon starts with `cwd=root` while the plan is written beside
-    # the spec, so a relative path means two different places to the two of them.
     variables["qa_dir"] = str(qa_dir.resolve())
     session = QaSession.create(
         spec_dir,
@@ -91,12 +72,6 @@ def run_plan(
     results: dict[str, ScenarioResult] = {}
     status = "passed"
     cleanup_errors: list[str] = []
-    #: Why the run stopped, in the words of whatever raised. The ledger has always carried
-    #: this as a `runner_error` record, but the caller only ever saw the counts below — so a
-    #: run that died before its first scenario reported "0 scenarios" and nothing else, and
-    #: the coder workflow's QA gate, having no cause to act on, sent a valid plan back to be
-    #: re-planned until its rework guard ran out. A gate can only route around a failure it
-    #: can read.
     runner_errors: list[str] = []
     summary: dict[str, Any] = {}
     evidence: Path | None = None
@@ -151,14 +126,7 @@ def run_plan(
                     "status": result.status,
                     "assertions": result.assertions,
                     "failures": result.failures,
-                    # Read back by the evidence map: a scenario that stopped short of the
-                    # end of its body claims nothing, and `status` alone cannot say whether
-                    # it stopped short or reached the end and disagreed.
                     **({"aborted": True} if result.aborted else {}),
-                    # `_grade` composes the only account of *why* a scenario failed, and it
-                    # was being computed and dropped: the ledger recorded a failure count and
-                    # the reason survived nowhere but a stdout tail in `steps/`. A reader of
-                    # the run artifacts could see that something failed and not what.
                     **({"message": result.message} if result.message else {}),
                 }
             )
@@ -176,9 +144,6 @@ def run_plan(
         session.append({"kind": "runner_error", "status": status, "message": "interrupted"})
     except Exception as exc:  # noqa: BLE001
         status = "invalid"
-        # The class name earns its place: the failure that motivated this was an
-        # `AttributeError` from inside the runner, and "'dict' object has no attribute
-        # 'timeout'" reads like a plan defect until you know it is a Python one.
         runner_errors.append(f"{type(exc).__name__}: {exc}")
         session.append({"kind": "runner_error", "status": status, "message": str(exc)})
     finally:
@@ -210,11 +175,6 @@ def run_plan(
             session.register_artifact(evidence, kind="qa-evidence")
         summary = session.close(status=status)
         session.finalize_log_artifact()
-        # Rendered after the session is closed so the report carries the summary record, and
-        # on every run — blocked, failed or dry — because a failed run is exactly when someone
-        # needs to read what happened. It is not registered in the manifest: the manifest's
-        # hashes pin the run's evidence, and the report is a rendering of that evidence that
-        # `ostler qa report` may regenerate at any time.
         try:
             report = write_report(spec_dir, qa_dirname=qa_dirname)
         except (ReportError, OSError) as exc:
@@ -233,9 +193,6 @@ def run_plan(
                     "status": result.status,
                     "assertions": result.assertions,
                     "failures": result.failures,
-                    # `status` alone cannot say whether the scenario stopped short or
-                    # reached the end and disagreed, and only the first invalidates what it
-                    # claimed to cover.
                     **({"aborted": True} if result.aborted else {}),
                     **({"message": result.message} if result.message else {}),
                 }
@@ -261,10 +218,6 @@ def _write_evidence(
     results: dict[str, ScenarioResult],
     status: str,
 ) -> Path:
-    # The scenarios that did not run to completion. `results` has carried this all along and
-    # this function ignored it: a criterion was published from the passing prefix of a
-    # scenario that then timed out or raised, which reads downstream as evidence the run
-    # never took. A scenario that stopped early proves nothing about the steps after it.
     aborted = {
         scenario_id
         for scenario_id, result in results.items()
@@ -285,26 +238,10 @@ def _write_evidence(
             artifacts_by_scenario.setdefault(str(scenario), []).append(str(artifact["path"]))
 
     def row(item: Any) -> dict[str, Any]:
-        """One criterion or obligation, judged against *every* assertion covering it.
-
-        A criterion is Pass only when the run log proves it and nothing in the same log
-        disproves it. Reading the passing assertions alone — which this did — makes a
-        criterion Pass as soon as any one of its scenario's steps succeeded, so a live
-        journey that walked eight steps and failed the ninth reported all seven ACs Pass
-        under an `overall: Fail`. Downstream that artifact is worse than absent: the QA
-        assessor either routes on a verdict the run contradicts, or spends a turn every
-        pass rediscovering that it must read `qa-run.ndjson` instead.
-        """
+        """One criterion or obligation, judged against *every* assertion covering it."""
         source = item if isinstance(item, dict) else {"id": str(item)}
         item_id = str(source["id"])
         records = [record for record in log_records if item_id in record.get("covers", [])]
-        # A failing record disproves the item only if the *plan* made it. The harness
-        # synthesizes one over every obligation an aborted scenario claimed (see
-        # `PythonDriver._grade`), and that record reports the scenario stopping, not the
-        # product misbehaving. Counted as a disproof it makes an abort indistinguishable
-        # from a caught defect — `Fail` with non-empty `failing_log_refs` is what a reader
-        # takes for *contradicted* — so it goes to the aborted channel below instead, the
-        # same partition `evidence_map` already makes.
         failing = [
             record
             for record in records
@@ -331,9 +268,6 @@ def _write_evidence(
             scenario = str(record.get("scenario", ""))
             action = record.get("action", index)
             refs.append(f"{scenario}:assert:{action}")
-            # Only a passing assertion's artifacts are proof. `artifact vet` requires each
-            # Pass row to cite a file from this run's manifest, and a failing scenario's
-            # trace would satisfy that check while proving the opposite.
             if record.get("result") == "PASS" and scenario not in aborted:
                 evidence.extend(artifacts_by_scenario.get(scenario, []))
         row_data = {
@@ -343,17 +277,11 @@ def _write_evidence(
             "evidence": sorted(set(evidence)),
         }
         if failing:
-            # Named separately from `log_refs` so a consumer can route on the disproof
-            # without re-deriving it from the log the artifact exists to summarize.
             row_data["failing_log_refs"] = [
                 f"{record.get('scenario', '')}:assert:{record.get('action', '?')}"
                 for record in failing
             ]
         if stopped or sentinels:
-            # A passing assertion inside a scenario that then stopped early, plus the
-            # harness's own stop record. Kept separate from `log_refs` so the reason a row is
-            # Fail with no failing assertion beside it is on the artifact rather than only in
-            # the run log.
             row_data["aborted_log_refs"] = [
                 f"{record.get('scenario', '')}:assert:{record.get('action', '?')}"
                 for record in [*stopped, *sentinels]
@@ -387,12 +315,7 @@ def _write_evidence(
 
 
 def _daemon_cwd(session: QaSession, daemon: Mapping[str, Any], variables: dict[str, str], root: Path) -> Path:
-    """The directory a daemon starts in: its declared `cwd` under the root, else the root.
-
-    Declared and then dropped is what this used to be — `background(cwd=)` landed in the
-    plan and the runner passed `root` regardless. Relative to the root, and refused when it
-    resolves outside it, because the daemon is the product and the product is in the repo.
-    """
+    """The directory a daemon starts in: its declared `cwd` under the root, else the root."""
     raw = daemon.get("cwd")
     if not raw:
         return root
@@ -426,14 +349,7 @@ def _restart_daemon(
     root: Path,
     scenario_id: str,
 ) -> None:
-    """Stop the named daemon and start its declaration again, on a scenario's behalf.
-
-    This is the restart seam a persistence obligation needs: the process goes away and
-    comes back between the write and the read, and `ready_check` is polled again so the
-    scenario inherits the same guarantee scenario 1 did. The declaration's `reset_paths`
-    are deliberately *not* re-applied — they clear the last *run's* state before the first
-    start; a restart inside the run keeps the state, which is what it is there to observe.
-    """
+    """Stop the named daemon and start its declaration again, on a scenario's behalf."""
     declaration = next(d for d in plan.get("background", []) if str(d["name"]) == name)
     session.stop_daemon(name, reason="restart")
     pid = _start_daemon(session, declaration, variables, root)
@@ -443,11 +359,7 @@ def _restart_daemon(
 
 
 def _secret_value(declaration: dict[str, Any], root: Path) -> str:
-    """The runtime value of one declared secret, from its environment variable or its file.
-
-    A file's one trailing newline is stripped — every tool that writes a token ends the
-    line, and a scenario that sends the value in a header would otherwise send the newline.
-    """
+    """The runtime value of one declared secret, from its environment variable or its file."""
     if "from_file" in declaration:
         raw = (root / str(declaration["from_file"])).read_text(encoding="utf-8")
         return raw[:-1] if raw.endswith("\n") else raw

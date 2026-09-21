@@ -1,45 +1,4 @@
-"""Plan QA for a story, run it, and refuse to believe it passed.
-
-Reached from the main graph as the `qa_phase` flow node, and standalone as
-`workhorse-coder run qa`. It is the densest machine in the nine, and it is one control
-plane rather than a pipeline::
-
-    context ⇄ repair → stack ⇄ setup-fix → plan ⇄ review → run → assess
-      → evidence → audit → backlog → (triage | feedback → regression ⇄ fix) → sentinels
-
-**Everything the graph loops on travels as one `QaLoop`.** Eighteen values is past the
-point where threading each as its own state parameter is legible — see the model. A
-pydantic model is a legal state parameter, so a checkpoint carries the whole loop and a
-resume rebuilds it.
-
-Shapes worth naming before reading the states:
-
-* **The agents see `affected_repo_paths`, not the workspace dirs.** Every turn in this
-  flow reads the repos the *plan* touches, decoded by `resolve_impl_context`, where `dev`
-  and `docs` pass the whole workspace. `qa` never calls `resolve_workspace_dirs` at all,
-  and the narrower grant is the point: QA reads what the story moved.
-* **An empty `story_path` fails the flow**, as it does in `docs`. Ending `exhausted`
-  instead would say the story was QA'd and could not be carried, when what happened is
-  that the story was never found — a defect in whatever asked for this slug, filed
-  against the wrong thing.
-* **The budgets are `ClassVar` ints**, so a guard cites the ceiling it enforces and
-  nothing can hand the flow a different one at dispatch.
-* **The QA-plan budget is one total across three attributed counters.** Schema
-  validation, pre-run review and post-run findings retain separate counters for
-  diagnosis, but all draw from one four-repair ceiling. The total is derived from those
-  checkpointed counters, so a resume neither resets its allowance nor needs a migration.
-* **A gate's findings are routed by scope, not all billed to the plan author.** Every
-  refusal from the assessment gate, the audit gate and the plan review carries a closed
-  `scope`, and `_routed` sends each to the loop that can repair it: `product-test` to the
-  fix loop, `plan` to the replan loop, `stack` to setup. Prose with no findings still
-  goes to the replan loop, which is where an unscoped complaint has always gone.
-* **`QaLoop.cleared()` is the plan turn's exit.** It blanks the five keys a fresh plan
-  invalidates and leaves the two context ones alone, and it says so at the model.
-* **`apply_resolved` reads the QA budget it spends.** The operator gate's return leg is
-  reachable from the context loop, whose own counter advances only on a repaired packet,
-  so without the guard an unmappable packet laps context → repair → gate → resolve →
-  read → apply → context forever, three agent turns a lap.
-"""
+"""Plan QA for a story, run it, and refuse to believe it passed."""
 from __future__ import annotations
 
 import logging
@@ -119,11 +78,6 @@ from workhorse_workflows.kit.telemetry import counter_labels, verdict_labels
 
 UNBOUNDED = float("inf")
 
-#: What the next plan turn is told when the one before it was cut at its wall-clock cap.
-#: Prepended to the validation notes by `_validated`, because a truncated `qa_plan.py` is
-#: indistinguishable from one whose author made a mistake — and the repair a mistake calls
-#: for is a rewrite, which is precisely what must not happen here. Stated as a fact about
-#: the *turn*, not as a defect in the file, so the worklist stays "finish it".
 _OVERRAN_PLAN = (
     "The previous turn was stopped at its wall-clock budget before it could finish. "
     "The file on disk is the draft it had written by then, not a finished plan: expect it "
@@ -145,149 +99,30 @@ _SWITCHED = (
     "without waiting for it fails in the exact shape of a broken product."
 )
 
-#: The lane's wall-clock budgets, in seconds of agent turns — **advisory**. Crossing one is
-#: logged and nothing else: it never ends a story, never demotes a repair to a re-run,
-#: and never lets an unresolved audit refutation through as backlog work. Only the lap
-#: ceilings alongside them can end a QA loop.
-#:
-#: They were terminal, and that is the defect this replaced. A wall clock cannot tell a
-#: loop that is going nowhere from one that is three turns from green, so it cut both the
-#: same way — and what it cut was disproportionately the stories doing the *most* real
-#: repair work, because those are the ones that spend. Two live stories reached a green
-#: 41/41 runner and were still stamped "QA FAILED — needs manual review" with their
-#: dependents blocked, because the clock expired before the four post-run gates had
-#: signed off. A lap ceiling says "this was tried the agreed number of times", which is
-#: a statement about the work; a clock says only that the work was slow.
-#:
-#: Kept, and not deleted, because the number is still the honest signal an operator wants
-#: in the log and in telemetry — a story that ran 3× its budget is worth looking at, just
-#: not worth discarding. `ensure_stack` is outside both (see `QaLoop.lane_seconds`), as are
-#: `resolve_operator`, `apply_feedback` and `report_dev`.
 QA_LANE_BUDGET_S = 3300
 PLAN_LANE_BUDGET_S = 2400
 
-#: The bounded retry budgets. Module constants, not fields: they are invariants of this
-#: flow's shape rather than anything a run gets to set.
-#:
-#: These are now the *only* things that can end a QA loop short of a verdict, so they
-#: carry weight the wall clock used to share. They were sized against a lane that would
-#: be cut off by the clock anyway, which made a generous ceiling meaningless; with the
-#: clock advisory, the ceiling is the whole policy and the code-fix one is raised from
-#: three to eight. A code fix is the lap most likely to be *working* — each one is a
-#: named failing check against a green-when-fixed suite — and three of them is well
-#: inside the range where a story is still converging.
 MAX_QA_REWORKS = 8
 MAX_CONTEXT_REWORKS = 3
-#: Trips through the gate that get a resolver turn before every further block goes
-#: straight to a human — the same shape `dev`'s `MAX_PLAN_BLOCKS` and `review`'s
-#: `MAX_REVIEW_BLOCKS` have, and it became load-bearing the moment the resolver was
-#: allowed to *answer*. An escalating resolver bounds itself: the `Await` underneath it
-#: is what ends the lap. An answering one hands the flow straight back to
-#: `read_operator`, so a block whose answer does not clear the underlying failure
-#: returns to this gate unchanged and is answered again, forever, with no human ever
-#: reached. This is not a cap on how many times QA may block — there is none, and the
-#: budget is spent on an answer exactly as it is on an escalation, so a resolver that
-#: keeps answering the same block walks toward a person rather than lapping behind one.
 MAX_QA_BLOCKS = 3
-#: The two QA-plan budgets are deliberately separate. `MAX_PLAN_REWORKS` bounds the
-#: gates that judge the plan (the post-run assessment and the audit);
-#: `MAX_PLAN_VALIDATION_REWORKS` bounds repairs of a `qa_plan.py` that does not import.
-#: See `QaLoop.plan_judgement_rework` for the story that split them.
-#:
-#: The judgement budget was cut to three when a spent plan-lane clock would demote the
-#: plan to the runner anyway — running a slightly worse plan beat spending the lane's
-#: whole wall clock on judgement, since the plan nodes were 1527 of a QA lane's ~1800
-#: minutes against 2.9% for actually running the plan. That demotion is gone with the
-#: clock, so the trade is no longer "one more lap versus a run"; it is "one more lap
-#: versus no verdict". Raised to six. Every one of these laps buys a repair of a plan
-#: that has actually been *executed*.
-#: `MAX_PLAN_VALIDATION_REWORKS` is left alone: a `qa_plan.py` that will not import
-#: cannot be run *at all*, so those laps are not a quality trade, and each is `power="low"`.
 MAX_PLAN_REWORKS = 6
 MAX_PLAN_VALIDATION_REWORKS = 3
-#: And the ceiling on their *product*. The two budgets above are spent independently, so
-#: nothing stopped a story alternating between them: three schema repairs and four
-#: judgement repairs is seven laps that every individual guard considers legal, and a
-#: live story reached thirteen turns of `plan-qa` that way. This bounds the sum, so the
-#: stacked budgets can no longer multiply.
-#:
-#: It is a *sum* and not a product, which is the whole point. Two constraints fix it.
-#: Below, it must leave room for three schema repairs and two blocking audits to all be
-#: legal — a ceiling under five lets a run of typos starve the reader, which is what
-#: `test_schema_repairs_cannot_starve_the_semantic_plan_gate` exists to catch. Above, it
-#: must stay under `MAX_PLAN_REWORKS + MAX_PLAN_VALIDATION_REWORKS`, or it is inert: at
-#: the stacked maximum no interleaving can ever reach it. It rose from five with
-#: `MAX_PLAN_REWORKS`, to one below that stacked maximum of nine. The lane's wall clock
-#: is held by the per-turn caps on the three plan nodes, not here.
 MAX_TOTAL_PLAN_LAPS = 8
-#: Not a spend ceiling — a *blocking* ceiling, and the only one of these that changes what
-#: a finding means rather than how many are affordable. Nothing stands downstream of the
-#: audit, so a plan-scoped refutation it raises can only be closed by another plan repair,
-#: and the
-#: auditor samples the riskiest evidence rather than enumerating everything — which means
-#: each repair is judged against a bar that moves. A live story died of exactly that: three
-#: audits, three *different* genuine gaps, each closed, the fourth lap out of budget and
-#: escalated a plan whose runner had passed every time. Past this many
-#: plan-scoped refutations the audit stops blocking: its findings still get written and
-#: filed as backlog work, and the story lands on the verdict its evidence supports.
-#: Product contradictions and findings whose repair is a test or the stack are unaffected
-#: — those route to loops with ceilings of their own.
 MAX_BLOCKING_AUDITS = 2
 MAX_SETUP_REWORKS = 2
-#: How many turns one scenario in the per-scenario fix worklist may have before the flow
-#: stops paying for it and lets the scored suite judge it as written.
-#:
-#: Deliberately small. The dry run this budget is spent on is one scenario against a stack
-#: that is already up, so two attempts that both come back refused are two attempts that
-#: had the runner's own output in front of them and still did not land — and the remaining
-#: scenarios in the worklist have not been looked at once. Exhausting it is not a give-up
-#: and never ends the run: the item is carried into the scored re-run unproved, where it
-#: either passes or comes back as a failure the code-fix budget above answers for. What
-#: does escalate is a *repeated identical* refusal, which is the same signal
-#: `repaired_failures` carries one loop out.
 MAX_FIX_ITEM_REWORKS = 2
 MAX_REGRESSION_FIXES = 3
 MAX_TRIAGE_SCOPES = 2
-#: How many consecutive laps `repair_plan` may spend on one session chain before it
-#: starts a fresh conversation. Continuity is what stops each lap re-deriving the plan it
-#: is editing, but a conversation that has been wrong four times running is no longer a
-#: head start — it is a transcript of four rejected repairs, and the compaction that keeps
-#: it in the window summarises the wrong turns as readily as the right ones.
 MAX_CHAIN_LAPS = 4
 
 
 def _finding(passed: bool, notes: str) -> str:
-    """A gate's notes when it failed, and nothing when it passed.
-
-    The `*_notes` fields on `QaLoop` are *diagnostics*: `plan_qa` renders them under an
-    instruction to repair the existing plan from what the gates said about it. A gate that
-    passed said nothing to repair, so storing its verdict there hands the next plan turn a
-    contradiction — "repair this from its diagnostics" over the diagnostic "QA plan is
-    valid."
-
-    That is not a cosmetic mismatch. A gate's notes are written on the branch it takes and
-    then survive `cleared()`, so a *passing* verdict reaches `plan` whenever the flow
-    re-enters it from somewhere other than the gate that failed — re-planning after an
-    OKF-context rebuild is the standing case. A coder run did exactly this, and the agent
-    read the brief correctly: it answered "I'm leaving both files unchanged", the plan then
-    failed validation on the defect nobody had told it about, and the no-op turn cost one
-    of the shared plan-repair budget.
-
-    Each gate spells its own success differently (`status == "passed"`, `disposition ==
-    "approved"`, a verdict plus a refutation class), so the predicate stays at the call
-    site and only the rule — a pass is not a finding — lives here.
-    """
+    """A gate's notes when it failed, and nothing when it passed."""
     return "" if passed else notes
 
 
 def _blocked_problems(result: QaPlanRun) -> tuple[str, ...]:
-    """The runtime requirements a `blocked` run named, sorted; empty for every other status.
-
-    Read off the runner payload rather than parsed back out of `notes`, and sorted because
-    the runner builds the list by walking the plan's `targets` mapping — two runs of the same
-    plan naming the same two missing requirements in a different order are the same bundle,
-    and the comparison in `_guard_setup` is about sameness.
-    """
+    """The runtime requirements a `blocked` run named, sorted; empty for every other status."""
     if result.status != "blocked":
         return ()
     problems = result.ostler.get("problems")
@@ -297,20 +132,7 @@ def _blocked_problems(result: QaPlanRun) -> tuple[str, ...]:
 
 
 def _failure_signature(result: QaPlanRun) -> tuple[str, ...]:
-    """What a failing run failed at, as a fingerprint two runs can be compared on.
-
-    One entry per non-passing scenario — its id, its status, and how far it got before it
-    stopped — sorted, because the runner walks the plan's `scenarios` list and two runs of a
-    repaired plan may order them differently while failing identically.
-
-    The assertion counts are in the fingerprint on purpose. Scenario identity alone would
-    call a repair that carried the journey three steps further "no progress" and stop a loop
-    that was converging; the counts are the cheapest available proof that the run moved.
-    Read off the runner payload for the reason `_blocked_problems` is — `notes` is prose.
-
-    Empty for every status but `failed`: a `blocked` or `invalid` run never reached its
-    assertions, so it has no failure to be the same as, and `_guard_setup` owns that loop.
-    """
+    """What a failing run failed at, as a fingerprint two runs can be compared on."""
     if result.status != "failed":
         return ()
     scenarios = result.ostler.get("scenarios")
@@ -326,17 +148,7 @@ def _failure_signature(result: QaPlanRun) -> tuple[str, ...]:
 
 
 def _last_run(flow: Qa) -> QaPlanRun | None:
-    """The latest `run_qa_plan` payload the run recorded — `None` before the first run.
-
-    The two fingerprints below used to be copied onto the loop at the `run` state and read
-    back out of the checkpoint many states later. They are pure functions of this payload,
-    so a copy is a second place for them to be wrong: every rejoin that forgot to blank one
-    left a later guard comparing against a run that is no longer the one being reacted to.
-    Read back through the engine there is only ever the latest run to describe.
-
-    `None` and not a raise, because the plan lane runs before any suite does — the first
-    authoring turn asks what the last run failed at and the honest answer is "nothing yet".
-    """
+    """The latest `run_qa_plan` payload the run recorded — `None` before the first run."""
     try:
         return flow.output(run_qa_plan)
     except NodeNotRunError:
@@ -356,15 +168,7 @@ def _failed_scenarios(flow: Qa) -> tuple[str, ...]:
 
 
 def _failed_scenario_ids(result: QaPlanRun) -> tuple[str, ...]:
-    """The ids alone of the scenarios a failing run did not pass, sorted.
-
-    `_failure_signature` above answers a different question with the same payload, and glues
-    the status and the assertion counts onto each id to answer it. This is the worklist the
-    repair turn is handed and the dry-run gate reads back, so it is the bare ids.
-
-    Empty for every status but `failed`, exactly as the fingerprint is: a `blocked` run never
-    reached its scenarios, so there is nothing to demand a dry run of.
-    """
+    """The ids alone of the scenarios a failing run did not pass, sorted."""
     if result.status != "failed":
         return ()
     scenarios = result.ostler.get("scenarios")
@@ -380,13 +184,7 @@ def _failed_scenario_ids(result: QaPlanRun) -> tuple[str, ...]:
 
 
 def _finding_line(finding: QaFinding) -> str:
-    """One structured finding as the line whoever repairs it is briefed with.
-
-    Both axes are rendered, because both decide what happened to the finding: `scope` says
-    who was billed for it and `kind` says whether it refused the plan. An escalation gate
-    listing four findings with no way to tell which of them actually blocked is the artifact
-    a human has to reconstruct the loop from.
-    """
+    """One structured finding as the line whoever repairs it is briefed with."""
     issue = finding.issue.rstrip(".")
     return (
         f"{finding.id} [{finding.scope}/{finding.kind}] {finding.target}: {issue}. "
@@ -395,12 +193,7 @@ def _finding_line(finding: QaFinding) -> str:
 
 
 def _brief(findings: Sequence[QaFinding], notes: str) -> str:
-    """The repair brief, composed from the findings rather than taken from the prose.
-
-    `notes` is the gate's summary and is worth carrying, but it is not the contract — it was
-    being handed to the author *as* the worklist, which meant the brief varied with how
-    discursive that pass's reviewer felt. Findings first, summary last.
-    """
+    """The repair brief, composed from the findings rather than taken from the prose."""
     lines = [_finding_line(finding) for finding in findings]
     if notes.strip():
         lines.append(f"Summary: {notes.strip()}")
@@ -408,18 +201,7 @@ def _brief(findings: Sequence[QaFinding], notes: str) -> str:
 
 
 class RoutedFindings(NamedTuple):
-    """One gate's findings split by who has the authority to repair them.
-
-    Every gate — the post-run assessment, the audit — can find a gap whose repair is not the
-    plan author's to make. Until this split existed the out-of-scope ones were *dropped*: the
-    flow refused to send the author what it may not touch, and then sent the refusal nowhere.
-    Audit and assess were free prose, so every refusal they raised landed on the plan author
-    regardless.
-
-    That is a livelock, not an inefficiency, and a live story spent 82 minutes in it. Three
-    gates each found the same missing assertion in a committed test file, each billed the one
-    author who cannot write one, and each got back a plan that disclosed the gap again.
-    """
+    """One gate's findings split by who has the authority to repair them."""
 
     plan: list[QaFinding]
     product_test: list[QaFinding]
@@ -427,14 +209,7 @@ class RoutedFindings(NamedTuple):
 
 
 def _route_findings(findings: Sequence[QaFinding]) -> RoutedFindings:
-    """Partition findings by `scope` — the closed vocabulary is what makes this decidable.
-
-    The boundary the gates' briefs state in prose — the heavyweight shared stack belongs to
-    `ensure_stack`, a repair the author cannot make inside a plan file spends the budget and
-    returns the same worklist next pass — is one real runs cross anyway. Prose in a brief is
-    not a filter and free-form `notes` left the flow nothing to filter *with*; a closed
-    `scope` on each finding does.
-    """
+    """Partition findings by `scope` — the closed vocabulary is what makes this decidable."""
     return RoutedFindings(
         plan=[finding for finding in findings if finding.scope == "plan"],
         product_test=[finding for finding in findings if finding.scope == "product-test"],
@@ -443,36 +218,15 @@ def _route_findings(findings: Sequence[QaFinding]) -> RoutedFindings:
 
 
 def _repeating(loop: QaLoop, lap: str, failures: tuple[str, ...]) -> bool:
-    """Has the last repair left the run failing at exactly what it failed at before?
-
-    The guards below each bound a *count* of laps. This bounds their usefulness: once a
-    repair has been paid for and the suite fails identically — same scenarios, same
-    assertion depth — the next lap buys the same turn and the same re-run for the same
-    answer. See `QaLoop.repaired_failures` for the story it comes from.
-
-    `lap` is what makes it one loop's question rather than both loops'. The plan loop and
-    the fix loop stamp the same field, and a plan repair hands its findings to the fix
-    loop without re-running the suite — so a fix loop that compared the raw fingerprint
-    would call its own first visit a stall, on the strength of a code fix nobody made.
-    """
+    """Has the last repair left the run failing at exactly what it failed at before?"""
     return bool(failures) and loop.repaired_lap == lap and failures == loop.repaired_failures
 
 def _rejection(loop: QaLoop, kind: str) -> str:
-    """This refusal as one comparable line: which gate raised it, and what it said.
-
-    The notes are whitespace-normalised because they are a validator's or a dry-run
-    gate's rendered output, and a re-wrapped identical complaint is an identical
-    complaint. `kind` is in the key for the reason `_repeating` takes a `lap`: two gates
-    share this field, and a schema refusal that reads like a dry-run refusal is not one.
-    """
+    """This refusal as one comparable line: which gate raised it, and what it said."""
     return f"{kind}: {' '.join(loop.plan_validation_notes.split())}"
 
 class _ReportState(Protocol):
-    """A terminal report state, as `_blocked_report` resumes it: one keyword, the loop.
-
-    Spelled as a protocol rather than a `Callable` because `Await` forwards its resume
-    parameters by name, and a `Callable[[QaLoop], ...]` names none of them.
-    """
+    """A terminal report state, as `_blocked_report` resumes it: one keyword, the loop."""
 
     def __call__(self, loop: QaLoop) -> Await | Done: ...
 
@@ -483,12 +237,7 @@ def _escalation(
     result: OperatorResolution | None = None,
     findings: Sequence[Finding] = (),
 ) -> OperatorGate:
-    """The gate body for this block — see `coder.shared.escalation`.
-
-    `findings` is what the blocking gate saw, and it is passed here only for the ones
-    `_route_findings` could not send anywhere: a finding with an owner has already gone
-    to that owner, so anything reaching the operator is evidence nobody could act on.
-    """
+    """The gate body for this block — see `coder.shared.escalation`."""
     return escalation(
         flow,
         block_kind="qa",
@@ -504,13 +253,7 @@ def _escalation(
     )
 
 def _note_lane_budget(loop: QaLoop, logger: logging.Logger) -> None:
-    """Log a QA lane over its advisory wall-clock budget. Never decides anything.
-
-    Called from the guards that used to *end* on this comparison. What replaced the
-    branch is this line, and the line is the point: the number stays visible to an
-    operator reading the log or the telemetry, while the decision to stop belongs to the
-    lap ceilings, which know whether the loop is converging. See `QA_LANE_BUDGET_S`.
-    """
+    """Log a QA lane over its advisory wall-clock budget."""
     if loop.clock.seconds >= QA_LANE_BUDGET_S:
         logger.info(
             "the QA lane has spent %.0fs of its %ds advisory budget — continuing, the "
@@ -521,7 +264,7 @@ def _note_lane_budget(loop: QaLoop, logger: logging.Logger) -> None:
         )
 
 def _note_plan_budget(loop: QaLoop, logger: logging.Logger) -> None:
-    """The same, for the plan lane. See `_note_lane_budget` and `PLAN_LANE_BUDGET_S`."""
+    """The same, for the plan lane."""
     if loop.clock.plan_seconds >= PLAN_LANE_BUDGET_S:
         logger.info(
             "the QA plan lane has spent %.0fs of its %ds advisory budget — continuing, "
@@ -534,64 +277,20 @@ def _note_plan_budget(loop: QaLoop, logger: logging.Logger) -> None:
 class Qa(Workflow):
     """Run a story's QA plan, gate the evidence, audit the pass, and bound every retry."""
 
-    #: The story slug. ostler resolves the story path, spec dir and QA dir from it.
     story: str = ""
-    #: The docs repo root, when the planning documents live in a checkout of their own.
-    #: Empty walks up from `repo_dir`, i.e. the docs sit beside the code.
     docs_path: str = ""
-    #: The `.code-workspace` manifest naming this run's repos. Empty falls back to the
-    #: single checkout at `repo_dir` — a one-repo run needs no manifest.
     workspace_file: str = ""
-    #: The epic slug. Empty finds the story under whichever epic carries it.
     epic: str = ""
-    #: `auto` stands a high-effort agent in for the operator; `human` halts and waits.
     operator_mode: str = "auto"
-    #: `local` — we own the code and fix it here; `dev` — we do not, so findings are
-    #: reported to the tracker and the flow ends.
     target_env: str = "local"
-    #: Measurement mode: end at the first verdict instead of repairing toward green.
-    #: A benchmark trial asks what one plan and one suite run say about the product, and
-    #: every repair lap after the first red answers a different question while spending
-    #: the trial's clock on it. `report_dev` is the precedent: a mode that does not own
-    #: the code reports what it saw, and reporting *is* the terminal action — so a red
-    #: run ends the flow `inconclusive` (the vocabulary's existing no-verdict arm)
-    #: **without an agent turn**: the runner's own verdict travels in `qa`, the evidence
-    #: map it wrote is the report's substance, and the classification turn the repair
-    #: loops need decides nothing this mode is allowed to act on. A green run still
-    #: passes the deterministic gates (`verify_qa_evidence`, the sentinel check) and
-    #: finishes `passed`; only the agent gates that exist to *repair or refute* are
-    #: skipped. Environment failures are the exception and keep the setup loop plus the
-    #: one classification turn a `blocked` run still buys: a stack that never came up
-    #: says nothing about the product, so ending on it would report a verdict about the
-    #: harness.
     stop_at_first_verdict: bool = False
-    #: The parent's rescope budget, seeded in and handed back bumped. The one piece of loop
-    #: state this isolated flow does not own.
     triage_scope: int = 0
-    #: `snapshot_worktree_state`'s reading from before this story's first dev turn — the
-    #: paths that were already dirty then, with their bytes. The obligation packet drops the
-    #: ones that still match, so QA does not write scenarios for an earlier story's
-    #: abandoned work. Empty drops nothing, which is the pre-snapshot behaviour.
     preexisting: tuple[str, ...] = ()
 
-    #: The ambient path inputs — `repo_dir`, `docs_path`, `workspace_file`. The seams
-    #: fill each one in for any node or sub-flow that declares a parameter of the same
-    #: name and was not passed one; see `Workflow.injects`.
     injects: ClassVar[tuple[str, ...]] = paths.AMBIENT
 
     def setup(self) -> StoryPaths:
-        """Resolve the slug to the story path, its spec dir and its `qa/` directory, and
-        pick up the conversation the lane before this one was having.
-
-        Nothing is seeded to make that happen: the backbone key is derived from the story
-        slug, and handed-off lanes share the run's chain directory, so naming the key is
-        all it takes to land in the conversation an earlier lane left. A lane run on its
-        own finds no chain and starts cold.
-
-        A slug that resolves to no story path stops here. There is nothing for the rest of
-        this flow to read, and the exit that used to be taken instead — `Done`, `exhausted`
-        — is a verdict on a story nobody ever opened.
-        """
+        """Resolve the slug to the story path, its spec dir and its `qa/` directory, and pick up the conversation the lane before this one was having."""
         ctx = self.call(prepare_story, self.docs_path, self.story, self.epic)
         if not ctx.story_path:
             raise WorkflowFailed(
@@ -606,18 +305,9 @@ class Qa(Workflow):
 
     @property
     def _chain(self) -> str:
-        """The session chain `repair_plan` runs on, keyed per story.
-
-        Per story and not per run: two stories QA'd by the same run repair two different
-        plans against two different diffs, and sharing one conversation would open the second
-        on the first one's worklist.
-        """
+        """The session chain `repair_plan` runs on, keyed per story."""
         return f"qa-plan-repair:{self.ctx.story_slug}"
 
-    #: The repair loops that run on a chain of their own, as the worklist half of their key.
-    #: `fix_regression` builds its this way; the plan-repair chain is `_chain`, which several
-    #: states reset on its own. The fix loop is deliberately absent: it runs on the story's
-    #: backbone chain (`_story_chain()`) rather than a private one — see `_apply_fixes`.
     _WORKLISTS = ("plan-repair", "feedback", "regression-fix")
 
     def _reset_chains(self) -> None:
@@ -626,24 +316,12 @@ class Qa(Workflow):
             self.reset_session(f"qa-{worklist}:{self.ctx.story_slug}")
 
     def _ends(self, result: QaFlowResult) -> Done:
-        """End the flow, and every chain it opened with it.
-
-        A chain outliving its flow is the failure this exists to prevent: the run moves to
-        the next story, that story's QA opens `qa-plan-repair:<its slug>` — a different key,
-        so it is safe — but a *re-QA* of this same story would otherwise resume a
-        conversation about a plan and a diff that have both moved on since.
-        """
+        """End the flow, and every chain it opened with it."""
         self._reset_chains()
         return Done(result)
 
     def _first_verdict_ends(self, loop: QaLoop) -> Done:
-        """`stop_at_first_verdict`'s terminal: report the verdict as it stands, `inconclusive`.
-
-        `inconclusive` and not a new status, because the vocabulary is closed and this
-        is exactly what its existing arm means — the flow ends without repairing,
-        refuting or triaging anything, so no verdict was reached *by the flow*. The
-        runner's own verdict travels in `qa`, which is what the caller reads.
-        """
+        """`stop_at_first_verdict`'s terminal: report the verdict as it stands, `inconclusive`."""
         return self._ends(
             QaFlowResult(
                 status="inconclusive",
@@ -654,21 +332,8 @@ class Qa(Workflow):
             )
         )
 
-    #: `ensure_stack` brings a durable app stack up and health-gates it — on a real run
-    #: that is minutes of `booting app: … waiting up to 2400s`, and it is the model
-    #: sitting idle, not working. Marking it keeps a slow stack out of any aggregate
-    #: that would otherwise read the wait as effort.
     INFRA_NODES: ClassVar[frozenset[Any]] = frozenset({ensure_stack})
 
-    #: The budgets worth grouping a query by. Every one of `QaLoop`'s counters, because
-    #: this flow's whole shape is which of them ran out first — `audit_rework` included,
-    #: which is not a spend counter but answers the same question about the last gate.
-    #:
-    #: `QaLoop.lane_seconds` and `plan_lane_seconds` are deliberately *not* here. Every
-    #: agent turn is already a span with its own duration, so what they hold is a sum a
-    #: query reconstructs — and the lane's own wall clock is the `state:qa` span. They exist
-    #: because the flow has to read them at a transition, where it cannot query anything;
-    #: labelling them would spend cardinality restating what the spans already say.
     BUDGET_LABELS: ClassVar[tuple[str, ...]] = (
         "context_rework",
         "plan_rework",
@@ -684,17 +349,7 @@ class Qa(Workflow):
     )
 
     def state_labels(self, params: dict[str, Any]) -> dict[str, str]:
-        """The same, plus which attempt of which budget the next state is on, and what
-        each gate last decided.
-
-        `QaLoop` is threaded through every transition as a state parameter, so both are
-        already in hand here and no state has to stash a copy of them. `start` and `setup`
-        run before any loop exists, and simply report nothing.
-
-        The verdicts label the spans *after* the turn that produced them, which is the
-        useful direction: what a query wants is the cost of the work a `revise` caused,
-        not the cost of saying the word.
-        """
+        """The same, plus which attempt of which budget the next state is on, and what each gate last decided."""
         loop = params.get("loop")
         if not isinstance(loop, QaLoop):
             return self.labels()
@@ -710,23 +365,9 @@ class Qa(Workflow):
             | verdict_labels(verdicts, "qa", tuple(verdicts))
         )
 
-    # ── context ───────────────────────────────────────────────────────────────────────
 
     def start(self) -> Continue:
-        """Clear the last run's evidence and decode what this story actually touched.
-
-        `decide_qa_story` + `clear_qa_evidence` + `resolve_qa_context` + `detect_qa_okf`,
-        all deterministic and unbranched — the story `decide_qa_story` used to guard for is
-        `setup`'s precondition now, and this state is only reached with one.
-
-        `resolve_qa_context` is `resolve-impl-context.py` again — the same node `dev` and
-        `docs` run — read here for the repo paths every agent turn is granted and the source
-        roots the obligation packet is built from. Re-deriving it rather than reading the dev
-        phase's copy is what makes a standalone re-QA of an already-built story work.
-        """
-        # A re-QA of a story that was already QA'd — after a fix, after an operator answer,
-        # after a resume — must not resume the previous pass's repair conversation: it
-        # describes a plan and a diff that have both been rewritten since.
+        """Clear the last run's evidence and decode what this story actually touched."""
         self._reset_chains()
         self.call(clear_qa_evidence, self.ctx.spec_dir)
         impl = self.call(
@@ -756,18 +397,7 @@ class Qa(Workflow):
         )
 
     def build_context(self, loop: QaLoop) -> Continue | Await | Done:
-        """Diff the implementation against the OKF graph and demand a mappable packet.
-
-        `build_qa_okf_context` + `validate_qa_okf_context` + `decide_qa_okf_context` +
-        `guard_qa_context`. The adapter always exits zero; blocking unmapped health comes
-        back as `status=invalid`, which is what the guard reads.
-
-        This is the loop's join point — six states route back here, because a product fix, an
-        operator answer or a regression fix can all change what the diff obligates.
-        """
-        # The join point ends the repair chain because every state that routes back here
-        # changed what the diff obligates, so the conversation that was repairing the old
-        # plan is now describing the wrong file.
+        """Diff the implementation against the OKF graph and demand a mappable packet."""
         self.reset_session(self._chain)
         impl = self.output(resolve_impl_context)
         build = self.call(
@@ -792,38 +422,23 @@ class Qa(Workflow):
         loop = loop.update(
             context_status=result.status,
             context_notes=_finding(result.status == "passed", result.notes),
-            # Zeroed with the chain itself, so the next chain gets a whole budget rather than
-            # inheriting a count of laps that belonged to a conversation that no longer exists.
             clock=loop.clock.model_copy(update={"chain_laps": 0}),
-            # And for the same reason: a refusal of the plan that answered the old diff says
-            # nothing about the plan that answers this one. See `QaLoop.plan_rejections`.
             plan_rejections=(),
         )
         if result.status == "passed":
-            # To the stack, not to the plan: the planner authors against a surface it can
-            # reach. Nothing has to be cleared on the way — what `stack` reads is the plan
-            # on disk, gated against the packet this state just rebuilt, so a plan that
-            # answered the old obligations fails those gates and is re-authored.
             return Continue(result, self.stack, loop=loop)
         if loop.context_rework >= MAX_CONTEXT_REWORKS:
             return self._exhausted(loop, f"{loop.context_rework} OKF-context repair")
         return Continue(result, self.repair_context, loop=loop)
 
     def repair_context(self, loop: QaLoop) -> Continue | Await | Done:
-        """Ask an agent to make the packet mappable, once per rework the budget allows.
-
-        `repair_qa_context` + `decide_qa_context_repair`. The turn reports one thing —
-        whether the packet healed — and the running QA verdict is derived from that here,
-        so a blocked repair still carries its reason into the operator gate it routes to.
-        """
+        """Ask an agent to make the packet mappable, once per rework the budget allows."""
         self.logger.info("repairing the QA obligation packet", extra={"activity": True})
         started = time.monotonic()
         turn = roles.turn(self, "repair-qa-context", returns=ContextRepair)
         reply = self.agent(
             turn.prompt,
             returns=turn.returns,
-            # low: mechanical reconciliation of a diff against a graph, against a
-            # validator that will re-check the result.
             power="low",
             add_dirs=self._dirs(),
             args=turn.args | {
@@ -847,63 +462,17 @@ class Qa(Workflow):
             )
         return self._gate(reply, loop)
 
-    # ── plan ──────────────────────────────────────────────────────────────────────────
 
     def plan(self, loop: QaLoop) -> Continue | Await | Done:
-        """Author the QA plan, forget every previous gate's findings, and parse the result.
-
-        `plan_qa` + `clear_qa_gate_state` + `stamp_specs_qa_plan` + `lint_qa_plan` +
-        `validate_qa_plan` + `decide_qa_plan_validation`.
-
-        Unless a standing `qa_plan.py` already passes both machine gates against the
-        packet — then no turn runs at all and the plan goes straight to the validation
-        tail; see `_standing_plan` for why the gates are the whole question.
-
-        The plan turn is handed every diagnostic the loop collected — the packet's status,
-        the last validation, the last run assessment, the last audit, the last evidence
-        verdict — and then those are cleared, because they describe a plan that no longer
-        exists. `validate_qa_plan` immediately writes a fresh one.
-
-        This state is the *first draft only*. Every later lap — a schema defect, a post-run
-        finding, an audit refutation — goes to `repair_plan`, which edits the plan instead of
-        writing a new one.
-
-        The turn's *reply* is discarded but for one field — the deliverable is `qa_plan.py`
-        on disk, which the validation tail reads back. That is what makes a turn cut at its
-        20-minute cap survivable, and it is the whole reason for `retries=0` plus the catch
-        below. `status` is the exception, because it is a claim about the turn rather than
-        about the file: a planner that says it cannot write a plan for this story has written
-        no file for the tail to read, and every validation-repair lap after it is spent
-        discovering that.
-
-        `proved_scenarios` is the second exception, and the reason the stack now stands up
-        before this node: the author is asked to nominate the one or two scenarios it judged
-        riskiest and to execute them itself before it answers. Those ids go into the same
-        dry-run gate the repair path uses, so a draft whose riskiest locator resolves to
-        nothing is refused here, at the cost of one repair lap, instead of after a full
-        suite run. A draft that names nothing is not refused — the gate is skipped, exactly
-        as it was before — but a draft that names an id it did not run is.
-        """
+        """Author the QA plan, forget every previous gate's findings, and parse the result."""
         self.logger.info("planning QA for %s", self.ctx.story_slug, extra={"activity": True})
         if self._standing_plan():
-            # Both machine gates just passed against the packet this context stage built:
-            # the lint gate vouches for the AST and the validate gate fail-closes on any
-            # required obligation no asserted scenario covers, which is the whole coverage
-            # question the low-power confirm turn used to answer by reading. That turn's
-            # observed output was a rubber stamp ("no plan changes were needed") bought at
-            # the price of the suite run it stood in front of — so a standing plan now goes
-            # straight to the validation tail, and the authoring turn is reserved for the
-            # stories that have no accepted plan or whose plan a gate just refused.
             self.logger.info(
                 "a standing qa_plan.py lints and validates against the packet — "
                 "adopting it without an authoring turn",
                 extra={"activity": True},
             )
             return self._validated(loop)
-        # A rejoin from a context rebuild — an `apply_fixes` lap, a grounding repair — buys a
-        # fresh `power="high"` authoring turn whenever the standing plan does not answer the
-        # rebuilt packet. What bounds that is `MAX_CONTEXT_REWORKS`, the ceiling on the
-        # rebuilds themselves, not the clock: a rejoin cannot happen without one.
         _note_plan_budget(loop, self.logger)
         overran = ""
         started = time.monotonic()
@@ -913,20 +482,9 @@ class Qa(Workflow):
             drafted = self.agent(
                 turn.prompt,
                 returns=turn.returns,
-                # medium: writing a runnable plan against a schema, from a story and an
-                # obligation packet that both already exist. (A standing validated plan
-                # never reaches this turn any more — it is adopted above.)
                 power="medium",
                 session=backbone(self),
-                # 20 min. Without a cap this node inherits the run's 3600s watchdog, and it
-                # used it: over four days its longest turns were exactly 60.0 min, and two
-                # thirds of the whole node's wall clock was spent past the 15-min mark by the
-                # minority of turns that ran long. Fifty of sixty-five finished inside 20.
                 timeout=1200,
-                # A reframe would throw the draft away and re-author from nothing, at the
-                # authoring tier and for another 20 minutes — three times over before the run
-                # stops. `repair_plan` keeps the draft and costs a fifth as much, so the cut
-                # turn is worth more to this flow than any number of fresh ones.
                 retries=0,
                 add_dirs=self._dirs(),
                 args=turn.args | self._plan_args(loop),
@@ -948,30 +506,7 @@ class Qa(Workflow):
         return self._validated(loop, overran=overran, dry_run=proved)
 
     def repair_plan(self, loop: QaLoop) -> Continue | Await | Done:
-        """Edit the cited part of a plan that already exists, leaving the rest byte-identical.
-
-        Every lap after the first used to re-enter `plan`, which regenerates the whole file
-        from the story. That **resamples the scenarios the reviewer already accepted**, so
-        each pass handed the gate a fresh set of defects to find and the loop had no reason
-        to terminate — `plan-qa` averaged 5.5 turns per story and reached 13, with the same
-        demand refused pass after pass. Repairing only what was cited makes the worklist
-        shrink monotonically, which is the whole mechanism by which the loop converges.
-
-        It takes the same brief as `plan` and returns the same result, so the validation tail
-        and every guard are unchanged; what differs is the instruction, the power tier and
-        the dry run. The turn has the stack up and the plan on disk, so it is told to execute
-        each failing scenario itself — `ostler qa run … --scenario <id> --out-dir
-        <id>`, which lands in `qa/<id>/` — and `verify_qa_dry_run` reads that scratch
-        evidence back before
-        the flow spends a whole suite run finding out. A repair that has not been observed to
-        work is a hypothesis, and this lane was paying a full run per hypothesis.
-
-        Every lap runs on one session chain, so the turn that is handed "scenario 4 still
-        fails" is the turn that wrote scenario 4 and remembers why. The chain is dropped when
-        continuity stops being worth its length: after `MAX_CHAIN_LAPS` consecutive laps, on a
-        lap that already failed at exactly what the last one failed at, and at every rejoin
-        through `build_context` — which is also where the counter is zeroed.
-        """
+        """Edit the cited part of a plan that already exists, leaving the rest byte-identical."""
         self.logger.info("repairing the QA plan for %s", self.ctx.story_slug,
                          extra={"activity": True})
         laps = loop.clock.chain_laps
@@ -988,20 +523,8 @@ class Qa(Workflow):
             result = self.agent(
                 turn.prompt,
                 returns=turn.returns,
-                # low: applying a named list of edits to a file that already exists is not
-                # the work that authoring the plan was, and paying the authoring tier for it
-                # is what tempted the turn to rewrite rather than repair.
                 power="low",
-                # 45 min. The old 15 was sized for "apply a worklist", which averages five —
-                # but the turn now also drives the stack and dry-runs every failing scenario
-                # through `ostler qa run`, and one browser scenario alone can spend minutes.
-                # Cutting it at 15 stopped the turn between the edit and the evidence, which
-                # is the one place its work is worth least.
                 timeout=2700,
-                # Same reasoning as `plan`: the file on disk is the deliverable, and a repair
-                # that got halfway is a better starting point than a fresh session that has
-                # to re-read the worklist from the top. `MAX_PLAN_VALIDATION_REWORKS` and
-                # then `MAX_TOTAL_PLAN_LAPS` are what bound a plan that cannot be finished.
                 retries=0,
                 add_dirs=self._dirs(),
                 args=turn.args | self._plan_args(loop),
@@ -1016,10 +539,6 @@ class Qa(Workflow):
             overran = _OVERRAN_REPAIR
         loop = loop.charged(time.monotonic() - started, plan=True, overran=bool(overran))
         if result is not None and result.blocked:
-            # Every lap here is a *repair*, so the scenario it could not repair is the same
-            # one the next lap would be handed. The validation tail would find the plan still
-            # red, the guard would grant another lap, and the chain would keep the same
-            # refusal in its own context — which is the loop this branch exists to leave.
             return self._refused(result, loop, "the QA-plan repair")
         return self._validated(
             loop,
@@ -1028,20 +547,7 @@ class Qa(Workflow):
         )
 
     def _standing_plan(self) -> bool:
-        """Does a `qa_plan.py` already stand that lints and validates against the packet?
-
-        The plan turn used to re-author from the story every time it ran, because the loop
-        carried a boolean that every rejoin through `build_context` cleared — so a re-QA of a
-        story whose accepted plan was sitting on disk paid a full authoring turn to write it
-        again, and the benchmark's frozen fixtures paid the same turn to reproduce a plan
-        they shipped with. Both machine gates run here, fresh, against the packet the
-        context stage just rebuilt: the lint gate vouches for the AST, and the validate
-        gate refuses a plan that leaves any required packet obligation uncovered or that
-        claims one without invoking its declared `verify:` check — so a plan that passes
-        them is the same plan the validation tail would wave through, and `plan` adopts
-        it without an authoring turn. A plan that fails either gate gets the full
-        authoring turn exactly as before — this is a fast path, never a new outcome.
-        """
+        """Does a `qa_plan.py` already stand that lints and validates against the packet?"""
         spec_dir = self.ctx.spec_dir
         if not spec_dir or not (Path(spec_dir) / "qa_plan.py").is_file():
             return False
@@ -1050,38 +556,7 @@ class Qa(Workflow):
         return self.call(validate_qa_plan, spec_dir, self.docs_path).status == "passed"
 
     def _plan_args(self, loop: QaLoop) -> dict[str, object]:
-        """Every diagnostic the loop collected, for whichever plan turn is about to run.
-
-        Plus what the *dev* lane already resolved about the surface. `plan-context.json`
-        carries the stack profile, the fixture files and a prose description of what the
-        running surface renders, all of it vetted by `ostler artifact vet plan-context` — and
-        until now it reached exactly one QA prompt, `setup-fix.md`, which runs only after a
-        run is already blocked. The planner was left re-deriving a fixture path that was
-        sitting in a file two directories up, and getting it wrong is how a scenario comes
-        back `blocked` on data that exists.
-
-        `failed_scenarios` is the repair turn's contract, not a diagnostic: each entry is a
-        scenario the last run did not pass, with the ids of its FAIL assertions read off the
-        runner's own log. The prompt turns the list into a demand — dry-run each of these
-        until it passes — and `verify_qa_dry_run` checks it was met. It is empty for the
-        `plan` turn and after any run that did not fail, which is what makes the same brief
-        serve both nodes.
-
-        `qa_scratch_dir` is the other half of the dry run. It is `qa_dir` itself, because a
-        dry run writes a subdirectory of it: that is the one directory a repo ignores, and
-        the sibling layout it replaces shipped hundreds of megabytes of traces into client
-        repos. Nesting takes nothing away — `verify_qa_evidence` names `qa/qa-run.ndjson` and
-        `qa/run-manifest.json` by exact path, so a scenario tuned until it passed still
-        cannot leave its own admissible evidence, and `clear_qa_evidence` wiping `qa/` whole
-        now removes the scratch with it.
-
-        `qa_only_scenarios` is the dev plan's own list of what it decided *not* to write a
-        test for. The dev lane's red gate reads the same section to decide whether to run
-        the tests-first split at all; passing the QA-only subset here is the other half of
-        that decision, because a scenario excluded from the suite and handed to nobody is
-        covered by nothing in the run. They arrive as data — title, AC, level — so the
-        planner turns each into an obligation rather than re-deriving the list by reading.
-        """
+        """Every diagnostic the loop collected, for whichever plan turn is about to run."""
         impl = self.output(resolve_impl_context)
         tools = self.call(qa_tools_catalog, self.docs_path)
         spec_abs = Path(self.ctx.spec_dir) if self.ctx.spec_dir else None
@@ -1102,9 +577,6 @@ class Qa(Workflow):
             "docs_path": self.docs_path,
             "target_env": self.target_env,
             "verification_setup": impl.verification_setup,
-            # The names `qa.fixture()` takes, beside the prose that describes them: a QA
-            # planner that has to read a fixture's name out of a paragraph writes the name
-            # it remembers, and a fixture called by a name nobody declared is a blocked run.
             "fixtures": [f.model_dump() for f in impl.fixtures],
             "shared_packages": impl.shared_packages,
             "plan_services": self.call(plan_summary, self.ctx.spec_dir).text,
@@ -1128,34 +600,7 @@ class Qa(Workflow):
     def _validated(
         self, loop: QaLoop, overran: str = "", dry_run: tuple[str, ...] = ()
     ) -> Continue | Await | Done:
-        """The tail both plan turns share: clear the brief, stamp, parse, route on the parse.
-
-        A plan that parses goes straight to the runner. There is no semantic pre-run gate
-        any more: what the reviewer used to judge — does this plan actually test the story —
-        is now decided by the book. `ostler qa lint` runs first and rejects a plan whose AST
-        reaches outside the allowlist before anything imports it; every obligation carries the
-        `verify:` check the node declared, `ostler qa validate` refuses a plan that claims an
-        obligation without invoking that call with those arguments, and `ostler qa
-        evidence-map` reports the deficit after the run. A `power="high"` turn re-deriving
-        that by reading is the most expensive node in the lane and, per the corpus replay,
-        accounted for 78 of its 79 blocking findings from checks the machine now performs.
-
-        `overran` is set when the turn that just ran was cut at its wall-clock cap. It is
-        prepended to the validation notes so the repair turn is *told* the file is a draft
-        someone stopped mid-sentence, rather than left to infer it from a truncated file —
-        which reads exactly like a plan whose author made a mistake, and invites a rewrite.
-        It is only ever a brief: a plan that validates goes to the runner regardless, because
-        a plan that parses is a plan that runs whatever cut its author short.
-
-        `dry_run` is a set of scenario ids the turn that just ran claims to have executed
-        itself, and it means something slightly different on each path. A repair is
-        dispatched against a named set of failing scenarios, so it can be *asked to prove it
-        worked* before the suite is spent finding out. The `plan` turn has no failing set, so
-        it nominates instead: the one or two scenarios it judged riskiest, executed before
-        it answered. Either way what arrives here is a claim, and `verify_qa_dry_run` reads
-        the scratch run log for each id rather than believing it. An empty tuple skips the
-        gate, which is what a draft with nothing worth proving passes.
-        """
+        """The tail both plan turns share: clear the brief, stamp, parse, route on the parse."""
         loop = loop.cleared()
         self.call(stamp_specs, self.docs_path, self.ctx.story_slug)
         lint = self.call(lint_qa_plan, self.ctx.spec_dir, self.docs_path)
@@ -1185,49 +630,9 @@ class Qa(Workflow):
                 )
         return Continue(validation, self.run, loop=loop)
 
-    # ── stack and run ─────────────────────────────────────────────────────────────────
 
     def stack(self, loop: QaLoop) -> Continue | Await | Done:
-        """Bring the durable QA stack up, or send its manifest to the repair loop.
-
-        `ensure_stack`. Two of its four answers go to the repair loop: `no` (the runbook
-        is there and would not come up) and `none` (the book serves something but declares
-        no runbook for it). The second used to be a silent pass, which is the defect this
-        routing closes — a greenfield repo ran its whole QA lane against a surface nobody
-        had started, and the first thing that noticed was the runner, dozens of turns
-        later, reporting failures no fixer could act on. Sending `none` here sends it
-        *before* the planning turn, so the stack is declared once and every later lap has
-        something to stand up.
-
-        `unneeded` proceeds like `yes`, because it is the routing's own over-correction
-        undone: a book that serves nothing — no `screen`, no `server`, the doctor's own
-        `runbook-missing` predicate — has an empty stack as its documented topology, and
-        sending it to the setup fixer asks for a runbook the book is correct not to have.
-        The fixer cannot comply, the budget spends, and every operator answer rejoins
-        through `build_context` into the same unconditional check: an escalation loop no
-        answer can break, which is how an artifact-only repo parked a story five times on
-        one question the book had already settled.
-
-        This sits *before* the plan lane rather than after it, which is the point: with the
-        surface already up, the authoring turn can execute a scenario it has just written
-        (`ostler qa run --scenario … --out-dir …`) and find out whether its locators, fixtures
-        and credentials actually resolve. A live run spent whole laps discovering by workflow
-        round-trip what one dry run answers — a straight apostrophe where the fixture uses
-        U+2019, a password constant that disagreed with the seed script. Nothing about the
-        plan changes what the stack does, so nothing is lost by standing it up first.
-
-        This node does not decide whether a plan has to be written. It used to, reading a
-        boolean the loop carried — set when a plan validated, cleared on every rejoin through
-        `build_context` — which mattered because `setup_fix` rejoins here, and can be reached
-        from the *runner* as well as from a stack that would not come up: a fixer that
-        repaired a broken emulator mid-run must return to the run, not to a second authoring
-        turn. `plan` asks that question of the artifact now (`_standing_plan`), and asks it
-        of the packet the context stage just rebuilt, so the flag had nothing left to say
-        that the file on disk does not.
-
-        Which makes this an entry into the plan lane, bounded like every other one by
-        `MAX_CONTEXT_REWORKS` — a rejoin costs a context rebuild, and those are counted.
-        """
+        """Bring the durable QA stack up, or send its manifest to the repair loop."""
         status = self.call(ensure_stack, self.docs_path)
         if status.ready == "unneeded":
             self.logger.info(
@@ -1246,13 +651,6 @@ class Qa(Workflow):
             )
         if status.ready == "no":
             self.logger.info("QA stack did not come up: %s", status.failed_step)
-            # The failure becomes the running verdict, because `block_notes` — what the
-            # fixer and the operator gate are both briefed with — is composed from it. A
-            # stack that never came up leaves `qa` blank otherwise, and the fixer is sent
-            # to repair a stack without being told what about it broke.
-            # `blocked_problems` is cleared with it: a manifest that would not come up is not
-            # the runner naming a missing requirement, and leaving the last run's bundle in
-            # place would let the repeat detector gate on a failure it does not describe.
             return self._guard_setup(
                 status,
                 loop.with_qa(QaResult(status="blocked", notes=status.notes)).update(
@@ -1262,64 +660,25 @@ class Qa(Workflow):
         return Continue(status, self.plan, loop=loop)
 
     def run(self, loop: QaLoop) -> Continue | Done:
-        """Execute the plan through ostler's runner — the expensive step, and its own state.
-
-        `run_qa_plan`. Alone, so a kill during the assessment re-enters at the assessment
-        rather than re-running a QA suite that may have taken half an hour.
-
-        A `blocked` run also carries the runner's `problems` list onto the loop, sorted. It
-        is the only structured account of what the run was missing — everything downstream
-        reads `block_notes`, which is prose — and `_guard_setup` compares it against the
-        bundle the last setup fixer was handed. See `QaLoop.setup_problems`.
-
-        What a `failed` run leaves behind is on the recorded payload rather than on the
-        loop: `_run_failures` fingerprints the scenarios it failed and how far each got,
-        which `_repeating` compares against what the last repair was handed (see
-        `QaLoop.repaired_failures`), and `_failed_scenarios` reads the bare ids back out of
-        the same payload — the set the next repair turn must dry-run before the suite is
-        spent on it again.
-        """
+        """Execute the plan through ostler's runner — the expensive step, and its own state."""
         self.logger.info("running the QA plan", extra={"activity": True})
         result = self.call(run_qa_plan, self.ctx.spec_dir, self.docs_path)
         loop = loop.with_qa(result).update(blocked_problems=_blocked_problems(result))
         if result.status == "passed":
-            # A green runner leaves the assessment sieve nothing to classify: every arm
-            # below its refusal check routes a failure, a block or a disposition, and
-            # the two gates ahead are the ones that judge a pass — `verify_qa_evidence`
-            # fail-closed on the artifacts, the audit adversarially on their content.
-            # The same contractual-QA argument that deleted the semantic pre-run review
-            # applies: the obligations are machine-checked, so a `power="medium"` read
-            # of a green log re-derives what they already carry. The `assessment_*`
-            # loop fields stay blank, which is the documented "this gate has not run".
             self.call(stamp_specs, self.docs_path, self.ctx.story_slug)
             return Continue(result, self.verify_evidence, loop=loop)
         if self.stop_at_first_verdict and result.status == "failed":
-            # The first red *is* the report in this mode, and the classification turn
-            # the assessment sieve would spend on it decides nothing the report reads:
-            # every disposition it could return either enters a repair this mode
-            # forbids or lands on `_first_verdict_ends` anyway, and the evidence map —
-            # the artifact the verdict is scored from — was written by the runner
-            # before this branch. `blocked` still falls through to the sieve: a stack
-            # that died says nothing about the product, and telling that apart from a
-            # red that does is the one classification the mode still budgets for.
             self.call(stamp_specs, self.docs_path, self.ctx.story_slug)
             return self._first_verdict_ends(loop)
         return Continue(result, self.assess, loop=loop)
 
     def assess(self, loop: QaLoop) -> Continue | Await | Done:
-        """Read the runner's verdict for what it means — four chained decisions, one state.
-
-        The five branches are a single sieve over one agent reply and one runner status.
-        Each arm is spelled out below in the order it is tested, and every fall-through lands
-        on the same two loops: the plan rework, or the setup repair.
-        """
+        """Read the runner's verdict for what it means — four chained decisions, one state."""
         started = time.monotonic()
         turn = roles.turn(self, "qa-story", returns=QaAssessment)
         assessment = self.agent(
             turn.prompt,
             returns=turn.returns,
-            # medium: judging a runner's output against a plan that already passed two
-            # gates. The adversarial read is `audit_qa`'s job, at high.
             power="medium",
             session=backbone(self),
             add_dirs=self._dirs(),
@@ -1338,9 +697,6 @@ class Qa(Workflow):
         )
         self.call(stamp_specs, self.docs_path, self.ctx.story_slug)
         if assessment.blocked:
-            # Ahead of the dispositions, because a turn that could not read the run has no
-            # standing to classify it: `blocked` is the one arm that says so, and every
-            # other disposition below reads as a judgement this turn actually made.
             return self._refused(assessment, loop.charged(time.monotonic() - started),
                                  "the QA run assessment")
         loop = loop.charged(time.monotonic() - started).update(
@@ -1352,12 +708,6 @@ class Qa(Workflow):
         )
 
         if self.stop_at_first_verdict:
-            # Only a run the mode could not end on its own reaches this sieve — `run`
-            # ends a plain `failed` before it, so this is a `blocked` or otherwise
-            # unreadable run, and this turn is the one classification the mode still
-            # budgets for it. Environment failures keep the setup loop — the harness is
-            # not the product — and everything else is reported as it stands; see the
-            # `stop_at_first_verdict` field.
             if (
                 assessment.disposition == "repair_setup"
                 or loop.qa.status == "blocked"
@@ -1369,10 +719,6 @@ class Qa(Workflow):
         if assessment.disposition == "repair_setup":
             return self._guard_setup(assessment, loop)
         if assessment.disposition != "confirmed":
-            # `repair_plan` or `extend_plan` — `repair_setup` and `confirmed` are already
-            # spent. The disposition says the plan did not carry the story; the findings say who
-            # repairs what, and `extend_plan` in particular is routinely a missing assertion
-            # in a committed test file, which no replan can add.
             elsewhere = self._routed(assessment, loop, assessment.findings, assessment.notes)
             if elsewhere is not None:
                 return elsewhere
@@ -1384,7 +730,6 @@ class Qa(Workflow):
             return self._guard_plan(assessment, loop)
 
         if assessment.failure_class == "product":
-            # `mark-qa-assessment-failed.py`: the story is wrong, not the plan.
             failed = QaResult(
                 status="failed",
                 notes=assessment.notes or "QA assessment found a product defect.",
@@ -1398,31 +743,19 @@ class Qa(Workflow):
         if not assessment.objective_reached:
             return self._guard_plan(assessment, loop)
 
-        # `blocked` and `invalid` were both sieved out above, so only a pass and a red
-        # reach this line.
         if loop.qa.status == "passed":
             return Continue(assessment, self.verify_evidence, loop=loop)
         return Continue(assessment, self.backlog, loop=loop)
 
-    # ── the two verdict gates ─────────────────────────────────────────────────────────
 
     def verify_evidence(self, loop: QaLoop) -> Continue | Await | Done:
-        """Fail closed: is the claimed pass backed by artifacts that exist on disk?
-
-        `verify_qa_evidence` + `decide_qa_evidence`. Deterministic, and the reason a claimed
-        pass is worth auditing at all — the auditor reads evidence this gate confirmed is
-        there.
-        """
+        """Fail closed: is the claimed pass backed by artifacts that exist on disk?"""
         result = self.call(
             verify_qa_evidence, self.ctx.spec_dir, loop.qa.status, loop.qa.notes
         )
         loop = loop.with_qa(result)
         if result.status == "passed":
             if self.stop_at_first_verdict:
-                # Straight to the hygiene gates: the audit exists to refute a pass into
-                # a repair, and this mode reports rather than repairs. The deterministic
-                # evidence gate above still ran — a pass this mode reports is still one
-                # whose artifacts exist on disk.
                 return Continue(result, self.finalize, loop=loop)
             return Continue(result, self.audit, loop=loop)
         if self.stop_at_first_verdict:
@@ -1432,26 +765,12 @@ class Qa(Workflow):
         return self._guard_plan(result, loop)
 
     def audit(self, loop: QaLoop) -> Continue | Await | Done:
-        """Try to refute the pass — `decide_qa_audit` and its two follow-on branches.
-
-        A verdict that `stands` still has to name `none` as its refutation class; anything
-        else means the auditor found something it could not reconcile. A `refuted` product
-        contradiction is the story failing, which is a backlog item and a fix, not a replan.
-
-        Every other refutation used to go to the plan author on the strength of the class
-        alone, and an `evidence-defect` whose repair is a dynamic assertion in a committed
-        test is the case that made that wrong: the author cannot write one, so the plan came
-        back disclosing the same gap and the audit refuted it again. The findings say who
-        repairs each gap; `_routed` sends them there. A refutation naming no findings still
-        takes the prose path to the plan, so this adds no new way to kill a passing run.
-        """
+        """Try to refute the pass — `decide_qa_audit` and its two follow-on branches."""
         started = time.monotonic()
         turn = roles.turn(self, "audit-qa", returns=QaAudit)
         result = self.agent(
             turn.prompt,
             returns=turn.returns,
-            # high: adversarially re-judging captured evidence is only worth running on a
-            # model that can actually refute a plausible-but-wrong pass.
             power="high",
             add_dirs=self._dirs(),
             args=turn.args | {
@@ -1466,9 +785,6 @@ class Qa(Workflow):
             },
         )
         if result.blocked:
-            # `refuted` is a verdict about the evidence; this is the auditor saying there was
-            # nothing it could judge. Defaulting one into the other spends a plan rework on a
-            # refutation that was never made.
             return self._refused(result, loop.charged(time.monotonic() - started),
                                  "the QA audit")
         loop = loop.charged(time.monotonic() - started).update(
@@ -1484,7 +800,6 @@ class Qa(Workflow):
         if result.verdict == "stands" and result.refutation_class == "none":
             return Continue(result, self.backlog, loop=loop)
         if result.verdict == "refuted" and result.refutation_class == "product-contradiction":
-            # `mark-qa-audit-failed.py`.
             failed = QaResult(
                 status="failed",
                 notes=result.notes or "QA audit found a product contradiction.",
@@ -1505,15 +820,9 @@ class Qa(Workflow):
         _note_lane_budget(loop, self.logger)
         return self._guard_plan(result, loop)
 
-    # ── what happens to the verdict ───────────────────────────────────────────────────
 
     def backlog(self, loop: QaLoop) -> Continue | Await | Done:
-        """Drain separate-scope discoveries back to the author, then route on the verdict.
-
-        `file_backlog_items` + `decide_qa`. The filer is best-effort by design and runs on
-        both a pass and a failure, because a passing story can still have turned up work that
-        belongs to somebody else.
-        """
+        """Drain separate-scope discoveries back to the author, then route on the verdict."""
         self.call(file_backlog_items, self.ctx.spec_dir, self.docs_path)
         if loop.qa.status == "passed":
             return Continue(loop.qa, self.feedback, loop=loop)
@@ -1526,21 +835,12 @@ class Qa(Workflow):
         return self._fixable(loop.qa, loop)
 
     def triage(self, loop: QaLoop) -> Continue | Await | Done:
-        """Classify the findings: fix them in-AC here, or hand the scope back to the author.
-
-        `triage_qa` + `guard_triage` + `decide_triage` + `incr_triage` + `mark_qa_rescope`.
-
-        `rescope` is the only exit that leaves the story unfinished on purpose: the triager
-        amended the ACs on disk, so the parent re-enters `dev` with the bumped budget rather
-        than re-running QA against a story that changed underneath it.
-        """
+        """Classify the findings: fix them in-AC here, or hand the scope back to the author."""
         started = time.monotonic()
         turn = roles.turn(self, "triage-qa", returns=QaTriage)
         triage = self.agent(
             turn.prompt,
             returns=turn.returns,
-            # medium: sorting findings into in-AC and adjacent, against a story whose ACs
-            # are written down.
             power="medium",
             session=backbone(self),
             add_dirs=self._dirs(),
@@ -1557,9 +857,6 @@ class Qa(Workflow):
             },
         )
         if triage.blocked:
-            # Both defaults below are classifications, and a triager that could not sort the
-            # findings has made neither. Taking one anyway sends the story to a loop on the
-            # strength of a verdict nobody reached.
             return self._refused(triage, loop.charged(time.monotonic() - started),
                                  "the QA triage")
         loop = loop.charged(time.monotonic() - started).update(
@@ -1581,18 +878,11 @@ class Qa(Workflow):
         return self._fixable(triage, loop)
 
     def report_dev(self, loop: QaLoop) -> Await | Done:
-        """`target_env=dev`: we do not own the code, so write the findings out and stop.
-
-        `report_qa_dev` + `mark_qa_exhausted`. The `inconclusive` default status is not a
-        judgement on the report — it is how the parent's `decide_qa_fail` learns the story
-        did not pass. A dev target has no code to rework, so this is the flow's terminal
-        state for a story it could not carry: what it owes is the write-up.
-        """
+        """`target_env=dev`: we do not own the code, so write the findings out and stop."""
         turn = roles.turn(self, "report-qa-dev", returns=QaReport)
         report = self.agent(
             turn.prompt,
             returns=turn.returns,
-            # low: summarising findings that are already written down, into a tracker.
             power="low",
             session=backbone(self),
             add_dirs=self._dirs(),
@@ -1615,15 +905,9 @@ class Qa(Workflow):
             )
         )
 
-    # ── the passing path: feedback, regression, sentinels ─────────────────────────────
 
     def feedback(self, loop: QaLoop) -> Continue:
-        """Poll the run's inbox once before believing the pass.
-
-        `check_qa_feedback` + `decide_qa_feedback`. Never halts and never asks: polling the
-        inbox replies to the oldest outstanding message, so one dropped note buys exactly
-        one re-QA.
-        """
+        """Poll the run's inbox once before believing the pass."""
         note = self.call(check_feedback, str(self.run_dir))
         if note.present:
             self.logger.info("operator feedback found — re-QA after applying it")
@@ -1631,12 +915,7 @@ class Qa(Workflow):
         return Continue(note, self.regression, loop=loop)
 
     def apply_feedback(self, loop: QaLoop, content: str) -> Continue:
-        """Apply the operator's note and rebuild the context — product feedback moves it.
-
-        It is `apply-qa-fixes.md` with an empty `qa_notes`, because there are no QA failures
-        here: the note is the work. No rework is spent — feedback is not a failure of the fix
-        loop.
-        """
+        """Apply the operator's note and rebuild the context — product feedback moves it."""
         started = time.monotonic()
         result = self._apply_fixes(
             qa_notes="",
@@ -1653,33 +932,14 @@ class Qa(Workflow):
         )
 
     def regression(self, loop: QaLoop) -> Continue:
-        """Which committed journey suites, if any, this plan put at risk.
-
-        `detect_regression` + `gate_regression`. The detector fails **open** — an unreadable
-        plan context resolves no suites — because most stories touch no service that declares
-        one, and blocking them on a detector would be the wrong default.
-        """
+        """Which committed journey suites, if any, this plan put at risk."""
         suites = self.call(detect_regression_suites, self.ctx.spec_dir)
         if suites.suites:
             return Continue(suites, self.run_regression, loop=loop)
         return Continue(suites, self.finalize, loop=loop)
 
     def run_regression(self, loop: QaLoop) -> Continue | Await | Done:
-        """Run the committed suites, and decide what a green run means given what preceded it.
-
-        `run_regression` + `decide_regression_run` + `decide_regression_fix_applied` +
-        `decide_regression_reqa_pending` + the three `emit-kv.py` flag setters around them.
-
-        The two flags are the whole subtlety. A regression fix is a code change, and a code
-        change invalidates the primary QA evidence that was captured before it — so a green
-        regression run *after* a fix sends the story back through primary QA, once, and the
-        `reqa_pending` flag is what stops that from repeating forever.
-
-        `skipped` travels with `passed` and `error` with `blocked` — see `RegressionRun` for
-        why the runner distinguishes them at all when this state routes them in pairs: the
-        pairing is about what happens next, and the word is about what an operator reading
-        the notes is told happened.
-        """
+        """Run the committed suites, and decide what a green run means given what preceded it."""
         suites = self.output(detect_regression_suites)
         run = self.call(
             run_regression_suite,
@@ -1701,16 +961,11 @@ class Qa(Workflow):
                 loop=loop.update(regression_fix_applied=False, regression_reqa_pending=False),
             )
         if run.status in {"blocked", "error"}:
-            # Both to the setup loop, and for the same reason it exists: neither an
-            # unreachable stack nor a `regression:` command that will not start is anything
-            # the regression *fixer* can act on, and the story does not proceed on either.
             return self._guard_setup(
                 run,
                 loop.update(regression_fix_applied=False, regression_reqa_pending=True),
             )
         if loop.regression_fix >= MAX_REGRESSION_FIXES:
-            # `mark-regression-unresolved.py`, then the flags are cleared and the story
-            # falls through to the ordinary QA-fix loop.
             unresolved = QaResult(
                 status="failed",
                 notes=(
@@ -1733,14 +988,7 @@ class Qa(Workflow):
         )
 
     def fix_regression(self, loop: QaLoop) -> Continue | Await | Done:
-        """Reproduce and fix a real-stack journey failure, then run the suite again.
-
-        `fix_regression` + `incr_regression_fix` + `mark_regression_fix_applied`. The fixer's
-        claim of *success* is not read — the re-run is the verdict. Its claim that it cannot
-        get there is, because the re-run cannot express it: a suite that is still red looks
-        the same whether the last turn ran out of ideas or never had any, so the loop grants
-        another lap and spends a 90-minute turn on the question it just answered.
-        """
+        """Reproduce and fix a real-stack journey failure, then run the suite again."""
         suites = self.output(detect_regression_suites)
         run = self.output(run_regression_suite)
         self.logger.info("fixing the regression suite", extra={"activity": True})
@@ -1749,11 +997,7 @@ class Qa(Workflow):
         fix = self.agent(
             turn.prompt,
             returns=turn.returns,
-            # high: reproducing and fixing real-stack journey failures.
             power="high",
-            # 5400s: the journey suite alone takes 25-30 minutes, and 2400s forced three
-            # consecutive timeout/retry cycles — a suite run plus diagnosis does not fit in
-            # forty minutes.
             timeout=5400,
             add_dirs=self._dirs(),
             args=turn.args | {
@@ -1772,9 +1016,6 @@ class Qa(Workflow):
                 "regression_run_log_path": run.log_path,
                 "regression_fix_count": loop.regression_fix,
             },
-            # Lap two is handed the same suite, still red, and its first act on a fresh
-            # context is to re-reproduce the failure lap one had already reproduced — a
-            # twenty-five-minute suite run spent re-learning what it just knew.
             session=f"qa-regression-fix:{self.ctx.story_slug}",
         )
         loop = loop.charged(time.monotonic() - started)
@@ -1791,13 +1032,7 @@ class Qa(Workflow):
         )
 
     def finalize(self, loop: QaLoop) -> Continue | Await | Done:
-        """The two pre-commit hygiene gates, and the only path to a passing story.
-
-        `flush_root_screenshots` + `check_sentinels` + `decide_sentinels` + `mark_qa_passed` +
-        `decide_qa_pass_report`. The sentinel gate only ever downgrades: it greps the lines
-        this story added for fabricated placeholder IDs and unreconciled stubs, and a hit
-        routes into the same bounded fix loop a QA failure does.
-        """
+        """The two pre-commit hygiene gates, and the only path to a passing story."""
         self.call(flush_root_screenshots, self.ctx.spec_dir)
         result = self.call(check_sentinel_ids, self.ctx.story_slug)
         loop = loop.with_qa(result)
@@ -1819,18 +1054,11 @@ class Qa(Workflow):
         )
 
     def report_dev_pass(self, loop: QaLoop) -> Await | Done:
-        """`target_env=dev`: summarise what passed to the tracker, then finish green.
-
-        The turn is reached only after the story has already passed every binding gate, so
-        it decides nothing about the story — but the tracker entry is the whole output of a
-        `dev` target's QA, and a run that ends without it has passed a story nobody can read
-        the verdict of. So a blocked write parks like any other block rather than logging.
-        """
+        """`target_env=dev`: summarise what passed to the tracker, then finish green."""
         turn = roles.turn(self, "report-qa-dev-pass", returns=QaReport)
         report = self.agent(
             turn.prompt,
             returns=turn.returns,
-            # low: the same summarising job as `report_qa_dev`, on a green story.
             power="low",
             session=backbone(self),
             add_dirs=self._dirs(),
@@ -1853,33 +1081,9 @@ class Qa(Workflow):
             )
         )
 
-    # ── the fix loop ──────────────────────────────────────────────────────────────────
 
     def apply_fixes(self, loop: QaLoop) -> Continue | Await:
-        """Fix what QA found, spend a rework, and re-derive the context before re-planning.
-
-        `apply_qa_fixes` + `incr_qa`. This is the loop that has to actually converge within
-        the budget, which is why it runs at high power.
-
-        `blocked` goes to the operator instead of round the loop again. The prompt already
-        asks for it — a credential the fixer cannot hold, a product decision that is in
-        neither the story nor the plan, work in a repo outside this one — and this node used
-        to discard the status and re-enter `build_context` anyway. Nothing downstream can
-        supply what the fixer said was missing, so every remaining rework re-asks a question
-        already answered, at high power, until the budget runs out and the story is filed as
-        exhausted rather than as blocked on the one thing it is actually blocked on.
-
-        When the run reported *which* scenarios failed, this node does not run the fixer at
-        all: it seeds `QaLoop.fix` and hands the lap to `fix_item`, which takes them one at
-        a time and proves each one green before the next starts. The rework is charged here,
-        once, because the whole worklist is one rework — the split is about how the lap is
-        spent, not about buying more of them.
-
-        The whole-report turn below is what runs when there is no per-scenario worklist to
-        split: an evidence-class failure, a finding routed out of `triage`, an operator's
-        mid-flight note. Those briefs are not a list of red scenarios and cannot be walked
-        as one.
-        """
+        """Fix what QA found, spend a rework, and re-derive the context before re-planning."""
         failed = _failed_scenarios(self)
         if failed:
             self.logger.info(
@@ -1909,35 +1113,12 @@ class Qa(Workflow):
             qa=result, qa_rework=loop.qa_rework + 1, docs_recheck_required=True
         )
         if result.blocked:
-            # The derived signal, not the literal `"blocked"`: this prompt's own reply has
-            # come back `unfixable` and `not_passed` as often as `blocked`, and three
-            # quarters of one vocabulary fell through to another lap of the same loop.
             self.logger.info("QA fixer reported blocked; escalating: %s", result.notes)
             return self._gate(result, loop)
         return Continue(result, self.build_context, loop=loop)
 
     def fix_item(self, loop: QaLoop) -> Continue | Await | Done:
-        """Fix the scenario at the head of the worklist, and prove it before taking the next.
-
-        One agent turn, one scenario, one dry run — the same contract `repair_plan` already
-        holds the plan lane to, moved onto the code lane. The turn is handed the scenario's
-        own failed assertions and told the other red scenarios are not its work, and
-        `verify_qa_dry_run` reads the scratch evidence back before the item is allowed off
-        the worklist.
-
-        What this replaces is a whole-report fix turn followed by a full scored suite run:
-        every lap re-read every finding, re-derived the repairs it had already made, and
-        learned whether any of it worked only from a rerun of everything. The proof is now
-        per item and costs one scenario, and the scored run happens once the worklist is
-        empty rather than once per hypothesis.
-
-        Three ways an item leaves the worklist, and none of them is a give-up. It dry-runs
-        green; or its budget runs out, in which case it is carried into the scored run
-        *unproved* and that run judges it — the code-fix budget one loop out is what answers
-        for it if it fails again; or the gate refuses it twice for the identical reason, which
-        is a fixer working with no new information, and that goes to the operator gate with
-        the worklist still on the loop so a resume continues it.
-        """
+        """Fix the scenario at the head of the worklist, and prove it before taking the next."""
         if not loop.fix.items:
             return Continue(loop.qa, self.build_context, loop=loop)
         item = loop.fix.items[0]
@@ -1981,17 +1162,7 @@ class Qa(Workflow):
         return Continue(result, self.fix_item, loop=loop)
 
     def _next_item(self, result: QaResult, loop: QaLoop) -> Continue | Await | Done:
-        """Pop the head of the worklist: the next scenario, or the scored re-run.
-
-        The per-item counters reset with the pop, because the budget is per item — a worklist
-        of six scenarios is not six times harder than one, and a shared counter would starve
-        whatever came last.
-
-        `loop.qa` is left alone while items remain, so item two is still briefed with the
-        report the run produced rather than with item one's summary of what it did. It is
-        replaced only on the way out, where the fixer's own status is what `build_context`
-        and the loop behind it react to.
-        """
+        """Pop the head of the worklist: the next scenario, or the scored re-run."""
         rest = loop.fix.items[1:]
         loop = loop.update(fix=loop.fix.popped())
         if rest:
@@ -1999,12 +1170,7 @@ class Qa(Workflow):
         return Continue(result, self.build_context, loop=loop.update(qa=result))
 
     def _fix_scenario(self, item: str, loop: QaLoop) -> QaResult:
-        """`fix-qa-scenario.md`: one scenario's brief, its assertions and its dry-run contract.
-
-        On the story's own backbone chain, like the whole-report fixer it splits — the items
-        share a surface and a stack, and the second one is worth far more knowing what the
-        first already touched than re-deriving it.
-        """
+        """`fix-qa-scenario.md`: one scenario's brief, its assertions and its dry-run contract."""
         spec_abs = Path(self.ctx.spec_dir) if self.ctx.spec_dir else None
         failed_assertions = (
             qa_support.failed_assertions(qa_support.scored_run_log(spec_abs)) if spec_abs else {}
@@ -2013,13 +1179,6 @@ class Qa(Workflow):
         reported = self.agent(
             turn.prompt,
             returns=turn.returns,
-            # low, for the reason `repair_plan` is: this turn is handed one scenario, that
-            # scenario's own failed assertions, and a stack that is already up, and it must
-            # prove the fix with a dry run before the item leaves the worklist. The whole-
-            # report fixer it splits paid the authoring tier to re-derive the worklist on
-            # every lap; there is no worklist left to derive. Provisional in exactly the way
-            # `repair-qa-plan`'s tier was: the plan's §1 harness measures whether the cheaper
-            # tier raises the exit rate, and the number decides whether it stays.
             power="low",
             add_dirs=self._dirs(),
             args=turn.args
@@ -2038,31 +1197,11 @@ class Qa(Workflow):
             },
             session=backbone(self),
         )
-        # `QaRunResult` is what a turn can report; `QaResult` is the rolling verdict the
-        # gates route on. Converting here keeps the rendered contract free of the blank and
-        # of `invalid`, neither of which a fixer may write.
         return QaResult(status=reported.status, notes=reported.notes)
 
-    # ── the setup-repair loop ─────────────────────────────────────────────────────────
 
     def setup_fix(self, loop: QaLoop) -> Continue | Await | Done:
-        """Repair the runbook that would not come up — or write the one nobody wrote.
-
-        `setup_fix` + `incr_setup` + `decide_setup`. `unfixable` — the default for a fixer
-        that produced nothing — escalates to the operator rather than looping.
-
-        There is no manifest path to pass any more. The stack is declared as an OKF
-        `runbook` node in the book, ostler finds it, and the fixer repairs the node — which
-        is also what makes the `none` entry above tractable: a fixer told "author the
-        manifest" needed to be told *where*, and got it wrong often enough that a run could
-        loop on a file the reader never looked at. A node has one home the doctor agrees on.
-
-        `qa_run_plan`/`verification_setup` come from the same `resolve_impl_context` the flow already
-        read: the prompt lists the touched layers' QA skills from them, and each says how to
-        bring its layer up — which is exactly this node's job. Omitting them left the prompt
-        on its `_(none resolved)_` fallback, telling the fixer to guess from the plan's smoke
-        commands while the resolved answer sat one `self.output` away.
-        """
+        """Repair the runbook that would not come up — or write the one nobody wrote."""
         self.logger.info("repairing the QA stack", extra={"activity": True})
         impl = self.output(resolve_impl_context)
         started = time.monotonic()
@@ -2070,9 +1209,6 @@ class Qa(Workflow):
         result = self.agent(
             turn.prompt,
             returns=turn.returns,
-            # high: diagnosing and standing up a broken dev stack is non-trivial agentic
-            # work; 2400s because compose, emulators, `npm ci` and browser installs are slow
-            # but bounded.
             power="high",
             timeout=2400,
             add_dirs=self._dirs(),
@@ -2087,47 +1223,25 @@ class Qa(Workflow):
                 "qa_run_plan": impl.qa_run_plan,
                 "verification_setup": impl.verification_setup,
                 "fixtures": [f.model_dump() for f in impl.fixtures],
-                # The interpreter the QA runner's pre-flight actually checks: the QA nodes
-                # import the runner as a library, so a requirement like "requires the Playwright
-                # Python package" is a statement about *this* process. A fixer told only to
-                # install the package repairs whichever copy `pip`/`uv tool` happens to reach,
-                # reports `ready`, and the next run comes back blocked on the same bundle.
                 "runtime_python": sys.executable,
             },
         )
         loop = loop.charged(time.monotonic() - started).update(
             setup_rework=loop.setup_rework + 1,
             docs_recheck_required=True,
-            # What this turn was asked to repair, for the next `_guard_setup` to compare the
-            # next blocked run against.
             setup_problems=loop.blocked_problems,
         )
         if result.blocked:
             return self._gate(result, loop)
         return Continue(result, self.stack, loop=loop)
 
-    # ── the operator gate ─────────────────────────────────────────────────────────────
 
     def resolve_operator(self, loop: QaLoop) -> Continue | Await:
-        """Resolve a QA block from what is already written down, or park the run for a human.
-
-        The narrowest of the four lanes, deliberately. The resolver may answer a QA block
-        the way it answers any other — by quoting the decision record, rule or acceptance
-        criterion that settles it — but the resolutions *in its own favour* stay forbidden
-        whatever it can cite: it may not narrow the plan's `covers:` to make a gap
-        uncovered-and-fine, stamp the story's status, edit `qa-evidence.json`, or offer a
-        test suite as evidence about the product. Those are the ones this loop exists to
-        keep out of its hands, and the prompt names them. It also still cannot decide the
-        story is unrecoverable — a workflow does not give up, it blocks.
-
-        `resolve_qa` + the `await_operator_qa` that followed it, folded into one turn.
-        """
+        """Resolve a QA block from what is already written down, or park the run for a human."""
         self.logger.info("diagnosing the QA block for the operator", extra={"activity": True})
         result = self.agent(
             "shared/prompts/resolve-operator.md",
             returns=OperatorResolution,
-            # max, and unbounded: a full-tool-access investigation ahead of the highest-
-            # stakes decision in the flow.
             power=RESOLVER_POWER,
             timeout=UNBOUNDED,
             add_dirs=self._dirs(),
@@ -2140,19 +1254,11 @@ class Qa(Workflow):
         )
         if answered(self, result, "qa"):
             return Continue(result, self.read_operator, loop=loop)
-        # `Await` writes its `questions` over this file with `write_text`, so the body it is
-        # handed has to *contain* the note the resolver just wrote there — which is what
-        # `_escalation` does, on top of saying what was tried and what would unblock it.
         gate = _escalation(self, loop, result)
         return Await(context_path(self), gate.body, self.read_operator, loop=loop)
 
     def read_operator(self, loop: QaLoop) -> Continue | Done:
-        """Consume the answer and route on the scope the answerer chose.
-
-        `await_operator_qa`'s consume half + `decide_operator_scope_qa`. An `epic`-scoped
-        answer says the premise was wrong, which no amount of QA fixing reaches — the parent
-        graph re-derives the epic from it.
-        """
+        """Consume the answer and route on the scope the answerer chose."""
         answer = self.call(read_operator_context, self.ctx.story_path)
         if answer.scope == "epic":
             self.logger.info("operator scoped the block to the epic — handing back to replan")
@@ -2169,21 +1275,7 @@ class Qa(Workflow):
         return Continue(answer, self.apply_resolved, loop=loop, content=answer.content)
 
     def apply_resolved(self, loop: QaLoop, content: str) -> Continue | Await:
-        """Apply the operator's answer as a QA fix, and spend a rework on it.
-
-        The same prompt `apply-qa-fixes.md` runs at low because the
-        hard thinking was the operator's.
-
-        The budget is re-read *here* rather than only in `_guard_qa`. `_guard_qa` bounds the
-        fix loop that goes through it; this state is the
-        far end of the operator gate, and the gate is reachable from the context loop
-        (`repair_context` → `_gate`) whose own counter only advances on a *repaired* packet.
-        A packet that stays unmappable therefore cycles context → repair → gate → resolve →
-        read → apply → context with no counter moving at all, three agent turns a lap — one of
-        them the unbounded-timeout resolver — until the driver's transition budget kills the
-        run. Spending `qa_rework` per lap is what the increment below was already for; all
-        that was missing is somebody reading it.
-        """
+        """Apply the operator's answer as a QA fix, and spend a rework on it."""
         started = time.monotonic()
         result = self._apply_fixes(
             qa_notes=loop.qa.notes,
@@ -2197,17 +1289,12 @@ class Qa(Workflow):
             docs_recheck_required=True,
         )
         if result.blocked:
-            # Ahead of the budget check, and it is not the same escalation: the fixer was
-            # handed the operator's own answer and still says it cannot get there, which
-            # means the answer did not reach the block. Going round for another lap re-runs
-            # a fix against an instruction already known not to work.
             return self._refused(result, loop, "the operator-guided QA fix")
         if loop.qa_rework >= MAX_QA_REWORKS:
             self.logger.info("operator-guided rework loop is out of QA reworks — escalating")
             return self._exhausted(loop, f"{loop.qa_rework} operator-guided rework")
         return Continue(result, self.build_context, loop=loop)
 
-    # ── routers and shared turns, none of them states ─────────────────────────────────
 
     def _routed(
         self,
@@ -2216,28 +1303,7 @@ class Qa(Workflow):
         findings: Sequence[QaFinding],
         notes: str,
     ) -> Continue | Await | Done | None:
-        """Send a gate's findings to whoever can repair them. `None` — nobody but the plan.
-
-        Precedence is `product-test`, then `plan`, then `stack`, and the first is first
-        because it is the demand a replan *cannot* close. Fixing the test closes it
-        permanently, and `apply_fixes` returns through `build_context` → `plan`, so a plan
-        finding raised alongside it is re-judged against the repaired surface on the next
-        lap rather than lost. A `stack` finding goes to the loop that owns the manifest.
-
-        `None` means the caller's own arm is still the right one: either every finding is
-        the plan author's, or the gate named none at all and only its prose is left. Neither
-        is this router's to decide, because each caller spends a different budget for it.
-
-        Routing goes through `_fixable`, never straight to `apply_fixes`: `_fixable` is what
-        keeps a `dev` run *reporting* findings instead of fixing code it does not own, and
-        what charges `MAX_QA_REWORKS`. A test edit is code work, so that is the correct
-        budget — the judgement budget is not charged at all.
-
-        The brief is written into `qa.notes` with a `model_copy`, not `with_qa`, because
-        `with_qa` would replace `status` too — and on the audit path the run genuinely
-        passed. Both loops read the brief from there: the fixer through `apply_fixes`, the
-        setup fixer through `QaLoop.block_notes`.
-        """
+        """Send a gate's findings to whoever can repair them."""
         routed = _route_findings(findings)
         if routed.product_test:
             self.logger.info(
@@ -2264,11 +1330,7 @@ class Qa(Workflow):
         return None
 
     def _guard_plan(self, result: object, loop: QaLoop) -> Continue | Await | Done:
-        """Spend the post-run component of the QA-plan judgement budget.
-
-        Like both guards below, this returns to `repair_plan` and not to `plan`: a finding
-        against one scenario is not a reason to resample the seven the gate already passed.
-        """
+        """Spend the post-run component of the QA-plan judgement budget."""
         if _repeating(loop, "QA-plan repair", _run_failures(self)):
             return self._stalled(result, loop, "QA-plan repair")
         if loop.plan_judgement_rework >= MAX_PLAN_REWORKS:
@@ -2283,23 +1345,7 @@ class Qa(Workflow):
         )
 
     def _guard_dry_run(self, gate: object, loop: QaLoop) -> Continue | Await | Done:
-        """A repair whose own dry run refused it — repair again, on the same budget.
-
-        The judgement budget and not a new one: the lap is a QA-plan repair lap whichever
-        gate refused it, and a dry-run failure is the *cheap* way to learn what the post-run
-        gate would have said an hour later. Adding a budget here would let a story spend
-        more laps than before by failing earlier in each of them.
-
-        `_repeating` is deliberately not consulted, which is the one difference from
-        `_guard_plan`. That detector asks whether the last repair left *the suite* failing
-        identically, and its inputs are a run fingerprint; no run happened between this
-        repair and this refusal, so the fingerprint is the one the previous guard already
-        stamped and the test would report a stall on every first dry-run failure.
-
-        `_rejected` is the sameness signal that *does* belong here: it compares this refusal
-        against the refusals this plan lane has already been sent back on, which needs no run
-        between them. See `QaLoop.plan_rejections`.
-        """
+        """A repair whose own dry run refused it — repair again, on the same budget."""
         stalled = self._rejected(gate, loop, "dry-run refusal")
         if stalled is not None:
             return stalled
@@ -2320,21 +1366,7 @@ class Qa(Workflow):
         return loop.update(plan_rejections=(*loop.plan_rejections, _rejection(loop, kind)))
 
     def _rejected(self, gate: object, loop: QaLoop, kind: str) -> Continue | Await | None:
-        """Escalate a pre-run rejection the plan lane has already answered once.
-
-        The plan lane's two pre-run gates each bounded a *count* of laps and nothing else.
-        That is the budget-only shape the post-run half stopped having when `_repeating`
-        landed, and it is the shape that lets a repair turn spend every lap it is allowed
-        re-earning one refusal: the turn is handed the gate's reason, edits the file, and the
-        gate says the same sentence back. `repair-qa-plan`'s observed 33 laps are mostly
-        that argument with itself.
-
-        `None` when this refusal is new — the caller then does what it would have done
-        anyway. The operator gate and not `_exhausted`, for the same reason `_stalled` picks
-        it: "another lap of this buys nothing" is a decision someone can act on, and reaching
-        it by burning three more agent turns says it later and less clearly. It is an `Await`
-        and never an ending — the gate can send the story straight back around.
-        """
+        """Escalate a pre-run rejection the plan lane has already answered once."""
         problem = _rejection(loop, kind)
         if problem not in loop.plan_rejections:
             return None
@@ -2348,19 +1380,7 @@ class Qa(Workflow):
         return self._gate(gate, loop)
 
     def _stalled(self, result: object, loop: QaLoop, lap: str) -> Continue | Await | Done:
-        """A repair loop that has stopped moving — escalate rather than spend the budget.
-
-        The operator gate and not `_exhausted`, and that difference is the point of the
-        detector. Exhaustion says "this story was tried the agreed number of times"; a stall
-        says "this is not repairable from where we are repairing it", which is a decision a
-        human or the auto-operator can act on — most often by classifying it as a harness
-        failure rather than a product one. Reaching the same conclusion by burning the budget
-        costs three more agent turns and three more full suite runs to say it less clearly.
-
-        But "not repairable from where we are repairing it" is an argument for repairing it
-        somewhere else, and only after that for ending the story — so the untried class goes
-        first. See `_switched`.
-        """
+        """A repair loop that has stopped moving — escalate rather than spend the budget."""
         other = "code fix" if lap == "QA-plan repair" else "QA-plan repair"
         if not loop.class_switched and other not in loop.tried_laps:
             return self._switched(result, loop, lap, other)
@@ -2381,22 +1401,7 @@ class Qa(Workflow):
     def _switched(
         self, result: object, loop: QaLoop, spent: str, other: str
     ) -> Continue | Await | Done:
-        """A repair that moved nothing refutes the *hypothesis*, not the story.
-
-        `_repeating` is a correct budget signal and a wrong diagnosis. "The QA-plan repair
-        changed nothing" is evidence that the failure is not in the plan, and that is an
-        argument for looking at the product — not for ending the story. A live story was
-        abandoned into `qa-skip-stories.txt` on exactly that inference having spent zero code
-        laps, and the five assertions it died on were races in the plan.
-
-        One switch per story, and only toward a class that has never run. That is the whole
-        termination argument: `QaLoop.class_switched` is monotone and written only here, both
-        exits below charge a counter with its own ceiling, and the second stall — whichever
-        class raises it — falls straight through to the gate above.
-
-        `_fixable` and not `apply_fixes`: a `dev` run reports findings rather than editing
-        code it does not own, and that is not a rule this shortcut gets to skip.
-        """
+        """A repair that moved nothing refutes the *hypothesis*, not the story."""
         self.logger.info(
             "the %s left the QA run failing identically (%s) — trying a %s before the "
             "operator, because a repair that moved nothing refutes the hypothesis class",
@@ -2416,21 +1421,7 @@ class Qa(Workflow):
     def _guard_plan_validation(
         self, result: object, loop: QaLoop
     ) -> Continue | Await | Done:
-        """Spend a schema-validation repair — a budget of its own, not the judgement one.
-
-        A `qa_plan.py` that does not import is a mechanical defect, and repairing it says
-        nothing about whether the plan tests the story. Charging it to the same ceiling as
-        the reviewer let a run of schema typos exhaust the story before any gate had read
-        the plan for coverage; `QaLoop.plan_judgement_rework` records the case.
-
-        A parse error is also the most local repair there is, which is why this goes to
-        `repair_plan` — regenerating a whole plan to fix an indentation slip threw away a
-        correct draft and bought a different one.
-
-        The budget is not the only thing that ends this loop: a repair turn handed the exact
-        validator output it was handed last time, answering with a file the validator refuses
-        for the identical reason, has no new information to work from. See `_rejected`.
-        """
+        """Spend a schema-validation repair — a budget of its own, not the judgement one."""
         stalled = self._rejected(result, loop, "QA-plan schema refusal")
         if stalled is not None:
             return stalled
@@ -2445,17 +1436,7 @@ class Qa(Workflow):
         )
 
     def _plan_lap(self, result: object, loop: QaLoop) -> Continue | Await | Done:
-        """Take the lap the guard just paid for, unless the plan has had too many in total.
-
-        The three guards above each bound their own stage, and nothing bounded the sum until
-        this did. `loop` arrives already incremented, so the ceiling is checked against what
-        this lap would make the total — a flow that stops *after* spending its last lap has
-        paid for a turn it will not use.
-
-        The lap count is the only ceiling here. `PLAN_LANE_BUDGET_S` used to be a second one,
-        which is what let a plan lane that was still making progress be cut off mid-repair;
-        it is now advisory and only logged. See `_note_plan_budget`.
-        """
+        """Take the lap the guard just paid for, unless the plan has had too many in total."""
         _note_plan_budget(loop, self.logger)
         if loop.plan_rework_total > MAX_TOTAL_PLAN_LAPS:
             self.logger.info(
@@ -2466,14 +1447,7 @@ class Qa(Workflow):
         return Continue(result, self.repair_plan, loop=loop)
 
     def _guard_setup(self, result: object, loop: QaLoop) -> Continue | Await | Done:
-        """`guard_setup`: another repair attempt, or the operator gate.
-
-        The budget is not the only thing that ends this loop. A fixer that ran and left the
-        runner naming *exactly* the requirements it named before has proved the repair it can
-        make does not reach the thing that is broken, and asking it again costs another
-        `power="high"` turn under a 2400s timeout to reproduce that. See
-        `QaLoop.setup_problems` for the run this comes from.
-        """
+        """`guard_setup`: another repair attempt, or the operator gate."""
         if loop.setup_rework >= MAX_SETUP_REWORKS:
             return self._exhausted(loop, f"{loop.setup_rework} QA-setup repair")
         _note_lane_budget(loop, self.logger)
@@ -2487,13 +1461,7 @@ class Qa(Workflow):
         return Continue(result, self.setup_fix, loop=loop)
 
     def _guard_qa(self, result: object, loop: QaLoop) -> Continue | Await | Done:
-        """`guard_qa` + `guard_qa_bonus` + `decide_bonus_class` + `grant_qa_bonus`.
-
-        Past `MAX_QA_REWORKS` there is exactly one more pass available, and only for an
-        `evidence` failure class: the finding is that the proof is missing rather than the
-        code, so one verification-only attempt is cheap and often decisive. `code`,
-        `environment` and an untriaged blank earn nothing.
-        """
+        """`guard_qa` + `guard_qa_bonus` + `decide_bonus_class` + `grant_qa_bonus`."""
         if _repeating(loop, "code fix", _run_failures(self)):
             return self._stalled(result, loop, "code fix")
         loop = loop.with_lap("code fix", repaired_failures=_run_failures(self))
@@ -2506,24 +1474,7 @@ class Qa(Workflow):
         return Continue(result, self.apply_fixes, loop=loop.update(bonus_used=True))
 
     def _fixable(self, result: object, loop: QaLoop) -> Continue | Await | Done:
-        """`decide_qa_fixable`: in a `dev` run the findings are reported, not fixed.
-
-        A `product` failure class does not come back here at all. Triage has said the product
-        is wrong — not the plan, not the evidence, not the stack — and the QA lane's fixer is
-        the wrong instrument for that: it is briefed on a QA report, budgeted for a repair
-        lap, and told not to broaden behaviour, so it patches the surface the scenario
-        touched and hands the same defect back one lap later wearing a different assertion.
-        The dev lane owns product code, has the plan, and re-enters review and QA behind
-        itself. So the story goes back to it, and the findings it needs are already on disk
-        in `qa.md` and `qa_dir` — which is why `dev()` needs no brief threaded through it.
-
-        The return is budgeted on `triage_scope`, the same counter a `rescope` spends, and
-        for the same reason: it is the count of times this story has been handed back to the
-        lane upstream, and the two returns are indistinguishable to everything downstream of
-        them. Past the cap the finding is fixed in place rather than bounced again — which is
-        a narrower fix, not a give-up, and the code-fix budget still ends at the operator
-        gate.
-        """
+        """`decide_qa_fixable`: in a `dev` run the findings are reported, not fixed."""
         if self.target_env == "dev":
             return Continue(result, self.report_dev, loop=loop)
         if loop.failure_class == "product" and loop.triage_scope < MAX_TRIAGE_SCOPES:
@@ -2543,19 +1494,7 @@ class Qa(Workflow):
         return self._guard_qa(result, loop)
 
     def _refused(self, result: object, loop: QaLoop, what: str) -> Continue | Await:
-        """A turn that said it cannot get there, handed straight to the operator.
-
-        Every lane node routes its refusal through here rather than through the budget guard
-        beside it. The guard's question is "has this loop had enough tries", and the answer
-        it gets from a turn that just said the work is not doable is the wrong one: the tries
-        are not what is missing, so the loop spends the rest of the budget re-asking, and the
-        story is finally filed as exhausted rather than as blocked on the one thing it is
-        actually blocked on.
-
-        The reason goes into `loop.qa.notes` because that is where `block_notes` — and so the
-        gate body, and so the operator's `context.md` — reads it from. Prefixed with the turn
-        that refused, since by the time a person reads it the only other clue is a counter.
-        """
+        """A turn that said it cannot get there, handed straight to the operator."""
         reason = getattr(result, "notes", "") or "no reason given"
         self.logger.info("%s reported it cannot proceed; escalating: %s", what, reason)
         loop = loop.update(
@@ -2566,16 +1505,7 @@ class Qa(Workflow):
     def _blocked_report(
         self, report: QaReport, loop: QaLoop, resume: _ReportState
     ) -> Await:
-        """A report turn that could not write its summary parks the story on the operator.
-
-        Straight to a person, not through `_gate`: the resolver answers a *question* by
-        quoting what already settles it, and "the write failed" is not one — and the two
-        states this is reached from are terminal, so the gate's own resume path (apply the
-        answer as a QA fix, then re-enter `build_context`) would re-QA a story that has
-        already been judged. The resume here re-dispatches the same turn instead. Nothing
-        underneath it has moved: the findings are on disk, and what the operator clears is
-        whatever stopped the write.
-        """
+        """A report turn that could not write its summary parks the story on the operator."""
         reason = report.notes or "no reason given"
         self.logger.info("the QA report could not be written; escalating: %s", reason)
         loop = loop.update(
@@ -2588,15 +1518,7 @@ class Qa(Workflow):
         return Await(context_path(self), gate.body, resume, loop=loop)
 
     def _gate(self, result: object, loop: QaLoop) -> Continue | Await:
-        """`gate_qa`: hand the block to the auto-operator, or halt for a human.
-
-        The counter is bumped here rather than in `resolve_operator`, because this is the
-        one place both arms pass through — a `human`-mode gate is an escalation too, and
-        numbering only the auto ones would make the second block of a `human` run read as
-        the first. It doubles as the resolver's budget: past `MAX_QA_BLOCKS` this gate stops
-        spending a resolver turn at all and every further block goes to a person. See that
-        constant for why an *answering* resolver makes the difference load-bearing.
-        """
+        """`gate_qa`: hand the block to the auto-operator, or halt for a human."""
         loop = loop.update(escalations=loop.escalations + 1)
         if self.operator_mode in {"human", "operator"} or loop.escalations > MAX_QA_BLOCKS:
             gate = _escalation(self, loop)
@@ -2604,19 +1526,7 @@ class Qa(Workflow):
         return Continue(result, self.resolve_operator, loop=loop)
 
     def _exhausted(self, loop: QaLoop, spent: str = "") -> Continue | Await:
-        """Out of budget — hand the block to the operator gate. There is no other exit.
-
-        Every deciding site in this flow funnels through here, which is what makes it the
-        right place for the ask. Running out of a repair budget is not a verdict on the
-        story — it is a question the flow cannot answer by itself, and the gate is the only
-        way to ask it. There is deliberately no cap on how many times a story can come back
-        through here: a run-side backstop on asking is what turns "ask again" into "give up"
-        (see `coder.shared.escalation`), and budgets keep counting down across a resume
-        rather than resetting, so a second exhaustion still escalates rather than looping.
-
-        `spent` is logged, not stored — `_escalation`'s `where` already reports every
-        counter, so the phrase only needs to reach the log a human tailing the run reads.
-        """
+        """Out of budget — hand the block to the operator gate."""
         if spent:
             self.logger.info("QA budget exhausted (%s) — escalating", spent)
         return self._gate(loop, loop)
@@ -2624,21 +1534,7 @@ class Qa(Workflow):
     def _apply_fixes(
         self, *, qa_notes: str, operator_feedback: str | None, power: str, session: str
     ) -> QaResult:
-        """`apply-qa-fixes.md`, rendered by three callers with three different argument sets.
-
-        `operator_feedback` is omitted rather than passed empty on the plain fix path: there
-        is no operator in that lap, and a blank reads as one who said nothing.
-
-        `session` names the chain the turn resumes, and the caller decides which: the fix
-        laps and the operator-guided lap run on the story's own backbone chain
-        (`_story_chain()`) on purpose, both to stay one conversation with each other — the
-        second is the same fixer being told its first attempt did not land, and it is worth
-        far more knowing what it already tried than re-deriving it — and, when a session id
-        was threaded in from a prior stage, to resume *that* implement session rather than
-        opening a cold one. Applying a product note is not that worklist: it stays on its
-        own `qa-feedback:` chain so a passing story's feedback turn never inherits a fix
-        loop's failure context, or vice versa.
-        """
+        """`apply-qa-fixes.md`, rendered by three callers with three different argument sets."""
         args: dict[str, object] = {
             "story_path": self.ctx.story_path,
             "spec_dir": self.ctx.spec_dir,
@@ -2659,16 +1555,10 @@ class Qa(Workflow):
             args=turn.args | args,
             session=session,
         )
-        # Same boundary as `_fix_scenario`: the turn reports one of three, the gates read
-        # the rolling verdict.
         return QaResult(status=reported.status, notes=reported.notes)
 
     def _dirs(self) -> list[str]:
-        """The repos this story's plan touches — every agent turn's `add_dirs`.
-
-        `dev` and `docs` grant the whole workspace; `qa` grants only `affected_repo_paths`,
-        at every agent turn it dispatches.
-        """
+        """The repos this story's plan touches — every agent turn's `add_dirs`."""
         return list(self.output(resolve_impl_context).affected_repo_paths)
 
 

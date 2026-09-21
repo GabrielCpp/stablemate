@@ -1,15 +1,4 @@
-"""`ostler.refs` — the `code:` bullet's grammar, which three readers share.
-
-The bug these pin was silent by construction. A bullet citing two files —
-
-    - code: `docs-app/react-router.config.ts`, `docs-app/package.json`
-
-— was read as *one* ref by stripping decoration off the ends of the whole string, yielding a
-path with a backtick-comma-backtick in the middle: a ref matching no file, so the node owned
-**neither** of the files it cited. Nothing downstream can tell "cites nothing" from "cites
-something unparseable", so `qa context` simply reported the changed file as `unmapped-change`
-and the node documenting it went unfound.
-"""
+"""`ostler.refs` — the `code:` bullet's grammar, which three readers share."""
 
 from __future__ import annotations
 
@@ -27,13 +16,7 @@ def test_one_bullet_may_cite_several_targets():
 
 
 def test_a_bullet_wrapped_across_lines_still_cites_both():
-    """Found by diffing `ostler doctor` over a real book before and after this pass.
-
-    Two refs do not fit on one line at the width books are written to, so the second lands on
-    a continuation line. The parser hands that newline back as a `softbreak` token rather
-    than as text, and reading only `text` for the separator ended the run there — dropping
-    the second target, and with it a genuinely ungrounded symbol the book had been reporting.
-    """
+    """Found by diffing `ostler doctor` over a real book before and after this pass."""
     value = "`report/services/render.go::buildHTML`,\n`report/services/render.go::tmpl`"
     assert refs.code_refs(value) == [
         "report/services/render.go::buildHTML", "report/services/render.go::tmpl",
@@ -53,11 +36,7 @@ def test_a_trailing_gloss_is_dropped_not_glued_on():
 
 
 def test_inline_code_inside_a_gloss_is_not_a_ref():
-    """A gloss backticks its own identifiers; reading those as refs invents citations.
-
-    The books this shipped against carry dozens of these, and each invented ref resolves to
-    nothing — so an over-eager parse trades a silent miss for a loud false `dangling-code-ref`.
-    """
+    """A gloss backticks its own identifiers; reading those as refs invents citations."""
     value = (
         "`legacy/src/Controller/EntityEditorController.php::tableViews` — the `tableViews` "
         "const, read by the `save` handler"
@@ -68,11 +47,7 @@ def test_inline_code_inside_a_gloss_is_not_a_ref():
 
 
 def test_prose_before_the_first_span_falls_back_to_the_whole_value():
-    """The run must lead: opening with prose is not the grammar, so the comma fallback applies.
-
-    The value comes back whole — unchanged from what this replaced, and loud rather than
-    silent: a malformed bullet surfaces as a ref that resolves to nothing, which is what it is.
-    """
+    """The run must lead: opening with prose is not the grammar, so the comma fallback applies."""
     assert refs.code_refs("see `api/a.py` for the handler") == [
         "see `api/a.py` for the handler",
     ]
@@ -222,9 +197,7 @@ def test_render_roundtrips_a_stamped_ref(value: str):
 
 
 def test_a_stamped_multi_target_bullet_still_cites_both():
-    """The parsing regression this grammar risked: a digest sits outside the backtick span as
-    plain text, which — read verbatim — is prose and would end the leading run right after the
-    first target, silently dropping every citation after it."""
+    """The parsing regression this grammar risked: a digest sits outside the backtick span as plain text, which — read verbatim — is prose and would end the leading run right after the first target, silently dropping every citation after it."""
     value = "`api/a.py` @3f9a1c07b2e4, `api/b.py` @abcdef012345"
     assert refs.code_refs(value) == [
         "api/a.py@3f9a1c07b2e4", "api/b.py@abcdef012345",

@@ -1,20 +1,4 @@
-"""What the library holds, and the text of one item — the read side of the layer stack.
-
-``farrier install`` resolves the library to *render* it. This module resolves the same
-stack to *report* it, which is a different job in one respect that matters: install wants
-the winner of each name and nothing else, while a reader wants to know a name was
-contested at all. An overlay skill shadowing a base skill is invisible from the rendered
-output — you open the base copy, edit it, and watch the overlay's copy get installed
-instead — so every item here carries the full list of layers that provide it, in
-precedence order, rather than just the one that won.
-
-Naming is the other half. A library item is addressed by its **library id**
-(``architecture/hexagonal-architecture``), which is what ``agents.yml`` and the
-user-scope tables write, and it *installs* under its group name
-(``architecture-hexagonal-architecture``). Both are printed, because either is what the
-reader has in hand: the id when they are editing a selection, the installed name when
-they are looking at a generated file and working backwards.
-"""
+"""What the library holds, and the text of one item — the read side of the layer stack."""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -23,10 +7,6 @@ from pathlib import Path
 from farrier.layers import BASE_LAYER_NAME, LAYERS, Layer, layer_dirs
 from farrier.sources import Source, group_id, load_sources
 
-#: The kinds ``list`` reports, in the order it prints them, mapped to the singular
-#: ``show`` takes. Skills first: it is the biggest set and the one anybody is looking
-#: for. Ordering is fixed rather than alphabetical so the output reads the same way
-#: every time and a diff of two machines' catalogs lines up.
 KINDS: dict[str, str] = {
     "skills": "skill",
     "prompts": "prompt",
@@ -39,17 +19,10 @@ KINDS: dict[str, str] = {
 
 @dataclass(frozen=True)
 class Item:
-    """One addressable library item, and every layer that provides it.
-
-    *alias* is the name it installs under before any repo prefix — empty for the kinds
-    that are never installed as a file of their own (a pack is a selection, a scaffold
-    is a recipe).
-    """
+    """One addressable library item, and every layer that provides it."""
 
     name: str
     alias: str
-    #: ``(layer name, file)`` for every layer holding this name, highest precedence
-    #: first. Never empty.
     provided: tuple[tuple[str, Path], ...]
 
     @property
@@ -75,13 +48,7 @@ class Item:
 
 
 def _dirs(*parts: str) -> list[tuple[str, Path]]:
-    """``(layer name, dir)`` per layer holding ``<parts>``, one entry per real directory.
-
-    A stack that names the same directory twice is one library, not two — the shape a
-    repo gets by pointing both the overlay and ``$STABLEMATE_BASE_DIR`` at its own tree
-    to pin what it resolves. Reporting it as an item shadowing itself would be a
-    conflict that does not exist.
-    """
+    """``(layer name, dir)`` per layer holding ``<parts>``, one entry per real directory."""
     seen: set[Path] = set()
     found: list[tuple[str, Path]] = []
     for layer, directory in layer_dirs(*parts):
@@ -111,11 +78,7 @@ def _layer_name(source: Source) -> str:
 
 
 def _source_items(kind: str, *parts: str, installed: bool = True) -> list[Item]:
-    """Items for a kind loaded as ``Source`` records — skills, prompts, policies.
-
-    Deliberately not ``load_layered_sources``: that collapses each id to its winner,
-    which is the one thing this module exists to show.
-    """
+    """Items for a kind loaded as ``Source`` records — skills, prompts, policies."""
     found: dict[str, list[Source]] = {}
     for name, root in _dirs(*parts):
         for source in load_sources(root, kind, Layer(root=root, name=name)):
@@ -151,8 +114,6 @@ def items(kind: str) -> list[Item]:
     if kind == "prompts":
         return _source_items("prompt", "library", "prompts")
     if kind == "policies":
-        # A policy is never installed as a file of its own — it is aggregated into a
-        # repo's instruction file — so it has no installed name to print.
         return _source_items("policy", "library", "policies", installed=False)
     if kind == "packs":
         return _file_items(".yml", "packs")
@@ -164,12 +125,7 @@ def items(kind: str) -> list[Item]:
 
 
 def layer_label(choice: str) -> str:
-    """The stack's real layer name for the shorthand ``base`` / ``overlay``.
-
-    ``--layer overlay`` names a path that differs per machine, so the shorthand is what
-    a command can be written down with — in a README, in a script — and still mean the
-    same thing on the next checkout.
-    """
+    """The stack's real layer name for the shorthand ``base`` / ``overlay``."""
     if choice == "base":
         return BASE_LAYER_NAME
     overlay = [layer.name for layer in LAYERS if layer.name != BASE_LAYER_NAME]
@@ -182,13 +138,7 @@ def layer_label(choice: str) -> str:
 
 
 def format_list(kinds: list[str], layer: str | None = None) -> str:
-    """The catalog, one block per kind, as columns.
-
-    *layer* narrows to the items a single layer **provides** rather than the ones it
-    wins: what is in the base library is a fair question to ask even where the overlay
-    shadows the answer, and filtering on the winner would silently answer a different
-    one.
-    """
+    """The catalog, one block per kind, as columns."""
     blocks: list[str] = []
     for kind in kinds:
         found = items(kind)
@@ -218,14 +168,7 @@ def _format_kind(kind: str, found: list[Item], layer: str | None) -> str:
 
 
 def find(kind: str, name: str) -> Item:
-    """The item of *kind* that *name* addresses — by library id, installed name or basename.
-
-    Three spellings because all three are things a reader has in hand, and which one they
-    have depends on where they came from: the id from a selection list, the installed name
-    from a generated file, the bare basename from memory. Tried in that order, and an
-    ambiguous basename is reported as ambiguous rather than resolved to whichever came
-    first — the two skills it could mean are a choice only the caller can make.
-    """
+    """The item of *kind* that *name* addresses — by library id, installed name or basename."""
     catalog = items(kind)
     key = name.replace(".", "-")
     candidates = [

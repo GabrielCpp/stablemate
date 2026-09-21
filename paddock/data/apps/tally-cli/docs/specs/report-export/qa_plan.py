@@ -1,21 +1,4 @@
-"""The frozen QA plan for `report-export`.
-
-Same mechanism as the two stories before it — `python3 -m tally` through the `python3` tool,
-`driver="python"` for the harness the body runs in, nothing imported from `tally`.
-
-What this story adds is that the observable is a *stream*, and the two claims it has to make
-about that stream are claims about the whole of it rather than about anything in it.
-`#report-as-json:consistency:1` says stdout carries exactly one JSON object, so the assertion
-is that the entire captured stdout parses as one document — a grep for a total passes on a
-stream with a line of prose in front of it, and a caller's `json.load` does not. And
-`#export-to-csv:consistency:1` says the first line is the header, so the assertion reads line
-one as a header rather than counting lines or checking the file arrived: an export missing its
-header is valid CSV with correct values in every field.
-
-The empty ledger is exported too, and on purpose. "Header, whether or not the ledger has
-entries" is the half of that bullet that a populated export cannot distinguish from an export
-that writes a header only when it has something to put under it.
-"""
+"""The frozen QA plan for `report-export`."""
 
 import json
 
@@ -26,7 +9,6 @@ plan(run_id="qa-report-export", story="report-export")
 
 tally = target("tally", driver="python")
 
-#: Read one file as evidence: whether it is there, its digest, and its text.
 _READ = """
 import hashlib, json, pathlib, sys
 p = pathlib.Path(sys.argv[1])
@@ -38,7 +20,6 @@ else:
 """
 
 
-#: Every file under a directory, keyed by its path and valued by its digest.
 _CENSUS = """
 import hashlib, json, pathlib, sys
 root = pathlib.Path(sys.argv[1])
@@ -51,7 +32,6 @@ for entry in sorted(root.rglob("*")):
 json.dump(found, sys.stdout)
 """
 
-#: Lay a file down for the product to read, over the same boundary everything else crosses.
 _WRITE = """
 import pathlib, sys
 path = pathlib.Path(sys.argv[1])
@@ -61,11 +41,7 @@ path.write_text(sys.argv[2], encoding="utf-8")
 
 
 def run(qa: Qa, ledger, *argv, timeout: float = 120.0):
-    """One invocation of the product, on the ledger this scenario owns.
-
-    Duplicated per plan rather than shared through a fixture module: `qa: {fixture_modules:}`
-    is retired, and this plan is frozen corpus, so the cost of the duplicate is a fixed one.
-    """
+    """One invocation of the product, on the ledger this scenario owns."""
     return qa.tool("python3").run("-m", "tally", "--file", str(ledger), *argv, timeout=timeout)
 
 
@@ -83,12 +59,7 @@ def read(qa: Qa, path):
 
 
 def lines(qa: Qa, record):
-    """The lines of a file read by `read`, or nothing at all when it is not there.
-
-    Read through `qa.field` rather than by subscript: a fixture that came back shaped
-    differently would raise here and take the whole scenario down as `unproven`, where
-    `MISSING` lets the assertion downstream go red and say so.
-    """
+    """The lines of a file read by `read`, or nothing at all when it is not there."""
     if not qa.field(record, "exists"):
         return []
     return [line for line in qa.field(record, "text").splitlines() if line != ""]
@@ -121,7 +92,6 @@ def write(qa: Qa, path, text):
     )
 
 
-#: One expense, importable into a ledger the same way `add` would put one there.
 ONE_ROW = "who,what,amount_cents,spent_on\ncyd,coffee,300,2026-03-03\n"
 
 
@@ -234,9 +204,6 @@ def report_json_puts_one_object_on_stdout_and_everything_else_on_stderr(qa: Qa) 
         covers=["ac:2", "okf:docs/features/tally/tally.md#report-as-json:contract"],
     )
 
-    # The whole stream, in one call, the way a caller who piped this reads it. A progress
-    # line in front of the object leaves every field of the report correct and this line the
-    # only thing that fails.
     decoded = None
     parsed = True
     try:
@@ -387,8 +354,6 @@ def an_export_leads_with_its_header_even_when_there_is_nothing_under_it(qa: Qa) 
         covers=["ac:4", "okf:docs/features/tally/flows/track-a-trip.md:end:1", "okf:docs/features/tally/tally.md#export-to-csv:does:1"],
     )
 
-    # `init`, `add`, `report`, `export` is the whole journey, and the trip that has just been
-    # handed on is only the trip that was started if the ledger behind the CSV still says so.
     walked = run(qa, ledger, "report", "--json")
     qa.require(
         "the journey's ledger still reports after the trip has been handed on",
@@ -404,8 +369,6 @@ def an_export_leads_with_its_header_even_when_there_is_nothing_under_it(qa: Qa) 
         covers=["okf:docs/features/tally/flows/track-a-trip.md:start:1", "okf:docs/features/tally/flows/track-a-trip.md:end:1", "okf:docs/features/tally/flows/track-a-trip.md:end-state"],
     )
 
-    # The other half of the bullet: an export whose header appears only when there is data
-    # is indistinguishable from a correct one up to here.
     empty_ledger = qa.artifact("export-empty/tally.json", kind="json")
     empty_csv = qa.artifact("export-empty/trip.csv", kind="log")
     started = run(qa, empty_ledger, "init", "--currency", "EUR")
@@ -481,8 +444,6 @@ def a_report_totals_the_ledger_it_was_given_and_not_its_neighbour(qa: Qa) -> Non
         covers=["okf:docs/features/tally/tally.md#file:semantics:1"],
     )
 
-    # A read cannot violate the separation; only a write can. Put one against the named
-    # ledger, with the neighbour's digest either side of it.
     untouched = read(qa, there)
     landed = run(qa, here, "add", "dee", "tram", "180", "2026-03-04")
     qa.require(

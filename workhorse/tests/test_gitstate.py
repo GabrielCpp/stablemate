@@ -1,18 +1,4 @@
-"""Tests for workhorse/gitstate.py and the repo state it stamps onto spans and logs.
-
-The engine drives arbitrary workflows over arbitrary trees, so what is asserted here is
-deliberately narrow: that an observation is *recorded*, and that a HEAD which moves
-inside a span produces unequal endpoints. Nothing asserts the two should be equal — a
-node that commits is doing its job, and telling that apart from a rebase is the reader's
-problem, not the engine's.
-
-The git half runs against a real temporary repository, which is the only way to test a
-module whose entire purpose is what `git` says. It skips itself where git is absent
-rather than failing: a machine with no git is one where this module correctly reports
-nothing.
-
-Run: ./.venv/bin/python tests/test_gitstate.py   (or via pytest)
-"""
+"""Tests for workhorse/gitstate.py and the repo state it stamps onto spans and logs."""
 from __future__ import annotations
 
 import importlib
@@ -48,9 +34,6 @@ def _commit(path: Path, text: str) -> str:
     return gitstate.observe(path, dirty=False).head
 
 
-# --------------------------------------------------------------------------- #
-# Observing
-# --------------------------------------------------------------------------- #
 def test_observe_reports_head_branch_and_clean():
     if not HAVE_GIT:
         return
@@ -146,8 +129,6 @@ def test_observe_reports_a_dirty_tree_and_can_snapshot_it():
         (Path(tmp) / "file.txt").write_text("edited")
         state = gitstate.observe(tmp, stash=True)
         assert state.dirty is True
-        # `stash create` writes a commit object without touching the worktree, the
-        # index, or the stash ref — so the edit is still there afterwards.
         assert len(state.stash) == 40
         assert (Path(tmp) / "file.txt").read_text() == "edited"
 
@@ -158,8 +139,6 @@ def test_a_non_repo_is_observed_as_nothing_rather_than_as_clean():
         state = gitstate.observe(tmp)
         assert state.observed is False
         assert state.head == "" and state.branch == ""
-        # Not False. "This directory is not a repository" and "this repository has no
-        # uncommitted work" are different facts, and only one of them was learned.
         assert state.dirty is None
         assert state.attributes("git") == {}
 
@@ -194,8 +173,6 @@ def test_head_is_cached_until_refreshed():
             first = gitstate.current_head()
             moved = _commit(Path(tmp), "two")
             assert moved != first
-            # The stale answer is the deliberate trade: a `rev-parse` per log line is
-            # not affordable, and the span endpoints bracket the move regardless.
             assert gitstate.current_head() == first
             assert gitstate.current_head(refresh=True) == moved
             assert gitstate.current_head() == moved
@@ -206,24 +183,14 @@ def test_head_is_cached_until_refreshed():
 def test_a_git_that_cannot_answer_costs_a_field_not_an_exception():
     original = gitstate.TIMEOUT_S
     try:
-        # A command that would take far longer than it is given. The point is the
-        # exception path, not the timeout value: every way git can fail to answer has
-        # to leave an empty field behind.
         gitstate.TIMEOUT_S = 0.001
         assert gitstate._git(".", "log", "--all") == ""
     finally:
         gitstate.TIMEOUT_S = original
 
 
-# --------------------------------------------------------------------------- #
-# Spans
-# --------------------------------------------------------------------------- #
 class _Head:
-    """A stand-in for the observer, so span tests need no repository.
-
-    It records how it was asked, which is half of what is under test: an open reads the
-    cache, a close re-reads, and a `git` per span open is the cost that was avoided.
-    """
+    """A stand-in for the observer, so span tests need no repository."""
 
     def __init__(self, head: str = "aaa") -> None:
         self.head = head
@@ -289,8 +256,7 @@ class _FakeMeter:
 
 
 def _spans() -> tuple:
-    """A `_Telemetry` over fake SDK objects — the same shape tests/test_otel.py uses,
-    kept local so this file stays standalone-runnable."""
+    """A `_Telemetry` over fake SDK objects — the same shape tests/test_otel.py uses, kept local so this file stays standalone-runnable."""
     tracer = _FakeTracer()
     t = otel._Telemetry(
         _FakeTraceApi, tracer, _FakeMeter(), lambda: None,
@@ -309,7 +275,7 @@ def test_a_head_that_moves_inside_a_node_leaves_unequal_endpoints():
             ts="2026-01-01T00:00:00+00:00", seq=seq, node=node, phase=phase, **kw
         )
         t.record_event(event("plan", 1, "enter"))
-        probe.head = "bbb"  # the agent, or the node, committed
+        probe.head = "bbb"
         t.record_event(event("plan", 1, "done", next="build"))
         span = tracer.by_name("plan")
         assert span.attrs["git.head.start"] == "aaa"
@@ -329,8 +295,6 @@ def test_a_turn_records_the_tree_it_ran_against():
         span = tracer.by_name("agent_turn")
         assert span.attrs["git.head.start"] == "aaa"
         assert span.attrs["git.head.end"] == "bbb"
-        # The containing agent-node span already captured this scope. Its turn reuses
-        # that immutable start snapshot; only the end re-observes what the agent moved.
         assert probe.refreshes == 1
     finally:
         otel.set_head_probe(None)
@@ -436,9 +400,6 @@ def test_a_probe_that_raises_costs_an_attribute_not_the_span():
         otel.set_head_probe(None)
 
 
-# --------------------------------------------------------------------------- #
-# run.json
-# --------------------------------------------------------------------------- #
 def test_run_json_records_what_the_run_started_from_and_ended_on():
     if not HAVE_GIT:
         return
@@ -454,15 +415,11 @@ def test_run_json_records_what_the_run_started_from_and_ended_on():
             started = records.parse_run_record((writer.run_dir / "run.json").read_text())
             assert started.repo_start is not None
             assert started.repo_start.branch == "main"
-            # No end yet — the run is still going, and an "ended on" written here would
-            # be a guess at a commit the run has not reached.
             assert started.repo_end is None
 
             moved = _commit(repo, "two")
             writer.finish("terminal")
             ended = records.parse_run_record((writer.run_dir / "run.json").read_text())
-            # Preserved, not re-observed: "what the run started from" must not drift to
-            # mean "what the last write happened to see".
             assert ended.repo_start is not None
             assert ended.repo_start.head == started.repo_start.head
             assert ended.repo_end is not None
@@ -482,16 +439,12 @@ def test_run_json_outside_a_repo_records_no_observation_at_all():
 
 
 def test_an_older_run_json_without_the_fields_still_parses():
-    """The resume path reads whatever the previous process left, including a file
-    written before any of this existed."""
+    """The resume path reads whatever the previous process left, including a file written before any of this existed."""
     records = importlib.import_module("workhorse.records")
     record = records.parse_run_record('{"workflow": "wf", "run_id": "x"}')
     assert record.repo_start is None and record.repo_end is None
 
 
-# --------------------------------------------------------------------------- #
-# Logs
-# --------------------------------------------------------------------------- #
 def _record() -> logging.LogRecord:
     return logging.LogRecord("t", logging.INFO, __file__, 1, "hello", None, None)
 

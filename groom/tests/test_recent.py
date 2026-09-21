@@ -1,17 +1,4 @@
-"""Tests for :func:`groom.cli.recent` and :func:`groom.store.recent_runs`.
-
-The CLI fills the dashboard gap :func:`status` leaves: ``status`` answers
-"*is this run alive right now?*" from the running server's in-memory
-heartbeat cache; ``recent`` answers "*what's the most recent telemetry for
-every run the database has rows for, alive or dead, ordered by that
-recency?*" from SQLite alone, with no ``groom serve`` in the picture. The
-seam here is the focused store helper and the formatting/filtering it
-drives — runs ordered by their latest metric or span timestamp, with a
-single grouped pass of indexed queries so an interactive ``-n 10`` returns
-in well under a second on the 1.4GB production store.
-
-Run: ``uv run pytest tests/test_recent.py``
-"""
+"""Tests for :func:`groom.cli.recent` and :func:`groom.store.recent_runs`."""
 
 from __future__ import annotations
 
@@ -53,11 +40,7 @@ def _temp_db():
 
 
 def _span(run_id: str, *, ts: float, workflow: str = "okf-builder") -> dict:
-    """A minimal span the store will accept.
-
-    Span / status fields are the columns ``insert_spans`` writes; this test
-    only keys on ``run_id`` and the timestamps, so the rest is collapsed to
-    the empty strings the schema accepts."""
+    """A minimal span the store will accept."""
     return {
         "span_id": f"sp_{run_id}_{ts}",
         "trace_id": "tr_a",
@@ -95,9 +78,7 @@ def _capture_recent(**kwargs) -> str:
 
 
 def test_recent_runs_orders_by_merged_span_and_metric_recency() -> None:
-    """Two runs that emitted a span at the same minute but metrics at different
-    minutes: the one whose metrics are fresher wins. The ranking is the merge
-    of the two streams, not whichever one was queried last."""
+    """Two runs that emitted a span at the same minute but metrics at different minutes: the one whose metrics are fresher wins."""
     with _temp_db():
         now = 100 * DAY
         store.insert_spans([_span("alpha", ts=now - 100), _span("beta", ts=now - 50)])
@@ -105,7 +86,7 @@ def test_recent_runs_orders_by_merged_span_and_metric_recency() -> None:
             [
                 _metric(
                     "alpha", ts=now
-                ),  # alpha's heartbeats are fresher than its spans
+                ),
                 _metric("beta", ts=now - 200),
             ]
         )
@@ -117,17 +98,11 @@ def test_recent_runs_orders_by_merged_span_and_metric_recency() -> None:
 
 
 def test_recent_runs_limit_is_enforced_post_merge() -> None:
-    """``limit`` lands after the metrics merge, not after the spans scan —
-    the screening pass widens because a run dead by its last span but live by
-    its last heartbeat still belongs in the top N."""
+    """``limit`` lands after the metrics merge, not after the spans scan — the screening pass widens because a run dead by its last span but live by its last heartbeat still belongs in the top N."""
     with _temp_db():
         now = 100 * DAY
         for i in range(20):
             store.insert_spans([_span(f"run_{i:02d}", ts=now - i * 100)])
-        # Now overwrite run_5's recency with a fresh metric — its old span
-        # says one hour ago, but it just heartbeated. Without the merge it
-        # would still rank by old span and miss the ``-n 5`` cut unless the
-        # spans query happened to widen enough.
         store.insert_metrics([_metric("run_05", ts=now + 1000)])
         rows = recent_runs(limit=5)
         assert "run_05" in {row.run_id for row in rows}, (
@@ -137,10 +112,7 @@ def test_recent_runs_limit_is_enforced_post_merge() -> None:
 
 
 def test_recent_runs_filters_by_workflow() -> None:
-    """``workflow=`` lands at SQL level on the spans scan, not in Python
-    filtering after the merge — the metrics lookup is bounded to the
-    spans-seen runs, so a wide Python-level filter would still pull
-    every metric row."""
+    """``workflow=`` lands at SQL level on the spans scan, not in Python filtering after the merge — the metrics lookup is bounded to the spans-seen runs, so a wide Python-level filter would still pull every metric row."""
     with _temp_db():
         now = 100 * DAY
         store.insert_spans(
@@ -158,8 +130,7 @@ def test_recent_runs_filters_by_workflow() -> None:
 
 
 def test_recent_runs_zero_limit_returns_every_run() -> None:
-    """``limit=0`` is the operator's \"everything sorted by recency\" — used
-    here for archival sweeps where top N is not the question."""
+    """``limit=0`` is the operator's "everything sorted by recency" — used here for archival sweeps where top N is not the question."""
     with _temp_db():
         now = 100 * DAY
         for i in range(10):
@@ -169,8 +140,7 @@ def test_recent_runs_zero_limit_returns_every_run() -> None:
 
 
 def test_recent_runs_metadata_round_trips() -> None:
-    """Workflow comes from the spans table at the group-by level — the
-    helper doesn't reach for ``run_bounds`` to fill it, the SQL does."""
+    """Workflow comes from the spans table at the group-by level — the helper doesn't reach for ``run_bounds`` to fill it, the SQL does."""
     with _temp_db():
         now = 100 * DAY
         store.insert_spans([_span("c1", ts=now, workflow="groom")])
@@ -181,19 +151,11 @@ def test_recent_runs_metadata_round_trips() -> None:
 
 
 def test_recent_cli_alive_flag_uses_metric_heartbeat_not_span_close() -> None:
-    """``alive`` follows the metrics-side timestamp, the same source the
-    dashboard liveness chip keys on. A run with no spans closed in 30 min
-    but a heartbeating heartbeat 30s ago is alive — the dashboard would
-    show it alive, so ``recent`` does too.
-
-    This is the property the merge buys; without it the helper would say
-    \"dead\" for every long-running node visit (which closes its span after
-    minutes of work) and the operator would lose every live, busy run.
-    """
+    """``alive`` follows the metrics-side timestamp, the same source the dashboard liveness chip keys on."""
     with _temp_db():
         now = time.time()
-        store.insert_spans([_span("busy", ts=now - 1800)])  # span closed 30 min ago
-        store.insert_metrics([_metric("busy", ts=now - 30)])  # heartbeat 30 s ago
+        store.insert_spans([_span("busy", ts=now - 1800)])
+        store.insert_metrics([_metric("busy", ts=now - 30)])
 
         out = _capture_recent(limit=5, alive_since_s=180.0)
         assert "busy" in out, "the heartbeating run must render with the alive marker"
@@ -201,8 +163,7 @@ def test_recent_cli_alive_flag_uses_metric_heartbeat_not_span_close() -> None:
 
 
 def test_recent_cli_dead_flag_for_run_older_than_threshold() -> None:
-    """The counterpart: a run whose last telemetry is past the threshold
-    is dead, regardless of recency."""
+    """The counterpart: a run whose last telemetry is past the threshold is dead, regardless of recency."""
     with _temp_db():
         now = time.time()
         store.insert_spans([_span("yesterday", ts=now - 86400)])
@@ -214,9 +175,7 @@ def test_recent_cli_dead_flag_for_run_older_than_threshold() -> None:
 
 
 def test_recent_cli_workflow_filter_appears_in_empty_message() -> None:
-    """When the workflow filter excludes every run, the empty-path print
-    surfaces the filter — an empty ``recent --workflow foo`` should be
-    diagnosable from the output alone, not by re-running it."""
+    """When the workflow filter excludes every run, the empty-path print surfaces the filter — an empty ``recent --workflow foo`` should be diagnosable from the output alone, not by re-running it."""
     with _temp_db():
         store.insert_spans([_span("only", ts=100.0, workflow="okf-builder")])
         out = _capture_recent(limit=5, workflow="coder")
@@ -225,9 +184,7 @@ def test_recent_cli_workflow_filter_appears_in_empty_message() -> None:
 
 
 def test_recent_cli_json_has_alive_ts_and_workflow() -> None:
-    """``--json`` is the machine-readable surface; the loads()ed shape is what
-    a dashboard or alert tool would key on. Pin the keys here so a
-    downstream consumer's parse doesn't silently drift."""
+    """``--json`` is the machine-readable surface; the loads()ed shape is what a dashboard or alert tool would key on."""
     with _temp_db():
         store.insert_spans([_span("live", ts=1_000_000_000.0, workflow="okf-builder")])
         out = _capture_recent(limit=5, as_json=True)
@@ -241,10 +198,7 @@ def test_recent_cli_json_has_alive_ts_and_workflow() -> None:
 
 
 def test_recent_cli_empty_db_prints_diagnostic() -> None:
-    """An empty DB gets an actionable message rather than a silent no-rows
-    silence — the operator wants to know the path is wired, not that the
-    answer is ``nothing``.
-    """
+    """An empty DB gets an actionable message rather than a silent no-rows silence — the operator wants to know the path is wired, not that the answer is ``nothing``."""
     with _temp_db():
         out = _capture_recent(limit=5)
         assert "no runs found in" in out

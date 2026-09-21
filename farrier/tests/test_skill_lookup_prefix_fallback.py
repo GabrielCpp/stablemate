@@ -1,14 +1,4 @@
-"""Repo-prefixed overlay skills stay addressable by their generic name.
-
-Project overlay skills carry their repo prefix in the library
-(`projects/acme/acme-developer`), so two projects can both ship a
-"developer" overlay without colliding. Shared workflow prompts, however,
-reference the overlay generically — `instruction_ref("developer")` — because
-the same prompt renders for every repo. The lookup therefore falls back to
-`<prefix>-<name>` when the generic name misses.
-
-    ./.venv/bin/python -m pytest tests/test_skill_lookup_prefix_fallback.py
-"""
+"""Repo-prefixed overlay skills stay addressable by their generic name."""
 from __future__ import annotations
 
 import textwrap

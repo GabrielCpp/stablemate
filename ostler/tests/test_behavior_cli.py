@@ -39,7 +39,6 @@ def test_audit_prepares_uncited_evidence_and_ungrounded_claims(
     assert any("limit=20" in item["text"] for item in candidates)
     assert any("50 items" in item["text"] for item in claims)
     assert any("missing.py::list_items" in item["citations"] for item in claims)
-    # api.py exports list_items and nothing cites it: a deterministic finding, never a packet.
     assert {packet["group"] for packet in data["packets"]} == {"ungrounded_book"}
     assert [(item["path"], item["exported_symbols"]) for item in data["undocumented"]] == [("api.py", ["list_items"])]
     assert len(claims) == 1, "The API and endpoint titles must not become semantic claims"

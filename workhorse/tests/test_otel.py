@@ -1,18 +1,4 @@
-"""Tests for workhorse/otel.py — the opt-in OpenTelemetry facade.
-
-Two halves:
-- the ENABLEMENT GATE and the no-op it falls back to: WORKHORSE_OTEL's tri-state
-  (force-on / force-off / auto) and the collector probe auto mode turns on, plus
-  the inert-with-nothing-configured contract — every public function must be an
-  exception-free call and ArtifactWriter._append_event must behave exactly as
-  before (instrumentation may never change a run);
-- the _Telemetry span logic, exercised with fake tracer/meter objects so the
-  tests need no OTel SDK: (node, seq)-keyed enter/done pairing, flow nesting
-  via the span stack, the end_run sweep of spans a crash left open, turn
-  attrs/events, and the gas/heartbeat metrics.
-
-Run: ./.venv/bin/python tests/test_otel.py   (or via pytest)
-"""
+"""Tests for workhorse/otel.py — the opt-in OpenTelemetry facade."""
 from __future__ import annotations
 
 import contextlib
@@ -35,22 +21,15 @@ from workhorse.runner import ladder, usage
 
 
 def _event(node: str, seq: int, phase: records.NodePhase, **extra):
-    """One event exactly as ArtifactWriter writes it — the model record_event takes.
-
-    Building the real `NodeEvent` rather than a dict is the point: the writer and
-    the exporter now share one type, so a field renamed on it breaks here instead
-    of silently dropping a span attribute."""
+    """One event exactly as ArtifactWriter writes it — the model record_event takes."""
     return records.NodeEvent(ts="2026-01-01T00:00:00+00:00", seq=seq, node=node,
                              phase=phase, **extra)
 
 
-# --------------------------------------------------------------------------- #
-# Fakes standing in for the OTel API/SDK
-# --------------------------------------------------------------------------- #
 class FakeSpan:
     def __init__(self, name: str, context, attributes) -> None:
         self.name = name
-        self.parent = context  # whatever set_span_in_context wrapped, or None
+        self.parent = context
         self.attrs = dict(attributes or {})
         self.events: list[tuple[str, dict]] = []
         self.status = None
@@ -98,7 +77,7 @@ class FakeTraceApi:
 
     @staticmethod
     def set_span_in_context(span):
-        return span  # the "context" IS the parent span, easy to assert on
+        return span
 
 
 class FakeInstrument:
@@ -137,12 +116,8 @@ def _telemetry() -> tuple:
     return t, tracer, meter, shutdown
 
 
-# --------------------------------------------------------------------------- #
-# The no-op default
-# --------------------------------------------------------------------------- #
 def test_noop_by_default_all_calls_inert():
     assert otel.enabled() is False
-    # Every public function must be safely callable with nothing configured.
     otel.record_event(_event("a", 1, "enter"))
     otel.state_start("start", 1)
     otel.state_end("start", 1, "finish")
@@ -159,20 +134,12 @@ def test_noop_by_default_all_calls_inert():
     otel.turn_heartbeat("a", 3.0, 90.0)
     otel.turn_end()
     otel.end_run("terminal")
-    assert otel.current_node() == ""  # the null adapter answers, it does not raise
+    assert otel.current_node() == ""
     assert otel.enabled() is False
 
 
 class FakeTelemetry(otel._NullTelemetry):
-    """A stand-in for what _build returns: an object satisfying the Telemetry port.
-
-    It answers `enabled()` truthfully, which is what the gate now reads — there is
-    no `active is None` sentinel to assert on any more, because absence is the
-    null adapter rather than a missing reference.
-
-    Subclassing the null adapter is what makes it the port and not merely
-    port-shaped: only the two signals this test reads need a body, and the dozen it
-    does not stay the no-op they are in production."""
+    """A stand-in for what _build returns: an object satisfying the Telemetry port."""
 
     def __init__(self) -> None:
         self.ended: list[tuple[str, str | None]] = []
@@ -192,12 +159,7 @@ class FakeTelemetry(otel._NullTelemetry):
 
 @contextlib.contextmanager
 def installed(telemetry):
-    """Install ``telemetry`` as the process's active adapter for the block.
-
-    The module functions delegate to the installed host, so this is what makes
-    ``otel.set_labels(...)`` land somewhere a test can read. Restoring the host
-    ``install`` handed back is the whole teardown — there is no module state to
-    put back by hand."""
+    """Install ``telemetry`` as the process's active adapter for the block."""
     previous = otel.install(otel.TelemetryHost(active=telemetry))
     try:
         yield telemetry
@@ -207,16 +169,7 @@ def installed(telemetry):
 
 @contextlib.contextmanager
 def _gate(forced, reachable, under_test=False):
-    """Pin all three inputs start_run's gate reads: the WORKHORSE_OTEL tri-state, the
-    collector probe, and the test-process guard. The probe must never be left live in
-    a test — the dev machine may well have `groom serve` up, which would make these
-    pass or fail by environment. The guard is pinned for the opposite reason: these
-    tests *are* a test process, so left real it would answer True for every case and
-    the gate's other two inputs would never be exercised. The build effect is faked
-    too, so no test needs the optional SDK.
-
-    All four are fields of the host this installs — nothing here assigns into the
-    module. The previous host comes back from ``install`` and is put back at the end."""
+    """Pin all three inputs start_run's gate reads: the WORKHORSE_OTEL tri-state, the collector probe, and the test-process guard."""
     probes: list[str] = []
     built: list[tuple] = []
     host = otel.TelemetryHost(
@@ -232,13 +185,13 @@ def _gate(forced, reachable, under_test=False):
     try:
         yield probes, built
     finally:
-        otel.end_run("test")  # close what the test opened, through the real teardown
+        otel.end_run("test")
         otel.install(previous)
 
 
 def test_tristate_parses_force_on_force_off_and_auto():
-    assert otel._tristate(None) is None  # unset → auto
-    assert otel._tristate("  ") is None  # blank → auto, not "on"
+    assert otel._tristate(None) is None
+    assert otel._tristate("  ") is None
     for off in ("0", "false", "no", "FALSE"):
         assert otel._tristate(off) is False
     for on in ("1", "true", "yes", "anything"):
@@ -246,7 +199,6 @@ def test_tristate_parses_force_on_force_off_and_auto():
 
 
 def test_auto_activates_when_the_collector_answers():
-    # The default path: nobody exported WORKHORSE_OTEL, groom is up, spans flow.
     with _gate(forced=None, reachable=True) as (probes, built):
         otel.start_run("wf", "run-1")
         assert otel.enabled() is True
@@ -258,21 +210,18 @@ def test_auto_stays_noop_when_no_collector_is_listening():
     with _gate(forced=None, reachable=False) as (_, built):
         otel.start_run("wf", "run-1")
         assert otel.enabled() is False
-        assert built == []  # the SDK is never even built
+        assert built == []
 
 
 def test_force_off_wins_over_a_reachable_collector():
-    # WORKHORSE_OTEL=0 is the opt-out, and auto-on must not have weakened it.
     with _gate(forced=False, reachable=True) as (probes, built):
         otel.start_run("wf", "run-1")
         assert otel.enabled() is False
-        assert probes == []  # not even probed — the answer can't change the outcome
+        assert probes == []
         assert built == []
 
 
 def test_force_on_skips_the_probe():
-    # An explicit WORKHORSE_OTEL=1 targets a collector that may come up later (or
-    # sit behind something a TCP connect can't see), so it must not be gated on it.
     with _gate(forced=True, reachable=False) as (probes, built):
         otel.start_run("wf", "run-1")
         assert otel.enabled() is True
@@ -281,18 +230,14 @@ def test_force_on_skips_the_probe():
 
 
 def test_auto_declines_in_a_test_process():
-    # A suite run on a machine with `groom serve` up used to export like a real run,
-    # hundreds of times per invocation, into the same store the dashboard reads.
     with _gate(forced=None, reachable=True, under_test=True) as (probes, built):
         otel.start_run("wf", "run-1")
         assert otel.enabled() is False
-        assert probes == []  # not even probed — the answer can't change the outcome
+        assert probes == []
         assert built == []
 
 
 def test_force_on_still_wins_in_a_test_process():
-    # The escape hatch the telemetry tests themselves need: WORKHORSE_OTEL=1 means
-    # the operator has said so, and the guard is a default, not a prohibition.
     with _gate(forced=True, reachable=False, under_test=True) as (_, built):
         otel.start_run("wf", "run-1")
         assert otel.enabled() is True
@@ -300,14 +245,10 @@ def test_force_on_still_wins_in_a_test_process():
 
 
 def test_under_test_detects_this_very_process():
-    # Self-evidencing: whatever runs this file (pytest, or `python tests/test_otel.py`)
-    # is a test process, so the real predicate — not the pinned one — must say so.
     assert otel._under_test() is True
 
 
 def test_probe_detects_a_listening_socket_and_a_dead_port():
-    # The real probe against a real socket: bound-and-listening is reachable,
-    # and the same port is not once it's closed.
     with socket.socket() as server:
         server.bind(("127.0.0.1", 0))
         server.listen(1)
@@ -317,31 +258,25 @@ def test_probe_detects_a_listening_socket_and_a_dead_port():
 
 
 def test_probe_treats_a_malformed_endpoint_as_no_collector():
-    # Never raises out of start_run's gate, whatever the endpoint says.
     assert otel._collector_reachable("not-a-url", 0.25) is False
     assert otel._collector_reachable("", 0.25) is False
 
 
 def test_metric_export_defaults_to_the_heartbeat_interval():
-    # The export interval, not the heartbeat, is what bounds a collector's freshness:
-    # beats recorded every 10s but shipped on the SDK's 60s default leave a dead run
-    # looking alive for the better part of a minute. Default them to the same clock.
     settings = otel.OtelSettings.from_env({})
     assert settings.metric_export_every_s == settings.heartbeat_every_s
 
 
 def test_metric_export_honors_both_knobs_ours_first():
     sdk_only = otel.OtelSettings.from_env({"OTEL_METRIC_EXPORT_INTERVAL": "15000"})
-    assert sdk_only.metric_export_every_s == 15.0  # the SDK's own knob still wins
+    assert sdk_only.metric_export_every_s == 15.0
     both = otel.OtelSettings.from_env(
         {"OTEL_METRIC_EXPORT_INTERVAL": "15000", "WORKHORSE_OTEL_METRIC_EXPORT_S": "3"}
     )
-    assert both.metric_export_every_s == 3.0  # ...but ours is more specific
+    assert both.metric_export_every_s == 3.0
 
 
 def test_metric_export_falls_through_garbage_rather_than_raising():
-    # This runs on the start-up path of every telemetry-enabled run, so a typo in the
-    # environment must cost a default, never the run.
     garbage = otel.OtelSettings.from_env(
         {"WORKHORSE_OTEL_METRIC_EXPORT_S": "soon", "OTEL_METRIC_EXPORT_INTERVAL": "15000"}
     )
@@ -353,8 +288,6 @@ def test_metric_export_falls_through_garbage_rather_than_raising():
 
 
 def test_settings_are_read_from_the_mapping_it_is_handed():
-    # The four reads used to happen at import, so this — the whole point of the
-    # settings object — was previously untestable without reloading the module.
     settings = otel.OtelSettings.from_env(
         {
             "WORKHORSE_OTEL": "0",
@@ -364,15 +297,13 @@ def test_settings_are_read_from_the_mapping_it_is_handed():
         }
     )
     assert settings.forced is False
-    assert settings.endpoint == "http://collector.example.com:4318"  # trailing / trimmed
+    assert settings.endpoint == "http://collector.example.com:4318"
     assert settings.probe_timeout_s == 1.5
     assert settings.heartbeat_every_s == 30.0
-    assert settings.metric_export_every_s == 30.0  # follows the heartbeat by default
+    assert settings.metric_export_every_s == 30.0
 
 
 def test_settings_defaults_match_the_documented_ones():
-    # GUARDRAILS.md is the operator contract for these four names; the defaults are
-    # stated once, as field defaults, and from_env({}) must reproduce them exactly.
     assert otel.OtelSettings.from_env({}) == otel.OtelSettings()
 
 
@@ -389,9 +320,6 @@ def test_append_event_unchanged_with_noop_telemetry():
         assert events[1].model_extra == {"next": "node_b"}
 
 
-# --------------------------------------------------------------------------- #
-# _Telemetry span pairing (with fakes; no SDK required)
-# --------------------------------------------------------------------------- #
 def test_enter_done_pairs_a_node_span_and_records_next():
     t, tracer, _, _ = _telemetry()
     t.record_event(_event("plan", 1, "enter"))
@@ -403,8 +331,7 @@ def test_enter_done_pairs_a_node_span_and_records_next():
 
 
 def test_checkpoint_enters_do_not_open_execution_spans():
-    """A checkpoint records durable position, not work being executed. In particular,
-    the target checkpoint written before an Await must not become a phantom open span."""
+    """A checkpoint records durable position, not work being executed."""
     t, tracer, _, _ = _telemetry()
     t.record_event(_event("start", 1, "enter", waiting_on=None))
     t.record_event(_event("finish", 2, "enter", waiting_on="operator.md"))
@@ -440,7 +367,6 @@ def test_wait_span_records_kind_node_and_outcome_without_replacing_the_node():
     assert wait_span.attrs["workhorse.span_kind"] == "wait"
     assert wait_span.attrs["workhorse.wait_kind"] == "cap"
     assert wait_span.attrs["workhorse.node"] == "review-qa-plan"
-    # A wait is a phase inside the open state/node, not a replacement node-active series.
     assert meter.instruments["workhorse.node.active"].records == [
         ("set", 1, {"node": "review"})
     ]
@@ -465,9 +391,7 @@ def test_wait_span_records_kind_node_and_outcome_without_replacing_the_node():
 
 
 def test_an_interrupted_node_records_why_on_its_span():
-    """`record_interrupt` has always written `phase="error"` to events.jsonl, and
-    record_event had no branch for it — so a run killed mid-node left its cause
-    sitting on disk, unexported."""
+    """`record_interrupt` has always written `phase="error"` to events.jsonl, and record_event had no branch for it — so a run killed mid-node left its cause sitting on disk, unexported."""
     t, tracer, _, _ = _telemetry()
     t.record_event(_event("plan", 1, "enter"))
     t.record_event(_event("plan", 1, "error", error="KeyboardInterrupt"))
@@ -482,7 +406,6 @@ def test_operator_wait_keeps_gate_attributes_until_its_metric_series_closes():
     attrs = meter.instruments["workhorse.wait.active"].records[-1][2]
     assert attrs["gate_path"] == "/run/question.md"
     assert attrs["gate_question"] == "Which branch?"
-    # Changing labels must not strand the original wait's active series at 1.
     t.set_labels({"activity": "answer"})
     t._beat_once()
     assert meter.instruments["workhorse.wait.elapsed_s"].records[-1][2] == attrs
@@ -502,7 +425,7 @@ def test_heartbeat_republishes_active_state_for_a_reconnected_collector():
     try:
         telemetry.state_start("review", 1)
         token = telemetry.wait_start("operator", "review", "/run/gate.md", "Proceed?")
-        assert reader.get_metrics_data() is not None  # first collector received the edges
+        assert reader.get_metrics_data() is not None
         telemetry._beat_once()
         data = reader.get_metrics_data()
         assert data is not None
@@ -532,7 +455,6 @@ def test_exported_operator_wait_has_no_active_series_after_answer():
                                 lambda: None, 30)
     try:
         token = telemetry.wait_start("operator", "review", "/run/gate.md", "Proceed?")
-        # Collect while blocked, as a running collector would before the answer.
         assert reader.get_metrics_data() is not None
         telemetry._beat_once()
         telemetry.wait_end(token)
@@ -554,9 +476,7 @@ def test_exported_operator_wait_has_no_active_series_after_answer():
 
 
 def test_a_failed_turn_carries_its_class_and_recovery_bucket():
-    """A store can count failed turns from the status alone. Only these say whether
-    they were caps ridden out, overflows, or a broken CLI — same number, opposite
-    problems."""
+    """A store can count failed turns from the status alone."""
     t, tracer, _, _ = _telemetry()
     t.turn_start("plan", "sonnet", "high", 60.0, backend="claude")
     t.turn_end(
@@ -570,8 +490,7 @@ def test_a_failed_turn_carries_its_class_and_recovery_bucket():
 
 
 def test_a_node_the_workflow_calls_infra_is_marked_as_such():
-    """Bringing a stack up is wall-clock the model spends idle. Without the mark, an
-    aggregate over node duration reads a four-minute boot as four minutes of work."""
+    """Bringing a stack up is wall-clock the model spends idle."""
     t, tracer, _, _ = _telemetry()
     t.record_event(_event("ensure_stack", 1, "enter", span_kind="infra"))
     assert tracer.by_name("ensure_stack").attrs["workhorse.span_kind"] == "infra"
@@ -585,9 +504,7 @@ def test_a_node_the_workflow_says_nothing_about_carries_no_span_kind():
 
 
 def test_a_run_level_fact_lands_on_the_root_span_and_the_last_write_wins():
-    """`workhorse.profile` is the caller this exists for, and a `control switch-profile`
-    means it can be written twice. The root exports when the run ends, so the second
-    write is not a lost update — it is the profile the run actually finished on."""
+    """`workhorse.profile` is the caller this exists for, and a `control switch-profile` means it can be written twice."""
     t, tracer, _, _ = _telemetry()
 
     t.run_attribute("workhorse.profile", "cheap")
@@ -596,26 +513,21 @@ def test_a_run_level_fact_lands_on_the_root_span_and_the_last_write_wins():
     t.run_attribute("workhorse.profile", "local")
     assert tracer.by_name("run:wf").attrs["workhorse.profile"] == "local"
 
-    # And after the run is over there is no root to stamp — a late write is dropped
-    # rather than raising, like every other signal here.
     t.end_run("terminal")
     t.run_attribute("workhorse.profile", "too-late")
 
 
 def test_a_run_level_fact_is_inert_with_telemetry_off():
-    """The facade path: nothing installs a host in a test process, so this is what
-    every call site really executes on a machine with no collector."""
+    """The facade path: nothing installs a host in a test process, so this is what every call site really executes on a machine with no collector."""
     otel.run_attribute("workhorse.profile", "cheap")
 
 
 def test_resume_generation_counts_starts_of_one_run_directory():
-    """A resume reuses the run_id and opens a fresh root span, so without this a gap
-    between two spans cannot be told apart from a process that sat waiting."""
+    """A resume reuses the run_id and opens a fresh root span, so without this a gap between two spans cannot be told apart from a process that sat waiting."""
     with tempfile.TemporaryDirectory() as tmp:
         assert otel._resume_generation(tmp) == 1
         assert otel._resume_generation(tmp) == 2
         assert otel._resume_generation(tmp) == 3
-        # A different run directory counts on its own.
         with tempfile.TemporaryDirectory() as other:
             assert otel._resume_generation(other) == 1
 
@@ -623,18 +535,13 @@ def test_resume_generation_counts_starts_of_one_run_directory():
 def test_resume_generation_never_fails_a_run_over_its_own_bookkeeping():
     with tempfile.TemporaryDirectory() as tmp:
         (Path(tmp) / otel._GENERATION_FILE).write_text("not a number")
-        # A corrupt counter restarts rather than raising; the boundary property
-        # (consecutive spans differing) survives, only the absolute number is lost.
         assert otel._resume_generation(tmp) == 1
-    # No run dir at all (telemetry configured without one) is not an error.
     assert otel._resume_generation(None) == 0
     assert otel._resume_generation("") == 0
 
 
 def test_a_failed_run_carries_its_class_through_the_module_facade():
-    """Through `otel.end_run`, not the adapter directly. The facade and the host each
-    re-pass these along, and a dropped argument there is invisible — the run still
-    ends, the status is still ERROR, and only the attribute that says *why* is gone."""
+    """Through `otel.end_run`, not the adapter directly."""
     t, tracer, _, _ = _telemetry()
     with installed(t):
         otel.end_run(
@@ -664,7 +571,6 @@ def test_flow_children_nest_under_the_open_flow_node_span():
     child = tracer.by_name("child")
     assert child.parent is tracer.by_name("qa_flow")
     assert child.attrs["workhorse.depth"] == 1
-    # The child's terminal lands on the enclosing flow-node span, not the root.
     t.record_event(_event("child", 1, "done", next=None))
     t.record_event(_event("<run>", 1, "terminal", terminal="terminal"))
     assert ("terminal", {"terminal": "terminal"}) in tracer.by_name("qa_flow").events
@@ -673,8 +579,7 @@ def test_flow_children_nest_under_the_open_flow_node_span():
 
 
 def test_unfinished_nested_spans_close_without_error_status():
-    """A recovered non-terminal interruption leaves an unfinished child span, but
-    that span did not cause the flow to enter its failure terminal."""
+    """A recovered non-terminal interruption leaves an unfinished child span, but that span did not cause the flow to enter its failure terminal."""
     t, tracer, _, _ = _telemetry()
     t.record_event(_event("parent", 1, "enter"))
     t.record_event(_event("child", 2, "enter"))
@@ -687,8 +592,7 @@ def test_unfinished_nested_spans_close_without_error_status():
 
 
 def test_loop_revisits_pair_by_seq():
-    """The same node visited twice (a loop) gets two distinct spans, each done
-    event closing its own visit's span via the (node, seq) key."""
+    """The same node visited twice (a loop) gets two distinct spans, each done event closing its own visit's span via the (node, seq) key."""
     t, tracer, _, _ = _telemetry()
     t.record_event(_event("work", 1, "enter"))
     t.record_event(_event("work", 1, "done", next="work"))
@@ -703,8 +607,6 @@ def test_failed_end_run_sweeps_open_spans_and_flags_error():
     t.record_event(_event("stuck", 1, "enter"))
     t.end_run("fail", "out of gas")
     stuck, root = tracer.by_name("stuck"), tracer.by_name("run:wf")
-    # Swept, not blamed: nothing closed this frame at its own depth, so it says it was
-    # abandoned. The failure itself is one ERROR span, and here that is the root.
     assert stuck.ended and stuck.attrs["workhorse.outcome"] == "abandoned"
     assert stuck.status is None or stuck.status.code != "ERROR"
     assert root.ended and root.attrs["workhorse.terminal"] == "fail"
@@ -754,13 +656,7 @@ def test_aborted_end_run_remains_an_error() -> None:
 
 
 def test_scope_closes_the_frames_it_opened_and_blames_only_the_innermost():
-    """One defect is one ERROR span, however deep the frame that raised.
-
-    Nesting is not a count of failures: an `AttributeError` three frames down used to
-    close as three ERROR spans, so a dashboard summing `status = 'ERROR'` reported "3
-    errors" for one defect — and the number moved when the *shape* of the workflow
-    changed rather than when anything broke.
-    """
+    """One defect is one ERROR span, however deep the frame that raised."""
     t, tracer, _, _ = _telemetry()
     previous = otel.install(otel.TelemetryHost(active=t))
     try:
@@ -777,16 +673,13 @@ def test_scope_closes_the_frames_it_opened_and_blames_only_the_innermost():
         otel.install(previous)
 
     state, node = tracer.by_name("state:verify"), tracer.by_name("build_context")
-    # Both closed here, by the scope that opened them — not swept at the end of the run.
     assert state.ended and node.ended
     assert t.open_depth() == 0
     assert node.status.code == "ERROR"
     assert node.attrs["error.class"] == "AttributeError"
-    # The frame above ended *in* an error without claiming to *be* one.
     assert state.attrs["workhorse.outcome"] == "error"
     assert state.status is None or state.status.code != "ERROR"
 
-    # And the root does not add a second one on the way out.
     t.end_run("fail", str(boom))
     root = tracer.by_name("run:wf")
     assert root.attrs["workhorse.terminal"] == "fail"
@@ -795,15 +688,7 @@ def test_scope_closes_the_frames_it_opened_and_blames_only_the_innermost():
 
 
 def test_a_reload_unwind_closes_its_frames_without_counting_as_a_failure():
-    """A deliberate reload is not the run's error, and groom's badge counts ERROR spans.
-
-    `ReloadRequested` travels as an exception only because it has to leave a stack of
-    re-entrant `drive` frames; the operator got exactly what they asked for. Those frames
-    are genuinely over, so they still close here — but stamping ERROR on them made a
-    successful `control reload` show up as the one error on an otherwise healthy run, and
-    it also spent the once-per-run error slot a real failure needs. `AgentRunner.turn`
-    already closes the *turn* span cleanly for a cut; this is the node/state half.
-    """
+    """A deliberate reload is not the run's error, and groom's badge counts ERROR spans."""
     t, tracer, _, _ = _telemetry()
     previous = otel.install(otel.TelemetryHost(active=t))
     try:
@@ -828,7 +713,6 @@ def test_a_reload_unwind_closes_its_frames_without_counting_as_a_failure():
         assert span.attrs["workhorse.control"] == "ReloadRequested"
     assert not any(s.status and s.status.code == "ERROR" for s in tracer.spans)
 
-    # The slot was not spent: the genuine failure that follows still gets blamed.
     previous = otel.install(otel.TelemetryHost(active=t))
     try:
         try:
@@ -845,15 +729,10 @@ def test_a_reload_unwind_closes_its_frames_without_counting_as_a_failure():
 
 
 def test_end_run_is_idempotent_and_the_first_status_wins():
-    """The driver calls this more than once by design — a finalizing branch stamps its
-    own status and a `finally` stamps `aborted` behind it as the crash backstop. The
-    first must win, and the *whole* call must be latched, not just the root span: a
-    second pass would shut an already-shut provider and hand `turn_end` an error
-    belonging to no turn. (What run.py must call in which order is
-    test_run_terminal.py; this is the rule that makes that ordering meaningful.)"""
+    """The driver calls this more than once by design — a finalizing branch stamps its own status and a `finally` stamps `aborted` behind it as the crash backstop."""
     t, tracer, _, shutdown = _telemetry()
     t.end_run("terminal")
-    shutdown["called"] = False  # so a second flush is visible rather than hidden
+    shutdown["called"] = False
     t.end_run("aborted", "run aborted before finalize")
 
     root = tracer.by_name("run:wf")
@@ -882,7 +761,6 @@ def test_turn_span_attrs_result_usage_and_fallback_events():
     assert turn.events[0][0] == "watchdog_kill" and turn.status.code == "ERROR"
     t.turn_end("killed")
     assert turn.ended
-    # With no turn open, ladder events fall back to the open node span.
     t.turn_event("cap_wait", False, {"delay_s": 60})
     assert ("cap_wait", {"delay_s": "60"}) in tracer.by_name("impl").events
 
@@ -898,7 +776,6 @@ def test_turn_session_tags_open_turn_span():
 def test_turn_session_is_inert_with_no_open_turn():
     t, tracer, _, _ = _telemetry()
     t.record_event(_event("impl", 1, "enter"))
-    # No turn_start: nothing to tag, and it must not touch the node span or raise.
     t.turn_session("ses_abc123")
     assert "session.id" not in tracer.by_name("impl").attrs
 
@@ -927,8 +804,7 @@ def test_gas_and_heartbeat_metrics_record():
 
 
 def test_record_event_via_writer_reaches_active_telemetry(tmp_path=None):
-    """End-to-end through the module facade: with a fake _Telemetry activated,
-    ArtifactWriter events turn into spans (and the event log still writes)."""
+    """End-to-end through the module facade: with a fake _Telemetry activated, ArtifactWriter events turn into spans (and the event log still writes)."""
     t, tracer, _, _ = _telemetry()
     with installed(t), tempfile.TemporaryDirectory() as tmp:
         writer = artifacts.ArtifactWriter("wf", Path(tmp), run_id="r1")
@@ -939,13 +815,8 @@ def test_record_event_via_writer_reaches_active_telemetry(tmp_path=None):
         assert json.loads(lines[0])["phase"] == "enter"
 
 
-# --------------------------------------------------------------------------- #
-# Live-run visibility: the signals that must escape while a node is OPEN
-# --------------------------------------------------------------------------- #
 def test_node_active_gauge_marks_the_open_node_and_clears_on_done():
-    """The node-active gauge is the only thing that can answer 'where is the run
-    right now': the node's span will not export until it ends, which is exactly
-    what a hung node never does."""
+    """The node-active gauge is the only thing that can answer 'where is the run right now': the node's span will not export until it ends, which is exactly what a hung node never does."""
     t, _, meter, _ = _telemetry()
     t.record_event(_event("select_item", 1, "enter"))
     gauge = meter.instruments["workhorse.node.active"]
@@ -955,9 +826,7 @@ def test_node_active_gauge_marks_the_open_node_and_clears_on_done():
 
 
 def test_turn_heartbeat_reports_idleness_not_just_liveness():
-    """idle_s is what separates a healthy long turn (streaming, so idle stays
-    small) from a wedged one (silent, so idle climbs) — both of which look
-    identical to a span that has not ended."""
+    """idle_s is what separates a healthy long turn (streaming, so idle stays small) from a wedged one (silent, so idle climbs) — both of which look identical to a span that has not ended."""
     t, _, meter, _ = _telemetry()
     t.turn_heartbeat("investigate", 42.0, 300.0)
     assert meter.instruments["workhorse.turn.heartbeat"].records == [
@@ -996,9 +865,7 @@ def test_turn_lifecycle_clears_stale_idle_when_the_turn_ends():
 
 
 def test_run_heartbeat_tick_reports_the_open_node_and_its_age():
-    """One tick of the background loop. This is the ONLY liveness signal a script
-    node produces: it runs as a buffered subprocess, so there is no stream to hook
-    a per-line heartbeat onto."""
+    """One tick of the background loop."""
     t, _, meter, _ = _telemetry()
     t.record_event(_event("compute_coverage", 1, "enter"))
     t._beat_once()
@@ -1011,18 +878,15 @@ def test_run_heartbeat_tick_reports_the_open_node_and_its_age():
 
 
 def test_run_heartbeat_beats_between_nodes_with_an_empty_stack():
-    """Liveness is a property of the process, not of any node — a run must stay
-    provably alive in the gap between two node visits."""
+    """Liveness is a property of the process, not of any node — a run must stay provably alive in the gap between two node visits."""
     t, _, meter, _ = _telemetry()
     t._beat_once()
     assert meter.instruments["workhorse.run.heartbeat"].records == [("add", 1, {"node": ""})]
-    # No node is open, so there is no node age to report.
     assert meter.instruments["workhorse.node.elapsed_s"].records == []
 
 
 def test_beat_survives_an_instrument_that_raises():
-    """A telemetry bug must degrade to 'no heartbeat', never kill the thread and
-    with it every later liveness signal."""
+    """A telemetry bug must degrade to 'no heartbeat', never kill the thread and with it every later liveness signal."""
     t, _, _, _ = _telemetry()
 
     class Boom:
@@ -1030,13 +894,13 @@ def test_beat_survives_an_instrument_that_raises():
             raise RuntimeError("instrument exploded")
 
     t._run_beats = Boom()
-    t._beat_once()  # must return, not raise
+    t._beat_once()
 
 
 def test_beat_loop_exits_promptly_when_stopped():
     t, _, _, _ = _telemetry()
     t._stop.set()
-    t._beat_loop()  # returns immediately rather than sleeping the interval
+    t._beat_loop()
 
 
 def test_end_run_stops_the_heartbeat_before_flushing():
@@ -1048,9 +912,6 @@ def test_end_run_stops_the_heartbeat_before_flushing():
 
 
 
-# --------------------------------------------------------------------------- #
-# The scaled-budget event                                                       #
-# --------------------------------------------------------------------------- #
 
 
 def _turn_recording(**kwargs):
@@ -1067,12 +928,7 @@ def _turn_recording(**kwargs):
 
 
 def test_a_scaled_budget_records_the_scale_and_the_number_it_scaled():
-    """`timeout_s` alone cannot say *why* a node had the budget it had.
-
-    A later comparison of two configs needs to tell "the power tier scaled this node"
-    from "somebody edited the number in the workflow" — the two produce an identical
-    span attribute, and only this event separates them.
-    """
+    """`timeout_s` alone cannot say *why* a node had the budget it had."""
     fake = _turn_recording(budget_scale=2.5, base_timeout_s=300)
 
     scaled = [attrs for name, _, attrs in fake.events if name == "budget_scaled"]

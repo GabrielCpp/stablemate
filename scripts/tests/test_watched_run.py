@@ -1,14 +1,4 @@
-"""What survives each way a watched run can die.
-
-Every case kills something for real and reads the verdict back off disk, because the
-thing under test is what is *left behind* by a death, and a fake that returns a
-prepared status file has already supplied the record whose absence is the bug.
-
-The two that matter are the last two: a child killed while its supervisor lives leaves
-a tombstone, and a whole group killed at once leaves nothing but a stale heartbeat.
-The second is the case the module exists for — it is how a real benchmark round
-disappeared, reporting an empty log and no exit code.
-"""
+"""What survives each way a watched run can die."""
 
 from __future__ import annotations
 
@@ -32,8 +22,6 @@ def watched() -> Any:
     spec = importlib.util.spec_from_file_location("watched_run", SCRIPT)
     assert spec and spec.loader
     module = importlib.util.module_from_spec(spec)
-    # Registered before exec: the module defines a dataclass, and `dataclasses` resolves
-    # its annotations through `sys.modules[cls.__module__]`.
     sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     return module
@@ -106,7 +94,7 @@ def test_a_child_killed_under_a_live_supervisor_leaves_a_tombstone(watched: Any,
 
 
 def test_a_whole_group_killed_at_once_is_still_seen_as_a_death(watched: Any, tmp_path: Path) -> None:
-    """No tombstone is written — nothing was alive to write one. The heartbeat is the evidence."""
+    """No tombstone is written — nothing was alive to write one."""
     started = _start(watched, tmp_path, "groupkill", "bash", "-c", "sleep 30")
     supervisor = int(started["supervisor_pid"])
     os.killpg(supervisor, signal.SIGKILL)

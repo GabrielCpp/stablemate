@@ -38,9 +38,6 @@ def run(db_path: Path, capsys, monkeypatch: pytest.MonkeyPatch):
         with pytest.raises(SystemExit) as exc:
             cli.main(["--db", str(db_path), *argv])
         code = exc.value.code
-        # `main` exits with a status, never with a message: `SystemExit.code` is
-        # `str | int | None` in general, and asserting that here is what lets every
-        # caller compare against a number.
         assert isinstance(code, int)
         return code
 
@@ -66,12 +63,10 @@ def out(capsys) -> str:
     return capsys.readouterr().out
 
 
-# -- the channel decides the kind ---------------------------------------------
 
 
 def test_a_value_on_argv_is_config_and_lands_in_the_pool_db(run, db_path, store):
-    """It is already in the process table and the shell history. Calling it a secret
-    would be a lie about its exposure."""
+    """It is already in the process table and the shell history."""
     run("env", "add", "web-local", "--env", "local")
     assert run("env", "set", "web-local", "VITE_FIREBASE_PROJECT_ID=acme") == 0
 
@@ -136,7 +131,6 @@ def test_unset_removes_the_key_and_its_secret(run, store, web, db_path):
         assert pool.env_get_entry("env-001", "VITE_FIREBASE_API_KEY") is None
 
 
-# -- import -------------------------------------------------------------------
 
 
 def test_import_from_an_env_example_takes_keys_and_never_values(run, tmp_path, capsys,
@@ -153,7 +147,7 @@ def test_import_from_an_env_example_takes_keys_and_never_values(run, tmp_path, c
         entries = present(pool.env_get("env-001")).entries
     assert [e.key for e in entries] == ["VITE_FIREBASE_API_KEY", "VITE_FIREBASE_PROJECT_ID"]
     assert {e.kind for e in entries} == {"pending"}
-    assert all(e.value is None for e in entries)  # 'placeholder' was never stored
+    assert all(e.value is None for e in entries)
     assert store.secrets == {}
 
 
@@ -175,19 +169,17 @@ def test_import_into_an_unknown_environment_exits_one(run, tmp_path):
     assert run("env", "import", "nope", "--from", str(example)) == 1
 
 
-# -- the manifest: package, move, reconstitute --------------------------------
 
 
 def test_export_then_import_reconstitutes_the_environment_on_a_fresh_host(
     run, web, tmp_path, capsys, monkeypatch, store,
 ):
-    """§8: the manifest carries the configuration, the store carries the secrets.
-    A fresh pool + the manifest + the store is the whole environment back."""
+    """§8: the manifest carries the configuration, the store carries the secrets."""
     out_path = tmp_path / "env" / "web-local.yaml"
     assert run("env", "export", web, "--output", str(out_path)) == 0
     assert SECRET not in out_path.read_text(encoding="utf-8")
 
-    fresh = tmp_path / "fresh.db"  # a container that has never seen this repo
+    fresh = tmp_path / "fresh.db"
     with pytest.raises(SystemExit) as exc:
         cli.main(["--db", str(fresh), "env", "import", "web-local", "--from", str(out_path)])
     assert exc.value.code == 0
@@ -200,7 +192,6 @@ def test_export_then_import_reconstitutes_the_environment_on_a_fresh_host(
         "VITE_FIREBASE_AUTH_EMULATOR_HOST": "config",
         "VITE_FIREBASE_API_KEY": "secret",
     }
-    # The secret came from the store, which travelled separately — as designed.
     assert store.get(environment.store_key("VITE_FIREBASE_API_KEY")) == SECRET
 
 
@@ -219,14 +210,13 @@ def test_a_manifest_carrying_a_secret_value_is_refused(run, tmp_path):
     assert run("env", "import", "web-local", "--from", str(poisoned)) == 1
 
 
-# -- list / show: structurally incapable of leaking ---------------------------
 
 
 def test_show_prints_config_in_the_clear_and_a_secret_as_set(run, web, capsys):
     assert run("env", "show", web) == 0
     printed = out(capsys)
 
-    assert "127.0.0.1:9099" in printed      # config is the point of config
+    assert "127.0.0.1:9099" in printed
     assert SECRET not in printed
     assert "<set>" in printed
 
@@ -252,13 +242,12 @@ def test_list_scopes_by_project(run, capsys, monkeypatch):
     assert len(json.loads(out(capsys))) == 2
 
 
-# -- render -------------------------------------------------------------------
 
 
 def test_render_writes_the_file_0600_and_prints_only_the_path(run, web, target, capsys):
     assert run("env", "render", web) == 0
 
-    assert out(capsys).strip() == str(target)     # the path, never the contents
+    assert out(capsys).strip() == str(target)
     assert stat.S_IMODE(target.stat().st_mode) == 0o600
     assert target.read_text(encoding="utf-8") == (
         "VITE_FIREBASE_PROJECT_ID=acme\n"
@@ -268,13 +257,12 @@ def test_render_writes_the_file_0600_and_prints_only_the_path(run, web, target, 
 
 
 def test_render_names_the_exact_keys_a_human_must_supply(run, web, target, caplog):
-    """The escalation setup_fix makes: not 'unfixable', but 'unfixable, and here is
-    precisely what is missing'."""
+    """The escalation setup_fix makes: not 'unfixable', but 'unfixable, and here is precisely what is missing'."""
     run("env", "set", web, "VITE_STRIPE_PUBLISHABLE_KEY", "--note", "ask the ops team")
 
     assert run("env", "render", web) == 1
     assert "VITE_STRIPE_PUBLISHABLE_KEY" in caplog.text
-    assert not target.exists()  # nothing is written until everything resolves
+    assert not target.exists()
 
 
 def test_render_of_a_config_only_environment_needs_no_store(run, tmp_path, monkeypatch,
@@ -306,7 +294,6 @@ def test_render_leases_a_credential_ref_and_release_frees_it(run, store, web, ta
     with Pool(db_path) as pool:
         assert present(pool.get("cred-001")).run_id == "run-42"
 
-    # The bookend the workflow already has needs no change to clean up after render.
     assert run("release", "--run-id", "run-42") == 0
     with Pool(db_path) as pool:
         assert not present(pool.get("cred-001")).is_locked()
@@ -326,15 +313,14 @@ def test_render_to_json_format(run, tmp_path):
     assert json.loads(target.read_text(encoding="utf-8")) == {"HOST": "127.0.0.1:9099"}
 
 
-# -- render --check: the gate --------------------------------------------------
 
 
 def test_check_writes_nothing_and_reports_the_unrendered_target(run, web, target, capsys):
     assert run("env", "render", web, "--check", "--json") == 1
     report = json.loads(out(capsys))
 
-    assert report["resolvable"] is True     # every key has a value behind it
-    assert report["target_exists"] is False  # ...but the file is not there yet
+    assert report["resolvable"] is True
+    assert report["target_exists"] is False
     assert not target.exists()
 
 
@@ -364,7 +350,6 @@ def test_check_takes_no_lease(run, web, db_path):
         assert not present(pool.get("cred-001")).is_locked()
 
 
-# -- doctor -------------------------------------------------------------------
 
 
 def test_doctor_names_exactly_what_a_human_must_supply(run, web, capsys):
@@ -396,8 +381,7 @@ def test_doctor_is_clean_on_a_healthy_environment(run, web, capsys):
 
 
 def test_doctor_does_not_open_the_store_for_a_config_only_pool(run, monkeypatch, capsys):
-    """A pool of config-only environments is healthy on a host with no keyring, and
-    must not be reported as broken there."""
+    """A pool of config-only environments is healthy on a host with no keyring, and must not be reported as broken there."""
     from saddlebag.store import StoreUnavailableError
 
     def explode(backend=None):
@@ -425,7 +409,6 @@ def test_doctor_reports_an_unavailable_store_when_a_secret_needs_it(run, web, mo
     assert "no secret store" in json.loads(out(capsys))["problems"][0]
 
 
-# -- remove -------------------------------------------------------------------
 
 
 def test_remove_drops_the_environment_and_its_stored_secrets(run, web, store, db_path):

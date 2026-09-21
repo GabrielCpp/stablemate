@@ -1,16 +1,4 @@
-"""`ostler fmt` — the canonicalizing formatter for OKF UI-profile docs.
-
-Paired with the linter the way ``ruff format`` pairs with ``ruff check``: it mechanically fixes
-*shape* (frontmatter key order, bullet order/spacing, heading casing, ``### id`` anchors, wikilink
-rewriting) so ``doctor`` only ever hard-errors on semantic defects. Driven entirely by the per-type
-``UINodeType`` spec in ``registry.py`` — the same single source of truth the loader and scaffolder
-read, so the three tools never drift.
-
-``markdown.py`` is deliberately byte-exact / no-reflow; this module is the *intentional exception*
-— a mutating command in the ``edit.py`` family, never on the read path. It is idempotent and offers
-a ``--check`` mode (no writes, exit 1 if unformatted), the same idiom as ``farrier install --check``.
-Prose is left untouched (profile §12.2): only frontmatter, bullets, and headings are canonicalized.
-"""
+"""`ostler fmt` — the canonicalizing formatter for OKF UI-profile docs."""
 
 from __future__ import annotations
 
@@ -23,16 +11,10 @@ import yaml
 from ostler import markdown, registry
 from ostler.model import Graph, _file_main_section, anchor_of
 
-# Frontmatter keys emitted first, in this order; the rest follow in their original order.
 FRONTMATTER_ORDER = ("type", "slug", "surface", "title", "status", "id", "area", "route")
 
-#: A bullet key is an identifier — this validates the *key*, it does not find the bullet.
 _KEY = re.compile(r"\A[A-Za-z][\w-]*\Z")
-#: `[[target|alias]]` is an Obsidian extension, not CommonMark, so no parser in the
-#: dependency set has a token for it. Substitution is therefore confined to the prose
-#: lines `markdown.code_line_spans` leaves over — a wikilink in a snippet stays a snippet.
 _WIKILINK_RE = re.compile(r"\[\[([^\]|]+)(?:\|([^\]]+))?\]\]")
-# Canonical UI headings, matched case-insensitively so `## components` → `## Components`.
 _HEADING_BY_LOWER = {h.lower(): h for h in registry.UI_HEADING_TO_TYPE}
 
 
@@ -55,11 +37,7 @@ def _bullet_key(text: str) -> str | None:
 
 
 def _rewrite_wikilinks(body: str) -> str:
-    """Rewrite ``[[target|alias]]`` to a markdown link **outside code blocks**.
-
-    A doc that documents the wikilink form shows it in a fence; rewriting there would edit
-    the example into something that no longer is one.
-    """
+    """Rewrite ``[[target|alias]]`` to a markdown link **outside code blocks**."""
     lines = body.split("\n")
     in_code = {i for start, end in markdown.code_line_spans(body) for i in range(start, end)}
     for i, line in enumerate(lines):
@@ -71,23 +49,13 @@ def _rewrite_wikilinks(body: str) -> str:
 
 def _emit_bullet(bullet: markdown.Bullet, uitype: registry.UINodeType,
                  body_lines: list[str]) -> list[str]:
-    """Canonical lines for one metadata bullet: normalize its ``- key: value`` first line and keep
-    any nested child lines verbatim; expand a one-line ``does:`` into the nested-bullet form.
-
-    The first line is rebuilt from ``raw[0]``, never from ``bullet.text``. A bullet whose value
-    soft-wraps across source lines has all of them in ``bullet.text``, newline included, so a
-    first line built from it *already contains* the continuation — and ``raw[1:]`` then appended
-    it a second time. Every ``fmt`` run added another copy of every wrapped line, which also made
-    the formatter non-idempotent on any doc whose prose is wrapped at a column, i.e. most of them.
-    """
+    """Canonical lines for one metadata bullet: normalize its ``- key: value`` first line and keep any nested child lines verbatim; expand a one-line ``does:`` into the nested-bullet form."""
     raw = body_lines[bullet.line_start:bullet.line_end]
     key = _bullet_key(bullet.text)
     spec = uitype.bullet_by_key.get(key or "")
     if spec is None:
-        return raw  # unrecognized bullet — leave exactly as authored
+        return raw
     if spec.nested and not bullet.children:
-        # The expansion collapses the value into one nested bullet, so here the wrap *is* joined
-        # — deliberately, and on whitespace, so no newline survives into the emitted line.
         whole = " ".join((bullet.text.split(":", 1)[1] if ":" in bullet.text else "").split())
         if whole:
             return [f"- {key}:", f"  - {whole}"]
@@ -98,13 +66,7 @@ def _emit_bullet(bullet: markdown.Bullet, uitype: registry.UINodeType,
 
 
 def _bullet_run(section: markdown.Section, body_lines: list[str]) -> list[markdown.Bullet]:
-    """The leading contiguous run of ``key: value`` metadata bullets (stops at the first prose
-    bullet), so reordering never disturbs a trailing prose list inside the node.
-
-    Contiguous in the *lines*, not only in the section's bullet order: the edit replaces the
-    run's whole line span with the bullets alone, so a paragraph between two lists inside it
-    would be deleted. The run stops at the first non-blank line that no bullet owns.
-    """
+    """The leading contiguous run of ``key: value`` metadata bullets (stops at the first prose bullet), so reordering never disturbs a trailing prose list inside the node."""
     run: list[markdown.Bullet] = []
     for bullet in sorted(section.bullets, key=lambda b: b.line_start):
         if _bullet_key(bullet.text) is None:
@@ -117,8 +79,7 @@ def _bullet_run(section: markdown.Section, body_lines: list[str]) -> list[markdo
 
 def _bullet_edit(section: markdown.Section, uitype: registry.UINodeType,
                  body_lines: list[str]) -> tuple[int, int, list[str]] | None:
-    """A (start, end, lines) replacement that reorders + normalizes the node's metadata bullets to
-    the canonical ``bullet_keys`` order, or None if already canonical."""
+    """A (start, end, lines) replacement that reorders + normalizes the node's metadata bullets to the canonical ``bullet_keys`` order, or None if already canonical."""
     run = _bullet_run(section, body_lines)
     if not run:
         return None
@@ -126,30 +87,18 @@ def _bullet_edit(section: markdown.Section, uitype: registry.UINodeType,
     normative = set(registry.normative_keys(uitype.name))
     attached = set(registry.attached_keys(uitype.name))
 
-    # A check observes the nearest normative bullet above it (`registry.attributed_checks`), so
-    # sorting the keys independently would re-attribute it: hoisting every `verify:` into one
-    # block credits the observation of a refusal to whichever claim ends up last. Group each
-    # such bullet with the claim it was written under, and move the group. Which keys bind that
-    # way is the grammar's to say, not this function's — `registry.attached_keys` names all
-    # three families (`verify:`, `fixture:`, the capture keys), so a family added there travels
-    # with its claim here without anyone remembering to come back.
     contract: list[markdown.Bullet] = []
     groups: list[tuple[markdown.Bullet, list[markdown.Bullet]]] = []
     anchor: int | None = None
     for bullet in run:
         key = _bullet_key(bullet.text)
         if key in attached:
-            # Above every claim, it is the node's own contract; otherwise it belongs to the
-            # nearest claim above, whatever non-normative bullets were written between them.
             (contract if anchor is None else groups[anchor][1]).append(bullet)
             continue
         if key in normative:
             anchor = len(groups)
         groups.append((bullet, []))
 
-    # With no normative bullet in the run there is no claim to bind to, so nothing is at stake
-    # in keeping these together: rank them like any other key, which is where their own type
-    # declares them and where `ostler scaffold` writes its stubs.
     if not any(_bullet_key(claim.text) in normative for claim, _ in groups):
         groups.extend((bullet, []) for bullet in contract)
         contract = []
@@ -162,28 +111,22 @@ def _bullet_edit(section: markdown.Section, uitype: registry.UINodeType,
         key = _bullet_key(bullet.text)
         return (0, order[key]) if key in order else (1, 0)
 
-    ordered = sorted(groups, key=rank)  # stable: unknown keys keep their relative order, after known
+    ordered = sorted(groups, key=rank)
     flat: list[markdown.Bullet] = []
     for claim, bound in ordered:
-        # The contract's own checks stay above every claim, or nothing distinguishes them.
         if contract and _bullet_key(claim.text) in normative:
             flat.extend(sorted(contract, key=attached_rank))
             contract = []
         flat.append(claim)
-        # Canonicalising the order *within* a group is safe — every bullet here already binds to
-        # the same claim — so the spelling settles without the binding moving.
         flat.extend(sorted(bound, key=attached_rank))
     flat.extend(sorted(contract, key=attached_rank))
     start, end = run[0].line_start, run[-1].line_end
     new_lines: list[str] = []
     for bullet in flat:
         block = _emit_bullet(bullet, uitype, body_lines)
-        # A bullet's raw span can absorb trailing blank list-separators; drop them so reordering
-        # never strands a blank *between* bullets.
         while block and block[-1].strip() == "":
             block.pop()
         new_lines.extend(block)
-    # Preserve a single blank line after the run (before the next heading/prose) if there was one.
     if end > start and body_lines[end - 1].strip() == "":
         new_lines.append("")
     if new_lines == body_lines[start:end]:
@@ -239,18 +182,12 @@ def format_text(text: str) -> str:
 
 @dataclass
 class FmtResult:
-    changed: list[Path]        # files whose canonical form differs from disk
-    written: bool              # whether the changes were applied
+    changed: list[Path]
+    written: bool
 
 
 def _target_files(graph: Graph, paths: list[str]) -> list[Path]:
-    """The docs a mutating pass reads: each named file, and every doc under each named folder.
-
-    A folder is a target, not an unreadable file. The callers skip a path whose read raises
-    `OSError` — right for a doc that vanished mid-run, and exactly what a directory raises —
-    so a folder passed as a path used to be skipped whole and in silence. A book scoped to
-    one surface is always passed as its folder, which made fmt and autofix no-ops on it.
-    """
+    """The docs a mutating pass reads: each named file, and every doc under each named folder."""
     roots = [Path(p) if Path(p).is_absolute() else graph.root / p for p in paths]
     if not roots:
         froot = graph.doc_roots["features"]
@@ -266,7 +203,7 @@ def _target_files(graph: Graph, paths: list[str]) -> list[Path]:
 
 
 def run_fmt(graph: Graph, paths: list[str], check: bool = False) -> FmtResult:
-    """Format every target file. ``check=True`` never writes; it just reports what would change."""
+    """Format every target file."""
     changed: list[Path] = []
     for path in _target_files(graph, paths):
         try:

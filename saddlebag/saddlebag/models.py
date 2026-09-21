@@ -1,18 +1,4 @@
-"""Dataclasses for the pool's two concepts: the credential and the environment.
-
-The split is deliberate and load-bearing:
-
-* the **secret store** (OS keyring, or Vault) holds only sensitive values — a
-  credential's password, an environment's ``secret`` entries;
-* the **pool database** holds everything else — the metadata an agent reasons
-  over, lease state, and an environment's *non-sensitive* ``config`` values.
-
-So a :class:`Credential` never carries a password, and an
-:class:`EnvironmentEntry` carries a value only when its kind is ``config``. No
-object in this module carries a secret at all: the one place a secret and its
-metadata travel together is a rendered environment file, written by ``env
-render`` with owner-only permissions.
-"""
+"""Dataclasses for the pool's two concepts: the credential and the environment."""
 
 from __future__ import annotations
 
@@ -21,35 +7,22 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
-# Sentinel used by the pool for "no lease".
 NO_LEASE: str | None = None
 
-#: An entry whose value has not arrived yet: a name, a ``required`` flag, a note.
 KIND_PENDING = "pending"
-#: A non-sensitive value, held in the clear in the pool DB.
 KIND_CONFIG = "config"
-#: A sensitive value, held in the secret store.
 KIND_SECRET = "secret"
-#: A value resolved at render time from a leased credential.
 KIND_CREDENTIAL_REF = "credential-ref"
 
 ENTRY_KINDS: tuple[str, ...] = (KIND_PENDING, KIND_CONFIG, KIND_SECRET, KIND_CREDENTIAL_REF)
 
-#: The credential fields a ``credential-ref`` may point at.
-#:
-#: Deliberately excludes the TOTP seed. A ``credential-ref`` exists to be resolved
-#: by ``env render``, and rendering a seed to a file would write out the one value
-#: that regenerates every future code — a strictly worse secret than the password
-#: beside it. The seed leaves the store only as a computed six-digit code, and only
-#: through ``fill``, which types it into a browser rather than returning it.
 CRED_REF_FIELDS: tuple[str, ...] = ("username", "password")
 
-#: How a rendered environment file is written.
 FORMATS: tuple[str, ...] = ("dotenv", "json")
 
 
 def utcnow() -> datetime:
-    """Current UTC time. Indirected so tests can freeze it."""
+    """Current UTC time."""
     return datetime.now(UTC)
 
 
@@ -58,24 +31,12 @@ def _iso(value: datetime | None) -> str | None:
 
 
 def qualify(project: str | None, *parts: str) -> str:
-    """Project-qualify a secret-store key.
-
-    The keyring is one global namespace, so two repos with their own pools (via
-    ``SADDLEBAG_DB``) must not collide: each minting a ``cred-001`` resolves to
-    ``repo-a/cred-001`` and ``repo-b/cred-001``. An unscoped object keeps the bare
-    key — which is also what everything created before projects existed used, so no
-    already-stored secret needs migrating.
-    """
+    """Project-qualify a secret-store key."""
     return "/".join([project, *parts]) if project else "/".join(parts)
 
 
 def parse_cred_ref(ref: str) -> tuple[str, str]:
-    """Split a ``credential-ref`` into ``(credential_id, field)``.
-
-    Raises :class:`ValueError` on anything but ``<cred-id>:<field>`` with a field
-    in :data:`CRED_REF_FIELDS` — a typo here would otherwise surface as a silently
-    empty value in a rendered file.
-    """
+    """Split a ``credential-ref`` into ``(credential_id, field)``."""
     credential_id, sep, field = ref.partition(":")
     if not sep or not credential_id:
         raise ValueError(f"expected <credential-id>:<field>, got {ref!r}")
@@ -89,13 +50,7 @@ def parse_cred_ref(ref: str) -> tuple[str, str]:
 
 @dataclass(frozen=True)
 class KeychainRef:
-    """Where a secret lives in the OS keychain, when saddlebag does not hold it.
-
-    Attributes only — the reference is metadata, printable by ``list`` and ``doctor``
-    like any other field, and it is the whole point that it is not the secret. Held as
-    a sorted tuple of pairs rather than a dict so a :class:`Credential` stays frozen
-    *and* hashable; :meth:`as_dict` is what the lookup takes.
-    """
+    """Where a secret lives in the OS keychain, when saddlebag does not hold it."""
 
     attributes: tuple[tuple[str, str], ...]
 
@@ -113,7 +68,7 @@ class KeychainRef:
 
 @dataclass(frozen=True)
 class Credential:
-    """A test identity. Metadata only — the password lives in the secret store."""
+    """A test identity."""
 
     id: str
     username: str
@@ -122,11 +77,7 @@ class Credential:
     roles: tuple[str, ...] = ()
     features: tuple[str, ...] = ()
     surface: str | None = None
-    #: Set when the password lives in a keychain item saddlebag did not write. Then
-    #: nothing is stored at :attr:`store_key`, and reads go through
-    #: :func:`saddlebag.keychain.password_for`.
     password_ref: KeychainRef | None = None
-    #: The same, for the TOTP enrolment seed.
     totp_ref: KeychainRef | None = None
     last_used: datetime | None = None
     lease_id: str | None = None
@@ -147,26 +98,16 @@ class Credential:
 
     @property
     def store_key(self) -> str:
-        """Where this credential's password lives in the secret store.
-
-        Unused when :attr:`password_ref` is set — a credential's password has exactly
-        one home, and which one it is, is what the reference records.
-        """
+        """Where this credential's password lives in the secret store."""
         return qualify(self.project, self.id)
 
     @property
     def totp_store_key(self) -> str:
-        """Where this credential's TOTP enrolment seed lives, if it has one.
-
-        A separate key rather than a second field on one blob: the seed is written
-        by a different command, at a different time, and an identity with no second
-        factor simply has nothing at this key. It is also why ``credential-ref``
-        cannot name it — see :data:`CRED_REF_FIELDS`.
-        """
+        """Where this credential's TOTP enrolment seed lives, if it has one."""
         return qualify(self.project, self.id, "totp")
 
     def to_dict(self, now: datetime | None = None) -> dict[str, Any]:
-        """Redacted form. Never contains a password — safe for ``list`` and ``scan``."""
+        """Redacted form."""
         return {
             "id": self.id,
             "username": self.username,
@@ -178,9 +119,6 @@ class Credential:
             "locked": self.is_locked(now),
             "last_used": _iso(self.last_used),
             "lease_id": self.lease_id,
-            # Where the secrets are, never what they are. An agent reading this needs
-            # to know a value comes from outside saddlebag's own store, because that
-            # is the difference between `totp set` and rotating it at the source.
             "password_ref": self.password_ref.describe() if self.password_ref else None,
             "totp_ref": self.totp_ref.describe() if self.totp_ref else None,
         }
@@ -211,14 +149,7 @@ class Lease:
 
 @dataclass(frozen=True)
 class EnvironmentEntry:
-    """One ``KEY`` in an environment, plus a declaration of where its value lives.
-
-    The invariant this class exists to hold: **a value is present only when the
-    kind is** ``config``. Everything sensitive resolves elsewhere — from the secret
-    store, or from a leased credential — so an entry read out of the pool DB is
-    structurally incapable of carrying a secret. The database enforces the same
-    rule with a ``CHECK`` constraint; this is the same fence, one layer up.
-    """
+    """One ``KEY`` in an environment, plus a declaration of where its value lives."""
 
     key: str
     kind: str = KIND_PENDING
@@ -244,15 +175,11 @@ class EnvironmentEntry:
 
     @property
     def needs_store(self) -> bool:
-        """Whether resolving this entry requires opening the secret store.
-
-        A ``config`` entry never does — which is what lets a config-only
-        environment render on a host with no keyring and no Vault at all.
-        """
+        """Whether resolving this entry requires opening the secret store."""
         return self.kind in (KIND_SECRET, KIND_CREDENTIAL_REF)
 
     def display_value(self) -> str:
-        """What ``env show`` prints. Never a secret — by construction, not by redaction."""
+        """What ``env show`` prints."""
         if self.kind == KIND_CONFIG:
             return self.value or ""
         if self.kind == KIND_SECRET:
@@ -275,12 +202,7 @@ class EnvironmentEntry:
 
 @dataclass(frozen=True)
 class Environment:
-    """A named, project-scoped, ordered set of entries — a ``.env``-shaped bundle.
-
-    Unlike a credential, an environment is **not leased**: it is shared, read-only
-    configuration, and ten runs may render it at once. Only the credentials its
-    ``credential-ref`` entries point at are exclusive.
-    """
+    """A named, project-scoped, ordered set of entries — a ``.env``-shaped bundle."""
 
     id: str
     name: str
@@ -298,11 +220,11 @@ class Environment:
 
     @property
     def needs_store(self) -> bool:
-        """True once any entry requires the secret store. See :meth:`EnvironmentEntry.needs_store`."""
+        """True once any entry requires the secret store."""
         return any(entry.needs_store for entry in self.entries)
 
     def to_dict(self) -> dict[str, Any]:
-        """Redacted form. Cannot contain a secret — its entries cannot."""
+        """Redacted form."""
         return {
             "id": self.id,
             "name": self.name,
@@ -318,7 +240,7 @@ class Environment:
 
 @dataclass(frozen=True)
 class Requirement:
-    """What a run needs. Mirrors an ostler seed's spec fields."""
+    """What a run needs."""
 
     env: str | None = None
     project: str | None = None

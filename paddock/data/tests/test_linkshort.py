@@ -1,11 +1,4 @@
-"""The acceptance gate's contract, proved without Go or an emulator.
-
-`_linkshort.run_checks` is pure over HTTP plus a restart callable, which is what makes it
-testable at all: a correct in-memory server must score 12/12, and a server that skips
-validation and forgets its ledger on restart must fail exactly those checks. The real
-`probe` wrapper — build, emulator, ports — is exercised by running the task; what lives
-here is the ruler, because a gate that grades the wrong claims is worse than no gate.
-"""
+"""The acceptance gate's contract, proved without Go or an emulator."""
 
 from __future__ import annotations
 

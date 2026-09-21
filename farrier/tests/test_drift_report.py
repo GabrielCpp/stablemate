@@ -1,13 +1,4 @@
-"""What `--check` says when a generated file has been hand-edited.
-
-The comparison has always been right; the message was `changed: AGENTS.md`, which
-names neither the file to edit instead nor the fact that re-rendering is the fix. The
-failure this pins is not a wrong exit code — it is an agent reading a correct block and
-reverting its own work, or deleting the check, because nothing told it where the edit
-belonged.
-
-    ./.venv/bin/python -m pytest tests/test_drift_report.py
-"""
+"""What `--check` says when a generated file has been hand-edited."""
 
 from __future__ import annotations
 
@@ -62,14 +53,10 @@ def rendered(tmp_path: Path) -> tuple[Path, dict[Path, str]]:
     return repo, outputs
 
 
-# ---------------------------------------------------------------------------
-# the message
-# ---------------------------------------------------------------------------
 
 
 def test_a_hand_edit_names_the_file_the_edit_belongs_in(rendered, capsys):
-    """The whole point. `changed: AGENTS.md` is true and gets the agent nowhere; the
-    library path is the only thing that turns the block into a redirect."""
+    """The whole point."""
     repo, outputs = rendered
     agents = repo / "AGENTS.md"
     agents.write_text(agents.read_text(encoding="utf-8") + "\nInvented rule.\n", encoding="utf-8")
@@ -85,8 +72,7 @@ def test_a_hand_edit_names_the_file_the_edit_belongs_in(rendered, capsys):
 
 
 def test_the_report_says_the_comparison_is_against_the_working_tree(rendered, capsys):
-    """Otherwise a partially-staged edit produces a block whose diff the agent cannot
-    find, and `git diff --cached` says the repo is clean."""
+    """Otherwise a partially-staged edit produces a block whose diff the agent cannot find, and `git diff --cached` says the repo is clean."""
     repo, outputs = rendered
     (repo / "AGENTS.md").write_text("gone\n", encoding="utf-8")
 
@@ -96,8 +82,7 @@ def test_the_report_says_the_comparison_is_against_the_working_tree(rendered, ca
 
 
 def test_the_prefix_lines_survive_for_the_other_two_verdicts(rendered, capsys):
-    """`missing:` and `extra:` stay greppable — they are what an operator scans for —
-    and each still gets the sentence saying which way to resolve it."""
+    """`missing:` and `extra:` stay greppable — they are what an operator scans for — and each still gets the sentence saying which way to resolve it."""
     repo, outputs = rendered
     (repo / "AGENTS.md").unlink()
     stale = repo / ".claude" / "skills" / "demo-stablemate-ostler" / "references" / "old.md"
@@ -118,14 +103,10 @@ def test_a_current_repo_reports_nothing(rendered, capsys):
     assert capsys.readouterr().out == ""
 
 
-# ---------------------------------------------------------------------------
-# attribution
-# ---------------------------------------------------------------------------
 
 
 def test_an_edit_inside_one_half_of_an_aggregate_names_that_half(rendered):
-    """AGENTS.md joins two library files whose rendered halves can sit hundreds of
-    lines apart. "Put it upstream" is not actionable until it says which upstream."""
+    """AGENTS.md joins two library files whose rendered halves can sit hundreds of lines apart."""
     repo, outputs = rendered
     content = outputs[repo / "AGENTS.md"]
     edited = content.replace("linted with ruff", "linted with nothing")
@@ -134,8 +115,7 @@ def test_an_edit_inside_one_half_of_an_aggregate_names_that_half(rendered):
 
 
 def test_an_append_past_the_last_source_attributes_to_neither(rendered):
-    """New text at the end of the file belongs to no source, and guessing at the last
-    one would send the agent to a file that never contained it."""
+    """New text at the end of the file belongs to no source, and guessing at the last one would send the agent to a file that never contained it."""
     repo, outputs = rendered
     content = outputs[repo / "AGENTS.md"]
 
@@ -143,8 +123,7 @@ def test_an_append_past_the_last_source_attributes_to_neither(rendered):
 
 
 def test_an_edit_perturbing_every_part_falls_back_to_listing_all(rendered):
-    """A reflow or a re-indent moves every part at once. Naming all of them as drifted
-    is noise dressed as precision, so the report drops back to the plain source list."""
+    """A reflow or a re-indent moves every part at once."""
     repo, outputs = rendered
     content = outputs[repo / "AGENTS.md"]
 
@@ -163,9 +142,6 @@ def test_the_report_marks_the_attributed_source_and_only_it(rendered):
     assert "library/prompts/stablemate/commit.md" in marked[0]
 
 
-# ---------------------------------------------------------------------------
-# where provenance comes from
-# ---------------------------------------------------------------------------
 
 
 def test_a_generated_skill_resolves_through_its_own_front_matter(rendered):
@@ -180,9 +156,7 @@ def test_a_generated_skill_resolves_through_its_own_front_matter(rendered):
 
 
 def test_the_aggregate_resolves_even_though_it_carries_no_banner(rendered):
-    """AGENTS.md deliberately has no provenance in the file — a "generated, do not
-    edit" line in an always-loaded rules file reads as a rule about the repo. So the
-    renderer is the only thing that knows, and the report has to ask it."""
+    """AGENTS.md deliberately has no provenance in the file — a "generated, do not edit" line in an always-loaded rules file reads as a rule about the repo."""
     repo, outputs = rendered
     content = outputs[repo / "AGENTS.md"]
 
@@ -194,9 +168,7 @@ def test_the_aggregate_resolves_even_though_it_carries_no_banner(rendered):
 
 
 def test_provenance_is_read_off_the_expected_text_not_the_edited_copy(rendered):
-    """A drifted file is one somebody edited, and its front matter is exactly as
-    editable as its body. Resolving from the worktree copy would let the edit choose
-    where it gets reported — including at a library file it invented."""
+    """A drifted file is one somebody edited, and its front matter is exactly as editable as its body."""
     repo, outputs = rendered
     skill = repo / ".claude" / "skills" / "demo-stablemate-ostler" / "SKILL.md"
     expected = str(outputs[skill])

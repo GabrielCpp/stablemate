@@ -22,12 +22,7 @@ logger = logging.getLogger(__name__)
 
 
 def _resolve_project(args: argparse.Namespace) -> str | None:
-    """The project to assign (add) or filter by (list, scan).
-
-    ``--all-projects`` means "no project scoping". An explicit ``--project`` wins
-    next (empty string is an explicit "no project"). Otherwise it is inferred from
-    the working directory — usually the enclosing repo's name.
-    """
+    """The project to assign (add) or filter by (list, scan)."""
     if getattr(args, "all_projects", False):
         return None
     if args.project is not None:
@@ -46,7 +41,7 @@ def _requirement(args: argparse.Namespace) -> Requirement:
 
 
 def _store_key(cred: Credential) -> str:
-    """The secret-store key for a credential. See :func:`saddlebag.models.qualify`."""
+    """The secret-store key for a credential."""
     return cred.store_key
 
 
@@ -79,12 +74,7 @@ def _read_password(what: str = "password") -> str:
 
 
 def _resolve_password(args: argparse.Namespace) -> str:
-    """The password to store, from whichever source was requested.
-
-    Two sources, never argv: stdin, or a named variable in a ``.env`` file. The
-    ``.env`` carries only the secret — every piece of metadata comes from the
-    ``add`` flags, because a flat ``.env`` cannot express it.
-    """
+    """The password to store, from whichever source was requested."""
     if args.password_env_file:
         if not args.password_var:
             logger.error("--password-env-file requires --password-var NAME")
@@ -110,7 +100,6 @@ def _resolve_password(args: argparse.Namespace) -> str:
     raise SystemExit(2)
 
 
-# -- commands ---------------------------------------------------------------
 
 
 def cmd_add(args: argparse.Namespace, pool: Pool) -> int:
@@ -131,7 +120,6 @@ def cmd_add(args: argparse.Namespace, pool: Pool) -> int:
     try:
         store.put(_store_key(cred), password)
     except Exception:
-        # Never leave metadata pointing at a secret that was not stored.
         pool.remove(cred.id)
         raise
 
@@ -144,13 +132,7 @@ def cmd_add(args: argparse.Namespace, pool: Pool) -> int:
 
 
 def _add_linked(args: argparse.Namespace, pool: Pool) -> int:
-    """``add --password-keychain``: the password stays where somebody already put it.
-
-    The reference is resolved once, here, and the value is dropped on the next line.
-    A reference that does not resolve is refused rather than recorded: the pool would
-    otherwise look healthy right up until a run needed the password, which is the
-    worst moment to discover a typo in an attribute name.
-    """
+    """``add --password-keychain``: the password stays where somebody already put it."""
     try:
         ref = KeychainRef.of(keychain.parse_attributes(args.password_keychain))
         keychain.lookup(ref)
@@ -195,17 +177,11 @@ def cmd_remove(args: argparse.Namespace, pool: Pool) -> int:
 
     store = _open_store(args)
     store.delete(_store_key(cred))
-    # A seed left behind would be re-adopted by the next credential to mint the same
-    # id, and it is the one value whose staleness is invisible: the code it produces
-    # looks exactly as valid as a correct one.
     store.delete(cred.totp_store_key)
     pool.remove(cred.id)
     print(f"removed {cred.id}")
     for field, ref in (("password", cred.password_ref), ("totp", cred.totp_ref)):
         if ref is not None:
-            # saddlebag did not write that item and does not delete it. Saying so is
-            # the difference between an operator who knows a secret is still on this
-            # machine and one who believes `remove` cleaned up after itself.
             print(f"  its {field} was read from {ref.describe()}, which is untouched")
     return 0
 
@@ -240,13 +216,7 @@ def cmd_acquire(args: argparse.Namespace, pool: Pool) -> int:
 
 
 def _lease_and_emit(args: argparse.Namespace, pool: Pool, credential_id: str) -> int:
-    """Lease ``credential_id`` and emit the lease — never the password.
-
-    The store is probed only to catch pool/store disagreement early; the value is
-    discarded without being bound. Nothing this function prints, logs or writes
-    can carry a secret: the vault is opaque, and ``env render`` is the sole
-    command that turns a stored secret into anything outside it.
-    """
+    """Lease ``credential_id`` and emit the lease — never the password."""
     cred = pool.get(credential_id)
     if cred is None:
         logger.error("no such credential: %s", credential_id)
@@ -308,9 +278,6 @@ def cmd_doctor(args: argparse.Namespace, pool: Pool) -> int:
     try:
         store: SecretStore | None = open_store(args.backend)
     except StoreUnavailableError as exc:
-        # doctor is the one command that reports an unavailable store instead of
-        # dying on it — that is precisely what it exists to diagnose. The error
-        # already reads as a full sentence; do not prefix it.
         store = None
         problems.append(str(exc))
 
@@ -355,15 +322,7 @@ def _open_store(args: argparse.Namespace) -> SecretStore:
 
 
 class _LazyStore:
-    """Opens the secret store on first use — and only then.
-
-    saddlebag refuses to run without a store, deliberately: a credential without
-    one is meaningless. But an environment made entirely of ``config`` entries needs
-    no store at all, and the hosts where that matters most (containers, CI, headless
-    boxes) are exactly the ones with no keyring. Opening the store eagerly would
-    fail a config-only environment on precisely the machines it was built for, so
-    every environment command routes through this and pays only for what it uses.
-    """
+    """Opens the secret store on first use — and only then."""
 
     def __init__(self, args: argparse.Namespace) -> None:
         self._args = args
@@ -376,16 +335,10 @@ class _LazyStore:
 
     @property
     def opened(self) -> SecretStore | None:
-        """The store, if anything has needed it yet. Never opens it."""
+        """The store, if anything has needed it yet."""
         return self._store
 
 
-# -- environments -----------------------------------------------------------
-#
-# The safety properties here mirror the credential pool's, and they are load-bearing:
-# `env list`, `env show` and `env doctor` read the pool DB for everything sensitive,
-# so they cannot leak a secret even when handed to an agent. `env render` is the
-# single point where a secret becomes a file.
 
 
 def _lookup_env(args: argparse.Namespace, pool: Pool) -> Environment | None:
@@ -423,14 +376,7 @@ def cmd_env_add(args: argparse.Namespace, pool: Pool) -> int:
 
 
 def cmd_env_import(args: argparse.Namespace, pool: Pool) -> int:
-    """Seed an environment from a manifest, or from a checked-in ``.env.example``.
-
-    A manifest reconstitutes the whole environment — metadata, kinds, notes, config
-    values — and creates it if this host has never seen it. A ``.env``-shaped file
-    carries none of that, so it can only contribute **key names**: every key lands
-    ``pending``, its value is read and discarded, and ``env doctor`` then reports
-    exactly what a human still has to supply. Nothing is ever guessed.
-    """
+    """Seed an environment from a manifest, or from a checked-in ``.env.example``."""
     path = Path(args.from_path)
 
     if manifest.is_manifest_path(path):
@@ -456,8 +402,6 @@ def cmd_env_import(args: argparse.Namespace, pool: Pool) -> int:
             )
             verb = "reconstituted"
         else:
-            # The manifest is the checked-in source of truth, so it is authoritative
-            # over the local row it is being imported into.
             pool.env_update(
                 environment.id,
                 env=parsed.env,
@@ -496,16 +440,7 @@ def cmd_env_import(args: argparse.Namespace, pool: Pool) -> int:
 
 
 def cmd_env_set(args: argparse.Namespace, pool: Pool) -> int:
-    """Supply a value. **The channel decides the kind**, not a flag and not a default.
-
-    A value on argv is already in the process table and the shell history, so it
-    cannot be treated as a secret without lying about its exposure — it is
-    ``config``. A value on stdin is a ``secret``, the same discipline
-    ``saddlebag add --password-stdin`` already enforces. This is self-enforcing
-    rather than conventional: there is no way to put a secret in the pool DB by
-    accident, because the only channel that reaches the DB is the one that has
-    already published the value.
-    """
+    """Supply a value."""
     environment = _lookup_env(args, pool)
     if environment is None:
         return 1
@@ -541,14 +476,11 @@ def cmd_env_set(args: argparse.Namespace, pool: Pool) -> int:
             logger.error("--from-credential %s", exc)
             return 2
         if pool.get(credential_id) is None:
-            # Not fatal: an environment may legitimately be defined before the
-            # credential it points at exists. `env doctor` reports it until it does.
             logger.warning("%s does not exist yet — %s will be a dangling reference "
                            "until it does", credential_id, key)
         entry = EnvironmentEntry(key=key, kind=KIND_CREDENTIAL_REF,
                                  cred_ref=args.from_credential, required=required, note=note)
     elif args.note is not None or args.optional or args.required:
-        # Metadata-only: annotate or re-flag a key without touching its value.
         entry = (
             EnvironmentEntry(key=key, kind=existing.kind, value=existing.value,
                              cred_ref=existing.cred_ref, required=required, note=note,
@@ -565,13 +497,8 @@ def cmd_env_set(args: argparse.Namespace, pool: Pool) -> int:
 
     store = _LazyStore(args)
     if secret is not None:
-        # Store first: if the pool write then fails, the entry stays as it was and a
-        # retry overwrites the stored value. The other order would leave the pool
-        # claiming a secret the store does not have.
         store().put(environment.store_key(key), secret)
     elif existing is not None and existing.kind == KIND_SECRET:
-        # The key is no longer a secret. Drop the stored value rather than leave it
-        # behind as an orphan nothing references.
         store().delete(environment.store_key(key))
 
     pool.env_put_entry(environment.id, entry)
@@ -615,12 +542,7 @@ def cmd_env_list(args: argparse.Namespace, pool: Pool) -> int:
 
 
 def cmd_env_show(args: argparse.Namespace, pool: Pool) -> int:
-    """Print an environment. Structurally incapable of emitting a secret.
-
-    Config values are shown in the clear — that is the point of config, and what
-    makes it reviewable. A secret entry reports as ``<set>``, which is enough to
-    reason about and is never the value. Neither needs the secret store to say so.
-    """
+    """Print an environment."""
     environment = _lookup_env(args, pool)
     if environment is None:
         return 1
@@ -648,11 +570,7 @@ def cmd_env_show(args: argparse.Namespace, pool: Pool) -> int:
 
 
 def cmd_env_export(args: argparse.Namespace, pool: Pool) -> int:
-    """Write the manifest — the artefact that travels, and the one to commit.
-
-    It carries no secret values, so unlike ``env render`` it is written with normal
-    permissions and is safe on stdout: that is exactly what makes it committable.
-    """
+    """Write the manifest — the artefact that travels, and the one to commit."""
     environment = _lookup_env(args, pool)
     if environment is None:
         return 1
@@ -699,17 +617,12 @@ def cmd_env_render(args: argparse.Namespace, pool: Pool) -> int:
     pool.env_touch(environment.id)
     for credential_id, lease_id in resolution.leases.items():
         logger.info("leased %s as %s for %s", credential_id, lease_id, args.run_id or "no run")
-    # Nothing on stdout but the path: the file holds secrets, the path does not.
     print(path)
     return 0
 
 
 def _report_gaps(environment: Environment, gaps: list[render.Gap]) -> None:
-    """The human-only wall, named precisely.
-
-    An agent that hits this cannot fix it by guessing — that is the entire point.
-    It reports `unfixable` and names these keys, and a human supplies them.
-    """
+    """The human-only wall, named precisely."""
     logger.error("cannot render %s — %d required key%s cannot be resolved:",
                  environment.name, len(gaps), "s" if len(gaps) != 1 else "")
     for gap in gaps:
@@ -719,11 +632,7 @@ def _report_gaps(environment: Environment, gaps: list[render.Gap]) -> None:
 def _env_check(
     args: argparse.Namespace, pool: Pool, environment: Environment, store: _LazyStore
 ) -> int:
-    """``--check``: resolve everything, write nothing, take no lease.
-
-    Safe to run anywhere, because the report names keys and never values — including
-    for drift, where the comparison looks at values but the output does not.
-    """
+    """``--check``: resolve everything, write nothing, take no lease."""
     report = render.check(environment, pool, store, target=args.output)
     if args.json:
         _emit(report.to_dict())
@@ -746,12 +655,7 @@ def _env_check(
 
 
 def cmd_env_doctor(args: argparse.Namespace, pool: Pool) -> int:
-    """Report what a human still has to supply, and what the pool and store disagree on.
-
-    The store is opened only if some environment in scope actually needs it: a pool
-    of config-only environments is healthy on a host with no keyring and no Vault,
-    and must not be reported as broken there.
-    """
+    """Report what a human still has to supply, and what the pool and store disagree on."""
     envs = pool.env_all() if args.all_projects else pool.env_find(_resolve_project(args))
     problems: list[str] = []
 
@@ -828,7 +732,6 @@ def cmd_env_remove(args: argparse.Namespace, pool: Pool) -> int:
     return 0
 
 
-# -- parser -----------------------------------------------------------------
 
 
 def _add_requirement_flags(parser: argparse.ArgumentParser) -> None:
@@ -846,18 +749,10 @@ def _add_lease_flags(parser: argparse.ArgumentParser) -> None:
 
 
 
-# -- filling a browser ------------------------------------------------------
-#
-# `fill` is the verb the pool exists for. Everything above it decides *which*
-# identity a run gets; this is where that identity actually signs in — and it does
-# so without the value ever reaching the caller. Saddlebag connects to a browser the
-# caller already controls, types into a selector the caller names, and reports a
-# character count. The opacity guarantee is unchanged: the browser ends up holding
-# the secret, which is the one place it was always going to have to arrive.
 
 
 def cmd_totp_set(args: argparse.Namespace, pool: Pool) -> int:
-    """Store a credential's TOTP enrolment seed. Write-only, like a password."""
+    """Store a credential's TOTP enrolment seed."""
     cred = pool.get(args.credential_id)
     if cred is None:
         logger.error("no such credential: %s", args.credential_id)
@@ -865,17 +760,12 @@ def cmd_totp_set(args: argparse.Namespace, pool: Pool) -> int:
 
     seed = _read_password("TOTP seed")
     try:
-        # Decoded before it is stored, so a seed pasted with a typo fails here rather
-        # than three months later as a login that mysteriously stopped working.
         totp.decode_seed(seed)
     except totp.SeedError as exc:
         logger.error("%s", exc)
         return 2
 
     if cred.totp_ref is not None:
-        # Storing one here would be inert: `seed_for` reads the reference first, so
-        # the value written would never be used and the operator would have no way to
-        # tell from the outside.
         return _fail(
             f"{cred.id} reads its TOTP seed from the keychain item "
             f"{cred.totp_ref.describe()}. Update it there, or run "
@@ -906,8 +796,6 @@ def cmd_link(args: argparse.Namespace, pool: Pool) -> int:
     try:
         attributes = keychain.parse_attributes(args.attributes)
         ref = KeychainRef.of(attributes)
-        # Resolved before it is recorded, for the reason in `_add_linked`, and the
-        # value is discarded here — linking never returns a secret to anyone.
         keychain.lookup(ref)
     except keychain.KeychainError as exc:
         return _fail(str(exc))
@@ -915,9 +803,6 @@ def cmd_link(args: argparse.Namespace, pool: Pool) -> int:
     store = _open_store(args)
     key = cred.store_key if args.field == "password" else cred.totp_store_key
     if store.get(key) is not None and not args.force:
-        # Two homes for one secret is the state this whole feature exists to avoid.
-        # Refusing here rather than shadowing means the operator decides which copy
-        # is authoritative, instead of finding out from a login that used the old one.
         return _fail(
             f"{cred.id} already has a {args.field} in the {store.name} store; linking "
             f"would shadow it. Pass --force to drop the stored copy and use the "
@@ -935,7 +820,7 @@ def cmd_link(args: argparse.Namespace, pool: Pool) -> int:
 
 
 def cmd_unlink(args: argparse.Namespace, pool: Pool) -> int:
-    """Forget a reference. The keychain item itself is untouched — saddlebag never wrote it."""
+    """Forget a reference."""
     cred = pool.get(args.credential_id)
     if cred is None:
         return _fail(f"no such credential: {args.credential_id}")
@@ -949,11 +834,7 @@ def cmd_unlink(args: argparse.Namespace, pool: Pool) -> int:
 
 
 def _value_to_fill(args: argparse.Namespace, cred: Credential, store: SecretStore) -> tuple[str, dict[str, object]]:
-    """The value for ``--field``, plus whatever is safe to report about it.
-
-    Bound to a local for the length of one insert and never returned to the caller
-    through any other path. The metadata is the part that gets printed.
-    """
+    """The value for ``--field``, plus whatever is safe to report about it."""
     if args.field == "username":
         return cred.username, {}
     if args.field == "password":
@@ -974,9 +855,6 @@ def _value_to_fill(args: argparse.Namespace, cred: Credential, store: SecretStor
         )
     remaining = totp.seconds_remaining()
     if remaining < args.min_seconds:
-        # A code with a second left on it fails a verification that is working
-        # correctly, and the retry costs a login attempt against an account that
-        # locks after a few. Waiting out the window is cheaper than the diagnosis.
         logger.info("current code expires in %ds; waiting for the next window", remaining)
         time.sleep(remaining)
         remaining = totp.seconds_remaining()
@@ -989,12 +867,7 @@ def _fail(message: str) -> int:
 
 
 def _password_missing(cred: Credential, store: SecretStore) -> bool:
-    """Whether a credential's password cannot be read at all — from either home.
-
-    A broken keychain reference counts as missing, and that is the point: `doctor`
-    exists to find the disagreements that only surface mid-run, and an attribute that
-    stopped matching is exactly one of them.
-    """
+    """Whether a credential's password cannot be read at all — from either home."""
     try:
         return keychain.password_for(cred, store) is None
     except keychain.KeychainError:
@@ -1166,13 +1039,7 @@ def _add_project_flag(parser: argparse.ArgumentParser) -> None:
 
 
 def _add_env_commands(sub: argparse._SubParsersAction) -> None:
-    """The environment pool: what a stack needs to *boot*, secret and non-secret alike.
-
-    An environment is a ``.env``-shaped bundle, not an identity: it is shared rather
-    than leased, and most of what it holds is not sensitive at all. The point is that
-    an agent can bring a stack up without ever reading or writing a ``.env`` file,
-    and without a secret value entering its context.
-    """
+    """The environment pool: what a stack needs to *boot*, secret and non-secret alike."""
     env = sub.add_parser("env", help="environments: the config a stack needs to boot")
     esub = env.add_subparsers(dest="env_command", required=True)
 

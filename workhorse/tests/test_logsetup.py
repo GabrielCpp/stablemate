@@ -1,12 +1,4 @@
-"""Tests for the console + OpenTelemetry logging pipeline (workhorse.logsetup).
-
-The two properties that matter here are both about what happens to a log record
-when a script node is running in-process: it must still reach the terminal even
-though the script's stdout/stderr are redirected for JSON capture, and it must
-carry the node it came from — since workhorse's spans are never made current,
-nothing else correlates it. Runnable two ways:
-    ./.venv/bin/python -m pytest tests/test_logsetup.py
-"""
+"""Tests for the console + OpenTelemetry logging pipeline (workhorse.logsetup)."""
 from __future__ import annotations
 
 import io
@@ -26,18 +18,13 @@ def _fresh_root():
 
 
 def test_console_handler_survives_the_script_stdout_capture():
-    """The load-bearing one. The in-process runner redirects stdout/stderr to
-    capture a script's JSON; a console handler that resolved sys.stderr lazily
-    would write into that buffer, so every log line a script emitted would be
-    swallowed into the JSON parse instead of reaching the operator. Binding the
-    real stderr at setup time is what prevents that."""
+    """The load-bearing one."""
     root, saved = _fresh_root()
     real_stderr = io.StringIO()
     logsetup._configured = False
     try:
         with redirect_stderr(real_stderr):
-            logsetup.setup()  # binds THIS stderr
-        # Now simulate the runner: redirect both streams elsewhere and log.
+            logsetup.setup()
         captured_out, captured_err = io.StringIO(), io.StringIO()
         with redirect_stdout(captured_out), redirect_stderr(captured_err):
             logging.getLogger("script.demo").warning("still visible")
@@ -55,9 +42,7 @@ def test_console_handler_survives_the_script_stdout_capture():
 
 
 def test_records_are_stamped_with_the_current_node(monkeypatch):
-    """Correlation is by explicit attribute, not trace context: the engine opens
-    node spans with start_span (never start_as_current_span), so a record's
-    trace_id is zeroes and only this stamp joins a log to a node."""
+    """Correlation is by explicit attribute, not trace context: the engine opens node spans with start_span (never start_as_current_span), so a record's trace_id is zeroes and only this stamp joins a log to a node."""
     monkeypatch.setattr(otel, "current_node", lambda: "select_item")
     record = logging.LogRecord("script.x", logging.INFO, __file__, 1, "hi", None, None)
     assert logsetup._NodeFilter().filter(record) is True
@@ -73,9 +58,8 @@ def test_an_explicit_node_is_not_overwritten(monkeypatch):
 
 
 def test_node_stamp_is_empty_rather_than_raising_when_telemetry_is_off():
-    """Telemetry is opt-in; with it off, the null adapter answers with "". A
-    logging filter that raised would break logging itself, not just telemetry."""
-    previous = otel.install(otel.TelemetryHost())  # a host with telemetry off
+    """Telemetry is opt-in; with it off, the null adapter answers with ""."""
+    previous = otel.install(otel.TelemetryHost())
     try:
         record = logging.LogRecord("x", logging.INFO, __file__, 1, "hi", None, None)
         assert logsetup._NodeFilter().filter(record) is True
@@ -85,10 +69,7 @@ def test_node_stamp_is_empty_rather_than_raising_when_telemetry_is_off():
 
 
 def test_sdk_internal_logs_are_kept_out_of_the_otel_handler():
-    """Without this the pipeline feeds itself: a collector that is down makes the
-    exporter log a failure, which the handler queues, whose export fails, which
-    logs... The console still shows them; only the path back into the exporter
-    is cut."""
+    """Without this the pipeline feeds itself: a collector that is down makes the exporter log a failure, which the handler queues, whose export fails, which logs..."""
     drop = logsetup._DropOtelInternals()
 
     def rec(name):
@@ -96,7 +77,6 @@ def test_sdk_internal_logs_are_kept_out_of_the_otel_handler():
 
     assert drop.filter(rec("opentelemetry.sdk._logs.export")) is False
     assert drop.filter(rec("opentelemetry.exporter.otlp")) is False
-    # A workhorse or script record must still get through.
     assert drop.filter(rec("script.select_item")) is True
     assert drop.filter(rec("workhorse.cli")) is True
 
@@ -106,20 +86,18 @@ def test_script_logger_is_named_per_node():
 
 
 def test_attach_and_detach_otel_are_safe_without_a_provider():
-    """Telemetry off is the default path: attach must no-op rather than explode,
-    and detach must be callable regardless — end_run calls it unconditionally."""
+    """Telemetry off is the default path: attach must no-op rather than explode, and detach must be callable regardless — end_run calls it unconditionally."""
     root, saved = _fresh_root()
     try:
         logsetup.attach_otel(None)
         assert root.handlers == []
-        logsetup.detach_otel()  # must not raise
+        logsetup.detach_otel()
     finally:
         root.handlers[:] = saved
 
 
 def test_detach_removes_the_handler_before_the_provider_dies():
-    """end_run shuts the LoggerProvider down; a handler left attached would hand
-    later records to a dead exporter on the way out of the process."""
+    """end_run shuts the LoggerProvider down; a handler left attached would hand later records to a dead exporter on the way out of the process."""
     root, saved = _fresh_root()
     sentinel = logging.NullHandler()
     try:

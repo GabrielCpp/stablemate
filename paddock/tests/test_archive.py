@@ -12,8 +12,6 @@ from paddock import archive
 
 
 def test_roundtrip_preserves_the_executable_bit(repo: Path, tmp_path: Path) -> None:
-    # A .git hook or a build script that comes back non-executable makes the unpacked
-    # seed behave differently from the tree it was captured from, silently.
     zip_path = archive.create(repo, tmp_path / "seed.zip", prefix=repo.name)
     out = archive.extract(zip_path, tmp_path / "out")
     mode = (out / repo.name / "cmd" / "build.sh").stat().st_mode
@@ -36,8 +34,6 @@ def test_roundtrip_preserves_uncommitted_state_and_git(repo: Path, tmp_path: Pat
 
 
 def test_identical_trees_hash_identically(repo: Path, tmp_path: Path) -> None:
-    # The sha256 in a pointer is a statement about the content. If mtimes leaked into
-    # the archive, re-capturing the same tree would produce a different fixture identity.
     first = archive.create(repo, tmp_path / "a.zip", prefix=repo.name)
     out = archive.extract(first, tmp_path / "out")
     second = archive.create(out / repo.name, tmp_path / "b.zip", prefix=repo.name)
@@ -59,7 +55,6 @@ def test_junk_is_reported_and_excludable(repo: Path) -> None:
 
 
 def test_docs_build_is_not_junk(repo: Path) -> None:
-    # `build/` is output at the root and an ordinary source directory anywhere else.
     (repo / "docs" / "build").mkdir(parents=True)
     assert archive.junk_in(repo) == []
 

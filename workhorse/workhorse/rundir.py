@@ -1,11 +1,4 @@
-"""Run identity and run-directory selection.
-
-The rules here — one stable dir per ``(workflow, run-id)``, an id derived from the
-params when none is given, a finished run never resumed in place — are the resume
-contract, which both the CLI and the driver have to obey. They live in their own
-module rather than in :mod:`workhorse.cli`, which the driver cannot import (the CLI
-imports *it*).
-"""
+"""Run identity and run-directory selection."""
 
 from __future__ import annotations
 
@@ -22,23 +15,7 @@ from workhorse.records import RunRecord, parse_run_record
 
 
 def derive_run_id(run_id: str | None, params: dict[str, Any] | None) -> str | None:
-    """Resolve the effective run id when ``--run-id`` was not given explicitly.
-
-    An explicit ``--run-id`` always wins. Otherwise, when the run carries
-    ``--params``, the id is a short deterministic digest of those params, so:
-
-    - distinct param sets (``service=report`` vs ``service=api``) get distinct run
-      dirs and never collide on a single ``default`` — the footgun where a second
-      target silently resumes the first and its ``--params`` are ignored;
-    - the SAME params re-resolve to the SAME id, so auto-resume-in-place is intact:
-      a crash, reboot, or plain re-run of the same command still lands on the
-      existing checkpoint (this is why it is a digest, not a random UUID — a UUID
-      would orphan every unfinished run on the next launch).
-
-    With no params it stays ``None`` → the caller's ``"default"`` (so a params-less
-    workflow keeps its one stable dir, and the Docker harness — which pins no
-    ``--run-id`` — still resumes across reboots exactly as before).
-    """
+    """Resolve the effective run id when ``--run-id`` was not given explicitly."""
     if run_id is not None:
         return run_id
     if not params:
@@ -55,34 +32,7 @@ def resume_argv(
     profile: str = "",
     config_path: str = "",
 ) -> list[str]:
-    """The argv that resumes ``run_dir`` — rebuilt, never the original one replayed.
-
-    Replaying the launch argv would be actively destructive. ``--no-cache`` deletes the
-    stable run dir before starting, which is the exact opposite of a resume and throws
-    away the work the resume exists to save; and the original ``--param`` /
-    ``--params-file`` are already in the checkpoint, so replaying them lets a stale file
-    win over what the run really holds. So the resume spelling is one canonical line —
-    ``<program> run --resume-run <dir>`` — and the only flags added to it are the ones
-    the checkpoint genuinely does not hold.
-
-    ``cli`` is resolved at the process edge rather than carried by the run, so a run
-    moved onto another backend has to say so. ``profile`` is passed only when a live
-    ``switch-profile`` moved the run off the one ``run.json`` records; with no flag a
-    resume reads that file, which is the right answer everywhere else. ``config_path``
-    is belt-and-braces where the environment is inherited anyway, and load-bearing where
-    it is not — a resume line that does not say which config it is on is the one nobody
-    can diagnose from the line they have.
-
-    The two flags are one axis, not two: a profile carries its own ``cli``, and the run
-    CLI refuses ``--cli`` beside ``--profile``. So a profile, when there is one, is what
-    names the backend, and ``cli`` is spelled only for a run that has none — the line
-    this returns has to be one the CLI accepts, whichever caller filled in both.
-
-    Pure: it resolves nothing and reads nothing. Turning ``program`` into something
-    executable is the caller's business, because the callers want different answers —
-    :func:`workhorse.pyflow.run._exec_reload` needs a real executable to hand ``execv``,
-    while the launch record wants the unresolved name, which is what a human types.
-    """
+    """The argv that resumes ``run_dir`` — rebuilt, never the original one replayed."""
     argv = [program, "run", "--resume-run", str(run_dir)]
     if cli and not profile:
         argv += ["--cli", cli]
@@ -96,18 +46,7 @@ def resume_argv(
 def auto_resolve(
     runs_dir: Path, workflow_name: str, run_id: str | None = None
 ) -> tuple[str, Path | None]:
-    """Resolve --auto's single stable run dir for this run id.
-
-    The run id here is already resolved by :func:`derive_run_id` (explicit
-    ``--run-id``, else a params digest, else None); a None id falls back to "default",
-    giving one fixed dir (e.g. ``research-default``). Returns ``(run_id, resume_dir)``
-    where ``resume_dir`` is that dir when it already holds a checkpoint to continue,
-    else None (caller starts fresh).
-
-    A run that already reached a terminal node is NOT resumed — re-running means a
-    new run, not a no-op replay of the finished one (mirrors
-    :func:`find_latest_resumable`, which skips terminal runs). The fresh start reuses
-    the same stable dir."""
+    """Resolve --auto's single stable run dir for this run id."""
     rid = run_id or "default"
     stable = runs_dir / f"{workflow_name}-{rid}"
     if not (stable / ArtifactWriter.CHECKPOINT_FILE).exists():
@@ -116,22 +55,13 @@ def auto_resolve(
         record = parse_run_record((stable / "run.json").read_text())
     except (OSError, ValidationError):
         record = RunRecord()
-    if record.terminal is not None:  # already finished — start a new run
+    if record.terminal is not None:
         return rid, None
     return rid, stable
 
 
 def resolve_run_dir(spec: str, runs_dir: Path, workflow_name: str) -> Path | None:
-    """The run dir an operator meant by ``spec``, or None if there is no such dir.
-
-    Three spellings, because a run dir is ``<workflow>-<run-id>`` and the operator has
-    two other names for the same run already in their shell history: a path, the run
-    *dir* name, and the run id that named it. ``--run-id shakedown --resume-run
-    shakedown`` — the obvious thing to type — used to miss the dir it had just made.
-
-    Shared by ``run``'s resume flags and ``control``'s ``--run`` so the two cannot drift:
-    a name that resumes a run must also be a name that can reload it.
-    """
+    """The run dir an operator meant by ``spec``, or None if there is no such dir."""
     candidate = Path(spec)
     if not candidate.is_absolute() and not candidate.exists():
         candidate = runs_dir / spec
@@ -153,7 +83,7 @@ def find_latest_resumable(runs_dir: Path) -> Path | None:
             record = parse_run_record((d / "run.json").read_text())
         except (OSError, ValidationError):
             continue
-        if record.terminal is None:  # never reached a terminal node
+        if record.terminal is None:
             candidates.append(((d / ArtifactWriter.CHECKPOINT_FILE).stat().st_mtime, d))
     if not candidates:
         return None
@@ -161,11 +91,7 @@ def find_latest_resumable(runs_dir: Path) -> Path | None:
 
 
 def runtime_deadline(started_at_iso: str, budget_s: float) -> float | None:
-    """Absolute unix-epoch deadline for this run, or None when no budget is set.
-
-    Anchored to the writer's original ISO start time so a resumed run keeps the
-    same deadline instead of restarting the clock. ``budget_s`` is the configured
-    wall-clock ceiling (RunConfig.max_runtime_s); <= 0 means unbounded."""
+    """Absolute unix-epoch deadline for this run, or None when no budget is set."""
     if budget_s <= 0:
         return None
     try:

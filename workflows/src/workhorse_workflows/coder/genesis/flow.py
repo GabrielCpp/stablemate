@@ -1,43 +1,4 @@
-"""Genesis as a state machine.
-
-It turns a directory into something the author and coder workflows can both stand on: a
-git repo with a commit, an `agents.yml` carrying a `workspace:` block, farrier's packs and
-scaffolds installed, and a service skeleton with its marker file. It is never sequenced by
-the main loop — it produces the preconditions the main loop *assumes*, and is entered
-directly.
-
-Genesis is pure bootstrapping: every state below is deterministic tooling, with no agent
-turn anywhere in the flow. There is no product code, no story and nothing judgement-shaped
-for an agent to do at this stage, and a repair turn that could only guess at a tooling
-failure would be a second, unaccountable roll of the same dice `verify` already failed. A
-target that fails validation fails the run directly.
-
-The shape is a straight line with two skip-ahead branches at the front::
-
-    classify → [git init] → agents.yml → [skeleton] → farrier → verify → done
-
-The two skips read fields of the classification — `target_state` and `service_state` —
-produced several states earlier. Repo state and service state are separate questions on
-purpose: an established monorepo is exactly where a new service gets added, so "the repo
-exists" must not short-circuit the build.
-
-**GENESIS CARRIES ZERO STACK KNOWLEDGE.** Every stack-specific value — `packs`,
-`scaffolds`, `init_cmd`, `marker`, `markers` — is an input written through verbatim.
-`scripts/check_public.py` asserts no base workflow may depend on the private overlay, and
-the stack packs live there; a base flow that knew `go` meant `go.mod` would be a base flow
-that knows the overlay's contents.
-
-Two shapes worth naming:
-
-* **The comma-separated inputs stay `str`** and are split before reaching a node. That is
-  the operator-facing contract — `--params '{"packs": "go", "scaffolds":
-  "shared-docs:docs,go-service:api"}'` — and typing them `list[str]` would break every
-  recorded invocation.
-* **The validating state is called `verify`, not `validate`.** `Workflow` is a pydantic
-  model, and state discovery skips every name on `dir(Workflow)` — which includes pydantic
-  v1's deprecated `validate`, `json`, `dict`, `copy` and `schema` aliases. A state named
-  `validate` is silently not a state, and the run only finds out when a transition names it.
-"""
+"""Genesis as a state machine."""
 from __future__ import annotations
 
 from workhorse.pyflow import (
@@ -58,54 +19,23 @@ from workhorse_workflows.coder.shared.schemas.genesis import TargetClassificatio
 
 
 class Genesis(Workflow):
-    """A directory in, a repo the main loop will accept out.
+    """A directory in, a repo the main loop will accept out."""
 
-    Safe to re-run: the classification at the front is what makes that true, routing an
-    already-initialised repo to a config refresh instead of scaffolding over live work.
-    """
-
-    #: Required — the path to the repo to create. `resolve_genesis_target` fails the flow
-    #: when it is empty or names something unusable.
     target: str = ""
-    #: The logical service name, which is also the workspace repo key in `agents.yml`.
     service: str = ""
-    #: The repo-relative directory the service lives in (e.g. `"api"`).
     service_root: str = ""
-    #: Comma-separated farrier pack ids. Empty means "install nothing", which
-    #: `install_farrier` turns into a skip rather than an error.
     packs: str = ""
-    #: Comma-separated `"<scaffold-id>:<dir>"` pairs.
     scaffolds: str = ""
-    #: The stack's own init command, run verbatim in the service directory.
     init_cmd: str = ""
-    #: The file that proves the init worked (e.g. `"go.mod"`).
     marker: str = ""
-    #: Comma-separated service markers for `agents.yml`. Empty falls back to `marker`,
-    #: resolved once by `resolve_genesis_target` and read back off its result.
     markers: str = ""
-    #: Workflows to register in `agents.yml`.
     workflows: str = "coder"
-    #: Agent backends to enable. `farrier install` hard-exits with none.
     assistants: str = "claude"
-    #: Comma-separated `"<gate>=<command>"` pairs for the service's `services:` block —
-    #: the deterministic gates the dev lane runs after every implement turn (e.g.
-    #: `"lint=make lint,test=make test"`). Empty leaves the repo ungated, which the dev
-    #: lane skips rather than guesses at.
     gates: str = ""
 
-    # --- classification -----------------------------------------------------
 
     def start(self) -> Continue:
-        """Classify the target before anything mutates it.
-
-        `resolve_target` + `decide_target` + `decide_genesis`. The fail-fast matters: with
-        no target every script below no-ops with a note and the run still reaches
-        `verify`, failing there instead of quietly building over nothing.
-
-        An existing repo skips `git init` alone. It still flows through the config refresh
-        and on to the service-level decision, because a long-established monorepo is
-        exactly where a *new* service gets added.
-        """
+        """Classify the target before anything mutates it."""
         found = self.call(
             resolve_genesis_target,
             self.target,
@@ -120,32 +50,14 @@ class Genesis(Workflow):
             return Continue(found, self.config)
         return Continue(found, self.git_init)
 
-    # --- the build ----------------------------------------------------------
 
     def git_init(self) -> Continue:
-        """`git init` and one initial commit — the first mutating step, and it must be.
-
-        ostler's `find_root` walks *up* for `.git`/`docs/`/`ostler.yml`/`agents.yml`. A
-        brand-new directory matches none of them, so any ostler call made before this
-        binds to an ancestor repo silently: ids from the parent's registry, docs into the
-        parent's tree, no error anywhere. `verify` asserts the binding landed, because
-        that misbind is undetectable after the fact.
-        """
+        """`git init` and one initial commit — the first mutating step, and it must be."""
         result = self.call(genesis_git_init, self._target().target_dir)
         return Continue(result, self.config)
 
     def config(self) -> Continue:
-        """Merge the service into `agents.yml`, then decide whether it needs building.
-
-        `write_agents_yml` + `decide_skeleton`. The `workspace:` block is what lets the
-        planner target the service at all, and `scaffolds` is written here because
-        `farrier scaffold <id>` refuses an id that is not enabled in `agents.yml` — the
-        farrier step below would render nothing without it.
-
-        The skeleton decision is keyed on the **service**, not the repo: `go mod init` and
-        friends fail or clobber when re-run over a live service, so an existing one goes
-        straight to the farrier refresh.
-        """
+        """Merge the service into `agents.yml`, then decide whether it needs building."""
         found = self._target()
         result = self.call(
             write_agents_yml,
@@ -164,28 +76,14 @@ class Genesis(Workflow):
         return Continue(result, self.skeleton)
 
     def skeleton(self) -> Continue:
-        """Run the stack's native init tooling, and assert it left its marker behind.
-
-        Ordered *before* farrier, which is load-bearing. Scaffolds seed files into the
-        service directory (a `.gitignore`), and stack generators refuse to write into a
-        directory that already has any: observed live, the `react-router-web` scaffold
-        seeded `web/.gitignore` and `npm create react-router` then aborted with
-        "Destination directory contains files that would be overwritten". Native init
-        first, scaffolds over the top — farrier never clobbers a file the repo already
-        owns, so seeding after is safe while seeding before is not.
-        """
+        """Run the stack's native init tooling, and assert it left its marker behind."""
         result = self.call(
             init_skeleton, self._target().target_dir, self.service_root, self.init_cmd, self.marker
         )
         return Continue(result, self.farrier)
 
     def farrier(self) -> Continue:
-        """Install the packs and render the scaffolds, then move on to validation.
-
-        `install_farrier` + `decide_farrier` + `decide_skeleton_ok`, minus the branch: both
-        outcomes used to pick between two agent turns, and there is only one path left now
-        that neither turn exists. `verify` is what decides whether the build succeeded.
-        """
+        """Install the packs and render the scaffolds, then move on to validation."""
         result = self.call(
             install_farrier,
             self._target().target_dir,
@@ -195,46 +93,25 @@ class Genesis(Workflow):
         return Continue(result, self.verify)
 
     def verify(self) -> Done:
-        """Assert every precondition the main loop assumes, and fail if it does not hold.
-
-        `validate_genesis` + `decide_valid` + `guard_genesis`. Genesis's postcondition *is*
-        the main loop's precondition, and they share one assertion implementation
-        (`coder.shared.contract`) so they cannot drift apart silently.
-
-        There is no repair turn: genesis is pure bootstrapping, and a target that fails
-        validation is a tooling problem an agent guessing at the same errors would not have
-        fixed more reliably than the tool that already produced them. The operator re-runs
-        with corrected params instead.
-        """
+        """Assert every precondition the main loop assumes, and fail if it does not hold."""
         found = self._target()
         report = self.call(
             validate_genesis, found.target_dir, self.service_root, found.markers
         )
-        # Logged rather than raised: a warning is a legibility problem, not a broken repo,
-        # and the one that matters most — ostler could not be imported, so the binding
-        # check did not run — is otherwise invisible in a run that reports success.
         for warning in report.warnings.splitlines():
             self.logger.warning("%s", warning)
         if not report.valid:
             raise WorkflowFailed(f"genesis target is invalid: {report.errors}")
         return Done(report)
 
-    # --- helpers ------------------------------------------------------------
 
     def _target(self) -> TargetClassification:
-        """The classification every state below reads.
-
-        A method rather than threaded state, because the classification is a fact about the
-        run rather than a value any state hands to the next.
-        """
+        """The classification every state below reads."""
         return self.output(resolve_genesis_target)
 
     @staticmethod
     def _split(value: str) -> tuple[str, ...]:
-        """A comma-separated operator input as the sequence the nodes take.
-
-        Blank entries are dropped, so a trailing comma is not a pack named `""`.
-        """
+        """A comma-separated operator input as the sequence the nodes take."""
         return tuple(part.strip() for part in value.split(",") if part.strip())
 
 

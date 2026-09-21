@@ -1,10 +1,4 @@
-"""Loading, validating and running a `qa_plan.py` — the format that replaces the v2 YAML.
-
-The end-to-end case is the one that matters: a plan module goes in and a `qa-evidence.json`
-comes out, with the obligation marked covered by an assertion the scenario made in Python.
-Everything the shell format needed a hand-written regex to police is either checked by the
-interpreter or absent from the format.
-"""
+"""Loading, validating and running a `qa_plan.py` — the format that replaces the v2 YAML."""
 
 from __future__ import annotations
 
@@ -157,12 +151,7 @@ def test_spec_dir_is_the_module_directory(tmp_path: Path) -> None:
 
 
 def test_importing_a_plan_leaves_no_bytecode_beside_the_documentation(tmp_path: Path) -> None:
-    """A spec directory is documentation under version control, not a package directory.
-
-    The plan module lives beside `plan.md` and `review.md`, so importing it wrote a
-    `__pycache__/` into the docs tree — once per validate, once per describe, once per
-    scenario. Nothing cleans it up, and the next `git add docs/specs/<story>` sweeps it in.
-    """
+    """A spec directory is documentation under version control, not a package directory."""
     spec = _spec(tmp_path)
     module = _plan(spec)
     (tmp_path / "out.json").write_text(json.dumps({"item": {"id": "abc"}}), encoding="utf-8")
@@ -173,8 +162,6 @@ def test_importing_a_plan_leaves_no_bytecode_beside_the_documentation(tmp_path: 
 
 
 def test_load_stamps_the_module_and_interpreter_on_every_target(tmp_path: Path) -> None:
-    # The driver is handed one target dict and nothing else, so resolving either of these
-    # a second time at run time is how a validated plan and an executed plan come apart.
     spec = _spec(tmp_path)
     module = _plan(spec)
     document, problems = load_plan(module, spec, tmp_path)
@@ -192,8 +179,7 @@ def test_a_valid_plan_has_no_problems(tmp_path: Path) -> None:
 
 
 def test_a_blank_book_digest_is_not_checked(tmp_path: Path) -> None:
-    """A hand-authored plan names no `book=` — nothing here to compare it against, so it is
-    silently exempt rather than refused for omitting a field `ostler qa compile-plan` mints."""
+    """A hand-authored plan names no `book=` — nothing here to compare it against, so it is silently exempt rather than refused for omitting a field `ostler qa compile-plan` mints."""
     spec = _spec(tmp_path)
     document, problems = load_plan(_plan(spec), spec, tmp_path)
     assert not problems and document is not None
@@ -214,10 +200,7 @@ def test_a_plan_compiled_from_the_current_book_is_not_stale(tmp_path: Path) -> N
 
 
 def test_a_plan_compiled_from_a_different_book_is_stale(tmp_path: Path) -> None:
-    """The trap 2w exists for: `compile-plan --out` never overwrites an authored plan, and
-    `qa.vet(...)` re-reads the book at run time while a baked `qa.verify(...)` line does not —
-    so a stale plan can pass its placement checks while asserting against obligations the book
-    no longer states, and nothing said so. This is what says so."""
+    """The trap 2w exists for: `compile-plan --out` never overwrites an authored plan, and `qa.vet(...)` re-reads the book at run time while a baked `qa.verify(...)` line does not — so a stale plan can pass its placement checks while asserting against obligations the book no longer states, and nothing said so."""
     spec = _spec(tmp_path)
     source = PLAN.replace(
         'plan(run_id="qa-story-1", story="story-1")',
@@ -230,12 +213,7 @@ def test_a_plan_compiled_from_a_different_book_is_stale(tmp_path: Path) -> None:
 
 
 def _spec_with_book_file(tmp_path: Path, content: str = "content-1") -> Path:
-    """`_spec`, plus a real book file on disk whose digest the packet's `bookFiles` records.
-
-    The file is written before `_spec` builds the packet, so `book_files` picks it up —
-    unlike `_ac_spec`, which writes its packet before its book file exists on purpose, to
-    exercise the late-write case (`test_ac_only_browser_scenario_can_vet_book_screen_outside_packet`).
-    """
+    """`_spec`, plus a real book file on disk whose digest the packet's `bookFiles` records."""
     (tmp_path / "docs/features/demo").mkdir(parents=True)
     (tmp_path / "docs/features/demo/item.md").write_text(content, encoding="utf-8")
     return _spec(tmp_path)
@@ -302,10 +280,7 @@ def test_a_packet_with_no_book_files_is_refused_as_predating_the_guard(tmp_path:
 
 
 def _spec_with_story_file(tmp_path: Path, content: str = "# Story 1\n") -> tuple[Path, Path]:
-    """`_spec`, plus a real story file on disk whose digest the packet's `storyFile` records.
-
-    Returns `(spec, story_file)` so a test can rewrite or delete the story file afterward.
-    """
+    """`_spec`, plus a real story file on disk whose digest the packet's `storyFile` records."""
     story_file = tmp_path / "docs/specs/story-1/story.md"
     story_file.parent.mkdir(parents=True, exist_ok=True)
     story_file.write_text(content, encoding="utf-8")
@@ -399,10 +374,7 @@ def test_a_packet_predating_the_story_drift_guard_is_refused(tmp_path: Path) -> 
 def test_a_packet_with_bookfiles_but_no_story_file_key_is_refused_on_story_alone(
     tmp_path: Path,
 ) -> None:
-    """The intermediate-era packet: `bookFiles` was added in an earlier commit than
-    `storyFile`, so a packet generated in between carries a valid `bookFiles` and no
-    `storyFile` key at all. The book-drift check must stay silent — its own input is
-    present and current — while the story-drift check refuses on its own account."""
+    """The intermediate-era packet: `bookFiles` was added in an earlier commit than `storyFile`, so a packet generated in between carries a valid `bookFiles` and no `storyFile` key at all."""
     spec = _spec_with_book_file(tmp_path)
     context_path = spec / "qa-okf-context.json"
     context = json.loads(context_path.read_text(encoding="utf-8"))
@@ -428,13 +400,7 @@ def test_ac_only_browser_scenario_can_vet_book_screen_outside_packet(
 
 
 def test_a_synthetic_mechanism_is_refused_and_named(tmp_path: Path) -> None:
-    """`synthetic` named the one thing a QA run must never accept: a suite standing in for
-    the product. Two gates, because they catch it at different moments and a plan that only
-    tripped the second would already have imported. The decorator refuses the declaration
-    outright; `validate_v2` keeps its own branch for a document assembled any other way, and
-    says what to write instead — an unadorned "must be one of ['fixture', 'live']" leaves the
-    author to guess whether their evidence was retired or merely misspelled.
-    """
+    """`synthetic` named the one thing a QA run must never accept: a suite standing in for the product."""
     spec = _spec(tmp_path)
     source = PLAN.replace('mechanism="live"', 'mechanism="synthetic"')
     document, problems = load_plan(_plan(spec, source), spec, tmp_path)
@@ -449,9 +415,6 @@ def test_a_synthetic_mechanism_is_refused_and_named(tmp_path: Path) -> None:
 
 
 def test_an_unimportable_plan_fails_validation(tmp_path: Path) -> None:
-    # The static check YAML could never offer. A broken import used to surface an hour into
-    # a run, as a driver failure against a story that was fine. `ostler_qa` is on the lint
-    # allowlist, so this reaches the actual import rather than being rejected by lint first.
     spec = _spec(tmp_path)
     _plan(spec, "from ostler_qa import nonexistent_project_name\n")
     outcome = cmd_validate(spec / "qa_plan.py", spec, root=tmp_path)
@@ -461,15 +424,12 @@ def test_an_unimportable_plan_fails_validation(tmp_path: Path) -> None:
 
 
 def test_coverage_without_an_assertion_is_rejected(tmp_path: Path) -> None:
-    # The replacement for `_exit_sentinel`, and stronger: `describe` counts the qa.check
-    # calls in a parsed tree rather than guessing at a shell string.
     spec = _spec(tmp_path)
     hollow = PLAN[: PLAN.index('    payload = json')] + "    pass\n"
     document, problems = load_plan(_plan(spec, hollow), spec, tmp_path)
     assert not problems and document is not None
     reported = validate_v2(document)
     assert any("calls no qa.check()" in item for item in reported)
-    # …and the obligation it claimed is not credited to it.
     assert any("is not covered by an asserted scenario" in item for item in reported)
 
 
@@ -486,12 +446,7 @@ def {name}(qa: Qa) -> None:
 
 
 def test_a_scenario_covering_nothing_the_change_owes_is_rejected(tmp_path: Path) -> None:
-    """The half of over-planning the coverable fence never saw.
-
-    `_uncoverable` polices which ids a scenario may claim; it says nothing about a scenario
-    that claims none. That one costs a validate, a dry run, a suite run, a fix item and an
-    audit on every lap of the loop, and discharges no obligation when it passes.
-    """
+    """The half of over-planning the coverable fence never saw."""
     spec = _spec(tmp_path)
     source = PLAN + _extra_scenario("free_floating")
     document, problems = load_plan(_plan(spec, source), spec, tmp_path)
@@ -533,12 +488,7 @@ def test_more_scenarios_than_the_packet_can_justify_are_rejected(tmp_path: Path)
 
 
 def test_an_unmodelled_surface_has_no_budget_to_exceed(tmp_path: Path) -> None:
-    """A packet with neither obligations nor criteria bounds nothing.
-
-    The evidence gate already accepts such a surface on run-log proof alone, so a budget
-    derived from an empty packet would be a refusal of every plan that could be written for
-    it — the fail-closed direction inverted into a fail-shut one.
-    """
+    """A packet with neither obligations nor criteria bounds nothing."""
     spec = _spec(tmp_path)
     context_path = spec / "qa-okf-context.json"
     context = json.loads(context_path.read_text(encoding="utf-8"))
@@ -552,14 +502,7 @@ def test_an_unmodelled_surface_has_no_budget_to_exceed(tmp_path: Path) -> None:
 
 
 def test_the_finding_says_which_helpers_checks_do_not_count(tmp_path: Path) -> None:
-    """A helper this module does not define is where the static read genuinely stops.
-
-    Factoring shared assertions into a module helper is the ordinary way to write a scenario
-    that proves the same thing for two locales, and that one is followed. A name the module
-    never binds is not: whatever it asserts is not in this tree. The refusal is deliberate,
-    but a message naming only the symptom sends the author to read `count_checks` to discover
-    the rule — so the rule travels with the finding.
-    """
+    """A helper this module does not define is where the static read genuinely stops."""
     spec = _spec(tmp_path)
     hollow = PLAN[: PLAN.index('    payload = json')] + "    _assert_it(qa)\n"
     document, problems = load_plan(_plan(spec, hollow), spec, tmp_path)
@@ -572,15 +515,7 @@ def test_the_finding_says_which_helpers_checks_do_not_count(tmp_path: Path) -> N
 
 
 def test_a_module_helper_s_checks_count_for_the_scenario_that_calls_it(tmp_path: Path) -> None:
-    """A scenario that calls `verify_created(qa, …)` asserts what the helper asserts.
-
-    At runtime there is no difference — the ledger records the helper's assertions with the
-    helper's own `covers=` either way. Reading only the scenario body made the static half
-    disagree with that, and answered a correctly bound plan with "no assertion invokes it",
-    which names neither the problem nor the fix. Inlining is not the fix: a node's `verify:`
-    bullets fan out onto every obligation it mints, so the inlined form repeats the same
-    twenty-id call in every scenario that shares the observation.
-    """
+    """A scenario that calls `verify_created(qa, …)` asserts what the helper asserts."""
     spec = _spec(tmp_path)
     factored = PLAN.replace(
         '    qa.check("the item is the one requested", qa.field(payload, "item.id") == "abc",\n'
@@ -640,13 +575,7 @@ def _declaring(spec: Path) -> None:
 
 
 def test_a_declared_check_the_plan_never_invokes_is_refused(tmp_path: Path) -> None:
-    """The reviewer's recurring finding, now a set difference.
-
-    `qa.check` takes an already-collapsed bool, so this plan's assertion could be arbitrarily
-    weaker than the claim and still cite it — which is exactly what a person was being paid
-    `power=high` to notice, once per story, forever. The book named the observation; either
-    the plan makes it or it does not.
-    """
+    """The reviewer's recurring finding, now a set difference."""
     spec = _spec(tmp_path)
     _declaring(spec)
     document, problems = load_plan(_plan(spec), spec, tmp_path)
@@ -655,8 +584,6 @@ def test_a_declared_check_the_plan_never_invokes_is_refused(tmp_path: Path) -> N
     reported = [item for item in validate_v2(document) if "declares `json_path" in item]
 
     assert reported, "an obligation whose declared check nobody invokes must not validate"
-    # The defect a weaker assertion would let through travels with the refusal: without it
-    # the repair reads as ceremony, and the cheapest way to satisfy ceremony is to restate.
     assert "passes on the default the defect also produces" in reported[0]
 
 
@@ -670,9 +597,6 @@ def test_invoking_the_declared_check_with_its_arguments_binds(tmp_path: Path) ->
 
 
 def test_the_same_check_with_weaker_arguments_is_a_different_call(tmp_path: Path) -> None:
-    # `json_path(path=…)` alone asserts the field is *present*, which is what the default the
-    # defect produces also satisfies. It is a legal call and the wrong one, and nothing about
-    # the difference needs judging: the canonical spellings differ.
     spec = _spec(tmp_path)
     _declaring(spec)
     source = VERIFY_PLAN.replace("{args}", 'path="item.id"')
@@ -682,14 +606,7 @@ def test_the_same_check_with_weaker_arguments_is_a_different_call(tmp_path: Path
 
 
 def test_a_one_argument_miss_names_the_call_the_plan_wrote_instead(tmp_path: Path) -> None:
-    """A set difference cannot say "you wrote this call and got one argument wrong".
-
-    Read without that, "no assertion invokes it" against a file plainly containing a
-    `json_path` call reads as *write another one* — so the repair lane adds a near-duplicate,
-    the difference survives, and the loop runs until the plan lane gives up. Nesting the
-    observation under a case key is how it happens in practice: every argument agrees but
-    the path, which now carries a prefix the book never declared.
-    """
+    """A set difference cannot say "you wrote this call and got one argument wrong"."""
     spec = _spec(tmp_path)
     _declaring(spec)
     source = VERIFY_PLAN.replace("{args}", 'path="case.item.id", equals="abc"')
@@ -705,11 +622,7 @@ def test_a_one_argument_miss_names_the_call_the_plan_wrote_instead(tmp_path: Pat
 
 
 def test_a_call_with_nothing_in_common_is_not_offered_as_the_near_miss(tmp_path: Path) -> None:
-    """The same check name with every argument different is a different assertion.
-
-    Pointing at it would send the repair to rewrite a call that was right for the claim it
-    was written against — the opposite of the correction, and one more lap.
-    """
+    """The same check name with every argument different is a different assertion."""
     spec = _spec(tmp_path)
     _declaring(spec)
     source = VERIFY_PLAN.replace("{args}", 'path="other.field", matches="xyz"')
@@ -734,8 +647,6 @@ def test_a_verify_call_naming_no_known_check_is_refused_by_name(tmp_path: Path) 
 
 
 def test_the_declared_check_runs_and_lands_in_the_evidence(tmp_path: Path) -> None:
-    # The declaration is executable, which is the whole claim: the comparison is the
-    # harness's, so the scenario cannot choose a weaker one.
     spec = _spec(tmp_path)
     _declaring(spec)
     source = VERIFY_PLAN.replace("{args}", 'path="item.id", equals="abc"')
@@ -753,15 +664,7 @@ def test_the_declared_check_runs_and_lands_in_the_evidence(tmp_path: Path) -> No
 def test_the_evidence_map_sees_the_declared_check_the_scenario_actually_ran(
     tmp_path: Path,
 ) -> None:
-    """The bridge between the two processes, which used to drop the check's identity.
-
-    A scenario runs in its own process, so the comparison cannot be re-executed when its
-    records come back — the assertion enters the ledger as `scenario_check`, a verdict this
-    side only transcribes. The evidence map, though, matches a `verify:` bullet against the
-    check *name and arguments* on the record, so transcribing the verdict alone left every
-    `qa.verify()` obligation `claimed-but-unasserted` no matter how green the run: the map
-    could not credit a single declared check, in any spec, on any run.
-    """
+    """The bridge between the two processes, which used to drop the check's identity."""
     spec = _spec(tmp_path)
     _declaring(spec)
     source = VERIFY_PLAN.replace("{args}", 'path="item.id", equals="abc"')
@@ -791,8 +694,6 @@ def test_running_the_plan_records_the_assertion_as_evidence(tmp_path: Path) -> N
     evidence = json.loads((spec / "qa-evidence.json").read_text(encoding="utf-8"))
     item = next(row for row in evidence["obligations"] if row["id"] == OBLIGATION)
     assert item["verdict"] == "Pass"
-    # The ledger record is the same shape a command scenario writes, which is why nothing
-    # downstream of `qa-run.ndjson` had to change.
     records = [
         json.loads(line)
         for line in (spec / "qa" / "qa-run.ndjson").read_text(encoding="utf-8").splitlines()
@@ -841,10 +742,6 @@ def _browser_spec_with_locators(tmp_path: Path, locators: dict[str, str], locato
 
 
 def test_a_role_with_a_truthful_empty_name_validates_by_selector(tmp_path: Path) -> None:
-    # A role paired with a book-truthful `name: none` (the element's accessible name really is
-    # empty — no `aria-label` gives it one) has no `get_by_role` query `_page_locator_expr` will
-    # ever emit for it, so the validator must accept the `selector:` the compiler falls through
-    # to as the whole address, rather than demand a role locator that can never exist.
     spec = _browser_spec_with_locators(
         tmp_path,
         {"role": "generic", "name": "none", "selector": "#empty-notice", "route": "/items"},
@@ -856,8 +753,6 @@ def test_a_role_with_a_truthful_empty_name_validates_by_selector(tmp_path: Path)
 
 
 def test_a_role_with_a_real_name_still_rejects_text_addressing(tmp_path: Path) -> None:
-    # The relaxation must not widen into a general escape hatch: a node with a genuine
-    # accessible name is still held to `get_by_role`, not to text.
     spec = _browser_spec_with_locators(
         tmp_path,
         {"role": "listitem", "name": "Widget", "selector": "#widget", "route": "/items"},
@@ -871,8 +766,6 @@ def test_a_role_with_a_real_name_still_rejects_text_addressing(tmp_path: Path) -
 
 
 def test_a_role_with_a_real_name_still_rejects_a_bare_selector(tmp_path: Path) -> None:
-    # Nor to a bare selector: a documented name is a `by_role` query the compiler can build, so
-    # settling for `selector:` instead is still the gap the rule exists to catch.
     spec = _browser_spec_with_locators(
         tmp_path,
         {"role": "listitem", "name": "Widget", "selector": "#widget", "route": "/items"},
@@ -884,8 +777,6 @@ def test_a_role_with_a_real_name_still_rejects_a_bare_selector(tmp_path: Path) -
 
 
 def test_a_browser_scenario_is_held_to_the_role_the_book_documents(tmp_path: Path) -> None:
-    # The check that survives the format change: `describe` recovers the locators from the
-    # parsed body, so validation reads the same structure it read off a YAML action list.
     spec = _browser_spec(tmp_path, 'qa.by_text("Widget")')
     document, problems = load_plan(spec / "qa_plan.py", spec, tmp_path)
     assert not problems and document is not None
@@ -914,8 +805,6 @@ def test_a_browser_scenario_may_not_navigate_off_the_documented_route(tmp_path: 
 
 
 def test_a_raising_scenario_reports_its_traceback(tmp_path: Path) -> None:
-    # No `out.json`: the scenario dies on a KeyError-class failure, which is the whole point
-    # of the format — a missing field raises instead of matching empty the way `jq` did.
     spec = _spec(tmp_path)
     module = _plan(spec)
     outcome = cmd_run(module, spec, root=tmp_path)
@@ -925,15 +814,7 @@ def test_a_raising_scenario_reports_its_traceback(tmp_path: Path) -> None:
 
 
 def test_by_text_matches_a_substring_and_takes_a_pattern() -> None:
-    """`qa.by_text` defers to Playwright's own default rather than pinning `exact=True`.
-
-    The pinned form is the defect this guards: a page that renders the text inside a larger
-    node — a filename quoted in a rejection sentence, a composite badge string — matched
-    nothing, and a locator that *cannot* match reads downstream as a failing product rather
-    than as a broken assertion. Taking a `Pattern` belongs to the same fix: without it an
-    author who needs a case-insensitive match drops to `qa.page.get_by_text`, which
-    `extract_locators` cannot see, and the locator stops being checked against the book.
-    """
+    """`qa.by_text` defers to Playwright's own default rather than pinning `exact=True`."""
     harness = load_harness_module("ostler_qa")
     forwarded: list[tuple[Any, dict[str, Any]]] = []
 
@@ -962,15 +843,7 @@ def test_by_text_matches_a_substring_and_takes_a_pattern() -> None:
 
 
 def test_an_obligation_no_check_claims_is_rejected(tmp_path: Path) -> None:
-    """The scenario asserts, and asserts about something else entirely.
-
-    This is the hole the per-check binding closes. The old rule was "claims coverage and has
-    at least one check", which a scenario satisfies no matter what its checks are about — so
-    deleting the two assertions that exercised an obligation left the plan valid, the run
-    green, and the evidence row reporting the obligation proven by whatever unrelated check
-    still passed. A QA lane scored on failure count finds that move on its own; the gate has
-    to be what makes it unavailable.
-    """
+    """The scenario asserts, and asserts about something else entirely."""
     spec = _spec(tmp_path)
     unbound = PLAN.replace('expected="abc", covers=["{obligation}"])', 'expected="abc")')
     document, problems = load_plan(_plan(spec, unbound), spec, tmp_path)
@@ -979,17 +852,11 @@ def test_an_obligation_no_check_claims_is_rejected(tmp_path: Path) -> None:
     reported = validate_v2(document)
 
     assert any("in its body claims it" in item for item in reported)
-    # And it is not quietly credited on the way out either.
     assert any("is not covered by an asserted scenario" in item for item in reported)
 
 
 def test_a_computed_covers_list_claims_nothing(tmp_path: Path) -> None:
-    """`extract_check_covers` reads the parsed tree, so only literal ids are recoverable.
-
-    Degrading to "assume it covers what it says" would reopen the hole through a variable,
-    and a binding validation cannot read is one the evidence gate cannot count either — the
-    run would then disagree with the plan that passed validation.
-    """
+    """`extract_check_covers` reads the parsed tree, so only literal ids are recoverable."""
     spec = _spec(tmp_path)
     computed = PLAN.replace(
         'expected="abc", covers=["{obligation}"])',
@@ -1004,14 +871,7 @@ def test_a_computed_covers_list_claims_nothing(tmp_path: Path) -> None:
 
 
 def test_a_covers_list_of_module_constants_binds(tmp_path: Path) -> None:
-    """A module-level `NAME = "okf:…"` is in the parse tree, so the gate can read it.
-
-    Obligation ids run to ninety characters and a node's `verify:` bullet fans out onto every
-    obligation it mints, so a real plan binds a dozen per call. Spelled out that is unreadable
-    and every author names them — and answering that with "no assertion invokes it" describes
-    neither the problem nor the fix, which is how a story burns its whole plan-validation
-    budget on assertions that were correct when written.
-    """
+    """A module-level `NAME = "okf:…"` is in the parse tree, so the gate can read it."""
     spec = _spec(tmp_path)
     named = f'CLAIM = "{OBLIGATION}"\n' + PLAN.replace(
         'expected="abc", covers=["{obligation}"])',
@@ -1024,11 +884,7 @@ def test_a_covers_list_of_module_constants_binds(tmp_path: Path) -> None:
 
 
 def test_a_rebound_module_constant_claims_nothing(tmp_path: Path) -> None:
-    """Which value reached the call is a question the parse genuinely cannot answer.
-
-    Last-write-wins would put an id in the ledger the run never asserted, which is the same
-    disagreement between plan and run that the literal rule exists to prevent.
-    """
+    """Which value reached the call is a question the parse genuinely cannot answer."""
     spec = _spec(tmp_path)
     rebound = f'CLAIM = "{OBLIGATION}"\nCLAIM = "okf:docs/features/demo/item.md:does:1"\n' + PLAN.replace(
         'expected="abc", covers=["{obligation}"])',
@@ -1043,12 +899,7 @@ def test_a_rebound_module_constant_claims_nothing(tmp_path: Path) -> None:
 
 
 def test_an_unbound_check_is_not_credited_to_the_scenario_s_obligations(tmp_path: Path) -> None:
-    """A ledger record carries the assertion's own binding, never the scenario's.
-
-    The runtime half of the same defect: `run_assert` used to fall back to the scenario's
-    `covers` for any record that declared none, so every assertion in the body was stamped
-    with every obligation the scenario claimed. One passing check then proved the whole set.
-    """
+    """A ledger record carries the assertion's own binding, never the scenario's."""
     spec = _spec(tmp_path)
     extra = PLAN + '    qa.check("something else entirely", True)\n'
     module = _plan(spec, extra)
@@ -1070,11 +921,7 @@ def test_an_unbound_check_is_not_credited_to_the_scenario_s_obligations(tmp_path
 
 
 def test_a_scenario_whose_only_assertion_retries_validates_clean(tmp_path: Path) -> None:
-    """`eventually` is an assertion, and the gate has to agree — otherwise the doctrine tells
-    an author to hold the sampler and the validator answers that their scenario proves
-    nothing. Both vacuity rules count it and both bind its `covers=`, because `count_checks`
-    and `extract_check_covers` read one shared `CHECK_METHODS` set.
-    """
+    """`eventually` is an assertion, and the gate has to agree — otherwise the doctrine tells an author to hold the sampler and the validator answers that their scenario proves nothing."""
     spec = _spec(tmp_path)
     retrying = PLAN.replace(
         '    qa.check("the item is the one requested", qa.field(payload, "item.id") == "abc",\n'
@@ -1123,13 +970,7 @@ def _two_declaring(spec: Path) -> None:
 def test_one_missing_call_is_reported_once_for_every_obligation_declaring_it(
     tmp_path: Path,
 ) -> None:
-    """`verify:` sits on the node, so every obligation it mints carries the same call.
-
-    Reported per obligation, a section with four bullets and four normative lines emitted the
-    same missing call sixteen times, each naming one id — which reads as an instruction to
-    write sixteen near-identical assertions, and is what a repair lane then spends its laps
-    doing. One call satisfies them all, so it is one refusal.
-    """
+    """`verify:` sits on the node, so every obligation it mints carries the same call."""
     spec = _spec(tmp_path)
     _two_declaring(spec)
     source = TWO_OBLIGATION_PLAN.replace(
@@ -1161,11 +1002,7 @@ def test_one_call_covering_both_obligations_binds_both(tmp_path: Path) -> None:
 def test_the_declared_call_bound_to_the_wrong_obligation_asks_for_a_wider_covers(
     tmp_path: Path,
 ) -> None:
-    """The call exists, spelled exactly right, and names an id that does not need it.
-
-    Told only that nothing invokes it, the repair writes the same call a second time — and
-    the packet grows a duplicate assertion while the obligation stays uncovered.
-    """
+    """The call exists, spelled exactly right, and names an id that does not need it."""
     spec = _spec(tmp_path)
     _two_declaring(spec)
     source = TWO_OBLIGATION_PLAN.replace(
@@ -1184,9 +1021,6 @@ def test_the_declared_call_bound_to_the_wrong_obligation_asks_for_a_wider_covers
     assert "widen that call's covers=" in reported[0]
 
 
-# ---------------------------------------------------------------------------------------------
-# What the ledger says about steps — the account `ostler qa report` renders per criterion.
-# ---------------------------------------------------------------------------------------------
 
 STEPPED_PLAN = '''\
 import json
@@ -1219,8 +1053,7 @@ def _ledger(spec: Path) -> list[dict[str, Any]]:
 
 
 def test_every_record_inside_a_step_carries_the_step_it_ran_in(tmp_path: Path) -> None:
-    """The step record lands when the step closes — after its assertions — so order alone
-    cannot attribute them; the stamp is what the report groups on."""
+    """The step record lands when the step closes — after its assertions — so order alone cannot attribute them; the stamp is what the report groups on."""
     spec = _spec(tmp_path)
     module = _plan(spec, STEPPED_PLAN)
     (tmp_path / "out.json").write_text(json.dumps({"item": {"id": "abc"}}), encoding="utf-8")
@@ -1237,14 +1070,11 @@ def test_every_record_inside_a_step_carries_the_step_it_ran_in(tmp_path: Path) -
     assert asserts["the item was read"]["step_label"] == "read the emitted item"
     assert asserts["the item is the one requested"]["step"] == steps[1]["id"]
     assert "step" not in asserts["tidy-up"]
-    # Each step says when it ran, on the same clock as the session's offsets and a
-    # recording's `actionStartOffsetMs` — that is what places it in a video.
     for step in steps:
         assert isinstance(step["started_offset_ms"], int)
         assert isinstance(step["ended_offset_ms"], int)
         assert 0 <= step["started_offset_ms"] <= step["ended_offset_ms"]
     assert steps[0]["ended_offset_ms"] <= steps[1]["started_offset_ms"]
-    # The report is written at the end of every run, and says the same thing.
     assert outcome.data["report"] == "qa-report.md"
     report = (spec / "qa-report.md").read_text(encoding="utf-8")
     assert "<!-- run: qa-story-1 status: passed -->" in report
@@ -1256,8 +1086,6 @@ def test_every_record_inside_a_step_carries_the_step_it_ran_in(tmp_path: Path) -
 
 
 def test_a_step_the_scenario_raises_inside_is_recorded_failed_with_its_error(tmp_path: Path) -> None:
-    # No `out.json`: the first step raises. The harness closes it as failed on the way out;
-    # only a process that dies mid-step leaves one `unfinished`.
     spec = _spec(tmp_path)
     module = _plan(spec, STEPPED_PLAN)
     outcome = cmd_run(module, spec, root=tmp_path)
@@ -1275,8 +1103,7 @@ def test_a_step_the_scenario_raises_inside_is_recorded_failed_with_its_error(tmp
 
 
 def test_a_scenario_that_printed_nothing_leaves_no_stdout_sidecar(tmp_path: Path) -> None:
-    """An empty `qa/steps/<scenario>-stdout.txt` told a reviewer nothing and was registered
-    as evidence anyway; a scenario that said nothing now writes nothing."""
+    """An empty `qa/steps/<scenario>-stdout.txt` told a reviewer nothing and was registered as evidence anyway; a scenario that said nothing now writes nothing."""
     spec = _spec(tmp_path)
     module = _plan(spec)
     (tmp_path / "out.json").write_text(json.dumps({"item": {"id": "abc"}}), encoding="utf-8")
@@ -1296,7 +1123,6 @@ def test_a_stale_report_does_not_outlive_the_run_that_wrote_it(tmp_path: Path) -
     assert "<!-- run: qa-story-1 status: passed -->" in (spec / "qa-report.md").read_text(encoding="utf-8")
 
 
-# -- repeated obligations: the qa.instance sampling contract ---------------------------
 
 REPEAT_OBLIGATION = "okf:docs/features/demo/board.md#stage-row:contract"
 

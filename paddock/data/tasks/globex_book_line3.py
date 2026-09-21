@@ -1,36 +1,4 @@
-"""line3: what a node is for, and which story asked for it — with nothing but the book.
-
-One question, asked three ways per node, against the globex book alone — `docs/`, no
-`app/`. The three arms are the whole point and none of them stands in for the other two:
-
-    control      — the book is unperturbed; the answer is the story that links the node
-    absence      — the citing story's link to the node is removed; the answer is that no
-                   story asked for it
-    substitution — that link is re-pointed at an unrelated node, and a different story in
-                   the same epic is given a link to the real one instead; the answer is
-                   that other story
-
-An agent that always says "no story" passes `absence` and fails the other two. An agent
-that names whichever story reads nearest passes `control` and `substitution` by accident
-and fails `absence`. Only an agent that actually follows the book's own links — present,
-absent or moved — passes all three, which is why every node runs all three arms rather
-than whichever one seems hardest.
-
-The `absence` arm also carries an asymmetry the rubric states outright: a confident wrong
-story name is worse than an honest "the book does not say," never the other way round — a
-rubric that scored them the same would reward a guess over a correctly withheld answer.
-
-Three steps and a ruler, the shape `_okfbuild.judge_book` already proved: `arrange` builds
-one perturbed docs tree per (node, arm) under `run.workdir`, and records what each
-perturbation did and what answer it demands; `ask` puts a bare question to an agent whose
-`cwd` is that tree and nothing else — no `app/`, so there is no source to fall back on;
-`judge` grades the answer against the recorded expectation, over a scratch copy of the
-tree so the grading pass stays read-only; `score` only rereads what `judge` persisted.
-
-This module never touches `paddock/data/apps/globex/` — that tree is a frozen fixture
-another gate (`test_an_in_tree_seed_matches_the_tree_it_was_captured_from`) holds byte-
-for-byte, and `arrange` only ever reads it, once, to seed each trial's copy.
-"""
+"""line3: what a node is for, and which story asked for it — with nothing but the book."""
 
 from __future__ import annotations
 
@@ -46,14 +14,6 @@ import _greenfield as gf
 from _stablemate import TrialError
 from paddock import Run, Score, step, task
 
-#: `globex_qa.py` already pins this fixture to `configs/opencode.toml` for the same seed —
-#: a live power ladder across several models rather than one vendor's single profile
-#: (`claude-opus.toml`) or a two-profile comparison built for book-*building*
-#: (`okf-builder-luna-terra.toml`). Neither `ask` nor `judge` below reads the pinned TOML
-#: directly — direct backend calls resolve a CLI the same way `_greenfield`/`_okfbuild`'s
-#: judges do, by name or by `AGENT_CLI`/the machine default — but the config still governs
-#: whatever full `workhorse-coder` invocations a future variant of this probe might add,
-#: and keeps this task discoverable next to its sibling under the one seed both share.
 CONFIG = "configs/opencode.toml"
 
 task(
@@ -62,10 +22,6 @@ task(
     config=CONFIG,
 )
 
-#: globex's only epic. Hardcoded rather than discovered by globbing `docs/epics/*`: this
-#: probe is written against globex's specific three stories, not "whatever epic happens to
-#: be first," and the seed this task names is a frozen fixture that will not grow a second
-#: one under it without this module changing too.
 EPIC = "0001-widget-directory"
 
 ARMS = ("control", "absence", "substitution")
@@ -73,14 +29,7 @@ ARMS = ("control", "absence", "substitution")
 
 @dataclass(frozen=True, slots=True)
 class Node:
-    """One row of the probe matrix.
-
-    `path` is the node under test, repo-relative to `docs/`. `citing_story` is the story
-    whose `story.md` links it in the unperturbed book — the `control` and `absence` arms'
-    subject. `decoy` is a real node no story cites, used as `substitution`'s new home for
-    the citing story's link. `other_story` is a different story in the same epic that
-    `substitution` gives a fresh link to `path` — the answer that arm demands.
-    """
+    """One row of the probe matrix."""
 
     path: str
     citing_story: str
@@ -88,10 +37,6 @@ class Node:
     other_story: str
 
 
-#: Three nodes, one per story, each with a same-epic sibling to receive the moved link
-#: under `substitution` and an `ops/` doc as decoy — `ops/` pages describe how a surface is
-#: run, not what it does, so no story cites one and re-pointing a link there is a clean,
-#: uncontroversial "somewhere else in the same book."
 NODES = (
     Node(
         path="features/web-app/gui/screens/widget-list.md",
@@ -113,13 +58,6 @@ NODES = (
     ),
 )
 
-#: Where the round's ledger lives inside the stage, named explicitly rather than through
-#: `run.artifacts` — that property is relative to the *current* step, and `ask`, `judge`
-#: and `score` all need the one location `arrange` wrote to. The same reason `_greenfield`
-#: keeps `BUILD = ("artifacts", "build")` and `_frozenapp` keeps `TRIALS = ("artifacts",
-#: "trials")` inside the stage rather than under `run.workdir`: `workdir()` hands back
-#: scratch, deliberately not sealed into the result, and a `score` that reread it would
-#: have nothing to read once the run's staging directory ceases to be the live one.
 TRIALS = ("artifacts", "trials")
 
 LINK_RE = re.compile(r"\[([^\]]+)\]\(([^)]+)\)")
@@ -170,13 +108,7 @@ def _resolve_href(story_file: Path, href: str) -> Path:
 
 
 def _find_node_link(text: str, story_file: Path, target: Path) -> re.Match[str] | None:
-    """The markdown link in `text` whose href resolves to `target`, if any.
-
-    Located by resolving each link's href relative to the story that carries it and
-    comparing the resolved path, not by scanning for the target's basename as a string —
-    the same node's stem can appear in unrelated prose, and a substring match would find
-    the wrong occurrence or none.
-    """
+    """The markdown link in `text` whose href resolves to `target`, if any."""
     for match in LINK_RE.finditer(text):
         if _resolve_href(story_file, match.group(2)) == target:
             return match
@@ -287,14 +219,7 @@ def _tree_dir(run: Run, trial_id: str) -> Path:
 
 @step()
 def arrange(run: Run) -> None:
-    """Build one perturbed docs tree per (node, arm), and record what each arm demands.
-
-    Only `docs/` is copied out of the seed — never `app/` (the whole point is an agent
-    with no source to fall back on), never `.agents/` and never an `agents.yml`-family
-    file. globex ships neither at its root, and even if it did, those describe tooling to
-    run *against* a repo, not the book itself; the book alone is `docs/`, and a bare
-    `docs/` tree is already enough for `ostler.model.load` to treat it as one.
-    """
+    """Build one perturbed docs tree per (node, arm), and record what each arm demands."""
     seed_docs = run.repo / "docs"
     matrix: list[dict[str, Any]] = []
     for node in NODES:
@@ -336,16 +261,7 @@ def _judge_agent(run: Run) -> Any:
 
 @step()
 def ask(run: Run) -> None:
-    """Put the question to one agent per trial, `cwd`'d to that trial's tree alone.
-
-    A direct backend turn (`_greenfield.call_agent`), not a `workhorse-coder` CLI round:
-    this probe puts one question and reads one answer, with no build, test or repair loop
-    for a workflow to drive, and every judging call in this tree already reaches the
-    backend the same way. The tree copied by `arrange` has no `app/` in it, so `cwd` cannot lead the agent
-    to source regardless of what it tries. Persisted after every trial, like
-    `globex_book_disagree.ask`: a trial whose `answer` is already non-empty is skipped, so
-    an interrupted round resumes rather than re-paying for trials that already finished.
-    """
+    """Put the question to one agent per trial, `cwd`'d to that trial's tree alone."""
     matrix = _read_matrix(run)
     if not matrix:
         raise TrialError("arrange recorded no trials")
@@ -362,12 +278,7 @@ def ask(run: Run) -> None:
 
 
 def _appraise(text: str, repo: Path) -> dict[str, Any]:
-    """Parse one judge response and apply the citation cap — pure, so tests need no agent.
-
-    Mirrors `_okfbuild._appraise` and `_greenfield.judge_one`: an `earned` verdict whose
-    cited paths do not resolve under `repo`, or that cites nothing at all, is capped at
-    `hedged` and flagged.
-    """
+    """Parse one judge response and apply the citation cap — pure, so tests need no agent."""
     from workhorse.runner import extract as wh_extract
 
     parsed = wh_extract.parse_json_from_text(text, ["level", "evidence", "reason"]) or {}
@@ -387,16 +298,7 @@ def _appraise(text: str, repo: Path) -> dict[str, Any]:
 
 @step()
 def judge(run: Run) -> None:
-    """Grade each trial's answer against the perturbation `arrange` recorded.
-
-    Graded over a `shutil.copytree` scratch copy of the trial's tree, never the tree
-    `ask` used directly — the read-only-guard lesson `_okfbuild.judge_book` already
-    states: the agent CLI a judge reads through writes session transcripts into whatever
-    tree it is pointed at, and `score` must find the stage untouched. Persisted after
-    every trial, like `globex_book_disagree.judge`: a trial whose `reason` is already
-    non-empty is skipped, so an interrupted round resumes rather than re-judging trials
-    that were already graded.
-    """
+    """Grade each trial's answer against the perturbation `arrange` recorded."""
     matrix = _read_matrix(run)
     if not matrix:
         raise TrialError("arrange recorded no trials")
@@ -426,11 +328,7 @@ def judge(run: Run) -> None:
 
 
 def score(run: Run) -> Score:
-    """Recompute the score from `trials.json` alone — no rereading of any tree.
-
-    Read-only, like `_frozenapp.score_round`: every field this needs was already
-    persisted by `judge`, so scoring a sealed result later needs nothing but that file.
-    """
+    """Recompute the score from `trials.json` alone — no rereading of any tree."""
     ledger = _trials_dir(run) / "trials.json"
     if not ledger.is_file():
         return Score(headline="line3: no trials recorded — the round did not reach arrange",

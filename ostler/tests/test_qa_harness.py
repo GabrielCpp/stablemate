@@ -1,10 +1,4 @@
-"""The harness's two modes, exercised the way the driver invokes them: as a subprocess.
-
-Importing `ostler_qa` into the test process would be the easy version and the wrong one.
-The module's whole contract is that it runs under the *project's* interpreter with a
-module-level registry, so a test that imports it once and declares twice would share
-state across cases and prove nothing about the boundary the driver actually crosses.
-"""
+"""The harness's two modes, exercised the way the driver invokes them: as a subprocess."""
 
 from __future__ import annotations
 
@@ -113,14 +107,10 @@ def test_describe_emits_the_declaration_set(tmp_path: Path) -> None:
     assert described["targets"]["web"]["driver"] == "playwright"
     assert described["targets"]["web"]["base_url"] == "http://localhost:5173"
     assert described["background"][0]["ready_check"] == "http://localhost:8090/healthz"
-    # An argv list, not a command line: nothing downstream of here reaches a shell, so a
-    # daemon cannot be `go test ./...` with a `&&` in it.
     assert described["background"][0]["argv"] == ["./scripts/teststack.sh", "up"]
 
 
 def test_describe_names_the_secret_without_reading_it(tmp_path: Path) -> None:
-    # describe runs during validation and its output is logged, so it must carry the
-    # variable to read rather than anything read from it.
     described = _describe(_write(tmp_path))
     assert described["secrets"] == {"ADMIN_TOKEN": {"from_env": "QA_ADMIN_TOKEN"}}
 
@@ -133,8 +123,7 @@ FILE_SECRET_PLAN = PLAN.replace(
 
 
 def test_describe_names_a_file_secrets_source_without_reading_it(tmp_path: Path) -> None:
-    """A secret the trial wrote to a file is declared by the path, never by the contents —
-    the file need not even exist at describe time, since the trial writes it later."""
+    """A secret the trial wrote to a file is declared by the path, never by the contents — the file need not even exist at describe time, since the trial writes it later."""
     described = _describe(_write(tmp_path, FILE_SECRET_PLAN))
     assert described["secrets"]["DB_PASSWORD"] == {"from_file": ".qa-secrets/db-password"}
 
@@ -148,8 +137,7 @@ def test_a_secret_declares_exactly_one_source() -> None:
 
 
 def test_describe_carries_the_daemons_a_scenario_restarts(tmp_path: Path) -> None:
-    """`restart=[...]` is a declaration the runner acts on before the body runs, so it
-    rides the describe record like `covers` — validated against `background` before start."""
+    """`restart=[...]` is a declaration the runner acts on before the body runs, so it rides the describe record like `covers` — validated against `background` before start."""
     source = PLAN.replace(
         'checkpoints=["the banner shows"]', 'checkpoints=["the banner shows"], restart=["stack"]'
     )
@@ -170,9 +158,6 @@ def test_describe_carries_covers_and_the_docstring_objective(tmp_path: Path) -> 
 
 
 def test_describe_counts_the_assertions_statically(tmp_path: Path) -> None:
-    # The count is what replaces `_exit_sentinel`: a scenario claiming coverage and
-    # calling no check proves nothing, and unlike a shell string that is now visible
-    # before anything runs.
     described = _describe(_write(tmp_path))
     counts = {s["id"]: s["checks"] for s in described["scenarios"]}
     assert counts == {
@@ -183,9 +168,6 @@ def test_describe_counts_the_assertions_statically(tmp_path: Path) -> None:
 
 
 def test_describe_recovers_the_screens_a_scenario_vets(tmp_path: Path) -> None:
-    # The half of "mandatory" that bites before anything runs: `validate` reads this list to
-    # refuse a UI scenario that never registers what it rendered. A screen assembled at run
-    # time is reported as computed rather than guessed at, so validation can say so.
     module = _write(
         tmp_path,
         PLAN.replace(
@@ -205,9 +187,6 @@ def test_describe_recovers_the_screens_a_scenario_vets(tmp_path: Path) -> None:
 
 
 def test_describe_recovers_the_locators_a_browser_scenario_writes(tmp_path: Path) -> None:
-    # `_validate_book_locators` holds a browser scenario to the role, name and route the OKF
-    # book documents. Under YAML it read the action list; the action list is now code, so
-    # `describe` recovers the same shape from the parsed tree — before anything runs.
     described = _describe(_write(tmp_path))
     found = {s["id"]: s["locators"] for s in described["scenarios"]}
     assert found["the-page-is-addressed-by-role"] == [
@@ -227,8 +206,6 @@ def test_describe_runs_nothing(tmp_path: Path) -> None:
 
 
 def test_describe_reports_an_unimportable_plan(tmp_path: Path) -> None:
-    # A static check YAML could never offer: the plan is rejected at validation time,
-    # not discovered broken an hour into a run.
     module = _write(tmp_path, "import nonexistent_project_module\n")
     code, _, _ = _harness("describe", str(module))
     assert code != 0
@@ -239,19 +216,12 @@ def test_run_streams_records_and_passes(tmp_path: Path) -> None:
     assert code == 0
     kinds = [record["type"] for record in records]
     assert kinds == ["capture", "step_start", "assert", "step_end", "assert", "scenario"]
-    # A step is stamped on the run's clock when it opens and closes — the driver grades
-    # the stream after the scenario has exited, so only the harness can say when it ran.
     opened, closed = records[1], records[3]
     assert isinstance(opened["offset_ms"], int) and isinstance(closed["offset_ms"], int)
     assert 0 <= opened["offset_ms"] <= closed["offset_ms"]
     asserted = [record for record in records if record["type"] == "assert"]
     assert asserted[0]["label"] == "author is the token uid"
     assert asserted[0]["passed"] is True
-    # An assert record carries the binding the check itself wrote, and nothing else.
-    # It used to default to the scenario's whole `covers` list, which is what
-    # qa-evidence.json aggregates over — so every assertion in the body was stamped with
-    # every obligation the scenario claimed, one passing check reported the whole set
-    # proven, and deleting the assertion that did the proving left the row green.
     assert asserted[0]["covers"] == []
     assert records[-1] == {
         "type": "scenario",
@@ -279,8 +249,6 @@ def test_run_reports_a_raised_scenario_as_errored(tmp_path: Path) -> None:
     ],
 )
 def test_run_grades_the_scenario(tmp_path: Path, body: str, status: str) -> None:
-    # The third case is the one that matters: a scenario claiming coverage and asserting
-    # nothing is a failure at runtime too, not only a describe-time finding.
     module = _write(
         tmp_path,
         PLAN.replace('    qa.capture("uid", "u-123")', body).replace(
@@ -310,10 +278,7 @@ def test_require_stops_the_scenario(tmp_path: Path) -> None:
 
 
 def test_a_ui_scenario_that_vets_nothing_fails_at_run_time(tmp_path: Path) -> None:
-    """The static gate reads the plan; this one counts the calls that actually ran, so a
-    scenario cannot reach the ledger green having proved only that its elements exist."""
-    # A maestro target rather than the browser one: the refusal is about any UI driver, and
-    # a `playwright` scenario would launch Chromium before reaching the code under test.
+    """The static gate reads the plan; this one counts the calls that actually ran, so a scenario cannot reach the ledger green having proved only that its elements exist."""
     module = _write(
         tmp_path,
         "from ostler_qa import Qa, plan, scenario, target\n\n"
@@ -332,11 +297,7 @@ def test_a_ui_scenario_that_vets_nothing_fails_at_run_time(tmp_path: Path) -> No
     assert "vetted no screen" in records[-1]["error"]
 
 
-# -- the retrying assertion --------------------------------------------------------------
 
-#: A read that is false on the first sample and true on a later one — the shape of every
-#: race this API exists to end. `check` collapses it to a dead `False` before the harness
-#: is called; `eventually` holds the sampler and looks again.
 EVENTUALLY_PLAN = '''\
 from ostler_qa import Qa, plan, scenario, target
 
@@ -371,25 +332,16 @@ def _asserts(records: list[dict]) -> list[dict]:
 
 
 def test_eventually_looks_again_where_check_sampled_the_first_paint(tmp_path: Path) -> None:
-    """The motivating defect, reduced: the same read, asserted both ways, in one scenario.
-
-    `check` reports the first paint as a product failure. `eventually` re-samples and the
-    claim holds — and the record says how long it waited, so a reader can tell an assertion
-    that settled from one that was true all along.
-    """
+    """The motivating defect, reduced: the same read, asserted both ways, in one scenario."""
     _, records = _run(_write(tmp_path, EVENTUALLY_PLAN), "the-badge-arrives", tmp_path)
 
     early, settled = _asserts(records)
     assert early["passed"] is False
-    # Absent, not zero: a timing field on an assertion nobody retried is a claim about a
-    # sample that was never taken, and it is exactly what a race reader would believe.
     assert "settled_ms" not in early and "mode" not in early
     assert settled["passed"] is True
     assert settled["mode"] == "eventually"
     assert settled["polls"] == 2
     assert settled["settled_ms"] > 0
-    # Read after the loop settled — the value that decided the verdict, not one sampled
-    # before the wait began.
     assert settled["actual"] == 3
     assert settled["covers"] == ["ac:2"]
 
@@ -397,9 +349,7 @@ def test_eventually_looks_again_where_check_sampled_the_first_paint(tmp_path: Pa
 def test_an_already_evaluated_condition_is_refused_and_names_a_repair_lint_accepts(
     tmp_path: Path,
 ) -> None:
-    """Never a silent fallback to `check`. Falling back would make the new API behave
-    exactly like the old one at the single moment the author got it wrong — the race ships,
-    and the plan reads as though it were already guarded against one."""
+    """Never a silent fallback to `check`."""
     module = _write(
         tmp_path,
         EVENTUALLY_PLAN.replace("        rendered,", "        rendered(),"),
@@ -411,8 +361,6 @@ def test_an_already_evaluated_condition_is_refused_and_names_a_repair_lint_accep
     assert records[-1]["status"] == "errored"
     error = records[-1]["error"]
     assert "bool" in error
-    # The repair it names has to be one plan lint will accept, and the obvious spelling —
-    # wrap the expression in a lambda — is admitted, so it leads.
     assert "lambda" in error
     assert "bound method" in error
     assert "named nested function" in error
@@ -421,9 +369,7 @@ def test_an_already_evaluated_condition_is_refused_and_names_a_repair_lint_accep
 def test_a_defect_in_the_condition_surfaces_instead_of_burning_the_deadline(
     tmp_path: Path,
 ) -> None:
-    """A `KeyError` in the condition is a plan defect, and swallowing it as "not yet" would
-    spend the whole timeout and then report it as a product failure — the mis-hypothesis
-    this work exists to end, recreated inside its own fix."""
+    """A `KeyError` in the condition is a plan defect, and swallowing it as "not yet" would spend the whole timeout and then report it as a product failure — the mis-hypothesis this work exists to end, recreated inside its own fix."""
     module = _write(
         tmp_path,
         EVENTUALLY_PLAN.replace(
@@ -443,8 +389,6 @@ def test_a_defect_in_the_condition_surfaces_instead_of_burning_the_deadline(
 
 
 def test_a_red_eventually_records_the_deadline_it_spent(tmp_path: Path) -> None:
-    # What tells a repair turn that the page never arrived at all, rather than arriving
-    # wrong: the assertion looked repeatedly, for a stated budget, and never saw it.
     module = _write(
         tmp_path,
         EVENTUALLY_PLAN.replace(
@@ -464,8 +408,7 @@ def test_a_red_eventually_records_the_deadline_it_spent(tmp_path: Path) -> None:
 
 
 def test_require_eventually_stops_the_cascade(tmp_path: Path) -> None:
-    """When the state a journey waited for never came, every later assertion reads a page
-    the plan is not about, and the run reports failures whose actual values are all noise."""
+    """When the state a journey waited for never came, every later assertion reads a page the plan is not about, and the run reports failures whose actual values are all noise."""
     module = _write(
         tmp_path,
         EVENTUALLY_PLAN.replace("    qa.eventually(", "    qa.require_eventually(").replace(
@@ -487,9 +430,7 @@ def test_require_eventually_stops_the_cascade(tmp_path: Path) -> None:
 def test_describe_counts_eventually_as_an_assertion_and_binds_its_covers(
     tmp_path: Path,
 ) -> None:
-    """The one-line static change that makes the retrying spelling usable: `CHECK_METHODS`
-    is what `count_checks` and `extract_check_covers` key off, so a scenario written wholly
-    in `eventually` is neither vacuous nor uncredited for the obligation it proves."""
+    """The one-line static change that makes the retrying spelling usable: `CHECK_METHODS` is what `count_checks` and `extract_check_covers` key off, so a scenario written wholly in `eventually` is neither vacuous nor uncredited for the obligation it proves."""
     described = _describe(_write(tmp_path, EVENTUALLY_PLAN))
 
     scenario = described["scenarios"][0]
@@ -530,15 +471,7 @@ def a_stale_confirm_is_refused(qa: Qa) -> None:
 
 
 def test_an_unmet_expect_status_is_recorded_before_it_raises(tmp_path: Path) -> None:
-    """The loudest failure the harness has must leave an assertion behind.
-
-    `expect_status=409` says the product refuses this. When it answers 201 instead, the
-    `HttpError` aborts the scenario before any `qa.check` runs — so without this record the
-    run log holds nothing bound to the obligation, and `ostler qa evidence-map` reports
-    `claimed-but-unasserted` (a QA gap) for what is actually the product contradicting the
-    book. A benchmark trial with a seeded compare-and-swap defect was detected exactly this
-    way and scored as a miss.
-    """
+    """The loudest failure the harness has must leave an assertion behind."""
     code, records = _run(_write(tmp_path, STATUS_PLAN), "a-stale-confirm-is-refused", tmp_path)
 
     assert code == 1
@@ -547,8 +480,6 @@ def test_an_unmet_expect_status_is_recorded_before_it_raises(tmp_path: Path) -> 
     assert asserted[0]["passed"] is False
     assert asserted[0]["actual"] == 201
     assert asserted[0]["expected"] == [409]
-    # Bound to the scenario's whole `covers`, unlike a bare check: the call aborts the
-    # scenario, so nothing else it claimed will be shown either.
     assert asserted[0]["covers"] == ["okf:docs/a.md#confirm:concurrency:1"]
     assert records[-1]["status"] == "errored"
 
@@ -574,13 +505,7 @@ def a_rooted_path_reads_the_same_field(qa: Qa) -> None:
 
 
 def test_a_dollar_rooted_json_path_resolves_like_the_bare_one(tmp_path: Path) -> None:
-    """`$` is JSONPath's root token, not a key the document is expected to hold.
-
-    The vocabulary's own examples are written `$.error.title`, and `qa.session._extract_path`
-    has always stripped the prefix. The harness's resolver did not, so every `$`-rooted
-    `json_path` failed as *absent* against a document that held the value — a red assertion
-    filed against the product for a defect in the check.
-    """
+    """`$` is JSONPath's root token, not a key the document is expected to hold."""
     code, records = _run(
         _write(tmp_path, ROOT_TOKEN_PLAN), "a-rooted-path-reads-the-same-field", tmp_path
     )
@@ -611,9 +536,7 @@ def a_filter_selects_by_what_an_entry_holds(qa: Qa) -> None:
 
 
 def test_a_filter_segment_selects_an_entry_by_a_field_it_holds(tmp_path: Path) -> None:
-    """`items[?(@.id=='ghi')].n` is a claim about the entry whose id is ghi — the order the
-    product writes its list in is not what the book claimed. `[*]` with a value claim is
-    refused as ambiguous unless it selects exactly one; `matches` against two ids is red too."""
+    """`items[?(@.id=='ghi')].n` is a claim about the entry whose id is ghi — the order the product writes its list in is not what the book claimed."""
     code, records = _run(
         _write(tmp_path, FILTER_PLAN), "a-filter-selects-by-what-an-entry-holds", tmp_path
     )
@@ -627,15 +550,7 @@ def test_a_filter_segment_selects_an_entry_by_a_field_it_holds(tmp_path: Path) -
 def test_a_browser_problem_is_a_failing_assertion_bound_to_the_scenario_covers(
     tmp_path: Path,
 ) -> None:
-    """An uncaught page error or a 5xx contradicts what the scenario set out to prove.
-
-    The browser's clean-gate used to ride only on the scenario record's `error`: the
-    scenario went red, but every assertion it had recorded stayed green, so the evidence
-    map scored its obligations *covered* off those checks while the page had thrown.
-    Each problem is now a failing assertion bound to the scenario's `covers`, which is the
-    reading that holds — the run observed the product under this scenario and it broke —
-    and the one the map turns into `contradicted`.
-    """
+    """An uncaught page error or a 5xx contradicts what the scenario set out to prove."""
     harness = load_harness_module("ostler_qa")
 
     emitted: list[dict] = []
@@ -668,7 +583,6 @@ def test_a_browser_problem_is_a_failing_assertion_bound_to_the_scenario_covers(
             "origin": "browser",
         }
     ]
-    # Nothing to bind is nothing recorded: a clean browser adds no assertion of its own.
     assert harness._bind_browser_unclean(qa, []) == []
     assert qa.failures == 1
 
@@ -708,9 +622,7 @@ def the_tool_runs_where_and_how_the_scenario_says(qa: Qa) -> None:
 
 
 def test_a_tool_runs_with_a_contained_cwd_and_a_declared_env(tmp_path: Path) -> None:
-    """`Tool.run` was `cwd=root` with the runner's environment and no way to say otherwise —
-    for a product whose contract is what it does to the directory it was run in, the one
-    axis the scenario most needed. cwd stays inside `qa.dir`; env names must be declared."""
+    """`Tool.run` was `cwd=root` with the runner's environment and no way to say otherwise — for a product whose contract is what it does to the directory it was run in, the one axis the scenario most needed."""
     module = _write(tmp_path, TOOL_ENV_PLAN)
     assert _describe(module)["tool_env"] == ["TALLY_HOME", "TZ"]
     context = json.dumps(
@@ -771,9 +683,7 @@ def a_report_tree_is_filed(qa: Qa) -> None:
 
 
 def test_artifact_marks_a_directory_so_the_runner_files_it_file_by_file(tmp_path: Path) -> None:
-    """`qa.artifact` was a file, full stop — a CLI whose contract is the tree it writes had no
-    way to hand that tree over. The harness only marks the shape; the runner reads the tree
-    once the scenario is done and files each file under it."""
+    """`qa.artifact` was a file, full stop — a CLI whose contract is the tree it writes had no way to hand that tree over."""
     module = _write(tmp_path, DIRECTORY_ARTIFACT_PLAN)
     code, records = _run(module, "a-report-tree-is-filed", tmp_path)
     assert code == 0, records
@@ -839,14 +749,7 @@ def an_account_id_captured_from_one_response_addresses_the_next(qa: Qa) -> None:
 
 
 def test_a_capture_from_a_response_feeds_a_later_request(tmp_path: Path) -> None:
-    """`$name` is a runtime binding, resolved before the value reaches the HTTP call.
-
-    `qa.capture_field` reads the id out of the first response and `qa.capture`s it; the
-    second request names it as `$account_id` in its body, and the scenario resolves it
-    explicitly with `qa.resolve(...)` before handing it to `qa.http.post` — `Http` itself
-    treats `json_body` as a plain literal and never substitutes on its own — so the server
-    sees the real id rather than the literal reference string.
-    """
+    """`$name` is a runtime binding, resolved before the value reaches the HTTP call."""
     code, records = _run(
         _write(tmp_path, CAPTURE_FEEDS_REQUEST_PLAN),
         "an-account-id-captured-from-one-response-addresses-the-next",
@@ -877,12 +780,7 @@ def a_capture_path_that_finds_nothing_is_a_defect(qa: Qa) -> None:
 
 
 def test_a_capture_that_finds_nothing_is_a_defect_fault(tmp_path: Path) -> None:
-    """A capture is a promise the plan makes about the response, not an optional read.
-
-    `qa.field` alone would answer `MISSING` in silence — the right behaviour for an
-    assertion, the wrong one for a capture, since every later `$name` reference would then
-    fail at its own, unrelated line instead of naming the actual absent path.
-    """
+    """A capture is a promise the plan makes about the response, not an optional read."""
     code, records = _run(
         _write(tmp_path, CAPTURE_MISS_PLAN),
         "a-capture-path-that-finds-nothing-is-a-defect",
@@ -923,8 +821,7 @@ class _FakePage:
 
 
 def _ui_qa(tmp_path: Path) -> Any:
-    """A `Qa` built the way `test_a_browser_problem_...` builds one: no subprocess, no
-    real Playwright — just enough of the harness's own object to exercise `qa.page`."""
+    """A `Qa` built the way `test_a_browser_problem_...` builds one: no subprocess, no real Playwright — just enough of the harness's own object to exercise `qa.page`."""
     harness = load_harness_module("ostler_qa")
     recorder = harness._Recorder(fd=-1)
     recorder.emit = lambda record: None
@@ -940,9 +837,7 @@ def _ui_qa(tmp_path: Path) -> Any:
 
 
 def test_a_ui_capture_feeds_a_later_locator(tmp_path: Path) -> None:
-    """Text captured off one locator substitutes into a later `by_text` call — the UI half
-    of the API capture-into-a-later-request test above. `by_text` takes a plain literal
-    now, so the scenario resolves `$greeting` explicitly before passing it on."""
+    """Text captured off one locator substitutes into a later `by_text` call — the UI half of the API capture-into-a-later-request test above."""
     qa = _ui_qa(tmp_path)
     page = _FakePage()
     qa.page = page
@@ -955,8 +850,7 @@ def test_a_ui_capture_feeds_a_later_locator(tmp_path: Path) -> None:
 
 
 def test_a_ui_capture_that_finds_nothing_is_a_defect_fault(tmp_path: Path) -> None:
-    """A locator that matches zero elements is a book/code defect, not a silent miss —
-    the UI half of `test_a_capture_that_finds_nothing_is_a_defect_fault` above."""
+    """A locator that matches zero elements is a book/code defect, not a silent miss — the UI half of `test_a_capture_that_finds_nothing_is_a_defect_fault` above."""
     qa = _ui_qa(tmp_path)
     emitted: list[dict[str, Any]] = []
     qa._recorder.emit = emitted.append  # noqa: SLF001
@@ -972,17 +866,14 @@ def test_a_ui_capture_that_finds_nothing_is_a_defect_fault(tmp_path: Path) -> No
 
 
 def test_qa_resolve_substitutes_a_reference_embedded_mid_string(tmp_path: Path) -> None:
-    """`qa.resolve` substitutes an occurrence anywhere in the string, not only a value that
-    is entirely one reference — a route path is typically `/orgs/@acme.id/projects`, one
-    segment of a larger literal, not the whole string."""
+    """`qa.resolve` substitutes an occurrence anywhere in the string, not only a value that is entirely one reference — a route path is typically `/orgs/@acme.id/projects`, one segment of a larger literal, not the whole string."""
     qa = _ui_qa(tmp_path)
     qa.capture("id", "acme-1")
     assert qa.resolve("/orgs/$id/projects") == "/orgs/acme-1/projects"
 
 
 def test_qa_resolve_substitutes_a_node_ref_embedded_mid_string(tmp_path: Path) -> None:
-    """`@node.key` embeds mid-string exactly like `$name` above — a fixture's provided fact
-    is typically one segment of a larger route or verify literal, not the whole string."""
+    """`@node.key` embeds mid-string exactly like `$name` above — a fixture's provided fact is typically one segment of a larger route or verify literal, not the whole string."""
     qa = _ui_qa(tmp_path)
     qa._node_facts["seeded"] = {"id": "acme-1"}  # noqa: SLF001
     assert qa.resolve("/orgs/@seeded.id/projects") == "/orgs/acme-1/projects"
@@ -1031,9 +922,7 @@ def a_literal_at_and_dollar_are_never_treated_as_references(qa: Qa) -> None:
 
 
 def test_http_treats_at_and_dollar_literals_as_plain_text(tmp_path: Path) -> None:
-    """`Http` no longer resolves anything implicitly (Fix 2) — a literal `@acme.dev` handle
-    or a `$5` price/`Pay $total` label is sent verbatim, exactly as the plan wrote it, never
-    misread as a reference and never faulted for failing to resolve one."""
+    """`Http` no longer resolves anything implicitly (Fix 2) — a literal `@acme.dev` handle or a `$5` price/`Pay $total` label is sent verbatim, exactly as the plan wrote it, never misread as a reference and never faulted for failing to resolve one."""
     code, records = _run(
         _write(tmp_path, LITERAL_AT_AND_DOLLAR_PLAN),
         "a-literal-at-and-dollar-are-never-treated-as-references",

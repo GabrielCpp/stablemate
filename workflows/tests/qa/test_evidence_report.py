@@ -1,9 +1,4 @@
-"""The evidence gate's report check — `_report_problems`.
-
-`ostler qa run` ends by rendering `qa-report.md`, the per-criterion account a reviewer reads
-instead of the ledger, and stamps the run id into it. The gate holds a claimed pass to that:
-no report, or one rendered from some other run, is a pass nobody can check by hand.
-"""
+"""The evidence gate's report check — `_report_problems`."""
 from __future__ import annotations
 
 from pathlib import Path

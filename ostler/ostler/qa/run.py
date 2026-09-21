@@ -1,8 +1,4 @@
-"""Orchestrate all `ostler qa` subcommands.
-
-See QA-RUN.md for full design. This module translates parsed CLI args into
-session operations and produces human-readable / JSON output.
-"""
+"""Orchestrate all `ostler qa` subcommands."""
 
 from __future__ import annotations
 
@@ -25,19 +21,10 @@ __all__ = ["DaemonSpec", "QaOutcome", "cmd_assert", "cmd_report", "cmd_replay", 
 
 
 def _raise_keyboard_interrupt(signum: int, frame: Any) -> None:
-    """SIGTERM's default action kills the process immediately, bypassing any
-    `finally` block — unlike SIGINT, which Python turns into a catchable
-    `KeyboardInterrupt`. Installing this handler makes a SIGTERM (e.g. from a
-    caller's process-group kill on Ctrl+C, such as workhorse's agent-interrupt
-    cleanup) behave the same as a direct Ctrl+C, so `cmd_run`'s `finally` still
-    runs and background daemons still get stopped instead of orphaned.
-    """
+    """SIGTERM's default action kills the process immediately, bypassing any `finally` block — unlike SIGINT, which Python turns into a catchable `KeyboardInterrupt`."""
     raise KeyboardInterrupt
 
 
-# ---------------------------------------------------------------------------
-# start
-# ---------------------------------------------------------------------------
 
 DaemonSpec = tuple[str, Sequence[str], str | Mapping[str, Any] | None]
 """A background daemon to start: its name, its argv, and how to tell it is ready.
@@ -60,11 +47,7 @@ def cmd_start(
     daemons: list[DaemonSpec] | None = None,
     secret_values: dict[str, str] | None = None,
 ) -> QaOutcome:
-    """Open a new QA session and optionally start background daemons.
-
-    *daemons*: list of (name, argv, ready_check) tuples, where the readiness check is
-    either a URL polled for a 200 or a ``{url, method, status}`` mapping.
-    """
+    """Open a new QA session and optionally start background daemons."""
     env = env or {}
     try:
         session = QaSession.create(
@@ -98,9 +81,6 @@ def cmd_start(
     return QaOutcome(ok=True, message=msg, data={"run_id": run_id, "pids": pids})
 
 
-# ---------------------------------------------------------------------------
-# step
-# ---------------------------------------------------------------------------
 
 
 def cmd_step(
@@ -138,9 +118,6 @@ def cmd_step(
         return QaOutcome(ok=False, message=str(exc))
 
 
-# ---------------------------------------------------------------------------
-# assert
-# ---------------------------------------------------------------------------
 
 
 def cmd_assert(
@@ -163,9 +140,6 @@ def cmd_assert(
     return QaOutcome(ok=passed, message=f"assert '{assert_id}': {verdict}", data=record)
 
 
-# ---------------------------------------------------------------------------
-# stop
-# ---------------------------------------------------------------------------
 
 
 def cmd_stop(spec_dir: Path) -> QaOutcome:
@@ -188,19 +162,10 @@ def cmd_stop(spec_dir: Path) -> QaOutcome:
     )
 
 
-# ---------------------------------------------------------------------------
-# report
-# ---------------------------------------------------------------------------
 
 
 def cmd_report(spec_dir: Path, *, label: str | None = None, ledger: bool = False) -> QaOutcome:
-    """Render the run for a reader.
-
-    The default is the per-criterion report (:mod:`ostler.qa.report`): it is rewritten to
-    ``<spec>/qa-report.md`` — or ``<spec>/qa/<label>/report.md`` for the dry run ``label``
-    names — and printed, so a stale copy never outlives a re-render. ``ledger`` prints the
-    flat time-ordered STEP/ASSERT listing of the raw ledger instead and writes nothing.
-    """
+    """Render the run for a reader."""
     if not ledger:
         try:
             path = write_report(spec_dir, label=label)
@@ -283,9 +248,6 @@ def cmd_report(spec_dir: Path, *, label: str | None = None, ledger: bool = False
     return QaOutcome(ok=True, message="", data={"report": report})
 
 
-# ---------------------------------------------------------------------------
-# replay
-# ---------------------------------------------------------------------------
 
 
 def cmd_frames(
@@ -298,12 +260,7 @@ def cmd_frames(
     fps: float = 10.0,
     label: str | None = None,
 ) -> QaOutcome:
-    """Write the frames of the run's recording around a step (``ostler qa frames``).
-
-    ``step`` is a step id from the report (or a unique fragment of its label); ``at`` a
-    position in seconds instead. The frames land under ``<spec>/qa/frames/<step>/`` with
-    an ``index.md``; ``data`` carries the window and every frame's path.
-    """
+    """Write the frames of the run's recording around a step (``ostler qa frames``)."""
     try:
         result = extract_frames(
             spec_dir, step=step, at=at, target=target, around=around, fps=fps, label=label
@@ -368,9 +325,6 @@ def cmd_replay(spec_dir: Path) -> QaOutcome:
     return QaOutcome(ok=True, message="", data={"script": script})
 
 
-# ---------------------------------------------------------------------------
-# validate
-# ---------------------------------------------------------------------------
 
 
 def cmd_validate(
@@ -405,17 +359,8 @@ def cmd_validate(
 
     resolved_spec = resolve_spec_dir(resolved_plan, spec_dir, root)
     document, problems = load_plan(resolved_plan, resolved_spec, root)
-    # `load_plan` hands back a document exactly when it found nothing to report, so the
-    # deeper validation runs on a document that is there rather than on a `None` the
-    # short-circuit happened to skip.
     if document is not None and not problems:
         problems = validate_v2(document)
-    # Obligations `annotate_deferred_obligations` (`ostler qa context`) stamped as
-    # gapped-and-uncovered by the reference compiler — reported here as data alongside
-    # the outcome, not as a problem that would refuse the run, per that stamp's whole
-    # point: `validate_v2`'s coverage loop already skips these, and a caller reading only
-    # `ok`/`problems` should still be able to see why the obligation count is lower than
-    # the packet's raw obligation count.
     deferred = [
         {"id": o["id"], **o["deferred"]}
         for o in (document.context.get("obligations", []) if document is not None else [])
@@ -432,9 +377,6 @@ def cmd_validate(
     return QaOutcome(ok=True, message="Plan is valid.", data={"deferred": deferred})
 
 
-# ---------------------------------------------------------------------------
-# run (batch)
-# ---------------------------------------------------------------------------
 
 
 def cmd_run(
@@ -446,16 +388,7 @@ def cmd_run(
     label: str | None = None,
     root: Path,
 ) -> QaOutcome:
-    """Execute a `qa_plan.py` in batch mode.
-
-    The plan is validated first, then executed: start → scenarios → stop. Returns a
-    PASS/FAIL verdict.
-
-    ``only`` and ``label`` are the dry run: a subset of the scenarios, written to
-    ``<spec>/qa/<label>/`` and producing no ``qa-evidence.json``. ``label`` is a name, not
-    a path — see :func:`ostler.qa.session.scratch_dirname` for what it may be and why the
-    directory nests inside the ledger rather than beside it. ``None`` is the scored run.
-    """
+    """Execute a `qa_plan.py` in batch mode."""
     if label is None:
         qa_dirname = QA_DIRNAME
     else:
@@ -495,9 +428,6 @@ def cmd_run(
     )
 
 
-# ---------------------------------------------------------------------------
-# Internal helpers
-# ---------------------------------------------------------------------------
 
 
 def _read_log(log_path: Path) -> list[dict]:

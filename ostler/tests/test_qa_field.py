@@ -1,9 +1,4 @@
-"""`qa.field` and the absence it yields — read directly, as the pure walk it is.
-
-The rule these enforce is one sentence: nothing a plan asks about product data may raise.
-A `KeyError` inside an assertion is not a failed assertion, it is a dead scenario, and the
-obligations it covered come back `unproven` — the run observed nothing — instead of red.
-"""
+"""`qa.field` and the absence it yields — read directly, as the pure walk it is."""
 
 from __future__ import annotations
 
@@ -40,11 +35,11 @@ def test_a_path_that_is_there_reads_the_value(path: str, expected: Any) -> None:
 @pytest.mark.parametrize(
     "path",
     [
-        "claim.holderUid",  # the product spells it differently
+        "claim.holderUid",
         "claim.missing.deeper",
-        "claim.tags.9",  # past the end
-        "claim.tags.name",  # a name against a sequence
-        "claim.id.anything",  # a path through a scalar
+        "claim.tags.9",
+        "claim.tags.name",
+        "claim.id.anything",
         "nothing",
     ],
 )
@@ -56,8 +51,7 @@ LEDGER = {"people": [{"who": "ana", "n": 1}, {"who": "bo", "n": 2}, {"who": "cy"
 
 
 def test_a_selector_that_picks_out_one_value_reads_that_value() -> None:
-    """A claim about *the entry whose who is ana* compares against ana's value, not a
-    one-element list that equals nothing the plan would write."""
+    """A claim about *the entry whose who is ana* compares against ana's value, not a one-element list that equals nothing the plan would write."""
     assert field(LEDGER, "people[?(@.who=='ana')].n") == 1
     assert field(LEDGER, "$.people[?(@.who=='bo')]") == {"who": "bo", "n": 2}
 
@@ -70,7 +64,7 @@ def test_a_selector_that_picks_out_several_values_reads_the_list() -> None:
 def test_a_selector_that_picks_out_nothing_is_missing() -> None:
     assert field(LEDGER, "people[?(@.who=='zed')].n") is MISSING
     assert field(LEDGER, "people[?(@.who=='zed')]", default=None) is None
-    assert field(LEDGER, "people[?(@.who=='ana'", default="") == ""  # never raises, even unclosed
+    assert field(LEDGER, "people[?(@.who=='ana'", default="") == ""
 
 
 def test_a_caller_may_name_its_own_default() -> None:
@@ -78,8 +72,6 @@ def test_a_caller_may_name_its_own_default() -> None:
 
 
 def test_missing_answers_every_question_negatively() -> None:
-    # This is the whole reason it is not `None`: the assertion that asked is about to call
-    # `len()` on it, iterate it, or compare it, and `None` raises on all three.
     absent = field(BODY, "claim.holderUid")
     assert not absent
     assert len(absent) == 0
@@ -93,7 +85,5 @@ def test_missing_answers_every_question_negatively() -> None:
 
 
 def test_an_absence_does_not_even_equal_another_absence() -> None:
-    # Otherwise `qa.field(a, "x") == qa.field(b, "x")` passes on a product that dropped the
-    # field from both, which is an assertion with no way of going red.
     assert field(BODY, "nope") != field(BODY, "also-nope")
     assert field(BODY, "nope") != BODY["claim"]["id"]

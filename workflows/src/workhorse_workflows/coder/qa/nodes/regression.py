@@ -1,41 +1,4 @@
-"""The committed user-journey suites: which ones this story touched, and how they ran.
-
-Two nodes that only make sense together — `detect_regression_suites` resolves which suites
-the plan put at risk, `run_regression_suite` runs them — so they share one module and one
-schema subject.
-
-Both are deliberately generous, and in opposite ways from the QA gates around them:
-
-* The detector **fails open**. An unreadable `plan-context.json` resolves no suites, which
-  skips the whole regression step. It is a router, not a verdict, and a story whose services
-  run no journeys must not be blocked by a file it never had reason to write.
-* The runner reports **"nothing to run" as `skipped`**, not as a pass. A service that
-  declares no `regression:` command has no regression suite, and a repo with no suite has
-  not failed one — but it has not proved anything either, and the two used to arrive
-  downstream wearing the same word. Only a real non-zero exit is `failed`; an unreachable
-  stack, device or emulator is `blocked`, which routes to the shared setup-repair loop
-  rather than burning the regression-fix budget on something the fix agent cannot act on.
-
-  A declared command that **could not be run at all** — its tool is absent, its service
-  directory does not exist — is `error`, and `error` blocks. That is the one generosity
-  this node does not extend: a repo that wrote `regression:` down believes its journeys
-  run on every story, and a runner that cannot start reported as a pass is that gate
-  deleting itself quietly.
-
-**What runs comes out of the repo, not out of this file** (invariant 1). Each service's
-`regression:` key in `agents.yml` is resolved through the same `gate_command` ladder as
-`lint` and `test`, so a stack this package has never heard of gets its journeys run the day
-it writes the command down. What used to be here instead was a map from four service *type*
-names to two hard-coded commands — a repo running its journeys any third way could not say
-so, and a service whose type was not on the list was silently exempt from a suite it really
-had. The one migration cost is the reverse: a repo that relied on the implicit
-`make e2e-journeys` target has no regression step until it declares `regression:` (or renames
-that target to `make regression`, which the convention fallback still finds). Losing a gate
-loudly at the point of declaration beats running the wrong one forever.
-
-The runner prints one verdict. The `blocked → setup_fix` loop reads the trimmed status/notes
-mirror through `RegressionRun.as_qa_result()`, called at the flow's transition site.
-"""
+"""The committed user-journey suites: which ones this story touched, and how they ran."""
 from __future__ import annotations
 
 import logging
@@ -55,33 +18,19 @@ from workhorse_workflows.coder.shared.schemas.qa import (
 )
 from workhorse_workflows.kit import find_repo_root, load_json, resolve_workspace
 
-#: The `agents.yml` key a service declares its journey suite under.
 REGRESSION_GATE = "regression"
 
-#: Generous outer wall-clock bound. A journey suite that enforces its own inner timeout only
-#: needs this to outlive it plus process overhead; one that does not is hung by now anyway.
 SUITE_TIMEOUT = 1500
 
-#: A failure line shaped `<path>:<line>:<col> › <name>`, which several journey runners print
-#: and which is worth reading when it is there. Diagnosis only — an unparsed failure falls
-#: back to the log tail, so a runner that prints some other shape still reports `failed`.
 FAIL_LINE_RE = re.compile(r"^\s*\d+\)\s+\S.*?›\s+(\S+):\d+:\d+\s+›\s+(.+?)\s*=*\s*$", re.MULTILINE)
-#: "The thing under test isn't there" — a setup problem, not a regression. These read the
-#: shapes suites print when a service, device or emulator is missing; none names a tool.
 UNREACHABLE_RE = re.compile(
     r"not reachable on :|connection refused|no devices found|unable to connect|device offline",
     re.IGNORECASE,
 )
-#: "There is nothing here to run" — a skip, and never a failure.
 NOTHING_TO_RUN_RE = re.compile(
     r"do not contain any Flow files|no tests? (files? )?found|no tests to run", re.IGNORECASE
 )
 
-#: Worst-first, so `min` over this order picks the status that must win a merge. `error`
-#: outranks everything: a suite that could not be run is the one result that says nothing
-#: about the code, and a merge that let a sibling's green hide it would restore exactly the
-#: silence the status was added to break. A `skipped` service is the weakest claim there is,
-#: so any real result outranks it.
 STATUS_ORDER = {"error": 0, "blocked": 1, "failed": 2, "passed": 3, "skipped": 4}
 
 
@@ -91,12 +40,7 @@ def _sanitize_label(label: str) -> str:
 
 
 class _Outcome(NamedTuple):
-    """What running one suite command produced.
-
-    `returncode` is `None` when the command produced none. `started` is what separates the
-    two ways that happens: a command that ran and was killed at `SUITE_TIMEOUT` has a hung
-    stack under it (`blocked`), and one that never started has no tool (`error`).
-    """
+    """What running one suite command produced."""
 
     returncode: int | None
     output: str
@@ -149,12 +93,7 @@ def _write_log(qa_dir: str, name: str, output: str, logger: logging.Logger) -> s
 
 
 def _run_one(suite: RegressionSuite, qa_dir: str, logger: logging.Logger) -> RegressionRun:
-    """One service's declared journey command, in the five states the model carries.
-
-    `skipped` when there was nothing to run, `error` when the command could not be run at
-    all, `blocked` when it ran against a stack that was unreachable or hung, and
-    `passed`/`failed` on the exit code it actually produced.
-    """
+    """One service's declared journey command, in the five states the model carries."""
     label = suite.label
     cwd = Path(suite.cwd)
     if not suite.command:
@@ -212,7 +151,7 @@ def _run_one(suite: RegressionSuite, qa_dir: str, logger: logging.Logger) -> Reg
 
 
 def _merge_results(results: list[RegressionRun]) -> RegressionRun:
-    """Merge N per-service results. Worst status wins; every note is kept."""
+    """Merge N per-service results."""
     if not results:
         return RegressionRun(notes="no suites to run")
     if len(results) == 1:
@@ -233,13 +172,7 @@ def _same_test_path(left: str, right: str) -> bool:
 
 
 def _verification_index(spec_path: Path, spec_dir: str, logger: logging.Logger) -> list:
-    """The whole-book verify table, from its sidecar file.
-
-    It used to be a member of `qa-okf-context.json`, where it was the bulk of a packet a
-    planning agent reads in full while only this node ever read that member. Ostler writes
-    it beside the packet now; a run whose context predates the split still carries it
-    inline, so fall back there rather than losing attribution on a resumed story.
-    """
+    """The whole-book verify table, from its sidecar file."""
     if not spec_dir:
         return []
     sidecar = load_json(
@@ -288,14 +221,7 @@ def _attribute_failures(result: RegressionRun, index: list) -> RegressionRun:
 def detect_regression_suites(
     logger: logging.Logger, spec_dir: str = "", repo_dir: str = "", workspace_file: str = ""
 ) -> RegressionSuites:
-    """Which committed journey suites did the approved plan put at risk?
-
-    Reads the planner's `plan-context.json`, whose `services` array is the per-repo source of
-    truth, and asks each touched service what it declares under `regression:`. A service that
-    declares nothing contributes nothing, and a plan that touched no declaring service leaves
-    the list empty — which is how a backend-only story skips the step without anyone having
-    to enumerate which stacks have journeys.
-    """
+    """Which committed journey suites did the approved plan put at risk?"""
     root = find_repo_root(repo_dir)
     plan_ctx = (
         load_json(root / spec_dir / "plan-context.json", "plan-context.json", logger)
@@ -333,12 +259,7 @@ def run_regression_suite(
     suites: list | None = None,
     repo_dir: str = "",
 ) -> RegressionRun:
-    """Run the declared journey suites and report their own verdict.
-
-    No LLM judgment anywhere: a clean exit is `passed`, a real suite failure is `failed`,
-    "the stack under test isn't reachable" is `blocked`, "there was nothing to run" is
-    `skipped`, and "the declared command could not be started" is `error`.
-    """
+    """Run the declared journey suites and report their own verdict."""
     resolved = [RegressionSuite.model_validate(s) for s in (suites or [])]
     if not resolved:
         result = RegressionRun(notes="no service declares a regression suite — nothing to run")

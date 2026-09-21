@@ -1,36 +1,4 @@
-"""End-to-end drives of the author workflow (`author/workflow.py`).
-
-Nothing is stubbed except the agent turn. `load_config`, `seed_story`,
-`select_epic`, `select_story`, `validate_story`, `check_story_grounding`, `record_attempt`,
-`check_story_feedback`, `validate_coverage`, `prune_bullet`,
-`verify_reconcile`, `verify_integrity`, `validate_artifacts` and `commit_author` all run
-for real against the `repo` fixture — so a drive here exercises ostler's real graph, the
-two deterministic story gates, the coverage gate, the whole-graph gates and the git tail.
-
-The agent seam is patched where the engine reads it
-(`RunEnv.agent_runner`) and the stub **writes the artifacts its
-reply claims to have written**: `decompose-epics` creates the epic and queues it,
-`split-stories` registers the stories, `write-story` writes the story document. The
-authoring state lives in those files rather than in the machine, so an agent that only
-replied would leave `select_epic` and `validate_story` with nothing to read.
-
-What the port could get wrong, and what is therefore under test here:
-
-* `handoff`, which `research` never touched: `survey` mode runs the surveyor sub-flow to
-  completion on the parent's env and stops with discovery artifacts. The sub-flow's own
-  machinery is covered in `flows/test_surveyor.py`; what is covered here is the hand-off
-  itself and the rule that survey output cannot bypass roadmap approval.
-* the bounded rework loops and their give-up arms — epic review, story rework — each
-  ending somewhere other than "stuck";
-* the operator gates, the other shape `research` never touched. The YAML sent every gate
-  into `await_*` unconditionally and let `await-operator.py` decide whether to wait by
-  reading a `STATUS:` line; the driver's `Await` waits unconditionally, so the port
-  branches on the resolver's reply instead. Both arms are driven below — an autonomous
-  resolution must NOT block, and `operator_mode=human` (and an escalation) must.
-* resume, which is why the checkpoint lands before the agent turn: a run killed while
-  writing the second story re-writes that story and no earlier one.
-* the git tail: `epic` mode commits and `story` mode deliberately does not.
-"""
+"""End-to-end drives of the author workflow (`author/workflow.py`)."""
 from __future__ import annotations
 
 import json
@@ -70,17 +38,12 @@ ROADMAP = "docs/roadmaps/account-access.md"
 EPICS = "docs/epics"
 EPIC = "accounts"
 SECOND_EPIC = "profiles"
-#: ostler numbers epic directories in creation order, so the folder is `0001-accounts` — the
-#: name the run carries once `select_epic` has resolved the queue entry. Every ostler call
-#: still takes the bare `EPIC` slug.
 EPIC_NAME = f"0001-{EPIC}"
 SECOND_EPIC_NAME = f"0002-{SECOND_EPIC}"
 EPIC_DIR = f"{EPICS}/{EPIC_NAME}"
 SECOND_EPIC_DIR = f"{EPICS}/{SECOND_EPIC_NAME}"
-#: The run-wide operator context file — `paths.author_context(repo_root)`.
 CONTEXT = f"{EPICS}/_author-context.md"
 
-#: The two roadmap journey details the scripted epic writer turns into seeds.
 SEEDS = {
     "b1": "[b1] Users can sign in with an email and a password",
     "b2": "[b2] Users can reset a forgotten password",
@@ -127,9 +90,7 @@ Both journeys pass end to end.
 
 Profile editing is excluded.
 """
-#: Supporting backlog context is prose rather than a bullet, so intake does not turn it into work.
 SURFACE = "**api** is the only surface and the only writer of stored data."
-#: What the scripted `split-stories` registers, one story per seed.
 STORIES = (
     ("01-sign-in", "Sign in", "b1"),
     ("02-reset-password", "Reset password", "b2"),
@@ -138,7 +99,6 @@ SECOND_STORIES = (("01-edit-profile", "Edit profile", "p1"),)
 SLUGS = [slug for slug, _, _ in STORIES]
 SECOND_SLUGS = [slug for slug, _, _ in SECOND_STORIES]
 
-# The surveyor sub-flow's paths, for the `survey` mode hand-off.
 SURVEY_DIR = "docs/survey"
 RUBRIC = f"{SURVEY_DIR}/rubric.md"
 RULES = f"{SURVEY_DIR}/units.yml"
@@ -149,18 +109,11 @@ BUTTON = "src/components/button"
 CLUSTER = "missing-accessible-name"
 
 
-# --------------------------------------------------------------------------- fixtures
 
 
 @pytest.fixture
 def backlogged(repo: Path, write: Callable[[Path, str], Path]) -> Path:
-    """A repo with a two-bullet backlog and nothing else: no epics, no OKF book.
-
-    Committed, because both git nodes and `verify_reconcile` read a real repository — and
-    because a committed baseline with no `docs/epics` in it is the normal state of a first
-    author run, which is what makes `verify_reconcile` report `skipped` rather than a
-    defect.
-    """
+    """A repo with a two-bullet backlog and nothing else: no epics, no OKF book."""
     write(
         repo / BACKLOG,
         f"# Backlog\n\nSurfaces this app ships:\n\n{SURFACE}\n\n## Scope items\n\n"
@@ -173,11 +126,7 @@ def backlogged(repo: Path, write: Callable[[Path, str], Path]) -> Path:
 
 @pytest.fixture
 def with_epic(backlogged: Path) -> Path:
-    """`backlogged` plus one already-authored epic, for `story` mode.
-
-    Story mode appends to an epic that exists and never creates one, so the epic is the
-    fixture rather than something the drive produces.
-    """
+    """`backlogged` plus one already-authored epic, for `story` mode."""
     okf = Ostler(backlogged)
     okf.create_epic(EPIC, "Accounts")
     okf.todo_add(EPIC)
@@ -257,7 +206,6 @@ def _milestone(
     path.write_text("\n".join(lines), encoding="utf-8")
 
 
-# ------------------------------------------------------------------ what the agent writes
 
 _BODY = """# Story: {title}
 
@@ -323,19 +271,14 @@ No prior implementation reference exists.
 
 
 def _write_story_doc(path: Path, title: str, *, authored: bool = True) -> None:
-    """Fill the scaffold `create_story` left, keeping its front-matter verbatim.
-
-    The id in that front-matter is ostler's, not ours to mint — and `authored=False`
-    reproduces a story whose `## Context` the writer left empty, which is exactly what
-    `validate_story` exists to catch.
-    """
+    """Fill the scaffold `create_story` left, keeping its front-matter verbatim."""
     front, _, _rest = path.read_text(encoding="utf-8").partition("\n---\n")
     body = (_BODY if authored else _UNWRITTEN_BODY).format(title=title)
     path.write_text(f"{front}\n---\n\n{body}", encoding="utf-8")
 
 
 def _rules() -> str:
-    """The enumeration rules the surveyor's planner writes. JSON is valid YAML."""
+    """The enumeration rules the surveyor's planner writes."""
     return json.dumps({"rules": [{"kind": "folder", "glob": "src/components/*"}]}, indent=2) + "\n"
 
 
@@ -381,21 +324,7 @@ def _partition(repo: Path) -> str:
 
 
 class _Agent:
-    """A scripted stand-in for every one of the workflow's agent turns.
-
-    It dispatches on the prompt's filename — the same key the engine derives its node id
-    from, and the same key the registry's dry-run stubs use — and every handler leaves
-    behind the artifact the next deterministic node reads.
-
-    The knobs are the graph's branches: `review_epics` scripts the epic reviewer's verdicts
-    in order, `unwritten` makes the story writer leave a section empty (the structural
-    gate's failing arm), `fail_audit` fails the auditor for named stories, `audit_replies` returns a
-    verbatim audit reply for a named story,
-    `coverage_verdicts` scripts the coverage reviewer, `feedback` drops an operator note
-    into the run's inbox mid-run (requires `run_dir`), `escalate` makes the operator
-    stand-in hand the block to a human, and `explode` raises instead of writing a story —
-    a run killed mid-turn.
-    """
+    """A scripted stand-in for every one of the workflow's agent turns."""
 
     def __init__(
         self,
@@ -434,7 +363,6 @@ class _Agent:
         self.cwds: list[str] = []
         self.roadmap_at_decompose = ""
 
-    # -- the seam ---------------------------------------------------------
 
     def __call__(self, node: Any, ctx: Any, *args: Any, **kwargs: Any) -> Any:
         stem = Path(node.prompt).stem
@@ -451,7 +379,6 @@ class _Agent:
     def args_for(self, stem: str) -> list[dict[str, Any]]:
         return [a for s, a in zip(self.calls, self.args, strict=True) if s == stem]
 
-    # -- the epic split ---------------------------------------------------
 
     def _build_milestone(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
         """Create the roadmap-owned milestone without crossing into epic splitting."""
@@ -507,7 +434,6 @@ class _Agent:
         verdict = self.review_epics[min(nth, len(self.review_epics)) - 1]
         return {"status": verdict, "notes": "" if verdict == "approved" else "one epic is two"}
 
-    # -- standalone epic/story edits -------------------------------------
 
     def _default_edit_plan(self, data: dict[str, Any]) -> dict[str, Any]:
         intent = data["intent"]
@@ -616,7 +542,6 @@ The running system is the source of truth.
         path.write_text(_before.split("# Epic:", 1)[0] + f"# Epic: Accounts\n\n{narrative}{marker}{graph}", encoding="utf-8")
         return {"status": "complete", "notes": "epic journeys reconciled"}
 
-    # -- the per-epic loop ------------------------------------------------
 
     def _write_epic(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
         okf = Ostler(self.repo)
@@ -642,14 +567,12 @@ The running system is the source of truth.
         for seed_id, text in SEEDS.items():
             meta: dict[str, Any] = {}
             if self.backend_seeds:
-                # Classified seeds are what the mockup gate reads: `backend` alone means no
-                # surface is designed, and the story writer falls back to the feature doc.
                 meta |= {"surface": surface, "layers": ["backend"], "services": ["api-service"]}
             okf.add_seed(EPIC, seed_id, status="researched", summary=text, meta=meta)
         return {"status": "complete", "notes": "seeds already recorded"}
 
     def _split_stories(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
-        """Register one story per seed. Idempotent: the coverage loop re-enters here."""
+        """Register one story per seed."""
         okf = Ostler(self.repo)
         epic = SECOND_EPIC if str(data["epic"]).endswith(SECOND_EPIC) else EPIC
         stories = SECOND_STORIES if epic == SECOND_EPIC else STORIES
@@ -659,11 +582,8 @@ The running system is the source of truth.
                 okf.create_story(epic, slug, title, covers=[seed])
         return {"status": "complete", "notes": f"{len(stories)} stories"}
 
-    # -- the per-story loop -----------------------------------------------
 
     def _design_mockup(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
-        # A story on an existing surface: the mockup stage is a pass-through, and
-        # `write_story` falls back to the feature docs.
         assert "surface_manifest" not in data
         return {"status": "skipped", "surface": "", "mockup": "", "notes": "existing surface"}
 
@@ -678,9 +598,6 @@ The running system is the source of truth.
     def _rework_story(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
         """Rewrite the story properly — the rework is what clears whichever gate failed."""
         slug = str(data["story_slug"])
-        # A rework fixes what the structural gate flagged. It does *not* clear a standing
-        # audit objection — that is what the rework budget is for, and what makes the
-        # give-up arm reachable.
         self.unwritten.discard(slug)
         title = dict((s, t) for s, t, _ in (*STORIES, *SECOND_STORIES)).get(slug, slug)
         _write_story_doc(self.repo / data["story_path"], title)
@@ -690,7 +607,6 @@ The running system is the source of truth.
         slug = str(data["story_slug"])
         note = self.feedback.pop(slug, "")
         if note:
-            # An operator dropped a note into the run's inbox while the run was busy.
             assert self.run_dir is not None, "feedback scripted without a run_dir"
             inbox.append(
                 self.run_dir / INBOX_FILE,
@@ -701,7 +617,6 @@ The running system is the source of truth.
         if slug in self.audit_replies:
             return self.audit_replies[slug]
         if slug in self.fail_audit:
-            # The findings list is the verdict — `status` alone no longer fails a story.
             return {
                 "status": "failed",
                 "findings": [{
@@ -715,26 +630,22 @@ The running system is the source of truth.
             }
         return {"status": "passed", "findings": [], "notes": "a coder could build this"}
 
-    # -- the epic's coverage ----------------------------------------------
 
     def _review_coverage(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
         verdict = self.coverage_verdicts[min(nth, len(self.coverage_verdicts)) - 1]
         return {"status": verdict, "notes": "" if verdict == "ok" else "the reset flow is unclaimed"}
 
-    # -- the operator gates -----------------------------------------------
 
     def _resolve_operator(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
         if self.escalate:
             return {"decision": "escalated", "notes": "needs a product call"}
         if data["block_stage"] == "epic-split":
-            # What the prompt tells it to do: answer in the context file the next pass reads.
             self.review_epics = ["approved"]
         return {"decision": "answered", "notes": f"resolved {data['block_stage']}"}
 
     def _resolve_integrity(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
         return {"decision": "answered", "notes": "relinked"}
 
-    # -- the surveyor sub-flow's turns ------------------------------------
 
     def _plan_units(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
         (self.repo / data["rules_path"]).write_text(_rules())
@@ -766,14 +677,7 @@ def _env(tmp: Path, *, run_dir: Path | None = None) -> RunEnv:
 
 
 def _latest_ask(text: str) -> str:
-    """The questions *this* block asked, not everything the gate file has accumulated.
-
-    A second `Await` on a path re-arms the file by appending, keeping the earlier blocks
-    and the operator's answers to them. So "which gate is this?" cannot be asked of the
-    whole file — the grill's questions are still in it long after the grill was answered,
-    and a test that searched the file for them skipped every later gate as if it were the
-    grill's.
-    """
+    """The questions *this* block asked, not everything the gate file has accumulated."""
     marker = "## Questions from the agent"
     return text.rsplit(marker, 1)[-1] if marker in text else text
 
@@ -803,7 +707,6 @@ def _drive_epic_edit(env: RunEnv, agent: _Agent, **inputs: Any) -> Any:
     return drive(EpicEdit(**inputs), replace(env, agent_runner=StubRunner(agent)))
 
 
-# --------------------------------------------------------------------------- epic mode
 
 
 def test_every_flat_stage_is_directly_registered() -> None:
@@ -820,12 +723,7 @@ def test_every_flat_stage_is_directly_registered() -> None:
 def test_epic_mode_authors_one_roadmap_milestone_and_commits_it(
     backlogged: Path, tmp_path: Path
 ) -> None:
-    """The straight-through run: one epic, two stories, both gates green, then the git tail.
-
-    Every count below is a node the YAML ran exactly once per pass too, and the artifacts
-    are the YAML's artifacts: the epic and its seeds in `epic.md`, an authored `story.md`
-    per story, an untouched backlog, and one commit on the branch the repo was already on.
-    """
+    """The straight-through run: one epic, two stories, both gates green, then the git tail."""
     backlog_before = (backlogged / BACKLOG).read_bytes()
     commits_before = _commit_count(backlogged)
     branch_before = _current_branch(backlogged)
@@ -845,9 +743,7 @@ def test_epic_mode_authors_one_roadmap_milestone_and_commits_it(
     }, agent.counts()
     assert agent.calls.index("review-coverage") < agent.calls.index("write-story")
 
-    # Both stories authored, for real, as ostler reads them.
     assert _stories(backlogged) == {slug: True for slug in SLUGS}
-    # The whole-graph gate ran on a clean graph: no error-level findings left.
     assert not [
         f for f in Ostler(backlogged).doctor().data["findings"] if f["severity"] == "error"
     ]
@@ -858,25 +754,18 @@ def test_epic_mode_authors_one_roadmap_milestone_and_commits_it(
     assert milestones[0]["sourceItems"] == [ROADMAP]
     assert "status: authored" in (backlogged / ROADMAP).read_text(encoding="utf-8")
 
-    # The git tail: one commit, on the branch the run started on — it cuts none of its own.
     assert _subject(backlogged) == "author: roadmap account-access"
     assert _commit_count(backlogged) == commits_before + 1
     assert _current_branch(backlogged) == branch_before
     assert result.committed is True, result
 
-    # Every turn ran in the repo, not in the run directory.
     assert set(agent.cwds) == {str(backlogged)}
 
 
 def test_epic_mode_skips_mockups_for_seeds_tagged_without_a_frontend_layer(
     backlogged: Path, tmp_path: Path
 ) -> None:
-    """A `backend`-tagged seed removes two agent turns; an untagged one removes none.
-
-    The gate used to read free-text `surface:` cross-checked against the OKF book, which in a
-    greenfield repo resolves to nothing — so it failed closed and designed a 20 KB mockup for
-    every backend story. The layer tag is the fact the epic author already knows.
-    """
+    """A `backend`-tagged seed removes two agent turns; an untagged one removes none."""
     agent = _Agent(backlogged, backend_seeds=True)
 
     _drive(_env(tmp_path), agent)
@@ -960,16 +849,7 @@ def test_roadmap_authoring_selects_only_its_milestone_epics(
 def test_every_prompt_is_told_the_resolved_paths_not_the_blank_parameters(
     backlogged: Path, tmp_path: Path
 ) -> None:
-    """`epics_dir` and `roadmap` reach prompts as what `load_config` resolved.
-
-    There is no parameter for either any more: both are ostler's answer, read once in
-    `load_config` and carried on the run context. The parameters that used to exist
-    defaulted to blank, the prompts rendered the raw value, and every default run told its
-    agent `Epics directory: ``, so every path the prompt built came out rooted at `/`. An
-    agent handed no epics directory goes looking for one, and on a machine holding more
-    than one checkout it finds the wrong repo's: two benchmark runs decomposed the
-    *harness'* planning docs into the target and left the target's epics index empty.
-    """
+    """`epics_dir` and `roadmap` reach prompts as what `load_config` resolved."""
     agent = _Agent(backlogged)
     _drive(_env(tmp_path), agent)
 
@@ -1006,13 +886,7 @@ def test_epic_docs_are_all_written_before_story_splitting(backlogged: Path, tmp_
 def test_the_commit_leaves_work_the_run_did_not_do_alone(
     backlogged: Path, tmp_path: Path, write: Callable[[Path, str], Path]
 ) -> None:
-    """The run commits the docs it authored, not the working tree it found.
-
-    `repo_dir` defaults to the directory the run was launched from, so the repo author
-    writes into is routinely a checkout somebody else is working in — the git tail used
-    to `git add -A`, which swept their in-flight edits into a commit subjected
-    `author: …`. Anything outside the docs tree must survive the run uncommitted.
-    """
+    """The run commits the docs it authored, not the working tree it found."""
     stray = write(backlogged / "src/half_finished.py", "def in_progress(): ...\n")
 
     _drive(_env(tmp_path), _Agent(backlogged))
@@ -1026,12 +900,8 @@ def test_the_commit_leaves_work_the_run_did_not_do_alone(
         text=True,
     ).stdout.split()
     assert committed, "the run committed nothing at all"
-    # Everything the run authored, and nothing else. `.agents/ids.json` is ostler's id
-    # ledger: it sits outside the docs tree but must land in the same commit as the
-    # documents it numbers, or the next run remints those ids for other entities.
     assert all(p.startswith("docs/") or p == ".agents/ids.json" for p in committed), committed
     assert ".agents/ids.json" in committed, committed
-    # Still there, still theirs: untouched on disk and untracked in git.
     assert stray.read_text() == "def in_progress(): ...\n"
     untracked = subprocess.run(
         ["git", "ls-files", "--others", "--exclude-standard"],
@@ -1046,13 +916,7 @@ def test_the_commit_leaves_work_the_run_did_not_do_alone(
 def test_a_story_that_is_not_a_contract_is_reworked_against_the_gate(
     backlogged: Path, tmp_path: Path
 ) -> None:
-    """`validate_story` is deterministic, so the rework loop needs no scripted verdict.
-
-    The writer leaves `## Context` empty on the first story; the structural gate fails it,
-    `record_attempt` opens the ledger, and the reworker rewrites it. The ledger is the
-    point of `record_attempt`: a bounded loop that carried only the latest failure would
-    let the reworker re-try an approach that already failed.
-    """
+    """`validate_story` is deterministic, so the rework loop needs no scripted verdict."""
     agent = _Agent(backlogged, unwritten={"01-sign-in"})
     _drive(_env(tmp_path), agent)
 
@@ -1067,13 +931,7 @@ def test_a_story_that_is_not_a_contract_is_reworked_against_the_gate(
 def test_a_story_nobody_can_fix_is_parked_and_the_epic_carries_on(
     backlogged: Path, tmp_path: Path, caplog: pytest.LogCaptureFixture
 ) -> None:
-    """The give-up arm advances the queue instead of waiting on a human forever.
-
-    The auditor objects to `01-sign-in` on every lap and the autonomous resolver never
-    clears it, so the story exhausts its resolution budget. It used to `Await` there — and
-    with no human at the other end of an unattended run, one unwritable story held the
-    epic's entire remaining queue behind it for 14 of one run's 48 hours.
-    """
+    """The give-up arm advances the queue instead of waiting on a human forever."""
     agent = _Agent(backlogged, fail_audit={"01-sign-in"})
 
     with caplog.at_level(logging.WARNING):
@@ -1081,25 +939,16 @@ def test_a_story_nobody_can_fix_is_parked_and_the_epic_carries_on(
 
     assert any("parking story '01-sign-in'" in r.message for r in caplog.records), caplog.text
     assert any("remains audit-blocked" in r.message for r in caplog.records)
-    # The parked story is never re-selected, and the next one is authored normally.
     assert agent.args_for("write-story")[-1]["story_slug"] == "02-reset-password"
     assert _stories(backlogged)["02-reset-password"] is True
 
 
-# --------------------------------------------------------------------------- the audit contract
-# The findings list *is* the verdict. Prose `status` used to be, and nothing could check
-# whether an audit had been exhaustive — so each lap surfaced one different objection and
-# 87 of 144 stories in one run went write → audit(fail) → rework → audit(pass), every time.
 
 
 def test_an_empty_findings_list_is_a_pass_whatever_status_says(
     backlogged: Path, tmp_path: Path
 ) -> None:
-    """A `failed` with nothing to repair cannot be reworked, so it upholds the story.
-
-    Routing it to rework instead sends the reworker a blank brief, which is precisely the
-    lap that costs a turn and repairs nothing.
-    """
+    """A `failed` with nothing to repair cannot be reworked, so it upholds the story."""
     agent = _Agent(
         backlogged,
         audit_replies={"01-sign-in": {"status": "failed", "findings": [], "notes": "unease"}},
@@ -1107,7 +956,7 @@ def test_an_empty_findings_list_is_a_pass_whatever_status_says(
 
     _drive(_env(tmp_path), agent)
 
-    assert agent.counts()["audit-story"] == 2, agent.counts()   # one per story, no re-audit
+    assert agent.counts()["audit-story"] == 2, agent.counts()
     assert agent.counts()["rework-story"] == 0, agent.counts()
     assert _stories(backlogged) == {slug: True for slug in SLUGS}
 
@@ -1115,12 +964,7 @@ def test_an_empty_findings_list_is_a_pass_whatever_status_says(
 def test_a_finding_the_reworker_cannot_act_on_stops_the_run(
     backlogged: Path, tmp_path: Path
 ) -> None:
-    """Every finding names its repair, or the audit did not answer.
-
-    A finding with no `repair` is indistinguishable from a hunch once it reaches the rework
-    prompt, and the loop would burn its whole budget on it. Stopping leaves the checkpoint
-    resumable; upholding silently would ship the defect.
-    """
+    """Every finding names its repair, or the audit did not answer."""
     from workhorse.pyflow import WorkflowFailed
 
     agent = _Agent(
@@ -1141,12 +985,7 @@ def test_a_finding_the_reworker_cannot_act_on_stops_the_run(
 def test_an_operator_note_dropped_mid_run_reworks_the_story_once(
     backlogged: Path, tmp_path: Path
 ) -> None:
-    """`check_story_feedback` never blocks, and consuming the inbox is what bounds it.
-
-    The note is dropped while the auditor is running, so it is there when
-    `story_feedback` polls. Replying to it is what consumes it, so the story is reworked
-    exactly once no matter how many laps the loop takes afterwards.
-    """
+    """`check_story_feedback` never blocks, and consuming the inbox is what bounds it."""
     env = _env(tmp_path)
     agent = _Agent(
         backlogged,
@@ -1158,24 +997,17 @@ def test_an_operator_note_dropped_mid_run_reworks_the_story_once(
     assert agent.counts()["rework-story"] == 1, agent.counts()
     note = agent.args_for("rework-story")[0]
     assert "never 'log in'" in note["operator_feedback"], note
-    # The operator's note is the work; there is no validation failure to carry.
     assert note["validation_errors"] == "", note
     messages = inbox.all_messages(env.writer.run_dir / INBOX_FILE)
     assert len(messages) == 1, messages
     assert messages[0].reply, messages
-    # Consumed, so the second pass through `story_feedback` found nothing.
     assert agent.counts()["audit-story"] == 3, agent.counts()
 
 
 def test_a_coverage_gap_re_enters_the_split_with_the_worklist(
     backlogged: Path, tmp_path: Path
 ) -> None:
-    """The coverage loop's notes travel to `split_stories` as its `rework_notes`.
-
-    That parameter is the port's answer to a var that still held the *previous* epic's
-    verdict on a fresh entry: only the edge that actually has notes passes them, so the
-    first split sees a blank worklist and the reworked one sees the gap.
-    """
+    """The coverage loop's notes travel to `split_stories` as its `rework_notes`."""
     agent = _Agent(backlogged, coverage_verdicts=["gaps", "ok"])
     _drive(_env(tmp_path), agent)
 
@@ -1189,12 +1021,7 @@ def test_a_coverage_gap_re_enters_the_split_with_the_worklist(
 def test_coverage_resolver_cycles_share_the_epic_scoped_split_bound(
     backlogged: Path, tmp_path: Path
 ) -> None:
-    """A resolved coverage block cannot reset the epic's cumulative resolution count.
-
-    Each block always parks for a human — the resolver never decides on the operator's
-    behalf — so two blocked reviews in a row cost two real `Await`s, and the second one's
-    `split_resolves` must pick up from the first's, not restart at zero.
-    """
+    """A resolved coverage block cannot reset the epic's cumulative resolution count."""
     seen: list[str] = []
     labels: list[dict[str, str]] = []
     agent = _Agent(backlogged, coverage_verdicts=["blocked", "blocked", "ok"])
@@ -1217,25 +1044,17 @@ def test_coverage_resolver_cycles_share_the_epic_scoped_split_bound(
     assert any("story_split.cov_reworks" not in row for row in reset_laps), labels
 
 
-# ------------------------------------------------------------------- the operator gates
 
 
 def test_an_epic_review_that_will_not_converge_reaches_the_resolver(
     backlogged: Path, tmp_path: Path
 ) -> None:
-    """Three reworks, then the operator stand-in — and the resolver's answer is re-verified.
-
-    `resolve_epics` re-enters `split_epics` rather than trusting the reply: the split and
-    the review both re-read the context file the resolver just answered. Nothing blocks,
-    because the resolver answered — which is the arm the YAML could only express by having
-    `await-operator.py` read a `STATUS:` line and return.
-    """
+    """Three reworks, then the operator stand-in — and the resolver's answer is re-verified."""
     agent = _Agent(backlogged, review_epics=["needs_rework"] * 4)
     _drive(_env(tmp_path), agent)
 
     assert agent.counts()["rework-epic-split"] == 3, agent.counts()
     assert agent.counts()["resolve-epic-split"] == 1, agent.counts()
-    # The resolver's answer sent the run back through the split, not past it.
     assert agent.counts()["split-epics"] == 2, agent.counts()
     assert agent.counts()["review-epic-split"] == 5, agent.counts()
     assert "one epic is two" in agent.args_for("resolve-epic-split")[0]["block_notes"]
@@ -1245,13 +1064,7 @@ def test_an_epic_review_that_will_not_converge_reaches_the_resolver(
 def test_operator_mode_human_sends_the_block_straight_to_the_context_file(
     backlogged: Path, tmp_path: Path
 ) -> None:
-    """`human` skips the resolver entirely and waits on the file.
-
-    The wait is the driver's `Await`: it writes the questions to the context file,
-    checkpoints, and polls that path's mtime. Patching `wait_for_answer` is the
-    operator answering — and the autonomous arms above are proved by the *absence* of that
-    patch, since a real wait would hang the suite.
-    """
+    """`human` skips the resolver entirely and waits on the file."""
     seen: list[str] = []
 
     def answered(path: Path, **kwargs: Any) -> None:
@@ -1264,24 +1077,17 @@ def test_operator_mode_human_sends_the_block_straight_to_the_context_file(
     assert agent.counts()["rework-epic-split"] == 0, agent.counts()
     assert len(seen) == 1 and "one epic is two" in seen[0], seen
     assert (backlogged / CONTEXT).is_file()
-    # The gate looped back into the split, so the run finished on the second review.
     assert agent.counts()["review-epic-split"] == 2, agent.counts()
 
 
 def test_an_escalated_story_block_waits_on_the_story_context(
     backlogged: Path, tmp_path: Path
 ) -> None:
-    """The story gate's other arm: the resolver declines, so a human is waited on.
-
-    One audit-directed repair and convergence re-audit happen first, then the gate hands
-    the block to the resolver, which escalates — and the wait lands on the *story's* context
-    file, not the run-wide one.
-    """
+    """The story gate's other arm: the resolver declines, so a human is waited on."""
     seen: list[Path] = []
 
     def answered(path: Path, **kwargs: Any) -> None:
         seen.append(path)
-        # What a human does at this gate: fix the story's inputs. Here, drop the objection.
         agent.fail_audit.clear()
 
     agent = _Agent(backlogged, fail_audit={"01-sign-in"}, escalate=True)
@@ -1296,8 +1102,6 @@ def test_an_escalated_story_block_waits_on_the_story_context(
     assert len(story_audits) == 3, agent.counts()
     first, convergence, after_operator = story_audits
     assert first["prior_audit_findings"] == ""
-    # The re-audit is handed the structured findings, id first, so it can recognise the same
-    # defect rather than inventing a fresh objection each lap.
     assert convergence["prior_audit_findings"] == (
         "01-sign-in-01 [journey] ## Acceptance Criteria: 01-sign-in cannot be built as "
         "written. Repair: state the observable outcome\n"
@@ -1307,23 +1111,16 @@ def test_an_escalated_story_block_waits_on_the_story_context(
     assert _stories(backlogged) == {slug: True for slug in SLUGS}
 
 
-# --------------------------------------------------------------------------- story mode
 
 
 def test_story_mode_authors_one_bullet_and_does_not_commit(
     with_epic: Path, tmp_path: Path
 ) -> None:
-    """One bullet into an existing epic, and it ends *without* committing.
-
-    `decide_story_loop` routed `story` to `story_prune`, whose `next` is the `done`
-    terminal, so the story arm of the commit-message builder is unreachable in the YAML.
-    The port reproduces that rather than quietly fixing it — see the progress ledger.
-    """
+    """One bullet into an existing epic, and it ends *without* committing."""
     before = _commit_count(with_epic)
     agent = _Agent(with_epic)
     result = _drive(_env(tmp_path), agent, mode="story", epic=EPIC, bullet="b1")
 
-    # No epic split, no coverage tail: story mode enters at the story loop and leaves it.
     assert agent.counts() == {
         "design-mockup": 1,
         "write-story": 1,
@@ -1333,7 +1130,6 @@ def test_story_mode_authors_one_bullet_and_does_not_commit(
     stories = _stories(with_epic)
     assert list(stories) == ["b1-users-can-sign-in-with-an-email-and-a-password"], stories
     assert all(stories.values()), stories
-    # The bullet it consumed is pruned; the other identified item remains.
     assert _bullets(with_epic) == [f"- {SEEDS['b2']}"]
     assert result.removed == 1, result
     assert result.remaining == 1, result
@@ -1348,7 +1144,6 @@ def test_story_mode_refuses_an_epic_that_does_not_exist(backlogged: Path, tmp_pa
         _drive(_env(tmp_path), _Agent(backlogged), mode="story", epic="nope", bullet="b1")
 
 
-# -------------------------------------------------------------------------- story-edit flow
 
 
 def test_story_edit_add_authors_one_story_and_commits(with_epic: Path, tmp_path: Path) -> None:
@@ -1421,12 +1216,7 @@ def test_story_edit_remove_reconciles_remaining_epic_scope_and_journey(
 
 
 def test_story_edit_follows_the_configured_epics_root(backlogged: Path, tmp_path: Path) -> None:
-    """A repo that moved its epics in `docRoots:` is followed, with no parameter to disagree.
-
-    The run reads the same answer `ostler backlog`, `coverage` and `doctor` read. There is
-    no `epics_dir` to hand it a different one — the mode where a run edited a tree the rest
-    of the toolchain does not look at.
-    """
+    """A repo that moved its epics in `docRoots:` is followed, with no parameter to disagree."""
     custom_epics = "product/epics"
     (backlogged / "ostler.yml").write_text(
         f"organization:\n  docRoots:\n    epics: {custom_epics}\n", encoding="utf-8"
@@ -1531,20 +1321,12 @@ def test_epic_edit_semantic_review_reworks_are_bounded(
     assert not (with_epic / EPIC_DIR).exists()
 
 
-# ------------------------------------------------------------------------------- handoff
 
 
 def test_survey_mode_runs_the_surveyor_and_stops_at_discovery(
     backlogged: Path, tmp_path: Path, write: Callable[[Path, str], Path]
 ) -> None:
-    """`handoff`: the sub-flow runs on the parent's env and returns its discovery output.
-
-    The surveyor's own machinery is covered in `flows/test_surveyor.py`. What this proves
-    is the hand-off: the child's prompts (`surveyor/prompts/*.md`) resolve against the
-    *parent's* workflow directory and the child's nodes and agent turns run under the parent's
-    run directory. The parent stops there; an owner must turn discovery into an approved roadmap
-    before epic authoring begins.
-    """
+    """`handoff`: the sub-flow runs on the parent's env and returns its discovery output."""
     write(backlogged / RUBRIC, "# Accessibility rubric\n\nEvery control needs a name.\n")
     write(backlogged / BUTTON / "index.tsx", "export const Button = () => <button />\n")
     _commit(backlogged, "a rubric and one component")
@@ -1552,37 +1334,27 @@ def test_survey_mode_runs_the_surveyor_and_stops_at_discovery(
     agent = _Agent(backlogged)
     _drive(_env(tmp_path), agent, mode="survey")
 
-    # The child's three turns, then the parent's.
     assert agent.counts()["plan-units"] == 1, agent.counts()
     assert agent.counts()["assess-unit"] == 1, agent.counts()
     assert agent.counts()["partition-findings"] == 1, agent.counts()
     assert agent.counts()["build-milestone"] == 0, agent.counts()
 
-    # The child's artifacts are on disk, and its bullets are in the parent's backlog.
     assert (backlogged / RULES).is_file()
     assert (backlogged / INVENTORY).is_file()
     assert (backlogged / FINDINGS / f"{record_slug(BUTTON)}.md").is_file()
     assert (backlogged / PARTITION).is_file()
     assert any(CLUSTER in line for line in (backlogged / BACKLOG).read_text().splitlines())
 
-    # Survey output remains discovery input; only an approved roadmap starts authoring.
     assert _subject(backlogged) == "a rubric and one component"
     assert _stories(backlogged) == {}
 
 
-# -------------------------------------------------------------------------------- resume
 
 
 def test_a_run_killed_mid_story_resumes_on_that_story_alone(
     backlogged: Path, tmp_path: Path
 ) -> None:
-    """The story loop's state is the story documents, not the machine.
-
-    So the checkpoint written *before* the agent turn is enough: the resumed run re-writes
-    the story that was in flight and no earlier one, because the earlier one is already
-    authored on disk and `select_story` skips it. This is the YAML's resume behavior — its
-    `refuel` node re-entered the same way — reproduced without a gas tank.
-    """
+    """The story loop's state is the story documents, not the machine."""
     first = _Agent(backlogged, explode={"02-reset-password"})
     env = _env(tmp_path)
     run_dir = env.writer.run_dir
@@ -1594,8 +1366,6 @@ def test_a_run_killed_mid_story_resumes_on_that_story_alone(
 
     checkpoint = parse_checkpoint((run_dir / ArtifactWriter.CHECKPOINT_FILE).read_text())
     resume = read_resume(checkpoint)
-    # The parent checkpoints the flat dispatcher; handoff re-adopts StoryAuthor's scoped
-    # `write_story` checkpoint when that dispatcher is resumed.
     assert resume.state == "next_stage", resume
     assert resume.params == {"blocked": []}, resume.params
     assert resume.flow == "Author", resume
@@ -1607,7 +1377,6 @@ def test_a_run_killed_mid_story_resumes_on_that_story_alone(
         resume,
     )
 
-    # Nothing upstream of the story re-ran: not the split, not this story's mockup.
     assert second.counts() == {
         "write-story": 1,
         "audit-story": 1,
@@ -1616,17 +1385,10 @@ def test_a_run_killed_mid_story_resumes_on_that_story_alone(
     assert result.committed is True, result
 
 
-# -------------------------------------------------------------------------------- labels
 
 
 def test_the_labels_name_the_story_and_the_epic(backlogged: Path, tmp_path: Path) -> None:
-    """The YAML's `labels:` block read `get_node_output('select_story', …)`; here
-    `labels()` reads `self.output(select_story)` and takes no parameters.
-
-    Before the first pick there is no output to read, and that is the normal state of a
-    run's first transitions — the guard against `NodeNotRunError` is what makes those
-    label-less transitions rather than crashed ones.
-    """
+    """The YAML's `labels:` block read `get_node_output('select_story', …)`; here `labels()` reads `self.output(select_story)` and takes no parameters."""
     seen: list[dict[str, str]] = []
     real_rebase = pyflow_activity.ActivityLog.rebase
 
@@ -1640,15 +1402,11 @@ def test_the_labels_name_the_story_and_the_epic(backlogged: Path, tmp_path: Path
     assert seen[0] == {}, seen[0]
     stamped = [labels for labels in seen if labels.get("work_id")]
     assert stamped, seen
-    # Flat milestone work is labelled by roadmap before an epic or story target exists.
     assert stamped[0] == {"work_id": "account-access"}, stamped[0]
     assert {labels["work_id"] for labels in stamped} == {
         "account-access", EPIC_NAME, *SLUGS,
     }, stamped
-    # `progress` is the worklist's own count, so a dashboard can read it without knowing
-    # anything about authoring.
     assert any(labels.get("progress") for labels in stamped), stamped
     assert any(labels.get("story_split.cov_reworks") == "0" for labels in stamped), stamped
     assert any(labels.get("story_split.split_resolves") == "0" for labels in stamped), stamped
-    # Unprefixed, unlike the YAML engine's `wf.work_id`.
     assert not any(k.startswith("wf.") for labels in seen for k in labels), seen

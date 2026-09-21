@@ -1,6 +1,4 @@
-"""The `VetReport` shape, the `docs/specs/<slug>/vet.md` Concept read-modify-write, and the
-dry-run-by-default file-write plan `ostler vet` applies with `--write`.
-"""
+"""The `VetReport` shape, the `docs/specs/<slug>/vet.md` Concept read-modify-write, and the dry-run-by-default file-write plan `ostler vet` applies with `--write`."""
 
 from __future__ import annotations
 
@@ -68,9 +66,6 @@ def build_report(*, slug: str, state: str, screenshot: str, manifest: str, regio
     )
 
 
-# ---------------------------------------------------------------------------
-# docs/specs/<slug>/vet.md Concept — type: spec.vet, one `## State: <name>` section per state
-# ---------------------------------------------------------------------------
 def _state_frontmatter_entry(report: VetReport) -> dict:
     return {
         "status": report.summary.status,
@@ -129,9 +124,7 @@ def _replace_or_append_section(doc: markdown.MarkdownDoc, title: str, new_lines:
 
 
 def build_vet_concept(existing_raw: str | None, report: VetReport) -> str:
-    """Read-modify-write `vet.md`: accumulates one frontmatter entry + body section per
-    `--state`, replacing in place on re-run of the same state. Top-level `status` is
-    `disagreements` if *any* recorded state is."""
+    """Read-modify-write `vet.md`: accumulates one frontmatter entry + body section per `--state`, replacing in place on re-run of the same state."""
     raw = existing_raw or f"---\ntype: spec.vet\nslug: {report.slug}\n---\n# Vet: {report.slug}\n"
     doc = markdown.split(raw)
     fm = doc.frontmatter or {"type": "spec.vet", "slug": report.slug}
@@ -150,10 +143,6 @@ def build_vet_concept(existing_raw: str | None, report: VetReport) -> str:
     return doc.render()
 
 
-# ---------------------------------------------------------------------------
-# Dry-run-by-default file-write plan (own small classes: writes into a `vet/` subdir that
-# may not exist yet, and optionally writes binary crop files — unlike edit.EditPlan/FileChange).
-# ---------------------------------------------------------------------------
 @dataclass
 class VetFileWrite:
     path: Path

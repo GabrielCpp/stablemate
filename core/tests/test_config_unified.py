@@ -1,12 +1,4 @@
-"""The shared ~/.config/stablemate/config.toml: one file, non-destructive writes.
-
-Standalone + pytest-compatible. Every test redirects the config path, so the
-developer's real config is never touched.
-
-Tests here assert the load / write / version machinery on the **v2 schema** —
-``[profiles.<cli>].powers.<tier>``, ``[profiles.<cli>].default``, ``[cli.<cli>].env``.
-The v1→v2 migration is exercised by ``test_v1_migrates_to_v2_in_memory_on_read``.
-"""
+"""The shared ~/.config/stablemate/config.toml: one file, non-destructive writes."""
 
 from __future__ import annotations
 
@@ -44,15 +36,10 @@ def cfg_file(tmp_path, monkeypatch):
     return path
 
 
-# --- the regression that started this ----------------------------------------
 
 
 def test_writing_a_key_preserves_power_tables(cfg_file):
-    """`config set-base` used to stringify [power.*] into a Python repr.
-
-    Nothing errored: resolve_power then saw a str instead of a dict and returned an
-    empty mapping, so every node silently fell back to the default model.
-    """
+    """`config set-base` used to stringify [power.*] into a Python repr."""
     cfg_file.write_text(_POWER)
 
     cfgmod.write_config_key("base_dir", "/some/path")
@@ -70,13 +57,7 @@ def test_writing_a_key_preserves_power_tables(cfg_file):
 
 
 def test_power_still_resolves_after_a_write(cfg_file):
-    """The user-visible symptom, asserted end to end.
-
-    Under v2 the resolver needs a narrowed profile to find a power table — the full
-    un-narrowed config carries no top-level model tables, so calling without a
-    profile would always return empty. This test selects the claude profile both
-    times to exercise the write path.
-    """
+    """The user-visible symptom, asserted end to end."""
     cfg_file.write_text(_POWER)
     before = cfgmod.resolve_power(
         "high", "claude", cfgmod.select_profile(cfgmod.load_config(), "claude")
@@ -106,7 +87,6 @@ def test_values_needing_escaping_survive(cfg_file):
     assert cfgmod.get_config_value("base_dir") == tricky
 
 
-# --- the default agent CLI ---------------------------------------------------
 
 
 def test_default_cli_is_the_builtin_when_unset(cfg_file):
@@ -126,10 +106,7 @@ def test_default_cli_is_normalized(cfg_file):
 
 
 def test_a_malformed_default_cli_reads_as_unset(cfg_file):
-    """Never an exception: this is read on the way into an unattended week-long run,
-    and a config that has gone wrong must degrade to the built-in, not end the run.
-    An unknown *name* is a different thing and is rejected by whoever owns the
-    registry — core knows no backends."""
+    """Never an exception: this is read on the way into an unattended week-long run, and a config that has gone wrong must degrade to the built-in, not end the run."""
     for bad in (
         "default_cli = 3\n", 'default_cli = ""\n', 'default_cli = "   "\n',
         "default_cli = true\n", 'default_cli = ["opencode"]\n',
@@ -150,14 +127,12 @@ def test_writing_the_default_cli_preserves_the_rest(cfg_file):
 
 
 def test_default_cli_does_not_bump_the_schema(cfg_file):
-    """Additive keys never bump CONFIG_VERSION: an older tool that ignores this one
-    falls back to the same built-in it always used, which is not a wrong answer."""
+    """Additive keys never bump CONFIG_VERSION: an older tool that ignores this one falls back to the same built-in it always used, which is not a wrong answer."""
     cfg_file.write_text('config_version = 2\ndefault_cli = "opencode"\n')
     assert cfgmod.config_version_of(tomllib.loads(cfg_file.read_text())) == 2
     assert cfgmod.check_config_version() == 2
 
 
-# --- unification + migration -------------------------------------------------
 
 
 def test_path_is_stablemate_not_workhorse(monkeypatch):
@@ -167,11 +142,7 @@ def test_path_is_stablemate_not_workhorse(monkeypatch):
 
 
 def test_legacy_files_are_read_when_unified_is_absent(tmp_path, monkeypatch):
-    """An existing per-tool setup keeps working with no manual migration step.
-
-    Legacy v1 files are migrated to v2 in memory on read, so a round of
-    ``resolve_power`` sees the new shape without a write.
-    """
+    """An existing per-tool setup keeps working with no manual migration step."""
     unified = tmp_path / "stablemate" / "config.toml"
     wh = tmp_path / "workhorse" / "config.toml"
     fa = tmp_path / "farrier" / "config.toml"
@@ -180,25 +151,18 @@ def test_legacy_files_are_read_when_unified_is_absent(tmp_path, monkeypatch):
     wh.write_text(_POWER)
     fa.write_text('library_dir = "/overlay"\nstablemate_dir = "/checkout"\n')
 
-    # Patch the DEFAULT path rather than setting $STABLEMATE_CONFIG: legacy fallback
-    # applies only when the path is the default one, so using the env var here would
-    # (correctly) suppress the very fallback under test.
     monkeypatch.delenv(cfgmod.CONFIG_PATH_ENV, raising=False)
     monkeypatch.delenv(cfgmod.LEGACY_CONFIG_PATH_ENV, raising=False)
     monkeypatch.setattr(cfgmod, "config_path", lambda: unified)
     monkeypatch.setattr(cfgmod, "legacy_config_paths", lambda: [wh, fa])
 
-    # workhorse inherits farrier's shared keys — the point of one file.
     assert cfgmod.get_config_value("library_dir") == "/overlay"
-    # Migration runs in memory: power.high.claude (v1) is now inside
-    # profiles.claude.powers.high (v2).
     profile = cfgmod.select_profile(cfgmod.load_config(), "claude")
     assert cfgmod.resolve_power("high", "claude", profile).model == "opus"
 
 
 def test_first_write_migrates_legacy_into_the_unified_file(tmp_path, monkeypatch):
-    """Otherwise the unified file would exist holding only the new key, and every
-    legacy key would be silently dropped on the next read."""
+    """Otherwise the unified file would exist holding only the new key, and every legacy key would be silently dropped on the next read."""
     unified = tmp_path / "stablemate" / "config.toml"
     wh = tmp_path / "workhorse" / "config.toml"
     fa = tmp_path / "farrier" / "config.toml"
@@ -222,11 +186,7 @@ def test_first_write_migrates_legacy_into_the_unified_file(tmp_path, monkeypatch
 
 
 def test_explicit_path_does_not_fall_back_to_legacy(tmp_path, monkeypatch):
-    """Naming a config file means that file — not "and also ~/.config/workhorse".
-
-    Found in a clean-room run: $STABLEMATE_CONFIG pointed at an empty file still
-    inherited this machine's real stablemate_dir, so the env var isolated nothing.
-    """
+    """Naming a config file means that file — not "and also ~/.config/workhorse"."""
     legacy = tmp_path / "workhorse" / "config.toml"
     legacy.parent.mkdir(parents=True)
     legacy.write_text('stablemate_dir = "/leaked"\n')
@@ -261,26 +221,15 @@ def test_legacy_env_var_still_honored(tmp_path, monkeypatch):
 
 
 def test_corrupt_config_degrades_to_empty(cfg_file):
-    """A broken config must not crash a week-long unattended run.
-
-    A corrupt TOML file fails to parse, so `_read` returns `{}`. The migration then
-    lifts that empty v1 into an empty v2 (a `config_version = 2` and `profiles = {}`
-    shell), so the assertion accepts the migrated shape rather than `{}`.
-    """
+    """A broken config must not crash a week-long unattended run."""
     cfg_file.write_text("this is not [ valid toml =")
     data = cfgmod.load_config()
     assert data.get("config_version") == cfgmod.CONFIG_VERSION
     assert data.get("profiles") == {}
-    # A resolver call against the migrated empty config still returns empty.
     profile = cfgmod.select_profile(data, "claude") if False else {}
     assert cfgmod.resolve_power("high", "claude", profile) == cfgmod.PowerMapping()
 
 
-# --- schema versioning -------------------------------------------------------
-#
-# One file, written by tools installed separately and versioned independently: two pipx
-# venvs each hold their own stablemate-core, and the config path is per-user, not per
-# venv. Nothing in packaging can make those agree, so the file carries the guard.
 
 
 @pytest.fixture(autouse=True)
@@ -296,15 +245,11 @@ def test_writes_stamp_the_schema_version(cfg_file):
 
 
 def test_unversioned_config_is_migrated_in_memory(cfg_file):
-    """A v1 file (no `config_version` key, since the key was added with v1) is
-    migrated to v2 in memory on read, so resolvers only need to know the current
-    shape. The file on disk stays v1 until a write bumps it."""
+    """A v1 file (no `config_version` key, since the key was added with v1) is migrated to v2 in memory on read, so resolvers only need to know the current shape."""
     cfg_file.write_text(_POWER.replace("config_version = 2\n", ""))
     data = cfgmod.load_config()
-    # Migration lifted power.* into profiles.*.powers.*.
     assert data["profiles"]["claude"]["powers"]["high"]["model"] == "opus"
     assert data["profiles"]["claude"]["cli"] == "claude"
-    # The file on disk is still v1.
     assert cfgmod.config_version_of(tomllib.loads(cfg_file.read_text())) == 1
 
 
@@ -314,13 +259,7 @@ def test_config_version_of_rejects_a_bool(cfg_file):
 
 
 def test_write_refuses_a_newer_config(cfg_file):
-    """The load-bearing guard: an old tool must not serialize back a schema it cannot
-    represent, dropping the keys it does not understand — the original bug, exactly.
-
-    `config_version = 3` is rewritten manually rather than concatenated with `_POWER`
-    (which itself declares `config_version = 2`): TOML forbids duplicate keys, and a
-    duplicate-key parse failure would silently fall through to the empty-config path.
-    """
+    """The load-bearing guard: an old tool must not serialize back a schema it cannot represent, dropping the keys it does not understand — the original bug, exactly."""
     cfg_file.write_text(
         'config_version = 3\n'
         'default_cli = "claude"\n'
@@ -334,15 +273,13 @@ def test_write_refuses_a_newer_config(cfg_file):
         cfgmod.write_config_key("base_dir", "/p")
 
     assert "Refusing to write" in str(excinfo.value)
-    # And the file is untouched.
     data = tomllib.loads(cfg_file.read_text())
     assert "base_dir" not in data
     assert data["profiles"]["claude"]["powers"]["high"]["model"] == "opus"
 
 
 def test_reads_of_a_newer_config_survive_but_warn(cfg_file, caplog):
-    """Reads stay fail-soft: resolve_power re-reads per node, so raising here would kill
-    a week-long run. It must not be SILENT, though — that is the failure being guarded."""
+    """Reads stay fail-soft: resolve_power re-reads per node, so raising here would kill a week-long run."""
     cfg_file.write_text(
         'config_version = 3\n'
         '[profiles.claude]\n'
@@ -380,8 +317,7 @@ def test_check_config_version_passes_on_a_current_config(cfg_file):
 
 
 def test_migration_walks_forward_and_backs_the_file_up(cfg_file, monkeypatch):
-    """Exercises the walk that bumps CONFIG_VERSION through unknown territory — the
-    mechanism is proven before the release that needs it rather than after."""
+    """Exercises the walk that bumps CONFIG_VERSION through unknown territory — the mechanism is proven before the release that needs it rather than after."""
     cfg_file.write_text(_POWER.replace("config_version = 2\n", "config_version = 1\n"))
 
     def v1_to_v2(cfg):
@@ -413,12 +349,10 @@ def test_migration_refuses_when_no_step_is_registered(cfg_file, monkeypatch):
         cfgmod.write_config_key("base_dir", "/p")
 
 
-# --- v1 → v2 shape migration --------------------------------------------------
 
 
 def test_v1_migrates_to_v2_in_memory_on_read(cfg_file):
-    """The v1→v2 lift: top-level [power.*] / [default.*] become [profiles.<cli>.*],
-    and [harness.*] becomes [cli.*]. The file on disk stays v1 until a write."""
+    """The v1→v2 lift: top-level [power.*] / [default.*] become [profiles.<cli>.*], and [harness.*] becomes [cli.*]."""
     cfg_file.write_text(
         'config_version = 1\n'
         'default_cli = "opencode"\n'
@@ -433,16 +367,12 @@ def test_v1_migrates_to_v2_in_memory_on_read(cfg_file):
         'env = { X = "1" }\n'
     )
     data = cfgmod.load_config()
-    # top-level [power.*] / [default.*] / [harness.*] are gone.
     assert "power" not in data
     assert "default" not in data or not isinstance(data["default"], dict) or not data["default"]
     assert "harness" not in data
-    # [power.high.opencode] became profiles.opencode.powers.high.
     assert data["profiles"]["opencode"]["cli"] == "opencode"
     assert data["profiles"]["opencode"]["powers"]["high"]["model"] == "gpt-5"
-    # [default.claude] became profiles.claude.default.
     assert data["profiles"]["claude"]["default"]["model"] == "sonnet"
-    # [harness.opencode] became [cli.opencode].
     assert data["cli"]["opencode"]["env"] == {"X": "1"}
 
 
@@ -461,11 +391,7 @@ def test_v1_profile_with_default_cli_is_renamed_to_cli(cfg_file):
 
 
 def test_v1_profile_without_a_cli_is_a_config_error():
-    """A v1 profile with no `default_cli` cannot migrate to v2 — its `cli` field is
-    required, and the migration refuses rather than silently dropping the profile (a
-    silent drop is the kind of misconfigured-config data-loss the schema guard exists to
-    prevent). ``load_config`` swallows the migration error on read (fail-soft on
-    unparseable data), so the assertion is against the migration function directly."""
+    """A v1 profile with no `default_cli` cannot migrate to v2 — its `cli` field is required, and the migration refuses rather than silently dropping the profile (a silent drop is the kind of misconfigured-config data-loss the schema guard exists to prevent)."""
     import tomllib
 
     v1 = tomllib.loads(
@@ -475,15 +401,10 @@ def test_v1_profile_without_a_cli_is_a_config_error():
         cfgmod._migrate_v1_to_v2(v1)
 
 
-# --- [qa_tools.*] -------------------------------------------------------------
 
 
 def test_load_config_reads_qa_tools_table(cfg_file):
-    """`[qa_tools.<name>]` is read generically, like `[power.*]` — no dedicated accessor.
-
-    ostler's tool registry (`ostler.qa.tools`) reads this table straight off
-    `load_config()["qa_tools"]`; this is the contract that call depends on.
-    """
+    """`[qa_tools.<name>]` is read generically, like `[power.*]` — no dedicated accessor."""
     cfg_file.write_text(
         'config_version = 2\n'
         '[qa_tools.tesseract]\ncommand = "tesseract"\ndescription = "OCR"\n'
@@ -507,7 +428,6 @@ def test_writing_a_key_preserves_qa_tools_table(cfg_file):
     assert data["base_dir"] == "/some/path"
 
 
-# --- worktree_dir -------------------------------------------------------------
 
 
 def test_worktree_dir_is_none_when_unset(cfg_file):
@@ -538,7 +458,6 @@ def test_a_malformed_worktree_dir_reads_as_unset(cfg_file):
     assert cfgmod.resolve_worktree_dir() is None
 
 
-# --- timeout_scale: the per-tier wall-clock multiplier -----------------------
 
 _SCALED = """\
 config_version = 2
@@ -603,11 +522,7 @@ def test_an_integer_timeout_scale_reads_as_a_float(cfg_file):
 
 @pytest.mark.parametrize("raw", ["\"2.5\"", "true", "0", "-1", "inf", "nan"])
 def test_a_malformed_timeout_scale_reads_as_unset(cfg_file, raw):
-    """Every rejected value would be worse than the absence it degrades to.
-
-    `true` reads as 1.0 through the int subclass; 0 and a negative time every node
-    out instantly; `inf` silently unbounds the whole run.
-    """
+    """Every rejected value would be worse than the absence it degrades to."""
     cfg_file.write_text(
         f'config_version = 2\n'
         f'[profiles.claude]\ncli = "claude"\n'

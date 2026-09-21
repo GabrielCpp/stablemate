@@ -1,15 +1,4 @@
-"""`inbox` — read and answer the operator's messages to a run.
-
-The counterpart to `control`: `control` tells a *live* run something over its socket;
-this reads and writes the run dir directly, so it works on a run that is parked,
-finished or dead — an inbox message is advisory, so there is nothing wrong with
-replying to one after the run that would have acted on it is long gone. It is also how
-a node agent reads its own inbox: this is a command, so it needs no new tool wiring.
-
-`read` and `reply` are the whole surface. Peek and pull collapse into one read, because
-a message that disappeared when someone looked at it is a message the next node cannot
-act on — nothing here removes a message, only `reply` marks it answered.
-"""
+"""`inbox` — read and answer the operator's messages to a run."""
 from __future__ import annotations
 
 import argparse

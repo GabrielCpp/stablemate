@@ -1,15 +1,4 @@
-"""Walking the frozen list: pick the next pending unit, and mark one done.
-
-The inventory is a **worklist** — `workhorse.worklist` sequences it and counts it — whose
-items are its `units` and whose done-states are `assessed`/`clean`. So the loop needs no
-state of its own: the inventory file and the finding records *are* the loop state, which
-is what makes the survey resumable at any point.
-
-Both nodes are shared by the surveyor and the parity surveyor: same scheme, same file
-shape, same per-unit record convention.
-
-Ported from `base-library/workflows/author/surveyor/scripts/{select-next-unit,mark-unit}.py`.
-"""
+"""Walking the frozen list: pick the next pending unit, and mark one done."""
 from __future__ import annotations
 
 import json
@@ -24,9 +13,6 @@ from workhorse_workflows.author.shared.survey.records import RECORD_STATUSES
 from workhorse_workflows.author.shared.paths import survey_repo_root
 from workhorse_workflows.author.shared.schemas.survey import MarkResult, UnitPick
 
-#: Surveyor's status vocabulary: a unit is *done* once it has a finding record
-#: (assessed) or was found clean; blocked units are set aside; everything else
-#: (pending) is selectable.
 SURVEY_SCHEME = wl.Scheme(
     done=frozenset({"assessed", "clean"}), blocked=frozenset({"blocked"})
 )
@@ -40,13 +26,7 @@ def select_next_unit(
     findings_dir: str = "docs/survey/findings",
     repo_dir: str = "",
 ) -> UnitPick:
-    """The first unit still `pending`, or the news that none is left.
-
-    When none is left, `has_unit` is false and the flow proceeds to the coverage gate —
-    the empty pending set **is** the coverage proof, structural rather than a post-hoc
-    check. Also derives the unit's finding-record path so the assess/validate/mark nodes
-    all agree on one location without re-deriving it.
-    """
+    """The first unit still `pending`, or the news that none is left."""
     inv_rel = inventory.strip() or "docs/survey/inventory.json"
     findings_rel = findings_dir.strip() or "docs/survey/findings"
 
@@ -69,12 +49,10 @@ def select_next_unit(
             reason=f"inventory at {inv_rel} is not parseable — verify_records will flag it"
         )
 
-    snap = wl.snapshot(units, scheme=SURVEY_SCHEME)  # progress + kinds for the dashboard
-    pick = wl.select_next(units, scheme=SURVEY_SCHEME)  # first not-done/not-blocked
+    snap = wl.snapshot(units, scheme=SURVEY_SCHEME)
+    pick = wl.select_next(units, scheme=SURVEY_SCHEME)
     unit_id = pick.id if pick is not None else ""
     if pick is None or not unit_id:
-        # None left (or a degenerate pending unit with no id — nothing assessable): the
-        # empty pending set is the coverage proof, so hand off to the coverage gate.
         reason = "no pending units left — every unit has a finding record (or is blocked)"
         logger.info(reason)
         return UnitPick(reason=reason, progress=snap.progress, kinds=snap.kinds)
@@ -83,8 +61,6 @@ def select_next_unit(
     return UnitPick(
         has_unit=True,
         unit_id=unit_id,
-        # `path` is the surveyor's own field, carried top-level on the item — the
-        # primitive keeps it rather than learning what it means.
         unit_path=str(getattr(pick, "path", "") or unit_id),
         unit_kind=pick.kind,
         record_path=f"{findings_rel}/{record_slug(unit_id)}.md",
@@ -95,12 +71,7 @@ def select_next_unit(
 
 
 def _record_status(path: Path) -> str | None:
-    """The record's front-matter `status`, or None when missing/unparseable/invalid.
-
-    Deliberately not `records.load_record`: this is mark-unit's own lenient reader, which
-    treats *every* way of failing to state a valid status as one thing — no record. It
-    runs on the give-up path, after validation already had its say.
-    """
+    """The record's front-matter `status`, or None when missing/unparseable/invalid."""
     if not path.is_file():
         return None
     doc = markdown.split(path.read_text(encoding="utf-8"))
@@ -109,8 +80,7 @@ def _record_status(path: Path) -> str | None:
 
 
 def _write_stub(path: Path, unit_id: str, reason: str) -> None:
-    """A minimal blocked record so the gap stays durable even when the assessor's own
-    record never materialized (or could not be repaired)."""
+    """A minimal blocked record so the gap stays durable even when the assessor's own record never materialized (or could not be repaired)."""
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
         "---\n"
@@ -135,16 +105,7 @@ def mark_unit(
     fallback: str = "",
     repo_dir: str = "",
 ) -> MarkResult:
-    """Stamp the unit's inventory entry with its (validated) record's status.
-
-    The happy path runs after `validate_record` passed. The degraded path is the give-up
-    escape: when the record is missing or still invalid after the bounded fix loop, the
-    unit must not wedge the whole survey — it is marked `blocked`, with a stub record
-    carrying the reason in `openGaps` if none exists, and the loop moves on.
-    `verify_records` re-surfaces every blocked unit at the coverage gate, so nothing
-    marked here is silently dropped: a blocked unit is an OPEN gap until an operator
-    re-pends it or records an accepted disposition.
-    """
+    """Stamp the unit's inventory entry with its (validated) record's status."""
     inv_rel = inventory.strip()
     unit_id = unit_id.strip()
     record_rel = record_path.strip()
@@ -159,7 +120,6 @@ def mark_unit(
     status = _record_status(record_file)
     note = "unit marked from its record's status"
     if status is None:
-        # Give-up path: never wedge the loop — durably record the gap and move on.
         status = "blocked"
         reason = fallback or "assessment produced no valid finding record"
         if not record_file.is_file():

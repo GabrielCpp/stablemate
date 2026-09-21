@@ -1,18 +1,4 @@
-"""The `Workflow` base class: a state machine whose states are its own methods.
-
-Three tiers of state and no fourth — inputs (class fields, set once from `--param`),
-`self.ctx` (written by `setup()` exactly once), and state parameters (one hop, and
-they *are* the checkpoint). The rule the whole design rests on is **if a state writes
-it, it is a parameter of the next state**, and the base class enforces the half of
-that rule documentation could not: the instance freezes once `setup()` returns, so a
-`self.x = …` that would survive a transition in memory and vanish on resume raises at
-the assignment instead of at hour 30 of a run.
-
-`self.call` / `self.agent` / `self.handoff` / `self.output` are seams, not
-conveniences. Calling a node function directly would work and would be invisible;
-going through the seam is what earns it a span, a recorded `output.json` — which
-`self.output(...)` later reads — and a no-op under `--dry-run`.
-"""
+"""The `Workflow` base class: a state machine whose states are its own methods."""
 from __future__ import annotations
 
 import inspect
@@ -36,17 +22,10 @@ from workhorse.runner import worktree_guard
 P = ParamSpec("P")
 T = TypeVar("T")
 
-#: Where a run starts when the checkpoint does not say otherwise.
 START_STATE = "start"
 
-#: Parameter kinds an injected input can be passed to by name. `*args`/`**kwargs` are
-#: not among them: a target that only declares those has not asked for the input, and
-#: filling it would be guessing.
 _NAMEABLE = (inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.KEYWORD_ONLY)
 
-#: Attribute `@state(aliases=[...])` stamps on a method. The decorator carries no
-#: registry reference on purpose: it has to be usable in a class body that is defined
-#: before the module-level `Registry` object exists.
 STATE_ATTR = "__workhorse_state__"
 
 
@@ -62,15 +41,7 @@ class StateSpec:
 def state(
     fn: Callable[..., Any] | None = None, *, aliases: Iterable[str] = ()
 ) -> Any:
-    """Declare metadata for a state. Optional — a public method is already a state.
-
-    Its only job today is `aliases=[...]`: the names this state used to have. A
-    checkpoint naming a state that no longer exists fails loudly rather than starting
-    over, and this is the one-line fix that lets the in-flight runs finish::
-
-        @state(aliases=["qa_gate"])          # was qa_gate before 0.9
-        def qa(self, story: str, attempt: int = 0) -> Continue | Done: ...
-    """
+    """Declare metadata for a state."""
     alias_tuple = tuple(aliases)
 
     def decorate(target: Callable[..., Any]) -> Callable[..., Any]:
@@ -87,120 +58,28 @@ def _is_state(name: str, value: Any) -> bool:
 
 
 class Workflow(BaseModel):
-    """Subclass this; your public methods are the states.
-
-    Discovery is implicit — a public method that is not `setup`/`labels` and is not
-    part of this base class is a state. A helper that is *not* a state therefore has
-    to start with an underscore, which is the only thing this costs and is the same
-    convention the rest of Python already uses for "not part of the surface".
-    """
+    """Subclass this; your public methods are the states."""
 
     model_config = ConfigDict(extra="forbid", arbitrary_types_allowed=True)
 
-    #: The consuming repo's root — the one input every workflow shares, which is why it
-    #: is declared on the parent rather than re-declared per workflow. The CLI defaults
-    #: it to the launch directory; `--param repo_dir=…` overrides. Blank means "resolve
-    #: by walking up from the cwd" (the kit’s `find_repo_root`).
-    #:
-    #: It is a field and not an environment read because **a node may not read the
-    #: environment** (`workflows/README.md`): a run's inputs have to be visible in its
-    #: params, comparable between two runs, and overridable by a caller — which
-    #: `AGENT_REPO_DIR` is none of. A state passes it on to the nodes that need it.
     repo_dir: str = ""
 
-    #: The library roots a workflow resolves *content* against, highest precedence
-    #: first: the overlay a machine configured, then the base library. Empty when
-    #: neither is installed, which is a legal state for a workflow that resolves no
-    #: content — and a run-stopping one for a workflow whose prompt bodies live there.
-    #:
-    #: Here for the same reason `repo_dir` is: the discovery ladder reads
-    #: `$STABLEMATE_BASE_DIR`, `$FARRIER_LIBRARY_DIR` and the shared config, and a
-    #: workflow may read none of them. The CLI walks that ladder once, at the process
-    #: boundary, and hands the answer down as an ordinary parameter — so the library a
-    #: run resolved against is in its checkpoint and in its telemetry, and a resume
-    #: cannot silently land on a different one.
     library_dirs: tuple[str, ...] = ()
 
-    #: Input fields the seams *fill in* — for a node (or a sub-workflow) that declares a
-    #: parameter of the same name and was not passed one at the callsite.
-    #:
-    #: This is the same injection `logger` already gets, extended to the run's ambient
-    #: inputs, and it exists because the alternative to it is the thing the environment
-    #: was covering for: a value every second node needs, restated at ~200 callsites and
-    #: at every `handoff` (which constructs a fresh sub-workflow and so propagates
-    #: nothing). Restating it is what nobody did, which is why `AGENT_REPO_DIR` was read
-    #: from inside the nodes instead.
-    #:
-    #: It is deliberately **not** "fill any parameter whose name matches a field": that
-    #: would silently capture a node's `story`/`epic` argument from an input the state
-    #: had chosen not to pass. A workflow lists what it means to make ambient, and the
-    #: base lists the one field it declares itself. A callsite that passes the parameter
-    #: always wins, and an input that is empty injects nothing — so a node's own default
-    #: still applies. The base lists the two fields it declares itself: which checkout,
-    #: and which library layers content resolves against.
     injects: ClassVar[tuple[str, ...]] = ("repo_dir", "library_dirs")
 
-    #: Node functions of this workflow's that spend wall-clock on *infrastructure*
-    #: rather than on the model — bringing a stack up, tearing one down. Their spans
-    #: are marked `workhorse.span_kind=infra`, so an aggregate over node duration can
-    #: subtract them instead of reading a four-minute stack boot as four minutes of
-    #: work.
-    #:
-    #: Declared by the workflow, never inferred here. Workhorse is a generic driver
-    #: and must not learn what a node *means* from its name or module; the workflow
-    #: already knows which of its own nodes do infra work, the same way it already
-    #: knows its own `labels()`.
     INFRA_NODES: ClassVar[frozenset[Any]] = frozenset()
 
-    #: Bound by the driver before the first state runs.
     _engine: Any = PrivateAttr(default=None)
     _ctx: Any = PrivateAttr(default=None)
     _frozen: bool = PrivateAttr(default=False)
 
-    #: Registered at class-creation time, so an alias collision costs a test rather
-    #: than a run. Per-subclass; `states` on the base itself stays empty.
     states: ClassVar[NameIndex[StateSpec]]
     start_state: ClassVar[str] = START_STATE
-    #: Transitions this workflow may make before it is declared stuck. 0 = defer to the
-    #: run's own budget (``RunConfig.max_transitions``); a class that sets it overrides
-    #: the operator's setting, because a flow that legitimately needs 4000 hops knows
-    #: that about itself and the operator does not.
     max_transitions: ClassVar[int] = 0
-    #: State parameters whose *value changing* means the run moved forward, so the
-    #: transition budget refills to full. Empty = never refills, the flat ceiling.
-    #:
-    #: A drain's transition count is a function of its backlog, not of its shape: at
-    #: four hops an item, any fixed budget names a backlog size above which a perfectly
-    #: healthy run dies, and the operator's only recourse is to raise a number nobody
-    #: can compute in advance. Meanwhile the thing the budget exists to catch — "two
-    #: states handing each other back and forth" — is not a count of transitions at all.
-    #: It is transitions that *achieve nothing*, and only the workflow knows which of
-    #: its parameters says otherwise. So it names one: `{"progress"}` on a worklist
-    #: drain refills the tank each time `"3386/4378"` becomes `"3387/4378"`, and a
-    #: ping-pong between two states — where that string never moves — still dies on
-    #: exactly the budget it always did.
-    #:
-    #: Declared, never inferred, for the reason `INFRA_NODES` gives: the driver is
-    #: generic and must not learn what a parameter *means* from its name. It only ever
-    #: asks whether the value it was pointed at is the same one as last time.
-    #:
-    #: This is the YAML engine's `refuel: <key>`, which the pyflow port dropped for want
-    #: of a gas tank. A refilling budget is not an unbounded run: `max_items` gates the
-    #: items, `WORKHORSE_MAX_RUNTIME_S` gates the clock, and both stop a run that is
-    #: progressing — which is what a budget on *stalling* must not do.
     REFUEL_ON: ClassVar[frozenset[str]] = frozenset()
-    #: Whether this workflow's agent turns share a working tree whose uncommitted work
-    #: they do not own — concurrent runs in one checkout, or a flow that commits only at
-    #: the end. When True every `agent` turn runs with `workhorse.runner.worktree_guard`
-    #: first on `PATH`, so a `git stash` or `git checkout -- <path>` an agent reaches for
-    #: to see "the file before my edit" is refused instead of silently discarding another
-    #: run's edits. A prompt forbidding git does not hold; this does. Deterministic nodes
-    #: run in-process and are unaffected, so the flow's own commit step still works.
-    #: Overridden to off for a `--worktree`-dispatched run regardless of this setting —
-    #: a worktree cut for one run exclusively is not the shared tree this guards.
     PROTECT_WORKTREE: ClassVar[bool] = False
 
-    # --- registration -------------------------------------------------------
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
         super().__init_subclass__(**kwargs)
@@ -213,7 +92,7 @@ class Workflow(BaseModel):
                 if name in base_names or not _is_state(name, value):
                     continue
                 if name in index.live_names():
-                    continue  # an override; the subclass's definition already won
+                    continue
                 aliases = tuple(getattr(value, STATE_ATTR, ()))
                 index.register(name, StateSpec(name, value, aliases), aliases)
         cls.states = index
@@ -225,12 +104,7 @@ class Workflow(BaseModel):
 
     @classmethod
     def resolve_state(cls, name: str) -> StateSpec:
-        """The state `name` refers to, live or retired, or a loud failure.
-
-        Never a cache miss and never a silent fresh start: a resume that finds no
-        matching state has hit an undeclared rename, and saying so is what makes
-        `aliases=[...]` a one-line fix rather than an archaeology exercise.
-        """
+        """The state `name` refers to, live or retired, or a loud failure."""
         spec = cls.states.get(name)
         if spec is None:
             known = ", ".join(sorted(cls.states.live_names())) or "(none)"
@@ -241,62 +115,19 @@ class Workflow(BaseModel):
             )
         return spec
 
-    # --- hooks --------------------------------------------------------------
 
     def setup(self) -> Any:
-        """Run once, before the first state, and only once per run.
-
-        Whatever it returns becomes `self.ctx`. A resume **restores** `ctx` from the
-        checkpoint rather than calling this again, which is what makes "checkpointed
-        once, after setup" in the tier table true rather than aspirational.
-
-        It exists for the residue — a value decided at the top of a run and used only
-        at the bottom, which threading through seven uninterested states would be
-        worse than the disease. It is not a place to stash progress: states cannot
-        write it.
-        """
+        """Run once, before the first state, and only once per run."""
         return None
 
     def labels(self) -> dict[str, str]:
-        """The workflow's own telemetry dimensions, e.g. `{"work_id": self.story}`.
-
-        The engine knows run, node, backend and model; what it cannot know is what
-        the run is *working on*, because that vocabulary is the workflow's.
-
-        It is re-read before every transition and sees whatever the instance can —
-        inputs, `self.ctx`, `self.output(node)`. For a dimension that depends on the
-        arguments the *next state* was bound with, override `state_labels` instead.
-        """
+        """The workflow's own telemetry dimensions, e.g."""
         return {}
 
     def state_labels(self, params: dict[str, Any]) -> dict[str, str]:
-        """The same, for dimensions that depend on the state's own arguments.
-
-        `params` is what the state about to run was bound with. This is how a bounded
-        retry budget reaches telemetry:
-
-            def state_labels(self, params: dict[str, Any]) -> dict[str, str]:
-                loop = params.get("loop")
-                if loop is None:
-                    return self.labels()
-                return self.labels() | {"plan_rework": str(loop.plan_rework)}
-
-        A budget is almost always already a state parameter — it has to be, since
-        state parameters *are* the checkpoint — so the count is in hand at exactly
-        the moment the labels are read, and no state has to stash a copy of it on
-        `self` for instrumentation to find.
-
-        It is a second hook rather than an argument to `labels()` because a subclass
-        cannot add a parameter its base does not declare without breaking every
-        caller of the base — the type checker rejects it, and rightly. The default
-        delegates, so overriding either one alone is enough.
-
-        The engine passes the dict it already holds and never reads it: what counts
-        as a dimension stays the workflow's call.
-        """
+        """The same, for dimensions that depend on the state's own arguments."""
         return self.labels()
 
-    # --- run-scoped reads ---------------------------------------------------
 
     @property
     def ctx(self) -> Any:
@@ -314,7 +145,6 @@ class Workflow(BaseModel):
     def run_id(self) -> str:
         return self._require_engine().run_id
 
-    # --- seams --------------------------------------------------------------
 
     def call(
         self,
@@ -322,13 +152,7 @@ class Workflow(BaseModel):
         *args: P.args,
         **kwargs: P.kwargs,
     ) -> T:
-        """Run a blueprint node and return its plain typed value.
-
-        `Concatenate[Logger, P]` strips the injected logger for the type checker, so
-        the node stays a plain function a test can call directly while the callsite
-        here neither passes nor sees it. The node's *ambient* arguments — the fields
-        named in `injects` — are filled the same way, and for the same reason.
-        """
+        """Run a blueprint node and return its plain typed value."""
         return self._require_engine().call(
             node,
             args,
@@ -350,46 +174,7 @@ class Workflow(BaseModel):
         add_dirs: Sequence[str | Path] | None = None,
         session: str | None = None,
     ) -> T:
-        """Render `prompt`, run an agent turn, and validate the reply into `returns`.
-
-        The one surviving `dict[str, Any]`: a prompt genuinely has no signature to
-        check arguments against.
-
-        `power` is an abstract tier name — an opaque string the operator's config maps
-        to a concrete model per backend, conventionally "low"/"medium"/"high"/"max"/
-        "ultra" (cheapest first) but free to be any name a config declares;
-        an unmapped one falls through to the backend's default. `timeout` is this turn's
-        wall-clock budget in
-        seconds. `cwd` is the working directory the agent CLI is launched in — which is
-        what decides whose CLAUDE.md, skills and git context the turn sees — and
-        `add_dirs` are further directories it may read. `retries` is how many times a
-        failed turn is re-asked from scratch, overriding the run's reframe budget for
-        this node alone — pass 0 for a turn whose deliverable is a file this state can
-        read back and act on partially, where a fresh re-ask costs full price and
-        recovers nothing the file does not already hold. `invoke_retries` bounds how
-        many times one turn is retried after a *transient* provider failure — a 5xx, a
-        rate limit — before the failure is raised to this state; the run's default is
-        sized in days, so pass a small number where recording the failure and gating
-        is cheaper than waiting the outage out. All of them default to None =
-        whatever the engine defaults to, so a state that says nothing behaves exactly
-        as before.
-
-        Unlike the YAML node's fields these are real paths, not Jinja templates: a
-        state computes the path in Python and passes it.
-
-        `add_dirs` is a `Sequence`, not a `list`, because it is only read here: a
-        `list[str]` — what a state that collects plain paths naturally holds — is not a
-        `list[str | Path]`, since a mutable list is invariant in its element type.
-
-        `session` names a **chain**: turns sharing a key are one conversation, resumed
-        rather than restarted. The default of None is one clean context per turn, which
-        is what almost every node wants — a reviewer who inherited the author's session
-        is reviewing their own reasoning. Use a chain for a repair loop whose laps share
-        one worklist, key it per worklist (a story, not a run), and reset it with
-        `reset_session` when the worklist changes or the laps stop converging;
-        `docs/AUTHORING.md` has the rules. To continue a conversation whose id you were
-        handed, `seed_session` the key first — `session=` never takes an id.
-        """
+        """Render `prompt`, run an agent turn, and validate the reply into `returns`."""
         engine = self._require_engine()
         guard = (
             worktree_guard.guarding(engine.run_dir)
@@ -411,68 +196,25 @@ class Workflow(BaseModel):
             )
 
     def seed_session(self, key: str, session_id: str) -> None:
-        """Start chain `key` on a session id another turn — or another flow — minted.
-
-        A session id is an opaque string, so `session=` cannot be overloaded to carry
-        one: it always names a chain. This is how a caller holding a literal id says
-        "resume this exact conversation" — file the id under a key, then pass the key.
-        A sub-flow handed the implementer's session does this once on the way in.
-
-        No-op on an empty id or a chain that already has one, so a state may seed
-        unconditionally: a resumed run keeps the conversation it had reached rather
-        than being thrown back to the id the flow started with.
-        """
+        """Start chain `key` on a session id another turn — or another flow — minted."""
         self._require_engine().seed_session(key, session_id)
 
     def chain_session(self, key: str) -> str:
-        """The session id chain `key` is on, or `""` before its first turn.
-
-        Read it to hold a conversation in checkpointed state — a state's parameters are
-        its checkpoint — and hand it to another flow, which `seed_session`s it under a
-        key of its own to reopen that conversation, including in a later run.
-        """
+        """The session id chain `key` is on, or `""` before its first turn."""
         return self._require_engine().session_id(key)
 
     def reset_session(self, key: str) -> None:
-        """End session chain `key`, so the next turn on it starts a fresh conversation.
-
-        A no-op when the chain never ran, so a state may reset on the way into a loop
-        without first asking whether there is anything to reset.
-        """
+        """End session chain `key`, so the next turn on it starts a fresh conversation."""
         self._require_engine().reset_session(key)
 
     def handoff(self, wf: Callable[P, Any], *args: P.args, **kwargs: P.kwargs) -> Any:
-        """Drive another workflow to completion in a sub-scope; return its result.
-
-        The result is the sub-workflow's `Done(...)` value rather than the instance —
-        the instance is frozen and holds nothing a caller wants that the result does
-        not carry. A `Workflow` subclass is a pydantic model, so the signature being
-        checked against is its synthesised `__init__`.
-
-        A sub-workflow is *constructed*, not derived, so nothing crosses this boundary
-        that is not an argument. The `injects` fields cross it — a sub-flow declaring
-        `repo_dir` works on the same checkout as its parent by definition, and having to
-        say so at every handoff is exactly the omission that made the environment look
-        necessary.
-        """
+        """Drive another workflow to completion in a sub-scope; return its result."""
         return self._require_engine().handoff(wf, args, self._fill(wf, args, kwargs))
 
     def output(self, node: Callable[..., T]) -> T:
-        """The recorded output of a node that already ran, typed by its own return.
-
-        A read, not a fourth tier — nothing is written. Parameters carry what the
-        next state *branches on*; this carries what a later state merely consumes,
-        so a survey manifest never has to be copied through four checkpoints a human
-        is supposed to read.
-
-        Resolves to the **latest** invocation (there is no earlier one: a re-entered
-        node overwrites its `output.json`), and **raises** when the node has not run
-        — the predecessor returned `""` for "never ran", "unreadable" and
-        "legitimately empty" alike.
-        """
+        """The recorded output of a node that already ran, typed by its own return."""
         return self._require_engine().output(node)
 
-    # --- ambient inputs -----------------------------------------------------
 
     def _fill(
         self,
@@ -482,16 +224,7 @@ class Workflow(BaseModel):
         *,
         skip: int = 0,
     ) -> dict[str, Any]:
-        """`kwargs` plus every `injects` field `target` declares and the callsite omitted.
-
-        `skip` is how many leading parameters the seam itself supplies — 1 for a node
-        (its logger), 0 for a sub-workflow's `__init__` — so that positional arguments
-        line up with the right names and an argument already passed *positionally* is
-        never also passed by keyword.
-
-        Nothing here can fail a call: an unintrospectable target (a builtin, a C
-        callable) simply gets the kwargs it was given.
-        """
+        """`kwargs` plus every `injects` field `target` declares and the callsite omitted."""
         injects = getattr(type(self), "injects", ())
         if not injects:
             return kwargs
@@ -509,20 +242,16 @@ class Workflow(BaseModel):
             if param is None or param.kind not in _NAMEABLE:
                 continue
             value = getattr(self, name, None)
-            # An empty input injects nothing: the target's own default is a real answer
-            # ("walk up from the cwd"), and overwriting it with a blank would be a lie
-            # about the callsite having said something.
             if value not in (None, ""):
                 filled[name] = value
         return filled
 
-    # --- freezing -----------------------------------------------------------
 
     def _bind(self, engine: Any) -> None:
         self._engine = engine
 
     def _seal(self, ctx: Any) -> None:
-        """Install `ctx` and freeze the instance. Called once, after `setup()`."""
+        """Install `ctx` and freeze the instance."""
         self._ctx = ctx
         self._frozen = True
 
@@ -553,6 +282,4 @@ class Workflow(BaseModel):
         super().__setattr__(name, value)
 
 
-# The base class itself has no states; giving it an empty index keeps `Workflow.states`
-# a real object rather than an AttributeError waiting for a generic caller.
 Workflow.states = NameIndex("state", owner="Workflow")

@@ -1,27 +1,4 @@
-"""Dataclass → JSON projection for the dashboard.
-
-The browser renders; the server projects. This module is the *only* place a
-:mod:`groom.models` dataclass is turned into a wire shape, which is what keeps
-groom's two delivery paths honest:
-
-- ``GET /api/state`` — the full-fleet resync a tab pulls when its socket has
-  gone quiet or died (see :func:`state_message`)
-- the browser websocket — the same ``{"type": "state", ...}`` payload pushed on
-  every state change and on the live ticker, plus ``{"type": "run", ...}``
-  single-run deltas (see :func:`run_message`)
-
-Both call the functions here, so a tab that resynced over HTTP and a tab that
-was pushed to are looking at byte-identical JSON and feed it through one
-``applyState()`` on the client. Nothing here emits markup, reads a request, or
-touches the network — it is pure ``(dataclasses, clock) -> dict``, which is
-also what makes the shapes cheap to assert in a test.
-
-Labels that encode a *judgement* (``alive`` vs ``silent 4m``, the fleet sort
-rank) are computed here rather than in the browser: they are policy, they are
-thresholded against server-side constants like ``store.LIVE_AFTER_S``, and two
-implementations of them would drift. Raw numbers ride along beside every label
-so the client can re-format without re-deciding.
-"""
+"""Dataclass → JSON projection for the dashboard."""
 
 from __future__ import annotations
 
@@ -33,7 +10,6 @@ from groom import attend, gates, state, store
 from groom.attention import RULE_EVENTS, AttentionEvent
 from groom.models import GateInfo, RunTelemetry, WorkflowContainer, WorkflowState
 
-# Blocked first, then active, then quiet — used for both tree and fleet order.
 STATE_ORDER = {
     WorkflowState.BLOCKED: 0,
     WorkflowState.RUNNING: 1,
@@ -41,16 +17,11 @@ STATE_ORDER = {
     WorkflowState.FINISHED: 3,
 }
 
-# How many log lines the detail pane's trail shows (newest first).
 LOG_TRAIL_LIMIT = 60
 
-# Log severities that deserve a color in the trail; everything else reads plain.
 SEVERITY_CLASS = {"FATAL": "bad", "ERROR": "bad", "WARNING": "warn"}
 
 
-# --------------------------------------------------------------------------- #
-# Formatting — shared so a pushed label and a resynced label are the same string
-# --------------------------------------------------------------------------- #
 def fmt_ts(ts: float) -> str:
     if not ts:
         return "—"
@@ -74,9 +45,7 @@ def fmt_duration(seconds: float) -> str:
 
 
 def question_preview(question: str) -> str:
-    """The first line of a gate question that carries content, stripped of its
-    markdown lead-in — what the fleet row shows so a blocked run says *what* it
-    is asking without the operator opening it."""
+    """The first line of a gate question that carries content, stripped of its markdown lead-in — what the fleet row shows so a blocked run says *what* it is asking without the operator opening it."""
     for raw_line in question.splitlines():
         line = raw_line.strip().lstrip("#>*-` ").strip()
         if line:
@@ -84,9 +53,6 @@ def question_preview(question: str) -> str:
     return ""
 
 
-# --------------------------------------------------------------------------- #
-# Identity + filtering
-# --------------------------------------------------------------------------- #
 def matches(wf: WorkflowContainer, query: str) -> bool:
     if not query:
         return True
@@ -102,28 +68,14 @@ def repo_label(wf: WorkflowContainer) -> str:
 
 
 def row_id(wf: WorkflowContainer) -> str:
-    """The id a list row shows.
-
-    A native row's id is a **name somebody chose** — ``shape-upgrade-fwdref`` — and
-    the first four characters of a name are not a shorter name, they are a different
-    one. ``shap`` cannot be searched for, pasted into ``--resume-run``, or told apart
-    from a sibling whose name shares its prefix, which is the normal case when a
-    campaign names its runs after what they operate on. So a native row shows it
-    whole, the same reason :func:`handle` gives for the detail pane.
-
-    A docker container id is a 64-hex digest nobody chose, reads or types, and four
-    characters of it disambiguate a fleet exactly as well as sixty-four do. That row
-    keeps its prefix — the truncation is only ever wrong on the ids that are names.
-    """
+    """The id a list row shows."""
     if wf.native:
         return wf.run_id or wf.container_id
     return wf.container_id[:4] or "----"
 
 
 def type_hue(workflow_type: str) -> int:
-    """A stable hue per workflow type, so a new kind of workflow gets its own
-    consistent chip color with no CSS change. ``coder``/``author`` additionally
-    have a fixed look in dashboard.css, which wins over the hue."""
+    """A stable hue per workflow type, so a new kind of workflow gets its own consistent chip color with no CSS change."""
     hue = 0
     for ch in workflow_type:
         hue = (hue * 31 + ord(ch)) % 360
@@ -131,8 +83,7 @@ def type_hue(workflow_type: str) -> int:
 
 
 def run_id_of(wf: WorkflowContainer) -> str:
-    """The telemetry key for a dashboard row. A native row *is* its run (the map
-    is keyed by run_id); a docker row carries the run id it pushed, if any."""
+    """The telemetry key for a dashboard row."""
     return wf.run_id or wf.container_id
 
 
@@ -140,9 +91,6 @@ def telemetry_for(wf: WorkflowContainer) -> RunTelemetry | None:
     return state.RUNS.get(run_id_of(wf))
 
 
-# --------------------------------------------------------------------------- #
-# Liveness + ordering
-# --------------------------------------------------------------------------- #
 def silence_of(tel: RunTelemetry | None, now: float) -> float:
     if tel is None:
         return 0.0
@@ -150,31 +98,14 @@ def silence_of(tel: RunTelemetry | None, now: float) -> float:
 
 
 def is_live(tel: RunTelemetry | None, now: float) -> bool:
-    """Is this run's process emitting *right now*? The one liveness predicate.
-
-    Two ways to be not-running, and both are about the current session only: the
-    root span of THIS session landed (``terminal``, cleared the moment a newer
-    signal arrives — see ``alerts._clear_stale_terminal``), or nothing has been
-    heard inside the live window. Everything else — a root span from an earlier
-    session of the same run dir, a docker container that exited — is history, and
-    history cannot answer this.
-    """
+    """Is this run's process emitting *right now*?"""
     if tel is None or tel.terminal:
         return False
     return silence_of(tel, now) <= store.LIVE_AFTER_S
 
 
 def liveness(wf: WorkflowContainer, tel: RunTelemetry | None, now: float) -> tuple[str, str]:
-    """``(class, label)`` for the row's process-liveness chip.
-
-    Liveness is a telemetry question, not a docker one: workhorse beats every few
-    seconds from a daemon thread for as long as its process exists, so recent
-    silence means the process is gone (or frozen below the interpreter) rather
-    than merely busy. Telemetry therefore *always* wins over the container's exit
-    state; only a run that has never exported anything falls back to it, and a run
-    with no evidence either way gets ``unknown`` rather than a guess — ``dead``
-    here must mean *observed silent*, not *unobserved*.
-    """
+    """``(class, label)`` for the row's process-liveness chip."""
     if tel is None:
         if wf.state == WorkflowState.FINISHED:
             return "done", "ended"
@@ -188,8 +119,7 @@ def liveness(wf: WorkflowContainer, tel: RunTelemetry | None, now: float) -> tup
 
 
 def fleet_rank(wf: WorkflowContainer, live_cls: str) -> int:
-    """Blocked first (it is waiting on *you*), then alive, then presumed-dead,
-    then finished — the order in which a run deserves the operator's attention."""
+    """Blocked first (it is waiting on *you*), then alive, then presumed-dead, then finished — the order in which a run deserves the operator's attention."""
     if wf.state == WorkflowState.BLOCKED:
         return 0
     if wf.state == WorkflowState.FINISHED or live_cls == "done":
@@ -198,16 +128,14 @@ def fleet_rank(wf: WorkflowContainer, live_cls: str) -> int:
 
 
 def exit_hint(wf: WorkflowContainer) -> str:
-    """A short ``exited N`` marker for a finished worker whose exit code is
-    known. Empty for still-live or code-less workers."""
+    """A short ``exited N`` marker for a finished worker whose exit code is known."""
     if wf.state != WorkflowState.FINISHED or wf.exit_code is None:
         return ""
     return f"exited {wf.exit_code}"
 
 
 def row_mini(tel: RunTelemetry | None) -> str:
-    """The at-a-glance numbers that say whether being in this node is normal:
-    how long it has been open, and how long the agent has been silent."""
+    """The at-a-glance numbers that say whether being in this node is normal: how long it has been open, and how long the agent has been silent."""
     if tel is None:
         return ""
     bits = []
@@ -222,9 +150,6 @@ def row_mini(tel: RunTelemetry | None) -> str:
     return " · ".join(bits)
 
 
-# --------------------------------------------------------------------------- #
-# Wire shapes
-# --------------------------------------------------------------------------- #
 def gate_dict(gate: GateInfo) -> dict[str, Any]:
     question = gates.extract_question(gate.question) if gate.kind != "machine" else gate.question
     return {
@@ -241,13 +166,7 @@ def gates_of(wf: WorkflowContainer) -> list[GateInfo]:
 
 
 def reported_gates(wf: WorkflowContainer, tel: RunTelemetry | None) -> list[GateInfo]:
-    """Pending gates from telemetry, or a sidecar snapshot for an older producer.
-
-    ``wait_kind`` alone says a gate exists — a producer running code older than
-    the gate-context telemetry emits ``wait_kind`` with no ``wait_gate_path``,
-    and the run is still genuinely blocked, just without a path/question yet
-    (the live loop backfills those over the control socket).
-    """
+    """Pending gates from telemetry, or a sidecar snapshot for an older producer."""
     if tel is None:
         return gates_of(wf)
     if tel.terminal or tel.wait_kind not in ("operator", "machine"):
@@ -289,17 +208,12 @@ def run_row(
         "turn_idle_s": tel.turn_idle_s if tel else 0.0,
         "mini": row_mini(tel),
         "activity": tel.activity if tel else wf.activity,
-        # `doing` is the single line the row shows under its title: the gate file
-        # when blocked, else the activity, else the node. The gate file path is
-        # the cursor an operator clicks to go answer.
         "doing": (
             gate_path
             if gate_path
             else (tel.activity if tel else "")
             or (tel.current_node if tel else "")
         ),
-        # The question text lives on the detail pane, not on the row. Row just
-        # notes the gate's presence (path is the actionable identifier).
         "question": "",
         "gate_path": gate_path,
         "gate_count": len(gates),
@@ -312,37 +226,18 @@ def run_row(
 
 
 def _row_state(wf: WorkflowContainer, tel: RunTelemetry | None) -> str:
-    """The row's state, derived purely from telemetry.
-
-    The four cases, in order of precedence:
-
-      * Terminal landed on the root span (``tel.terminal`` is non-empty) → FINISHED.
-      * Wait gauge is operator or machine → BLOCKED. This is the one row-state
-        condition that maps onto a human action. It does not additionally
-        require a gate path: a producer older than the gate-context telemetry
-        emits the wait kind with no path, and the run is still blocked.
-      * No telemetry and the workflow container is FINISHED → FINISHED (the legacy
-        greeting-snapshot case, while docker hasn't migrated to OTLP).
-      * Otherwise → RUNNING.
-
-    `IDLE` is gone: telemetry never reports a distinct "between nodes" state, and
-    the rendered row's `current_node == ""` carries the same information.
-    """
+    """The row's state, derived purely from telemetry."""
     if tel is not None:
         if tel.terminal:
             return WorkflowState.FINISHED.value
         if tel.wait_kind in ("operator", "machine"):
             return WorkflowState.BLOCKED.value
         return WorkflowState.RUNNING.value
-    # Fallback only: a docker row whose hello has not (yet) emitted to telemetry
-    # still has its workflow-container state, kept here only until the docker
-    # side fully migrates to OTLP ingestion.
     return wf.state.value
 
 
 def fleet_rank_for(state: str, live_cls: str) -> int:
-    """Blocked first (it is waiting on *you*), then alive, then presumed-dead,
-    then finished — the order in which a run deserves the operator's attention."""
+    """Blocked first (it is waiting on *you*), then alive, then presumed-dead, then finished — the order in which a run deserves the operator's attention."""
     if state == WorkflowState.BLOCKED.value:
         return 0
     if state == WorkflowState.FINISHED.value or live_cls == "done":
@@ -353,8 +248,7 @@ def fleet_rank_for(state: str, live_cls: str) -> int:
 def fleet_rows(
     workflows: list[WorkflowContainer], query: str = "", now: float | None = None
 ) -> list[dict[str, Any]]:
-    """The fleet in display order: blocked first, then alive, then presumed-dead,
-    then finished; ties broken by name so the list does not shuffle on a tick."""
+    """The fleet in display order: blocked first, then alive, then presumed-dead, then finished; ties broken by name so the list does not shuffle on a tick."""
     now = now if now is not None else time.time()
     rows = [run_row(wf, telemetry_for(wf), now) for wf in workflows if matches(wf, query)]
     rows.sort(key=lambda row: (row["rank"], row["name"]))
@@ -371,16 +265,7 @@ def status_bar(workflows: list[WorkflowContainer]) -> dict[str, Any]:
 
 
 def attend_summary() -> dict[str, Any]:
-    """The attendant's status, small enough to ride every ``state`` frame.
-
-    Deliberately *not* the pane's 200 rows: the state frame goes out on every rules
-    tick, and a list that large on that cadence would cost more than the whole rest of
-    the payload. What rides here is one entry per run — which is exactly what the
-    fleet needs to draw the *link* from a blocked or dead row to the attendant working
-    it — plus a revision the pane watches to know its own list went stale. The list
-    itself is pulled once, from ``GET /api/attend/sessions``, by whoever has the pane
-    open.
-    """
+    """The attendant's status, small enough to ride every ``state`` frame."""
     try:
         latest = store.attend_latest_by_run()
     except Exception:
@@ -440,9 +325,7 @@ def attention_events(workflows: list[WorkflowContainer]) -> list[AttentionEvent]
 def state_message(
     workflows: list[WorkflowContainer], query: str = "", now: float | None = None
 ) -> dict[str, Any]:
-    """The whole fleet as one payload — pushed on the socket *and* returned by
-    ``GET /api/state``. One shape, one client render path: a resync after a dead
-    socket must land the tab in exactly the state a push would have."""
+    """The whole fleet as one payload — pushed on the socket *and* returned by ``GET /api/state``."""
     now = now if now is not None else time.time()
     return {
         "type": "state",
@@ -451,10 +334,6 @@ def state_message(
         "runs": fleet_rows(workflows, query, now),
         "attention": [event.model_dump() for event in attention_events(workflows)],
         "status": status_bar(workflows),
-        # Sibling of "status", not part of it: the fleet counts describe the runs and
-        # this describes the collector holding them. A serve whose store has wedged
-        # answers every read route 200 with a plausible-looking fleet, so "is groom
-        # still storing what it is told" has to be asked separately or not at all.
         "store": store.health_dict(),
         "attend": attend_summary(),
     }
@@ -463,32 +342,17 @@ def state_message(
 def run_message(
     wf: WorkflowContainer, tel: RunTelemetry | None = None, now: float | None = None
 ) -> dict[str, Any]:
-    """A single-run delta. Same row shape as an entry in ``state.runs``, so the
-    client merges it into the store without a second code path.
-
-    The hot cache is the source of truth: when no telemetry was passed, look it
-    up here rather than from the workflow container. Keeps ``run_message`` and
-    ``fleet_rows`` consistent for callers that only have a wf in hand."""
+    """A single-run delta."""
     if tel is None:
         tel = telemetry_for(wf)
     now = now if now is not None else time.time()
     return {"type": "run", "ts": now, "run": run_row(wf, tel, now)}
 
 
-# --------------------------------------------------------------------------- #
-# Container + repo picker (GET /repos)
-# --------------------------------------------------------------------------- #
 def repo_entries(
     entries: list[tuple[WorkflowContainer, list[str]]],
 ) -> list[dict[str, Any]]:
-    """One group per container, each carrying the checkouts found on its volume.
-
-    Grouped rather than flat because that is the shape the server actually has —
-    one enumeration per container — and because the label a picker row shows
-    (``<container>/<repo>``) is derived from both halves. A workflow with no
-    discoverable repo still gets a single volume-root entry so it can be browsed
-    at all. Order is the fleet's own: blocked first, then by name.
-    """
+    """One group per container, each carrying the checkouts found on its volume."""
     groups = []
     for wf, repo_dirs in sorted(entries, key=lambda e: (STATE_ORDER[e[0].state], e[0].name)):
         groups.append(
@@ -507,33 +371,15 @@ def repo_entries(
     return groups
 
 
-# --------------------------------------------------------------------------- #
-# Detail pane (GET /worker/{id}, and the pushed refresh of the open pane)
-# --------------------------------------------------------------------------- #
 def handle(wf: WorkflowContainer) -> str:
-    """The id the detail pane shows — whole, not a fragment.
-
-    The pane is the thing you *paste*: into a workhorse command, into a groom
-    URL, into a run-directory path. So a native row reports its entire run id —
-    as its list row already does (:func:`row_id`) — and a docker row the twelve
-    characters docker itself prints and accepts, rather than the four a list
-    needs to tell one digest from another. Truncating the run id saved a few
-    pixels of header and cost every paste that needed it.
-    """
+    """The id the detail pane shows — whole, not a fragment."""
     if wf.native:
         return wf.run_id or wf.container_id
     return wf.container_id[:12]
 
 
 def cli_label(tel: RunTelemetry | None) -> str:
-    """The agent CLI the run's last turn actually used, and the model it drove.
-
-    Both, because neither answers the question alone: two harnesses can drive the
-    same model slug, and one harness can be pointed at several models over a run.
-    Empty when no turn has exported yet — the pane omits the segment rather than
-    printing a placeholder, since "unknown" and "none yet" look the same and only
-    one of them is worth reading.
-    """
+    """The agent CLI the run's last turn actually used, and the model it drove."""
     if tel is None or not tel.backend:
         return ""
     return f"{tel.backend} {tel.model}".strip()
@@ -542,9 +388,7 @@ def cli_label(tel: RunTelemetry | None) -> str:
 def head(
     wf: WorkflowContainer, tel: RunTelemetry | None = None, now: float | None = None
 ) -> dict[str, Any]:
-    """The activity line at the top of the detail pane — what this run is doing
-    right now. The same liveness verdict the row shows, so a run cannot read
-    ``alive`` in the list and ``silent 4m`` in the pane."""
+    """The activity line at the top of the detail pane — what this run is doing right now."""
     now = now if now is not None else time.time()
     live_cls, live_label = liveness(wf, tel, now)
     return {
@@ -571,16 +415,7 @@ def metrics(
     facts: dict[str, Any] | None = None,
     now: float | None = None,
 ) -> dict[str, Any]:
-    """The numbers worth having on screen while deciding whether to intervene.
-
-    ``facts`` is the merged pair (``alerts.live_status`` merged with that run's
-    ``store.run_summaries`` row); ``tel`` is the hot cache. Both are optional — a
-    docker row that never exported telemetry reports ``empty`` so the pane can say
-    so, rather than rendering a wall of dashes that looks like a broken run.
-
-    Cells are ordered pairs, not a mapping: the order *is* the layout, and a dict
-    would hand that decision to whichever JSON serializer touched it last.
-    """
+    """The numbers worth having on screen while deciding whether to intervene."""
     now = now if now is not None else time.time()
     facts = facts or {}
     if tel is None and not facts:
@@ -629,8 +464,7 @@ def metrics(
 
 
 def log_lines(logs: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
-    """The run's log lines, newest first — the trail that says *what* the current
-    node has been doing, once the metrics have said it is stuck."""
+    """The run's log lines, newest first — the trail that says *what* the current node has been doing, once the metrics have said it is stuck."""
     lines = []
     for row in (logs or [])[:LOG_TRAIL_LIMIT]:
         severity = str(row.get("severity") or "INFO").upper()
@@ -685,9 +519,7 @@ def run_live(
     now: float | None = None,
     *, history: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    """The clock-refreshable half of a detail pane: what changes while you watch
-    it. Pushed to that run's watchers on every tick, so it holds nothing the
-    operator can type into and nothing that needs a click to be true."""
+    """The clock-refreshable half of a detail pane: what changes while you watch it."""
     now = now if now is not None else time.time()
     return {
         "head": head(wf, tel, now),
@@ -705,10 +537,7 @@ def run_detail(
     now: float | None = None,
     *, history: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    """One run, top to bottom: what it is doing, the gates you can answer, its
-    live metrics, its log trail. ``GET /worker/{id}`` returns this and the
-    websocket pushes it — one shape, so an open pane and a freshly-opened one
-    cannot show different things."""
+    """One run, top to bottom: what it is doing, the gates you can answer, its live metrics, its log trail."""
     now = now if now is not None else time.time()
     return {
         "found": True,
@@ -729,15 +558,7 @@ def detail_message(
     now: float | None = None,
     *, history: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    """A pushed detail refresh, addressed to the tabs watching this one run.
-
-    Carries the same ``run_detail`` body the fetch returns rather than a reduced
-    slice: the client reconciles it against a keyed component tree, so a re-render
-    keeps the answer textarea's DOM node — and therefore a half-typed answer —
-    while letting a gate that opened or closed appear without a round trip. Under
-    the old fragment swap that was impossible, which is why the pushed refresh
-    used to stop short of the form.
-    """
+    """A pushed detail refresh, addressed to the tabs watching this one run."""
     now = now if now is not None else time.time()
     return {
         "type": "detail",
@@ -747,11 +568,6 @@ def detail_message(
     }
 
 
-# --------------------------------------------------------------------------- #
-# Workspace panels (GET /file/{id})
-# --------------------------------------------------------------------------- #
-# Extension → highlight.js language. Unmapped extensions get "", which the
-# viewer reads as "let highlight.js auto-detect".
 EXT_LANG = {
     "js": "javascript", "mjs": "javascript", "cjs": "javascript", "jsx": "javascript",
     "ts": "typescript", "tsx": "typescript", "py": "python", "rb": "ruby", "go": "go",
@@ -766,8 +582,7 @@ EXT_LANG = {
 
 
 def file_lang(path: str) -> str:
-    """The highlight.js language for a path, by extension (or by whole name for
-    the extensionless files that still have a grammar)."""
+    """The highlight.js language for a path, by extension (or by whole name for the extensionless files that still have a grammar)."""
     base = path.split("/")[-1].lower()
     if base == "dockerfile":
         return "dockerfile"

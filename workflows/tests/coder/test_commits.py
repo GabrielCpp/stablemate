@@ -1,11 +1,4 @@
-"""The commit-message builder: what release-please will actually read.
-
-These are unit tests because the thing under test is a *string format* that three
-modules and two agent prompts have to agree on, and because the failure it guards is
-invisible at the git level — a repo happily records `0004-checkout: guest-cart`, and
-nothing goes wrong until a release that should have shipped the feature does not mention
-it. The end-to-end assertions live in `test_workflow.py`; these pin the shape.
-"""
+"""The commit-message builder: what release-please will actually read."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -13,7 +6,6 @@ from pathlib import Path
 from workhorse_workflows.coder.shared import commits
 
 
-# --------------------------------------------------------------------------- the subject
 
 
 def test_the_subject_is_a_conventional_commit_with_the_package_as_its_scope() -> None:
@@ -24,11 +16,7 @@ def test_the_subject_is_a_conventional_commit_with_the_package_as_its_scope() ->
 
 
 def test_a_package_with_no_usable_name_leaves_the_scope_off_rather_than_faking_one() -> None:
-    """An empty scope is valid Conventional Commits; `feat(): x` is not.
-
-    A repo resolved from a path can arrive as `""` or as punctuation, and a subject that
-    parses as nothing releases nothing — the exact failure this module exists to prevent.
-    """
+    """An empty scope is valid Conventional Commits; `feat(): x` is not."""
     assert commits.subject("feat", commits.scope("   "), "add guest cart") == "feat: add guest cart"
     assert commits.subject("feat", commits.scope("///"), "add guest cart") == "feat: add guest cart"
 
@@ -48,11 +36,7 @@ def test_a_heading_becomes_a_description_without_becoming_a_different_word() -> 
 
 
 def test_a_long_description_is_trimmed_but_the_give_up_marker_never_is() -> None:
-    """The marker is the first thing a human triaging the epic PR reads.
-
-    Trimming the subject from the right would eat `[QA FAILED …]` before it ate a word of
-    prose, and a half-eaten marker reads as a story that passed.
-    """
+    """The marker is the first thing a human triaging the epic PR reads."""
     marker = "[QA FAILED after 3 attempts — needs manual review]"
     long_subject = commits.subject("feat", "api-service", "a" * 200, marker)
 
@@ -69,15 +53,10 @@ def test_a_description_that_is_all_whitespace_still_yields_a_parseable_subject()
     assert commits.subject("feat", "api", "   ") == "feat(api): no description"
 
 
-# --------------------------------------------------------------------------- the body
 
 
 def test_the_story_id_is_an_exact_footer_and_nothing_else() -> None:
-    """One spelling: `ostler.provenance` and the commit policy both read this key.
-
-    A bracketed copy in the subject would say the same thing in a shape no tool reads,
-    out of the 72 characters release-please wants for the description.
-    """
+    """One spelling: `ostler.provenance` and the commit policy both read this key."""
     message = commits.message(
         "feat", "api-service", "Add guest cart", epic="checkout", story="guest-cart"
     )
@@ -104,7 +83,6 @@ def test_a_message_with_nothing_to_attribute_is_a_bare_subject() -> None:
     assert commits.message("chore", "acme", "prune the queue") == "chore(acme): prune the queue"
 
 
-# --------------------------------------------------------------------------- the story heading
 
 
 def test_the_description_comes_from_the_story_heading(tmp_path: Path) -> None:
@@ -119,12 +97,7 @@ def test_the_description_comes_from_the_story_heading(tmp_path: Path) -> None:
 
 
 def test_a_heading_that_labels_itself_a_story_does_not_say_so_twice(tmp_path: Path) -> None:
-    """Observed in the wild: `feat(expense-split): story: Record an expense against a group`.
-
-    Story templates routinely write `# Story: <sentence>`, and the label survived into the
-    description — so every changelog line began with a word that says only what kind of
-    document the coder read, which the trailers already record.
-    """
+    """Observed in the wild: `feat(expense-split): story: Record an expense against a group`."""
     story = tmp_path / "story.md"
     story.write_text("# Story: Record an expense against a group\n", encoding="utf-8")
     epic = tmp_path / "epic.md"

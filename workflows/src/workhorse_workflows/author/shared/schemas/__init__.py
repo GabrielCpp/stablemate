@@ -1,16 +1,4 @@
-"""The models the author workflow's seams need, grouped the way `nodes/` is.
-
-`self.agent(prompt, returns=T)` validates a model out of whatever the turn produced and
-reads `T`'s fields to build the output keys it asks for; a node returns a plain typed
-value. Nothing here crosses a state boundary — a transition carries keyword arguments
-bound against the next state's own signature, so a state's parameters are its schema.
-
-The submodules are the subjects:
-
-* `main` — the author's own graph (`nodes/config.py` through `nodes/artifacts.py`)
-* `survey` — the surveyor sub-flow (`shared/survey/`)
-* `parity` — what the parity surveyor adds on top of it (`parity_surveyor/nodes/parity.py`)
-"""
+"""The models the author workflow's seams need, grouped the way `nodes/` is."""
 from __future__ import annotations
 
 from workhorse_workflows.author.shared.schemas._base import AuthorResult

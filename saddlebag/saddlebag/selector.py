@@ -1,12 +1,4 @@
-"""AI-driven credential selection.
-
-``saddlebag scan --select-via <cli>`` renders the candidate list into a compact
-prompt, hands it to an agent CLI, and parses the chosen id back out.
-
-The agent runner is injected (:class:`AgentRunner`) rather than hard-wired to
-:mod:`subprocess`, so the whole selection path is exercised in tests without an
-agent installed.
-"""
+"""AI-driven credential selection."""
 
 from __future__ import annotations
 
@@ -20,10 +12,8 @@ from saddlebag.models import Credential, Requirement
 
 logger = logging.getLogger(__name__)
 
-#: Called with (agent_cli, prompt) -> raw stdout.
 AgentRunner = Callable[[str, str], str]
 
-#: Guard against a runaway agent CLI.
 AGENT_TIMEOUT = 120
 
 _PROMPT = """\
@@ -49,7 +39,7 @@ class Selection:
 
 
 def build_prompt(requirement: Requirement, candidates: Sequence[Credential]) -> str:
-    """Render the selection prompt. Candidates are redacted — no passwords."""
+    """Render the selection prompt."""
     payload = [
         {
             "id": c.id,
@@ -67,14 +57,7 @@ def build_prompt(requirement: Requirement, candidates: Sequence[Credential]) -> 
 
 
 def _json_objects(text: str) -> list[dict]:
-    """Every syntactically-complete JSON object in *text*, in source order.
-
-    `json.JSONDecoder().raw_decode` is asked to decode at each `{` and reports where the
-    object it found ends, so a fenced block needs no fence pattern of its own — the block's
-    content is simply the next complete object. The pair of patterns this replaces bracketed
-    the *first* `{` to the *last* `}`, which parses as nothing when the reply also closes
-    with prose containing a brace, or carries an example object beside the real answer.
-    """
+    """Every syntactically-complete JSON object in *text*, in source order."""
     decoder = json.JSONDecoder()
     found: list[dict] = []
     idx = 0
@@ -93,11 +76,7 @@ def _json_objects(text: str) -> list[dict]:
 
 
 def parse_response(text: str) -> Selection:
-    """Pull the JSON object out of an agent's reply.
-
-    Agent CLIs habitually wrap JSON in prose or a ``` fence, so locate the first
-    balanced object rather than trusting the whole payload to parse.
-    """
+    """Pull the JSON object out of an agent's reply."""
     text = text.strip()
     if not text:
         raise SelectionError("agent returned no output")

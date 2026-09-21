@@ -1,10 +1,4 @@
-"""The unified organization model: load the typed knowledge graph from markdown Concepts.
-
-Every entity is an OKF Concept (markdown + frontmatter); see ``SPEC.md`` and ``registry.py``. An
-epic's seeds and story dependency-DAG are folded into its ``epic.md`` body (``## Seeds`` /
-``## Stories``) and read back with the hierarchical markdown parser — there are no ``seed.json`` /
-``dependencies.json`` files.
-"""
+"""The unified organization model: load the typed knowledge graph from markdown Concepts."""
 
 from __future__ import annotations
 
@@ -18,7 +12,6 @@ import yaml
 
 from ostler import dynamic_registry, index, markdown, registry
 
-# Seed statuses that no longer require story coverage.
 INACTIVE_SEED_STATUS = registry.INACTIVE_SEED_STATUS
 
 
@@ -28,14 +21,8 @@ class SeedItem:
     status: str
     summary: str = ""
     raw: dict = field(default_factory=dict)
-    # Which layers of the system this seed touches (`registry.SEED_LAYERS`) and which services
-    # it lands in. Both are arrays: one seed routinely spans a screen and the API behind it.
-    # An empty `layers` means *unclassified*, not "touches nothing" — the author's mockup gate
-    # reads it that way and keeps the design turn rather than skipping it on a missing tag.
     layers: tuple[str, ...] = ()
     services: tuple[str, ...] = ()
-    # ``required`` changes a visual contract; ``preserve`` retains an existing one. Blank is
-    # unclassified and therefore fail-closed by Author's mockup gate.
     design: str = ""
 
     @property
@@ -48,67 +35,27 @@ class Story:
     slug: str
     title: str
     path: str
-    # The seeds this story covers, from the epic's `## Stories` block.
     seed_items: list[str]
-    # The sibling stories that must finish first, from *this story's* `## Dependencies` section —
-    # so the blockers are visible in the file a reader has open. Empty until `_attach_story_md`
-    # reads the story.md; a story whose file is missing has no blockers to state.
     dependencies: list[str]
-    # Allocated id, repo-prefixed (e.g. "TODO-15"). Minted by ostler when the story is
-    # created, recorded both in the epic's `## Stories` block and in the story's own
-    # frontmatter — mirroring Epic.eid so a story is addressable by id, not only by slug.
     eid: str = ""
-    # Provider-neutral tracker alias, owned by story.md rather than duplicated into epic.md.
     external_key: str = ""
-    # The copy read from story.md, retained separately so doctor can detect disagreement with
-    # the parent epic block instead of silently preferring one identity.
     file_eid: str = ""
     raw: dict = field(default_factory=dict)
     story_md: Path | None = None
     status: str = ""
     body_status: str = ""
-    # The adjudicator's `story` verdict: two acceptance criteria that cannot both hold, with
-    # the chain that found them. Frontmatter `conflict:`. Non-empty means the story is the
-    # side at fault and an operator has to rewrite intent — doctor reports `story-conflict`
-    # until the key is cleared (`ostler conflict <slug> --clear`).
     conflict: str = ""
-    # Every in-repo document this story links to, verbatim as written (relative to story.md
-    # or repo-relative). This is how a story cites the OKF book: a UI node's identity is a
-    # repo-relative path (optionally `path#anchor`), so a citation is an ordinary link.
-    # Resolution to a node is `Graph.resolve_doc_ref` + `Graph.find_ui_node`, not done here —
-    # the raw href is kept so a *dangling* citation stays visible instead of vanishing.
     doc_refs: list[str] = field(default_factory=list)
-    # Headings from `registry.STORY_SECTIONS` the story.md is missing or leaves empty. A freshly
-    # scaffolded story has every `filled` one here — which is what distinguishes "the file exists"
-    # from "somebody wrote the story".
     unwritten_sections: list[str] = field(default_factory=list)
-    # The same headings, each carrying *why* — `"Dependencies (missing)"` against
-    # `"Context (empty)"`. The two are not the same repair: an empty section is waiting on an
-    # author, a missing one predates the contract that requires it and no amount of writing
-    # under the headings that are there will satisfy the check.
     unwritten_detail: list[str] = field(default_factory=list)
-    # Bullets under `## Dependencies` that do not state a blocker — see
-    # `story_dependency_strays`. Non-empty means the section's shape is wrong, which is
-    # indistinguishable from "no blockers" in `dependencies` alone.
     dependency_strays: list[str] = field(default_factory=list)
-    # The declared QA fixtures this story's `## Fixtures` section says its plan arranges state
-    # with, and the bullets under that heading that state something else. Same pair, and the
-    # same reason, as `dependencies` / `dependency_strays` above.
     fixtures: list[str] = field(default_factory=list)
     fixture_strays: list[str] = field(default_factory=list)
-    # Required sections this story places out of `registry.STORY_SECTIONS` order. Separate from
-    # `unwritten_sections` because it is a different defect with a different repair: the story
-    # says everything it must, in an order that makes two documents of the same contract read
-    # differently. Kept here so `doctor` and the author's own validator ask one question.
     misordered_sections: list[str] = field(default_factory=list)
 
     @property
     def authored(self) -> bool:
-        """Whether the story says anything: it has a story.md and honors the body contract.
-
-        Orthogonal to :attr:`status` — that tracks *build* progress (Not started → QA passed),
-        this tracks whether there is a spec to build from at all.
-        """
+        """Whether the story says anything: it has a story.md and honors the body contract."""
         return self.story_md is not None and not self.unwritten_sections
 
     @property
@@ -127,7 +74,7 @@ class Epic:
     directory: Path
     title: str = ""
     status: str = ""
-    eid: str = ""                       # allocated id from frontmatter (e.g. "acme-15")
+    eid: str = ""
     epic_md: Path | None = None
     seeds: list[SeedItem] = field(default_factory=list)
     stories: list[Story] = field(default_factory=list)
@@ -164,59 +111,40 @@ class FeatureRecord:
 
 @dataclass
 class UINode:
-    """A node of the OKF UI profile (docs/okf-ui-profile.md).
-
-    Two shapes, both ordinary OKF content: a **file** node (identity = path; ``type:`` frontmatter
-    sets it) or a **section** node (identity = ``path#anchor``; a ``### id`` under a typed
-    ``## Heading`` — the heading implies the type). ``line`` is 1-based, file-absolute, for located
-    findings and byte-precise edits.
-    """
-    type: str                   # "screen" | "interaction" | ...
-    kind: str                   # "file" | "section"
-    id: str                     # file: repo-relative path; section: "<repo-rel-path>#<anchor>"
+    """A node of the OKF UI profile (docs/okf-ui-profile.md)."""
+    type: str
+    kind: str
+    id: str
     path: Path
-    anchor: str = ""            # section nodes only
+    anchor: str = ""
     title: str = ""
-    line: int = 0               # 1-based, file-absolute (the file's H1 / the `### id` line)
-    level: int = 0              # heading depth 1-6 (file node = 1); drives the hierarchy
-    parent: str = ""            # id of the enclosing node (containment); "" for a file/root node
-    meta: dict = field(default_factory=dict)                 # parsed `- key: value` bullets
-    # The same bullets in document order, which `meta` cannot express: see `_bullet_pairs`.
+    line: int = 0
+    level: int = 0
+    parent: str = ""
+    meta: dict = field(default_factory=dict)
     bullet_order: list[tuple[str, str, int]] = field(default_factory=list)
-    # Top-level bullet ordinal -> file-absolute line (nested values cite their owning bullet).
     bullet_lines: dict[int, int] = field(default_factory=dict)
-    # Top-level bullet ordinal -> the word a nested claim list stated about its own children
-    # (`registry.CLAIM_COMBINERS`). Beside `bullet_order` rather than in it because it is not a
-    # value of that bullet: it is a fact about how the values combine, and a row in the flat
-    # list is a claim by definition — see `_combiner`.
     combiners: dict[int, str] = field(default_factory=dict)
-    # Every `entries=True` key's items with their own properties — what `meta` has nowhere to
-    # put, since its values are scalars or flat lists. `meta[key]` is derived from these (the
-    # headlines), so the two spellings of one bullet cannot drift apart. See `Entry`.
     entries: dict[str, list[Entry]] = field(default_factory=dict)
     records: dict[str, dict[str, str | list[str]]] = field(default_factory=dict)
-    links: list[tuple[str, str, int]] = field(default_factory=list)  # (text, href, line) inside the node's region
-    data: dict = field(default_factory=dict)                 # frontmatter (file nodes)
+    links: list[tuple[str, str, int]] = field(default_factory=list)
+    data: dict = field(default_factory=dict)
 
 
 @dataclass
 class Graph:
     root: Path
     org_name: str
-    profile: str  # "full" | "exploration"
+    profile: str
     doc_roots: dict[str, Path]
     epics: list[Epic] = field(default_factory=list)
     milestones: list[Milestone] = field(default_factory=list)
     features: list[FeatureRecord] = field(default_factory=list)
     ui_nodes: list[UINode] = field(default_factory=list)
-    #: Frontmatter of each ``features/<surface>/index.md``, keyed by surface. The index is a
-    #: reserved file no loader reads as a node, which makes it the one place a declaration about
-    #: the whole surface can live — ``exercised: false`` today.
     surfaces: dict[str, dict] = field(default_factory=dict)
     ids: dict | None = None
     template_kinds: tuple = ()
 
-    # ---- UI-profile indexes --------------------------------------------------
     def ui_nodes_of_type(self, type_name: str) -> list[UINode]:
         return [n for n in self.ui_nodes if n.type == type_name]
 
@@ -228,18 +156,7 @@ class Graph:
         return None
 
     def resolve_doc_ref(self, href: str, *, origin: Path | None = None) -> str:
-        """Normalize a document link into a node identity (``<repo-rel-path>[#anchor]``).
-
-        A UI node's identity is always repo-relative, but a link inside a doc is written
-        however is convenient — relative to the citing file (``../../okf/web/login.md#submit``),
-        root-anchored (``/docs/okf/web/login.md``), or the node id copied verbatim out of the
-        book (``docs/okf/web/login.md``). All three name the same node, so all three resolve
-        here: the origin-relative and repo-relative readings are both tried and whichever lands
-        on a real file wins, with the origin-relative one preferred when both do (that is what
-        the link syntax means) and used as the answer when neither does — a citation that
-        resolves to nothing is *returned*, not dropped, so the caller can report it as dangling
-        instead of confusing a typo'd node id with a document that was never cited.
-        """
+        """Normalize a document link into a node identity (``<repo-rel-path>[#anchor]``)."""
         raw = href.split("?", 1)[0]
         path_part, _, anchor = raw.partition("#")
         if not path_part:
@@ -251,14 +168,13 @@ class Graph:
                 candidates.append(
                     (origin.parent / path_part).resolve()
                     .relative_to(self.root.resolve()).as_posix())
-            except ValueError:  # escapes the repo — not a document in this repo
+            except ValueError:
                 pass
         candidates.append(path_part.lstrip("/"))
 
         rel = next((c for c in candidates if (self.root / c).is_file()), candidates[0])
         return f"{rel}#{anchor}" if anchor else rel
 
-    # ---- indexes -------------------------------------------------------------
     def epic_of_seed(self, seed_id: str) -> Epic | None:
         for e in self.epics:
             if seed_id in e.seed_ids:
@@ -281,12 +197,7 @@ class Graph:
         return None
 
     def find_story(self, ref: str) -> tuple[Epic, Story] | None:
-        """The story named by an id, external key, or slug.
-
-        Ambiguity is an invalid graph rather than an ordering rule. Doctor reports the same
-        collision mechanically, while direct API callers fail here instead of receiving whichever
-        epic happened to load first.
-        """
+        """The story named by an id, external key, or slug."""
         matches = [
             (epic, story)
             for epic in self.epics
@@ -299,19 +210,11 @@ class Graph:
         return matches[0] if matches else None
 
 
-# ---------------------------------------------------------------------------
-# epic.md body parsing  (## Seeds / ## Stories → SeedItem / Story)
-# ---------------------------------------------------------------------------
 def required_section_problems(
     doc: markdown.MarkdownDoc,
     specs: tuple[registry.SectionSpec, ...],
 ) -> list[tuple[registry.SectionSpec, str]]:
-    """``(spec, "missing"|"empty")`` for every required section the body does not honor.
-
-    The one implementation of the required-section rule: the story contract
-    (``registry.STORY_SECTIONS``) and the UI profile's ``required_sections`` both check here,
-    so a scaffolded heading can never satisfy a check that meant "written".
-    """
+    """``(spec, "missing"|"empty")`` for every required section the body does not honor."""
     problems: list[tuple[registry.SectionSpec, str]] = []
     for spec in specs:
         section = doc.find_section(spec.heading)
@@ -326,17 +229,7 @@ def section_order_problems(
     doc: markdown.MarkdownDoc,
     specs: tuple[registry.SectionSpec, ...],
 ) -> list[str]:
-    """The required headings this body places out of the contract's order, as messages.
-
-    Presence is not enough once two paths can add a missing section: a scaffolder inserting at
-    a fixed offset and an author writing free-hand will both satisfy
-    :func:`required_section_problems` while producing documents that read differently. Order is
-    the part of the contract that makes those two paths one path, so it is checked here — in the
-    same module, against the same table — rather than left to whichever caller remembers.
-
-    Sections the contract does not name are ignored entirely: this orders the required ones
-    relative to each other and says nothing about what a document adds around them.
-    """
+    """The required headings this body places out of the contract's order, as messages."""
     present: list[tuple[str, int]] = []
     for spec in specs:
         section = doc.find_section(spec.heading)
@@ -350,11 +243,7 @@ def section_order_problems(
 
 
 def status_bullet(doc: markdown.MarkdownDoc) -> markdown.Bullet | None:
-    """The ``- **Status**:`` field of a parsed story doc, or ``None``.
-
-    Scoped to ``## Implementation Status`` when that heading exists, so the word "Status" in a
-    story's own prose is never mistaken for the field.
-    """
+    """The ``- **Status**:`` field of a parsed story doc, or ``None``."""
     section = doc.find_section(registry.STORY_STATUS_HEADING)
     if section is not None:
         return section.labelled(registry.STORY_STATUS_LABEL)
@@ -362,12 +251,7 @@ def status_bullet(doc: markdown.MarkdownDoc) -> markdown.Bullet | None:
 
 
 def story_status(doc: markdown.MarkdownDoc) -> str:
-    """A story's status: frontmatter ``status:`` first, else the parsed bullet (``""`` if neither).
-
-    The one place that answers "what does this story.md say its status is" — the graph loader,
-    ``crud.set_status`` and the workflow scripts all read it here, so a substring of the prose can
-    never stand in for the field.
-    """
+    """A story's status: frontmatter ``status:`` first, else the parsed bullet (``""`` if neither)."""
     fm = doc.frontmatter or {}
     status = fm.get("status")
     if not status:
@@ -383,13 +267,7 @@ def story_body_status(doc: markdown.MarkdownDoc) -> str:
 
 
 def _labelled_values(doc: markdown.MarkdownDoc, heading: str, label: str) -> list[str]:
-    """The values of every ``- <label>: <value>`` bullet under ``## <heading>``, in order.
-
-    Shared by the two list sections a story states in its own body — its blockers and its QA
-    fixtures. Only labelled bullets carry an entry, so the section's ``(none)`` — and any prose
-    somebody adds around the list — contributes nothing without the parser having to recognize
-    the word.
-    """
+    """The values of every ``- <label>: <value>`` bullet under ``## <heading>``, in order."""
     section = doc.find_section(heading)
     if section is None:
         return []
@@ -399,20 +277,12 @@ def _labelled_values(doc: markdown.MarkdownDoc, heading: str, label: str) -> lis
         for bullet in top.walk():
             if bullet.label != want:
                 continue
-            # A comma list on one bullet is tolerated: the canonical form is a bullet each, but
-            # a hand edit that writes `- Blocked by: a, b` states the same graph.
             values += [value for value in _split_list(bullet.value) if value not in values]
     return values
 
 
 def _labelled_strays(doc: markdown.MarkdownDoc, heading: str, label: str) -> list[str]:
-    """Bullets under ``## <heading>`` stating something other than ``- <label>:``.
-
-    A story.md is written by an agent, and the failure mode that costs the most is the quiet one:
-    a rewrite that turns the list into prose or renames the label empties it without anything
-    failing. :func:`_labelled_values` cannot tell that apart from a story with no entries, so the
-    shape is reported separately and `doctor` turns it into an error.
-    """
+    """Bullets under ``## <heading>`` stating something other than ``- <label>:``."""
     section = doc.find_section(heading)
     if section is None:
         return []
@@ -426,20 +296,12 @@ def _labelled_strays(doc: markdown.MarkdownDoc, heading: str, label: str) -> lis
 
 
 def story_dependencies(doc: markdown.MarkdownDoc) -> list[str]:
-    """The sibling slugs a story's ``## Dependencies`` section says block it.
-
-    The one place that answers "what does this story.md say blocks it".
-    """
+    """The sibling slugs a story's ``## Dependencies`` section says block it."""
     return _labelled_values(doc, registry.STORY_DEPS_HEADING, registry.STORY_DEPS_LABEL)
 
 
 def story_fixtures(doc: markdown.MarkdownDoc) -> list[str]:
-    """The declared QA fixtures a story's ``## Fixtures`` section says its plan arranges with.
-
-    The one place that answers "what does this story.md say it arranges". A name here is a
-    claim in both directions — the repo declares it, and this story's own plan asks for it —
-    and `doctor` is what holds it to both.
-    """
+    """The declared QA fixtures a story's ``## Fixtures`` section says its plan arranges with."""
     return _labelled_values(doc, registry.STORY_FIXTURES_HEADING, registry.STORY_FIXTURES_LABEL)
 
 
@@ -454,17 +316,7 @@ def story_dependency_strays(doc: markdown.MarkdownDoc) -> list[str]:
 
 
 def _combiner(bullet: markdown.Bullet) -> str:
-    """The claim combiner a nested bullet states in its own value, or ``""`` if it states none.
-
-    A nested claim list writes the combiner where its own value would otherwise be empty
-    (`- does: branches`), which is the only place on the bullet that is reliably free: the label
-    before the colon on each *child* is free prose the author picked, and deriving the combiner
-    from it would fail open — a list whose labels the vocabulary did not anticipate would read
-    as `all`, the unsound direction.
-
-    Recognised only on a bullet that *has* children, because a list of one thing has nothing to
-    combine and `- does: all` on a childless bullet is somebody's prose, not a declaration.
-    """
+    """The claim combiner a nested bullet states in its own value, or ``""`` if it states none."""
     if not bullet.children:
         return ""
     text = bullet.text.strip()
@@ -480,32 +332,13 @@ def _bullet_combiners(section: markdown.Section) -> dict[int, str]:
 
 @dataclass(frozen=True)
 class Entry:
-    """One item of an ``entries=True`` key's nested list, with what it states about itself.
-
-    ``provides:`` and ``flags:`` hold *things that have claims*, so each item has a headline
-    (``count — the number of widgets the directory holds``) and its own properties
-    (``from:``/``read:``, ``type:``/``required:``/``default:``). :class:`UINode.meta` cannot
-    carry those: its value type is a scalar or a flat list of scalars, and widening it is legal
-    in Python and illegal in the artifact — every one of its readers assumes that shape. So the
-    properties live here instead, and ``meta[key]`` is **derived** from these entries rather
-    than parsed a second time, which is what keeps the two spellings of one bullet from
-    drifting apart.
-    """
+    """One item of an ``entries=True`` key's nested list, with what it states about itself."""
 
     headline: str
-    #: The entry's own ``- key: value`` children, folded the way section bullets are.
     properties: dict[str, str | list[str]] = field(default_factory=dict)
 
     def property_text(self, name: str) -> str:
-        """One property as the single string the book wrote, or ``""`` when it stated none.
-
-        A property's folded value is a scalar or a flat list — the same two shapes
-        :attr:`UINode.meta` carries — because a bullet with children folds to a list and one
-        without folds to a string. Every reader wants the text, so the flattening lives here
-        rather than beside each reader: two copies of it are two chances for one of them to
-        decide an empty list is a stated value, and "the book stated this property" is exactly
-        the distinction a checker asks about.
-        """
+        """One property as the single string the book wrote, or ``""`` when it stated none."""
         value = self.properties.get(name)
         if isinstance(value, list):
             return " ".join(str(v).strip() for v in value if str(v).strip())
@@ -513,12 +346,7 @@ class Entry:
 
 
 def _fold_bullets(bullets: "list[markdown.Bullet]") -> dict[str, str | list[str]]:
-    """``- key: value`` children folded into a dict, deeper descendants flattened into the value.
-
-    The same fold :func:`_meta_from_bullets` performs, over an arbitrary bullet list rather than
-    a section's top level, and with no grammar to consult — an entry's property is a leaf by
-    construction (it is what the grammar stopped at), so there is no second depth to decide.
-    """
+    """``- key: value`` children folded into a dict, deeper descendants flattened into the value."""
     folded: dict[str, str | list[str]] = {}
     for bullet in bullets:
         text = bullet.text.strip()
@@ -568,18 +396,7 @@ def _entries_from_bullets(section: markdown.Section,
 def _records_from_bullets(section: markdown.Section,
                           uitype: "registry.UINodeType | None"
                           ) -> dict[str, dict[str, str | list[str]]]:
-    """Every ``record=True`` key of a section, with the named properties `meta` flattens away.
-
-    The fold :func:`_entries` applies to an entry's own children, applied one level higher: a
-    record is *one* thing with properties, so the bullet's direct children are the properties and
-    there is no headline level in between. `meta[key]` is left alone — it holds the same flat
-    subtree walk it held before the key was declared, which is lossless and nothing reads as a
-    claim — so this is what a reader consults to find out what the record actually states.
-
-    Two bullets of one record key fold together, because they are two spellings of the one thing
-    the key names, and a property written on both becomes a list exactly as a repeated key does
-    at the section's top level.
-    """
+    """Every ``record=True`` key of a section, with the named properties `meta` flattens away."""
     if uitype is None:
         return {}
     children: dict[str, list[markdown.Bullet]] = {}
@@ -597,44 +414,16 @@ def _records_from_bullets(section: markdown.Section,
 
 
 def _nested_values(key: str, bullet: markdown.Bullet, uitype: "registry.UINodeType | None") -> list[str]:
-    """A bullet's nested values, one string per value the grammar says its children hold.
-
-    Most nested keys (`does:`/`layers:`/`needs:`) are a flat list of *claims*: every descendant,
-    at any depth, is itself a value, so the walk collects the whole subtree. A key the registry
-    marks ``entries=True`` (`provides:`/`flags:`) is a list of *things that have claims* instead:
-    each direct child is one value (`count — the number of widgets the directory holds`), and its
-    own children (`from:`/`read:`/`type:`) are that value's properties, not further siblings of
-    it — collecting them here would merge an entry with what it states about itself.
-    """
+    """A bullet's nested values, one string per value the grammar says its children hold."""
     spec = uitype.bullet_by_key.get(key) if uitype is not None else None
     if spec is not None and spec.entries:
-        # Derived, not re-parsed: `meta[key]` is the headlines of the same entries `UINode.entries`
-        # carries, so a reader that wants the properties and a reader that wants the flat list are
-        # looking at one parse. Two parses of one bullet is how the two spellings drift.
         return [entry.headline for entry in _entries(bullet)]
     return [item.text.strip() for child in bullet.children for item in child.walk()]
 
 
 def _bullet_pairs(section: markdown.Section,
                   uitype: "registry.UINodeType | None" = None) -> list[tuple[str, str, int]]:
-    """Every `- key: value` of a section as ``(key, value, bullet)`` in document order.
-
-    The same bullets :func:`_meta_from_bullets` folds into a dict, before the fold loses where
-    they sat. Order across keys is the whole point: a book writes a claim and then the `verify:`
-    that observes it, and that adjacency is the only place the binding between the two is
-    written down. A bullet with nested children yields one pair per value, matching the flat
-    list the dict stores, so a position in this sequence and an index into `meta[key]` count the
-    same things — and the third element says which of them came from the *same* authored
-    bullet, which the flat list can no longer tell: two sibling `- errors:` bullets and one
-    `- errors:` with two children are indistinguishable once flattened, and they bind a
-    following `verify:` differently.
-
-    ``uitype`` resolves each key's :class:`registry.BulletKey`, so an ``entries=True`` key
-    (``provides:``/``flags:``) contributes one value per direct child instead of its whole
-    subtree — see :func:`_nested_values`. ``None`` (an untyped section, or a key the type does
-    not recognise) keeps the old whole-subtree behaviour, since there is no grammar to say
-    otherwise.
-    """
+    """Every `- key: value` of a section as ``(key, value, bullet)`` in document order."""
     pairs: list[tuple[str, str, int]] = []
     for position, bullet in enumerate(section.bullets):
         text = bullet.text.strip()
@@ -652,13 +441,7 @@ def _bullet_pairs(section: markdown.Section,
 
 def _meta_from_bullets(section: markdown.Section,
                        uitype: "registry.UINodeType | None" = None) -> dict[str, str | list[str]]:
-    """Parse the leading `- key: value` metadata bullets of a section into an ordered dict.
-
-    Keys are lowercased; the first ``:`` outside any code span separates key and value (so
-    ``blocked by: a, b`` keeps the spaced key). Bullets with no such ``:`` are ignored.
-    ``uitype`` is passed through to :func:`_nested_values` — see :func:`_bullet_pairs` for
-    what it changes.
-    """
+    """Parse the leading `- key: value` metadata bullets of a section into an ordered dict."""
     meta: dict[str, str | list[str]] = {}
     for bullet in section.bullets:
         text = bullet.text.strip()
@@ -710,12 +493,7 @@ def _split_list(value: str) -> list[str]:
 
 
 def _meta_tags(meta: dict[str, str | list[str]], key: str) -> tuple[str, ...]:
-    """A list-valued seed meta key as normalized tags, from either spelling.
-
-    `- layers: frontend, backend` and a nested bullet list under `- layers:` both reach here —
-    :func:`_meta_from_bullets` yields a string for the first and a list for the second — so
-    flatten either into the same tuple. Tags are lowercased and de-duplicated in order.
-    """
+    """A list-valued seed meta key as normalized tags, from either spelling."""
     value = meta.get(key, "")
     parts = value if isinstance(value, list) else [value]
     tags: list[str] = []
@@ -732,7 +510,7 @@ def _parse_seeds(doc: markdown.MarkdownDoc) -> list[SeedItem]:
     if section is None:
         return []
     seeds: list[SeedItem] = []
-    for sub in section.children:                       # each `### <seed-id>`
+    for sub in section.children:
         sid = sub.title.strip()
         if not sid:
             continue
@@ -754,15 +532,13 @@ def _parse_stories(doc: markdown.MarkdownDoc, epic_name: str, root: Path,
     if section is None:
         return []
     stories: list[Story] = []
-    for sub in section.children:                       # each `### <slug>`
+    for sub in section.children:
         slug = sub.title.strip()
         if not slug:
             continue
         meta = _meta_from_bullets(sub)
         seed_items = _split_list(_meta_scalar(meta, registry.STORY_COVERS_KEY))
         rel = (epic_dir / "stories" / slug / "story.md").relative_to(root).as_posix()
-        # `dependencies` is deliberately absent here: the epic states which seeds a story covers,
-        # the story states what blocks it. `_attach_story_md` fills it in from the story.md.
         raw = {"slug": slug, "seedItems": seed_items, **meta}
         stories.append(Story(
             slug=slug,
@@ -776,9 +552,6 @@ def _parse_stories(doc: markdown.MarkdownDoc, epic_name: str, root: Path,
     return stories
 
 
-# ---------------------------------------------------------------------------
-# Loading
-# ---------------------------------------------------------------------------
 def find_root(start: Path) -> Path:
     """Walk up from *start* to the nearest dir that looks like a repo root; else *start*."""
     start = start.resolve()
@@ -807,20 +580,6 @@ def _read_frontmatter(path: Path) -> markdown.MarkdownDoc:
     return markdown.split(path.read_text(encoding="utf-8"))
 
 
-# Every location the graph knows, and its default. A key here is a `docRoots:` key, so a repo
-# that files its planning documents somewhere other than `docs/` says so once and every reader
-# follows — which is the whole reason no caller is allowed to spell a doc path itself.
-#
-# `backlog` and `roadmaps` are the two the graph used to not know about, and they arrived by
-# different failures. The backlog was hardcoded here on the argument that an intake list is
-# "unfiled by definition"; what that actually bought was a workflow parameter naming a second
-# backlog, which the run wrote and `ostler backlog` could not see. `roadmaps` was simply never
-# asked about, so the same parameter grew for it. Both are now the same kind of fact as the
-# epics root.
-#
-# `backlog` names a *file* rather than a directory — the one entry that does, because there is
-# one backlog rather than a tree of them. Callers reach it through `path.backlog_path*`, which
-# is where that asymmetry is stated for readers who don't come through here.
 BUILTIN_DOC_ROOTS: dict[str, str] = {
     "features": "docs/features",
     "epics": "docs/epics",
@@ -833,17 +592,7 @@ BUILTIN_DOC_ROOTS: dict[str, str] = {
 
 def doc_roots(root: Path, kinds: Sequence[dynamic_registry.TemplateKind] | None = None,
               config: dict | None = None) -> dict[str, Path]:
-    """Where each kind of document lives under *root*, honouring `docRoots:` config.
-
-    The mapping :class:`Graph` carries, derived without loading the graph — a caller that
-    holds only a repo root (a workflow deriving an artifact path, say) gets the *same*
-    answer as one holding a graph, including a repo that moved its epics out of `docs/`.
-    Loading the graph reads every markdown file under these roots; deriving a path should
-    not cost that, and a second, subtly different derivation is what this avoids.
-
-    `kinds` and `config` are the caller's already-loaded copies, so :func:`load` does not
-    read either twice.
-    """
+    """Where each kind of document lives under *root*, honouring `docRoots:` config."""
     cfg = (config if config is not None else _load_config(root)).get("docRoots") or {}
     roots = {key: root / cfg.get(key, default) for key, default in BUILTIN_DOC_ROOTS.items()}
     for kind in (dynamic_registry.load_kinds(root) if kinds is None else kinds):
@@ -897,90 +646,33 @@ def _load_ids(graph: Graph) -> None:
             graph.ids = None
 
 
-#: The read-only document memo: one parsed :class:`markdown.MarkdownDoc` per path, with the
-#: content digest it was parsed from and the store it has been written to. Process-lifetime,
-#: in front of the persistent index — a run reads the same file from four places and must not
-#: pay four lookups for it.
-#:
-#: The store is part of the memo's identity: an entry only answers the store it was computed
-#: under, exactly as `inventory._SYMBOL_MEMO` does. One process can open more than one —
-#: ``--verify-index`` opens two, and a long-lived :class:`ostler.Ostler` opens one per book.
-#:
-#: Serving a document across stores looks safe, on the argument that these products are a pure
-#: function of the bytes and so no store can disagree about them. That argument is the one
-#: ``--verify-index`` exists to *test*, and assuming it is what made the mode inert: the mode
-#: runs the indexed and the uncached path in one process and diffs the reports, so a memo
-#: spanning both let the uncached half read the products the indexed half had already parsed.
-#: A store that round-trips a document wrongly was therefore never read on the half that was
-#: supposed to catch it, and the gate passed on a corrupted entry. The document is the largest
-#: product the index holds, which made it the largest hole in the gate.
 @dataclass
 class _Cached:
     """One path's read-only products, held for the life of the process."""
 
     digest: str
     doc: markdown.MarkdownDoc
-    store: index.IndexStore | None       # the store this content was computed under, if any
-    ui_nodes: list[UINode] | None        # stored form, straight off the entry; see `_DocProducts`
-    links: tuple[tuple[str, str, int], ...] | None = None   # see `read_links`
+    store: index.IndexStore | None
+    ui_nodes: list[UINode] | None
+    links: tuple[tuple[str, str, int], ...] | None = None
 
 
 _DOC_CACHE: dict[Path, _Cached] = {}
 
 @dataclass(frozen=True)
 class _DocProducts:
-    """An index entry's payload: everything a reader wants off a document that costs a parse.
-
-    The frontmatter, the byte-exact halves the sections index into, and the section tree itself
-    (which carries the bullets, the tables and the links). A class rather than a dict so the
-    shape check on the way back in is one ``isinstance`` — a payload from an older build names
-    a class this one no longer has, and unpickling it raises, which the store already reads as
-    the miss it is.
-    """
+    """An index entry's payload: everything a reader wants off a document that costs a parse."""
 
     frontmatter: dict | None
     raw_frontmatter: str
     body: str
     sections: list[markdown.Section]
-    #: The file's UI nodes, in *stored* form — every ``UINode.path`` blanked, because it is the
-    #: one part of a node that is not a function of the file's bytes and its repo-relative path,
-    #: and an entry is shared between every checkout of the repo. Re-bound on the way out.
-    #:
-    #: ``None`` when nothing has derived them yet: the accessor is reached for stories, epics and
-    #: link targets too, and only :func:`_feature_doc` has the repo root a node's id is minted
-    #: against. Such an entry is completed in place the first time a run does want them.
     ui_nodes: list[UINode] | None = None
-    #: The whole file's ``(text, href, line)`` links, as :func:`markdown.iter_links` yields them
-    #: over its bytes. ``None`` until a reader asks for them; see :func:`read_links`.
     links: tuple[tuple[str, str, int], ...] | None = None
 
 
 def read_doc(path: Path) -> markdown.MarkdownDoc:
-    """The parsed document at *path* — **shared, and for read-only callers only**.
-
-    One `doctor` run reads the same feature document four times over: the graph load wants its
-    frontmatter, the UI-node load wants its sections, the per-file UI check re-splits it,
-    conformance re-splits it again, and the link resolver splits every file a link points into
-    so it can list that file's anchors. Each is the same parse of the same bytes, and on a real
-    book that splitting is most of the wall clock. This is the one place those readers go.
-
-    Two caches sit behind it, both keyed on the file's **content digest** rather than its mtime.
-    A load is not the only thing that touches these files — the writer phases of a workflow edit
-    them between loads, and a same-size rewrite inside one filesystem timestamp tick is exactly
-    the case a stat-keyed cache serves stale. Reading the bytes is required to hash them, and
-    reading the whole book costs 0.03s against the tens of seconds it saves. In front is
-    :data:`_DOC_CACHE`, for the life of the process; behind it is :mod:`ostler.index`, for the
-    life of the machine, since every ``ostler`` invocation is a fresh process.
-
-    **A writer must not come through here.** ``MarkdownDoc.replace_body`` mutates in place and
-    drops the document's parsed sections, so a writer served this instance would leave every
-    later reader in the run holding a document that no longer matches the file. The mutating
-    call sites keep calling ``markdown.split`` for themselves, which is what makes serving a
-    shared instance safe at all.
-
-    Raises ``OSError`` when the file cannot be read, as ``read_text`` did at each of the call
-    sites this replaced — absence is the caller's finding to report, not this function's.
-    """
+    """The parsed document at *path* — **shared, and for read-only callers only**."""
     target = Path(path)
     data = target.read_bytes()
     digest = index.content_sha(data)
@@ -995,18 +687,11 @@ def read_doc(path: Path) -> markdown.MarkdownDoc:
 
 def _read_products(path: Path, data: bytes, digest: str,
                    store: index.IndexStore | None) -> _Cached:
-    """*path*'s products, from the index when it has them and from the parser when it does not.
-
-    Outside a session *store* is ``None`` and this is the cold path — which is the right reading,
-    because a command that opened no index has no index, and that must never be an error.
-    """
+    """*path*'s products, from the index when it has them and from the parser when it does not."""
     payload = _products_of(store.get(path, sha=digest)) if store is not None else None
     if payload is not None:
         return _Cached(digest, _doc_from_products(payload), store, payload.ui_nodes, payload.links)
     doc = markdown.split(data.decode("utf-8"))
-    # Force the lazy section parse now. The sections — and the bullets, tables and links hanging
-    # off them — are the expensive half, and an entry carrying only the frontmatter would make
-    # every warm reader re-parse the body the entry was supposed to save it from.
     _ = doc.sections
     cached = _Cached(digest, doc, store, None)
     if store is not None:
@@ -1025,17 +710,7 @@ def _persist(store: index.IndexStore, path: Path, cached: _Cached) -> None:
 
 
 def read_links(path: Path) -> tuple[tuple[str, str, int], ...]:
-    """Every link in the file at *path*, outside code, as ``(text, href, line)``.
-
-    Doctor's link validation is document-wide, so it scans every file in the book on every run,
-    and scanning is a full markdown parse of the file's text. The link list is a function of the
-    bytes alone, so it goes into the same index entry as the document: without it, a warm
-    doctor served every document from the index and then parsed each one again for its links,
-    which was the largest single cost left in the run. The entry is completed in place, as
-    :func:`_ui_nodes` does, because the document and its links go stale together.
-
-    Raises ``OSError`` when the file cannot be read, as :func:`read_doc` does.
-    """
+    """Every link in the file at *path*, outside code, as ``(text, href, line)``."""
     target = Path(path)
     doc = read_doc(target)
     cached = _DOC_CACHE[target]
@@ -1043,8 +718,6 @@ def read_links(path: Path) -> tuple[tuple[str, str, int], ...]:
         return cached.links
     data = target.read_bytes()
     links = tuple(markdown.iter_links(data.decode("utf-8")))
-    # Stored only against the bytes it was scanned from: a writer phase may have moved the file
-    # since `read_doc` hashed it, and those links filed under the old digest would be served stale.
     if cached.doc is doc and index.content_sha(data) == cached.digest:
         cached.links = links
         store = index.active()
@@ -1054,12 +727,7 @@ def read_links(path: Path) -> tuple[tuple[str, str, int], ...]:
 
 
 def _products_of(payload: object) -> _DocProducts | None:
-    """*payload* as this build's entry shape, or ``None`` when it is not one.
-
-    Shape-checked rather than trusted: the store guarantees the payload is something *this*
-    build wrote, not that it is this particular product, and a malformed entry has to read as a
-    miss like every other kind of damage.
-    """
+    """*payload* as this build's entry shape, or ``None`` when it is not one."""
     return payload if isinstance(payload, _DocProducts) else None
 
 
@@ -1069,38 +737,11 @@ def _doc_from_products(payload: _DocProducts) -> markdown.MarkdownDoc:
         body=payload.body, _sections=payload.sections)
 
 
-#: Per-path UI nodes, held against the *identity* of the document they were parsed from.
-#: :func:`read_doc` hands back the same instance while the file's content has not moved, so
-#: identity is the freshness test — and re-deriving the nodes is the only thing left to skip.
 _FEATURE_DOC_CACHE: dict[Path, tuple[markdown.MarkdownDoc, dict, list[UINode]]] = {}
 
 
 def _feature_doc(path: Path, root: Path) -> tuple[dict, list[UINode]]:
-    """The two products the feature book is read for — frontmatter and UI nodes — parsed once.
-
-    Two things were paying full markdown parses of the same files. :func:`_load_features` wanted
-    only the frontmatter, but ``markdown.split`` locates the fence with the parser rather than by
-    scanning for ``---`` (deliberately — a line scan lost CRLF files and trailing-space fences
-    entirely), so "just the frontmatter" costs a parse too; :func:`_load_ui_nodes` then read and
-    parsed every file a second time for its sections. Measured on a real book: 5.7s and 18.7s of
-    a 25s load. One pass produces both.
-
-    The parse itself now comes from :func:`read_doc`, so the same pass also serves the per-file
-    UI check, conformance and the link resolver — and the nodes derived here go back into the
-    same entry, because deriving them is a second markdown pass per node (``extract_refs`` on
-    each node's region) and was 15s of a warm 20s load on a real book.
-
-    The one part of a node that is *not* a function of the file's bytes is ``UINode.path``, an
-    absolute path into this checkout; it is blanked on the way in and re-bound on the way out, so
-    two worktrees of the same repo share the entry rather than fighting over it. The node's *id*
-    is repo-relative already, and the entry's key carries that same repo-relative path.
-
-    What is cached is shared across every graph loaded in this process, so callers read these
-    products and do not mutate them — as every consumer of ``graph.ui_nodes`` and
-    ``FeatureRecord.data`` does today. The frontmatter is copied out because a ``FeatureRecord``
-    hands it to callers directly; the nodes are not, because copying them is the cost this is
-    avoiding.
-    """
+    """The two products the feature book is read for — frontmatter and UI nodes — parsed once."""
     doc = read_doc(path)
     hit = _FEATURE_DOC_CACHE.get(path)
     if hit is not None and hit[0] is doc:
@@ -1112,16 +753,9 @@ def _feature_doc(path: Path, root: Path) -> tuple[dict, list[UINode]]:
 
 
 def _ui_nodes(doc: markdown.MarkdownDoc, path: Path, root: Path) -> list[UINode]:
-    """*path*'s UI nodes: off the index entry when it carries them, derived and stored when not.
-
-    The entry the accessor already read is completed in place, rather than given a key of its
-    own: a document and its nodes go stale together — they are the same bytes — and one entry
-    per file is one write and one read instead of two.
-    """
+    """*path*'s UI nodes: off the index entry when it carries them, derived and stored when not."""
     cached = _DOC_CACHE.get(path)
     if cached is not None and cached.ui_nodes is not None:
-        # Copied out rather than re-bound in place: the stored form stays stored, so a store this
-        # process has not written to yet still gets the nodes and not just the document.
         return [replace(node, path=path) for node in cached.ui_nodes]
     nodes = _parse_ui_nodes(doc, path, root)
     if cached is not None and cached.doc is doc:
@@ -1133,13 +767,7 @@ def _ui_nodes(doc: markdown.MarkdownDoc, path: Path, root: Path) -> list[UINode]
 
 
 def _feature_paths(graph: Graph) -> list[Path]:
-    """Every book page under the features root -- a file's membership in the corpus is a claim
-    the file makes, not a property of where it sits, so a candidate must declare a `type` to
-    count (the same rule `doctor._check_conformance` enforces as `okf-missing-type`, and that
-    check walks its own `etype.location` glob independently of this function, so gating here
-    does not silence it). A prose file, a README or a scratch note dropped under `features/`
-    with no frontmatter `type` is not a Concept and must not become a `FeatureRecord` or UI node.
-    """
+    """Every book page under the features root -- a file's membership in the corpus is a claim the file makes, not a property of where it sits, so a candidate must declare a `type` to count (the same rule `doctor._check_conformance` enforces as `okf-missing-type`, and that check walks its own `etype.location` glob independently of this function, so gating here does not silence it)."""
     froot = graph.doc_roots["features"]
     if not froot.is_dir():
         return []
@@ -1148,9 +776,6 @@ def _feature_paths(graph: Graph) -> list[Path]:
         if not p.is_file() or p.name in registry.RESERVED_FILES:
             continue
         try:
-            # Through the shared cache (`read_doc`), not a fresh `markdown.split` -- every other
-            # reader of this file in the same run (`_feature_doc`, the UI check, conformance)
-            # goes through it too, so gating here must not cost this file a second parse.
             fm = read_doc(p).frontmatter or {}
         except OSError:
             continue
@@ -1229,48 +854,13 @@ _ANCHOR_SPACE_RE = re.compile(r"\s+")
 
 
 def anchor_of(title: str) -> str:
-    """Slug one heading title: lowercase, spaces→hyphens, punctuation dropped.
-
-    This is **half** of GitHub's anchor algorithm — the pure half. The other half is stateful:
-    a slug GitHub has already issued in this document gets ``-1``, ``-2`` appended, so two
-    headings reading ``#### Effects`` render as ``#effects`` and ``#effects-1``. An anchor is
-    therefore not a property of a heading; it is a property of a heading's *position in a
-    document*, and this function does not take a document.
-
-    So it is not the anchor, and nothing may mint an identity from it. :func:`document_anchors`
-    is the anchor. This stays because slugging one string is genuinely wanted elsewhere —
-    ``fmt`` kebab-cases a heading's *text* with it, which is a rewrite of the title, not an
-    address.
-    """
+    """Slug one heading title: lowercase, spaces→hyphens, punctuation dropped."""
     s = _ANCHOR_STRIP_RE.sub("", title.strip().lower())
     return _ANCHOR_SPACE_RE.sub("-", s).strip("-")
 
 
 def document_anchors(doc: markdown.MarkdownDoc) -> dict[int, str]:
-    """Every heading's rendered anchor in one document, keyed by its body-relative heading line.
-
-    The uniquifying half of GitHub's algorithm, which :func:`anchor_of` cannot do: walk the
-    headings in **source order** and append ``-1``, ``-2`` to a slug already issued. Two things
-    follow from matching GitHub rather than approximating it, and both are the point:
-
-    * The id a section node carries is the anchor a reader's browser actually jumps to, so a
-      link written ``./queue.md#effects-1`` — copied from the rendered page — resolves instead
-      of being reported ``missing-anchor``.
-    * Two headings that share a title stop sharing an id. They did share one:
-      ``_promote_section`` minted ``f"{rel}#{anchor_of(title)}"`` and appended without asking
-      whether the id was taken, so the second node was unreachable through
-      :meth:`Graph.find_ui_node` — which returns the first match — and every address into it
-      (a link, a coverage join, a ``qa context`` obligation id, a doctor finding's ref) named
-      the first occurrence silently.
-
-    **Every** heading is counted, container headings (``## Methods``) included, because GitHub
-    counts every heading it renders. Node promotion skips containers, so the count cannot be
-    kept during that walk — which is why this is a separate pass over the document rather than
-    a counter threaded through :func:`_promote_section`.
-
-    ``walk_sections`` yields tree order, so the sections are sorted by ``line_start`` — a
-    heading's line, unique within a document, which is also what makes it the key.
-    """
+    """Every heading's rendered anchor in one document, keyed by its body-relative heading line."""
     issued: set[str] = set()
     repeats: dict[str, int] = {}
     anchors: dict[int, str] = {}
@@ -1280,10 +870,6 @@ def document_anchors(doc: markdown.MarkdownDoc) -> dict[int, str]:
             continue
         base = anchor_of(title)
         anchor = base
-        # GitHub's own counter, plus a skip: a document holding both `## Effects` twice and a
-        # `## Effects 1` would make GitHub itself render two `#effects-1`, and an id that is
-        # ambiguous is not an id. Advancing past a taken slug keeps the result an identity in
-        # the case GitHub gets wrong, and is a no-op in every case it gets right.
         while anchor in issued:
             repeats[base] = repeats.get(base, 0) + 1
             anchor = f"{base}-{repeats[base]}"
@@ -1301,10 +887,7 @@ def _file_main_section(doc: markdown.MarkdownDoc) -> markdown.Section | None:
 
 
 def _inline_type(title: str) -> tuple[str | None, str]:
-    """``field: timeout`` **or** the colon-less ``field timeout`` → (type, description) when the
-    first token is a **known** UI type; otherwise ``(None, title)``. A first word that isn't a real
-    type (``Contract``, ``The ladder``) is left for the caller to promote as ``untyped``.
-    Inline-typed headings are always *section* nodes, whatever the type's usual file/section kind."""
+    """``field: timeout`` **or** the colon-less ``field timeout`` → (type, description) when the first token is a **known** UI type; otherwise ``(None, title)``."""
     prefix, sep, rest = title.partition(":")
     if sep and registry.UI_TYPES_BY_NAME.get(prefix.strip().lower()) is not None:
         return registry.UI_TYPES_BY_NAME[prefix.strip().lower()].name, rest.strip()
@@ -1318,24 +901,18 @@ def _inline_type(title: str) -> tuple[str | None, str]:
 def _promote_section(section: markdown.Section, rel: str, path: Path, offset: int,
                      parent_id: str, container_type: str | None, nodes: list[UINode],
                      anchors: dict[int, str]) -> None:
-    """Promote **every** heading to a section node so its links are captured and it nests. Its type
-    comes from an inline ``type:`` prefix / first-word (`### field: timeout`, `## field timeout`) or
-    its enclosing container (`## Methods` → its children are ``method``s); a heading that names no
-    real type is promoted as **``untyped``** (caught by ``--title``, not a garbage type). Nesting
-    composes at any depth: each node is the ``parent`` of its descendants."""
+    """Promote **every** heading to a section node so its links are captured and it nests."""
     title = section.title.strip()
     if not title:
         return
-    # A registered container heading (`## Components`/`## Methods`/…) isn't itself a node; it
-    # types its *direct* children. Containers work at any depth, so nesting composes.
     child_container = registry.UI_HEADING_TO_TYPE.get(title)
     if child_container is not None:
         for sub in section.children:
             _promote_section(sub, rel, path, offset, parent_id, child_container, nodes, anchors)
         return
-    ntype, ntitle = _inline_type(title)                # inline type: / first word wins…
-    ntype = ntype or container_type or "untyped"       # …else container's type, else untyped
-    anchor = anchors[section.line_start]                # the rendered anchor, unique in this doc
+    ntype, ntitle = _inline_type(title)
+    ntype = ntype or container_type or "untyped"
+    anchor = anchors[section.line_start]
     node_id = f"{rel}#{anchor}"
     uitype = registry.UI_TYPES_BY_NAME.get(ntype)
     own_end = min((c.line_start for c in section.children), default=section.line_end)
@@ -1351,15 +928,12 @@ def _promote_section(section: markdown.Section, rel: str, path: Path, offset: in
         links=[(text, href, offset + section.line_start + link_line)
                for text, href, link_line in markdown.iter_links(own_text)],
     ))
-    # container_type applies only to a container's direct children, so it resets on descent.
     for sub in section.children:
         _promote_section(sub, rel, path, offset, node_id, None, nodes, anchors)
 
 
 def _parse_ui_nodes(doc: markdown.MarkdownDoc, path: Path, root: Path) -> list[UINode]:
-    """File-level node (if the frontmatter `type:` is a UI file-type) + every typed section node,
-    nested. A section is typed by its enclosing container heading or an inline `type:` prefix; see
-    `_promote_section`."""
+    """File-level node (if the frontmatter `type:` is a UI file-type) + every typed section node, nested."""
     rel = path.relative_to(root).as_posix()
     offset = doc.body_offset
     anchors = document_anchors(doc)
@@ -1375,8 +949,6 @@ def _parse_ui_nodes(doc: markdown.MarkdownDoc, path: Path, root: Path) -> list[U
         combiners = _bullet_combiners(main) if main else {}
         entries = _entries_from_bullets(main, ftype) if main else {}
         records = _records_from_bullets(main, ftype) if main else {}
-        # The file node's own region = its H1 content up to the first `## Heading` child, so its
-        # links don't overlap the section nodes' links (keeps the linter from double-reporting).
         if main is not None:
             own_end = min((c.line_start for c in main.children), default=main.line_end)
             text = "\n".join(main.body_lines[main.line_start:own_end])
@@ -1394,7 +966,6 @@ def _parse_ui_nodes(doc: markdown.MarkdownDoc, path: Path, root: Path) -> list[U
             data=fm,
         ))
 
-    # Recurse the heading tree: the H1's children (or the doc's root sections) hang off the file node.
     top = main.children if (main is not None and main.level == 1) else doc.sections
     for sec in top:
         _promote_section(sec, rel, path, offset, file_id, None, nodes, anchors)
@@ -1453,8 +1024,6 @@ def _attach_story_md(graph: Graph, epic: Epic, story: Story) -> None:
                 story.raw["externalKey"] = story.external_key
                 story.conflict = str(doc.frontmatter.get("conflict") or "").strip()
             if not story.eid and story.file_eid:
-                # crud writes the minted id in both places; a story whose epic block
-                # predates that still carries it in its own frontmatter.
                 story.eid = story.file_eid
             refs = doc.refs
             story.doc_refs = refs.doc_hrefs

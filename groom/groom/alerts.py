@@ -1,65 +1,4 @@
-"""Alert rules over the telemetry stream — what pages the AFK operator.
-
-Ingest-driven rules fire the moment their evidence arrives (a watchdog-kill
-span event, a give-up node span, the Nth repeat of a churning node, the root
-span that says the run is over); the absence-driven rules (STALL, STUCK) are
-evaluated by a periodic tick, since silence by definition never triggers an
-ingest. All rules dedupe per ``(run_id, rule)`` via ``RunTelemetry.fired`` —
-one page per failure mode per run, not one per span.
-
-ENDED is the one rule that is not about a run behaving badly, and it exists
-because the absence rules structurally cannot cover a run that *stopped*: a
-terminal retires the run from STALL and STUCK, and 30 minutes later evicts it
-from the cache entirely. So the loudest possible fleet event — the run is over,
-nothing is executing, the queue is idle until someone launches the next one —
-was the only one that paged nobody. On a queue an operator is away from, hours
-go by before anyone notices, and they are hours nothing was running.
-
-BLOCKED and WAITING exist for the same reason ENDED does: a run parked on an
-operator gate is not misbehaving, so no rule described it — and STUCK explicitly
-skips a run with an open wait, since being parked is what the gate is for. The
-result was that the one condition a page can actually *fix* — a human is the
-bottleneck and does not know it — reached only an open browser tab. BLOCKED
-fires the moment the gate opens; WAITING is the reminder for a gate that opened
-while nobody was looking. Only an ``operator`` wait counts: a cap wait is the
-runner throttling itself, and a ``machine`` wait has a detached job running for
-it — no page shortens either.
-
-``fired`` is also what the dashboard renders as a run's alert badges, so the
-rules that describe a *current* condition retire themselves when the condition
-lifts: STALL on any signal arriving (see :func:`_note_alive`), STUCK when its
-node closes or the run moves to another, CHURN on forward progress, BLOCKED and
-WAITING when the wait closes.
-Without that a page is permanent — a laptop that idle-sleeps past the stall
-window marks its run dead for the life of the groom process, however healthily
-it resumes. WATCHDOG, GAVE-UP and ENDED stay set because they report events that
-happened — and a resume clears the whole set anyway (see
-:func:`_clear_stale_terminal`), so the next session's ending pages on its own.
-
-STALL and STUCK split what used to be one ambiguous rule. Workhorse now beats
-continuously while its process lives, so silence and slowness are different
-observations rather than the same one: STALL means the run stopped emitting
-(the process died), STUCK means it is emitting but parked in one node. Before
-the heartbeat existed, a long agent turn produced exactly the silence STALL
-looked for — an open span does not export — so any turn longer than the stall
-window paged as hung.
-
-The rules read the :data:`groom.state.RUNS` hot cache, which this module also
-maintains from decoded spans/metrics. Thresholds come from env (read per call
-so tests can patch): ``GROOM_STALL_MIN`` (90), ``GROOM_STUCK_MIN`` (75),
-``GROOM_CHURN_REPEATS`` (5), ``GROOM_GIVEUP_NODES``
-(qa_give_up,fix_give_up — groom, not workhorse, knows these names: the engine
-stays workflow-agnostic and just reports node spans).
-
-CHURN counts repeats *on the same work*, keyed by the workflow's declared
-labels. It used to count bare node repeats and reset only on a gas refuel, which
-made it structurally unfirable-but-always-firing for the pyflow engine: pyflow
-has no gas tank, nothing emits ``workhorse.gas.refuels``, and so a drain-shaped
-workflow tripped the rule on its fifth healthy iteration and never untripped.
-The labels carry which unit each iteration was for, which is the forward-progress
-signal the refuel counter used to report — and the one an engine without a tank
-still emits.
-"""
+"""Alert rules over the telemetry stream — what pages the AFK operator."""
 
 from __future__ import annotations
 
@@ -75,8 +14,7 @@ from groom.models import LIVENESS_METRICS, RunTelemetry
 @dataclass
 class Alert:
     run_id: str
-    rule: str  # STALL | STUCK | CHURN | WATCHDOG | GAVE-UP | ENDED | DIED
-    #      | BLOCKED | WAITING
+    rule: str
     message: str
 
 
@@ -85,16 +23,10 @@ def _stall_after_s() -> float:
 
 
 def _stuck_after_s() -> float:
-    # Deliberately above workhorse's own 1h default per-turn timeout, so a node
-    # that is merely slow gets force-killed and retried by the runner before
-    # groom would page anyone about it.
     return float(os.environ.get("GROOM_STUCK_MIN", "75")) * 60
 
 
 def _wait_after_s() -> float:
-    # Far below the STUCK threshold on purpose: a run parked on an operator gate is
-    # not slow, it is finished until a human types something. Every minute past this
-    # is a minute nobody knew they were the bottleneck.
     return float(os.environ.get("GROOM_WAIT_MIN", "30")) * 60
 
 
@@ -116,17 +48,7 @@ def _dead_after_s() -> float:
 
 
 def stale_run_ids(now: float | None = None) -> list[str]:
-    """Run ids whose hot-cache entry can be dropped, so :data:`groom.state.RUNS`
-    stops growing one entry per distinct run for the life of the process (and, with
-    it, the per-tick :func:`check_time_rules` walk over that dict):
-
-    - a **terminated** run, kept a grace window after its root span so a just-finished
-      run doesn't vanish from the dashboard mid-glance, then evicted;
-    - a run **silent past the dead window** — no span, no heartbeat for so long its
-      process is certainly gone even though it never emitted a terminal (SIGKILL/OOM).
-
-    Native dashboard rows are retired alongside their run (see ``state.evict_runs``).
-    """
+    """Run ids whose hot-cache entry can be dropped, so :data:`groom.state.RUNS` stops growing one entry per distinct run for the life of the process (and, with it, the per-tick :func:`check_time_rules` walk over that dict):"""
     now = now if now is not None else time.time()
     grace, dead = _evict_grace_s(), _dead_after_s()
     stale: list[str] = []
@@ -148,20 +70,7 @@ def _run(run_id: str, now: float) -> RunTelemetry:
 
 
 def _clear_stale_terminal(run: RunTelemetry, ts: float) -> None:
-    """Drop a terminal verdict that a newer signal has outlived.
-
-    ``run_id`` is derived from the run dir, so ``--resume-run`` reuses it and the
-    root span of an EARLIER session arrives under the same key. Nothing else ever
-    unsets ``terminal`` — the engine has no "a new session started" signal, because
-    a root span only exports when it *ends* — so without this a resumed run stayed
-    marked dead for the life of the groom process: rendered finished on the
-    dashboard while it was actively emitting, and eventually evicted from the fleet.
-
-    For producers with session identity, only ``_accept_session`` can establish a
-    restart. The final cumulative metric collection happens after the root span
-    ends, so a newer timestamp from that same session is not evidence of a resume.
-    Timestamp inference remains only for legacy producers without session identity.
-    """
+    """Drop a terminal verdict that a newer signal has outlived."""
     if run.last_session is None and run.terminal and ts > run.terminal_ts:
         run.terminal = ""
         run.terminal_ts = 0.0
@@ -175,22 +84,11 @@ def _fire(run: RunTelemetry, rule: str, message: str, alerts: list[Alert]) -> No
     alerts.append(Alert(run_id=run.run_id, rule=rule, message=message))
 
 
-#: Span attribute keys that are workhorse's own, not the workflow's `labels:`.
-#: ``workhorse.seq`` and ``workhorse.depth`` increment on every span, so a
-#: signature that kept them would never match itself and churn could not fire at
-#: all — the mirror of the bug this signature exists to fix.
 _RESERVED_ATTRS = ("workhorse.", "status_message", "events")
 
 
 def _label_signature(attrs: dict[str, Any]) -> tuple[tuple[str, str], ...]:
-    """The workflow-declared dimensions on a span, as a comparable key.
-
-    These are the graph's ``labels:`` — okf-builder stamps ``work_id`` and
-    ``progress``, coder stamps the story — rendered against the live context and
-    stamped on every span of that node visit. They answer "which unit of work was
-    this?", which is precisely what distinguishes a drain iterating over its
-    worklist from a loop rerunning one item forever.
-    """
+    """The workflow-declared dimensions on a span, as a comparable key."""
     return tuple(
         sorted(
             (key, str(value))
@@ -201,35 +99,15 @@ def _label_signature(attrs: dict[str, Any]) -> tuple[tuple[str, str], ...]:
 
 
 def _note_progress(run: RunTelemetry) -> None:
-    """Forward progress: retire the churn page it disproves.
-
-    ``fired`` is what the dashboard renders as a run's alert badges, so a CHURN
-    left set after the run demonstrably moved on marks a healthy run as looping
-    for the life of the groom process. It re-fires if the churn recurs.
-    """
+    """Forward progress: retire the churn page it disproves."""
     run.fired.discard("CHURN")
 
 
 def _note_alive(run: RunTelemetry) -> None:
-    """A signal arrived under this run's id: retire STALL.
-
-    STALL asserts the process is *gone* — not slow, gone. Anything arriving for
-    the run refutes that outright, so the page is not merely stale, it is false.
-    A host that suspends mid-run (an idle laptop sleeping past the stall window)
-    produces exactly this: real silence, a true page, and then a recovery the run
-    has no way to announce. If the run goes quiet again, the next periodic tick
-    fires STALL again on its own.
-
-    A late buffered export from a genuinely dead process clears it spuriously —
-    and then nothing further arrives and the next tick re-fires. Self-correcting,
-    which a permanently wrong badge is not.
-    """
+    """A signal arrived under this run's id: retire STALL."""
     run.fired.discard("STALL")
 
 
-#: Terminals that mean the run stopped on purpose, having reached the workflow's own
-#: end. Everything else — ``fail``, ``aborted``, ``interrupted``, or a terminal
-#: workhorse did not stamp at all — stopped for a reason nobody chose.
 CLEAN_TERMINALS = frozenset({"terminal", "ended"})
 
 
@@ -249,24 +127,7 @@ def _ended_message(run: RunTelemetry, label: str, attrs: dict[str, Any]) -> str:
 
 
 def note_native_ending(run: RunTelemetry, ending: str) -> list[Alert]:
-    """Page for a **native** run that stopped without its root span saying so.
-
-    Every other ending rule here is ingest-driven, and ENDED is the loudest of them —
-    but it hangs off the root span, and a root span only exports if the dying process
-    got its exporter flushed. The one class of death that never does is exactly the
-    one worth paging about: SIGKILL, the OOM killer, a segfaulting extension. So the
-    fleet event an operator most needs — the queue is idle because a run was killed —
-    was the single ending that reached nobody. The dashboard row already turned grey
-    (``groom.app._native_ending`` reads the same-host evidence), and then the run was
-    evicted 30 minutes later, all of it in silence.
-
-    Two endings, two rules, because they are different news. A terminal groom read out
-    of ``run.json`` is the run's own account of itself, so it pages as ENDED — the same
-    rule and the same dedupe slot the root span would use, which is what stops a
-    late-arriving export from paging twice about one ending. ``died`` has no account
-    behind it and gets its own rule, so a page that says the process vanished is never
-    confused with one that says the run finished badly.
-    """
+    """Page for a **native** run that stopped without its root span saying so."""
     alerts: list[Alert] = []
     label = f"{run.workflow or 'run'} {run.run_id}"
     where = f" in node '{run.current_node}'" if run.current_node else ""
@@ -296,11 +157,7 @@ def _activity(attrs: dict[str, Any]) -> str:
 
 
 def _accept_session(run: RunTelemetry, record: dict[str, Any]) -> bool:
-    """Replace session-local observations on resume; ignore delayed older exports.
-
-    Durable spans/metrics are stored before this hot-cache fold, so refusing an old
-    generation here preserves history without making it the current process again.
-    """
+    """Replace session-local observations on resume; ignore delayed older exports."""
     generation = record.get("resume_generation")
     if generation is None:
         return True
@@ -343,8 +200,7 @@ def _wait_series_node(series: tuple[tuple[str, str], ...] | None) -> str:
 
 
 def ingest_spans(spans: list[dict[str, Any]], now: float | None = None) -> list[Alert]:
-    """Fold decoded spans into the hot cache and evaluate the ingest-driven
-    rules. Returns the alerts that newly fired (already deduped)."""
+    """Fold decoded spans into the hot cache and evaluate the ingest-driven rules."""
     now = now if now is not None else time.time()
     alerts: list[Alert] = []
     giveup = _giveup_nodes()
@@ -372,11 +228,6 @@ def ingest_spans(spans: list[dict[str, Any]], now: float | None = None) -> list[
         events = {event.get("name") for event in attrs.get("events") or []}
         label = f"{run.workflow or 'run'} {run_id}"
 
-        # Which harness ran the turn, latest wins. The ladder chooses a backend per
-        # turn and falls through to another when one is capped or broken, so this is
-        # a property of the run's last turn rather than of the run — which is exactly
-        # why it is worth showing: a run that quietly moved to a different CLI looks
-        # identical on every other line of the dashboard.
         if span.get("name") == "agent_turn":
             if backend := str(attrs.get("backend") or ""):
                 run.backend = backend
@@ -384,10 +235,6 @@ def ingest_spans(spans: list[dict[str, Any]], now: float | None = None) -> list[
                 run.model = model
 
         if span.get("name", "").startswith("run:"):
-            # The root span only exports when the run ENDS — its arrival is the
-            # "run over" signal that retires this run from absence-rule watch. It
-            # retires only the session it closed: a later resume under the same
-            # run_id clears it again via ``_clear_stale_terminal``.
             run.terminal = str(attrs.get("workhorse.terminal") or "ended")
             run.terminal_ts = float(span.get("end_ts") or now)
             _fire(run, "ENDED", _ended_message(run, label, attrs), alerts)
@@ -410,15 +257,6 @@ def ingest_spans(spans: list[dict[str, Any]], now: float | None = None) -> list[
                 alerts,
             )
 
-        # Churn: node-span repeats ON THE SAME WORK. Only completed NODE spans
-        # count (agent_turn retries are the ladder doing its job), and a repeat
-        # under a different label signature is progress, not a repeat.
-        #
-        # `workhorse.cut` is how a span says it ended without finishing: workhorse
-        # closes the whole open scope when a live reload interrupts a run, so the node
-        # exports rather than being lost, and stamps why. Counting those would make an
-        # operator pushing fixes into a broken flow page for churn on the fifth push —
-        # the reload reported as the loop it was breaking.
         node = span.get("node") or ""
         if node and span.get("name") == node and not attrs.get("workhorse.cut"):
             signature = _label_signature(attrs)
@@ -441,20 +279,7 @@ def ingest_spans(spans: list[dict[str, Any]], now: float | None = None) -> list[
 
 
 def ingest_metrics(points: list[dict[str, Any]], now: float | None = None) -> list[Alert]:
-    """Fold decoded metric points into the hot cache, and evaluate BLOCKED.
-
-    This used to return ``[]`` unconditionally — every rule was span- or
-    tick-driven. BLOCKED is neither: an operator gate opens a *wait*, which is a
-    metric, and the gate is worth paging about the instant it opens rather than
-    after a threshold.
-
-    Metrics carry the live picture that spans structurally cannot: a span only
-    exports when it ends, so a run's CURRENT node — the one that matters when it
-    hangs — never appears in the trace. The heartbeats prove the process is
-    alive, ``node.active`` says where it is, and ``node.elapsed_s`` /
-    ``turn.idle_s`` say whether being there is normal. A gas refuel marks forward
-    progress and resets the churn counters.
-    """
+    """Fold decoded metric points into the hot cache, and evaluate BLOCKED."""
     now = now if now is not None else time.time()
     alerts: list[Alert] = []
     for point in points:
@@ -478,19 +303,11 @@ def ingest_metrics(points: list[dict[str, Any]], now: float | None = None) -> li
         attrs = point.get("attrs") or {}
         node = str(attrs.get("node", ""))
         value = float(point.get("value") or 0.0)
-        # The SDK retains zero-valued series for every earlier gate. A close or
-        # elapsed value can update only the wait that owns that series.
         if (run.wait_series is not None and attrs.get("wait_kind")
                 and _wait_series(attrs) != run.wait_series
                 and (name == "workhorse.wait.elapsed_s"
                      or (name == "workhorse.wait.active" and value < 1))):
             continue
-        # The same replay can also carry a stale active=1 for a gate that has
-        # since been answered and superseded by a later one — by then
-        # ``wait_series`` is back to None (no wait is currently open), so the
-        # guard above cannot see it. ``closed_wait_series`` remembers every
-        # series this run has already opened and closed, independent of what
-        # is open now.
         if (name == "workhorse.wait.active" and value >= 1
                 and attrs.get("wait_kind")
                 and _wait_series(attrs) in run.closed_wait_series):
@@ -499,14 +316,8 @@ def ingest_metrics(points: list[dict[str, Any]], now: float | None = None) -> li
             run.activity = activity
         if name in LIVENESS_METRICS:
             run.last_heartbeat_ts = now
-            # The producer's own stamp, kept separately from the wall clock above:
-            # this is the "last beat" a status row reports, and since the ticks stop
-            # being persisted at ingest, this cache is the only place it survives.
             run.last_beat_ts = max(run.last_beat_ts, float(point.get("ts") or 0.0))
             if name == "workhorse.run.heartbeat" and node:
-                # The run heartbeat carries the open node. node.active carries it
-                # too, but only on the edge — a groom that restarted mid-node would
-                # otherwise show "(between nodes)" until the node closes.
                 run.current_node = node
         elif name == "workhorse.gas":
             run.gas = value
@@ -529,12 +340,8 @@ def ingest_metrics(points: list[dict[str, Any]], now: float | None = None) -> li
                         run.fired.discard("WAITING")
                 run.current_node = node
             elif run.current_node == node:
-                # Only the node that closed clears the pointer — a stale 0 for an
-                # already-superseded node must not blank the one now running.
                 run.current_node = ""
                 run.node_elapsed_s = 0.0
-                # STUCK asserts this node is open past the threshold. It just
-                # closed, so the assertion is now false rather than merely old.
                 run.fired.discard("STUCK")
         elif name == "workhorse.node.elapsed_s":
             if not run.current_node or run.current_node == node:
@@ -543,9 +350,6 @@ def ingest_metrics(points: list[dict[str, Any]], now: float | None = None) -> li
             if value >= 1:
                 run.wait_series = _wait_series(attrs)
                 run.wait_kind = str(attrs.get("wait_kind") or "unknown")
-                # Path + question are telemetry-only fields: they're only meaningful
-                # for operator/machine waits. Other kinds (cap, retry, reframe,
-                # exec-retry) don't carry a gate file, so leave the rows blank.
                 if run.wait_kind in ("operator", "machine"):
                     run.wait_gate_path = str(attrs.get("gate_path") or "")
                     run.wait_gate_question = str(attrs.get("gate_question") or "")
@@ -570,18 +374,9 @@ def ingest_metrics(points: list[dict[str, Any]], now: float | None = None) -> li
                 run.wait_elapsed_s = 0.0
                 run.wait_gate_path = ""
                 run.wait_gate_question = ""
-                # The gate was answered: both pages assert a wait that is open right
-                # now, so leaving them set badges a moving run as parked forever.
                 run.fired.discard("BLOCKED")
                 run.fired.discard("WAITING")
         elif name == "workhorse.wait.elapsed_s":
-            # wait_kind lives only in this in-memory cache, set by the edge-triggered
-            # workhorse.wait.active point. A groom restart wipes it while the wait is
-            # still open on the producer's side — that edge already fired and won't
-            # fire again until the gate closes and reopens — so a still-open wait
-            # would stay invisible forever. This periodic tick carries wait_kind (and
-            # gate context) in its own attrs on every point, so it can rehydrate the
-            # cache from telemetry instead of from process memory a restart can lose.
             if not run.wait_kind and (incoming_kind := str(attrs.get("wait_kind") or "")):
                 run.wait_series = _wait_series(attrs)
                 run.wait_kind = incoming_kind
@@ -618,25 +413,10 @@ def ingest_metrics(points: list[dict[str, Any]], now: float | None = None) -> li
 
 
 def live_status(run: str = "", now: float | None = None) -> list[dict[str, Any]]:
-    """Where each run is *right now*, newest heartbeat first — from the hot cache.
-
-    This used to be a window-function query over persisted heartbeat rows
-    (``store.live_status``); the ticks are memory-only now, so the cache this
-    module maintains at ingest is the only place the answer lives. The row shape
-    is a public contract (``groom status --json`` prints it verbatim) and is kept
-    exactly as the store version returned it.
-
-    ``alive`` False means the process stopped emitting: dead, killed, or frozen.
-    ``alive`` True with a large ``node_elapsed_s`` means the opposite failure —
-    running fine, going nowhere. A groom that just restarted has an empty cache,
-    so every run reads as absent until its next export lands (up to ~60s, the
-    SDK's periodic-reader interval) — the accepted cost of not persisting ticks.
-    """
+    """Where each run is *right now*, newest heartbeat first — from the hot cache."""
     now = now if now is not None else time.time()
     rows: list[dict[str, Any]] = []
     for tel in state.RUNS.values():
-        # No liveness tick ever seen (a spans-only ingest, or a producer too old
-        # to beat): the run has no live picture to report, only history.
         if not tel.last_beat_ts or (run and tel.run_id != run):
             continue
         wait_kind = tel.wait_kind
@@ -662,27 +442,12 @@ def live_status(run: str = "", now: float | None = None) -> list[dict[str, Any]]
 
 
 def live_run_ids(now: float | None = None) -> set[str]:
-    """The run ids beating *right now* — the only liveness question that means
-    anything. Memory-only, like :func:`live_status` it reads."""
+    """The run ids beating *right now* — the only liveness question that means anything."""
     return {entry["run_id"] for entry in live_status(now=now) if entry["alive"]}
 
 
 def check_time_rules(now: float | None = None) -> list[Alert]:
-    """The absence-driven rules, run by the periodic tick:
-
-    - STALL — a live run emitting NOTHING for the stall window: no span, no
-      heartbeat of any kind. Since workhorse beats every few seconds from a
-      daemon thread for as long as its process exists, silence here no longer
-      means "busy" — it means the process is gone or frozen below the
-      interpreter (SIGKILL, OOM, a suspended host).
-    - STUCK — the mirror image, and the one a script-heavy workflow actually
-      hits: the run IS beating, but has sat in one node past the threshold. It
-      is alive and going nowhere. This is invisible to the trace (the node's
-      span will not export until it ends) and used to be misfiled as a STALL.
-    - WAITING — an operator gate still unanswered past ``GROOM_WAIT_MIN``. Not an
-      absence at all, but it needs the tick for the same reason STUCK does: the
-      evidence is a duration that no single ingest ever crosses.
-    """
+    """The absence-driven rules, run by the periodic tick:"""
     now = now if now is not None else time.time()
     alerts: list[Alert] = []
     for run in state.RUNS.values():
@@ -702,12 +467,6 @@ def check_time_rules(now: float | None = None) -> list[Alert]:
                 alerts,
             )
         elif run.wait_kind:
-            # An open wait is never STUCK — the run is parked on purpose. But an
-            # operator gate nobody has answered is the one wait a page can shorten,
-            # and BLOCKED only fires once, when the gate opens. WAITING is the
-            # reminder for the gate that opened while nobody was looking. Every other
-            # kind is exempt outright: a cap wait is the runner throttling itself, and
-            # a machine wait has a job running for it that will answer the file itself.
             if run.wait_kind == "operator" and run.wait_elapsed_s > _wait_after_s():
                 _fire(
                     run,

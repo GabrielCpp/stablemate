@@ -1,17 +1,4 @@
-"""What ``--check`` says when a generated file no longer matches its source.
-
-The comparison itself is cheap and has always been right; what it said was
-``changed: AGENTS.md``, which names neither the file to edit instead nor the fact
-that re-rendering is the fix. An agent reading that has two plausible next moves and
-both are wrong — revert its own work, or delete whatever stopped it. So the report
-answers three questions in the order they get asked: what drifted, which library file
-it is a copy of, and where the change belongs.
-
-Provenance is resolved from the *expected* text, never the worktree's. A drifted file
-is one somebody edited, and its banner or front matter is exactly as editable as the
-body — reading the source list off the copy under suspicion would let the edit choose
-where it gets reported.
-"""
+"""What ``--check`` says when a generated file no longer matches its source."""
 
 from __future__ import annotations
 
@@ -22,32 +9,18 @@ from farrier.frontmatter import banner_sources, frontmatter_metadata
 
 @dataclass(frozen=True)
 class Drifted:
-    """One generated file whose worktree copy differs from a fresh render.
-
-    Carries the expected text as well as the actual, because provenance is read off
-    the expected side and attribution needs both.
-    """
+    """One generated file whose worktree copy differs from a fresh render."""
 
     rel: str
     content: str
     expected: str
     actual: str
 
-#: How the operator re-renders. Named rather than spelled as `farrier install` because
-#: the Makefile include is what every farrier-installed repo has, and the bare command
-#: needs the library flags this one already carries.
 REGENERATE = "make agent-install"
 
 
 def sources_for(content: str, expected: str) -> list[str]:
-    """The library files *content* is generated from, in render order.
-
-    Three provenance carriers, in descending authority: the aggregate's own record
-    (set by the renderer, which is the only thing that knows the mapping), the
-    ``metadata.source`` a generated skill or command stamps into its front matter,
-    and the HTML banner a bundled reference carries. Empty when a file has none of
-    them — a launcher fragment or a scaffold has no single editable original.
-    """
+    """The library files *content* is generated from, in render order."""
     recorded = getattr(content, "sources", ())
     if recorded:
         return list(recorded)
@@ -58,16 +31,7 @@ def sources_for(content: str, expected: str) -> list[str]:
 
 
 def attribute(content: str, actual: str) -> set[str]:
-    """Which of an aggregate's sources contain the drift.
-
-    An aggregated AGENTS.md is several library files joined end to end, and its halves
-    can sit hundreds of lines apart — "put this back upstream" is not actionable until
-    it says *which* upstream. The renderer records each source's rendered part, so a
-    part that no longer appears verbatim in the worktree copy is the one that was
-    edited. Returns an empty set when the file records no parts, or when the edit
-    perturbed all of them (a reflow, a re-indent), and the caller falls back to naming
-    every source rather than guessing at one.
-    """
+    """Which of an aggregate's sources contain the drift."""
     parts = getattr(content, "parts", ())
     if not parts:
         return set()
@@ -120,13 +84,7 @@ def extra_report(rel: str) -> str:
 
 
 def fence_report(rel: str) -> str:
-    """The block printed under one ``hooks:`` line.
-
-    A fenced region is the one thing farrier owns inside a file it does not, so the
-    remediation differs: there is no upstream library file to move the edit into — the
-    fence's contents are farrier's own, and what the operator wants is either the
-    surrounding file (theirs, untouched) or `hooks.manager` in agents.yml.
-    """
+    """The block printed under one ``hooks:`` line."""
     return "\n".join(
         [
             f"  farrier's fenced hook entry in {rel} is missing or edited.",

@@ -1,14 +1,4 @@
-"""The credential pool — SQLite metadata and lease management.
-
-This module knows nothing about passwords. It stores the metadata an agent
-reasons over (env, roles, features, surface) and the lease state that keeps
-parallel workhorse runs from colliding. Secrets live in :mod:`saddlebag.store`.
-
-Timestamps are persisted as epoch seconds (REAL) rather than ISO strings, so
-that lease-expiry comparisons happen in SQL as numeric comparisons. Comparing
-ISO strings lexicographically happens to work for a fixed format, but breaks the
-moment a microsecond component appears or disappears.
-"""
+"""The credential pool — SQLite metadata and lease management."""
 
 from __future__ import annotations
 
@@ -35,7 +25,6 @@ from saddlebag.models import (
     utcnow,
 )
 
-#: Default lease lifetime, in seconds (2 hours).
 DEFAULT_TTL = 7200
 
 _SCHEMA = """
@@ -83,22 +72,14 @@ CREATE TABLE IF NOT EXISTS environment_entries (
 );
 """
 
-# Columns added after the initial release, applied to pre-existing pools on open.
-# Each entry is (column_name, "ALTER TABLE ... ADD COLUMN ..." statement).
 _MIGRATIONS: tuple[tuple[str, str], ...] = (
     ("project", "ALTER TABLE credentials ADD COLUMN project TEXT"),
     ("password_ref", "ALTER TABLE credentials ADD COLUMN password_ref TEXT"),
     ("totp_ref", "ALTER TABLE credentials ADD COLUMN totp_ref TEXT"),
 )
 
-#: The ``--field`` an operator names, mapped to the column that holds its reference.
-#: A whitelist, because these names reach an UPDATE statement: the alternative is a
-#: column name built from an argument, which is the shape SQL injection takes when
-#: the value is not a bindable parameter.
 REF_COLUMNS: dict[str, str] = {"password": "password_ref", "totp": "totp_ref"}
 
-# Indexes are created after migrations, so an index may reference a migrated
-# column that an old pool did not originally have.
 _INDEXES = """
 CREATE INDEX IF NOT EXISTS idx_credentials_env ON credentials(env);
 CREATE INDEX IF NOT EXISTS idx_credentials_project ON credentials(project);
@@ -116,34 +97,18 @@ class PoolError(RuntimeError):
 
 
 def default_db_path() -> Path:
-    """Where the pool lives, honouring each OS's convention.
-
-    ``$SADDLEBAG_DB`` overrides everything. Otherwise the location follows the
-    platform's user-data directory via :mod:`platformdirs`:
-
-    * Linux:   ``~/.local/share/saddlebag/pool.db`` (or ``$XDG_DATA_HOME``)
-    * macOS:   ``~/Library/Application Support/saddlebag/pool.db``
-    * Windows: ``%LOCALAPPDATA%\\saddlebag\\pool.db``
-    """
+    """Where the pool lives, honouring each OS's convention."""
     if override := os.environ.get("SADDLEBAG_DB"):
         return Path(override).expanduser()
     return Path(platformdirs.user_data_dir("saddlebag")) / "pool.db"
 
 
 def _dt(value: float | None) -> datetime | None:
-    # Test `is not None`, not truthiness: epoch 0 is a real instant (1970-01-01)
-    # and a falsy float. Reading it back as None would make an expired lease look
-    # like no lease at all.
     return datetime.fromtimestamp(value, tz=UTC) if value is not None else None
 
 
 def _dt_at(row: sqlite3.Row, column: str) -> datetime:
-    """A timestamp column that is set on every row it is read from.
-
-    A leased credential row carries both lease timestamps — holding them is what *makes* it
-    leased — so a missing one is a corrupt row, and saying which column on which credential
-    beats constructing a `Lease` whose deadline is `None` and failing on the comparison.
-    """
+    """A timestamp column that is set on every row it is read from."""
     when = _dt(row[column])
     if when is None:
         raise ValueError(f"credential {row['id']!r} holds a lease with no {column}")
@@ -151,7 +116,7 @@ def _dt_at(row: sqlite3.Row, column: str) -> datetime:
 
 
 def _ref(value: str | None) -> KeychainRef | None:
-    """A stored keychain reference, or None. Attributes travel as a JSON object."""
+    """A stored keychain reference, or None."""
     return KeychainRef.of(json.loads(value)) if value else None
 
 
@@ -172,7 +137,7 @@ def _row_to_entry(row: sqlite3.Row) -> EnvironmentEntry:
 
 
 class Pool:
-    """The credential pool. Metadata and leases only — never a password."""
+    """The credential pool."""
 
     def __init__(self, path: Path | str | None = None) -> None:
         self.path = Path(path) if path is not None else default_db_path()
@@ -182,22 +147,13 @@ class Pool:
         self._conn.row_factory = sqlite3.Row
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.execute("PRAGMA busy_timeout=5000")
-        # Off by default in SQLite, and the environment_entries -> environments
-        # cascade is load-bearing: without it, removing an environment would strand
-        # its entries as unreachable rows.
         self._conn.execute("PRAGMA foreign_keys=ON")
         self._conn.executescript(_SCHEMA)
         self._migrate()
         self._conn.executescript(_INDEXES)
 
     def _migrate(self) -> None:
-        """Bring a pre-existing pool up to the current schema.
-
-        ``CREATE TABLE IF NOT EXISTS`` never alters an existing table, so a pool
-        created before a column existed keeps the old shape. Add any missing
-        column here — additively, so an old pool opened by a new saddlebag simply
-        gains the column (NULL for existing rows) rather than erroring.
-        """
+        """Bring a pre-existing pool up to the current schema."""
         have = {r["name"] for r in self._conn.execute("PRAGMA table_info(credentials)")}
         for column, statement in _MIGRATIONS:
             if column not in have:
@@ -212,7 +168,6 @@ class Pool:
     def __exit__(self, *exc: object) -> None:
         self.close()
 
-    # -- reads ---------------------------------------------------------------
 
     def _row_to_credential(self, row: sqlite3.Row) -> Credential:
         return Credential(
@@ -248,12 +203,7 @@ class Pool:
         include_locked: bool = False,
         now: datetime | None = None,
     ) -> list[Credential]:
-        """Credentials satisfying ``requirement``.
-
-        ``roles`` and ``features`` are **superset** matches: a credential
-        qualifies when it holds every required role, extras allowed. ``env``,
-        ``project`` and ``surface`` are exact.
-        """
+        """Credentials satisfying ``requirement``."""
         now = now or utcnow()
         req = requirement or Requirement()
         out: list[Credential] = []
@@ -290,10 +240,9 @@ class Pool:
             for r in rows
         ]
 
-    # -- writes --------------------------------------------------------------
 
     def _mint_id(self, table: str, prefix: str, pattern: re.Pattern[str]) -> str:
-        """Mint the next free ``<prefix>-NNN``. ``table`` is always a module literal."""
+        """Mint the next free ``<prefix>-NNN``."""
         rows = self._conn.execute(f"SELECT id FROM {table}").fetchall()
         used = [int(m.group(1)) for r in rows if (m := pattern.match(r["id"]))]
         return f"{prefix}-{max(used, default=0) + 1:03d}"
@@ -349,11 +298,7 @@ class Pool:
     def set_ref(
         self, credential_id: str, field: str, ref: KeychainRef | None
     ) -> Credential:
-        """Point ``field`` at a keychain item, or (with ``None``) stop pointing at one.
-
-        Returns the credential as it now reads, so a caller reports what is true after
-        the write rather than what it asked for.
-        """
+        """Point ``field`` at a keychain item, or (with ``None``) stop pointing at one."""
         column = REF_COLUMNS.get(field)
         if column is None:
             raise PoolError(
@@ -383,12 +328,7 @@ class Pool:
         run_id: str | None = None,
         now: datetime | None = None,
     ) -> Lease:
-        """Take an exclusive lease. Raises :class:`PoolError` if already locked.
-
-        The guard lives in the ``WHERE`` clause, so two concurrent callers racing
-        for the same credential cannot both win: SQLite serialises the writes and
-        the loser's ``UPDATE`` matches zero rows.
-        """
+        """Take an exclusive lease."""
         if ttl <= 0:
             raise PoolError(f"ttl must be positive, got {ttl}")
         now = now or utcnow()
@@ -424,7 +364,7 @@ class Pool:
         return cur.rowcount
 
     def release_lease(self, lease_id: str) -> int:
-        """Release one lease by id. Returns the number of credentials freed."""
+        """Release one lease by id."""
         return self._clear("lease_id = ?", (lease_id,))
 
     def release_run(self, run_id: str) -> int:
@@ -432,17 +372,12 @@ class Pool:
         return self._clear("run_id = ?", (run_id,))
 
     def expire(self, now: datetime | None = None) -> int:
-        """Force-release leases past their TTL. Safe to run in CI cleanup."""
+        """Force-release leases past their TTL."""
         now = now or utcnow()
         return self._clear(
             "lease_id IS NOT NULL AND expires_at <= ?", (now.timestamp(),)
         )
 
-    # -- environments --------------------------------------------------------
-    #
-    # An environment is *not* leased — it is shared, read-only configuration, so
-    # ten runs may render it concurrently. Only the credentials its credential-ref
-    # entries point at are exclusive, and those go through `acquire` above.
 
     def _entries_of(self, environment_id: str) -> tuple[EnvironmentEntry, ...]:
         rows = self._conn.execute(
@@ -472,11 +407,7 @@ class Pool:
         return self._row_to_environment(row) if row else None
 
     def env_by_name(self, name: str, project: str | None = None) -> Environment | None:
-        """Look an environment up the way a human refers to it: by name, within a project.
-
-        ``project IS ?`` rather than ``=``: SQL equality against NULL is never true,
-        so an unscoped environment would be unfindable with ``=``.
-        """
+        """Look an environment up the way a human refers to it: by name, within a project."""
         row = self._conn.execute(
             "SELECT * FROM environments WHERE name = ? AND project IS ?", (name, project)
         ).fetchone()
@@ -488,11 +419,7 @@ class Pool:
         return [self._row_to_environment(r) for r in rows]
 
     def env_find(self, project: str | None) -> list[Environment]:
-        """The environments in one project — where ``None`` means *the unscoped ones*.
-
-        Distinct from :meth:`env_all`, and the distinction matters: ``None`` here is
-        a project to match (with ``IS``, so it matches NULL), not an absent filter.
-        """
+        """The environments in one project — where ``None`` means *the unscoped ones*."""
         rows = self._conn.execute(
             "SELECT * FROM environments WHERE project IS ? ORDER BY id", (project,)
         ).fetchall()
@@ -511,8 +438,6 @@ class Pool:
     ) -> Environment:
         if format not in FORMATS:
             raise PoolError(f"unknown format {format!r} (expected one of {', '.join(FORMATS)})")
-        # UNIQUE (project, name) does not catch a duplicate when project is NULL —
-        # in SQL, two NULLs are not equal — so the unscoped case is checked here.
         if self.env_by_name(name, project) is not None:
             scope = f" in project {project}" if project else ""
             raise PoolError(f"environment {name} already exists{scope}")
@@ -553,7 +478,7 @@ class Pool:
         format: str | None = None,
         description: str | None = None,
     ) -> None:
-        """Update an environment's metadata. ``None`` means "leave this field alone"."""
+        """Update an environment's metadata."""
         if format is not None and format not in FORMATS:
             raise PoolError(f"unknown format {format!r} (expected one of {', '.join(FORMATS)})")
         fields = {"env": env, "target": target, "format": format, "description": description}
@@ -567,7 +492,7 @@ class Pool:
         )
 
     def env_remove(self, environment_id: str) -> bool:
-        """Drop an environment. Its entries go with it, via ON DELETE CASCADE."""
+        """Drop an environment."""
         cur = self._conn.execute("DELETE FROM environments WHERE id = ?", (environment_id,))
         return cur.rowcount > 0
 
@@ -579,13 +504,7 @@ class Pool:
         )
 
     def env_put_entry(self, environment_id: str, entry: EnvironmentEntry) -> EnvironmentEntry:
-        """Insert or replace one entry.
-
-        A new key lands at the end of the render order; an existing key keeps the
-        position it already had, so re-supplying a value never reshuffles a file.
-        Passing a non-zero ``position`` pins it explicitly (that is what manifest
-        import does).
-        """
+        """Insert or replace one entry."""
         position = entry.position
         if not position:
             existing = self._conn.execute(
@@ -620,8 +539,6 @@ class Pool:
                 ),
             )
         except sqlite3.IntegrityError as exc:
-            # The CHECK constraints are the last line of the no-secret-in-the-DB
-            # defence; surface a breach as an error, never as a silent write.
             raise PoolError(f"rejected entry {stored.key}: {exc}") from exc
         return stored
 

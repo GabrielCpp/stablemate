@@ -73,8 +73,7 @@ def test_new_rejects_malformed_field(tmp_path: Path):
 
 
 def test_checks_lists_the_vocabulary_without_a_book(tmp_path: Path, capsys):
-    """No graph is loaded: an author looking a signature up is often standing outside a book,
-    and the vocabulary is a property of ostler rather than of any one repository."""
+    """No graph is loaded: an author looking a signature up is often standing outside a book, and the vocabulary is a property of ostler rather than of any one repository."""
     assert run(tmp_path, "checks") == 0
     out = capsys.readouterr().out
     assert "absent(subject*=<str>)" in out
@@ -113,13 +112,7 @@ def _minimal_packet() -> dict:
 def test_a_relative_out_is_read_against_the_root_not_the_working_directory(
     tmp_path: Path, monkeypatch, capsys
 ) -> None:
-    """`--spec` and `--out` are arguments to one command and name one tree.
-
-    The regression this pins: `--spec` was rebased onto `-C` and `--out` was not, so a
-    generated plan landed under whatever directory the process started in — silently, with
-    its parent directories created there — and the next run refused with "already exists"
-    naming a path absent from the book's tree.
-    """
+    """`--spec` and `--out` are arguments to one command and name one tree."""
     root = tmp_path / "book"
     spec = root / "docs/specs/demo"
     spec.mkdir(parents=True)

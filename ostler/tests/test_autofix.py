@@ -1,9 +1,4 @@
-"""`ostler autofix` — deterministic repair of shape-detectable format drift.
-
-The first fix under test: a `verify:` bullet holding `path::symbol` test citations — the
-pre-split spelling — moves to `tests:`. The predicate must prove the value is a citation
-run before touching it; everything it cannot prove stays for doctor and judgment.
-"""
+"""`ostler autofix` — deterministic repair of shape-detectable format drift."""
 
 from __future__ import annotations
 
@@ -64,15 +59,11 @@ def test_prose_verify_is_left_for_judgment():
 
 
 def test_ref_without_file_extension_is_left_alone():
-    # `api-service/internal/service` could be a package or a stray identifier — not provably
-    # a test file, so not provably the split's path half.
     text = endpoint_doc("`api-service/internal/service::Test_Create`")
     assert autofix.fix_text(text) == text
 
 
 def test_type_without_tests_key_is_left_alone():
-    # A `step`'s `verify:` is a link, not a check, and the type declares no `tests:` —
-    # there is nowhere provable to move the value to.
     text = (
         "---\ntype: server\nslug: s\ntitle: T\n---\n# T\n\n"
         "## Runbooks\n\n### boot\n- does:\n  - start\n\n"
@@ -106,8 +97,6 @@ def test_json_null_spelling_becomes_absent_too():
 
 
 def test_null_equals_with_a_sibling_assertion_is_left_alone():
-    # Rewriting would leave `absent` twice; the call is malformed for a reason the fix
-    # cannot prove, so it stays a doctor finding.
     text = endpoint_doc('json_path(path="$.x", equals=None, absent=true)')
     assert autofix.fix_text(text) == text
 
@@ -144,7 +133,6 @@ def test_colon_keywords_compose_with_the_null_fix():
 
 
 def test_an_unquoted_colon_value_is_left_for_judgment():
-    # Which text the author meant as the string is not provable from the shape.
     text = endpoint_doc('json_path(path: $.detail, equals: invalid credentials)')
     assert autofix.fix_text(text) == text
 
@@ -170,7 +158,7 @@ def test_cli_check_then_write(repo: Path):
     p = repo / "docs/features/s.md"
     write(p, endpoint_doc("`api-service/internal/account/account_service_test.go::Test_Create`"))
     assert main(["-C", str(repo), "autofix", "--check"]) == 1
-    assert p.read_text().count("- verify:") == 1        # --check never writes
+    assert p.read_text().count("- verify:") == 1
     assert main(["-C", str(repo), "autofix"]) == 0
     assert "- tests:" in p.read_text()
     assert main(["-C", str(repo), "autofix", "--check"]) == 0

@@ -1,20 +1,4 @@
-"""The drain's two primitives: take an item, and write back what came of it.
-
-Ported from `base-library/workflows/okf-builder/scripts/{select-item,record}.py`. Both
-are used by the main graph and by the walk sub-flow against their own worklists, which is
-why they take the path as a parameter rather than reading it off a context.
-
-The one behavioral divergence is in `record`: its `current` and `discovered` arguments
-were JSON **strings**, because a YAML template argument is text. The YAML rendered them
-three different ways — `| tojson`, a bare `{{ }}` (`seed_fixup`, which passed a list that
-had already been serialized once), and `""` for "nothing to close" — and `record.py`
-carried an `ast.literal_eval` fallback for the spelling that came back as a Python repr.
-Here they are a `dict` and a `list[dict]` bound by `inspect.signature` at the callsite, so
-the round trip is gone and the fallback along with it — as are the two `logger.warning`s
-that reported a mangled one. Nothing is narrowed by choice: those arms handled a *rendered
-string*, and no caller in this shape can produce one. What they protected against is now
-a `TypeError` at the transition instead of a silently-dropped discovery list.
-"""
+"""The drain's two primitives: take an item, and write back what came of it."""
 from __future__ import annotations
 
 import hashlib
@@ -33,24 +17,11 @@ from workhorse_workflows.okf_builder.shared.blueprint import blueprint
 from workhorse_workflows.okf_builder.shared.schemas import Pick, Recorded
 
 
-#: How many times one target may be re-queued before the row stops reopening and blocks.
-#: A repair that has not landed in three turns against the same finding is a repair the
-#: agent cannot make from the book, and a fourth turn spends a turn to learn that again.
-#:
-#: It lives here rather than beside `MAX_STALL_ROUNDS` in `main/flow.py` because `record`
-#: is what counts, and `shared/` must not import `main/`. `flow.py` imports it back for the
-#: gate's wording, so the number an operator reads is the number that blocked the row.
 MAX_TARGET_ATTEMPTS = 3
 
 
-#: How many findings one repair turn may carry across the rows it batches. The same bound
-#: as one checkpoint item (`checkpoint.MAX_FINDINGS_PER_ITEM`): past it a large turn invites
-#: a shallow pass over its tail, whether the tail is one row or several.
 MAX_BATCH_FINDINGS = 25
 
-#: How many book files one repair turn may span once its own file's rows are taken. Sibling
-#: files share a folder, and so usually a subject and its source, but each one is still a
-#: document to read: past a handful the turn is a tour, whatever the findings total.
 MAX_BATCH_FILES = 5
 
 
@@ -59,12 +30,7 @@ def _norm(s: object) -> str:
 
 
 def book_has_docs(features: Path) -> bool:
-    """Whether this book has ever been written — one markdown file anywhere under it.
-
-    Public because two callers ask it and the answer has to be the same one: this module
-    decides whether a worklist claiming completed work can be believed, and `prepare`
-    decides whether the run reconciles an existing book or fills an empty one top-down.
-    """
+    """Whether this book has ever been written — one markdown file anywhere under it."""
     return features.is_dir() and any(features.rglob("*.md"))
 
 
@@ -112,14 +78,7 @@ def repair_keys(rows: list[dict[str, Any]]) -> set[tuple[str, str]]:
 
 
 def doctor_row(row: dict[str, Any]) -> bool:
-    """Whether a worklist row is a doctor finding's repair — the only rows doctor may settle.
-
-    The `fix:` prefix is not the test: the coverage join queues `fix:stale-citation` rows
-    too, and doctor never reports those, so reading the prefix alone closes a regrounding
-    row as "stale" the moment any doctor pass runs. The checkpoint writes the findings that
-    back a row into its context (`_repair_items`), so a row carrying them is one whose
-    standing a doctor read can answer.
-    """
+    """Whether a worklist row is a doctor finding's repair — the only rows doctor may settle."""
     if not str(row.get("kind", "")).startswith("fix:"):
         return False
     raw = row.get("context", "")
@@ -133,26 +92,7 @@ def doctor_row(row: dict[str, Any]) -> bool:
 def settle_stale_rows(
     items: list[dict[str, Any]], standing: list[dict[str, Any]], *, where: str
 ) -> int:
-    """Close every open doctor repair row doctor no longer reports. Returns how many.
-
-    `standing` is the repair items a fresh doctor pass would queue — the rows a finding
-    still backs. An open repair outside that set is a turn that would be spent finding
-    nothing to do: a rule retired under the run, a finding an earlier repair of the same
-    node already cleared, an autofix that moved.
-
-    **Blocked rows too.** `blocked` records that a finding survived its attempts *as of the
-    doctor read that blocked it*; the gate that prints it asserts the finding still stands.
-    The book is a working tree other writers share, so that claim is only as old as its
-    observation — a row left out of the settle kept a run parked for hours on a gate whose
-    findings someone else had already cleared. What the operator reads has to be what
-    doctor reports now, so a blocked row is settled by the same rule as a pending one.
-    Only doctor's rows (`doctor_row`); a discovery item or a coverage row is not doctor's
-    to settle.
-
-    Shared by `record`'s checkpoint write and `checkpoint.settle_stale`, which does the
-    same thing mid-drain and before a blocked gate; `where` is the closing note's word for
-    which one it was.
-    """
+    """Close every open doctor repair row doctor no longer reports."""
     keys = repair_keys(standing)
     settled = 0
     for i in items:
@@ -175,18 +115,7 @@ def reopen_row(
     max_attempts: int = MAX_TARGET_ATTEMPTS,
     features_root: str = "",
 ) -> bool:
-    """Reopen a `done` row whose finding still stands; True when it went back to `pending`.
-
-    The one requeue rule, shared by `record` (the checkpoint's write) and
-    `checkpoint.settle_stale` (the same doctor read, mid-drain) — see `record` for why an
-    attempt is counted only against the node the turn left. A row that has spent
-    `max_attempts` goes `blocked` instead, and False is returned.
-    """
-    # A `stale` close was the settle's, not a repair turn's: no turn tried the
-    # finding, so reopening it spends no attempt, and the settle's note must not
-    # survive to be quoted as the reason a standing finding could not be fixed.
-    # A blocked row settled `stale` keeps its `blocked_reason`, which is the
-    # last real turn's account, and re-blocks on it.
+    """Reopen a `done` row whose finding still stands; True when it went back to `pending`."""
     prior = ""
     sealed = str(existing.pop("closed_digest", "") or "")
     moved = bool(sealed and repo_root) and sealed != repair_scope_digest(
@@ -231,12 +160,7 @@ def reopen_row(
 
 
 def _repair_scope(row: dict[str, Any]) -> tuple[str, list[dict[str, Any]]] | None:
-    """The one book file a repair row is about, and its findings — or None if it has none.
-
-    A row joins a batch only when its scope is one file: a group finding (`related`) spans
-    several, and a `fix:stale-citation` row restamps its own pairs in `stamp_turn`
-    (its own context names the one file it stamped), so both stay turns of their own.
-    """
+    """The one book file a repair row is about, and its findings — or None if it has none."""
     kind = str(row.get("kind", ""))
     if not kind.startswith("fix:") or kind == "fix:stale-citation":
         return None
@@ -251,29 +175,7 @@ def _repair_scope(row: dict[str, Any]) -> tuple[str, list[dict[str, Any]]] | Non
 
 
 def _batch(rows: list[dict[str, Any]], first: int) -> list[int]:
-    """The rows one repair turn takes: `first`, the open repair rows on its file, then on
-    its sibling files.
-
-    **The row is the unit of tracking; the file is the unit of work.** A checkpoint row is
-    one `(file, node, code)`, so a finding keeps one identity and one `attempts` count
-    across rounds, and its prompt fragment is known before the turn starts. But the cost of
-    a turn is orientation — loading the method, reading the document and the source it
-    cites — and that is paid per file, not per code. Handing a document's rows out one turn
-    each paid it once per row: on a backfilled book the median document carried 10–21
-    rows. Instructions compose where orientation does not, so the turn takes every open
-    row on the file and the prompt includes one fragment per distinct code.
-
-    The method is loaded once per turn whatever it covers, and on a mostly-repaired book
-    that fixed part outweighs the per-file part: turns of two or three findings cost
-    several times more per finding than turns of fifteen. So once its own file is taken, a
-    turn with room left takes the open rows of files in the **same folder** — a feature's
-    documents, which cite neighbouring source — up to `MAX_BATCH_FILES` files.
-
-    Rows are taken in worklist order, which is the checkpoint's drain order, while their
-    findings total at most `MAX_BATCH_FINDINGS`. `first` is always taken, whatever its size.
-    An `active` row is one a crashed turn already held, so the same batch re-forms on the
-    re-pick.
-    """
+    """The rows one repair turn takes: `first`, the open repair rows on its file, then on its sibling files."""
     scope = _repair_scope(rows[first])
     if scope is None:
         return [first]
@@ -301,14 +203,7 @@ def _batch(rows: list[dict[str, Any]], first: int) -> list[int]:
 
 
 def _batch_context(rows: list[dict[str, Any]]) -> str:
-    """One repair context over several rows: every node, code and finding.
-
-    The keys a single row's context carries keep their meaning — `path`, `grounded`,
-    `findings` — so the prompt and `repair_power` read a batch the way they read one row;
-    `node`/`code` become the lists `nodes`/`codes`. A batch over several files carries
-    `paths` instead of `path`, in the order they were taken, and its findings are ordered
-    by file then line — each finding names its own `path`.
-    """
+    """One repair context over several rows: every node, code and finding."""
     contexts = [json.loads(str(r.get("context", ""))) for r in rows]
     findings = [f for c in contexts for f in (c.get("findings") or [])]
     paths = list(dict.fromkeys(str(c["path"]) for c in contexts))
@@ -331,37 +226,19 @@ def select_item(
     max_items: int = 0,
     done_baseline: int = 0,
 ) -> Pick:
-    """Pop the next pending item and mark it active.
-
-    Prefers an already-`active` item (a crash mid-investigation is re-picked, not
-    skipped), else the first `pending`. Empty → the drain is dry and the caller converges.
-
-    `max_items` caps investigations completed by THIS run, measured against
-    `done_baseline`. Counting `done` over the whole file would make it a *lifetime* cap:
-    a resumed worklist already at the ceiling is instantly over budget, hands out zero
-    items, and the run reports success having done nothing.
-    """
+    """Pop the next pending item and mark it active."""
     path = Path(worklist_path)
     data = json.loads(path.read_text())
-    # One worklist snapshot drives both the budget math (counts.done for the per-run cap)
-    # and the dashboard (progress "3/12" + the kinds line "5 surface · 3 layer" — okf's
-    # items are multi-kind, so that composition is the natural activity subtitle). The
-    # rows already carry `kind`/`status`, so they parse straight into the primitive's
-    # `WorkItem` (no Backend; this node owns the JSON read/write and the budget cap the
-    # primitive knows nothing about). okf's own fields — `target`, `context` — ride
-    # top-level and survive the round trip untouched. See workhorse.worklist.
     items = [wl.WorkItem.model_validate(row) for row in data.get("items", [])]
     snap = wl.snapshot(items)
     done = snap.counts.done
-    # Clamp: a baseline above the count means the worklist shrank under the run (a reset
-    # mid-flight). Trusting it would make `done_this_run` negative and the cap unreachable.
     this_run = max(0, done - min(done_baseline, done))
     logger.info(
         "worklist %s: %d items, %d done (%d this run, baseline %d), cap %s",
         path, len(items), done, this_run, done_baseline, max_items or "none",
     )
 
-    pick = wl.select_next(items)  # active-first crash-safe re-pick, then first pending
+    pick = wl.select_next(items)
     if pick is None:
         logger.info("drain is dry — no active or pending items; handing off to checkpoint")
         return Pick(
@@ -372,11 +249,6 @@ def select_item(
         )
 
     if max_items and this_run >= max_items:
-        # Over budget: stop handing out work so the run converges the partial book
-        # rather than burning quota all night. Pending items remain for a later resume.
-        # Checked only when there IS a next item: a drain that finished its last item
-        # exactly at the cap is dry, not over budget, and blocking it would ask the
-        # operator for an allowance nothing is waiting to spend.
         logger.warning(
             "over budget — %d done this run reaches the cap of %d; handing out no more "
             "work with %d still pending (resume to continue)",
@@ -397,11 +269,9 @@ def select_item(
     for n in taken:
         items[n].status = "active"
         rows[n]["status"] = "active"
-    # `exclude_unset` so writing the file back adds no key okf never wrote — the worklist
-    # is the workflow's document, and this node only flips statuses in it.
     data["items"] = rows
     path.write_text(json.dumps(data, indent=2))
-    pend = wl.counts(items).pending  # fewer after the flip
+    pend = wl.counts(items).pending
     target = str(getattr(pick, "target", "") or "")
     batch = [rows[n] for n in taken]
     kinds = [str(r.get("kind", "")) for r in batch]
@@ -419,8 +289,6 @@ def select_item(
         current_item=batch[0],
         batch=batch[1:],
         item_kind=pick.kind,
-        # `fix:<code>` is the checkpoint's spelling for a repair item; splitting the code out
-        # here keeps the template's `{% include %}` from having to parse the kind.
         item_code=codes[0] if codes else "",
         item_codes=codes,
         item_target=target,
@@ -436,12 +304,7 @@ def select_item(
 
 
 def _node_region(text: str, node: str, path: str) -> str | None:
-    """The lines a node owns in one document, or None when the document has no such node.
-
-    A file node — its id is the bare path — owns the whole document. A section node owns its
-    heading through its first child heading: a `#### field:` under a record is its own node,
-    and a repair on it is not a change to the record.
-    """
+    """The lines a node owns in one document, or None when the document has no such node."""
     if node == path:
         return text
     anchor = node.removeprefix(path + "#")
@@ -457,25 +320,7 @@ def _node_region(text: str, node: str, path: str) -> str | None:
 def repair_scope_digest(
     repo_root: str, context: str, target: str = "", features_root: str = "",
 ) -> str:
-    """A fingerprint of the book text a repair item is about, as it stands on disk now.
-
-    The scope is what the item's own context names: its `node` in `path`, or every member
-    of `related` for a group finding. A `behavior-repair` row's context is the auditor's
-    prose, not a scope contract, and names neither — it falls back to `target`, the one
-    file the finding is about, whole. A `behavior-repair` raised over an undocumented file
-    is legitimately settled by a `coverage-waivers.json` entry rather than an edit to that
-    file, so when this fallback applies and `features_root` is given, the waivers file's
-    content joins the fingerprint too — it is the artifact that exists to record exactly
-    that settlement, and a row with a real node scope has no need of it.
-
-    Two reads are equal exactly when nothing in that scope changed between them — which is
-    the observation `record` needs to tell "the turn's repair did not hold" from "the node
-    is no longer what the turn left".
-
-    Empty when the item names no scope at all — no structured context and no `target`; a
-    missing file or node is part of the fingerprint, so a node that vanished and stayed
-    vanished still compares equal to itself.
-    """
+    """A fingerprint of the book text a repair item is about, as it stands on disk now."""
     try:
         ctx = json.loads(context) if context else {}
     except json.JSONDecodeError:
@@ -531,62 +376,7 @@ def record(
     features_root: str = "",
     batch: list[dict[str, Any]] | None = None,
 ) -> Recorded:
-    """Mark the current item done, merge newly-discovered items, and count the re-tries.
-
-    The universal worklist mutator — used after enumerate (seed surfaces), investigate
-    (seed an item's spawned children), checkpoint (seed fixups), and recheck (seed
-    coverage/journey items). Dedupes by `(kind, target)` against ALL items, normalized.
-    A coverage recheck — and every repair item the checkpoint queues — may set
-    `requeue: true` to reopen an already-done row.
-
-    **A reopen is a re-try, and a re-try is counted.** `record` is both the only place a
-    row is closed and the only place one is reopened, so the per-target `attempts` counter
-    belongs here and nowhere else. A row that reaches `max_attempts` is not reopened again:
-    it goes `blocked`, carrying whatever the last turn said about why it could not finish.
-    `blocked` is `workhorse.worklist.Scheme`'s own third status — `select_next` already
-    passes over it and `WorkCounts` already buckets it — so nothing downstream learns a new
-    word, and the row stops being handed out instead of being silently marked done.
-
-    Without this, a finding doctor keeps re-raising is re-queued forever: the turn that
-    could not fix it closes it `done`, the checkpoint re-queues it, and nothing anywhere
-    counts. That is the loop that ran nineteen rounds on sixteen findings.
-
-    `doc_status`/`note` are the *closing* turn's own verdict on `current`. They are
-    recorded on the row for every kind of item, not just `change`: a repair turn reporting
-    `partial` or `skipped` is stating that this target is unrepairable from the book, and
-    that sentence is exactly what the operator gate needs to print.
-
-    `unblock` is the answer to that gate: it returns every blocked row to the drain with a
-    fresh attempt allowance, the same shape the coverage gate uses when an operator grants
-    another `MAX_RESCAN_ROUNDS`. Without it the gate would be a dead end — a human who
-    repaired the book by hand could not tell the run to try again. `only` narrows it to
-    the targets named; the operator's answer reaches every blocked row, and it also drops
-    the verdict an adjudication wrote, because the answer is a statement that something
-    changed and the next block is judged afresh.
-
-    `settle_fix_items` says `discovered` is the *whole* standing doctor report — the
-    checkpoint's call, and only that call. An open doctor row the report no longer names
-    is a finding that stopped firing: repaired by a neighbouring turn, or retired by a
-    doctor rule that changed under the run. It is closed as `stale` here rather than handed
-    out, because a repair turn on a finding doctor no longer raises is a turn spent
-    confirming there is nothing to do — and a blocked one is a gate asking the operator
-    about a finding that is gone (`settle_stale_rows`).
-
-    **An attempt is counted only against the node the turn left.** `repo_root` lets the
-    close store `closed_digest` — `repair_scope_digest` of the row's scope as the turn left
-    it — and lets a requeue compare that to the scope now. A finding still standing over an
-    unchanged scope is the turn's repair failing, and costs an attempt. A finding standing
-    over a *changed* scope says nothing about that turn: a sibling repair rewrote the node,
-    a human edited it, or the run moved to another checkout of the book — and the verdict
-    the row carries is about text that no longer exists. That reopen is free, and the stale
-    verdict is dropped so no block can quote it. Each free reopen needs a real change to the
-    scope by something other than this row's own turn, and those writers are bounded rows
-    themselves, so the per-target bound still holds. A row closed with no digest — before
-    this existed, or by a caller without `repo_root` — is counted as before. `features_root`
-    lets a `behavior-repair` row's digest see `coverage-waivers.json` too, for the finding
-    an undocumented-file audit settles there instead of in the target — see
-    `repair_scope_digest`.
-    """
+    """Mark the current item done, merge newly-discovered items, and count the re-tries."""
     path = Path(worklist_path)
     data = json.loads(path.read_text())
     items = data.get("items", [])
@@ -642,9 +432,6 @@ def record(
         items.append({
             "kind": d["kind"], "target": d["target"],
             "context": d.get("context", ""), "status": "pending",
-            # Written explicitly, never left to a model default: `select_item` writes the
-            # file back with `exclude_unset=True`, so a field no row ever carried is
-            # dropped on the next pick and the count restarts at zero every round.
             "attempts": 0,
         })
         by_key[k] = items[-1]
@@ -660,9 +447,6 @@ def record(
     path.write_text(json.dumps(data, indent=2))
     done = sum(1 for i in items if i.get("status") == "done")
     pend = sum(1 for i in items if i.get("status") == "pending")
-    # The *standing* blocked set, not only what this write blocked: the gate reports what
-    # is still stuck, and a resumed run that blocks nothing new must not hand the operator
-    # a shorter list than the round that first blocked them.
     blocked = [
         {
             "kind": str(i.get("kind", "")),
@@ -691,18 +475,7 @@ def record(
 
 
 def last_added_counts(worklist_path: Path, count: int) -> dict[str, int]:
-    """Kind breakdown of the last ``count`` items appended to *worklist_path*.
-
-    ``record`` writes ``discovered`` items to the end of the worklist; this
-    helper reads that tail and returns a ``{kind: n}`` summary. The audit's
-    gate body uses it to say "5 behavior-repair, 2 reground:no-source at the
-    bottom of <worklist>" without enumerating each row — the operator opens
-    the worklist to see what was queued.
-
-    Reading is the worklist's own JSON; no separate state. ``count`` is the
-    number returned by ``Recorded.added`` from the ``record`` call that just
-    ran, so this helper reads exactly the rows that call appended.
-    """
+    """Kind breakdown of the last ``count`` items appended to *worklist_path*."""
     if count <= 0:
         return {}
     try:

@@ -1,12 +1,4 @@
-"""farrier deletes what it generated, and refuses to overwrite what it did not.
-
-The installer used to prune by location: every file under `.claude/skills/` and its
-siblings was removed before each render, on the assumption that anything living there
-was farrier's. A hand-written skill kept next to the generated ones vanished on the
-next install with nothing to notice. Ownership is read off the file now — the
-`metadata.generated_by: farrier` block, or the DO-NOT-EDIT comment on the files that
-cannot carry front matter — and these tests are what keeps it that way.
-"""
+"""farrier deletes what it generated, and refuses to overwrite what it did not."""
 
 from pathlib import Path
 
@@ -65,8 +57,6 @@ def test_a_deselected_skill_is_still_removed(tmp_path: Path) -> None:
 
     assert install(repo, library, ONE) == 0
 
-    # The whole directory goes, not just the SKILL.md — a folder left behind is what
-    # --check would then report as a stray nobody can render away.
     assert not (repo / ".claude/skills/acme-cache").exists()
     assert (repo / ".claude/skills/acme-db/SKILL.md").is_file()
 
@@ -86,8 +76,6 @@ def test_an_untagged_file_at_an_output_path_aborts_the_whole_install(
 
     message = str(excinfo.value)
     assert ".claude/skills/acme-db/SKILL.md" in message
-    # Nothing was written: the refusal happens before the first delete, so the repo is
-    # exactly as the operator left it and their file is still theirs to rename.
     assert held.read_text(encoding="utf-8") == HANDWRITTEN
     assert not (repo / ".claude/commands").exists()
 
@@ -116,8 +104,6 @@ def test_a_hand_written_skill_is_not_reported_as_drift(tmp_path: Path) -> None:
     (repo / ".claude/skills/mine").mkdir()
     (repo / ".claude/skills/mine/SKILL.md").write_text(HANDWRITTEN, encoding="utf-8")
 
-    # `extra` means "farrier generated this and no longer would". Somebody else's file
-    # is not that, and reporting it would fail --check with nothing to fix.
     assert main(["install", "--repo", str(repo), "--library", str(library), "--check"]) == 0
 
 
@@ -143,8 +129,6 @@ def test_a_generated_skills_untagged_script_goes_with_it(tmp_path: Path) -> None
     repo = tmp_path / "acme"
 
     assert install(repo, library, BOTH) == 0
-    # A script runs byte-for-byte as written and carries no marker of its own; it is
-    # owned through the SKILL.md bundling it.
     assert (repo / ".claude/skills/acme-cache/scripts/run.sh").is_file()
 
     assert install(repo, library, ONE) == 0
@@ -156,13 +140,7 @@ ROOT_CONFIG = "agents:\n  copilot: true\nskills:\n  - db\nroots:\n  - acme\n"
 
 
 def test_a_root_instruction_file_is_marked_and_reinstallable(tmp_path: Path) -> None:
-    """The generated copilot root carries a banner, so farrier owns it on the next pass.
-
-    It is a verbatim render with no front matter to stamp. Unmarked, ownership — which
-    reads the file, not the path — would take farrier's own output for hand-written
-    instructions and refuse to install over it, which is a repo that can be installed
-    once and never again.
-    """
+    """The generated copilot root carries a banner, so farrier owns it on the next pass."""
     library = make_library(tmp_path)
     roots = library / "library" / "roots"
     roots.mkdir(parents=True)
@@ -222,12 +200,7 @@ LOCAL_CONFIG = (
 
 
 def test_the_aggregated_agents_md_can_be_regenerated(tmp_path: Path) -> None:
-    """AGENTS.md carries no banner on purpose, which makes the second install the
-    interesting one: ownership is judged by reading the file, and there is nothing in
-    this one to read. It has to be recognised as farrier's anyway, or the installer
-    reads back its own output as a hand-written rules file and refuses outright —
-    leaving `farrier install` permanently broken in every repo that maps one.
-    """
+    """AGENTS.md carries no banner on purpose, which makes the second install the interesting one: ownership is judged by reading the file, and there is nothing in this one to read."""
     library = make_library(tmp_path)
     repo = tmp_path / "acme"
 
@@ -238,11 +211,7 @@ def test_the_aggregated_agents_md_can_be_regenerated(tmp_path: Path) -> None:
 
 
 def test_a_hand_written_agents_md_is_still_overwritten(tmp_path: Path) -> None:
-    """The cost of the exemption above, stated so it is a decision and not a surprise:
-    a repo that hand-wrote AGENTS.md before adopting farrier and then maps that
-    directory loses it. The CLAUDE.md pointer beside it is refused instead — it carries
-    a banner, so it is judged by the ordinary rule.
-    """
+    """The cost of the exemption above, stated so it is a decision and not a surprise: a repo that hand-wrote AGENTS.md before adopting farrier and then maps that directory loses it."""
     library = make_library(tmp_path)
     repo = tmp_path / "acme"
     repo.mkdir()

@@ -11,16 +11,6 @@ from ostler import syntax
 from ostler.behavior_models import BehaviorEvidence, SourceContext
 
 
-#: Maximum recursion depth the Go visitor will follow into a tree-sitter node subtree.
-#:
-#: A real Go AST rarely nests past ~30 frames; a generated struct or a deeply chained
-#: switch can reach a few hundred. tree-sitter's `Node.text` is a C-extension property
-#: that has segfaulted inside a recursive visit when the AST carries a malformed
-#: subtree (see history: `bd8d0fd1` for the 0.26.0 pin, `1bea8d97` for the packet-budget
-#: shape; the new path is the same fault class). The cap keeps Python's own stack
-#: inside its default recursion limit for very large files; the *real* answer is
-#: `_slice` below, which replaces every `syntax.text_of` call with a byte-range read
-#: off `self.source_bytes` so the C-extension call never happens.
 MAX_DEPTH = 500
 
 
@@ -55,16 +45,7 @@ class GoEvidence:
         self.literals: Counter[str] = Counter()
 
     def _slice(self, node: Node | None) -> str:
-        """The bytes *node* spans, decoded. Always returns; never calls `node.text`.
-
-        This is the bulletproof replacement for `syntax.text_of` on a node we own
-        — the visitor already has the source bytes, and a tree-sitter C call on a
-        malformed subtree has segfaulted the interpreter in production. Slicing
-        into the same bytes produces the identical string for any well-formed
-        node and produces `""` (with the `replace` flag preserved) for an out-of-
-        bounds range, which is what every visitor's downstream callers already
-        tolerate.
-        """
+        """The bytes *node* spans, decoded."""
         if node is None:
             return ""
         start, end = node.start_byte, node.end_byte
@@ -98,9 +79,6 @@ class GoEvidence:
         ))
 
     def visit(self, node: Node, depth: int = 0) -> None:
-        # See MAX_DEPTH — the cap is the only thing keeping a malformed subtree's C call
-        # from tearing the interpreter down. Drop the rest of this branch and keep going:
-        # the candidates emitted at the shallower frame still name the right symbol.
         if depth > MAX_DEPTH:
             return
         if node.type == "comment":
@@ -127,11 +105,6 @@ class GoEvidence:
                 name = f"<literal:{self.literals[parent]}>"
             self.symbols.append(name)
             self.context(node)
-            # Bodies with only effects still need an audit candidate. Include private
-            # declarations too: visibility alone cannot decide externally used behavior.
-            # The contract's snippet is its signature, not the body: the body already travels
-            # as this declaration's source context, and repeating it doubled a long function
-            # inside every packet holding its contract — past the packet budget for one item.
             signature = self.source_bytes[node.start_byte:body.start_byte].decode().strip()
             self.emit(node, "function_contract", text=signature, snippet=signature)
             for child in node.named_children:
@@ -180,8 +153,6 @@ class GoEvidence:
             "expression_case", "type_case", "communication_case", "default_case", "for_statement",
         }
         if contextual:
-            # Headers come from the grammar's direct token children, not a text search
-            # for braces/colons that could also occur inside literals or expressions.
             boundary = next((child for child in node.children if child.type in {"{", ":", "block"}), None)
             end = boundary.start_byte if boundary is not None else node.end_byte
             header = self.source_bytes[node.start_byte:end].decode().strip()

@@ -1,17 +1,4 @@
-"""Immutable per-run configuration for the workhorse driver.
-
-Everything the driver used to read ad-hoc from ``os.environ`` at run time is
-captured ONCE here, at the CLI boundary, in a frozen ``RunConfig``. The driver
-and the agent ladder then read from this object rather than the environment, so a
-run's configuration is immutable by design and a test can drive a workflow
-in-process with explicit values instead of mutating global state.
-
-``from_env`` is the *only* place these variables are read: ``runner/ladder.py``
-holds no import-time constants of its own, so the names and defaults documented in
-``docs/GUARDRAILS.md`` have exactly one implementation and a caller that passes no
-config gets the dataclass defaults rather than whatever the environment said when
-the module happened to be imported.
-"""
+"""Immutable per-run configuration for the workhorse driver."""
 
 from __future__ import annotations
 
@@ -47,21 +34,13 @@ def _float(environ: Mapping[str, str], key: str, default: float) -> float:
 
 
 def _positive_int(environ: Mapping[str, str], key: str, default: int) -> int:
-    """Like ``_int``, but a zero or negative reading falls back to the default.
-
-    A budget of zero is not "no budget", it is a run that ends before its first
-    transition — so a mistyped variable degrades to the shipped default rather than
-    to a guard that fires immediately.
-    """
+    """Like ``_int``, but a zero or negative reading falls back to the default."""
     value = _int(environ, key, default)
     return value if value > 0 else default
 
 
 def _positive_float(environ: Mapping[str, str], key: str, default: float) -> float:
-    """Like ``_float``, with the same "zero is a typo, not a setting" reading.
-
-    A poll interval of zero is a busy loop; the default is the safer misread.
-    """
+    """Like ``_float``, with the same "zero is a typo, not a setting" reading."""
     value = _float(environ, key, default)
     return value if math.isfinite(value) and value > 0 else default
 
@@ -81,108 +60,29 @@ def _bool(environ: Mapping[str, str], key: str, default: bool) -> bool:
 
 @dataclass(frozen=True)
 class AgentResilience:
-    """The agent-node recovery ladder's tuning knobs (see runner/ladder.py).
+    """The agent-node recovery ladder's tuning knobs (see runner/ladder.py)."""
 
-    One field per ``AGENT_*`` env var. Built by :meth:`from_env` at the CLI
-    boundary and held as a field of the :class:`~workhorse.runner.ladder.AgentRunner`
-    the run is given, so the reframe/retry/cap behavior is set explicitly rather than
-    by import-time module constants — which is what lets an in-process test state a
-    one-attempt budget without touching the environment.
-    """
-
-    #: Additional attempts when Claude's response can't be parsed into the node's
-    #: declared outputs.
     max_output_retries: int = 2
-    #: Additional attempts when the agent-CLI call itself fails for a *transient*
-    #: reason (rate limit, overload, network blip). Each retry waits
-    #: min(base * 2**attempt, cap) seconds.
-    #:
-    #: This budget is sized in DAYS, not minutes, because the failure it covers is
-    #: measured in days: a home or office link can be down for a working day, and an
-    #: overloaded provider for hours. With the defaults below the ladder climbs
-    #: 15s→30m and then holds there, spanning ~27h before it gives up — so an
-    #: unattended run sleeps through an outage and resumes on the other side of it
-    #: instead of ending inside it. Nothing is consumed while waiting and the run
-    #: keeps its checkpoint, so a long wait costs only wall clock.
     max_invoke_retries: int = 60
-    #: When invocation + output parsing still fail after the transient retries,
-    #: REFRAME the prompt from scratch in a fresh session and try the node again, up
-    #: to this many times. A node Claude can't answer as-phrased often succeeds when
-    #: re-asked more simply.
     max_rephrase_attempts: int = 3
-    #: When a node exhausts the model's context window and the headless CLI returns
-    #: instead of auto-compacting, COMPACT the session and continue (preserving the
-    #: node's progress) this many times before falling through to the reframe
-    #: ladder. 0 disables compaction recovery (straight to reframe).
     max_compact_attempts: int = 2
-    #: Default per-node wall-clock budget for a single agent turn when the node does
-    #: not set its own ``timeout`` (seconds). 1h is long enough for a heavy QA /
-    #: build / browser node, short enough that a wedged turn is force-killed and
-    #: retried within the hour. Nodes may override per-node (incl. ``infinity``).
     result_timeout_s: float = 3600.0
     invoke_backoff_base_s: float = 15.0
-    #: Ceiling on a single transient backoff. Half an hour is the coarsest useful
-    #: poll for "is the network back": long enough that a day-long outage costs ~48
-    #: probes rather than thousands, short enough that the run restarts within half
-    #: an hour of the link returning.
     invoke_backoff_cap_s: float = 1800.0
-    #: Cumulative transient-backoff sleep allowed within one agent-node visit.
     retry_wait_budget_s: float = 97305.0
-    #: Hard backstop for the per-node timeout. The in-loop ``elapsed > timeout``
-    #: check can only fire BETWEEN reads — if the agent writes a partial line and
-    #: then its socket wedges (a stalled API stream, a hung MCP server), the reader
-    #: blocks inside readline() and the wall-clock check never runs again. A watchdog
-    #: on a SEPARATE thread SIGKILLs the whole process group once the turn overruns
-    #: its budget by this grace, regardless of stream state.
     watchdog_grace_s: float = 120.0
-    #: Wait before re-attempting a cap whose error names no reset time (MiniMax's
-    #: "Token Plan usage limit reached" names none). Nothing is known about when the
-    #: window reopens, so every second of this wait is time the run may spend parked
-    #: after it already has: an hour here repeatedly re-parked a fleet for a second
-    #: hour when its probe fired minutes before the reset. A re-attempt while still
-    #: capped is one CLI call that fails at once and spends no tokens, so the wait is
-    #: sized by the time worth losing, not by the cost of asking.
     cap_default_wait_s: float = 600.0
     cap_wait_margin_s: float = 120.0
     cap_tick_s: float = 600.0
-    #: Longest SINGLE sleep before re-attempting a capped turn, regardless of how far
-    #: out the reported reset is. A weekly window reopens ~6 days out, and sleeping
-    #: that in one shot means the run cannot notice the cap clearing EARLY — a manual
-    #: reset, a plan change, topped-up credits. Re-attempting on this interval costs
-    #: one CLI invocation that fails immediately while still capped, and recovers the
-    #: run within the interval when it is not. 0 disables probing (sleep the whole
-    #: reported reset in one wait, the pre-probe behaviour).
-    #:
-    #: ``max_cap_waits`` must exceed ``cap_wait_budget_s`` divided by the shorter of this
-    #: and ``cap_default_wait_s``, or the wait count, not the budget, becomes what ends
-    #: a legitimately long cap.
     cap_probe_s: float = 7200.0
-    #: Consecutive cap waits allowed in one node visit. Sized so that re-attempting an
-    #: unknown-reset cap every ``cap_default_wait_s`` can span the whole
-    #: ``cap_wait_budget_s`` (8d / 10min = 1152) with room to spare: the cumulative
-    #: budget is meant to be the binding limit.
     max_cap_waits: int = 1536
     cap_max_wait_s: float = float(8 * 24 * 3600)
-    #: Cumulative cap sleep per node: one maximum structured reset plus its margin.
     cap_wait_budget_s: float = float(8 * 24 * 3600 + 120)
-    #: Cumulative pause before fresh-session prompt reframes (10s + 20s + 30s).
     reframe_wait_budget_s: float = 60.0
-    #: The agent CLI can be replaced ON DISK mid-run — Claude Code ships a native
-    #: binary and self-updates by default, and a manual ``npm i -g`` does the same.
-    #: While that replacement is in flight, exec of the same path can fail (ETXTBSY /
-    #: ENOENT during the rename / ENOEXEC on a half-written header). Short retries cover
-    #: the usual window; prior successful launches let a longer update escalate into the
-    #: outer transient ladder instead of looking like a CLI that was never configured.
     exec_retry_max: int = 5
     exec_retry_base_s: float = 1.0
     exec_retry_cap_s: float = 8.0
-    #: Cumulative self-update exec backoff per node (1s + 2s + 4s + 8s + 8s).
     exec_retry_wait_budget_s: float = 23.0
-    #: How often the streaming loop emits a turn-liveness heartbeat metric. It only
-    #: REPORTS the idleness the loop already tracks — it never kills anything — so it
-    #: is safe on by default (and a no-op when telemetry is off). Kept well under
-    #: groom's stall window so a live turn is provably alive long before the alerter
-    #: would page. Shares ``WORKHORSE_OTEL_HEARTBEAT_S`` with the metric exporter.
     heartbeat_every_s: float = 10.0
 
     @classmethod
@@ -222,79 +122,24 @@ class AgentResilience:
         )
 
     def with_overrides(self, **kwargs: Any) -> AgentResilience:
-        """A copy with some fields replaced — used by the test harness to zero the
-        recovery sleeps (e.g. ``max_rephrase_attempts=0``) without env mutation."""
+        """A copy with some fields replaced — used by the test harness to zero the recovery sleeps (e.g."""
         return replace(self, **kwargs)
 
 
 @dataclass(frozen=True)
 class RunConfig:
-    """Immutable configuration for one run.
-
-    Built once by :meth:`from_env` (the CLI boundary in ``main()``), then read by the
-    driver instead of ``os.environ``. Tests construct it directly — with a fake
-    ``backend``, or with the null one the default supplies — to drive a workflow
-    hermetically.
-
-    The backend is a *field* rather than something this class *resolves*. Resolving
-    one means importing the registry, which imports every adapter, and every adapter
-    imports this module for :class:`AgentResilience` — a real cycle, which used to be
-    hidden inside a method-body import. Being handed the adapter breaks it: the CLI
-    already had to name and validate the backend, so it is the ring that owns the
-    choice, and nothing here needs to know a *selectable* adapter exists. The one
-    adapter named here is the null one, which no operator can select and which
-    imports nothing beyond the port.
-    """
+    """Immutable configuration for one run."""
 
     resilience: AgentResilience = field(default_factory=AgentResilience)
-    #: Absolute wall-clock ceiling in seconds (WORKHORSE_MAX_RUNTIME_S); 0 = unbounded.
     max_runtime_s: float = 0.0
-    #: How often an ``Await`` re-stats the file it is blocked on
-    #: (WORKHORSE_AWAIT_POLL_S). The wait is measured in days, so this is about not
-    #: spinning rather than about latency.
     await_poll_s: float = 15.0
-    #: Transitions a run may make before it is declared stuck
-    #: (WORKHORSE_MAX_TRANSITIONS). The gas tank bounds node *work*; this bounds the
-    #: state machine itself, so a two-state ping-pong that burns no gas still ends. A
-    #: workflow class that sets ``max_transitions`` overrides this for its own runs.
     max_transitions: int = 1000
-    #: Echo the path of each node's rendered prompt to the console
-    #: (WORKHORSE_PRINT_PROMPT); the path only, never the rendered variables.
     print_prompt: bool = True
-    #: Run-level model override (AGENT_MODEL, else AGENT_CLAUDE_MODEL), used when the
-    #: node's power tier maps to no model. None = no override, so the backend's
-    #: ``[default.<backend>]`` entry and then its built-in decide.
     model_override: str | None = None
-    #: The agent CLI this run drives, already resolved. The CLI boundary picks it —
-    #: ``--cli`` else ``AGENT_CLI`` — and validates it there, so an unknown name fails
-    #: before the first state rather than at the first agent node. A run with no agent
-    #: in it — a dry run, or a test driving script nodes only — gets the
-    #: :class:`~workhorse.runner.backends.null.NullBackend`, never ``None``: absence is
-    #: an implementation of the port, so nothing downstream branches on it and
-    #: ``AgentRunner.backend`` can honestly claim to hold an ``AgentBackend``.
     backend: AgentBackend = field(default_factory=NullBackend)
-    #: The named model set this run resolves its models from (``--profile``), or "" for
-    #: the config's top-level tables. Like ``backend``, it comes from the flag rather
-    #: than from :meth:`from_env`: it is a run policy the CLI boundary decides and
-    #: validates, not an environment reading. What it selects is re-read per turn, so
-    #: editing the profile mid-run still moves the run — only the *name* is fixed here.
     profile: str = ""
-    #: The working tree this run operates on (AGENT_REPO_DIR), or "" for the process
-    #: cwd. Only a path — the driver makes no claim that it is a repository, and
-    #: :mod:`workhorse.gitstate` observes it rather than assuming. Read here for the
-    #: same reason as everything else in this class: so the driver never asks the
-    #: environment a second time and gets a different answer.
     workspace: str = ""
-    #: Keep each agent turn's transcript under the run's ``transcripts/``
-    #: (WORKHORSE_CAPTURE_TRANSCRIPTS). On by default: what it buys — being able to see
-    #: why a node re-decided the same thing five times — is only available after the
-    #: fact, so a run that has to be told to record is a run that never recorded the
-    #: turn anyone ends up asking about.
     capture_transcripts: bool = True
-    #: Per-turn ceiling on a captured transcript, in bytes
-    #: (WORKHORSE_TRANSCRIPT_MAX_BYTES). A turn runs 0.5-1.1 MB; the default is sized
-    #: for the pathological turn, and a capture that hits it is truncated with a marker
-    #: line rather than dropped.
     transcript_max_bytes: int = transcript.DEFAULT_MAX_BYTES
 
     @classmethod

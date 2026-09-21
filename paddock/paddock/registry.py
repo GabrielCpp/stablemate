@@ -1,17 +1,4 @@
-"""What a task module declares, and the registry that collects it.
-
-Mirrors `ostler_qa`: a task module makes module-level declaration calls and decorates
-functions, and importing it is what builds the record. The rules are the same ones, for
-the same reason — a wrong key in Python raises with a line number:
-
-* exactly one `task()` call per module, and it comes before the steps;
-* `@step()` functions run in declaration order, and a duplicate name is an error rather
-  than a silent overwrite;
-* `score` is picked up by name from the module, and is optional.
-
-Validation is fail-closed at import: a module that declares nothing, or declares twice,
-raises rather than producing an empty task the runner would happily execute to no effect.
-"""
+"""What a task module declares, and the registry that collects it."""
 
 from __future__ import annotations
 
@@ -32,23 +19,12 @@ class TaskError(RuntimeError):
 
 @dataclass(frozen=True, slots=True)
 class Score:
-    """What a task's own ruler measured. Serialized as `score.json` beside the result.
-
-    `headline` is the one line a human reads; `detail` is the lines under it; `data` is
-    the machine-readable body — the per-row verdicts a later comparison needs, which a
-    printed line cannot carry.
-    """
+    """What a task's own ruler measured."""
 
     headline: str
     detail: tuple[str, ...] = ()
     data: Mapping[str, Any] = field(default_factory=dict)
 
-    #: Why this round is a diagnostic rather than a baseline — one short phrase per
-    #: reason, empty when the number stands on its own. A ruler that knows its round was
-    #: compromised says so *here* rather than only in `detail`, because `detail` is a
-    #: rendering a human reads and this is what travels into the tracked pointer. The
-    #: pointer refuses to record an uncaveated note while this is non-empty, so a
-    #: compromised round cannot leave behind a line a later comparison would trust.
     caveats: tuple[str, ...] = ()
 
     def as_json(self) -> dict[str, Any]:
@@ -106,12 +82,7 @@ REGISTRY = _Registry()
 
 
 def task(*, name: str, seed: str, config: str) -> None:
-    """Declare the module's one task: what it is called, what it starts from, how it runs.
-
-    `config` is a repo-relative path to a full stablemate config TOML. A task swaps models
-    by swapping that file — the config carries the `[power.*]` / `[profiles.*]` tables,
-    which is why the harness has no model vocabulary of its own.
-    """
+    """Declare the module's one task: what it is called, what it starts from, how it runs."""
     if REGISTRY.declared():
         raise TaskError(f"task() was already called as {REGISTRY.name!r}; a module declares one task")
     if not name or not seed or not config:
@@ -124,16 +95,9 @@ def task(*, name: str, seed: str, config: str) -> None:
 
 
 def step(*, name: str = "") -> Callable[[StepFn], StepFn]:
-    """Register a step. Steps run in declaration order, each taking the `Run` handle.
-
-    Steps are functions, not schema entries, precisely so the setup that is *not* a
-    workflow invocation — overwriting a defect variant, bringing a compose stack up,
-    materializing a per-trial tree — needs no escape hatch to exist.
-    """
+    """Register a step."""
 
     def decorate(fn: StepFn) -> StepFn:
-        # `StepFn` is a Callable, and not every callable carries a `__name__` — a step
-        # written as a partial or a callable object is legal and just has to be named.
         given = getattr(fn, "__name__", "")
         if not REGISTRY.declared():
             raise TaskError(f"@step {given or fn!r} declared before task() — call task() first")
@@ -149,7 +113,7 @@ def step(*, name: str = "") -> Callable[[StepFn], StepFn]:
 
 
 def collect(module_name: str, score: ScoreFn | None, doc: str = "") -> Task:
-    """Freeze what the module declared into a `Task`. Called by the loader after import."""
+    """Freeze what the module declared into a `Task`."""
     if not REGISTRY.declared():
         raise TaskError(f"{module_name}: no task() call — the module declares no task")
     if not REGISTRY.steps:

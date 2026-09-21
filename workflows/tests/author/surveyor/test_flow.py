@@ -1,32 +1,4 @@
-"""End-to-end drives of the surveyor (`author/surveyor/flow.py`).
-
-Nothing is stubbed except the agent turn. `load_survey_config`, `check_inventory`,
-`expand_inventory`, `select_next_unit`, `split_unit`, `validate_record`, `mark_unit`,
-`verify_records`, `validate_partition` and `emit_artifacts` all run for real against the
-`repo` fixture, so a drive here exercises the granularity expansion, the worklist, the
-record ruleset, the coverage gate, the orphan sweep and the emitter.
-
-The agent seam is patched where the engine reads it
-(`RunEnv.agent_runner`) and the stub **writes the artifacts its
-reply claims to have written** — the rules file, the finding record, the partition. The
-loop's state lives in those files, not in the machine, so an agent that only replied would
-leave every node downstream of it with nothing to read.
-
-What the port could get wrong, and what is therefore under test here:
-
-* the three bounded loops and their give-up arms — plan rework, record fix, partition
-  rework — each ending somewhere other than "stuck";
-* the three operator gates, which are the flow's (and the whole port's) first `Await`
-  sites. The YAML sent `resolve_plan` and `resolve_partition` into `await_*`
-  *unconditionally* and let `await-operator.py` decide whether to wait by reading a
-  `STATUS:` line the resolver could write itself. That let a resolver answer on the
-  operator's behalf; this port's `resolve-operator.md` is diagnosis-only, so all three
-  gates always park with `Await` regardless of what the resolver reports. Every test
-  below that reaches a gate patches `wait_for_answer` to stand in for the human — without
-  it, the test would hang against the driver's real poll.
-* resume, which is why the checkpoint lands before the agent turn: a run killed
-  mid-assessment re-runs that one unit and nothing before it.
-"""
+"""End-to-end drives of the surveyor (`author/surveyor/flow.py`)."""
 from __future__ import annotations
 
 import json
@@ -65,23 +37,15 @@ BACKLOG = "docs/backlog.md"
 
 BUTTON = "src/components/button"
 MODAL = "src/components/modal"
-#: The one child `src/components/modal` splits into.
 MODAL_CHILD = "src/components/modal/index.tsx"
 CLUSTER = "missing-accessible-name"
 
 
-# --------------------------------------------------------------------------- fixtures
 
 
 @pytest.fixture
 def surveyed(repo: Path, write: Callable[[Path, str], Path]) -> Path:
-    """A repo with a rubric and two component folders, and nothing else.
-
-    No rules file and no inventory, so `check_inventory` reports `needs_plan` and the
-    granularity planner runs — the survey's one planning judgment is in the drive rather
-    than pinned by the fixture. Two units is the smallest list that can show the loop
-    taking one unit per pass.
-    """
+    """A repo with a rubric and two component folders, and nothing else."""
     write(repo / RUBRIC, "# Accessibility rubric\n\nEvery control needs a name.\n")
     write(repo / BUTTON / "index.tsx", "export const Button = () => <button />\n")
     write(repo / MODAL / "index.tsx", "export const Modal = () => <div />\n")
@@ -93,7 +57,7 @@ def surveyed(repo: Path, write: Callable[[Path, str], Path]) -> Path:
 
 
 def _rules(glob: str = "src/components/*") -> str:
-    """The enumeration rules the planner writes. JSON is valid YAML."""
+    """The enumeration rules the planner writes."""
     return json.dumps({"rules": [{"kind": "folder", "glob": glob}]}, indent=2) + "\n"
 
 
@@ -127,12 +91,7 @@ def _assessed(repo: Path) -> list[str]:
 
 
 def _partition(repo: Path, *, orphan: bool = False) -> str:
-    """One mechanical cluster over the assessed units.
-
-    `orphan=True` leaves the last assessed unit out, which is exactly what the orphan
-    sweep in `validate_partition` exists to catch — and the only way to drive the
-    partition rework loop with the real gate rather than a stubbed verdict.
-    """
+    """One mechanical cluster over the assessed units."""
     units = _assessed(repo)
     return json.dumps(
         {
@@ -153,12 +112,7 @@ def _partition(repo: Path, *, orphan: bool = False) -> str:
 
 
 def _accept_blocked(repo: Path) -> list[str]:
-    """What the resolver agent does for a `survey-coverage` block, for real.
-
-    The prompt tells it to either re-pend a blocked unit or record `disposition:
-    accepted` in its record. This takes the second branch, so the coverage gate has a
-    real reason to go green on the next pass rather than a patched one.
-    """
+    """What the resolver agent does for a `survey-coverage` block, for real."""
     data = json.loads((repo / INVENTORY).read_text())
     accepted = []
     for unit in data["units"]:
@@ -173,17 +127,7 @@ def _accept_blocked(repo: Path) -> list[str]:
 
 
 class _Agent:
-    """A scripted stand-in for all five of the flow's agent turns.
-
-    It dispatches on the prompt's filename, the same key the engine derives its node id
-    from, and every handler leaves behind the artifact the next deterministic node reads.
-    The knobs are the flow's branches: `blocked` returns a stage's blocked reply once,
-    `corrupt` writes a record with unparseable front-matter, `split_units` takes the
-    granularity escape hatch, `unfixable` refuses the repair, and `explode` raises
-    instead of assessing — a run killed mid-turn. `resolve-operator.md` is
-    diagnosis-only, so its handler below never branches the flow — only the human's
-    answer (a patched `wait_for_answer` in the test itself) does that.
-    """
+    """A scripted stand-in for all five of the flow's agent turns."""
 
     def __init__(
         self,
@@ -210,7 +154,6 @@ class _Agent:
         self.calls: list[str] = []
         self.args: list[dict[str, Any]] = []
 
-    # -- the seam ---------------------------------------------------------
 
     def __call__(self, node: Any, ctx: Any, *args: Any, **kwargs: Any) -> Any:
         stem = Path(node.prompt).stem
@@ -226,7 +169,6 @@ class _Agent:
     def args_for(self, stem: str) -> list[dict[str, Any]]:
         return [a for s, a in zip(self.calls, self.args, strict=True) if s == stem]
 
-    # -- one handler per prompt -------------------------------------------
 
     def _plan_units(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
         if "plan-units" in self.blocked and nth <= self.block_repeats:
@@ -245,9 +187,6 @@ class _Agent:
         path = self.repo / data["record_path"]
         path.parent.mkdir(parents=True, exist_ok=True)
         if unit_id in self.corrupt:
-            # Unparseable front-matter, not a wrong `unit:`: `mark_unit`'s lenient reader
-            # would accept a well-formed record for the wrong unit and mark the unit
-            # assessed, which would hide the give-up path this drives.
             path.write_text("---\nunit: [oops\n")
             return {"status": "assessed", "notes": "wrote the record"}
         path.write_text(_record(unit_id, data["unit_kind"]))
@@ -269,9 +208,7 @@ class _Agent:
         return {"status": "complete", "notes": "one mechanical cluster"}
 
     def _resolve_operator(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
-        """The diagnostic investigator's report. It never resolves the block itself —
-        that would be deciding on the operator's behalf — so it only writes a diagnosis;
-        whatever the test wants to happen next belongs in a patched `wait_for_answer`."""
+        """The diagnostic investigator's report."""
         return {
             "decision": "escalated",
             "notes": f"needs a decision on {data['block_stage']}",
@@ -287,8 +224,6 @@ def _env(tmp: Path, *, run_dir: Path | None = None) -> RunEnv:
     )
     return RunEnv(
         writer=writer,
-        # The *author* package: `handoff` subscopes the writer, not the env, so a
-        # sub-flow's prompt paths resolve against its parent's directory.
         workflow_dir=Path(author.__file__).parent,
         session_id_path=writer.run_dir / ".session_id",
         config=RunConfig(),
@@ -304,18 +239,12 @@ def _units(repo: Path) -> dict[str, str]:
     return {u["id"]: u["status"] for u in data["units"]}
 
 
-# ------------------------------------------------------------------- the happy path
 
 
 def test_two_components_are_planned_assessed_verified_and_emitted(
     surveyed: Path, tmp_path: Path
 ) -> None:
-    """One full pass over a repo with nothing pinned: plan, freeze, assess each unit
-    once, verify coverage, cluster, emit.
-
-    Every stage runs exactly once — that the loop takes one unit per pass and exits on
-    the empty pending set is the whole shape of the flow.
-    """
+    """One full pass over a repo with nothing pinned: plan, freeze, assess each unit once, verify coverage, cluster, emit."""
     agent = _Agent(surveyed)
     result = _drive(_env(tmp_path), agent)
 
@@ -341,11 +270,7 @@ def test_two_components_are_planned_assessed_verified_and_emitted(
 def test_operator_pinned_rules_skip_the_planner(
     surveyed: Path, tmp_path: Path, write: Callable[[Path, str], Path]
 ) -> None:
-    """`check_inventory`'s point: a rules file on disk is a decision already made.
-
-    The planner is the flow's one expensive judgment, and re-deciding a granularity an
-    operator pinned would silently overwrite it.
-    """
+    """`check_inventory`'s point: a rules file on disk is a decision already made."""
     write(surveyed / RULES, _rules())
     agent = _Agent(surveyed)
     result = _drive(_env(tmp_path), agent)
@@ -358,11 +283,7 @@ def test_operator_pinned_rules_skip_the_planner(
 def test_the_assessor_is_handed_the_unit_the_rubric_and_the_context_file(
     surveyed: Path, tmp_path: Path
 ) -> None:
-    """The six `args:` the YAML's `assess_unit` node rendered, arriving as real values.
-
-    `record_path` is derived once, by `select_next_unit`, so assess/validate/mark cannot
-    disagree about where the record lives.
-    """
+    """The six `args:` the YAML's `assess_unit` node rendered, arriving as real values."""
     agent = _Agent(surveyed)
     _drive(_env(tmp_path), agent)
 
@@ -376,9 +297,7 @@ def test_the_assessor_is_handed_the_unit_the_rubric_and_the_context_file(
 
 
 def test_every_turn_runs_in_the_surveyed_repo(surveyed: Path, tmp_path: Path) -> None:
-    """`cwd` decides whose CLAUDE.md, skills and git context each turn sees. It is the
-    field every agent node carried as `cwd: "{{ cfg.repo_root }}"`, and a port that
-    dropped it would run the turns wherever the engine happened to be."""
+    """`cwd` decides whose CLAUDE.md, skills and git context each turn sees."""
     captured: list[Any] = []
 
     class _Recording(_Agent):
@@ -391,18 +310,12 @@ def test_every_turn_runs_in_the_surveyed_repo(surveyed: Path, tmp_path: Path) ->
     assert captured and set(captured) == {str(surveyed)}, captured
 
 
-# ----------------------------------------------------------------- the bounded loops
 
 
 def test_an_invalid_record_is_repaired_once_and_the_unit_lands_assessed(
     surveyed: Path, tmp_path: Path
 ) -> None:
-    """The record-fix loop's happy exit: `validate_record` rejects, one repair turn,
-    re-validate, mark.
-
-    Nothing branches on the repair's own reply — `validate_record` is what decides — so
-    the loop re-checks either way.
-    """
+    """The record-fix loop's happy exit: `validate_record` rejects, one repair turn, re-validate, mark."""
     agent = _Agent(surveyed, corrupt={BUTTON})
     result = _drive(_env(tmp_path), agent)
 
@@ -415,16 +328,7 @@ def test_an_invalid_record_is_repaired_once_and_the_unit_lands_assessed(
 def test_an_unfixable_record_blocks_its_unit_and_the_operator_accepts_it(
     surveyed: Path, tmp_path: Path
 ) -> None:
-    """The give-up path, end to end, which is the one that must not wedge the survey.
-
-    Two repairs fail, so the unit is marked `blocked` with the validator's errors as its
-    reason and the loop moves on. `verify_records` then re-surfaces it — a blocked unit
-    is an OPEN gap, never a silent drop — and the flow parks for the operator. The
-    patched `wait_for_answer` below stands in for the human: it records an accepted
-    disposition, exactly as the resolver's prompt tells a human operator to do, and
-    resuming into `pick` re-verifies coverage against it. The survey ends with a
-    partition over what was actually assessed.
-    """
+    """The give-up path, end to end, which is the one that must not wedge the survey."""
     agent = _Agent(surveyed, corrupt={BUTTON}, unfixable=True)
 
     def answered(path: Path, **kwargs: Any) -> None:
@@ -441,13 +345,9 @@ def test_an_unfixable_record_blocks_its_unit_and_the_operator_accepts_it(
 
     resolve = agent.args_for("resolve-operator")[0]
     assert resolve["block_stage"] == "survey-coverage", resolve
-    # The record the fix loop gave up on is still on disk and still unparseable, so the
-    # gate re-surfaces the unit as an invalid record rather than as an open gap — either
-    # way it is accounted for by name, which is the property that matters.
     assert "[invalid-record]" in resolve["block_notes"], resolve
     assert BUTTON in resolve["block_notes"], resolve
 
-    # The blocked unit is in the manifest with no bullet: accounted for, not dropped.
     manifest = {u["id"]: u for u in json.loads((surveyed / MANIFEST).read_text())["units"]}
     assert manifest[BUTTON]["bullets"] == [], manifest
     assert manifest[MODAL]["bullets"] == [f"survey-{CLUSTER}"], manifest
@@ -456,12 +356,7 @@ def test_an_unfixable_record_blocks_its_unit_and_the_operator_accepts_it(
 def test_rules_that_expand_to_nothing_send_the_flow_back_to_the_planner(
     surveyed: Path, tmp_path: Path
 ) -> None:
-    """An expansion that yields no units is a granularity problem, not a repo with no
-    surfaces — so it is the planner's to fix, with the expansion's own errors in hand.
-
-    This is the plan-rework loop the YAML wrote as `guard_plan` + `incr_plan`, bounded
-    here by `plan_rework` and a state parameter rather than a counter file.
-    """
+    """An expansion that yields no units is a granularity problem, not a repo with no surfaces — so it is the planner's to fix, with the expansion's own errors in hand."""
     agent = _Agent(surveyed, empty_rules_first=True)
     result = _drive(_env(tmp_path), agent)
 
@@ -475,12 +370,7 @@ def test_rules_that_expand_to_nothing_send_the_flow_back_to_the_planner(
 def test_a_partition_that_orphans_a_unit_is_sent_back_with_the_orphan_named(
     surveyed: Path, tmp_path: Path
 ) -> None:
-    """The orphan sweep is the gate that matters: a cluster set that drops an assessed
-    unit would drop its findings out of the generated backlog silently.
-
-    The rework carries the gate's own words, so the partitioner is told which unit it
-    left out rather than being asked to guess.
-    """
+    """The orphan sweep is the gate that matters: a cluster set that drops an assessed unit would drop its findings out of the generated backlog silently."""
     agent = _Agent(surveyed, orphan_first=True)
     result = _drive(_env(tmp_path), agent)
 
@@ -494,39 +384,23 @@ def test_a_partition_that_orphans_a_unit_is_sent_back_with_the_orphan_named(
 def test_a_unit_too_big_to_assess_is_split_into_its_children(
     surveyed: Path, tmp_path: Path
 ) -> None:
-    """The granularity escape hatch: `split` replaces the unit with its children rather
-    than letting the assessor sample it.
-
-    The parent leaves the inventory and its children enter it `pending`, so the coverage
-    claim follows the split — `verify_records` reads the lineage off the child paths.
-    """
+    """The granularity escape hatch: `split` replaces the unit with its children rather than letting the assessor sample it."""
     agent = _Agent(surveyed, split_units={MODAL})
     result = _drive(_env(tmp_path), agent)
 
     assert result.emit_ok is True, result
     assert _units(surveyed) == {BUTTON: "assessed", MODAL_CHILD: "assessed"}
-    # The split unit was assessed twice: once to ask for the split, once as its child.
     assert agent.counts()["assess-unit"] == 3, agent.counts()
     kinds = [a["unit_kind"] for a in agent.args_for("assess-unit")]
     assert kinds == ["folder", "folder", "file"], kinds
 
 
-# ------------------------------------------------------------------ the three gates
 
 
 def test_a_blocked_plan_waits_on_the_operator_then_resumes_the_planner(
     surveyed: Path, tmp_path: Path
 ) -> None:
-    """The gate the YAML got wrong, and how this port fixes it.
-
-    `resolve_plan` ran into `await_plan` unconditionally there too; whether it *waited*
-    was decided inside `await-operator.py`, by reading a `STATUS:` line the resolver
-    itself could write — a resolver could answer on the operator's behalf. Here
-    `resolve-operator.md` is diagnosis-only and `Await` in the driver always waits, so
-    the block always parks; the patched `wait_for_answer` below is what lets the test
-    proceed past it. Re-entering `plan` on resume is the re-verification: `plan_rework`
-    reset to 0, so the planner gets one more unblocked attempt.
-    """
+    """The gate the YAML got wrong, and how this port fixes it."""
     agent = _Agent(surveyed, blocked={"plan-units"})
 
     def answered(path: Path, **kwargs: Any) -> None:
@@ -546,9 +420,7 @@ def test_a_blocked_plan_waits_on_the_operator_then_resumes_the_planner(
 def test_plan_resolver_cycles_are_cumulative_across_local_budget_resets(
     surveyed: Path, tmp_path: Path
 ) -> None:
-    """Two resolver diagnoses exhaust the outer budget even though plan rework resets;
-    a third block still parks, but with no resolver turn — the budget decides, not the
-    resolver's reply."""
+    """Two resolver diagnoses exhaust the outer budget even though plan rework resets; a third block still parks, but with no resolver turn — the budget decides, not the resolver's reply."""
     seen: list[str] = []
     agent = _Agent(surveyed, blocked={"plan-units"}, block_repeats=3)
 
@@ -568,9 +440,7 @@ def test_plan_resolver_cycles_are_cumulative_across_local_budget_resets(
 def test_partition_resolver_cycles_are_cumulative_across_local_budget_resets(
     surveyed: Path, tmp_path: Path
 ) -> None:
-    """Two resolver diagnoses exhaust the outer budget even though partition rework
-    resets; a third block still parks, but with no resolver turn — the budget decides,
-    not the resolver's reply."""
+    """Two resolver diagnoses exhaust the outer budget even though partition rework resets; a third block still parks, but with no resolver turn — the budget decides, not the resolver's reply."""
     seen: list[str] = []
     agent = _Agent(surveyed, blocked={"partition-findings"}, block_repeats=3)
 
@@ -590,12 +460,7 @@ def test_partition_resolver_cycles_are_cumulative_across_local_budget_resets(
 def test_a_blocked_partition_waits_on_the_operator_context_file(
     surveyed: Path, tmp_path: Path
 ) -> None:
-    """The partition gate parks on a block, same as the plan gate.
-
-    The resolver's diagnosis lands in the context file and the wait is a poll on that
-    file's mtime — the driver's portable replacement for `await-operator.py`'s inotify.
-    Patching the poll is the operator answering.
-    """
+    """The partition gate parks on a block, same as the plan gate."""
     seen: list[str] = []
 
     def answered(path: Path, **kwargs: Any) -> None:
@@ -608,7 +473,6 @@ def test_a_blocked_partition_waits_on_the_operator_context_file(
     assert result.emit_ok is True, result
     assert agent.counts()["partition-findings"] == 2, agent.counts()
     assert agent.args_for("resolve-operator")[0]["block_stage"] == "partition"
-    # The question the operator was woken for is in the file they were pointed at.
     assert len(seen) == 1 and "one story or one per area?" in seen[0], seen
     assert "one story or one per area?" in (surveyed / CONTEXT).read_text()
 
@@ -616,12 +480,7 @@ def test_a_blocked_partition_waits_on_the_operator_context_file(
 def test_human_operator_mode_sends_the_block_straight_to_the_context_file(
     surveyed: Path, tmp_path: Path
 ) -> None:
-    """`operator_mode: human` is the YAML's `cases: {human: …}` arm: no stand-in turn at
-    all, the block goes to the person.
-
-    It is also the only setting under which the resolver never runs — under `"auto"` the
-    resolver still investigates before the same `Await`, it just never decides.
-    """
+    """`operator_mode: human` is the YAML's `cases: {human: …}` arm: no stand-in turn at all, the block goes to the person."""
     seen: list[str] = []
 
     def answered(path: Path, **kwargs: Any) -> None:
@@ -637,19 +496,12 @@ def test_human_operator_mode_sends_the_block_straight_to_the_context_file(
     assert len(seen) == 1 and "is the design system in scope?" in seen[0], seen
 
 
-# ------------------------------------------------------------------------- resume
 
 
 def test_a_run_killed_mid_assessment_resumes_on_that_unit_alone(
     surveyed: Path, tmp_path: Path
 ) -> None:
-    """The loop's state is the inventory file and the records, not the machine.
-
-    So the checkpoint written *before* the agent turn is enough: the resumed run
-    re-assesses the unit that was in flight and no earlier one, because the earlier ones
-    are already marked on disk. This is the YAML's resume behavior — its `refuel: unit_id`
-    node re-entered the same way — reproduced without a gas tank.
-    """
+    """The loop's state is the inventory file and the records, not the machine."""
     first = _Agent(surveyed, explode={MODAL})
     env = _env(tmp_path)
     run_dir = env.writer.run_dir
@@ -672,8 +524,6 @@ def test_a_run_killed_mid_assessment_resumes_on_that_unit_alone(
         resume,
     )
 
-    # Only the interrupted unit ran again, and the planner did not re-run: the frozen
-    # list is the coverage claim, so a resume consumes it rather than re-deriving it.
     assert second.counts() == {
         "assess-unit": 1,
         "partition-findings": 1,
@@ -682,17 +532,10 @@ def test_a_run_killed_mid_assessment_resumes_on_that_unit_alone(
     assert _units(surveyed) == {BUTTON: "assessed", MODAL: "assessed"}
 
 
-# ------------------------------------------------------------------------- labels
 
 
 def test_the_labels_name_the_unit_and_the_progress(surveyed: Path, tmp_path: Path) -> None:
-    """The YAML's `labels:` block read `get_node_output('select_unit', …)`; here
-    `labels()` reads `self.output(select_next_unit)` and takes no parameters.
-
-    Before the first pick there is no output to read, and that is the normal state of a
-    run's first transition — the guard against `NodeNotRunError` is what makes it a
-    label-less transition rather than a crashed one.
-    """
+    """The YAML's `labels:` block read `get_node_output('select_unit', …)`; here `labels()` reads `self.output(select_next_unit)` and takes no parameters."""
     seen: list[dict[str, str]] = []
     real_rebase = pyflow_activity.ActivityLog.rebase
 
@@ -707,10 +550,7 @@ def test_the_labels_name_the_unit_and_the_progress(surveyed: Path, tmp_path: Pat
     stamped = [labels for labels in seen if labels.get("work_id")]
     assert stamped, seen
     assert stamped[0]["work_id"] == BUTTON, stamped[0]
-    # `progress` is the worklist's own count, so the dashboard can read it without
-    # knowing anything about surveys.
     assert stamped[0]["progress"], stamped[0]
     assert any(labels.get("surveyor.plan_rework") == "0" for labels in seen), seen
     assert any(labels.get("surveyor.plan_resolve") == "0" for labels in seen), seen
-    # Unprefixed, unlike the YAML engine's `wf.work_id`.
     assert not any(k.startswith("wf.") for labels in seen for k in labels), seen

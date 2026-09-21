@@ -1,12 +1,4 @@
-"""The one reader of the `STATUS:` / `SCOPE:` header on a gate file.
-
-These used to be five hand-copied regexes on both sides of the same file — the workflow
-writes the header, groom's UI reads and rewrites it — so the cases below are the ones a
-divergence would have silently broken: a hand-edited tab, a lower-cased status, a follow-up
-block that quotes an earlier `STATUS:` in prose.
-
-Run: ./.venv/bin/python tests/test_gates.py   (or via pytest)
-"""
+"""The one reader of the `STATUS:` / `SCOPE:` header on a gate file."""
 from __future__ import annotations
 
 from workhorse import gates
@@ -41,11 +33,7 @@ def test_a_status_that_is_not_at_the_start_of_a_line_is_prose():
 
 
 def test_set_status_rewrites_only_the_first_line():
-    """A re-block quotes the previous round; flipping the quote too would loop the gate.
-
-    The file accretes: the workflow appends a fresh `## Questions` block under the history of
-    the last one. Only the live header at the top is the state.
-    """
+    """A re-block quotes the previous round; flipping the quote too would loop the gate."""
     text = "STATUS: ANSWERED\nSCOPE: story\n\nEarlier we wrote:\n\n> STATUS: ANSWERED\n"
     out = gates.set_status(text, "CONSUMED")
     assert out.splitlines()[0] == "STATUS: CONSUMED"
@@ -106,8 +94,7 @@ def test_a_question_heading_inside_a_code_fence_does_not_make_the_gate_structure
 
 
 def test_apply_answer_flips_the_status_and_appends_the_prose():
-    """What the run writes when the answer arrives over the socket: the file stays the
-    durable record, prose at the bottom under everything already there."""
+    """What the run writes when the answer arrives over the socket: the file stays the durable record, prose at the bottom under everything already there."""
     text = "STATUS: AWAITING_OPERATOR\n\n## Questions from the agent\n\nwhich branch?\n"
 
     answered = gates.apply_answer(text, "main, not master")
@@ -125,8 +112,7 @@ def test_apply_answer_with_no_prose_only_flips_the_status():
 
 
 def test_apply_answer_gives_a_headerless_file_the_header_it_never_had():
-    """An `Await` with no questions can name a file nobody created; answering it creates
-    the record, header and all."""
+    """An `Await` with no questions can name a file nobody created; answering it creates the record, header and all."""
     assert gates.apply_answer("", "go ahead") == "STATUS: ANSWERED\n\ngo ahead\n"
     assert gates.apply_answer("pasted notes\n", "go ahead") == (
         "STATUS: ANSWERED\n\npasted notes\n\ngo ahead\n"
@@ -148,13 +134,7 @@ if __name__ == "__main__":
 
 
 def test_a_second_ask_keeps_the_first_ones_questions_and_its_answers():
-    """The gate file is both channels: the engine asks in it, the operator answers in it.
-
-    So re-arming it must not be a rewrite. A benchmark round that blocked twice on one
-    gate ended with the answers it had been given at the first block gone, which is a
-    lost decision rather than lost history: a run resumed from the second block reads
-    this file for them.
-    """
+    """The gate file is both channels: the engine asks in it, the operator answers in it."""
     answered = (
         "STATUS: ANSWERED\n\n"
         "## Questions from the agent\n\nwhich branch?\n\n"

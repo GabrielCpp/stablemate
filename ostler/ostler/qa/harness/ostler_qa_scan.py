@@ -1,27 +1,9 @@
-"""The DOM scan `ostler vet` is built on, in the one place both sides can reach it.
-
-`vet` classifies a rendered UI by walking every visible element for its exact
-`getBoundingClientRect` and nearest computed role, then grouping elements that share a rect
-into regions. That is the repo's machine-readable visual evidence, and it was reachable only
-through `ostler vet --cdp-url` against a browser somebody else had already started.
-
-A QA scenario holds a live page and writes a screenshot, so it is exactly where that scan
-belongs — but the scenario runs under the *project's* interpreter, where `ostler` is not
-installed. Hence this module: stdlib-only, importable by the harness, and loaded by name from
-the ostler side (`harness_host.load_harness_module`) so `vet` and QA can never scan
-differently. Pydantic models stay on the ostler side, wrapped around these plain dicts.
-"""
+"""The DOM scan `ostler vet` is built on, in the one place both sides can reach it."""
 
 from __future__ import annotations
 
 from typing import Any
 
-#: The ARIA roles that take their accessible name from their own text. Every other role takes
-#: a name only from an author label — `aria-label`, `aria-labelledby`, a `<label for>`, or a
-#: `<caption>` on a `table` — and with none of those present it has **no** accessible name,
-#: however much text it renders. The distinction is not decorative: `getByRole(role, {name})`
-#: against a role outside this set with no author label matches zero elements while the element
-#: is painted, which is the defect this scan exists to make observable.
 NAME_FROM_CONTENT = frozenset(
     {
         "button", "cell", "checkbox", "columnheader", "gridcell", "heading", "link",
@@ -30,11 +12,6 @@ NAME_FROM_CONTENT = frozenset(
     }
 )
 
-# Computed roles (explicit `role="..."` or the implicit HTML→ARIA mapping — landmarks plus
-# the common element roles an accessibility tree would compute) this resolves per element,
-# walking up to the nearest ancestor that carries one. Alongside it each element carries its
-# **own** role and its accessible name, which the ancestor-walking `role` cannot stand in for:
-# a name is computed from the element's own role, not from the landmark it sits inside.
 SCAN_JS = """
 () => {
   const IMPLICIT_TAGS = {
@@ -167,8 +144,6 @@ SCAN_JS = """
 }
 """
 
-#: The page's own measurements, which no per-element rect carries: how wide the document
-#: actually laid out versus how wide the window is. Their difference is horizontal overflow.
 FRAME_JS = """
 () => ({
   viewport: {width: window.innerWidth, height: window.innerHeight},
@@ -179,9 +154,6 @@ FRAME_JS = """
 })
 """
 
-#: Roles that place content on the page rather than sitting inside a placement. A layout
-#: summary listing every `listitem` and `cell` is as unreadable as the screenshot it explains,
-#: and the defects this evidence exists to expose are all at this granularity.
 STRUCTURAL_ROLES = frozenset(
     {
         "main",
@@ -204,19 +176,7 @@ STRUCTURAL_ROLES = frozenset(
 def merge_rects(
     elements: list[dict[str, Any]], *, rect_epsilon: float = 1.0
 ) -> list[dict[str, Any]]:
-    """Group elements sharing a (near-)identical rect into one region.
-
-    A region's role is the first non-empty role among its members, else `None`
-    ("unlabeled") — a deliberately limited fallback, not a heuristic guess. Grouping by an
-    exact rect is what lets this stand in for pixel segmentation without being a probabilistic
-    guess about what the pixels mean.
-
-    `own_roles` and `names` stay **index-parallel to `selectors`** rather than collapsing the
-    way `role` does. A region is a rect, and several elements share a rect; the element a
-    documented `selector:` addresses is one of them, and its accessible name is a property of
-    that element, not of the rect. Collapsing them would answer a question about one element
-    with an observation of another.
-    """
+    """Group elements sharing a (near-)identical rect into one region."""
     groups: dict[tuple[float, float, float, float], list[dict[str, Any]]] = {}
     order: list[tuple[float, float, float, float]] = []
     for element in elements:
@@ -248,27 +208,12 @@ def merge_rects(
 
 
 def share(value: float, total: float) -> float:
-    """A length as a fraction of the viewport, rounded once, here.
-
-    Public because a documented `placement:` is checked in the same units the layout digest
-    reports, and a second rounding on the ostler side would put a component on the wrong side
-    of its own declared band.
-    """
+    """A length as a fraction of the viewport, rounded once, here."""
     return round(value / total, 3) if total else 0.0
 
 
 def summarize(frame: dict[str, Any], regions: list[dict[str, Any]]) -> dict[str, Any]:
-    """The layout of one rendered state, small enough for a reader to hold at once.
-
-    Every number here is measured, not judged: how big the window is, how big the document
-    laid out, and where each structural region sits as a fraction of the window. What counts
-    as *wrong* — a page whose only content is a narrow column pinned to one margin, say — is a
-    threshold, and thresholds belong in the prompt that reads this, not in the measurement.
-
-    The two flags are the exceptions, because neither involves a threshold: a document wider
-    than its viewport is horizontal overflow by definition, and a region that starts past the
-    right edge is unreachable without one.
-    """
+    """The layout of one rendered state, small enough for a reader to hold at once."""
     viewport = frame["viewport"]
     document = frame["document"]
     width, height = float(viewport["width"]), float(viewport["height"])

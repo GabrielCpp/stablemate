@@ -1,9 +1,4 @@
-"""`code:` cites the product: a node grounded only in test source is a `test-subject`.
-
-A book documents behaviour a user can assert against the running product. Mocks, fakes and
-fixtures are how that product's tests are built, so a node citing only them is deleted, and a
-node citing them beside production code drops the test citations.
-"""
+"""`code:` cites the product: a node grounded only in test source is a `test-subject`."""
 
 from __future__ import annotations
 

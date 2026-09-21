@@ -1,11 +1,4 @@
-"""QA session state: NDJSON run log + capture store + daemon PID registry.
-
-The session file (`qa-session.json`) is the mutable side-car written by
-`ostler qa start/step/stop`; it stores runtime state (captures, PIDs) that must
-survive across separate CLI invocations within the same run.
-
-The run log (`qa-run.ndjson`) is append-only and never rewritten by ostler.
-"""
+"""QA session state: NDJSON run log + capture store + daemon PID registry."""
 
 from __future__ import annotations
 
@@ -30,20 +23,10 @@ QA_DIRNAME = "qa"
 SESSION_FILE = "qa-session.json"
 RUN_LOG = "qa-run.ndjson"
 
-#: Directory names the scored run itself owns under `qa/` — `steps/` and `asserts/` are
-#: created by `QaSession.create`, the other three by the browser harness. A scratch label
-#: is refused if it collides with one, because a dry run writing into `qa/traces/` would
-#: be indistinguishable from the scored run's own trace directory. `qa` is here for a
-#: different reason: it used to be the way to ask for the scored ledger, and silently
-#: reading it as a label would put that run in `qa/qa/`.
 RESERVED_LABELS = frozenset({QA_DIRNAME, "steps", "asserts", "traces", "videos", "screenshots"})
 
-#: What a label may be made of. Deliberately narrower than "a legal filename": a label
-#: names a scenario or a session, and every caller today already passes something in this
-#: alphabet. Separators are absent from it, which is what makes `../` unrepresentable.
 _LABEL_RE = re.compile(r"\A[A-Za-z0-9][A-Za-z0-9._-]*\Z")
 
-#: See `qa/plan.py::MECHANISMS` for why `synthetic` is not here.
 _MECHS = {"live", "fixture"}
 
 
@@ -63,25 +46,7 @@ class ScratchLabelError(ValueError):
 
 
 def scratch_dirname(label: str) -> str:
-    """The spec-relative ledger directory for a dry run called ``label``: ``qa/<label>``.
-
-    A dry run's artifacts nest *inside* the evidence directory rather than beside it. The
-    old sibling layout (`qa-dry-run/`) separated them by name, which reads well and does
-    nothing: a repo ignores its QA evidence by naming the `qa` directory, so every
-    rehearsal landed outside the ignore and shipped in the commit — hundreds of megabytes
-    of traces and video in the case that motivated this. One ignored subtree is the only
-    arrangement a hand-maintained `.gitignore` cannot drift off.
-
-    Nesting is safe because the evidence gate reads `qa/qa-run.ndjson` and
-    `qa/run-manifest.json` by exact path, and a scored run rmtrees `qa/` before it writes
-    — so scratch cannot launder itself into a verdict, and starting a scored run destroys
-    it, which is what the old `clear_qa_evidence` did to both directories anyway.
-
-    ``label`` is a single path component, not a path: traversal, an absolute path and the
-    repo-relative form that used to be joined onto the spec directory (producing a
-    committed `docs/specs/x/docs/specs/x/…`) are all unrepresentable rather than
-    validated against.
-    """
+    """The spec-relative ledger directory for a dry run called ``label``: ``qa/<label>``."""
     name = label.strip()
     if not name:
         raise ScratchLabelError("a dry-run label cannot be empty")
@@ -101,9 +66,6 @@ def scratch_dirname(label: str) -> str:
     return f"{QA_DIRNAME}/{name}"
 
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
 
 
 def _now() -> str:
@@ -117,9 +79,6 @@ def _spec_dir_from(spec_arg: str | None, root: Path) -> Path:
     return p if p.is_absolute() else root / p
 
 
-# ---------------------------------------------------------------------------
-# Public session operations
-# ---------------------------------------------------------------------------
 
 
 class QaSession:
@@ -127,11 +86,6 @@ class QaSession:
 
     def __init__(self, spec_dir: Path, qa_dirname: str = QA_DIRNAME) -> None:
         self.spec_dir = spec_dir
-        #: Which directory under the spec the ledger, captures and artifacts land in, as a
-        #: spec-relative path. `qa` for a scored run — `clear_qa_evidence` wipes it and the
-        #: evidence gate reads it. A dry run is `qa/<label>` (see `scratch_dirname`): still
-        #: inside the ignored subtree, still not a path the evidence gate ever reads, so a
-        #: plan tuned until it passed cannot become its own admissible evidence.
         self.qa_dirname = qa_dirname
         self.qa_dir = spec_dir / qa_dirname
         self._session_path = self.qa_dir / SESSION_FILE
@@ -139,13 +93,8 @@ class QaSession:
         self._data: dict[str, Any] = {}
         self._secret_values: dict[str, str] = {}
         self._manifest: RunManifest | None = None
-        #: Live daemon Popen handles, keyed by pid. Kept outside `_data` because the
-        #: session file is JSON-serialized on every write — a Popen is not serializable,
-        #: and an explicit handle is the difference between a daemon the runner can reap
-        #: at teardown and one that ResourceWarning flags at GC time.
         self._daemon_procs: dict[int, subprocess.Popen[bytes]] = {}
 
-    # -- load / save ---------------------------------------------------------
 
     @classmethod
     def open(cls, spec_dir: Path, qa_dirname: str = QA_DIRNAME) -> "QaSession":
@@ -183,32 +132,19 @@ class QaSession:
                 "Run `ostler qa stop` first."
             )
         s.qa_dir.mkdir(parents=True, exist_ok=True)
-        # `steps/` and `asserts/` up front, not on first use. ostler writes into both itself
-        # — the `out:` sidecar and every assertion result — and creates each parent as it
-        # goes, so it never needed them early for its own sake. But `qa/steps/` is also a
-        # layout ostler *publishes*: plans are written to redirect into it directly, with a
-        # `curl -o …/qa/steps/create-fixture.json` that runs before ostler has written any
-        # sidecar and so before anything has made the directory. curl cannot create it and
-        # exits 23, the capture that step was to feed comes back empty, and the request that
-        # reads the capture goes somewhere unrelated and gets a plausible wrong answer — a
-        # 404 that reads as a product defect rather than as a missing directory. It bites
-        # only the first run against a fresh spec dir, which is the run least likely to be
-        # believed. Publishing the layout means creating it.
         (s.qa_dir / "steps").mkdir(exist_ok=True)
         (s.qa_dir / "asserts").mkdir(exist_ok=True)
         s._data = {
             "run_id": run_id,
             "story": story,
             "env": env,
-            "captures": {},  # key → captured string value from step --capture
-            "daemons": [],  # [{name, pid, argv, log_file}]
+            "captures": {},
+            "daemons": [],
             "step_count": 0,
             "assert_count": 0,
             "pass_count": 0,
             "fail_count": 0,
             "started_monotonic": time.monotonic(),
-            #: Wall-clock, unlike the monotonic one beside it, because the only thing that
-            #: reads it compares against a file's mtime — see `_adoptable`.
             "started_wall": time.time(),
         }
         s._secret_values = secret_values or {}
@@ -260,14 +196,12 @@ class QaSession:
             json.dumps(self._data, indent=2) + "\n", encoding="utf-8"
         )
 
-    # -- append-only log -----------------------------------------------------
 
     def _append(self, record: dict[str, Any]) -> None:
         record["ts"] = _now()
         record["offset_ms"] = round(
             (time.monotonic() - self._data.get("started_monotonic", time.monotonic())) * 1000
         )
-        # Strip private in-memory keys before writing to the append-only log.
         log_record = {
             k: _redact_value(v, self._secret_values.values())
             for k, v in record.items()
@@ -314,7 +248,6 @@ class QaSession:
             self._manifest = RunManifest(self.spec_dir, self.run_id, self.qa_dirname)
         self._manifest.register(self._log_path, kind="run-ledger")
 
-    # -- public accessors ----------------------------------------------------
 
     @property
     def run_id(self) -> str:
@@ -330,29 +263,16 @@ class QaSession:
 
     @property
     def secret_values(self) -> dict[str, str]:
-        """The secrets this run injects, for a driver that has its own output to redact.
-
-        A driver that captures a subprocess's stdout writes bytes this class never sees,
-        so it has to do the redacting the ledger path does automatically.
-        """
+        """The secrets this run injects, for a driver that has its own output to redact."""
         return dict(self._secret_values)
 
     @property
     def started_wall(self) -> float:
-        """When this session began, as a POSIX timestamp; 0.0 for a session written before
-        the field existed, which reads as "everything on disk is mine" — the old behaviour."""
+        """When this session began, as a POSIX timestamp; 0.0 for a session written before the field existed, which reads as "everything on disk is mine" — the old behaviour."""
         return float(self._data.get("started_wall") or 0.0)
 
     def command_env(self) -> dict[str, str]:
-        """The environment a plan's `cmd` and `background:` daemons run under.
-
-        `QA_DIR` is the whole point: a step that redirects its own output has to name the
-        ledger directory, and the only spelling that survives `--out-dir` is one resolved at
-        run time. A plan that hard-codes `<spec>/qa/steps/…` instead writes into the scored
-        ledger no matter which directory the run was pointed at, so a dry run leaves artifacts
-        the scored run is later judged on. `ostler qa validate` rejects that spelling; this is
-        what it rejects it in favour of.
-        """
+        """The environment a plan's `cmd` and `background:` daemons run under."""
         return {**os.environ, "QA_DIR": str(self.qa_dir), **self._secret_values}
 
     @property
@@ -365,7 +285,6 @@ class QaSession:
     def set_capture(self, key: str, value: str) -> None:
         self._data.setdefault("captures", {})[key] = value
 
-    # -- session_start -------------------------------------------------------
 
     def write_session_start(self) -> None:
         self._append(
@@ -377,7 +296,6 @@ class QaSession:
             }
         )
 
-    # -- daemon management ---------------------------------------------------
 
     def start_daemon(
         self,
@@ -388,19 +306,7 @@ class QaSession:
         timeout: float = 30,
         cwd: Path | None = None,
     ) -> int:
-        """Launch a daemon subprocess, store its PID, write daemon_start record.
-
-        *argv* is a program and its arguments, executed directly — there is no shell here,
-        and that is the point rather than a detail. This call used to take a command line
-        and run it under `bash -c`, which made `background: [{cmd: "go test ./..."}]` a
-        supported way to file a unit suite's exit code as behavioral evidence, on the host,
-        where no sandbox reaches it. With an argv list there is nothing to interpret: no
-        `&&`, no pipeline, no expansion, and a plan that wants two processes declares two
-        daemons.
-
-        stdout/stderr are tee'd to ``qa/daemon-<name>.log``. If *ready_check* is given,
-        ostler polls it before returning — see `_poll_ready`. Returns the PID.
-        """
+        """Launch a daemon subprocess, store its PID, write daemon_start record."""
         argv = list(argv)
         if not argv:
             raise ValueError(f"daemon '{name}' declares an empty argv")
@@ -431,9 +337,6 @@ class QaSession:
             }
         )
         if ready_check:
-            # `proc` and the log go along, so a daemon that dies on startup is reported as
-            # dead with what it printed, rather than as a service that took too long — see
-            # `_poll_ready`.
             _poll_ready(
                 ready_check,
                 timeout=timeout,
@@ -443,23 +346,13 @@ class QaSession:
         return pid
 
     def stop_daemon(self, name: str, *, reason: str | None = None) -> int | None:
-        """Kill the running daemon called *name*, drop it from the session, write
-        `daemon_stop`.
-
-        *reason* is recorded when given — `restart` is the one the runner writes before
-        it starts the same declaration again on a scenario's behalf, so a reader of the
-        ledger can tell a restart seam from the end-of-run teardown. Returns the exit code
-        `_kill_pid` observed.
-        """
+        """Kill the running daemon called *name*, drop it from the session, write `daemon_stop`."""
         daemons = self._data.get("daemons", [])
         index = next((i for i, d in enumerate(daemons) if d["name"] == name), None)
         if index is None:
             raise ValueError(f"no running daemon named {name!r}")
         entry = daemons.pop(index)
         exit_code = _kill_pid(entry["pid"])
-        # Reap the Popen now — `_kill_pid` only delivers the signal. Without `wait`,
-        # the Popen is released at GC and pytest's ResourceWarning fires for every
-        # test that backgrounds a daemon.
         proc = self._daemon_procs.pop(entry["pid"], None)
         if proc is not None:
             try:
@@ -485,7 +378,6 @@ class QaSession:
         self._data["daemons"] = []
         self._save()
 
-    # -- step ----------------------------------------------------------------
 
     def run_step(
         self,
@@ -505,18 +397,12 @@ class QaSession:
         action: int | None = None,
         covers: list[str] | None = None,
     ) -> dict[str, Any]:
-        """Execute *cmd* in a subprocess and append a ``step`` record.
-
-        *captures*: list of (key, json_path) — extract from stdout JSON.
-        *out_path*: write stdout verbatim to this path as a sidecar file.
-        Returns the record dict.
-        """
+        """Execute *cmd* in a subprocess and append a ``step`` record."""
         if mechanism not in _MECHS:
             raise ValueError(
                 f"mechanism must be one of {sorted(_MECHS)}, got '{mechanism}'"
             )
 
-        # Substitute {{key}} from capture store
         expanded_cmd = _expand(
             cmd,
             self.captures,
@@ -540,26 +426,6 @@ class QaSession:
             stderr_raw = _as_bytes(exc.stderr)
             exit_code = 124
             timed_out = True
-        # A step whose cmd redirects its own stdout — `curl -w '%{http_code}' … > qa/steps/x.txt`,
-        # or an `-o`/`-D` aimed at the path it also declares as `out:` — leaves nothing on the
-        # pipe, and two things then went wrong at once, both reading as product defects. The
-        # sidecar write landed 0 bytes on top of the bytes the command had just produced, so the
-        # assertion re-reading that file compared a status code against an empty string. And the
-        # in-band `%{http_code}` parse saw an empty capture, so `expect_http` compared None to
-        # 200. One run reported three acceptance criteria broken while its own ledger recorded
-        # the correct 404/201/302 for every request.
-        #
-        # A non-empty file at that path is this run's own output: the command redirected its
-        # stdout there, which makes that file the step's stdout. Read it back and treat it as
-        # such, rather than overwrite it with the emptiness the redirect left behind.
-        #
-        # "This run's own" is the load-bearing half, and it is not free. `qa/` is wiped once
-        # per QA lane, before the plan is even written — not at session start — so a plan
-        # being dry-run during authoring leaves files behind that are still sitting there when
-        # the scored run opens. Adopting one of those would let a step that produced nothing
-        # inherit the output of the rehearsal that was tuned until it passed, and report it as
-        # evidence. `_adoptable` is what keeps the sentence above true: only a file this
-        # session wrote counts.
         resolved_out: Path | None = _resolve_out(out_path, self.spec_dir, self.qa_dir) if out_path else None
         out_kept: bool = False
         if resolved_out is not None:
@@ -575,7 +441,6 @@ class QaSession:
         stdout_safe = _redact_bytes(body_raw, self._secret_values.values())
         stderr_safe = _redact_bytes(stderr_raw, self._secret_values.values())
 
-        # Write sidecar
         abs_out: str | None = None
         if resolved_out is not None:
             if not out_kept:
@@ -585,7 +450,6 @@ class QaSession:
                 resolved_out, kind="command-output", scenario=scenario, target=driver
             )
 
-        # Apply the declared captures
         captured: dict[str, str] = {}
         if captures:
             try:
@@ -629,8 +493,6 @@ class QaSession:
         if stderr_safe:
             record["stderr"] = stderr_safe.decode("utf-8", errors="replace")[:2000]
 
-        # Keep decoded stdout in-memory for inline assertion checks (not written to log).
-        # Stored under a private key so _append can strip it.
         record["_stdout"] = stdout_safe.decode("utf-8", errors="replace")
         record["_stdout_actual"] = body_raw.decode("utf-8", errors="replace")
 
@@ -643,7 +505,6 @@ class QaSession:
             )
         return record
 
-    # -- assert --------------------------------------------------------------
 
     def run_assert(
         self,
@@ -661,34 +522,7 @@ class QaSession:
         sentinel: bool = False,
         step: tuple[str, str] | None = None,
     ) -> tuple[bool, dict[str, Any]]:
-        """Execute a named check, write raw result, append assert record.
-
-        `declared` is the check a `qa.verify()` already ran in its own process, named the
-        way the book names it. It cannot be `check_type`: the comparison happened where the
-        page was, and re-running it here would have nothing to look at — so the assertion
-        arrives as `scenario_check`, a verdict this session only transcribes. But the
-        evidence map matches an obligation's `verify:` bullet against the *name and
-        arguments* on the ledger record, so transcribing the verdict and dropping the
-        identity reported every `qa.verify()` obligation `claimed-but-unasserted`, however
-        green the run. Recording both keeps the executed check honest and the observation
-        attributable.
-
-        `sentinel` marks a record the *harness* synthesized about the scenario rather than an
-        observation the plan made of the product. Only the completion assert a
-        :class:`~ostler.qa.drivers.PythonDriver` writes over an aborted scenario sets it, and
-        it exists because nothing else on the record can carry that fact: `check_type` is
-        `scenario_check`, which a real `qa.verify()` transcription uses too. Downstream, a
-        failing sentinel means the run never got to look, which is a different verdict from
-        a run that looked and disagreed — see :func:`ostler.qa.evidence_map._classify`.
-
-        `step` is the ``(id, label)`` of the plan step the assertion ran inside, when the
-        driver knows it. The ledger otherwise only carries the step's *end* record, written
-        after the step's assertions, so which assertion belonged to which step was a matter
-        of reading order — and the per-criterion report groups on it, so it is stamped on
-        the record rather than inferred from its neighbours.
-
-        Returns (passed, record).
-        """
+        """Execute a named check, write raw result, append assert record."""
         raw_out_path = self.qa_dir / "asserts" / f"{assert_id}.json"
         raw_out_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -734,7 +568,6 @@ class QaSession:
             record["step"], record["step_label"] = step
         if declared:
             record["check_args"] = dict(declared[1])
-        # Attach summary fields from raw result
         for key in ("match_count", "count", "value", "expected"):
             if key in raw_result:
                 record[key] = raw_result[key]
@@ -742,7 +575,6 @@ class QaSession:
         self._append(record)
         return passed, record
 
-    # -- stop ----------------------------------------------------------------
 
     def close(self, *, status: str | None = None) -> dict[str, Any]:
         """Write session_stop summary, clean up session file, return summary."""
@@ -759,7 +591,6 @@ class QaSession:
             "passed" if summary["fail_count"] == 0 else "failed"
         )
         self._append(summary)
-        # Remove the mutable session file so a new start can proceed
         try:
             self._session_path.unlink()
         except FileNotFoundError:
@@ -767,9 +598,6 @@ class QaSession:
         return summary
 
 
-# ---------------------------------------------------------------------------
-# Low-level helpers
-# ---------------------------------------------------------------------------
 
 
 def _run_command(
@@ -779,17 +607,6 @@ def _run_command(
     cwd: Path | None = None,
     env: dict[str, str] | None = None,
 ) -> tuple[bytes, bytes, int]:
-    # `pipefail`, because a QA step is an oracle and a pipeline's exit status is only its
-    # *last* stage. `jq '.responses[]?' out.json | wc -l` exits 0 and prints `0` when jq
-    # never parsed the file at all, so an `assert_count: 0` on that step passes having
-    # observed nothing — the assertion agrees with a broken command and with a working one
-    # that found nothing, and the run reports a green step either way. With pipefail the
-    # upstream failure reaches the driver, which already fails a step on a non-zero exit.
-    #
-    # The cost is the SIGPIPE case: a pipeline ending in `head` kills its producer, and
-    # that now fails the step. No plan template or fixture in this tree ends a pipeline
-    # that way, and a QA command that discards most of its own output is not the shape we
-    # want assertions built on, so the trade is taken deliberately.
     result = subprocess.run(
         f"set -o pipefail\n{cmd}",
         shell=True,  # noqa: S603 — agent-authored command, explicit user intent
@@ -819,23 +636,7 @@ _HTTP_STATUS_LINE = re.compile(r"^HTTP/\d(?:\.\d)?\s+(\d{3})\b", re.MULTILINE)
 
 
 def _status_from_header_dump(stdout: bytes) -> int | None:
-    """Read the status out of a curl ``-D`` header dump.
-
-    ``-w '\\n%{http_code}'`` is one of two ways a plan hands ostler a status code, and it
-    was the only one ostler could read. The other is ``-D <file>``, which writes the whole
-    response head — status line included — and is what an agent reaches for when it wants
-    the headers for anything else as well. A plan that used it got ``http_status = None``
-    and an ``expect_http`` failure comparing None to 201, while the step's own sibling
-    assertion pulled the same number out of the same file with ``head -1 | awk '{print $2}'``.
-    A run then reports acceptance criteria broken over a status ostler is holding in its hand,
-    which is the most expensive kind of wrong answer this runner can give.
-
-    Only consulted when the write-out convention found nothing, so a body that happens to
-    begin with ``HTTP/`` can't displace a real trailing code. The *last* status line wins:
-    a redirect chain (``-L``) dumps every hop, and the final response is the one the
-    expectation is about. Unlike the trailing-code form there is nothing to strip from the
-    body afterwards — the status line is part of the head the step asked to keep.
-    """
+    """Read the status out of a curl ``-D`` header dump."""
     text = stdout.decode("utf-8", errors="replace")
     matches = _HTTP_STATUS_LINE.findall(text)
     if not matches:
@@ -863,12 +664,6 @@ def _expand(
         if token.startswith("input."):
             return (variables or {}).get(token, "")
         if token == "qa_dir":
-            # The run's own output directory, so a daemon can be told to keep its state
-            # there — `--ledger {{qa_dir}}/links.json` — instead of somewhere in the repo
-            # the next run inherits. It needs a branch of its own because the fall-through
-            # below is `captures`, and an unexpanded `{{qa_dir}}` does not fail: it becomes
-            # a literal directory of that name beside the spec, which the run then fills
-            # with the state it was told to isolate.
             return (variables or {}).get(token, "")
         if token.startswith("secret."):
             return (secrets or {}).get(token[7:], "")
@@ -882,18 +677,7 @@ def _expand(
 
 
 def _extract_path(data: Any, path: str) -> str | None:
-    """Extract a capture's value by a document path, as the harness's `resolve_path` walks it.
-
-    Named for what it does rather than for the tool it replaced. `jq` was never an ostler
-    dependency — every `jq` expression in the corpus came from the retired YAML engine's
-    shell heredocs — but the lesson it taught outlives it and is the reason this returns
-    `None` rather than an empty string: a missing key has to be distinguishable from a key
-    holding nothing, or an assertion agrees with a broken lookup and with a working one.
-
-    One grammar for every reader of a path: a capture may select with `[*]` or
-    `[?(@.key==value)]` exactly as a `json_path` check does, and a selector that picks out one
-    value captures that value rather than a one-element list.
-    """
+    """Extract a capture's value by a document path, as the harness's `resolve_path` walks it."""
     if data is None:
         return None
     try:
@@ -913,38 +697,16 @@ def _harness() -> Any:
 
 
 def _adoptable(out_file: Path, started_wall: float) -> bool:
-    """Whether a step may treat an already-present `out:` file as its own stdout.
-
-    Only when this session wrote it. The mtime comparison is the whole check: a file left by
-    an earlier dry run of the same plan is older than the scored session that is now reading
-    it, and adopting it would launder a rehearsal's output into the scored ledger.
-
-    A one-second grace absorbs coarse filesystem timestamp granularity, which can stamp a file
-    written immediately after `create()` as marginally older than the session itself.
-    """
+    """Whether a step may treat an already-present `out:` file as its own stdout."""
     if not out_file.is_file() or not out_file.stat().st_size:
         return False
     return out_file.stat().st_mtime >= started_wall - 1.0
 
 
 def _resolve_out(out_path: str, spec_dir: Path, qa_dir: Path) -> Path:
-    """Resolve an action's `out:` against the spec, sending `qa/…` to *this* run's ledger dir.
-
-    Validation requires every `out:` to sit under `qa/`, so a plan's paths are written that
-    way and mean "the evidence directory" rather than that literal name. A dry run redirected
-    elsewhere must honour the meaning, or its steps write into the scored run's directory
-    while everything else it produces stays out.
-
-    Substituting `qa_dir` whole, not `qa_dir.name`: the name alone was only ever right while
-    a dry run's directory was a direct child of the spec. Now that it is `qa/<label>`, the
-    name is `<label>` and the rewrite would send the step to `<spec>/<label>/…` — a stray
-    sibling of the ledger, outside the directory the repo ignores, which is the exact class
-    of escape this layout exists to close.
-    """
+    """Resolve an action's `out:` against the spec, sending `qa/…` to *this* run's ledger dir."""
     p = Path(out_path)
     if not p.is_absolute() and p.parts and p.parts[0] == QA_DIRNAME:
-        # Resolved, so the join below never re-anchors an already spec-relative `qa_dir`
-        # against the spec directory a second time.
         p = qa_dir.resolve().joinpath(*p.parts[1:])
     resolved = (p if p.is_absolute() else spec_dir / p).resolve()
     try:
@@ -955,19 +717,7 @@ def _resolve_out(out_path: str, spec_dir: Path, qa_dir: Path) -> Path:
 
 
 def _signal_group(pid: int, sig: int) -> bool:
-    """Signal ``pid``'s process group; False once the group has nothing left to signal.
-
-    ``ProcessLookupError`` is the portable "it's gone", but it is not the only one.
-    On macOS/BSD, a group whose members have all exited but not yet been reaped is
-    still a group — ``killpg`` answers **EPERM**, not ESRCH, because a zombie has no
-    credentials to check the signal against. Linux answers ESRCH (or succeeds), which
-    is why a `ProcessLookupError`-only guard passes there and, here, escaped out of
-    teardown and failed the whole QA run over a daemon that had already stopped.
-
-    Reading EPERM as "gone" is the safe direction: these are processes this session
-    itself spawned, so the alternative reading — someone else's process group reusing
-    the pid — is one we could not signal anyway.
-    """
+    """Signal ``pid``'s process group; False once the group has nothing left to signal."""
     try:
         os.killpg(pid, sig)
     except (ProcessLookupError, PermissionError):
@@ -976,15 +726,7 @@ def _signal_group(pid: int, sig: int) -> bool:
 
 
 def _kill_pid(pid: int, *, timing: _DaemonTiming | None = None) -> int:
-    """Escalate SIGINT -> SIGTERM -> SIGKILL; return the effective signal (negated,
-    like subprocess) that actually stopped the process.
-
-    SIGINT — the same signal a terminal Ctrl+C sends — is tried first and given a
-    real grace window. Well-behaved daemons (scrcpy/ffmpeg finalizing a recording,
-    eventbridge-tail flushing its queue) treat SIGINT as "stop and clean up", not
-    "die immediately" the way a fast SIGKILL would. SIGTERM and SIGKILL remain as
-    escalating fallbacks for a daemon that doesn't respond to SIGINT.
-    """
+    """Escalate SIGINT -> SIGTERM -> SIGKILL; return the effective signal (negated, like subprocess) that actually stopped the process."""
     clock = timing or _DAEMON_TIMING
     for sig, grace_seconds in (
         (signal.SIGINT, clock.interrupt_grace_s),
@@ -994,7 +736,7 @@ def _kill_pid(pid: int, *, timing: _DaemonTiming | None = None) -> int:
             return 0
         deadline = time.monotonic() + grace_seconds
         while time.monotonic() < deadline:
-            if not _signal_group(pid, 0):  # check still alive
+            if not _signal_group(pid, 0):
                 return -sig
             time.sleep(0.05)
     if _signal_group(pid, signal.SIGKILL):
@@ -1005,12 +747,7 @@ def _kill_pid(pid: int, *, timing: _DaemonTiming | None = None) -> int:
 def _ready_via_url(
     url: str, *, method: str = "GET", status: int = 200, timeout: float = 2
 ) -> bool:
-    """One HTTP probe: ready when *url* answers *status* to *method*.
-
-    A status outside 2xx arrives as an `HTTPError`, which is a response and not a transport
-    failure — so it is read for its code rather than swallowed, and a probe expecting 409 or
-    401 works exactly like one expecting 200.
-    """
+    """One HTTP probe: ready when *url* answers *status* to *method*."""
     request = urllib.request.Request(url, method=method.upper())  # noqa: S310
     try:
         with urllib.request.urlopen(request, timeout=timeout) as resp:  # noqa: S310
@@ -1022,12 +759,7 @@ def _ready_via_url(
 
 
 def _log_tail(log_file: Path | None, lines: int = 15) -> str:
-    """The last few lines the daemon printed, for pasting into a failure message.
-
-    Best-effort by construction: a daemon that died before its first write leaves an empty
-    or absent file, and that is not itself an error worth raising over the failure being
-    reported.
-    """
+    """The last few lines the daemon printed, for pasting into a failure message."""
     if log_file is None:
         return ""
     try:
@@ -1047,51 +779,12 @@ def _poll_ready(
     log_file: Path | None = None,
     timing: _DaemonTiming | None = None,
 ) -> None:
-    """Poll a daemon's readiness check until it succeeds or *timeout* seconds elapse.
-
-    Two spellings of one probe. A **string** is a URL polled for a 200, which is the
-    original contract and covers a health endpoint. A **mapping** — `{url, method, status}`
-    — is the same probe with the two things a health endpoint does not need: a service whose
-    only route is a `POST` has no URL that answers 200 to a `GET`.
-
-    That second form used to be `{cmd, assert_contains}`, a shell command whose stdout had
-    to carry a needle. Every use of it in the corpus was `curl -X POST … -w '%{http_code}'`
-    against `assert_contains: 201` — an HTTP probe spelled as a subprocess, which is how a
-    readiness check became one more way to run an arbitrary command on the host. Worse, the
-    mapping used to reach `urlopen` intact, which set `.timeout` on it and raised
-    `'dict' object has no attribute 'timeout'` — an `AttributeError`, so it escaped the
-    `URLError`/`OSError` guard and surfaced at the top of the run as `0 scenarios` with the
-    cause discarded. The plan validated and the reviewer approved it, so the coder loop
-    re-planned a correct plan until its rework guard ran out.
-
-    *proc* and *log_file* are what makes a failure here readable. A daemon that cannot start
-    at all — the port is taken, the binary does not compile, a migration failed — exits
-    within a second, and polling a dead process for the remaining 29 is both a waste and a
-    lie: "ready_check timed out" describes a service that was slow, not one that was never
-    there. So the loop watches the process too, and reports the exit code and the tail of
-    its log the moment it is gone. The case that prompted this reported only ``timed out
-    after 30s`` while ``listen tcp :8080: bind: address already in use`` sat unread in the
-    daemon log; the agent handling the failure had to go find it, and a gate deciding
-    whether to retry could not see it at all. The same tail is attached on a genuine
-    timeout, where a daemon still running but not yet answering has usually said why.
-
-    A non-zero exit outranks a *passing* check, which is the subtle half. A readiness probe
-    asks "is something answering on this port", never "is it mine" — so when a previous
-    run's server is still bound, the daemon that just died on `address already in use`
-    leaves an orphan answering `201` and the whole suite runs green against a binary that
-    is not the code under test. That is worse than any false failure, because it is silent:
-    the observed run recorded ``passed`` with zero runner errors while its own daemon had
-    exited one second in. Exit **0** is treated the other way and does not stop the poll —
-    that is how a launcher hands off to the service it spawned, so it stays a valid path to
-    ready.
-    """
+    """Poll a daemon's readiness check until it succeeds or *timeout* seconds elapse."""
     if isinstance(check, str):
         url, method, status = check, "GET", 200
     else:
         raw_url = check.get("url")
         if not isinstance(raw_url, str) or not raw_url.strip():
-            # Fail on the shape, not by polling it until the timeout: a mapping with no URL
-            # is never going to become ready, and "timed out after 30s" would hide why.
             raise ValueError(f"daemon ready_check mapping needs a 'url': {dict(check)}")
         url = raw_url
         method = str(check.get("method", "GET"))
@@ -1103,8 +796,6 @@ def _poll_ready(
     while time.monotonic() < deadline:
         ready = _ready_via_url(url, method=method, status=status, timeout=probe_timeout)
         code = proc.poll() if proc is not None else None
-        # A crash outranks a passing check, and that order is the whole point — see the
-        # docstring. Exit 0 does not: it is how a launcher hands off, so keep polling.
         if code not in (None, 0):
             raise _daemon_died(code, described, log_file, ready=ready)
         if ready:
@@ -1121,11 +812,7 @@ def _poll_ready(
 
 
 def _settled(proc: subprocess.Popen | None, *, timeout: float) -> int | None:
-    """The daemon's exit code if it dies within the settle window, else `None`.
-
-    `None` means still running, which is the only state in which a ready verdict is worth
-    anything. A daemon that exits during the window was never what answered the check.
-    """
+    """The daemon's exit code if it dies within the settle window, else `None`."""
     if proc is None:
         return None
     try:
@@ -1182,9 +869,6 @@ def _redact_value(value: Any, values: Any) -> Any:
     return value
 
 
-# ---------------------------------------------------------------------------
-# Check implementations
-# ---------------------------------------------------------------------------
 
 
 def _execute_check(
@@ -1211,14 +895,7 @@ def _execute_check(
 
 
 def _check_scenario_verdict(params: dict) -> tuple[bool, dict]:
-    """Record a verdict a `qa.check` in the scenario process already reached.
-
-    The other checks in this table exist because a shell step could only hand back bytes,
-    so ostler had to do the comparing. A Python scenario compares in Python, over parsed
-    objects, on the line that produced them — re-deciding it here from stringified
-    operands could only ever disagree with the truth, and `_expand` would mangle any
-    value that happens to contain `{{`.
-    """
+    """Record a verdict a `qa.check` in the scenario process already reached."""
     return bool(params.get("passed")), {
         "value": params.get("actual"),
         "expected": params.get("expected"),

@@ -131,7 +131,6 @@ def test_normalized_file_binding_keeps_uncited_source_and_ungrounded_book(tmp_pa
     claims = [BookClaim(id=f"claim:{i}", node="node", path="docs/book.md", line=1,
                         kind="does", text=f"Promise {i}", citations=refs) for i, refs in enumerate(citations)]
     preparation = build_audit_packets(extract_evidence(tmp_path, ["src"]), claims)
-    # A private, uncited candidate is tier 2: its file holds no review at tier 1.
     assert len(preparation.packets) == 3 and preparation.deferred_candidates == 1
     by_module = {packet.module: packet for packet in preparation.packets if packet.module}
     assert {claim.id for claim in by_module["src/a.py"].claims} == {"claim:0"}
@@ -291,14 +290,7 @@ def test_implementation_detail_requires_a_reason_but_no_book_claim(audit_packet:
 
 
 def test_mixed_candidate_may_link_to_a_partial_claim(audit_packet: AuditPacket) -> None:
-    """A candidate that is internal-and-relevant names the claim it bears on, with partial support.
-
-    The truthful verdict for a private struct field assignment that a claim legitimately
-    names via identity comparison is ``claim.status = 'partial'`` and
-    ``candidate.status = 'mixed'``. The strict cross-item rule
-    ``implementation_detail cannot be linked`` no longer rejects this shape, because
-    ``mixed`` is the schema state that admits the contradiction.
-    """
+    """A candidate that is internal-and-relevant names the claim it bears on, with partial support."""
     payload = verdicts(audit_packet).model_dump(mode="json")
     candidate_id = payload["candidates"][0]["id"]
     payload["claims"][0].update(status="partial", explanation="Substantive contract is the signature; field assignment is internal.",
@@ -620,15 +612,7 @@ def test_old_receipt_without_book_evidence_still_validates(audit_packet: AuditPa
 
 
 def test_two_sections_sharing_a_heading_are_both_audited(tmp_path: Path) -> None:
-    """A repeated heading is two nodes at two anchors, so neither claim is dropped.
-
-    They used to share an id — `model.anchor_of` minted it from the heading title alone — and
-    `extract_book` skipped every claim under the second, recording a limitation that told the
-    operator to repair a `duplicate-container-heading` finding. That code fires only on
-    *registered* container headings, so on this shape doctor reported nothing and the named
-    repair did not exist. `model.document_anchors` issues the anchor GitHub renders, unique
-    within a document, and the skip has nothing left to skip.
-    """
+    """A repeated heading is two nodes at two anchors, so neither claim is dropped."""
     docs = tmp_path / "docs/features/api"
     docs.mkdir(parents=True)
     (docs / "items.md").write_text(
@@ -669,7 +653,6 @@ def test_uncited_file_with_exported_symbols_is_a_finding_not_a_packet(tmp_path: 
     assert found["src/public.py"].first_lines == (6,)
     assert found["src/public.py"].candidate_count == 1, "the tier-1 candidates only; _helper is deferred"
     assert found["src/exported.go"].exported_symbols == ("Run",)
-    # The finding is a fact about the book: one citation turns the file back into a packet.
     claim = BookClaim(id="claim:0", node="node", path="docs/book.md", line=1, kind="does",
                       text="Gets", citations=("src/public.py::Api.get",))
     cited = build_audit_packets(extract_evidence(tmp_path, ["src"]), [claim])
@@ -712,7 +695,6 @@ def test_tier_one_keeps_cited_and_exported_candidates_and_defers_the_rest(tmp_pa
     first = build_audit_packets(inventory, book)
     by_module = {packet.module: packet for packet in first.packets}
     assert {c.symbol for c in by_module["src/svc.py"].candidates} == {"get", "_cited"}
-    # A bare path citation keeps every candidate in that file, private or not.
     assert {c.symbol for c in by_module["src/whole.py"].candidates} == {"_all"}
     assert first.tier == 1 and first.deferred_candidates == 2
     assert first.selected_candidates == len(inventory.candidates) - 2
@@ -738,7 +720,6 @@ def test_a_file_of_only_private_uncited_candidates_costs_no_packet_at_tier_one(t
                       text="Counts", citations=("src/private.py::_only",))
     (packet,) = build_audit_packets(inventory, BookClaims(claims=(claim,), cited_symbols=("src/private.py::_only",))).packets
     assert [c.symbol for c in packet.candidates] == ["_only"]
-    # A module-level candidate has no private name: it is tier 1 wherever it sits.
     (tmp_path / "src/top.py").write_text("LIMIT = 2\nif LIMIT < 0:\n    raise ValueError('no')\n", encoding="utf-8")
     top = build_audit_packets(extract_evidence(tmp_path, ["src/top.py"]), BookClaims(claims=()))
     assert [c.symbol for packet in top.packets for c in packet.candidates] == ["<module>"]
@@ -816,16 +797,7 @@ def test_book_context_is_windowed_around_the_packets_claims(tmp_path: Path) -> N
 
 
 def test_a_scoped_read_never_opens_another_service_book(tmp_path: Path) -> None:
-    """One service's audit must not fail on another service's documents.
-
-    Two okf-builder runs share a repo and scope themselves to a service each. The scope used
-    to be applied to `extract_book`'s *result*, so the read still opened every document in
-    `docs/features/**` and matched each node's recorded line against a section start — and a
-    sibling run authoring its own book moved those lines underneath the graph, raising here on
-    nodes this run was about to discard. Scoping the read is what makes the two runs
-    independent; the citation index stays whole-graph, so a symbol cited only from the sibling
-    book is still known to be cited.
-    """
+    """One service's audit must not fail on another service's documents."""
     for service, symbol in (("api", "items"), ("web", "render")):
         docs = tmp_path / "docs/features" / service
         docs.mkdir(parents=True)
@@ -836,8 +808,6 @@ def test_a_scoped_read_never_opens_another_service_book(tmp_path: Path) -> None:
         )
         (tmp_path / f"{service}.py").write_text(f"def {symbol}():\n    return 1\n", encoding="utf-8")
     graph = load(tmp_path)
-    # The sibling run authors its book: every section below the insertion moves down, and the
-    # graph in hand still points at the old offsets.
     web = tmp_path / "docs/features/web/web.md"
     web.write_text(web.read_text(encoding="utf-8").replace(
         "# web\n", "# web\n\nA new paragraph.\n\nAnd another one.\n"), encoding="utf-8")
@@ -851,13 +821,7 @@ def test_a_scoped_read_never_opens_another_service_book(tmp_path: Path) -> None:
 
 
 def test_last_sections_book_evidence_span_is_citable_to_its_final_line(tmp_path: Path) -> None:
-    """The file's last section must not advertise a line its own text does not carry.
-
-    A body ending in a newline splits to one more line than it has, so the final
-    section's end_line ran one past the document. A reviewer citing that whole span
-    was then rejected as unseen, which parks the audit on an operator gate over a
-    packet defect no reviewer can answer.
-    """
+    """The file's last section must not advertise a line its own text does not carry."""
     path = tmp_path / "docs/features/api.md"
     path.parent.mkdir(parents=True)
     text = (
@@ -887,14 +851,7 @@ def test_last_sections_book_evidence_span_is_citable_to_its_final_line(tmp_path:
 
 
 def test_excerpt_bounds_must_match_the_text_the_excerpt_carries() -> None:
-    """An excerpt that advertises a span its own text does not carry cannot be built.
-
-    This is the invariant the last-section defect above broke, hoisted from a docstring
-    into the model. Every citation a reviewer can make is bounded by these numbers, so a
-    packet that lies about them is unanswerable — the honest reading of the whole span
-    is rejected as unseen, and no retry can repair a defect in the question. Refusing it
-    here moves that from an operator gate hours later to the extractor that built it.
-    """
+    """An excerpt that advertises a span its own text does not carry cannot be built."""
     with pytest.raises(ValidationError, match=r"lines 1-3 span 3 line\(s\) but the text carries 2"):
         BookContext(node="items", path="docs/items.md", start_line=1, end_line=3,
                     text="# Items\n- Returns 20\n", source_digest="d")
@@ -910,11 +867,7 @@ def test_excerpt_bounds_must_match_the_text_the_excerpt_carries() -> None:
 
 
 def test_an_empty_file_excerpt_still_stands_at_line_one() -> None:
-    """`SourceExcerpt` widens its text to allow an empty file, and documents line 1 as its bound.
-
-    The line count of "" is zero by any arithmetic, so the validator has to floor at one
-    or the shape the extractor emits for an empty file becomes unconstructible.
-    """
+    """`SourceExcerpt` widens its text to allow an empty file, and documents line 1 as its bound."""
     assert SourceExcerpt(path="empty.py", start_line=1, end_line=1, text="", source_digest="d").text == ""
     with pytest.raises(ValidationError, match=r"lines 1-2 span 2 line\(s\) but the text carries 1"):
         SourceExcerpt(path="empty.py", start_line=1, end_line=2, text="", source_digest="d")

@@ -1,13 +1,4 @@
-"""The command line: parse an invocation, run it, turn what it raised into an exit code.
-
-Every human-facing line this module writes goes to stderr. Nothing reads `tally`'s output
-yet, which is exactly why the rule is set now: a stream discipline adopted once there is a
-report to corrupt is a stream discipline adopted after the first corrupted report.
-
-The exit codes are the other half of the contract: 0 for done, 1 for a ledger that is not in
-the state the command needs, 2 for input that is not an expense. A caller scripting `tally`
-distinguishes "fix your file" from "decide what you meant" without reading a message.
-"""
+"""The command line: parse an invocation, run it, turn what it raised into an exit code."""
 
 import argparse
 import sys
@@ -18,12 +9,7 @@ from tally.ledger import LedgerError, RowError
 
 
 def build_parser() -> argparse.ArgumentParser:
-    """Every command `tally` accepts, the flags each one takes, and the ledger they act on.
-
-    `--file` is declared here, on the top-level parser rather than on each command, because
-    one invocation acts on one ledger: a global option cannot be given two different values
-    by two subcommands, and every command below reads it off the same namespace.
-    """
+    """Every command `tally` accepts, the flags each one takes, and the ledger they act on."""
     parser = argparse.ArgumentParser(prog="tally", description="a shared-expense ledger")
     parser.add_argument(
         "--file",
@@ -49,13 +35,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def commit_or_preview(path: Path, data: dict, dry_run: bool) -> bool:
-    """Write the ledger, unless this was a dry run — the one place that decision is made.
-
-    Only `add` reaches the disk today, so this could have lived inside it. It does not, because
-    the next command that writes would then have to re-establish what `--dry-run` means. A dry
-    run leaves every file on disk byte-for-byte as it was; it does not write and roll back, and
-    it does not write somewhere else.
-    """
+    """Write the ledger, unless this was a dry run — the one place that decision is made."""
     if dry_run:
         print(f"tally: --dry-run, {path} left unchanged", file=sys.stderr)
         return False
@@ -80,11 +60,7 @@ def cmd_add(args: argparse.Namespace) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Run one invocation and hand back its exit code.
-
-    The two exception types are translated here and nowhere else, so every command exits 1 on
-    a ledger-state problem and 2 on bad data without each one remembering to.
-    """
+    """Run one invocation and hand back its exit code."""
     args = build_parser().parse_args(argv)
     try:
         return int(args.handler(args))

@@ -1,11 +1,4 @@
-"""One story at a time: pick it, validate it, ground it, and read the operator's notes.
-
-Ported from `base-library/workflows/author/scripts/{seed-story,select-story,validate-story,
-check-story-grounding,ledger,check_feedback,prune-bullet}.py`.
-
-Every message keeps its script's wording minus the `[script-name]` prefix: the run record
-already names the state that halted, so the prefix was the engine's job.
-"""
+"""One story at a time: pick it, validate it, ground it, and read the operator's notes."""
 from __future__ import annotations
 
 import logging
@@ -37,20 +30,11 @@ from workhorse_workflows.author.shared.schemas.main import (
     StoryMutation,
 )
 
-#: Frontend is the only layer that can need a mockup. ``design`` distinguishes visual work from
-#: frontend computation that preserves an existing surface.
 MOCKUP_LAYER = "frontend"
 MOCKUP_REQUIRED = "required"
 MOCKUP_PRESERVE = "preserve"
 
-#: The backlog scope-item contract, shared with the coverage validator: `- [id] …`, read off
-#: the parsed list rather than matched line by line, so a bullet inside a fenced example is
-#: not a scope item and a wrapped one is still whole.
 
-#: Multi-word phrases that signal an UNRESOLVED decision shipped to the coder. A story must
-#: RESOLVE every decision or escalate it via the writer's `blocked` status — it must not write
-#: the indecision into the story. These are deliberately specific, so a *resolved*
-#: "Decision (recommended): keep X" does NOT match; only genuine open-endedness does.
 _OPEN_QUESTION_PHRASES = [
     "decision to surface",
     "decisions to surface",
@@ -69,15 +53,11 @@ _OPEN_QUESTION_PHRASES = [
     "needs a decision",
     "to be discussed",
 ]
-#: Standalone code-style markers, matched as whole *words* — a word being a run of alphanumerics
-#: plus `_` and `-`. So a filename like `epics-todo.json` is the single token "epics-todo" and
-#: does not trip the check, while a bare `TODO decide later` does.
 _OPEN_QUESTION_WORDS = {"tbd", "todo", "fixme"}
 _WORD_CHARS = "_-"
 _NO_PRIOR_IMPLEMENTATION = "No prior implementation reference exists."
 
 
-# ── story mode's single story ───────────────────────────────────────────────
 
 
 def _kebab(text: str, *, max_len: int = 60) -> str:
@@ -89,14 +69,7 @@ def _kebab(text: str, *, max_len: int = 60) -> str:
 
 
 def resolve_bullet(root: Path, bullet: str) -> ResolvedBullet:
-    """Resolve one requested bullet against the repo's backlog.
-
-    The backlog is ostler's answer, so a run scoped to a subset of the work says so in
-    `docRoots: backlog:` and every reader follows together. It used to be a parameter, and
-    an id resolved against the wrong file came back `from_backlog=False` — which reads as
-    "literal text the operator typed" and makes the prune tail skip the bullet. The story is
-    authored, the bullet is never consumed, and the next run re-authors it.
-    """
+    """Resolve one requested bullet against the repo's backlog."""
     backlog_path = root / paths.backlog_file(root)
     raw = bullet.strip()
     bare = raw[1:-1].strip() if raw.startswith("[") and raw.endswith("]") else raw
@@ -108,9 +81,6 @@ def resolve_bullet(root: Path, bullet: str) -> ResolvedBullet:
             text = ""
         for item in markdown.split(text).walk_bullets():
             bid, btext = item.bracketed
-            # The operator names the bullet by its id, by its text, or by pasting the whole
-            # line back — with or without the list marker, which the parse has already taken
-            # off, so `raw` is stripped of one here rather than compared against a line.
             if bid and (
                 bare == bid
                 or raw.lstrip("-").strip() == item.text.strip()
@@ -132,16 +102,7 @@ def seed_story(
     services: str = "",
     repo_dir: str = "",
 ) -> SeededStory:
-    """Register ONE bullet as a new story inside an already-existing epic.
-
-    Story mode's setup: one seed added to the epic's `epic.md` and one story added to its
-    `## Stories`, so the existing per-story pipeline (write → validate → ground → audit)
-    runs unchanged. Story split never re-runs, so sibling stories are untouched.
-
-    Story mode appends to an EXISTING epic and never creates one, so a missing `epic.md` is
-    a hard failure with an actionable message rather than a scaffold invented here.
-    Idempotent: a story that already covers the resolved id is reused.
-    """
+    """Register ONE bullet as a new story inside an already-existing epic."""
     epic = epic.strip()
     bullet = bullet.strip()
 
@@ -158,9 +119,6 @@ def seed_story(
 
     root = survey_repo_root(repo_dir)
     okf = Ostler(root)
-    # ostler names the folder, not a join here: epic directories carry their creation order
-    # (`0001-accounts`) and story mode is invoked with the bare slug, so a literal join would
-    # report a missing epic for one that is right there.
     epic_dir_rel = paths.epic_dir(root, epic)
     epic_dir_abs = root / epic_dir_rel
 
@@ -192,11 +150,6 @@ def seed_story(
                 reason=reason,
             )
 
-    # Best-effort: an already-present seed id is a no-op for our purpose.
-    # `layers`/`services` come from the caller or not at all — story mode has a free-text
-    # bullet and no research turn behind it, and a guessed layer would silently skip the
-    # design turn a real frontend story needs. Blank leaves the seed unclassified, which the
-    # mockup gate reads as "keep the mockup".
     seed_meta: dict[str, str] = {"sourceBullet": source_bullet}
     if layers.strip():
         seed_meta["layers"] = layers.strip()
@@ -205,8 +158,6 @@ def seed_story(
     seeded = okf.add_seed(epic, bullet_id, status="researched", summary=source_bullet,
                           meta=seed_meta)
     if not seeded.ok and layers.strip():
-        # A bad `--params '{"layers": ...}'` is an operator typo, not a transient — surface it
-        # rather than letting the story proceed on an unclassified seed.
         raise WorkflowFailed(f"`seed add {epic} {bullet_id}` failed: {seeded.message}")
 
     slug = _kebab(source_bullet)
@@ -244,12 +195,7 @@ def remove_story(
     force: bool = False,
     repo_dir: str = "",
 ) -> StoryMutation:
-    """Delete one story from the planning graph, guarded for manual use.
-
-    The standalone story-edit flow is a scalpel, not a rewrite pass. By default it only
-    removes untouched story scaffolds; reviewed, implemented or QA'd stories require an
-    explicit ``force`` parameter so a manual repair cannot erase work by typo.
-    """
+    """Delete one story from the planning graph, guarded for manual use."""
     slug = story.strip()
     if not slug:
         raise WorkflowFailed(
@@ -289,30 +235,13 @@ def remove_story(
     )
 
 
-# ── epic mode's story loop ──────────────────────────────────────────────────
 
 
 @blueprint.node
 def check_mockup_needed(
     logger: logging.Logger, story_slug: str = "", repo_dir: str = ""
 ) -> MockupGate:
-    """Design a mockup only for new or materially changed visual behavior.
-
-    The question is decided from the `layers:` and `design:` values the epic author wrote on
-    each covered seed. Both are closed vocabularies validated by ostler, so the decision costs
-    no model turn and cannot drift lap to lap. A frontend seed marked ``preserve`` retains an
-    existing visual contract and does not need another mockup; any ``required`` seed does.
-
-    It replaces a gate that asked whether the *surface already exists* — matching each seed's
-    free-text `surface:` against `graph.ui_nodes` and `graph.features`. In a greenfield repo
-    both collections are empty and every seed reads `surface: missing from OKF`, so that gate
-    could only ever answer "required" and 100 of 111 stories in one run got a mockup,
-    including pure-backend ones. Existence was also the wrong question: a screen that does
-    not exist yet is exactly what a mockup is for.
-
-    Still fail-closed on absent graph evidence, unclassified layers, and a frontend seed with
-    no design classification. Older epics therefore retain their existing mockup behavior.
-    """
+    """Design a mockup only for new or materially changed visual behavior."""
     try:
         graph = Ostler(survey_repo_root(repo_dir)).graph
     except (OSError, ValueError, RuntimeError) as exc:
@@ -385,22 +314,7 @@ def check_mockup_needed(
 @blueprint.node
 def select_story(logger: logging.Logger, epic_dir: str = "", repo_dir: str = "",
                  parked: tuple[str, ...] = ()) -> StoryChoice:
-    """The next story in this epic whose `story.md` still needs writing.
-
-    **ostler answers the whole question**: `next_story_report(epic, need="author")` walks
-    the story DAG in dependency order — the order coder builds in — and returns the first
-    story that is not *authored*. This node does not open a `story.md` and does not define
-    "written" for itself. It used to: it selected on the presence of a `- **Status**:` line,
-    which `ostler create story` writes into every scaffold — so every story was born "done",
-    the loop routed straight past writing, and a run produced 44 empty stories and reported
-    success. One definition of authored, owned by the graph's owner, is the fix.
-
-    `parked` is the run's give-up set — stories that exhausted their rework budget. They are
-    passed to ostler as `skip=`, so they are neither reselected nor counted as authored: one
-    story nobody can fix used to stall the whole queue behind it.
-
-    Full rubric validation belongs to `validate_story`; this only advances the loop.
-    """
+    """The next story in this epic whose `story.md` still needs writing."""
     epic_dir_rel = epic_dir.strip()
     if not epic_dir_rel:
         logger.warning("no epic_dir supplied")
@@ -416,15 +330,10 @@ def select_story(logger: logging.Logger, epic_dir: str = "", repo_dir: str = "",
         logger.warning(reason)
         return StoryChoice(reason=reason)
 
-    # `state` distinguishes "nothing left to write" from "there was never anything to write" —
-    # an absent story is not a finished one, so an epic with no `## Stories` must route back to
-    # story split rather than read as authored.
     if report["state"] in ("no-epic", "no-stories"):
         logger.info("%s", report["detail"])
         return StoryChoice(reason=report["detail"])
 
-    # The report's own tallies are the worklist, in DAG order, so the dashboard's "3/12" is
-    # identical in shape to every other worklist node in the library.
     items = [
         wl.WorkItem(id=f"authored-{i}", status="done")
         for i in range(int(report["done"]))
@@ -444,7 +353,6 @@ def select_story(logger: logging.Logger, epic_dir: str = "", repo_dir: str = "",
         has_story=True,
         story_path=path,
         story_slug=slug,
-        # From ostler, not derived: ostler knows where it actually put the file.
         story_dir=str(Path(path).parent),
         reason=report["detail"],
         progress=snap.progress,
@@ -452,7 +360,6 @@ def select_story(logger: logging.Logger, epic_dir: str = "", repo_dir: str = "",
     )
 
 
-# ── the deterministic story gates ───────────────────────────────────────────
 
 
 def _words(line: str) -> list[str]:
@@ -471,11 +378,7 @@ def _words(line: str) -> list[str]:
 
 
 def _open_questions(doc: markdown.MarkdownDoc) -> list[str]:
-    """One error string per prose line that ships an unresolved decision.
-
-    Runs over the parsed document's prose — every body line that is not a heading — so a
-    heading can never be the thing reported and the line numbers stay file-absolute.
-    """
+    """One error string per prose line that ships an unresolved decision."""
     headings = {s.line_start for s in doc.walk_sections() if s.level}
     hits: list[str] = []
     for i, raw in enumerate(doc.body.split("\n")):
@@ -498,20 +401,7 @@ def _open_questions(doc: markdown.MarkdownDoc) -> list[str]:
 
 @blueprint.node(stub=_stubs.clean)
 def validate_story(logger: logging.Logger, story_dir: str = "", repo_dir: str = "") -> Defects:
-    """The bare-minimum story contract, checked deterministically.
-
-    A story separates build outcomes, non-functional invariants, and concise technical evidence
-    because the coder workflow owns implementation depth. This checks every section
-    `registry.STORY_SECTIONS` requires — present, filled, and in the table's order — plus the
-    status bullet, grounded technical pointers, and no open questions shipped to the coder.
-
-    **The contract is ostler's, not this node's.** Sections are checked with
-    `required_section_problems` against ostler's own declaration and the Status field is located with
-    `status_bullet`, so this gate and `ostler doctor`'s `unwritten-story` and
-    `story-section-order` findings can never disagree. The story is parsed as a standalone file rather than looked up in the graph:
-    this runs right after a story is written, and a `story.md` not yet listed in its epic's
-    `## Stories` should still be validated on its own terms.
-    """
+    """The bare-minimum story contract, checked deterministically."""
     story_dir_rel = story_dir.strip()
     if not story_dir_rel:
         logger.warning("no story_dir supplied")
@@ -537,9 +427,6 @@ def validate_story(logger: logging.Logger, story_dir: str = "", repo_dir: str = 
 
     technical = doc.find_section("Technical Notes")
     if technical is not None and not technical.is_empty:
-        # The pointers are inline-code spans carrying a `::`, read off the parser's tokens
-        # rather than scanned for backticks: a span's content is content, and the fenced
-        # block a story pastes into its notes is not a citation.
         pointers = [
             refs.ref_path(span)
             for span in markdown.all_code_spans(technical.body)
@@ -573,19 +460,7 @@ def check_story_grounding(
     features_dir: str = "",
     repo_dir: str = "",
 ) -> Defects:
-    """Was the story written against the surface documentation, or from imagination?
-
-    Strictly presence and structure — no semantic judgment, which is the auditor's job.
-    Two checks: every seed item the story `covers` exists in the epic's seeds (no phantom
-    scope), and — **iff the graph actually holds OKF UI nodes** — the story cites at least
-    one of them and every citation resolves.
-
-    The arming condition is the *graph*, not a configured path: author only ever reads the
-    book (okf-builder writes it, from code that exists), so as UI nodes accrue this check
-    re-arms itself with no flag, and a greenfield repo whose book is still empty is not
-    asked to cite what does not exist yet. `features_dir` is informational, as in the
-    script — it is here because the YAML passed it.
-    """
+    """Was the story written against the surface documentation, or from imagination?"""
     story_dir_rel = story_dir.strip()
     epic_dir_rel = epic_dir.strip()
     if not story_dir_rel or not epic_dir_rel:
@@ -634,7 +509,6 @@ def check_story_grounding(
     return Defects(ok=not errors, errors="\n".join(errors))
 
 
-# ── the rework loop's memory, and the operator's inbox ──────────────────────
 
 
 @blueprint.node
@@ -645,16 +519,7 @@ def record_attempt(
     note: str = "",
     repo_dir: str = "",
 ) -> Ledger:
-    """Append this attempt's failure to the story's attempts ledger, and read it back.
-
-    A bounded rework loop otherwise carries only the *latest* failure into the next attempt,
-    so the reworker can re-try an approach that already failed two cycles ago and the loop
-    spins without accumulating. The ledger is the negative constraint the rework prompt
-    reads: "these approaches already failed — do not repeat them".
-
-    Idempotent on `label`, so a resumed state does not duplicate its entry, and it never
-    fails the run — a write problem degrades to whatever could be read.
-    """
+    """Append this attempt's failure to the story's attempts ledger, and read it back."""
     ledger_rel = ledger_path.strip()
     label = label.strip() or "?"
     note = note.strip() or "(no detail recorded)"
@@ -693,12 +558,7 @@ def record_attempt(
 
 @blueprint.node
 def check_story_feedback(logger: logging.Logger, run_dir: str = "") -> Feedback:
-    """Poll the operator's run-scoped inbox for un-consumed feedback. Never blocks, never asks.
-
-    The twin of an `Await`, and its opposite: a human may drop a note at any time while the
-    run executes, and this reports whether there is one to fold into a single rework cycle.
-    Replying to the message is what consumes it — the same note cannot loop the story forever.
-    """
+    """Poll the operator's run-scoped inbox for un-consumed feedback."""
     polled = poll_run_inbox(run_dir, reply_text="folded into a story rework")
     if polled is None:
         logger.info("no outstanding inbox messages")
@@ -715,12 +575,7 @@ def prune_bullet(
     from_backlog: bool = False,
     repo_dir: str = "",
 ) -> Pruned:
-    """Remove the one backlog bullet story mode consumed — story mode's tail.
-
-    Only when the bullet actually came from the backlog; a literal bullet the operator typed
-    has nothing to prune. Best-effort and idempotent: a missing backlog, absent id, or write
-    failure is swallowed so the run never dies over a tidy-up.
-    """
+    """Remove the one backlog bullet story mode consumed — story mode's tail."""
     bullet_id = bullet_id.strip()
 
     if not from_backlog or not bullet_id:
@@ -740,10 +595,6 @@ def prune_bullet(
         logger.warning("could not read backlog %s — nothing to prune", backlog_path)
         return Pruned()
 
-    # One predicate for both halves: an item is a scope item iff it carries an `[id]` handle.
-    # The count used to run off a looser bullet regex, which counted a backlog's prose
-    # bullets — its surfaces list, say — as outstanding work, so an emptied backlog reported
-    # work left in it. Removing by id and counting by anything else is two contracts.
     doc = markdown.split(raw)
     offset = doc.body_offset
     bullets = doc.walk_bullets()

@@ -1,10 +1,4 @@
-"""Reading a secret out of a keychain item saddlebag did not write.
-
-The Secret Service itself is stubbed at :func:`saddlebag.keychain._search` — the one
-function that talks to D-Bus. Everything above it is the part with decisions in it:
-which item a query names, what happens when it names two, and which of a credential's
-two possible homes a read goes to.
-"""
+"""Reading a secret out of a keychain item saddlebag did not write."""
 
 from __future__ import annotations
 
@@ -42,8 +36,6 @@ class FakeStore:
     def __init__(self, values: dict[str, str] | None = None):
         self.values = values or {}
 
-    # Parameter names mirror the SecretStore protocol exactly — a fake whose signature
-    # has drifted from the port stops standing in for it.
     def put(self, credential_id: str, password: str) -> None:
         self.values[credential_id] = password
 
@@ -89,9 +81,6 @@ def test_an_exact_query_reads_the_item(items):
 
 
 def test_a_query_matching_two_items_is_an_error_naming_both(items):
-    # The failure this exists to prevent: `service=github account=bot` also matches the
-    # TOTP seed, and answering it with whichever sorted first would type a seed into a
-    # password field — a login that fails for a reason nothing in the trace explains.
     with pytest.raises(keychain.KeychainError) as exc:
         keychain.lookup(ref(service="github", account="bot"))
     assert "2 keychain items" in str(exc.value)
@@ -127,8 +116,6 @@ def test_attributes_parse_on_the_first_equals_only():
 
 @pytest.mark.parametrize("pair", ["service", "=github", ""])
 def test_an_attribute_that_is_not_name_equals_value_is_refused(pair):
-    # A pair that silently became `{"": ""}` would widen the query rather than narrow
-    # it, and a widened query is how the wrong item gets read.
     with pytest.raises(keychain.KeychainError, match="name=value"):
         keychain.parse_attributes([pair])
 
@@ -153,10 +140,6 @@ def test_a_credential_with_no_reference_reads_the_saddlebag_store(items):
 
 
 def test_a_reference_wins_over_a_stored_copy(items):
-    # There should never be both — `link` refuses to create that state — but if one
-    # appears anyway, the reference is what the credential says is authoritative, and
-    # silently preferring the stale copy is the failure mode this whole module exists
-    # to avoid.
     cred = Credential(
         id="cred-001",
         username="bot",

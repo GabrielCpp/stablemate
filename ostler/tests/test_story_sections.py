@@ -1,11 +1,4 @@
-"""One story contract, checked against the document rather than against a stamp.
-
-Everything here is a variation on the same question: can two stories saying the same thing be
-judged differently? Under a persisted shape key they could, so these tests hold the pieces that
-replaced it — `required_section_problems` reading the body, `section_order_problems` holding the
-order, and `scaffold_missing_sections` repairing either — to the property that no frontmatter and
-no history changes the answer.
-"""
+"""One story contract, checked against the document rather than against a stamp."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -53,11 +46,7 @@ def _stamp(story_md: Path, line: str) -> None:
 
 
 def test_a_stamped_story_and_an_unstamped_one_are_judged_identically(tmp_path: Path) -> None:
-    """Byte-identical prose, one carrying the old shape key: one verdict.
-
-    This is the whole point of deleting the stamp. The stamped copy used to select a weaker
-    section table and read as complete; now the frontmatter is inert text and the body answers.
-    """
+    """Byte-identical prose, one carrying the old shape key: one verdict."""
     story_md = _story(tmp_path)
     _, plain = present(load(tmp_path).find_story("a"))
 
@@ -85,11 +74,7 @@ def test_removing_a_stale_shape_line_changes_nothing(tmp_path: Path) -> None:
 
 
 def test_scaffold_converges_from_any_state_to_one_document(tmp_path: Path) -> None:
-    """Scaffold an old story, empty it out again, scaffold again — one result, not three.
-
-    A story written before the contract grew and a story a rework just emptied are the same
-    document to this operation, which is why no lane has to know which one it is holding.
-    """
+    """Scaffold an old story, empty it out again, scaffold again — one result, not three."""
     story_md = _story(tmp_path)
     before = markdown.split(story_md.read_text(encoding="utf-8"))
 

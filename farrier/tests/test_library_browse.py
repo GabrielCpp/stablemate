@@ -1,18 +1,4 @@
-"""`farrier library list|show` — reading the stack you are actually going to install from.
-
-The library is two layers deep and the winner is decided by precedence, so the file you
-open in an editor is not reliably the file that gets rendered. Everything here is about
-making that visible: `list` names the layer each item resolves from and says out loud
-when the winner is hiding somebody else's copy of the same name, and `show` prints the
-one that would actually be used.
-
-The second theme is naming. An item is addressed by its library id
-(`architecture/hexagonal-architecture`), installs under its group name
-(`architecture-hexagonal-architecture`), and is remembered by neither — so `show` takes
-any of the three, and refuses rather than guesses when a bare basename means two things.
-
-    uv run --all-packages pytest farrier/tests/test_library_browse.py
-"""
+"""`farrier library list|show` — reading the stack you are actually going to install from."""
 
 from __future__ import annotations
 
@@ -45,11 +31,7 @@ def skill(root: Path, rel: str, *, desc: str = "A thing", body: str = "Rules.") 
 
 @pytest.fixture
 def stack(tmp_path, monkeypatch):
-    """A two-layer stack: an overlay shadowing `stacks/api`, and a base with three skills.
-
-    `stacks/api` exists in both layers on purpose — it is the case every assertion about
-    shadowing needs, and the case an operator hits without noticing.
-    """
+    """A two-layer stack: an overlay shadowing `stacks/api`, and a base with three skills."""
     base, overlay = tmp_path / "base", tmp_path / "overlay"
     skill(base, "stacks/api", desc="Base copy")
     skill(base, "web/api", desc="A different api")
@@ -71,13 +53,12 @@ def test_list_names_the_layer_each_item_resolves_from(stack, capsys):
     out = capsys.readouterr().out
     assert "## skills (3)" in out
     assert "web/forms" in out
-    # Every row carries a layer, because "which copy is this" is the whole question.
     rows = [line for line in out.splitlines() if line.startswith("  ") and "/" in line]
     assert rows and all("base" in row or str(stack) in row for row in rows)
 
 
 def test_a_shadowed_item_is_reported_as_shadowed(stack, capsys):
-    """The overlay winning is fine. The overlay winning *silently* is the bug."""
+    """The overlay winning is fine."""
     assert run(["list", "--skills"], stack) == 0
     row = next(
         line for line in capsys.readouterr().out.splitlines()
@@ -107,8 +88,7 @@ def test_list_prints_the_installed_name_beside_the_library_id(stack, capsys):
 
 
 def test_layer_base_reports_what_the_base_holds_even_where_it_loses(stack, capsys):
-    """`--layer base` is asked by someone editing the base. Hiding the shadowed copy
-    would answer a question they did not ask."""
+    """`--layer base` is asked by someone editing the base."""
     assert run(["list", "--skills", "--layer", "base"], stack) == 0
     out = capsys.readouterr().out
     assert "## skills (3)" in out
@@ -167,7 +147,7 @@ def test_show_accepts_a_bare_basename(stack, capsys):
 
 
 def test_an_ambiguous_basename_is_refused_with_both_spellings(stack):
-    """`api` is two skills. Picking one would be a coin flip nobody sees land."""
+    """`api` is two skills."""
     with pytest.raises(SystemExit) as error:
         run(["show", "--skill", "api"], stack)
     message = str(error.value)
@@ -208,7 +188,7 @@ def test_show_reads_a_pack(stack, capsys):
 
 
 def test_the_older_dash_dash_check_spelling_still_runs_the_check(stack, capsys):
-    """A Makefile in a repo somewhere says `farrier library --check`. It keeps working."""
+    """A Makefile in a repo somewhere says `farrier library --check`."""
     assert run(["--check"], stack) == 0
     assert "error(s)" in capsys.readouterr().out
 

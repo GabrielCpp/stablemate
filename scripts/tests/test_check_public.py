@@ -1,15 +1,4 @@
-"""Where `check_public.py` looks for the hook git would actually run.
-
-The hook check failed a linked worktree while that worktree's commits were visibly being
-blocked by the very hooks it reported missing. `<repo>/.git/hooks/pre-commit` is a plain
-clone's layout and only a plain clone's: in a worktree `.git` is a *file*, and the hooks
-live in the common directory it points at. A guard whose failure mode is "the guards are
-off" has to be right about that, because the fix it prints (`make hooks`) does nothing for
-a clone where they were never off.
-
-So the layout is built rather than described — `git init`, a commit, `git worktree add` —
-and the resolver is asked from inside it.
-"""
+"""Where `check_public.py` looks for the hook git would actually run."""
 from __future__ import annotations
 
 import importlib.util
@@ -91,19 +80,6 @@ def test_a_tree_git_will_not_answer_for_reads_as_absent(
     assert public._installed_hook() == bare / ".git" / "hooks" / "pre-commit"
 
 
-# ── commit-message guard ────────────────────────────────────────────────────
-#
-# The hook reads ``.git/COMMIT_EDITMSG`` (which git writes before the hook runs) and
-# greps it for private names. Two properties matter:
-#
-#   * Subject AND body are scanned. A name can hide in either; the pre-commit hook
-#     cannot see either until the user has typed it.
-#   * ``#`` lines (git's editor template hints) are skipped. A template hint that
-#     happens to mention a name should not block every commit.
-#
-# The ``PRIVATE_NAMES`` env var drives the resolver; with it set, the test owns what
-# counts as "private". A public contributor who has not configured any list sees the
-# same no-op the hook sees — the function returns ``[]`` and the commit proceeds.
 
 
 def test_a_commit_message_with_a_private_name_is_flagged(
@@ -163,8 +139,6 @@ def test_no_names_configured_makes_the_check_a_no_op(
 ) -> None:
     """A public contributor cannot leak what they do not have on file."""
     monkeypatch.delenv("STABLEMATE_PRIVATE_NAMES", raising=False)
-    # Also clear the .git/private-names file path if the test machine has one — the
-    # resolver consults both; with either set, names are loaded.
     monkeypatch.setattr(public._private_names_module(), "load", lambda: [])
     msg = tmp_path / "COMMIT_EDITMSG"
     msg.write_text("feat: mention acme just to be sure\n", encoding="utf-8")
@@ -217,11 +191,6 @@ def test_the_cli_flag_drives_a_failure_on_a_leak(
     assert "acme" in proc.stderr, proc.stderr
 
 
-# --- the history walk's commit-message waiver -------------------------------------
-#
-# A waiver keys on a full SHA and covers that commit's message only. Two ways it must
-# still fail: the waived commit leaking somewhere else (a path), and the entry outliving
-# the commit (a rewrite made it unreachable) — the exit that keeps the list from growing.
 
 
 def _commit(root: Path, message: str, name: str = "file.txt") -> str:

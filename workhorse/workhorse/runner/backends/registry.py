@@ -1,10 +1,4 @@
-"""Name → backend class. The only module that imports every adapter.
-
-It is deliberately not ``__init__.py``: a registry has to import all of them, so
-putting it beside the port would make ``from workhorse.runner.backends import
-AgentBackend`` drag in every CLI. The port declares, the adapters implement, this
-chooses.
-"""
+"""Name → backend class."""
 
 from __future__ import annotations
 
@@ -18,7 +12,6 @@ from workhorse.runner.backends.codex import CodexBackend
 from workhorse.runner.backends.copilot import CopilotBackend
 from workhorse.runner.backends.opencode import OpenCodeBackend
 
-# Registry of available backends, keyed by their AGENT_CLI name.
 _REGISTRY: dict[str, type[AgentBackend]] = {
     "claude": ClaudeBackend,
     "codex": CodexBackend,
@@ -31,26 +24,12 @@ _CACHE: dict[str, AgentBackend] = {}
 
 
 def backend_names() -> list[str]:
-    """Every selectable backend name, sorted. The set a configured name is checked against.
-
-    Exposed because core stores backend-keyed tables (``[power.<tier>.<backend>]``, and
-    now the same inside a profile) without knowing what a real backend is called, so the
-    boundary that validates them has to be able to ask.
-    """
+    """Every selectable backend name, sorted."""
     return sorted(_REGISTRY)
 
 
 def get_backend(name: str | None = None) -> AgentBackend:
-    """Resolve the active backend: explicit ``name`` → ``AGENT_CLI`` → config → built-in.
-
-    The last two rungs are the shared stablemate config's ``default_cli`` and, when it
-    names nothing, ``claude``. This is also where a configured name is *checked*: core
-    stores the string without validating it, because the set of real names is this
-    module's, so a typo in the config surfaces here with the same message a typo'd
-    ``--cli`` gets.
-
-    Backends are stateless, so a per-name cached instance is reused. Raises
-    ``ValueError`` (fail fast) on an unknown name."""
+    """Resolve the active backend: explicit ``name`` → ``AGENT_CLI`` → config → built-in."""
     resolved = (name or os.environ.get("AGENT_CLI") or resolve_default_cli()).strip().lower()
     if resolved not in _REGISTRY:
         available = ", ".join(sorted(_REGISTRY))

@@ -1,10 +1,4 @@
-"""What a control message means to `reload`: which site acts on it, and what is declined.
-
-The transport is asserted in `test_control_channel.py`. What is asserted here is the
-verb's policy, which is where the two sites that can honour a reload differ — the stream
-loop cuts a burning turn, the state boundary catches everything else — and what a run
-does with a message it was not built to understand.
-"""
+"""What a control message means to `reload`: which site acts on it, and what is declined."""
 
 from __future__ import annotations
 
@@ -49,9 +43,9 @@ def test_an_at_boundary_request_is_held_for_the_boundary_not_dropped() -> None:
     try:
         assert reload.cut_requested() is None
         assert channel.replies == [{"ok": True, "cut": False}]
-        assert channel.pending == []  # it is off the wire...
+        assert channel.pending == []
         held = reload.boundary_requested()
-        assert held is not None and held.at_boundary is True  # ...and still honoured
+        assert held is not None and held.at_boundary is True
     finally:
         control.arm(None)
 
@@ -77,11 +71,7 @@ def test_a_verb_this_run_does_not_know_is_declined_not_obeyed() -> None:
 
 
 def test_a_profile_switch_never_cuts_a_turn_and_is_left_for_the_boundary() -> None:
-    """The streaming turn was spawned with the model the *old* profile named, so cutting
-    it buys the new one nothing the next turn does not already give. The acknowledgement
-    says `queued` rather than `ok`: the connection is dropped a select slice later, so a
-    verdict withheld until the boundary would reach nobody — and the boundary can still
-    refuse."""
+    """The streaming turn was spawned with the model the *old* profile named, so cutting it buys the new one nothing the next turn does not already give."""
     channel = _armed(Request(action=reload.SWITCH_PROFILE, profile="cheap", at_boundary=True))
     try:
         assert reload.cut_requested() is None
@@ -90,8 +80,6 @@ def test_a_profile_switch_never_cuts_a_turn_and_is_left_for_the_boundary() -> No
         ]
         held = reload.boundary_requested()
         assert held is not None and held.profile == "cheap"
-        # Unanswered here: the frame that applies it is the one that knows whether it
-        # could be, and a refusal acknowledged as a success is the failure that matters.
         assert len(channel.replies) == 1
     finally:
         control.arm(None)
@@ -108,8 +96,7 @@ def test_a_profile_switch_arriving_at_the_boundary_is_not_answered_there_either(
 
 
 def test_an_answer_outside_an_operator_wait_is_refused_not_held() -> None:
-    """Only the wait itself can consume an answer. Held for some later gate, it would
-    answer a question not yet asked; here, the sender is told the run is not blocked."""
+    """Only the wait itself can consume an answer."""
     channel = _armed(
         Request(action=control.ANSWER, path="/runs/x/operator.md", body="main"),
         Request(action=control.ANSWER, path="/runs/x/operator.md", body="main"),
@@ -126,8 +113,7 @@ def test_an_answer_outside_an_operator_wait_is_refused_not_held() -> None:
 
 
 def test_a_run_that_ended_leaves_nothing_armed() -> None:
-    """The installed channel is process-wide; a run that left one armed would hand its
-    socket to whatever ran next in the same process."""
+    """The installed channel is process-wide; a run that left one armed would hand its socket to whatever ran next in the same process."""
     _armed(Request(action="reload"))
     control.arm(None)
     assert control.armed().fileno() is None

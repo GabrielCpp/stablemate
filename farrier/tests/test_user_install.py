@@ -1,14 +1,4 @@
-"""`farrier install --user` — the library installed once per machine, not per repo.
-
-A skill that needs nothing from the repo it is invoked in was still being installed
-into every checkout, once per checkout, and every one of those copies drifted
-separately. User scope renders the same sources into the harness home directories
-instead, selected by a `[user_library.<harness>]` table in the stablemate config.
-
-What these tests hold down is where the two scopes deliberately *differ*: no repo
-prefix, no launcher, no repo context — and the errors that must stay loud, because a
-silent skip at user scope is a skill the agent never sees and nobody misses.
-"""
+"""`farrier install --user` — the library installed once per machine, not per repo."""
 
 from pathlib import Path
 
@@ -65,7 +55,6 @@ def test_skills_and_prompts_land_in_the_harness_home(
 
     assert install(home, library) == 0
 
-    # Named by their library group, not by a repo — there is no repo to prefix with.
     assert (home / ".claude/skills/stablemate-db/SKILL.md").is_file()
     assert (home / ".claude/skills/stablemate-cache/SKILL.md").is_file()
     assert (home / ".claude/commands/stablemate-grill.md").is_file()

@@ -13,8 +13,7 @@ from workhorse.runner.backends.turn import TurnState, finalize_turn, read_sessio
 
 
 def _on_event(event, state: TurnState, node_id):
-    """Copilot `-p --output-format json`: assistant.message.data.content → answer
-    text (last non-empty wins); result → sessionId + exitCode."""
+    """Copilot `-p --output-format json`: assistant.message.data.content → answer text (last non-empty wins); result → sessionId + exitCode."""
     etype = event.get("type") or ""
     if etype == "assistant.message":
         content = (event.get("data") or {}).get("content") or ""
@@ -24,9 +23,6 @@ def _on_event(event, state: TurnState, node_id):
     elif etype == "result":
         if event.get("sessionId"):
             state.session_id = event["sessionId"]
-        # Copilot's usage shape is unverified here (see usage.py), so this leans on
-        # the tolerant search: if the result event carries counts anywhere, they are
-        # found; if not, the turn keeps engine-measured duration and nothing else.
         state.usage = state.usage.merge(_usage.normalize(event))
         exit_code = event.get("exitCode")
         if exit_code not in (0, None):
@@ -36,17 +32,10 @@ def _on_event(event, state: TurnState, node_id):
 
 
 class CopilotBackend(JsonlBackend):
-    """GitHub Copilot CLI (``copilot -p --output-format json``). No in-place
-    compaction. Oversized prompts use its native ``--attachment``. --allow-all-tools
-    + --no-ask-user make it fully autonomous (the
-    container is the sandbox). Session is resumed by id via --session-id.
-    ``add_dirs`` maps to one --add-dir per directory: Copilot's own path sandbox
-    only allows CWD + subdirs + the temp dir by default, so multi-repo dispatch
-    (a node whose cwd is one service repo but that also needs to read/write a
-    sibling repo) needs this explicitly granted."""
+    """GitHub Copilot CLI (``copilot -p --output-format json``)."""
 
     name = "copilot"
-    default_model = None  # 'auto' / Copilot's default unless a node sets model
+    default_model = None
     supports_compaction = False
 
     def run_turn(
@@ -65,7 +54,6 @@ class CopilotBackend(JsonlBackend):
     ) -> str:
         sid = read_session_id(session_id_path)
         argv_prompt, attachment = prepare_argv_prompt(prompt, prompt_path)
-        # Copilot takes the prompt as a --prompt arg (no stdin prompt channel).
         cmd = [
             "copilot",
             "-p",
@@ -75,16 +63,10 @@ class CopilotBackend(JsonlBackend):
             "--allow-all",
             "--no-ask-user",
         ]
-        # --add-dir serves dual purpose for Copilot: path sandbox allowlisting AND
-        # skill/CLAUDE.md discovery scope. Even with --allow-all (no sandbox), the
-        # dirs inform Copilot where to look for project instructions.
         if model:
             cmd += ["--model", model]
-        # Copilot has a native reasoning-effort flag (same level range as Claude).
         if effort:
             cmd += ["--effort", effort]
-        # Grant access to sibling repos (multi-repo dispatch): Copilot's own path
-        # sandbox only allows CWD + subdirs + temp dir by default.
         for d in add_dirs or []:
             cmd += ["--add-dir", d]
         if attachment is not None:

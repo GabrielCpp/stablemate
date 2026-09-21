@@ -1,10 +1,4 @@
-"""The flat key→value bag a node's prompt and args render against.
-
-Lives at the top level rather than under ``graph/`` because it is not the YAML
-front-end's: the agent runner takes one, and the Python driver builds one per
-`self.agent` call from that node's arguments. The graph walk was only ever its
-first caller.
-"""
+"""The flat key→value bag a node's prompt and args render against."""
 from __future__ import annotations
 from typing import Any
 
@@ -19,11 +13,7 @@ class WorkflowContext:
         self._data.update(data)
 
     def get_dotpath(self, path: str, default: Any = _MISSING) -> Any:
-        """Resolve a dot-separated path like 'analysis.status' into the context.
-
-        Raises ``KeyError`` when a segment is missing or would traverse a non-dict
-        value — unless ``default`` is supplied, in which case that default is
-        returned for any unresolvable path (so callers can guard without try/except)."""
+        """Resolve a dot-separated path like 'analysis.status' into the context."""
         parts = path.split(".")
         value = self._data
         for part in parts:

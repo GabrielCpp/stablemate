@@ -1,11 +1,4 @@
-"""``ostler graph`` — dump the whole OKF graph (nodes + edges + bullets) as JSON to filter on.
-
-``list``/``search`` are per-type / full-text and ``trace`` walks out from one node; this emits
-*every* UI node together with its parsed ``- key: value`` bullets and its resolved out-edges, plus a
-flat edge list. That lets an agent (or ``jq``) filter the graph structurally rather than by prose
-match — e.g. the node whose ``code:`` is a given symbol (dedup before enqueue), every
-``code:``/``verify:`` bullet (inventory coverage), or the nodes nothing links to (orphans).
-"""
+"""``ostler graph`` — dump the whole OKF graph (nodes + edges + bullets) as JSON to filter on."""
 from __future__ import annotations
 
 import re
@@ -17,10 +10,7 @@ from ostler.model import Graph, UINode
 
 
 def _rel(path: Path, root: Path) -> str:
-    """*root* is already resolved (``find_root`` resolves once at startup) and every node path
-    is built from it, so a plain ``relative_to`` matches what ``doctor.py`` already trusts for the
-    same computation — re-resolving both sides here paid a realpath syscall per node for no path
-    this codebase ever produces relative or symlinked."""
+    """*root* is already resolved (``find_root`` resolves once at startup) and every node path is built from it, so a plain ``relative_to`` matches what ``doctor.py`` already trusts for the same computation — re-resolving both sides here paid a realpath syscall per node for no path this codebase ever produces relative or symlinked."""
     try:
         return path.relative_to(root).as_posix()
     except ValueError:
@@ -37,20 +27,7 @@ def surface_of(node_path: Path, features_root: Path) -> str:
 
 
 def _edge_sources(node: UINode) -> list[str]:
-    """For each of ``node.links``, in the same order, the bullet key that owns its line.
-
-    ``node.links`` is flat: once extracted, a ``leads-to:`` link and a passing prose mention are
-    the same shape. Anything that traverses the graph *as navigation* needs them apart — following
-    an ``extends:`` edge does not move a user between screens. ``node.bullet_lines`` gives each
-    top-level bullet's own start line, so the bullets partition the node's lines into ``[start_i,
-    start_{i+1})`` spans in document order; a link's line places it in exactly one span, and
-    ``node.bullet_order`` maps that bullet's index to its key. Position alone over-claims twice:
-    the last bullet's span is unbounded, so it would also take a link sitting below it — ordinary
-    prose, or a link belonging to a nested child heading whose own span runs past every bullet of
-    its parent — and a bullet written ``- [thing](thing.md): what it does`` carries a link in its
-    *label*, which names the bullet rather than being a value the key holds. So a link counts for
-    a bullet only if it is also in that key's parsed value; anything else is ``"prose"``.
-    """
+    """For each of ``node.links``, in the same order, the bullet key that owns its line."""
     starts = sorted(node.bullet_lines.items(), key=lambda pair: pair[1])
     key_by_index = {idx: key for key, _raw, idx in node.bullet_order}
 
@@ -79,13 +56,10 @@ def _node_dict(node: UINode, resolver: LinkResolver, graph: Graph, features_root
     via = _edge_sources(node)
     for (text, href, _line), source in zip(node.links, via, strict=True):
         lt = resolver.resolve(node.path, href)
-        if lt is None:  # a URL or a code ref (`path::symbol`), not a graph edge
+        if lt is None:
             continue
         edges.append({"text": text, "href": href, "to": lt.node_id, "resolves": lt.resolved,
                       "via": source})
-    # Several section nodes share one file's `path`; a book runs this per node, so computing the
-    # same relative path and surface once per file (instead of once per heading) is most of the
-    # saving on a file with many `### id` sections.
     cached = path_cache.get(node.path)
     if cached is None:
         cached = (_rel(node.path, graph.root), surface_of(node.path, features_root))
@@ -94,33 +68,23 @@ def _node_dict(node: UINode, resolver: LinkResolver, graph: Graph, features_root
     return {
         "id": node.id,
         "type": node.type,
-        "kind": node.kind,  # "file" | "section"
+        "kind": node.kind,
         "surface": surface,
         "path": rel,
         "anchor": node.anchor,
         "title": node.title,
         "line": node.line,
-        "level": node.level,  # heading depth
-        "parent": node.parent,  # containment: id of the enclosing node
-        "bullets": dict(node.meta),  # every `- key: value` under the node
-        # …and the same bullets in document order, which the dict above cannot express. A book
-        # writes a claim and then the `verify:` observing it; that adjacency is the binding.
+        "level": node.level,
+        "parent": node.parent,
+        "bullets": dict(node.meta),
         "bulletOrder": [list(pair) for pair in node.bullet_order],
-        # Which of those bullets are one authored nested list, and what that list said about how
-        # its children combine. Keyed by the same ordinal `bulletOrder`'s third element carries,
-        # as a string because a consumer reads this back out of JSON.
         "combiners": {str(pos): word for pos, word in node.combiners.items()},
-        # The `entries=True` keys' items with the properties `bullets` above has nowhere to put:
-        # `bullets[key]` is the headlines alone, and a reader asking what an item *said about
-        # itself* — `from:`/`read:`/`is:` on a `provides:` fact, `type:`/`required:` on a `flags:`
-        # option — found only the headline here and had to re-open the markdown or guess. A
-        # compiler that guesses emits code for a claim the book never made.
         "entries": {
             key: [{"headline": entry.headline, "properties": dict(entry.properties)}
                   for entry in items]
             for key, items in node.entries.items() if items
         },
-        "edges": edges,  # resolved out-edges (parent:/extends:/on:/steps:/prose links)
+        "edges": edges,
     }
 
 
@@ -141,15 +105,7 @@ def _paths(node_id: str, by_id: dict) -> tuple[list, list]:
 
 def build(graph: Graph, *, etype: str | None = None, surface: str | None = None,
           resolver: LinkResolver | None = None) -> dict:
-    """Assemble the graph: every node (with bullets + out-edges) and a flat edge list.
-
-    ``etype``/``surface`` optionally scope the dump to one node type or one service.
-
-    A caller that also resolves links itself passes its ``resolver`` in. Each resolver memoizes a
-    target file's heading anchors per instance, so a second instance re-reads and re-parses every
-    link target — on a large book the single most expensive thing a doctor run does, and paid twice
-    for one run's worth of answers. Left None, the build owns a resolver for its own lifetime.
-    """
+    """Assemble the graph: every node (with bullets + out-edges) and a flat edge list."""
     if resolver is None:
         resolver = LinkResolver(graph)
     features_root = path_mod.features_root(graph)
@@ -172,13 +128,7 @@ def build(graph: Graph, *, etype: str | None = None, surface: str | None = None,
 
 
 def subset(data: dict, surface: str) -> dict:
-    """Scope an already-built dump to one surface, without rebuilding it.
-
-    ``build(surface=…)`` filters on exactly this field *after* resolving every node, so the work is
-    identical and only the filter differs — which makes rebuilding per surface pure waste. Doctor
-    runs several surface-scoped checks over one graph, and on a large book each rebuild costs more
-    than every other check combined.
-    """
+    """Scope an already-built dump to one surface, without rebuilding it."""
     nodes = [n for n in data["nodes"] if n["surface"] == surface]
     keep = {n["id"] for n in nodes}
     edges = [e for e in data["edges"] if e["from"] in keep]
@@ -198,9 +148,6 @@ def render_text(data: dict) -> str:
     return "\n".join(lines)
 
 
-# ── selectors ──────────────────────────────────────────────────────────────────────
-# A query surface over build()'s output, so hierarchy questions ("timeout of the agent node")
-# don't need jq. Selectors compose (AND); output is tree / ids / json.
 
 def _seg_match(seg_type: str, seg_title: str, ntype: str, ntitle: str) -> bool:
     if seg_type and seg_type.lower() != (ntype or "").lower():
@@ -209,8 +156,7 @@ def _seg_match(seg_type: str, seg_title: str, ntype: str, ntitle: str) -> bool:
 
 
 def _parse_path(expr: str) -> tuple[list[tuple[str, str]], list[str]]:
-    """`concept:agent / field:timeout` → ([(type,title), …], ['/', …]). Each segment is
-    `type:title` (either side optional); `/` = descendant, `>` = direct child."""
+    """`concept:agent / field:timeout` → ([(type,title), …], ['/', …])."""
     parts = re.split(r"\s*(/|>)\s*", expr.strip())
     segs: list[tuple[str, str]] = []
     ops: list[str] = []
@@ -224,8 +170,7 @@ def _parse_path(expr: str) -> tuple[list[tuple[str, str]], list[str]]:
 
 
 def _match_path(node: dict, segs: list[tuple[str, str]], ops: list[str]) -> bool:
-    """The node's ancestor chain (type_path/title_path) matches the path, right-anchored on the
-    node itself. `>` demands the immediately-preceding chain entry; `/` any earlier ancestor."""
+    """The node's ancestor chain (type_path/title_path) matches the path, right-anchored on the node itself."""
     chain = list(zip(node.get("type_path", []), node.get("title_path", [])))
     if not segs or not chain or not _seg_match(*segs[-1], *chain[-1]):
         return False
@@ -245,8 +190,7 @@ def _match_path(node: dict, segs: list[tuple[str, str]], ops: list[str]) -> bool
 
 
 def _hops_to(node: dict, target: str, by_id: dict) -> int | None:
-    """Node-hops from *node* up to *target* (1 = direct child), or None if not an ancestor.
-    Counts *nodes*, not heading levels — container/untyped headings don't consume a hop."""
+    """Node-hops from *node* up to *target* (1 = direct child), or None if not an ancestor."""
     cur, depth, seen = node["parent"], 1, set()
     while cur and cur in by_id and cur not in seen:
         if cur == target:
@@ -267,13 +211,7 @@ def _root_of(node_id: str, by_id: dict) -> str:
 
 
 def _orphan_ids(data: dict) -> set[str]:
-    """Pages nothing reaches: no edge lands on the page or on any heading inside it.
-
-    A document is read by containment as well as by links — a section is reached the moment
-    its page is, and a link to one section reaches the page it sits in. So an orphan is a
-    whole page, never a heading of one: the fix for an unreached page is one link, and
-    listing each of its sections as well would ask for that link once per heading.
-    """
+    """Pages nothing reaches: no edge lands on the page or on any heading inside it."""
     by_id = {n["id"]: n for n in data["nodes"]}
     reached = {_root_of(e["to"], by_id) for e in data["edges"] if e["to"] in by_id}
     return {n["id"] for n in data["nodes"]
@@ -284,7 +222,7 @@ def select(data: dict, *, node_type: str | None = None, title: str | None = None
            path: str | None = None, under: str | None = None, depth: int | None = None,
            has_bullet: str | None = None, bullet: str | None = None,
            links_to: str | None = None, orphans: bool = False) -> list:
-    """Filter build()'s nodes by any combination of selectors (AND). Returns nodes in graph order."""
+    """Filter build()'s nodes by any combination of selectors (AND)."""
     nodes = data["nodes"]
     by_id = {n["id"]: n for n in nodes}
     orphan_ids = _orphan_ids(data) if orphans else set()

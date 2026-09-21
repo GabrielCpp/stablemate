@@ -1,36 +1,5 @@
 #!/usr/bin/env python3
-"""Guard invariant 1: the coder workflow assumes nothing about where it is deployed.
-
-A prompt that says `make lint`, `go test ./...` or "write a pytest file" has decided, on
-behalf of every repo that ever installs this workflow, what its toolchain is. When the repo
-disagrees the model does not fail — it half-complies, runs the command that does not exist,
-and reports around it. The workflow owns the *contract* (which gates run, what the result
-schema is); the repo owns the *body* (what the commands are, what a test looks like here),
-declared in `agents.yml` and in the skills it installed.
-
-The rule it enforces, in one line: **a prompt may not say a stack name, and code may not act
-on one — but code may explain one.**
-
-- Under `coder/<flow>/prompts/`, every line of the body counts. A Jinja block whose condition
-  dispatches on a service's *type* is exempt: text rendered only for a Go service may say
-  `go test`, because the repo's own dispatch is what put it there. Unconditional text may not.
-- Under `coder/**/*.py`, only what the interpreter sees counts — string literals and
-  identifiers. Comments and docstrings are skipped deliberately: `#: The file that proves the
-  init worked (e.g. "go.mod")` documents a *parameter* whose value the repo supplies, and a
-  guard that cannot tell that from hard-coding `go.mod` teaches people to stop writing the
-  comment rather than to stop hard-coding.
-- The token list is `scripts/prompt_agnostic_tokens.txt`. Matching is whole-token and
-  case-sensitive, and a name whose bare form is an English word is listed in its command shape
-  (`re:\\bmake [a-z][\\w-]*`) rather than as a word this codebase uses in every third sentence.
-- `ALLOWLIST` exempts whole files that legitimately know a name, each with the reason it is
-  there. A file gets on this list by argument, not by being noisy.
-
-What it cannot see is a stack assumption phrased without any of these words — "run the
-standard test command for this project" is invisible to a grep, and stays a review's job.
-
-Run:
-    uv run python scripts/check_prompt_agnostic.py
-"""
+"""Guard invariant 1: the coder workflow assumes nothing about where it is deployed."""
 
 from __future__ import annotations
 
@@ -46,12 +15,8 @@ import jinja2
 REPO = Path(__file__).resolve().parents[1]
 TOKENS_FILE = REPO / "scripts" / "prompt_agnostic_tokens.txt"
 
-#: Everything the coder workflow ships as text or code. The prompt bodies a repo may override
-#: live in the base library and are not scanned here — those are the repo's to own.
 SCANNED_ROOTS = ("workflows/src/workhorse_workflows/coder/",)
 
-#: Files exempt from the sweep, each with the reason. An entry is a claim that this file's job
-#: is to know a name, not that removing the name was inconvenient.
 ALLOWLIST: dict[str, str] = {
     "workflows/src/workhorse_workflows/coder/genesis/flow.py": (
         "genesis scaffolds a repo that does not exist yet, so it is the one lane with no "
@@ -69,10 +34,6 @@ ALLOWLIST: dict[str, str] = {
     ),
 }
 
-#: Tokens one file may legitimately say, and why. Narrower than `ALLOWLIST`: the file stays
-#: guarded against every *other* stack name, which matters most in the files that already have
-#: a reason to name one tool. The reason is always the same shape — this names a tool the
-#: workflow itself depends on (`requires:`), not one it assumes the deployment repo has.
 FILE_TOKEN_ALLOW: dict[str, tuple[tuple[str, ...], str]] = {
     "workflows/src/workhorse_workflows/coder/qa/prompts/plan-qa.md": (
         ("python", "playwright", "maestro"),
@@ -92,16 +53,8 @@ FILE_TOKEN_ALLOW: dict[str, tuple[tuple[str, ...], str]] = {
     ),
 }
 
-#: A Jinja condition that dispatches on a service's type. Text inside such a block is the
-#: repo's own branch rendering, which is exactly how a stack name is supposed to arrive.
 TYPE_CONDITION = re.compile(r"(\btype\b|service_type)")
 
-#: Lexing the prompt is Jinja's job, not a regex's. The template is rendered by this very
-#: library at runtime, so its own tokenizer is the only reading of `{% if %}` that is
-#: guaranteed to agree with what actually renders — a `%}` inside a quoted string, a
-#: `{#- comment -#}` holding a tag, or whitespace control in a shape the pattern did not
-#: anticipate all part the regex from the renderer, and the exemption is decided by whoever
-#: is right about where the block ends.
 _JINJA = jinja2.Environment(autoescape=False)  # noqa: S701 - lexing only, nothing is rendered
 
 
@@ -129,12 +82,7 @@ def _tracked_files() -> list[Path]:
 
 
 def _block_tags(text: str) -> list[tuple[str, str, int, int]]:
-    """Every `{% ... %}` tag as (keyword, rest-of-condition, first line, last line).
-
-    A tag may span lines, so both ends are recorded: the exempt span runs from the line the
-    opening tag starts on through the line its `{% endif %}` finishes on, which is what the
-    line-numbered scan downstream needs.
-    """
+    """Every `{% ..."""
     tags: list[tuple[str, str, int, int]] = []
     tokens = [tok for tok in _JINJA.lex(text) if tok[1] != "whitespace"]
     index = 0
@@ -155,11 +103,7 @@ def _block_tags(text: str) -> list[tuple[str, str, int, int]]:
 
 
 def _typed_block_lines(text: str) -> set[int]:
-    """Lines inside a Jinja block conditioned on a service type — allowed to be specific.
-
-    A template that will not lex earns no exemptions: it cannot render either, so the
-    findings it collects are the smaller of its two problems.
-    """
+    """Lines inside a Jinja block conditioned on a service type — allowed to be specific."""
     try:
         tags = _block_tags(text)
     except jinja2.TemplateSyntaxError:
@@ -186,11 +130,7 @@ def _typed_block_lines(text: str) -> set[int]:
 
 
 def _executable_lines(text: str) -> dict[int, str]:
-    """Python reduced to what the interpreter sees: identifiers and non-docstring literals.
-
-    A docstring is a string that is the whole of an expression statement, which at token level
-    is a STRING preceded only by NEWLINE/INDENT/DEDENT and followed by a NEWLINE.
-    """
+    """Python reduced to what the interpreter sees: identifiers and non-docstring literals."""
     kept: dict[int, str] = {}
     previous = tokenize.NEWLINE
     pending: tuple[int, str] | None = None
@@ -202,7 +142,6 @@ def _executable_lines(text: str) -> dict[int, str]:
         if tok.type in (tokenize.NL, tokenize.COMMENT):
             continue
         if pending is not None:
-            # A string that stands alone as a statement is a docstring; anything else is data.
             if tok.type != tokenize.NEWLINE:
                 lineno, value = pending
                 kept[lineno] = kept.get(lineno, "") + " " + value

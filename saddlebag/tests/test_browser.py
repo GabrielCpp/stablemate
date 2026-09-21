@@ -1,10 +1,4 @@
-"""The CDP fill: target selection, the safety refusals, and what it reports.
-
-No browser is started. The session is the seam — :class:`~saddlebag.browser.CdpSession`
-is a Protocol precisely so a recorder can stand in for one, which is also what lets a
-test assert the thing that matters most: that the value goes out over ``Input.insertText``
-and comes back only as a length.
-"""
+"""The CDP fill: target selection, the safety refusals, and what it reports."""
 
 from __future__ import annotations
 
@@ -45,7 +39,6 @@ def target(url: str, id_: str = "t") -> browser.Target:
     return browser.Target(id=id_, url=url, title="", websocket_url=f"ws://127.0.0.1:9222/devtools/page/{id_}")
 
 
-# -- the loopback refusal ---------------------------------------------------
 
 
 @pytest.mark.parametrize("endpoint", ["http://192.168.1.10:9222", "http://browser.example.com:9222", "http://"])
@@ -60,7 +53,6 @@ def test_loopback_endpoints_are_allowed(endpoint: str) -> None:
     browser.require_loopback(endpoint)
 
 
-# -- choosing the page ------------------------------------------------------
 
 
 def test_selects_the_only_page_matching_the_filter() -> None:
@@ -85,7 +77,6 @@ def test_no_pages_at_all_is_an_error() -> None:
         browser.select_target((), None)
 
 
-# -- the fill itself --------------------------------------------------------
 
 
 def test_types_the_value_and_reports_only_its_length() -> None:
@@ -97,11 +88,7 @@ def test_types_the_value_and_reports_only_its_length() -> None:
 
 
 def test_the_secret_never_appears_in_an_evaluated_expression() -> None:
-    """The value rides ``Input.insertText`` alone.
-
-    Interpolating it into a ``Runtime.evaluate`` would put the password in the
-    browser's own protocol log, where a DevTools window replays it in cleartext.
-    """
+    """The value rides ``Input.insertText`` alone."""
     session = FakeSession()
     browser.fill(session, "#pw", "hunter2")
     for method, params in session.commands:

@@ -1,17 +1,4 @@
-"""Tests for the dashboard's path tree builder (assets/dashboard.js).
-
-``buildTree`` is the one place flat paths become nesting, and both the Files pane
-and the Diff pane go through it — so a bug here is a bug in two panes at once. It
-is a pure function of its entry list, which is what lets it be asserted here
-against synthetic input rather than through a browser.
-
-The server deliberately sends flat paths and never a tree: nesting is a display
-decision, and shipping it would mean two producers (the file-list reader and the
-diff parser) each having to agree on the same node shape. Instead they both hand
-this function ``{path, ...}`` entries and it returns the shape the renderer walks.
-
-Run: uv run pytest tests/test_tree_builder.py
-"""
+"""Tests for the dashboard's path tree builder (assets/dashboard.js)."""
 from __future__ import annotations
 
 import json
@@ -24,9 +11,6 @@ from pathlib import Path
 ASSETS = Path(__file__).resolve().parents[1] / "groom" / "assets"
 NODE = shutil.which("node")
 
-# Exercise the real module. Its module body mounts islands into a DOM that does
-# not exist under node, so slice the pure function out of the source rather than
-# importing it — and assert (below) that the slice markers still bound it.
 _START = "function buildTree(entries) {"
 _END = "function TreeDir("
 
@@ -41,7 +25,7 @@ console.log(JSON.stringify(buildTree(JSON.parse(process.env.GROOM_ENTRIES))));
 
 
 def _build(entries: list[dict]) -> dict:
-    """Run the JS builder over a list of entries. Called past `_skipped()`."""
+    """Run the JS builder over a list of entries."""
     harness = _HARNESS.format(
         path=json.dumps(str(ASSETS / "dashboard.js")),
         start=json.dumps(_START),
@@ -57,9 +41,7 @@ def _build(entries: list[dict]) -> dict:
 
 
 def _node() -> str:
-    """The node binary. Called only past `_skipped()`, which is what rules its
-    absence out — so the callers below spell the command rather than the question of
-    whether node is installed."""
+    """The node binary."""
     assert NODE is not None
     return NODE
 
@@ -72,8 +54,6 @@ def _skipped() -> bool:
 
 
 def test_source_still_bounds_the_function_the_harness_extracts():
-    # If either marker is renamed the slice would quietly test something else, or
-    # nothing at all. Assert on the source directly so that failure is loud.
     src = (ASSETS / "dashboard.js").read_text()
     assert src.count(_START) == 1
     assert src.index(_START) < src.index(_END)
@@ -90,8 +70,6 @@ def test_flat_paths_become_directory_nodes_and_file_leaves():
 
 
 def test_paths_sharing_a_prefix_reuse_one_directory_node():
-    # Two branches for `src/` would render the directory twice, each holding half
-    # the files — the bug this invariant exists to prevent.
     if _skipped():
         return
     root = _build([{"path": "src/a.py"}, {"path": "src/b.py"}])
@@ -100,9 +78,6 @@ def test_paths_sharing_a_prefix_reuse_one_directory_node():
 
 
 def test_the_whole_entry_rides_along_on_the_leaf():
-    # The Diff pane's leaf needs the parsed-file index and line counts, and the
-    # Files pane's needs the full path; carrying the caller's object rather than
-    # copying named members is what lets one function serve both.
     if _skipped():
         return
     root = _build([{"path": "pkg/mod.go", "idx": 3, "add": 12, "del": 4}])
@@ -112,9 +87,6 @@ def test_the_whole_entry_rides_along_on_the_leaf():
 
 
 def test_insertion_order_is_preserved_and_nothing_is_deduplicated():
-    # Sorting belongs to the renderer, which sorts a copy per level. Duplicate
-    # paths are a real diff shape (a rename shows old and new), so they must not
-    # silently collapse into one row.
     if _skipped():
         return
     root = _build([{"path": "z.py"}, {"path": "a.py"}, {"path": "z.py"}])
@@ -128,9 +100,6 @@ def test_an_empty_entry_list_yields_an_empty_root():
 
 
 def test_a_non_string_path_is_coerced_rather_than_rejected():
-    # `newName` can be absent on a deleted file, leaving the diff entry's path
-    # undefined. Coercion keeps that row visible and labelled rather than throwing
-    # partway through the list and losing every file after it.
     if _skipped():
         return
     root = _build([{"path": None}, {"path": "ok.py"}])

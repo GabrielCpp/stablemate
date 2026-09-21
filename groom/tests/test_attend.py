@@ -1,18 +1,4 @@
-"""The attendant: who gets dispatched at a run that stopped, and what is recorded.
-
-Three layers, all of them here because they are one feature:
-
-* the **decision** — which stops are attended and which are left alone;
-* the **lifecycle** — a row written before the attendant's first byte, flipped by the
-  thread that owns the process, restarted in place after a groom that died;
-* the **record** — a copied transcript read back as a conversation, and the endpoints
-  the pane calls.
-
-No agent process and no socket: the CLI launch is one function behind a port, and
-every test that needs a process either fakes it or spawns a sleeper it then kills.
-
-Run: uv run pytest groom/tests/test_attend.py
-"""
+"""The attendant: who gets dispatched at a run that stopped, and what is recorded."""
 from __future__ import annotations
 
 import asyncio
@@ -66,12 +52,7 @@ Configure = Callable[..., _Spawner]
 
 @pytest.fixture
 def attending(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Configure]:
-    """A groom whose database, config and transcript root are all this test's own.
-
-    The mode is read from settings on every announcement, so the fixture writes the
-    environment tier and drops the settings cache — a test that set an environment
-    variable and left a cached resolution behind would be testing the previous case.
-    """
+    """A groom whose database, config and transcript root are all this test's own."""
 
     def _configure(mode: str = attend.HEADLESS, **env: str) -> _Spawner:
         monkeypatch.setenv("GROOM_DB", str(tmp_path / "groom.db"))
@@ -117,7 +98,6 @@ def _await(predicate: Callable[[], bool], what: str) -> None:
     raise AssertionError(f"timed out waiting for {what}")
 
 
-# ---- the decision --------------------------------------------------------------
 def test_attending_is_off_until_it_is_configured(attending: Configure):
     """The default is the dashboard groom already was — not a degraded attendant."""
     spawner = attending(attend.OFF)
@@ -148,11 +128,7 @@ def test_a_gate_re_armed_after_an_answer_is_a_new_stop(attending: Configure):
 
 
 def test_a_running_row_holds_the_run_after_the_ledger_is_gone(attending: Configure):
-    """The durable half of "one attendant per run": groom restarted, the claude did not.
-
-    Nothing is in memory after a restart, so a run that is still parked would collect a
-    second attendant on the first tick if the ``running`` row did not answer for it.
-    """
+    """The durable half of "one attendant per run": groom restarted, the claude did not."""
     spawner = attending()
     assert _gate(spawner=spawner) is not None
     store.attend_start("job-1", run_id="r1", kind="gate", started_at=0.0)
@@ -206,10 +182,7 @@ def test_a_job_preserves_unstructured_questions(attending: Configure):
 
 
 def test_the_doctrine_ships_with_groom(attending: Configure):
-    """The prompt is groom's own package data, not a base-library lookup: an attendant
-    dispatched on a machine with no library configured must still get the rules, since
-    the facts without the rules is exactly the attendant that answers a gate to move a
-    run."""
+    """The prompt is groom's own package data, not a base-library lookup: an attendant dispatched on a machine with no library configured must still get the rules, since the facts without the rules is exactly the attendant that answers a gate to move a run."""
     spawner = attending()
     job = _gate(spawner=spawner)
     assert job is not None
@@ -217,7 +190,6 @@ def test_the_doctrine_ships_with_groom(attending: Configure):
     assert "Never answer a gate to make the run move" in job.prompt()
 
 
-# ---- the dead half -------------------------------------------------------------
 def _failure_run(tmp_path: Path) -> str:
     run_dir = tmp_path / "run"
     run_dir.mkdir()
@@ -253,10 +225,8 @@ def test_a_run_that_left_no_handoff_is_still_attended(attending: Configure, tmp_
     assert "checkpoint.json" in job.prompt()
 
 
-# ---- the table -----------------------------------------------------------------
 def test_a_row_is_running_until_the_owner_finishes_it(attending: Configure):
-    """Two states, and no third: an attendant sends no heartbeat, so there is nothing
-    a middle state could mean."""
+    """Two states, and no third: an attendant sends no heartbeat, so there is nothing a middle state could mean."""
     attending()
     store.attend_start("j1", run_id="r1", workflow="okf-builder", kind="gate",
                        session_id="s1", pid=99, started_at=100.0)
@@ -296,15 +266,10 @@ def test_the_log_is_newest_first_and_nothing_is_pruned(attending: Configure):
     assert list(store.attend_latest_by_run()) == ["r0", "r1", "r2", "r3", "r4"]
 
 
-# ---- the process groom owns ----------------------------------------------------
 def test_the_row_is_written_before_the_first_byte_and_flipped_at_exit(
     attending: Configure, monkeypatch: pytest.MonkeyPatch,
 ):
-    """The session id is minted, not scraped, so the row can exist from the spawn.
-
-    A groom that died one second after the dispatch otherwise leaves a claude nobody
-    can name — and boot recovery has nothing to find.
-    """
+    """The session id is minted, not scraped, so the row can exist from the spawn."""
     attending()
     proc = _FakeProc(code=0)
     minted: list[str] = []
@@ -327,7 +292,6 @@ def test_the_row_is_written_before_the_first_byte_and_flipped_at_exit(
         "the owning thread to close the row",
     )
     assert (store.attend_get(job.job_id) or {})["exit_code"] == 0
-    # The run is handed back, so the next announcement of a *new* stop dispatches.
     assert attend.queue() == []
 
 
@@ -354,15 +318,13 @@ def test_stop_hard_kills_the_attendant_and_hands_the_run_back(attending: Configu
     row = store.attend_get("j1")
     assert row is not None
     assert (row["status"], row["released_state"]) == (store.ATTEND_COMPLETED, "stopped")
-    # A row that is already finished is not something to kill twice.
     assert attend.stop("j1") is False
 
 
 def test_boot_recovery_restarts_a_dead_pid_into_the_same_row(
     attending: Configure, monkeypatch: pytest.MonkeyPatch,
 ):
-    """A groom restart kills its attendants and claude sends no heartbeat, so a row
-    still saying ``running`` is the only trace. It is re-run, not re-filed."""
+    """A groom restart kills its attendants and claude sends no heartbeat, so a row still saying ``running`` is the only trace."""
     attending()
     dead = subprocess.Popen([sys.executable, "-c", ""])
     dead.wait(timeout=WAIT_S)
@@ -384,9 +346,7 @@ def test_boot_recovery_restarts_a_dead_pid_into_the_same_row(
     assert row is not None
     assert len(row["session_ids"]) == 2 and row["session_ids"][0] == "s1"
     assert (row["status"], row["pid"]) == (store.ATTEND_RUNNING, 777)
-    # One attendance, not two: the run is still the same stopped run.
     assert len(store.attend_recent()) == 2
-    # And the restarted attendant is owned, so its exit closes the row it re-armed.
     proc.done.set()
     _await(
         lambda: (store.attend_get("j1") or {}).get("status") == store.ATTEND_COMPLETED,
@@ -394,7 +354,6 @@ def test_boot_recovery_restarts_a_dead_pid_into_the_same_row(
     )
 
 
-# ---- reading one back ----------------------------------------------------------
 def _transcript(session_id: str, records: list[dict[str, Any]], sidechain=None) -> None:
     directory = attend_transcript.session_dir(session_id)
     directory.mkdir(parents=True, exist_ok=True)
@@ -427,11 +386,7 @@ _MAIN = [
 
 
 def test_a_session_reads_back_as_a_conversation(attending: Configure):
-    """The pane shows what an attendant did and said, the way a terminal would.
-
-    Not a JSON viewer: prose is prose, a tool call is one line carrying its arguments
-    and its result, and reasoning is neither of those.
-    """
+    """The pane shows what an attendant did and said, the way a terminal would."""
     attending()
     _transcript("sess-1", _MAIN, sidechain=[_turn("assistant", [{"type": "text", "text": "sub"}])])
     rendered = attend_transcript.render_session("sess-1")
@@ -463,7 +418,6 @@ def test_a_session_with_nothing_copied_renders_empty_rather_than_raising(
     }
 
 
-# ---- the app edges -------------------------------------------------------------
 def _reset_fleet() -> None:
     state.WORKFLOWS.clear()
     state.RUNS.clear()
@@ -542,8 +496,7 @@ def test_the_sessions_endpoint_is_the_log_the_pane_renders(attending: Configure)
 
 
 def test_one_session_comes_back_with_a_pasteable_resume_line(attending: Configure):
-    """The point of keeping these is being able to go ask the attendant what it thought,
-    and that needs the workspace as much as the session id."""
+    """The point of keeping these is being able to go ask the attendant what it thought, and that needs the workspace as much as the session id."""
     attending(attend.SESSION)
     _reset_fleet()
     store.attend_start("j1", run_id="r1", workflow="okf-builder", kind="gate",
@@ -585,8 +538,7 @@ def test_the_stop_endpoint_kills_the_attendant(attending: Configure):
 def test_the_settings_endpoint_persists_the_toggle_to_the_home_config(
     attending: Configure, tmp_path,
 ):
-    """Off is stored as itself, and on restores the mode that was last in use — an
-    operator running `session` who toggles off and on does not get a claude back."""
+    """Off is stored as itself, and on restores the mode that was last in use — an operator running `session` who toggles off and on does not get a claude back."""
     attending(attend.SESSION)
     _reset_fleet()
     client = _client()
@@ -635,8 +587,7 @@ def test_gates_clearing_releases_the_run(attending: Configure):
 
 
 def test_attend_dispatches_with_kind_operator(attending: Configure):
-    """`_attend_gates` is the model the new push arms use. Operator kind →
-    dispatch. Machine kind → declined (a measurement is a job running)."""
+    """`_attend_gates` is the model the new push arms use."""
     attending(attend.SESSION)
     _reset_fleet()
     from groom.app import _attend_gates
@@ -649,33 +600,18 @@ def test_attend_dispatches_with_kind_operator(attending: Configure):
     assert len(attend.queue()) == 1
     job = attend.queue()[0]
     assert job["gate_path"] == "/repo/docs/gate.md"
-    # `_attend_gates` is itself the dispatch path; the spawned job has kind="gate"
-    # (the kind that `attend_attend_death` would clobber into "death"). The
-    # `kind=operator` is what `attend_attend_gate` reads to admit or decline.
     assert job["kind"] == "gate"
 
-    # Clear the run's job so the second call (for a machine kind) starts with
-    # an empty queue. `_attend_gates` returns None for a `machine` kind —
-    # `attend.attend_gate` declines it — so the queue must stay empty afterward.
     attend.release("r1")
 
     machine = GateInfo(workflow_id="r1", file_path="docs/gate.md", question="Q?", kind="machine")
     row.gates[machine.file_path] = machine
     _attend_gates(row, [machine])
-    # attend.attend_gate is the one that reads kind and declines; the lower layer
-    # is mockable through `patch.object` rather than tested here.
     assert attend.queue() == []
 
 
 def test_the_dispatched_gate_path_is_absolute(attending: Configure):
-    """`GateInfo.file_path` is workspace-relative; the attendant leaves the process with it.
-
-    Two consumers open `gate_path` as a filesystem path — the job body, and `_first_status`
-    at exit for the released `STATUS:`. A relative one resolves against *groom's own* cwd,
-    which is right only when groom happens to serve the repo the run lives in and silently
-    wrong for every other repo in the fleet: the gate reads as empty and the attendance
-    records no outcome.
-    """
+    """`GateInfo.file_path` is workspace-relative; the attendant leaves the process with it."""
     attending(attend.SESSION)
     _reset_fleet()
     row = _native_row()
@@ -724,11 +660,7 @@ def test_the_gate_body_falls_back_to_the_preview_when_the_file_is_gone(tmp_path)
 
 
 def test_the_prompt_hands_over_the_groom_reads(tmp_path):
-    """The attendant is dispatched by groom and the run's history is already on disk.
-
-    Without the commands it opens source files instead of reading what the run itself
-    recorded while it was failing — which is the half the gate body leaves out.
-    """
+    """The attendant is dispatched by groom and the run's history is already on disk."""
     job = attend.AttendJob(
         job_id="j1", run_id="r1", kind="gate", workflow="okf-builder",
         run_dir="/runs/r1", workspace=str(tmp_path), created_at=0.0,
@@ -743,11 +675,7 @@ def test_the_prompt_hands_over_the_groom_reads(tmp_path):
 def test_a_run_that_ended_on_purpose_is_not_attended_as_a_death(
     monkeypatch: pytest.MonkeyPatch, terminal: str,
 ):
-    """A `--core` reload or a `switch-cli` re-execs the run, so its root span ends `reload`.
-
-    The exit-code path already excludes `RELOAD_EXIT_CODE`; the ENDED path read the same
-    ending from the span and dispatched a death attendant at a run that was still going.
-    """
+    """A `--core` reload or a `switch-cli` re-execs the run, so its root span ends `reload`."""
     deaths: list[str] = []
     monkeypatch.setattr(state, "RUNS", {"r1": RunTelemetry(run_id="r1", terminal=terminal)})
     monkeypatch.setattr(groom_app, "_attend_death", deaths.append)

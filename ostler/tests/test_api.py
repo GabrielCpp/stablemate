@@ -1,7 +1,4 @@
-"""The programmatic ``Ostler`` facade — same core the CLI dispatches to, reached
-as a Python object instead of a subprocess. Mirrors ``test_query_select`` but
-drives everything through the facade, and pins the load-once / invalidate-on-
-mutation contract."""
+"""The programmatic ``Ostler`` facade — same core the CLI dispatches to, reached as a Python object instead of a subprocess."""
 
 from __future__ import annotations
 
@@ -39,20 +36,14 @@ def test_path_resolution(repo: Path):
 
 def test_doctor_returns_an_outcome_carrying_the_report(repo: Path):
     outcome = Ostler(repo).doctor()
-    assert outcome.ok is True  # the fixture book has warnings, which do not fail it
+    assert outcome.ok is True
     assert "epics" in outcome.data
 
 
 def test_doctor_reports_an_unloadable_book_rather_than_raising(
     repo: Path, monkeypatch: pytest.MonkeyPatch
 ):
-    """A book that will not load is an answer — "this does not hold" — not an exception.
-
-    The load is forced at the seam rather than through a fixture, because the reader is
-    deliberately forgiving: a missing directory reads as an empty exploration book, so no
-    arrangement of files on disk reaches this path. Every caller wrapped the call in a
-    try/except anyway, and this is the contract that lets them all drop it.
-    """
+    """A book that will not load is an answer — "this does not hold" — not an exception."""
     def unreadable(_self):
         raise OSError("book is on fire")
 
@@ -67,9 +58,9 @@ def test_doctor_reports_an_unloadable_book_rather_than_raising(
 
 def test_graph_is_loaded_once_then_reused(repo: Path):
     okf = Ostler(repo)
-    assert okf.graph is okf.graph  # cached snapshot, not reloaded per access
+    assert okf.graph is okf.graph
     first = okf.graph
-    assert okf.reload().graph is not first  # reload() forces a fresh read
+    assert okf.reload().graph is not first
 
 
 def test_mutation_invalidates_the_snapshot(repo: Path):
@@ -77,11 +68,8 @@ def test_mutation_invalidates_the_snapshot(repo: Path):
     snapshot = okf.graph
     res = okf.set_status("01-foo", "QA passed")
     assert res.ok
-    # the mutation dropped the cache, so the next read reflects disk, not the
-    # pre-mutation snapshot: 01-foo is done, so epic-a has no runnable story left.
     assert okf.graph is not snapshot
     assert okf.next_story("epic-a") is None
-    # And the facade says *why* there is none — "done" is what lets a caller merge.
     assert okf.next_story_report("epic-a")["state"] == "done"
 
 
@@ -177,7 +165,6 @@ def test_create_milestone_is_visible_to_the_next_read(repo: Path):
     assert okf.set_milestone_source_items("docs-app-mvp", [source]).ok
 
 
-# -- QA / artifact / edit subsystem facades ---------------------------------
 def test_artifact_vet_reports_missing_artifact(repo: Path):
     outcome = Ostler(repo).artifact_vet("plan-context", "spec")
     assert outcome.ok is False
@@ -198,11 +185,11 @@ def test_qa_context_validate_flags_a_bad_packet(repo: Path):
     spec.mkdir()
     (spec / "qa-okf-context.json").write_text("{}", encoding="utf-8")
     outcome = Ostler(repo).qa_context_validate(spec=spec)
-    assert outcome.ok is False  # a `{}` packet is not a valid context
+    assert outcome.ok is False
     assert outcome.status == "invalid"
     assert outcome.data["problems"]
 
 
 def test_settle_review_errors_without_a_verdict(repo: Path):
     plan = Ostler(repo).settle_review("01-foo")
-    assert plan.error  # no review-resolution.json on disk → an errored plan, nothing applied
+    assert plan.error

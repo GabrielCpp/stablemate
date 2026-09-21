@@ -1,39 +1,5 @@
 #!/usr/bin/env python3
-"""Guard the "no ad-hoc shell scripts" rule. Wired into `make test` and into a Claude hook.
-
-A shell script is the cheapest thing to write and the most expensive thing to own. It has no
-test, no type checker, no import graph and no home: `ruff` never reads it, `ty` never reads
-it, `make lint` is silent about it, and the next person finds three of them that each do
-two-thirds of the same job under names that do not say so. The failure is not that bash is
-bad — it is that a `.sh` file is *outside every gate this repo has*, so the discipline that
-holds everywhere else stops at its first line.
-
-The rule: a new capability goes into the unified Python CLI — a `scripts/*.py` guard or a
-workspace member's own package — where it is imported, linted, typed and testable. Not a new
-script beside the last one.
-
-Two enforcement points, one rule, one file:
-
-* ``--hook`` reads a Claude Code ``PreToolUse`` payload on stdin and denies the tool call
-  before the file exists, with a reason that says where the code belongs instead. That is the
-  point at which the decision is still free.
-* the default mode sweeps every **tracked** file, because a hook only ever sees the machine
-  it is installed on. A script committed from a clone with no hook configured is in the tree
-  forever otherwise.
-
-It catches a `.sh`/`.bash`/`.zsh` path and a shell shebang on an extensionless file — the two
-shapes an ad-hoc script actually takes. It cannot catch shell smuggled inside a Python
-`subprocess.run(..., shell=True)` string, and it does not try to: that code is at least inside
-the linted tree, which is the property the rule is protecting.
-
-`ALLOWED` is not a taste exception. Each entry is a file whose *interface is dictated by
-another program* — git execs a hook, Docker execs an entrypoint — where the shell file is the
-contract and Python would just be a file the shell script calls.
-
-Run:
-    uv run python scripts/check_no_shell.py
-    echo '{"tool_name":"Write","tool_input":{"file_path":"x.sh"}}' | python3 scripts/check_no_shell.py --hook
-"""
+"""Guard the "no ad-hoc shell scripts" rule."""
 
 from __future__ import annotations
 
@@ -45,20 +11,12 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
 
-#: Suffixes that are a shell script by name.
 SHELL_SUFFIXES = (".sh", ".bash", ".zsh", ".ksh", ".fish")
 
-#: Interpreters a shebang can name that make the extensionless file a shell script, so
-#: `bin/deploy` is not a way around the suffix list.
 SHELL_INTERPRETERS = frozenset({"sh", "bash", "zsh", "ksh", "dash", "fish"})
 
-#: Tokens that end a command in a pipeline, and with it any `tee` argument list.
 CONTROL_TOKENS = frozenset({"|", "||", "&&", ";", "&"})
 
-#: Paths where another program dictates the interface, so the shell file *is* the contract.
-#: git execs `.githooks/*` directly and farrier rewrites a fenced region inside them; Docker
-#: execs the entrypoint as PID 1. Both delegate to Python on their second line — which is the
-#: shape the rule is asking for, not an exemption from it.
 ALLOWED = frozenset(
     {
         ".githooks/commit-msg",
@@ -88,7 +46,7 @@ def _tracked_files() -> list[str]:
 
 
 def _is_shell(rel: str, path: Path) -> str | None:
-    """Why `rel` is a shell script, or None. Suffix first — it needs no read."""
+    """Why `rel` is a shell script, or None."""
     if rel in ALLOWED:
         return None
     if path.suffix in SHELL_SUFFIXES:
@@ -104,8 +62,7 @@ def _is_shell(rel: str, path: Path) -> str | None:
 
 
 def _shebang_names_a_shell(first: str) -> bool:
-    """Whether `first` is a shebang naming a shell — read as the line's actual grammar
-    (interpreter path, then arguments), not pattern-matched against its raw text."""
+    """Whether `first` is a shebang naming a shell — read as the line's actual grammar (interpreter path, then arguments), not pattern-matched against its raw text."""
     if not first.startswith("#!"):
         return False
     parts = first[2:].strip().split()
@@ -115,11 +72,7 @@ def _shebang_names_a_shell(first: str) -> bool:
 
 
 def _bash_writes_a_script(command: str) -> bool:
-    """Whether a Bash call authors a script rather than running one: a redirect or a `tee`
-    whose target path has a shell suffix. Running an existing script is not creating one,
-    so `bash x.sh` passes. Tokenized with shlex so quoting is honoured; a command shlex
-    cannot finish (a heredoc body's stray quote) degrades to whitespace words, which still
-    keeps the redirect next to its target."""
+    """Whether a Bash call authors a script rather than running one: a redirect or a `tee` whose target path has a shell suffix."""
     try:
         tokens = shlex.split(command)
     except ValueError:

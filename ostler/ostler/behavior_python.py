@@ -37,8 +37,6 @@ class PythonEvidence(ast.NodeVisitor):
         for statement in node.body:
             self.module_statement = statement
             self.visit(statement)
-        # Include same-file bindings referenced by the excerpts, transitively. This is
-        # lexical retrieval only, not name resolution or a data-flow verdict.
         bindings = [statement for statement in node.body if isinstance(statement, (ast.Assign, ast.AnnAssign))]
         while True:
             names = {part.id for part in ast.walk(node) if isinstance(part, ast.Name)
@@ -109,7 +107,6 @@ class PythonEvidence(ast.NodeVisitor):
         for statement in node.body:
             self.visit(statement)
         if len(self.candidates) > before and not enclosing_function:
-            # Class declarations retain fields and prose, not every method body.
             start = min([node.lineno, *(item.lineno for item in node.decorator_list)])
             for statement in node.body:
                 if isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
@@ -148,7 +145,6 @@ class PythonEvidence(ast.NodeVisitor):
             self.conditions.pop()
 
     def generic_visit(self, node: ast.AST) -> None:
-        # Non-if control flow is retained as lexical context, never a reachability claim.
         contextual = isinstance(node, (ast.For, ast.AsyncFor, ast.While, ast.Try, ast.TryStar,
                                        ast.ExceptHandler, ast.With, ast.AsyncWith, ast.Match, ast.match_case))
         if contextual:

@@ -1,12 +1,4 @@
-"""The doctor-gated in-process stamp step (`main/nodes/finalize.py::stamp_turn`).
-
-Two sources of stampable pairs, both scoped to what *this* turn actually resolved: a
-`fix:stale-citation` row restamps only the `(node, file)` pairs it was assigned, and a
-node the turn's own book-pathspec diff shows edited earns its still-unstamped targets. A
-node carrying an error finding of its own is withheld from either source — a stamp
-asserts the citation was re-read and still holds, and a book `doctor` already disagrees
-with cannot make that claim.
-"""
+"""The doctor-gated in-process stamp step (`main/nodes/finalize.py::stamp_turn`)."""
 from __future__ import annotations
 
 import json
@@ -57,11 +49,7 @@ def test_a_node_the_turn_touched_gets_its_unstamped_target_stamped(
 def test_only_the_edited_node_on_a_shared_page_gets_stamped(
     booked: Path, logger: logging.Logger, write: Callable[[Path, str], Path]
 ) -> None:
-    """Two nodes share a page; only the one the turn actually edited earns a stamp.
-
-    Regression guard for page-wide new-citation stamping: taking every unstamped-citation
-    finding on a touched *page* would also stamp Beta, which this turn never touched.
-    """
+    """Two nodes share a page; only the one the turn actually edited earns a stamp."""
     source = booked / "acme/service.py"
     source.write_text(
         source.read_text() + "\n\ndef refund(amount):\n    \"\"\"Refund an amount.\"\"\"\n    return -amount\n"
@@ -97,10 +85,7 @@ def test_only_the_edited_node_on_a_shared_page_gets_stamped(
 
 
 def test_an_untouched_page_earns_no_stamp(booked: Path, logger: logging.Logger) -> None:
-    """A page the turn never edited never appears in the book-pathspec diff.
-
-    Stamping it anyway would assert a re-read that never happened.
-    """
+    """A page the turn never edited never appears in the book-pathspec diff."""
     pre_turn_sha = head_sha(booked)
 
     result = stamp_turn(logger, str(booked), _features_root(booked), pre_turn_sha)
@@ -113,11 +98,7 @@ def test_an_untouched_page_earns_no_stamp(booked: Path, logger: logging.Logger) 
 def test_restamp_row_stamps_only_its_own_pair(
     booked: Path, logger: logging.Logger, write: Callable[[Path, str], Path]
 ) -> None:
-    """A `fix:stale-citation` row names exactly the `(node, file)` pairs it was assigned.
-
-    A second, untouched node citing the same file must not be swept in on the strength of
-    one row's context — only the file the row names, for only the nodes it lists.
-    """
+    """A `fix:stale-citation` row names exactly the `(node, file)` pairs it was assigned."""
     write(
         booked / f"docs/features/{SERVICE}/concepts/other.md",
         CONCEPT.format(slug="other", title="Other", symbol="charge", prose="Also charging."),
@@ -140,13 +121,7 @@ def test_restamp_row_stamps_only_its_own_pair(
 def test_restamp_row_clears_its_own_stale_citation(
     booked: Path, logger: logging.Logger
 ) -> None:
-    """The stale-citation error a row exists to fix must not block that row's own restamp.
-
-    Regression test: the gate used to read every error on the node, including the very
-    stale-citation the row was assigned to clear, so the digest never refreshed — doctor
-    kept reporting the pair stale, stamp_turn kept withholding it, and the row regrounded
-    forever.
-    """
+    """The stale-citation error a row exists to fix must not block that row's own restamp."""
     features_root = Path(_features_root(booked))
     graph = Ostler(booked).graph
     stamp_mod.stamp_targets(graph, features_root, [(CHARGE_PAGE, "acme/service.py")])
@@ -181,10 +156,7 @@ def test_restamp_row_clears_its_own_stale_citation(
 def test_a_partial_turn_does_not_restamp_its_regrounding_row(
     booked: Path, logger: logging.Logger
 ) -> None:
-    """A `partial` turn never re-read the citation; marking it fresh would hide that gap.
-
-    The row simply comes back on the next join, the same way an unstamped citation does.
-    """
+    """A `partial` turn never re-read the citation; marking it fresh would hide that gap."""
     pre_turn_sha = head_sha(booked)
     context = json.dumps({"file": "acme/service.py", "nodes": [CHARGE_PAGE]})
 
@@ -200,11 +172,7 @@ def test_a_partial_turn_does_not_restamp_its_regrounding_row(
 def test_a_node_with_its_own_error_is_withheld(
     booked: Path, logger: logging.Logger, write: Callable[[Path, str], Path]
 ) -> None:
-    """A node `doctor` already flags as broken cannot also be asserted current.
-
-    `missing-code-symbol` is a page-level error here (the finding carries no `.node`), so
-    the whole page is withheld via the conservative page fallback.
-    """
+    """A node `doctor` already flags as broken cannot also be asserted current."""
     write(
         booked / f"docs/features/{SERVICE}/concepts/refund.md",
         CONCEPT.format(slug="refund", title="Refund", symbol="refund", prose="Refunding."),

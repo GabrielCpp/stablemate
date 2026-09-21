@@ -1,52 +1,5 @@
 #!/usr/bin/env python3
-"""``make bench-doctor DOCS=<path>`` — the reproducible baseline for ``ostler doctor``.
-
-Every timing the parse-cache plan is steered by came from ad-hoc profiling in a throwaway
-session, which means nobody else can re-derive it and no increment can be checked against
-it. This harness is that profiling, committed: it reports the same decomposition the plan
-is built on — ``model.load`` cold and warm, ``doctor.run`` cold and warm, the per-check
-split, and the three components inside ``_check_ui`` — plus the book's shape, because a
-timing with no shape beside it is comparable to nothing.
-
-**The book is an argument with no default.** The measured book lives outside this repo and
-cannot be committed to it, so a baked-in path would be both wrong and unshippable. ``DOCS=``
-is required; ``make bench-doctor`` with no ``DOCS=`` stops rather than measuring whatever
-happened to be underfoot and reporting a number nobody can place.
-
-**It only measures.** No ostler module is edited and no ``doctor`` verdict changes. The
-per-check split comes from wrapping the check functions on the module object for the
-duration of one extra run, and the ``_check_ui`` components from timing the line events of
-``_check_ui``'s own frame for one more — both restored afterwards, both on throwaway
-finding lists whose contents are discarded.
-
-**Two independent axes, and they are not the same axis.** *Cold* and *warm* are within one
-process: the first call and the second, the distinction the plan's original numbers were
-taken under. *Index state* is across processes, and it is the one the persistent cache
-actually moves — every ``ostler`` invocation is a fresh process, so the number an operator
-feels is a first call in a new process against an index somebody else's run filled. The
-harness reports three index states, each measured with every process-lifetime cache cleared
-first:
-
-``no-index``
-    The session disabled. The pre-cache baseline, and what ``--no-index`` costs today.
-``cold-index``
-    An empty index directory. Pays every parse *and* the writes — the price of being first.
-``warm-index``
-    The same directory, now filled by the ``cold-index`` pass. **This is the acceptance
-    gate's speed half:** the plan's "each ~0 warm" and "total <5s" targets are about this
-    column, and a harness that never opened a session could not report it. Measuring only
-    within-process warmth would have described a cache the plan is not about.
-
-The per-check split and the ``_check_ui`` components are measured under ``warm-index``,
-after that pair, so they describe a warm process against a filled index — and the
-components additionally carry line-tracing overhead, so they are for comparing an increment
-against a baseline taken the same way, not against the phase totals above them.
-
-**The index directory is a throwaway.** A benchmark that filled the operator's real cache
-would change the machine it was measuring and make the next run's ``cold`` a fiction, so
-each invocation builds its own directory under a temporary root unless ``--index-dir`` says
-otherwise.
-"""
+"""``make bench-doctor DOCS=<path>`` — the reproducible baseline for ``ostler doctor``."""
 from __future__ import annotations
 
 import argparse
@@ -65,17 +18,11 @@ from typing import Any
 
 from ostler import doctor, index, inventory, links, markdown, model
 
-#: The index states each phase is measured under, in the order they must run: ``cold-index``
-#: fills the directory ``warm-index`` then reads. ``no-index`` is first because it is the
-#: baseline the other two are read against.
 NO_INDEX = "no-index"
 COLD_INDEX = "cold-index"
 WARM_INDEX = "warm-index"
 INDEX_STATES = (NO_INDEX, COLD_INDEX, WARM_INDEX)
 
-#: The check functions ``doctor.run`` calls, in the spelling the plan's table uses. A check
-#: that the profile or the book never reaches reports 0.0 with zero calls beside it, rather
-#: than dropping out of the table — an absent row and a fast row are not the same finding.
 CHECKS = (
     "_check_ui",
     "_ui_graph",
@@ -87,9 +34,6 @@ CHECKS = (
     "_check_frozen",
 )
 
-#: The three components inside ``_check_ui``, and how each is recognised in its source. The
-#: spans are read out of the AST rather than written down as line numbers, so an edit to
-#: ``doctor.py`` moves them instead of silently mis-attributing them.
 UI_FILE_LOOP = "_check_ui_file loop"
 UI_CODE_GROUNDING = "_check_code_grounding"
 UI_REQUIRED_BULLETS = "required-bullet loop"
@@ -123,43 +67,21 @@ def _stopwatch(record: Callable[[float], None]) -> Iterator[None]:
 
 
 def _drop_process_caches() -> None:
-    """Empty every process-lifetime cache, so the next call is cold in the sense meant.
-
-    There are three, and a harness that clears one is measuring the other two. They are
-    listed exhaustively rather than discovered, because a cache this misses does not fail
-    the run — it quietly reports somebody else's warm number as this pass's cold one, which
-    is the failure mode that makes a benchmark worse than no benchmark.
-
-    - ``model._FEATURE_DOC_CACHE`` — per-path frontmatter and UI nodes.
-    - ``model._DOC_CACHE`` — the parsed document memo in front of the index.
-    - ``inventory._SYMBOL_MEMO`` — per-file declaration sets for code grounding.
-    """
+    """Empty every process-lifetime cache, so the next call is cold in the sense meant."""
     model._FEATURE_DOC_CACHE.clear()
     model._DOC_CACHE.clear()
     inventory._SYMBOL_MEMO.clear()
 
 
 def _cold(book: Path) -> model.Graph:
-    """Load the book with every process-lifetime cache emptied first.
-
-    Those caches survive for the life of the process, so the *second* load in a harness
-    that measured naively would be the only honest cold number it ever took. Clearing them
-    is what makes "cold" mean cold rather than "first".
-    """
+    """Load the book with every process-lifetime cache emptied first."""
     _drop_process_caches()
     return model.load(book)
 
 
-# ---- the book's shape ---------------------------------------------------------------
 
 def shape(book: Path, graph: model.Graph) -> dict[str, int]:
-    """File count, total bytes, UI nodes, feature docs, link targets.
-
-    A timing is a number about a book, and two timings are comparable only when the books
-    are. ``link_targets`` is the count that matters most of the five: it is the set of
-    files ``links._compute_anchors`` re-reads and re-parses, and on the plan's book that
-    set alone is 386 files and 22 of the 143 seconds.
-    """
+    """File count, total bytes, UI nodes, feature docs, link targets."""
     files = sorted(book.rglob("*.md"))
     linked, existing = _link_targets(book, graph)
     return {
@@ -174,19 +96,7 @@ def shape(book: Path, graph: model.Graph) -> dict[str, int]:
 
 
 def _link_targets(book: Path, graph: model.Graph) -> tuple[int, int]:
-    """``(distinct files the book's doc links name, how many of them exist)``.
-
-    Resolved with ostler's own resolver, over every markdown file under the book — the
-    same denominator ``markdown_files`` and ``total_bytes`` use, and wider than
-    ``_check_ui``'s features-only link scan, because a story citing a feature doc is a
-    target file that gets read and parsed like any other.
-
-    Both numbers, because they answer different questions and neither implies the other.
-    The first is how much link work the book asks for. The second is the set
-    ``links._compute_anchors`` actually re-reads and re-parses — the 386 files and 22 of
-    the 143 seconds the plan is about — and the gap between them is the book's dangling
-    links, which cost a ``stat`` and nothing more.
-    """
+    """``(distinct files the book's doc links name, how many of them exist)``."""
     resolver = links.LinkResolver(graph)
     targets: set[Path] = set()
     existing: set[Path] = set()
@@ -207,15 +117,9 @@ def _link_targets(book: Path, graph: model.Graph) -> tuple[int, int]:
     return len(targets), len(existing)
 
 
-# ---- the per-check split ------------------------------------------------------------
 
 def per_check(graph: model.Graph) -> Timings:
-    """One extra ``doctor.run``, with each named check wrapped in a stopwatch.
-
-    The wrappers are installed on the module object and removed in a ``finally``, and the
-    report the run produces is thrown away: nothing outside this function can observe that
-    the run happened, which is the whole contract a benchmark owes the thing it times.
-    """
+    """One extra ``doctor.run``, with each named check wrapped in a stopwatch."""
     timings = Timings()
     originals = {name: getattr(doctor, name) for name in CHECKS}
 
@@ -238,17 +142,9 @@ def per_check(graph: model.Graph) -> Timings:
     return timings
 
 
-# ---- the components inside _check_ui ------------------------------------------------
 
 def _ui_component_spans() -> list[tuple[str, int, int]]:
-    """``(label, first_line, last_line)`` for each top-level statement of ``_check_ui``.
-
-    Read from the AST of the running ``doctor.py``, and classified by what each statement
-    mentions rather than by where it sits, because a line number written down here is a
-    mis-attribution waiting for the next edit to ``doctor.py``. The two loops over
-    ``graph.ui_nodes`` are told apart by ``bullet_keys``, which only the required-bullet
-    one reads.
-    """
+    """``(label, first_line, last_line)`` for each top-level statement of ``_check_ui``."""
     source = Path(inspect.getsourcefile(doctor) or "").read_text(encoding="utf-8")
     tree = ast.parse(source)
     body: list[ast.stmt] = []
@@ -273,15 +169,7 @@ def _ui_component_spans() -> list[tuple[str, int, int]]:
 
 
 def ui_components(graph: model.Graph) -> Timings:
-    """Time ``_check_ui``'s own frame line by line, and fold the lines into components.
-
-    A line event fires only for ``_check_ui``'s frame, so the gap between two of them
-    covers everything the earlier line did *including* the calls it made — which is
-    exactly the attribution wanted: the statement that runs the file loop is charged the
-    whole loop. This costs tracing overhead the other measurements do not pay, so these
-    three numbers are comparable to another run of this harness and not to the phase
-    totals above them.
-    """
+    """Time ``_check_ui``'s own frame line by line, and fold the lines into components."""
     timings = Timings()
     spans = _ui_component_spans()
     by_line = {label: 0.0 for label, _, _ in spans}
@@ -320,15 +208,9 @@ def ui_components(graph: model.Graph) -> Timings:
     return timings
 
 
-# ---- the measurement --------------------------------------------------------------
 
 def _phases_under(book: Path) -> tuple[model.Graph, dict[str, float]]:
-    """One index state's four phase timings, and the graph they were taken against.
-
-    The caller has already opened — or declined to open — the session, so this is only the
-    stopwatch work. Keeping the session out of here is what makes the three states
-    comparable: they differ in exactly one thing, and it is the thing being measured.
-    """
+    """One index state's four phase timings, and the graph they were taken against."""
     phases = Timings()
 
     with _stopwatch(lambda s: phases.add("model.load cold", s)):
@@ -350,20 +232,8 @@ def _phases_under(book: Path) -> tuple[model.Graph, dict[str, float]]:
 
 
 def measure(book: Path, index_dir: Path) -> dict[str, Any]:
-    """Every measurement, taken under each of the three index states.
-
-    The states run in the order :data:`INDEX_STATES` gives and that order is load-bearing:
-    ``cold-index`` is what fills the directory ``warm-index`` then reads. Running them
-    apart, or against a directory some earlier invocation left populated, reports a warm
-    number for a pass labelled cold.
-
-    The per-check split and the ``_check_ui`` components are taken under ``warm-index``,
-    because that is the state the plan's per-increment targets are written against.
-    """
+    """Every measurement, taken under each of the three index states."""
     by_state: dict[str, dict[str, float]] = {}
-    # The warm-only measurements are the loop's second output. Bound here rather than
-    # inside the ``warm-index`` arm so that the one pass that takes them is visibly the
-    # same pass that times the phases, on the same graph.
     warm_shape: dict[str, int] = {}
     checks = Timings()
     components = Timings()
@@ -394,7 +264,6 @@ def measure(book: Path, index_dir: Path) -> dict[str, Any]:
     }
 
 
-# ---- the report -------------------------------------------------------------------
 
 def _row(label: str, value: str) -> str:
     return f"  {label:<38}{value:>14}"
@@ -476,8 +345,6 @@ def main(argv: list[str] | None = None) -> int:
 
     with tempfile.TemporaryDirectory(prefix="bench-ostler-index-") as scratch:
         index_dir = args.index_dir.resolve() if args.index_dir is not None else Path(scratch)
-        # ostler is a library here, not a command, but a stray print from anything it loads
-        # would land in the middle of the JSON object. Nothing it writes is a measurement.
         with redirect_stdout(sys.stderr):
             report = measure(book, index_dir)
 

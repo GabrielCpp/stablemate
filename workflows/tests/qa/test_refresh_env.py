@@ -1,15 +1,4 @@
-"""Tests for `_mint_qa_secrets` in `workhorse_workflows.qa.runner` — the per-run credential mint.
-
-A short-lived credential goes stale between QA-plan authoring and the run that actually
-spends it, so the recipes that produce one live on the book's runbook as `secrets:` and
-are run immediately before `qa_run`. These cover that half of the contract: no `secrets:`
-is a no-op, a declared one runs its recipe and hands back its stdout, several of them are
-minted together (the one-variable ceiling the old `refresh_env` block imposed is gone),
-and every way a recipe can misbehave — an empty recipe, a non-zero exit, empty output, a
-timeout, an exec failure — comes back as a non-empty `error` and *no* tokens at all,
-which is the shape `run_qa_plan` turns into a `blocked` result instead of running the plan
-against a stale or absent secret.
-"""
+"""Tests for `_mint_qa_secrets` in `workhorse_workflows.qa.runner` — the per-run credential mint."""
 from __future__ import annotations
 
 import logging

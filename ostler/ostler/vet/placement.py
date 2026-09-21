@@ -1,19 +1,4 @@
-"""Where a documented component is supposed to sit on the screen, and whether it did.
-
-`ostler vet`'s manifest path answers a different question: it registers regions by IoU against
-bboxes measured off the very page under test, so it is a *census* — which documented components
-rendered, and what rendered that nothing documents. It cannot say a component is in the wrong
-place, because its notion of the right place came from the render.
-
-A `placement:` bullet is the missing half, and it is deliberately not a layout vocabulary. No
-`sidebar`, no `main-column`, nothing that assumes the page has a grid: just where the box lands
-against the window, as a percentage of it.
-
-    - placement: width 60-100%, x 0-20%
-
-Bands, never points — a band wide enough to survive a resize is the difference between a check
-that finds real defects and one people stop authoring because it flakes.
-"""
+"""Where a documented component is supposed to sit on the screen, and whether it did."""
 
 from __future__ import annotations
 
@@ -28,17 +13,12 @@ from ostler.qa.harness_host import load_harness_module
 from ostler.vet.geometry import BBox
 from ostler.vet.regions import RegionBox
 
-#: The same rounding the layout digest beside every screenshot reports, so a component is never
-#: on one side of its band in the evidence and the other side in the verdict.
 share = load_harness_module("ostler_qa_scan").share
 
-#: What a band constrains, and which viewport dimension it is a fraction of.
 AXIS: dict[str, str] = {"x": "width", "width": "width", "y": "height", "height": "height"}
 
 _BAND = re.compile(r"^(x|y|width|height)\s+(\d+(?:\.\d+)?)\s*-\s*(\d+(?:\.\d+)?)\s*%$")
 
-#: Roles whose placement is worth stating: they carry a page rather than sitting inside
-#: something that does. A button's placement is brittle and proves nothing.
 PLACED_ROLES = frozenset(
     {"main", "article", "navigation", "banner", "complementary", "region", "form", "dialog"}
 )
@@ -54,7 +34,7 @@ class Viewport(BaseModel):
 class Band(BaseModel):
     model_config = ConfigDict(frozen=True)
 
-    low: float   # a fraction of the viewport, not a percentage
+    low: float
     high: float
 
     def text(self) -> str:
@@ -62,7 +42,7 @@ class Band(BaseModel):
 
 
 class Placement(BaseModel):
-    """One `placement:` value. A key it does not carry is unconstrained, not zero."""
+    """One `placement:` value."""
 
     model_config = ConfigDict(frozen=True)
 
@@ -72,11 +52,7 @@ class Placement(BaseModel):
         return ", ".join(f"{key} {band.text()}" for key, band in self.bands.items())
 
     def disagreements(self, bbox: BBox, viewport: Viewport) -> list[str]:
-        """One sentence per violated band, each quoting the measured number.
-
-        A disagreement that does not say what was measured is unactionable — the fix loop
-        receives this text and nothing else about the geometry.
-        """
+        """One sentence per violated band, each quoting the measured number."""
         out: list[str] = []
         for key, band in self.bands.items():
             total = viewport.width if AXIS[key] == "width" else viewport.height
@@ -96,13 +72,7 @@ class VettedComponent(BaseModel):
     node_id: str
     selector: str
     placement: Placement | None = None
-    #: The accessible name the book claims this component has. Empty when the book makes no
-    #: claim — which, per the grammar, an absent `name:` and a `name:` whose value names
-    #: emptiness both are.
     name: str = ""
-    #: The book gives a reason this one may legitimately not be in the render — a `states:`
-    #: bullet, or an `exclusive-with:` sibling it can never co-render with. Presence is then
-    #: unprovable from one photograph, and the scenario's own assertions are what establish it.
     conditional: bool = False
 
 
@@ -111,7 +81,7 @@ class ComponentVerdict(BaseModel):
 
     node_id: str
     selector: str
-    status: str  # matched | misplaced | misnamed | missing
+    status: str
     expected: str
     detail: list[str] = []
     bbox: BBox | None = None
@@ -131,16 +101,7 @@ class ComponentVerdict(BaseModel):
         return f"{self.node_id} (`{self.selector}`) is where the book places it"
 
     def observed(self) -> str:
-        """What the page showed, as the ledger's `actual`.
-
-        The ledger asks a verdict for the observation it made, and a verdict that has made
-        none says so in those words. It used to be written as the literal `"as documented"`
-        whenever `detail` was empty — which is every `missing` verdict, since a component
-        that rendered nowhere has no band to disagree with. A reader of `qa-run.ndjson` then
-        saw a failed assertion whose `actual` read like a pass, and the real observation
-        (`status: missing`, `bbox: null`) stayed in the vet JSON beside it. A constant is not
-        an observation.
-        """
+        """What the page showed, as the ledger's `actual`."""
         if self.status == "missing":
             return "missing: nothing on the rendered screen answered this selector"
         where = (
@@ -153,56 +114,21 @@ class ComponentVerdict(BaseModel):
 
 
 def _matches(selector: str, scanned: str) -> bool:
-    """Whether a scanned element's selector is the documented one.
-
-    The scan mints `tag.class:nth(i)` for an element with no id, and the index is a position
-    in one render — the book cannot know it and must not have to. So the documented selector
-    matches the scanned one whole, or up to that suffix.
-    """
+    """Whether a scanned element's selector is the documented one."""
     return scanned == selector or scanned.startswith(f"{selector}:nth(")
 
 
-#: A documented selector that addresses a component by its ARIA role — `p[role="alert"]`,
-#: `[role="dialog"]` — the way an accessibility-first book prefers to. The scan never mints
-#: this form (it mints `#id` or `tag.class:nth(i)`), so string comparison can never match it;
-#: the role the scan *did* record on the region is what carries the same fact.
 _ROLE_SELECTOR = re.compile(r"""^([a-zA-Z][\w-]*)?\[role=["']([\w-]+)["']\]$""")
 
-#: A documented selector in the one other form `_matches` can ever agree with: an id, or a bare
-#: tag optionally followed by one or more classes. The scan's own `:nth(i)` disambiguating suffix
-#: is never written in the book — it is a position in one particular render, minted by the scan,
-#: not a fact the book could know in advance.
 _STRING_SELECTOR = re.compile(r"^(?:#[\w-]+|[a-zA-Z][\w-]*(?:\.[\w-]+)*)$")
 
-#: A self-identifying selector: `scheme=value`, e.g. `testID=widget-table`. It names its own
-#: representation in the string itself, which is the whole point — `is_addressable` can decide
-#: from the selector alone, with no lookup of the node's `driver:` to learn which grammar a bare
-#: string like `widget-table` would have been read under. Bare CSS never contains `=`, so this
-#: form and `_STRING_SELECTOR`/`_ROLE_SELECTOR` can never both match the same value.
 _SCHEME_SELECTOR = re.compile(r"^([A-Za-z][\w-]*)=(.+)$")
 
-#: Scheme spellings a `scheme=value` selector may declare. Each member is a representation a real
-#: source or tool actually addresses controls by — the set grows on the next one showing up in
-#: the corpus, not in anticipation of one:
-#:
-#: - ``testID`` — the prop React Native source writes (`<View testID="widget-table">`, see
-#:   `paddock/data/apps/globex/app/mobile-app/src/screens/WidgetListScreen.tsx`) and the
-#:   representation Maestro's own `id:` selector resolves against.
-#:
-#: An unrecognized scheme is rejected, not passed through: `parse_scheme_selector` returns
-#: `None` for it, so `is_addressable` reads it as unaddressable rather than silently trusting
-#: a typo'd or invented scheme name.
 SELECTOR_SCHEMES: frozenset[str] = frozenset({"testID"})
 
 
 def parse_scheme_selector(selector: str) -> tuple[str, str] | None:
-    """`(scheme, value)` for a self-identifying selector naming a known scheme, else `None`.
-
-    Used by every consumer that needs to tell a self-identifying address apart from a bare CSS
-    string before deciding what to do with it — `is_addressable` (which accepts either), and
-    the locator/compile layers, which must refuse a scheme selector rather than hand it to a
-    CSS engine that would parse `=` as nothing it understands.
-    """
+    """`(scheme, value)` for a self-identifying selector naming a known scheme, else `None`."""
     matched = _SCHEME_SELECTOR.match(selector)
     if matched is None:
         return None
@@ -211,69 +137,22 @@ def parse_scheme_selector(selector: str) -> tuple[str, str] | None:
 
 
 def is_addressable(selector: str) -> bool:
-    """Whether *selector* is a form `ostler vet`'s screen census can ever resolve, **or** a
-    self-identifying address the census was never going to resolve for an honest reason.
-
-    The census matches a documented selector against strings the render scan mints for each
-    element — `#id`, or `tag.class` (optionally the scan's own `:nth(i)` position suffix) — or,
-    for the one vocabulary the scan never mints as a string, against the ARIA role it recorded
-    on the region (`_ROLE_SELECTOR`). Anything else — an attribute-value predicate
-    (`[data-state="booked"]`), a boolean attribute (`[disabled]`), a pseudo-class — addresses
-    nothing the scan ever produces, on any render, however precisely it describes the DOM: the
-    component reads `missing` every time, which makes the one defect that would move it
-    unmeasurable. This is the rule behind the doctor's `unaddressable-selector` check.
-
-    A `scheme=value` selector (`_SCHEME_SELECTOR`) is accepted too, but for a different reason:
-    the census is a DOM census, and `ostler vet`'s render scan is a fact about *that*
-    representation, not about every representation a control could be addressed in. `testID:` is
-    real — React Native source writes it and Maestro resolves it — it is simply not a fact the
-    web census was ever in a position to confirm or deny, on any render, because it never scans
-    for it. Rejecting it here would repeat the exact defect this grammar exists to fix: a
-    control addressed honestly gets nowhere to say so, and a book falls back to a fabricated CSS
-    selector that is false on its face. So `unaddressable-selector` stays scoped to strings that
-    describe DOM syntax and get it wrong — not to every string the *web* census cannot use.
-
-    It is a claim about the *census*, not about the compiled plan. For a bare CSS form,
-    `qa.by_css` compiles any valid CSS, so a `visible(locator=...)` on such a selector is
-    observed by the QA run even while the census stays blind to it — `compile_plan` raises no
-    gap here, because a gap reports what the plan being compiled failed to observe, and one
-    observer's blindness is not a channel the other one's report can carry. A `scheme=value`
-    form is the opposite case: nothing in this tree compiles it to a live locator yet (there is
-    no `testID`-aware driver), so the compiler *does* gap it — see `placement_mod` usage in
-    `ostler.locators.locator_for` and `ostler.qa.compile._page_locator_expr`. Being addressable
-    here is a claim about honesty, not about executability.
-    """
+    """Whether *selector* is a form `ostler vet`'s screen census can ever resolve, **or** a self-identifying address the census was never going to resolve for an honest reason."""
     if parse_scheme_selector(selector) is not None:
         return True
     return bool(_ROLE_SELECTOR.match(selector) or _STRING_SELECTOR.match(selector))
 
 
 def is_web_representable(selector: str) -> bool:
-    """Whether *selector* could be handed to a web DOM driver — false for a `scheme=value`
-    address written against a component whose surface a browser drives.
-
-    `is_addressable` already settled that a `scheme=value` selector is an honest address; this
-    predicate asks the narrower, driver-specific question `unaddressable-selector` deliberately
-    does not: *which* representation it names. `testID=widget-table` is real on a React Native
-    surface and meaningless on a web one — `qa.by_css` would either raise on the `=` or compile
-    something that matches nothing, and a book that wrote it there swapped the two surfaces'
-    selectors, not merely picked a form the driver cannot use.
-    """
+    """Whether *selector* could be handed to a web DOM driver — false for a `scheme=value` address written against a component whose surface a browser drives."""
     return parse_scheme_selector(selector) is None
 
 
-#: Why `is_web_representable` said no, as a statement about the *value* — kept beside the
-#: predicate for the same reason `routes.py` keeps its reasons beside theirs.
 NOT_WEB_REPRESENTABLE_REASON = (
     "it is a `scheme=value` address (a non-web selector, e.g. `testID=...`), and this "
     "component's surface is driven by a browser, which queries the DOM, not a scheme"
 )
 
-#: DOM syntax a `selector:` written for a web surface uses and a mobile surface's driver
-#: (Maestro) cannot query: an id or class (`#name`, `.field`), an attribute-value or boolean
-#: attribute predicate (`[data-state="booked"]`, `[disabled]`), a combinator (`div > span`,
-#: `a ~ b`), or a compound tag selector (`input.field`, `button#submit`). Matched, never
-#: inferred from what a value fails to be — see `is_mobile_representable`'s docstring for why.
 _DOM_LEADING_ID_OR_CLASS = re.compile(r"^[#.][A-Za-z_-]")
 _DOM_ATTRIBUTE_PREDICATE = re.compile(r"\[[^\]]*\]")
 _DOM_COMBINATOR = re.compile(r"[>~]")
@@ -281,22 +160,7 @@ _DOM_COMPOUND_TAG = re.compile(r"^[A-Za-z][\w-]*[.#][\w-]+")
 
 
 def is_mobile_representable(selector: str) -> bool:
-    """Whether *selector* could be a Maestro address — false only for a string that
-    unmistakably names DOM syntax instead.
-
-    The asymmetric half of the pair with `is_web_representable`: a web selector rejects one
-    named form (`scheme=value`) and accepts everything else, because CSS is close to
-    unconstrained and this module is not in the business of validating it (`is_addressable`
-    already owns that). A mobile selector cannot be held to the same shape — Maestro resolves a
-    control by its `id:` (a `testID=` scheme address) or by its **visible text**, so a bare word
-    or a whole sentence (`Submit`, `Create new widget`) is a legitimate mobile selector, not a
-    gap in the grammar. Rejecting every string that is not a recognized scheme would reject
-    every one of those too, which is a large false-positive rate for a check meant to catch a
-    real swap. So this predicate rejects only what positively names the wrong representation —
-    a leading `#`/`.` identifier, an attribute predicate, a `>`/`~` combinator, or a
-    `tag.class`/`tag#id` compound — and takes the benefit of the doubt on everything else,
-    scheme selectors and plain text alike.
-    """
+    """Whether *selector* could be a Maestro address — false only for a string that unmistakably names DOM syntax instead."""
     text = selector.strip()
     return not (
         _DOM_LEADING_ID_OR_CLASS.match(text)
@@ -306,8 +170,6 @@ def is_mobile_representable(selector: str) -> bool:
     )
 
 
-#: Why `is_mobile_representable` said no — kept beside the predicate for the same reason
-#: `NOT_WEB_REPRESENTABLE_REASON` is kept beside `is_web_representable`.
 NOT_MOBILE_REPRESENTABLE_REASON = (
     "it is DOM syntax (an id, a class, an attribute predicate, a combinator, or a "
     "tag.class/tag#id compound), and this component's surface is driven by Maestro, which "
@@ -317,69 +179,16 @@ NOT_MOBILE_REPRESENTABLE_REASON = (
 
 
 def is_never_selected(selector: str) -> bool:
-    """Always false — the predicate for a driver whose surface renders nothing to query.
-
-    `cli`, `iac`, `artifact` and `none` own no `screen` node this book's registry ever
-    admits a `component` section, and therefore a `selector:` bullet, under
-    (`routes.SURFACE_PERFORMABLE_TYPES`): a `cli` surface is a command line, `iac` provisions
-    infrastructure, `artifact` addresses no node type this registry has, and `none` is the book
-    stating outright that nothing performs against these surfaces at all — none of which is a
-    screen a selector locates a control on. `http` is not in this group: the same top-level
-    surface directory an `http` runbook names can also carry `web`-rendered `screen`/`component`
-    nodes (a browser-driven GUI served by the API the runbook stands up), so `http` reads
-    `is_web_representable` instead, the same as `web` — see `routes.ROUTE_GRAMMAR`'s identical
-    grouping. So no corpus book today gives this predicate a value to read, the same standing
-    `routes.is_never_routed` has and for the same reason: `doctor.py`'s `_check_bullet_value_kinds`
-    calls `selector_grammar` for every `selector`-kinded bullet regardless of driver, so this
-    predicate *is* on a real code path, not a hypothetical one — it would run the day a
-    `component` ends up on such a driven surface, however that came about, and it says no,
-    honestly: a driver that renders nothing to query cannot make an exception for one bullet
-    that showed up anyway.
-    """
+    """Always false — the predicate for a driver whose surface renders nothing to query."""
     del selector
     return False
 
 
-#: Why `is_never_selected` said no — kept beside the predicate for the same reason the other
-#: two reasons above are kept beside theirs.
 NEVER_SELECTED_REASON = (
     "this driver renders nothing to query — it owns no `screen`/`component` node at all"
 )
 
 
-#: Which grammar a `selector:` bullet is held to, keyed by the surface's declared `driver:`
-#: (`reach.surface_driver`) — one parser per driver, never a grammar invented for this table,
-#: per `values.py`'s rule that a declared kind names the parser its consumer already uses.
-#: Unlike `routes.ROUTE_GRAMMAR`, this table does not also state a `path_addressed`-shaped
-#: column: nothing downstream of a `selector:` bullet asks a question that needs one.
-#:
-#: `is_addressable`/`unaddressable-selector` stays driver-blind on purpose — it accepts a form
-#: *no* real driver in this tree can be certain is wrong (a bare CSS string is legal on `web`
-#: and `http`; a `scheme=value` string is legal wherever `SELECTOR_SCHEMES` says it is). This
-#: table asks the narrower, second question that check deliberately leaves open: given *this*
-#: node's own surface driver, is the value even the right representation? A `web` component
-#: with `selector: testID=widget-table` and a `mobile` component with `selector: #name` both
-#: clear `is_addressable` — each string is well-formed in some representation — and both are
-#: still wrong, because it is the wrong one for the surface that renders the node.
-#:
-#: - `web` and `http` read `is_web_representable`: reject a `scheme=value` selector, accept any
-#:   other string (CSS is close to unconstrained, and `is_addressable` already validates its
-#:   shape). `http` is grouped with `web` rather than the never-selected drivers below because a
-#:   surface — the first path component under `docs/features/` (`graph.surface_of`) — can
-#:   legitimately host an `http`-driven API runbook alongside real `web`-rendered `screen`/
-#:   `component` nodes it serves; `routes.ROUTE_GRAMMAR` makes this identical call for `route:`.
-#: - `mobile` reads `is_mobile_representable`: reject only a string that unmistakably names DOM
-#:   syntax; accept a scheme selector and a bare word or phrase alike, because Maestro resolves
-#:   by `id:` or by visible text and a legitimate mobile selector is often neither CSS nor a
-#:   scheme.
-#: - `cli`, `iac`, `artifact` and `none` read `is_never_selected`: none of them owns a `screen`/
-#:   `component` node this registry ever admits a `selector:` bullet on, so there is no
-#:   grammar here to satisfy, and the row says so rather than falling through to the default
-#:   as if the driver were merely unrecognized.
-#:
-#: A driver this table does not name at all — an unrecognized spelling, or no runbook declares
-#: one — falls back to `(lambda _: True, "", ...)`-shaped acceptance: benefit of the doubt,
-#: the same fallback `routes._DEFAULT_ROUTE_GRAMMAR` gives an undeclared driver.
 SELECTOR_GRAMMAR: dict[str, tuple[Callable[[str], bool], str]] = {
     "web": (is_web_representable, NOT_WEB_REPRESENTABLE_REASON),
     "mobile": (is_mobile_representable, NOT_MOBILE_REPRESENTABLE_REASON),
@@ -390,30 +199,17 @@ SELECTOR_GRAMMAR: dict[str, tuple[Callable[[str], bool], str]] = {
     "none": (is_never_selected, NEVER_SELECTED_REASON),
 }
 
-#: The fallback row for a driver `SELECTOR_GRAMMAR` does not name — see the table's own
-#: docstring.
 _DEFAULT_SELECTOR_GRAMMAR: tuple[Callable[[str], bool], str] = (lambda _selector: True, "")
 
 
 def selector_grammar(driver: str | None) -> tuple[Callable[[str], bool], str]:
-    """The `(predicate, reason)` pair *driver* is held to for a `selector:` bullet.
-
-    `SELECTOR_GRAMMAR`'s row for a recognized driver (the five never-selected drivers
-    included — their row is `is_never_selected`, not a hole); the default accept-anything
-    grammar for a driver the table does not name at all (an unrecognized value, or none
-    declared). This is the table's only production reader: `doctor.py`'s
-    `_check_bullet_value_kinds` calls it, per node, for whatever driver `reach.surface_driver`
-    resolves the node's surface to, and applies the pair directly, the same shape
-    `routes.route_grammar` is read in. Adding a row here is therefore sufficient on its own to
-    change what the `conflicting-selector-driver` check accepts; nothing else needs to be told.
-    """
+    """The `(predicate, reason)` pair *driver* is held to for a `selector:` bullet."""
     predicate, reason = SELECTOR_GRAMMAR.get(driver or "", _DEFAULT_SELECTOR_GRAMMAR)
     return predicate, reason
 
 
 def _region_tags(region: RegionBox) -> set[str]:
-    """The element tags a region's minted selectors reveal. A `#id` selector reveals none,
-    which reads as "any tag" — the id was the better address, not a hidden disagreement."""
+    """The element tags a region's minted selectors reveal."""
     tags: set[str] = set()
     for scanned in region.selectors:
         if scanned.startswith("#"):
@@ -425,18 +221,7 @@ def _region_tags(region: RegionBox) -> set[str]:
 
 
 def _find_region(selector: str, regions: list[RegionBox]) -> tuple[RegionBox, int] | None:
-    """The region a documented selector addresses and **which of its elements**, or None.
-
-    Two vocabularies meet here: the string forms the scan mints (matched by `_matches`),
-    and the `tag[role=...]` form the scan cannot mint, matched by the role it recorded.
-
-    The index is not a detail. A region is a rect, several elements share a rect, and a
-    property like an accessible name belongs to one element and not to the rect — so a caller
-    that asks the region a question about the documented element needs to know which member
-    of it was documented. For a role selector that is the member whose *own* role is the one
-    written down; `region.role` is the nearest ancestor carrying a role and can belong to an
-    element the book never named.
-    """
+    """The region a documented selector addresses and **which of its elements**, or None."""
     by_role = _ROLE_SELECTOR.match(selector)
     if by_role:
         tag, role = (by_role.group(1) or "").lower(), by_role.group(2)
@@ -463,18 +248,7 @@ def _flat(text: str) -> str:
 def _name_disagreement(
     documented: str, region: RegionBox, index: int
 ) -> list[str]:
-    """Why the element the book named is not reachable by the name the book gave it.
-
-    The comparison is the one a Playwright `get_by_role(role, name=...)` performs: whitespace
-    collapsed, case folded, the whole string. A book that states a name no accessibility tree
-    computes is not a cosmetic defect — that locator matches zero elements while the element
-    is painted, so every check written against it fails for a reason the screenshot denies.
-
-    Silence has two spellings and they are not the same claim. A book with no `name:` states
-    nothing to disagree with. A scan that recorded no name — a `regions.json` frozen before
-    this observation existed — is a page nobody looked at, and reporting a disagreement from
-    it would be reporting an absence as an event.
-    """
+    """Why the element the book named is not reachable by the name the book gave it."""
     if not documented:
         return []
     observed = region.observed(index)
@@ -491,28 +265,13 @@ def _name_disagreement(
 def check(
     components: list[VettedComponent], regions: list[RegionBox], viewport: Viewport
 ) -> list[ComponentVerdict]:
-    """Register a screenshot's regions against what the book says that screen contains.
-
-    Matching is by **selector**, not by IoU as `vet/register.py` does, and the difference is
-    the whole point. The manifest path measures the expected bboxes off the very render under
-    test, so it can only answer *which documented components appeared* — a census where
-    agreement is guaranteed by construction. Here the book names the element and the render
-    supplies the geometry, so the two can genuinely disagree.
-
-    Regions no component claims are not judged: a real screen renders chrome the book does
-    not model, and failing on that would make the check unauthorable.
-    """
+    """Register a screenshot's regions against what the book says that screen contains."""
     verdicts: list[ComponentVerdict] = []
     for component in components:
         expected = component.placement.text() if component.placement else "rendered on this screen"
         found = _find_region(component.selector, regions)
         if found is None:
             if component.conditional:
-                # A screen documents its conditional components alongside its steady state —
-                # an error banner, the empty-list placeholder, the half of an `exclusive-with`
-                # pair that is not showing. Demanding all of them in one photograph asks a
-                # single render to be every state the screen has, which no render is. The
-                # book already says these come and go; absence is not the disagreement.
                 continue
             verdicts.append(ComponentVerdict(
                 node_id=component.node_id, selector=component.selector,
@@ -525,10 +284,6 @@ def check(
             else []
         )
         named = _name_disagreement(component.name, region, index)
-        # The name is reported ahead of the placement, and instead of it, because a name the
-        # accessibility tree does not compute makes every other claim about that element
-        # unmeasurable: the locator the book's own checks compile to selects nothing. The
-        # placement is measured again, against the element the repaired name reaches.
         status = "misnamed" if named else "misplaced" if said else "matched"
         verdicts.append(ComponentVerdict(
             node_id=component.node_id,
@@ -541,20 +296,11 @@ def check(
     return verdicts
 
 
-#: The two ways a `states:` or `exclusive-with:` bullet says *there is nothing conditional here*.
-#: Both keys are written on every component that has them at all, so their absence is not the
-#: signal — an author who filled the stub in with the negative meant the component is always up.
 _NO_CONDITION = ("none", "n/a", "na", "-")
 
 
 def _declares_coming_and_going(node: UINode) -> bool:
-    """Whether the book gives this component a reason to be absent from a given render.
-
-    `states:` enumerates the forms it takes and `exclusive-with:` names what it never
-    co-renders with; either one means one photograph cannot be expected to contain it. The
-    values are prose — `exclusive-with:` in particular is usually a sentence, not a link — so
-    this reads presence, not structure, and only the explicit negatives count as "no".
-    """
+    """Whether the book gives this component a reason to be absent from a given render."""
     for key in ("states", "exclusive-with"):
         value = str(node.meta.get(key, "")).strip()
         if value and value.split("—")[0].split(",")[0].strip().strip("`").lower() not in _NO_CONDITION:
@@ -562,9 +308,6 @@ def _declares_coming_and_going(node: UINode) -> bool:
     return False
 
 
-#: How a `name:` bullet says *this component has no accessible name*. An absent bullet says the
-#: same thing, which is why both land on the empty string: an empty key and a key whose value
-#: names emptiness are one claim, and the check has nothing to compare either against.
 _NO_NAME = frozenset({"none", "n/a", "na", "-", ""})
 
 
@@ -575,12 +318,7 @@ def _documented_name(node: UINode) -> str:
 
 
 def screen_components(graph: Graph) -> dict[str, list[VettedComponent]]:
-    """Every documented screen's registrable components, keyed by the screen's doc path.
-
-    A component with no `selector:` is left out rather than reported: nothing can address it
-    in a render, so listing it would turn every vet into a wall of unprovable `missing`. The
-    doctor is where that omission is a finding — here it is just absent.
-    """
+    """Every documented screen's registrable components, keyed by the screen's doc path."""
     table: dict[str, list[VettedComponent]] = {}
     for node in graph.ui_nodes:
         if node.type != "component":
@@ -601,11 +339,7 @@ def screen_components(graph: Graph) -> dict[str, list[VettedComponent]]:
 
 
 def parse_placement(text: str) -> Placement | str:
-    """The declared bands, or the reason the value is not one — never a partial parse.
-
-    Returning the message rather than raising is what lets the doctor report a malformed
-    bullet as a finding on the bullet, in the same pass that reports a missing one.
-    """
+    """The declared bands, or the reason the value is not one — never a partial parse."""
     bands: dict[str, Band] = {}
     parts = [part.strip() for part in text.split(",")]
     for part in parts:
@@ -625,9 +359,5 @@ def parse_placement(text: str) -> Placement | str:
             return f"'{part}' runs backwards — {low:g}% is above {high:g}%"
         if high > 100:
             return f"'{part}' exceeds the viewport; a band is a percentage of it, so at most 100%"
-        # Rounded to the resolution `share` reports (3 decimals of a fraction, so 1 decimal of
-        # a percent, plus two spare). Without it `69.4 / 100` and the digest's `round(…, 3)`
-        # differ by one ulp, and a component measured at exactly its declared bound reports a
-        # disagreement whose two numbers print identically.
         bands[key] = Band(low=round(low / 100, 5), high=round(high / 100, 5))
     return Placement(bands=bands)

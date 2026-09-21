@@ -14,7 +14,7 @@ from ostler.qa.outcome import QaOutcome
 class ArtifactOutcome:
     kind: str
     path: str
-    status: str  # "clean" | "problems" | "error"
+    status: str
     problems: list[str] = field(default_factory=list)
     error: str = ""
 
@@ -71,10 +71,6 @@ def vet(kind_name: str, spec: Path, root: Path) -> ArtifactOutcome:
     try:
         problems = kind.vet(data, spec_dir, root)
     except (OSError, ValueError, RuntimeError, KeyError) as exc:
-        # A contract is evaluated against files beside the artifact — a manifest, a run
-        # log, hashes of both — so an unreadable or wrongly-shaped one lands here. It is
-        # a failure to *evaluate*, not a clean bill: reporting it as `error` is what stops
-        # a caller reading "no problems" off a check that never ran.
         return ArtifactOutcome(kind_name, str(target), "error",
                                error=f"{type(exc).__name__}: {exc}")
     return ArtifactOutcome(kind_name, str(target),
@@ -82,13 +78,7 @@ def vet(kind_name: str, spec: Path, root: Path) -> ArtifactOutcome:
 
 
 def cmd_vet(kind_name: str, spec: Path, root: Path) -> QaOutcome:
-    """`vet`, in the outcome shape every other `ostler` command answers in.
-
-    `data` is the same `{"kind","path","status",["problems"],["error"]}` dict the CLI
-    prints under `--json`, and `status` keeps the artifact vocabulary
-    (`clean`/`problems`/`error`) rather than being flattened to passed/failed — the three
-    are distinguishable and a caller acts differently on each.
-    """
+    """`vet`, in the outcome shape every other `ostler` command answers in."""
     outcome = vet(kind_name, spec, root)
     message = outcome.error or "\n".join(outcome.problems) or f"{outcome.kind}: clean"
     return QaOutcome(ok=outcome.status == "clean", message=message,

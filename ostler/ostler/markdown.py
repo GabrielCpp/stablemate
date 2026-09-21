@@ -1,22 +1,4 @@
-"""Markdown(+YAML frontmatter) parsing.
-
-Everything here goes through the **parser** — ``markdown-it-py`` for the document,
-``front_matter_plugin`` for the frontmatter fence, ``yaml`` for its payload. No regex
-matches a markdown or YAML construct: see the ``stablemate-structured-parsing`` skill for
-why (in short, a regex that "finds" a link also finds one inside a code fence, and a
-regex that fences off frontmatter silently finds *none* in a CRLF file).
-
-Two layers, deliberately kept separate:
-
-* **Byte-exact layer** — ``split`` returns a :class:`MarkdownDoc` whose ``raw_frontmatter`` and
-  ``body`` are the original text. Edits operate here so round-tripping never reflows the file.
-  The one normalization is line endings: CRLF/CR become LF, matching what the parser sees, so
-  a Windows-authored doc has frontmatter at all (the regex this replaced saw none).
-* **Hierarchical view** — :attr:`MarkdownDoc.sections` lazily parses the body into a tree of
-  :class:`Section` (by heading level), :class:`Bullet` (list items, nested) and :class:`Table`.
-  Every node keeps its **source line span** into ``body`` so a semantic node can always be
-  mapped back to exact bytes for editing.
-"""
+"""Markdown(+YAML frontmatter) parsing."""
 
 from __future__ import annotations
 
@@ -34,29 +16,16 @@ from mdit_py_plugins.front_matter import front_matter_plugin
 
 _FENCE = "---"
 
-#: `table` is off in the bare commonmark preset, so a table used to arrive as an
-#: undifferentiated paragraph; the library's docs are full of them. `front_matter_plugin`
-#: makes a leading `---` fence a token of its own rather than a setext-h2 underline.
 _MD = MarkdownIt("commonmark").enable("table").use(front_matter_plugin)
 
 
 def _remembering_source_pos(rule):
-    """Wrap an inline rule so the ``link_open`` it pushes records where in the source it began.
-
-    Inline tokens carry no line map — only the containing block does — and the obvious
-    workaround, walking a cursor forward over the children and counting newlines, cannot work:
-    CommonMark converts a line ending *inside a code span* to a space, so a wrapped
-    `` `a REFERENCES b(id) ON\\nDELETE CASCADE` `` arrives as one ``code_inline`` token whose
-    content holds no newline at all. Every link after it in the paragraph then reads one line
-    early — 332 of them across one real book. The parser knows the offset; this asks it.
-    """
+    """Wrap an inline rule so the ``link_open`` it pushes records where in the source it began."""
 
     def wrapped(state, silent):
         start, mark = state.pos, len(state.tokens)
         ok = rule(state, silent)
         if ok and not silent:
-            # Not ``tokens[mark]``: text accrues in ``state.pending`` and is flushed as its own
-            # token just before ``link_open``, so the link is the first *link_open* from here.
             for tok in state.tokens[mark:]:
                 if tok.type == "link_open":
                     tok.meta["srcpos"] = start
@@ -66,7 +35,6 @@ def _remembering_source_pos(rule):
     return wrapped
 
 
-# `link` covers both `[text](href)` and the reference forms; `autolink` covers `<https://…>`.
 _MD.inline.ruler.at("link", _remembering_source_pos(rules_inline.link))
 _MD.inline.ruler.at("autolink", _remembering_source_pos(rules_inline.autolink))
 
@@ -77,40 +45,22 @@ def _normalize(text: str) -> str:
 
 
 def _iter_inline(tokens: Iterable[Token]) -> Iterator[tuple[Token, int]]:
-    """Yield every ``inline`` token in a flat token stream, with the line its block starts on.
-
-    The line comes out here rather than being read off ``tok.map`` at the call site because
-    this filter is what established it is not ``None``.
-    """
+    """Yield every ``inline`` token in a flat token stream, with the line its block starts on."""
     for tok in tokens:
         if tok.type == "inline" and tok.map:
             yield tok, tok.map[0]
 
 
 def iter_links(text: str) -> Iterator[tuple[str, str, int]]:
-    """Yield ``(text, href, line)`` for every markdown link **outside code**; ``line`` is 1-based.
-
-    A link inside a fenced block or an inline-code span is not a ``link_open`` token, so the
-    exclusion is structural rather than the blank-out-the-code-first approximation it replaces
-    (which could not tell ``strategies[idx](x)`` in a snippet from a link).
-    """
+    """Yield ``(text, href, line)`` for every markdown link **outside code**; ``line`` is 1-based."""
     yield from _links(text)
 
 
-#: A book's values are read by several checks each, and every reading used to parse the
-#: text again — one doctor over a real book parsed markdown some 200,000 times for a few
-#: thousand distinct values, and caching them cut its wall time from 50s to 35s. The readers below are
-#: functions of the text alone, so each distinct text is parsed once per process; the bound
-#: keeps a long-lived process that re-reads an edited book from holding every old spelling.
 _CACHED_TEXTS = 1 << 16
 
 
 @lru_cache(maxsize=_CACHED_TEXTS)
 def _links(text: str) -> tuple[tuple[str, str, int], ...]:
-    # Most values a doctor reads are distinct, so the cache above misses on them, and most hold
-    # no link at all. In the commonmark preset (no linkify) a `link_open` comes only from the
-    # `link` rule, which opens on `[`, or `autolink`, which opens on `<`: a text with neither
-    # yields nothing, and skipping its parse took a real 33s doctor run to 26s.
     if "[" not in text and "<" not in text:
         return ()
     return tuple(_scan_links(text))
@@ -125,8 +75,6 @@ def _scan_links(text: str) -> Iterator[tuple[str, str, int]]:
             if child.type == "link_open":
                 if not depth:
                     href, label = str(child.attrGet("href") or ""), []
-                    # `srcpos` indexes the block's own source, which is what the inline rules
-                    # were handed, so the newlines before it are the lines before it.
                     pos = child.meta.get("srcpos")
                     line = start + (tok.content[:pos].count("\n") if pos else 0)
                 depth += 1
@@ -135,8 +83,6 @@ def _scan_links(text: str) -> Iterator[tuple[str, str, int]]:
                 if not depth:
                     yield "".join(label), href, line + 1
             elif depth:
-                # A break inside a link's own text is part of that text: `[Document\nparser]`
-                # reads "Document parser", not "Documentparser".
                 label.append("\n" if child.type in ("softbreak", "hardbreak") else child.content)
 
 
@@ -146,26 +92,11 @@ def _inline_children(text: str) -> tuple[Token, ...]:
     return tuple(_MD.parseInline(_normalize(text))[0].children or ())
 
 
-#: A stamped citation's trailing digest, sitting just after its span, outside the backticks:
-#: `` `path::symbol` @3f9a1c07b2e4 ``. It attaches to the span that precedes it, not to the
-#: separator that follows — so a multi-target bullet keeps parsing past it (see below).
 _TRAILING_DIGEST = re.compile(r"^(\s*@[0-9a-f]{12})(.*)$", re.DOTALL)
 
 
 def leading_code_spans(text: str) -> list[str]:
-    """The inline-code spans a value *opens* with, comma-separated; ``[]`` if it opens with prose.
-
-    ``code:`` bullets cite targets as `` `path::symbol` `` runs. Reading them off
-    ``code_inline`` tokens rather than a backtick regex is what makes ``` ``a `b` c`` ``` and
-    a backslash-escaped fence come out right, and it is the parser that decides where a span
-    ends rather than the next backtick character.
-
-    A span may carry a stamped ``@digest`` immediately after it — plain text, since a digest
-    is not part of the citation's own backtick-quoted grammar. Read verbatim, that text is
-    prose and would end the run right after the *first* target, silently dropping every
-    citation after it in a stamped multi-target bullet. So it is recognized here and folded
-    onto the span it follows before the ordinary separator check runs on whatever remains.
-    """
+    """The inline-code spans a value *opens* with, comma-separated; ``[]`` if it opens with prose."""
     spans: list[str] = []
     for child in _inline_children(text):
         if child.type == "code_inline":
@@ -178,31 +109,17 @@ def leading_code_spans(text: str) -> list[str]:
                     spans[-1] += digest_match.group(1).strip()
                     content = digest_match.group(2)
             if not content.strip(" \t,"):
-                continue  # the separator between two spans
-            break         # prose — the run is over
+                continue
+            break
         elif child.type in ("softbreak", "hardbreak"):
-            # A wrapped bullet. The newline between two spans is whitespace like any other,
-            # but the parser hands it back as its own token rather than as text — so reading
-            # only `text` for the separator closed the run at the line break and silently
-            # dropped every target after the first, which is how a long `code:` bullet lost
-            # its second citation and a real ungrounded symbol stopped being reported.
             continue
         else:
-            break     # prose — the run is over (and never started, if spans is empty)
+            break
     return spans
 
 
 def all_code_spans(text: str) -> list[str]:
-    """Every inline-code span in a value, wherever it sits, in order.
-
-    ``leading_code_spans``'s stricter sibling, for the bullet whose refs are *interleaved with
-    prose* rather than opening the value — ``verify:`` writes them that way. The point of
-    reading spans at all is that a span's content is content: a comma, an em-dash or a
-    parenthesis inside one is part of the target, not a separator. A regex scanned over the
-    raw bullet cannot know that, and the one that read ``verify:`` truncated every test title
-    at its first comma — so a book citing a real test by its real name was told the name did
-    not exist, four review passes running.
-    """
+    """Every inline-code span in a value, wherever it sits, in order."""
     return [
         child.content
         for child in _inline_children(text)
@@ -211,17 +128,7 @@ def all_code_spans(text: str) -> list[str]:
 
 
 def label_colon_index(text: str) -> int:
-    """Index of the first ``:`` outside every inline code span, or ``-1`` if there is none.
-
-    A ``- key: value`` bullet's separator is the first colon *outside* backticks — one inside
-    a span, like `` `:443` ``, is code content, not the key/value split, and a bullet whose
-    only colons are all inside spans has no key at all. Inline tokens carry no source
-    offsets (see ``_remembering_source_pos`` above, which exists because of exactly that), so
-    this cannot be built on ``_inline_children`` the way its siblings are; it instead applies
-    CommonMark's own code-span rule directly — a span opens at a run of backticks and closes
-    at the next run of the *same* length, and a run with no matching close is not a span at
-    all, just literal backtick characters.
-    """
+    """Index of the first ``:`` outside every inline code span, or ``-1`` if there is none."""
     i, n = 0, len(text)
     while i < n:
         ch = text[i]
@@ -256,15 +163,7 @@ def _closing_backtick_run(text: str, start: int, run_len: int) -> int | None:
 
 
 def prose_text(text: str) -> str:
-    """A value's prose: link *text* without its href, code spans measured as nothing.
-
-    For the checks that ask how much a bullet **says** rather than how many characters it
-    spells — an href is addressing and a cited symbol says one thing however long it is.
-    Read off the inline tokens rather than substituted out with a pair of regexes, because
-    a backtick regex cannot tell ``` ``a `b` c`` ``` from two spans, and a
-    ``[text](href)`` regex stops the href at the first ``)`` — so a link to
-    ``foo(bar).md`` left half an href behind and counted it as prose.
-    """
+    """A value's prose: link *text* without its href, code spans measured as nothing."""
     out: list[str] = []
     for child in _inline_children(text):
         if child.type == "code_inline":
@@ -277,29 +176,18 @@ def prose_text(text: str) -> str:
 
 
 def code_line_spans(text: str) -> list[tuple[int, int]]:
-    """0-indexed ``[start, end)`` line spans of every code block — fenced or indented.
-
-    For the mutating commands, which rewrite *prose* and must leave a snippet alone: a
-    wikilink or a status line inside a fence is sample text, not the document's own.
-    """
+    """0-indexed ``[start, end)`` line spans of every code block — fenced or indented."""
     return [(tok.map[0], tok.map[1]) for tok in _MD.parse(_normalize(text))
             if tok.type in ("fence", "code_block") and tok.map]
 
 
 @dataclass
 class References:
-    links: list[tuple[str, str]] = field(default_factory=list)  # (text, href)
+    links: list[tuple[str, str]] = field(default_factory=list)
 
     @property
     def doc_hrefs(self) -> list[str]:
-        """Link targets that address a document in *this* repo — the citation channel.
-
-        A story cites an OKF node by linking its id, and a UI node's id **is** a
-        repo-relative path (optionally ``path#anchor``), so every such citation arrives here
-        as an ordinary markdown link. External URLs and bare in-page anchors are not
-        citations of a document and are dropped; everything else is left verbatim for the
-        caller to resolve against the citing file (see ``Graph.resolve_doc_ref``).
-        """
+        """Link targets that address a document in *this* repo — the citation channel."""
         out: list[str] = []
         for _text, href in self.links:
             h = href.strip()
@@ -316,24 +204,19 @@ def extract_refs(text: str) -> References:
     )
 
 
-_EMPHASIS = "*_` "  # inline formatting around a bullet's key — decoration, not part of the key
+_EMPHASIS = "*_` "
 
 
 @dataclass
 class Bullet:
     text: str
-    line_start: int          # 0-indexed, body-relative
-    line_end: int            # exclusive
+    line_start: int
+    line_end: int
     children: list["Bullet"] = field(default_factory=list)
 
     @property
     def label(self) -> str:
-        """Key of a ``- key: value`` bullet, lowercased with emphasis markers stripped ("" if none).
-
-        ``- **Status**: Done`` and ``- status: Done`` are the same field wearing different
-        formatting. The parser is the right place to know that, so a caller can ask for a
-        labelled bullet instead of pattern-matching the rendered line.
-        """
+        """Key of a ``- key: value`` bullet, lowercased with emphasis markers stripped ("" if none)."""
         idx = label_colon_index(self.text)
         return self.text[:idx].strip().strip(_EMPHASIS).lower() if idx != -1 else ""
 
@@ -345,12 +228,7 @@ class Bullet:
 
     @property
     def bracketed(self) -> tuple[str, str]:
-        """``("id", "rest")`` for a ``- [id] rest`` bullet; ``("", text)`` when unbracketed.
-
-        The backlog and the epics queue are both lists of these. Reading the id off a
-        *parsed* bullet is what keeps a ``- [x] …`` line inside a fenced example, or an
-        indented continuation line that merely looks like one, out of the queue.
-        """
+        """``("id", "rest")`` for a ``- [id] rest`` bullet; ``("", text)`` when unbracketed."""
         if not self.text.startswith("["):
             return "", self.text
         ident, sep, rest = self.text[1:].partition("]")
@@ -368,22 +246,16 @@ class Bullet:
 
 @dataclass
 class Table:
-    """A GFM pipe table: header cells, body rows, and its source line span.
-
-    Tables are how the library's docs carry most of their tabular contract (placeholder
-    tables, parser-per-format tables, matrices). Before ``table`` was enabled the parser
-    handed every one of them back as an undifferentiated paragraph, so a caller wanting a
-    row had no option but to split on ``|`` itself.
-    """
+    """A GFM pipe table: header cells, body rows, and its source line span."""
 
     headers: list[str]
     rows: list[list[str]]
-    line_start: int          # 0-indexed, body-relative
-    line_end: int            # exclusive
+    line_start: int
+    line_end: int
 
     @property
     def records(self) -> list[dict[str, str]]:
-        """Rows keyed by header. Short rows pad, long rows truncate — as the renderer does."""
+        """Rows keyed by header."""
         return [
             {h: (row[i] if i < len(row) else "") for i, h in enumerate(self.headers)}
             for row in self.rows
@@ -400,10 +272,10 @@ class Table:
 
 @dataclass
 class Section:
-    level: int               # heading level 1-6; 0 = preamble before the first heading
+    level: int
     title: str
-    line_start: int          # 0-indexed, body-relative (the heading line)
-    line_end: int            # exclusive
+    line_start: int
+    line_end: int
     body_lines: list[str] = field(default_factory=list, repr=False)
     children: list["Section"] = field(default_factory=list)
     bullets: list[Bullet] = field(default_factory=list)
@@ -415,22 +287,12 @@ class Section:
 
     @property
     def body(self) -> str:
-        """The section's text **without its own heading line** (the preamble has none).
-
-        ``text`` includes the heading, which makes "does this section say anything?"
-        unanswerable without re-splitting the string — the omission that had every caller
-        writing its own scan.
-        """
+        """The section's text **without its own heading line** (the preamble has none)."""
         return "\n".join(self.body_lines[self._content_start:self.line_end])
 
     @property
     def is_empty(self) -> bool:
-        """True when the section carries no prose of its own **or in its sub-sections**.
-
-        Sub-section heading lines are not content: a ``## Context`` whose only body is an
-        empty ``### Background`` is still unwritten, and a scaffold that is nothing but
-        headings must not read as filled.
-        """
+        """True when the section carries no prose of its own **or in its sub-sections**."""
         heading_lines = {s.line_start for s in self.walk() if s.level}
         end = min(self.line_end, len(self.body_lines))
         return not any(self.body_lines[i].strip()
@@ -483,11 +345,7 @@ class MarkdownDoc:
 
     @property
     def body_offset(self) -> int:
-        """File lines preceding the body (opening fence + frontmatter + closing fence); 0 if none.
-
-        Add it to a body-relative (0-indexed) line to get the file-absolute (0-indexed) line —
-        used to give a section/bullet node an absolute source location for located findings.
-        """
+        """File lines preceding the body (opening fence + frontmatter + closing fence); 0 if none."""
         if not self.has_frontmatter:
             return 0
         return self.raw_frontmatter.count("\n") + 2
@@ -499,7 +357,7 @@ class MarkdownDoc:
 
     @property
     def sections(self) -> list[Section]:
-        """Root-level sections (lazily parsed). A leading preamble, if any, is the first root."""
+        """Root-level sections (lazily parsed)."""
         if self._sections is None:
             self._sections = _build_sections(self.body)
         return self._sections
@@ -509,11 +367,7 @@ class MarkdownDoc:
             yield from root.walk()
 
     def walk_bullets(self) -> list[Bullet]:
-        """Every bullet in the body, nested ones included, in **source order**.
-
-        Sections nest by heading level, so walking them yields tree order rather than file
-        order; a list that *is* an ordering (the backlog, the epics queue) needs the latter.
-        """
+        """Every bullet in the body, nested ones included, in **source order**."""
         found = [b for s in self.walk_sections() for top in s.bullets for b in top.walk()]
         return sorted(found, key=lambda b: b.line_start)
 
@@ -531,16 +385,7 @@ class MarkdownDoc:
         return None
 
     def section(self, title: str) -> Section:
-        """The section titled ``title``. ``KeyError`` if the document has none.
-
-        The non-optional counterpart to `find_section`, for the callers — tests, and any
-        code working on a document whose shape it has already validated — that are not
-        asking *whether* the section is there. Those callers used to reach straight
-        through `find_section`, so a document missing the heading surfaced as
-        ``AttributeError: 'NoneType' object has no attribute ...`` several frames from
-        the cause; here it names the title that was missing and the ones that were not.
-        Use `find_section` when absence is an answer rather than a bug.
-        """
+        """The section titled ``title``."""
         found = self.find_section(title)
         if found is None:
             have = sorted({s.title for s in self.walk_sections() if s.title})
@@ -565,31 +410,19 @@ class MarkdownDoc:
 
 
 def split(text: str) -> MarkdownDoc:
-    """Split Markdown text into frontmatter + body, tolerant of files with neither.
-
-    The fence is located by ``front_matter_plugin``, not by scanning for a ``---`` line.
-    That difference is not cosmetic: the line scan returned *no frontmatter at all* for a
-    CRLF file, for a file whose closing fence carried a trailing space, and for one with no
-    newline after the closing fence — three silent total losses. It also read an **indented**
-    ``---`` as the terminator, splitting a document in the wrong place.
-    """
+    """Split Markdown text into frontmatter + body, tolerant of files with neither."""
     text = _normalize(text)
     tokens = _MD.parse(text)
     if not tokens or tokens[0].type != "front_matter":
-        # A bare `---` with nothing to close it is a horizontal rule, and the parser says so.
         return MarkdownDoc(frontmatter=None, raw_frontmatter="", body=text)
 
     fm = tokens[0]
     if fm.map is None:
-        # A block token without a line span is not something we can split a body out of, so the
-        # document reads as having no frontmatter — the same answer as an unterminated `---`.
         return MarkdownDoc(frontmatter=None, raw_frontmatter="", body=text)
 
     raw_fm = fm.content + "\n" if fm.content else ""
     body = "\n".join(text.split("\n")[fm.map[1]:])
     try:
-        # `raw_fm`, not `fm.content`: the token drops the block's final newline, and a
-        # folded scalar's trailing-newline semantics depend on it.
         data = yaml.safe_load(raw_fm) or {}
     except yaml.YAMLError:
         data = {}
@@ -598,9 +431,6 @@ def split(text: str) -> MarkdownDoc:
     return MarkdownDoc(frontmatter=data, raw_frontmatter=raw_fm, body=body)
 
 
-# ---------------------------------------------------------------------------
-# Hierarchical parse
-# ---------------------------------------------------------------------------
 def _inline_text(node: SyntaxTreeNode) -> str:
     for child in node.children:
         if child.type == "inline":
@@ -627,12 +457,7 @@ def _parse_bullets(node: SyntaxTreeNode) -> list[Bullet]:
 
 
 def _parse_tables(tokens) -> list[Table]:
-    """Collect every pipe table from a flat token stream.
-
-    Cell tokens carry no line map of their own, so the row's ``tr_open`` supplies the span
-    and the cell's ``inline`` child supplies the text — already unescaped and with the
-    trailing/leading padding the renderer strips.
-    """
+    """Collect every pipe table from a flat token stream."""
     tables: list[Table] = []
     cells: list[str] | None = None
     for i, tok in enumerate(tokens):
@@ -645,7 +470,6 @@ def _parse_tables(tokens) -> list[Table]:
             nxt = tokens[i + 1] if i + 1 < len(tokens) else None
             cells.append(nxt.content.strip() if nxt is not None and nxt.type == "inline" else "")
         elif tok.type == "tr_close" and cells is not None and tables:
-            # The first row of a table is its header; every later one is data.
             if tables[-1].headers:
                 tables[-1].rows.append(cells)
             else:
@@ -675,14 +499,12 @@ def _build_sections(body: str) -> list[Section]:
             headings.append(Section(level=level, title=title, line_start=tok.map[0],
                                     line_end=len(lines), body_lines=lines))
 
-    # close each heading's span at the next heading of equal-or-higher rank
     for idx, sec in enumerate(headings):
         for nxt in headings[idx + 1:]:
             if nxt.level <= sec.level:
                 sec.line_end = nxt.line_start
                 break
 
-    # nest headings by level
     roots: list[Section] = []
     stack: list[Section] = []
     for sec in headings:
@@ -691,22 +513,17 @@ def _build_sections(body: str) -> list[Section]:
         (stack[-1].children if stack else roots).append(sec)
         stack.append(sec)
 
-    # preamble: content before the first heading
     first_start = headings[0].line_start if headings else len(lines)
     if first_start > 0:
         preamble = Section(level=0, title="", line_start=0, line_end=first_start, body_lines=lines)
         roots.insert(0, preamble)
 
-    # attach top-level bullets and tables to the deepest section that contains them
     flat = [s for r in roots for s in r.walk()]
 
     def _container(line_start: int) -> Section | None:
         containing = [s for s in flat if s.line_start <= line_start < s.line_end]
-        # sections nest, so the latest-starting one that contains the line is the innermost
         return max(containing, key=lambda s: s.line_start) if containing else None
 
-    # A line inside no section at all can only happen if there are no sections — the preamble
-    # covers everything before the first heading — so the fallback is the first root or nothing.
     fallback = roots[0] if roots else None
 
     for bullet in _top_level_bullets(tree):

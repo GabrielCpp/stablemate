@@ -1,34 +1,4 @@
-"""The PR boundary: open it, merge it, and escalate when neither can be made to happen.
-
-Ports `open-pr.py`, `gh-open-pr.py`, `merge-pr.py`, `flag-ci-failure.py`,
-`flag-merge-failure.py` and story mode's `open-story-pr.py`.
-
-**Two process layers collapse here, and that is the whole of what changes.** `open-pr.py`
-was a seventeen-line `runpy.run_path` harness whose only job was to run `gh-open-pr.py`
-in-process with a swapped `sys.argv` and stdout redirected to stderr, so that the helper's
-prints could not corrupt the caller's JSON. `gh-open-pr.py` in turn spawned `push-epic.py`
-as a **subprocess**, with `GH_TOKEN` injected into its environment so the child could
-resolve the same credential the parent already held. Neither layer survives: the PR opener
-is a plain function call below, and the push is `nodes.ci.push_epic_branch`, which resolves
-its own token from the same repo root. No argv swap, no stdout redirect, no environment
-mutation — the last of which also settles the "a node reads no environment variable" rule
-for this group.
-
-`gh-open-pr.py` does not become a node of its own. It never emitted anything: it is entirely
-side effects (commit the prune, push, open the PR), and the workflow only ever reached it
-through `open-pr.py`. A node whose output nothing reads is a node the run record cannot
-explain, so it is `_open_epic_pr` here — a helper of the node that always called it.
-
-The `[script-name]` log prefixes are gone as everywhere else, and the two give-up handlers'
-stderr banners go to `logger.warning` instead of `print(file=sys.stderr)`. The banner is
-operator-facing text, and the run record is where operator-facing text belongs now — a
-`print` to stderr survives only as long as the terminal it scrolled past.
-
-**The `main` default is not applied to a blank.** The parameter defaults below fire only
-when the caller omits the argument: an explicit `""` stays `""`, and does not become
-`"main"`. `open_story_pr` is the one that coerces (`base or "main"`), and the asymmetry
-between it and its neighbours is deliberate rather than an oversight to smooth away.
-"""
+"""The PR boundary: open it, merge it, and escalate when neither can be made to happen."""
 from __future__ import annotations
 
 import logging
@@ -67,41 +37,18 @@ from workhorse_workflows.kit import (
     sync_to_origin,
 )
 
-#: Image suffixes counted as QA evidence when building a UI repo's PR body.
 SCREENSHOT_SUFFIXES = (".png", ".jpg", ".jpeg", ".gif")
 
-#: The plan section quoted into a story PR's body. Where it stops is the parser's answer —
-#: the next heading of the same level or shallower — not a lookahead for the next `## `,
-#: which also stopped at a `## ` line inside a fenced code block.
 PLAN_SUMMARY_HEADING = "1. Summary"
 
-# ── The epic's PR ────────────────────────────────────────────────────────────────────
 
 
 def _inherited_set_aside_epic(root: Path, run_dir: str, branch: str, base: str) -> str:
-    """The first epic set aside this run whose *unmerged* work `branch` carries, or `""`.
-
-    `branch_epic` cuts every epic branch from HEAD, not from the base — deliberately, so an
-    epic can build on the one before it, which is the only reason a story that depends on a
-    previous epic's code compiles at all. The cost is that a *failed* epic rides along too:
-    `flag_epic_blocked` promises its work "stays on its branch, unmerged … NOT merged", and
-    then the next epic's branch is cut on top of it and its PR targets trunk. Merging that
-    PR merges the set-aside epic, past the gate that set it aside, without anyone reviewing
-    the failure the gate was raised for.
-
-    So containment is the question, not order: an epic branch that contains a set-aside
-    epic's commits is not independently shippable and must not become a PR. It stays on disk
-    for the manual review the gate asked for, and the run advances as it does offline.
-
-    Contributed commits, though, not mere containment. An epic set aside before it committed
-    anything leaves `feat/<epic>` pointing at the base, which is an ancestor of every later
-    branch — so a bare containment test would let one story's early failure wedge the entire
-    remaining queue. A branch the base already contains has nothing to smuggle past a gate.
-    """
+    """The first epic set aside this run whose *unmerged* work `branch` carries, or `""`."""
     for blocked in epics_set_aside(root, run_dir):
         blocked_branch = f"feat/{blocked}"
         if is_ancestor(root, blocked_branch, base):
-            continue  # built nothing the base does not already have
+            continue
         if is_ancestor(root, blocked_branch, branch):
             return blocked
     return ""
@@ -115,20 +62,7 @@ def open_pr(
     run_dir: str = "",
     repo_dir: str = "",
 ) -> PrGate:
-    """Open the finished epic's PR, and say whether there is anything to gate CI on.
-
-    With no epic there is nothing to PR and nothing to gate: the queue was already pruned
-    and committed onto the epic branch, HEAD is still on that branch, and the caller's next
-    selection reads the pruned queue and advances. That is the offline path too — every
-    failure inside `_open_epic_pr` is best-effort and leaves the branch for a manual PR,
-    which is why this node still reports `should_gate` from the *epic*, not from whether
-    GitHub could be reached.
-
-    The one case that reports no gate *with* an epic is a branch carrying a set-aside epic —
-    see :func:`_inherited_set_aside_epic` for why that cannot become a PR. The queue prune is
-    still committed there, because the epic itself did finish and the next selection has to
-    see it gone.
-    """
+    """Open the finished epic's PR, and say whether there is anything to gate CI on."""
     if not epic:
         logger.info("no epic — nothing to PR")
         return PrGate(ci_base=base_branch)
@@ -152,13 +86,7 @@ def open_pr(
 
 
 def _commit_queue_prune(logger: logging.Logger, root: Path, epic: str, branch: str) -> None:
-    """Commit the queue prune onto the epic branch, best-effort.
-
-    Before pushing, so it rides into the base with this epic's own merge rather than being
-    lost at the next checkout — `branch_epic` restores `index.md` from the base, so an
-    uncommitted prune does not survive to the next epic. Where the queue lives is ostler's
-    answer, not a literal here.
-    """
+    """Commit the queue prune onto the epic branch, best-effort."""
     if not branch_exists(root, branch):
         return
     prune = commits.message(
@@ -172,16 +100,7 @@ def _commit_queue_prune(logger: logging.Logger, root: Path, epic: str, branch: s
 
 
 def _epic_pr_title(root: Path, epic: str) -> str:
-    """The epic PR's title: a Conventional Commit subject, because a squash merge makes it one.
-
-    Under squash-merge — the default on most repos, and what a bot-authored epic branch
-    usually gets — GitHub uses the PR title as the merge commit's subject, so this string is
-    what release-please parses for the whole epic. `Epic: checkout` parses as nothing and
-    releases nothing.
-
-    The epic's own `# ` heading is the description where there is one; the epic name is the
-    fallback, minus the sequence prefix that orders its folder.
-    """
+    """The epic PR's title: a Conventional Commit subject, because a squash merge makes it one."""
     name = registry.epic_slug(epic) or epic
     try:
         epic_md = okf_path.epic_dir_in(root, epic) / "epic.md"
@@ -192,12 +111,7 @@ def _epic_pr_title(root: Path, epic: str) -> str:
 
 
 def _open_epic_pr(logger: logging.Logger, epic: str, base: str, repo_dir: str = "") -> None:
-    """Push the epic branch and open its PR. Best-effort throughout.
-
-    Every early return leaves the branch unpushed or the PR unopened for a manual
-    follow-up, and none of them is an error: an offline run, a token-less run and a
-    non-github origin all reach the end of the epic and advance the queue.
-    """
+    """Push the epic branch and open its PR."""
     branch = f"feat/{epic}"
     root = find_repo_root(repo_dir)
 
@@ -251,17 +165,7 @@ def _open_epic_pr(logger: logging.Logger, epic: str, base: str, repo_dir: str = 
 def merge_pr(
     logger: logging.Logger, epic: str = "", base_branch: str = "main", repo_dir: str = ""
 ) -> MergeOutcome:
-    """Merge the epic's PR into its base, then move the local checkout to the merged tip.
-
-    Syncing the checkout is the load-bearing half: the next epic branches from whatever
-    HEAD is on, so a merge that landed remotely but left the local base behind would branch
-    the next epic off a tip missing this epic's work — including the queue prune that rode
-    in with the PR.
-
-    A resume after the merge already landed finds no *open* PR and would otherwise report
-    `unavailable` and re-offer the same epic forever; `_find_merged_pr` is what makes that
-    case report `merged` and sync, exactly as the first pass would have.
-    """
+    """Merge the epic's PR into its base, then move the local checkout to the merged tip."""
     branch = f"feat/{epic}"
 
     if not epic:
@@ -295,8 +199,6 @@ def merge_pr(
 
     pr = find_open_pr(repo, branch)
     if pr is None:
-        # No open PR. If one was already merged (e.g. a resume after the merge landed),
-        # sync the base and report merged; otherwise there is nothing to do.
         if _find_merged_pr(repo, branch) is not None:
             logger.info("PR for %s already merged into %s", branch, base_branch)
             _sync_base(logger, root, base_branch, token)
@@ -335,12 +237,7 @@ def _sync_base(logger: logging.Logger, root: Path, base: str, token: str) -> Non
 
 
 def _pick_merge_method(repo) -> str:
-    """The first merge method the repo allows, defaulting to a merge commit.
-
-    The default is deliberately the one that may be rejected: guessing `squash` at a repo
-    that forbids it produces a `failed` the merge gate can act on, whereas assuming nothing
-    would need a fourth status nobody routes.
-    """
+    """The first merge method the repo allows, defaulting to a merge commit."""
     try:
         if repo.allow_merge_commit:
             return "merge"
@@ -362,7 +259,6 @@ def _find_merged_pr(repo, branch: str):
     return None
 
 
-# ── The two give-up handlers ─────────────────────────────────────────────────────────
 
 
 @blueprint.node
@@ -373,14 +269,7 @@ def flag_ci_failure(
     summary: str = "",
     repo_dir: str = "",
 ) -> CiFlagged:
-    """CI could not be turned green within the fix budget. Leave it red and say so.
-
-    The PR stays open and red on purpose: the branch carries the epic's work, and closing
-    or reverting it would throw away everything the run built to protect a clean queue.
-    This node does not halt anything — the operator gate the flow routes to next does, and
-    it is a *resumable* one, so re-running the workflow resets the fix counter and
-    re-attempts the loop rather than dying in a terminal.
-    """
+    """CI could not be turned green within the fix budget."""
     branch = f"feat/{epic}"
     root = find_repo_root(repo_dir)
 
@@ -416,12 +305,7 @@ def flag_merge_failure(
     attempts: str = "?",
     repo_dir: str = "",
 ) -> MergeFlagged:
-    """The PR could not be merged within the conflict-resolution budget. Say so and pause.
-
-    The merge-side twin of `flag_ci_failure`, and pausing rather than finishing is the
-    point: the failure mode this replaced was a run that reported success with the epic's
-    PR left open and unmerged.
-    """
+    """The PR could not be merged within the conflict-resolution budget."""
     branch = f"feat/{epic}"
     root = find_repo_root(repo_dir)
 
@@ -453,12 +337,7 @@ def flag_merge_failure(
 def _comment_on_pr(
     logger: logging.Logger, root: Path, epic: str, branch: str, body: str
 ) -> bool:
-    """Post the give-up note on the epic's open PR. False whenever there is nowhere to post.
-
-    Shared by both handlers because they differ only in their text. Comment auth is the
-    workflow's ordinary GitHub token — the env var configured as `workflow.githubTokenEnv`
-    in agents.yml, then `GH_TOKEN`, then `GITHUB_TOKEN` — resolved by the kit.
-    """
+    """Post the give-up note on the epic's open PR."""
     token = resolve_github_token(root)
     if not epic or not token:
         return False
@@ -475,7 +354,6 @@ def _comment_on_pr(
     return True
 
 
-# ── Story mode's PRs ─────────────────────────────────────────────────────────────────
 
 
 @blueprint.node
@@ -489,32 +367,7 @@ def open_story_pr(
     repo_dir: str = "",
     workspace_file: str = "",
 ) -> StoryPr:
-    """Story mode's terminal: one PR per affected **code** repo, none in the docs repo.
-
-    Each PR carries the story's own heading as its title — as a Conventional Commit subject
-    scoped to that repo, since a squash merge makes the title the released subject — and the
-    plan's summary as its body,
-    plus the QA screenshots for a repo whose QA drives a browser or a device. The
-    PRs are left open for review and never auto-merged — epic mode's merge gate has no
-    counterpart here.
-
-    `story_branch` comes from the node that cut the branch, and is only re-derived from the
-    slug for a hand invocation with nothing to read. The two drifted once: this script kept
-    a `story/` prefix after the branching node dropped it, so every PR targeted a branch
-    that had never been cut.
-
-    **`base_branch` reaches nothing, and that is preserved rather than repaired.** The
-    script read it, coerced it (`base = base or "main"`), and then never passed it anywhere:
-    each PR's base comes from `_repo_base_branch`, whose own fallback is a separate literal
-    `"main"`. So a run configured with a non-`main` base opened its story PRs against
-    whatever each repo declared or probed to, never against the configured value. Wiring the
-    parameter through would change behavior, and this port does not change behavior — the
-    parameter stays, inert, and the defect is recorded in the progress ledger.
-
-    Best-effort per repo, exactly as before: a missing path, a non-git directory, an
-    unreachable origin or a failed push each skip that repo and are logged, and the node
-    still reports whatever the other repos managed.
-    """
+    """Story mode's terminal: one PR per affected **code** repo, none in the docs repo."""
     if not story_slug:
         logger.info("no story slug — nothing to PR")
         return StoryPr()
@@ -557,10 +410,7 @@ def open_story_pr(
             results.append("skipped")
             continue
 
-        # Each code repo has its own default branch; the docs repo's base is not it.
         repo_base = _repo_base_branch(repo_path, name, repos)
-        # Scoped to the repo it lands in, so a squash merge — which turns this title into
-        # the merge commit's subject — releases that repo's package and no other.
         title = commits.subject("feat", commits.scope(name), description)
         _commit_in_repo(
             logger,
@@ -575,7 +425,6 @@ def open_story_pr(
         if result in ("opened", "exists") and pr_url:
             pr_urls.append(pr_url)
 
-    # Overall status: the best result across the repos wins.
     if "opened" in results:
         status = "opened"
     elif "exists" in results:
@@ -587,13 +436,7 @@ def open_story_pr(
 
 
 def _plan_summary_prose(spec_dir: Path) -> str:
-    """The plan's `## 1. Summary`, trimmed to its first two paragraphs.
-
-    Not the `plan_summary` node in `shared/dev.py`, which the name used to suggest it was
-    a private copy of: that one renders the plan's *service structure* into a prompt for a
-    lane that did not plan the story. This reads the human prose off `plan.md` for a pull
-    request body, and there is nothing of one in the other.
-    """
+    """The plan's `## 1."""
     plan_file = spec_dir / "plan.md"
     if not plan_file.exists():
         return ""
@@ -623,12 +466,7 @@ def _qa_screenshots(root: Path, story_path: str) -> list[str]:
 
 
 def _pr_body(summary: str, screenshots: list[str]) -> str:
-    """The PR description: the plan summary, the QA evidence, and the provenance note.
-
-    Screenshots are attached because QA produced some, not because this repo's `qa_mode`
-    is on a list of drivers that produce them — a repo whose QA captures evidence any
-    other way had it dropped, and the list was one name behind whatever the repo installed.
-    """
+    """The PR description: the plan summary, the QA evidence, and the provenance note."""
     parts = []
     if summary:
         parts.append(f"## Summary\n\n{summary}")
@@ -657,11 +495,7 @@ def _repo_base_branch(repo_path: Path, name: str, repos: dict, fallback: str = "
 
 
 def _commit_in_repo(logger: logging.Logger, repo_path: Path, branch: str, message: str) -> None:
-    """Commit whatever is pending in a code repo, on the story branch.
-
-    A false `commit_all` here just means nothing was staged — the branch may already carry
-    the story's commits ahead of base, which is fine and not worth surfacing.
-    """
+    """Commit whatever is pending in a code repo, on the story branch."""
     if current_branch(repo_path) != branch and not (
         checkout(repo_path, branch) or checkout(repo_path, branch, create=True)
     ):

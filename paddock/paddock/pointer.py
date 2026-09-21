@@ -1,16 +1,4 @@
-"""The tracked half of a fixture: what git carries when the zip cannot travel in it.
-
-A pointer is small, textual and scannable, which is the whole reason it exists — see
-`paddock.paths` for why the zip itself stays out of the tree. It says what the zip is
-(name, size, sha256), what state it was captured from (`head`, `dirty`), where to get it
-if it is not on this machine (`url`), and what directory name it unpacks back into
-(`repo_dir`).
-
-`repo_dir` is the field that looks cosmetic and is not: farrier derives the names of the
-files it generates from the repo directory's basename, so a tree unpacked under a
-different name gets a fresh set of generated skills while the ones the seed carries
-dangle. The captured basename travels with the zip so unpack cannot get it wrong.
-"""
+"""The tracked half of a fixture: what git carries when the zip cannot travel in it."""
 
 from __future__ import annotations
 
@@ -43,23 +31,10 @@ class Pointer(BaseModel):
     url: str = ""
     note: str = ""
 
-    #: The captured tree's own path, relative to the data directory, when the tree lives
-    #: in this repo — `apps/claims-api` for a frozen fixture. Empty for a seed captured
-    #: from somewhere else on disk (a greenfield capture out of a live session), which has
-    #: no in-tree source to compare against and is exempt from the freshness guard by
-    #: construction rather than by exception.
     source: str = ""
 
-    #: `archive.tree_digest` of that source directory at capture time. The pair
-    #: (`source`, `tree_sha256`) is what makes an edit to a tracked fixture that never
-    #: reached a re-capture a test failure instead of a round scored against the previous
-    #: book — see `sha256` for the question it does *not* answer.
     tree_sha256: str = ""
 
-    #: The `--exclude` globs the capture was taken with. `tree_sha256` was computed with
-    #: them, so a verification that forgot them would hash a tree the capture never saw
-    #: and report drift nobody introduced; recording them is what makes the digest
-    #: reproducible from the pointer alone. Empty for a capture that excluded nothing.
     excludes: tuple[str, ...] = ()
 
     @classmethod
@@ -79,15 +54,7 @@ class Pointer(BaseModel):
         return path
 
     def verify_tree(self, source: Path) -> None:
-        """Raise unless *source* still hashes to what this pointer recorded at capture.
-
-        Separate from `verify` because they catch opposite failures. `verify` asks whether
-        the zip in the store is the archive this pointer names; this asks whether that
-        archive is still the tree the repo tracks. The second is the one a fixture author
-        trips: the trials materialize from the unpacked zip, so an edit that lands in git
-        and never reaches a re-capture leaves every round scoring the previous content,
-        against an answer key read from the new one.
-        """
+        """Raise unless *source* still hashes to what this pointer recorded at capture."""
         if not self.tree_sha256:
             raise PointerError(f"pointer '{self.name}' records no tree_sha256; re-capture it")
         actual = digest_tree(source, self.excludes)
@@ -101,13 +68,7 @@ class Pointer(BaseModel):
             )
 
     def verify(self, zip_path: Path) -> None:
-        """Raise unless *zip_path* is byte-for-byte the archive this pointer describes.
-
-        Checked on every unpack, not only after a fetch. A zip in the local store was
-        put there by some earlier command, possibly under a different version of the
-        fixture, and a seed that has quietly drifted is a benchmark result that means
-        nothing — the failure it produces is a scoring difference nobody can attribute.
-        """
+        """Raise unless *zip_path* is byte-for-byte the archive this pointer describes."""
         if not zip_path.exists():
             raise PointerError(f"{zip_path}: missing (fetch it, or capture the seed)")
         actual = digest(zip_path)
@@ -117,8 +78,6 @@ class Pointer(BaseModel):
             )
 
 
-#: What a compromised round's note has to start with. Prose, because the note is read by
-#: humans, and a fixed prefix, because it is also the thing a script greps for.
 DIAGNOSTIC_MARKER = "DIAGNOSTIC — "
 
 
@@ -130,25 +89,11 @@ class ResultPointer(Pointer):
     steps: int = 0
     scored: bool = False
 
-    #: Why this result is a diagnostic and not a baseline: a parked or hand-answered
-    #: operator gate, a step that failed, a pin that drifted. Machine-readable on purpose.
-    #: The scorecard already warns about all of this, at length — but the scorecard is
-    #: printed once, to a terminal, and *this file* is what a later comparison actually
-    #: reads. A caveat that lives only where a human was looking is the same defect as a
-    #: decision sheet stamped without checking what was asked.
     caveats: list[str] = []
 
     @model_validator(mode="after")
     def _caveats_reach_the_note(self) -> Self:
-        """Make an uncaveated note impossible to write for a compromised round.
-
-        Fail-closed at the writer rather than checked at the reader, because the reader
-        is a future comparison that has no way to know what it is missing: an honest
-        number and a compromised one look identical once the warning is gone. Enforced in
-        both directions — an unmarked note on a caveated round is the failure this exists
-        to stop, and a marked note on a clean round is a marker that would stop meaning
-        anything if it could be left behind by accident.
-        """
+        """Make an uncaveated note impossible to write for a compromised round."""
         marked = self.note.startswith(DIAGNOSTIC_MARKER)
         if self.caveats and not marked:
             raise ValueError(

@@ -1,9 +1,4 @@
-"""`ostler unblock` — clearing the give-up stamps a coder run leaves on stories.
-
-The stamp is left on stories by coder runs that predate the give-up hard-fail, and read by
-whatever agent picks the story up next. It is prose, it lands in two places per story.md, and a run stamps several
-stories in one pass — which is what makes retyping it by hand the wrong tool.
-"""
+"""`ostler unblock` — clearing the give-up stamps a coder run leaves on stories."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -43,10 +38,7 @@ def test_unblock_rewrites_both_places_the_stamp_lives(repo: Path):
 
 
 def test_unblock_never_touches_a_finished_story(repo: Path):
-    """The failure this must not have: resetting work that passed.
-
-    `--all` sweeps the graph, so the guard is the vocabulary check and nothing else.
-    """
+    """The failure this must not have: resetting work that passed."""
     crud.set_status(load(repo), "01-foo", "QA passed")
     crud.set_status(load(repo), "01-bar", GIVE_UP)
 

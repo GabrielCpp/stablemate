@@ -1,15 +1,4 @@
-"""Named session chains: the laps of a repair loop as one conversation.
-
-The default is one clean context per turn, and everything here is about the deliberate
-exception — `self.agent(..., session="docs-repair:STORY-4")`. What matters is that the
-chain is kept *beside* the clean-context session rather than instead of it (a chain must
-not leak into the next reviewer's turn), that a second lap actually resumes rather than
-re-deriving, that `reset_session` ends it, and that a session the CLI will not resume
-costs the node no budget of any kind.
-
-    ./.venv/bin/python tests/test_session_chain.py
-    ./.venv/bin/python -m pytest tests/test_session_chain.py
-"""
+"""Named session chains: the laps of a repair loop as one conversation."""
 
 from __future__ import annotations
 
@@ -66,8 +55,7 @@ def _env(tmp: str, run_id: str = "t", **kwargs: Any) -> RunEnv:
 
 
 def _enters(env: RunEnv, node_id: str) -> list[dict[str, Any]]:
-    """The `enter` records of one node. Filtered by node because the driver records a
-    state's entry the same way, and a state is not the turn under test."""
+    """The `enter` records of one node."""
     path = env.run_dir / ArtifactWriter.EVENTS_FILE
     events = [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
     return [
@@ -75,12 +63,10 @@ def _enters(env: RunEnv, node_id: str) -> list[dict[str, Any]]:
     ]
 
 
-# ------------------------------------------------------------------- the engine side
 
 
 def test_a_chain_files_its_session_under_the_key_and_leaves_session_id_alone():
-    """A chain lives in `.sessions/<key>`, so it cannot be the session the next
-    clean-context node inherits — which is the whole reason the default exists."""
+    """A chain lives in `.sessions/<key>`, so it cannot be the session the next clean-context node inherits — which is the whole reason the default exists."""
     with tempfile.TemporaryDirectory() as tmp:
         seen: list[dict[str, Any]] = []
 
@@ -99,23 +85,18 @@ def test_a_chain_files_its_session_under_the_key_and_leaves_session_id_alone():
         drive(Asks(), env)
 
         assert seen[0]["sid"] == env.run_dir / ".sessions" / "docs-STORY-1", seen[0]
-        # The chain is resumed by definition; without this the ladder would unlink the
-        # file it was just handed and every lap would start fresh anyway.
         assert seen[0]["resume_session"] is True, seen[0]
         assert seen[0]["session_chain"] == "docs:STORY-1", seen[0]
-        # The unchained node keeps the ordinary per-node clean context.
         assert seen[1]["sid"] == env.run_dir / ".session_id", seen[1]
         assert seen[1]["resume_session"] is False, seen[1]
         assert seen[1]["session_chain"] == "", seen[1]
 
 
 def test_the_second_lap_of_a_chain_reports_the_session_it_resumed():
-    """The `enter` record is where a reader finds out whether a lap continued a
-    conversation or opened a new one — the alternative is joining three files by hand."""
+    """The `enter` record is where a reader finds out whether a lap continued a conversation or opened a new one — the alternative is joining three files by hand."""
     with tempfile.TemporaryDirectory() as tmp:
 
         def fake_run(node: Any, ctx: Any, wdir: Any, sid: Any, **kwargs: Any) -> Any:
-            # What a backend does at the end of a turn: name the session it used.
             sid.parent.mkdir(parents=True, exist_ok=True)
             sid.write_text("sess-abc")
             return "rendered", {"kind": "ok"}
@@ -135,14 +116,12 @@ def test_the_second_lap_of_a_chain_reports_the_session_it_resumed():
 
         enters = _enters(env, "repair")
         assert [e.get("chain") for e in enters] == ["docs:S-1", "docs:S-1"], enters
-        # Lap one had nothing to resume; lap two continues what lap one opened.
         assert enters[0]["resumed_session"] == "", enters[0]
         assert enters[1]["resumed_session"] == "sess-abc", enters[1]
 
 
 def test_an_unchained_turn_says_nothing_about_chains():
-    """An `enter` carrying `chain: ""` would say a chainless turn had been considered
-    for one, which is not a distinction the record should invent."""
+    """An `enter` carrying `chain: ""` would say a chainless turn had been considered for one, which is not a distinction the record should invent."""
     with tempfile.TemporaryDirectory() as tmp:
 
         def fake_run(node: Any, ctx: Any, wdir: Any, sid: Any, **kwargs: Any) -> Any:
@@ -176,8 +155,6 @@ def test_reset_session_ends_the_chain_and_forgives_one_that_never_ran():
             def start(self) -> Transition:
                 self.agent("prompts/repair.md", returns=Payload, session="docs:S-1")
                 self.reset_session("docs:S-1")
-                # A chain that never ran is a no-op, not an error: a flow resets on
-                # entry, and on entry there is usually nothing to reset.
                 self.reset_session("docs:S-2")
                 return Done(None)
 
@@ -187,9 +164,7 @@ def test_reset_session_ends_the_chain_and_forgives_one_that_never_ran():
 
 
 def test_the_id_a_chain_is_on_is_readable_so_a_state_can_checkpoint_it():
-    """A chain file survives a resume because it lives in the run directory; an id a
-    *state* holds survives because the state's parameters are its checkpoint. This is
-    the accessor that lets the second one exist."""
+    """A chain file survives a resume because it lives in the run directory; an id a *state* holds survives because the state's parameters are its checkpoint."""
     with tempfile.TemporaryDirectory() as tmp:
         held: list[str] = []
 
@@ -202,7 +177,6 @@ def test_the_id_a_chain_is_on_is_readable_so_a_state_can_checkpoint_it():
 
         class Asks(Workflow):
             def start(self) -> Transition:
-                # Nothing has run on it yet, and an empty answer is the honest one.
                 held.append(self.chain_session("docs:S-1"))
                 self.agent("prompts/repair.md", returns=Payload, session="docs:S-1")
                 held.append(self.chain_session("docs:S-1"))
@@ -215,27 +189,12 @@ def test_the_id_a_chain_is_on_is_readable_so_a_state_can_checkpoint_it():
 
 
 def test_a_repair_lap_resumes_its_own_session_after_the_run_dies_and_restarts():
-    """The case the chain file cannot serve, end to end.
-
-    A chain lives in the run directory, so it survives a resume that lands back in the
-    same one — and nothing else. A run whose artifacts moved, or a lane resumed into a
-    scope of its own, finds no `.sessions/<key>` and opens a cold conversation while the
-    flow believes it is on lap two of one it started.
-
-    What survives unconditionally is a state's parameters, because they *are* the
-    checkpoint. So lap one reads back the id the CLI minted and hands it to lap two as a
-    parameter; lap two *seeds* the chain with it, because an id is an opaque string and
-    `session=` only ever names a chain. Here the run is killed between the laps and
-    resumed into a fresh run directory — the chain file is provably absent — and lap two
-    still resumes lap one's conversation.
-    """
+    """The case the chain file cannot serve, end to end."""
     with tempfile.TemporaryDirectory() as tmp:
         minted = "7a6b5c4d-3e2f-4a1b-8c7d-6e5f4a3b2c1d"
         handed: list[str] = []
 
         def fake_run(node: Any, ctx: Any, wdir: Any, sid: Any, **kwargs: Any) -> Any:
-            # The backend mints the id and writes it back, which is the only way a
-            # workflow ever learns one — no caller chooses it.
             sid.parent.mkdir(parents=True, exist_ok=True)
             if not sid.exists():
                 sid.write_text(minted, encoding="utf-8")
@@ -247,8 +206,6 @@ def test_a_repair_lap_resumes_its_own_session_after_the_run_dies_and_restarts():
         class Repairs(Workflow):
             def start(self) -> Transition:
                 self.agent("prompts/apply-qa-fixes.md", returns=Payload, session=key)
-                # Read out of the chain file while it is still reachable, and carry it in
-                # the transition — the one place a resume is guaranteed to find it.
                 return Continue(None, self.lap_two, held=self.chain_session(key))
 
             def lap_two(self, held: str = "") -> Transition:
@@ -277,8 +234,6 @@ def test_a_repair_lap_resumes_its_own_session_after_the_run_dies_and_restarts():
         assert resume.state == "lap_two" and resume.params == {"held": minted}, resume
 
         second = _env(tmp, run_id="t2", agent_runner=ScriptedRunner(fake_run))
-        # The counterfactual, asserted rather than asserted-about: had lap two kept
-        # naming the chain, this is what it would have found.
         assert sessions.read_chain(second.run_dir, key) == ""
 
         assert drive(Repairs(), second, resume) == minted
@@ -288,14 +243,7 @@ def test_a_repair_lap_resumes_its_own_session_after_the_run_dies_and_restarts():
 
 
 def test_a_session_id_is_opaque_and_seeding_is_how_one_is_resumed():
-    """No shape is a session id's shape.
-
-    Backends mint whatever they mint — a UUID here, `ses_fddd573afffeJTtbN3ebtAWQib`
-    there, an integer task id elsewhere — so nothing may infer "this string is an id"
-    from how it reads. `seed_session` is the whole of "resume this exact conversation",
-    and it is deliberately no-op-on-occupied so a flow can seed unconditionally on the
-    way in without throwing away the conversation a resumed run had reached.
-    """
+    """No shape is a session id's shape."""
     with tempfile.TemporaryDirectory() as tmp:
         opaque = "ses_fddd573afffeJTtbN3ebtAWQib"
         handed: list[str] = []
@@ -307,7 +255,6 @@ def test_a_session_id_is_opaque_and_seeding_is_how_one_is_resumed():
         class Seeds(Workflow):
             def start(self) -> Transition:
                 self.seed_session("story:S-1", opaque)
-                # Neither of these may disturb the seeded chain.
                 self.seed_session("story:S-1", "ses_a-later-conversation")
                 self.seed_session("story:S-2", "")
                 self.agent("prompts/apply-review.md", returns=Payload, session="story:S-1")
@@ -322,7 +269,7 @@ def test_a_session_id_is_opaque_and_seeding_is_how_one_is_resumed():
 
 
 def test_two_stories_repairing_in_one_run_do_not_share_a_conversation():
-    """The key is per worklist. Sharing one would open story two on story one's diff."""
+    """The key is per worklist."""
     with tempfile.TemporaryDirectory() as tmp:
         seen: list[Path] = []
 
@@ -346,22 +293,19 @@ def test_two_stories_repairing_in_one_run_do_not_share_a_conversation():
 
 
 def test_a_key_that_is_not_a_filename_still_names_one_file():
-    """A key carries a story id and a colon, and a key is a name rather than a path —
-    a `/` in one must not quietly make a directory."""
+    """A key carries a story id and a colon, and a key is a name rather than a path — a `/` in one must not quietly make a directory."""
     assert sessions.slug("qa-plan-repair:STORY-1") == "qa-plan-repair-STORY-1"
     assert "/" not in sessions.slug("docs/repair:a/b")
     assert sessions.slug("///") == "chain"
 
 
 def test_the_run_directory_is_recoverable_from_either_kind_of_session_file():
-    """`sessions.jsonl`, the visit counter and the transcripts are per run, so a chain
-    file one level deeper must not drag them into `.sessions/`."""
+    """`sessions.jsonl`, the visit counter and the transcripts are per run, so a chain file one level deeper must not drag them into `.sessions/`."""
     run = Path("/runs/acme-t")
     assert sessions.run_dir_of(run / ".session_id") == run
     assert sessions.run_dir_of(sessions.chain_path(run, "docs:S-1")) == run
 
 
-# ------------------------------------------------------------------- the ladder side
 
 
 def _node() -> AgentNode:
@@ -395,8 +339,7 @@ def _drive_ladder(turns: list[Any], session_id_path: Path, **kwargs: Any) -> lis
 
 
 def test_a_session_the_cli_will_not_resume_is_dropped_and_the_same_prompt_re_run():
-    """Not a retry and not a reframe: the id is dead, but nothing about the node is
-    wrong. Re-asking a simplified prompt would spend a rephrase on the wrong problem."""
+    """Not a retry and not a reframe: the id is dead, but nothing about the node is wrong."""
     with tempfile.TemporaryDirectory() as tmp:
         chain = sessions.chain_path(Path(tmp), "docs:S-1")
         chain.parent.mkdir(parents=True)
@@ -412,15 +355,12 @@ def test_a_session_the_cli_will_not_resume_is_dropped_and_the_same_prompt_re_run
             session_chain="docs:S-1",
         )
 
-        # The dead id is forgotten...
         assert not chain.exists()
-        # ...and the second attempt is the SAME prompt, not a reframed one.
         assert prompts == ["Fix it.", "Fix it."], prompts
 
 
 def test_an_unresumable_first_turn_with_no_session_file_is_not_swallowed():
-    """The recovery is bounded by the file: with nothing to unlink there is nothing to
-    recover from, and the error has to reach the normal ladder rather than loop."""
+    """The recovery is bounded by the file: with nothing to unlink there is nothing to recover from, and the error has to reach the normal ladder rather than loop."""
     with tempfile.TemporaryDirectory() as tmp:
         chain = sessions.chain_path(Path(tmp), "docs:S-1")
         try:
@@ -439,8 +379,6 @@ def test_the_markers_name_a_refused_resume_and_nothing_else():
     assert is_unresumable_session("No conversation found with session ID abc")
     assert is_unresumable_session("Error: session not found")
     assert is_unresumable_session("could not resume")
-    # A cap and an overflow have their own layers; reading either as a dead session
-    # would throw away a live conversation to fix a problem it does not have.
     assert not is_unresumable_session("session limit · resets 11:30am")
     assert not is_unresumable_session("prompt is too long")
 

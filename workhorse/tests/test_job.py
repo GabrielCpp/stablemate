@@ -1,12 +1,4 @@
-"""The detached job runner: what it measures, and what it refuses to guess.
-
-These run real subprocesses, because every interesting property of this module is a
-property of a *process that outlives the caller* — a fake would assert the mock. They are
-still fast: the jobs are sub-second and the supervisor's sample interval is set from the
-manifest, so nothing here waits on a wall clock.
-
-Run: ./.venv/bin/python tests/test_job.py   (or via pytest)
-"""
+"""The detached job runner: what it measures, and what it refuses to guess."""
 
 from __future__ import annotations
 
@@ -23,7 +15,6 @@ from workhorse import job
 
 LOG = logging.getLogger("test-job")
 
-#: Every job in this file is sampled fast enough that a sub-second command is still seen.
 FAST = {"sample_s": 0.05, "min_containment": "advisory"}
 
 
@@ -36,12 +27,7 @@ def _python(code: str) -> list[str]:
 
 
 def _finish(job_dir: Path, timeout: float = 30.0) -> job.RunnerResult:
-    """Block until the supervisor has written what the job cost, then reap the supervisor.
-
-    The supervisor is detached by design — it writes `runner.json` and exits without
-    blocking the caller. `wait_submitted` is what releases the Popen the moment the
-    supervisor is done with it; without it, the Popen lives until GC and the test
-    fires a ResourceWarning at process exit."""
+    """Block until the supervisor has written what the job cost, then reap the supervisor."""
     deadline = time.time() + timeout
     while time.time() < deadline:
         if (job_dir / job.RUNNER_NAME).exists():
@@ -170,12 +156,7 @@ HOG = (
 
 
 def test_the_sampler_kills_a_job_over_its_ceiling_and_says_which(tmp_path: Path):
-    """The `best_effort` / `advisory` path, driven in-process so the tier is the one asserted.
-
-    The supervisor reads its tier from the handle, so a test can hold this machine's own
-    containment out of it — otherwise the branch under test is whichever branch the
-    developer's kernel happens to offer.
-    """
+    """The `best_effort` / `advisory` path, driven in-process so the tier is the one asserted."""
     directory = tmp_path / "sampled"
     directory.mkdir()
     _write(directory / job.MANIFEST_NAME,
@@ -230,13 +211,7 @@ def test_a_job_whose_supervisor_vanished_collects_as_lost(tmp_path: Path):
 
 
 def test_arming_clears_a_consumed_wakeup_and_loses_no_state(tmp_path: Path):
-    """The edge-vs-level bug this exists to prevent.
-
-    A watcher blocks on `wake` *existing*, so the wakeup it already acted on answers its
-    next wait instantly and the poll loop spins. Arming deletes the file before the wait,
-    and it is safe to do first because `poll` reads the job's real state from `runner.json`
-    rather than from the flag: the wakeup can be thrown away, the fact cannot.
-    """
+    """The edge-vs-level bug this exists to prevent."""
     directory = tmp_path / "arm"
     job.submit({**FAST, "command": _python("pass")}, job_dir=directory, logger=LOG)
     _finish(directory)
@@ -247,8 +222,6 @@ def test_arming_clears_a_consumed_wakeup_and_loses_no_state(tmp_path: Path):
 
     assert armed == wake
     assert not armed.exists()
-    # The state survived the flag: a watcher that armed and then looked still sees the
-    # job it would otherwise have waited forever for.
     assert job.poll(directory).state == "finished"
 
 
@@ -263,12 +236,7 @@ def test_arming_a_job_directory_that_does_not_exist_yet_is_not_an_error(tmp_path
 def test_scope_cgroup_wait_ignores_the_launching_cgroup_until_it_actually_moves(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ):
-    """`systemd-run --scope` moves its pid into a new cgroup after a D-Bus round trip, not
-    at fork. Reading `/proc/<pid>/cgroup` before that migration reads the *launching*
-    cgroup, whose `memory.peak` is a shared, ever-growing high-water mark unrelated to the
-    job (this is the "9667 MB on every job" defect diagnosed in
-    docs/maskbus/PROGRESS.md, 2026-09-15). The wait must not settle for the pre-migration
-    reading even when it is offered first."""
+    """`systemd-run --scope` moves its pid into a new cgroup after a D-Bus round trip, not at fork."""
     readings = iter(["session.slice", "session.slice", "run-u123.scope"])
     scope_peak = tmp_path / "run-u123.scope" / "memory.peak"
     scope_peak.parent.mkdir()
@@ -290,8 +258,7 @@ def test_scope_cgroup_wait_ignores_the_launching_cgroup_until_it_actually_moves(
 
 
 def test_scope_cgroup_wait_gives_up_once_the_process_is_gone(tmp_path: Path):
-    """A job that never migrates (systemd-run failed, or the command was too fast to
-    catch) must not block the supervisor for the full timeout once the pid is dead."""
+    """A job that never migrates (systemd-run failed, or the command was too fast to catch) must not block the supervisor for the full timeout once the pid is dead."""
     calls = []
 
     def read_cgroup(pid: int) -> str:

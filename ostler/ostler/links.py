@@ -1,14 +1,4 @@
-"""Path-link resolution for the OKF UI profile (§6.1).
-
-``References.links`` are *extracted* by ``markdown.py`` but never *resolved*. This module resolves
-a ``[text](path)`` / ``[text](path#anchor)`` link against the filesystem: the ``path`` relative to
-the source file, and the ``#anchor`` against the target file's heading anchors. That is what turns
-``parent:`` / ``extends:`` / ``on:`` / ``steps:`` bullets from decoration into load-bearing graph
-edges — walked by ``trace`` and checked by ``doctor`` (dangling-link / missing-anchor).
-
-A link's ``#anchor`` resolves against *every* heading in the target (GitHub-style), not only typed
-``### id`` section nodes, so an intra-doc jump to a prose ``## Heading`` resolves too.
-"""
+"""Path-link resolution for the OKF UI profile (§6.1)."""
 
 from __future__ import annotations
 
@@ -23,11 +13,11 @@ _SKIP_PREFIXES = ("http://", "https://", "mailto:", "tel:", "ftp://")
 @dataclass
 class LinkTarget:
     href: str
-    path: Path              # the resolved file (may not exist)
-    anchor: str             # the #fragment ("" if none)
+    path: Path
+    anchor: str
     file_exists: bool
-    anchor_exists: bool     # only meaningful when anchor and file_exists
-    node_id: str            # the target's UI-node identity: "<repo-rel>" or "<repo-rel>#<anchor>"
+    anchor_exists: bool
+    node_id: str
 
     @property
     def resolved(self) -> bool:
@@ -43,20 +33,11 @@ def is_doc_link(href: str) -> bool:
 
 
 class LinkResolver:
-    """Resolves links, caching each target file's heading-anchor set for the run.
-
-    The anchor set costs a full parse of the target file, and on a real book the 386 link
-    targets were the single largest consumer of a `doctor` run's wall clock. The parse now
-    comes from the shared read-only accessor, so a target that some other check has already
-    read is free here — and, with the index warm, so is one nothing has read yet.
-    """
+    """Resolves links, caching each target file's heading-anchor set for the run."""
 
     def __init__(self, graph: Graph) -> None:
         self.graph = graph
         self._anchors: dict[Path, set[str]] = {}
-        # A book links the same few hundred files from thousands of bullets, and doctor and the
-        # graph build resolve every one of them, so the file side of a link is settled once per
-        # (directory, path) for the run, as the anchor sets above already are.
         self._files: dict[tuple[Path, str], tuple[Path, bool, str]] = {}
 
     def anchors(self, path: Path) -> set[str]:
@@ -69,9 +50,6 @@ class LinkResolver:
             doc = read_doc(path)
         except OSError:
             return set()
-        # The same pass `model` mints node ids from, so a link is checked against the anchors
-        # that exist rather than against a slug of each title — which collapsed a repeated
-        # heading onto one anchor and rejected `#effects-1`, the one GitHub actually renders.
         return set(document_anchors(doc).values())
 
     def _settle_file(self, source: Path, path_part: str) -> tuple[Path, bool, str]:
@@ -83,7 +61,7 @@ class LinkResolver:
         return target, target.is_file(), rel
 
     def resolve(self, source: Path, href: str) -> LinkTarget | None:
-        """Resolve *href* found in *source*. None if it isn't a doc link (URL / code ref)."""
+        """Resolve *href* found in *source*."""
         if not is_doc_link(href):
             return None
         path_part, _, anchor = href.strip().partition("#")

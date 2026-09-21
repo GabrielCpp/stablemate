@@ -1,18 +1,4 @@
-"""A field deleted from a workflow must not brick the runs already holding it.
-
-`Workflow` is `extra="forbid"`, and the same `_instantiate` builds the class from
-`--params` on a fresh run and from the checkpoint's `inputs` on a resume or a live
-reload. That symmetry is what made a *deletion* unrecoverable: the run died the moment
-it reloaded, and then died identically on every `--resume-run` after it, because the
-stored key nothing reads was still being validated. The fix splits the two sources —
-a checkpoint may carry keys the class has since dropped, `--params` may not.
-
-What is asserted here is that split, and its limit: only *unknown* keys are forgiven.
-A field that was renamed or retyped still stops the run, because there the stored value
-is meaningful and only a human can map it onto the new contract.
-
-Run: uv run python tests/test_retired_params.py   (or via pytest)
-"""
+"""A field deleted from a workflow must not brick the runs already holding it."""
 
 from __future__ import annotations
 
@@ -42,7 +28,6 @@ def test_retired_key_is_dropped_and_named():
     inputs, retired = _drop_retired_inputs(Coder, stored)
     assert retired == ("qa_sandbox",), retired
     assert inputs == {"epic": "acme-hardening", "qa_lane_budget_s": 60}, inputs
-    # The surviving inputs must still build the workflow — the point of dropping.
     built = _instantiate(Coder, inputs).model_dump()
     assert built["epic"] == "acme-hardening"
     assert built["qa_lane_budget_s"] == 60
@@ -71,8 +56,7 @@ def test_the_workflows_own_fields_are_never_dropped():
 
 
 def test_a_retyped_field_still_stops_the_run():
-    """Forgiveness covers unknown keys only: a stored value the class still wants, in a
-    shape it no longer accepts, is a judgement call that belongs to an operator."""
+    """Forgiveness covers unknown keys only: a stored value the class still wants, in a shape it no longer accepts, is a judgement call that belongs to an operator."""
     inputs, retired = _drop_retired_inputs(Coder, {"epic": "x", "qa_lane_budget_s": "soon"})
     assert retired == (), "a declared field is not retired, whatever its stored value"
     try:
@@ -84,8 +68,7 @@ def test_a_retyped_field_still_stops_the_run():
 
 
 def test_fresh_params_stay_strict():
-    """The typo an operator just made is still caught by name — that is the contract
-    `extra="forbid"` is there for, and the resume path is the only one relaxed."""
+    """The typo an operator just made is still caught by name — that is the contract `extra="forbid"` is there for, and the resume path is the only one relaxed."""
     try:
         _instantiate(Coder, {"epic": "x", "qa_sandbx": True})
     except WorkflowFailed as exc:

@@ -1,11 +1,4 @@
-"""What the source inventory leaves out (`main/nodes/coverage.py::skipped`).
-
-A test is cited by a `tests:` bullet, never covered as a subject, so a test file is not a
-unit. The suffix list caught Go, TypeScript and PHP conventions and missed pytest's — a
-`test_` prefix and a `tests/` tree — which put every test function of a Python source into
-the inventory as a unit to cover; the workhorse book measured 952 of its 1365 "units" that
-way and argued about them for six re-scan rounds.
-"""
+"""What the source inventory leaves out (`main/nodes/coverage.py::skipped`)."""
 from __future__ import annotations
 
 from pathlib import Path

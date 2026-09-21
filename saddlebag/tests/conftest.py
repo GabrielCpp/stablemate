@@ -1,8 +1,4 @@
-"""Shared fixtures: an on-disk pool and an in-memory secret store.
-
-Nothing here touches the real OS keyring — a test run must never write to the
-developer's Keychain, and must pass on a headless CI box with no keyring at all.
-"""
+"""Shared fixtures: an on-disk pool and an in-memory secret store."""
 
 from __future__ import annotations
 
@@ -16,12 +12,7 @@ from saddlebag.db import Pool
 
 
 def present[T](value: T | None) -> T:
-    """``value`` with its ``None`` ruled out — for a lookup the test arranged to hit.
-
-    A `Pool.get` answers `Credential | None` because a caller may ask for an id that
-    isn't there. A test that just inserted the row is not that caller, and saying so
-    keeps the assertion about the field rather than about the lookup.
-    """
+    """``value`` with its ``None`` ruled out — for a lookup the test arranged to hit."""
     assert value is not None
     return value
 
@@ -78,5 +69,5 @@ def populated(pool: Pool, store: FakeStore) -> Pool:
 
 @pytest.fixture
 def frozen() -> datetime:
-    """A fixed instant. Lease arithmetic is exercised against this, not wall time."""
+    """A fixed instant."""
     return datetime(2026, 6, 30, 10, 0, 0, tzinfo=UTC)

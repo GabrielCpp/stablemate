@@ -1,16 +1,4 @@
-"""seat-booking — the same question as policy-desk, asked of the small app.
-
-One Python service with one screen, nine seeded defects. It is the cheaper half of the
-detection measurement and the one that isolates the lane from the stack: where policy-desk
-answers "does QA notice a defect that spans two services and a client-owned route",
-seat-booking answers "does it notice one at all", on a fixture a trial can bring up in
-seconds.
-
-Everything about the round — materialize the story so its diff is uncommitted, seed one
-variant, drive `workhorse-coder run qa`, keep a witness, classify against the answer key —
-is `_frozenapp.py`'s and is shared verbatim with policy-desk. This module is the
-declaration and the two paths that make it seat-booking.
-"""
+"""seat-booking — the same question as policy-desk, asked of the small app."""
 
 from __future__ import annotations
 

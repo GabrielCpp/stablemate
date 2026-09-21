@@ -1,9 +1,4 @@
-"""`ostler.qa.runbook` — the book's ops nodes read as the manifest `ensure_stack` takes.
-
-These tests are about the *derivation*, not the lifecycle: nothing here boots a process.
-`test_qa_stack.py` owns adoption, staleness and boot windows, and this module owns the one
-question that used to have no answer at all — what the book says the stack is.
-"""
+"""`ostler.qa.runbook` — the book's ops nodes read as the manifest `ensure_stack` takes."""
 
 from __future__ import annotations
 
@@ -74,16 +69,11 @@ def test_load_stack_folds_steps_into_phases(repo: Path) -> None:
     assert manifest["launch"] == "docker compose up -d --wait"
     assert [s["run"] for s in manifest["prepare"]] == ["docker compose build"]
     assert [s["run"] for s in manifest["seed"]] == ["./scripts/seed.sh"]
-    # The `service` step's `health:` becomes a health gate; the `run` step is not a phase.
     assert [s["run"] for s in manifest["health"]] == [
         "curl -fsS http://localhost:18084/healthz"]
 
 
 def test_a_check_expression_on_run_or_health_is_not_shelled(tmp_path: Path) -> None:
-    # The doctor's `check-expression-as-command` is the loud finding an author sees before
-    # bring-up ever runs; this is only the backstop that keeps a book that skipped the doctor
-    # from handing bash a check call instead of a command. Both bullets are treated as absent,
-    # the same as a `step` that declared no `run:`/`health:` at all.
     (tmp_path / ".git").mkdir()
     make_runbook(tmp_path, """---
 type: runbook
@@ -117,8 +107,6 @@ def test_scalars_are_spelled_the_way_ensure_stack_reads_them(repo: Path) -> None
 
 
 def test_working_directory_comes_back_absolute(repo: Path) -> None:
-    # Authored repo-relative because that is what an author means; nothing downstream
-    # resolves it, so an unresolved `app` would launch the stack from the engine's cwd.
     manifest = rb.load_stack(repo)
     assert manifest["app_cwd"] == str((repo / "app").resolve())
     assert manifest["prepare"][0]["working-directory"] == str((repo / "app").resolve())
@@ -160,9 +148,7 @@ type: runbook
 
 
 def test_scenario_frame_token_is_carried_as_a_marker_not_a_resolved_path(tmp_path: Path) -> None:
-    """No scenario directory exists at manifest-build time, so `_step_command` must not
-    invent a fake absolute path for the token — it hands the frame on as a marker for
-    the harness to resolve at run time."""
+    """No scenario directory exists at manifest-build time, so `_step_command` must not invent a fake absolute path for the token — it hands the frame on as a marker for the harness to resolve at run time."""
     node = model.UINode(
         type="step", kind="section", id="fixtures/f.md#seed-it", path=tmp_path / "f.md",
         meta={"run": "./seed.sh", "working-directory": "scenario:"},
@@ -196,8 +182,6 @@ def test_an_absent_working_directory_still_resolves_to_the_default_cwd(tmp_path:
 
 
 def test_every_step_is_the_mapping_form(repo: Path) -> None:
-    # A bare string gets `_run_step`'s *boot* timeout and a mapping gets STEP_TIMEOUT_S, so
-    # one shape is what keeps `- make build` from meaning something else than `- run: …`.
     manifest = rb.load_stack(repo)
     for phase in ("prepare", "seed", "health"):
         assert all(isinstance(step, dict) and "run" in step for step in manifest[phase])
@@ -238,7 +222,6 @@ type: runbook
 """)
     step = rb.load_stack(tmp_path)["prepare"][0]
     assert step["timeout"] == "45"
-    # Best-effort is carried in the recipe: `ensure_stack` has no soft mode to carry it in.
     assert step["run"] == "export PORT=8080; export MODE=test; ./warm.sh || true"
 
 
@@ -301,7 +284,6 @@ type: runbook
 
 
 def test_empty_when_the_book_declares_nothing(tmp_path: Path) -> None:
-    # The only honest "nothing to bring up" left. Everything else used to land here too.
     (tmp_path / ".git").mkdir()
     write(tmp_path / "docs" / "features" / "app" / "home.md",
           "---\ntype: feature\nslug: home\n---\n\n# Home\n\nprose\n")
@@ -324,15 +306,11 @@ title: API
 """)
     manifest = rb.load_stack(tmp_path)
     assert manifest["launch"] == "npm start"
-    assert manifest["entry_url"] == "http://localhost:3000"  # trailing slash trimmed
+    assert manifest["entry_url"] == "http://localhost:3000"
     assert manifest["app_cwd"] == str((tmp_path / "api").resolve())
 
 
 def test_several_servers_fall_back_to_the_first_by_id(tmp_path: Path) -> None:
-    # They are servers of one book. A walk against some service the book describes beats a
-    # walk that says it has nowhere to go, so the fallback contract is read off whichever
-    # the engine reaches first rather than off whichever one an author remembered to mark —
-    # and the order is by id, so the same book resolves the same way on every machine.
     (tmp_path / ".git").mkdir()
     for slug, port in (("one", 3001), ("two", 3002)):
         write(tmp_path / "docs" / "features" / "api" / f"{slug}.md",
@@ -349,7 +327,6 @@ def test_named_runbook_selects_and_a_wrong_name_does_not_guess(tmp_path: Path) -
                      "## Steps\n\n### serve\n\n- kind: service\n- run: ./serve.sh\n"
                      "- health: curl -fsS localhost\n", name=name)
     assert rb.load_stack(tmp_path, name="release")["entry_url"] == "http://localhost:2222"
-    # Several runbooks and no name is ambiguous, and guessing brings the wrong stack up.
     assert rb.load_stack(tmp_path) == {}
     assert rb.load_stack(tmp_path, name="nope") == {}
 
@@ -375,7 +352,6 @@ def test_cmd_stack_up_reports_none_without_booting_anything(tmp_path: Path) -> N
 
 
 def test_cmd_stack_down_without_a_stop_recipe_leaves_it_serving(tmp_path: Path) -> None:
-    # Policy, not failure: a shared emulator is cheaper left serving than rebuilt.
     (tmp_path / ".git").mkdir()
     make_runbook(tmp_path, "---\ntype: runbook\n---\n\n# QA\n\n- driver: web\n\n"
                  "## Steps\n\n### serve\n\n- kind: service\n- run: ./serve.sh\n"
@@ -399,9 +375,6 @@ def _two_stacks(root: Path, *, environments: tuple[str, str]) -> None:
 
 
 def test_stack_runbooks_sharing_an_environment_come_up_together(tmp_path: Path) -> None:
-    # The unit is the environment, not the runbook: a journey through a web surface that
-    # calls an API needs both serving, and what makes them one system is that the author
-    # bound both to one `environment:` node.
     (tmp_path / ".git").mkdir()
     _two_stacks(tmp_path, environments=("local", "local"))
     graph = model.load(tmp_path)
@@ -415,9 +388,6 @@ def test_stack_runbooks_sharing_an_environment_come_up_together(tmp_path: Path) 
 
 
 def test_an_environment_link_is_resolved_not_compared_as_text(tmp_path: Path) -> None:
-    # globex's two runbooks sit in different service directories and spell the same
-    # environment `local.md` and `../../api-service/ops/local.md`. A string compare says
-    # those are two systems.
     (tmp_path / ".git").mkdir()
     write(tmp_path / "docs" / "features" / "api" / "ops" / "local.md",
           "---\ntype: environment\n---\n\n# local\n\n- local-only: true\n")
@@ -434,11 +404,7 @@ def test_an_environment_link_is_resolved_not_compared_as_text(tmp_path: Path) ->
 
 
 def test_several_environments_and_no_name_settle_on_the_first_by_path(tmp_path: Path) -> None:
-    """`local` and `staging` are both environments this book says QA may boot, so which of
-    them the bring-up starts is a question about the tooling, not about the system being
-    described. The engine answers it itself, by path order, and brings up every stack
-    runbook bound to the one it took.
-    """
+    """`local` and `staging` are both environments this book says QA may boot, so which of them the bring-up starts is a question about the tooling, not about the system being described."""
     (tmp_path / ".git").mkdir()
     _two_stacks(tmp_path, environments=("local", "staging"))
     selection = rb.select_stack(model.load(tmp_path))
@@ -449,12 +415,7 @@ def test_several_environments_and_no_name_settle_on_the_first_by_path(tmp_path: 
 
 def test_stack_runbooks_binding_no_environment_are_a_refusal_not_an_absence(
         tmp_path: Path) -> None:
-    """The refusal that is left, and the only one: two stack runbooks, neither naming an
-    `environment:`. There is no node to read and no name to order by, so nothing in the
-    book says whether these are one system or two, and the bring-up asks rather than
-    guessing. Opposite findings want opposite fixes: "write a runbook" is the wrong
-    instruction to hand someone whose book already has two.
-    """
+    """The refusal that is left, and the only one: two stack runbooks, neither naming an `environment:`."""
     (tmp_path / ".git").mkdir()
     for name, port in (("api-stack", 1111), ("web-stack", 2222)):
         make_runbook(tmp_path, f"---\ntype: runbook\n---\n\n# {name}\n\n"
@@ -471,12 +432,7 @@ def test_stack_runbooks_binding_no_environment_are_a_refusal_not_an_absence(
 
 
 def test_a_settled_stack_outranks_a_servers_launch_contract(tmp_path: Path) -> None:
-    """`load_stack` falls through to a `server` node only when nothing in the book resolves
-    to a stack at all. Once the environments settle — here on `local`, the first by path —
-    the runbook bound to it is the manifest, and a service documented on some other surface
-    stays out of it. The old failure was the other way round: the server came up instead,
-    and reported success against six surfaces it never served.
-    """
+    """`load_stack` falls through to a `server` node only when nothing in the book resolves to a stack at all."""
     (tmp_path / ".git").mkdir()
     _two_stacks(tmp_path, environments=("local", "staging"))
     write(tmp_path / "docs" / "features" / "other" / "server.md", """---
@@ -493,9 +449,7 @@ title: Other
 
 
 def test_a_single_environment_with_two_runbooks_has_no_single_manifest(tmp_path: Path) -> None:
-    """globex's shape: two runbooks, one environment. `select_stack` chooses both, but
-    `load_stack` returns one manifest, so it refuses rather than picking one at random.
-    """
+    """globex's shape: two runbooks, one environment."""
     (tmp_path / ".git").mkdir()
     _two_stacks(tmp_path, environments=("local", "local"))
     assert rb.load_stack(tmp_path) == {}
@@ -521,11 +475,7 @@ def _local_stack_runbook(root: Path, name: str, port: int, env: str) -> None:
 
 
 def _environment_file(root: Path, env: str, *, local_only: bool | None) -> None:
-    """One `environment` node under `app/ops`, its `local-only` bullet set explicitly.
-
-    `local_only=None` writes no `local-only` bullet at all, which is a different book from
-    one declaring `false` — an absent declaration is not a declaration of absence.
-    """
+    """One `environment` node under `app/ops`, its `local-only` bullet set explicitly."""
     bullets = ""
     if local_only is not None:
         bullets += f"- local-only: {'true' if local_only else 'false'}\n"
@@ -534,11 +484,7 @@ def _environment_file(root: Path, env: str, *, local_only: bool | None) -> None:
 
 
 def test_the_local_only_environment_outranks_the_path_order(tmp_path: Path) -> None:
-    """Two stack runbooks bind to `staging`, one to `prod`, and only `staging` is declared
-    `local-only: true`. A QA bring-up must never boot a non-local system by accident, so
-    that declaration is read before the path order — which, left to itself, would have
-    taken `prod`. Every runbook bound to `staging` comes up with it, not just one of them.
-    """
+    """Two stack runbooks bind to `staging`, one to `prod`, and only `staging` is declared `local-only: true`."""
     (tmp_path / ".git").mkdir()
     _environment_file(tmp_path, "prod", local_only=False)
     _environment_file(tmp_path, "staging", local_only=True)
@@ -552,12 +498,7 @@ def test_the_local_only_environment_outranks_the_path_order(tmp_path: Path) -> N
 
 
 def test_two_local_only_environments_settle_on_the_first_by_path(tmp_path: Path) -> None:
-    """Two honestly local environments — two docker-compose profiles, say — both survive
-    the filter, and the book has nothing further to say about which of them the tooling
-    starts. Asking it to answer would be a question about the tooling wearing a book page's
-    clothes, so the engine takes the first by id — the environment page's own path in the
-    book — and the same book therefore resolves to the same environment on every machine.
-    """
+    """Two honestly local environments — two docker-compose profiles, say — both survive the filter, and the book has nothing further to say about which of them the tooling starts."""
     (tmp_path / ".git").mkdir()
     _environment_file(tmp_path, "local", local_only=True)
     _environment_file(tmp_path, "staging", local_only=True)
@@ -570,11 +511,7 @@ def test_two_local_only_environments_settle_on_the_first_by_path(tmp_path: Path)
 
 
 def test_a_book_declaring_no_local_only_anywhere_still_settles(tmp_path: Path) -> None:
-    """The filter keeps nothing when no candidate declares itself local, and keeping
-    nothing must not mean discarding everything: an absent `local-only` is silence, not a
-    refusal, and silence must not cost a book its own environments. The path order settles
-    it exactly as it does when every candidate declares itself local.
-    """
+    """The filter keeps nothing when no candidate declares itself local, and keeping nothing must not mean discarding everything: an absent `local-only` is silence, not a refusal, and silence must not cost a book its own environments."""
     (tmp_path / ".git").mkdir()
     _environment_file(tmp_path, "local", local_only=None)
     _environment_file(tmp_path, "staging", local_only=False)
@@ -586,9 +523,7 @@ def test_a_book_declaring_no_local_only_anywhere_still_settles(tmp_path: Path) -
 
 
 def test_a_single_local_only_environment_still_early_returns(tmp_path: Path) -> None:
-    """A book with one environment never reaches the `local-only` filter at all — it
-    resolves earlier, on every stack runbook sharing that one environment.
-    """
+    """A book with one environment never reaches the `local-only` filter at all — it resolves earlier, on every stack runbook sharing that one environment."""
     (tmp_path / ".git").mkdir()
     _environment_file(tmp_path, "local", local_only=True)
     _local_stack_runbook(tmp_path, "api-stack", 1111, "local")
@@ -615,15 +550,7 @@ def _stack_runbook(root: Path, surface: str, name: str, port: int, env_href: str
 
 
 def test_near_narrows_the_selection_to_its_surfaces_environment(tmp_path: Path) -> None:
-    """web-app and api-service bind to different environments; mobile-app binds to the same
-    environment as web-app despite sitting in a third surface. Naming no runbook, a spec
-    under web-app should pull in both runbooks sharing web-app's environment — including
-    the one that lives in mobile-app — and leave api-service out.
-
-    The baseline is what makes that a narrowing rather than a coincidence: with no spec to
-    go on, the book-wide order takes api-service's `staging`, which is the environment the
-    spec under audit has nothing to do with.
-    """
+    """web-app and api-service bind to different environments; mobile-app binds to the same environment as web-app despite sitting in a third surface."""
     (tmp_path / ".git").mkdir()
     _environment(tmp_path, "web-app", "local")
     _environment(tmp_path, "api-service", "staging")
@@ -645,10 +572,7 @@ def test_near_narrows_the_selection_to_its_surfaces_environment(tmp_path: Path) 
 
 def test_near_narrowing_to_two_environments_falls_through_to_the_path_order(
         tmp_path: Path) -> None:
-    """`near` narrows to the surface's own environments and stops there. When the surface
-    itself spans two, the narrowing has nothing left to decide, and the same order that
-    settles a book-wide tie settles this one — `local.md` before `staging.md`.
-    """
+    """`near` narrows to the surface's own environments and stops there."""
     (tmp_path / ".git").mkdir()
     _environment(tmp_path, "web-app", "local")
     _environment(tmp_path, "web-app", "staging")
@@ -663,10 +587,7 @@ def test_near_narrowing_to_two_environments_falls_through_to_the_path_order(
 
 
 def test_near_outside_the_features_root_leaves_the_book_wide_answer(tmp_path: Path) -> None:
-    """A path that is not under `docs/features/` names no surface, so there is nothing to
-    narrow by — `near` is simply not an argument this selection can use. The book-wide
-    answer stands, rather than an unusable hint turning into a refusal.
-    """
+    """A path that is not under `docs/features/` names no surface, so there is nothing to narrow by — `near` is simply not an argument this selection can use."""
     (tmp_path / ".git").mkdir()
     _environment(tmp_path, "web-app", "local")
     _environment(tmp_path, "api-service", "staging")
@@ -692,11 +613,7 @@ def test_an_explicit_name_wins_over_near(tmp_path: Path) -> None:
 
 
 def test_near_outranks_a_lone_local_only_environment_elsewhere(tmp_path: Path) -> None:
-    """The surface under audit decides, even when the only `local-only` environment in the
-    book belongs to another surface. `near` knows which surface QA is exercising and the
-    `local-only` filter does not, so a book-wide declaration must never pull the bring-up
-    across to a system the spec has nothing to do with.
-    """
+    """The surface under audit decides, even when the only `local-only` environment in the book belongs to another surface."""
     (tmp_path / ".git").mkdir()
     _environment(tmp_path, "web-app", "staging", local_only=False)
     _environment(tmp_path, "api-service", "devbox", local_only=True)
@@ -724,9 +641,6 @@ def test_near_is_a_no_op_when_the_book_already_resolves(tmp_path: Path) -> None:
 
 
 def test_a_nested_book_resolves_paths_against_the_system_it_describes(tmp_path: Path) -> None:
-    # A book is a description, and a description is not located in its subject. `.` means
-    # the root of the system the book is about, not the checkout the book was read from —
-    # otherwise a fixture's stack launches from a directory holding none of its files.
     (tmp_path / ".git").mkdir()
     nested = tmp_path / "fixtures" / "globex"
     write(nested / "docs" / "features" / "app" / "ops" / "qa-stack.md",
@@ -741,7 +655,6 @@ def test_a_nested_book_resolves_paths_against_the_system_it_describes(tmp_path: 
     assert manifest["repo_root"] == str(nested.resolve())
 
 
-# --- the doctor half: the book saying nothing, or saying something unrunnable ---
 
 
 def codes(root: Path) -> list[str]:
@@ -750,7 +663,6 @@ def codes(root: Path) -> list[str]:
 
 
 def test_doctor_warns_once_when_no_stack_is_declared(tmp_path: Path) -> None:
-    # The finding that moves the greenfield hole from turn 61 to author time.
     (tmp_path / ".git").mkdir()
     write(tmp_path / "docs" / "features" / "app" / "gui" / "screens" / "home.md",
           "---\ntype: screen\nslug: home\n---\n\n# Home\n\nprose\n")
@@ -758,13 +670,7 @@ def test_doctor_warns_once_when_no_stack_is_declared(tmp_path: Path) -> None:
 
 
 def test_doctor_asks_for_no_stack_from_a_book_with_nothing_to_serve(tmp_path: Path) -> None:
-    """A CLI, a library and an infrastructure program have nothing to bring up.
-
-    The warning is about a surface that cannot be reached until a process answers — a
-    `screen` or a `server`. Asking a book with neither to declare a stack would be asking
-    it to declare a stack for nothing, and a repo whose doctor is red for being what it is
-    teaches its authors to stop reading the doctor.
-    """
+    """A CLI, a library and an infrastructure program have nothing to bring up."""
     (tmp_path / ".git").mkdir()
     write(tmp_path / "docs" / "features" / "tally" / "tally.md",
           "---\ntype: cli\nslug: tally\n---\n\n# tally\n\nprose\n")
@@ -801,13 +707,7 @@ def test_doctor_reports_a_runbook_that_declares_a_launch_but_starts_nothing(
 
 
 def test_doctor_holds_only_stack_runbooks_to_the_stack_shape(tmp_path: Path) -> None:
-    """A runbook that starts nothing is a procedure, not a broken stack.
-
-    `runbook` is the general ops type — "preview the plan", "rotate the keys", "restore last
-    night's dump". None of those has a system to bring up, and demanding a `kind: service`
-    step of them would make the doctor red for writing ops documentation correctly. What the
-    book *does* still get told is that nothing here declares a stack.
-    """
+    """A runbook that starts nothing is a procedure, not a broken stack."""
     (tmp_path / ".git").mkdir()
     write(tmp_path / "docs" / "features" / "app" / "gui" / "screens" / "home.md",
           "---\ntype: screen\nslug: home\n---\n\n# Home\n\nprose\n")
@@ -827,7 +727,6 @@ def test_doctor_reports_a_runbook_nothing_proves_the_readiness_of(tmp_path: Path
 
 
 def test_doctor_reports_two_service_steps(tmp_path: Path) -> None:
-    # The reader takes the first and keeps going, so which one launched is otherwise luck.
     (tmp_path / ".git").mkdir()
     make_runbook(tmp_path, "---\ntype: runbook\n---\n\n# QA\n\n- driver: web\n"
                  "- entry-url: http://localhost:1\n\n## Steps\n\n"
@@ -838,9 +737,6 @@ def test_doctor_reports_two_service_steps(tmp_path: Path) -> None:
 
 def test_doctor_refuses_a_local_only_environment_pointing_off_the_machine(
         tmp_path: Path) -> None:
-    # Honouring it is cheap here and impossible later: by the time the recipe runs it is
-    # already talking to whatever it was pointed at. The evidence is the service *host* —
-    # a selector is free prose, so reading intent out of it would libel `BIND=127.0.0.1`.
     (tmp_path / ".git").mkdir()
     write(tmp_path / "docs" / "features" / "app" / "ops" / "staging.md",
           "---\ntype: environment\ntitle: staging\n---\n\n# staging\n\n"
@@ -865,8 +761,6 @@ def test_a_loopback_service_is_not_a_local_only_violation(tmp_path: Path) -> Non
 
 
 def test_doctor_reports_a_check_expression_on_a_service_health_bullet(tmp_path: Path) -> None:
-    # `ensure_stack` shells `health:` verbatim — a check call there is a bullet written for
-    # `verify:` and put on the wrong key, and bash would only ever answer with a syntax error.
     (tmp_path / ".git").mkdir()
     make_runbook(tmp_path, "---\ntype: runbook\n---\n\n# QA\n\n- driver: web\n"
                  "- entry-url: http://localhost:1\n\n## Steps\n\n### serve\n\n"
@@ -887,8 +781,7 @@ def test_doctor_reports_a_check_expression_on_a_run_bullet(tmp_path: Path) -> No
 
 
 def test_doctor_reports_the_scenario_frame_token_on_a_runbook_step(tmp_path: Path) -> None:
-    """A runbook step runs at bring-up, before any scenario exists — the token names a
-    frame that is not there yet, unlike on a fixture step, where it is exactly right."""
+    """A runbook step runs at bring-up, before any scenario exists — the token names a frame that is not there yet, unlike on a fixture step, where it is exactly right."""
     (tmp_path / ".git").mkdir()
     make_runbook(tmp_path, "---\ntype: runbook\n---\n\n# QA\n\n- driver: web\n"
                  "- entry-url: http://localhost:1\n\n## Steps\n\n### serve\n\n"
@@ -964,11 +857,7 @@ def test_cmd_stack_up_outcome_is_unchanged_for_success_and_failure(
 
 
 def test_a_teardown_step_is_legal_and_is_not_a_bring_up_phase(tmp_path: Path) -> None:
-    """A book documenting a whole lifecycle has to file its shutdown targets somewhere.
-
-    Filed as `prepare` they run before the launch, so the bring-up destroys what it needs.
-    `kind:` is required on a step, so leaving it off is not the author's way out.
-    """
+    """A book documenting a whole lifecycle has to file its shutdown targets somewhere."""
     (tmp_path / ".git").mkdir()
     make_runbook(tmp_path, "---\ntype: runbook\n---\n\n# QA\n\n- driver: web\n"
                  "- entry-url: http://localhost:1\n\n## Steps\n\n"

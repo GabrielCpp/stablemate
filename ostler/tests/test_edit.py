@@ -23,21 +23,18 @@ def _write_resolution(repo: Path, slug: str, verdict: dict) -> Path:
 def test_rename_cascades_and_stays_clean(repo: Path):
     graph = load(repo)
     plan = edit.rename(graph, "01-foo", "01-foofoo")
-    assert plan.changes  # epic.md + story.md
-    assert plan.moves    # story folder move
+    assert plan.changes
+    assert plan.moves
     plan.apply()
 
-    # the story folder moved
     assert (repo / "docs/epics/epic-a/stories/01-foofoo/story.md").exists()
     assert not (repo / "docs/epics/epic-a/stories/01-foo").exists()
 
-    # and the graph is still clean
     report = doctor.run(load(repo))
     assert report.errors == 0, [f.message for f in report.findings if f.severity == "error"]
 
 
 def test_rename_does_not_touch_unrelated_substrings(repo: Path):
-    # 'foo' must not be mangled when renaming the full slug '01-foo'.
     story = repo / "docs/epics/epic-a/stories/01-foo/story.md"
     story.write_text(story.read_text() + "\nThe word foobar stays.\n", encoding="utf-8")
     plan = edit.rename(load(repo), "01-foo", "01-baz")
@@ -59,7 +56,6 @@ def test_relink_replaces_path_everywhere(repo: Path):
 def test_edit_dry_run_writes_nothing(repo: Path):
     story = repo / "docs/epics/epic-a/stories/01-foo/story.md"
     before = story.read_text()
-    # Build a plan that WOULD rewrite the story's feature-doc ref, then never apply it.
     plan = edit.relink(load(repo), "../../../features/area/rec.md", "../../../features/area/renamed.md")
     assert plan.changes
     assert story.read_text() == before
@@ -70,7 +66,6 @@ def test_relink_unknown_path_is_a_noop(repo: Path):
     assert not plan.changes
 
 
-# ── settle-review: per-finding, artifact-gated settlement (4.3) ──────────────────
 
 def _ledger(repo: Path, slug: str) -> dict:
     p = repo / "docs/specs" / slug / edit.SETTLEMENT_FILE
@@ -100,8 +95,6 @@ def test_settle_review_applies_when_all_findings_verified(repo: Path):
 
 
 def test_settle_review_partial_keeps_status_and_marks_open(repo: Path):
-    # One finding proven, one whose screenshot was never captured: status must NOT flip
-    # (still has an open finding), and the ledger names exactly which to re-apply.
     spec = repo / "docs/specs/01-foo"
     write(spec / "evidence/f1.png", "img")
     _write_resolution(repo, "01-foo", {
@@ -114,7 +107,7 @@ def test_settle_review_partial_keeps_status_and_marks_open(repo: Path):
     plan = edit.settle_review(load(repo), "01-foo")
     assert not plan.error, plan.error
     plan.apply()
-    assert _story_status(repo, "epic-a", "01-foo") == "Not started"  # unchanged — still open
+    assert _story_status(repo, "epic-a", "01-foo") == "Not started"
     led = _ledger(repo, "01-foo")
     assert led["all_verified"] is False and led["any_blocked"] is False
     assert led["verified"] == ["Finding 1"]
@@ -123,8 +116,6 @@ def test_settle_review_partial_keeps_status_and_marks_open(repo: Path):
 
 
 def test_settle_review_unproven_artifact_leaves_open_not_applied(repo: Path):
-    # The finding claims a screenshot that was never captured → it stays OPEN (re-apply),
-    # never silently flipping the story to applied. No hard error; the loop retries it.
     _write_resolution(repo, "01-foo", {
         "status": "applied",
         "findings": [{"id": "Finding 1", "disposition": "addressed",
@@ -140,8 +131,6 @@ def test_settle_review_unproven_artifact_leaves_open_not_applied(repo: Path):
 
 
 def test_settle_review_broadened_assertion_leaves_open_not_applied(repo: Path):
-    # The oracle was weakened to the WRONG value (the gaming move) — exact-match keeps the
-    # finding OPEN, so the story is never flipped to applied on a fabricated resolution.
     spec = repo / "docs/specs/01-foo"
     write(spec / "qa/observations.json", json.dumps({"form": {"headingLabel": "Surface"}}))
     _write_resolution(repo, "01-foo", {
@@ -160,8 +149,6 @@ def test_settle_review_broadened_assertion_leaves_open_not_applied(repo: Path):
 
 
 def test_settle_review_blocked_finding_stamps_blocked_and_escalates(repo: Path):
-    # A blocked finding escalates individually even alongside a verified one: status →
-    # Blocked, ledger reports any_blocked while still recording the verified finding.
     spec = repo / "docs/specs/01-foo"
     write(spec / "evidence/f1.png", "img")
     _write_resolution(repo, "01-foo", {
@@ -201,6 +188,6 @@ def test_settle_review_dry_run_writes_nothing(repo: Path):
         "findings": [{"id": "Finding 1", "disposition": "addressed",
                       "artifacts": ["evidence/new-1280.png"]}],
     })
-    edit.settle_review(load(repo), "01-foo")  # build plan, do not apply
+    edit.settle_review(load(repo), "01-foo")
     assert _story_status(repo, "epic-a", "01-foo") == "Not started"
-    assert not (spec / edit.SETTLEMENT_FILE).exists()  # ledger only written on apply
+    assert not (spec / edit.SETTLEMENT_FILE).exists()

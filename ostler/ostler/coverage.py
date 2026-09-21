@@ -1,34 +1,4 @@
-"""``ostler coverage`` — join a book's ``code:`` citations against a source inventory.
-
-The builder's stop condition used to be a value the recheck agent emitted *about its own
-work*. This is the instrument that replaces it: coverage is arithmetic, not a self-report.
-
-The join lives here rather than in a workflow script for two reasons — both the builder and a
-CI check need it, and a rule this load-bearing deserves unit tests over fixtures rather than a
-regex in a script node.
-
-**The grammar is the book's, not the tool's.** A ``code:`` target is
-``<path-relative-to-repo-root>::<symbol>``, where ``<symbol>`` is qualified by its owner when
-it has one (``api/internal/x.go::(*FirebaseClaimsWriter).SetRoleClaims``). That is what books
-already write, and it is strictly more precise than a bare name — which cannot disambiguate
-two types declaring the same method in one file. When the book and the tool disagree about
-grammar, the book wins; a tool that cannot parse it is the defect.
-
-**The transitive module rule** (the one piece of judgement the join owns):
-
-    a `module` unit is covered if it is cited directly, **or** it declares at least one symbol
-    and every symbol it declares is cited.
-
-The ``declares at least one symbol`` clause is load-bearing and easy to omit. Without it the
-rule is *vacuously true for a file that declares nothing* — and it would discharge exactly the
-case the module unit exists for: a Twig template with no ``{% block %}`` renders a screen and
-must be cited directly. A vacuous rule marks such a file covered on the strength of having
-found nothing in it, which is silence read as evidence.
-
-The rule does **not** discharge every uncited module — that would be the "drop the module unit"
-rule, rejected because a file is the real unit for a template language. A unit's shape is
-language-shaped: symbols are the unit for Go/TS, the file is the unit for a template.
-"""
+"""``ostler coverage`` — join a book's ``code:`` citations against a source inventory."""
 from __future__ import annotations
 
 import json
@@ -43,22 +13,14 @@ from ostler.refs import normalize_ref, strip_digest
 
 
 def _values(value: Any) -> list[str]:
-    """A bullet's values. A repeated key parses to a list; a single one to a string."""
+    """A bullet's values."""
     if isinstance(value, list):
         return [str(item) for item in value]
     return [str(value)] if value else []
 
 
 def citations(graph: Graph, surface: str | None = None) -> dict[str, list[str]]:
-    """Every ``code:`` target the book cites → the node ids citing it.
-
-    Scoped to one book by ``surface`` (``docs/features/<surface>``). Keyed on the digest-free
-    identity (:func:`ostler.refs.strip_digest`): the inventory's own ``code`` values never
-    carry a stamped ``@digest`` — they are read straight off the source, which knows nothing
-    about the book — so a ref compared against them digest-and-all would match nothing the
-    moment its citation was ever stamped. A node may carry several ``code:`` bullets, and
-    several nodes may cite one target; both are kept so a caller can report *who* cites a unit.
-    """
+    """Every ``code:`` target the book cites → the node ids citing it."""
     out: dict[str, list[str]] = {}
     data = graph_mod.build(graph, surface=surface)
     for node in data["nodes"]:
@@ -68,15 +30,7 @@ def citations(graph: Graph, surface: str | None = None) -> dict[str, list[str]]:
 
 
 def load_inventory(path: str | Path) -> dict:
-    """Read a source-inventory artifact, raising rather than returning empty.
-
-    The producer is the okf-builder workflow's ``inventory_source`` node
-    (``workhorse_workflows.okf_builder.main.nodes.coverage``); ``scripts/okf_verify.py`` calls the
-    same node. There is no standalone script to run — the shape is what this reads.
-
-    An unreadable inventory must never present as zero units: downstream, an empty unit list
-    reads as "everything is covered".
-    """
+    """Read a source-inventory artifact, raising rather than returning empty."""
     data = json.loads(Path(path).read_text(encoding="utf-8"))
     if not isinstance(data, dict) or not isinstance(data.get("units"), list):
         raise ValueError(f"{path}: not a source inventory (no `units` list)")
@@ -84,13 +38,7 @@ def load_inventory(path: str | Path) -> dict:
 
 
 def load_waivers(path: str | Path | None) -> dict[str, str]:
-    """Adjudicated non-units → the reason each was waived, keyed by ``code:`` target.
-
-    A waiver is the agent's recorded judgement that a computed miss is not real missing coverage (a helper
-    folded into a documented contract, a deliberate non-unit). It is committed, diffable and
-    reviewable, so the verdict survives the round instead of being re-litigated every time.
-    A missing file is not an error — it means nothing has been waived.
-    """
+    """Adjudicated non-units → the reason each was waived, keyed by ``code:`` target."""
     if not path:
         return {}
     file = Path(path)
@@ -109,25 +57,20 @@ def load_waivers(path: str | Path | None) -> dict[str, str]:
 
 
 def _module_is_covered(unit_path: str, cited: set[str], declared: dict[str, set[str]]) -> bool:
-    """The transitive module rule. See the module docstring — the non-vacuous clause is why."""
+    """The transitive module rule."""
     symbols = declared.get(unit_path, set())
     if not symbols:
-        return False  # declares nothing: it can only be covered by a direct citation
+        return False
     return symbols <= cited
 
 
 def compute(inventory: dict, cited: dict[str, list[str]],
             waivers: dict[str, str] | None = None) -> dict:
-    """Join the inventory's units against the book's citations.
-
-    Returns ``{covered, total, waived, missing[], cited, errors[]}``. ``missing`` carries each
-    uncovered unit's kind/path/symbol/code so a caller can queue it or adjudicate it.
-    """
+    """Join the inventory's units against the book's citations."""
     waivers = waivers or {}
     cited_refs = set(cited)
     units = inventory["units"]
 
-    # Which symbols each module declares — the input to the transitive rule.
     declared: dict[str, set[str]] = {}
     for unit in units:
         if unit.get("kind") == "symbol":
@@ -155,8 +98,6 @@ def compute(inventory: dict, cited: dict[str, list[str]],
         "waived": waived,
         "cited": len(cited_refs),
         "missing": missing,
-        # The inventory's own errors ride along: a blind front end must not present as a
-        # complete book, and a caller gating on this needs to see the difference.
         "errors": list(inventory.get("errors") or []),
     }
 
@@ -173,18 +114,12 @@ def run(graph: Graph, *, surface: str | None = None, inventory: str | Path,
 
 
 def is_complete(result: dict) -> bool:
-    """A book is complete when every unit is covered — and the instrument was not blind.
-
-    An inventory that reported errors cannot ground a pass: zero units out of an unreadable
-    tree would otherwise satisfy `covered == total` vacuously. Nor can a book with no units at
-    all — an empty inventory is the shape a missing book and a finished one share, and only one
-    of them is done.
-    """
+    """A book is complete when every unit is covered — and the instrument was not blind."""
     return (not result["errors"]) and result["total"] > 0 and result["covered"] == result["total"]
 
 
 def render(result: dict) -> str:
-    """The human line, plus the misses. `--json` is the machine's face."""
+    """The human line, plus the misses."""
     pct = (100 * result["covered"] // result["total"]) if result["total"] else 0
     head = (f"{result['surface'] or '(all)'}: {result['covered']}/{result['total']} units "
             f"covered ({pct}%)")
@@ -203,19 +138,10 @@ def render(result: dict) -> str:
 
 def cmd_coverage(graph: Graph, *, inventory: str | Path, surface: str | None = None,
                  waivers: str | Path | None = None) -> QaOutcome:
-    """`ostler coverage` as an outcome: `ok` = complete, `data` = the join.
-
-    An unreadable inventory comes back as `status="invalid"` rather than as a raise. It is
-    a fact about the data, and the caller that has to tell it apart from an incomplete book
-    is the same caller either way — but only one of the two shapes it could otherwise get
-    (an exception) forces that caller to wrap the call to find out. `ok` stays false for
-    both, so a gate that only asks "is this complete" cannot pass on a read that failed.
-    """
+    """`ostler coverage` as an outcome: `ok` = complete, `data` = the join."""
     try:
         result = run(graph, surface=surface, inventory=inventory, waivers=waivers)
     except (OSError, ValueError, json.JSONDecodeError) as exc:
-        # `str(exc)` rather than a type-prefixed line: the CLI prints this verbatim, and the
-        # messages these raises carry already name the file and what was wrong with it.
         message = str(exc)
         return QaOutcome(ok=False, message=message, status="invalid",
                          data={"status": "invalid", "message": message})

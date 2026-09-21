@@ -1,12 +1,4 @@
-"""The per-visit identity, and the session map that carries it.
-
-A node visited five times in a loop is the case that matters: without a visit key the
-run dir records five turns that all say *this node, some session*, and the one that
-thrashed cannot be told from the four that did not.
-
-    ./.venv/bin/python tests/test_turnkey.py
-    ./.venv/bin/python -m pytest tests/test_turnkey.py
-"""
+"""The per-visit identity, and the session map that carries it."""
 
 from __future__ import annotations
 
@@ -28,8 +20,7 @@ def _run_dir() -> Path:
 
 
 def _repo(path: Path) -> Path:
-    """A real repository with one commit — the head stamped on a row is observed, not
-    faked, so the row and the tree cannot drift apart in the test but not in the run."""
+    """A real repository with one commit — the head stamped on a row is observed, not faked, so the row and the tree cannot drift apart in the test but not in the run."""
     path.mkdir(parents=True)
     for args in (
         ("init", "-q", "-b", "main"),
@@ -63,25 +54,18 @@ def test_the_slug_sorts_lexically_in_the_order_the_visits_happened():
 
     slugs = [turnkey.begin(run_dir, "plan").slug for _ in range(11)]
 
-    # Zero padding is the whole point: unpadded, visit 11 sorts before visit 2 and an
-    # `ls` of the run's visits reads in an order they never happened in.
     assert slugs == sorted(slugs)
     assert slugs[0] == "001-00001-plan"
     assert slugs[-1] == "001-00011-plan"
 
 
 def test_the_counter_survives_a_restart_and_never_repeats_a_visit():
-    """Two processes over one run dir must not both call their first visit number 1.
-
-    The generation would separate them — except that it is only bumped when telemetry
-    builds, so a run with telemetry off restarts on the same generation. The counter is
-    durable for exactly that case.
-    """
+    """Two processes over one run dir must not both call their first visit number 1."""
     turnkey.clear()
     run_dir = _run_dir()
     first = [turnkey.begin(run_dir, "plan").seq for _ in range(3)]
 
-    turnkey.clear()  # a fresh process over the same run dir
+    turnkey.clear()
     second = [turnkey.begin(run_dir, "plan").seq for _ in range(2)]
 
     assert first == [1, 2, 3]
@@ -91,11 +75,8 @@ def test_the_counter_survives_a_restart_and_never_repeats_a_visit():
 def test_a_counter_that_cannot_be_written_still_never_repeats_within_the_run():
     turnkey.clear()
     run_dir = _run_dir()
-    (run_dir / turnkey.SEQ_FILE).mkdir()  # a directory where the counter should be
+    (run_dir / turnkey.SEQ_FILE).mkdir()
 
-    # A file that cannot be read or written costs durability across restarts, not
-    # uniqueness within one — and never an exception, because this is bookkeeping about
-    # a run that is doing something else.
     assert [turnkey.begin(run_dir, "plan").seq for _ in range(3)] == [1, 2, 3]
 
 
@@ -107,8 +88,6 @@ def test_no_run_dir_still_yields_a_key_rather_than_a_failure():
 
 def test_outside_a_visit_there_is_no_current_key():
     turnkey.clear()
-    # None rather than a zeroed key, so a writer stamps nothing rather than stamping
-    # `000-00000-` on something no visit produced.
     assert turnkey.current() is None
 
 
@@ -138,17 +117,11 @@ def test_each_turn_of_a_revisited_node_gets_its_own_addressable_row():
         (2, 2, "plan-qa", "ses_b"),
     ]
     assert all(r["backend"] == "claude" for r in rows)
-    # (generation, ts) is the order that survives a rewind; ts alone is what places a
-    # row against the run's spans without counting lines.
     assert all(isinstance(r["ts"], int) and r["ts"] > 0 for r in rows)
 
 
 def test_a_turn_outside_the_engines_visit_is_left_unnumbered():
-    """A library caller driving the runner directly takes turns the engine never opened.
-
-    Numbering those with whatever key happens to be current would attribute them to
-    somebody else's visit, which is worse than leaving them unaddressed.
-    """
+    """A library caller driving the runner directly takes turns the engine never opened."""
     turnkey.clear()
     run_dir = _run_dir()
     turnkey.begin(run_dir, "plan")
@@ -185,8 +158,6 @@ def test_no_repo_observed_leaves_the_row_without_a_head():
     failure.record_session_map(run_dir / ".session_id", "plan", "ses_n", "claude")
 
     row = json.loads((run_dir / "sessions.jsonl").read_text().splitlines()[0])
-    # Absent, not blank: a store can tell "nothing observed a tree" from "a hash we
-    # failed to read", which an empty string would collapse together.
     assert "head" not in row
 
 

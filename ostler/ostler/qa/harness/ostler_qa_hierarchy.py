@@ -1,24 +1,4 @@
-"""The view-hierarchy scan a device screen is vetted from.
-
-`ostler_qa_scan` gives a browser page its regions from the DOM. Everything downstream of
-that scan — `merge_rects`, the layout digest, `placement:`, the vet report — is already
-platform-agnostic: it consumes a list of `{selector, tag, role, bbox}` dicts and a frame.
-What a phone lacked was the source of those dicts, so `qa.vet` refused a `maestro` target.
-
-This is that source. It shells out to the tools the mobile stack already has — `maestro
-hierarchy` for both platforms, `uiautomator dump` for the places Maestro does not reach on
-Android — and translates their view hierarchy into the same element shape. Like every other
-harness module it is stdlib-only and never imports ostler.
-
-Two facts here were measured against a live emulator rather than assumed, because both
-would have failed silently:
-
-- `maestro hierarchy` prints a `Running on <device>` banner on **stdout** before the JSON,
-  so the payload starts at the first `{`, not at byte zero.
-- neither the root node nor its only child carries `bounds`, so the screen size cannot be
-  read off the root. The viewport is the maximum extent over every bounded node — 1080x2400
-  on the probe, exactly what `adb shell wm size` reports.
-"""
+"""The view-hierarchy scan a device screen is vetted from."""
 
 from __future__ import annotations
 
@@ -30,14 +10,8 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Any
 
-#: `[x,y][x2,y2]`, the one bounds spelling both Android sources use.
 BOUNDS = re.compile(r"\[(-?\d+),(-?\d+)\]\[(-?\d+),(-?\d+)\]")
 
-#: A widget class (the last dotted segment) to the role vocabulary the layout digest and
-#: `placement:` already speak. Only names that really carry a role are here: a `TextView` or
-#: a `FrameLayout` is a box, not a landmark, and guessing one would put a made-up region in
-#: the digest. iOS classes arrive through Maestro as `XCUIElementType<Name>`, so the same
-#: table serves both platforms once the prefix is stripped.
 CLASS_ROLES = {
     "button": "button",
     "imagebutton": "button",
@@ -71,10 +45,6 @@ CLASS_ROLES = {
     "webview": "region",
 }
 
-#: Attributes that name an element, most specific first. The book writes one of these
-#: spellings in a component's `selector:`, and which one is a matter of what the app
-#: exposes — so every spelling an element has becomes its own element sharing that
-#: element's rect, and `merge_rects` folds them back into one region carrying all of them.
 NAME_ATTRIBUTES = ("resource-id", "accessibilityText", "content-desc", "text", "hintText")
 
 
@@ -87,13 +57,7 @@ def role_for(class_name: str) -> str:
 
 
 def selectors_for(attributes: dict[str, str]) -> list[str]:
-    """Every spelling that could name this element, deduplicated, in book-likeliest order.
-
-    An Android `resource-id` arrives fully qualified (`com.example.app:id/submit`) and is
-    written both ways in practice, so the short form after `:id/` is offered too. A selector
-    is never invented from geometry: an element no attribute names contributes none, and the
-    region it lands in is simply one no component can claim.
-    """
+    """Every spelling that could name this element, deduplicated, in book-likeliest order."""
     found: list[str] = []
     for key in NAME_ATTRIBUTES:
         value = (attributes.get(key) or "").strip()
@@ -143,12 +107,7 @@ def maestro_elements(*, udid: str = "", timeout: float = 120.0) -> list[dict[str
 
 
 def parse_maestro(raw: str) -> list[dict[str, Any]]:
-    """Elements from `maestro hierarchy` output, banner and all.
-
-    The banner is not on stderr and not behind a flag, so a parser that starts at byte zero
-    raises `JSONDecodeError` on every device — which is why this is a named function with a
-    test over captured output rather than a `json.loads` inside the adapter.
-    """
+    """Elements from `maestro hierarchy` output, banner and all."""
     start = raw.find("{")
     if start < 0:
         raise ValueError(f"maestro hierarchy printed no JSON object: {raw.strip()[:200]!r}")
@@ -163,11 +122,7 @@ def parse_maestro(raw: str) -> list[dict[str, Any]]:
 
 
 def uiautomator_elements(*, udid: str = "", timeout: float = 120.0) -> list[dict[str, Any]]:
-    """The screen's elements from `uiautomator dump` — Android, where Maestro does not reach.
-
-    `uiautomator dump` writes to a path *on the device* and prints where it put it, so the
-    file has to be pulled back before anything can read it.
-    """
+    """The screen's elements from `uiautomator dump` — Android, where Maestro does not reach."""
     if shutil.which("adb") is None:
         raise RuntimeError("the adb CLI is not installed on this machine")
     adb = ["adb"] + (["-s", udid] if udid else [])
@@ -186,13 +141,7 @@ def parse_uiautomator(raw: str) -> list[dict[str, Any]]:
 
 
 def frame_for(elements: list[dict[str, Any]]) -> dict[str, Any]:
-    """The screen the elements were measured against.
-
-    Read off the elements rather than from a second CLI call, because the root node carries
-    no bounds on either source. A device does not scroll its *screen*, so the document is the
-    viewport — `horizontal-overflow` is a browser flag and stays absent here rather than
-    being faked from a list item that happens to hang off the right edge.
-    """
+    """The screen the elements were measured against."""
     width = max((e["bbox"]["x"] + e["bbox"]["width"] for e in elements), default=0.0)
     height = max((e["bbox"]["y"] + e["bbox"]["height"] for e in elements), default=0.0)
     size = {"width": float(width), "height": float(height)}
@@ -214,13 +163,7 @@ def scan(*, source: str = "maestro", udid: str = "") -> tuple[dict[str, Any], li
 
 
 def screenshot(path: Path, *, udid: str = "", timeout: float = 120.0) -> Path:
-    """Photograph the device screen, whichever device is attached.
-
-    Android first because `adb` answers in under a second; an iOS simulator through
-    `xcrun simctl` otherwise. Neither is Maestro, which takes a screenshot only as a step
-    inside a flow — and running a flow to photograph the state a flow just produced can move
-    the app off that state.
-    """
+    """Photograph the device screen, whichever device is attached."""
     path.parent.mkdir(parents=True, exist_ok=True)
     if shutil.which("adb") is not None:
         command = ["adb"] + (["-s", udid] if udid else []) + ["exec-out", "screencap", "-p"]

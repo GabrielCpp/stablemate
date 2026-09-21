@@ -1,9 +1,4 @@
-"""Scaffold definitions — loading, param resolution, tree flattening, fetching.
-
-The pure logic behind ``farrier scaffold``: parsing scaffold YAML across layers,
-resolving params, flattening the tree, and downloading URL-backed files. The
-command handlers themselves live in ``cli``.
-"""
+"""Scaffold definitions — loading, param resolution, tree flattening, fetching."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -15,39 +10,12 @@ from farrier.naming import repo_prefix
 from farrier.sources import collect_selection
 
 
-# ── farrier scaffold ──────────────────────────────────────────────────────────
-# Scaffold definitions are YAML files under the library's `scaffolds/` directory.
-# Each `scaffolds/*.yml` maps one or more scaffold ids to a definition:
-#
-#   go-service:
-#     description: Seed a Go service folder.
-#     params:
-#       dir: api                # default value; `~` (null) = required, no default
-#     tree:
-#       $dir/.gitignore: |      # string value = inline file content
-#         bin/
-#       $dir/README.md: { url: 'https://raw.githubusercontent.com/...' }
-#       $dir/docs:              # null (bare key) or {} = empty directory
-#
-# `$param` / `${param}` placeholders substitute in tree paths (strictly — an
-# unknown param is an error) and in inline content (leniently, so literal `$`
-# in file bodies survives). Downloaded content is written verbatim. Two built-in
-# params are always available unless shadowed: `repo_name` (the target repo's
-# directory name, kebab-cased) and `repo_title` (title-cased words).
-#
-# Scaffolded files are SEEDS: an existing file is never overwritten, so the
-# command is safe to re-run and the repo owns every file after first write.
 
 SCAFFOLD_TREE_FILE_KEYS = {"url"}
 
 
 def load_scaffold_defs() -> dict[str, dict[str, Any]]:
-    """All scaffold definitions across the layers, keyed by scaffold id.
-
-    A duplicate id *within one layer* is a hard error — ids are the public lookup key
-    (`farrier scaffold <id>`), like skill names. Across layers it is not an error but
-    the point: an overlay redefining a base scaffold id shadows it, same as for skills.
-    """
+    """All scaffold definitions across the layers, keyed by scaffold id."""
     defs: dict[str, dict[str, Any]] = {}
     origin: dict[str, Path] = {}
     for layer, scaffolds_dir in layer_dirs("scaffolds"):
@@ -71,8 +39,6 @@ def load_scaffold_defs() -> dict[str, dict[str, Any]]:
                         "`tree:` mapping"
                     )
                 layer_origin[sid] = path
-                # layer_dirs is precedence-ordered: a lower layer never overwrites
-                # an id a higher one already claimed.
                 if sid not in defs:
                     defs[sid] = definition
                     origin[sid] = path
@@ -82,8 +48,7 @@ def load_scaffold_defs() -> dict[str, dict[str, Any]]:
 def resolve_scaffold_params(
     scaffold_id: str, definition: dict[str, Any], overrides: dict[str, str], repo: Path
 ) -> dict[str, str]:
-    """Merge declared param defaults with CLI overrides; reject unknown params,
-    require a value for every default-less (null) param."""
+    """Merge declared param defaults with CLI overrides; reject unknown params, require a value for every default-less (null) param."""
     declared = definition.get("params") or {}
     if not isinstance(declared, dict):
         raise SystemExit(f"Scaffold {scaffold_id!r}: params must be a YAML mapping")
@@ -119,13 +84,7 @@ def resolve_scaffold_params(
 def flatten_scaffold_tree(
     scaffold_id: str, tree: dict[str, Any], base: str = ""
 ) -> tuple[dict[str, Any], list[str]]:
-    """Flatten a nested `tree:` mapping into ({rel path: file spec}, [empty dirs]).
-
-    A file spec is either a string (inline content) or a `{url: ...}` mapping.
-    Any other mapping value is a nested directory; an empty mapping or a null
-    value (a bare `dir:` key) is an empty directory. Keys may themselves
-    contain `/` separators.
-    """
+    """Flatten a nested `tree:` mapping into ({rel path: file spec}, [empty dirs])."""
     files: dict[str, Any] = {}
     dirs: list[str] = []
     for key, value in tree.items():
@@ -162,8 +121,7 @@ def flatten_scaffold_tree(
 
 
 def substitute_scaffold_path(scaffold_id: str, rel: str, params: dict[str, str]) -> str:
-    """Substitute `$param` placeholders in a tree path. Strict: an unknown or
-    malformed placeholder is an error (paths have no legitimate `$`)."""
+    """Substitute `$param` placeholders in a tree path."""
     from string import Template
 
     try:
@@ -196,12 +154,7 @@ def fetch_scaffold_url(scaffold_id: str, rel: str, url: str) -> str:
 
 
 def available_scaffold_ids(repo: Path, defs: dict[str, dict[str, Any]]) -> set[str]:
-    """The scaffold ids this repo may use.
-
-    With an `agents.yml`, the repo's `scaffolds:` list unioned with every
-    selected pack's `scaffolds:` list is the catalog. Without one (bootstrapping
-    a repo from scratch), every library definition is available.
-    """
+    """The scaffold ids this repo may use."""
     config_path = repo / "agents.yml"
     if not config_path.is_file():
         return set(defs)

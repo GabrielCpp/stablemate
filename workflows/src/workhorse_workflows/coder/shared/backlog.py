@@ -1,40 +1,4 @@
-"""The backlog, both ends of it: what the coder files into it, and what it drains back out.
-
-Ports `append-backlog-item.py` (the filing end) and the fix loop's four drain scripts —
-`select-next-fix-item.py`, `seed-fix-story.py`, `prune-fix-item.py` and
-`mark-fix-blocked.py`.
-
-**The five are one module because they are one contract.** The bullet pattern was declared
-identically in four of the five scripts and `## Filed by coder` in two, and that repetition
-is not incidental — a drain that parsed bullets differently from the filer would silently
-skip items the filer wrote. The port has one definition of each (`backlog_bullets`,
-`FILED_HEADING`), which is the only way to make that class of drift impossible rather than
-merely unlikely.
-
-*Filing*: when implement, review or QA finds work that is genuinely *separate* scope, it
-writes the item to `<spec_dir>/backlog-items.json`; `file_backlog_items` appends it to
-`docs/backlog.md` so the author workflow authors it next run. A coder-filed `[id]` is a
-valid owner for a `deferred` gap, which is how the author's coverage gate resolves and the
-loop closes. The guardrail that keeps this from becoming a dumping ground lives in the
-prompts, not here: a buildable in-scope precondition is *built* by the implementer, never
-punted.
-
-*Draining*: `select_fix_item` draws the first unblocked bullet under `## Filed by coder`,
-`seed_fix_story` turns it into a single-AC story in the perpetual `fixes` bucket, and the
-iteration ends at `prune_fix_item` (shipped) or `mark_fix_blocked` (stuck). Blocking
-annotates in place rather than removing, so the item stays visible to a human while every
-later draw skips it — which is what keeps a permanently-stuck fix from spinning the loop.
-The section is a priority queue, not a separate ownership class: any item still present when
-Author runs is identified and planned with the rest of the backlog.
-
-Nothing changes about the rules on either end — the three de-dup signals, the section
-placement, the backlog scaffold, the reconciled-items unlink, the selection predicate, the
-idempotent story reuse and the never-clobber section writes are all as written. What
-changes is what a failure does: the scripts printed a note to stderr and carried on, and a
-node logs it, because a run record that names the node is the whole point of having one.
-The four `scriptutil.die(…, code=2)` calls in `seed-fix-story.py` become `WorkflowFailed`,
-which is the same non-zero exit routed through the driver's own failure path.
-"""
+"""The backlog, both ends of it: what the coder files into it, and what it drains back out."""
 from __future__ import annotations
 
 import json
@@ -57,23 +21,15 @@ from workhorse_workflows.coder.shared.schemas.backlog import (
 )
 from workhorse_workflows.coder.shared.schemas.qa import BacklogDrain
 
-#: Where an item lands when it names no section of its own, created once per backlog.
 FILED_HEADING = "## Filed by coder"
-#: The heading's own title, as the parser reports it (no `##`, no surrounding space).
 FILED_TITLE = FILED_HEADING.lstrip("#").strip()
 
-#: A trailing `(blocked: …)` annotation is `mark-fix-blocked.py`'s, not part of the item's
-#: identity — stripped before comparing descriptions so a re-file still de-dups against it.
 BLOCKED_SUFFIX_RE = re.compile(r"\s*\(blocked\b.*$", re.IGNORECASE)
 
 
 @dataclass(frozen=True)
 class BacklogBullet:
-    """One `- [id] text` backlog item, located in the file it came from.
-
-    `line` is 0-based and file-absolute (front matter included) because both drains edit
-    the bullet in place — annotating it `(blocked: …)` or dropping it.
-    """
+    """One `- [id] text` backlog item, located in the file it came from."""
 
     line: int
     id: str
@@ -86,13 +42,7 @@ class BacklogBullet:
 
 
 def backlog_bullets(text: str, *, section: str = "") -> list[BacklogBullet]:
-    """Every `- [id] …` item in a backlog, in file order; optionally one section's only.
-
-    Parsed by `ostler.markdown` rather than matched line-by-line, which is what keeps a
-    bullet inside a fenced example — a backlog that documents its own grammar has one —
-    out of the drain, and what makes "the lines under `## Filed by coder`" the section's
-    parsed span instead of a scan for the next `#`.
-    """
+    """Every `- [id] …` item in a backlog, in file order; optionally one section's only."""
     doc = markdown.split(text)
     if section:
         found = doc.find_section(section)
@@ -126,13 +76,7 @@ def id_token_set(item_id: str) -> frozenset[str]:
 
 
 class Seen:
-    """The three high-precision de-dup signals, seeded from the backlog and grown per batch.
-
-    All three are exact matches, not fuzzy, and that is the trade the script chose
-    deliberately: two items that merely share some words are *not* merged, because dropping
-    genuinely-separate scope is worse than filing a near-duplicate — the author's coverage
-    gate depends on filed items existing.
-    """
+    """The three high-precision de-dup signals, seeded from the backlog and grown per batch."""
 
     def __init__(self, text: str) -> None:
         self.ids: set[str] = set()
@@ -204,12 +148,7 @@ def _insert_under_section(lines: list[str], section: str, bullet: str) -> list[s
 def file_backlog_items(
     logger: logging.Logger, spec_dir: str = "", docs_path: str = "", repo_dir: str = ""
 ) -> BacklogDrain:
-    """Append this story's filed items to the repo backlog, de-duplicated, then clear them.
-
-    The items file is removed once reconciled — every item either appended or already
-    present — so a rerun cannot re-file them. It is kept only when the backlog could not be
-    created at all, which is the one path where the items would otherwise be lost.
-    """
+    """Append this story's filed items to the repo backlog, de-duplicated, then clear them."""
     root = find_docs_root(docs_path, repo_dir)
     spec = spec_dir.strip()
     if not spec:
@@ -270,19 +209,13 @@ def file_backlog_items(
     return BacklogDrain(appended=appended, skipped=skipped, notes=note)
 
 
-# ── Draining it: the fix loop's worklist ─────────────────────────────────────────────
 
 
 @blueprint.node
 def select_fix_item(
     logger: logging.Logger, docs_path: str = "", backlog_path: str = "", repo_dir: str = ""
 ) -> FixPick:
-    """Draw the next drainable bullet from `## Filed by coder`, or report the pool dry.
-
-    "Drainable" is the first bullet whose line does not already carry a `(blocked` marker
-    and that has both an id and text. Selection only — the file is not touched here, which
-    is what lets a resumed iteration re-draw the same item and reach the same story.
-    """
+    """Draw the next drainable bullet from `## Filed by coder`, or report the pool dry."""
     root = find_docs_root(docs_path, repo_dir)
     rel = paths.backlog_file(root, backlog_path)
     path = root / rel
@@ -328,23 +261,7 @@ def seed_fix_story(
     docs_path: str = "",
     repo_dir: str = "",
 ) -> FixStorySeed:
-    """Register the drawn bullet as a single-AC story in the perpetual `fixes` bucket.
-
-    The twin of author mode's `seed-story.py`, with two deliberate differences. That one
-    hard-fails when its epic does not exist, because an operator was meant to create it;
-    the fix loop has no operator step, so it self-creates the `fixes` bucket the first time
-    it is needed. And the bucket is never registered in the epics queue, so epic-mode
-    selection can never pick it up.
-
-    **This node is the story's author, not just its scaffolder.** `okf.create_story`
-    scaffolds the required sections *empty*, and an empty section is an unwritten story —
-    `Story.authored` is false, `ostler doctor` files `unwritten-story`, and story prep
-    refuses to plan against it. So both sections are written here: the bullet becomes the
-    single `## Acceptance Criteria` line (the literal enactment of "one fix, one AC"), and
-    `## Context` records where it came from, which is the whole of what is known about a
-    filed fix. The current story shape also states that no additional invariant or prior
-    implementation reference is known. Thin on purpose, and still authored.
-    """
+    """Register the drawn bullet as a single-AC story in the perpetual `fixes` bucket."""
     bucket = epic.strip() or "fixes"
     bullet_id = bullet_id.strip()
     bullet_text = bullet_text.strip()
@@ -362,14 +279,10 @@ def seed_fix_story(
 
     root = find_docs_root(docs_path, repo_dir)
     okf = Ostler(root)
-    # The bucket's directory name is ostler's answer, not the slug asked for: epic
-    # directories are numbered (`0001-fixes`), so joining `epics_dir` with the bare bucket
-    # slug names a directory that does not exist. `epics_dir` still says which root.
     backlog_rel = paths.backlog_file(root)
     bucket = _ensure_fixes_epic(okf, bucket)
     epic_dir_rel = paths.epic_dir_rel(root, bucket, epics_dir)
 
-    # Idempotent: if a story already covers this id, reuse it (resumable rerun).
     for story in okf.list("story", epic=bucket):
         if bullet_id not in (story.get("covers") or []):
             continue
@@ -423,13 +336,7 @@ def seed_fix_story(
 
 
 def _fix_slug(text: str, *, max_len: int = 60) -> str:
-    """The fix story's slug, from its bullet text.
-
-    Not `kebab` above: that one sanitizes an already-chosen *id* and keeps `.` and `_`,
-    while this one turns a sentence into a bounded handle. The scripts had two functions of
-    the same name doing these two different jobs, and merging them would change one of the
-    two behaviors.
-    """
+    """The fix story's slug, from its bullet text."""
     slug = re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")
     if len(slug) > max_len:
         slug = slug[:max_len].rstrip("-")
@@ -437,17 +344,7 @@ def _fix_slug(text: str, *, max_len: int = 60) -> str:
 
 
 def _ensure_fixes_epic(okf: Ostler, epic: str) -> str:
-    """Create the fixes bucket if it is missing; return the directory name it actually has.
-
-    That name is not necessarily the one asked for: ostler numbers epic directories in
-    creation order, so the `fixes` bucket is `0004-fixes` in a repo with three epics before
-    it. Every ostler call still takes the bare slug; it is the *paths* built from it that
-    have to use the real name.
-
-    Idempotent both before and after the call. The second existence check is not redundant:
-    a prior or concurrent run may have created the epic between the first check and
-    `create_epic`, and an "already exists" result is success here, not an error.
-    """
+    """Create the fixes bucket if it is missing; return the directory name it actually has."""
     name = Path(okf.epic_path(epic)).name
     if (okf.root / okf.epic_path(epic) / "epic.md").is_file():
         return name
@@ -463,14 +360,7 @@ def _ensure_fixes_epic(okf: Ostler, epic: str) -> str:
 
 
 def _fill_empty_section(story_path: Path, heading: str, lines: list[str]) -> bool:
-    """Write `lines` under `## <heading>`, but only if that section is still empty.
-
-    Located through ostler's markdown parser (`Section.is_empty` — the same predicate
-    `Story.authored` and `doctor` use), never by scanning the rendered text: a section is
-    empty when it carries no prose of its own or in its sub-sections, which is exactly the
-    question "has anybody written this yet?". A section somebody has already written is
-    left byte-identical, so a resumed run neither duplicates nor clobbers.
-    """
+    """Write `lines` under `## <heading>`, but only if that section is still empty."""
     try:
         text = story_path.read_text(encoding="utf-8")
     except OSError:
@@ -490,11 +380,7 @@ def _author_story_body(
     story_path: Path, bullet_id: str, bullet_text: str, logger: logging.Logger,
     backlog_rel: str = "",
 ) -> None:
-    """Write every current required section from the one known fix item.
-
-    `backlog_rel` is only quoted in the prose, so the story says which file the item was
-    filed in; it comes from the caller because the caller is the one holding the root.
-    """
+    """Write every current required section from the one known fix item."""
     wrote = _fill_empty_section(story_path, "Acceptance Criteria", [f"- {bullet_text}"])
     wrote |= _fill_empty_section(
         story_path,
@@ -533,19 +419,7 @@ def prune_fix_item(
     backlog_path: str = "",
     repo_dir: str = "",
 ) -> FixPruned:
-    """Remove a shipped fix's bullet from the backlog. Ostler first, direct edit second.
-
-    `okf.backlog_prune` already finds the `- [<id>] …` bullet anywhere in the file and
-    rewrites it without the line, so it is the primary path. The direct-edit fallback
-    covers a custom `backlog_path` layout ostler does not know to look at — a mechanical
-    removal it could do itself should never hard-stop the drain loop. Both ends read the
-    bullet off the same parse, so the fallback cannot remove a line ostler would have kept.
-
-    **It commits what it writes.** Nothing downstream commits on this node's behalf any
-    more — the agent commits its own work and the workflow only checks that it did — so a
-    pruned bullet left in the working tree is dirt the story is then blamed for, and the
-    tree is the only record that the item shipped.
-    """
+    """Remove a shipped fix's bullet from the backlog."""
     bullet_id = bullet_id.strip()
 
     if not bullet_id:
@@ -577,18 +451,14 @@ def prune_fix_item(
 
 
 def _commit_prune(logger: logging.Logger, root: Path, rel: str, bullet_id: str) -> None:
-    """Commit the backlog file alone, scoped to the one path the prune rewrote.
-
-    `chore`, because dropping a shipped item off a worklist releases nothing: the fix it
-    stands for ships in the commit the drain's own agent already wrote.
-    """
+    """Commit the backlog file alone, scoped to the one path the prune rewrote."""
     message = commits.message("chore", commits.scope(root.name), f"drop shipped fix {bullet_id}")
     if commit_paths(root, message, rel):
         logger.info("committed the backlog prune for '%s'", bullet_id)
 
 
 def _prune_directly(path: Path, bullet_id: str) -> bool:
-    """Drop every `- [bullet_id] …` line from the file. False when there was nothing to drop."""
+    """Drop every `- [bullet_id] …` line from the file."""
     if not path.is_file():
         return False
     lines = path.read_text(encoding="utf-8").splitlines()
@@ -611,16 +481,7 @@ def mark_fix_blocked(
     backlog_path: str = "",
     repo_dir: str = "",
 ) -> FixBlocked:
-    """Annotate a stuck fix in place instead of pruning it — the drain's "flag and continue".
-
-    The fix-loop counterpart of epic mode's QA give-up. A fix that still fails after its one
-    bounded retry is neither deleted (a human should still see it) nor retried forever (it
-    would stall the drain): it is annotated `(blocked: …)`, which `select_fix_item` skips on
-    every future draw while it stays visible in the backlog.
-
-    Ostler has no verb for this — only add/prune/list exist for backlog items — so the file
-    is edited directly, under the same bullet-line contract the rest of this module uses.
-    """
+    """Annotate a stuck fix in place instead of pruning it — the drain's "flag and continue"."""
     bullet_id = bullet_id.strip()
     reason_note = note.strip() or "qa failed after retry"
 

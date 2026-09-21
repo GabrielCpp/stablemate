@@ -1,13 +1,4 @@
-"""Tests for `globex_book_disagree`, without ever asking an agent anything or running docker.
-
-This only covers the deterministic half of the task: that the module loads and registers
-cleanly, that `arrange`'s perturbations do exactly what the module claims they do — moving
-the app and the book's stated label into and out of agreement, and leaving the `- code:`
-digest exactly where a real `sha256(file)[:12]` would put it on each arm — and that
-`_appraise` is pure and testable. `ask` and `judge` invoke a real agent and drive
-docker/a browser, so they are out of scope here — a suite that called them would grade a
-model and a browser, not this module.
-"""
+"""Tests for `globex_book_disagree`, without ever asking an agent anything or running docker."""
 
 from __future__ import annotations
 
@@ -78,16 +69,7 @@ _CODE_BULLET = re.compile(r"^- code: `([^`]+)` @([0-9a-f]{12})$", re.MULTILINE)
 
 
 def _code_digests(tree: Path) -> list[tuple[str, str, str]]:
-    """Every `- code:` bullet under `tree/docs`, recomputed independently against disk.
-
-    Walks every `.md` page under `docs/`, reads each bullet's cited path (an `::symbol`
-    suffix, if any, is not part of the path and is dropped) and stated 12-hex digest, and
-    recomputes `sha256(file bytes)[:12]` directly against the file the path names,
-    resolved against `tree` — never against `TASK.TARGET_APP` or any table the module
-    itself exposes, so this check does not share a belief with the code it is checking.
-    Returns one `(path, stated, actual)` row per bullet found, matches and mismatches
-    alike, so a caller can filter and name what disagrees.
-    """
+    """Every `- code:` bullet under `tree/docs`, recomputed independently against disk."""
     rows: list[tuple[str, str, str]] = []
     for page in sorted((tree / "docs").rglob("*.md")):
         text = page.read_text(encoding="utf-8")
@@ -100,20 +82,17 @@ def _code_digests(tree: Path) -> list[tuple[str, str, str]]:
 
 
 def _files_containing(root: Path, needle: str) -> list[Path]:
-    """Every file anywhere under `root` whose text contains `needle` — a whole-subtree
-    sweep, not a check scoped to the files a test's author had in mind."""
+    """Every file anywhere under `root` whose text contains `needle` — a whole-subtree sweep, not a check scoped to the files a test's author had in mind."""
     return [
         path for path in sorted(root.rglob("*"))
         if path.is_file() and needle in path.read_text(encoding="utf-8", errors="ignore")
     ]
 
 
-# ── the module loads and registers ──────────────────────────────────────────────────────
 
 
 def test_the_module_registers_under_loader_load_all() -> None:
-    """A duplicate task name or an import-time error would fail every task, not just this
-    one — `loader.load_all` is the same entry point `paddock list` and every gate use."""
+    """A duplicate task name or an import-time error would fail every task, not just this one — `loader.load_all` is the same entry point `paddock list` and every gate use."""
     tasks = loader.load_all(DATA)
     names = {item.name for item in tasks}
     assert "globex-book-disagree" in names
@@ -123,12 +102,10 @@ def test_the_rubric_file_exists_beside_the_other_rubrics() -> None:
     assert (DATA / "rubric-disagree.md").is_file()
 
 
-# ── the digest the book cites really is sha256(file)[:12] ───────────────────────────────
 
 
 def test_the_seed_index_html_actually_matches_the_digest_the_book_cites() -> None:
-    """The whole discriminator rests on this holding for the seed as shipped — if
-    `index.html` or the book's citation ever drifts, this catches it before a trial does."""
+    """The whole discriminator rests on this holding for the seed as shipped — if `index.html` or the book's citation ever drifts, this catches it before a trial does."""
     data = (APP / TASK.TARGET_APP).read_bytes()
     assert _digest(data) == "ebed722d64ce"
     text = (APP / "docs" / TASK.TARGET_DOC).read_text(encoding="utf-8")
@@ -136,17 +113,13 @@ def test_the_seed_index_html_actually_matches_the_digest_the_book_cites() -> Non
 
 
 def test_the_rubric_states_the_same_digest_the_book_and_the_file_agree_on() -> None:
-    """The digest is stated in three documents — the book, this test, and the rubric prose
-    the judge is handed. The test above joins its own literal to the book's, so a drifting
-    seed fails loudly there; nothing otherwise reads the rubric's copies, which would go
-    stale in silence and tell the judge to look for a digest no bullet carries."""
+    """The digest is stated in three documents — the book, this test, and the rubric prose the judge is handed."""
     actual = _digest((APP / TASK.TARGET_APP).read_bytes())
     rubric = (DATA / "rubric-disagree.md").read_text(encoding="utf-8")
     stated = set(re.findall(r"@([0-9a-f]{12})", rubric))
     assert stated == {actual}
 
 
-# ── arrange: the trees it builds ─────────────────────────────────────────────────────────
 
 
 def test_arrange_builds_one_tree_per_arm_with_app_docs_and_compose(tmp_path: Path) -> None:
@@ -172,7 +145,6 @@ def test_arrange_builds_one_tree_per_arm_with_app_docs_and_compose(tmp_path: Pat
         assert "playwright" in mcp["mcpServers"]
 
 
-# ── arrange: agree touches nothing ───────────────────────────────────────────────────────
 
 
 def test_agree_leaves_the_app_file_and_the_book_bullets_byte_identical(tmp_path: Path) -> None:
@@ -191,8 +163,7 @@ def test_agree_leaves_the_app_file_and_the_book_bullets_byte_identical(tmp_path:
 
 
 def test_agree_the_mutated_text_is_nowhere_under_the_whole_tree(tmp_path: Path) -> None:
-    """Whole-tree, not scoped to the two `- name:` bullets — the mutated string must not
-    have leaked in anywhere, on the one arm where nothing should have moved at all."""
+    """Whole-tree, not scoped to the two `- name:` bullets — the mutated string must not have leaked in anywhere, on the one arm where nothing should have moved at all."""
     run = _run(tmp_path)
     TASK.arrange(run)
     tree = TASK._tree_dir(run, "agree")
@@ -209,7 +180,6 @@ def test_agree_every_cited_digest_matches_the_file_it_names_whole_tree(tmp_path:
     assert mismatches == []
 
 
-# ── arrange: app-wrong edits only the app file, digest goes stale ───────────────────────
 
 
 def test_app_wrong_edits_only_index_html_and_the_book_is_untouched(tmp_path: Path) -> None:
@@ -229,9 +199,7 @@ def test_app_wrong_edits_only_index_html_and_the_book_is_untouched(tmp_path: Pat
 
 
 def test_app_wrong_makes_the_cited_digest_stale(tmp_path: Path) -> None:
-    """The discriminator itself: after this arm's edit, the digest the book still cites
-    no longer matches the file it names — the book was correct and is now stale evidence
-    of the app, not the other way around."""
+    """The discriminator itself: after this arm's edit, the digest the book still cites no longer matches the file it names — the book was correct and is now stale evidence of the app, not the other way around."""
     run = _run(tmp_path)
     TASK.arrange(run)
     tree = TASK._tree_dir(run, "app-wrong")
@@ -252,8 +220,7 @@ def test_app_wrong_does_not_touch_any_other_file_under_docs(tmp_path: Path) -> N
 def test_app_wrong_the_mutated_text_is_under_app_and_nowhere_under_docs_whole_tree(
     tmp_path: Path,
 ) -> None:
-    """Whole-tree sweep of both subtrees, not the one file each side happens to name —
-    `app/` must carry the mutation somewhere, `docs/` must carry it nowhere at all."""
+    """Whole-tree sweep of both subtrees, not the one file each side happens to name — `app/` must carry the mutation somewhere, `docs/` must carry it nowhere at all."""
     run = _run(tmp_path)
     TASK.arrange(run)
     tree = TASK._tree_dir(run, "app-wrong")
@@ -264,12 +231,7 @@ def test_app_wrong_the_mutated_text_is_under_app_and_nowhere_under_docs_whole_tr
 def test_app_wrong_the_only_file_with_a_mismatched_digest_is_index_html(
     tmp_path: Path,
 ) -> None:
-    """The discriminator this whole probe exists to pin: whole-tree over every `- code:`
-    bullet under `docs/`, not just the bullets naming `index.html`. `widget-list.md`
-    cites that file twice (the `new-widget-link` component and the `open-new-widget`
-    interaction, see the module docstring), so the sweep finds two mismatched *rows* —
-    both against the same file. The claim this test pins is one mismatched *file*, not
-    one mismatched bullet."""
+    """The discriminator this whole probe exists to pin: whole-tree over every `- code:` bullet under `docs/`, not just the bullets naming `index.html`."""
     run = _run(tmp_path)
     TASK.arrange(run)
     tree = TASK._tree_dir(run, "app-wrong")
@@ -279,7 +241,6 @@ def test_app_wrong_the_only_file_with_a_mismatched_digest_is_index_html(
     assert len(mismatches) == 2
 
 
-# ── arrange: book-wrong edits only the book, digest stays valid ─────────────────────────
 
 
 def test_book_wrong_edits_only_the_two_name_bullets_and_the_app_is_untouched(
@@ -299,8 +260,7 @@ def test_book_wrong_edits_only_the_two_name_bullets_and_the_app_is_untouched(
 
 
 def test_book_wrong_leaves_the_cited_digest_valid(tmp_path: Path) -> None:
-    """The discriminator's other half: the app never changed, so the digest the book
-    still cites keeps matching it — the app is correct, the book's own prose is not."""
+    """The discriminator's other half: the app never changed, so the digest the book still cites keeps matching it — the app is correct, the book's own prose is not."""
     run = _run(tmp_path)
     TASK.arrange(run)
     tree = TASK._tree_dir(run, "book-wrong")
@@ -337,8 +297,7 @@ def test_book_wrong_touches_only_widget_list_md_under_docs(tmp_path: Path) -> No
 def test_book_wrong_the_mutated_text_is_under_docs_and_nowhere_under_app_whole_tree(
     tmp_path: Path,
 ) -> None:
-    """Whole-tree sweep of both subtrees, mirroring `app-wrong`'s: `docs/` must carry
-    the mutation somewhere, `app/` must carry it nowhere at all."""
+    """Whole-tree sweep of both subtrees, mirroring `app-wrong`'s: `docs/` must carry the mutation somewhere, `app/` must carry it nowhere at all."""
     run = _run(tmp_path)
     TASK.arrange(run)
     tree = TASK._tree_dir(run, "book-wrong")
@@ -349,8 +308,7 @@ def test_book_wrong_the_mutated_text_is_under_docs_and_nowhere_under_app_whole_t
 def test_book_wrong_every_cited_digest_still_matches_the_file_it_names_whole_tree(
     tmp_path: Path,
 ) -> None:
-    """The discriminator's other half, swept whole-tree: the book's prose moved, but not
-    one `- code:` bullet's digest under `docs/` should now disagree with the file on disk."""
+    """The discriminator's other half, swept whole-tree: the book's prose moved, but not one `- code:` bullet's digest under `docs/` should now disagree with the file on disk."""
     run = _run(tmp_path)
     TASK.arrange(run)
     tree = TASK._tree_dir(run, "book-wrong")
@@ -360,7 +318,6 @@ def test_book_wrong_every_cited_digest_still_matches_the_file_it_names_whole_tre
     assert mismatches == []
 
 
-# ── perturb: refuses rather than silently no-ops ─────────────────────────────────────────
 
 
 def test_perturb_app_wrong_refuses_when_the_anchor_is_not_found(tmp_path: Path) -> None:
@@ -386,7 +343,6 @@ def test_perturb_rejects_an_unknown_arm(tmp_path: Path) -> None:
         TASK._perturb(tree, "not-a-real-arm")
 
 
-# ── _appraise: pure, no agent involved ───────────────────────────────────────────────────
 
 
 def test_appraise_caps_a_level_two_verdict_whose_citation_does_not_resolve(tmp_path: Path) -> None:

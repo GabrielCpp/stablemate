@@ -1,11 +1,4 @@
-"""`ostler qa fixtures migrate` — one-shot, mechanical `qa: {fixtures:}` to fixture-node.
-
-Every case below is static: no fixture command is ever run, only resolved and written into
-a node file. The three refusals (`declared` errors, an unresolved tool, a destination
-collision) all fire before anything is written, on purpose — a partial migration would
-leave some fixtures declared twice, in agents.yml and as a node, with nothing saying which
-one a plan should trust.
-"""
+"""`ostler qa fixtures migrate` — one-shot, mechanical `qa: {fixtures:}` to fixture-node."""
 
 from __future__ import annotations
 
@@ -52,20 +45,13 @@ def test_a_well_formed_fixture_is_written_as_a_run_step(tmp_path: Path) -> None:
     body = written.read_text(encoding="utf-8")
     assert "title: Three identities" in body
     assert "- run: node auth/seed.mjs --holders=2" in body
-    # Neither old vocabulary carries over mechanically — the prose survives as a comment.
     assert "provides:" not in body.split("## Steps")[1]
     assert "the adjuster, holder A and holder B exist in the auth emulator" in body
     assert result.data["paths"] == ["docs/features/acme/fixtures/three-identities.md"]
 
 
 def test_kind_run_is_the_reading_that_claims_nothing(tmp_path: Path) -> None:
-    """`seed` and `run` are different claims and an `agents.yml` entry states neither.
-
-    `kind:` is required on a step node (`registry`'s `step` type), so "nobody said" has no
-    spelling here — omitting it makes the migrated node trip `missing-required-bullet`. Of the
-    two legal readings, `run` is the one that asserts nothing about state, which is the same
-    silence that keeps `provides:` from surviving; the outcome says so rather than the file.
-    """
+    """`seed` and `run` are different claims and an `agents.yml` entry states neither."""
     _agents_yml(tmp_path, ONE_FIXTURE)
 
     result = fixtures.migrate(tmp_path, "docs/features/acme/fixtures", cfg=_CFG)
@@ -76,13 +62,7 @@ def test_kind_run_is_the_reading_that_claims_nothing(tmp_path: Path) -> None:
 
 
 def test_the_outcome_says_the_provides_did_not_survive(tmp_path: Path) -> None:
-    """A migration that drops the field its own loader calls load-bearing must say so.
-
-    `declared()` refuses a `qa: {fixtures:}` entry with no `provides:` — it is what a
-    scenario's `preconditions:` are checked against. Converting that checked claim into an
-    HTML comment and printing `migrated 1 qa fixture(s)` reports a translation that did not
-    happen, so the outcome carries a status of its own and names what is owed.
-    """
+    """A migration that drops the field its own loader calls load-bearing must say so."""
     _agents_yml(tmp_path, ONE_FIXTURE)
 
     result = fixtures.migrate(tmp_path, "docs/features/acme/fixtures", cfg=_CFG)
@@ -114,7 +94,7 @@ def test_a_malformed_declaration_refuses_before_writing_anything(tmp_path: Path)
 def test_an_unresolved_tool_refuses_before_writing_anything(tmp_path: Path) -> None:
     _agents_yml(tmp_path, ONE_FIXTURE)
 
-    result = fixtures.migrate(tmp_path, "docs/features/acme/fixtures")  # no cfg — node undefined
+    result = fixtures.migrate(tmp_path, "docs/features/acme/fixtures")
 
     assert not result.ok
     assert "three-identities" in result.message
@@ -149,10 +129,7 @@ def test_an_out_dir_outside_the_repo_root_refuses_cleanly(tmp_path: Path) -> Non
 def test_a_migrated_node_round_trips_through_book_fixtures_and_doctor_clean(
     tmp_path: Path, capsys: pytest.CaptureFixture
 ) -> None:
-    """The shape sub-item b must not quietly break: a migrated node reads back as one run
-    step with the exact resolved command, and a repo with a stack to bring up (a runbook)
-    still reports zero doctor findings against it.
-    """
+    """The shape sub-item b must not quietly break: a migrated node reads back as one run step with the exact resolved command, and a repo with a stack to bring up (a runbook) still reports zero doctor findings against it."""
     _agents_yml(tmp_path, ONE_FIXTURE)
     write(tmp_path / RUNBOOK_PATH, RUNBOOK)
 
@@ -197,7 +174,7 @@ def test_cli_migrate_reports_an_unresolved_tool(
         capsys,
     )
 
-    assert code == 1  # no [qa_tools.node] configured on the test host
+    assert code == 1
     assert "node" in out
     assert not (tmp_path / "docs/features/acme/fixtures").exists()
 
@@ -211,6 +188,6 @@ def test_cli_migrate_json_envelope_carries_status(
         capsys,
     )
 
-    assert code == 0  # nothing declared — a no-op success
+    assert code == 0
     payload = json.loads(out)
     assert payload["status"] == "passed"

@@ -1,11 +1,4 @@
-"""What the obligation packet asks a QA planner to prove, and how much it hands over.
-
-The packet used to obligate everything the graph closure could reach, at whatever size that
-came to. On a nine-epic book that meant a planner reading a 670 KB file and being told to
-write live scenarios against endpoints nobody had implemented — so it invented routes, and
-spent its turn failing to reach them. These pin the two halves of the narrowing: which
-obligations are owed evidence, and which members of the packet the reader is handed at all.
-"""
+"""What the obligation packet asks a QA planner to prove, and how much it hands over."""
 
 from __future__ import annotations
 
@@ -52,13 +45,7 @@ def _book(tmp_path: Path) -> Path:
 
 
 def test_container_reached_only_by_closure_is_context_not_live_evidence(tmp_path: Path):
-    """The changed child is owed proof; the screen that merely contains it is not.
-
-    Both nodes land in the packet — the closure is deliberately broad and the planner should
-    read the surrounding contract. Only the child was touched and only the child is grounded,
-    so only the child can be exercised. Obligating the parent is how a plan ends up asserting
-    against a route with no implementation behind it.
-    """
+    """The changed child is owed proof; the screen that merely contains it is not."""
     _book(tmp_path)
 
     packet = build_context(tmp_path, base="HEAD", source_roots={"demo": ["app"]})
@@ -76,11 +63,7 @@ def test_container_reached_only_by_closure_is_context_not_live_evidence(tmp_path
 
 
 def _shared_stylesheet_book(tmp_path: Path) -> Path:
-    """Two widgets and a stylesheet both of them are documented against.
-
-    One widget also grounds a symbol of its own, which is the discriminator: the change set
-    edits only the stylesheet, so the *file* reaches both and no *symbol* reaches either.
-    """
+    """Two widgets and a stylesheet both of them are documented against."""
     (tmp_path / "docs/features/demo").mkdir(parents=True)
     (tmp_path / "app").mkdir()
     (tmp_path / "docs/features/demo/screen.md").write_text(
@@ -109,14 +92,7 @@ def _shared_stylesheet_book(tmp_path: Path) -> Path:
 
 
 def test_a_file_cited_by_many_nodes_is_context_not_live_evidence(tmp_path: Path):
-    """One edited stylesheet does not owe live proof for every component that renders through it.
-
-    A `file-owner` reason is a bare-file citation, so it localizes the change only as far as
-    the file belongs to one node. On a real run an eight-line change to `app.css` was the
-    sole reason 30 of 58 nodes were owed evidence, and the planner spent three hour-long
-    turns — $32 — writing plans that could never cover them, because nothing in the diff
-    said what to assert.
-    """
+    """One edited stylesheet does not owe live proof for every component that renders through it."""
     _shared_stylesheet_book(tmp_path)
 
     packet = build_context(tmp_path, base="HEAD", source_roots={"demo": ["app"]})
@@ -131,12 +107,7 @@ def test_a_file_cited_by_many_nodes_is_context_not_live_evidence(tmp_path: Path)
 
 
 def test_a_file_owned_by_one_node_still_owes_live_evidence(tmp_path: Path):
-    """The narrowing is about a citation that stopped discriminating, not about bare files.
-
-    A language whose symbols the mapper cannot extract reaches its node by file and nothing
-    else. While that node is the file's only owner the citation still says exactly what the
-    change touched, so demoting it would leave the change with no obligation at all.
-    """
+    """The narrowing is about a citation that stopped discriminating, not about bare files."""
     (tmp_path / "docs/features/demo").mkdir(parents=True)
     (tmp_path / "app").mkdir()
     (tmp_path / "docs/features/demo/screen.md").write_text(
@@ -167,11 +138,7 @@ def test_a_file_owned_by_one_node_still_owes_live_evidence(tmp_path: Path):
 
 
 def _shared_container_book(tmp_path: Path) -> Path:
-    """Three controls documented against one toolbar component, one of them brand new.
-
-    Every control cites the container symbol, because the container is where it is rendered
-    and the honest anchor for it. Only the new control also cites a symbol of its own.
-    """
+    """Three controls documented against one toolbar component, one of them brand new."""
     (tmp_path / "docs/features/demo").mkdir(parents=True)
     (tmp_path / "app").mkdir()
     (tmp_path / "docs/features/demo/screen.md").write_text(
@@ -212,15 +179,7 @@ def _shared_container_book(tmp_path: Path) -> Path:
 
 
 def test_a_symbol_cited_by_many_nodes_is_context_not_live_evidence(tmp_path: Path):
-    """Adding one control to a toolbar does not owe live proof of every control on it.
-
-    An exact symbol localizes better than a bare file but not perfectly: a container cited
-    by a dozen nodes marks all of them changed when one new control is rendered inside it.
-    On a real run a story that added a publish button was charged with proving undo, redo
-    and four heading and list toggles it never touched — 70 of the plan's obligations, all
-    held by the one toolbar symbol — and the planner burned its whole validation budget
-    writing scenarios the change could not justify.
-    """
+    """Adding one control to a toolbar does not owe live proof of every control on it."""
     _shared_container_book(tmp_path)
 
     packet = build_context(tmp_path, base="HEAD", source_roots={"demo": ["app"]})
@@ -238,14 +197,7 @@ def test_a_symbol_cited_by_many_nodes_is_context_not_live_evidence(tmp_path: Pat
 
 
 def test_the_demotion_is_dropped_rather_than_owe_nothing_at_all(tmp_path: Path):
-    """When every changed symbol is a container, the story still owes proof of something.
-
-    An empty owed set is a bug signal, not a valid state: the trial is handed an evidence
-    map built from zero rows and reports every defect `inconclusive — not owed by this
-    trial`, which reads on a scorecard exactly like a change nobody could break. So the
-    demotion is taken back and the finding published, because the floor firing means the
-    fan-out threshold was wrong for this book rather than that the change was harmless.
-    """
+    """When every changed symbol is a container, the story still owes proof of something."""
     (tmp_path / "docs/features/demo").mkdir(parents=True)
     (tmp_path / "app").mkdir()
     (tmp_path / "docs/features/demo/screen.md").write_text(
@@ -288,13 +240,7 @@ def test_the_demotion_is_dropped_rather_than_owe_nothing_at_all(tmp_path: Path):
 
 
 def _two_readings_book(tmp_path: Path) -> Path:
-    """One function, documented twice: the wire contract and the domain rule.
-
-    This is the shape `seat-booking` has. `app/confirm.py::confirm` is cited by the endpoint
-    that states what the request does and by the concept that states what confirming a seat
-    means. Neither citation is vague and neither document is a container — they are two true
-    readings of one function, and a change to it can break either.
-    """
+    """One function, documented twice: the wire contract and the domain rule."""
     (tmp_path / "docs/features/demo").mkdir(parents=True)
     (tmp_path / "app").mkdir()
     (tmp_path / "docs/features/demo/api.md").write_text(
@@ -331,15 +277,7 @@ def _two_readings_book(tmp_path: Path) -> Path:
 
 
 def test_a_symbol_cited_by_two_nodes_still_owes_live_evidence(tmp_path: Path):
-    """Two readings of one function is a book written well, not a container.
-
-    `seat-booking` scored 3 of 9 seeded defects on this: its book cites
-    `app/confirm.py::confirm` from the endpoint and from the concept, the story's only
-    changed file was that symbol, and demoting at two owners left the whole owed set empty.
-    Every obligation came back `required: false`, the evidence map was built from nothing,
-    and six defects were reported "not owed by this trial" against a plan that had in fact
-    asserted exactly the right claims.
-    """
+    """Two readings of one function is a book written well, not a container."""
     _two_readings_book(tmp_path)
 
     packet = build_context(tmp_path, base="HEAD", source_roots={"demo": ["app"]})
@@ -353,11 +291,7 @@ def test_a_symbol_cited_by_two_nodes_still_owes_live_evidence(tmp_path: Path):
 
 
 def _event_book(tmp_path: Path) -> Path:
-    """A changed producer, and an untouched consumer the relation fixpoint walks to.
-
-    The consumer grounds its own code and that code is not in the diff. Nothing about this
-    story says what to assert about it — only that it listens to a name the producer says.
-    """
+    """A changed producer, and an untouched consumer the relation fixpoint walks to."""
     (tmp_path / "docs/features/demo").mkdir(parents=True)
     (tmp_path / "app").mkdir()
     (tmp_path / "docs/features/demo/producer.md").write_text(
@@ -397,20 +331,7 @@ def _event_book(tmp_path: Path) -> Path:
 
 
 def test_the_consumer_of_a_changed_event_is_owed_live_evidence(tmp_path: Path):
-    """The node one hop from the change is the one nobody re-proved.
-
-    Change what a producer emits and the consumer of that event breaks, in a story that never
-    names it. That is the split this packet exists to catch: the record's shape moved, the
-    screen displaying it was updated, and the screen that *creates* it shipped broken because
-    it was out of scope.
-
-    One hop, and no further. The `while related:` fixpoint recomputes its selection every lap,
-    so a single shared subject chains across a whole persistence island — left owed live
-    evidence, a seven-criterion story came out demanding proof across 67 documents, 194 of its
-    obligations held by `event-consumer` alone, and the planner could not write a plan that
-    covered them. Hopping from the *required* set instead is bounded by construction, which
-    `test_the_hop_does_not_chain_past_one_node` holds to.
-    """
+    """The node one hop from the change is the one nobody re-proved."""
     _event_book(tmp_path)
 
     packet = build_context(tmp_path, base="HEAD", source_roots={"demo": ["app"]})
@@ -429,14 +350,7 @@ def test_the_consumer_of_a_changed_event_is_owed_live_evidence(tmp_path: Path):
 
 
 def test_the_hop_does_not_chain_past_one_node(tmp_path: Path):
-    """A hop is one hop. Two is the closure that cost sixty-seven documents.
-
-    The producer emits, the consumer answers it and emits in turn, and a third node answers
-    *that*. Only the producer was changed. The consumer is owed live evidence because a change
-    to what the producer emits can break it; the third node is two removes from the diff and
-    stays context, because the subjects are collected from the required set once and the nodes
-    the hop pulls in are never hopped from.
-    """
+    """A hop is one hop."""
     (tmp_path / "docs/features/demo").mkdir(parents=True)
     (tmp_path / "app").mkdir()
     for slug, title, bullets, module in (
@@ -475,11 +389,7 @@ def test_the_hop_does_not_chain_past_one_node(tmp_path: Path):
 
 
 def _record_book(tmp_path: Path) -> dict:
-    """Two grounded screens bound to one named record, and a third nobody has built.
-
-    The diff reaches the screen that *displays* the record. The screen that *creates* it is
-    out of scope and co-bound; the report screen is co-bound and ungrounded.
-    """
+    """Two grounded screens bound to one named record, and a third nobody has built."""
     (tmp_path / "docs/features/demo").mkdir(parents=True)
     (tmp_path / "app").mkdir()
     (tmp_path / "docs/features/demo/detail.md").write_text(
@@ -509,7 +419,6 @@ def _record_book(tmp_path: Path) -> dict:
         "- tests: tests/create_test.py::writes\n",
         encoding="utf-8",
     )
-    # Named on the same record, but nothing is built behind it yet.
     (tmp_path / "docs/features/demo/report.md").write_text(
         "---\ntype: screen\ntitle: Booking Report\n---\n# Booking Report\n\n"
         "- route: /booking/report\n"
@@ -535,14 +444,7 @@ def _record_book(tmp_path: Path) -> dict:
 
 
 def test_the_screen_that_creates_the_record_is_owed_when_the_record_changes(tmp_path: Path):
-    """The user's case: a story splits, and the half nobody touched ships broken.
-
-    Add a field to a persisted record, update the screen that displays it, and the screen that
-    *creates* that record is bound to the same record, out of scope, and never re-proved. It
-    is named on both nodes — `persistence: booking-record — …` — so the packet can find it.
-    Prose alone could not: every persistence value in a real book is a unique sentence, and an
-    equality join over sentences matches nothing.
-    """
+    """The user's case: a story splits, and the half nobody touched ships broken."""
     packet = _record_book(tmp_path)
     assert validate_context(packet) == []
     by_id = {item["id"]: item for item in packet["obligations"]}
@@ -551,26 +453,17 @@ def test_the_screen_that_creates_the_record_is_owed_when_the_record_changes(tmp_
     assert create["required"] is True, "the screen that writes the record owes nothing"
     assert {"kind": "relation-of-required", "ref": "booking-record"} in create["reasons"]
 
-    # The claim a planner reads is the prose alone; the subject is its own field.
     bullet = by_id["okf:docs/features/demo/create.md#create:persistence:1"]
     assert bullet["subject"] == "booking-record"
     assert bullet["requirement"] == "submitting the form writes one booking and no more."
 
-    # The hop reaches it and the grounding gate still stops there: a QA plan cannot exercise a
-    # screen nobody has built, however plainly the book says the two are about one record.
     report = by_id["okf:docs/features/demo/report.md#report:contract"]
     assert report["required"] is False
     assert report["evidenceRequired"] == "context"
 
 
 def test_a_hopped_node_owes_the_invariant_it_shares_and_not_its_whole_surface(tmp_path: Path):
-    """One hop is a claim about the record, not about everything the neighbour documents.
-
-    The screen that writes the record can be broken by the record's shape changing under it.
-    Its own refusal message cannot — nothing in the diff reached it — and owing it would make
-    every story re-prove each of its neighbours end to end, which is the scope explosion the
-    fixpoint was excluded for in the first place.
-    """
+    """One hop is a claim about the record, not about everything the neighbour documents."""
     packet = _record_book(tmp_path)
     by_id = {item["id"]: item for item in packet["obligations"]}
 
@@ -582,52 +475,30 @@ def test_a_hopped_node_owes_the_invariant_it_shares_and_not_its_whole_surface(tm
     assert its_own["required"] is False
     assert its_own["evidenceRequired"] == "context"
 
-    # The node the diff did reach owes all of itself, hop or no hop.
     assert by_id["okf:docs/features/demo/detail.md#detail:persistence:1"]["required"] is True
 
 
 def test_a_relation_bullet_without_a_subject_names_nothing_and_joins_nothing(tmp_path: Path):
-    """Parsing is narrow on purpose: prose cannot claim a subject by accident.
-
-    A book that has never heard of subjects keeps working exactly as it did — its bullets have
-    no subject, they join nothing, and the one-hop rule is inert rather than wrong. Only the
-    declared head shape counts: a lowercase identifier, an em dash, a space either side.
-    """
+    """Parsing is narrow on purpose: prose cannot claim a subject by accident."""
     from ostler.qa.context import relation_subject
 
     assert relation_subject("booking-record — one booking is written.") == (
         "booking-record",
         "one booking is written.",
     )
-    # An em dash mid-sentence is punctuation, not a subject.
     assert relation_subject("the booking — every field of it — survives a restart.") == (
         None,
         "the booking — every field of it — survives a restart.",
     )
-    # A multi-word head is prose, and a capitalised one is the start of a sentence.
     assert relation_subject("the record — is written once.")[0] is None
     assert relation_subject("Booking — is written once.")[0] is None
-    # An en dash and a hyphen are not the separator; only the em dash is.
     assert relation_subject("booking-record - one booking is written.")[0] is None
     assert relation_subject("booking-record – one booking is written.")[0] is None
-    # A subject with nothing after it states no claim, so it is not a subject.
     assert relation_subject("booking-record — ")[0] is None
 
 
 def test_every_relation_fixpoint_kind_is_declared_co_binding(tmp_path: Path):
-    """The set and the loop that feeds it may not drift apart again.
-
-    They already did once: the fixpoint was added with seven relation bullets plus the two
-    event kinds, and none of the nine was added to the exemption. Deriving the reason kinds
-    from the same tuple the loop iterates is what makes that unrepeatable, and this asserts
-    the derivation rather than a re-typed literal.
-
-    The fixpoint feeds `_COBINDING_REASON_KINDS`, not `_CLOSURE_REASON_KINDS`. The two were
-    one set and the docstring argued only the navigational half, which is what let
-    "co-bound to the same persisted record" be filed as "reached by containment". Both are
-    context-only, and `_is_required` subtracts their union — but only one of them is a
-    statement that the change cannot reach the node.
-    """
+    """The set and the loop that feeds it may not drift apart again."""
     from ostler.qa.context import (
         _CLOSURE_REASON_KINDS,
         _COBINDING_REASON_KINDS,
@@ -645,14 +516,7 @@ def test_every_relation_fixpoint_kind_is_declared_co_binding(tmp_path: Path):
 
 
 def test_qa_scaffolding_is_not_a_production_unit():
-    """QA does not owe live proof of the mock backend it tests through.
-
-    Six of one story's sixteen changed files were `tools/qa-mock-backends/*.py`. None of the
-    filter's tokens (`test`, `fixtures`, `__mocks__`) appears in that path, so the mocks were
-    modelled as product, and roughly half the story's surviving live obligations were owed
-    against the fixture harness and mock servers. The plan's first scenario asserted the
-    fixture server's own routes.
-    """
+    """QA does not owe live proof of the mock backend it tests through."""
     from ostler.qa.context import _is_non_production_path as non_production
 
     assert non_production("web-app/tools/qa-mock-backends/auth.py")
@@ -669,12 +533,7 @@ def test_qa_scaffolding_is_not_a_production_unit():
 
 
 def test_obligations_carry_the_book_locators_for_the_node(tmp_path: Path):
-    """`role`/`name`/`route` ride on the obligation, so a browser locator has a source.
-
-    Every locator in every plan written before this was a text match on a rendered string —
-    the book's accessible names were enforced as a coverage checkbox and never read as
-    addresses.
-    """
+    """`role`/`name`/`route` ride on the obligation, so a browser locator has a source."""
     _book(tmp_path)
 
     packet = build_context(tmp_path, base="HEAD", source_roots={"demo": ["app"]})
@@ -691,11 +550,7 @@ def test_obligations_carry_the_book_locators_for_the_node(tmp_path: Path):
 
 
 def test_write_context_moves_the_verification_index_to_a_sidecar(tmp_path: Path):
-    """One row per `verify:` ref in the whole book — machine input, not reading material.
-
-    It is the largest member of the packet and the only one no reader consumes, so it goes
-    beside the file the planner reads rather than inside it.
-    """
+    """One row per `verify:` ref in the whole book — machine input, not reading material."""
     _book(tmp_path)
     packet = build_context(tmp_path, base="HEAD", source_roots={"demo": ["app"]})
     assert packet["verificationIndex"], "fixture must produce an index to relocate"
@@ -709,7 +564,6 @@ def test_write_context_moves_the_verification_index_to_a_sidecar(tmp_path: Path)
 
     sidecar = json.loads((spec_dir / "qa-okf-verification-index.json").read_text(encoding="utf-8"))
     assert sidecar == packet["verificationIndex"]
-    # The context-only entries survive the sidecar split, under their own heading.
     assert CONTEXT_HEADING in md_path.read_text(encoding="utf-8")
 
 
@@ -776,12 +630,7 @@ def _context_with(spec: Path, *, required: bool) -> None:
 
 
 def test_coverage_gate_skips_context_only_obligations(tmp_path: Path):
-    """A plan covering only what the story built validates; the same plan used to be rejected.
-
-    The rejection is what drove the rework loop — the planner could not satisfy the gate
-    without writing a scenario against something unimplemented, so it wrote one, and the
-    scenario failed.
-    """
+    """A plan covering only what the story built validates; the same plan used to be rejected."""
     spec = tmp_path / "docs/specs/story-1"
     _context_with(spec, required=False)
     plan = _plan_covering(spec, "okf:docs/features/demo/item.md:contract")
@@ -792,12 +641,7 @@ def test_coverage_gate_skips_context_only_obligations(tmp_path: Path):
 
 
 def _context_with_deferred(spec: Path, *, deferred: bool) -> None:
-    """Same shape as `_context_with`, but the second obligation is compiler-deferred.
-
-    Where `required` marks an obligation the story never touched, `deferred` marks one the
-    reference compiler tried and failed to compile — a different reason to skip the same
-    coverage check, stamped by `annotate_deferred_obligations`, not `context.py`'s scoping.
-    """
+    """Same shape as `_context_with`, but the second obligation is compiler-deferred."""
     spec.mkdir(parents=True, exist_ok=True)
     unbuilt: dict = {
         "id": "okf:docs/features/demo/unbuilt.md:contract",
@@ -850,14 +694,7 @@ def _context_with_deferred(spec: Path, *, deferred: bool) -> None:
 
 
 def test_coverage_gate_skips_obligations_the_compiler_already_deferred(tmp_path: Path):
-    """A `deferred` obligation is not demanded, the same way a `required: false` one is not.
-
-    The bug this closes: `validate_v2` re-derived "unhandled" from a bare set difference,
-    blind to whether the reference compiler had already explained the same obligation as a
-    `Gap` — so a valid, compiled, sound plan was refused wholesale for obligations nobody
-    could have covered. This is the consumer half; the producer half is
-    `annotate_deferred_obligations` in `ostler.qa.compile`.
-    """
+    """A `deferred` obligation is not demanded, the same way a `required: false` one is not."""
     spec = tmp_path / "docs/specs/story-1"
     _context_with_deferred(spec, deferred=True)
     plan = _plan_covering(spec, "okf:docs/features/demo/item.md:contract")
@@ -1044,11 +881,7 @@ def test_absent_role_bullet_imposes_no_locator_rule(tmp_path: Path):
 
 
 def test_coverage_gate_still_demands_required_obligations(tmp_path: Path):
-    """The narrowing is the flag, not the reason kind — a required obligation stays required.
-
-    Absent the flag entirely the gate must also hold, so a packet written before the split
-    keeps failing loudly rather than silently passing everything.
-    """
+    """The narrowing is the flag, not the reason kind — a required obligation stays required."""
     spec = tmp_path / "docs/specs/story-1"
     _context_with(spec, required=True)
     plan = _plan_covering(spec, "okf:docs/features/demo/item.md:contract")
@@ -1063,12 +896,7 @@ def test_coverage_gate_still_demands_required_obligations(tmp_path: Path):
 
 
 def _two_flows_over_one_contract(tmp_path: Path) -> Path:
-    """Two sibling journeys over the same changed contract, one of them linking to the other.
-
-    The shape is ordinary in a real book: a broad journey names a narrower one as a step, and
-    both walk the same endpoint. It is also the shape that files the narrower flow under both
-    roles at once.
-    """
+    """Two sibling journeys over the same changed contract, one of them linking to the other."""
     (tmp_path / "docs/features/demo/flows").mkdir(parents=True)
     (tmp_path / "docs/features/demo/http").mkdir()
     (tmp_path / "app").mkdir()
@@ -1108,16 +936,7 @@ def _two_flows_over_one_contract(tmp_path: Path) -> Path:
 
 
 def test_a_flow_linked_from_another_flow_is_not_also_a_contract(tmp_path: Path):
-    """A journey reached by the closure is filed once, so its bullets obligate once.
-
-    `_obligations` runs per member of `contracts` and per member of `journeys`, and only the
-    base obligation spells the role into its id. A flow in both sets therefore emits one
-    `:contract` and one `:end-state` — harmless — and two identical `:start:1` and `:end:1`,
-    which is a duplicate id. `validate_context` rejects the packet for it, and the
-    documentation gate turns that rejection into a rework brief the author cannot satisfy:
-    nothing is wrong with the book, so every pass writes something and fails the same way
-    until the rework budget runs out and the run dies.
-    """
+    """A journey reached by the closure is filed once, so its bullets obligate once."""
     _two_flows_over_one_contract(tmp_path)
 
     packet = build_context(tmp_path, base="HEAD", source_roots={"demo": ["app"]})
@@ -1133,16 +952,7 @@ def test_a_flow_linked_from_another_flow_is_not_also_a_contract(tmp_path: Path):
 
 
 def test_a_journey_over_a_required_contract_is_itself_required(tmp_path: Path):
-    """A flow carries no `code:` bullet, so the grounding rule made every journey context.
-
-    That was not a policy, it was an accident of applying a code-node test to a document type
-    that has no code: `_is_required` demands grounding, a flow can never be grounded, so the
-    answer was `False` for every journey in every book. Nothing has ever owed a walk of a
-    journey, and the two leverage metrics that measure a plan against its journeys have never
-    had a denominator to divide by. What a flow does have is the link that put it in the
-    packet, and a flow linking the contract the story changed is owed exactly as that contract
-    is — while one linking only the context-only parent stays context itself.
-    """
+    """A flow carries no `code:` bullet, so the grounding rule made every journey context."""
     _book(tmp_path)
     (tmp_path / "docs/features/demo/flows").mkdir()
     (tmp_path / "docs/features/demo/flows/reads-widget.md").write_text(
@@ -1177,19 +987,7 @@ def test_a_journey_over_a_required_contract_is_itself_required(tmp_path: Path):
 
 
 def test_a_journey_is_required_of_the_story_that_walked_it_not_of_its_neighbour(tmp_path: Path):
-    """Two journeys end on the same screen, and only one of them is this story's.
-
-    Ending somewhere is the cheapest thing a story can do to a journey: every flow that
-    finishes on the policy detail is finished by whoever builds the policy detail, and the
-    story that built it did not thereby walk `edit-policy`. So the destination is necessary
-    and the route is what distinguishes — a required contract the flow reaches on the way,
-    which is the field filled or the button pressed that a story either shipped or did not.
-
-    The destination is also read generously in one direction only: an `end:` naming the whole
-    screen is reached by a story grounded in a section of it, because a section is where a
-    screen's requiredness actually lands. Without that, an `end:` on the document and a diff
-    on its anchor are different nodes and no journey in any book is ever required.
-    """
+    """Two journeys end on the same screen, and only one of them is this story's."""
     _book(tmp_path)
     (tmp_path / "docs/features/demo/flows").mkdir()
     (tmp_path / "docs/features/demo/flows/fills-widget.md").write_text(
@@ -1224,9 +1022,7 @@ def test_a_journey_is_required_of_the_story_that_walked_it_not_of_its_neighbour(
 
 
 def test_a_ui_scenario_that_vets_no_screen_is_rejected(tmp_path: Path):
-    """The gate the whole change exists for: every assertion in the run that shipped the
-    defect was true, and the page was a 117px column against the right margin. A UI scenario
-    that never registers what rendered proves presence and nothing about placement."""
+    """The gate the whole change exists for: every assertion in the run that shipped the defect was true, and the page was a 117px column against the right margin."""
     spec = tmp_path / "docs/specs/story-1"
     _gui_context(spec)
     plan = _gui_plan(spec, locator={"role": "alert", "name": "the failure message"})
@@ -1257,8 +1053,7 @@ def test_a_vetted_screen_the_packet_does_not_name_is_rejected(tmp_path: Path):
 
 
 def test_a_computed_vet_target_is_rejected(tmp_path: Path):
-    """A screen assembled at run time cannot be checked before the run, which is the only
-    place this gate is worth anything."""
+    """A screen assembled at run time cannot be checked before the run, which is the only place this gate is worth anything."""
     spec = tmp_path / "docs/specs/story-1"
     _gui_context(spec)
     plan = _gui_plan(spec, locator={"role": "alert", "name": "the failure message"})
@@ -1313,13 +1108,7 @@ def _crossing_journey(tmp_path: Path) -> None:
 
 
 def test_a_flows_claim_is_surfaced_where_its_own_bullet_points(tmp_path: Path):
-    """A flow is not performed — it orders steps that are — so the surface its own claims are
-    observed on is a property of the nodes its bullets name, not of the directory the flow file
-    sits in. `surface` is what the compiler keys the owning `driver:` off, so a journey a user
-    walks out of one surface and finishes in another owes its two claims to two drivers, and
-    only the bullet says which: here `start:` is observed on `web` and `end:` on `api`, though
-    both are written in a file under `docs/features/web/`.
-    """
+    """A flow is not performed — it orders steps that are — so the surface its own claims are observed on is a property of the nodes its bullets name, not of the directory the flow file sits in."""
     _crossing_journey(tmp_path)
 
     packet = build_context(tmp_path, base="HEAD", source_roots={"web": ["app"], "api": ["app"]})
@@ -1328,6 +1117,4 @@ def test_a_flows_claim_is_surfaced_where_its_own_bullet_points(tmp_path: Path):
     flow = "okf:docs/features/web/flows/cross.md"
     assert by_id[f"{flow}:start:1"]["surface"] == "web"
     assert by_id[f"{flow}:end:1"]["surface"] == "api"
-    # The node-level end-state is the same claim about where the journey finishes, so it is
-    # stamped off `end:` too — not off the file's own directory.
     assert by_id[f"{flow}:end-state"]["surface"] == "api"

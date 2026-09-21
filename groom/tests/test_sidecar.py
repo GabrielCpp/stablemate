@@ -1,12 +1,4 @@
-"""Tests for groom.sidecar: changed-path -> push translation, and the
-fire-and-forget/silent-on-failure discipline that is the sidecar's core
-safety property (a container with no groom listening must behave exactly as
-it does today). No real filesystem watch is started here — only the pure
-functions that decide what to do with an already-observed path, plus
-_push()'s HTTP-call wrapping.
-
-Run: uv run python tests/test_sidecar.py   (or via pytest)
-"""
+"""Tests for groom.sidecar: changed-path -> push translation, and the fire-and-forget/silent-on-failure discipline that is the sidecar's core safety property (a container with no groom listening must behave exactly as it does today)."""
 from __future__ import annotations
 
 import contextlib
@@ -87,7 +79,7 @@ def test_push_exited_is_silent_when_groom_is_unreachable():
         raise urllib.error.URLError("connection refused")
 
     with patch.object(sidecar.urllib.request, "urlopen", _raise):
-        sidecar.push_exited(0)  # must not raise
+        sidecar.push_exited(0)
 
 
 def test_push_is_silent_when_groom_is_unreachable():
@@ -95,7 +87,6 @@ def test_push_is_silent_when_groom_is_unreachable():
         raise urllib.error.URLError("connection refused")
 
     with patch.object(sidecar.urllib.request, "urlopen", _raise):
-        # Must not raise — this is the whole safety property of the sidecar.
         sidecar.push_progress("some_node")
         sidecar.push_blocked("docs/gate.md", "question?")
 
@@ -157,21 +148,13 @@ def test_handle_event_ignores_files_not_awaiting():
 
 
 def test_handle_event_ignores_a_path_it_cannot_read():
-    """A directory, or a file already deleted by the time the batch arrives.
-
-    The watch coalesces changes before yielding them, so by then the path may be
-    gone — and every path under the workspace is read to decide whether it is a
-    gate. No exception, no push.
-    """
+    """A directory, or a file already deleted by the time the batch arrives."""
     with patch.object(sidecar, "WORKSPACE_DIR", Path("/workspace")), \
          patch.object(sidecar, "RUNS_DIR", Path("/runs")), \
          patch.object(sidecar, "push_blocked", lambda *a: (_ for _ in ()).throw(AssertionError("should not push"))):
         sidecar._handle_event(Path("/workspace/nonexistent-groom-test-xyz/gone.md"))
 
 
-# --------------------------------------------------------------------------- #
-# Pull-side query: scan_gates / _terminal / snapshot / cli --query
-# --------------------------------------------------------------------------- #
 def test_scan_gates_finds_awaiting_and_skips_git_and_non_awaiting():
     with tempfile.TemporaryDirectory() as tmp:
         ws = Path(tmp)
@@ -181,7 +164,7 @@ def test_scan_gates_finds_awaiting_and_skips_git_and_non_awaiting():
         )
         (ws / "docs" / "done.md").write_text("STATUS: CONSUMED\n\nnothing to see\n")
         (ws / ".git").mkdir()
-        (ws / ".git" / "hook.md").write_text("STATUS: AWAITING_OPERATOR\n")  # excluded dir
+        (ws / ".git" / "hook.md").write_text("STATUS: AWAITING_OPERATOR\n")
         with patch.object(sidecar, "WORKSPACE_DIR", ws):
             gates = sidecar.scan_gates()
     assert gates == [{"file_path": "docs/gate.md", "question": "Which default?"}]
@@ -226,9 +209,6 @@ def test_cli_query_prints_snapshot_json_and_does_not_watch():
     assert json.loads(buf.getvalue()) == fake
 
 
-# --------------------------------------------------------------------------- #
-# Operator-gate relay RPCs: getQuestions / answerGate → the run's control socket
-# --------------------------------------------------------------------------- #
 def test_get_questions_relays_to_the_named_runs_control_socket():
     captured = {}
 
@@ -248,8 +228,6 @@ def test_get_questions_relays_to_the_named_runs_control_socket():
     assert reply == {"ok": True, "questions": []}
     assert captured["run_dir"] == str(runs / "coder-20260101-000000")
     assert captured["action"] == "questions"
-    # Bounded below the host's per-RPC deadline, so a run too busy to answer
-    # comes back as the protocol's `{}` rather than a host-side timeout.
     assert captured["timeout"] == sidecar.CONTROL_TIMEOUT
 
 
@@ -278,9 +256,7 @@ def test_answer_gate_carries_the_gate_path_and_the_answer_text():
 
 
 def test_gate_relay_reports_no_listener_instead_of_raising():
-    """A finished, crashed, or still-booting run has no control socket bound.
-    For the host that is an ordinary state to poll through, so it must arrive
-    as a result — an exception here would read as a broken sidecar."""
+    """A finished, crashed, or still-booting run has no control socket bound."""
     def _fake_send(run_dir, request, *, timeout=5.0):
         raise FileNotFoundError(f"no run is listening on {run_dir}")
 

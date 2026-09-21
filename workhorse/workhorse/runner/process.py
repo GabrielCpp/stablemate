@@ -1,5 +1,4 @@
-"""Spawning an agent CLI and streaming its output: the process group, the watchdog,
-and the one stream loop every backend goes through."""
+"""Spawning an agent CLI and streaming its output: the process group, the watchdog, and the one stream loop every backend goes through."""
 
 from __future__ import annotations
 
@@ -25,46 +24,20 @@ from workhorse.runner import transcript, worktree_guard
 
 
 def _align_pwd(popen_kwargs: dict[str, Any]) -> None:
-    """Make the child's ``$PWD`` agree with the working directory it is spawned in.
-
-    ``Popen(cwd=…)`` changes the child's working directory but leaves the inherited
-    ``PWD`` pointing at the *launcher's* directory — only a shell's ``cd`` maintains
-    that variable. A CLI that trusts ``PWD`` over ``getcwd()`` therefore works in the
-    wrong repository whenever the two disagree, and OpenCode does exactly that: it
-    resolves its project root from ``PWD``, so a node handed ``cwd=<target repo>``
-    read and wrote the repo *workhorse itself* was launched from. The benchmark
-    harness launches every phase from its own checkout, so every author run there
-    decomposed that checkout's backlog no matter which repo it was pointed at.
-
-    Corrected here rather than in the OpenCode adapter because the disagreement is a
-    property of ``Popen``, not of one CLI: any agent CLI may read ``PWD``, and every
-    one of them is spawned through this method.
-    """
+    """Make the child's ``$PWD`` agree with the working directory it is spawned in."""
     cwd = popen_kwargs.get("cwd")
     if not cwd:
         return
     env = popen_kwargs.get("env")
     if env is None:
-        # No explicit env means "inherit", and what would be inherited is exactly the
-        # stale PWD this exists to correct — so materialise the environment to fix it.
         env = dict(os.environ)
         popen_kwargs["env"] = env
     env["PWD"] = str(Path(cwd).resolve())
-    # OLDPWD describes a `cd` this process never made; leaving the launcher's value
-    # would send `cd -` in an agent's shell somewhere arbitrary.
     env.pop("OLDPWD", None)
 
 
 def _kill_process_group(proc: subprocess.Popen, sig: int = signal.SIGKILL) -> None:
-    """Signal the subprocess AND its entire process group, reaping any grandchildren
-    (MCP servers, headless browsers, JVMs) the agent spawned.
-
-    The agent is launched with ``start_new_session=True``, so it is the leader of its
-    own process group; killing the group is what stops an unattended run from
-    accumulating orphaned Playwright/Maestro/Chrome processes when a turn is force-
-    terminated. Falls back to signalling just the process if the group is already
-    gone, and never raises if the target has already exited.
-    """
+    """Signal the subprocess AND its entire process group, reaping any grandchildren (MCP servers, headless browsers, JVMs) the agent spawned."""
     try:
         os.killpg(os.getpgid(proc.pid), sig)
     except (ProcessLookupError, PermissionError):
@@ -75,14 +48,7 @@ def _kill_process_group(proc: subprocess.Popen, sig: int = signal.SIGKILL) -> No
 
 
 class ActiveProcess:
-    """The agent subprocess currently being streamed, and the lock guarding it.
-
-    Registering the live process is what lets the top-level interrupt handler
-    terminate it (and its group) cleanly instead of leaving it orphaned. The
-    handler runs on a different thread from the stream loop, so the handle and its
-    lock are one object rather than two module globals two functions happen to
-    share.
-    """
+    """The agent subprocess currently being streamed, and the lock guarding it."""
 
     def __init__(self) -> None:
         self._lock = threading.Lock()
@@ -118,11 +84,7 @@ def _arm_watchdog(
     resilience: AgentResilience,
     on_fire: "Callable[[], None] | None" = None,
 ) -> threading.Timer | None:
-    """Arm an out-of-band timer that force-kills ``proc``'s process group after
-    ``timeout + grace``. Returns the Timer (cancel it once the turn completes) or
-    None when the node opts out of a deadline (``timeout: infinity``). ``on_fire`` is
-    invoked just before the kill so the reader can record that the turn was watchdog-
-    killed (and treat the resulting EOF as a timeout rather than a hard error)."""
+    """Arm an out-of-band timer that force-kills ``proc``'s process group after ``timeout + grace``."""
     if timeout == float("inf"):
         return None
 
@@ -134,8 +96,6 @@ def _arm_watchdog(
             f"{int(resilience.watchdog_grace_s)}s grace — SIGKILLing process group",
             flush=True,
         )
-        # Runs on the watchdog's daemon thread — otel.turn_event is the one
-        # instrumentation call that must be (and is) thread-safe.
         otel.turn_event(
             "watchdog_kill", error=True, node=node_id, timeout_s=int(timeout)
         )
@@ -149,51 +109,19 @@ def _arm_watchdog(
     return timer
 
 
-# The agent CLI can be replaced ON DISK mid-run — see ``AgentResilience.exec_retry_max``
-# for why exec of the very same path can fail during replacement and why that is NOT a
-# missing tool. It is deliberately distinguished from a genuinely absent CLI (a
-# non-interactive PATH with no nvm shim, the classic launch-context bug): there ENOENT
-# persists and shutil.which() returns None, so we fail FAST rather than burn the retry
-# budget on a binary that will never appear.
-# errnos that mean "the executable is momentarily un-exec'able", not "absent":
-# ETXTBSY = native binary being overwritten; ENOEXEC = binary present but half-written
-# (invalid header) mid-update; ESTALE = NFS handle gone stale (flaky home mount). All three
-# are the SAME self-update window seen at a different instant — the file is there but not yet
-# runnable — so all retry the same way. ENOENT (the rename gap) is handled alongside them in
-# the retry test below; it is only *conditional* at terminal classification (see `resolves`).
 _EXEC_BUSY_ERRNOS = frozenset({errno.ETXTBSY, errno.ENOEXEC, errno.ESTALE})
 
 
 @dataclass(frozen=True, slots=True)
 class ProcessSupervisor:
-    """The agent subprocess a run is currently streaming, and the clock timing it.
-
-    Its fields are reasons this is an object rather than module-level state and free
-    functions. ``active`` is state with an invariant: the
-    live handle and the lock guarding it are written by the stream loop and read by
-    the interrupt handler on a *different thread*, so they are one object or they
-    are a race. ``clock`` is the seam: the streaming path waits in exactly two
-    places — a turn's deadline and the exec-retry backoff — and a test that wants to
-    watch a timeout fire should not have to wait out a real one. Successful executable
-    names preserve the evidence needed to distinguish a later replacement window from a
-    CLI that was never configured in this process.
-
-    ``resilience`` is not a field, deliberately. It is a parameter of the
-    ``AgentBackend`` port, so it arrives with each turn from the ladder that owns it;
-    making it state here would mean two copies of one run's settings, and the port
-    would still carry the other.
-    """
+    """The agent subprocess a run is currently streaming, and the clock timing it."""
 
     clock: Clock = SYSTEM_CLOCK
     active: ActiveProcess = field(default_factory=ActiveProcess)
     successful_executables: set[str] = field(default_factory=set, repr=False)
 
     def terminate_active(self) -> None:
-        """Terminate the currently-streaming agent subprocess (and its group), if any.
-
-        Called by the main loop's KeyboardInterrupt handler so the child process tree
-        is cleaned up before workhorse exits, rather than being left as an orphan.
-        """
+        """Terminate the currently-streaming agent subprocess (and its group), if any."""
         self.active.terminate()
 
     def spawn(
@@ -204,16 +132,7 @@ class ProcessSupervisor:
         resilience: AgentResilience,
         **popen_kwargs: Any,
     ) -> subprocess.Popen:
-        """``subprocess.Popen(cmd)`` with bounded retry across a self-update exec window.
-
-        A transient exec failure (the CLI binary being rewritten in place by its own
-        auto-updater) is retried briefly so a healthy turn is not interrupted; a
-        permanently-missing CLI fails fast with an actionable ``BackendInvocationError``.
-        Both terminal cases raise ``BackendInvocationError`` (never a bare ``OSError``) so
-        they flow through the caller's existing ladder rather than crashing the run: a slow
-        update escalates as ``transient=True`` (the outer backoff gives it more time); an
-        absent CLI is ``transient=False`` (fail fast, resumable).
-        """
+        """``subprocess.Popen(cmd)`` with bounded retry across a self-update exec window."""
         _align_pwd(popen_kwargs)
         wait_budget = active_recovery_wait_budget() or RecoveryWaitBudget.from_resilience(
             resilience
@@ -225,15 +144,6 @@ class ProcessSupervisor:
                 self.successful_executables.add(cmd[0])
                 return proc
             except OSError as exc:
-                # ETXTBSY/ENOEXEC/ESTALE mean the binary is momentarily busy / half-written /
-                # stale — present but not runnable this instant. ENOENT is
-                # AMBIGUOUS at a single instant: a self-updater's rename makes the binary
-                # briefly *absent*, and shutil.which() is exactly as blind as exec() during
-                # that window — so one probe cannot tell "mid-update" from "never installed".
-                # We therefore resolve ENOENT in TIME, not by probing once: retry it briefly.
-                # A self-update reappears within a second or two; a genuinely absent CLI never
-                # does, and only then (after the retries) do we fail. Other OSErrors — e.g.
-                # EACCES (permission) — are permanent, so they go terminal immediately.
                 retryable = exc.errno in _EXEC_BUSY_ERRNOS or exc.errno == errno.ENOENT
                 attempt += 1
                 if retryable and attempt <= resilience.exec_retry_max:
@@ -255,13 +165,6 @@ class ProcessSupervisor:
                     with otel.wait("exec-retry", node_id):
                         self.clock.sleep(delay)
                     continue
-                # Terminal — decide permanent-vs-transient only NOW, after a rewrite window
-                # has had time to close. A CLI that resolves but still won't exec means the
-                # update outlasted our budget → hand to the outer transient ladder (more
-                # time). A CLI successfully launched earlier in this process is also proven
-                # to be configured, even while an updater's long rename makes which() blind.
-                # Only a CLI that neither resolves nor ever launched here is genuinely absent
-                # (the classic non-interactive-PATH / missing-nvm launch bug).
                 resolves = shutil.which(cmd[0]) is not None
                 if retryable and (resolves or cmd[0] in self.successful_executables):
                     raise BackendInvocationError(
@@ -293,39 +196,8 @@ class ProcessSupervisor:
         env_extra: dict[str, str] | None = None,
         secrets: Iterable[str] | None = None,
     ) -> tuple[bool, int]:
-        """Spawn ``cmd`` in its own process group, stream its merged stdout line by line to
-        ``on_line``, and enforce ``timeout`` with BOTH an in-loop wall-clock check and an
-        out-of-band watchdog that SIGKILLs the whole process group once a turn overruns
-        ``timeout + grace`` — even when the reader is blocked mid-readline on a wedged
-        stream (a stalled API response or a hung MCP server), which the in-loop check alone
-        can never catch.
-
-        Every harness — Claude, Codex, Copilot, OpenCode, Cline — streams through this one
-        path, so the per-node timeout, the process-group kill (which reaps orphaned MCP /
-        browser / JVM grandchildren), and the active-process registration behave identically
-        regardless of backend. ``on_line`` receives each raw line (newline included) and does
-        its own parsing/accumulation; its answer is only ever tested for truthiness — a
-        truthy one asks for an early abort — which is why it is typed as returning
-        ``object``: a callback with nothing to say returns ``None`` and stays in shape.
-        Returns ``(timed_out, returncode)``.
-
-        ``env_extra`` layers over the inherited environment — the operator's
-        ``[harness.<backend>].env`` table, resolved by the backend that knows its own
-        name. It is applied last, so a harness knob configured for a run wins over the
-        same variable inherited from the launching shell.
-
-        Every line is passed through a ``SecretRedactor`` before ``on_line`` ever sees
-        it, so a leaked key never reaches the transcript, the checkpoint, or telemetry —
-        this is the one choke point every backend streams through, and the realistic
-        leak is a CLI echoing a key in an error body, not a clever agent. ``secrets`` are
-        the caller's known values to redact verbatim, on top of the built-in prefix
-        heuristics that run unconditionally; workhorse itself never decides what counts
-        as a secret, the same way it never assembles ``env_extra``.
-        """
+        """Spawn ``cmd`` in its own process group, stream its merged stdout line by line to ``on_line``, and enforce ``timeout`` with BOTH an in-loop wall-clock check and an out-of-band watchdog that SIGKILLs the whole process group once a turn overruns ``timeout + grace`` — even when the reader is blocked mid-readline on a wedged stream (a stalled API response or a hung MCP server), which the in-loop check alone can never catch."""
         redactor = SecretRedactor(secrets or ())
-        # Teed here rather than in an adapter, because this is the one line every backend's
-        # output passes through *after* redaction: a tee installed anywhere else would be a
-        # transcript with the leaked key still in it.
         tee = transcript.tee_begin(node_id)
 
         def redacted_on_line(raw: str) -> object:
@@ -335,8 +207,6 @@ class ProcessSupervisor:
             return on_line(line)
 
         env = {**os.environ, "WORKHORSE_NODE_ID": node_id, **(env_extra or {})}
-        # Inside a `worktree_guard.guarding` scope the turn's first `git` is the guard's,
-        # layered last so an operator's own PATH knob cannot route around it.
         env["PATH"] = worktree_guard.guarded_path(env.get("PATH", ""))
         proc = self.spawn(
             cmd,
@@ -344,13 +214,11 @@ class ProcessSupervisor:
             resilience=resilience,
             stdin=subprocess.PIPE if stdin_data is not None else subprocess.DEVNULL,
             stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,  # merge so a full stderr buffer can't deadlock the read
+            stderr=subprocess.STDOUT,
             text=True,
             bufsize=1,
             cwd=cwd or None,
             env=env,
-            # Own process group/session so the watchdog can reap the agent AND every MCP
-            # server / browser / JVM it spawns, instead of orphaning grandchildren.
             start_new_session=True,
         )
         if stdin_data is not None:
@@ -381,26 +249,14 @@ class ProcessSupervisor:
                 if elapsed > timeout:
                     timed_out = True
                     break
-                # Liveness telemetry, emitted here at the top so it also ticks while the
-                # stream is SILENT — the wedged case, and the only one worth paging on.
-                # The turn's own span cannot report this: it does not export until it ends.
                 if now - last_beat_at >= resilience.heartbeat_every_s:
                     otel.turn_heartbeat(node_id, now - last_line_at, elapsed)
                     last_beat_at = now
-                # Short select slices keep the in-loop wall-clock check live for a cleanly
-                # arriving stream; the watchdog is the backstop for a stream that wedges
-                # mid-line (where readline() below would otherwise block past the deadline).
-                # The control channel waits on the same slice as the stream, so an operator
-                # who pushes a fix waits ≤1s rather than however many hours this turn had
-                # left — and the fd is what makes that a wake-up rather than a poll.
                 watched: list[Any] = [proc.stdout]
                 control_fd = control.armed().fileno()
                 if control_fd is not None:
                     watched.append(control_fd)
                 ready, _, _ = select.select(watched, [], [], min(1.0, timeout - elapsed))
-                # The ordering below is the whole contract: the event is recorded BEFORE the
-                # kill, exactly as the watchdog does it, so the turn's span closes carrying
-                # the tokens, cost and elapsed time it really accrued and nothing dangles.
                 requested = reload.cut_requested()
                 if requested is not None:
                     print(
@@ -413,27 +269,18 @@ class ProcessSupervisor:
                     )
                     reloading = requested
                     break
-                # `ready` can hold the control fd alone — a message that was declined, or
-                # one for a run whose turn is not being cut. Reading the stream then would
-                # block past the deadline, so the stream's own readiness is what gates it.
                 if proc.stdout not in ready:
                     if proc.poll() is not None:
                         break
                     continue
                 raw = proc.stdout.readline()
-                if not raw:  # EOF
+                if not raw:
                     break
                 last_line_at = self.clock.monotonic()
-                if redacted_on_line(raw):  # truthy = caller requests early abort (e.g. cap detected)
+                if redacted_on_line(raw):
                     timed_out = True
                     break
-            # A watchdog SIGKILL unblocks readline() with EOF; surface it as a timeout so the
-            # caller retries the turn rather than misreading the -SIGKILL exit as a hard fail.
             timed_out = timed_out or fired.is_set()
-            # A reload takes the group down the same way a timeout does — SIGTERM, 5s,
-            # SIGKILL — so the MCP servers and browsers the agent spawned go with it. What
-            # it must NOT do is set `timed_out`: that is the flag the ladder reads as "the
-            # turn overran", and this turn overran nothing.
             if (timed_out or reloading is not None) and proc.poll() is None:
                 _kill_process_group(proc, signal.SIGTERM)
                 try:
@@ -443,53 +290,30 @@ class ProcessSupervisor:
             proc.wait()
         finally:
             if tee is not None:
-                # Closed on every exit — timeout, reload, kill — so the classifier that
-                # runs next finds a complete file rather than an open handle's tail.
                 tee.close()
             if watchdog is not None:
                 watchdog.cancel()
             self.active.clear()
-            # Backstop orphan reap: if the agent is somehow still alive on exit, take its
-            # whole group down so no MCP server / browser lingers into the next node.
             if proc.poll() is None:
                 _kill_process_group(proc, signal.SIGKILL)
                 try:
                     proc.wait(timeout=5)
                 except subprocess.TimeoutExpired:
                     pass
-            # Close the streaming pipes we opened. `subprocess.Popen` only closes them on
-            # `__del__`, which leaks a ResourceWarning under pytest; closing them here
-            # matches the lifetime the streaming loop actually needs them for. stdin was
-            # already closed at the write site when the caller fed it; the Popen's own
-            # cleanup closes the underlying descriptors, but the TextIOWrapper held by
-            # proc.stdout is what ResourceWarning flags.
             if proc.stdout is not None:
                 proc.stdout.close()
         if reloading is not None:
-            # Raised rather than returned because every caller between here and the driver
-            # is written to interpret a `(timed_out, returncode)` pair as a verdict on the
-            # agent, and there is no value of that pair meaning "nobody judged this turn".
             raise reload.ReloadRequested(
                 f"reload requested during {node_id}", core=reloading.core, cli=reloading.cli
             )
         return timed_out, proc.returncode
 
 
-#: The process's supervisor. There is one interrupt handler per process, and it must
-#: reach the very subprocess the stream loop registered, so what is process-wide is
-#: this *reference* — held here and only here. Built from the real clock, because the
-#: production answer needs no configuration; a test swaps the whole supervisor through
-#: ``install`` rather than assigning over the name.
 _supervisor = ProcessSupervisor()
 
 
 def install(supervisor: ProcessSupervisor) -> ProcessSupervisor:
-    """Make ``supervisor`` the one the two functions below delegate to, and return the
-    previous one so a caller can put it back.
-
-    The injection point for the streaming path: a test installs a supervisor on a
-    ``FakeClock`` and gets the deadline logic without waiting out a real deadline.
-    """
+    """Make ``supervisor`` the one the two functions below delegate to, and return the previous one so a caller can put it back."""
     global _supervisor
     previous, _supervisor = _supervisor, supervisor
     return previous
@@ -507,13 +331,7 @@ def stream_subprocess(
     env_extra: dict[str, str] | None = None,
     secrets: Iterable[str] | None = None,
 ) -> tuple[bool, int]:
-    """Stream a turn on the installed supervisor — see :meth:`ProcessSupervisor.stream`.
-
-    Kept as a function because it is what the ``AgentBackend`` adapters call, and an
-    adapter has no supervisor to be handed one: the port's turn signature is the
-    ladder's, and widening it to carry a collaborator every adapter would only pass
-    straight through is the parameter-threading this refactor removes elsewhere.
-    """
+    """Stream a turn on the installed supervisor — see :meth:`ProcessSupervisor.stream`."""
     return _supervisor.stream(
         cmd,
         node_id,
@@ -528,9 +346,5 @@ def stream_subprocess(
 
 
 def terminate_active() -> None:
-    """Terminate the currently-streaming agent subprocess (and its group), if any.
-
-    Called by the main loop's KeyboardInterrupt handler so the child process tree is
-    cleaned up before workhorse exits, rather than being left as an orphan.
-    """
+    """Terminate the currently-streaming agent subprocess (and its group), if any."""
     _supervisor.terminate_active()

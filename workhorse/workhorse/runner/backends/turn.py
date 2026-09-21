@@ -1,14 +1,4 @@
-"""What one non-Claude turn yielded, and the one place such a turn is classified.
-
-Every adapter that is not Claude ends its turn here — the JSONL backends
-(codex/copilot/opencode/cline) after ``stream_jsonl``. The struct and the
-classifier live together because they are two halves
-of one contract — what the stream accumulates, and how the accumulation becomes a
-result or a ``BackendInvocationError``.
-
-Nothing here names a CLI. A field only one backend needs does not belong on the
-struct they all share (see ``opencode._OpenCodeEvents``).
-"""
+"""What one non-Claude turn yielded, and the one place such a turn is classified."""
 
 from __future__ import annotations
 
@@ -22,24 +12,11 @@ from workhorse.runner.usage import TurnUsage
 
 @dataclass(slots=True)
 class TurnState:
-    """What one non-Claude turn yielded, as its output streamed past.
-
-    Mutable by construction: ``stream_jsonl``'s per-line callback and the
-    per-CLI ``on_event`` adapter write into it event by event, the process
-    outcome lands once the stream closes, and ``finalize_turn`` reads the
-    finished value. It replaces a bare ``dict`` that four backends
-    ``setdefault``-ed into with no shared declaration, and the four-element tuple
-    that used to carry it back out.
-
-    Every field here is one every backend has. A key only one CLI needs does not
-    belong on the struct they all share — see ``opencode._OpenCodeEvents``.
-    """
+    """What one non-Claude turn yielded, as its output streamed past."""
 
     result_text: str = ""
     session_id: str | None = None
     usage: TurnUsage = field(default_factory=TurnUsage)
-    #: Anything signalling *how* a turn failed — non-JSON output lines and
-    #: structured error events — for ``classify_turn`` to read.
     diagnostics: list[str] = field(default_factory=list)
     timed_out: bool = False
     returncode: int = 0
@@ -66,16 +43,7 @@ def finalize_turn(
     timeout,
     rate_reset_at=None,
 ) -> str:
-    """Classify a finished turn through the one shared classifier, so the JSONL/text
-    backends and the Claude path produce identical failure messages and transient /
-    overflow / non-recoverable verdicts. See ``failure.classify_turn``.
-
-    ``rate_reset_at`` is an optional unix epoch when a cap's window reopens (the
-    opencode/Codex path fetches it out-of-band); on a cap the classifier attaches it
-    so the runner sleeps until exactly then instead of the blind default wait."""
-    # The one place every non-Claude turn ends, so it is where usage reaches the
-    # open turn span — no backend needs its own otel call, and a new backend gets
-    # cost/token attribution by populating `state.usage` and nothing else.
+    """Classify a finished turn through the one shared classifier, so the JSONL/text backends and the Claude path produce identical failure messages and transient / overflow / non-recoverable verdicts."""
     if not state.usage.is_empty:
         otel.turn_result(state.usage)
     return _failure.classify_turn(
@@ -89,10 +57,5 @@ def finalize_turn(
         session_id=state.session_id,
         session_id_path=session_id_path,
         rate_reset_at=rate_reset_at,
-        # The counts this function already stamped on the span, handed to the
-        # classifier as well: an empty turn that generated thousands of tokens is a
-        # different failure from one that generated none, and this is the only place
-        # both facts are in scope. The Claude path leaves it unset — that CLI does not
-        # report reasoning tokens, so the distinction is not decidable there.
         generated_tokens=state.usage.generated_tokens,
     )

@@ -1,20 +1,4 @@
-"""`ostler scaffold` — hierarchy-respecting creation of UI-profile nodes (§9).
-
-Two shapes, both driven by the per-type ``UINodeType`` spec in ``registry.py``:
-
-* **file-level** (`screen`/`cli`/`server`/`concept`/`format`/`flow`) — a whole ``.md`` placed in
-  the type's context folder under its service (``ostler scaffold screen changes-view --service
-  groom`` → ``docs/features/groom/gui/screens/changes-view.md``), emitting the frontmatter, the
-  file's own bullet stubs, and its ``required_sections`` skeleton.
-* **section-level** (`component`/`interaction`/`endpoint`/`command`/`invocation`) — a ``### id``
-  inserted under its ``## Heading`` inside an existing surface doc (creating the heading if absent),
-  with the ordered ``bullet_keys`` stubs: ``ostler scaffold interaction click-file --in
-  gui/screens/changes-view.md``.
-
-The output is already canonical (frontmatter + bullet order match ``ostler fmt``), so scaffolding is
-the deterministic remedy for the ``missing-*`` / ``unresolved-*`` linter errors: the agent respects
-the §4 layout *by construction* instead of inferring it.
-"""
+"""`ostler scaffold` — hierarchy-respecting creation of UI-profile nodes (§9)."""
 
 from __future__ import annotations
 
@@ -26,23 +10,12 @@ from ostler.model import Graph
 
 
 def _bullet_stubs(uitype: registry.UINodeType) -> list[str]:
-    """The type's keys in canonical order, with the document-order-bound stubs under the last claim.
-
-    A `verify:`, a `fixture:` and a capture key each bind to the nearest claim above them, so
-    `ostler fmt` keeps them there — and a stub written anywhere else is one the formatter moves
-    the first time the file is touched. Which keys bind that way is `registry.attached_keys`'s
-    to say: this function asked for the checks alone for as long as they were the only family,
-    and went on doing so after the other two were added, which is how these stubs came to be
-    written in a shape `fmt` disagreed with.
-    """
+    """The type's keys in canonical order, with the document-order-bound stubs under the last claim."""
     normative = set(registry.normative_keys(uitype.name))
     attached = set(registry.attached_keys(uitype.name))
-    # An alias is a second spelling of the key above it; stubbing both would ask the author
-    # to fill one and delete the other.
     keys = [bk for bk in uitype.bullet_keys if not bk.alias]
     claims = [bk.key for bk in keys if bk.key in normative]
     if not claims:
-        # Nothing to bind to, so nothing to hoist: declared order is the canonical order.
         return [f"- {bk.key}:" for bk in keys]
     bound = [f"- {bk.key}:" for bk in keys if bk.key in attached]
     rest = [f"- {bk.key}:" for bk in keys if bk.key not in attached]

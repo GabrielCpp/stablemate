@@ -1,20 +1,4 @@
-"""GitHub access for workflow scripts: PyGithub, never the ``gh`` CLI.
-
-:func:`github_client` is the one seam every script goes through. Because it is a plain
-Python call, an in-process test monkeypatches it — no PATH shim, no CLI, no network.
-The helpers below inherit that seam.
-
-**Patch the defining module.** A test fakes ``workhorse_workflows.kit.github.github_client``
-and both paths follow: the global lookups made inside *this* module, and the scripts that
-imported the name flat, since :mod:`workhorse_workflows.kit` forwards through
-``__getattr__`` rather than binding a copy. For the same reason the git calls here go
-through the module object (``git_kit.origin_url``) instead of a direct import — a test
-that fakes ``kit.git.origin_url`` must reach these callers too.
-
-The token pushes live here rather than in :mod:`workhorse_workflows.kit.git` because
-they are github.com operations that happen to use git — they resolve an ``owner/repo``
-slug and push over ``https://github.com/…`` with a transient credential.
-"""
+"""GitHub access for workflow scripts: PyGithub, never the ``gh`` CLI."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -33,8 +17,7 @@ _GITHUB_URL_PREFIXES = (
 
 
 def repo_full_name_from_url(url: str) -> str | None:
-    """Derive a github.com ``owner/repo`` slug from an origin URL (SSH or HTTPS).
-    Returns None when the origin is not a github.com remote."""
+    """Derive a github.com ``owner/repo`` slug from an origin URL (SSH or HTTPS)."""
     for prefix in _GITHUB_URL_PREFIXES:
         if url.startswith(prefix):
             path = url[len(prefix):]
@@ -43,14 +26,7 @@ def repo_full_name_from_url(url: str) -> str | None:
 
 
 def github_client(token: str | None = None):
-    """Return an authenticated PyGithub ``Github`` client.
-
-    The one seam every workflow script goes through for GitHub API access (opening
-    PRs, checking checks, merging) instead of shelling out to the ``gh`` CLI.
-    ``token`` defaults to whatever :mod:`workhorse_workflows.kit.credentials` finds —
-    the only module in this package allowed to read the environment, and only because
-    a secret must never become a checkpointed parameter.
-    """
+    """Return an authenticated PyGithub ``Github`` client."""
     tok = token or credentials.api_token()
     if tok:
         return Github(auth=Auth.Token(tok))
@@ -58,27 +34,12 @@ def github_client(token: str | None = None):
 
 
 def resolve_github_token(root: str | Path) -> str:
-    """Resolve the GitHub token for the coder PR/CI steps, given the repo ``root``.
-
-    Order: the env var named by agents.yml ``workflow.githubTokenEnv`` (repo-
-    configurable, not hardcoded), then the conventional ``GH_TOKEN``, then
-    ``GITHUB_TOKEN``. Returns ``""`` when none is set — callers treat empty as
-    "no token" and skip (best-effort).
-
-    ``root`` is required rather than defaulted: it is the caller's ``repo_dir``, and a
-    node that let this resolve itself from the ambient environment would be reading a
-    run input the run's parameters never recorded.
-    """
+    """Resolve the GitHub token for the coder PR/CI steps, given the repo ``root``."""
     return credentials.github_token(root)
 
 
 def resolve_repo(path: str | Path, token: str | None = None):
-    """Resolve the GitHub repository for the ``origin`` at ``path``.
-
-    Returns ``(repo, slug)`` where ``repo`` is a PyGithub ``Repository`` (via the
-    :func:`github_client` seam) or None when there is no origin, the origin is not a
-    github.com remote, or the API can't be reached; ``slug`` is the ``owner/repo``
-    string (or None when it can't be derived) for logging."""
+    """Resolve the GitHub repository for the ``origin`` at ``path``."""
     url = git_kit.origin_url(path)
     if not url:
         return None, None
@@ -102,24 +63,13 @@ def find_open_pr(gh_repo, branch: str):
     return None
 
 
-# The token is read from GH_TOKEN by this inline credential helper at git-exec
-# time, so it is never written into a remote URL, git config, or the process
-# arguments (which would leak it into logs / `ps`).
 _PUSH_CRED_HELPER = '!f() { echo username=x-access-token; echo "password=${GH_TOKEN}"; }; f'
 
 
 def push_branch(
     path: str | Path, token: str, branch: str, *, verify: bool = True, slug: str | None = None
 ) -> bool:
-    """Push ``branch`` to a github.com repo over HTTPS with a transient token.
-
-    The target repo is the ``origin`` slug by default; pass ``slug`` to override it
-    (for a bind-mount clone whose ``origin`` is a local path but that pushes to a
-    known ``owner/repo``). With ``verify`` (the default) returns True only after
-    confirming the remote branch head advanced to the local head — a push can
-    report success while leaving the ref unmoved, which is exactly what let a fix
-    loop spin against a stale PR head. Returns False on any failure (no github
-    target, push rejected, or unverified head)."""
+    """Push ``branch`` to a github.com repo over HTTPS with a transient token."""
     if slug is None:
         url = git_kit.origin_url(path)
         slug = repo_full_name_from_url(url) if url else None
@@ -148,13 +98,7 @@ def push_branch(
 
 
 def sync_to_origin(path: str | Path, token: str, base: str) -> str | None:
-    """Fetch ``base`` from the github.com ``origin`` over HTTPS and hard-set the local
-    ``base`` to it (``git checkout -B <base> FETCH_HEAD``).
-
-    Returns the new short HEAD sha on success, or None on any failure. Used after a
-    merge lands to move the local checkout to the merged tip, so the next branch is
-    cut from it. The token rides the same inline credential helper as
-    :func:`push_branch` — never written into a URL, git config, or the logs."""
+    """Fetch ``base`` from the github.com ``origin`` over HTTPS and hard-set the local ``base`` to it (``git checkout -B <base> FETCH_HEAD``)."""
     url = git_kit.origin_url(path)
     slug = repo_full_name_from_url(url) if url else None
     if not slug:

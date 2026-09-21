@@ -1,13 +1,4 @@
-"""Optional nicety: crop region bboxes out of the screenshot as small PNGs — `unlabeled`
-residuals for a downstream VLM step, and each *matched* documented component's visual snippet.
-
-`Pillow` is imported lazily and this degrades cleanly (no crop, just bbox + screenshot path)
-when it isn't installed — the only place an image library is ever touched, and it's optional.
-
-Crops are returned as in-memory PNG bytes, never written directly: `ostler vet` is dry-run by
-default, so the caller bundles them into the returned `VetPlan` and only `plan.apply()` touches
-disk, same as every other write this command makes.
-"""
+"""Optional nicety: crop region bboxes out of the screenshot as small PNGs — `unlabeled` residuals for a downstream VLM step, and each *matched* documented component's visual snippet."""
 
 from __future__ import annotations
 

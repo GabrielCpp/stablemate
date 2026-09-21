@@ -1,17 +1,4 @@
-"""Tests for the agent-CLI port and its adapters (``runner/backends/``).
-
-Verifies per-run selection (AGENT_CLI / explicit name), the default backend, the
-fail-fast on an unknown name, and that AgentNode.model is now optional (the
-backend supplies the default). Runnable two ways:
-
-    ./.venv/bin/python tests/test_backends.py
-    ./.venv/bin/python -m pytest tests/test_backends.py
-
-Each adapter owns its own module, so a stub goes on the module of the CLI under
-test (``backends.codex``, ``backends.opencode``, …) rather than on one shared
-facade — patching the generic package would state a fact about every backend at
-once, which is exactly what the split exists to prevent.
-"""
+"""Tests for the agent-CLI port and its adapters (``runner/backends/``)."""
 
 from __future__ import annotations
 
@@ -49,8 +36,6 @@ from workhorse.runner.backends.opencode import OpenCodeBackend
 from workhorse.runner.backends.registry import get_backend
 from workhorse.runner.spec import AgentNode, OutputSpec
 
-#: A turn's budget and the ladder's knobs are INJECTED into every backend — nothing
-#: below the CLI edge reads configuration, so a test states what it drives with.
 RESILIENCE = AgentResilience()
 TIMEOUT = RESILIENCE.result_timeout_s
 
@@ -68,14 +53,7 @@ def _without_agent_cli():
 
 @contextmanager
 def _config(text: str):
-    """Point the shared config at a temp file holding ``text``, and clear AGENT_CLI.
-
-    Both halves are load-bearing for the default-CLI tests. The config one is not
-    hygiene: the fallback under test now *reads the developer's real config*, so
-    without this a machine configured for opencode would fail the built-in-default
-    test — and, worse, a machine configured for claude would pass the config test
-    for the wrong reason.
-    """
+    """Point the shared config at a temp file holding ``text``, and clear AGENT_CLI."""
     prior_cli = _without_agent_cli()
     prior_path = os.environ.get(config.CONFIG_PATH_ENV)
     with tempfile.TemporaryDirectory() as tmp:
@@ -119,11 +97,7 @@ def test_env_var_beats_config_default_cli():
 
 
 def test_unknown_config_default_cli_fails_like_any_typo():
-    """core stores the name without validating it, so the check has to land here.
-
-    And the message has to name the config, or an operator reading it goes looking
-    for an AGENT_CLI export that nothing set.
-    """
+    """core stores the name without validating it, so the check has to land here."""
     with _config('default_cli = "opencodee"\n'):
         try:
             get_backend()
@@ -147,7 +121,7 @@ def test_env_var_selects_backend():
 
 def test_explicit_name_overrides_env():
     prior = os.environ.get("AGENT_CLI")
-    os.environ["AGENT_CLI"] = "bogus"  # would fail if env were consulted
+    os.environ["AGENT_CLI"] = "bogus"
     try:
         assert get_backend("claude").name == "claude"
     finally:
@@ -170,12 +144,7 @@ def test_get_backend_caches_instance():
 
 
 def test_null_backend_is_not_selectable():
-    """"No CLI" is what a run *has* when nobody chose one, not a CLI one can choose.
-
-    Keeping it out of the registry is the whole reason it can live in its own module
-    without the port ever importing an adapter: ``AGENT_CLI=none`` is a typo, and it
-    fails like every other typo.
-    """
+    """"No CLI" is what a run *has* when nobody chose one, not a CLI one can choose."""
     try:
         get_backend("none")
         raise AssertionError("expected ValueError — the null backend is not selectable")
@@ -184,22 +153,12 @@ def test_null_backend_is_not_selectable():
 
 
 def test_run_config_without_a_cli_holds_the_null_backend():
-    """Absence is an implementation of the port, so the field is never ``None``.
-
-    Which is what lets ``AgentRunner.backend: AgentBackend`` be honest: no ladder path
-    guards the backend, and none has to.
-    """
+    """Absence is an implementation of the port, so the field is never ``None``."""
     assert isinstance(RunConfig().backend, NullBackend)
 
 
 def test_agentless_run_fails_its_first_agent_node_with_a_sentence():
-    """A run with no CLI reaching an agent node aborts on a message, not on a crash.
-
-    The failure is non-transient and non-overflow, so it takes the ladder's existing
-    "non-recoverable CLI failure" exit: no retry (no amount of waiting supplies a CLI),
-    no reframe, and — the one that matters — no defaulted outputs, since advancing a
-    workflow on fabricated values is worse than stopping.
-    """
+    """A run with no CLI reaching an agent node aborts on a message, not on a crash."""
     node = AgentNode(
         type="agent",
         id="review_implementation",
@@ -225,8 +184,6 @@ def test_agentless_run_fails_its_first_agent_node_with_a_sentence():
 
 
 def test_non_claude_backends_registered():
-    # codex, copilot, cline, opencode: all stateless, no in-place compaction, and
-    # no built-in default model (the node/AGENT_MODEL names it).
     for name, cls in (
         ("codex", CodexBackend),
         ("copilot", CopilotBackend),
@@ -237,7 +194,7 @@ def test_non_claude_backends_registered():
         assert isinstance(b, cls)
         assert b.name == name
         assert b.default_model is None
-        assert b.supports_compaction is False  # none compact in place
+        assert b.supports_compaction is False
 
 
 def test_cline_points_a_large_prompt_at_its_artifact_instead_of_putting_it_in_argv():
@@ -257,8 +214,7 @@ def test_cline_points_a_large_prompt_at_its_artifact_instead_of_putting_it_in_ar
 
 
 def _fake_stream(canned):
-    """Return a ``stream_jsonl`` stand-in that records the cmd/stdin/cwd/env and returns
-    a canned ``TurnState``."""
+    """Return a ``stream_jsonl`` stand-in that records the cmd/stdin/cwd/env and returns a canned ``TurnState``."""
     captured = {}
 
     def fake(cmd, node_id, timeout, stdin_data, on_event, **kwargs):
@@ -319,8 +275,7 @@ def test_codex_no_effort_omits_override():
 
 
 def _capture_claude_cmd(**run_turn_kwargs):
-    """Run ClaudeBackend.run_turn with subprocess.Popen stubbed to capture the argv
-    and short-circuit (the cmd is assembled before Popen is called)."""
+    """Run ClaudeBackend.run_turn with subprocess.Popen stubbed to capture the argv and short-circuit (the cmd is assembled before Popen is called)."""
     captured = {}
 
     class _Boom(Exception):
@@ -339,8 +294,7 @@ def _capture_claude_cmd(**run_turn_kwargs):
 
 
 def test_claude_effort_maps_to_native_flag():
-    """`effort` becomes a native `--effort <level>` flag on the claude CLI (no prompt
-    mutation), for every supported level."""
+    """`effort` becomes a native `--effort <level>` flag on the claude CLI (no prompt mutation), for every supported level."""
     for level in ("low", "medium", "high", "xhigh", "max"):
         cmd = _capture_claude_cmd(model="opus", effort=level)
         assert cmd[cmd.index("--effort") + 1] == level
@@ -353,9 +307,7 @@ def test_claude_no_effort_omits_flag():
 
 
 def test_claude_disallows_the_agent_tool():
-    """A node's turn is one bounded, reaped CLI session; the Agent tool can dispatch
-    work that outlives it (`run_in_background`), which the ladder cannot recover
-    when the session is torn down. See runner/backends/claude.py."""
+    """A node's turn is one bounded, reaped CLI session; the Agent tool can dispatch work that outlives it (`run_in_background`), which the ladder cannot recover when the session is torn down."""
     cmd = _capture_claude_cmd(model="opus")
     assert cmd[cmd.index("--disallowedTools") + 1] == "Agent"
 
@@ -396,9 +348,8 @@ def test_codex_run_turn_fresh_then_resume():
         turn.TurnState(result_text="OK", session_id="tid-123")
     )
 
-    prior = os.environ.pop("CODEX_PROFILE", None)  # no profile → bare `codex exec`
+    prior = os.environ.pop("CODEX_PROFILE", None)
     try:
-        # Leading '@' = model only, no profile (default provider).
         out = _run_turn(CodexBackend(fake), "PROMPT", "n", sidp, model="@gpt-5.5")
     finally:
         if prior is not None:
@@ -412,9 +363,8 @@ def test_codex_run_turn_fresh_then_resume():
     assert captured["cmd"][-1] == "-" and captured["stdin"] == "PROMPT"
     assert "--dangerously-bypass-approvals-and-sandbox" in captured["cmd"]
     assert captured["cmd"][captured["cmd"].index("-m") + 1] == "gpt-5.5"
-    assert sidp.read_text() == "tid-123"  # session persisted for resume
+    assert sidp.read_text() == "tid-123"
 
-    # Second call resumes by the persisted id.
     fake2, captured2 = _fake_stream(
         turn.TurnState(result_text="OK2", session_id="tid-123")
     )
@@ -436,9 +386,7 @@ def test_codex_keeps_a_large_prompt_on_stdin():
 
 
 def test_codex_profile_from_env():
-    """CODEX_PROFILE is the run-level *fallback*: when a node names no profile, it
-    injects a top-level `--profile <name>` (before `exec`); a leading-'@' model
-    still maps to `-m`, overriding the profile's pinned model."""
+    """CODEX_PROFILE is the run-level *fallback*: when a node names no profile, it injects a top-level `--profile <name>` (before `exec`); a leading-'@' model still maps to `-m`, overriding the profile's pinned model."""
     sidp = Path(tempfile.mkdtemp()) / ".session_id"
     fake, captured = _fake_stream(
         turn.TurnState(result_text="OK", session_id="t1")
@@ -447,7 +395,6 @@ def test_codex_profile_from_env():
     prior = os.environ.get("CODEX_PROFILE")
     os.environ["CODEX_PROFILE"] = "openrouter"
     try:
-        # '@slug' = model only; profile comes from the CODEX_PROFILE fallback.
         _run_turn(
             CodexBackend(fake), "PROMPT", "n", sidp,
             model="@deepseek/deepseek-chat-v3.1",
@@ -459,10 +406,8 @@ def test_codex_profile_from_env():
             os.environ["CODEX_PROFILE"] = prior
 
     cmd = captured["cmd"]
-    # --profile must precede `exec` (it's a top-level flag).
     assert cmd[:4] == ["codex", "--profile", "openrouter", "exec"]
     assert cmd[cmd.index("-m") + 1] == "deepseek/deepseek-chat-v3.1"
-    # Resume also carries the top-level profile ahead of `exec resume`.
     fake2, captured2 = _fake_stream(
         turn.TurnState(result_text="OK2", session_id="t1")
     )
@@ -484,10 +429,9 @@ def test_codex_profile_from_env():
 
 
 def test_codex_per_node_profile_overrides_env():
-    """A node's `<profile>@<slug>` beats the CODEX_PROFILE fallback; a bare token is
-    a profile name (model comes from the profile, so no `-m`)."""
+    """A node's `<profile>@<slug>` beats the CODEX_PROFILE fallback; a bare token is a profile name (model comes from the profile, so no `-m`)."""
     prior = os.environ.get("CODEX_PROFILE")
-    os.environ["CODEX_PROFILE"] = "openrouter"  # run default the node should override
+    os.environ["CODEX_PROFILE"] = "openrouter"
     try:
         sidp = Path(tempfile.mkdtemp()) / ".s"
         fake, captured = _fake_stream(
@@ -495,16 +439,16 @@ def test_codex_per_node_profile_overrides_env():
         )
         _run_turn(CodexBackend(fake), "P", "n", sidp, model="local@qwen2.5-coder:32b")
         cmd = captured["cmd"]
-        assert cmd[:4] == ["codex", "--profile", "local", "exec"]  # node profile wins
+        assert cmd[:4] == ["codex", "--profile", "local", "exec"]
         assert cmd[cmd.index("-m") + 1] == "qwen2.5-coder:32b"
 
         sidp2 = Path(tempfile.mkdtemp()) / ".s"
         fake2, captured2 = _fake_stream(
             turn.TurnState(result_text="X", session_id="s")
         )
-        _run_turn(CodexBackend(fake2), "P", "n", sidp2, model="local")  # bare = profile
+        _run_turn(CodexBackend(fake2), "P", "n", sidp2, model="local")
         assert captured2["cmd"][:4] == ["codex", "--profile", "local", "exec"]
-        assert "-m" not in captured2["cmd"]  # model pinned by the profile
+        assert "-m" not in captured2["cmd"]
     finally:
         if prior is None:
             os.environ.pop("CODEX_PROFILE", None)
@@ -513,9 +457,7 @@ def test_codex_per_node_profile_overrides_env():
 
 
 def test_codex_profile_at_slug_model_string():
-    """A `<profile>@<slug>` codex model string drives the CLI as
-    `codex --profile mimo exec ... -m mimo-pro` — the codex config profile selects
-    the provider/auth bundle, the slug overrides its pinned model."""
+    """A `<profile>@<slug>` codex model string drives the CLI as `codex --profile mimo exec ..."""
     sidp = Path(tempfile.mkdtemp()) / ".session_id"
     fake, captured = _fake_stream(
         turn.TurnState(result_text="OK", session_id="t")
@@ -556,7 +498,7 @@ def test_copilot_run_turn_fresh_then_resume():
     assert cmd[0] == "copilot" and "-p" in cmd and "PROMPT" in cmd
     assert cmd[cmd.index("--output-format") + 1] == "json"
     assert "--allow-all" in cmd and "--no-ask-user" in cmd
-    assert "--session-id" not in cmd  # fresh run: no resume yet
+    assert "--session-id" not in cmd
     assert sidp.read_text() == "sess-1"
 
     fake2, captured2 = _fake_stream(
@@ -607,7 +549,6 @@ def test_copilot_on_event_extracts_text_and_session():
 
 
 def test_finalize_turn_classifies_failures():
-    # Non-zero exit whose output matches a transient marker → transient.
     try:
         turn.finalize_turn(
             "codex",
@@ -621,7 +562,6 @@ def test_finalize_turn_classifies_failures():
         raise AssertionError("expected raise on non-zero exit")
     except failure.BackendInvocationError as e:
         assert e.transient is True
-    # Timeout is always transient.
     try:
         turn.finalize_turn(
             "copilot",
@@ -633,27 +573,22 @@ def test_finalize_turn_classifies_failures():
         raise AssertionError("expected raise on timeout")
     except failure.BackendInvocationError as e:
         assert e.transient is True
-    # Empty result is transient.
     try:
         turn.finalize_turn("codex", "n", turn.TurnState(), None, TIMEOUT)
         raise AssertionError("expected raise on empty result")
     except failure.BackendInvocationError as e:
         assert e.transient is True
-    # Clean success returns the text.
     ok = turn.TurnState(result_text="x")
     assert turn.finalize_turn("codex", "n", ok, None, TIMEOUT) == "x"
 
 
 def test_classify_turn_records_node_to_session_manifest():
-    """A finished turn maps its node to the harness session id in a durable,
-    append-only manifest beside .session_id — so a past node can be traced to its
-    CLI session transcript even after .session_id (one-slot) is overwritten."""
+    """A finished turn maps its node to the harness session id in a durable, append-only manifest beside .session_id — so a past node can be traced to its CLI session transcript even after .session_id (one-slot) is overwritten."""
     import json
 
     sidp = Path(tempfile.mkdtemp()) / ".session_id"
     manifest = sidp.parent / "sessions.jsonl"
 
-    # Two successful turns for the SAME node, different sessions (a reframe).
     assert (
         failure.classify_turn(
             "opencode",
@@ -668,7 +603,7 @@ def test_classify_turn_records_node_to_session_manifest():
         )
         == "ok"
     )
-    assert sidp.read_text() == "ses_first"  # live file still tracks the latest
+    assert sidp.read_text() == "ses_first"
     failure.classify_turn(
         "opencode",
         "investigate",
@@ -687,16 +622,11 @@ def test_classify_turn_records_node_to_session_manifest():
         ("investigate", "ses_first"),
         ("investigate", "ses_second"),
     ]
-    # The backend is on the row because the session id does not say which CLI's
-    # vocabulary it is in, and the two are not interchangeable when the transcript is
-    # fetched later.
     assert [r["backend"] for r in rows] == ["opencode", "opencode"]
 
 
 def test_classify_turn_creates_the_sessions_dir_for_a_chains_first_lap():
-    """A chain's session id lives under `.sessions/<key>`, and a chain's first-ever
-    lap is exactly when that directory does not exist yet — `write_text` does not
-    make parent directories, so the first lap of every chain used to crash here."""
+    """A chain's session id lives under `.sessions/<key>`, and a chain's first-ever lap is exactly when that directory does not exist yet — `write_text` does not make parent directories, so the first lap of every chain used to crash here."""
     run_dir = Path(tempfile.mkdtemp())
     chain = sessions.chain_path(run_dir, "docs-repair:S-1")
     assert not chain.parent.exists()
@@ -739,10 +669,7 @@ def test_classify_turn_without_session_writes_no_manifest():
 
 
 def test_finalize_turn_non_recoverable_names_each_backend():
-    """A non-zero exit whose output is NOT a retryable marker is non-recoverable
-    (transient=False, not overflow), and the message names the ACTUAL backend — the
-    one shared classifier (failure.classify_turn) gives every CLI a uniform,
-    backend-named error instead of a hardcoded 'Claude'."""
+    """A non-zero exit whose output is NOT a retryable marker is non-recoverable (transient=False, not overflow), and the message names the ACTUAL backend — the one shared classifier (failure.classify_turn) gives every CLI a uniform, backend-named error instead of a hardcoded 'Claude'."""
     diag = "Unexpected server error. Check server logs for details."
     for name in ("opencode", "codex", "copilot", "claude"):
         try:
@@ -770,23 +697,14 @@ def test_agentnode_power_is_optional():
 
 
 def test_agentnode_power_is_an_opaque_tier_name():
-    """`power` is the operator's vocabulary, so the engine must not police the name.
-
-    The shipped workflows use low/medium/high/max/ultra, but the tier is only
-    ever a key into the operator's own `[power.<level>.<backend>]` tables — a workflow is
-    free to name a rung this repo never imagined and have its operator map it. An enum
-    here would make that a validation error instead of a config entry.
-    """
+    """`power` is the operator's vocabulary, so the engine must not police the name."""
     def node(power: str) -> dict[str, str]:
-        # A dict through `model_validate`: this is the shape a spec really arrives in,
-        # and it is the path an operator-invented tier travels.
         return {"type": "agent", "id": "n", "prompt": "p", "power": power, "next": "done"}
 
     for tier in ("low", "medium", "high", "max", "ultra", "verdict", "cheap-bulk"):
         assert AgentNode.model_validate(node(tier)).power == tier
 
 
-# ── OpenCode backend (opencode run --format json) ───────────────────────────────
 
 
 def test_opencode_run_turn_fresh_then_resume():
@@ -800,8 +718,6 @@ def test_opencode_run_turn_fresh_then_resume():
     )
     assert out == "PONG"
     cmd = captured["cmd"]
-    # --print-logs --log-level ERROR routes opencode's quota/limit errors to stderr so
-    # the runner's cap detector can see them (and abort the stream early on a cap).
     assert cmd[:7] == [
         "opencode",
         "--print-logs",
@@ -812,12 +728,11 @@ def test_opencode_run_turn_fresh_then_resume():
         "json",
     ]
     assert cmd[cmd.index("-m") + 1] == "openrouter/xiaomi/mimo-v2.5"
-    assert cmd[cmd.index("--variant") + 1] == "high"  # effort → variant
-    assert "--session" not in cmd  # fresh run
-    # The prompt is the final positional, guarded by `--`.
+    assert cmd[cmd.index("--variant") + 1] == "high"
+    assert "--session" not in cmd
     assert cmd[-2:] == ["--", "PROMPT"]
-    assert captured["stdin"] is None  # message is on argv, not stdin
-    assert sidp.read_text() == "ses_1"  # session persisted for resume
+    assert captured["stdin"] is None
+    assert sidp.read_text() == "ses_1"
 
     fake2, captured2 = _fake_stream(
         turn.TurnState(result_text="P2", session_id="ses_1")
@@ -851,7 +766,6 @@ def test_opencode_effort_variant_mapping_and_omit():
         )
         _run_turn(OpenCodeBackend(fake), "P", "n", sidp, model="m", effort=effort)
         assert captured["cmd"][captured["cmd"].index("--variant") + 1] == variant
-    # "medium" has no opencode variant → omitted entirely.
     fake, captured = _fake_stream(
         turn.TurnState(result_text="X", session_id="s")
     )
@@ -860,10 +774,7 @@ def test_opencode_effort_variant_mapping_and_omit():
 
 
 def test_opencode_pins_small_model_to_turn_model():
-    """A turn with a model pins opencode's title/summary helper (`small_model`) to it
-    via OPENCODE_CONFIG_CONTENT — the helper has no CLI flag, and without the pin it
-    inherits whatever provider the machine's opencode config drifts to (an OpenRouter
-    credit wall on the title call once slept a run for 6 days)."""
+    """A turn with a model pins opencode's title/summary helper (`small_model`) to it via OPENCODE_CONFIG_CONTENT — the helper has no CLI flag, and without the pin it inherits whatever provider the machine's opencode config drifts to (an OpenRouter credit wall on the title call once slept a run for 6 days)."""
     with _config(""):
         fake, captured = _fake_stream(
             turn.TurnState(result_text="X", session_id="s")
@@ -875,8 +786,7 @@ def test_opencode_pins_small_model_to_turn_model():
 
 
 def test_opencode_no_model_no_small_model_pin():
-    """With no model on the turn there is nothing to pin to — the CLI's own config
-    decides both the turn model and the helper, consistently."""
+    """With no model on the turn there is nothing to pin to — the CLI's own config decides both the turn model and the helper, consistently."""
     with _config(""):
         fake, captured = _fake_stream(
             turn.TurnState(result_text="X", session_id="s")
@@ -888,9 +798,7 @@ def test_opencode_no_model_no_small_model_pin():
 
 
 def test_opencode_operator_config_content_wins_verbatim():
-    """An operator's own OPENCODE_CONFIG_CONTENT in [harness.opencode].env has taken
-    over the inline config: it passes through untouched — no merge, no pin — while
-    other harness env keys still ride alongside."""
+    """An operator's own OPENCODE_CONFIG_CONTENT in [harness.opencode].env has taken over the inline config: it passes through untouched — no merge, no pin — while other harness env keys still ride alongside."""
     cfg = (
         "[harness.opencode]\n"
         'env = { OPENCODE_CONFIG_CONTENT = \'{"small_model":"openai/gpt-5.5"}\','
@@ -909,8 +817,7 @@ def test_opencode_operator_config_content_wins_verbatim():
 
 
 def test_opencode_pin_composes_with_other_harness_env():
-    """Harness env keys that are not OPENCODE_CONFIG_CONTENT don't suppress the pin —
-    the pin joins them."""
+    """Harness env keys that are not OPENCODE_CONFIG_CONTENT don't suppress the pin — the pin joins them."""
     with _config('[harness.opencode]\nenv = { OPENCODE_DISABLE_AUTOCOMPACT = "1" }\n'):
         fake, captured = _fake_stream(
             turn.TurnState(result_text="X", session_id="s")
@@ -924,11 +831,7 @@ def test_opencode_pin_composes_with_other_harness_env():
 
 
 def test_opencode_lifts_the_32k_output_cap_to_the_models_own_limit():
-    """opencode caps every completion at 32k output tokens, thinking included, unless
-    OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX says otherwise. A reasoning model handed a
-    34k-token audit packet spent all 32k thinking and returned no text — twice, on the
-    same packet — so the adapter exports the override on every turn; opencode clamps it
-    to the model's own limit, so it is safe on every model."""
+    """opencode caps every completion at 32k output tokens, thinking included, unless OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX says otherwise."""
     with _config(""):
         fake, captured = _fake_stream(
             turn.TurnState(result_text="X", session_id="s")
@@ -938,8 +841,7 @@ def test_opencode_lifts_the_32k_output_cap_to_the_models_own_limit():
 
 
 def test_opencode_operator_output_cap_wins():
-    """An operator who names the cap in [harness.opencode].env has decided; the
-    adapter's default steps aside rather than overriding it."""
+    """An operator who names the cap in [harness.opencode].env has decided; the adapter's default steps aside rather than overriding it."""
     cfg = '[harness.opencode]\nenv = { OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX = "40000" }\n'
     with _config(cfg):
         fake, captured = _fake_stream(
@@ -960,8 +862,6 @@ def test_opencode_stream_includes_reasoning_parts():
 
 def test_opencode_on_event_text_session_and_error():
     state = turn.TurnState()
-    # The text parts opencode streams live on its own reader, not on the TurnState
-    # every backend shares — one instance per turn, exactly as run_turn builds it.
     on_event = opencode._OpenCodeEvents().on_event
     on_event({"type": "step_start", "sessionID": "ses_9", "part": {}}, state, "n")
     on_event(
@@ -971,14 +871,12 @@ def test_opencode_on_event_text_session_and_error():
     )
     assert state.session_id == "ses_9"
     assert state.result_text == "PONG"
-    # A second distinct text part is appended, preserving order.
     on_event(
         {"type": "text", "sessionID": "ses_9", "part": {"id": "p2", "text": "more"}},
         state,
         "n",
     )
     assert state.result_text == "PONG\nmore"
-    # An error event is captured as a diagnostic.
     on_event(
         {"type": "error", "sessionID": "ses_9", "error": {"data": {"message": "boom"}}},
         state,
@@ -988,8 +886,7 @@ def test_opencode_on_event_text_session_and_error():
 
 
 def test_opencode_text_parts_do_not_leak_between_turns():
-    """Each turn gets its own reader, so the previous turn's answer cannot bleed into
-    the next one's — the reason the parts live on the adapter and not on TurnState."""
+    """Each turn gets its own reader, so the previous turn's answer cannot bleed into the next one's — the reason the parts live on the adapter and not on TurnState."""
     first, second = turn.TurnState(), turn.TurnState()
     opencode._OpenCodeEvents().on_event(
         {"type": "text", "part": {"id": "p1", "text": "first"}}, first, "n"
@@ -1000,7 +897,6 @@ def test_opencode_text_parts_do_not_leak_between_turns():
     assert second.result_text == "second"
 
 
-# ── Cline backend (cline --json, NDJSON) ────────────────────────────────────────
 
 
 def test_cline_run_turn_fresh_then_resume():
@@ -1017,13 +913,11 @@ def test_cline_run_turn_fresh_then_resume():
     assert out == "OK"
     cmd = captured["cmd"]
     assert cmd[0] == "cline" and "--json" in cmd
-    # The prompt is positional, after a `--` so one starting with '-' still lands
-    # as the message rather than as an unknown option.
     assert cmd[-2:] == ["--", "PROMPT"]
     assert cmd[cmd.index("--model") + 1] == "openrouter/xiaomi/mimo-v2.5"
     assert cmd[cmd.index("--auto-approve") + 1] == "true"
     assert cmd[cmd.index("--cwd") + 1] == "/repo"
-    assert "--id" not in cmd  # fresh run: nothing to resume yet
+    assert "--id" not in cmd
     assert sidp.read_text() == "conv_1"
 
     fake2, captured2 = _fake_stream(turn.TurnState(result_text="A2", session_id="conv_1"))
@@ -1032,8 +926,7 @@ def test_cline_run_turn_fresh_then_resume():
 
 
 def test_cline_effort_passes_through_unmapped():
-    """cline's reasoning levels are exactly workhorse's, so nothing is clamped —
-    unlike the harnesses whose ranges are narrower."""
+    """cline's reasoning levels are exactly workhorse's, so nothing is clamped — unlike the harnesses whose ranges are narrower."""
     for level in ("none", "low", "medium", "high", "xhigh"):
         fake, captured = _fake_stream(turn.TurnState(result_text="OK"))
         _run_turn(ClineBackend(fake), "P", "n", None, model="m", effort=level)
@@ -1041,9 +934,7 @@ def test_cline_effort_passes_through_unmapped():
 
 
 def test_cline_unknown_effort_omits_the_flag():
-    """`max` is a workhorse level cline does not have. Passing it through would make
-    the CLI reject the whole turn, so an unrecognized level defers to cline's default
-    rather than guessing at a mapping."""
+    """`max` is a workhorse level cline does not have."""
     fake, captured = _fake_stream(turn.TurnState(result_text="OK"))
     _run_turn(ClineBackend(fake), "P", "n", None, model="m", effort="max")
     assert "--thinking" not in captured["cmd"]
@@ -1077,7 +968,7 @@ def test_cline_on_event_reads_the_terminal_result():
     assert state.usage.input_tokens == 6337 and state.usage.output_tokens == 33
     assert state.usage.total_cost_usd == 0.00089642
     assert state.usage.duration_ms == 4542
-    assert state.diagnostics == []  # a clean completion says nothing
+    assert state.diagnostics == []
 
 
 def test_cline_reports_an_unclean_finish_reason_as_a_diagnostic():
@@ -1090,8 +981,7 @@ def test_cline_reports_an_unclean_finish_reason_as_a_diagnostic():
 
 
 def test_cline_per_iteration_usage_is_not_double_counted():
-    """cline emits a per-iteration `usage` event AND a cumulative `run_result`.
-    Folding both would bill every turn twice; only the terminal event is read."""
+    """cline emits a per-iteration `usage` event AND a cumulative `run_result`."""
     state = turn.TurnState()
     cline._on_event(
         {
@@ -1113,10 +1003,7 @@ def test_cline_per_iteration_usage_is_not_double_counted():
 
 
 def test_codex_reset_at_skips_non_openai_models_without_network():
-    """The reset probe is Codex-only: an OpenRouter (or empty) model returns None with
-    no network call (those caps go through the daily-key-limit path)."""
-    # No urllib patch needed: a network attempt here would be a bug, so its absence
-    # (these return before any request) is the assertion.
+    """The reset probe is Codex-only: an OpenRouter (or empty) model returns None with no network call (those caps go through the daily-key-limit path)."""
     assert opencode._codex_reset_at("openrouter/xiaomi/mimo-v2.5") is None
     assert opencode._codex_reset_at(None) is None
     assert opencode._codex_reset_at("") is None
@@ -1129,13 +1016,11 @@ def test_codex_reset_at_disabled_by_env():
 
 
 def test_opencode_cap_attaches_codex_reset_at():
-    """On a Codex usage cap, run_turn fetches the precise reset epoch and the raised
-    cap error carries it — so the runner sleeps until the window reopens, not a flat
-    default hour."""
+    """On a Codex usage cap, run_turn fetches the precise reset epoch and the raised cap error carries it — so the runner sleeps until the window reopens, not a flat default hour."""
     reset = 1782759835.0
     capped = turn.TurnState(
         diagnostics=['error.error="AI_APICallError: The usage limit has been reached"'],
-        timed_out=True,  # cap_abort flagged timed_out
+        timed_out=True,
     )
     fake, _ = _fake_stream(capped)
     with patch.object(opencode, "_codex_reset_at", lambda model, *a, **k: reset):
@@ -1170,15 +1055,13 @@ def test_opencode_non_cap_does_not_probe_codex():
 
 
 def _drive_stream_jsonl(lines, on_event):
-    """Run ``jsonl.stream_jsonl``, feeding ``lines`` to its on_line callback through a
-    faked stream_subprocess that stops the moment on_line requests an early abort
-    (mirroring process.stream_subprocess). Returns the finished ``TurnState``."""
+    """Run ``jsonl.stream_jsonl``, feeding ``lines`` to its on_line callback through a faked stream_subprocess that stops the moment on_line requests an early abort (mirroring process.stream_subprocess)."""
 
     def fake_stream(cmd, node_id, timeout, on_line, **kwargs):
         for raw in lines:
             if on_line(
                 raw
-            ):  # cap detected → break + (real code) kill the process group
+            ):
                 return True, 0
         return False, 0
 
@@ -1190,11 +1073,7 @@ def _drive_stream_jsonl(lines, on_event):
 
 
 def test_a_line_that_parses_but_is_not_an_object_is_text():
-    """A scalar JSON line is a CLI's stray text, not an event, and must not reach `on_event`.
-
-    Codex echoed an apply_patch failure's hunk to stdout; a hunk line that happened to parse
-    as JSON went to `_on_event`, whose `event.get("type")` raised and ended the run.
-    """
+    """A scalar JSON line is a CLI's stray text, not an event, and must not reach `on_event`."""
     seen = []
 
     def on_event(event, state, node_id):
@@ -1208,27 +1087,24 @@ def test_a_line_that_parses_but_is_not_an_object_is_text():
 
 
 def test_opencode_cap_log_line_aborts_stream_early():
-    """A cap surfaced as a raw --print-logs ERROR line aborts the stream immediately
-    (timed_out flagged so the runner waits the window out) instead of waiting ~3600s
-    for the watchdog while opencode retries internally."""
+    """A cap surfaced as a raw --print-logs ERROR line aborts the stream immediately (timed_out flagged so the runner waits the window out) instead of waiting ~3600s for the watchdog while opencode retries internally."""
     consumed = {"n": 0}
 
     def on_event(event, state, node_id):
-        consumed["n"] += 1  # only real JSON events reach here; the cap line is non-JSON
+        consumed["n"] += 1
 
     state = _drive_stream_jsonl(
         [
             '{"type":"step","text":"working"}\n',
             'level=ERROR message="stream error" error.error="AI_APICallError: '
             'The usage limit has been reached"\n',
-            '{"type":"step","text":"SHOULD NOT BE READ"}\n',  # after the abort
+            '{"type":"step","text":"SHOULD NOT BE READ"}\n',
         ],
         on_event,
     )
     assert state.timed_out is True, "cap abort must flag timed_out so the turn finalizes"
     assert "usage limit" in state.diagnostics_text.lower()
     assert consumed["n"] == 1, "stream must stop at the cap line — later events unread"
-    # The runner's classifier then frames this as a cap, not a timeout.
     try:
         failure.classify_turn(
             "opencode",
@@ -1247,8 +1123,7 @@ def test_opencode_cap_log_line_aborts_stream_early():
 
 
 def test_opencode_cap_structured_error_event_aborts_stream_early():
-    """A cap surfaced as a structured JSON error event (not a log line) is caught the
-    same way — the on_event-appended diagnostics trip the cap abort."""
+    """A cap surfaced as a structured JSON error event (not a log line) is caught the same way — the on_event-appended diagnostics trip the cap abort."""
 
     def on_event(event, state, node_id):
         if event.get("type") == "error":
@@ -1267,8 +1142,7 @@ def test_opencode_cap_structured_error_event_aborts_stream_early():
 
 
 def test_opencode_provider_header_timeout_aborts_into_short_retry():
-    """A provider transport timeout must escape opencode's internal retry loop and
-    reach Workhorse as a short transient, not as a full node-budget timeout."""
+    """A provider transport timeout must escape opencode's internal retry loop and reach Workhorse as a short transient, not as a full node-budget timeout."""
     state = _drive_stream_jsonl(
         [
             '{"type":"step_start","sessionID":"ses_1","part":{}}\n',
@@ -1302,8 +1176,7 @@ def test_opencode_provider_header_timeout_aborts_into_short_retry():
 
 
 def test_an_empty_turn_that_generated_nothing_stays_a_plain_transient():
-    """The provider returned an empty completion: the model produced no tokens at
-    all, so another attempt is worth having and the ladder should retry."""
+    """The provider returned an empty completion: the model produced no tokens at all, so another attempt is worth having and the ladder should retry."""
     try:
         failure.classify_turn(
             "opencode",
@@ -1324,10 +1197,7 @@ def test_an_empty_turn_that_generated_nothing_stays_a_plain_transient():
 
 
 def test_an_empty_turn_that_generated_tokens_is_a_budget_overrun_not_a_retry():
-    """The model spent its whole max-output budget reasoning and never answered.
-    Retrying the same prompt re-rolls the same dice, so this must NOT come back as a
-    transient; it is routed as an overflow because compaction — less context to think
-    about — is the only lever against a ceiling the model itself sets."""
+    """The model spent its whole max-output budget reasoning and never answered."""
     try:
         failure.classify_turn(
             "opencode",
@@ -1349,20 +1219,15 @@ def test_an_empty_turn_that_generated_tokens_is_a_budget_overrun_not_a_retry():
 
 
 def test_the_split_reads_the_sum_because_providers_label_it_inconsistently():
-    """The same model on the same node reports `output=1, reasoning=31999` on one
-    turn and `output=32000, reasoning=0` on the next for the identical event. Only
-    the sum is stable, so both must classify the same way."""
+    """The same model on the same node reports `output=1, reasoning=31999` on one turn and `output=32000, reasoning=0` on the next for the identical event."""
     as_reasoning = TurnUsage(output_tokens=1, reasoning_output_tokens=31999)
     as_output = TurnUsage(output_tokens=32000, reasoning_output_tokens=0)
     assert as_reasoning.generated_tokens == as_output.generated_tokens == 32000
-    # A harness that reports neither field says nothing, which is not the same as
-    # reporting zero — the classifier must not read silence as "generated nothing".
     assert TurnUsage().generated_tokens is None
 
 
 def test_an_empty_turn_with_no_usage_report_keeps_the_old_verdict():
-    """Claude does not report reasoning tokens, so the distinction is undecidable on
-    that path. Unset must behave exactly as it did before this split existed."""
+    """Claude does not report reasoning tokens, so the distinction is undecidable on that path."""
     try:
         failure.classify_turn(
             "claude",
@@ -1382,8 +1247,7 @@ def test_an_empty_turn_with_no_usage_report_keeps_the_old_verdict():
 
 
 def test_finalize_turn_hands_the_classifier_the_counts_it_stamped():
-    """The counts reach the classifier from the one place both are in scope. Without
-    this wiring the branch above is dead code on every real turn."""
+    """The counts reach the classifier from the one place both are in scope."""
     state = turn.TurnState(result_text="")
     state.usage = TurnUsage(output_tokens=1, reasoning_output_tokens=31999)
     try:

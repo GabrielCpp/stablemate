@@ -1,27 +1,4 @@
-"""Materializing the turn archive in the flat by-node layout distillation work reads.
-
-The archive is run-major, because that is the shape a debugger arrives in: one run, one
-node, its laps in order. A dataset wants the transpose — every session that ever ran a
-given node, together, so a prompt can be evaluated against all of them. This module
-writes that view:
-
-```
-<workflow>/<node>/<source>__<session_id>.json
-INDEX.json
-```
-
-Two things separate it from the hand-rolled harvesters it replaces. Classification is
-**exact**: the node a session belongs to is read from the index join that
-``sessions.jsonl`` made possible, not guessed from a heading in the rendered prompt — so
-there is no unclassified bucket. And the export is a *view*, materialized on demand into
-a directory the caller names, so the canonical archive never holds a second copy of any
-byte.
-
-Everything streams. A single session's transcript runs to tens of megabytes and the
-corpus does not fit in memory, so one session is read line by line into one output file
-and neither is ever held whole. ``n_messages`` is therefore written *after* ``messages``
-— a JSON object has no order, and counting first would mean reading twice.
-"""
+"""Materializing the turn archive in the flat by-node layout distillation work reads."""
 
 from __future__ import annotations
 
@@ -37,12 +14,8 @@ from groom import store, turns
 
 logger = logging.getLogger(__name__)
 
-#: Anything outside this becomes ``_`` in a path component. Node and workflow names are
-#: engine data, not attacker data, but they are free-form enough to contain a slash.
 _UNSAFE = re.compile(r"[^A-Za-z0-9._-]+")
 
-#: Stand-in for a record whose capture layer did not say what it was. Named rather than
-#: dropped: a turn with an unlabelled transcript is still a turn worth training on.
 UNKNOWN_SOURCE = "unknown"
 
 
@@ -59,13 +32,7 @@ def _iso(ts: Any) -> str:
 
 
 def _message_of(entry: dict[str, Any]) -> dict[str, Any] | None:
-    """The message a transcript line carries, in the one shape every backend maps onto.
-
-    A session store holds far more than messages — attachments, queue operations, summary
-    records — and a line that is not a turn of the conversation is not a message. Rather
-    than enumerate every backend's non-message kinds, this keeps what has a role and
-    drops what does not.
-    """
+    """The message a transcript line carries, in the one shape every backend maps onto."""
     message = entry.get("message")
     if isinstance(message, dict) and message.get("role"):
         kept = {"role": message.get("role"), "content": message.get("content")}
@@ -78,12 +45,7 @@ def _message_of(entry: dict[str, Any]) -> dict[str, Any] | None:
 
 
 def _transcript_lines(record: Path) -> Iterator[dict[str, Any]]:
-    """Parsed records from one archived JSONL stream or full-session JSON export.
-
-    A truncated capture ends mid-line by construction — the runner's byte cap cuts the
-    file rather than dropping it — so the last line of a large transcript is routinely
-    half a line. That is a reason to skip it, not to fail the export.
-    """
+    """Parsed records from one archived JSONL stream or full-session JSON export."""
     path = record / "transcript.jsonl"
     if path.is_file():
         with path.open(encoding="utf-8", errors="replace") as fh:
@@ -127,12 +89,7 @@ def _transcript_lines(record: Path) -> Iterator[dict[str, Any]]:
 
 
 def _write_session(row: dict[str, Any], target: Path) -> dict[str, Any]:
-    """Write one session's JSON object, streaming its messages; the INDEX entry for it.
-
-    ``cwd`` and ``model`` are whatever the transcript itself said, taken from the first
-    line that offers each. They are properties of the session as it ran, and the index
-    does not record them.
-    """
+    """Write one session's JSON object, streaming its messages; the INDEX entry for it."""
     record = turns.record_path(row)
     session_id = str(row.get("session_id", ""))
     source = str(row.get("source", "")) or UNKNOWN_SOURCE
@@ -140,9 +97,6 @@ def _write_session(row: dict[str, Any], target: Path) -> dict[str, Any]:
     model = ""
     count = 0
     target.parent.mkdir(parents=True, exist_ok=True)
-    # Written to a ``.part`` and moved into place: a session file is streamed, so an
-    # interrupted export would otherwise leave a truncated object under a name that says
-    # the session is there — and a dataset loader reads names, not sizes.
     partial = target.with_suffix(".json.part")
     with partial.open("w", encoding="utf-8") as out:
         head = {
@@ -156,7 +110,7 @@ def _write_session(row: dict[str, Any], target: Path) -> dict[str, Any]:
             "time_created": _iso(row.get("ts")),
             "head": row.get("head"),
         }
-        out.write(json.dumps(head)[:-1])  # open the object, keep writing into it
+        out.write(json.dumps(head)[:-1])
         out.write(', "messages": [')
         for entry in _transcript_lines(record):
             if not cwd and isinstance(entry.get("cwd"), str):
@@ -190,12 +144,7 @@ def export_by_node(
     node: str = "",
     limit: int = 1_000_000,
 ) -> dict[str, Any]:
-    """Materialize the archive under ``target_dir`` as ``<workflow>/<node>/<file>.json``.
-
-    Records with no transcript are still exported: their message list is empty, and the
-    INDEX says so. Dropping them would make the export disagree with ``transcript ls``
-    about how many times a node ran, which is the number the thrashing question turns on.
-    """
+    """Materialize the archive under ``target_dir`` as ``<workflow>/<node>/<file>.json``."""
     target_dir = Path(target_dir)
     target_dir.mkdir(parents=True, exist_ok=True)
     index: list[dict[str, Any]] = []

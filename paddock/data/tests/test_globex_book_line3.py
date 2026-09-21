@@ -1,15 +1,4 @@
-"""Tests for `globex_book_line3`, without ever asking an agent anything.
-
-This only covers the deterministic half of the task: that the module loads and registers
-cleanly, and that `arrange`'s perturbations do exactly what the module claims they do. The
-`ask` and `judge` steps invoke a real agent, so they are out of scope for a unit test: what
-they return is a model's answer, and a suite that called them would grade the model, not
-this module.
-
-Perturbations are checked with `ostler`'s own `surfaces-referenced-by-story` query, not by
-re-parsing the markdown a second time in this file — a test that parsed links the same way
-`_apply_absence`/`_apply_substitution` do would pass even if both were wrong the same way.
-"""
+"""Tests for `globex_book_line3`, without ever asking an agent anything."""
 
 from __future__ import annotations
 
@@ -67,12 +56,10 @@ def _run(tmp_path: Path) -> Run:
     )
 
 
-# ── the module loads and registers ──────────────────────────────────────────────────────
 
 
 def test_the_module_registers_under_loader_load_all() -> None:
-    """A duplicate task name or an import-time error would fail every task, not just this
-    one — `loader.load_all` is the same entry point `paddock list` and every gate use."""
+    """A duplicate task name or an import-time error would fail every task, not just this one — `loader.load_all` is the same entry point `paddock list` and every gate use."""
     tasks = loader.load_all(DATA)
     names = {item.name for item in tasks}
     assert "globex-book-line3" in names
@@ -82,7 +69,6 @@ def test_the_rubric_file_exists_beside_the_other_rubrics() -> None:
     assert (DATA / "rubric-line3.md").is_file()
 
 
-# ── arrange: the trees it builds ─────────────────────────────────────────────────────────
 
 
 def test_arrange_builds_one_tree_per_node_and_arm_with_no_app(tmp_path: Path) -> None:
@@ -103,7 +89,6 @@ def test_arrange_builds_one_tree_per_node_and_arm_with_no_app(tmp_path: Path) ->
             assert not (tree / name).exists()
 
 
-# ── arrange: the perturbations themselves, checked with ostler's own query ─────────────
 
 
 def _cited_paths(tree_docs_root: Path, slug: str) -> set[str]:
@@ -130,8 +115,6 @@ def test_absence_removes_the_link_and_names_no_replacement(tmp_path: Path) -> No
         tree = TASK._tree_dir(run, TASK._slug(node, "absence"))
         cited = _cited_paths(tree / "docs", node.citing_story)
         assert f"docs/{node.path}" not in cited
-        # The link's anchor text survives as plain prose — only the `[...](...)` syntax is
-        # stripped, so the sentence still reads.
         story_file = TASK._story_file(tree / "docs", node.citing_story)
         text = story_file.read_text(encoding="utf-8")
         original = APP / "docs" / "epics" / TASK.EPIC / "stories" / node.citing_story / "story.md"
@@ -163,8 +146,7 @@ def test_substitution_moves_the_citation_to_the_other_story(tmp_path: Path) -> N
 
 
 def test_every_node_has_a_distinct_decoy_no_story_originally_cites() -> None:
-    """The decoy has to be a clean substitution target: real, and uncited by any story in
-    the unperturbed book, or `substitution` would silently create a second citation."""
+    """The decoy has to be a clean substitution target: real, and uncited by any story in the unperturbed book, or `substitution` would silently create a second citation."""
     all_cited: set[str] = set()
     for node in TASK.NODES:
         all_cited |= _cited_paths(APP / "docs", node.citing_story)

@@ -1,12 +1,4 @@
-"""The mutant round's pure machinery: corpus schema, classification, and the pin-rate gap.
-
-Everything here is literal — no docker, no agent, no seed. The corpus rules matter most
-where they fail silently: a mutant outside its story's diff scores as a survivor against
-QA for a fixture bug, a discard without a reason inflates the kill rate invisibly, and a
-triage citation the witness's book does not back would make survivors green by editing
-YAML. Each of those is a named `validate_mutants` problem or a classifier branch, and
-each gets a test, because nothing else fails loudly when one regresses.
-"""
+"""The mutant round's pure machinery: corpus schema, classification, and the pin-rate gap."""
 
 from __future__ import annotations
 
@@ -90,7 +82,6 @@ def app_tree(tmp_path: Path) -> Path:
     return app
 
 
-# ── the corpus ────────────────────────────────────────────────────────────────────────
 
 
 def test_a_good_corpus_validates_clean(tmp_path: Path) -> None:
@@ -117,27 +108,22 @@ def test_every_way_the_corpus_lies_is_named(tmp_path: Path) -> None:
     app = app_tree(tmp_path)
     manifest(app, {
         "mutants": [
-            # Valid, and then duplicated — the second M1 is the finding.
             {"id": "M1", "pool": "A", "story": "s1", "path": "tally/count.py",
              "bullet": "b1", "behavior": "off by one"},
             {"id": "M1", "pool": "A", "story": "s1", "path": "tally/count.py",
              "bullet": "b1", "behavior": "off by one"},
-            # Pool A with no bullet, and no behavior line either.
             {"id": "M4", "pool": "A", "story": "s1", "path": "tally/count.py"},
-            # A story the app does not have.
             {"id": "M5", "pool": "B", "story": "ghost", "path": "tally/count.py",
              "behavior": "x"},
-            # In the tree but outside the story's diff — the before-tree trap.
             {"id": "M6", "pool": "B", "story": "s1", "path": "tally/other.py",
              "behavior": "x"},
-            # In the diff but with no variant on disk.
             {"id": "M7", "pool": "B", "story": "s1", "path": "tally/count.py",
              "behavior": "x"},
         ],
         "discards": [
-            {"id": "M8"},          # no reason
-            {"id": "M2"},          # discarded, and its variant directory still exists
-            {"id": "M1"},          # discarded while still listed as a mutant
+            {"id": "M8"},
+            {"id": "M2"},
+            {"id": "M1"},
         ],
     })
     problems = "\n".join(mutants.validate_mutants(app))
@@ -205,7 +191,6 @@ def test_survival_is_byte_equality_with_the_variant(tmp_path: Path) -> None:
     assert mutants.mutant_survived(app, row, witness) is False
 
 
-# ── the don't-care vocabulary ─────────────────────────────────────────────────────────
 
 
 def book(tmp_path: Path) -> Path:
@@ -232,8 +217,7 @@ def test_dont_cares_reads_the_witness_book(tmp_path: Path) -> None:
 def test_dont_cares_degrades_to_empty_never_a_crash(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """An ostler without the A4 vocabulary, and a book that will not load, both read as
-    `{}` — a triage citation then scores survivor, never an exception."""
+    """An ostler without the A4 vocabulary, and a book that will not load, both read as `{}` — a triage citation then scores survivor, never an exception."""
     from ostler import registry
 
     assert mutants.dont_cares(tmp_path / "nothing-here") == {}
@@ -241,7 +225,6 @@ def test_dont_cares_degrades_to_empty_never_a_crash(
     assert mutants.dont_cares(book(tmp_path)) == {}
 
 
-# ── classification ────────────────────────────────────────────────────────────────────
 
 
 ROW = {"id": "M1", "pool": "A", "story": "s1", "path": "tally/count.py"}
@@ -264,8 +247,7 @@ def test_an_audit_refutation_kills() -> None:
 
 
 def test_a_repaired_mutant_is_a_kill_even_with_no_evidence_map() -> None:
-    """The byte witness outranks the map's absence: a flow that repaired the seeded file
-    demonstrably acted on it, whatever else it failed to write."""
+    """The byte witness outranks the map's absence: a flow that repaired the seeded file demonstrably acted on it, whatever else it failed to write."""
     verdict = mutants.classify_mutant(ROW, None, {}, survived=False, cares={})
     assert verdict == ("killed", "mutant repaired")
 
@@ -281,8 +263,7 @@ def test_a_backed_citation_is_resolved_by_design() -> None:
 
 
 def test_a_citation_the_book_does_not_back_is_a_survivor_with_its_staleness_named() -> None:
-    """Editing the manifest must not be a way to make survivors green: the resolution is
-    believed only against the book the trial actually ran under."""
+    """Editing the manifest must not be a way to make survivors green: the resolution is believed only against the book the trial actually ran under."""
     verdict, because = mutants.classify_mutant(
         CITED, {"b1": "covered"}, {}, survived=True, cares={},
     )
@@ -295,7 +276,6 @@ def test_a_clean_run_over_a_surviving_mutant_is_a_survivor() -> None:
     assert verdict == ("survivor", "ran clean")
 
 
-# ── the pin rate ──────────────────────────────────────────────────────────────────────
 
 
 def trial(pool: str, verdict: str) -> dict[str, str]:
@@ -320,8 +300,7 @@ def test_an_empty_pool_is_blank_never_zero() -> None:
 
 
 def test_an_inconclusive_trial_blanks_its_pools_rate() -> None:
-    """A rate computed over an outage is a number about this machine — the pool goes
-    blank, and the headline says how many trials never answered."""
+    """A rate computed over an outage is a number about this machine — the pool goes blank, and the headline says how many trials never answered."""
     rates = mutants.pin_rates([
         trial("A", "killed"), trial("A", "inconclusive"),
         trial("B", "killed"),
@@ -352,7 +331,6 @@ def test_the_headline_prints_blanks_and_flags_the_outage() -> None:
     assert "inconclusive 1" in line
 
 
-# ── the round ─────────────────────────────────────────────────────────────────────────
 
 
 def make_run(tmp_path: Path, **params: str) -> Run:
@@ -373,9 +351,7 @@ def make_run(tmp_path: Path, **params: str) -> Run:
 def test_the_round_scopes_by_param_and_ledgers_the_mutant_shape(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """One dry round: the QA lane gets the mutant's story and the audit-on flag, the run
-    ids carry the `-mut-` spine, and the ledger lands in `mutants.json` with pool and
-    bullet — everything `score_round` will later read back."""
+    """One dry round: the QA lane gets the mutant's story and the audit-on flag, the run ids carry the `-mut-` spine, and the ledger lands in `mutants.json` with pool and bullet — everything `score_round` will later read back."""
     app_tree(tmp_path)
     run = make_run(tmp_path, mutants="M2")
     fixture = mutants.fz.Fixture(app="app", repo_dir="app", first_verdict=False)
@@ -426,7 +402,7 @@ def test_an_invalid_corpus_stops_the_round_before_any_trial(tmp_path: Path) -> N
     app = app_tree(tmp_path)
     manifest(app, {"mutants": [
         {"id": "M1", "pool": "A", "story": "s1", "path": "tally/count.py",
-         "behavior": "off by one"},  # pool A, no bullet
+         "behavior": "off by one"},
     ]})
     with pytest.raises(TrialError, match="cannot be scored"):
         mutants.run_round(make_run(tmp_path), mutants.fz.Fixture(app="app", repo_dir="app"))

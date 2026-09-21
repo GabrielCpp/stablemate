@@ -1,28 +1,4 @@
-"""The parse products, served from the index — parsed once per content, reused everywhere.
-
-One `doctor` run reads the same feature document several times over: the graph load wants its
-frontmatter and its UI nodes, the per-file UI check re-splits it, conformance re-splits it again,
-and the link resolver splits every file a link points into so it can list that file's anchors.
-Each of those is the *same* parse of the *same* bytes, and on a real book the splitting is most of
-the wall clock.
-
-What this file pins down is behaviour, not the shape of the accessor:
-
-* a document with one content sha is parsed **once** per run, no matter how many readers want it;
-* a *second* run, in a *second process*, parses it **zero** times — the products come off disk;
-* the readers are read-only. A writer still parses for itself, because `replace_body` mutates the
-  document in place and drops its parsed sections: hand a writer the shared instance and every
-  later reader in that run sees a document that no longer matches the file;
-* every command that loads a graph fills the index, not just `doctor`;
-* the graph-global checks — reachability, locators, milestones, epics, frozen entities — are
-  recomputed from the (cached) per-file products every run and never served whole. A cached answer
-  to a global question goes stale the moment a *different* file changes.
-
-The planned seam is a read-only document accessor on `ostler.model`, generalised from the
-feature-book cache that is there now, plus the anchor computation in `ostler.links`. It is reached
-through the CLI wherever a CLI can reach it, so these tests hold whatever the accessor ends up
-being called.
-"""
+"""The parse products, served from the index — parsed once per content, reused everywhere."""
 
 from __future__ import annotations
 
@@ -40,13 +16,7 @@ from conftest import UI_DASH_UNLINKED, entry_files, report_of, screen_md, warm_i
 
 
 class _Seam:
-    """`ostler.model`, resolved at attribute access instead of at import.
-
-    The accessor this increment adds does not exist yet, and a module-level
-    `from ostler.model import read_doc` would make that a *collection* error — pytest reports an
-    interrupted run rather than a red test, and `ty` fails `make lint` before any test runs at
-    all. Going through the module keeps the failure one red per test, raised at the missing seam.
-    """
+    """`ostler.model`, resolved at attribute access instead of at import."""
 
     def __getattr__(self, name: str) -> Any:
         return getattr(importlib.import_module("ostler.model"), name)
@@ -54,8 +24,6 @@ class _Seam:
 
 model = _Seam()
 
-#: Every leaf command that loads a graph. Mirrors `test_index_cli.GRAPH_COMMANDS`, against the
-#: `ui_book` fixture (so `reach` has a real screen to start from).
 GRAPH_COMMANDS: dict[str, list[str]] = {
     "doctor": ["doctor"],
     "trace": ["trace", "seed-a1"],
@@ -73,18 +41,12 @@ COMMANDS = pytest.mark.parametrize(
     "argv", list(GRAPH_COMMANDS.values()), ids=list(GRAPH_COMMANDS)
 )
 
-#: The checks whose answer depends on the whole graph rather than on any one file.
 GLOBAL_CHECKS = ("_check_reachability", "_check_locators", "_check_milestones",
                  "_check_epic", "_check_frozen")
 
 
 def record_parses(monkeypatch: pytest.MonkeyPatch) -> tuple[list[str], list[str]]:
-    """Every text handed to the splitter, and every body whose sections were built.
-
-    Both halves, because both are the expensive part: `split` yields the frontmatter, and
-    `_build_sections` — lazy, once per document — yields the sections, bullets and links every
-    later reader walks.
-    """
+    """Every text handed to the splitter, and every body whose sections were built."""
     texts: list[str] = []
     bodies: list[str] = []
     real_split = markdown.split
@@ -128,16 +90,9 @@ def recording(name: str, real, seen: set[str]):
     return wrapper
 
 
-# ---------------------------------------------------------------------------
-# (1) one parse per distinct content sha, per run
-# ---------------------------------------------------------------------------
 def test_a_document_is_parsed_once_per_run_however_many_readers_want_it(
         ui_book: Path, index_home: Path, monkeypatch: pytest.MonkeyPatch, capsys):
-    """Cold index, one run: the four in-run readers agree on one parse each.
-
-    Scoped to the feature book because that is what this increment's five call sites read; the
-    epic and story documents have readers of their own that it does not touch.
-    """
+    """Cold index, one run: the four in-run readers agree on one parse each."""
     texts, bodies = record_parses(monkeypatch)
 
     main(["-C", str(ui_book), "doctor", "--json"])
@@ -166,13 +121,7 @@ def test_a_second_process_parses_nothing_it_already_has(
 
 def test_the_ui_nodes_come_off_the_index_too(
         ui_book: Path, tmp_path: Path, index_home: Path, monkeypatch: pytest.MonkeyPatch):
-    """Not only the document — the nodes derived from it.
-
-    Deriving a file's UI nodes costs a further markdown pass *per node* (each node's region is
-    re-parsed for its links), which on a real book was the larger half of a warm `model.load`.
-    The one part of a node that is not a function of the file's bytes is its absolute `path`, so
-    that is what the entry leaves out and the load puts back.
-    """
+    """Not only the document — the nodes derived from it."""
     real = importlib.import_module("ostler.model")
     directory = tmp_path / "index"
     expected = {(n.id, n.type, n.line, n.parent, n.path) for n in real.load(ui_book).ui_nodes}
@@ -198,12 +147,7 @@ def test_the_ui_nodes_come_off_the_index_too(
 
 def test_a_warm_doctor_scans_no_file_for_its_links(
         ui_book: Path, tmp_path: Path, index_home: Path, monkeypatch: pytest.MonkeyPatch):
-    """Link validation is document-wide: every file in the book, every run.
-
-    Served every document off the index, a warm doctor still parsed each file's whole text again
-    to list its links, which on a real book was the largest cost left in the run. The link list
-    is a function of the bytes, so it rides in the same entry.
-    """
+    """Link validation is document-wide: every file in the book, every run."""
     real = importlib.import_module("ostler.model")
     directory = tmp_path / "index"
     dash = ui_book / "docs" / "features" / "ui" / "dash.md"
@@ -227,9 +171,6 @@ def test_a_warm_doctor_scans_no_file_for_its_links(
     assert links == expected
 
 
-# ---------------------------------------------------------------------------
-# (2) read-only callers share; a writer never gets the shared document
-# ---------------------------------------------------------------------------
 def test_the_read_only_accessor_hands_back_one_document_per_file(ui_book: Path, index_home: Path):
     path = ui_book / "docs" / "features" / "area" / "rec.md"
 
@@ -243,11 +184,7 @@ def test_the_read_only_accessor_hands_back_one_document_per_file(ui_book: Path, 
 
 
 def test_a_writer_never_receives_a_shared_cached_document(ui_book: Path, index_home: Path):
-    """`replace_body` mutates in place and drops the parsed sections.
-
-    A writer served the shared instance would leave every later reader in the run holding a
-    document that no longer matches the file on disk — so writers keep splitting for themselves.
-    """
+    """`replace_body` mutates in place and drops the parsed sections."""
     path = ui_book / "docs" / "features" / "area" / "rec.md"
 
     with index.session(ui_book):
@@ -281,18 +218,10 @@ def test_a_command_that_writes_is_never_served_a_stale_document(
     assert len(entry_files(directory)) > before, "the new content was never indexed"
 
 
-# ---------------------------------------------------------------------------
-# (3) every command that loads a graph populates the index
-# ---------------------------------------------------------------------------
 @COMMANDS
 def test_every_graph_loading_command_populates_the_index(
         ui_book: Path, tmp_path: Path, index_home: Path, argv: list[str], capsys):
-    """Including the read-only query and listing commands.
-
-    A book is walked far more often by `list`/`trace`/`find` than by `doctor`; if only `doctor`
-    writes, every other command pays the cold cost forever and the index is never warm when it
-    matters.
-    """
+    """Including the read-only query and listing commands."""
     directory = tmp_path / "index"
 
     main(["-C", str(ui_book), *argv, "--index-dir", str(directory)])
@@ -301,9 +230,6 @@ def test_every_graph_loading_command_populates_the_index(
     assert entry_files(directory), f"`{' '.join(argv)}` loaded a graph and indexed nothing"
 
 
-# ---------------------------------------------------------------------------
-# (6) the graph-global checks are recomputed every run
-# ---------------------------------------------------------------------------
 def test_the_graph_global_checks_run_again_against_a_warm_index(
         ui_book: Path, tmp_path: Path, index_home: Path, monkeypatch: pytest.MonkeyPatch, capsys):
     directory = tmp_path / "index"
@@ -321,11 +247,7 @@ def test_the_graph_global_checks_run_again_against_a_warm_index(
 
 def test_a_global_finding_appears_from_a_change_to_a_different_file(
         ui_book: Path, tmp_path: Path, index_home: Path, capsys):
-    """Reachability is transitive, which is exactly what a per-file cache cannot hold.
-
-    Cutting the `leads-to:` on `dash.md` makes `detail.md` unreachable — a fact about a file this
-    run never re-read, and one a cached per-file answer would keep reporting as fine.
-    """
+    """Reachability is transitive, which is exactly what a per-file cache cannot hold."""
     directory = tmp_path / "index"
     warm_index(ui_book, directory)
     write(ui_book / "docs" / "features" / "ui" / "dash.md",

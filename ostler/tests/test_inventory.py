@@ -1,16 +1,9 @@
-"""The symbol front end — one grammar for the join and the grounding check.
-
-The central case is `test_a_reexported_symbol_does_not_ground`: it is the bug this module was
-extracted to fix. Grounding asked whether the symbol appeared as a *word* in the file, so a
-facade module that re-exports a name kept a moved symbol's citation green — `doctor` was
-blind to exactly the refactor §4.4 exists to catch.
-"""
+"""The symbol front end — one grammar for the join and the grounding check."""
 from __future__ import annotations
 
 from ostler import inventory, syntax
 
 
-# ── grounding must read declarations, not words ───────────────────────────────────────
 
 FACADE = '''\
 """The install facade — the ``Renderer`` class lives in ``renderer``."""
@@ -28,7 +21,7 @@ class Renderer:
 
 def test_a_reexported_symbol_does_not_ground():
     """The name is present in every sense but the one that matters: it is not declared here."""
-    assert "Renderer" in FACADE  # the word is right there
+    assert "Renderer" in FACADE
     assert inventory.declares("install.py", FACADE, "Renderer") is False
     assert inventory.declares("install.py", FACADE, "render_expected") is False
 
@@ -47,7 +40,6 @@ def test_an_unreadable_language_grounds_anything():
     assert inventory.declares("x.rb", "class Renderer; end", "Renderer") is True
 
 
-# ── grounding is wider than the inventory, on purpose ─────────────────────────────────
 
 APP = '''\
 LOG: deque[dict] = deque(maxlen=200)
@@ -64,22 +56,13 @@ class Hub:
 
 
 def test_grounding_admits_what_the_inventory_filters_out():
-    """A book's notion of a unit is wider than the inventory's — and may be.
-
-    Module constants, private symbols and methods are all real things to document for an
-    application. The inventory narrows its denominator deliberately; grounding must not
-    punish a book for citing outside it.
-    """
+    """A book's notion of a unit is wider than the inventory's — and may be."""
     for symbol in ("LOG", "REGISTRY", "_gate_locks", "_run_run", "Hub.send_reload"):
         assert inventory.declares("state.py", APP, symbol) is True, symbol
 
 
 def test_the_inventory_denominator_stays_narrow():
-    """The other half of the same decision: none of those widen `symbols()`.
-
-    Widening the denominator would change what "complete" means and make every existing book
-    instantly less complete — so the split is load-bearing, not an accident.
-    """
+    """The other half of the same decision: none of those widen `symbols()`."""
     assert inventory.symbols("state.py", APP) == ["Hub"]
 
 
@@ -87,7 +70,6 @@ def test_an_augmented_assignment_declares_nothing():
     assert inventory.declares("x.py", "count += 1\n", "count") is False
 
 
-# ── Python is parsed, so the words in a string are not declarations ───────────────────
 
 PARSED = '''\
 """A module whose docstring shows usage.
@@ -123,7 +105,7 @@ FIRST, SECOND = 1, 2
 
 
 def test_a_declaration_shaped_line_inside_a_docstring_is_not_a_declaration():
-    """The regex matched text; the parse matches code. `# class Commented` is gone too."""
+    """The regex matched text; the parse matches code."""
     for name in ("looks_declared", "AlsoNot", "Commented"):
         assert inventory.declares("m.py", PARSED, name) is False, name
 
@@ -144,13 +126,7 @@ def test_an_imported_name_still_does_not_ground():
 
 
 def test_a_file_that_does_not_parse_is_recovered_not_abandoned():
-    """A file mid-edit is not one we can be right about — approximating beats reporting nothing.
-
-    `ast` refuses it outright, so the recovered tree answers. The half-typed `def` lands
-    entirely inside an `ERROR` node with no declaration in it, and grounding takes the names
-    that region mentions: the alternative is `doctor` going red because the working tree is
-    mid-keystroke, which is not a fact about the book.
-    """
+    """A file mid-edit is not one we can be right about — approximating beats reporting nothing."""
     broken = "class Renderer:\n    def render(self ->\n"
     assert inventory.symbols("broken.py", broken) == ["Renderer"]
     assert inventory.declares("broken.py", broken, "Renderer.render") is True
@@ -162,7 +138,6 @@ def test_a_broken_region_grounds_only_what_it_mentions():
     assert inventory.declares("broken.py", broken, "Absent") is False
 
 
-# ── the languages ─────────────────────────────────────────────────────────────────────
 
 GO = '''\
 package main
@@ -221,21 +196,14 @@ var (
 
 
 def test_go_resolves_package_level_values_and_named_types():
-    """A Go table is where a closed vocabulary lives, and the book has to be able to cite it.
-
-    `ElementRules` is the direct analog of a TypeScript `const` the TS scanner has always
-    resolved, so a parity doc could ground the TS half and never the Go one — a correct
-    citation that `doctor` reports as `missing-code-symbol` forever. `Alias` and
-    `ElementName` come with it: only `struct`/`interface` used to count as a type.
-    """
+    """A Go table is where a closed vocabulary lives, and the book has to be able to cite it."""
     assert inventory.symbols("schema.go", GO_VALUES) == [
         "ElementName", "Alias", "ElementPage", "ElementBody", "InlineElements",
         "ElementRules", "Grouped", "Paired", "Also", "Table"]
 
 
 def test_a_composite_literal_inside_a_value_block_is_not_a_declaration():
-    """Depth, not indentation. `NotADeclaration: 1` is a map key one level in, and reads
-    exactly like a `var (…)` entry until you count braces."""
+    """Depth, not indentation."""
     declared = inventory.declared_names("schema.go", GO_VALUES)
     assert "NotADeclaration" not in declared, sorted(declared)
     assert {"unexported", "Grouped", "ElementRules"} <= declared, sorted(declared)
@@ -259,13 +227,7 @@ type Reader interface {
 
 
 def test_go_struct_fields_and_interface_methods_ground():
-    """A field citation is a correct citation — the Python scanner has always agreed.
-
-    `MockProjectReader.Mock` names a real embedded field, and before members were read a
-    book documenting a mockery mock re-flagged `missing-code-symbol` on every doctor round,
-    unfixable by any edit. Embedded members ground under the name the language promotes them
-    as: the type's last identifier.
-    """
+    """A field citation is a correct citation — the Python scanner has always agreed."""
     for symbol in ("MockProjectReader.Mock", "MockProjectReader.name",
                    "Reader.Read", "Reader.Closer"):
         assert inventory.declares("mocks.go", GO_MEMBERS, symbol) is True, symbol
@@ -273,10 +235,7 @@ def test_go_struct_fields_and_interface_methods_ground():
 
 
 def test_go_members_stay_out_of_the_inventory():
-    """The other half of the decision: members ground citations, they are not units.
-
-    Widening `symbols()` would change what a complete book means for every Go tree at once.
-    """
+    """The other half of the decision: members ground citations, they are not units."""
     assert inventory.symbols("mocks.go", GO_MEMBERS) == ["MockProjectReader", "Reader"]
 
 
@@ -308,9 +267,7 @@ import { Imported } from './other';
 
 
 def test_ts_reads_the_shapes_the_pattern_could_not_spell():
-    """`abstract` and a destructuring `const` are ordinary exports, and a regex alternation
-    listing keywords saw neither — so a correct citation to `Widget` reported
-    `missing-code-symbol` with no edit that could clear it."""
+    """`abstract` and a destructuring `const` are ordinary exports, and a regex alternation listing keywords saw neither — so a correct citation to `Widget` reported `missing-code-symbol` with no edit that could clear it."""
     assert inventory.symbols("x.ts", TS_SHAPES) == [
         "Widget", "alpha", "renamed", "first", "main"]
 
@@ -338,9 +295,7 @@ function phantom() {}
 
 
 def test_a_declaration_inside_a_comment_or_a_string_is_not_one():
-    """The regex counted `ghost` as a *unit the book owed coverage for* — a commented-out
-    export made an otherwise complete book incomplete, and `phantom` grounded a citation to
-    a function that exists only inside a template literal."""
+    """The regex counted `ghost` as a *unit the book owed coverage for* — a commented-out export made an otherwise complete book incomplete, and `phantom` grounded a citation to a function that exists only inside a template literal."""
     assert inventory.symbols("x.ts", TS_UNREAL) == []
     assert inventory.declares("x.ts", TS_UNREAL, "ghost") is False
     assert inventory.declares("x.ts", TS_UNREAL, "phantom") is False
@@ -363,9 +318,7 @@ type (
 
 
 def test_go_grouped_types_are_declarations():
-    """A parenthesized `type (…)` group was the one Go shape the scan left out — the entries
-    look exactly like a struct's fields to a line matcher, and nothing but a parse tells them
-    apart."""
+    """A parenthesized `type (…)` group was the one Go shape the scan left out — the entries look exactly like a struct's fields to a line matcher, and nothing but a parse tells them apart."""
     assert inventory.symbols("schema.go", GO_TYPE_GROUP) == ["Alpha", "Beta"]
     assert inventory.declares("schema.go", GO_TYPE_GROUP, "Alpha") is True
 
@@ -408,8 +361,7 @@ function standalone() {}
 
 
 def test_a_php_function_after_a_class_is_not_a_method_of_it():
-    """Qualification follows the tree, not the last `class` seen above the match — a flat
-    source-order scan attributed every later function to a class it never sat in."""
+    """Qualification follows the tree, not the last `class` seen above the match — a flat source-order scan attributed every later function to a class it never sat in."""
     assert inventory.symbols("x.php", PHP_AFTER_CLASS) == [
         "Holder", "Holder.method", "standalone"]
 
@@ -425,7 +377,6 @@ def test_a_twig_block_inside_a_comment_is_not_a_unit():
     assert inventory.symbols("x.twig", "{# {% block removed %} #}\n") == []
 
 
-# ── extents: the QA diff mapper's question ────────────────────────────────────────────
 
 EXTENTS_GO = '''\
 package p
@@ -465,18 +416,7 @@ const Badge = ({ tone }: BadgeProps) => <span className={tone} />
 
 
 def test_a_typescript_local_is_named_for_the_declaration_that_encloses_it():
-    """The extent of a component is not replaced by the extents of its locals.
-
-    Every changed line in a React component body falls inside some `const`, so a flat walk
-    that emitted each `variable_declarator` under its bare name made the component itself
-    unreachable — the mapper's innermost-spanning rule resolved a hunk to `el`, and `Panel`
-    appeared in no obligation at all. Both consumers then asked for something no book can
-    give: a `code:` bullet for a local variable.
-
-    Qualifying is what keeps this framework-agnostic. Nothing here knows what a component or
-    a hook is: `Badge` is top level and stays bare, `el` is named for the nearest *named*
-    owner rather than the anonymous arrow syntactically around it.
-    """
+    """The extent of a component is not replaced by the extents of its locals."""
     found = inventory.extents("x.tsx", EXTENTS_TSX)
     assert (1, 9, "Panel") in found
     assert ("Panel.open", "Panel.setOpen", "Panel.status", "Panel.el") == tuple(
@@ -491,21 +431,9 @@ def test_a_typescript_method_is_named_for_its_class():
     assert inventory.extents("x.ts", source) == [(1, 5, "View"), (2, 4, "View.render")]
 
 
-# ── the grammar is an input to every answer above ─────────────────────────────────────
 
 def test_the_front_end_states_the_grammar_version_its_answers_came_from():
-    """A symbol table cached on a file's bytes alone would outlive the grammar that read it.
-
-    Every declaration set here is a function of two things: the source, and the tree-sitter
-    grammars that parsed it. Upgrade the language pack and `export abstract class` may start
-    parsing where it did not — the same bytes, a different answer — so the version has to be
-    something a caller can put in a key. Stable within a process, because it names what is
-    installed rather than when it was asked.
-
-    Reached by attribute rather than imported: the seam does not exist yet, and naming it
-    directly would fail `ty` — and so `make lint`, and so the whole suite — before a single
-    test ran. This way its absence is one red, here, at the seam.
-    """
+    """A symbol table cached on a file's bytes alone would outlive the grammar that read it."""
     stated = getattr(syntax, "grammar_version", None)
     assert callable(stated), "the source front end states no grammar version"
 
@@ -514,10 +442,8 @@ def test_the_front_end_states_the_grammar_version_its_answers_came_from():
     assert version == stated()
 
 
-# ── digests: the backfill watermark's question ────────────────────────────────────────
 
 DIGEST_SOURCES: dict[str, tuple[str, str, str]] = {
-    #: suffix → (source, the symbol whose body an edit will change, the edited source)
     ".py": (
         "def alpha() -> int:\n    return 1\n\n\ndef beta() -> int:\n    return 2\n",
         "alpha",
@@ -561,11 +487,7 @@ def test_every_documented_language_answers_with_a_digest_per_declaration():
 
 
 def test_editing_one_body_moves_exactly_one_digest():
-    """The whole reason the watermark is per symbol.
-
-    A file-level sha requeues every node citing a forty-symbol file when one function moved;
-    this is the assertion that says it does not.
-    """
+    """The whole reason the watermark is per symbol."""
     for suffix, (source, edited_name, edited) in DIGEST_SOURCES.items():
         before = inventory.symbol_digests(f"x{suffix}", source)
         after = inventory.symbol_digests(f"x{suffix}", edited)
@@ -594,18 +516,7 @@ REFORMATTED = {
 
 
 def test_comments_and_layout_do_not_move_a_digest():
-    """Cosmetic churn is the largest single source of false backfill work.
-
-    A reformat, a re-indent or a rewritten doc comment must cost nothing: the digest is a
-    token stream, not a source slice. `.tsx` and `.twig` are absent only because their
-    fixtures above have no comment form worth a second spelling, not because they differ.
-
-    Punctuation a formatter may add or drop — a JS semicolon, a trailing comma — is *not*
-    normalized away: it is an anonymous leaf like any other, and telling a decorative one
-    from a load-bearing one (`for (;;)`) needs per-grammar knowledge this does not have.
-    A repo formats itself consistently, so that churn arrives once per style change rather
-    than continuously, and one over-wide backfill round is the whole cost of being wrong.
-    """
+    """Cosmetic churn is the largest single source of false backfill work."""
     for suffix, reformatted in REFORMATTED.items():
         source = DIGEST_SOURCES[suffix][0]
         assert inventory.symbol_digests(f"x{suffix}", source) == inventory.symbol_digests(
@@ -614,11 +525,7 @@ def test_comments_and_layout_do_not_move_a_digest():
 
 
 def test_an_operator_is_part_of_what_a_declaration_is():
-    """`walk` yields only *named* nodes, and an operator is anonymous in most grammars.
-
-    Hashing the walk would make `a + b` and `a - b` the same declaration — the one thing a
-    content digest may never do — so the digest walks every child, named or not.
-    """
+    """`walk` yields only *named* nodes, and an operator is anonymous in most grammars."""
     plus = inventory.symbol_digests("x.go", "package p\n\nfunc F(a, b int) int { return a + b }\n")
     minus = inventory.symbol_digests("x.go", "package p\n\nfunc F(a, b int) int { return a - b }\n")
     assert plus["F"] != minus["F"]
@@ -655,7 +562,6 @@ def test_the_indexed_accessor_is_empty_for_an_unread_language(tmp_path):
     assert inventory.symbol_digests_at(target) == {}
 
 
-# ── the import walk: one hop is the bound the worklist builder crosses ────────────────
 
 
 PY_IMPORTS = '''\
@@ -730,13 +636,7 @@ def test_imports_for_an_empty_file_is_empty():
 
 
 def test_a_half_typed_python_file_yields_what_can_be_read():
-    """The recovery path: a file `ast` refused still reports the imports the parser could see.
-
-    The point of the function's design is that one hop walks the import graph, and one
-    hop is the bound — losing some imports on a half-typed file is acceptable, losing all
-    of them on every such file is not.
-    """
-    # Missing module: `from .relative imp` — parser cannot see `import` or its module name.
+    """The recovery path: a file `ast` refused still reports the imports the parser could see."""
     text = "import a.b\nfrom .relative imp\nimport c\n"
     out = inventory.imports_of("m.py", text)
     assert "a.b" in out

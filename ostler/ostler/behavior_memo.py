@@ -1,31 +1,4 @@
-"""Item-level verdict memo: work already judged is not judged again.
-
-A packet receipt is bound to the packet's digest, so one edited bullet in a book of
-three hundred documents rebuilds one packet and re-buys every verdict in it. This module
-remembers each verdict on its own — per claim, per candidate — in the persistent
-:mod:`ostler.index`, and lets the packet builder ask, before any reviewer sees it, which
-items already have an answer.
-
-What a verdict is a function of decides what its key is. A claim's verdict depends on
-the claim, on the candidates it could bind to and on the excerpts the reviewer read; a
-candidate's depends on the candidate, on the claims that could cover it and on the same
-excerpts. So a claim is keyed on its own digest plus the **candidate pool** of its packet,
-a candidate on its own digest plus the **claim pool**, and both on the review contract
-and the **context digest**. Editing one claim keeps every other claim's memo (their pool
-is the source, unchanged) and drops every candidate's (their pool changed) — which is
-exactly which judgements the edit could have moved.
-
-Line numbers are deliberately absent from every digest. A claim that moved down a page is
-the same claim, a candidate under an added import is the same candidate, and the ids
-both carry are content-derived already. Book evidence spans are stored as offsets inside
-their context and rebased on recall, so a shifted context still hits.
-
-A packet is then rebuilt from what missed: the missed claims need every candidate, since
-support may sit in an unchanged one, while missed candidates alone need only the claims.
-The reviewer's reply to that reduced packet is merged back over the recalled verdicts,
-validated against the full packet, and remembered under the full packet's pools — so the
-next pass is a whole hit and costs no turn.
-"""
+"""Item-level verdict memo: work already judged is not judged again."""
 
 from __future__ import annotations
 
@@ -42,8 +15,6 @@ from ostler.behavior_models import (
 )
 from ostler.index import IndexStore, _sha
 
-#: The namespace label of every memo entry, so a verdict can never collide with a parse
-#: product that happened to agree about its material.
 NAMESPACE = "behavior-verdict"
 
 
@@ -78,20 +49,12 @@ def _book_parts(packet: AuditPacket, node: str | None) -> list[str]:
 
 
 def claim_context_digest(packet: AuditPacket, claim: BookClaim) -> str:
-    """What the reviewer read beside a claim: the source excerpts and the claim's own node.
-
-    Another node's excerpt in the same packet is there for another claim; an edit to it
-    does not move this claim's verdict, so it is not in this claim's key.
-    """
+    """What the reviewer read beside a claim: the source excerpts and the claim's own node."""
     return _sha(*(part.encode("utf-8") for part in (*_source_parts(packet), *_book_parts(packet, claim.node))))
 
 
 def candidate_context_digest(packet: AuditPacket) -> str:
-    """What the reviewer read beside a candidate: the source excerpts and every book excerpt.
-
-    A candidate's book evidence may land in any node of the packet, so all of them are in
-    its key; positions are not, since the evidence is stored relative to its node.
-    """
+    """What the reviewer read beside a candidate: the source excerpts and every book excerpt."""
     return _sha(*(part.encode("utf-8") for part in (*_source_parts(packet), *_book_parts(packet, None))))
 
 
@@ -119,7 +82,6 @@ class VerdictMemo:
         self.store = store
         self.contract_digest = contract_digest
 
-    # -- keys ---------------------------------------------------------------
     def keys(self, packet: AuditPacket) -> tuple[dict[str, str], dict[str, str]]:
         """Claim id → key and candidate id → key, for every item in *packet*."""
         claim_pool = _pool([claim_digest(claim) for claim in packet.claims])
@@ -134,7 +96,6 @@ class VerdictMemo:
             for candidate in packet.candidates}
         return claims, candidates
 
-    # -- recall -------------------------------------------------------------
     def recall(self, packet: AuditPacket) -> MemoRecall:
         """The verdicts the memo holds for *packet*'s items; a damaged entry is a miss."""
         claim_keys, candidate_keys = self.keys(packet)
@@ -154,7 +115,6 @@ class VerdictMemo:
                 candidates.append(verdict)
         return MemoRecall(claims=tuple(claims), candidates=tuple(candidates))
 
-    # -- remember -----------------------------------------------------------
     def remember(self, packet: AuditPacket, report: AuditReport) -> int:
         """Store every verdict of *report* under *packet*'s pools; the count written."""
         if report.packet_digest != packet.digest:
@@ -205,22 +165,7 @@ def _candidate_from(candidate_id: str, stored: Any, contexts: Mapping[str, int])
 
 
 def salvage_verdicts(packet: AuditPacket, payload: object) -> tuple[MemoRecall, tuple[str, ...]]:
-    """Partition a short or partly wrong reply into what it did answer and what it owes.
-
-    ``validate_verdicts`` is all-or-nothing by design — one omitted id and its
-    ``_exact_ids`` check discards every other verdict in the reply. That is the right
-    rule for a receipt, and the wrong rule for a recovery: a reply missing one of
-    nineteen candidates is eighteen judgements plus a gap, and re-asking the whole
-    packet is how the same id gets dropped a second time.
-
-    Apply the same item and relationship predicates as final validation. A contradictory
-    candidate and its linked claims are owed together: either side may be wrong, so
-    retaining one as settled would prejudge the repair. An unsupported ``covered``
-    verdict is owed only when all claims were answered; a missing claim could still
-    supply its support. Final validation always checks the merged whole.
-
-    Returns the recall to reduce the packet against, and the ids still owing, sorted.
-    """
+    """Partition a short or partly wrong reply into what it did answer and what it owes."""
     if packet.digest != packet_digest(packet):
         raise ValueError("packet content digest does not match its contents")
     verdicts = AuditVerdicts.model_validate(payload)
@@ -270,13 +215,7 @@ def salvage_verdicts(packet: AuditPacket, payload: object) -> tuple[MemoRecall, 
 
 
 def reduce_packet(packet: AuditPacket, recall: MemoRecall) -> AuditPacket | None:
-    """The packet a reviewer still has to read, or ``None`` when the memo covers it all.
-
-    A missed claim keeps every candidate in front of the reviewer, because the one that
-    supports it may be a candidate whose own verdict hit. Missed candidates alone keep
-    every claim for the same reason in the other direction. Nothing missed is a whole
-    hit, and the packet whose every item missed is returned as it is.
-    """
+    """The packet a reviewer still has to read, or ``None`` when the memo covers it all."""
     if recall.covers(packet):
         return None
     hit_claims = {verdict.id for verdict in recall.claims}
@@ -297,15 +236,7 @@ def reduce_packet(packet: AuditPacket, recall: MemoRecall) -> AuditPacket | None
 
 
 def merge_verdicts(packet: AuditPacket, recall: MemoRecall, reviewed: AuditVerdicts | None) -> AuditReport:
-    """The full packet's report from recalled verdicts and the reduced packet's reply.
-
-    A reviewed item wins over a recalled one. A candidate the reviewer never saw a
-    claim for is upgraded to ``covered`` when a recalled supported or partial claim
-    links it — the rule ``validate_verdicts`` applies to covered — and an
-    ``implementation_detail`` a recalled claim contradicts becomes ``unresolved``, since
-    the two verdicts were made on different evidence and neither can stand alone.
-    Raises ``ValueError`` when the merge does not validate against *packet*.
-    """
+    """The full packet's report from recalled verdicts and the reduced packet's reply."""
     claims: dict[str, ClaimVerdict] = {verdict.id: verdict for verdict in recall.claims}
     candidates: dict[str, CandidateVerdict] = {verdict.id: verdict for verdict in recall.candidates}
     if reviewed is not None:
@@ -323,11 +254,6 @@ def merge_verdicts(packet: AuditPacket, recall: MemoRecall, reviewed: AuditVerdi
         verdict = candidates.get(candidate.id)
         if verdict is None:
             raise ValueError(f"{candidate.id}: no recalled or reviewed verdict")
-        # ``mixed`` is the verdict that records the contradiction directly — a candidate
-        # that is internal AND relevant. A recalled supported or partial claim naming it
-        # does not upgrade it to ``covered`` (the visibility half is still partial), and
-        # the implementation_detail → unresolved demote that runs for a different
-        # contradiction does not apply (mixed already names what it is).
         if verdict.status == "mixed":
             merged.append(verdict)
             continue

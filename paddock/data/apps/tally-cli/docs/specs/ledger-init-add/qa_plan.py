@@ -1,26 +1,4 @@
-"""The frozen QA plan for `ledger-init-add`.
-
-The product is a command, and it is reached as one: every invocation below goes through
-`qa.tool("python3")` as `python3 -m tally`, over a process boundary, and the observable is an
-exit code, two streams, and the files the command left behind. Nothing here imports `tally` —
-`ostler.qa.lint` is an AST allowlist and reserves the process for ostler's approved tools — so
-the app being written in the harness's own language changes nothing about how it is reached.
-There is no port and no service to start.
-
-The target's `driver` is `python`, which names the *harness* a scenario body runs in, not the
-transport to the product: `ostler_qa.DRIVERS` is `("python", "playwright", "maestro")` and
-there is no separate driver for "a command". A plan that reaches its product over a process
-boundary and one that reaches it over HTTP are both `python` here; what differs is the body.
-
-`qa.tool` runs at the repo root unless `.run(cwd=)` hands it a directory under the evidence
-dir; this plan keeps the root and names its ledger with `--file` instead: each scenario owns
-a directory under the evidence dir, and no two of them race for one `tally.json`.
-
-Reading a file is the same process boundary. There is no `open()` in a plan and nothing here
-leans on `pathlib` to touch the disk; a snippet handed to `python3` reads the bytes and prints
-a digest, which is also what makes "byte-for-byte unchanged" an assertion rather than a
-paraphrase of it.
-"""
+"""The frozen QA plan for `ledger-init-add`."""
 
 import json
 
@@ -31,11 +9,7 @@ plan(run_id="qa-ledger-init-add", story="ledger-init-add")
 
 tally = target("tally", driver="python")
 
-# Obligation ids are written out in full at every assertion, never factored into a constant:
-# `ostler qa validate` reads a `covers=` list statically off the AST, so a computed id claims
-# nothing.
 
-#: Read one file as evidence: whether it is there, its digest, and its text.
 _READ = """
 import hashlib, json, pathlib, sys
 p = pathlib.Path(sys.argv[1])
@@ -46,7 +20,6 @@ else:
     json.dump({"exists": False, "sha256": None, "text": None}, sys.stdout)
 """
 
-#: Every file under a directory, keyed by its path and valued by its digest.
 _CENSUS = """
 import hashlib, json, pathlib, sys
 root = pathlib.Path(sys.argv[1])
@@ -61,11 +34,7 @@ json.dump(found, sys.stdout)
 
 
 def run(qa: Qa, ledger, *argv, timeout: float = 120.0):
-    """One invocation of the product, on the ledger this scenario owns.
-
-    Duplicated per plan rather than shared through a fixture module: `qa: {fixture_modules:}`
-    is retired, and this plan is frozen corpus, so the cost of the duplicate is a fixed one.
-    """
+    """One invocation of the product, on the ledger this scenario owns."""
     return qa.tool("python3").run("-m", "tally", "--file", str(ledger), *argv, timeout=timeout)
 
 
@@ -181,8 +150,6 @@ def init_creates_the_ledger_and_refuses_to_overwrite_one(qa: Qa) -> None:
         ],
     )
 
-    # Read back by a process that started after `init` exited: whatever it can parse is what
-    # the previous process had finished writing.
     document = json.loads(qa.field(after, "text"))
     qa.check(
         "the ledger is one JSON object with a currency string and an entries array",
@@ -204,8 +171,6 @@ def init_creates_the_ledger_and_refuses_to_overwrite_one(qa: Qa) -> None:
         covers=["ac:1", "okf:docs/features/tally/tally.md#init-a-ledger:does:1"],
     )
 
-    # A ledger with something in it, so a truncating `init` has something to destroy. An empty
-    # ledger is the one state where the destructive defect and the refusal look identical.
     recorded = run(qa, ledger, "add", "ana", "taxi", "1250", "2026-03-01")
     qa.require(
         "the scenario could put an entry in the ledger to be protected",
@@ -228,9 +193,6 @@ def init_creates_the_ledger_and_refuses_to_overwrite_one(qa: Qa) -> None:
         ],
     )
 
-    # The bytes, not the parse. A truncation to an empty ledger in the same currency differs
-    # from what was there only in the entries array, and a re-init that rewrote identical
-    # content is still a write the book forbids.
     stood = read(qa, ledger)
     qa.verify(
         "unchanged",
@@ -296,8 +258,6 @@ def the_currency_is_recorded_once_at_init_and_never_moves(qa: Qa) -> None:
         expected=0,
         covers=["okf:docs/features/tally/tally.md#currency:required:1"],
     )
-    # The ledger itself is what the product wrote, and in this story it is the only place the
-    # code exists: `report` is a later story, so there is nothing yet that states it back.
     told = read(qa, default)
     qa.verify(
         "json_path",
@@ -434,8 +394,6 @@ def add_records_one_expense_and_refuses_an_amount_that_is_not_money(qa: Qa) -> N
         ],
     )
 
-    # `-1200` is not a positive whole number of cents, and reaches the ledger's rule rather
-    # than the parser's: `AMOUNT_CENTS` is a positional string, so argparse hands it over.
     refused = run(qa, ledger, "add", "bo", "refund", "-1200", "2026-03-04")
     qa.verify(
         "exit_status",
@@ -472,8 +430,6 @@ def add_records_one_expense_and_refuses_an_amount_that_is_not_money(qa: Qa) -> N
         ],
     )
 
-    # The rename is not observable from outside as an instant, but its residue is: a write
-    # that did not complete the rename leaves the temporary path sitting beside the ledger.
     left = census(qa, directory)
     qa.check(
         "no half-written ledger is left beside the file",
@@ -560,8 +516,6 @@ def a_dry_run_reports_what_it_would_do_and_writes_nothing_anywhere(qa: Qa) -> No
         subject="tally.json",
         covers=["ac:5", "okf:docs/features/tally/tally.md#dry-run:semantics:1"],
     )
-    # The directory rather than the ledger: nothing else was written either, which is where a
-    # dry run that wrote somewhere else instead would show up as a file that appeared.
     qa.verify(
         "unchanged",
         (before, after),
@@ -573,8 +527,6 @@ def a_dry_run_reports_what_it_would_do_and_writes_nothing_anywhere(qa: Qa) -> No
         ],
     )
 
-    # The default is false, proven by running the same command without the flag rather than by
-    # reading a help string: what `default:` means here is what the command does.
     committed = run(qa, ledger, "add", "bo", "train", "3300", "2026-03-06")
     settled = census(qa, directory)
     qa.check(
@@ -655,8 +607,6 @@ def two_ledgers_in_one_directory_never_see_each_other(qa: Qa) -> None:
             "okf:docs/features/tally/tally.md#file:contract",
         ],
     )
-    # The bytes as well as the parse: an `add` that rewrote the neighbour with identical
-    # content left it holding nothing either, and only the digest separates the two.
     stood = read(qa, there)
     qa.verify(
         "unchanged",
@@ -665,9 +615,6 @@ def two_ledgers_in_one_directory_never_see_each_other(qa: Qa) -> None:
         covers=["okf:docs/features/tally/tally.md#file:semantics:1"],
     )
 
-    # The default and the optionality are read off the product's own usage rather than
-    # exercised: running without `--file` would write into the harness's working directory,
-    # which is the repo, and a check that damages the tree it is measuring is not a check.
     described = qa.tool("python3").run("-m", "tally", "--help", timeout=60.0)
     qa.check(
         "`--file` is optional and the product states its default",
@@ -680,8 +627,6 @@ def two_ledgers_in_one_directory_never_see_each_other(qa: Qa) -> None:
         ],
     )
 
-    # Global means before the command, and one invocation names one ledger. Given after the
-    # command name it is not a second ledger — it is not accepted at all.
     misplaced = qa.tool("python3").run(
         "-m", "tally", "add", "ana", "ferry", "2600", "2026-03-07", "--file", str(here), timeout=60.0
     )

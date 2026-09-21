@@ -1,68 +1,24 @@
-"""Conventional Commit subjects for everything the coder workflow writes to git.
-
-The coder commits into *other people's* repositories, and those repositories cut releases
-with **release-please**, which reads commit subjects and squash-merge PR titles and nothing
-else. A subject like `0004-checkout: guest-cart` parses as no type at all, so a story that
-shipped a user-facing feature produces no version bump and no changelog entry — the work
-lands and the release never mentions it. That is the failure this module exists to prevent,
-and it is why the subject shape is built here rather than interpolated at each callsite:
-there are eight of them (story commits in every affected repo, the status stamp, the two
-marker commits, the queue prune, the epic PR title, the story PR title, and the merge
-commit), and one of them drifting is one release going silent.
-
-**A story is `feat`.** The coder has no signal that would let it choose a type per story —
-the story documents behavior, not the semver consequence of implementing it — so it does
-not guess. `feat` is the honest default because a story is by construction new documented
-behavior, and it is the *safe* default because the failure mode is a minor bump where a
-patch would have done, rather than a shipped feature nobody was told about. The give-up
-markers keep `feat` for the same reason: the story's code is in that commit, whatever the
-marker says about its QA. What is *not* a story — the status stamp, the queue prune — is
-typed `docs`/`chore`, which release-please correctly declines to release.
-
-**The scope is the package, not the epic.** In a release-please monorepo config the scope
-selects the component whose version moves; an epic name selects nothing and would be
-noise in every changelog. The epic and story slugs go in the footers instead — `Epic:`
-and `Story:`, the keys `ostler.provenance` and `shared/ci.py` read — where git parses
-them and a human triaging `git log` still finds them.
-"""
+"""Conventional Commit subjects for everything the coder workflow writes to git."""
 from __future__ import annotations
 
 import re
 from pathlib import Path
 
-#: Conventional Commits imposes no subject length, but release notes and `git log --oneline`
-#: both read a subject at terminal width, and every host truncates past roughly this.
 SUBJECT_LIMIT = 72
 
-#: What survives in a scope: release-please matches its configured component names against
-#: this text, so anything that is not a plausible package name is dropped rather than
-#: escaped into something that matches nothing.
 _SCOPE_STRIP = re.compile(r"[^a-z0-9._-]+")
 
-#: Doc templates commonly label the heading with the artifact's own kind — `# Story: Record an
-#: expense`. That label is redundant twice over in a changelog: the reader knows they are
-#: reading a release note, and the message already carries the epic/story trailers. Left in, it
-#: becomes the description's first word and every entry reads `feat(api): story: …`.
 _HEADING_LABEL = re.compile(r"^(story|epic)\s*[:–—-]\s*", re.IGNORECASE)
 
 
 def scope(name: str) -> str:
-    """The Conventional Commit scope for a repo/package name (`""` when nothing survives).
-
-    Takes the workspace key where there is one — that is the name the workspace file and
-    release-please config both spell the package with — and a directory name otherwise.
-    """
+    """The Conventional Commit scope for a repo/package name (`""` when nothing survives)."""
     cleaned = _SCOPE_STRIP.sub("-", name.strip().lower()).strip("-.")
     return cleaned
 
 
 def describe(text: str) -> str:
-    """Normalize a story heading into a Conventional Commit description.
-
-    Lowercases the first word and drops a trailing period, the two things that make a
-    document heading read as a heading in a changelog. An identifier-shaped first word
-    (`STORY-1`, `OAuth`) is left alone: lowercasing it would rename the thing it names.
-    """
+    """Normalize a story heading into a Conventional Commit description."""
     stripped = " ".join(text.split()).rstrip(".")
     if not stripped:
         return ""
@@ -78,13 +34,7 @@ def subject(
     description: str,
     marker: str = "",
 ) -> str:
-    """Build a Conventional Commit subject with a protected status suffix.
-
-    The give-up marker is never what gets trimmed. The description gives way instead, and
-    if even a minimal description will not fit beside the marker the limit does.
-
-    The story id is **not** here — it is a footer, and only a footer. See `message`.
-    """
+    """Build a Conventional Commit subject with a protected status suffix."""
     head = f"{kind}({package})" if package else kind
     body = describe(description) or "no description"
     suffixes = [marker] if marker else []
@@ -103,15 +53,7 @@ def message(
     epic: str = "",
     story: str = "",
 ) -> str:
-    """A Conventional Commit subject plus the exact provenance trailers.
-
-    The story id lives in one place — the `Story:` footer — because that is the spelling
-    every reader of it already uses: `ostler.provenance` joins runs to commits by it, the
-    commit policy the agents work under asks for it, and git itself parses it
-    (`git log --format=%(trailers:key=Story)`), so it survives a rebase and a squash. A
-    second copy bracketed into the subject would be the same fact in a shape no tool
-    reads, spending characters release-please wants for the description.
-    """
+    """A Conventional Commit subject plus the exact provenance trailers."""
     lines = [subject(kind, package, description, marker)]
     trailers = [f"{label}: {value}" for label, value in (("Epic", epic), ("Story", story)) if value]
     if trailers:
@@ -120,13 +62,7 @@ def message(
 
 
 def story_description(root: Path, story_path: str, fallback: str = "") -> str:
-    """The story's `# ` heading, normalized — what its commit and its PR title both say.
-
-    The heading is the one sentence a human wrote about this story, so it is what belongs
-    in a changelog; the slug is the fallback because it always exists and is greppable, not
-    because it reads well. A `Story:`/`Epic:` label on the heading is dropped rather than
-    described, and a heading that is *only* that label falls back to the slug.
-    """
+    """The story's `# ` heading, normalized — what its commit and its PR title both say."""
     full = root / story_path if story_path else None
     if full is not None and full.is_file():
         try:

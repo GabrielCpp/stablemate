@@ -1,11 +1,4 @@
-"""The result ledger: fingerprint stability and the persisted record round trip.
-
-`claim_fingerprint` is the one piece of actual logic here — everything else is JSON state
-management, the same shape `shared/worklist.py`'s `record`/`load_worklist` already have
-tests for indirectly. What is under test is the property the plan's slice depends on: a
-targeted re-run skips a claim exactly when nothing it depends on changed, and re-runs it
-the moment a cited file's stamped digest or a fixture's text does.
-"""
+"""The result ledger: fingerprint stability and the persisted record round trip."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -42,14 +35,7 @@ def test_fingerprint_changes_when_a_cited_digest_changes() -> None:
 
 
 def test_fingerprint_changes_when_cited_file_bytes_change(tmp_path: Path) -> None:
-    """The fingerprint must move when a cited file's real bytes change, stamp or no stamp.
-
-    This is the core defect this fix closes: fingerprinting the book's `@digest` stamp text
-    (a copy) instead of the cited file's actual bytes meant a code change with no matching
-    restamp — or a re-run performed before doctor's stale-citation check ran — was invisible
-    to the fingerprint, and a targeted re-run would wrongly skip a claim whose dependency had
-    moved.
-    """
+    """The fingerprint must move when a cited file's real bytes change, stamp or no stamp."""
     cited = tmp_path / "a.py"
     cited.write_text("def foo(): return 1\n", encoding="utf-8")
 
@@ -82,7 +68,6 @@ def test_needs_rerun_true_when_cited_file_changed_even_though_book_did_not(tmp_p
     ledger = record_result(ledger_file, load_ledger(ledger_file), "okf:node#does:1", fingerprint, "checked")
     assert needs_rerun(ledger, "okf:node#does:1", fingerprint) is False
 
-    # The file's real bytes change; nothing in the book (no stamp, no plan text) is touched.
     cited.write_text("def foo(): return 2\n", encoding="utf-8")
     moved_fingerprint = claim_fingerprint(["a.py::foo"], {}, "plan-1", tmp_path)
 
@@ -110,15 +95,7 @@ def test_fingerprint_unreadable_cited_file_is_stable_not_a_crash(tmp_path: Path)
 
 
 def test_repo_qualified_ref_does_not_silently_hash_the_local_file(tmp_path: Path) -> None:
-    """A foreign-repository ref must not fall back onto the local checkout's own file.
-
-    `a.py` exists locally at the same relative path a `repo://other/a.py` ref names. With no
-    `checkouts` supplied, resolving the qualified ref against `repo_root` would silently
-    fingerprint *that* unrelated local file instead of reporting the citation unreadable — a
-    wrong-file fingerprint, not a missing-file one. It must instead fold into the same
-    sentinel an unreadable citation always does, so it is indistinguishable from "cannot be
-    read" rather than tracking content that has nothing to do with the citation.
-    """
+    """A foreign-repository ref must not fall back onto the local checkout's own file."""
     local = tmp_path / "a.py"
     local.write_text("def foo(): return 'wrong file'\n", encoding="utf-8")
 
@@ -127,11 +104,7 @@ def test_repo_qualified_ref_does_not_silently_hash_the_local_file(tmp_path: Path
         ["repo://other/a.py"], {}, "plan-1", tmp_path / "nonexistent-root"
     )
 
-    # Whether the local checkout happens to have a file at that same relative path makes no
-    # difference: neither root resolves the foreign repository, so both fold into the same
-    # unreadable sentinel rather than the one with a local file hashing it by accident.
     assert qualified_with_local_file == qualified_with_no_local_file
-    # And it must not equal what fingerprinting the local file's real bytes would produce.
     local_hash = claim_fingerprint(["a.py"], {}, "plan-1", tmp_path)
     assert qualified_with_local_file != local_hash
 

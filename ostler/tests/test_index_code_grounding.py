@@ -1,35 +1,4 @@
-"""The second cached product — a code file's symbol table, keyed on its bytes and its grammar.
-
-Once the document parses come off the index, `_check_code_grounding` is most of what a `doctor`
-run still spends. It is spending it on the same thing over and over: every `code:` citation
-pointing into a file asks that file what it declares, and the answer is a pure function of the
-file's bytes read through a particular tree-sitter grammar. So the symbol *set* — not the parse
-tree — becomes the second thing the index holds.
-
-What these tests pin down is behaviour, not the shape of the cache:
-
-* a code file is extracted **once** per `(content sha, grammar version)` pair, however many
-  citations point at it, and whatever paths those bytes sit at;
-* a *second* process extracts **nothing** it already has — the symbols come off disk;
-* the grammar version is part of that key and nothing else's: bumping it re-extracts the code
-  and leaves every document-parse entry serving;
-* the sha is the other half, so a code file edited out from under a citation reports
-  `missing-code-symbol` on the very next run, and a deleted one reports `dangling-code-ref`;
-* **nothing is pre-swept.** Which code files matter is discovered while checking, as the book
-  points at them, so a file nobody cites is never read at all and a miss costs one extraction
-  rather than a sweep;
-* `doctor --verify-index` still agrees against a populated, an empty and a partially stale
-  index — and now agrees while the code half of the index is genuinely being used.
-
-The grammar version has no home yet. The planned seam is a module-level callable on
-`ostler.syntax`, consulted when the key is built — the same shape `index.epoch_inputs` already
-documents for the one global input with no file behind it, and for the same reason: it is the
-only way a test can move it. The tests reach it by attribute, so its absence is one red per
-test at the seam rather than a collection error.
-
-Go, not Python, throughout: Python declarations are read with `ast` and only fall through to
-tree-sitter when the file does not parse, so a grammar version means nothing for them.
-"""
+"""The second cached product — a code file's symbol table, keyed on its bytes and its grammar."""
 
 from __future__ import annotations
 
@@ -42,16 +11,9 @@ from ostler.cli import main
 
 from conftest import entry_files, report_of, warm_index, write
 
-# ---------------------------------------------------------------------------
-# A book that cites code
-# ---------------------------------------------------------------------------
-#: Cited three times, from three different nodes.
 GO_ALPHA = "package p\n\ntype Alpha struct{}\n\nfunc (a *Alpha) Handle() {}\n"
-#: Cited once, and written to two paths — the same bytes at two names.
 GO_BETA = "package p\n\ntype Beta struct{}\n"
-#: Cited exactly once from exactly one path: the cost of a single extraction.
 GO_GAMMA = "package p\n\ntype Gamma struct{}\n"
-#: Cited by nobody. Nothing in a `doctor` run may so much as read it.
 GO_UNCITED = "package p\n\ntype Uncited struct{}\n"
 
 CITATIONS = {
@@ -72,12 +34,7 @@ def concept_md(slug: str, ref: str) -> str:
 
 @pytest.fixture
 def code_book(repo: Path) -> Path:
-    """`repo` plus a small Go tree and six citations into it.
-
-    Deliberately lopsided: `alpha.go` is cited three times, `beta.go`'s bytes live at two paths
-    and are cited once each, `gamma.go` is cited once, and `uncited.go` is cited never. Each
-    asymmetry is a question one of the tests below asks.
-    """
+    """`repo` plus a small Go tree and six citations into it."""
     write(repo / "src/alpha.go", GO_ALPHA)
     write(repo / "src/beta.go", GO_BETA)
     write(repo / "src/copy/beta.go", GO_BETA)
@@ -88,16 +45,8 @@ def code_book(repo: Path) -> Path:
     return repo
 
 
-# ---------------------------------------------------------------------------
-# Instruments
-# ---------------------------------------------------------------------------
 def record_source_parses(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, str]]:
-    """Every `(grammar, text)` the source front end was asked to read.
-
-    Counted at `syntax.parse` rather than at any one extractor: an extraction may cost more
-    than one pass over the tree, so what the tests compare is one file's cost against another's
-    — never a bare number of calls.
-    """
+    """Every `(grammar, text)` the source front end was asked to read."""
     calls: list[tuple[str, str]] = []
     real = syntax.parse
 
@@ -157,16 +106,9 @@ def refs_for(report: dict, code: str) -> set[str]:
     return {f.get("ref", "") for f in report["findings"] if f["code"] == code}
 
 
-# ---------------------------------------------------------------------------
-# (1) one extraction per (content sha, grammar version)
-# ---------------------------------------------------------------------------
 def test_a_code_file_is_extracted_once_however_many_citations_point_at_it(
         code_book: Path, index_home: Path, monkeypatch: pytest.MonkeyPatch, capsys):
-    """Three citations into `alpha.go` cost exactly what one citation into `gamma.go` costs.
-
-    The comparison is against another file rather than against a number, because how many passes
-    over a tree one extraction takes is the front end's business and not this cache's.
-    """
+    """Three citations into `alpha.go` cost exactly what one citation into `gamma.go` costs."""
     calls = record_source_parses(monkeypatch)
 
     doctor_json(code_book, capsys=capsys)
@@ -177,11 +119,7 @@ def test_a_code_file_is_extracted_once_however_many_citations_point_at_it(
 
 def test_the_same_bytes_at_two_paths_are_one_extraction(
         code_book: Path, index_home: Path, monkeypatch: pytest.MonkeyPatch, capsys):
-    """The key is the content sha and the grammar — the path is no part of it.
-
-    `src/beta.go` and `src/copy/beta.go` are byte-identical and cited once each. Two entries for
-    one symbol set would be two extractions of the same answer.
-    """
+    """The key is the content sha and the grammar — the path is no part of it."""
     calls = record_source_parses(monkeypatch)
 
     doctor_json(code_book, capsys=capsys)
@@ -226,18 +164,10 @@ def test_the_grounding_verdicts_are_the_same_warm_as_cold(
     assert cached["index"]["hits"] > 0
 
 
-# ---------------------------------------------------------------------------
-# (2) the grammar version is in this key and in no other
-# ---------------------------------------------------------------------------
 def test_a_grammar_version_bump_re_extracts_the_code_and_leaves_the_documents_served(
         code_book: Path, tmp_path: Path, index_home: Path, monkeypatch: pytest.MonkeyPatch,
         capsys):
-    """The first key holding something that is not markdown content.
-
-    A new grammar can read the same bytes differently, so every symbol table is suspect — and no
-    document parse is, because the grammar had no part in producing one. Moved at the seam the
-    code side is keyed on, which is the only place a test can move it.
-    """
+    """The first key holding something that is not markdown content."""
     directory = tmp_path / "index"
     warm_index(code_book, directory)
 
@@ -258,9 +188,6 @@ def test_a_grammar_version_bump_re_extracts_the_code_and_leaves_the_documents_se
     assert report["index"]["hits"] > 0
 
 
-# ---------------------------------------------------------------------------
-# (3) the sha is the other half — an edited or deleted code file
-# ---------------------------------------------------------------------------
 def test_a_symbol_removed_from_a_cited_file_is_reported_on_the_next_run(
         code_book: Path, tmp_path: Path, index_home: Path, monkeypatch: pytest.MonkeyPatch,
         capsys):
@@ -280,8 +207,7 @@ def test_a_symbol_removed_from_a_cited_file_is_reported_on_the_next_run(
 def test_a_deleted_cited_file_dangles_on_the_next_run(
         code_book: Path, tmp_path: Path, index_home: Path, monkeypatch: pytest.MonkeyPatch,
         capsys):
-    """A deletion is not a sha event: there are no bytes left to key on, so the file *set* is
-    what answers here, and the entry left behind on disk may not speak for a file that is gone."""
+    """A deletion is not a sha event: there are no bytes left to key on, so the file *set* is what answers here, and the entry left behind on disk may not speak for a file that is gone."""
     directory = tmp_path / "index"
     warm_index(code_book, directory)
     (code_book / "src" / "alpha.go").unlink()
@@ -295,20 +221,10 @@ def test_a_deleted_cited_file_dangles_on_the_next_run(
     assert not parses_of(calls, GO_GAMMA), "a file that did not change was extracted again"
 
 
-# ---------------------------------------------------------------------------
-# (4) nothing is pre-swept
-# ---------------------------------------------------------------------------
 def test_a_cold_run_extracts_the_cited_files_once_each_and_touches_no_others(
         code_book: Path, tmp_path: Path, index_home: Path, monkeypatch: pytest.MonkeyPatch,
         capsys):
-    """Populated opportunistically, as documents point at code — never by walking the tree.
-
-    A sweep would be the wrong shape twice over: the set of files that matter is not enumerable
-    before the check runs, and a repo's source tree is orders of magnitude larger than the part
-    of it a book cites. So a miss costs the one extraction it asked for: `alpha.go` is read once
-    for its three citations, and `uncited.go` — a perfectly readable Go file nothing points at —
-    is never opened at all.
-    """
+    """Populated opportunistically, as documents point at code — never by walking the tree."""
     directory = tmp_path / "index"
     reads = record_reads(monkeypatch)
     calls = record_source_parses(monkeypatch)
@@ -322,9 +238,6 @@ def test_a_cold_run_extracts_the_cited_files_once_each_and_touches_no_others(
     assert not parses_of(calls, GO_UNCITED), "extracted an uncited file"
 
 
-# ---------------------------------------------------------------------------
-# (5) verify mode, over the three states an index can be in
-# ---------------------------------------------------------------------------
 def verify(book: Path, directory: Path, capsys) -> str:
     code = main(["-C", str(book), "doctor", "--verify-index", "--index-dir", str(directory)])
     printed = capsys.readouterr().out
@@ -335,11 +248,7 @@ def verify(book: Path, directory: Path, capsys) -> str:
 def test_verify_agrees_against_a_populated_index_and_extracts_only_for_the_cold_half(
         code_book: Path, tmp_path: Path, index_home: Path, monkeypatch: pytest.MonkeyPatch,
         capsys):
-    """Both halves of verify run in one process — so the indexed half's saving is visible here.
-
-    Against a warm index, the whole two-run mode may extract `alpha.go` no more often than a
-    single uncached run does: the cold half pays, and the indexed half must not.
-    """
+    """Both halves of verify run in one process — so the indexed half's saving is visible here."""
     directory = tmp_path / "index"
     warm_index(code_book, directory)
 
@@ -373,12 +282,7 @@ def test_verify_agrees_against_an_empty_index_and_leaves_the_symbols_behind(
 def test_verify_agrees_against_a_partially_stale_index(
         code_book: Path, tmp_path: Path, index_home: Path, monkeypatch: pytest.MonkeyPatch,
         capsys):
-    """One code file edited, the rest warm — the state a working tree is in nearly all the time.
-
-    Report equality is necessary and not sufficient here, so the run after it asserts the two
-    halves of the key separately: the edited file's answer moved, and its neighbours' did not
-    have to be recomputed to say so.
-    """
+    """One code file edited, the rest warm — the state a working tree is in nearly all the time."""
     directory = tmp_path / "index"
     warm_index(code_book, directory)
     write(code_book / "src/alpha.go", "package p\n\ntype Moved struct{}\n")
@@ -392,9 +296,6 @@ def test_verify_agrees_against_a_partially_stale_index(
     assert not parses_of(calls, GO_GAMMA), "an unedited file was extracted again"
 
 
-# ---------------------------------------------------------------------------
-# The cache may not change what a run reports
-# ---------------------------------------------------------------------------
 def test_a_book_that_grounds_stays_green_through_a_warm_run(
         code_book: Path, tmp_path: Path, index_home: Path, capsys):
     directory = tmp_path / "index"
@@ -416,11 +317,7 @@ def test_an_index_free_run_still_grounds_everything(code_book: Path, index_home:
 
 def test_the_symbols_of_an_uncited_process_local_file_never_enter_the_index(
         code_book: Path, tmp_path: Path, index_home: Path, capsys):
-    """A miss costs one extraction, not a sweep: the cold run writes only what it was asked for.
-
-    Adding a citation to a file the previous run never saw must be all it takes for that file to
-    be extracted and indexed — the set is discovered, never declared.
-    """
+    """A miss costs one extraction, not a sweep: the cold run writes only what it was asked for."""
     directory = tmp_path / "index"
     warm_index(code_book, directory)
     before = len(entry_files(directory))

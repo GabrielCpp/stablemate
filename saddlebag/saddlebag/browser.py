@@ -1,27 +1,4 @@
-"""Typing a stored secret into a live browser, over the Chrome DevTools Protocol.
-
-This is the verb that makes the pool usable for the thing a test identity is *for*:
-signing in. Until it existed, an agent driving a browser had two options and both
-were wrong — read the password into its own context and type it (the secret is then
-in a transcript, a log and a process's memory), or render it to a file and have the
-harness read it (the secret is then on disk, and the file outlives the login).
-
-``fill`` is the third option. Saddlebag opens the store, connects to a browser that
-is *already* running under the caller's control, and types the value into a selector
-the caller names. The caller says **where**; saddlebag supplies **what**, and the
-value never crosses back — the only thing this module returns about a secret is how
-many characters it typed.
-
-That keeps the vault's opacity guarantee intact. ``fill`` prints no secret, logs no
-secret and returns no secret, exactly like every other command except ``env render``.
-The browser ends up holding the value, which is the entire point: it is the one place
-the password is supposed to arrive.
-
-**The endpoint is trusted, and must be local.** Anything that can reach a CDP port
-already has total control of that browser — it can read every page, every cookie and
-every keystroke. Saddlebag therefore refuses a non-loopback endpoint rather than
-letting a typo mail a password to a host on the network.
-"""
+"""Typing a stored secret into a live browser, over the Chrome DevTools Protocol."""
 
 from __future__ import annotations
 
@@ -37,13 +14,10 @@ from websockets.sync.client import connect
 
 logger = logging.getLogger(__name__)
 
-#: Where Chromium listens when started with --remote-debugging-port=9222.
 DEFAULT_ENDPOINT = "http://127.0.0.1:9222"
 
-#: How long to wait for the browser to answer one CDP command.
 TIMEOUT_SECONDS = 15.0
 
-#: Hosts a CDP endpoint may name. See the module docstring.
 LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1", "[::1]"})
 
 
@@ -62,12 +36,7 @@ class Target:
 
 
 class CdpSession(Protocol):
-    """One command channel to a page.
-
-    A protocol rather than a concrete class because it is the seam the tests
-    substitute at: a fake session records the commands a fill issues and answers
-    them, so the fill logic is exercised without a browser.
-    """
+    """One command channel to a page."""
 
     def send(self, method: str, params: dict[str, Any]) -> dict[str, Any]: ...
 
@@ -83,9 +52,6 @@ class WebSocketSession:
         self._next_id += 1
         message_id = self._next_id
         self._socket.send(json.dumps({"id": message_id, "method": method, "params": params}))
-        # CDP interleaves unsolicited events with command replies on the same socket, so
-        # the reply to *this* command is the next frame carrying *this* id — not simply
-        # the next frame.
         while True:
             frame = json.loads(self._socket.recv(timeout=TIMEOUT_SECONDS))
             if frame.get("id") != message_id:
@@ -99,11 +65,7 @@ class WebSocketSession:
 
 
 def require_loopback(endpoint: str) -> None:
-    """Refuse an endpoint that is not on this machine.
-
-    A remote CDP port is not a deployment option to support — it is a password
-    leaving the host in cleartext, addressed to whoever answers.
-    """
+    """Refuse an endpoint that is not on this machine."""
     host = urllib.parse.urlparse(endpoint).hostname
     if host is None or host.lower() not in LOOPBACK_HOSTS:
         raise BrowserError(
@@ -139,13 +101,7 @@ def list_targets(endpoint: str) -> tuple[Target, ...]:
 
 
 def select_target(targets: tuple[Target, ...], url_contains: str | None) -> Target:
-    """The one page to type into.
-
-    Ambiguity is an error rather than a guess. Typing a password into whichever tab
-    happened to sort first is the kind of mistake that is silent at the time and
-    unrecoverable afterwards — the value has been entered into some page nobody
-    chose, and the operator finds out from a login that did not happen.
-    """
+    """The one page to type into."""
     if not targets:
         raise BrowserError("the browser has no inspectable pages open")
     matches = (
@@ -162,15 +118,9 @@ def select_target(targets: tuple[Target, ...], url_contains: str | None) -> Targ
             f"{len(matches)} pages match {url_contains!r}; narrow it so the target is "
             f"unambiguous:\n{listing}"
         )
-    # Taken through the iterator rather than by index: the two checks above have already
-    # established that exactly one is left, but a length comparison is not something a
-    # type checker narrows a tuple by, so indexing reads as possibly-out-of-range there.
     return next(iter(matches))
 
 
-# Focuses the field and selects whatever it already holds, so the insert that follows
-# replaces the content rather than appending to a half-typed value. Reports what it
-# found so a wrong selector fails here, named, instead of silently typing into nothing.
 _FOCUS = """
 (() => {
   const el = document.querySelector(%s);
@@ -186,8 +136,6 @@ _FOCUS = """
 })()
 """
 
-# Reads back the length only. Returning the value would hand the secret to the caller
-# and undo the whole point of typing it here.
 _LENGTH = """
 (() => {
   const el = document.querySelector(%s);
@@ -209,14 +157,7 @@ def _evaluate(session: CdpSession, expression: str) -> Any:
 
 
 def fill(session: CdpSession, selector: str, value: str) -> int:
-    """Type ``value`` into ``selector`` on an already-open page. Returns its length.
-
-    ``Input.insertText`` rather than a scripted assignment to ``el.value``: a direct
-    assignment does not raise the events a framework listens for, so a React- or
-    Vue-controlled field accepts the text visually and then submits the empty string
-    its state still holds. insertText enters the value the way a paste does, above the
-    page, so every listener sees what it would see from a person.
-    """
+    """Type ``value`` into ``selector`` on an already-open page."""
     selector_literal = json.dumps(selector)
     found = _evaluate(session, _FOCUS % selector_literal)
     if not isinstance(found, dict) or not found.get("found"):
@@ -235,9 +176,6 @@ def fill(session: CdpSession, selector: str, value: str) -> int:
             f"{selector!r} is still empty after the insert — the field is probably "
             "read-only, or the page replaced it while it was being filled"
         )
-    # Length, never the value, and never a comparison the caller could bisect a
-    # secret with. A mismatch is worth reporting because it means the field
-    # transformed or truncated the input, which a login will fail on later.
     if length != len(value):
         logger.warning(
             "%s holds %d characters after inserting %d — the field may be masked, "

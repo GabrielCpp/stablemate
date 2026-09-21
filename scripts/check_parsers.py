@@ -1,36 +1,5 @@
 #!/usr/bin/env python3
-"""Guard the "parse, don't match" rule. Wired into `make test`.
-
-A format with a grammar — YAML, Markdown, JSON, a programming language, a unified diff —
-has a parser, and a regex over its raw text is a re-implementation of that parser with
-none of its cases. The failures are silent in both directions, which is what makes them
-expensive: this pass found `load_jsonc` truncating every config containing a URL (`//`
-inside a string literal is not a comment), three different frontmatter fences that
-disagreed about what closes one, and markdown link/bullet regexes that matched inside
-fenced code blocks. None of those raised; they returned confidently wrong answers.
-
-So this flags **regex pattern literals whose text encodes a known format's grammar** and
-names the parser to use instead. The rule, its boundary and the parser-per-format table
-live in the `structured-parsing` skill (base-library).
-
-**What this is not.** It is a pattern-shape denylist, not semantic analysis. It knows the
-shapes that have gone wrong here; it cannot prove an arbitrary regex is not parsing a
-format, and it says nothing about a pattern built at runtime from non-literal parts. Same
-character as `check_public.py`: a guard against a known silent failure, not a proof.
-
-Regex remains the right tool for text that has no grammar — an agent CLI's log line, a
-cap-reset message, a token counter — and for identifier validators and slugifiers, which
-constrain a string rather than parse one. Those shapes are not flagged at all. Where a
-format genuinely has no parser available (Go, TypeScript, PHP, Twig, Makefile) the site is
-declared with its reason, and the reason is printed on any failure.
-
-This script installs beside the `structured-parsing` skill, so it runs in any repo writing
-Python. Which paths are excluded from the sweep, and which sites have no parser to reach
-for, are that repo's to state — see `[check-parsers]` in `.agent-checks.toml`.
-
-Run:
-    uv run python <this script> [--root DIR]
-"""
+"""Guard the "parse, don't match" rule."""
 
 from __future__ import annotations
 
@@ -42,32 +11,19 @@ import sys
 import tomllib
 from pathlib import Path
 
-#: Repo-local declarations, read from the root of whatever repo is being checked.
 CONFIG = ".agent-checks.toml"
 TABLE = "check-parsers"
 
-#: `re` functions that take a pattern as their first argument.
 RE_FUNCS = frozenset(
     {"compile", "search", "match", "fullmatch", "findall", "finditer", "sub", "subn", "split"}
 )
 
-# --------------------------------------------------------------------------------------
-# The shapes
-# --------------------------------------------------------------------------------------
-# Each detector is a regex matched against the *text of the pattern literal*, so `\\A` below
-# means the two characters a pattern spells `\A`. What the detectors look for is a pattern
-# that anchors itself to a line and then describes a document's punctuation — that is a
-# grammar being re-implemented, whatever the format.
 
-#: How a pattern spells "start of a line": `^`, `\A`, or the newline it scans past.
 _ANCHOR = r"(?:\^|\\A|\\n)"
-#: How a pattern spells "optional leading whitespace".
 _INDENT = r"(?:\\s\*|\[ \\t\]\*|\\t\*| \*)?"
-#: How a pattern spells "the whitespace after a delimiter", before whatever follows it.
 _GAP = r"(?:(?:\\s|\\t|\[ \\t\]| )[*+]?)"
 
 DETECTORS: dict[str, tuple[str, str]] = {
-    # shape: (detector over the pattern text, the parser to use instead)
     "frontmatter-fence": (
         _ANCHOR + r"\(?-{3}",
         "ostler.markdown.split (or farrier.frontmatter) — a real front_matter token",
@@ -120,27 +76,13 @@ DETECTORS: dict[str, tuple[str, str]] = {
 
 
 def _normalise(pattern: str) -> str:
-    """Regex punctuation that would otherwise read as the document's punctuation.
-
-    `(?:` carries a colon that has nothing to do with a `key: value` line, and a lookahead's
-    `(` is not a value being captured. Both are rewritten before the detectors see them, so
-    the shapes below can be about the format rather than about regex syntax.
-    """
+    """Regex punctuation that would otherwise read as the document's punctuation."""
     pattern = re.sub(r"\(\?P<[^>]*>|\(\?:", "(", pattern)
     return re.sub(r"\(\?(?:<?[=!]|>)", "\u27ea", pattern)
 
 
-# --------------------------------------------------------------------------------------
-# The scan
-# --------------------------------------------------------------------------------------
 def declarations(root: Path) -> dict:
-    """What *root*'s repo declares to this check, from its `.agent-checks.toml`.
-
-    The script travels with its skill, so the paths a repo treats as history and the sites
-    it has no parser for belong to the repo rather than to the rule. A repo that declares
-    nothing still gets the full sweep — the rule needs no configuration to hold, only the
-    exceptions do.
-    """
+    """What *root*'s repo declares to this check, from its `.agent-checks.toml`."""
     config = root / CONFIG
     if not config.is_file():
         return {}
@@ -148,21 +90,7 @@ def declarations(root: Path) -> dict:
 
 
 def _python_files(root: Path, exclude: list[str]) -> list[Path]:
-    """Every `.py` the repo would ship, minus tests, declared exclusions, and this file.
-
-    Tracked **and** not-yet-added (`--others --exclude-standard`), unlike `check_public.py`,
-    which asks a different question: that one is about what ships, and an unadded file does
-    not. This one is about code being written, and a module is at its most worth checking
-    before its first `git add` — the whole point is to catch the shape while it is being
-    typed rather than after it is history.
-
-    - **Tests** name the shapes they test, so scanning them would flag the very fixtures
-      that pin the parsers' behaviour.
-    - **Declared exclusions** are whatever the repo treats as a frozen record. Rewriting a
-      frozen artifact to satisfy a check would make it a worse record of what was built.
-    - **This file** spells out every shape it looks for, so it matches itself on all of them.
-      Matched by name, since a skill's script is installed to a path no repo agrees on.
-    """
+    """Every `.py` the repo would ship, minus tests, declared exclusions, and this file."""
     out = subprocess.run(
         ["git", "ls-files", "--cached", "--others", "--exclude-standard", "*.py"],
         cwd=root,
@@ -185,13 +113,7 @@ def _python_files(root: Path, exclude: list[str]) -> list[Path]:
 
 
 def _module_strings(tree: ast.AST) -> dict[str, str]:
-    """Module-level `NAME = "…"` bindings, so an f-string's `{NAME}` can be substituted in.
-
-    A grammar written as a regex is usually written in pieces — a suffix alternation named
-    once, interpolated into the pattern that uses it. Reading only the f-string's constant
-    parts hides exactly the piece that carries the format, which is how a suffix alternation
-    interpolated as `{_EXTS}` sat here unflagged.
-    """
+    """Module-level `NAME = "…"` bindings, so an f-string's `{NAME}` can be substituted in."""
     return {
         target.id: node.value.value
         for node in getattr(tree, "body", ())
@@ -203,11 +125,7 @@ def _module_strings(tree: ast.AST) -> dict[str, str]:
 
 
 def _pattern_text(node: ast.expr, consts: dict[str, str]) -> str | None:
-    """The literal text of a pattern argument, or None when it is not literal.
-
-    An f-string counts for its constant parts, plus any `{NAME}` naming a module-level
-    string: `rf"^-\\s*{key}:"` is still an anchored bullet regardless of what `key` is.
-    """
+    """The literal text of a pattern argument, or None when it is not literal."""
     if isinstance(node, ast.Constant):
         return node.value if isinstance(node.value, str) else None
     if isinstance(node, ast.JoinedStr):

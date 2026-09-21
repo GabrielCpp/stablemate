@@ -1,10 +1,4 @@
-"""Preflight for unresolvable skill/prompt references (workhorse/references.py).
-
-The bug being guarded: an `instruction_ref("x")` that resolves to nothing renders the
-prose "generated x instruction file when installed" into a live agent prompt and says
-nothing about it. These cover the static scan that names those references before the
-run, and the render-time warning that catches the ones a static scan cannot see.
-"""
+"""Preflight for unresolvable skill/prompt references (workhorse/references.py)."""
 from __future__ import annotations
 
 import logging
@@ -26,7 +20,6 @@ from workhorse.references import (  # noqa: E402
 from workhorse.templates import render_string  # noqa: E402
 
 
-# --- the scan -------------------------------------------------------------------
 
 
 def test_every_helper_alias_is_scanned() -> None:
@@ -53,7 +46,6 @@ def test_calls_inside_blocks_and_filters_are_found() -> None:
     assert referenced_names(source) == {("skill", "deep"), ("prompt", "looped")}
 
 
-# --- optional references: the plural helpers and the installed-skill guard --------
 
 
 def test_plural_helper_arguments_are_never_required() -> None:
@@ -68,9 +60,7 @@ def test_plural_aliases_are_optional_too() -> None:
 
 
 def test_tag_query_arguments_are_not_skill_names() -> None:
-    """`find_by_tags('web', 'tests')` names a capability, not a file. Descending into
-    it would report every tag in every prompt as a missing skill — the preflight would
-    be all noise on precisely the prompts that stopped hard-coding skill names."""
+    """`find_by_tags('web', 'tests')` names a capability, not a file."""
     source = "{{ find_by_tags('web', 'tests') }}{{ find_by_tags('backend') }}"
     assert referenced_names(source) == set()
 
@@ -81,8 +71,7 @@ def test_a_tag_query_beside_a_real_reference_hides_neither() -> None:
 
 
 def test_a_prompt_of_tag_queries_reports_nothing(tmp_path: Path) -> None:
-    """The whole-workflow scan, not just the AST walk: a prompt that asks only by
-    capability is unresolvable-by-nothing however thin the repo's manifest is."""
+    """The whole-workflow scan, not just the AST walk: a prompt that asks only by capability is unresolvable-by-nothing however thin the repo's manifest is."""
     prompts = tmp_path / "prompts"
     prompts.mkdir()
     (prompts / "qa.md").write_text(
@@ -169,7 +158,6 @@ def test_unparseable_template_yields_nothing() -> None:
     assert referenced_names("{% if unclosed %}") == set()
 
 
-# --- resolution -----------------------------------------------------------------
 
 
 def test_exact_match_wins() -> None:
@@ -197,7 +185,6 @@ def test_unknown_name_resolves_to_nothing() -> None:
     assert resolve_instruction({"other": "o.md"}, "story-docs") is None
 
 
-# --- the workflow-level preflight -----------------------------------------------
 
 
 def _workflow(tmp_path: Path, **prompts: str) -> Path:
@@ -236,12 +223,7 @@ def test_nested_prompt_directories_are_scanned(tmp_path: Path) -> None:
 
 
 def test_a_flows_own_prompts_are_scanned(tmp_path: Path) -> None:
-    """`dev/prompts/` is a prompt directory too, and the worst failure here is silence.
-
-    A sweep anchored at the workflow root passes vacuously on exactly the workflows that
-    moved their prompts into the flow that renders them — reporting nothing, which reads
-    as "everything resolves".
-    """
+    """`dev/prompts/` is a prompt directory too, and the worst failure here is silence."""
     root = tmp_path / "wf"
     (root / "dev" / "prompts").mkdir(parents=True)
     (root / "dev" / "prompts" / "implement.md").write_text("{{ instruction_ref('x') }}", "utf-8")
@@ -285,12 +267,7 @@ def test_report_is_stable_across_runs(tmp_path: Path) -> None:
 
 
 def test_skill_load_ref_is_checked_like_any_other_required_reference(tmp_path: Path) -> None:
-    """It is the *most* required of them — its call sites read "load this and follow it".
-
-    Leaving it out of the checked set is what let the coder's document/review prompts
-    name skills no benchmark repo installed, silently, while every other unresolved
-    reference in the same file was reported.
-    """
+    """It is the *most* required of them — its call sites read "load this and follow it"."""
     root = _workflow(tmp_path, doc="{{ skill_load_ref('ostler-okf') }}")
     found = missing_references(root, {"_instructions": {"other": "o.md"}})
     assert [(m.kind, m.name) for m in found] == [("skill", "ostler-okf")]
@@ -299,9 +276,7 @@ def test_skill_load_ref_is_checked_like_any_other_required_reference(tmp_path: P
 def test_skill_load_refs_fallback_path_is_not_read_as_a_second_reference(
     tmp_path: Path,
 ) -> None:
-    """Every call site passes `(name, skill_dir() + '/…/SKILL.md')`. The second argument
-    describes where an *uninstalled* skill would live, so treating it as a name to
-    resolve would report a miss for every call, resolved or not."""
+    """Every call site passes `(name, skill_dir() + '/…/SKILL.md')`."""
     root = _workflow(
         tmp_path,
         doc="{{ skill_load_ref('code-review', skill_dir() + '/code-review/SKILL.md') }}",
@@ -322,7 +297,6 @@ def test_format_missing_of_nothing_is_empty() -> None:
     assert format_missing([]) == ""
 
 
-# --- the render-time warning ----------------------------------------------------
 
 
 class _Capture(logging.Handler):
@@ -346,7 +320,7 @@ def captured() -> Iterator[list[str]]:
 
 
 def test_unresolved_reference_still_renders_the_placeholder(captured: list[str]) -> None:
-    """Fail soft: the prompt keeps a sentence the agent can read. It is just not silent."""
+    """Fail soft: the prompt keeps a sentence the agent can read."""
     out = render_string("{{ instruction_ref('gone') }}", {"_instructions": {"o": "o.md"}})
     assert out == "generated gone instruction file when installed"
     assert any("gone" in m for m in captured)
@@ -370,7 +344,6 @@ def test_quiet_render_says_nothing(captured: list[str]) -> None:
     assert captured == []
 
 
-# --- the plural helpers at render time ------------------------------------------
 
 
 def test_instruction_refs_renders_only_what_the_repo_installed(captured: list[str]) -> None:
@@ -379,12 +352,11 @@ def test_instruction_refs_renders_only_what_the_repo_installed(captured: list[st
     out = render_string("{{ instruction_refs('go', 'flutter', 'pulumi') }}", context)
     assert out == "`skills/go.md`, `skills/pulumi.md`"
     assert "flutter" not in out
-    # …and dropping a name the repo never installed is not worth a warning either.
     assert captured == []
 
 
 def test_instruction_refs_of_nothing_installed_is_empty_and_falsy() -> None:
-    """Empty is what lets `{% if %}` drop the sentence instead of leaving 'e.g. '."""
+    """Empty is what lets `{% if %}` drop the sentence instead of leaving 'e.g."""
     source = "{% set r = instruction_refs('flutter', 'flutter-testing') %}{% if r %}e.g. {{ r }}{% endif %}"
     assert render_string(source, {"_instructions": {"go": "g.md"}}) == ""
 

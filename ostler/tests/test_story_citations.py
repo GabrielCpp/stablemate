@@ -1,14 +1,4 @@
-"""A story cites the OKF book by linking node ids — the three pieces that make that an edge.
-
-``References.doc_hrefs`` (which links are document citations at all) → ``Graph.resolve_doc_ref``
-(href → node identity, however the link was written) → ``query.surfaces-referenced-by-story``
-(identity → a typed row). A UI node's identity **is** its location, so a citation is an ordinary
-markdown link and nothing story-shaped had to be invented to carry it.
-
-The rows are tagged rather than filtered on purpose: a caller (author's grounding gate) must be
-able to tell "cited a node" from "cited a node id that resolves to nothing" from "cited no node",
-and dropping unresolvable citations would collapse the last two.
-"""
+"""A story cites the OKF book by linking node ids — the three pieces that make that an edge."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -65,7 +55,6 @@ def refs(root: Path) -> list[dict]:
     return query.query(load(root), "surfaces-referenced-by-story", "01-s")
 
 
-# ── doc_hrefs: which links are citations of a document in this repo ───────────────────────
 
 def test_doc_hrefs_keeps_document_links_verbatim():
     r = markdown.extract_refs(
@@ -82,14 +71,13 @@ def test_doc_hrefs_drops_non_documents_and_dedupes():
     assert r.doc_hrefs == ["x.md"]
 
 
-# ── resolve_doc_ref: every way a link can be written names the same node ──────────────────
 
 def test_resolve_doc_ref_accepts_all_three_link_forms(tmp_path: Path):
     g = load(book_repo(tmp_path, "no citations here"))
     origin = tmp_path / STORY_DIR / "story.md"
-    for href in (SCREEN,                                        # node id copied verbatim
-                 f"/{SCREEN}",                                  # root-anchored
-                 "../../../../features/gui/screens/settings.md"):  # relative to the story
+    for href in (SCREEN,
+                 f"/{SCREEN}",
+                 "../../../../features/gui/screens/settings.md"):
         assert g.resolve_doc_ref(href, origin=origin) == SCREEN, href
 
 
@@ -107,15 +95,13 @@ def test_resolve_doc_ref_returns_unresolvable_refs_instead_of_dropping_them(tmp_
 
 
 def test_a_link_that_escapes_the_repo_is_not_silently_resolved(tmp_path: Path):
-    """It is not a document in this repo, so neither reading lands — it comes back verbatim
-    and is reported as a citation of nothing rather than quietly becoming some in-repo path."""
+    """It is not a document in this repo, so neither reading lands — it comes back verbatim and is reported as a citation of nothing rather than quietly becoming some in-repo path."""
     href = "../" * 12 + "elsewhere.md"
     g = load(book_repo(tmp_path, "no citations here"))
     assert g.resolve_doc_ref(href, origin=tmp_path / STORY_DIR / "story.md") == href
     assert [r["kind"] for r in refs(book_repo(tmp_path, f"See [x]({href}))."))] == ["missing"]
 
 
-# ── the query rows: ui / file / missing ───────────────────────────────────────────────────
 
 def test_citing_a_file_node_yields_a_ui_row(tmp_path: Path):
     rows = refs(book_repo(tmp_path, f"Reworks [settings]({SCREEN})."))

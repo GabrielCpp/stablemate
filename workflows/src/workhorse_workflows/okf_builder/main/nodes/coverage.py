@@ -1,21 +1,4 @@
-"""The exhaustiveness check: inventory the source, then join the book against it.
-
-Ported from `base-library/workflows/okf-builder/scripts/{inventory-source,compute-coverage}.py`.
-Three divergences, all shape:
-
-* **The re-scan counter is a local, not a module global.** The script carried `_RESCAN_ROUND`
-  at module scope "so that EVERY exit path, including the early error emits, carries the
-  increment forward" — an `emit()` that `sys.exit`s cannot be handed a value by its caller.
-  Here every exit is a `return Coverage(...)` in one function, so the increment is computed
-  once at the top and passed explicitly; the invariant it protected (an error path must not
-  reset the bound, or a recurring error loops forever on the branch that exists to stop it)
-  is unchanged and is what `_covered` exists to keep.
-* **`from ostler.inventory import …` sits with the other imports.** The script placed it
-  mid-file under `# noqa: E402` so its long comment could sit next to it; the comment moved
-  to the import block instead.
-* **The verdict is a `bool`.** `coverage_complete` was `"yes"`/`"no"`; the join's outcome
-  already answers `ok` and the string was only ever for a YAML branch to match on.
-"""
+"""The exhaustiveness check: inventory the source, then join the book against it."""
 from __future__ import annotations
 
 import json
@@ -28,11 +11,6 @@ from pathlib import Path
 from typing import Any
 
 from ostler import Ostler, graph as graph_mod
-# The symbol grammar lives in `ostler.inventory`, not here. Two callers need to know what a
-# file declares — this inventory (the join's source side) and `doctor`'s `code:` grounding —
-# and a grammar defined in two places is a grammar that drifts. It did: grounding used a
-# word-presence test, so a facade module re-exporting a name kept a moved symbol's citation
-# green. Importing it means the join and the grounding check cannot disagree again.
 from ostler.inventory import SOURCE_SUFFIXES, symbols
 from ostler import refs
 from workhorse_workflows.kit import short_sha
@@ -43,8 +21,6 @@ from workhorse_workflows.okf_builder.shared.schemas import (
     SourceInventory,
 )
 
-#: Directories whose contents are never source: build output, vendored trees, caches, and
-#: the test trees — a test is cited by a `tests:` bullet, never covered as a subject.
 SKIP_DIRS = {
     ".git", ".next", ".react-router", ".venv", "__pycache__", "__tests__", "_vendor",
     "build", "coverage", "dist", "generated", "mocks", "node_modules", "test", "tests",
@@ -53,16 +29,10 @@ SKIP_DIRS = {
 TEST_SUFFIXES = (
     "_test.go", ".test.ts", ".test.tsx", ".spec.ts", ".spec.tsx", "_test.py", "Test.php",
 )
-#: pytest's own convention is a prefix, and a `conftest.py` is a fixture file with no name
-#: pattern at all — a tree that follows it put every test function into the inventory as a
-#: unit to cover, and the re-scan argued about them for six rounds on every Python book.
 TEST_PREFIXES = ("test_",)
 TEST_FILES = ("conftest.py",)
 GENERATED_SUFFIXES = (".gen.go", ".generated.go", ".d.ts")
 
-# --- operational surface (the run-surface inventory, docs/okf-runbook.md §5.3) -------------
-# A recipe/target line: a leading name, optional recipe params, then a colon that is NOT `:=`
-# (a variable assignment). Excludes `.PHONY`-style dotted directives via the leading class.
 RECIPE_DECL = re.compile(r"^([A-Za-z0-9][A-Za-z0-9_.-]*)(?:\s+[^:=]*)?:(?!=)", re.MULTILINE)
 COMPOSE_GLOBS = ("docker-compose.yml", "docker-compose.yaml", "docker-compose.*.yml",
                  "docker-compose.*.yaml", "compose.yml", "compose.yaml",
@@ -84,12 +54,7 @@ def skipped(path: Path, root: Path, excludes: list[str]) -> bool:
 
 
 def _unit_path(path: Path, source: Path, repo_root: Path) -> str:
-    """A unit's path, relative to the **repo root** — the grammar books cite.
-
-    Excludes stay source-relative (they are configured per service), but the emitted unit is
-    repo-rooted so that one book's `code:` target means the same thing as another's in a
-    monorepo. Falls back to source-relative for a source tree outside the repo root.
-    """
+    """A unit's path, relative to the **repo root** — the grammar books cite."""
     try:
         return path.resolve().relative_to(repo_root).as_posix()
     except ValueError:
@@ -100,7 +65,7 @@ def _make_or_just_targets(text: str) -> list[str]:
     seen: list[str] = []
     for m in RECIPE_DECL.finditer(text):
         name = m.group(1)
-        if name not in seen and "%" not in name:   # skip pattern rules
+        if name not in seen and "%" not in name:
             seen.append(name)
     return seen
 
@@ -143,7 +108,6 @@ def operational_units(source: Path, repo_root: Path, excludes: list[str],
             seen_evidence.add(evidence)
             units.append({"kind": kind, "name": name, "evidence": evidence})
 
-    # Candidate evidence files: shallow at repo root, plus anywhere in the source tree.
     candidates: list[Path] = (
         [p for p in repo_root.iterdir() if p.is_file()] if repo_root.is_dir() else []
     )
@@ -187,26 +151,7 @@ def inventory_source(
     source_excludes: str = "",
     repo_root: str = "",
 ) -> SourceInventory:
-    """Materialize a deterministic multi-language source inventory for OKF coverage.
-
-    Two inventories, one pass:
-
-    * **code units** — modules + public declarations under the source root (the
-      exhaustiveness floor the code crawl is diffed against). Languages: Go, Python,
-      TypeScript, PHP, Twig (`SOURCE_SUFFIXES`). A tree the front end cannot read at all is
-      an **error**, never an empty inventory — an empty unit list reads downstream as
-      "everything is covered", so an unsupported language would otherwise declare a book
-      complete having documented nothing.
-
-      What counts as a unit is language-shaped. For Go/TS a file is a container and its
-      *symbols* are the units; for Twig a template renders a screen, so the **file** is the
-      unit and its `{% block %}`s are secondary. Both are emitted; the consumer decides.
-    * **operational units** — the *run surface* (make/just targets, compose services,
-      package scripts, console-scripts, `__main__` entry points) from generic evidence at
-      the repo root and inside the source tree. This is the forcing function for the runbook
-      profile (docs/okf-runbook.md §5.3): an undocumented run surface is a coverage unit, so
-      the book is not complete until it is a `runbook`.
-    """
+    """Materialize a deterministic multi-language source inventory for OKF coverage."""
     source = Path(source_root).resolve() if source_root else Path.cwd().resolve()
     output = Path(output_path).resolve() if output_path else source / ".source-inventory.json"
     excludes = [part.strip().strip("/") for part in source_excludes.split(",") if part.strip()]
@@ -224,9 +169,6 @@ def inventory_source(
                 continue
             seen_suffixes[path.suffix] += 1
         if not (seen_suffixes.keys() & SOURCE_SUFFIXES):
-            # A tree with source-shaped files but none the front end can read would otherwise
-            # yield an empty inventory + no errors — which reads downstream as "fully covered".
-            # Blindness must be loud: an unsupported language is a failure, not a clean bill.
             top = ", ".join(f"{s or '(none)'}×{n}" for s, n in seen_suffixes.most_common(5))
             logger.warning(
                 "no readable source under %s — the tree holds %s but the symbol front end "
@@ -277,48 +219,26 @@ def inventory_source(
 
 
 def _relative_source(source_root: str, repo_root: str) -> str:
-    """The source root as the repo sees it, never as this machine does.
-
-    `coverage.json` is committed, and §10.5 invalidates the anchor when its `sourceRoot` no
-    longer matches the config. An absolute path would differ on every checkout, so every
-    machine but the one that wrote it would read a valid anchor as stale and rebuild the whole
-    book. The anchor has to mean the same thing to everyone who reads it.
-    """
+    """The source root as the repo sees it, never as this machine does."""
     if not source_root:
         return ""
     try:
         return Path(source_root).resolve().relative_to(Path(repo_root).resolve()).as_posix()
     except (ValueError, OSError):
-        return source_root  # a source tree outside the repo: absolute is all there is
+        return source_root
 
 
 def _screen_count(okf: Ostler, service: str) -> int:
-    """Screens the book documents. The second axis of §9's verdict starts its life here."""
+    """Screens the book documents."""
     data = graph_mod.build(okf.graph, etype="screen", surface=service or None)
     return len(data["nodes"])
 
 
-#: At most this many citing nodes seeded per regrounding row. A file with more stale
-#: citations than this gets `ceil(N/5)` rows instead of one — the same reasoning as the
-#: sibling-folder repair batch: a turn that reads one changed file and edits five nodes
-#: against it is a turn an agent can hold in its head; a turn editing fifty is not.
 _REGROUNDING_BATCH = 5
 
 
 def _regrounding(okf: Ostler, service: str) -> tuple[list[dict[str, Any]], str]:
-    """The book's stale citations, one worklist row per changed file (batched, see above).
-
-    This is the half of staleness the join cannot see. `ostler coverage` asks only whether
-    every unit is *cited*, so a book stays at covered == total while the symbols under it are
-    rewritten — measured downstream, four books reported complete with their citations
-    describing code that no longer existed in that shape. `doctor`'s `stale-citation` check is
-    what makes that an answerable question — a per-citation content digest, not a whole-book
-    catalog — and this is the caller that asks it.
-
-    Row key is the *cited file*, not a node: several nodes citing the same changed file share
-    a row (so one re-read of the file answers every row member's claims), and one node citing
-    several changed files legitimately appears in more than one file's row.
-    """
+    """The book's stale citations, one worklist row per changed file (batched, see above)."""
     try:
         outcome = okf.doctor()
     except (OSError, ValueError, RuntimeError) as exc:
@@ -370,28 +290,7 @@ def compute_coverage(
     waivers_path: str = "",
     prev_rescan: int = 0,
 ) -> Coverage:
-    """Compute the book's coverage — the verdict the agent used to emit.
-
-    The build's stop condition was `coverage_complete`, a value the `recheck` agent emitted
-    *about its own work*. This node replaces that self-report with arithmetic: it joins the
-    book's `code:` citations against the source inventory and emits the verdict. The agent's
-    role narrows to adjudicating the rows the join reports missing — it no longer votes on
-    whether it is finished.
-
-    A verdict this node cannot compute is **not a pass**. An unreadable inventory, an
-    unloadable graph, or a book with no units at all comes back `coverage_complete=False`
-    with the reason attached, because an empty inventory and a finished book are the same
-    shape and only one of them is done.
-
-    Also writes the book's `coverage.json` (design §5.5). It is not an audit trinket:
-    coverage is meaningless without the exclude set it was computed under, the artifact is
-    what makes staleness visible to CI and to a reader, and its `commit` is the anchor a
-    later delta build diffs against.
-    """
-    # The re-scan counter, incremented once per run of this node — the only node that sits
-    # on the re-scan loop and nowhere else. EVERY return below carries it, including the
-    # error ones: a path that returned the default would reset the bound, and an error that
-    # recurs every pass would then loop forever on the one branch that exists to stop it.
+    """Compute the book's coverage — the verdict the agent used to emit."""
     rescan = prev_rescan + 1
     logger.info("coverage re-scan %d", rescan)
 
@@ -406,8 +305,6 @@ def compute_coverage(
     outcome = okf.coverage(inventory=inventory_path, surface=service or None,
                            waivers=waivers_path or None)
     if outcome.status == "invalid":
-        # The join never ran, so there is no `missing` list to adjudicate and no numbers to
-        # write into the book — the verdict is 'no', which is not the same as zero covered.
         logger.warning("coverage join failed — verdict is 'no', not a pass: %s",
                        outcome.message)
         return Coverage(rescan_round=rescan,
@@ -419,9 +316,6 @@ def compute_coverage(
     except (OSError, ValueError, RuntimeError):
         screens = 0
 
-    # The missing list is the agent's input (§5.2): it adjudicates these rows, it does not
-    # discover them. Written beside the worklist so a human can read what the run is arguing
-    # about.
     missing_file = Path(f"{inventory_path}.missing.json")
     missing_file.write_text(
         json.dumps({"surface": service, "missing": result["missing"]}, indent=2),
@@ -433,7 +327,7 @@ def compute_coverage(
         try:
             anchor = short_sha(repo_root)
         except (OSError, ValueError, RuntimeError):
-            anchor = ""  # not a git checkout, or no HEAD yet: the anchor is absent, not faked
+            anchor = ""
         book = Path(features_root)
         if book.is_dir():
             out = book / "coverage.json"
@@ -451,10 +345,6 @@ def compute_coverage(
             coverage_path = str(out)
 
     regrounding, regrounding_error = _regrounding(okf, service)
-    # A cited symbol that was rewritten under its node is a gap the join cannot see, so the
-    # verdict is not the join's alone. Without this, the loop ends on `covered == total` over a
-    # book describing code that no longer exists in that shape — which is the state every
-    # measured book was actually in.
     complete = outcome.ok and not regrounding
     logger.info("coverage for %s: %d/%d units covered, %d waived, %d screens, %d missing, "
                 "%d to reground → complete=%s", service or "(whole book)", result["covered"],

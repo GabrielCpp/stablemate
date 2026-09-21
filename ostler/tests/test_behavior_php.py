@@ -126,7 +126,6 @@ def test_php_candidates_keep_control_flow_signatures_fields_and_visibility(tmp_p
     assert contracts["Queue.push"].text == "public function push(string $item): bool"
     assert contracts["shown"].text == "function (int $a = 1)"
     assert {item.text for item in by_kind["function_default"]} == {"int $limit = 2", "int $a = 1", "private int $size = 1"}
-    # Properties, class constants and enum cases count; an interface's method is a contract, not a field.
     assert {item.symbol for item in by_kind["schema_field"]} == {
         "Queue.LIMIT", "Queue.limit", "Queue.hidden", "Queue._name", "Status.Ok",
     }
@@ -136,7 +135,6 @@ def test_php_candidates_keep_control_flow_signatures_fields_and_visibility(tmp_p
     ]
     assert all(item.symbol == "<literal:1>" for item in by_kind["http_response"])
     assert all("ghost" not in item.text for item in inventory.candidates)
-    # Visibility is the modifier for a member and unconditional for a top-level declaration.
     exported = {item.symbol: item.exported for item in inventory.candidates}
     assert exported["dispatch"] and exported["Queue.push"] and exported["Queue.limit"] and exported["Queue.LIMIT"]
     assert exported["Queue.make"] and exported["Batch.size"] and exported["shown"] and exported["pick"]

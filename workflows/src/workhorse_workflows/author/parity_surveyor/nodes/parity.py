@@ -1,29 +1,4 @@
-"""The parity survey's two ends: freezing the unit list, and emitting from it.
-
-A parity survey asks one question of a rewrite — which legacy surfaces have no home in the
-new app — and it is a *survey*, so it gets the same exhaustiveness guarantee: one frozen
-unit per baseline surface, one finding record each, and the empty pending set as the proof.
-The middle of the loop is shared verbatim with the surveyor (`select_next_unit`,
-`validate_record`, `mark_unit`, `verify_records`); only these three nodes differ.
-
-The differences are worth naming, because they are what make it a parity survey rather than
-a second copy of one:
-
-* the frozen list is not enumerated from rules — it is *transcribed* from a baseline
-  inventory that already exists, so there is no granularity planner and no split;
-* there is no partition step. Each missing surface is its own gap, so clustering would
-  merge exactly the things a parity backlog needs kept apart;
-* emission suppresses any surface a record claims is already owned by a new-app feature.
-  That is the one judgment the assessor makes, and it is recorded per unit (in
-  `existing_owner`) so the suppression is auditable rather than invisible.
-
-These nodes resolve the repo through `launch_repo_root(repo_dir)` — the run's input, else
-cwd, no walk —
-because that is what their scripts did. See `author/shared/paths.py`.
-
-Ported from `surveyor/scripts/{load-parity-config,expand-parity-inventory,
-emit-parity-backlog}.py`.
-"""
+"""The parity survey's two ends: freezing the unit list, and emitting from it."""
 from __future__ import annotations
 
 import json
@@ -46,8 +21,7 @@ PARITY_HEADING = "## Legacy surfaces missing from the new app"
 
 
 def parity_slug(value: str) -> str:
-    """The record filename for a unit id. Same rule as `record_slug`, its own copy in the
-    script, kept separate so the two emitters can diverge without a shared edit."""
+    """The record filename for a unit id."""
     return re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")
 
 
@@ -58,12 +32,7 @@ def load_parity_config(
     survey_dir: str = "docs/survey/legacy-vs-new",
     repo_dir: str = "",
 ) -> ParityConfig:
-    """Resolve and validate the two documentation inventories being compared.
-
-    Both must exist before anything else runs: a parity survey with no baseline has nothing
-    to be exhaustive *about*, and one with no target feature book would report every legacy
-    surface as missing.
-    """
+    """Resolve and validate the two documentation inventories being compared."""
     baseline = baseline.strip()
     survey_dir = survey_dir.strip() or "docs/survey/legacy-vs-new"
 
@@ -106,13 +75,7 @@ def load_parity_config(
 def expand_parity_inventory(
     logger: logging.Logger, baseline: str, inventory: str, repo_dir: str = ""
 ) -> Expansion:
-    """Freeze one survey unit per baseline surface.
-
-    Same freeze semantics as `expand_inventory`: an inventory already on disk is the
-    coverage baseline and is consumed verbatim, never re-derived. Surfaces the baseline
-    marks `rewriteSurface: true` are out of scope by construction — the rewrite already
-    owns them.
-    """
+    """Freeze one survey unit per baseline surface."""
     root = launch_repo_root(repo_dir)
     output = root / inventory
     if output.is_file():
@@ -191,8 +154,7 @@ def expand_parity_inventory(
 
 
 def replace_parity_section(text: str, section: str) -> str:
-    """Replace the parity-surveyor fence, or append one. Its own copy of the rule, with its
-    own markers, so a repo can carry both surveys' generated sections side by side."""
+    """Replace the parity-surveyor fence, or append one."""
     begin, end = text.find(PARITY_BEGIN), text.find(PARITY_END)
     if begin != -1 and end > begin:
         return text[:begin] + section + text[end + len(PARITY_END) :]
@@ -208,12 +170,7 @@ def emit_parity_backlog(
     unit_manifest: str,
     repo_dir: str = "",
 ) -> EmitResult:
-    """One backlog bullet per assessed surface that no new-app feature already owns.
-
-    The manifest carries *every* unit, including the suppressed ones and the owner that
-    suppressed them, so "we decided this one is already covered" stays an auditable claim
-    rather than an absence.
-    """
+    """One backlog bullet per assessed surface that no new-app feature already owns."""
     root = launch_repo_root(repo_dir)
     backlog = paths.backlog_file(root)
     try:
@@ -228,8 +185,6 @@ def emit_parity_backlog(
     for unit in data.get("units", []):
         uid = str(unit.get("id", ""))
         record_path = root / findings_dir / f"{parity_slug(uid)}.md"
-        # Same fence reader as `records.load_record`, so the emitter and the gate that
-        # accepted the record cannot disagree about where the front matter ends.
         record = markdown.split(record_path.read_text(encoding="utf-8")).frontmatter or {}
         status = str(record.get("status", ""))
         owner = str(record.get("existing_owner", "")).strip()

@@ -1,18 +1,4 @@
-"""Dashboard reads must not queue behind the writer's lock.
-
-The second half of the wedge diagnosed in :mod:`tests.test_store_contention`:
-even once an empty export stops taking the store lock, every *query* still took
-it, because one process-wide connection behind one ``RLock`` was the whole store.
-A single slow write therefore stalled the run list, the span search and the live
-tick alike — the panels a person is watching go quiet for exactly as long as the
-disk is busy, which is what "groom is unresponsive" looked like from the browser.
-
-The invariant these tests pin: a read runs on this thread's own ``query_only``
-connection, so it answers while the writer holds its lock and for as long as it
-holds it, and a read handle that breaks is retired without touching the writer's.
-
-Run: uv run pytest tests/test_store_reads.py
-"""
+"""Dashboard reads must not queue behind the writer's lock."""
 from __future__ import annotations
 
 import os
@@ -27,8 +13,6 @@ import pytest
 
 from groom import store
 
-# Mirrors the contention suite: long enough that queueing is unmistakable, short
-# enough that a regression costs seconds rather than hanging the run.
 HOLD_S = 2.0
 BUDGET_S = 0.25
 
@@ -89,16 +73,8 @@ class _DB:
         os.unlink(self._tmp.name)
 
 
-# --------------------------------------------------------------------------- #
-# reads answer while the writer holds the lock
-# --------------------------------------------------------------------------- #
 def test_the_dashboard_queries_answer_while_the_write_lock_is_held():
-    """Each panel the shell paints on a live tick, against a busy writer.
-
-    The reads are warmed first on purpose: opening a thread's handle *does* take
-    the lock once, to create the file and run the migrations, and the guarantee
-    being pinned here is about every query after that one.
-    """
+    """Each panel the shell paints on a live tick, against a busy writer."""
     with _DB():
         store.insert_spans([_span("R1", "plan", 100.0)])
         reads = {
@@ -109,7 +85,7 @@ def test_the_dashboard_queries_answer_while_the_write_lock_is_held():
             "run_profile": lambda: store.run_profile("R1"),
         }
         for read in reads.values():
-            read()  # warm this thread's handle outside the measurement
+            read()
 
         with _lock_held():
             waited = {name: _elapsed(read)[0] for name, read in reads.items()}
@@ -127,15 +103,12 @@ def test_a_read_still_answers_after_the_writer_is_recycled_underneath_it():
         assert len(store.query_spans(run="R1")) == 1
 
 
-# --------------------------------------------------------------------------- #
-# the handle itself
-# --------------------------------------------------------------------------- #
 def test_each_thread_gets_its_own_handle_and_it_is_not_the_writers():
     with _DB():
         store.insert_spans([_span("R1", "plan", 100.0)])
         mine = store._read_connection()
-        assert mine is store._read_connection()  # cached for this thread
-        assert mine is not store._connection()  # never the writer's
+        assert mine is store._read_connection()
+        assert mine is not store._connection()
 
         theirs: list[sqlite3.Connection] = []
         thread = threading.Thread(target=lambda: theirs.append(store._read_connection()))
@@ -156,10 +129,10 @@ def test_a_broken_read_handle_is_retired_without_disturbing_the_writer():
     with _DB():
         store.insert_spans([_span("R1", "plan", 100.0)])
         writer = store._connection()
-        store._read_connection().close()  # what a recycled handle looks like
+        store._read_connection().close()
 
-        assert len(store.query_spans(run="R1")) == 1  # healed on the one retry
-        assert store._connection() is writer  # the writer was left alone
+        assert len(store.query_spans(run="R1")) == 1
+        assert store._connection() is writer
 
 
 def test_reset_retires_the_calling_threads_handle():

@@ -1,27 +1,14 @@
-"""The catalog model and the book-root repository declaration.
-
-Building a catalog (`build_catalog`, once here) is retired: `ostler stamp` grounds a
-citation with a digest carried on the bullet itself, scoped to exactly the file that
-bullet cites, rather than a whole-book snapshot rewritten on every repair. What survives
-is the catalog *shape* — `SourceCatalog`/`RepositorySnapshot`/`SourceFile`/`SourceSymbol`
-— because `load_catalog` still reads a catalog written before the retirement, backing
-`ostler stamp --from-catalog --keep-catalog`'s one-time migration off it.
-"""
+"""The catalog model and the book-root repository declaration."""
 from __future__ import annotations
 
 from pathlib import Path
 
 from ostler import source_snapshots
 
-# --- the book-root repository declaration -----------------------------------------
 
 
 def test_book_repository_is_empty_when_undeclared(tmp_path: Path) -> None:
-    """A book with no declaration reads as empty, not as a default guess.
-
-    Multi-repo workspaces without a declaration are reported by doctor rather than silently
-    joining a node to the wrong history.
-    """
+    """A book with no declaration reads as empty, not as a default guess."""
     book = tmp_path / "docs/features/api"
     book.mkdir(parents=True)
     assert source_snapshots.book_repository(book) == ""

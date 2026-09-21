@@ -1,13 +1,4 @@
-"""The sentinel gate's diff reader — `_added_lines`.
-
-The version this pins replaces a hand-written scan whose every branch was a `startswith`
-test on a raw diff line. That is a claim about where a line sits in the file, and a hunk
-*body* can forge any of them: an added line whose own content begins `+++ b/` or `@@ `
-re-pointed the filename and the line counter at whatever that content said. The gate then
-reported a real sentinel under a filename that does not exist, or missed it entirely. Only
-one seam is faked here — `diff_text`, the process boundary — so what is under test is the
-parse, on diffs `git` really emits.
-"""
+"""The sentinel gate's diff reader — `_added_lines`."""
 from __future__ import annotations
 
 import pytest
@@ -57,8 +48,7 @@ index 0000000..3333333
 
 
 def test_a_diff_committed_as_a_fixture_does_not_forge_a_filename(monkeypatch):
-    """Every line here is hunk *content*. The scan read lines 1 and 2 as headers, and
-    attributed the sentinel on line 3 to `not/a/real/file.ts:900`."""
+    """Every line here is hunk *content*."""
     assert _lines(monkeypatch, NESTED) == [
         ("web-app/testdata/sample.diff", 1, "+++ b/not/a/real/file.ts"),
         ("web-app/testdata/sample.diff", 2, "@@ -1,0 +900 @@"),
@@ -83,8 +73,7 @@ def test_renames_and_binaries_add_no_lines(monkeypatch):
 
 
 def test_no_diff_and_a_malformed_diff_both_yield_nothing(monkeypatch):
-    """Fail soft: this gate runs unattended, and a patch it cannot read is not a defect
-    it may report. `--unified=0` output it *can* read is the only evidence it acts on."""
+    """Fail soft: this gate runs unattended, and a patch it cannot read is not a defect it may report."""
     assert _lines(monkeypatch, "") == []
     assert _lines(monkeypatch, "@@ -1 +1 @@\n+orphan hunk, no file header\n") == []
 

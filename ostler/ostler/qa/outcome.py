@@ -1,8 +1,4 @@
-"""`QaOutcome` — the shared return shape for every `ostler qa` subcommand.
-
-Split out of `run.py` so `lint.py` can produce one without importing `run.py`, which itself
-calls into `lint.py` to gate `cmd_validate` — the two would otherwise import each other.
-"""
+"""`QaOutcome` — the shared return shape for every `ostler qa` subcommand."""
 
 from __future__ import annotations
 

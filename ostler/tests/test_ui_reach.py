@@ -72,8 +72,6 @@ title: Forgot password
 - params: none
 """
 
-# Reachable only by walking a flow's `steps:`, never by a `leads-to:` bullet. Guarded, and
-# parameterized: the walk must both authenticate and mint a project before it can arrive.
 DASHBOARD = """\
 ---
 type: screen
@@ -89,8 +87,6 @@ title: Dashboard
   - projectId: from [submit-sign-in](sign-in.md#submit-sign-in)
 """
 
-# Documented, but nothing navigates to it — and its preconditions are never stated. Both omissions
-# `reach` exists to surface, deliberately in one fixture.
 ORPHAN = """\
 ---
 type: screen
@@ -175,7 +171,7 @@ def test_edges_are_attributed_by_bullet(repo: Path):
     link = next(n for n in data["nodes"] if n["id"].endswith("#landing-sign-in-link"))
     assert link["edges"][0]["via"] == "leads-to"
 
-    assert all("via" in e for e in data["edges"])  # the flat list carries it too
+    assert all("via" in e for e in data["edges"])
 
 
 def test_prose_links_are_not_navigation(repo: Path):
@@ -190,7 +186,7 @@ def test_leads_to_builds_a_click_path(repo: Path):
     path = present(reach.route(_edges(repo), LAND, FORGOT_ID))
     assert [h["to"] for h in path] == [SIGNIN, FORGOT_ID]
     assert path[0]["action"] == "activate"
-    assert path[0]["node"].endswith("#landing-sign-in-link")  # what to click, not just where
+    assert path[0]["node"].endswith("#landing-sign-in-link")
 
 
 def test_flow_steps_are_navigation_edges(repo: Path):
@@ -198,7 +194,6 @@ def test_flow_steps_are_navigation_edges(repo: Path):
     path = present(reach.route(_edges(repo), SIGNIN, DASH))
     assert len(path) == 1
     assert path[0]["kind"] == "flow-step"
-    # the hop is caused by the *previous* step's interaction, not by the arriving node
     assert path[0]["node"].endswith("#submit-sign-in")
 
 
@@ -213,7 +208,6 @@ def test_unreachable_screen_is_a_finding_not_a_fallback(repo: Path):
 
     report = reach.reachability(_repo(repo), surface="web", start=LAND)
     assert report["unreachable"] == [ARCHIVE]
-    # landing (the start, zero-hop) + sign-in + forgot-password + dashboard
     assert report["counts"]["reachable"] == 4
     assert report["counts"]["screens"] == 5
 
@@ -230,7 +224,7 @@ def test_none_is_declared_not_absent(repo: Path):
 
     archive = reach.preconditions(by_id[ARCHIVE])
     assert not archive["declared"]
-    assert archive["guards"] == [] and archive["params"] == []  # same emptiness, different meaning
+    assert archive["guards"] == [] and archive["params"] == []
 
 
 def test_preconditions_parse_guards_and_params(repo: Path):
@@ -238,7 +232,7 @@ def test_preconditions_parse_guards_and_params(repo: Path):
     assert pre["declared"]
     assert [g["node"] for g in pre["guards"]] == ["../components/auth-guards.md#protected-route"]
     assert pre["params"][0]["name"] == "projectId"
-    assert pre["params"][0]["from"] == "sign-in.md#submit-sign-in"  # routable dependency
+    assert pre["params"][0]["from"] == "sign-in.md#submit-sign-in"
 
 
 def test_route_hops_carry_destination_preconditions(repo: Path):
@@ -248,7 +242,6 @@ def test_route_hops_carry_destination_preconditions(repo: Path):
     path = present(reach.route(_edges(repo), LAND, DASH, by_id))
     assert path[-1]["preconditions"]["guards"][0]["text"].startswith("[protected-route]")
     assert path[-1]["preconditions"]["params"][0]["name"] == "projectId"
-    # the sign-in hop is unconditional, and says so
     assert path[0]["preconditions"] == {"declared": True, "guards": [], "params": []}
 
 
@@ -309,16 +302,9 @@ def test_doctor_warns_rather_than_errors_when_no_screen_is_at_the_root(repo: Pat
 
 
 def test_no_root_screen_now_also_fires_on_a_mobile_surface(repo: Path):
-    """`no-root-screen` must keep firing on a `web` surface with a real, book-stated defect (no
-    screen at the root the book states no root for) — and, now that a mobile surface can state
-    its root via `launch-screen:`, a mobile surface that has not settled one gets the same
-    warning too, in its own words: no mention of `route:` or `/`, a suggestion naming
-    `launch-screen:` instead."""
+    """`no-root-screen` must keep firing on a `web` surface with a real, book-stated defect (no screen at the root the book states no root for) — and, now that a mobile surface can state its root via `launch-screen:`, a mobile surface that has not settled one gets the same warning too, in its own words: no mention of `route:` or `/`, a suggestion naming `launch-screen:` instead."""
     _repo(repo)
-    # Break the web surface's root on purpose: no screen's `route:` is `/` any more.
     write(repo / SCREENS / "landing.md", LANDING.replace("- route: `/`", "- route: `/home`"))
-    # A mobile surface, `driver: mobile`, whose screen names its route the mobile way, with no
-    # `launch-screen:` stated on its runbook.
     write(repo / "docs/features/mobile/gui/screens/widget-list.md", """\
 ---
 type: screen
@@ -382,7 +368,7 @@ title: App
     flagged = {f.path for f in report.findings if f.code == "unreachable-screen"}
     app = f"{SCREENS}/app.md"
     assert app not in flagged
-    assert LAND in flagged  # `/` is no longer the root: nothing links to it from `/app`
+    assert LAND in flagged
     assert all(f"from {app}" in f.message for f in report.findings
                if f.code == "unreachable-screen")
 
@@ -397,10 +383,7 @@ def test_a_server_entry_url_with_no_matching_screen_names_the_server(repo: Path)
 
 
 def test_several_servers_settle_on_the_first_by_node_id(repo: Path):
-    """Two contracts on one surface: the engine reads the root off the first by node id
-    rather than leaving a surface that plainly states an address rootless. `static.md` sorts
-    before `web.md`, so its `/static` is the path a walk opens by construction — and no
-    screen sits there, which is what `root_screen` reporting nothing means here."""
+    """Two contracts on one surface: the engine reads the root off the first by node id rather than leaving a surface that plainly states an address rootless."""
     _repo(repo)
     write(repo / SERVER, _server("http://localhost:3000/app"))
     write(repo / "docs/features/web/http/static.md",
@@ -412,11 +395,7 @@ def test_several_servers_settle_on_the_first_by_node_id(repo: Path):
 
 
 def test_root_path_is_unchanged_for_web_and_none_for_a_driver_with_no_path_grammar(repo: Path):
-    """A `web` surface's root path is derived from its server contract exactly as before this
-    change — asserted against a fixture with a real `entry-url:`, so a regression here shows up
-    as a *changed path*, not merely as "still not None". `mobile` (no path grammar,
-    `routes.is_path_addressed` says so) gets `(None, None)` instead of a fabricated root — the
-    server contract this surface has is irrelevant to a driver that does not address by path."""
+    """A `web` surface's root path is derived from its server contract exactly as before this change — asserted against a fixture with a real `entry-url:`, so a regression here shows up as a *changed path*, not merely as "still not None"."""
     _repo(repo)
     write(repo / SERVER, _server("http://localhost:3000/app/"))
     write(repo / SCREENS / "app.md", """\
@@ -435,9 +414,7 @@ title: App
     server_id = SERVER
 
     assert reach.root_path(data, "web") == ("/app", server_id)
-    # Undeclared driver keeps today's web-shaped default, unchanged.
     assert reach.root_path(data) == ("/app", server_id)
-    # A driver this book has no server contract that could speak for at all.
     assert reach.root_path(data, "mobile") == (None, None)
 
 
@@ -452,11 +429,7 @@ def test_doctor_flags_a_screen_no_path_reaches(repo: Path):
 
 
 def test_doctor_flags_an_island_that_has_an_inbound_edge(repo: Path):
-    """The case that rules out an inbound-degree test: linked, but hanging off nothing.
-
-    A cluster that links to itself is exactly the shape a broken navigation graph takes, and
-    counting inbound edges scores every member of it as fine.
-    """
+    """The case that rules out an inbound-degree test: linked, but hanging off nothing."""
     _repo(repo)
     write(repo / SCREENS / "archive.md", ORPHAN + """
 ## Components
@@ -480,7 +453,7 @@ title: Archive detail
 
     flagged = {f.path for f in report.findings if f.code == "unreachable-screen"}
     detail = f"{SCREENS}/archive-detail.md"
-    assert detail in flagged  # has an inbound edge from archive, still unreachable
+    assert detail in flagged
     assert ARCHIVE in flagged
 
 
@@ -494,8 +467,7 @@ def test_a_route_valued_entry_makes_a_screen_a_seed(repo: Path):
 
 
 def test_a_prose_entry_does_not_exempt_a_screen(repo: Path):
-    """"Reached by typing the URL" is a claim about the outside world the edge check cannot
-    verify; a book where every screen makes it has no navigation in it and used to pass."""
+    """"Reached by typing the URL" is a claim about the outside world the edge check cannot verify; a book where every screen makes it has no navigation in it and used to pass."""
     _repo(repo)
     write(repo / SCREENS / "archive.md", _entry(ORPHAN, "emailed deep link"))
     report = _doctor(repo)
@@ -509,11 +481,7 @@ MOBILE_SCREENS = "docs/features/mobile-app/gui/screens"
 
 
 def _mobile_repo(repo: Path, launch_screen: bool = False):
-    """A surface whose runbook drives it with `mobile` — screen names, no paths anywhere.
-
-    *launch_screen* adds a `launch-screen:` bullet naming the same screen `surfaces:` already
-    names, the shape a real mobile runbook takes.
-    """
+    """A surface whose runbook drives it with `mobile` — screen names, no paths anywhere."""
     write(repo / MOBILE_SCREENS / "widget-list.md", (
         "---\ntype: screen\nslug: widget-list\ntitle: Widgets\n---\n# Widgets\n\n"
         "- route: `WidgetList`\n- requires: none\n- params: none\n"
@@ -530,12 +498,7 @@ def _mobile_repo(repo: Path, launch_screen: bool = False):
 
 
 def _mobile_repo_with_an_unusable_launch_screen(repo: Path):
-    """A `mobile` runbook whose `launch-screen:` names a component rather than a screen.
-
-    `surface_launch_screen` resolves the link and returns the document it names, with no check
-    that the document is a screen on the surface — so this is the shape that reaches
-    `resolve_start` with a settled answer it cannot start from.
-    """
+    """A `mobile` runbook whose `launch-screen:` names a component rather than a screen."""
     write(repo / MOBILE_SCREENS / "widget-list.md", (
         "---\ntype: screen\nslug: widget-list\ntitle: Widgets\n---\n# Widgets\n\n"
         "- route: `WidgetList`\n- requires: none\n- params: none\n"
@@ -554,9 +517,7 @@ def _mobile_repo_with_an_unusable_launch_screen(repo: Path):
 
 
 def _mobile_repo_with_two_launch_screens(repo: Path):
-    """Two runbooks over `mobile-app`, each naming a different `launch-screen:` — the shape
-    `surface_launch_screen` settles by node id (`current.md` before `legacy.md`) rather than
-    refusing to pick one."""
+    """Two runbooks over `mobile-app`, each naming a different `launch-screen:` — the shape `surface_launch_screen` settles by node id (`current.md` before `legacy.md`) rather than refusing to pick one."""
     write(repo / MOBILE_SCREENS / "widget-list.md", (
         "---\ntype: screen\nslug: widget-list\ntitle: Widgets\n---\n# Widgets\n\n"
         "- route: `WidgetList`\n- requires: none\n- params: none\n"
@@ -583,10 +544,7 @@ def _mobile_repo_with_two_launch_screens(repo: Path):
 
 
 def test_a_mobile_surface_is_not_told_to_look_for_a_screen_at_the_root_path(repo: Path):
-    """`root_path` has been driver-aware since the route grammars landed, but `resolve_start`
-    never asked for a driver — so the one command a person runs by hand kept the web answer and
-    quoted a `/` no mobile book ever writes. A reader that silently keeps the old answer is
-    worse than one that crashes: nothing fails, and the fabricated path reads as the book's."""
+    """`root_path` has been driver-aware since the route grammars landed, but `resolve_start` never asked for a driver — so the one command a person runs by hand kept the web answer and quoted a `/` no mobile book ever writes."""
     import pytest
 
     data = graph.build(_mobile_repo(repo), surface="mobile-app")
@@ -598,15 +556,7 @@ def test_a_mobile_surface_is_not_told_to_look_for_a_screen_at_the_root_path(repo
 
 
 def test_the_reach_command_reads_the_surface_driver_off_the_runbook(repo: Path, capsys):
-    """The driver is not the command's to guess and not its to report: `_cmd_reach` resolves it
-    from the book like every other reader, so the message a person sees is this surface's.
-
-    The exit code alone proves nothing — a driver-less read stops here too, having gone looking
-    for a screen at a `/` this book never wrote. What separates them is what it says.
-
-    `_mobile_repo` states no `launch-screen:` here, so `_cmd_reach`'s `surface` still leaves
-    this surface with no start to report — the message just names the bullet that could have
-    settled it, since `_cmd_reach` now passes `surface` through to `resolve_start`."""
+    """The driver is not the command's to guess and not its to report: `_cmd_reach` resolves it from the book like every other reader, so the message a person sees is this surface's."""
     graph_obj = _mobile_repo(repo)
     args = SimpleNamespace(surface="mobile-app", start=None, target=None, json=True)
 
@@ -617,8 +567,7 @@ def test_the_reach_command_reads_the_surface_driver_off_the_runbook(repo: Path, 
 
 
 def test_a_mobile_surfaces_launch_screen_is_the_start(repo: Path):
-    """The fact `surface_launch_screen` already resolves was simply unwired: once `resolve_start`
-    is given `surface`, a `mobile` surface's `launch-screen:` becomes its start."""
+    """The fact `surface_launch_screen` already resolves was simply unwired: once `resolve_start` is given `surface`, a `mobile` surface's `launch-screen:` becomes its start."""
     data = graph.build(_mobile_repo(repo, launch_screen=True), surface="mobile-app")
 
     assert reach.resolve_start(data, None, "mobile", surface="mobile-app") == (
@@ -626,8 +575,7 @@ def test_a_mobile_surfaces_launch_screen_is_the_start(repo: Path):
 
 
 def test_a_mobile_surface_with_no_launch_screen_still_raises_unknown_start(repo: Path):
-    """No `launch-screen:` and no root path leaves nothing to start from — the message must
-    name `launch-screen:` so the operator knows which bullet would have settled it."""
+    """No `launch-screen:` and no root path leaves nothing to start from — the message must name `launch-screen:` so the operator knows which bullet would have settled it."""
     import pytest
 
     data = graph.build(_mobile_repo(repo), surface="mobile-app")
@@ -638,11 +586,7 @@ def test_a_mobile_surface_with_no_launch_screen_still_raises_unknown_start(repo:
 
 
 def test_a_stated_launch_screen_that_is_not_a_screen_says_so(repo: Path):
-    """`surface_launch_screen` type-checks nothing, so a `launch-screen:` naming a component
-    comes back settled and unusable. Telling the reader the book "states no `launch-screen:`"
-    would send them to add a bullet that is already there — the message has to name what the
-    book did state, because a stated-but-wrong declaration and an absent one are repaired at
-    different lines."""
+    """`surface_launch_screen` type-checks nothing, so a `launch-screen:` naming a component comes back settled and unusable."""
     import pytest
 
     data = graph.build(_mobile_repo_with_an_unusable_launch_screen(repo), surface="mobile-app")
@@ -657,9 +601,7 @@ def test_a_stated_launch_screen_that_is_not_a_screen_says_so(repo: Path):
 
 
 def test_two_launch_screens_settle_on_one_start_rather_than_refusing(repo: Path):
-    """Two runbooks correctly covering one surface is a real book's shape, so `resolve_start`
-    must hand back a start rather than a refusal — the ranked read settles it by node id, and
-    the screen `current.md` names is the one a cold launch opens."""
+    """Two runbooks correctly covering one surface is a real book's shape, so `resolve_start` must hand back a start rather than a refusal — the ranked read settles it by node id, and the screen `current.md` names is the one a cold launch opens."""
     data = graph.build(_mobile_repo_with_two_launch_screens(repo), surface="mobile-app")
 
     assert reach.resolve_start(data, None, "mobile", surface="mobile-app") == (
@@ -668,8 +610,7 @@ def test_two_launch_screens_settle_on_one_start_rather_than_refusing(repo: Path)
 
 
 def test_a_mobile_surface_with_no_surface_argument_keeps_the_original_message(repo: Path):
-    """`resolve_start` called the way every caller called it before this change — with no
-    `surface` — must behave exactly as before: `launch-screen:` is never consulted."""
+    """`resolve_start` called the way every caller called it before this change — with no `surface` — must behave exactly as before: `launch-screen:` is never consulted."""
     import pytest
 
     data = graph.build(_mobile_repo(repo, launch_screen=True), surface="mobile-app")
@@ -680,17 +621,14 @@ def test_a_mobile_surface_with_no_surface_argument_keeps_the_original_message(re
 
 
 def test_a_path_addressed_surface_never_consults_a_launch_screen(repo: Path):
-    """`web` has a path grammar, so `resolve_start` must still resolve its root screen and
-    never so much as ask `surface_launch_screen` — passing `surface` through must not change
-    a path-addressed surface's answer."""
+    """`web` has a path grammar, so `resolve_start` must still resolve its root screen and never so much as ask `surface_launch_screen` — passing `surface` through must not change a path-addressed surface's answer."""
     data = graph.build(_repo(repo), surface="web")
 
     assert reach.resolve_start(data, None, "web", surface="web") == LAND
 
 
 def _cli_repo_with_no_screens(repo: Path):
-    """A `cli` surface: a `type: cli` node under its own directory, no screens anywhere — the
-    shape `workflows`, `farrier` and `workhorse` actually take in this repo's own book."""
+    """A `cli` surface: a `type: cli` node under its own directory, no screens anywhere — the shape `workflows`, `farrier` and `workhorse` actually take in this repo's own book."""
     write(repo / "docs/features/toolbox/toolbox.md", (
         "---\ntype: cli\nslug: toolbox\ntitle: Toolbox\n---\n# Toolbox\n\n"
         "- binary: `toolbox`\n"
@@ -704,9 +642,7 @@ def _cli_repo_with_no_screens(repo: Path):
 
 
 def test_a_surface_with_no_screens_says_so_instead_of_launch_screen_or_a_root_path(repo: Path):
-    """An empty domain is not a failed search: `workflows`, `farrier` and `workhorse` in this
-    repo's own book each declare zero screens under `driver: cli`, and neither `--from` nor
-    `launch-screen:` names anything to repair when there is no screen for either to point at."""
+    """An empty domain is not a failed search: `workflows`, `farrier` and `workhorse` in this repo's own book each declare zero screens under `driver: cli`, and neither `--from` nor `launch-screen:` names anything to repair when there is no screen for either to point at."""
     import pytest
 
     data = graph.build(_cli_repo_with_no_screens(repo), surface="toolbox")
@@ -721,9 +657,7 @@ def test_a_surface_with_no_screens_says_so_instead_of_launch_screen_or_a_root_pa
 
 
 def test_the_reach_command_reports_no_screens_for_a_cli_surface(repo: Path, capsys):
-    """The same empty-domain message, through `_cmd_reach` the way a person actually runs it —
-    on stdout with exit 0, since asking the open question and finding nothing to start from is
-    not the same fact as a route that fails."""
+    """The same empty-domain message, through `_cmd_reach` the way a person actually runs it — on stdout with exit 0, since asking the open question and finding nothing to start from is not the same fact as a route that fails."""
     graph_obj = _cli_repo_with_no_screens(repo)
     args = SimpleNamespace(surface="toolbox", start=None, target=None, json=True)
 
@@ -737,8 +671,7 @@ def test_the_reach_command_reports_no_screens_for_a_cli_surface(repo: Path, caps
 
 
 def test_the_reach_command_degrades_when_the_book_does_not_settle_a_driver(repo: Path, capsys):
-    """Two runbooks disagreeing is `doctor`'s finding to raise. This command wants a grammar,
-    so it degrades to none and behaves exactly as it did before drivers existed."""
+    """Two runbooks disagreeing is `doctor`'s finding to raise."""
     _repo(repo)
     for slug, driver in (("deployed", "web"), ("local-cli", "cli")):
         write(repo / f"docs/features/web/ops/{slug}.md", (
@@ -769,7 +702,7 @@ def test_reachable_screens_are_not_flagged(repo: Path):
     report = _doctor(repo)
 
     flagged = {f.path for f in report.findings if f.code == "unreachable-screen"}
-    assert SIGNIN not in flagged and DASH not in flagged  # via leads-to and flow-step
+    assert SIGNIN not in flagged and DASH not in flagged
 
 
 def test_intra_screen_leads_to_is_not_navigation(repo: Path):
@@ -798,9 +731,7 @@ def test_none_with_a_reason_still_reads_as_none(repo: Path):
 
 
 def _mobile_repo_with_an_unreachable_screen(repo: Path):
-    """A mobile surface with a settled `launch-screen:` and a second screen no navigation
-    reaches from it — the shape `unreachable-screen` exists to catch, now that a mobile
-    surface's root can be stated at all."""
+    """A mobile surface with a settled `launch-screen:` and a second screen no navigation reaches from it — the shape `unreachable-screen` exists to catch, now that a mobile surface's root can be stated at all."""
     write(repo / MOBILE_SCREENS / "widget-list.md", (
         "---\ntype: screen\nslug: widget-list\ntitle: Widgets\n---\n# Widgets\n\n"
         "- route: `WidgetList`\n- requires: none\n- params: none\n"
@@ -820,9 +751,7 @@ def _mobile_repo_with_an_unreachable_screen(repo: Path):
 
 
 def test_a_settled_mobile_launch_screen_gets_its_reachability_checked(repo: Path):
-    """The debt `_check_reachability` used to skip is paid: a mobile surface with a settled
-    `launch-screen:` is now walked like any other surface, and a screen no navigation reaches
-    from it is reported as `unreachable-screen`."""
+    """The debt `_check_reachability` used to skip is paid: a mobile surface with a settled `launch-screen:` is now walked like any other surface, and a screen no navigation reaches from it is reported as `unreachable-screen`."""
     _mobile_repo_with_an_unreachable_screen(repo)
     report = _doctor(repo)
 
@@ -833,9 +762,7 @@ def test_a_settled_mobile_launch_screen_gets_its_reachability_checked(repo: Path
 
 
 def test_a_mobile_surface_with_no_launch_screen_gets_no_root_screen_not_route(repo: Path):
-    """No `launch-screen:` on a mobile surface's runbook is a `no-root-screen` warning that names
-    the bullet the book is missing — never `route:` or `/`, which this driver has no grammar
-    for at all."""
+    """No `launch-screen:` on a mobile surface's runbook is a `no-root-screen` warning that names the bullet the book is missing — never `route:` or `/`, which this driver has no grammar for at all."""
     _mobile_repo(repo)
     report = _doctor(repo)
 
@@ -848,9 +775,7 @@ def test_a_mobile_surface_with_no_launch_screen_gets_no_root_screen_not_route(re
 
 
 def test_a_path_addressed_surfaces_findings_are_unchanged(repo: Path):
-    """The pre-existing `web` behaviour must come out byte-identical: this change only adds
-    reachability checking to a driver that had none, it does not touch the one that already
-    worked."""
+    """The pre-existing `web` behaviour must come out byte-identical: this change only adds reachability checking to a driver that had none, it does not touch the one that already worked."""
     _repo(repo)
     report = _doctor(repo)
 

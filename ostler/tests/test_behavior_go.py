@@ -199,8 +199,6 @@ def test_go_function_contract_snippet_is_the_signature_not_the_body(tmp_path: Pa
     contract = next(item for item in inventory.candidates if item.kind == "function_contract")
     assert contract.snippet == contract.text == "func Long(limit int) error"
     assert contract.start_line == 3 and contract.end_line == 505
-    # The body travels once, as the declaration's context, so a packet holding the contract
-    # fits a budget the body alone leaves room in — where two copies of it did not.
     encoded = len(json.dumps(source))
     prepared = build_audit_packets(inventory, [], max_chars=encoded + encoded // 2, skip_undocumented=False)
     assert len(prepared.packets) == 1
@@ -229,16 +227,7 @@ def test_go_packet_context_keeps_only_the_outermost_enclosing_excerpt(tmp_path: 
 
 
 def test_go_visit_respects_max_depth(tmp_path: Path) -> None:
-    """A tree deeper than ``MAX_DEPTH`` is dropped, not crashed.
-
-    tree-sitter's `Node.text` is a C-extension property that has segfaulted deep
-    inside a recursive visit on malformed Go source. Capping the visitor's depth
-    is the fix: the symbols emitted at the shallower frame still name the
-    function, and the offending subtree is dropped on the floor. This test
-    crafts a Go file nested deeper than ``MAX_DEPTH`` and asserts the visitor
-    returns without crashing — the only requirement is that *something*
-    survives, not that every level is recorded.
-    """
+    """A tree deeper than ``MAX_DEPTH`` is dropped, not crashed."""
     from ostler.behavior_go import MAX_DEPTH
 
     deep = MAX_DEPTH + 50
@@ -249,11 +238,6 @@ def test_go_visit_respects_max_depth(tmp_path: Path) -> None:
     source += "}\n"
     (tmp_path / "deep.go").write_text(source, encoding="utf-8")
     inventory = extract_evidence(tmp_path, ["deep.go"])
-    # The outer function's contract is at depth 0 and lands first; everything
-    # past MAX_DEPTH is dropped. The exact number of inner returns that survived
-    # depends on the grammar's exact nesting, so the assertion is the loose one:
-    # at least one candidate (the contract) and at most all of them — never the
-    # full un-trimmed tree, never a crash.
     assert inventory.files[0].status == "parsed"
     kinds = {item.kind for item in inventory.candidates}
     assert "function_contract" in kinds
@@ -267,20 +251,10 @@ def test_go_text_of_returns_empty_on_none() -> None:
 
 
 def test_syntax_tree_cache_outlives_a_real_walk(tmp_path: Path) -> None:
-    """``_tree`` must not evict mid-walk — the visitor keeps Node wrappers without a
-    back-reference to the parent Tree.
-
-    The api walk that segfaulted had 312 files; the old ``maxsize=16`` evicted a
-    Tree under the still-running visitor. The new size is set so a single drive
-    never evicts — this test asserts that.
-    """
+    """``_tree`` must not evict mid-walk — the visitor keeps Node wrappers without a back-reference to the parent Tree."""
     from ostler import syntax
     from ostler.behavior import extract_evidence
 
-    # Use the ostler package itself as a stand-in multi-file source tree. The path is
-    # local to the checkout and contains *.py files which go through the Python
-    # extractor (this test only checks the tree-cache invariant, not the extractor
-    # itself — see the `_tree` maxsize check below).
     src = Path("/mnt/data/workspace/stablemate/ostler/ostler")
     if not src.exists():
         return
@@ -294,7 +268,5 @@ def test_syntax_tree_cache_outlives_a_real_walk(tmp_path: Path) -> None:
         f"tree cache maxsize={cache_maxsize} is too small for a {len(files)}-file walk; "
         "eviction during a single visit segfaults the interpreter"
     )
-    # Sanity: drive the extraction end-to-end so the test fails if a future change
-    # reintroduces a regression in the visitor itself.
     inv = extract_evidence(src.parent, paths)
     assert inv.candidates

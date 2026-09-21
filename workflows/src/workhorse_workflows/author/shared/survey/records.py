@@ -1,22 +1,4 @@
-"""Finding records: one checked hard on its own, then all of them checked together.
-
-The finding record is the per-unit "note it" file — the durable, structured result of one
-bounded assessment, and the ONLY thing the partitioner ever reads. Clustering happens over
-records, never over code, so these two gates are what let the partition and the emitted
-backlog trust them.
-
-`validate_record` keeps one assessor honest. `verify_records` is the coverage gate: it runs
-when the loop finds nothing pending and turns "the empty select IS the proof" into an
-auditable claim, catching every way that claim rots — a re-pended unit, a missing or
-contradictory record, a blocked unit nobody owns, or a unit dropped out of the frozen list
-since the last commit.
-
-Ported from `surveyor/scripts/{validate-record,verify-records}.py`. Those two scripts each
-carried a copy of the same ruleset **with different message wording** — the strict one is
-addressed to the assessor being asked to fix its own record, the compact one to an operator
-reading a coverage report. Parity means keeping both wordings, so `check_record` and
-`record_errors` are both here rather than deduplicated into one.
-"""
+"""Finding records: one checked hard on its own, then all of them checked together."""
 from __future__ import annotations
 
 import json
@@ -32,24 +14,13 @@ from workhorse_workflows.author.shared.paths import survey_repo_root
 from workhorse_workflows.author.shared.schemas.survey import RecordCheck, VerifyResult
 from workhorse_workflows.kit import show_file
 
-#: `remediation_pattern` values are emergent per initiative — proposed by assessors,
-#: normalized during partitioning — so the schema stays closed while the taxonomy stays
-#: open. All it enforces is the shape the partitioner clusters on.
 PATTERN_SLUG_RE = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
-#: The statuses a finding record may declare.
 RECORD_STATUSES = {"assessed", "clean", "blocked"}
-#: How much work one finding is. Concern-neutral: nothing stack-shaped in here.
 EFFORTS = {"trivial", "small", "substantial"}
 
 
 def load_record(text: str) -> dict:
-    """Parse a record's YAML front-matter. Raises ValueError when malformed.
-
-    The fence is located by ``ostler.markdown.split`` — the same parser the doc graph
-    uses — rather than by a pattern of this module's own. ``split`` swallows a YAML error
-    into an empty mapping, which is the wrong answer for an assessor being told to fix its
-    own record, so the raw block is re-read here to surface the parser's message.
-    """
+    """Parse a record's YAML front-matter."""
     if not text.lstrip().startswith("---"):
         raise ValueError("record has no leading `---` YAML front-matter block")
     doc = markdown.split(text)
@@ -181,13 +152,7 @@ def record_errors(record: dict, unit_id: str) -> list[str]:
 def validate_record(
     logger: logging.Logger, record_path: str, unit_id: str, repo_dir: str = ""
 ) -> RecordCheck:
-    """Check one unit's finding record, hard and deterministically.
-
-    Nothing here is a judgment call: the record parses, it describes the unit it was
-    selected for, its status is one of the three, an `assessed` record carries at least
-    one complete finding, a `clean` one carries none, and a `blocked` one names its gap —
-    never a bare shrug.
-    """
+    """Check one unit's finding record, hard and deterministically."""
     record_rel = record_path.strip()
     unit_id = unit_id.strip()
 
@@ -231,14 +196,7 @@ def verify_records(
     ref: str = "HEAD",
     repo_dir: str = "",
 ) -> VerifyResult:
-    """The coverage gate: every frozen unit accounted for, and no silent shrinkage.
-
-    The per-unit loop's empty select is the proof; this makes it auditable. The last check
-    is reconcile-shaped and fail-open: a unit present in the last *committed* inventory
-    but absent now, with no split lineage, is a frozen-list drop and therefore a
-    regression — but with no git and no committed baseline there is nothing to compare, so
-    that check skips rather than inventing a verdict.
-    """
+    """The coverage gate: every frozen unit accounted for, and no silent shrinkage."""
     inv_rel = inventory.strip() or "docs/survey/inventory.json"
     findings_rel = findings_dir.strip() or "docs/survey/findings"
     ref = ref.strip() or "HEAD"
@@ -321,7 +279,6 @@ def verify_records(
                 f"or record `disposition: accepted` (with the reason) in its record"
             )
 
-    # ── Reconcile-style shrinkage vs the committed baseline ────────────────────────────
     base_text = show_file(root, ref, inv_rel)
     if base_text is not None:
         try:
@@ -336,7 +293,7 @@ def verify_records(
                 continue
             bpath = str(bu.get("path") or bid)
             if any(p.startswith(bpath + "/") for p in current_paths):
-                continue  # split lineage — the parent was replaced by its children
+                continue
             errors.append(
                 f"  - [dropped-unit] '{bid}' was in the committed inventory ({ref}) "
                 f"but is gone now with no split lineage and no record — a frozen-list "

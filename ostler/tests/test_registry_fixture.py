@@ -1,11 +1,4 @@
-"""`registry`'s fixture-node grammar and the `capture:` bullet it shares with `verify:`/`fixture:`.
-
-A `fixture` node is a file-level `fixtures` type reusing the `step` section for its own
-`## Steps`. `capture:` is the mirror-image flag of `arrange`/`check` on the same seven node
-types that already carry `fixture:`/`verify:`, and its attribution
-(`capture_keys`/`attributed_captures`) is required to delegate to the same `_attributed` engine
-`attributed_fixtures`/`attributed_checks` already use — not a second one.
-"""
+"""`registry`'s fixture-node grammar and the `capture:` bullet it shares with `verify:`/`fixture:`."""
 
 from __future__ import annotations
 
@@ -86,7 +79,6 @@ def test_attributed_captures_mirrors_attributed_fixtures_via_the_shared_engine(
     _, per_bullet = registry.attributed_captures(inv.type, inv.bullet_order, inv.combiners)
     assert per_bullet == {("does", 1): ["account_id from $.accounts[0].id"]}
 
-    # Same shape `attributed_fixtures`/`attributed_checks` return — same engine, different key.
     fixtures_shape = registry.attributed_fixtures(inv.type, inv.bullet_order, inv.combiners)
     checks_shape = registry.attributed_checks(inv.type, inv.bullet_order, inv.combiners)
     captures_shape = registry.attributed_captures(inv.type, inv.bullet_order, inv.combiners)

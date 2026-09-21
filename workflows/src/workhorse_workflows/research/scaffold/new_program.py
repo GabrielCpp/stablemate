@@ -1,26 +1,5 @@
 #!/usr/bin/env python3
-"""Scaffold a new research program folder from the canonical templates.
-
-A research program is one self-contained folder in the target repo (1 folder =
-1 program), consumed by the generic research workflow. This stamps the exact
-layout `load_config` + the gate-loop prompts expect, so the manifest, headers,
-gate-doc format, and (optionally) the `.agents/program` selection pointer never
-depend on an agent remembering them.
-
-This is not a node and never was — it is the operator-facing producer of the input
-the workflow consumes, run once by a human before the first run:
-
-  python -m workhorse_workflows.research.scaffold.new_program \\
-      --repo <repo> --dir specs/my-program --code-root src/mypkg \\
-      [--name "Foo Program"] [--gate G0] [--progress <repo-rel path>] \\
-      [--result-branch <branch>] [--ram-gb 64 --cpus 16 --gpu "1x A100" --disk-gb 500] \\
-      [--min-containment premium] [--set-default] [--force]
-
-Writes under <repo>/<dir>:
-  program.yml · README.md · PROGRESS.md (at --progress if given) · <gate>_program.md · findings/
-
-Stdlib-only: runs under the system python3.
-"""
+"""Scaffold a new research program folder from the canonical templates."""
 import argparse
 import datetime
 import logging
@@ -91,7 +70,6 @@ def main(logger: logging.Logger) -> None:
         "__DATE__": datetime.date.today().isoformat(),
     }
 
-    # program.yml is generated directly (tiny) so overrides land uncommented.
     manifest = [f"# {name} — research program manifest (read by load_program). 1 folder = 1 program.",
                 f"code_root: {args.code_root.strip('/')}"]
     if args.progress:
@@ -99,14 +77,6 @@ def main(logger: logging.Logger) -> None:
     if args.result_branch:
         manifest.append(f"result_branch: {result_branch}")
 
-    # The machine envelope. A design is checked against these *before* anything is
-    # built, and one that does not fit is rescoped by the scientist rather than
-    # launched and killed hours later — so the numbers here are what stops an
-    # experiment nobody's hardware can run from being written at all.
-    #
-    # An axis left at 0 (or `none`) declares no bound and is not checked. That is the
-    # honest default for a machine nobody has measured, and it is also the setting
-    # under which over-envelope never fires: fill them in.
     manifest += [
         "",
         "# The machine this program's experiments must fit. 0 / none = no bound declared.",
@@ -152,6 +122,5 @@ def main(logger: logging.Logger) -> None:
 
 
 if __name__ == "__main__":
-    # workhorse calls main(logger) itself; this guard is only for running by hand.
     logging.basicConfig(level=logging.INFO, format="[%(name)s] %(message)s")
     main(logging.getLogger("new_program"))

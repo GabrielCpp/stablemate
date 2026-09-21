@@ -1,10 +1,4 @@
-"""`Qa.fixture()`'s book-fixture tier: dispatch order, env-not-shell-text, secrets-as-names,
-fault classification per Q38, needs memoization, and `@node.key`/`$name` namespacing.
-
-Run as a real subprocess the way `test_qa_harness.py` does — never imported into the test
-process, since the harness keeps a module-level registry that a second `plan()`/`scenario()`
-call in the same interpreter would corrupt.
-"""
+"""`Qa.fixture()`'s book-fixture tier: dispatch order, env-not-shell-text, secrets-as-names, fault classification per Q38, needs memoization, and `@node.key`/`$name` namespacing."""
 
 from __future__ import annotations
 
@@ -48,13 +42,7 @@ def _harness(*args: str, env: dict[str, str], records_to: Path) -> tuple[int, st
 
 
 def _with_resolved_timeouts(book_fixtures: dict) -> dict:
-    """Fill in the `timeout` every step carries once `book_fixtures.resolved()` has run.
-
-    These fixtures are hand-built test doubles, not `book_fixtures.resolved()` output, so
-    they skip the ostler-side normalization step (`stack.boot_timeout`) that guarantees a
-    real step dict always carries a resolved float — the harness itself no longer defaults
-    or parses one. A default here stands in for that normalization, not a harness default.
-    """
+    """Fill in the `timeout` every step carries once `book_fixtures.resolved()` has run."""
     for spec in book_fixtures.values():
         for step in spec.get("steps", []):
             if not step.get("missing_run") and "timeout" not in step:
@@ -133,9 +121,6 @@ def test_args_reach_the_step_via_env_never_interpolated_into_shell_text(tmp_path
     }
     code, stdout, _records = _run(module, "passes-args-through-env-not-shell-text", tmp_path, book_fixtures=book_fixtures)
     assert code == 0, stdout
-    # The whole value — semicolon and all — landed as one environment value, never parsed by
-    # a shell: if it had been shell text, "rm -rf" would have run as a second command instead
-    # of being written verbatim into $id.
     assert out.read_text(encoding="utf-8") == "needle; rm -rf /tmp/should-not-run"
 
 
@@ -165,7 +150,6 @@ def test_a_missing_secret_is_an_environment_fault(tmp_path: Path) -> None:
     assert fault["fixture"] == "seeded-acme"
     dumped = "\n".join(json.dumps(r) for r in records)
     assert "MISSING_API_TOKEN" in dumped
-    # The name is expected — a value never is, because none exists to leak.
 
 
 def test_a_missing_cwd_is_an_environment_fault(tmp_path: Path) -> None:
@@ -199,10 +183,7 @@ def test_a_nonzero_exit_is_a_defect(tmp_path: Path) -> None:
 
 
 def test_a_missing_command_is_a_defect_whose_detail_names_it(tmp_path: Path) -> None:
-    """`bash -c` exits 126/127 for a name it never found — identical, from the exit code
-    alone, to a typo in the recipe. That is exactly why it is a defect, not an environment
-    fault: the fault detail still has to flag the 126/127 case so triage can tell "this tool
-    was never installed" apart from a generic non-zero exit."""
+    """`bash -c` exits 126/127 for a name it never found — identical, from the exit code alone, to a typo in the recipe."""
     module = _write(tmp_path, SECRET_SCENARIO)
     book_fixtures = {
         "seeded-acme": {
@@ -375,7 +356,6 @@ def test_a_needs_binding_naming_an_unresolvable_node_key_is_a_defect(tmp_path: P
         "seeded-globex": {
             "steps": [{"kind": "seed", "command": str(globex_script), "cwd": str(tmp_path)}],
             "args": ["id"], "provides": [],
-            # Wrong key — seeded-acme provides "id", not "no_such_key".
             "needs": [{"fixture": "seeded-acme", "args": {"id": "@seeded-acme.no_such_key"}}],
             "secrets": [],
         },

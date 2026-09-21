@@ -54,18 +54,7 @@ class FileExcerpt(BehaviorModel):
 
     @model_validator(mode="after")
     def _bounds_match_text(self) -> FileExcerpt:
-        """Refuse an excerpt that advertises a span its own text does not carry.
-
-        The bounds are what a reviewer cites; the text is what it can see. When they
-        disagree the honest citation — the whole excerpt — is rejected downstream as
-        "unseen", and no retry can fix it because the packet itself is wrong. Catching
-        it here moves that failure from an operator gate hours later to the extractor
-        that built the excerpt.
-
-        Lines are counted the way ``str.splitlines`` counts them (a trailing newline
-        closes the last line rather than opening a phantom one) but arithmetically, so
-        revalidation of a 60k-char excerpt allocates nothing.
-        """
+        """Refuse an excerpt that advertises a span its own text does not carry."""
         lines = self.text.count("\n") + (0 if self.text.endswith("\n") else 1)
         span = self.end_line - self.start_line + 1
         if span != max(1, lines):
@@ -81,10 +70,7 @@ class SourceContext(FileExcerpt):
 
 
 class SourceExcerpt(FileExcerpt):
-    """Full explicitly selected support file, not a candidate obligation.
-
-    Empty files retain their byte digest and use line 1 as the empty-file bound.
-    """
+    """Full explicitly selected support file, not a candidate obligation."""
 
     text: str
 
@@ -108,10 +94,7 @@ class EvidenceInventory(BehaviorModel):
 
 
 class BookClaim(BehaviorModel):
-    """An authored obligation; title and original node context are not extra claims.
-
-    Packets move ``context`` into their deduplicated ``book_context``, joined by node.
-    """
+    """An authored obligation; title and original node context are not extra claims."""
 
     id: Nonblank
     node: Nonblank
@@ -125,12 +108,7 @@ class BookClaim(BehaviorModel):
 
 
 class AuditPacket(BehaviorModel):
-    """One bounded file-local or ungrounded review, never a completeness verdict.
-
-    ``symbol`` remains empty for file-local packets; candidates retain their symbols.
-    ``scope`` names this packet's source file, while the inventory carries selectors.
-    Omitted counts describe selected items outside this packet, not discarded work.
-    """
+    """One bounded file-local or ungrounded review, never a completeness verdict."""
 
     version: Literal[1] = 1
     group: Literal["source_file", "ungrounded_book", "empty_scope"] = "source_file"
@@ -161,12 +139,7 @@ class BookClaims(BehaviorModel):
 
 
 class UndocumentedFile(BehaviorModel):
-    """A source file with behavior candidates on exported symbols that no book node cites.
-
-    This is a fact about the book, not a question for a reviewer: no packet is built for
-    the file until a claim cites it. ``exported_symbols`` lists the symbols the
-    language's rule exports, each with the line of its first candidate.
-    """
+    """A source file with behavior candidates on exported symbols that no book node cites."""
 
     path: Nonblank
     candidate_count: int = Field(ge=1)
@@ -207,17 +180,7 @@ class BookEvidenceRef(BehaviorModel):
 
 
 class CandidateVerdict(BehaviorModel):
-    """One candidate's verdict. Its claim links are the claims that name it, not an echo.
-
-    ``mixed`` is the verdict for a candidate that is *internally used* but
-    *observably relevant* to a claim — a private struct field that constrains
-    identity comparison, an unexported helper whose return value is part of the
-    public response. ``mixed`` candidates may link to claims (typically
-    ``partial``) and may not carry book evidence; they are neither fully public
-    (``covered``) nor fully internal (``implementation_detail``). The status
-    closes the contradiction ``validate_verdicts`` used to reject: a private
-    field that a claim legitimately names.
-    """
+    """One candidate's verdict."""
 
     id: Nonblank
     status: Literal["covered", "missing", "implementation_detail", "mixed", "unresolved"]
@@ -228,13 +191,7 @@ class CandidateVerdict(BehaviorModel):
 
 
 class AuditVerdicts(BehaviorModel):
-    """The reviewer's reply: one verdict per supplied id, links stated once, on the claim.
-
-    The packet digest is deliberately absent. The caller already holds the packet it
-    dispatched, so binding the reply to it is the caller's job (`validate_verdicts` takes
-    both); asking the model to echo a 64-character digest buys nothing and is one more
-    field to get wrong.
-    """
+    """The reviewer's reply: one verdict per supplied id, links stated once, on the claim."""
 
     claims: tuple[ClaimVerdict, ...]
     candidates: tuple[CandidateVerdict, ...]

@@ -1,8 +1,4 @@
-"""`ostler doctor` as a mandatory UI-profile linter (docs/okf-ui-support §7).
-
-Every rule is an *error* with a deterministic remedy (fmt / scaffold), and every finding carries a
-file+line location. The convergence contract: scaffolding then fmt'ing a node clears its findings.
-"""
+"""`ostler doctor` as a mandatory UI-profile linter (docs/okf-ui-support §7)."""
 
 from __future__ import annotations
 
@@ -28,9 +24,6 @@ def _run(repo: Path):
     return doctor.run(load(repo))
 
 
-# ---------------------------------------------------------------------------
-# individual rules
-# ---------------------------------------------------------------------------
 def test_unknown_type(repo: Path):
     write(repo / "docs/features/x.md", "---\ntype: widget\nslug: x\ntitle: X\n---\n# X\n")
     report = _run(repo)
@@ -40,15 +33,12 @@ def test_unknown_type(repo: Path):
 
 
 def test_link_validation_is_document_wide(repo: Path):
-    # a broken link in a PROSE section (owned by no typed node) is still caught — link-correctness
-    # is independent of the graph.
     write(repo / "docs/features/x.md",
           "---\ntype: concept\nslug: x\ntitle: X\n---\n# X\n\n## Notes\n\nSee [gone](./nope.md).\n")
     assert "dangling-link" in codes(_run(repo))
 
 
 def test_link_validation_skips_code(repo: Path):
-    # a `](` inside inline code or a fence is not a link — no false dangling-link.
     write(repo / "docs/features/x.md",
           "---\ntype: concept\nslug: x\ntitle: X\n---\n# X\n\n## Notes\n\n"
           "Inline `arr[i](nope.md)` and\n\n```\nf = g[i](also-nope.md)\n```\n")
@@ -61,7 +51,6 @@ def test_known_types_not_flagged(repo: Path):
 
 
 def test_missing_required_section(repo: Path):
-    # a cli must have `## Commands`
     write(repo / "docs/features/workhorse/workhorse.md",
           "---\ntype: cli\nslug: wh\ntitle: WH\n---\n# WH\n\n- binary: `wh`\n")
     report = _run(repo)
@@ -97,14 +86,13 @@ def test_empty_required_section_excludes_sub_headings(repo: Path):
 
 
 def test_missing_required_bullet(repo: Path):
-    # an interaction requires on/trigger/does
     write(repo / "docs/features/groom/gui/screens/s.md",
           "---\ntype: screen\nslug: s\ntitle: S\n---\n# S\n\n"
           "## Interactions\n\n### click\n- trigger: click\n")
     report = _run(repo)
     missing = {f.ref for f in report.findings if f.code == "missing-required-bullet"}
     assert "on" in missing and "does" in missing
-    assert "trigger" not in missing   # present
+    assert "trigger" not in missing
 
 
 def _interaction_with_verifies(repo: Path, verifies: list[str]) -> None:
@@ -117,7 +105,6 @@ def _interaction_with_verifies(repo: Path, verifies: list[str]) -> None:
 
 
 def test_unspelled_alternation_same_check_different_value(repo: Path):
-    # same check, same `path=`, two different `code=` — the mechanical split signal.
     _interaction_with_verifies(repo, [
         'http_status(201, path="/api/widgets")',
         'http_status(400, path="/api/widgets")',
@@ -129,8 +116,6 @@ def test_unspelled_alternation_same_check_different_value(repo: Path):
 
 
 def test_unspelled_alternation_needs_a_shared_identifying_argument(repo: Path):
-    # different `path=` too — two claims about two different requests, not one contradicting
-    # itself.
     _interaction_with_verifies(repo, [
         'http_status(201, path="/api/widgets")',
         'http_status(400, path="/api/reports")',
@@ -139,8 +124,6 @@ def test_unspelled_alternation_needs_a_shared_identifying_argument(repo: Path):
 
 
 def test_unspelled_alternation_ignores_a_single_argument_check(repo: Path):
-    # `removed(subject=…)` has one argument, which is both the subject and the only value —
-    # two different subjects are two different claims, not a self-contradiction.
     _interaction_with_verifies(repo, [
         'removed(subject="the first widget")',
         'removed(subject="the second widget")',
@@ -149,12 +132,6 @@ def test_unspelled_alternation_ignores_a_single_argument_check(repo: Path):
 
 
 def test_two_counts_of_two_collections_are_not_one_count_claimed_twice(repo: Path):
-    # `count` has two arguments, so the arity test lets this through, and the two calls differ
-    # on exactly one — which under a pure difference count is indistinguishable from the
-    # `http_status` case above. It is the opposite claim: `subject` names *which* collection is
-    # counted, so two values are two collections. Reporting it tells the author to split a node
-    # that was right, or to merge two counts into one, and either way a distinction the book
-    # made correctly is gone.
     _interaction_with_verifies(repo, [
         'count(subject="open widgets", equals=1)',
         'count(subject="archived widgets", equals=1)',
@@ -163,10 +140,6 @@ def test_two_counts_of_two_collections_are_not_one_count_claimed_twice(repo: Pat
 
 
 def test_the_role_is_read_from_the_signature_not_from_whether_it_is_required(repo: Path):
-    # The negative control for the fix. `http_status` is the one check where the required
-    # argument is the expectation and the optional one is the identifier, so any rule deriving
-    # roles from `required` silences precisely the case the finding exists for. Two `code=`
-    # values on one `path=` must still be a conflict.
     _interaction_with_verifies(repo, [
         'http_status(201, path="/api/widgets")',
         'http_status(409, path="/api/widgets")',
@@ -175,10 +148,6 @@ def test_the_role_is_read_from_the_signature_not_from_whether_it_is_required(rep
 
 
 def test_a_differing_identifier_is_not_a_conflict_even_where_a_flag_agrees(repo: Path):
-    # `json_path.path` is both an identifier and the only identifier carrying `path=True`,
-    # while `http_status.path` is an identifier carrying `path=False`. The flags are about
-    # document paths, not roles, so the role had to be stated on its own — this is the case
-    # that would pass under either flag being reused as a shortcut, and fail under the other.
     _interaction_with_verifies(repo, [
         'json_path(path="$.state", equals="open")',
         'json_path(path="$.owner", equals="open")',
@@ -187,8 +156,6 @@ def test_a_differing_identifier_is_not_a_conflict_even_where_a_flag_agrees(repo:
 
 
 def test_unspelled_alternation_not_tripped_by_an_extends_split(repo: Path):
-    # the repair: split the contradiction into a base case and an arm that `extends:` it —
-    # each interaction's own `verify:` bullets no longer contradict each other.
     write(repo / "docs/features/groom/gui/screens/s.md",
           "---\ntype: screen\nslug: s\ntitle: S\n---\n# S\n\n"
           "## Components\n\n### btn\n- selector: #btn\n- role: button\n- name: Go\n\n"
@@ -213,10 +180,6 @@ _ARM_BOOK = (
 
 
 def test_an_extending_arm_that_arranges_nothing_while_its_base_does_is_a_finding(repo: Path):
-    # An arrangement exists to make *this* arm's `when:` true, so it is not inherited — and an
-    # arm whose base arranges and which arranges nothing has no reachable precondition. The
-    # compiler already withholds it, but only once a plan is compiled; this says it off the
-    # book alone, while the author is still writing the arm.
     write(repo / "docs/features/groom/gui/screens/s.md", _ARM_BOOK
           + "### refuse-act\n- extends: [act](#act)\n- when: `name` empty\n- does:\n"
           '  - state: refuse\n- verify: http_status(400, path="/api/widgets")\n')
@@ -233,9 +196,7 @@ def test_an_extending_arm_with_its_own_arrangement_is_not_a_finding(repo: Path):
 
 def test_an_interaction_that_extends_a_component_instead_of_an_interaction_is_flagged(
         repo: Path):
-    """`extends:` can only inherit control identity from another arm of the *same* node type —
-    a component is a real, resolvable target, just the wrong kind of one.
-    """
+    """`extends:` can only inherit control identity from another arm of the *same* node type — a component is a real, resolvable target, just the wrong kind of one."""
     write(repo / "docs/features/groom/gui/screens/s.md", _ARM_BOOK
           + "### act-bad\n- on: [btn](#btn)\n- trigger: click\n- role: button\n- name: Go\n"
           "- keyboard: Enter\n- when: `name` non-empty\n"
@@ -250,10 +211,7 @@ def test_an_interaction_that_extends_a_component_instead_of_an_interaction_is_fl
 
 
 def test_a_selector_written_as_a_css_attribute_predicate_is_flagged_unaddressable(repo: Path):
-    """`ostler vet`'s render scan never mints an attribute-value or boolean-attribute string, so
-    a selector shaped like one can never be matched against a real census, however accurate a
-    description of the DOM it is.
-    """
+    """`ostler vet`'s render scan never mints an attribute-value or boolean-attribute string, so a selector shaped like one can never be matched against a real census, however accurate a description of the DOM it is."""
     _screen_with(repo, '- role: generic\n- name: none\n- selector: [data-state="booked"]\n')
     report = _run(repo)
     assert "unaddressable-selector" in codes(report)
@@ -262,9 +220,7 @@ def test_a_selector_written_as_a_css_attribute_predicate_is_flagged_unaddressabl
 
 
 def test_a_states_bullet_claiming_the_control_is_disabled_with_no_check_is_flagged(repo: Path):
-    """`visible(...)` passes on a greyed-out button, so an unavailability claim needs its own
-    `actionable(...)`/`inert(...)` observer — with none in the book, the claim is unverified.
-    """
+    """`visible(...)` passes on a greyed-out button, so an unavailability claim needs its own `actionable(...)`/`inert(...)` observer — with none in the book, the claim is unverified."""
     _screen_with(repo, "- role: generic\n- name: none\n- states: disabled until valid\n")
     report = _run(repo)
     assert "unchecked-availability-state" in all_codes(report)
@@ -273,9 +229,6 @@ def test_a_states_bullet_claiming_the_control_is_disabled_with_no_check_is_flagg
 
 
 def test_a_scaffolded_empty_arrange_bullet_does_not_count_as_an_arrangement(repo: Path):
-    # Every authorable key is scaffolded onto a node as an empty bullet, so reading key
-    # *presence* would make this book — which arranges nothing — indistinguishable from one
-    # that does. The predicate reads values.
     write(repo / "docs/features/groom/gui/screens/s.md", _ARM_BOOK
           + "### refuse-act\n- extends: [act](#act)\n- when: `name` empty\n- arrange:\n"
           '- fixture:\n- does:\n  - state: refuse\n'
@@ -290,9 +243,6 @@ def _screen_with(repo: Path, bullets: str) -> None:
 
 
 def test_a_self_declared_empty_keyboard_is_not_the_light_sibling(repo: Path):
-    # Same shape as `raises:` on a method: a display-only component's `keyboard: none,
-    # because …` states there is no operable role, which `role:`/`verify:` already cover —
-    # no keystroke exists for a check to bind to.
     _screen_with(
         repo,
         "- role: generic\n- name: none\n"
@@ -304,10 +254,7 @@ def test_a_self_declared_empty_keyboard_is_not_the_light_sibling(repo: Path):
 
 
 def test_a_component_that_carries_the_page_says_where_it_sits(repo: Path):
-    """`role:` and `name:` are the accessibility contract, and a scenario asserting on them
-    passes on a component crushed into a column against one margin — which is a defect that
-    reached a green run. `placement:` is the documented fact that check cannot carry, and it
-    is asked only of the roles that carry a page."""
+    """`role:` and `name:` are the accessibility contract, and a scenario asserting on them passes on a component crushed into a column against one margin — which is a defect that reached a green run."""
     _screen_with(repo, "- role: article\n- name: none\n")
     report = _run(repo)
     assert "missing-placement" in codes(report)
@@ -318,7 +265,6 @@ def test_a_component_that_carries_the_page_says_where_it_sits(repo: Path):
     _screen_with(repo, "- role: article\n- name: none\n- placement: width 60-100%, x 0-20%\n")
     assert "missing-placement" not in codes(_run(repo))
 
-    # A button's placement is brittle and proves nothing, so it is never demanded.
     _screen_with(repo, "- role: button\n- name: Save\n")
     assert "missing-placement" not in codes(_run(repo))
 
@@ -397,13 +343,10 @@ def _interaction(does: str) -> str:
 
 
 def test_overlong_normative_bullet(repo: Path):
-    # One `does:` carrying a paragraph is several obligations wearing one id — the scenario
-    # that covers it proves whichever clause the planner happened to read.
     write(repo / "docs/features/groom/gui/screens/s.md", _interaction("the row saves. " * 60))
     report = _run(repo)
     finding = next(f for f in report.findings if f.code == "overlong-normative-bullet")
     assert finding.severity == "error"
-    # Per bullet, not per key: a waiver has to name the one bullet, not silence `does:` book-wide.
     assert finding.path == "docs/features/groom/gui/screens/s.md"
     assert finding.ref == f"{finding.path}#click#does:1"
 
@@ -414,8 +357,6 @@ def test_a_short_normative_bullet_is_not_flagged(repo: Path):
 
 
 def test_code_spans_and_link_hrefs_do_not_count_as_prose(repo: Path):
-    # A cited symbol says one thing however many characters it spells, and an href is
-    # addressing rather than prose. A bullet long only because of them is not overlong.
     padding = "`" + "x" * 900 + "` [see](" + "y" * 100 + ".md)"
     write(repo / "docs/features/groom/gui/screens/s.md",
           _interaction(f"the row saves, per {padding}."))
@@ -423,16 +364,12 @@ def test_code_spans_and_link_hrefs_do_not_count_as_prose(repo: Path):
 
 
 def test_a_parenthetical_counts_as_prose(repo: Path):
-    # An aside is exactly where a second requirement hides, so discounting parentheticals
-    # would exempt the shape this rule exists to find.
     write(repo / "docs/features/groom/gui/screens/s.md",
           _interaction("the row saves (" + "and the audit row records it. " * 30 + ")"))
     assert "overlong-normative-bullet" in codes(_run(repo))
 
 
 def test_only_normative_bullets_are_measured(repo: Path):
-    # `trigger:` mints no obligation, so its length buys nobody a scenario and is not this
-    # rule's business.
     write(repo / "docs/features/groom/gui/screens/s.md",
           "---\ntype: screen\nslug: s\ntitle: S\n---\n# S\n\n"
           "## Interactions\n\n### click\n- on: [S](#s)\n"
@@ -441,13 +378,11 @@ def test_only_normative_bullets_are_measured(repo: Path):
 
 
 def test_a_bullet_enumerating_status_branches_is_compound(repo: Path):
-    # The shape this rule exists for: one `does:` restating an endpoint's whole branch table.
-    # It is well under the length limit and it is five obligations.
     write(repo / "docs/features/groom/gui/screens/s.md",
           _interaction("returns `400` on a malformed body, `409` on a stale manifest, "
                        "and `200` with the published page otherwise"))
     finding = next(f for f in _run(repo).findings if f.code == "compound-normative-bullet")
-    assert finding.severity == "warn"   # splitting is authoring judgment, not a `fmt` fix
+    assert finding.severity == "warn"
     assert "3 status codes (200, 400, 409)" in finding.message
 
 
@@ -465,10 +400,6 @@ def test_a_semicolon_joining_clauses_is_compound(repo: Path):
 
 
 def test_a_semicolon_finding_names_the_form_a_reason_takes(repo: Path):
-    # The clause after the semicolon is often the *why* of the first, not a second observation,
-    # and there is no bullet to split a reason into. Told only to split, repair agents kept the
-    # reason and its semicolon and reported the bullet documented, lap after lap; the one form
-    # this rule admits for it — an aside — has to be in the finding that is read.
     write(repo / "docs/features/groom/gui/screens/s.md",
           _interaction("does not cast the value; that decision belongs to the caller"))
     finding = next(f for f in _run(repo).findings if f.code == "compound-normative-bullet")
@@ -476,9 +407,6 @@ def test_a_semicolon_finding_names_the_form_a_reason_takes(repo: Path):
 
 
 def test_a_semicolon_inside_an_aside_is_not_compound(repo: Path):
-    # The aside is not what is being proved, so a semicolon joining two of *its* clauses joins
-    # nothing the planner owes a scenario for — and there is no split of this bullet that clears
-    # the finding short of deleting the sentence that explains the scope.
     write(repo / "docs/features/groom/gui/screens/s.md",
           _interaction("the fallback menu opens (this journey exercises the fallback; "
                        "the native hand-off is out of scope)"))
@@ -486,8 +414,6 @@ def test_a_semicolon_inside_an_aside_is_not_compound(repo: Path):
 
 
 def test_a_semicolon_inside_a_code_span_is_not_compound(repo: Path):
-    # A literal written as code says one thing however it is spelled: the `;` in a MIME type
-    # parameter list is notation, not a clause boundary, and no split of the bullet clears it.
     write(repo / "docs/features/groom/gui/screens/s.md",
           _interaction("returns `\"application/json; charset=utf-8\"` regardless of the "
                        "ext parameter"))
@@ -495,7 +421,6 @@ def test_a_semicolon_inside_a_code_span_is_not_compound(repo: Path):
 
 
 def test_a_semicolon_outside_an_aside_is_still_compound(repo: Path):
-    # The near-miss: a bullet may carry an aside and still join two obligations around it.
     write(repo / "docs/features/groom/gui/screens/s.md",
           _interaction("the row saves (the audit trail is written first); "
                        "the previous value is shown beside it"))
@@ -503,8 +428,6 @@ def test_a_semicolon_outside_an_aside_is_still_compound(repo: Path):
 
 
 def test_listing_two_nouns_is_not_compound(repo: Path):
-    # A rule that fires on every `and` is a rule people learn to ignore, and an ignored rule
-    # leaves the fat bullets exactly where they were.
     write(repo / "docs/features/groom/gui/screens/s.md",
           _interaction("the page and its slug are written to the manifest"))
     assert "compound-normative-bullet" not in all_codes(_run(repo))
@@ -517,27 +440,18 @@ def test_one_status_code_is_not_compound(repo: Path):
 
 
 def test_a_bare_three_digit_number_is_not_a_status_code(repo: Path):
-    # A status is written in backticks in this profile, and the reader now says so: it reads
-    # the bullet's code spans rather than scanning its prose for digits. Unnarrowed, this
-    # bullet was reported as naming two statuses — a finding whose remedy is to split a claim
-    # that was never compound, which is the kind nobody can clear and everybody waives.
     write(repo / "docs/features/groom/gui/screens/s.md",
           _interaction("the label renders at font-weight 500 (vs body's 400)"))
     assert "compound-normative-bullet" not in all_codes(_run(repo))
 
 
 def test_capitalised_prose_words_are_not_two_failures(repo: Path):
-    # `PaymentDenied` is a component and `ConflictResolution` is a value; neither is written
-    # as code, because neither is a symbol. Over raw prose both matched the failure pattern
-    # and the bullet was told to split into two obligations it does not state.
     write(repo / "docs/features/groom/gui/screens/s.md",
           _interaction("the PaymentDenied banner shows the ConflictResolution the merge chose"))
     assert "compound-normative-bullet" not in all_codes(_run(repo))
 
 
 def test_a_bare_three_digit_number_under_a_non_normative_key_mints_nothing(repo: Path):
-    # The same narrowing, at `unminted-claim`'s reader: a font weight is not a claim hiding
-    # under the wrong key.
     write(repo / "docs/features/groom/concepts/lease.md",
           "---\ntype: concept\nslug: lease\ntitle: Lease\n---\n# Lease\n\n"
           "- meaning: a lock over one path\n"
@@ -546,8 +460,6 @@ def test_a_bare_three_digit_number_under_a_non_normative_key_mints_nothing(repo:
 
 
 def test_an_overlong_bullet_is_reported_once(repo: Path):
-    # Both rules say "this is several obligations"; saying it twice about one bullet buys the
-    # author nothing and costs a second thing to waive.
     write(repo / "docs/features/groom/gui/screens/s.md",
           _interaction("returns `400`; then `500`. " * 60))
     found = all_codes(_run(repo))
@@ -562,8 +474,6 @@ def _method(verify: str) -> str:
 
 
 def test_verify_naming_a_test_is_refused(repo: Path):
-    # The direction the whole vocabulary reverses: a test id says which code ran, so an
-    # assertion filed under it can be arbitrarily weaker than the claim and still cite it.
     write(repo / "docs/features/groom/concepts/publisher.md",
           _method("Test_Service_Publish_ShouldConflict"))
     finding = next(f for f in _run(repo).findings if f.code == "unparsed-check")
@@ -596,8 +506,6 @@ def _screen_with_locator(locator: str, *, declare_table: bool = True) -> str:
 
 
 def test_a_raw_selector_is_not_a_locator(repo: Path):
-    # It type-checks, it runs, and it goes green against an element the book has never heard
-    # of — so renaming that element breaks the run and leaves the book undisturbed.
     write(repo / "docs/features/groom/gui/screens/s.md",
           _screen_with_locator("table[aria-label='Widgets']"))
     finding = next(f for f in _run(repo).findings if f.code == "undeclared-check-locator")
@@ -607,8 +515,6 @@ def test_a_raw_selector_is_not_a_locator(repo: Path):
 
 
 def test_a_locator_naming_no_declared_component_is_reported(repo: Path):
-    # Anchor-shaped and still unresolvable: the distinction the rule draws is whether the book
-    # declares the thing, not whether the string starts with a `#`.
     write(repo / "docs/features/groom/gui/screens/s.md",
           _screen_with_locator("#widget-table", declare_table=False))
     finding = next(f for f in _run(repo).findings if f.code == "undeclared-check-locator")
@@ -621,8 +527,6 @@ def test_a_locator_naming_a_declared_component_grounds(repo: Path):
 
 
 def test_a_locator_may_name_a_component_in_another_document(repo: Path):
-    # The destination of a navigation lives on the screen it lands on, so the common correct
-    # locator is cross-document and the rule has to resolve one.
     write(repo / "docs/features/groom/gui/screens/other.md",
           _screen_with_locator("#widget-table"))
     write(repo / "docs/features/groom/gui/screens/s.md",
@@ -644,8 +548,6 @@ def _screen_with_arrangement(act: str, *, declare_field: bool = True) -> str:
 
 
 def test_an_arrange_value_that_is_a_bare_fixture_name_is_relocated(repo: Path):
-    # `fixture:` was the only arrangement key for a long time, and its habit is the likeliest
-    # mistake here — the value is not malformed, only the key above it is wrong.
     write(repo / "docs/features/groom/gui/screens/s.md",
           _screen_with_arrangement("widgets-on-hand"))
     finding = next(f for f in _run(repo).findings if f.code == "unparsed-act")
@@ -655,8 +557,6 @@ def test_an_arrange_value_that_is_a_bare_fixture_name_is_relocated(repo: Path):
 
 
 def test_an_arrange_value_naming_a_check_gets_the_act_vocabulary(repo: Path):
-    # The two keys share a call grammar and not a vocabulary: `visible` parses and still names
-    # no act, and handing back the check list would send the author to write the wrong bullet.
     write(repo / "docs/features/groom/gui/screens/s.md",
           _screen_with_arrangement('visible(locator="#name-field")'))
     finding = next(f for f in _run(repo).findings if f.code == "unparsed-act")
@@ -688,8 +588,7 @@ def test_an_act_on_a_declared_component_grounds(repo: Path):
 
 
 def test_an_arrange_bullet_is_not_read_as_a_fixture_name(repo: Path):
-    """The narrowing that made the key possible: the two fixture checkers iterate every
-    arrangement key, and an act read as a fixture name is a finding against a correct book."""
+    """The narrowing that made the key possible: the two fixture checkers iterate every arrangement key, and an act read as a fixture name is a finding against a correct book."""
     write(repo / "docs/features/groom/gui/screens/s.md",
           _screen_with_arrangement('fill(locator="#name-field", value="A")'))
     codes = all_codes(_run(repo))
@@ -715,8 +614,6 @@ def _claim_bindings(repo: Path) -> dict[tuple[str, int], list[str]]:
 
 
 def test_a_nested_claim_list_with_a_check_must_say_how_its_children_combine(repo: Path):
-    # Nothing in the grammar tells a check that observes both children from one that refutes
-    # all but one, and the two readings disagree about whether a green run is evidence.
     write(repo / "docs/features/groom/gui/screens/s.md", _branching_interaction())
     finding = next(f for f in _run(repo).findings if f.code == "unstated-claim-combiner")
     assert finding.severity == "error"
@@ -725,8 +622,6 @@ def test_a_nested_claim_list_with_a_check_must_say_how_its_children_combine(repo
 
 
 def test_a_nested_claim_list_nobody_observes_needs_no_combiner(repo: Path):
-    # The word is required only where it changes an outcome, so a book is not asked to
-    # annotate every list it happens to write.
     write(repo / "docs/features/groom/gui/screens/s.md", _branching_interaction(check=False))
     assert "unstated-claim-combiner" not in all_codes(_run(repo))
 
@@ -741,8 +636,6 @@ def test_a_conjunction_fans_the_check_out_to_every_child(repo: Path):
 
 
 def test_a_disjunction_binds_the_check_to_no_child(repo: Path):
-    # Over alternatives the check is a refutation of every branch but one, and filing it as a
-    # proof is the one way a green run can be evidence for a claim the run disproved.
     write(repo / "docs/features/groom/gui/screens/s.md", _branching_interaction("branches"))
     assert _claim_bindings(repo) == {}
     branches = [f for f in _run(repo).findings if f.code == "unobserved-branch"]
@@ -751,8 +644,6 @@ def test_a_disjunction_binds_the_check_to_no_child(repo: Path):
 
 
 def test_a_stated_combiner_is_not_itself_a_claim(repo: Path):
-    # It is written where the parent's own value would go, so the list has to mint exactly the
-    # obligations it minted while it said nothing.
     write(repo / "docs/features/groom/gui/screens/s.md", _branching_interaction("all"))
     node = load(repo).ui_nodes_of_type("interaction")[0]
     assert [v for k, v, _ in node.bullet_order if k == "does"] == [
@@ -761,7 +652,6 @@ def test_a_stated_combiner_is_not_itself_a_claim(repo: Path):
 
 
 def test_a_combiner_word_on_a_childless_bullet_stays_prose(repo: Path):
-    # A list of one thing has nothing to combine, so `- does: all` there is somebody's prose.
     write(repo / "docs/features/groom/gui/screens/s.md",
           ("---\ntype: screen\nslug: s\ntitle: S\n---\n# S\n\n"
            "## Interactions\n\n### click\n- on: [S](#s)\n- trigger: click\n"
@@ -772,26 +662,18 @@ def test_a_combiner_word_on_a_childless_bullet_stays_prose(repo: Path):
 
 
 def test_a_node_that_declares_nothing_is_reported(repo: Path):
-    # The gap `unparsed-check` cannot see: no value to reject. `verify:` is required on no
-    # type, so this node is otherwise green while every obligation it mints reaches QA with
-    # nothing to bind — `qa validate` has no declaration to enforce and the evidence map has
-    # no deficit to report.
     write(repo / "docs/features/groom/concepts/publisher.md",
           "---\ntype: concept\nslug: publisher\ntitle: Publisher\n---\n# Publisher\n\n"
           "## Methods\n\n### Publish\n- returns: the published revision\n"
           "- raises: `ManifestConflict` when the revision moved\n")
     finding = next(f for f in _run(repo).findings if f.code == "undeclared-obligation")
-    assert finding.severity == "warn"   # declaring is authoring judgment, not a `fmt` fix
+    assert finding.severity == "warn"
     assert "2 normative bullets" in finding.message
-    # Reported once per node across a whole book, so the vocabulary rides in the suggestion
-    # rather than in every line of it.
     assert finding.suggestion is not None and "http_status" in finding.suggestion
     assert finding.ref == f"{finding.path}#publish#verify"
 
 
 def test_one_declaration_answers_the_node(repo: Path):
-    # Node-level and not a count: `verify:` sits on the node, and pairing one check to one
-    # bullet is a judgement nobody has written down yet. Asking for parity would invent it.
     write(repo / "docs/features/groom/concepts/publisher.md",
           "---\ntype: concept\nslug: publisher\ntitle: Publisher\n---\n# Publisher\n\n"
           "## Methods\n\n### Publish\n- returns: the published revision\n"
@@ -801,8 +683,6 @@ def test_one_declaration_answers_the_node(repo: Path):
 
 
 def test_a_declaration_that_does_not_parse_is_reported_once(repo: Path):
-    # Both rules would say "this node declares no observation"; the author who wrote a test id
-    # is already being told the one thing there is to do about it.
     write(repo / "docs/features/groom/concepts/publisher.md",
           _method("Test_Service_Publish_ShouldConflict"))
     found = all_codes(_run(repo))
@@ -811,10 +691,6 @@ def test_a_declaration_that_does_not_parse_is_reported_once(repo: Path):
 
 
 def test_a_claim_with_two_checks_and_a_bare_sibling_is_reported(repo: Path):
-    # `attributed_checks` binds each check to the nearest normative bullet above it — a check
-    # written against the wrong claim still binds, silently, to whichever one sits above it.
-    # Two checks piled on `returns` while `raises` carries none is what that looks like from
-    # outside: not `undeclared-obligation`'s node-wide zero, but an imbalance between siblings.
     write(repo / "docs/features/groom/concepts/publisher.md",
           "---\ntype: concept\nslug: publisher\ntitle: Publisher\n---\n# Publisher\n\n"
           "## Methods\n\n### Publish\n"
@@ -829,9 +705,6 @@ def test_a_claim_with_two_checks_and_a_bare_sibling_is_reported(repo: Path):
 
 
 def test_a_claim_that_merely_under_verifies_is_not_reported(repo: Path):
-    # A claim with fewer checks than its neighbor is making a smaller promise, not a wrong one
-    # — the bar is the conjunction (some claim over-covered *and* another uncovered), not "some
-    # claim is uncovered" on its own.
     write(repo / "docs/features/groom/concepts/publisher.md",
           "---\ntype: concept\nslug: publisher\ntitle: Publisher\n---\n# Publisher\n\n"
           "## Methods\n\n### Publish\n"
@@ -842,9 +715,6 @@ def test_a_claim_that_merely_under_verifies_is_not_reported(repo: Path):
 
 
 def test_a_self_declared_empty_raises_is_not_the_light_sibling(repo: Path):
-    # `raises: nothing at all, because …` is a complete claim with no behavior left for a
-    # check to bind to — no exception to provoke. Left counted, this node reads as broken
-    # (the two checks on `returns` prove the actual behavior) when it is complete.
     write(repo / "docs/features/groom/concepts/publisher.md",
           "---\ntype: concept\nslug: publisher\ntitle: Publisher\n---\n# Publisher\n\n"
           "## Methods\n\n### Publish\n"
@@ -857,8 +727,6 @@ def test_a_self_declared_empty_raises_is_not_the_light_sibling(repo: Path):
 
 
 def test_a_bare_none_on_raises_is_still_the_light_sibling(repo: Path):
-    # `none` alone, with no `because`, is a blank left blank — still an open claim a check
-    # could bind to once written, not the same shape as a value that states the reason.
     write(repo / "docs/features/groom/concepts/publisher.md",
           "---\ntype: concept\nslug: publisher\ntitle: Publisher\n---\n# Publisher\n\n"
           "## Methods\n\n### Publish\n"
@@ -871,11 +739,6 @@ def test_a_bare_none_on_raises_is_still_the_light_sibling(repo: Path):
 
 
 def test_a_node_whose_only_claim_self_declares_empty_owes_no_check(repo: Path):
-    # `undeclared-obligation` and `uneven-claim-coverage` read the same question — is this
-    # bullet a claim — and used to read it through different definitions: the coverage rule
-    # asked `registry.states_no_claim`, the node-wide counter counted every normative bullet.
-    # A node whose one bullet says there is nothing to raise was then told to declare a check
-    # for it, which is the check the book cannot write.
     write(repo / "docs/features/groom/concepts/publisher.md",
           "---\ntype: concept\nslug: publisher\ntitle: Publisher\n---\n# Publisher\n\n"
           "## Methods\n\n### Publish\n"
@@ -885,8 +748,6 @@ def test_a_node_whose_only_claim_self_declares_empty_owes_no_check(repo: Path):
 
 
 def test_a_node_whose_only_claim_is_a_bare_none_still_owes_a_check(repo: Path):
-    # The reason is what turns the blank into a fact, so the two rules stay in step on the
-    # half that is *not* excluded too: a bare `none` is an open claim in both of them.
     write(repo / "docs/features/groom/concepts/publisher.md",
           "---\ntype: concept\nslug: publisher\ntitle: Publisher\n---\n# Publisher\n\n"
           "## Methods\n\n### Publish\n"
@@ -895,8 +756,6 @@ def test_a_node_whose_only_claim_is_a_bare_none_still_owes_a_check(repo: Path):
 
 
 def test_a_live_claim_beside_a_self_declared_empty_one_still_owes_a_check(repo: Path):
-    # The exclusion is per bullet, not per node: the node still states a real claim, and
-    # dropping the whole node from the rule would make emptiness a way to go green.
     write(repo / "docs/features/groom/concepts/publisher.md",
           "---\ntype: concept\nslug: publisher\ntitle: Publisher\n---\n# Publisher\n\n"
           "## Methods\n\n### Publish\n"
@@ -908,17 +767,11 @@ def test_a_live_claim_beside_a_self_declared_empty_one_still_owes_a_check(repo: 
 
 
 def test_a_check_that_cannot_go_red_is_reported(repo: Path):
-    # Declared, parsed, bound — and green against the defect too. Presence without a value is
-    # `json_path`'s own `excludes:` sentence, so the rule is that sentence made computable.
     write(repo / "docs/features/groom/concepts/publisher.md",
           _method('json_path(path="$.revision", absent=false)'))
     finding = next(f for f in _run(repo).findings if f.code == "weak-check")
-    # An `error`, unlike the prose heuristics beside it: the remedy is mechanical — the check
-    # names the value the claim turns on, or it does not.
     assert finding.severity == "error"
     assert "passes on the default" in finding.message
-    # The message and the ref are one string: naming the claim one way and addressing it
-    # another is how a repair turn ends up reading a sibling bullet.
     assert "#publish#returns:1" in finding.message
     assert finding.ref == f"{finding.path}#publish#returns:1"
 
@@ -929,8 +782,6 @@ def test_a_success_status_naming_neither_route_nor_title_is_weak(repo: Path):
 
 
 def test_one_discriminating_check_answers_the_claim_it_was_written_under(repo: Path):
-    # All-or-nothing within one claim: an author who observes `returns:` two ways has made
-    # the judgment, and only the weakest of them is not the finding.
     write(repo / "docs/features/groom/concepts/publisher.md",
           "---\ntype: concept\nslug: publisher\ntitle: Publisher\n---\n# Publisher\n\n"
           "## Methods\n\n### Publish\n- returns: the published revision\n"
@@ -940,10 +791,6 @@ def test_one_discriminating_check_answers_the_claim_it_was_written_under(repo: P
 
 
 def test_a_pattern_that_admits_any_value_is_weak_not_insensitive(repo: Path):
-    # `matches=".*"` accepts `_OTHER`, the value a real defect would leave behind, so it
-    # is a presence assertion wearing a value assertion's syntax — the same claim
-    # `absent=false` already makes outright. `weak-check`'s two static shapes widen to a
-    # third, and `insensitive-check` never gets to find it experimentally.
     write(repo / "docs/features/groom/concepts/publisher.md",
           _method('json_path(path="$.state", matches=".*")'))
     found = all_codes(_run(repo))
@@ -979,13 +826,6 @@ def test_an_equals_check_is_unaffected_by_the_matches_predicate(repo: Path):
 
 
 def test_a_pattern_no_witness_can_be_invented_for_has_no_result(repo: Path):
-    # `insensitive-check` is a result: a perturbation ran and the check survived it. Here
-    # nothing ran — the synthesizer has no zero-width assertion, so it cannot invent a
-    # member of a language whose length is pinned by a lookahead, and the experiment was
-    # never performed. "Not measured" is not "measured and failed".
-    # The finding falls on the *more* discriminating pattern, which is why it is a warn
-    # about the harness and not an error about the book: the one edit that would silence
-    # it is the edit that would make `insensitive-check` genuinely true.
     write(repo / "docs/features/groom/concepts/publisher.md",
           _method('json_path(path="$.lang", matches="^(?=.{2}$)[a-z]+$")'))
     found = all_codes(_run(repo))
@@ -993,15 +833,11 @@ def test_a_pattern_no_witness_can_be_invented_for_has_no_result(repo: Path):
     finding = next(f for f in _run(repo).findings if f.code == "unwitnessed-check")
     assert finding.severity == "warn"
     assert "#publish:returns:1" in finding.ref
-    # The harness's own note travels with the finding: the reader needs to know which call
-    # could not be witnessed and why, or the only available reading is "the check is bad".
     assert "no witness" in finding.message or "does not satisfy" in finding.message
     assert finding.suggestion is not None and "leave the check as it is" in finding.suggestion
 
 
 def test_a_creation_verified_only_afterwards_is_reported(repo: Path):
-    # The pass this exists to withhold: `201` and a present id say the same thing whether the
-    # revision was created or was already there.
     write(repo / "docs/features/groom/concepts/publisher.md",
           "---\ntype: concept\nslug: publisher\ntitle: Publisher\n---\n# Publisher\n\n"
           "## Methods\n\n### Publish\n"
@@ -1024,8 +860,6 @@ def test_declaring_the_change_as_a_change_clears_it(repo: Path):
 
 
 def test_a_claim_that_changes_no_existence_is_not_asked_for_a_before_read(repo: Path):
-    # A bare stem is half the time a noun — "the issue was filed", "the register" — so only
-    # the inflections a bullet uses to say what the node does are matched.
     write(repo / "docs/features/groom/concepts/publisher.md",
           "---\ntype: concept\nslug: publisher\ntitle: Publisher\n---\n# Publisher\n\n"
           "## Methods\n\n### Publish\n"
@@ -1035,14 +869,7 @@ def test_a_claim_that_changes_no_existence_is_not_asked_for_a_before_read(repo: 
 
 
 def test_a_lifecycle_claim_nothing_observes_is_not_this_rule_s_finding(repo: Path):
-    """The shape no edit could clear, and the bulk of the 183 findings this rule used to raise.
-
-    `returns:` states a creation and declares nothing; the node's one check answers a
-    *different* claim. Node-wide, the rule read every verb against every check and reported the
-    unobserved bullet against the observed one's checks — and there is no after-read on it to
-    turn into a before-and-after, so the only way out was a waiver. The unobserved claim is
-    `undeclared-obligation`'s business at the node level and `qa validate`'s per bullet.
-    """
+    """The shape no edit could clear, and the bulk of the 183 findings this rule used to raise."""
     write(repo / "docs/features/groom/concepts/publisher.md",
           "---\ntype: concept\nslug: publisher\ntitle: Publisher\n---\n# Publisher\n\n"
           "## Methods\n\n### Publish\n"
@@ -1053,12 +880,7 @@ def test_a_lifecycle_claim_nothing_observes_is_not_this_rule_s_finding(repo: Pat
 
 
 def test_a_sibling_claim_declaring_the_change_does_not_answer_this_one(repo: Path):
-    """One `created(...)` on the node used to silence every lifecycle claim beside it.
-
-    Attribution is written down (`registry.attributed_checks`), so the before-read credited to
-    `does:` is not also credited to `returns:` — which observes the creation it states with a
-    status code and nothing else.
-    """
+    """One `created(...)` on the node used to silence every lifecycle claim beside it."""
     write(repo / "docs/features/groom/concepts/publisher.md",
           "---\ntype: concept\nslug: publisher\ntitle: Publisher\n---\n# Publisher\n\n"
           "## Methods\n\n### Publish\n"
@@ -1068,18 +890,11 @@ def test_a_sibling_claim_declaring_the_change_does_not_answer_this_one(repo: Pat
           '- verify: removed(subject="the manifest row")\n')
     finding = next(f for f in _run(repo).findings if f.code == "unstated-precondition")
     assert "creates" in finding.message
-    # `:1` because the ref is the *claim*, not the key: a node states `returns:`/`does:` more
-    # than once, and a ref naming only the key points a repair turn at every one of them.
     assert finding.ref == f"{finding.path}#publish#returns:1"
 
 
 def test_a_verb_its_own_sentence_negates_states_no_lifecycle_change(repo: Path):
-    """`created(subject=…)` asserts the very thing the claim says does not happen.
-
-    The remedy the finding prints cannot be written for a claim of non-occurrence, and the
-    `absent(...)` the author already wrote *is* the complete observation — so the finding had
-    no edit that cleared it, which is the one thing this file's own bar forbids.
-    """
+    """`created(subject=…)` asserts the very thing the claim says does not happen."""
     write(repo / "docs/features/groom/concepts/publisher.md",
           "---\ntype: concept\nslug: publisher\ntitle: Publisher\n---\n# Publisher\n\n"
           "## Methods\n\n### Publish\n"
@@ -1113,15 +928,7 @@ def test_a_state_dependent_alternative_is_not_an_unstated_precondition(repo: Pat
 
 
 def test_a_verb_alternation_is_state_dependent_without_a_cue_word(repo: Path):
-    """`restores or removes` is the prior-state condition, spelled as the alternation itself.
-
-    The first version of the exemption scanned only the tokens *after* the lifecycle verb and
-    demanded a separate cue word. Both halves miss this shape: the alternative mutation and
-    the marker sit to the *left* of `removes`, and the condition is never named — the branch
-    is the condition. A context manager that puts back the prior value, or unsets the name
-    when there was no prior value, has no single lifecycle direction to observe, so
-    `removed(subject=...)` asserts a branch that does not always run.
-    """
+    """`restores or removes` is the prior-state condition, spelled as the alternation itself."""
     claims = (
         "restores or removes `name` when the block exits through an exception",
         "removes the override, or restores the value the caller shadowed",
@@ -1136,12 +943,7 @@ def test_a_verb_alternation_is_state_dependent_without_a_cue_word(repo: Path):
 
 
 def test_a_lone_alternative_marker_does_not_excuse_an_unconditional_creation(repo: Path):
-    """The near-miss that keeps the alternation test tight rather than sentence-wide.
-
-    `or` appears here, and so does a second verb — but the two are not arms of one choice,
-    and the creation is unconditional. Accepting any marker anywhere beside any mutation
-    anywhere would drop this claim, which is exactly the finding's job.
-    """
+    """The near-miss that keeps the alternation test tight rather than sentence-wide."""
     write(repo / "docs/features/groom/concepts/publisher.md",
           "---\ntype: concept\nslug: publisher\ntitle: Publisher\n---\n# Publisher\n\n"
           "## Methods\n\n### Publish\n"
@@ -1153,12 +955,7 @@ def test_a_lone_alternative_marker_does_not_excuse_an_unconditional_creation(rep
 
 
 def test_a_negator_elsewhere_in_the_sentence_does_not_clear_a_real_creation(repo: Path):
-    """The near-miss that makes the scoping load-bearing, not a detail of the implementation.
-
-    "any negator anywhere in the sentence" reads this claim as non-occurrence and drops a
-    genuine creation. In a real book 23 claims carried a negator somewhere and 10 carried one
-    governing the verb — so the sentence-wide test would have been wrong on 13 of them.
-    """
+    """The near-miss that makes the scoping load-bearing, not a detail of the implementation."""
     write(repo / "docs/features/groom/concepts/publisher.md",
           "---\ntype: concept\nslug: publisher\ntitle: Publisher\n---\n# Publisher\n\n"
           "## Methods\n\n### Publish\n"
@@ -1170,7 +967,6 @@ def test_a_negator_elsewhere_in_the_sentence_does_not_clear_a_real_creation(repo
 
 
 def test_a_deletion_the_sentence_only_sequences_still_states_a_lifecycle_change(repo: Path):
-    # "after deleting" is when the response is emitted, not a denial that it was deleted.
     write(repo / "docs/features/groom/concepts/publisher.md",
           "---\ntype: concept\nslug: publisher\ntitle: Publisher\n---\n# Publisher\n\n"
           "## Methods\n\n### Publish\n"
@@ -1181,12 +977,7 @@ def test_a_deletion_the_sentence_only_sequences_still_states_a_lifecycle_change(
 
 
 def test_emitting_a_request_is_not_a_change_of_existence(repo: Path):
-    """`issues`/`issuing` left `LIFECYCLE_VERBS` on the constant's own stated criterion.
-
-    Their object is an *event*, and an event is not a subject a harness can read either side
-    of — there is no `created(subject=…)` to write. Emission already has its question,
-    `emits:` and `emitted(...)`.
-    """
+    """`issues`/`issuing` left `LIFECYCLE_VERBS` on the constant's own stated criterion."""
     write(repo / "docs/features/groom/concepts/publisher.md",
           "---\ntype: concept\nslug: publisher\ntitle: Publisher\n---\n# Publisher\n\n"
           "## Methods\n\n### Publish\n"
@@ -1196,8 +987,6 @@ def test_emitting_a_request_is_not_a_change_of_existence(repo: Path):
 
 
 def test_a_key_that_describes_rather_than_acts_is_not_asked_for_a_before_read(repo: Path):
-    # `semantics:` says what a *value* means. There is no action here to observe either side
-    # of, so the finding named a remedy the author had nowhere to put.
     write(repo / "docs/features/groom/concepts/publisher.md",
           "---\ntype: concept\nslug: publisher\ntitle: Publisher\n---\n# Publisher\n\n"
           "## Fields\n\n### Row Count\n"
@@ -1208,8 +997,6 @@ def test_a_key_that_describes_rather_than_acts_is_not_asked_for_a_before_read(re
 
 
 def test_a_node_minting_no_obligation_is_not_asked_to_declare(repo: Path):
-    # Nothing to observe: an interaction recorded only by its trigger owes no check, and a rule
-    # that asked anyway would be noise on the descriptive half of the book.
     write(repo / "docs/features/groom/gui/screens/s.md",
           "---\ntype: screen\nslug: s\ntitle: S\n---\n# S\n\n"
           "## Interactions\n\n### click\n- on: [S](#s)\n- trigger: click\n")
@@ -1217,10 +1004,6 @@ def test_a_node_minting_no_obligation_is_not_asked_to_declare(repo: Path):
 
 
 def test_a_field_inherits_its_observation_from_the_record_that_carries_it(repo: Path):
-    # A typed attribute's `default:`/`required:` are proven by the check on whatever reads
-    # or writes the record, so the field itself owes no declaration — asking would cost a
-    # repair per attribute for a check nobody binds. Declaring stays allowed, and a
-    # declaration that does not parse is still reported.
     write(repo / "docs/features/groom/concepts/publisher.md",
           "---\ntype: concept\nslug: publisher\ntitle: Publisher\n---\n# Publisher\n\n"
           "## Fields\n\n### rowCount\n- type: integer\n- default: zero\n- required: no\n")
@@ -1234,9 +1017,6 @@ def test_a_field_inherits_its_observation_from_the_record_that_carries_it(repo: 
 
 
 def test_a_type_that_carries_no_check_key_is_never_reported(repo: Path):
-    # A `step:` under a runbook mints obligations too, but its `verify:` keeps its own older
-    # meaning — how to tell the step ran — and is not a check. There is no declaration for it
-    # to be missing, so asking would be a finding no remedy answers.
     write(repo / "docs/features/groom/runbooks/deploy.md",
           "---\ntype: runbook\nslug: deploy\ntitle: Deploy\n---\n# Deploy\n\n"
           "## Steps\n\n### Push\n- step: push the image\n"
@@ -1245,9 +1025,7 @@ def test_a_type_that_carries_no_check_key_is_never_reported(repo: Path):
 
 
 def test_a_claim_under_a_non_normative_key_is_reported(repo: Path):
-    """A concept that mints nothing, stating a status code under its own `errors:` key: no
-    obligation will ever carry it, so no plan is asked to prove it. A warn — the remedy is
-    authoring judgment — and reported once per node, at the first such bullet."""
+    """A concept that mints nothing, stating a status code under its own `errors:` key: no obligation will ever carry it, so no plan is asked to prove it."""
     write(repo / "docs/features/groom/concepts/lease.md",
           "---\ntype: concept\nslug: lease\ntitle: Lease\n---\n# Lease\n\n"
           "- meaning: a lock over one path\n"
@@ -1262,7 +1040,6 @@ def test_a_claim_under_a_non_normative_key_is_reported(repo: Path):
 
 
 def test_a_trigger_only_interaction_is_not_reported(repo: Path):
-    # The descriptive half of the book: an interaction recorded by its trigger states nothing.
     write(repo / "docs/features/groom/gui/screens/s.md",
           "---\ntype: screen\nslug: s\ntitle: S\n---\n# S\n\n"
           "## Interactions\n\n### click\n- on: [S](#s)\n- trigger: click\n")
@@ -1270,9 +1047,7 @@ def test_a_trigger_only_interaction_is_not_reported(repo: Path):
 
 
 def test_a_minting_node_is_still_asked_about_its_other_bullets(repo: Path):
-    """The `persistence:` bullet being in QA's sight says nothing about whether `errors:` is —
-    before this, a node-wide flag let one satisfied bullet vouch for its siblings."""
-    # A node that mints is still asked about each of its other bullets, one at a time.
+    """The `persistence:` bullet being in QA's sight says nothing about whether `errors:` is — before this, a node-wide flag let one satisfied bullet vouch for its siblings."""
     write(repo / "docs/features/groom/concepts/lease.md",
           "---\ntype: concept\nslug: lease\ntitle: Lease\n---\n# Lease\n\n"
           "- persistence: the lease row is written once\n"
@@ -1282,7 +1057,6 @@ def test_a_minting_node_is_still_asked_about_its_other_bullets(repo: Path):
 
 
 def test_a_minting_nodes_declared_keys_are_still_exempt(repo: Path):
-    # `rule:` is a declared key of `concept`, so it stays exempt even though it names a status.
     write(repo / "docs/features/groom/concepts/lease.md",
           "---\ntype: concept\nslug: lease\ntitle: Lease\n---\n# Lease\n\n"
           "- persistence: the lease row is written once\n"
@@ -1299,13 +1073,7 @@ def test_an_untyped_section_with_a_status_bullet_is_reported(repo: Path):
 
 
 def test_an_undeclared_bullet_key_is_a_warning(repo: Path):
-    """A `route:` on a concept is read by nobody — only a screen declares it — while the author
-    who wrote it believes the concept is addressable. A warn, not an error: whether the bullet
-    belongs on a screen instead or was never a route is the author's call.
-
-    A wholly invented key is *not* this finding — `unknown_bullet_keys` returns `[]` for one,
-    because a book is free to write a word the registry has never heard of. What it catches is a
-    key the registry does know, typed onto a type that does not read it."""
+    """A `route:` on a concept is read by nobody — only a screen declares it — while the author who wrote it believes the concept is addressable."""
     write(repo / "docs/features/groom/concepts/diff.md",
           "---\ntype: concept\nslug: diff\ntitle: Diff\n---\n# Diff\n\n"
           "- code: `groom/diff.py::Diff`\n- verify: absent(subject=\"the row\")\n"
@@ -1325,9 +1093,7 @@ def test_an_undeclared_bullet_on_an_untyped_section_is_not_asked(repo: Path):
 
 
 def test_a_status_bullet_on_an_invocation_is_declared_and_formatted(repo: Path):
-    """The key was graded for as long as the mapper existed and declared only now: `fmt`
-    orders it between the effect and its grounding, and the `verify:` under it stays with
-    it (`registry.attributed_checks` binds a check to the nearest claim above)."""
+    """The key was graded for as long as the mapper existed and declared only now: `fmt` orders it between the effect and its grounding, and the `verify:` under it stays with it (`registry.attributed_checks` binds a check to the nearest claim above)."""
     write(repo / "docs/features/groom/cli/wh.md",
           "---\ntype: cli\nslug: wh\ntitle: WH\n---\n# WH\n\n"
           "## Invocations\n\n### run\n- on: [wh](#wh)\n- trigger: `wh run`\n"
@@ -1343,10 +1109,7 @@ def test_a_status_bullet_on_an_invocation_is_declared_and_formatted(repo: Path):
 
 
 def test_detail_is_declared_on_every_implementation_bearing_type(repo: Path):
-    """`detail:` always resolved on any type — relations are global by key name — but only
-    `command` and `endpoint` declared it, so on every other type it tripped `unknown-bullet`
-    and `fmt` had no slot for it. Declaring it is what lets a book point a competing
-    implementation at the concept that says when it is the right one."""
+    """`detail:` always resolved on any type — relations are global by key name — but only `command` and `endpoint` declared it, so on every other type it tripped `unknown-bullet` and `fmt` had no slot for it."""
     for node_type in ("screen", "cli", "server", "format", "flow", "component",
                       "interaction", "invocation", "method", "command", "endpoint"):
         assert "detail" in registry.declared_keys(node_type), node_type
@@ -1366,14 +1129,7 @@ def test_detail_is_declared_on_every_implementation_bearing_type(repo: Path):
 
 
 def test_code_is_declared_on_every_type(repo: Path):
-    """`code:` grounds on every type (`registry.owning_keys`'s docstring — a flow or a screen
-    cites the code it is grounded in whether or not its profile lists the key, and always
-    has), but only some types' own profiles listed it in `bullet_keys`. On the rest —
-    `screen`, `flow`, `step`, `fixture`, `untyped` — `unknown-bullet` called that citation
-    inert even though `_check_code_grounding` (which reads `node.meta.get('code')` directly,
-    with no type gate) has always graded it. `declared_keys` folding `code` in unconditionally,
-    the same way it already folds in the shared normative/advisory keys, is what stops
-    `unknown-bullet` from flagging a bullet the linter itself checks."""
+    """`code:` grounds on every type (`registry.owning_keys`'s docstring — a flow or a screen cites the code it is grounded in whether or not its profile lists the key, and always has), but only some types' own profiles listed it in `bullet_keys`."""
     for node_type in registry.UI_TYPES_BY_NAME:
         assert "code" in registry.declared_keys(node_type), node_type
 
@@ -1400,12 +1156,7 @@ def test_code_is_declared_on_every_type(repo: Path):
 
 
 def test_concept_judgment_keys_are_advisory_relations(repo: Path):
-    """`rule:`/`prefers:`/`deprecates:` are the concept's judgment vocabulary, and none is
-    normative — a selection rule is not live-provable, so minting an obligation from one
-    would demand evidence no scenario can produce. `prefers:`/`deprecates:` are relations:
-    a dangling side is `unresolved-relation`, never silence. `rule:` is plain prose, so on
-    a type that never declared it the key stays the author's own word — inert, not policed
-    by `unknown-bullet` the way a load-bearing key would be."""
+    """`rule:`/`prefers:`/`deprecates:` are the concept's judgment vocabulary, and none is normative — a selection rule is not live-provable, so minting an obligation from one would demand evidence no scenario can produce."""
     for key in ("rule", "prefers", "deprecates"):
         assert key in registry.declared_keys("concept"), key
         assert key not in registry.normative_keys("concept"), key
@@ -1428,10 +1179,6 @@ def test_concept_judgment_keys_are_advisory_relations(repo: Path):
 
 
 def _endpoint_file(slug: str, symbol: str, extra: str = "") -> str:
-    # The H1 is a heading GitHub anchors too, so a document whose H1 and section share a title
-    # renders the section at `#slug-1`. Keep them distinct here: the subject is co-citation,
-    # not anchor uniquifying, and `test_a_repeated_heading_gets_the_anchor_github_renders`
-    # in `test_ui_graph.py` is where that behaviour is pinned.
     return (f"---\ntype: api\nslug: {slug}\ntitle: {slug}\n---\n# {slug} API\n\n"
             f"## Endpoints\n\n### {slug}\n- method: POST\n- path: /{slug}\n"
             f"- does:\n  - state: sends the notification\n- status: `201` on success\n"
@@ -1473,9 +1220,7 @@ def test_one_way_same_as_silent_when_same_as_is_never_used(repo: Path):
 
 
 def test_one_way_same_as_does_not_fire_for_a_dangling_target(repo: Path):
-    """A `same-as:` value that resolves nowhere is `unresolved-relation`'s finding, raised by
-    the document-wide link pass — this check only judges a claim once it lands on a real
-    node, so the two never double-report the same broken bullet."""
+    """A `same-as:` value that resolves nowhere is `unresolved-relation`'s finding, raised by the document-wide link pass — this check only judges a claim once it lands on a real node, so the two never double-report the same broken bullet."""
     write(repo / "docs/features/groom/concepts/notify-a.md",
           "---\ntype: concept\nslug: notify-a\ntitle: Notify A\n---\n# Notify A\n\n"
           "- same-as: [gone](../concepts/gone.md)\n")
@@ -1485,10 +1230,7 @@ def test_one_way_same_as_does_not_fire_for_a_dangling_target(repo: Path):
 
 
 def test_one_way_same_as_is_checked_per_edge_not_per_family(repo: Path):
-    """The addendum's chain: A<->B, B<->C, C<->D, all reciprocated pairwise. No member names
-    every other member — B and C each name only their two immediate neighbors — and that is
-    legal: `same-as:` is a multi-valued, per-edge claim, not a family-wide broadcast, so a
-    reciprocated chain collapses to one family without raising anything here."""
+    """The addendum's chain: A<->B, B<->C, C<->D, all reciprocated pairwise."""
     write(repo / "docs/features/groom/concepts/notify-a.md",
           "---\ntype: concept\nslug: notify-a\ntitle: Notify A\n---\n# Notify A\n\n"
           "- code: `internal/notify.go::Notify`\n"
@@ -1511,10 +1253,7 @@ def test_one_way_same_as_is_checked_per_edge_not_per_family(repo: Path):
 
 
 def test_deprecation_without_successor(repo: Path):
-    """A concept whose `deprecates:` resolves but that names no `prefers:` and no `rule:`
-    reads as "delete this" — usually wrong. A dangling `deprecates:` is `unresolved-relation`'s
-    finding alone: stacking this warn on the same broken link would have the repair chase two
-    codes for one defect."""
+    """A concept whose `deprecates:` resolves but that names no `prefers:` and no `rule:` reads as "delete this" — usually wrong."""
     write(repo / "docs/features/groom/concepts/legacy.md",
           "---\ntype: concept\nslug: legacy\ntitle: Legacy\n---\n# Legacy\n\nOld path.\n")
     write(repo / "docs/features/groom/concepts/notify.md",
@@ -1523,13 +1262,11 @@ def test_deprecation_without_successor(repo: Path):
     hits = [f for f in _run(repo).findings if f.code == "deprecation-without-successor"]
     assert len(hits) == 1 and hits[0].severity == "warn"
     assert "prefers" in hits[0].message
-    # naming the successor — either key — clears it
     write(repo / "docs/features/groom/concepts/notify.md",
           "---\ntype: concept\nslug: notify\ntitle: Notify\n---\n# Notify\n\n"
           "- rule: legacy remains only for the dunning sequence's synchronous receipt\n"
           "- deprecates: [legacy](legacy.md)\n")
     assert "deprecation-without-successor" not in all_codes(_run(repo))
-    # dangling side: unresolved-relation fires, this warn stays out of the way
     write(repo / "docs/features/groom/concepts/notify.md",
           "---\ntype: concept\nslug: notify\ntitle: Notify\n---\n# Notify\n\n"
           "- deprecates: [gone](gone.md)\n")
@@ -1539,10 +1276,7 @@ def test_deprecation_without_successor(repo: Path):
 
 
 def test_ungrounded_unspecified(repo: Path):
-    """An `unspecified:` bullet is resolved-by-design only on the strength of its citation.
-    With a live one it is silent on any node type; uncited, or cited against a record that
-    is not there, it is an error — the remedy is mechanical: cite what settled it, or
-    delete the bullet."""
+    """An `unspecified:` bullet is resolved-by-design only on the strength of its citation."""
     write(repo / "docs/decisions/0007-export-encoding.md",
           "# 0007 — export encoding\n\nEncoding order is the consumer's concern.\n")
     cited = ("- unspecified: the export's field encoding order — settled in "
@@ -1578,28 +1312,22 @@ def test_all_ui_findings_are_errors(repo: Path):
             assert f.severity == "error"
 
 
-# ---------------------------------------------------------------------------
-# convergence contract (§7.1): scaffold + fmt clears the errors
-# ---------------------------------------------------------------------------
 def test_scaffold_then_fmt_converges(repo: Path):
-    # a bad-cased heading with a complete interaction underneath
     write(repo / "docs/features/groom/gui/screens/s.md",
           "---\ntype: screen\nslug: s\ntitle: S\n---\n# S\n\n"
           "## interactions\n\n### click\n- on: [x](#s)\n- trigger: click\n- does:\n  - state: x\n")
     assert "bad-heading-type" in codes(_run(repo))
-    fmt.run_fmt(load(repo), [])          # fmt canonicalizes the heading casing
+    fmt.run_fmt(load(repo), [])
     assert "bad-heading-type" not in codes(_run(repo))
 
 
 def test_missing_section_fixed_by_scaffold(repo: Path):
     scaffold.scaffold(load(repo), "cli", "wh", service="workhorse")
-    # scaffolded cli already includes its required `## Commands`
     report = _run(repo)
     assert "missing-required-section" not in codes(report)
 
 
 def test_code_and_tests_not_grounded_at_author_time(repo: Path):
-    # `code:`/`tests:` are code refs, grounded at a later QA gate — never dangling-link here.
     write(repo / "docs/features/groom/gui/screens/s.md",
           "---\ntype: screen\nslug: s\ntitle: S\n---\n# S\n\n"
           "## Interactions\n\n### click\n- on: [x](#s)\n- trigger: click\n- does:\n  - state: x\n"
@@ -1610,9 +1338,6 @@ def test_code_and_tests_not_grounded_at_author_time(repo: Path):
     assert "unparsed-check" not in codes(report)
 
 
-# ---------------------------------------------------------------------------
-# one LinkResolver per doctor run (plan: increment 0 — "share one link resolver")
-# ---------------------------------------------------------------------------
 LINKED_SCREEN = """\
 ---
 type: screen
@@ -1679,11 +1404,6 @@ title: Diff
 A unified diff. See [ghost](./diff.md#nope).
 """
 
-# The whole report this book produces, serialized. `org` is dropped because it is the
-# tmp directory's name; everything else is fixed. Sharing one resolver changes what is
-# *computed* and nothing about what is *reported*, so this equality is the complete
-# correctness gate for that change — both findings below come from link resolution,
-# which is exactly the machinery being shared.
 LINKED_REPORT_JSON = """\
 {
   "epics": [],
@@ -1743,11 +1463,7 @@ def _linked_book(root: Path) -> Path:
 
 
 def _watch_resolvers(monkeypatch) -> tuple[list, list]:
-    """Record every ``LinkResolver`` constructed and every anchor set computed.
-
-    Patched onto the class itself rather than onto one module's name for it, so the
-    count is of real constructions wherever they happen — which is the assertion.
-    """
+    """Record every ``LinkResolver`` constructed and every anchor set computed."""
     made: list[links.LinkResolver] = []
     computed: list[Path] = []
     real_init = links.LinkResolver.__init__
@@ -1767,12 +1483,7 @@ def _watch_resolvers(monkeypatch) -> tuple[list, list]:
 
 
 def test_a_doctor_run_constructs_exactly_one_link_resolver(repo: Path, monkeypatch):
-    """The graph build and the UI checks share one resolver.
-
-    Each resolver memoizes a target file's heading anchors per instance, so a second
-    instance re-reads and re-parses every link target — on a large book the single most
-    expensive thing doctor does, paid twice for one run's worth of answers.
-    """
+    """The graph build and the UI checks share one resolver."""
     _linked_book(repo)
     made, _ = _watch_resolvers(monkeypatch)
     doctor.run(load(repo))
@@ -1799,9 +1510,7 @@ def test_sharing_the_resolver_leaves_the_report_byte_identical(tmp_path: Path, m
 
 
 def test_a_sibling_claims_strong_check_no_longer_answers_this_one(repo: Path):
-    """The fan-out this rule used to have: one discriminating check anywhere on the node
-    silenced it for every other bullet, so a claim observed only by a rubber stamp read as
-    judged. Each claim now answers for the checks written under it."""
+    """The fan-out this rule used to have: one discriminating check anywhere on the node silenced it for every other bullet, so a claim observed only by a rubber stamp read as judged."""
     write(repo / "docs/features/groom/concepts/publisher.md",
           "---\ntype: concept\nslug: publisher\ntitle: Publisher\n---\n# Publisher\n\n"
           "## Methods\n\n### Publish\n"
@@ -1816,17 +1525,7 @@ def test_a_sibling_claims_strong_check_no_longer_answers_this_one(repo: Path):
 
 
 def test_the_finding_names_which_claim_when_siblings_share_the_key(repo: Path):
-    """Two `does:` bullets, one already answered — the finding has to say which is the other.
-
-    This is the shape that blocked two `okf-builder` runs for eight hours. The node states a
-    lifecycle verb twice: the second claim declares `removed(...)` and is answered, the first
-    is not. Reported as `node#does` with only the verb quoted, both claims match the sentence
-    the finding prints, and a repair turn reads it against the *answered* bullet, concludes
-    the book is already correct, and returns `documented` with the finding still standing.
-    Three attempts and an adjudication later the run gives up on a defect whose remedy was
-    one bullet away — so the claim's own index and its text are part of the finding, not
-    something the reader has to guess from a shared key.
-    """
+    """Two `does:` bullets, one already answered — the finding has to say which is the other."""
     write(repo / "docs/features/groom/concepts/publisher.md",
           "---\ntype: concept\nslug: publisher\ntitle: Publisher\n---\n# Publisher\n\n"
           "## Methods\n\n### Publish\n"
@@ -1835,23 +1534,11 @@ def test_the_finding_names_which_claim_when_siblings_share_the_key(repo: Path):
           "- does: removes the trailing separator from the normalized manifest\n"
           '- verify: removed(subject="the trailing separator")\n')
     finding = next(f for f in _run(repo).findings if f.code == "unstated-precondition")
-    # The unanswered claim is the FIRST `does:`, and the answered one is the second. A reader
-    # given only "`does:` states a lifecycle change ('removes')" cannot tell them apart.
     assert "does:1" in finding.message, finding.message
     assert "surrounding whitespace" in finding.message, finding.message
     assert "trailing separator" not in finding.message, finding.message
 
 
-# ---------------------------------------------------------------------------
-# one finding, one remedy, one ref — the per-bullet index (`refs.bullet_ref`)
-#
-# Every code below fires per *bullet*, on a key a node may state many times. Without the
-# occurrence index the siblings arrive under one identical address, the okf-builder drain
-# collapses them into one worklist row with one three-attempt budget, and the repair turn
-# answers whichever sibling it happens to read. `scripts/check_finding_refs.py` enforces the
-# property over the real corpus; these pin the spelling and the message per code, so a reader
-# can tell which bullet a finding is about without opening the file.
-# ---------------------------------------------------------------------------
 def _node(repo: Path, body: str) -> Path:
     """A concept with two sibling bullets under one key, at a stable path."""
     path = repo / "docs/features/groom/concepts/publisher.md"
@@ -1877,8 +1564,6 @@ def test_relation_without_subject_names_which_bullet_lacks_one(repo: Path):
     _node(repo, "- persistence: payout-record — the row is written before the reply\n"
                 "- persistence: the row is written before the reply\n")
     findings = [f for f in _run(repo).findings if f.code == "relation-without-subject"]
-    # The subjectless bullet is the SECOND; a ref naming only `#persistence` would send the
-    # repair turn to the one that is already correct.
     assert [f.ref for f in findings] == [f"{NODE}#persistence:2"]
     assert "`persistence:2`" in findings[0].message
 
@@ -1895,7 +1580,6 @@ def test_unparsed_check_names_which_verify_failed(repo: Path):
                 '- verify: json_path(path="$.order", equals=None)\n')
     findings = [f for f in _run(repo).findings if f.code == "unparsed-check"]
     assert [f.ref for f in findings] == [f"{NODE}#verify:2"]
-    # The value is quoted, so the message and the ref agree on which call is malformed.
     assert "equals=None" in findings[0].message
     assert "$.state" not in findings[0].message
 
@@ -1916,11 +1600,7 @@ def _capture_endpoint(capture: str) -> str:
 
 
 def test_a_capture_bullet_with_no_source_is_refused(repo: Path):
-    """Before this checker existed, nobody read this bullet. The packet builder dropped it and
-    said in its docstring that `ostler doctor` would report it; doctor had one comment about
-    captures and no finding at all, so the rule lived only in a docstring nothing enforced. The
-    author's first news was an `unresolved-precondition` on a later bullet they wrote correctly.
-    """
+    """Before this checker existed, nobody read this bullet."""
     write(repo / "docs/features/groom/http/api.md", _capture_endpoint("claim_id $.id"))
     finding = next(f for f in _run(repo).findings if f.code == "unparsed-capture")
     assert finding.severity == "error"
@@ -1929,9 +1609,7 @@ def test_a_capture_bullet_with_no_source_is_refused(repo: Path):
 
 
 def test_a_capture_name_a_reference_could_never_spell_is_refused(repo: Path):
-    """The declaration mints the name and `$name` spells it, so a name `references` would not
-    accept is a fact nothing in the book can ever refer to — a declaration that reads fine and
-    resolves for nobody. Held to that grammar here rather than to a second copy of it."""
+    """The declaration mints the name and `$name` spells it, so a name `references` would not accept is a fact nothing in the book can ever refer to — a declaration that reads fine and resolves for nobody."""
     write(repo / "docs/features/groom/http/api.md", _capture_endpoint("$claim_id from $.id"))
     finding = next(f for f in _run(repo).findings if f.code == "unparsed-capture")
     assert "`$` a reference spells" in finding.message
@@ -1956,9 +1634,7 @@ def test_self_relation_fires_when_a_relation_bullet_points_at_its_own_node(repo:
 
 
 def test_self_relation_fires_on_any_relation_key_not_just_detail(repo: Path):
-    """Nothing about the defect is particular to a key: a relation is between two things
-    whichever key names it, so the check is quantified over `RELATION_KEYS` rather than
-    written once per key."""
+    """Nothing about the defect is particular to a key: a relation is between two things whichever key names it, so the check is quantified over `RELATION_KEYS` rather than written once per key."""
     write(repo / "docs/features/groom/gui/screens/harness.md",
           "---\ntype: screen\nslug: harness\ntitle: Harness\n---\n# Harness\n\n"
           "- route: `/harness`\n\n## Components\n\n### tab\n- role: tab\n"
@@ -1969,10 +1645,7 @@ def test_self_relation_fires_on_any_relation_key_not_just_detail(repo: Path):
 
 
 def test_self_relation_addresses_the_one_bullet_not_the_whole_key(repo: Path):
-    """The remedy is per bullet — repoint this link, or delete it — so a node stating the
-    key twice and self-referencing on the second occurrence is addressed at `:2`. A ref
-    naming only the key would collapse the good bullet and the bad one into one worklist
-    row, and a repair turn landing on the good one returns with the finding standing."""
+    """The remedy is per bullet — repoint this link, or delete it — so a node stating the key twice and self-referencing on the second occurrence is addressed at `:2`."""
     write(repo / "docs/features/groom/concepts/other.md",
           "---\ntype: concept\nslug: other\ntitle: Other\n---\n# Other\n\nNothing here.\n")
     write(repo / "docs/features/groom/concepts/schema.md",
@@ -1995,8 +1668,7 @@ def test_self_relation_is_silent_for_a_relation_between_two_nodes(repo: Path):
 
 
 def test_self_relation_does_not_fire_for_a_dangling_target(repo: Path):
-    """A target that resolves nowhere is `unresolved-relation`'s finding. Stacking a second
-    code on one broken bullet gives the author two rows for one edit."""
+    """A target that resolves nowhere is `unresolved-relation`'s finding."""
     write(repo / "docs/features/groom/concepts/schema.md",
           "---\ntype: concept\nslug: schema\ntitle: Schema\n---\n# Schema\n\n"
           "- detail: [gone](gone.md)\n")
@@ -2006,10 +1678,7 @@ def test_self_relation_does_not_fire_for_a_dangling_target(repo: Path):
 
 
 def test_self_relation_separates_a_node_from_the_page_it_sits_on(repo: Path):
-    """A link with no anchor resolves to the file's root node, so a `### part` citing its own
-    page is a relation between two different nodes and is legal. The check compares node
-    ids, not files — comparing files would report this, and it is exactly the case
-    `detail:` exists for."""
+    """A link with no anchor resolves to the file's root node, so a `### part` citing its own page is a relation between two different nodes and is legal."""
     write(repo / "docs/features/groom/gui/screens/harness.md",
           "---\ntype: screen\nslug: harness\ntitle: Harness\n---\n# Harness\n\n"
           "- route: `/harness`\n- detail: [tab](#tab)\n\n## Components\n\n### tab\n"

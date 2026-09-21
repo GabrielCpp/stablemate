@@ -47,7 +47,6 @@ CANCEL = """\
 - name: Cancel
 """
 
-# Same role and the same accessible name as SAVE — one locator, two controls.
 DUPLICATE_SAVE = """\
 ### footer-save-button
 - selector: `.footer .btn-save`
@@ -55,7 +54,6 @@ DUPLICATE_SAVE = """\
 - name: Save
 """
 
-# Operable, but nothing to announce it by.
 UNNAMED = """\
 ### icon-button
 - selector: `.icon`
@@ -63,7 +61,6 @@ UNNAMED = """\
 - name: none
 """
 
-# No role at all: locatable only by its CSS selector, and only by a machine.
 CSS_ONLY = """\
 ### legacy-widget
 - selector: `#legacy`
@@ -71,7 +68,6 @@ CSS_ONLY = """\
 - name: none
 """
 
-# Nothing to point at in either vocabulary.
 NOTHING = """\
 ### ghost
 - role: none
@@ -89,7 +85,7 @@ def test_role_and_name_become_a_get_by_role_call(repo: Path):
     entry = locators.screen_locators(data)[0]["locators"][0]
     assert entry["locator"] == 'getByRole("button", { name: "Save", exact: true })'
     assert entry["strategy"] == "role"
-    assert entry["keyboard"] == "enter"  # the code fence is presentation, not content
+    assert entry["keyboard"] == "enter"
 
 
 def test_selector_is_a_fallback_and_is_marked_as_one(repo: Path):
@@ -188,7 +184,6 @@ def _codes(repo: Path, severity: str = "error"):
 def test_doctor_errors_on_an_ambiguous_locator(repo: Path):
     _build(repo, _screen(SAVE, DUPLICATE_SAVE))
     codes = _codes(repo)
-    # one per node, so each offending doc gets the finding on its own line
     assert codes.count("ambiguous-locator") == 2
 
 
@@ -215,7 +210,6 @@ def test_a_role_with_prose_stapled_to_it_is_not_a_role(repo: Path):
         "### spinner\n- selector: `.spin`\n- role: `progressbar` (implicit MUI role)\n- name: none\n"))
     assert [b["role"] for b in locators.invalid_roles(data)] == [
         "`progressbar` (implicit MUI role)"]
-    # and it falls back rather than emitting a getByRole that matches nothing
     assert locators.screen_locators(data)[0]["locators"][0]["strategy"] == "css"
 
 
@@ -230,12 +224,7 @@ def test_every_interactive_role_is_a_real_aria_role():
 
 
 def test_doctor_builds_the_ui_graph_once(repo: Path, monkeypatch):
-    """Reachability and locators share one build.
-
-    Each rebuild resolves every node in the book, so on a large book a per-check rebuild costs more
-    than every other check combined — and the cost is invisible in a small fixture, which is why it
-    is pinned here rather than left to notice in production.
-    """
+    """Reachability and locators share one build."""
     from ostler import graph as graph_mod
 
     _build(repo, _screen(SAVE, CANCEL))
@@ -249,7 +238,6 @@ def test_doctor_builds_the_ui_graph_once(repo: Path, monkeypatch):
     monkeypatch.setattr(graph_mod, "build", counting)
     doctor.run(load(repo))
 
-    # one unscoped build for both checks; per-surface scoping is a filter, not a rebuild
     assert calls.count(None) == 1
     assert [c for c in calls if c is not None] == []
 
@@ -274,11 +262,7 @@ title: App shell
 
 
 def test_a_shared_component_is_checked_too(repo: Path):
-    """A navbar lives in a component library, not on a screen — and renders on every screen.
-
-    Scoping the locator checks to screen docs would exempt exactly the controls with the widest
-    blast radius, which is the opposite of the intent.
-    """
+    """A navbar lives in a component library, not on a screen — and renders on every screen."""
     write(repo / LIB, SHARED)
     _build(repo, _screen(SAVE))
     bad = locators.invalid_roles(graph.build(load(repo), surface="web"))
@@ -320,16 +304,11 @@ title: App shell
 - extends: [row-base](../components/app-shell.md#row-base)
 """))
     unnamed = locators.unnamed_interactives(graph.build(load(repo), surface="web"))
-    # the base is exempt; the screen's concrete row still owes a name
     assert [u["node"].split("#")[-1] for u in unnamed] == ["dash-row"]
 
 
 def test_na_is_the_same_claim_as_none(repo: Path):
-    """`n/a` is what authors actually write, and reading it as a name is a silent wrong answer.
-
-    A `getByRole("menu", {name: "n/a"})` hunts for a control literally called "n/a" and fails at
-    runtime looking like the app's fault — strictly worse than the bullet having been left blank.
-    """
+    """`n/a` is what authors actually write, and reading it as a name is a silent wrong answer."""
     data = _build(repo, _screen("### m\n- selector: `.m`\n- role: menu\n- name: n/a\n"))
     entry = locators.screen_locators(data)[0]["locators"][0]
     assert entry["locator"] == 'getByRole("menu")'
@@ -360,7 +339,6 @@ def test_exclusive_with_clears_a_false_positive_collision(repo: Path):
 - role: alert
 - name: none
 """))
-    # both are `role: alert` with no name → same locator; the declaration makes it not a collision
     assert locators.collisions(graph.build(load(repo), surface="web")) == []
     assert "ambiguous-locator" not in _codes(repo)
 
@@ -398,11 +376,9 @@ def test_a_real_co_render_collision_is_not_cleared_by_an_unrelated_exclusion(rep
 """))
     collisions = locators.collisions(graph.build(load(repo), surface="web"))
     assert len(collisions) == 1
-    # a↔b is excluded, but c collides with both a and b, so all three stay in the live conflict
     assert [n.split("#")[-1] for n in collisions[0]["nodes"]] == ["save-a", "save-b", "save-c"]
 
 
-# ---- generated elements: `one-per:` templates ---------------------------------------------------
 
 REPEATED = """\
 ### stage-row-button
@@ -422,7 +398,7 @@ def test_a_one_per_node_compiles_to_a_data_only_template(repo: Path):
     """The compiled form is segments — no locator expression in any target language."""
     entry = _locator(repo, REPEATED)
     assert entry["strategy"] == "template"
-    assert entry["locator"] == ""          # nothing executable is emitted
+    assert entry["locator"] == ""
     assert entry["iterates"] == "stage"
     assert entry["binds"] == ["stage.name"]
     assert entry["segments"] == [
@@ -581,7 +557,6 @@ def test_an_unbalanced_brace_outside_a_repeat_stays_literal(repo: Path):
     assert "malformed-template" not in _codes(repo)
 
 
-# `name:` twice: not two names, a node that cannot say which one it has.
 TWO_NAMES = """\
 ### copy-button
 - selector: `.btn-copy`
@@ -592,10 +567,7 @@ TWO_NAMES = """\
 
 
 def test_a_repeated_identity_bullet_is_the_book_s_defect_not_a_collision(repo: Path):
-    """A second `name:` (or `role:`) is `duplicate-bullet`, and the node is left out of the
-    collision check until it is well-formed. Grouping on the first of the two names would
-    raise `ambiguous-locator` against `SAVE`-style siblings — a claim about the code, made off
-    a malformation the book alone explains."""
+    """A second `name:` (or `role:`) is `duplicate-bullet`, and the node is left out of the collision check until it is well-formed."""
     data = _build(repo, _screen(TWO_NAMES, "### other-copy\n- role: button\n- name: Copy\n"))
     assert locators.malformed_identity(data["nodes"][1]) == ["name"]
     assert locators.collisions(data) == []

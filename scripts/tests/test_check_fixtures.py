@@ -1,9 +1,4 @@
-"""What `check_fixtures.py` can see that a run cannot.
-
-Each case builds a whole app tree rather than stubbing the declaration reader, because the
-thing under test is agreement between two places — `agents.yml` and the plans — and a stub
-that hands the guard a parsed declaration has already assumed the half most likely to drift.
-"""
+"""What `check_fixtures.py` can see that a run cannot."""
 
 from __future__ import annotations
 
@@ -94,9 +89,7 @@ def test_a_plan_calling_a_declared_fixture_is_clean(guard: Any, tmp_path: Path) 
 
 
 def test_a_story_naming_a_fixture_nobody_declared_is_reported(guard: Any, tmp_path: Path) -> None:
-    """Nothing fails on this at a run: the QA planner is told the story declared it, goes
-    looking for the declaration, does not find it, and writes one — spending agent turns on
-    an `agents.yml` entry instead of reporting a story that names a fixture that is not there."""
+    """Nothing fails on this at a run: the QA planner is told the story declared it, goes looking for the declaration, does not find it, and writes one — spending agent turns on an `agents.yml` entry instead of reporting a story that names a fixture that is not there."""
     app = _app(tmp_path / "acme", "qa:\n  tools:\n    - python3\n")
     (app / "docs" / "specs" / "story" / "plan-context.json").write_text(
         json.dumps({"qa_stack": {"fixtures": ["seeded_accounts"]}}), encoding="utf-8"
@@ -111,8 +104,7 @@ def test_a_story_naming_a_fixture_nobody_declared_is_reported(guard: Any, tmp_pa
 def test_prose_in_a_story_fixture_list_is_not_held_to_a_declaration(
     guard: Any, tmp_path: Path
 ) -> None:
-    """Every frozen story in the corpus describes its arrangements in English there. That is
-    a description, not a declaration, and failing it would fail the corpus for writing prose."""
+    """Every frozen story in the corpus describes its arrangements in English there."""
     app = _app(
         tmp_path / "acme",
         "qa:\n  tools:\n    - python3\n",

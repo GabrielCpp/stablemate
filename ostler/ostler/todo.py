@@ -1,8 +1,4 @@
-"""`ostler todo` — the epics queue as markdown (``docs/epics/index.md``, the OKF bundle index).
-
-Replaces the former ``epics-todo.json``. The list order *is* the work order. Each line is
-``- [<name>](<name>/epic.md) — <title>``; ostler reads the epic name from the link/bracket.
-"""
+"""`ostler todo` — the epics queue as markdown (``docs/epics/index.md``, the OKF bundle index)."""
 
 from __future__ import annotations
 
@@ -13,18 +9,11 @@ from ostler import markdown, path as path_mod, registry
 from ostler.result import Result
 from ostler.model import Graph
 
-#: An epic name is an identifier, not markdown — the leading run of one is what a
-#: hand-edited entry that dropped the link still yields a usable name from.
 _NAME = re.compile(r"\A[A-Za-z0-9][\w-]*")
 
 
 def _queued_as(names: list[str], name: str) -> str | None:
-    """The queue entry naming the same epic as *name*, or None.
-
-    Epic directories are numbered (`0001-checkout-flow`) but the queue is edited by hand
-    and by prompts that know only the slug, so the two spellings have to meet somewhere.
-    They meet here: the exact line wins, then the one with the same slug.
-    """
+    """The queue entry naming the same epic as *name*, or None."""
     if name in names:
         return name
     slug = registry.epic_slug(name)
@@ -36,20 +25,7 @@ def _index_path(graph: Graph) -> Path:
 
 
 def list_epics(graph: Graph) -> list[str]:
-    """Ordered epic names from index.md, falling back to milestone order.
-
-    Each entry is ``- [<name>](<name>/epic.md) — <title>``, so the name is the bullet's
-    bracket. Reading it off the parsed list rather than a line regex is what keeps a
-    fenced example of the format out of the work queue.
-
-    index.md is a compatibility view, not a required authoring artifact — a fresh
-    milestone-based repo may never write one, since milestones are the durable
-    sequencing model there. Without this fallback such a repo's queue reads as
-    permanently empty (indistinguishable from "everything is merged") rather than
-    "nothing has been queued yet". The fallback is read-only: it does not write
-    index.md itself, so `add`/`prune`/`reorder` still materialize it lazily, from
-    this same order, the first time one of them writes.
-    """
+    """Ordered epic names from index.md, falling back to milestone order."""
     p = _index_path(graph)
     if not p.exists():
         return _milestone_ordered_epics(graph)
@@ -103,15 +79,8 @@ def add(graph: Graph, name: str, *, front: bool = False) -> Result:
     queued = _queued_as(names, name)
     if queued is not None:
         return Result(False, f"epic '{queued}' already in the queue")
-    # Queue the directory that exists, not the name that was typed: the index's job is to
-    # point at epic docs, and `[checkout-flow](checkout-flow/epic.md)` points at nothing
-    # once the directory is `0001-checkout-flow`. An epic queued ahead of its doc keeps the
-    # name as given — there is no directory to name yet.
     name = path_mod.epic_dir(graph, name).name
     names.insert(0, name) if front else names.append(name)
-    # Warn — never fail — on an epic with no epic.md: selection silently skips such a name
-    # and then reports "every epic is fully authored", which is a no-work run indistinguishable
-    # from success. Queueing ahead of the epic doc is legitimate, so this stays advisory.
     msg = f"queued epic '{name}'"
     if not (graph.doc_roots["epics"] / name / "epic.md").exists():
         msg += (f" — WARNING: no '{name}/epic.md' yet, so epic selection will skip it "

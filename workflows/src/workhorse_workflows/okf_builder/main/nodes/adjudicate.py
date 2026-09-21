@@ -1,31 +1,4 @@
-"""Adjudication: give a blocked finding a side, from the other layer.
-
-`ostler doctor` reads the book. A finding of the collision class — `ambiguous-locator`,
-`unnamed-interactive`, a `missing-code-symbol` on a citation the source no longer carries —
-is a claim about the *correspondence* of two representations, and a checker reading one
-of them cannot say which is wrong. **Fault cannot be assigned from one side of a
-correspondence.** The repair turn, which also only edits the book, spends its attempts
-and the row blocks. This module is the observation of the other side.
-
-Three nodes, each mechanical:
-
-* `blocked_rows` — the rows at the attempt limit that no verdict has touched yet;
-* `gather_evidence` — the finding, the covering story (the `Story:` trailer on the latest
-  commit over the node's `code:` targets, via `story-for-node`) and its text, and the
-  code refs the turn must open. The story is the spec; no story means the code is the
-  intent by construction;
-* `apply_verdict` — the routing. `book` returns the row to the drain with a fresh
-  allowance and the chain in its context. `code` files a seed in the covering story's
-  epic — else the invariant epic — and writes a `known-defect:` bullet naming it on each
-  node the finding raised, which is the record doctor takes back the moment the seed
-  closes or the finding stops firing. `story` records the conflict on the story so doctor
-  raises `story-conflict`, and leaves the row blocked for the operator gate: rewriting
-  intent is not the adjudicator's to do.
-
-Nothing here is excused. A `code` verdict on a node that cannot carry the record files the
-seed and leaves the row blocked with the chain, so the gate says what was decided and the
-finding stays in doctor's report until the seed lands.
-"""
+"""Adjudication: give a blocked finding a side, from the other layer."""
 from __future__ import annotations
 
 import json
@@ -43,9 +16,6 @@ from workhorse_workflows.okf_builder.shared.schemas import (
     Evidence,
 )
 
-#: Where a `code` verdict files its seed when no story covers the node. A repo-wide
-#: invariant — the accessibility rules first among them — holds without a story stating
-#: it, and a violation of one is a code defect wherever it appears.
 INVARIANT_EPIC = "invariant-code-defects"
 INVARIANT_EPIC_TITLE = "Code defects against repo-wide invariants, found by the book"
 
@@ -76,12 +46,7 @@ def _nodes_of(context: dict[str, Any]) -> list[str]:
 
 
 def _resolve(okf: Ostler, node_id: str) -> str:
-    """The UI node id a repair item's `path#node` addresses.
-
-    The checkpoint cuts a doctor ref after its node segment, and on a *file* node — whose
-    id is the bare path — that segment is a member (`…#verify`), not a node. The file is
-    the node then, and it is what the join and the bullet must address.
-    """
+    """The UI node id a repair item's `path#node` addresses."""
     if okf.graph.find_ui_node(node_id) is not None:
         return node_id
     path = node_id.partition("#")[0]
@@ -90,8 +55,7 @@ def _resolve(okf: Ostler, node_id: str) -> str:
 
 @blueprint.node
 def blocked_rows(logger: logging.Logger, worklist_path: str = "") -> BlockedRows:
-    """The blocked rows still waiting for a side — a row already adjudicated keeps its
-    verdict until the operator's answer clears it, so one finding is judged once per gate."""
+    """The blocked rows still waiting for a side — a row already adjudicated keeps its verdict until the operator's answer clears it, so one finding is judged once per gate."""
     data = json.loads(Path(worklist_path).read_text())
     rows = [
         i for i in data.get("items", [])
@@ -162,13 +126,7 @@ def _bullet_line(seed: str, code: str, reason: str) -> str:
 
 
 def _bullet_slot(lines: list[str], heading_line: int) -> int:
-    """Where the node's bullet block ends: the index right after its last `- ` line.
-
-    `heading_line` is 1-based, so it doubles as the index of the line after the heading.
-    The block is the first run of bullets (with their indented continuations) after the
-    heading, blank lines before it skipped; a node with no bullets gets the record right
-    under its heading.
-    """
+    """Where the node's bullet block ends: the index right after its last `- ` line."""
     i = heading_line
     while i < len(lines) and not lines[i].strip():
         i += 1
@@ -180,7 +138,7 @@ def _bullet_slot(lines: list[str], heading_line: int) -> int:
 
 
 def _mark_node(okf: Ostler, node_id: str, seed: str, code: str, reason: str) -> bool:
-    """Write the `known-defect:` bullet under a UI node. False when the node carries none."""
+    """Write the `known-defect:` bullet under a UI node."""
     node = okf.graph.find_ui_node(_resolve(okf, node_id))
     if node is None or "known-defect" not in registry.declared_keys(node.type):
         return False
@@ -221,7 +179,7 @@ def apply_verdict(
     story_slug: str = "",
     story_epic: str = "",
 ) -> Applied:
-    """Route one verdict. Every branch writes the verdict and the chain on the row."""
+    """Route one verdict."""
     row = json.loads(row_json or "{}")
     target = str(row.get("target", ""))
     kind = str(row.get("kind", ""))
@@ -276,14 +234,9 @@ def apply_verdict(
             item.pop("blocked_reason", None)
             item["context"] = json.dumps({**context, "adjudication": chain})
         elif applied.marked and set(applied.marked) == set(nodes):
-            # Every node the finding raised now carries the record; doctor drops the
-            # finding on the next checkpoint, so the row is closed like any other repair.
             item["status"] = "done"
             item["doc_status"] = "code-defect"
             item["note"] = f"seed {applied.seed} filed; known-defect on {', '.join(nodes)}"
-        # Otherwise the row stays blocked as it was: `blocked_reason` keeps the repair
-        # turn's own sentence, and the gate prints the verdict, the seed and the chain
-        # from the fields written above.
 
     _write_rows(worklist_path, update)
     return applied

@@ -1,15 +1,4 @@
-"""Memory-bounding of the telemetry hot cache and the durable store.
-
-Two growth vectors are covered:
-- ``state.RUNS`` (and the native rows it backs) is evicted for finished/dead runs
-  by :func:`alerts.stale_run_ids` + :func:`state.evict_runs`, so it stops growing
-  one entry per distinct run for the life of the process;
-- the fleet/telemetry scan (``run_summaries``) bounds itself to
-  a recent window rather than the whole retained table, and the span/log searches
-  accept a keyset cursor so a broad query pages instead of loading everything.
-
-Run: uv run pytest tests/test_store_memory.py
-"""
+"""Memory-bounding of the telemetry hot cache and the durable store."""
 from __future__ import annotations
 
 import os
@@ -45,9 +34,6 @@ class _DB:
         os.unlink(self._tmp.name)
 
 
-# --------------------------------------------------------------------------- #
-# RUNS eviction
-# --------------------------------------------------------------------------- #
 def test_terminated_run_evicted_after_grace():
     _reset()
     now = 10_000.0
@@ -71,7 +57,6 @@ def test_live_run_is_not_evicted():
 def test_silent_run_evicted_past_dead_window():
     _reset()
     now = 1_000_000.0
-    # No terminal, but silent for well over the 48h dead window → presumed gone.
     run = RunTelemetry(run_id="R3", first_seen_ts=0.0, last_heartbeat_ts=0.0)
     state.RUNS["R3"] = run
     assert "R3" in alerts.stale_run_ids(now)
@@ -83,13 +68,10 @@ def test_eviction_drops_the_native_row_but_not_docker_rows():
     state.WORKFLOWS["R4"] = WorkflowContainer(container_id="R4", name="n", native=True)
     state.WORKFLOWS["abc123"] = WorkflowContainer(container_id="abc123", name="d")
     state.evict_runs(["R4"])
-    assert "R4" not in state.WORKFLOWS  # native row retired with its run
-    assert "abc123" in state.WORKFLOWS  # docker row untouched (prune owns those)
+    assert "R4" not in state.WORKFLOWS
+    assert "abc123" in state.WORKFLOWS
 
 
-# --------------------------------------------------------------------------- #
-# Windowed scans + keyset pagination
-# --------------------------------------------------------------------------- #
 def _span(run_id, name, start, end, **extra):
     return {
         "span_id": f"{run_id}-{name}-{start}", "trace_id": "t", "parent_id": "",
@@ -103,7 +85,7 @@ def test_run_summaries_windows_out_old_runs():
     with _DB():
         now = 1_000_000.0
         store.insert_spans([_span("recent", "plan", now - 100, now - 90)])
-        store.insert_spans([_span("ancient", "plan", 10, 20)])  # far outside the window
+        store.insert_spans([_span("ancient", "plan", 10, 20)])
         ids = {s["run_id"] for s in store.run_summaries(now=now)}
         assert ids == {"recent"}
 
@@ -114,7 +96,7 @@ def test_query_spans_keyset_cursor_pages():
         store.insert_spans([_span("R", "b", 200, 201)])
         store.insert_spans([_span("R", "c", 300, 301)])
         first = store.query_spans(run="R", limit=2)
-        assert [s["node"] for s in first] == ["c", "b"]  # newest first
+        assert [s["node"] for s in first] == ["c", "b"]
         nxt = store.query_spans(run="R", limit=2, before_ts=first[-1]["start_ts"])
         assert [s["node"] for s in nxt] == ["a"]
 

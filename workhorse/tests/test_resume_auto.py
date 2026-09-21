@@ -1,13 +1,4 @@
-"""Tests for run identity and resume selection (`workhorse.rundir`).
-
-Auto-resume-in-place is the default and has no flag: each `(workflow, run-id)` pair
-maps to one stable run dir, the id is derived from `--params` when none is given, and
-a run that already reached a terminal node is started fresh rather than replayed. The
-rules live in `workhorse.rundir` because the driver has to obey exactly the same ones
-as the CLI — `--resume-latest` would otherwise mean two different things.
-
-Run: uv run python tests/test_resume_auto.py   (or via pytest)
-"""
+"""Tests for run identity and resume selection (`workhorse.rundir`)."""
 from __future__ import annotations
 
 import importlib
@@ -31,11 +22,7 @@ run_cmd = importlib.import_module("workhorse.cli.run")
 
 
 class _StubRegistry(Registry):
-    """Stands in for the bound Registry — these tests never reach the driver.
-
-    A real `Registry` rather than a look-alike: the CLI's parameter is the type, and
-    only the entry point (which these tests never reach) is stubbed out.
-    """
+    """Stands in for the bound Registry — these tests never reach the driver."""
 
     def __init__(self) -> None:
         super().__init__('research')
@@ -64,9 +51,9 @@ def _make_run(runs_dir: Path, name: str, *, terminal, with_checkpoint=True, with
 def test_find_latest_resumable_picks_unfinished():
     with tempfile.TemporaryDirectory() as tmp:
         runs = Path(tmp)
-        _make_run(runs, "research-001", terminal="fail")          # finished -> skip
+        _make_run(runs, "research-001", terminal="fail")
         time.sleep(0.01)
-        stopped = _make_run(runs, "research-002", terminal=None)  # killed mid-flight -> resumable
+        stopped = _make_run(runs, "research-002", terminal=None)
         got = find_latest_resumable(runs)
         assert got == stopped, got
 
@@ -74,8 +61,8 @@ def test_find_latest_resumable_picks_unfinished():
 def test_find_latest_resumable_none_when_all_finished():
     with tempfile.TemporaryDirectory() as tmp:
         runs = Path(tmp)
-        _make_run(runs, "research-001", terminal="terminal")  # done
-        _make_run(runs, "research-002", terminal="fail")      # fail
+        _make_run(runs, "research-001", terminal="terminal")
+        _make_run(runs, "research-002", terminal="fail")
         assert find_latest_resumable(runs) is None
 
 
@@ -96,38 +83,29 @@ def test_find_latest_resumable_picks_newest_of_several_unfinished():
 
 
 def test_auto_resolve_single_stable_dir_per_program():
-    """Auto-resume uses one fixed dir per (workflow, run-id); it resumes that dir when
-    it holds a checkpoint, else returns None so the caller starts fresh IN that same
-    dir."""
+    """Auto-resume uses one fixed dir per (workflow, run-id); it resumes that dir when it holds a checkpoint, else returns None so the caller starts fresh IN that same dir."""
     with tempfile.TemporaryDirectory() as tmp:
         runs = Path(tmp)
-        # no dir yet -> start fresh, but the run id is the stable program name
         rid, resume = auto_resolve(runs, "research", run_id="grammar-semantics")
         assert rid == "grammar-semantics"
         assert resume is None
 
-        # create the stable dir with a checkpoint -> resume it in place
         stable = runs / "research-grammar-semantics"
         stable.mkdir()
         (stable / "checkpoint.json").write_text(json.dumps({"state": "implement", "params": {}}))
         rid2, resume2 = auto_resolve(runs, "research", run_id="grammar-semantics")
         assert rid2 == "grammar-semantics"
-        assert resume2 == stable  # same single folder, continued
+        assert resume2 == stable
 
 
 def test_auto_resolve_skips_terminal_run():
-    """A stable dir whose run already finished (run.json terminal set) is NOT
-    resumed — re-running starts a new run rather than replaying the finished one
-    (mirrors find_latest_resumable). Without this, a coder run that reached its
-    terminal state would no-op on the next launch."""
+    """A stable dir whose run already finished (run.json terminal set) is NOT resumed — re-running starts a new run rather than replaying the finished one (mirrors find_latest_resumable)."""
     with tempfile.TemporaryDirectory() as tmp:
         runs = Path(tmp)
         stable = runs / "coder-default"
         stable.mkdir()
         (stable / "checkpoint.json").write_text(json.dumps({"state": "merge_final", "params": {}}))
-        # No run.json (or terminal=None) -> resumable.
         assert auto_resolve(runs, "coder", run_id="default")[1] == stable
-        # run.json marks it terminal -> start fresh (resume None) in the same dir.
         (stable / "run.json").write_text(json.dumps({"workflow": "coder", "terminal": "terminal"}))
         rid, resume = auto_resolve(runs, "coder", run_id="default")
         assert rid == "default"
@@ -137,16 +115,12 @@ def test_auto_resolve_skips_terminal_run():
 def test_auto_resolve_run_id_precedence():
     with tempfile.TemporaryDirectory() as tmp:
         runs = Path(tmp)
-        # No run_id → "default".
         assert auto_resolve(runs, "research")[0] == "default"
-        # Explicit run_id is used verbatim.
         assert auto_resolve(runs, "research", run_id="given")[0] == "given"
 
 
 def test_derive_run_id_explicit_wins_and_no_params_is_default():
-    # Explicit --run-id is always used verbatim, params or not.
     assert derive_run_id("given", {"service": "api"}) == "given"
-    # No params → None → caller's "default".
     assert derive_run_id(None, None) is None
     assert derive_run_id(None, {}) is None
 
@@ -154,25 +128,19 @@ def test_derive_run_id_explicit_wins_and_no_params_is_default():
 def test_derive_run_id_digests_params_stably_and_distinctly():
     report = present(derive_run_id(None, {"service": "report", "source_path": "report"}))
     api = present(derive_run_id(None, {"service": "api", "source_path": "api"}))
-    # Distinct params → distinct ids (no collision on one 'default').
     assert report != api
     assert report.startswith("p") and api.startswith("p")
-    # Same params (key order irrelevant) → SAME id, so auto-resume still lands on
-    # the existing checkpoint on a plain re-run / reboot.
     again = derive_run_id(None, {"source_path": "report", "service": "report"})
     assert again == report
 
 
 def test_derive_run_id_routes_distinct_targets_to_distinct_dirs():
-    """The end-to-end footgun: two targets under no explicit run-id must resolve to
-    different stable dirs, and each resumes its own checkpoint."""
+    """The end-to-end footgun: two targets under no explicit run-id must resolve to different stable dirs, and each resumes its own checkpoint."""
     with tempfile.TemporaryDirectory() as tmp:
         runs = Path(tmp)
         rid_report = derive_run_id(None, {"service": "report"})
         rid_api = derive_run_id(None, {"service": "api"})
         assert rid_report != rid_api
-        # report has an unfinished checkpoint; api has none → api starts fresh
-        # instead of resuming report's run.
         _make_run(runs, f"okf-builder-{rid_report}", terminal=None)
         assert auto_resolve(runs, "okf-builder", rid_report)[1] is not None
         assert auto_resolve(runs, "okf-builder", rid_api)[1] is None
@@ -225,16 +193,7 @@ def _invocation(argv: list[str]):
 
 
 def test_the_recorded_resume_command_parses_back_onto_the_same_run():
-    """The only way this feature fails silently. A launch record is written by one
-    process and read by another after the first is dead — nothing checks the line in
-    between, so a command that no longer parses looks exactly like a command that does
-    until the day something tries to resume with it.
-
-    Deliberately launched with `--no-cache`, which is the flag that makes replaying the
-    original argv destructive rather than merely wrong: it deletes the run directory
-    before starting, so a supervisor that replayed it would destroy the checkpoint it
-    was trying to save. The resume line is built, not replayed, and this pins that.
-    """
+    """The only way this feature fails silently."""
     with tempfile.TemporaryDirectory() as tmp:
         runs = Path(tmp) / "runs"
         launched = _invocation([
@@ -253,16 +212,7 @@ def test_the_recorded_resume_command_parses_back_onto_the_same_run():
 
 
 def test_the_recorded_resume_command_carries_what_the_checkpoint_does_not_hold():
-    """The backend and the config file are resolved at the process edge rather than held
-    by the run, and a supervisor re-spawning this line hours later is a fresh process
-    with a fresh environment — so what the environment would have said has to be in the
-    argv. The params are the other way round: they are in the checkpoint, and replaying
-    a `--params-file` would let a stale file win over what the run really holds.
-
-    v2: ``--profile cheap`` carries its own ``cli = "claude"``, so ``--cli claude`` is
-    no longer in the argv. The recorded resume command therefore omits ``--cli`` and
-    relies on the profile to name it.
-    """
+    """The backend and the config file are resolved at the process edge rather than held by the run, and a supervisor re-spawning this line hours later is a fresh process with a fresh environment — so what the environment would have said has to be in the argv."""
     with tempfile.TemporaryDirectory() as tmp:
         run_dir = Path(tmp) / "runs" / "research-shakedown"
         cfg = Path(tmp) / "stablemate.toml"
@@ -285,10 +235,7 @@ def test_the_recorded_resume_command_carries_what_the_checkpoint_does_not_hold()
 
 
 def test_the_recorded_resume_command_of_a_profiled_run_is_accepted_by_the_cli():
-    """The launch record names both what the process resolved: the backend *and* the
-    profile. A profile carries its own `cli`, and the run CLI refuses the two flags
-    together — so a resume line spelling both is one no supervisor or operator can run.
-    """
+    """The launch record names both what the process resolved: the backend *and* the profile."""
     with tempfile.TemporaryDirectory() as tmp:
         run_dir = Path(tmp) / "runs" / "research-shakedown"
         cfg = Path(tmp) / "stablemate.toml"

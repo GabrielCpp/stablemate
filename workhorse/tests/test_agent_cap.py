@@ -1,12 +1,4 @@
-"""Tests for the core agent's spending/usage-cap handling in ``AgentRunner.turn``.
-
-Runs without real sleeping and without any agent CLI: both are INJECTED — the CLI as a
-fake backend, the waiting as a ``FakeClock`` that records the seconds it was asked for
-and returns at once. A cap that reopens eight days out therefore costs microseconds and
-is asserted on as a number (rule 4.2). Runnable two ways:
-    ./.venv/bin/python tests/test_agent_cap.py     # standalone, no pytest needed
-    ./.venv/bin/python -m pytest tests/test_agent_cap.py
-"""
+"""Tests for the core agent's spending/usage-cap handling in ``AgentRunner.turn``."""
 from __future__ import annotations
 
 from datetime import datetime
@@ -18,18 +10,11 @@ from workhorse.runner import caps, failure, ladder
 from workhorse.runner.failure import BackendInvocationError
 from workhorse.runner.waits import RecoveryWaitBudgetExceeded
 
-#: The cap ladder's knobs are injected, never read from the module — so a test states
-#: the wait budget it asserts against instead of patching a global (rule 5).
 RESILIENCE = AgentResilience()
 
 
 def _turn(cli, prompt="p", node_id="n", *, clock=None, timeout=None, **overrides):
-    """Drive ONE agent turn through the recovery ladder with everything injected.
-
-    The CLI is a fake backend, the knobs are ``AgentResilience`` fields, and the waiting
-    is the given clock — so the cap branch is exercised end to end without a subprocess,
-    a global, or a real second passing.
-    """
+    """Drive ONE agent turn through the recovery ladder with everything injected."""
     runner = ladder.AgentRunner(
         backend=FakeBackend(cli),
         resilience=RESILIENCE.with_overrides(**overrides) if overrides else RESILIENCE,
@@ -53,13 +38,11 @@ def _reset_seconds(message: str, now: datetime) -> float:
 
 
 def test_parse_reset_seconds_variants():
-    now = datetime(2026, 6, 1, 2, 10, 0)  # 2:10am
-    assert abs(_reset_seconds("resets 3:50am", now) - 100 * 60) < 1  # 1h40m
+    now = datetime(2026, 6, 1, 2, 10, 0)
+    assert abs(_reset_seconds("resets 3:50am", now) - 100 * 60) < 1
     assert abs(_reset_seconds("resets at 11pm", now) - (20 * 3600 + 50 * 60)) < 1
     assert abs(_reset_seconds("usage limit, resets 15:50", now) - (13 * 3600 + 40 * 60)) < 1
-    # reset time already passed today -> next day's occurrence
     assert abs(_reset_seconds("resets 1:00am", now) - (22 * 3600 + 50 * 60)) < 1
-    # no time present -> None (caller uses default)
     assert caps.parse_reset_seconds("overloaded", now) is None
     assert caps.parse_reset_seconds("resets soon", now) is None
 
@@ -116,22 +99,17 @@ SESSION_MSG = (
 
 def test_classification():
     assert failure.is_cap(CAP_MSG) is True
-    assert failure.is_cap("rate limit exceeded") is False      # short transient, not a cap
+    assert failure.is_cap("rate limit exceeded") is False
     assert failure.is_cap("overloaded") is False
-    assert failure.is_transient(CAP_MSG) is True               # cap is still transient/retryable
+    assert failure.is_transient(CAP_MSG) is True
     assert failure.is_transient("rate limit") is True
     assert failure.is_transient("syntax error in node") is False
-    # A session limit is a scheduled-reset cap — must be waited out, not reframed.
     assert failure.is_cap(SESSION_MSG) is True
     assert failure.is_transient(SESSION_MSG) is True
-    # All cap markers must also be transient, else the cap-wait branch never fires.
     for marker in failure._CAP_MARKERS:
         assert failure.is_transient(marker) is True, f"cap marker not transient: {marker}"
 
 
-# OpenRouter (and similar gateways) cap a key per day; the CLI surfaces the raw
-# provider error. This is a scheduled-reset cap, NOT a content failure — it must be
-# waited out, never reframed/defaulted through (which would advance past a gate).
 KEY_LIMIT_MSG = (
     "opencode CLI exited with code 1 for node 'resolve_epics': "
     "Key limit exceeded (daily limit). Manage it using "
@@ -140,19 +118,13 @@ KEY_LIMIT_MSG = (
 
 
 def test_daily_key_limit_classified_as_cap():
-    """A provider per-key daily limit is a (transient) cap, not a hard failure —
-    so the turn waits it out instead of raising into the reframe ladder."""
+    """A provider per-key daily limit is a (transient) cap, not a hard failure — so the turn waits it out instead of raising into the reframe ladder."""
     assert failure.is_cap(KEY_LIMIT_MSG) is True
     assert failure.is_transient(KEY_LIMIT_MSG) is True
-    # The bare phrasings both trip the cap detector.
     assert failure.is_cap("Key limit exceeded") is True
     assert failure.is_cap("daily limit reached") is True
 
 
-# opencode logs the usage-limit error to its stream but does NOT exit — it retries
-# internally until the watchdog reaps it, so the finished turn arrives timed_out=True
-# with the limit text in diagnostics. The classifier must read the cap THROUGH the
-# timeout, not report a bogus "Timeout waiting for result … after 3600s".
 OPENCODE_CAP_DIAG = (
     'stream error providerID=openai modelID=gpt-5.5 session.id=ses_0ec '
     'agent=build mode=primary error.error="AI_APICallError: The usage limit '
@@ -161,9 +133,7 @@ OPENCODE_CAP_DIAG = (
 
 
 def test_cap_hang_classified_as_cap_not_timeout():
-    """A cap that makes the CLI hang (timed_out=True) is classified as a cap, not a
-    timeout — so the run waits the window out under a truthful message instead of
-    reporting 'Timeout waiting for result … after Ns'."""
+    """A cap that makes the CLI hang (timed_out=True) is classified as a cap, not a timeout — so the run waits the window out under a truthful message instead of reporting 'Timeout waiting for result … after Ns'."""
     try:
         failure.classify_turn(
             "opencode",
@@ -180,14 +150,11 @@ def test_cap_hang_classified_as_cap_not_timeout():
         assert "Timeout waiting for result" not in str(exc), "must not mis-frame as a timeout"
         assert failure.is_cap(str(exc)), "runner's cap detector must still catch it"
         assert exc.transient is True
-        # A cap is waited out by the cap branch, NOT given the budget-overrun warning,
-        # so it must not masquerade as a real wall-clock timeout.
         assert exc.timed_out is False
 
 
 def test_cap_hang_pauses_then_resumes_same_node():
-    """End-to-end: an opencode cap-hang pauses the node once and re-runs the SAME
-    prompt — it never gets the budget-timeout warning and never reframes."""
+    """End-to-end: an opencode cap-hang pauses the node once and re-runs the SAME prompt — it never gets the budget-timeout warning and never reframes."""
     calls = {"n": 0}
 
     def fake_cli(prompt, node_id, sid, model, timeout=None, **kwargs):
@@ -216,8 +183,7 @@ def test_cap_hang_pauses_then_resumes_same_node():
 
 
 def test_daily_key_limit_pauses_then_resumes_same_node():
-    """The keyed-out node pauses once (no reset in the message → default wait) and
-    re-runs the SAME prompt once the key resets — never reframes, never defaults."""
+    """The keyed-out node pauses once (no reset in the message → default wait) and re-runs the SAME prompt once the key resets — never reframes, never defaults."""
     calls = {"n": 0}
 
     def fake_cli(prompt, node_id, sid, model, timeout=None, **kwargs):
@@ -264,7 +230,6 @@ def test_rate_limit_info_parsing():
     blocked = {"type": "rate_limit_event", "rate_limit_info": {"status": "rejected", "resetsAt": 1780000000}}
     assert failure.rate_limit_info(blocked) == (True, 1780000000.0)
 
-    # Missing / malformed info → no crash, no signal.
     assert failure.rate_limit_info({"type": "rate_limit_event"}) == (False, None)
     assert failure.rate_limit_info({"rate_limit_info": {"status": "allowed", "resetsAt": "n/a"}}) == (False, None)
 
@@ -273,16 +238,14 @@ def test_cap_delay_prefers_structured_reset_at():
     """A structured reset_at epoch drives the wait time precisely (+ margin)."""
     now = 1_000_000.0
     clock = FakeClock(datetime.fromtimestamp(now))
-    exc = BackendInvocationError("blocked", transient=True, reset_at=now + 3600)  # 1h out
+    exc = BackendInvocationError("blocked", transient=True, reset_at=now + 3600)
     delay, _when = caps.cap_delay_seconds(exc, resilience=RESILIENCE, clock=clock)
     assert abs(delay - (3600 + RESILIENCE.cap_wait_margin_s)) < 1
 
-    # A past reset → retry promptly (just the margin).
     exc_past = BackendInvocationError("blocked", transient=True, reset_at=now - 50)
     delay_past, _ = caps.cap_delay_seconds(exc_past, resilience=RESILIENCE, clock=clock)
     assert delay_past == RESILIENCE.cap_wait_margin_s
 
-    # An absurd far-future reset is bounded.
     exc_far = BackendInvocationError("blocked", transient=True, reset_at=now + 999 * 24 * 3600)
     delay_far, _ = caps.cap_delay_seconds(exc_far, resilience=RESILIENCE, clock=clock)
     assert delay_far == RESILIENCE.cap_max_wait_s + RESILIENCE.cap_wait_margin_s
@@ -290,8 +253,6 @@ def test_cap_delay_prefers_structured_reset_at():
 
 def test_cap_delay_falls_back_to_text_then_default():
     """Without a structured reset_at, fall back to parsing the message, then default."""
-    # 2:10am, so "resets 3:50am" is 1h40m out — stated by the clock, not patched onto
-    # the module: the text path reads the same injected "now" as the epoch path.
     clock = FakeClock(datetime(2026, 6, 1, 2, 10, 0))
     exc = BackendInvocationError("usage limit, resets 3:50am", transient=True)
     delay, _ = caps.cap_delay_seconds(exc, resilience=RESILIENCE, clock=clock)
@@ -303,12 +264,7 @@ def test_cap_delay_falls_back_to_text_then_default():
 
 
 def test_structured_reset_at_drives_invoke_wait():
-    """End-to-end: a cap error carrying reset_at makes the turn sleep until it.
-
-    The reset is stated at 90 minutes: inside ``cap_probe_s`` (so the wait is not
-    clipped to a probe interval — that case is its own test above) and unequal to
-    ``cap_default_wait_s``, so the slept seconds can only have come from reset_at.
-    """
+    """End-to-end: a cap error carrying reset_at makes the turn sleep until it."""
     now = 2_000_000.0
     reset_in = 5400.0
     assert reset_in < RESILIENCE.cap_probe_s and reset_in != RESILIENCE.cap_default_wait_s
@@ -330,8 +286,7 @@ def test_structured_reset_at_drives_invoke_wait():
 
 
 def test_budget_timeout_warns_retry_with_time_budget():
-    """After a wall-clock timeout, the retry's prompt is prefixed with a budget
-    warning that states the limit, so the next attempt can size its work to fit."""
+    """After a wall-clock timeout, the retry's prompt is prefixed with a budget warning that states the limit, so the next attempt can size its work to fit."""
     seen_prompts = []
 
     def fake_cli(prompt, node_id, sid, model, timeout=None, **kwargs):
@@ -348,17 +303,14 @@ def test_budget_timeout_warns_retry_with_time_budget():
 
     assert out == "RESULT_OK"
     assert len(seen_prompts) == 2
-    # First attempt sees the original prompt verbatim.
     assert seen_prompts[0] == "DO THE TASK"
-    # Retry is warned it overran and told its budget (~20 min / 1200s).
     assert "TIME BUDGET" in seen_prompts[1]
     assert "20 min" in seen_prompts[1] and "1200s" in seen_prompts[1]
     assert seen_prompts[1].endswith("DO THE TASK")
 
 
 def test_non_timeout_transient_retries_prompt_unchanged():
-    """A plain transient (overload/network) retries the SAME prompt — no budget
-    warning is injected (only real wall-clock timeouts get one)."""
+    """A plain transient (overload/network) retries the SAME prompt — no budget warning is injected (only real wall-clock timeouts get one)."""
     seen_prompts = []
 
     def fake_cli(prompt, node_id, sid, model, timeout=None, **kwargs):
@@ -374,14 +326,7 @@ def test_non_timeout_transient_retries_prompt_unchanged():
 
 
 def test_every_rendering_of_an_opencode_store_lock_is_transient():
-    """The condition is "opencode could not complete a write", not the statement it named.
-
-    The marker table listed `insert into "project"` literally. The day a lock timed out on
-    `update "session" set "project_id" = ...` instead, the identical condition read as a
-    deterministic failure and ended an unattended run — the set of statements opencode can
-    lose a race on is every statement it has, so enumerating them is a list that grows on
-    each death. `Failed query:` is opencode's own prefix for the class.
-    """
+    """The condition is "opencode could not complete a write", not the statement it named."""
     renderings = (
         'Error: Unexpected error\nFailed query: insert into "project" ("id", "worktree") '
         'values (?, ?) on conflict ("project"."id") do update set "worktree" = ?',
@@ -391,8 +336,6 @@ def test_every_rendering_of_an_opencode_store_lock_is_transient():
     )
     for rendering in renderings:
         assert failure.is_transient(rendering) is True, f"not transient: {rendering[:60]}"
-    # Still narrow: prose about a query that did not come from the store's own failure path
-    # is not a licence to retry a deterministic error.
     assert failure.is_transient("the query returned no rows, so the node has nothing to do") is False
 
 
@@ -443,7 +386,6 @@ def test_cap_sleeps_until_reset_then_resumes():
 
     assert out == "RESULT_OK"
     assert calls["n"] == 2, "should retry the node after the cap wait"
-    # waited a positive, scheduled amount (parsed reset + margin), never longer than a day
     assert 0 < sum(clock.slept) <= 24 * 3600 + RESILIENCE.cap_wait_margin_s + 1
 
 
@@ -457,7 +399,7 @@ def test_cap_waits_do_not_consume_short_retry_budget():
             raise BackendInvocationError(CAP_MSG, transient=True)
         return "OK_AFTER_CAPS"
 
-    out = _turn(fake_cli, max_invoke_retries=1)  # short budget = 1
+    out = _turn(fake_cli, max_invoke_retries=1)
 
     assert out == "OK_AFTER_CAPS"
     assert calls["n"] == 4, "3 caps + 1 success, despite max_invoke_retries=1"
@@ -499,8 +441,7 @@ def _armed(*requests):
 
 
 def test_a_reload_ends_a_cap_wait_instead_of_sleeping_the_window_out():
-    """The wait this whole channel exists for. A weekly cap reopens days out, and an
-    operator who has already pushed the fix should not have to wait for the window."""
+    """The wait this whole channel exists for."""
     calls = {"n": 0}
 
     def capped(prompt, node_id, sid, model, timeout=None, **kwargs):
@@ -523,8 +464,7 @@ def test_a_reload_ends_a_cap_wait_instead_of_sleeping_the_window_out():
 
 
 def test_an_at_boundary_reload_does_not_shorten_the_cap_wait_it_arrives_in():
-    """Being delivered is not being honoured. A request the wait declines must leave the
-    window intact, or `--at-boundary` would cut a six-day cap short by arriving."""
+    """Being delivered is not being honoured."""
     calls = {"n": 0}
 
     def capped(prompt, node_id, sid, model, timeout=None, **kwargs):
@@ -537,7 +477,6 @@ def test_an_at_boundary_reload_does_not_shorten_the_cap_wait_it_arrives_in():
     clock = FakeClock()
     try:
         out = _turn(capped, node_id="select_gate", clock=clock)
-        # Held, not dropped: the state boundary is where an --at-boundary reload lands.
         held = control.outstanding()
     finally:
         control.arm(None)
@@ -549,13 +488,7 @@ def test_an_at_boundary_reload_does_not_shorten_the_cap_wait_it_arrives_in():
 
 
 def test_a_status_query_is_answered_from_inside_the_cap_wait_it_never_ends():
-    """Asking a sleeping run where it is must not be what wakes it.
-
-    This is the wait an operator most wants to ask about — a run in a multi-day cap
-    window looks identical to a hung one from outside — and the one where answering by
-    ending the wait would be worst: the cap has not reopened, so the retry it woke for
-    would be spent for nothing.
-    """
+    """Asking a sleeping run where it is must not be what wakes it."""
     calls = {"n": 0}
 
     def capped(prompt, node_id, sid, model, timeout=None, **kwargs):
@@ -601,7 +534,7 @@ def test_an_action_this_run_does_not_know_is_answered_not_obeyed():
 
 
 def test_a_reload_ends_a_transient_backoff_too():
-    """The other ticked wait. A backoff at its cap is half an hour of unreachability."""
+    """The other ticked wait."""
     def always_overloaded(prompt, node_id, sid, model, timeout=None, **kwargs):
         raise BackendInvocationError("overloaded", transient=True)
 
@@ -619,9 +552,7 @@ def test_a_reload_ends_a_transient_backoff_too():
 
 
 def test_an_unattached_run_sleeps_exactly_as_it_did_before_the_channel():
-    """The regression guard on the default. With nothing armed there is no fd to select
-    on, so a tick is one `clock.sleep` through the injected clock — which is what every
-    other cap assertion in this file depends on."""
+    """The regression guard on the default."""
     calls = {"n": 0}
 
     def capped(prompt, node_id, sid, model, timeout=None, **kwargs):
@@ -652,11 +583,6 @@ def test_non_transient_fails_immediately():
     assert calls["n"] == 1, "non-transient must not retry"
 
 
-# A weekly window reopens ~6 days out. Sleeping that in ONE wait means the run cannot
-# notice the cap clearing early — an operator resetting the limit by hand, topping up
-# credits, or changing plan. The ladder therefore sleeps at most ``cap_probe_s`` and
-# re-attempts, which is what turns "back in 6 days" into "back within 2 hours of the
-# cap actually lifting".
 def _capped_once_then_ok(calls, reset_at):
     """A CLI that reports a cap carrying ``reset_at`` once, then succeeds."""
 
@@ -699,8 +625,7 @@ def test_cap_probe_disabled_sleeps_to_the_reported_reset():
 
 
 def test_cap_probe_repeats_while_the_cap_still_holds():
-    """Each probe that finds the cap intact costs one interval, bounded by the
-    consecutive-wait count — the run keeps trying rather than sleeping blind."""
+    """Each probe that finds the cap intact costs one interval, bounded by the consecutive-wait count — the run keeps trying rather than sleeping blind."""
     clock = FakeClock()
     calls = {"n": 0}
     reset_at = clock.now().timestamp() + 6 * 24 * 3600
@@ -722,22 +647,18 @@ def test_cap_probe_repeats_while_the_cap_still_holds():
 
 
 def test_probing_can_span_the_whole_cap_wait_budget():
-    """``max_cap_waits`` must not be what ends a legitimately long cap: the cumulative
-    budget is the intended limit, so the wait count has to outlast it."""
+    """``max_cap_waits`` must not be what ends a legitimately long cap: the cumulative budget is the intended limit, so the wait count has to outlast it."""
     assert RESILIENCE.cap_probe_s > 0
     assert RESILIENCE.max_cap_waits > RESILIENCE.cap_wait_budget_s / RESILIENCE.cap_probe_s
 
 
 def test_an_unknown_reset_cap_can_be_re_attempted_across_the_whole_budget():
-    """A cap naming no reset re-attempts every ``cap_default_wait_s``; that cadence too
-    must outlast the cumulative budget rather than end on the wait count."""
+    """A cap naming no reset re-attempts every ``cap_default_wait_s``; that cadence too must outlast the cumulative budget rather than end on the wait count."""
     assert RESILIENCE.max_cap_waits > RESILIENCE.cap_wait_budget_s / RESILIENCE.cap_default_wait_s
 
 
 def test_an_unknown_reset_cap_is_re_attempted_well_inside_the_hour():
-    """With no reset time, every second of the wait may be spent after the window has
-    reopened; an hour-long guess re-parked runs for a second hour when the reset fell
-    minutes after their probe. A still-capped re-attempt costs one failing call."""
+    """With no reset time, every second of the wait may be spent after the window has reopened; an hour-long guess re-parked runs for a second hour when the reset fell minutes after their probe."""
     assert RESILIENCE.cap_default_wait_s <= RESILIENCE.cap_tick_s
 
 

@@ -1,11 +1,4 @@
-"""The post-plan-turn clean-tree gate — `snapshot_worktrees` and `scrub_plan_mutations`.
-
-The plan prompt no longer tells the planner not to modify source; this pair is what
-enforces it, so what is worth testing is the enforcement's edges: only what appeared
-*between* the two readings is reverted (an operator's pre-existing edit is not the
-turn's), the docs repo is exempt because the plan artifacts land there on purpose, and
-a turn that kept to reading scrubs nothing.
-"""
+"""The post-plan-turn clean-tree gate — `snapshot_worktrees` and `scrub_plan_mutations`."""
 from __future__ import annotations
 
 import json
@@ -23,11 +16,7 @@ from workhorse_workflows.coder.shared.story import scrub_plan_mutations, snapsho
 def workspace(
     tmp_path: Path, git: Callable[..., subprocess.CompletedProcess]
 ) -> dict[str, Path]:
-    """A docs repo and two code repos, all named by one workspace file.
-
-    The docs repo is *in* the workspace file deliberately: the gate's exemption is by
-    identity with the resolved docs root, not by absence from the workspace.
-    """
+    """A docs repo and two code repos, all named by one workspace file."""
     root = tmp_path / "ws"
     repos: dict[str, Path] = {}
     for name in ("docs", "api", "web"):
@@ -87,8 +76,6 @@ def test_the_scrub_reverts_what_the_turn_wrote_and_only_that(
     (api / "README.md").write_text("operator WIP\n", encoding="utf-8")
     before = _snapshot(logger, workspace)
 
-    # The "plan turn": edits a tracked file, drops an untracked file and a directory in
-    # one code repo, and writes a plan artifact into the docs repo.
     (web / "README.md").write_text("scratch experiment\n", encoding="utf-8")
     (web / "notes.txt").write_text("scratch\n", encoding="utf-8")
     (web / "tmp").mkdir()
@@ -102,9 +89,7 @@ def test_the_scrub_reverts_what_the_turn_wrote_and_only_that(
     assert (web / "README.md").read_text(encoding="utf-8") == "# web\n"
     assert not (web / "notes.txt").exists()
     assert not (web / "tmp").exists()
-    # The operator's edit predates the turn and is not the turn's to lose.
     assert (api / "README.md").read_text(encoding="utf-8") == "operator WIP\n"
-    # The docs repo is where the plan lands; the gate has nothing to say about it.
     assert (docs / "plan.md").exists()
 
 

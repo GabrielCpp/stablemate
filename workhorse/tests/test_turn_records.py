@@ -1,13 +1,4 @@
-"""What a run keeps of each individual visit to a node.
-
-The per-node directory holds one prompt and one output, overwritten on every visit, so by
-the time lap 5 of a loop is the one in trouble the prompts that produced laps 1-4 no
-longer exist anywhere. They are what an improved prompt would have to be tested against,
-so the run keeps a copy of each visit beside them.
-
-    ./.venv/bin/python tests/test_turn_records.py
-    ./.venv/bin/python -m pytest tests/test_turn_records.py
-"""
+"""What a run keeps of each individual visit to a node."""
 
 from __future__ import annotations
 
@@ -44,14 +35,11 @@ def test_every_visit_of_a_looping_node_keeps_its_own_prompt():
             (writer.run_dir / ArtifactWriter.TURNS_DIR / v / "prompt.md").read_text()
             for v in visits
         ]
-        # The whole point: three visits, three *different* prompts still on disk.
         assert prompts == ["lap 1", "lap 2", "lap 3"]
 
 
 def test_the_prompt_staged_before_a_turn_does_not_rewrite_the_last_visits_copy():
-    """The runner stages ``<node>/prompt.md`` before invoking the CLI, so a failed turn is
-    inspectable, and that path is still hardlinked to the previous visit's kept copy. A
-    write through it filed every visit's output beside the *next* visit's prompt."""
+    """The runner stages ``<node>/prompt.md`` before invoking the CLI, so a failed turn is inspectable, and that path is still hardlinked to the previous visit's kept copy."""
     turnkey.clear()
     with tempfile.TemporaryDirectory() as tmp:
         writer = _writer(tmp)
@@ -69,8 +57,7 @@ def test_the_prompt_staged_before_a_turn_does_not_rewrite_the_last_visits_copy()
 
 
 def test_the_per_node_directory_still_holds_the_latest_visit():
-    """Additive, not instead-of: resume reads `<run>/<node>/context_after.json`, and
-    everything reading a run dir today addresses a node by its id."""
+    """Additive, not instead-of: resume reads `<run>/<node>/context_after.json`, and everything reading a run dir today addresses a node by its id."""
     turnkey.clear()
     with tempfile.TemporaryDirectory() as tmp:
         writer = _writer(tmp)
@@ -85,8 +72,7 @@ def test_the_per_node_directory_still_holds_the_latest_visit():
 
 
 def test_a_visit_directory_is_named_by_the_visit_key():
-    """The same name the session map and the transcript use, which is what lets three
-    writers that cannot see each other be assembled into one turn record."""
+    """The same name the session map and the transcript use, which is what lets three writers that cannot see each other be assembled into one turn record."""
     turnkey.clear()
     with tempfile.TemporaryDirectory() as tmp:
         writer = _writer(tmp)
@@ -119,9 +105,7 @@ def test_a_branch_records_which_way_this_visit_went():
 
 
 def test_a_step_written_outside_a_visit_is_not_filed_under_someone_elses():
-    """turnkey names *agent* visits. A plain call node writing a step while the last
-    agent visit is still current would otherwise put its output in that node's directory,
-    where a reader would take it for what the agent answered."""
+    """turnkey names *agent* visits."""
     turnkey.clear()
     with tempfile.TemporaryDirectory() as tmp:
         writer = _writer(tmp)
@@ -135,9 +119,7 @@ def test_a_step_written_outside_a_visit_is_not_filed_under_someone_elses():
 
 
 def test_a_nested_flows_visits_survive_the_next_entry_to_that_scope():
-    """`subscope` empties itself on every entry — one story's Qa flow must not start
-    holding the previous story's answers. The visit archive is exactly the thing that
-    must NOT be emptied, so it lives at the top of the run rather than in the scope."""
+    """`subscope` empties itself on every entry — one story's Qa flow must not start holding the previous story's answers."""
     turnkey.clear()
     with tempfile.TemporaryDirectory() as tmp:
         parent = _writer(tmp)
@@ -159,8 +141,7 @@ def test_a_nested_flows_visits_survive_the_next_entry_to_that_scope():
 
 
 def test_keeping_the_copy_never_fails_the_node():
-    """Bookkeeping about a run that is doing something else. A turns/ path that cannot be
-    created costs the copy and nothing more."""
+    """Bookkeeping about a run that is doing something else."""
     turnkey.clear()
     with tempfile.TemporaryDirectory() as tmp:
         writer = _writer(tmp)

@@ -1,24 +1,4 @@
-"""Lock down the syntax._tree lru_cache size against the eviction segfault.
-
-A cached ``Tree`` is freed the moment the lru_cache evicts its entry; a still-running
-visitor that holds a child ``Node`` keeps the Python wrapper alive but the *C AST*
-the wrapper dereferences is gone. The next ``node.start_byte`` read or ``Node.text``
-property access crosses into freed memory, escapes Python's exception machinery, and
-segfaults the interpreter (``bd8d0fd1`` for the 0.26.0 binding version of the fault;
-``190495e7`` for the broader eviction class on 0.25.x).
-
-The mitigation is twofold. The first layer — ``syntax._tree`` having
-``maxsize=4096`` — was the load-bearing change in ``190495e7``; the second layer —
-``behavior_go.GoEvidence._slice`` / ``behavior_tree.TreeEvidence._slice`` reading
-``source_bytes[start:end].decode()`` instead of ``Node.text`` — is independent and
-defends against the same fault class through a different path.
-
-The post-fix commit message claims the size is enough that "no eviction happens
-during a single drive, which is the only time the visitor holds ``Node`` references
-without holding the ``Tree`` reference alongside." That is the property these tests
-pin. A regression that shrinks the cache (someone tightening it to free a few KB,
-or a partial revert) is caught here before any production drive does.
-"""
+"""Lock down the syntax._tree lru_cache size against the eviction segfault."""
 
 from __future__ import annotations
 
@@ -28,16 +8,9 @@ from pathlib import Path
 from ostler import behavior, syntax
 
 
-#: Parses that a single okf-builder drive typically does. A multi-hundred-file
-#: evidence walk reads every referenced source file once and re-reads citations;
-#: we round up to 64 to leave headroom over the previous ``maxsize=16`` that
-#: triggered the fault and below the post-fix 4096.
 EVICTION_MITIGATION_FLOOR = 64
 
 
-#: Sources are synthesised in-process so the test runs without an external Go repo
-#: (the existing ``test_py_tree_sitter_0_26_0_segfault`` skips on a missing
-#: ``/mnt/data/workspace/example/api``; this test never needs that).
 def _go_source(body: str) -> str:
     return f'package api\nimport "net/http"\n\n{body}\n'
 
@@ -64,14 +37,7 @@ def _synthesise_files(count: int) -> list[Path]:
 
 
 def test_syntax_tree_cache_maxsize_matches_eviction_mitigation() -> None:
-    """``syntax._tree`` must be wide enough that a single drive never evicts.
-
-    The pre-fix ``maxsize=16`` evicted a Tree under a still-running visitor; the
-    read-after-free segfaulted the interpreter. The mitigation is the cache size
-    jumping to 4096, which ``190495e7`` justified as larger than any realistic
-    drive. Asserting a floor here catches a regression that tightens the cache
-    below the eviction threshold without also restoring the call-site hardening.
-    """
+    """``syntax._tree`` must be wide enough that a single drive never evicts."""
     cache = syntax._tree
     params = cache.cache_parameters()
     assert isinstance(params, dict), (
@@ -89,15 +55,7 @@ def test_syntax_tree_cache_maxsize_matches_eviction_mitigation() -> None:
 
 
 def test_unique_parses_stay_cached_below_eviction_threshold() -> None:
-    """N unique parses at N below the floor must all remain cached.
-
-    Proves: with the post-fix ``maxsize=4096``, parsing more files than the
-    previous ``maxsize=16`` does not evict any entry. A regression to ``maxsize=16``
-    shows up here as ``currsize < N`` after the loop, even though the loop
-    itself would not crash (an eviction-driven crash needs a Node held across
-    the eviction; this test asserts the cache *width*, not the absence of a held
-    Node).
-    """
+    """N unique parses at N below the floor must all remain cached."""
     text_samples = [
         _go_source(
             f"func F{i:04d}(r *http.Request) {{ /* unique body {i} */ }}",
@@ -126,22 +84,13 @@ def test_unique_parses_stay_cached_below_eviction_threshold() -> None:
 
 
 def test_extract_evidence_across_synthesised_go_corpus_completes() -> None:
-    """End-to-end shape: extract_evidence over a Go corpus never crashes.
-
-    The pre-fix crash surfaced in the okf-builder flow's audit leg, which calls
-    ``extract_evidence`` on a multi-hundred-file Go project. We synthesise a
-    corpus larger than the previous maxsize so the visit pattern walks across the
-    eviction boundary; with the post-fix cache the walk completes and the bytes
-    the visitor reads via ``_slice`` come from the held ``source_bytes`` rather
-    than from the freed Tree's C extension — neither path crashes.
-    """
+    """End-to-end shape: extract_evidence over a Go corpus never crashes."""
     files = _synthesise_files(EVICTION_MITIGATION_FLOOR)
     try:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp) / "api"
             root.mkdir()
             for f in files:
-                # Re-use the synthesised file body but place it under root
                 dst = root / f.name
                 dst.write_text(f.read_text(encoding="utf-8"), encoding="utf-8")
             paths = [f.name for f in files]

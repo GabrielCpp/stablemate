@@ -1,17 +1,4 @@
-"""Compact source catalogs that ground code citations, and watermark what they cite.
-
-Two jobs, one file. Grounding asks whether a cited file still declares the symbol the book
-names; the backfill watermark asks whether that symbol is still the *same* symbol it was when
-the book last described it. Both are answers about the same snapshot of the same bytes, so
-both ride one catalog.
-
-The catalog covers the graph's own repository as well as every external one. It did not
-always: a snapshot was taken only where a citation named a repository, so the majority of any
-book — its unqualified, same-repo `code:` refs — carried no watermark at all, and a run could
-only ask "has anything at all changed?" (`source_fingerprint`) rather than "which nodes went
-stale?". The graph's own repository is `SELF_REPOSITORY`, the empty id, which is exactly what
-`refs.parse_code_ref` puts in `CodeRef.repository` for an unqualified ref.
-"""
+"""Compact source catalogs that ground code citations, and watermark what they cite."""
 
 from __future__ import annotations
 
@@ -26,23 +13,13 @@ from ostler import path as path_mod
 from ostler.qa.source_context import SourceRepository, SourceScope
 
 
-#: The graph's own repository, as `refs.parse_code_ref` spells it for an unqualified ref.
 SELF_REPOSITORY = ""
 
-#: A book declares the repository its unqualified ``code:`` refs resolve to, by writing a
-#: single-line file of this name inside the book root. A missing or empty file means "no
-#: declaration" — a multi-repo workspace hitting that case today silently drops the join,
-#: and doctor will report the absence rather than the join going quiet.
 REPOSITORY_DECL_FILENAME = "repository.txt"
 
 
 def book_repository(features_root: Path) -> str:
-    """The repository a book declares its unqualified ``code:`` refs resolve to.
-
-    A single-line file at ``<features_root>/repository.txt`` whose trimmed contents are the
-    repository id. Empty when absent or unreadable — the caller treats that as "no
-    declaration" and reports it through doctor rather than silently widening the join.
-    """
+    """The repository a book declares its unqualified ``code:`` refs resolve to."""
     path = Path(features_root) / REPOSITORY_DECL_FILENAME
     if not path.is_file():
         return ""
@@ -53,13 +30,7 @@ def book_repository(features_root: Path) -> str:
 
 
 def set_book_repository(features_root: Path, repository_id: str) -> Path:
-    """Write the book's repository declaration. Returns the path it was written to.
-
-    Used by ``okf-builder`` at the run that converges: the join has just been confirmed
-    consistent, and the book itself is the right place to record which repository its
-    unqualified refs resolved against. Re-running the build after a repository rename is
-    the operator's decision, not a silent rewrite.
-    """
+    """Write the book's repository declaration."""
     path = Path(features_root) / REPOSITORY_DECL_FILENAME
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(repository_id.strip() + "\n", encoding="utf-8")
@@ -80,13 +51,7 @@ class SourceFile(BaseModel):
 
     path: str
     content_sha256: str
-    #: Every name the file declares. Kept alongside `declarations` because `doctor`'s
-    #: existence check reads it, and a catalog written before `declarations` existed still
-    #: has to ground the book it was written for.
     symbols: tuple[str, ...] = ()
-    #: The same declarations, each carrying its content digest. Empty on a catalog written
-    #: before this field existed — which a reader must treat as "no watermark", never as
-    #: "nothing declared".
     declarations: tuple[SourceSymbol, ...] = ()
 
     def digest_of(self, symbol: str) -> str:

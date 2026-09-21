@@ -1,17 +1,4 @@
-"""`farrier source <generated-file>` resolves a generated skill/command back to its
-editable library source path.
-
-A generated adapter carries a machine-independent `metadata.source` (anchored at
-`library/`). `farrier source` joins it under the library root resolved exactly as
-`install` does, so an agent can go from a generated `.claude/skills/**/SKILL.md`
-to the editable source of truth using only the file's front matter.
-
-Aggregated local CLAUDE.md files have no front matter — their provenance lives in
-the leading DO-NOT-EDIT HTML banner, which may list several sources. `farrier
-source` falls back to parsing that banner and prints one editable path per line.
-
-    ./.venv/bin/python -m pytest tests/test_source_command.py
-"""
+"""`farrier source <generated-file>` resolves a generated skill/command back to its editable library source path."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -131,8 +118,6 @@ def test_source_prints_every_aggregated_banner_source(tmp_path, capsys):
 
 
 def _repo_with_config(tmp_path: Path, mapped: bool) -> Path:
-    # Named `demo` because the directory name *is* the install prefix — the mapping
-    # below names `demo-stablemate-ostler`, and nothing in agents.yml can make that come out.
     repo = tmp_path / "demo"
     (repo / "svc").mkdir(parents=True, exist_ok=True)
     mapping = (
@@ -149,8 +134,6 @@ def _repo_with_config(tmp_path: Path, mapped: bool) -> Path:
 
 
 def test_source_prefers_agents_yml_mapping_over_banner(tmp_path, capsys):
-    # The banner is a generation-time snapshot; the live localInstructions
-    # mapping must win when agents.yml is present.
     root = _library(tmp_path)
     repo = _repo_with_config(tmp_path, mapped=True)
     gen = repo / "svc" / "CLAUDE.md"
@@ -168,8 +151,6 @@ def test_source_prefers_agents_yml_mapping_over_banner(tmp_path, capsys):
 
 
 def test_source_errors_when_mapping_removed_from_agents_yml(tmp_path):
-    # agents.yml exists but no longer maps this directory: the file is stale
-    # and resolving via its banner would invite edits install then discards.
     root = _library(tmp_path)
     repo = _repo_with_config(tmp_path, mapped=False)
     gen = repo / "svc" / "CLAUDE.md"

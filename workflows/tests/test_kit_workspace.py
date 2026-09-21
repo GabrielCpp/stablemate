@@ -1,14 +1,4 @@
-"""Tests for kit.workspace.resolve_workspace's single-repo fallback branch.
-
-Covers the mono-repo case: no workspace file, so resolve_workspace must key the
-single-folder workspace off the actual repo root rather than the cwd of the process
-that invoked it. A node runs with cwd = wherever the driver was launched, which is
-not necessarily the checkout under work, so a bare `Path.cwd()` here would synthesize
-the wrong repo key whenever the run's `repo_dir` input and cwd diverge.
-
-Both facts are **arguments**, not environment: `workspace_file` and `repo_dir` are
-inputs of the run, so a test states them at the callsite the same way a workflow does.
-"""
+"""Tests for kit.workspace.resolve_workspace's single-repo fallback branch."""
 from __future__ import annotations
 
 import os
@@ -44,9 +34,7 @@ def test_resolve_workspace_falls_back_to_cwd_without_a_repo_dir():
 
 
 def test_a_repo_is_named_by_its_directory_not_by_its_agents_yml():
-    """agents.yml cannot rename a repo — the key here is also the install prefix
-    farrier derives from the same directory, so a config that could override one and
-    not the other would let a single checkout answer to two names."""
+    """agents.yml cannot rename a repo — the key here is also the install prefix farrier derives from the same directory, so a config that could override one and not the other would let a single checkout answer to two names."""
     with tempfile.TemporaryDirectory() as tmp:
         repo_dir = Path(tmp) / "acme"
         repo_dir.mkdir()

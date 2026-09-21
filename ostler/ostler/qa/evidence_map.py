@@ -1,27 +1,4 @@
-"""The obligation→evidence join: coverage as a set difference, not a reading.
-
-Someone used to answer "is every obligation backed by an executed assertion?" by opening
-the plan, the run log and the evidence artifact and holding them in their head — once per
-story, forever, and wrong whenever the three disagreed quietly. Every fact that answer needs
-is already written down by the run:
-
-* ``qa-okf-context.json`` — the obligations the change owes evidence for, and the checks
-  each one's ``verify:`` bullets declare.
-* ``qa/qa-run.ndjson`` — what the run actually claimed (``scenario_start.covers``) and what
-  it actually observed (``assert`` records, with the check name and arguments on the ones
-  made through :meth:`Qa.verify`).
-* ``qa/run-manifest.json`` — the files each scenario produced, with their hashes.
-* ``qa-evidence.json`` — the verdict that was published downstream.
-
-Joining them is arithmetic. What it produces is one row per obligation and a status the
-reader routes on rather than re-derives, which is the whole point: `uncovered` is a set
-difference, and a set difference does not have an opinion or run out of budget.
-
-The log is the ground truth and ``qa-evidence.json`` is a summary of it, so where they
-disagree the row says `contradicted` and reports both. That case is not hypothetical — an
-audit found an obligation published `Fail` with no refs at all under an `overall: Pass`,
-by hand, which is exactly the labour this replaces.
-"""
+"""The obligation→evidence join: coverage as a set difference, not a reading."""
 
 from __future__ import annotations
 
@@ -37,17 +14,6 @@ from ostler.util import is_mapping
 
 VERSION = 1
 
-#: The five answers, ordered worst-first so a summary reads top-down.
-#:
-#: `unproven` sits second because it is urgent and it is *not* `contradicted`. A scenario
-#: that died mid-body — a `KeyError` on a field the plan misspelled, a timeout, a browser
-#: left unclean — never observed the product at all, and reporting that as a disproof is how
-#: a clean tree with a correct book got accused of a defect it did not have. The obligation
-#: is unproven, the plan is what failed, and the two route to different repairs.
-#: `insensitive` sits just above `covered` because it is the quietest of the failures: every
-#: assertion ran, every one passed, and none of them could have done anything else. It is
-#: below the three that report missing evidence because there *is* evidence here — it just
-#: does not discriminate — and a reader with both should repair the missing one first.
 STATUSES = (
     "contradicted",
     "unproven",
@@ -72,12 +38,7 @@ def read_json(path: Path, *, what: str) -> Any:
 
 
 def read_log(path: Path) -> list[dict[str, Any]]:
-    """The run ledger, one record per line.
-
-    A malformed line is fatal rather than skipped. This file is the ground truth every
-    status below is computed from, and silently dropping a record turns a contradiction into
-    a clean `uncovered` — the failure mode this whole exercise exists to remove.
-    """
+    """The run ledger, one record per line."""
     if not path.exists():
         raise EvidenceMapError(f"the run log is missing at {path} — has this spec been run?")
     records: list[dict[str, Any]] = []
@@ -94,12 +55,7 @@ def read_log(path: Path) -> list[dict[str, Any]]:
 
 
 def _artifacts_by_scenario(manifest: Any) -> dict[str, list[str]]:
-    """Which files each scenario produced, from the manifest that hashed them.
-
-    Read from the manifest rather than from the run log's own artifact records because the
-    manifest is what `artifact vet` holds a Pass row to: a row citing a file the manifest
-    does not carry is not evidence, whatever the log says was written.
-    """
+    """Which files each scenario produced, from the manifest that hashed them."""
     by_scenario: dict[str, list[str]] = {}
     if not is_mapping(manifest):
         return by_scenario
@@ -124,31 +80,13 @@ def _published(evidence: Any) -> dict[str, dict[str, Any]]:
 
 
 def _call_text(name: str, args: Any) -> str | None:
-    """The canonical spelling of one recorded check invocation, or `None` if it is not one.
-
-    Through `checks.bind`, which is the same canonicalisation a `verify:` bullet goes
-    through — argument order from the spec, `literal` rendering, booleans spelled the
-    book's way. Rendering it here by hand instead would compare two strings that agree only
-    by accident, and the first `count=1` written after a `title="…"` would read as a missing
-    check on an obligation that was in fact observed.
-    """
+    """The canonical spelling of one recorded check invocation, or `None` if it is not one."""
     bound = checks.bind(name, args if is_mapping(args) else {})
     return bound.text() if isinstance(bound, checks.CheckCall) else None
 
 
 def build_evidence_map(spec_dir: Path, *, label: str | None = None) -> dict[str, Any]:
-    """Join the four run artifacts into one row per obligation.
-
-    Raises :class:`EvidenceMapError` when an input is absent or unreadable. That is a
-    refusal, not an empty map: a map computed over a missing log would report every
-    obligation `uncovered`, which is indistinguishable from a run that genuinely asserted
-    nothing and is the more likely reading of the two.
-
-    ``label`` reads a dry run's ledger under ``<spec>/qa/<label>/`` instead of the scored
-    one, and must be the same label that run was given;
-    :class:`ostler.qa.session.ScratchLabelError` for one that could never have named a
-    ledger.
-    """
+    """Join the four run artifacts into one row per obligation."""
     qa_dir = spec_dir / (QA_DIRNAME if label is None else scratch_dirname(label))
     context = read_json(spec_dir / "qa-okf-context.json", what="the context packet")
     log = read_log(qa_dir / "qa-run.ndjson")
@@ -161,11 +99,6 @@ def build_evidence_map(spec_dir: Path, *, label: str | None = None) -> dict[str,
     overall = str(evidence.get("overall", "")) if is_mapping(evidence) else ""
 
     asserts = [record for record in log if record.get("kind") == "assert"]
-    # The scenarios that stopped somewhere other than the end of their body. A passing
-    # assertion inside one of those proved a state the steps after it never got to leave, so
-    # it is not evidence that the obligation holds — and reading it as evidence is how a
-    # browser locator timing out on the one assertion that would have exposed a defect went
-    # out as a covered obligation under an `overall: Fail`.
     aborted_scenarios = {
         str(record.get("scenario", ""))
         for record in log
@@ -183,11 +116,6 @@ def build_evidence_map(spec_dir: Path, *, label: str | None = None) -> dict[str,
         for obligation in context.get("obligations", []) or []
         if is_mapping(obligation) and obligation.get("id")
     ]
-    # Only the obligations the change *owes evidence for*. A context packet also carries the
-    # ones pulled in for reading — `required: false`, `evidenceRequired: "context"`, a flow's
-    # neighbours — and on a real story they outnumber the owed ones ten to one. Counting them
-    # would report a fully-evidenced run as a thousand gaps, which is the same uselessness as
-    # reporting none.
     owed = [obligation for obligation in scope if obligation.get("required", True)]
     rows = [
         _row(
@@ -234,10 +162,6 @@ def _row(
         if record.get("result") == "PASS"
         and str(record.get("scenario", "")) in aborted_scenarios
     ]
-    # A failing record is only a disproof if the *plan* made it. The harness synthesizes one
-    # over every obligation an aborted scenario claimed (see `PythonDriver._grade`), and that
-    # record reports the scenario, not the product — so it is partitioned out here rather
-    # than counted as an assertion that ran and disagreed.
     failing = [
         record
         for record in bound
@@ -261,9 +185,6 @@ def _row(
         and (call := _call_text(str(record["check"]), record.get("check_args"))) is not None
     }
     missing = [call for call in declared if call not in observed]
-    # Asked of the *declaration*, not of the run: a call's sensitivity is a property of the
-    # check and its arguments, so it is the same answer whatever the product did, and asking
-    # it here is what keeps a green ledger from being read as a proof it is not.
     insensitive = [
         call for call in declared
         if isinstance(parsed := checks.parse_check(call), checks.CheckCall)
@@ -305,9 +226,6 @@ def _row(
     if failing:
         row["failingLogRefs"] = [_ref(record) for record in failing]
     if aborted or sentinels:
-        # One field for both, because they are the same fact about this obligation: the
-        # scenario stopped early, so nothing it recorded — the asserts that passed before the
-        # stop, or the harness's own note that there was one — says what the product does.
         row["abortedLogRefs"] = [_ref(record) for record in [*aborted, *sentinels]]
     if obligation_id in published:
         row["publishedVerdict"] = str(published[obligation_id].get("verdict", ""))
@@ -331,21 +249,7 @@ def _classify(
     insensitive: list[str],
     published: dict[str, Any] | None,
 ) -> tuple[str, str]:
-    """The status, and the sentence that says how it was reached.
-
-    Ordered by what a reader must act on first. A disproof outranks a gap, because an
-    obligation with a failing assertion is a product defect and one with none is a QA
-    defect, and routing them the same way sends the wrong agent. A published verdict the log
-    does not support outranks both: it means the artifact downstream consumers read is
-    wrong about this obligation, which no amount of correct QA work below it repairs.
-
-    The same reasoning is why an aborted scenario is `unproven` and not `contradicted`. It
-    reads like a disproof — there is a failing record bound to the obligation — but the
-    record is the harness's, written *because* nothing observed the product, and the usual
-    cause is a defect in the plan: a misspelled field, a timeout, a step that raised. Scoring
-    that as a product defect accuses whatever tree happened to be under it, including a clean
-    one, and sends the repair to the wrong lane.
-    """
+    """The status, and the sentence that says how it was reached."""
     verdict = str(published.get("verdict", "")) if published else ""
     if failing:
         return (
@@ -417,12 +321,7 @@ def _classify(
 
 
 def render_evidence_map(data: dict[str, Any], *, only: str = "") -> list[str]:
-    """The map as lines, worst status first.
-
-    Sorted by status rather than by id because the reader is triaging, not auditing: the
-    rows that need work are the ones that are not `covered`, and an id-ordered list buries
-    them among however many hundred are fine.
-    """
+    """The map as lines, worst status first."""
     lines = [
         f"# QA evidence map — run {data.get('runId') or '(unknown)'}, "
         f"overall {data.get('overall') or '(none)'}",

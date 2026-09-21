@@ -1,11 +1,4 @@
-"""Tests for kit.load_jsonc — the reader for VSCode `.code-workspace` files.
-
-The version this replaces stripped comments with `re.sub(r"//[^\n]*", "", text)`, which
-does not know what a string literal is. Any workspace file holding a URL — and they
-routinely do, alongside `//` in paths — was truncated mid-string and then reported to the
-operator as invalid JSON. These pin that a real JSON5 parse reads the lenient syntax the
-format actually allows *and* leaves string contents alone.
-"""
+"""Tests for kit.load_jsonc — the reader for VSCode `.code-workspace` files."""
 from __future__ import annotations
 
 import pytest

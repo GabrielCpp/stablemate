@@ -1,6 +1,4 @@
-"""Orchestrate one `ostler vet` invocation: one screenshot + one manifest + one CDP session
-(or one regions replay) = one UI state.
-"""
+"""Orchestrate one `ostler vet` invocation: one screenshot + one manifest + one CDP session (or one regions replay) = one UI state."""
 
 from __future__ import annotations
 
@@ -32,8 +30,7 @@ def _relative(path: Path, root: Path) -> str:
 
 
 def _crop_stem(name: str, i: int) -> str:
-    """A filename-safe stem for a matched component's crop; positional fallback when the
-    manifest entry carries no `name`."""
+    """A filename-safe stem for a matched component's crop; positional fallback when the manifest entry carries no `name`."""
     stem = re.sub(r"[^A-Za-z0-9_-]+", "-", name).strip("-")
     return stem or f"component-{i}"
 
@@ -42,10 +39,7 @@ def run_vet(graph: Graph, screenshot: Path, manifest: Path, slug: str, *,
             cdp_url: str | None = None, regions_file: Path | None = None,
             state: str = "default", iou_threshold: float = 0.5,
             ) -> tuple[VetOutcome, report_mod.VetPlan]:
-    """Exactly one of *cdp_url*/*regions_file* is set (enforced by the CLI's mutually
-    exclusive group). The `--cdp-url` path connects, scans, and merges regions itself,
-    persisting the classification to `docs/specs/<slug>/vet/<state>-regions.json` as part of
-    the returned (dry-run-safe) plan; the `--regions` path replays a previously-written one."""
+    """Exactly one of *cdp_url*/*regions_file* is set (enforced by the CLI's mutually exclusive group)."""
     spec_dir = graph.doc_roots["specs"] / slug
     vet_dir = spec_dir / "vet"
     writes: list[report_mod.VetFileWrite] = []
@@ -77,8 +71,6 @@ def run_vet(graph: Graph, screenshot: Path, manifest: Path, slug: str, *,
         match_result.unlabeled[i].crop = f"vet/{name}"
         writes.append(report_mod.VetFileWrite(vet_dir / name, data))
 
-    # Every matched documented component also gets its own visual snippet, cut from the
-    # rendered region (not the manifest's expected bbox).
     component_crops = crop_mod.maybe_crop(
         screenshot, [pair.region for pair in match_result.matched])
     for i, data in component_crops.items():

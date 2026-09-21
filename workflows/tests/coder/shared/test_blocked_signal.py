@@ -1,10 +1,4 @@
-"""The two questions every coder node's return can now be asked, and their edges.
-
-`blocked` decides whether a node hands its work on rather than churning; `actionable`
-decides *who* it hands it to — a fixer who was given somewhere to go and something to
-change, or the operator. Both are derived rather than declared, and the reason is a
-failure mode rather than a preference, so each of those derivations is pinned here.
-"""
+"""The two questions every coder node's return can now be asked, and their edges."""
 from __future__ import annotations
 
 import pathlib
@@ -36,16 +30,10 @@ def test_every_spelling_of_giving_up_reads_as_blocked() -> None:
 
 
 def test_an_unanswered_node_is_not_blocked() -> None:
-    """The load-bearing edge.
-
-    After the resilience ladder's last rung a node emits its keys as null, `_drop_nulls`
-    drops them and every field falls back to its default. If "hand this to the operator"
-    were a defaulted field it would fire on every node the ladder failed to answer, and the
-    conservative arm would silently become an escalation.
-    """
+    """The load-bearing edge."""
     assert not _Stated().blocked
     assert not _Stated.model_validate({"status": None}).blocked
-    assert not CoderResult().blocked  # no status field at all
+    assert not CoderResult().blocked
 
 
 def test_blocked_ignores_case_and_surrounding_space() -> None:
@@ -92,12 +80,7 @@ def test_a_block_with_no_evidence_is_a_block_with_nothing_to_route() -> None:
 
 
 def test_the_narrowed_finding_lists_still_answer_actionable() -> None:
-    """`findings` is read off the subclass, so each lane's own element type must work.
-
-    `QaAssessment` and `DocumentationReview` narrow the list to their own `Finding`
-    subclass. A field declared on the base would have made both an incompatible override;
-    reading it by name is what lets them keep the type they need.
-    """
+    """`findings` is read off the subclass, so each lane's own element type must work."""
     assessment = QaAssessment(
         status="assessed",
         disposition="repair_plan",
@@ -119,20 +102,11 @@ def test_the_narrowed_finding_lists_still_answer_actionable() -> None:
             DocumentationFinding(id="D2", kind="overclaim", target="okf/api.md"),
         ],
     )
-    # `actionable` answers in the shared vocabulary, not each lane's — the id and the
-    # closed `kind` axis stay on the concrete list, which is where their consumers read them.
     assert [f.repair for f in review.actionable] == ["cite the new handler"]
 
 
 def test_the_review_lane_parses_the_loose_findings_it_used_to_declare() -> None:
-    """`CodeReviewResult.findings` was `list[dict[str, Any]]`.
-
-    The prompt's own keys still parse — extras are ignored — so the change is not a break
-    in what the turn may say, only in what the router may believe about it. `category` is
-    the exception and it is deliberate: it is a closed vocabulary the implementation
-    reviewer selects on, so a finding that omits it is a parse failure the runner retries,
-    not a finding that silently arrives uncategorised.
-    """
+    """`CodeReviewResult.findings` was `list[dict[str, Any]]`."""
     result = CodeReviewResult.model_validate(
         {
             "status": "blocked",
@@ -148,14 +122,7 @@ def test_the_review_lane_parses_the_loose_findings_it_used_to_declare() -> None:
 
 
 def test_the_shape_the_review_prompt_emits_is_actionable() -> None:
-    """The finding the prompt asks for, parsed by the model that receives it.
-
-    These two documents drifted once: the prompt emitted `repo`/`file`/`line`/`required_fix`
-    while the model declared `target`/`issue`/`repair`, and `extra="ignore"` made the
-    disagreement silent — every finding arrived with its repair stripped, so none was ever
-    `actionable` and a block that a fixer could have taken went to the operator instead.
-    Nothing but a test holds a prompt and a schema together, so this is that test.
-    """
+    """The finding the prompt asks for, parsed by the model that receives it."""
     result = CodeReviewResult.model_validate(
         {
             "status": "findings",
@@ -183,17 +150,7 @@ def test_the_shape_the_review_prompt_emits_is_actionable() -> None:
 
 
 def test_the_review_prompt_asks_for_the_keys_the_model_reads() -> None:
-    """The other half of the pairing: read the prompt, not a copy of it.
-
-    A shape-check on hand-written JSON only proves the model parses what this file typed.
-    The document the agent is handed is the one that has to name `target` and `repair`, and
-    must not go back to naming the keys the model drops on the floor.
-
-    It cannot drift any more, because the prompt no longer *has* a contract to drift: it
-    renders `{{ result_schema }}`, which the turn fills from the same model this file
-    validates against. So the assertion moved to where the two are joined — the prompt
-    delegates, and what the delegation produces names the keys.
-    """
+    """The other half of the pairing: read the prompt, not a copy of it."""
     prompt = (
         pathlib.Path(__file__).resolve().parents[3]
         / "src/workhorse_workflows/coder/review/prompts/code-review.md"

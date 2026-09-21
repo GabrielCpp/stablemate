@@ -1,19 +1,4 @@
-"""`workhorse-<name> control reload` — the operator's half of a live reload.
-
-The run being reloaded is a different process, usually in a different container, so this
-command is exactly three things: work out which run dir is meant, say it on that run's
-control socket, and report what the run appeared to be doing. What it must *not* do is
-block waiting for the reload to land — the whole point is a one-line nudge that ends,
-not a second foreground process to watch.
-
-The tests below pin the halves that fail quietly: the message carries the flags that were
-typed (a `--at-boundary` silently dropped would cut a turn the operator asked to let
-finish), the run is resolved by every name the operator already has for it, and — the one
-the request file could never do — a run nobody is listening for is an error rather than a
-message written into a directory and never read.
-
-Run: uv run python tests/test_control_command.py   (or via pytest)
-"""
+"""`workhorse-<name> control reload` — the operator's half of a live reload."""
 
 from __future__ import annotations
 
@@ -60,17 +45,11 @@ def _run_dir(runs: Path, name: str = "demo-t", *, terminal: str | None = None) -
 
 
 class _Listener:
-    """A run that is listening, standing in for the process being reloaded.
-
-    The command talks to a socket now, so a test of it needs something on the other end.
-    The reply is served from a thread because the client waits for one on the same
-    connection — the same shape the streaming loop has, minus the turn it is cutting.
-    """
+    """A run that is listening, standing in for the process being reloaded."""
 
     def __init__(self, run_dir: Path) -> None:
         self.channel = control.SocketChannel.open(run_dir)
         self.taken: list[control.Request] = []
-        #: What this stand-in replies with, when a test needs a particular verdict.
         self.answer: dict[str, object] | None = None
         self._stop = threading.Event()
         self._thread = threading.Thread(target=self._serve, daemon=True)
@@ -121,22 +100,17 @@ def test_reload_says_it_on_the_socket_the_run_is_listening_on(capsys) -> None:
         with _listening(run_dir) as listener:
             _control(runs, "reload", "--run", "t", "--runs-dir", str(runs))
 
-        # The default is to cut the turn, because the default reason to reload is that
-        # the turn is burning tokens on a flow the operator has already fixed.
         assert [(r.action, r.core, r.at_boundary) for r in listener.taken] == [
             ("reload", False, False)
         ]
         out = capsys.readouterr().out
-        # The report is evidence, not confirmation — it says where the run was, so a
-        # request that landed on the wrong run is visible immediately.
         assert "Qa.plan_story" in out, out
         assert f"pid {os.getpid()} is alive" in out, out
         assert "'cut': True" in out, out
 
 
 def test_the_flags_that_were_typed_are_the_flags_that_are_sent() -> None:
-    """A dropped `--at-boundary` would cut a turn the operator asked to let land, and a
-    dropped `--core` would silently reload half of what was asked for."""
+    """A dropped `--at-boundary` would cut a turn the operator asked to let land, and a dropped `--core` would silently reload half of what was asked for."""
     with tempfile.TemporaryDirectory() as tmp:
         runs = Path(tmp) / "runs"
         run_dir = _run_dir(runs)
@@ -150,8 +124,7 @@ def test_the_flags_that_were_typed_are_the_flags_that_are_sent() -> None:
 
 
 def test_a_run_is_found_by_its_id_its_dir_name_or_its_path() -> None:
-    """The three spellings an operator already has in their shell history. A name that
-    resumes a run has to be a name that can reload it, or the two commands drift."""
+    """The three spellings an operator already has in their shell history."""
     with tempfile.TemporaryDirectory() as tmp:
         runs = Path(tmp) / "runs"
         run_dir = _run_dir(runs)
@@ -164,9 +137,7 @@ def test_a_run_is_found_by_its_id_its_dir_name_or_its_path() -> None:
 
 
 def test_an_id_groom_knows_resolves_to_the_run_dir_groom_names(capsys, monkeypatch) -> None:
-    """The id an operator holds comes from `groom status`, and the run dir behind it
-    lives in the target repo — not under the cwd's `./.agents/runs`. Asking groom is
-    what turns "no run dir" from any other directory into the reload that was meant."""
+    """The id an operator holds comes from `groom status`, and the run dir behind it lives in the target repo — not under the cwd's `./.agents/runs`."""
     with tempfile.TemporaryDirectory() as tmp:
         elsewhere = Path(tmp) / "target-repo" / ".agents" / "runs"
         run_dir = _run_dir(elsewhere, "demo-ghost")
@@ -184,8 +155,7 @@ def test_an_id_groom_knows_resolves_to_the_run_dir_groom_names(capsys, monkeypat
 
 
 def test_a_groom_row_for_another_workflow_is_not_this_run(capsys, monkeypatch) -> None:
-    """Ids are minted per workflow, and `workhorse-demo control` can only speak to a
-    demo run — a same-named run of another workflow is a different socket."""
+    """Ids are minted per workflow, and `workhorse-demo control` can only speak to a demo run — a same-named run of another workflow is a different socket."""
     with tempfile.TemporaryDirectory() as tmp:
         elsewhere = Path(tmp) / "target-repo" / ".agents" / "runs"
         run_dir = _run_dir(elsewhere, "demo-ghost")
@@ -205,8 +175,7 @@ def test_a_groom_row_for_another_workflow_is_not_this_run(capsys, monkeypatch) -
 
 
 def test_with_no_run_named_the_newest_unfinished_run_is_taken(capsys) -> None:
-    """Worth having and worth bounding: the operator watching one run should not have to
-    retype an id they never chose, but a finished run must not absorb the request."""
+    """Worth having and worth bounding: the operator watching one run should not have to retype an id they never chose, but a finished run must not absorb the request."""
     with tempfile.TemporaryDirectory() as tmp:
         runs = Path(tmp) / "runs"
         done = _run_dir(runs, "demo-done", terminal="terminal")
@@ -221,10 +190,7 @@ def test_with_no_run_named_the_newest_unfinished_run_is_taken(capsys) -> None:
 
 
 def test_a_run_that_does_not_exist_is_an_error_not_a_new_directory(capsys, monkeypatch) -> None:
-    """A mistyped path used to be created on the way to writing a request into it, and
-    the operator would be left watching a run that never sees it. With no groom to ask
-    (port 1 on loopback refuses at once) the error still lands, and says groom was
-    tried — the difference between "there is no such run" and "nobody could check"."""
+    """A mistyped path used to be created on the way to writing a request into it, and the operator would be left watching a run that never sees it."""
     monkeypatch.setenv("GROOM_URL", "http://127.0.0.1:1")
     with tempfile.TemporaryDirectory() as tmp:
         runs = Path(tmp) / "runs"
@@ -241,9 +207,7 @@ def test_a_run_that_does_not_exist_is_an_error_not_a_new_directory(capsys, monke
 
 
 def test_a_run_nobody_is_listening_for_is_an_error_not_a_reassuring_line(capsys) -> None:
-    """The failure the request file could not report. A channel exists only while the run
-    does, so nothing listening means nothing will ever act — and saying "reload requested"
-    for a run that finished hours ago is the misreport this exit code exists to prevent."""
+    """The failure the request file could not report."""
     with tempfile.TemporaryDirectory() as tmp:
         runs = Path(tmp) / "runs"
         _run_dir(runs, "demo-t", terminal="terminal")
@@ -258,13 +222,7 @@ def test_a_run_nobody_is_listening_for_is_an_error_not_a_reassuring_line(capsys)
 
 
 def test_status_is_answered_by_the_run_and_not_by_the_run_dir(capsys) -> None:
-    """The one thing the disk cannot say: this process is still serving this run dir.
-
-    A pid in `run.json` and a checkpoint on disk survive the process that wrote them, so
-    reading them proves nothing about what is happening now. A reply on the run's own
-    socket does, which is why `status` is a message rather than a second reader of the
-    same files.
-    """
+    """The one thing the disk cannot say: this process is still serving this run dir."""
     with tempfile.TemporaryDirectory() as tmp:
         runs = Path(tmp) / "runs"
         run_dir = _run_dir(runs)
@@ -279,14 +237,10 @@ def test_status_is_answered_by_the_run_and_not_by_the_run_dir(capsys) -> None:
         out = capsys.readouterr().out
         assert "attached: True" in out, out
         assert "state: plan_story" in out, out
-        # Answered below the wait, so the run never had to stop what it was doing —
-        # the property that makes `status` safe to ask of a run in a six-day cap sleep.
         assert listener.taken == []
 
 
 def test_a_run_that_never_answered_reports_from_disk_and_says_which_it_is(capsys) -> None:
-    # A busy script node reads the channel only between turns, so an unanswered query is
-    # normal. What must not happen is it reading as an error, or as an answer.
     with tempfile.TemporaryDirectory() as tmp:
         runs = Path(tmp) / "runs"
         run_dir = _run_dir(runs)
@@ -300,10 +254,7 @@ def test_a_run_that_never_answered_reports_from_disk_and_says_which_it_is(capsys
 
 
 def test_a_cli_switch_travels_as_a_core_reload_naming_the_cli(capsys) -> None:
-    """`switch-cli` is not a verb on the wire, on purpose. Every waiting site already
-    knows how to honour a `--core` reload, and honouring a switch is that plus one
-    argument in the argv the new image comes back on — so a verb of its own would need a
-    consumer at each of those sites just to mean the same thing."""
+    """`switch-cli` is not a verb on the wire, on purpose."""
     with tempfile.TemporaryDirectory() as tmp:
         runs = Path(tmp) / "runs"
         run_dir = _run_dir(runs)
@@ -318,9 +269,7 @@ def test_a_cli_switch_travels_as_a_core_reload_naming_the_cli(capsys) -> None:
 
 
 def test_a_switch_with_no_cli_and_a_reload_with_one_are_both_refused(capsys) -> None:
-    """Both directions, because both are silent otherwise: a switch with nothing to
-    switch to would go out as a plain reload, and a name typed after `reload` would be
-    dropped — which from the operator's side looks exactly like a switch that worked."""
+    """Both directions, because both are silent otherwise: a switch with nothing to switch to would go out as a plain reload, and a name typed after `reload` would be dropped — which from the operator's side looks exactly like a switch that worked."""
     with tempfile.TemporaryDirectory() as tmp:
         runs = Path(tmp) / "runs"
         _run_dir(runs)
@@ -337,10 +286,7 @@ def test_a_switch_with_no_cli_and_a_reload_with_one_are_both_refused(capsys) -> 
 
 
 def test_a_profile_switch_is_its_own_verb_carrying_the_name(capsys) -> None:
-    """The opposite of `switch-cli`: nothing about it is a reload. The profile is
-    re-narrowed every turn, so the run only has to be told a name — no process image, and
-    no `--core`. Its own field rather than a second meaning for `cli`, because the two are
-    independent axes and the run has to know which was meant."""
+    """The opposite of `switch-cli`: nothing about it is a reload."""
     with tempfile.TemporaryDirectory() as tmp:
         runs = Path(tmp) / "runs"
         run_dir = _run_dir(runs)
@@ -355,8 +301,7 @@ def test_a_profile_switch_is_its_own_verb_carrying_the_name(capsys) -> None:
 
 
 def test_a_refused_profile_switch_exits_nonzero(capsys) -> None:
-    """The run is what refuses — an unknown profile, or one with no entries for the CLI
-    this run drives — and an operator's script must be able to see that."""
+    """The run is what refuses — an unknown profile, or one with no entries for the CLI this run drives — and an operator's script must be able to see that."""
     with tempfile.TemporaryDirectory() as tmp:
         runs = Path(tmp) / "runs"
         run_dir = _run_dir(runs)
@@ -372,8 +317,7 @@ def test_a_refused_profile_switch_exits_nonzero(capsys) -> None:
 
 
 def test_questions_prints_the_gate_the_run_is_parked_on(capsys) -> None:
-    """Answered below the wait, like `status`: the listener never sees the request, so
-    the verb is safe to ask of a run parked for days — nothing about it ends the wait."""
+    """Answered below the wait, like `status`: the listener never sees the request, so the verb is safe to ask of a run parked for days — nothing about it ends the wait."""
     with tempfile.TemporaryDirectory() as tmp:
         runs = Path(tmp) / "runs"
         run_dir = _run_dir(runs)
@@ -403,8 +347,7 @@ def test_questions_prints_the_gate_the_run_is_parked_on(capsys) -> None:
 
 
 def test_questions_says_when_the_run_is_not_blocked(capsys) -> None:
-    """An empty list is the well-formed answer of a run that is working, and it must not
-    read like an error or like a run that never answered."""
+    """An empty list is the well-formed answer of a run that is working, and it must not read like an error or like a run that never answered."""
     with tempfile.TemporaryDirectory() as tmp:
         runs = Path(tmp) / "runs"
         run_dir = _run_dir(runs)
@@ -436,8 +379,7 @@ def test_an_answer_carries_the_gate_and_the_text_and_reports_the_landing(capsys)
 
 
 def test_answer_text_can_come_from_stdin(monkeypatch) -> None:
-    """A multi-line answer is already in a file or a heredoc; retyping it after --text
-    is the workflow this arm removes."""
+    """A multi-line answer is already in a file or a heredoc; retyping it after --text is the workflow this arm removes."""
     with tempfile.TemporaryDirectory() as tmp:
         runs = Path(tmp) / "runs"
         run_dir = _run_dir(runs)
@@ -448,7 +390,6 @@ def test_answer_text_can_come_from_stdin(monkeypatch) -> None:
             _control(runs, "answer", "--run", "t", "--runs-dir", str(runs))
 
         assert [r.body for r in listener.taken] == ["go ahead\nand push it\n"]
-        # No --gate: the run answers whichever gate it is waiting on.
         assert [r.path for r in listener.taken] == [""]
 
 
@@ -470,8 +411,7 @@ def test_an_answer_with_no_text_and_a_terminal_is_refused_not_a_hang(capsys, mon
 
 
 def test_a_refused_answer_exits_nonzero(capsys) -> None:
-    """The run is what refuses — already answered, or parked on a different gate — and
-    an operator's script must not read a refusal as an answer that landed."""
+    """The run is what refuses — already answered, or parked on a different gate — and an operator's script must not read a refusal as an answer that landed."""
     with tempfile.TemporaryDirectory() as tmp:
         runs = Path(tmp) / "runs"
         run_dir = _run_dir(runs)
@@ -488,8 +428,7 @@ def test_a_refused_answer_exits_nonzero(capsys) -> None:
 
 
 def test_the_answer_flags_are_refused_on_every_other_verb(capsys) -> None:
-    """A --text typed after reload would be silently dropped, which from the operator's
-    side reads exactly like an answer that landed."""
+    """A --text typed after reload would be silently dropped, which from the operator's side reads exactly like an answer that landed."""
     with tempfile.TemporaryDirectory() as tmp:
         runs = Path(tmp) / "runs"
         _run_dir(runs)

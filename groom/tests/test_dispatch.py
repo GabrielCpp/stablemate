@@ -1,11 +1,4 @@
-"""groom's dispatch queues: config-declared lanes, capped at their own concurrency.
-
-No agent process here either (see `test_attend.py`'s own note): every launch is faked
-with a process this test controls the exit of, and the one process actually spawned
-(`test_stop_kills_a_running_item_and_frees_its_slot`) is a sleeper this test kills.
-
-Run: uv run pytest groom/tests/test_dispatch.py
-"""
+"""groom's dispatch queues: config-declared lanes, capped at their own concurrency."""
 from __future__ import annotations
 
 import json
@@ -66,8 +59,7 @@ Configure = Callable[..., None]
 
 @pytest.fixture
 def dispatching(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Configure]:
-    """A groom whose database and config are this test's own, with no queue slot
-    left over from a previous test's concurrency (see `dispatch.reset`)."""
+    """A groom whose database and config are this test's own, with no queue slot left over from a previous test's concurrency (see `dispatch.reset`)."""
 
     def _configure(**queues: dict[str, Any]) -> None:
         monkeypatch.setenv("GROOM_DB", str(tmp_path / "groom.db"))
@@ -104,7 +96,6 @@ def _status(item_id: str) -> str:
     return row["status"]
 
 
-# ---- enqueue & concurrency -------------------------------------------------------
 def test_unknown_queue_raises_rather_than_being_minted(dispatching: Configure):
     """A queue is declared by config, never created by the first thing enqueued at it."""
     dispatching()
@@ -134,7 +125,6 @@ def test_a_burst_past_capacity_runs_only_k_and_leaves_the_rest_pending(
     pending = [i for i in ids if rows[i] == store.DISPATCH_PENDING]
     assert (len(running), len(pending)) == (2, 3)
 
-    # Finishing one running item frees a slot the drain hands to the next pending one.
     procs[0].done.set()
     _await(lambda: len(calls) == 3, "a third item to launch once a slot frees")
     for proc in procs[1:]:
@@ -177,7 +167,6 @@ def test_two_queues_with_the_same_command_are_independent(
     procs["b"].done.set()
 
 
-# ---- cancel & stop ----------------------------------------------------------------
 def test_cancelling_a_pending_item_never_spawns_it(
     dispatching: Configure, monkeypatch: pytest.MonkeyPatch,
 ):
@@ -192,7 +181,6 @@ def test_cancelling_a_pending_item_never_spawns_it(
 
     assert dispatch.cancel_pending(second["item_id"]) is True
     assert _status(second["item_id"]) == store.DISPATCH_CANCELLED
-    # Already-terminal or already-running is not cancel_pending's job.
     assert dispatch.cancel_pending(first["item_id"]) is False
 
     holder.done.set()
@@ -200,7 +188,6 @@ def test_cancelling_a_pending_item_never_spawns_it(
         lambda: _status(first["item_id"]) != store.DISPATCH_RUNNING,
         "the running item to finish",
     )
-    # The cancelled item is never launched, even after a slot frees up.
     assert _status(second["item_id"]) == store.DISPATCH_CANCELLED
 
 
@@ -221,19 +208,14 @@ def test_stop_kills_a_running_item_and_frees_its_slot(dispatching: Configure):
     row = store.dispatch_get("i1")
     assert row is not None
     assert row["status"] == store.DISPATCH_CANCELLED
-    # A row that already finished is not something to stop twice.
     assert dispatch.stop("i1") is False
-    # The slot came back: a fresh acquire does not block.
     assert dispatch._slot("q", 1).acquire(blocking=False) is True
 
 
 def test_stop_prevails_over_the_killed_process_own_exit_code(
     dispatching: Configure, monkeypatch: pytest.MonkeyPatch,
 ):
-    """`stop()` marks the row `cancelled` the moment it sends the kill. The process's
-    own `wait()` reporting back later with the nonzero exit code the kill produced
-    must not relabel the row `failed`, and must not free the queue's slot a second
-    time on top of the one `stop()` already freed."""
+    """`stop()` marks the row `cancelled` the moment it sends the kill."""
     dispatching(q=dict(command="workhorse-loop-runner", concurrency=1))
     proc = _FakeProc(pid=100, code=-15)
     monkeypatch.setattr(dispatch, "_launch", lambda item_id, command, params: proc)
@@ -245,19 +227,16 @@ def test_stop_prevails_over_the_killed_process_own_exit_code(
     assert dispatch.stop(item_id) is True
     assert _status(item_id) == store.DISPATCH_CANCELLED
 
-    # The process's own wait() now returns, as if the kill had just landed.
     proc.done.set()
     _await(lambda: dispatch._slot("q", 1).acquire(blocking=False), "the slot to free exactly once")
     assert dispatch._slot("q", 1).acquire(blocking=False) is False
     assert _status(item_id) == store.DISPATCH_CANCELLED
 
 
-# ---- boot recovery ------------------------------------------------------------
 def test_boot_recovery_leaves_an_alive_item_running_and_fails_a_dead_one(
     dispatching: Configure,
 ):
-    """Alive → the row is still true, groom just isn't watching it anymore. Dead → the
-    row is closed `failed`, never relaunched (unlike `attend`'s own boot recovery)."""
+    """Alive → the row is still true, groom just isn't watching it anymore."""
     dispatching()
     alive = _sleeper()
     dead = subprocess.Popen([sys.executable, "-c", ""])
@@ -280,8 +259,7 @@ def test_boot_recovery_leaves_an_alive_item_running_and_fails_a_dead_one(
 def test_boot_recovery_seeds_the_slot_so_the_cap_still_holds(
     dispatching: Configure, monkeypatch: pytest.MonkeyPatch,
 ):
-    """An alive orphan left `running` still occupies a real slot somewhere — a fresh
-    process must not hand out its queue's full concurrency on top of it."""
+    """An alive orphan left `running` still occupies a real slot somewhere — a fresh process must not hand out its queue's full concurrency on top of it."""
     dispatching(q=dict(command="workhorse-loop-runner", concurrency=2))
     alive = _sleeper()
     try:
@@ -300,8 +278,6 @@ def test_boot_recovery_seeds_the_slot_so_the_cap_still_holds(
         items = [dispatch.enqueue("q") for _ in range(2)]
         ids = [item["item_id"] for item in items]
 
-        # The orphan already holds one of this queue's two slots, so only one of the
-        # two freshly-enqueued items may launch — not both.
         _await(lambda: len(calls) == 1, "only one new item to launch alongside the orphan")
         time.sleep(0.1)
         assert len(calls) == 1
@@ -314,7 +290,6 @@ def test_boot_recovery_seeds_the_slot_so_the_cap_still_holds(
         alive.wait(timeout=WAIT_S)
 
 
-# ---- the app edges --------------------------------------------------------------
 def _client() -> TestClient:
     with patch.object(discovery, "scan", return_value=[]), \
          patch.object(discovery, "present_container_ids", return_value=None):
@@ -334,9 +309,6 @@ def test_get_queues_reports_concurrency_and_occupancy_under_load(
 ):
     """The one endpoint the dashboard pane and `groom dispatch queues` both read."""
     dispatching(q=dict(command="workhorse-loop-runner", concurrency=2))
-    # `create_app()` below runs its own boot-recovery pass, which would fail a
-    # `running` row whose pid is not actually alive — so these fakes borrow this
-    # test process's own, very much alive, pid.
     procs = [_FakeProc(pid=os.getpid()) for _ in range(3)]
     calls: list[str] = []
 
@@ -364,7 +336,6 @@ def test_get_queues_reports_concurrency_and_occupancy_under_load(
             proc.done.set()
 
 
-# ---- params schema & templates ---------------------------------------------------
 def test_queue_status_exposes_the_configured_params_schema(dispatching: Configure):
     """The dashboard's enqueue form renders straight off this — no hardcoded fields."""
     dispatching(
@@ -383,15 +354,13 @@ def test_queue_status_exposes_the_configured_params_schema(dispatching: Configur
     assert params["plan"]["required"] is True
     assert params["cli"]["type"] == "select"
     assert params["cli"]["options"] == ["claude", "codex"]
-    # `template` is a launch-time detail, not something the form needs to see.
     assert "template" not in params["plan"]
 
 
 def test_enqueue_expands_a_param_with_a_template_before_storing_it(
     dispatching: Configure, monkeypatch: pytest.MonkeyPatch,
 ):
-    """A queue-config `template` composes the operator's raw input into whatever the
-    target workflow's prompt actually needs — no per-workflow logic in `dispatch.py`."""
+    """A queue-config `template` composes the operator's raw input into whatever the target workflow's prompt actually needs — no per-workflow logic in `dispatch.py`."""
     dispatching(
         q=dict(
             command="workhorse-loop-runner",
@@ -414,8 +383,7 @@ def test_enqueue_expands_a_param_with_a_template_before_storing_it(
 def test_launch_forwards_cli_as_its_own_flag_not_inside_params(
     dispatching: Configure, monkeypatch: pytest.MonkeyPatch,
 ):
-    """`--cli` is `workhorse run`'s own flag, not a workflow param — a `cli` key in the
-    enqueue params must not leak into the `--params` JSON blob `_launch` builds."""
+    """`--cli` is `workhorse run`'s own flag, not a workflow param — a `cli` key in the enqueue params must not leak into the `--params` JSON blob `_launch` builds."""
     dispatching(q=dict(command="workhorse-loop-runner"))
     captured: dict[str, Any] = {}
 

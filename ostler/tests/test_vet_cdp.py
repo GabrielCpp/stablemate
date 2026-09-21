@@ -1,6 +1,4 @@
-"""Live-scan smoke test: the one vet test allowed to be slow/skippable when `playwright`
-(or its browser binary) isn't installed. Every other vet test stays fast and dependency-free.
-"""
+"""Live-scan smoke test: the one vet test allowed to be slow/skippable when `playwright` (or its browser binary) isn't installed."""
 from __future__ import annotations
 
 import functools
@@ -39,9 +37,7 @@ def _serve(root: Path) -> http.server.ThreadingHTTPServer:
 
 
 def _scan_in_thread(cdp_url: str) -> list:
-    """`connect_and_scan` opens its own sync_playwright; nesting that inside the test's
-    sync_playwright on one thread is rejected ("Sync API inside the asyncio loop"), so run
-    it the way production does — from a context with no playwright loop of its own."""
+    """`connect_and_scan` opens its own sync_playwright; nesting that inside the test's sync_playwright on one thread is rejected ("Sync API inside the asyncio loop"), so run it the way production does — from a context with no playwright loop of its own."""
     elements: list = []
     thread = threading.Thread(target=lambda: elements.extend(connect_and_scan(cdp_url)))
     thread.start()
@@ -66,11 +62,9 @@ def test_connect_and_scan_finds_landmark_roles(tmp_path: Path):
         server.shutdown()
 
     roles = {el.role for el in elements}
-    # landmarks
     assert "navigation" in roles
     assert "complementary" in roles
     assert "form" in roles
-    # computed element roles (implicit HTML→ARIA mapping)
     by_sel = {el.selector: el.role for el in elements}
     assert by_sel["#btn"] == "button"
     assert by_sel["#lnk"] == "link"

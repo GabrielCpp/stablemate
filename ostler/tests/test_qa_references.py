@@ -14,8 +14,7 @@ def test_a_capture_ref_is_found_in_free_text() -> None:
 
 
 def test_an_email_address_in_a_route_or_verify_arg_is_not_a_node_ref() -> None:
-    """`user@example.com` is a literal a book can legitimately assert, not a `@node.key`
-    reference — the `@` here is preceded by a word character, which the grammar never is."""
+    """`user@example.com` is a literal a book can legitimately assert, not a `@node.key` reference — the `@` here is preceded by a word character, which the grammar never is."""
     assert find_references("verify email equals user@example.com") == []
 
 
@@ -25,9 +24,7 @@ def test_an_email_address_does_not_mask_a_real_reference_elsewhere_in_the_text()
 
 
 def test_a_dollar_amount_directly_after_a_word_character_is_not_a_capture_ref() -> None:
-    """The same guard applies to `$`: a template variable embedded mid-identifier (e.g. a
-    price like `total$captured`, not a plausible book value, but the same class of false
-    positive as the email case) must not be preceded by a word character or `.`."""
+    """The same guard applies to `$`: a template variable embedded mid-identifier (e.g."""
     assert find_references("price.total$captured") == []
 
 

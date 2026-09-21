@@ -1,16 +1,4 @@
-"""The frozen QA plan for `claims-adjudication`.
-
-Two criteria here need more than a request each. The compare-and-swap needs two writes off
-one reading with no re-read between them — a scenario that fetches the claim again before
-the second write is proving the wrong thing, because the version it quotes is current by
-construction. And the durability of a decision needs the process that took it replaced:
-`agents.yml` opts this app's QA into `docker` for exactly that, and nothing else in this
-plan uses it.
-
-The three identities come from the auth emulator beside the service, so there is no
-credential in this file; the adjuster's role is a custom claim the emulator stamps on the
-token, which is what `403 Adjusters Only` is decided from.
-"""
+"""The frozen QA plan for `claims-adjudication`."""
 
 import json
 
@@ -19,13 +7,9 @@ from ostler_qa import HttpError, Qa, plan, scenario, target
 
 plan(run_id="qa-claims-adjudication", story="claims-adjudication")
 
-#: The auth emulator beside the service, at the path its REST surface is mounted on.
 EMULATOR = "http://localhost:18086/identitytoolkit.googleapis.com/v1"
 
-#: A policy holder. Sees their own claims and nobody else's.
 HOLDER_A = ("holder-a@example.com", "claims-bench-a")
-#: The adjuster. The role is a custom claim the emulator stamps on the token, which is what
-#: `403 Adjusters Only` is decided from.
 ADJUSTER = ("adjuster@example.com", "claims-bench-c")
 
 
@@ -51,9 +35,6 @@ def one_claim_awaiting_a_decision(qa: Qa) -> dict:
     """An emptied desk holding exactly cl-1001, filed by holder A at version 1."""
     holder, adjuster = sign_in(qa, HOLDER_A), sign_in(qa, ADJUSTER)
     qa.http.delete("/api/claims", headers=bearer(qa, adjuster), expect_status=204)
-    # The filed values are the ones the book's own `verify:` bullets on `#submit-claim` name.
-    # Filing writes the same claim record this story changes the decider of, so the sibling
-    # write is proven here rather than on values nothing in the book can check.
     filing = qa.http.post(
         "/api/claims",
         json_body={
@@ -120,13 +101,10 @@ def a_decision_is_recorded_and_outlives_the_process(qa: Qa) -> None:
     qa.verify("json_path", body, path="claim.version", equals="2", covers=["ac:1", "okf:docs/features/claims/http/claims-api.md#decide-claim:does:1"])
     qa.check("the adjuster's note is carried onto the decided claim", qa.field(body, "claim.decision_note") == "Cover confirmed against the schedule.", covers=["ac:1", "okf:docs/features/claims/flows/decide-a-claim.md:end:1"])
 
-    # The claim was Submitted a moment ago in this same process, so a re-read here is answered
-    # by whatever the process is holding. The process has to go before the re-read means anything.
     restart = qa.tool("docker").run("compose", "-f", "compose.yml", "restart", "app", timeout=120.0)
     qa.check("the service restarts cleanly between the decision and the re-read", restart.ok, covers=["ac:2", "okf:docs/features/claims/http/claims-api.md#decide-claim:persistence:1"])
 
     def restarted_service_answers() -> bool:
-        # A refused connection during the restart window is "not yet", not a verdict.
         try:
             return qa.field(qa.http.get("/healthz").json(), "status") == "ok"
         except HttpError:
@@ -136,18 +114,10 @@ def a_decision_is_recorded_and_outlives_the_process(qa: Qa) -> None:
     reread = qa.field(qa.http.get("/api/claims/cl-1001", headers=bearer(qa, adjuster), expect_status=200).json(), "claim")
     qa.verify("persists", (qa.field(body, "claim"), reread), subject="claim cl-1001", covers=["ac:2", "okf:docs/features/claims/http/claims-api.md#decide-claim:persistence:1", "okf:docs/features/claims/flows/decide-a-claim.md:start:1", "okf:docs/features/claims/flows/decide-a-claim.md:end:1", "okf:docs/features/claims/flows/decide-a-claim.md:end-state"])
 
-    # This scenario already files a claim and then takes the process away, so what that proves
-    # about the record's *other* author is asserted here rather than left to the story that
-    # happens to touch the writer. The checks are the ones `#submit-claim` declares.
     filed = qa.field(who, "claim")
     filed_body = qa.field(who, "filed_body")
     qa.verify("json_path", filed_body, path="claim.amount_cents", equals="125000", covers=["okf:docs/features/claims/http/claims-api.md#submit-claim:consistency:1", "okf:docs/features/claims/http/claims-api.md#submit-claim:contract"])
     qa.verify("json_path", filed_body, path="claim.incident_date", equals="2099-03-14", covers=["okf:docs/features/claims/http/claims-api.md#submit-claim:consistency:1"])
-    # Only the fields filing authored: the decision above legitimately moved status, version
-    # and the note, so the whole record is not the thing that has to have survived. What
-    # `#submit-claim` promises is that what it wrote is still on file after the restart, and
-    # comparing the two records whole would accuse a clean product of losing a claim it never
-    # wrote.
     authored = ("id", "policy_number", "incident_date", "amount_cents", "description")
     qa.verify("persists", ({key: filed[key] for key in authored}, {key: reread[key] for key in authored}), subject="claim cl-1001", covers=["okf:docs/features/claims/http/claims-api.md#submit-claim:persistence:1"])
     json.dump({"filed": qa.field(who, "claim"), "decided": body, "after_restart": reread}, qa.artifact("steps/decision.json", kind="json").open("w"))
@@ -179,8 +149,6 @@ def a_decision_quoting_a_spent_version_is_refused(qa: Qa) -> None:
     who = one_claim_awaiting_a_decision(qa)
     adjuster = qa.field(who, "adjuster")
 
-    # One reading, and both writes quote it. Fetching the claim again before the second write
-    # is the whole defect this scenario exists to exclude — the version would be current.
     opened = qa.field(qa.http.get("/api/claims/cl-1001", headers=bearer(qa, adjuster), expect_status=200).json(), "claim")
     version = qa.field(opened, "version")
 
@@ -228,8 +196,6 @@ def only_an_adjuster_decides_and_only_in_the_documented_shape(qa: Qa) -> None:
     who = one_claim_awaiting_a_decision(qa)
     adjuster, holder = qa.field(who, "adjuster"), qa.field(who, "holder")
 
-    # Against cl-9999 deliberately: a 403 for a claim that does not exist can only have come
-    # from the role, so the ordering the book documents is what is being proved.
     forbidden = qa.http.post("/api/claims/cl-9999/decision", json_body={"decision": "approve", "version": 1}, headers=bearer(qa, holder), expect_status=403)
     qa.verify("http_status", forbidden, code=403, title="Adjusters Only", path="/api/claims/cl-9999/decision", covers=["ac:4", "okf:docs/features/claims/http/claims-api.md#decide-claim:authorization:1"])
 

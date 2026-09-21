@@ -1,23 +1,4 @@
-"""Tests for per-CLI environment config (``[cli.<backend>].env``).
-
-Some agent-CLI knobs exist only as environment variables — no flag, no config key
-workhorse could pass through. ``[cli.<backend>].env`` is the generic seam for
-them: the operator names the variables, workhorse forwards them to that CLI's
-subprocess and to nothing else.
-
-Two properties matter and are what this file pins:
-
-* **Resolution is total.** A missing, empty, or wrong-typed section yields ``{}``,
-  never an exception — a config read must not be what ends an unattended run.
-* **The env actually reaches the spawn.** Each backend resolves its own table and
-  hands it to the shared spawn path, so the variables land in the CLI's environment
-  rather than being resolved and dropped.
-
-Runnable two ways:
-
-    ./.venv/bin/python tests/test_config_harness_env.py
-    ./.venv/bin/python -m pytest tests/test_config_harness_env.py
-"""
+"""Tests for per-CLI environment config (``[cli.<backend>].env``)."""
 
 from __future__ import annotations
 
@@ -39,7 +20,6 @@ CONFIG = {
         "opencode": {"env": {"OPENCODE_DISABLE_AUTOCOMPACT": "1"}},
         "claude": {"env": {"MAX_THINKING_TOKENS": "31999"}},
     },
-    # A sibling top-level table, to prove the lookup is scoped and not a broad scan.
     "profiles": {
         "opencode": {
             "cli": "opencode",
@@ -49,7 +29,6 @@ CONFIG = {
 }
 
 
-# ── Resolution ────────────────────────────────────────────────────────────────
 
 
 def test_resolves_configured_backend():
@@ -65,21 +44,20 @@ def test_unconfigured_backend_is_empty():
 def test_missing_sections_never_raise():
     """Every shape a hand-edited config can take degrades to {}, not an exception."""
     for cfg in (
-        {},                                            # nothing configured at all
-        {"cli": {}},                                   # table present, no backends
-        {"cli": {"opencode": {}}},                     # backend present, no env
-        {"cli": {"opencode": {"env": {}}}},            # env present, empty
-        {"cli": "opencode"},                           # cli table is a string
-        {"cli": {"opencode": "env"}},                  # backend is a string
-        {"cli": {"opencode": {"env": "FOO=1"}}},       # env is a string, not a table
-        {"cli": {"opencode": {"env": ["FOO"]}}},       # env is an array
+        {},
+        {"cli": {}},
+        {"cli": {"opencode": {}}},
+        {"cli": {"opencode": {"env": {}}}},
+        {"cli": "opencode"},
+        {"cli": {"opencode": "env"}},
+        {"cli": {"opencode": {"env": "FOO=1"}}},
+        {"cli": {"opencode": {"env": ["FOO"]}}},
     ):
         assert resolve_harness_env("opencode", cfg) == {}, cfg
 
 
 def test_non_string_values_are_dropped():
-    """``FOO = 1`` is a TOML integer. Coercing it would make the config lie about
-    what the process received, so it is dropped and the string keys still resolve."""
+    """``FOO = 1`` is a TOML integer."""
     cfg = {
         "cli": {
             "opencode": {
@@ -98,22 +76,16 @@ def test_non_string_values_are_dropped():
     assert resolve_harness_env("opencode", cfg) == {"GOOD": "1"}
 
 
-# ── Delivery to the subprocess ────────────────────────────────────────────────
 
-#: The turn budget and the ladder's knobs are injected at the CLI edge; a test that
-#: drives a backend directly states them rather than relying on a module constant.
 RESILIENCE = AgentResilience()
 
 
 def _spawn_env(backend, **run_turn_kwargs):
-    """Drive ``backend.run_turn`` with the spawn path faked, returning the ``env_extra``
-    that reached ``stream_subprocess``. The CLI is never launched."""
+    """Drive ``backend.run_turn`` with the spawn path faked, returning the ``env_extra`` that reached ``stream_subprocess``."""
     seen = {}
 
     def fake_stream(cmd, node_id, timeout, on_line, **kwargs):
         seen.update(kwargs)
-        # Enough of a successful turn that classification does not raise: the JSONL
-        # backends each need their own terminal event.
         for line in (
             '{"type":"result","result":"ok","subtype":"success"}\n',
             '{"type":"turn.completed","result":"ok"}\n',
@@ -123,9 +95,6 @@ def _spawn_env(backend, **run_turn_kwargs):
             on_line(line)
         return False, 0
 
-    # Only the shared classifier is stubbed: every backend — Claude directly, the
-    # others through ``backends.turn.finalize_turn`` — ends its turn there, so one
-    # patch at that boundary covers all five without reaching into any adapter.
     with (
         patch.object(process, "stream_subprocess", fake_stream),
         patch.object(failure, "classify_turn", lambda *a, **k: "ok"),
@@ -146,9 +115,6 @@ def _with_config(cfg):
     )
 
 
-#: The one variable the opencode adapter exports on its own, whatever the config says
-#: (it lifts opencode's 32k output cap to the model's own limit); an operator's value
-#: for the same name wins. See ``backends.opencode``.
 OPENCODE_OWN = {"OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX": "131072"}
 
 
@@ -161,8 +127,7 @@ def test_configured_env_reaches_the_spawn():
 
 
 def test_every_backend_forwards_its_own_table():
-    """All five harnesses honor the seam — a backend that resolved but never passed
-    its env would silently ignore the operator's config."""
+    """All five harnesses honor the seam — a backend that resolved but never passed its env would silently ignore the operator's config."""
     for backend in (
         ClaudeBackend(),
         CodexBackend(),
@@ -178,17 +143,14 @@ def test_every_backend_forwards_its_own_table():
 
 
 def test_unconfigured_backend_spawns_with_no_extra_env():
-    """No config must mean no change to the inherited environment — an empty dict is
-    what ``stream_subprocess`` already treats as a no-op. opencode is the exception
-    by design: its adapter always exports its own output-cap override."""
+    """No config must mean no change to the inherited environment — an empty dict is what ``stream_subprocess`` already treats as a no-op."""
     with _with_config({}):
         assert _spawn_env(ClaudeBackend()) == {}
         assert _spawn_env(OpenCodeBackend()) == OPENCODE_OWN
 
 
 def test_compaction_runs_under_the_same_env():
-    """``/compact`` is the same harness on the same session; a knob that shapes the
-    conversation must also shape the turn that summarizes it."""
+    """``/compact`` is the same harness on the same session; a knob that shapes the conversation must also shape the turn that summarizes it."""
     seen = {}
 
     def fake_stream(cmd, node_id, timeout, on_line, **kwargs):
@@ -216,8 +178,7 @@ def test_compaction_runs_under_the_same_env():
 
 
 def test_harness_env_wins_over_the_inherited_shell():
-    """Applied last in ``stream_subprocess``'s merge, so configuring a variable for a
-    run overrides whatever the launching shell happened to export."""
+    """Applied last in ``stream_subprocess``'s merge, so configuring a variable for a run overrides whatever the launching shell happened to export."""
     captured = {}
 
     def fake_spawn(self, cmd, node_id, **kwargs):

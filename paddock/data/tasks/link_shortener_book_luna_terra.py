@@ -1,9 +1,4 @@
-"""Compare Luna and Terra rebuilding the same link-shortener OKF book.
-
-Both arms start from independent clones of one committed stripped baseline. The score
-keeps deterministic book quality separate from retries, tokens, elapsed time, and
-rate-card cost so a cheaper incomplete build cannot be mistaken for a better one.
-"""
+"""Compare Luna and Terra rebuilding the same link-shortener OKF book."""
 
 from __future__ import annotations
 

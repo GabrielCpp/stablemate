@@ -1,10 +1,4 @@
-"""Whether an epic's stories actually cover it.
-
-Ported from `base-library/workflows/author/scripts/validate-epic-coverage.py`.
-
-The YAML handed `validate_epic_coverage` two arguments and the script read only the first;
-`validate_coverage` takes the one it uses.
-"""
+"""Whether an epic's stories actually cover it."""
 from __future__ import annotations
 
 import logging
@@ -16,10 +10,6 @@ from workhorse_workflows.author.main.nodes import _stubs
 from workhorse_workflows.author.shared.paths import survey_repo_root
 from workhorse_workflows.author.shared.schemas.main import Defects
 
-#: `ostler doctor` error codes that mean this epic's coverage or story graph is broken.
-#: `unwritten-story` belongs here for the same reason `missing-story-file` does: an epic
-#: whose stories are bare scaffolds covers nothing, and the deterministic gate should say
-#: so without waiting for the reviewer to notice.
 _COVERAGE_CODES = {
     "orphan-seed",
     "dangling-seed",
@@ -37,12 +27,7 @@ def validate_coverage(
     repo_dir: str = "",
     require_authored: bool = True,
 ) -> Defects:
-    """Every seed covered by a story, the story graph acyclic, every story file present.
-
-    These are exactly what `ostler.doctor(epic=...)` computes, and the epic scope is the
-    point: ostler pins its findings to the named epic, so this gate cannot evaluate the
-    *wrong* epic's seeds and stories the way a whole-repo check once did.
-    """
+    """Every seed covered by a story, the story graph acyclic, every story file present."""
     epic_dir_rel = epic_dir.strip()
     if not epic_dir_rel:
         logger.warning("no epic_dir supplied")

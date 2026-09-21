@@ -1,12 +1,4 @@
-"""The by-node dataset export: the transpose of the archive, materialized on demand.
-
-What is asserted here is mostly *shape* — a dataset consumer reads these files without a
-human in the loop, so a field that quietly changed name is a silent corpus regression.
-The other half is that classification comes from the index and is exact: no heading
-regex, and therefore no bucket of sessions nobody can attribute to a node.
-
-Run: uv run pytest tests/test_export.py
-"""
+"""The by-node dataset export: the transpose of the archive, materialized on demand."""
 
 from __future__ import annotations
 
@@ -45,7 +37,7 @@ def _archive() -> Iterator[Path]:
                         {"message": {"role": "assistant", "content": "ok", "model": "acme-model"}}
                     )
                     + "\n"
-                    + json.dumps({"type": "attachment", "path": "a.png"})  # not a message
+                    + json.dumps({"type": "attachment", "path": "a.png"})
                     + "\n{ this line never parses\n",
                     encoding="utf-8",
                 )
@@ -73,8 +65,7 @@ def _read(target: Path, relative: str) -> dict:
 
 
 def test_the_layout_is_workflow_then_node_then_session():
-    """The transpose of the archive: every session that ran a node, in one directory, so
-    a prompt edit can be evaluated against all of them at once."""
+    """The transpose of the archive: every session that ran a node, in one directory, so a prompt edit can be evaluated against all of them at once."""
     with _archive() as tmp:
         target = tmp / "dataset"
         result = export.export_by_node(target)
@@ -87,7 +78,7 @@ def test_the_layout_is_workflow_then_node_then_session():
             "coder/plan-qa/tee__s2.json",
             "coder/write-docs/unknown__s3.json",
         ]
-        assert not list(target.rglob("*.part"))  # nothing half-written left behind
+        assert not list(target.rglob("*.part"))
 
 
 def test_a_session_carries_the_fields_the_dataset_reads():
@@ -96,7 +87,7 @@ def test_a_session_carries_the_fields_the_dataset_reads():
         export.export_by_node(target)
         session = _read(target, "coder/plan-qa/store__s1.json")
 
-    assert session["task"] == "plan-qa"  # from the index join, not from the prompt text
+    assert session["task"] == "plan-qa"
     assert session["source"] == "store"
     assert session["session_id"] == "s1"
     assert session["cwd"] == "/workspace/acme"
@@ -108,9 +99,7 @@ def test_a_session_carries_the_fields_the_dataset_reads():
 
 
 def test_a_non_message_line_and_a_broken_line_are_not_messages():
-    """A capture truncated at a byte cap ends mid-line by construction, and a session
-    store holds attachments and queue records beside the conversation. Neither is a
-    reason to lose the session."""
+    """A capture truncated at a byte cap ends mid-line by construction, and a session store holds attachments and queue records beside the conversation."""
     with _archive() as tmp:
         target = tmp / "dataset"
         export.export_by_node(target)
@@ -121,8 +110,7 @@ def test_a_non_message_line_and_a_broken_line_are_not_messages():
 
 
 def test_an_opencode_export_keeps_reasoning_and_tool_parts():
-    """This fails when the archive has a full OpenCode export but the by-node dataset
-    silently treats its non-JSONL shape as an empty transcript."""
+    """This fails when the archive has a full OpenCode export but the by-node dataset silently treats its non-JSONL shape as an empty transcript."""
     with _archive() as tmp:
         record = turns.transcripts_root() / "R1/001-00001-plan-qa__s1"
         (record / "transcript.jsonl").unlink()
@@ -189,8 +177,7 @@ def test_a_filter_narrows_the_export_to_one_node():
 
 
 def test_a_record_whose_bodies_are_gone_still_exports():
-    """Dropping it would make the export disagree with `transcript ls` about how many
-    times a node ran — which is the number the thrashing question turns on."""
+    """Dropping it would make the export disagree with `transcript ls` about how many times a node ran — which is the number the thrashing question turns on."""
     with _archive() as tmp:
         import shutil
 
@@ -204,8 +191,7 @@ def test_a_record_whose_bodies_are_gone_still_exports():
 
 
 def test_a_hostile_node_name_cannot_escape_the_target_directory():
-    """Node and workflow names are engine data, not attacker data — but they are
-    free-form, and one containing a slash would write outside the tree the caller named."""
+    """Node and workflow names are engine data, not attacker data — but they are free-form, and one containing a slash would write outside the tree the caller named."""
     with _archive() as tmp:
         store.insert_turns([
             {

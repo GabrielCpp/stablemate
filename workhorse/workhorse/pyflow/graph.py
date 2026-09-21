@@ -1,26 +1,4 @@
-"""The state graph of a Python workflow, read off its own source.
-
-The YAML engine's `dot` reads a declared `next:`. There is nothing to read here — the
-transition is an expression a state *returns* — so the graph is derived instead: each
-state's body is parsed and every `Continue` / `Await` / `Done` constructor found in it
-is read for its target.
-
-Two properties follow, and they are why this is static rather than an execution trace.
-It is an **over-approximation**: an edge is reported for a branch that may never be
-taken, because nothing here evaluates a condition. And it **cannot drift** from the
-code, the way a declared `next=[...]` list can. Enumerating paths by *running* the
-states was the alternative and it buys neither — a state body branching on `self.ctx`
-would have to be fed fabricated values, and would raise on the first comparison against
-a `--dry-run` stand-in. Running the machine (`--dry-run`) and reading it (`dot`) are
-therefore two different tools here, not one: execution covers the path it takes, this
-covers every path.
-
-Cost is `sum over states of (transitions in that state)` — linear in states, because a
-transition is data the driver reads, so cross-state combinations are never explored.
-
-Live names only: the walk is over `cls.state_names()`, so an alias never appears as a
-second state.
-"""
+"""The state graph of a Python workflow, read off its own source."""
 from __future__ import annotations
 
 import ast
@@ -36,9 +14,6 @@ from workhorse.pyflow.errors import WorkflowDefinitionError
 from workhorse.pyflow.registry import Registry
 from workhorse.pyflow.workflow import StateSpec, Workflow
 
-#: Where each transition constructor keeps its target, as a positional index.
-#: `Continue(result, next, /, *args)` and `Await(path, questions, next, /, *args)` —
-#: both positional-only, so a keyword never carries the target.
 _TARGET_ARG = {"Continue": 1, "Await": 2}
 
 
@@ -46,39 +21,19 @@ _TARGET_ARG = {"Continue": 1, "Await": 2}
 class Edge:
     """One transition a state can return."""
 
-    #: The state this goes to. Empty on a `done` edge: there is nothing to go to.
     target: str
-    #: "continue", "await" or "done" — an await edge suspends for an operator first;
-    #: a done edge leaves the machine. `Done` is a transition, not a property of the
-    #: state that returns it: a state may end on one branch and continue on another.
     kind: str = "continue"
-    #: The parameters this transition binds on the target, for the edge label.
     params: tuple[str, ...] = ()
-    #: The literal string chained on as `.because("…")`, else empty. An f-string or a
-    #: variable there is unknowable statically and leaves the edge unlabelled.
     reason: str = ""
-    #: The target expression was not a plain `self.<state>` (a variable, a lookup).
-    #: The edge is real; where it goes is only known at runtime.
     dynamic: bool = False
-    #: The target resolved to a `self.<name>` that is not a state — an author error
-    #: the driver would only report on the transition that made it.
     dangling: bool = False
 
 
 @dataclass(frozen=True)
 class Step:
-    """One thing a state's body runs: a node call, an agent turn, or a handoff.
+    """One thing a state's body runs: a node call, an agent turn, or a handoff."""
 
-    Kept in source order so a diagram can draw the state as the chain it is. The
-    summary is what the author already wrote about it — the first line of the node's
-    docstring, or the title of the prompt — and is empty when there is none to read.
-    """
-
-    #: "call", "agent" or "handoff".
     kind: str
-    #: The node's name for a call; the literal prompt path for an agent turn; the
-    #: sub-workflow's class name for a handoff. Only constants: an f-string prompt is
-    #: unknowable here, and guessing one would fail a dry run over nothing.
     name: str
     summary: str = ""
 
@@ -94,18 +49,12 @@ class StateNode:
 
     name: str
     edges: tuple[Edge, ...] = ()
-    #: Every `self.call(...)`, literal `self.agent(...)` and `self.handoff(...)` the
-    #: body reaches, in source order, each once.
     steps: tuple[Step, ...] = ()
-    #: `inspect.getsource` could not read this state — nothing below it is known.
     opaque: bool = False
 
     @property
     def terminal(self) -> bool:
-        """The body constructs `Done(...)` somewhere — the machine *can* end here.
-
-        Derived from the edges rather than stored, so it cannot disagree with them.
-        """
+        """The body constructs `Done(...)` somewhere — the machine *can* end here."""
         return any(edge.kind == "done" for edge in self.edges)
 
     @property
@@ -129,7 +78,6 @@ class FlowGraph:
     """One `Workflow` subclass as a machine."""
 
     workflow: str
-    #: Every flow name the registry maps to this class, e.g. `("default", "coder")`.
     names: tuple[str, ...] = ()
     start: str = ""
     states: tuple[StateNode, ...] = field(default=())
@@ -146,13 +94,7 @@ class FlowGraph:
         return None
 
     def reachable(self) -> set[str]:
-        """States reachable from `start` over statically readable edges.
-
-        A dynamic edge is a dead end here on purpose: it is precisely the case where
-        the target is unknown, so counting it as reaching everything would make the
-        unreachable check useless, and counting it as reaching nothing is the honest
-        over-report the caller is told about.
-        """
+        """States reachable from `start` over statically readable edges."""
         seen: set[str] = set()
         queue = deque([self.start])
         while queue:
@@ -181,19 +123,12 @@ class FlowGraph:
         )
 
 
-# ── Reading a class ─────────────────────────────────────────────────────────────
 
 
 def state_graph(
     cls: type[Workflow], names: Iterable[str] = (), workflow_dir: Path | None = None
 ) -> FlowGraph:
-    """Read `cls` into a `FlowGraph`. Live state names only, sorted for stable output.
-
-    `workflow_dir` is where relative prompt paths resolve, so each agent step can carry
-    its prompt's title; without it the step is still read, with no summary.
-    """
-    # Looked up once and filtered on the spec itself: reading `cls.states` twice — once
-    # to test, once to pass — is what let a `None` through to `_read_state`.
+    """Read `cls` into a `FlowGraph`."""
     specs = (cls.states.get(name) for name in sorted(cls.state_names()))
     states = tuple(_read_state(cls, spec, workflow_dir) for spec in specs if spec is not None)
     return FlowGraph(
@@ -205,12 +140,7 @@ def state_graph(
 
 
 def registry_graphs(registry: Registry) -> list[FlowGraph]:
-    """One graph per distinct workflow class in `registry`, entry flow first.
-
-    Keyed by class rather than by flow name because `main(Coder)` registers the entry
-    under `default` as well as its own name, and rendering that class twice would show
-    one machine as two.
-    """
+    """One graph per distinct workflow class in `registry`, entry flow first."""
     by_class: dict[type[Workflow], list[str]] = {}
     if registry.entry is not None:
         by_class[registry.entry] = []
@@ -219,20 +149,16 @@ def registry_graphs(registry: Registry) -> list[FlowGraph]:
     try:
         directory: Path | None = registry.directory()
     except WorkflowDefinitionError:
-        # A class declared at top level — a test file, a REPL — has no package
-        # directory, and the graph is still readable; its agent steps go untitled.
         directory = None
     return [state_graph(cls, names, directory) for cls, names in by_class.items()]
 
 
 @dataclass
 class _Found:
-    """What a scan has seen so far. Mutable, because the scan recurses."""
+    """What a scan has seen so far."""
 
     edges: list[Edge] = field(default_factory=list)
     steps: list[Step] = field(default_factory=list)
-    #: Transition calls already read as the inner half of a `.because(...)`, so the
-    #: walk does not emit them a second time when it reaches them on their own.
     consumed: set[int] = field(default_factory=set)
 
 
@@ -257,25 +183,10 @@ def _scan(
     seen: set[str],
     workflow_dir: Path | None = None,
 ) -> None:
-    """Record every seam this body reaches, following its own private helpers.
-
-    A state that factors its turn into a `_record()` or its node call into a
-    `_publish()` is doing what the design sanctions — private methods are not states
-    — but reading only the state's literal body would then lose the prompt from the
-    diagram *and* from the dry run's prompt-exists check, which is the opposite of
-    what factoring should cost. So `self._helper(...)` is followed and merged in.
-    Attributed to the state, not to the helper: the helper is not a node.
-
-    `seen` bounds it. A helper calling itself, or two calling each other, would
-    otherwise recurse forever over a workflow that runs perfectly well.
-    """
-    # `ast.walk` rather than a visitor: a transition inside a nested function or a
-    # comprehension still counts, and over-reporting is the contract here anyway.
+    """Record every seam this body reaches, following its own private helpers."""
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call) or id(node) in found.consumed:
             continue
-        # `Continue(...).because("…")`: the outer call is the reason, the inner call
-        # is the transition. `ast.walk` is breadth-first, so the outer one comes first.
         inner, reason = _unwrap_because(node)
         if inner is not None:
             found.consumed.add(id(inner))
@@ -308,12 +219,7 @@ def _scan(
 
 
 def _unwrap_because(call: ast.Call) -> tuple[ast.Call | None, str]:
-    """`(inner transition call, reason)` when `call` is `<transition>.because(...)`.
-
-    The reason is the literal string argument, or empty when it is anything else — an
-    f-string built from the state's values is a fine reason at runtime and no label
-    here. `(None, "")` when `call` is not a `.because(...)` on a transition call.
-    """
+    """`(inner transition call, reason)` when `call` is `<transition>.because(...)`."""
     func = call.func
     if not (isinstance(func, ast.Attribute) and func.attr == "because"):
         return None, ""
@@ -346,36 +252,24 @@ def _read_edge(cls: type[Workflow], ctor: str, call: ast.Call, reason: str = "")
 def _param_names(
     cls: type[Workflow], target: str, call: ast.Call, index: int
 ) -> tuple[str, ...]:
-    """The parameter names this transition binds, positional ones resolved by name.
-
-    Positional arguments carry no name at the callsite, so they are read off the
-    target's own signature — the same binding the driver does at runtime, done here
-    only to label an edge.
-    """
+    """The parameter names this transition binds, positional ones resolved by name."""
     keywords = [kw.arg for kw in call.keywords if kw.arg]
     extra = max(len(call.args) - index - 1, 0)
     positional: list[str] = []
     spec = cls.states.get(target)
     if spec is not None and extra:
         try:
-            names = list(inspect.signature(spec.fn).parameters)[1:]  # drop self
+            names = list(inspect.signature(spec.fn).parameters)[1:]
         except (TypeError, ValueError):
             names = []
         positional = names[:extra]
     return tuple(positional + keywords)
 
 
-# ── AST helpers ─────────────────────────────────────────────────────────────────
 
 
 def _source_tree(fn: object) -> ast.AST | None:
-    """Parse a state method's own source, or None when it cannot be read.
-
-    A method defined in a REPL or an `exec` has no source file; that is a hole in the
-    analysis rather than a crash, and the caller reports it as one. So is a non-callable:
-    one caller looks its argument up with `getattr(cls, tail, None)`, which answers with
-    whatever is there — a class attribute, or nothing at all.
-    """
+    """Parse a state method's own source, or None when it cannot be read."""
     if not callable(fn):
         return None
     try:
@@ -425,13 +319,7 @@ def _unparse(expr: ast.expr | None) -> str:
 
 
 def _doc_summary(cls: type[Workflow], ref: ast.expr) -> str:
-    """The first line of the docstring of the node `ref` names, else empty.
-
-    The reference is resolved the way the state's own code resolves it: a name in the
-    class's module, then attributes off it (`nodes.checkpoint_book`). Anything that
-    does not resolve — a local, an import the module aliases oddly — is a blank
-    summary, not an error: the step is still on the diagram, just unexplained.
-    """
+    """The first line of the docstring of the node `ref` names, else empty."""
     dotted = _dotted(ref)
     if not dotted:
         return ""
@@ -458,22 +346,14 @@ def _prompt_title(prompt: str, workflow_dir: Path | None) -> str:
     for line in path.read_text(encoding="utf-8").splitlines():
         if line.startswith("#"):
             title = line.lstrip("#").strip()
-            # A prompt titled "<workflow> — <what it does>" repeats the diagram's own
-            # name; the caption keeps the half that says something.
             return title.split(" — ", 1)[-1] if " — " in title else title
     return ""
 
 
-# ── Preflight ───────────────────────────────────────────────────────────────────
 
 
 def preflight(graphs: Sequence[FlowGraph], workflow_dir: Path | None = None) -> list[str]:
-    """Everything wrong with these machines that a static read can see.
-
-    This is the half of `--dry-run` a type checker cannot do: the filesystem (does the
-    prompt exist) and reachability (is this state dead). Argument checking moved to
-    `ParamSpec` and the editor long before a run starts.
-    """
+    """Everything wrong with these machines that a static read can see."""
     problems: list[str] = []
     for graph in graphs:
         where = f"flow '{graph.label}'"
@@ -509,11 +389,7 @@ def preflight(graphs: Sequence[FlowGraph], workflow_dir: Path | None = None) -> 
 
 
 def _missing_prompts(graph: FlowGraph, where: str, workflow_dir: Path) -> list[str]:
-    """Prompt paths that do not resolve, the same way `templates.render` resolves them.
-
-    A typo here is the failure that costs most: it surfaces at hour 30 of an
-    unattended run, in the one state that was never exercised by hand.
-    """
+    """Prompt paths that do not resolve, the same way `templates.render` resolves them."""
     missing: list[str] = []
     for state, prompt in graph.prompts():
         path = Path(prompt)

@@ -1,14 +1,4 @@
-"""Console-script entry points: ``groom`` (host-side dashboard server) and
-``groom-sidecar`` (the in-container watcher, invoked from the agent image's
-entrypoint before workhorse's own run command).
-
-``sidecar`` is imported lazily inside :func:`sidecar_main` — it pulls in the
-filesystem-watch and WebSocket-client machinery that only the in-container
-process uses, and the host-side ``groom`` server should not pay for on startup.
-(It used to be a portability guard too: the import was ``inotify_simple``, which
-does not work off Linux. It is ``watchfiles`` now, so the sidecar runs anywhere
-groom does — the laziness is only about import cost.)
-"""
+"""Console-script entry points: ``groom`` (host-side dashboard server) and ``groom-sidecar`` (the in-container watcher, invoked from the agent image's entrypoint before workhorse's own run command)."""
 
 from __future__ import annotations
 
@@ -20,13 +10,6 @@ from typing import Any
 from groom.attention import DEFAULT_EVENTS
 from groom.wait import event_names, wait
 
-# Loopback by default: groom has no authentication, and it exposes docker
-# control and gate answers to anything that can reach its port — the safe
-# default cannot be a warning on the dangerous one. In-container groom-sidecars
-# reach the host over the docker bridge (host.docker.internal → the bridge
-# gateway on Linux, not loopback), so containerized runs need an explicit
-# `--host 0.0.0.0`, which prints the exposure warning below unless
-# --allow-non-loopback acknowledges it.
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8787
 
@@ -59,11 +42,6 @@ def serve(
 
     from groom.app import create_app
 
-    # uvicorn traps SIGINT/SIGTERM itself, but with the dashboard's persistent
-    # /ws websocket held open its graceful shutdown otherwise blocks waiting for
-    # that connection to drain — so a single Ctrl+C appears to hang until a
-    # second one force-quits. A bounded graceful-shutdown timeout closes lingering
-    # connections and exits cleanly on the first Ctrl+C.
     config = uvicorn.Config(
         create_app(),
         host=host,
@@ -118,9 +96,6 @@ def _format_status(rows: list[dict], now: float) -> str:
             + (f"   gas: {int(row['gas'])}" if row["gas"] is not None else "")
             + (f"\n  run_dir : {row['run_dir']}" if row["run_dir"] else "")
             + (
-                # The next command, ready to paste: `workflow` names the console
-                # script and `run_dir` is the absolute path `--run` takes, so it
-                # works from any cwd, not only the target repo's.
                 f"\n  control : workhorse-{row['workflow']} control --run {row['run_dir']} status"
                 if row["workflow"] and row["run_dir"]
                 else ""
@@ -130,25 +105,14 @@ def _format_status(rows: list[dict], now: float) -> str:
 
 
 def _serve_url() -> str:
-    """Where the running ``groom serve`` answers.
-
-    ``GROOM_URL`` overrides for a non-default host/port; the default matches
-    ``serve``'s own defaults. (The sidecar's GROOM_HOST/GROOM_PORT convention is
-    a docker-bridge address — wrong for a host-side CLI, so it is not consulted.)
-    """
+    """Where the running ``groom serve`` answers."""
     import os
 
     return os.environ.get("GROOM_URL", f"http://{DEFAULT_HOST}:{DEFAULT_PORT}")
 
 
 def status(run: str = "", as_json: bool = False) -> None:
-    """Print where each live run is right now.
-
-    Asks the running ``groom serve`` over HTTP (``/api/live``): liveness lives
-    in the server's memory — heartbeat ticks are never persisted — so the
-    server process is the only one that can answer. Right after a serve restart
-    the picture is blank for up to a minute, until each run's next export.
-    """
+    """Print where each live run is right now."""
     import json as _json
     import time
     import urllib.error
@@ -185,8 +149,6 @@ def _format_logs(rows: list[dict]) -> str:
     import datetime as _dt
 
     lines = []
-    # Oldest-first for reading: the query returns newest-first so the LIMIT keeps
-    # the most recent slice, but a log is read forwards.
     for row in reversed(rows):
         stamp = _dt.datetime.fromtimestamp(row["ts"]).strftime("%H:%M:%S")
         node = f" {row['node']}" if row["node"] else ""
@@ -202,28 +164,7 @@ def recent(
     alive_since_s: float | None = None,
     as_json: bool = False,
 ) -> None:
-    """Print the most recent runs the database has telemetry for, alive or dead.
-
-    ``groom status`` is liveness-only — it asks the running server's in-memory
-    heartbeat cache over HTTP, and a run whose process vanished in the last
-    minute is the only kind of run a wedged-or-dead run has any path to show
-    there. ``groom archive ls`` is the other end: terminal runs the archiver
-    swept to disk. Between those two, a run the workhorse crashed a while ago
-    was visible on no groom surface — the dashboard had already dropped it
-    and the archiver had not yet fired.
-
-    This fills the gap: read every run the database has telemetry for, ordered
-    by ``MAX(start_ts, end_ts)`` over spans descending, mark alive using the
-    same ``LIVE_AFTER_S`` threshold ``groom.projection.liveness`` uses, and
-    print the top N. The liveness predicate is *from-telemetry* — a run whose
-    last activity is older than the threshold is dead regardless of whether
-    anything is happening on the wire.
-
-    Pure SQLite read against ``$GROOM_DB``; no ``groom serve`` required. That
-    is the load-bearing property: a freshly-asked "where did my run go?"
-    answer is one CLI away from any machine holding the database, and not
-    gated on whichever serve process happens to be up right now.
-    """
+    """Print the most recent runs the database has telemetry for, alive or dead."""
     import datetime as _dt
     import json as _json
     import time
@@ -284,13 +225,7 @@ def logs(
     limit: int = 200,
     as_json: bool = False,
 ) -> None:
-    """Print log records for a run.
-
-    The counterpart to ``status``: that says *where* a run is stuck, this says
-    what it was saying while it got there. Script nodes only appear here because
-    workhorse now runs them in-process — as child processes their stdout was
-    consumed whole as JSON and their stderr surfaced only on failure.
-    """
+    """Print log records for a run."""
     import json as _json
 
     from groom import store
@@ -337,9 +272,6 @@ def _format_costs(rows: list[dict]) -> str:
         f"{'total':<28}{turns:>6}{'':>7}{total:>9.2f}{estimated_total:>9.2f}"
         f"{'':>7}{minutes:>7.0f}"
     )
-    # est$ is a second, independent reading of the same turns — tokens at a rate card —
-    # so it is printed beside the bill and never summed with it. Saying how many turns
-    # it covers is what stops it being read as a correction to the total.
     if est_turns:
         lines.append("")
         lines.append(
@@ -350,9 +282,6 @@ def _format_costs(rows: list[dict]) -> str:
             "      estimate of what the tokens are worth, not a bill, and is never"
             " added to usd."
         )
-    # Silence here would be a wrong answer, not a missing one. A turn can go unpriced
-    # two ways: reporting nothing (a visible gap) or reporting a literal zero while
-    # spending tokens (invisible — it sums, so the total looks complete).
     if priced < turns or zeroed:
         backends = sorted(
             {b for row in rows for b in (row["backends"] or "").split(",") if b}
@@ -385,13 +314,7 @@ def _format_costs(rows: list[dict]) -> str:
 
 
 def cost(run: str = "", limit: int = 100, as_json: bool = False) -> None:
-    """Print per-node agent spend for a run — where the money and the rework went.
-
-    The counterpart to ``status`` and ``logs``: those say where a run is and what it
-    said, this says what it cost. ``/work`` is turns per work item (the workflow's
-    own ``work_id`` label), which is the rework signal — a node at 1.0 ran once per
-    story, a node at 4.6 re-ran three and a half times on average.
-    """
+    """Print per-node agent spend for a run — where the money and the rework went."""
     import json as _json
 
     from groom import store
@@ -410,21 +333,7 @@ def prices_cmd(
     as_json: bool = False,
     resolve: bool = False,
 ) -> None:
-    """Show the rate card behind `cost`'s est$ column, or apply it to stored turns.
-
-    Without ``--reprice`` this only prints: the per-million rates in force and where
-    the override file that extends them lives. With it, every agent turn carrying
-    token counts is estimated and the result written to `est_cost_usd` — a column
-    beside the reported cost, never folded into it.
-
-    ``--resolve`` handles the other half of the gap: turns the card cannot price
-    because the harness recorded an alias (`sonnet`) rather than a model id. It reads
-    the concrete id out of each turn's own session store and prices with that.
-
-    The models it could not price are listed either way. That list is the point: an
-    estimate whose coverage is invisible is worse than none, and each line in it is a
-    model to add to `prices.toml`.
-    """
+    """Show the rate card behind `cost`'s est$ column, or apply it to stored turns."""
     import json as _json
 
     from groom import prices, store, turns
@@ -468,9 +377,6 @@ def prices_cmd(
     unpriced = result["unpriced"]
     if unpriced:
         lines.append("")
-        # A model absent from the table is never guessed at from its neighbours, so
-        # these turns simply have no estimate. Naming them is what makes est$'s
-        # coverage a number rather than an impression.
         lines.append(
             f"unpriced ({sum(unpriced.values())} turns, no rate for the model):"
         )
@@ -519,9 +425,6 @@ def _format_loops(rows: list[dict]) -> str:
     zeroed = sum(row["zero_cost_turns"] for row in rows)
     turns = sum(row["turns"] for row in rows)
     if priced < turns or zeroed:
-        # Without this the ranking lies by omission: a run under subscription auth
-        # prices nothing (or prices a literal 0), so its worst loop sorts to the
-        # bottom at $0.00 excess and reads as the cheap one.
         unpriced = (turns - priced) + zeroed
         lines.append(
             f"note: {unpriced} of {turns} turns reported no usable cost"
@@ -535,10 +438,6 @@ def _format_loops(rows: list[dict]) -> str:
         est = sum(row["excess_est_cost_usd"] or 0.0 for row in rows)
         est_turns = sum(row["est_turns"] for row in rows)
         if est_turns:
-            # The recovery from the note above, not a second opinion on it: the tokens
-            # are reported even when the money is not, so a rate card can rank what a
-            # $0 report cannot. Qualified by its own coverage, since a table that names
-            # half the models would otherwise read as the whole bill.
             lines.append(
                 f"      at rate-card prices that excess is ~${est:.2f}"
                 f" over the {est_turns} of {turns} turns"
@@ -568,17 +467,7 @@ def _format_loops(rows: list[dict]) -> str:
 def loops(
     run: str = "", workflow: str = "", min_items: int = 3, as_json: bool = False
 ) -> None:
-    """Print per-node lap distributions — which review→rework loops converge.
-
-    ``cost`` says which nodes are expensive; this says which are expensive *because
-    they repeat*. The unit is the lap count per work item, and ``excess$`` is the
-    money spent on every lap after the first — the part of the bill that exists only
-    because a gate kept saying no.
-
-    With no ``--run`` it reports across every run in the store, which is the useful
-    default: one run's loop is an anecdote, and the same node over twenty runs is a
-    property of the prompt.
-    """
+    """Print per-node lap distributions — which review→rework loops converge."""
     import json as _json
 
     from groom import store
@@ -630,9 +519,6 @@ def _format_profile(result: dict | None) -> str:
             continue
         lines.append(title)
         for row in rows:
-            # The group rows have carried a cost since they were written; printing it is
-            # what turns "stalled ×3" from a count into "$41 of stalled", which is the
-            # number that decides whether a loop is worth fixing.
             row_cost = f"${row['cost_usd']:.2f}" if row["cost_usd"] is not None else "-"
             lines.append(
                 f"  {row['dimension']}={row['value']}  {row['node']}"
@@ -642,10 +528,6 @@ def _format_profile(result: dict | None) -> str:
             )
     decisions = result.get("verdict_decisions") or []
     if decisions:
-        # Counted over every span rather than the priced ones, because a verdict routing to
-        # deterministic work buys no turn to be counted on. The groups above say what an
-        # outcome cost; this says how often a gate reached it, which is the number that
-        # decides whether the gate is worth its cost at all.
         lines.append("verdict decisions (every gate outcome, priced or not)")
         totals: dict[str, int] = {}
         for row in decisions:
@@ -675,14 +557,7 @@ def profile(run: str, as_json: bool = False) -> None:
 
 
 def purge_tests(dry_run: bool = False, vacuum: bool = True) -> None:
-    """Evict telemetry that test runs wrote into the store.
-
-    Producers no longer export from a test process and the receivers drop what
-    an older one sends, but neither undoes what is already on disk — and on a
-    machine where `groom serve` has been up through a few suite runs that is the
-    bulk of the file. Runs are identified by their run dir
-    (`store.is_test_run_dir`), so a real run is never guessed at from its name.
-    """
+    """Evict telemetry that test runs wrote into the store."""
     from groom import store
 
     counts = store.purge_test_runs(dry_run=dry_run, vacuum=vacuum)
@@ -734,12 +609,7 @@ def transcript_ls(
     limit: int = 200,
     as_json: bool = False,
 ) -> None:
-    """List archived turn records, in the order the run took them.
-
-    Ordered by the visit key rather than by clock, so a node's laps read top to bottom
-    even across a checkpoint rewind — which is the shape anyone arriving from
-    ``groom loops`` is here to read.
-    """
+    """List archived turn records, in the order the run took them."""
     import json as _json
 
     from groom import store
@@ -754,11 +624,7 @@ def transcript_ls(
 
 
 def transcript_show(session: str, as_json: bool = False) -> None:
-    """Show one archived turn: where its bodies are, and the prompt that caused it.
-
-    The transcript is not printed. It is JSONL of up to tens of megabytes, and what a
-    reader wants from here is the path to point a pager or a replay at.
-    """
+    """Show one archived turn: where its bodies are, and the prompt that caused it."""
     import json as _json
 
     from groom import store, turns
@@ -810,11 +676,7 @@ def transcript_export(
     node: str = "",
     limit: int = 1_000_000,
 ) -> None:
-    """Materialize the archive as a by-node dataset under a directory the caller names.
-
-    A view, not a move: nothing leaves the archive, and the export can be thrown away and
-    taken again after the next harvest.
-    """
+    """Materialize the archive as a by-node dataset under a directory the caller names."""
     from pathlib import Path
 
     from groom import export
@@ -835,13 +697,7 @@ def _format_bytes(count: int) -> str:
 
 
 def archive_ls(run: str = "", long: bool = False, as_json: bool = False) -> None:
-    """List frozen runs.
-
-    The directory name *is* the run id, so the plain listing opens no files at
-    all — which is the point of having no index table: on a tree of thousands of
-    runs, "what is archived" stays a readdir. ``--long`` and a run filter read
-    each manifest, which is one line per file.
-    """
+    """List frozen runs."""
     import json as _json
 
     from groom import archive
@@ -901,12 +757,7 @@ def archive_ls(run: str = "", long: bool = False, as_json: bool = False) -> None
 
 
 def archive_show(run: str, limit: int = 0) -> None:
-    """Stream one frozen run's ``telemetry.jsonl`` to stdout.
-
-    Straight through, line by line: the file is the interchange format, and a
-    reader piping it into ``jq`` wants it unaltered. ``--limit`` stops after n
-    records for a look at the shape without a gigabyte of logs.
-    """
+    """Stream one frozen run's ``telemetry.jsonl`` to stdout."""
     from groom import archive
 
     root = archive.archives_root()
@@ -927,11 +778,7 @@ def archive_show(run: str, limit: int = 0) -> None:
 
 
 def archive_now(dry_run: bool = False, limit: int = 0, as_json: bool = False) -> None:
-    """Run an archival sweep now, instead of waiting for the six-hour tick.
-
-    What makes the feature testable against a real store, and what lets an
-    operator drain an existing backlog faster than the ticker will.
-    """
+    """Run an archival sweep now, instead of waiting for the six-hour tick."""
     import json as _json
 
     from groom import archive
@@ -1007,11 +854,7 @@ def archive_status(as_json: bool = False) -> None:
 def _dispatch_request(
     method: str, path: str, body: dict[str, Any] | None = None
 ) -> dict[str, Any]:
-    """One HTTP round trip to the running ``groom serve``'s ``/api/dispatch/*``
-    surface — the CLI has no store access of its own for this feature because a
-    dispatch item's semaphore slot lives only in the server process's memory,
-    the same reason ``status`` above must ask over HTTP rather than read SQLite.
-    """
+    """One HTTP round trip to the running ``groom serve``'s ``/api/dispatch/*`` surface — the CLI has no store access of its own for this feature because a dispatch item's semaphore slot lives only in the server process's memory, the same reason ``status`` above must ask over HTTP rather than read SQLite."""
     import json as _json
     import urllib.error
     import urllib.request

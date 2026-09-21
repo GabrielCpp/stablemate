@@ -1,9 +1,4 @@
-"""The regrounding queue (`main/nodes/coverage.py`).
-
-When a cited file's bytes change under a citation that carries a digest, doctor reports
-`stale-citation` and the join queues one row per changed file, naming every node that
-cites it — rather than calling the book complete.
-"""
+"""The regrounding queue (`main/nodes/coverage.py`)."""
 from __future__ import annotations
 
 import json
@@ -25,8 +20,6 @@ SOURCE_FILE = "acme/service.py"
 CITATION = f"{SOURCE_FILE}::charge"
 CHARGE_PAGE = f"docs/features/{SERVICE}/concepts/charge.md"
 
-#: `charge`'s body, rewritten. The file's other declarations are untouched, so a run that
-#: requeued every node citing the *file* rather than the *symbol* would be visible here.
 DRIFTED_SOURCE = '''"""The billing service."""
 
 
@@ -49,29 +42,17 @@ def _verdict(book: Path, logger: logging.Logger):
 
 
 def _stamp(book: Path, page: str = CHARGE_PAGE) -> None:
-    """Stamp a page's citation with the digest of the file it currently cites.
-
-    The shared `booked`/`CONCEPT` fixture writes a bare `` `path::symbol` `` bullet with no
-    `@digest` — deliberately, since most tests have nothing to do with staleness. A bullet
-    with no digest can only ever be `unstamped-citation`; it is never `stale-citation`, no
-    matter how far the cited file drifts. Any test that means to exercise drift has to stamp
-    its own citation first, the same way a real turn's finalize step would.
-    """
+    """Stamp a page's citation with the digest of the file it currently cites."""
     result = stamp_mod.stamp_page(book, paths.features_root(book, SERVICE), page)
     assert not result.unresolved, result.unresolved
 
 
-# --- regrounding ------------------------------------------------------------
 
 
 def test_a_symbol_that_changed_under_its_citation_is_queued_not_converged(
     booked: Path, logger: logging.Logger
 ) -> None:
-    """The inversion the plan exists for: covered by the join, stale against its own stamp.
-
-    Coverage arithmetic alone still says every unit is cited — that is exactly how four
-    books stayed green two hundred commits behind their source. The verdict has to refuse.
-    """
+    """The inversion the plan exists for: covered by the join, stale against its own stamp."""
     _stamp(booked)
     assert _verdict(booked, logger).coverage_complete
     (booked / SOURCE_FILE).write_text(DRIFTED_SOURCE, encoding="utf-8")
@@ -92,12 +73,7 @@ def test_a_symbol_that_changed_under_its_citation_is_queued_not_converged(
 def test_a_changed_file_is_batched_five_citing_nodes_per_row(
     booked: Path, logger: logging.Logger
 ) -> None:
-    """One changed file, many citing nodes: rows chunk at five, not one row for the lot.
-
-    A single repair turn that had to re-read twelve nodes against one file would run out of
-    context long before it finished; capping a row at five citing nodes is what keeps each
-    turn's `stale-citation` prompt a size a model can actually act on.
-    """
+    """One changed file, many citing nodes: rows chunk at five, not one row for the lot."""
     total_citing = 12
     for i in range(total_citing - 1):
         (booked / f"docs/features/{SERVICE}/concepts/charge_{i}.md").write_text(
@@ -122,7 +98,7 @@ def test_a_changed_file_is_batched_five_citing_nodes_per_row(
     result = _verdict(booked, logger)
     assert not result.coverage_complete
 
-    assert len(result.regrounding) == 3  # ceil(12 / 5)
+    assert len(result.regrounding) == 3
     sizes = sorted(len(json.loads(item["context"])["nodes"]) for item in result.regrounding)
     assert sizes == [2, 5, 5]
     all_nodes = {

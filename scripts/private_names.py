@@ -1,27 +1,4 @@
-"""Resolve the denylist of private overlay project names.
-
-stablemate is public. The private overlay's project names must not appear in it —
-and neither must a denylist of those names, nor hashes of them, since either one
-publishes the very words it exists to keep out. So the list is not in the tracked
-tree at all. It is read, in order, from:
-
-  1. ``$STABLEMATE_PRIVATE_NAMES`` — comma- or whitespace-separated.
-  2. ``$GIT_DIR/private-names``   — one name per line; ``#`` starts a comment.
-     ``$GIT_DIR`` here is the repo's *main* ``.git``, so a list installed once is
-     found from every linked worktree as well.
-
-Both are untracked by construction: an env var is not a file, and ``.git/`` is
-never part of a commit. A maintainer with the overlay drops the names in one of
-them and gets the guard; a public contributor has neither and the guard is inert
-(it cannot enforce a list nobody gave it).
-
-``$GIT_DIR/private-names-waivers.json`` sits beside the list, untracked too: the
-pushed commits whose messages the history walk waives, each with its reason and exit.
-
-Consumers: ``.githooks/pre-commit`` (blocks a leak at commit time, in staged changes
-only) and ``scripts/check_public.py`` (the whole-tree sweep the hook cannot be — it
-catches anything committed before the hook existed, or with ``--no-verify``).
-"""
+"""Resolve the denylist of private overlay project names."""
 
 from __future__ import annotations
 
@@ -34,21 +11,11 @@ from pathlib import Path
 
 ENV_VAR = "STABLEMATE_PRIVATE_NAMES"
 GIT_FILE = "private-names"
-#: Waived history hits, beside the names and untracked for the same reason. Shape:
-#: ``{"commit_messages": {"<full sha>": {"reason": "...", "exit": "..."}}}``.
 WAIVER_FILE = "private-names-waivers.json"
 
 
 def _git_dir() -> Path | None:
-    """The repo's main ``.git`` directory, or None outside a work tree.
-
-    ``--git-common-dir`` rather than ``--absolute-git-dir`` because of linked
-    worktrees: inside one, the latter returns ``.git/worktrees/<name>/``, which
-    has no ``private-names`` in it. The guard would then find no list and fall
-    through to the public-contributor case — silently inert in exactly the tree
-    an agent was given to work in alone. The common dir is the same path from
-    every worktree, so one list installed once covers all of them.
-    """
+    """The repo's main ``.git`` directory, or None outside a work tree."""
     try:
         out = subprocess.run(
             ["git", "rev-parse", "--path-format=absolute", "--git-common-dir"],
@@ -62,11 +29,7 @@ def _git_dir() -> Path | None:
 
 
 def load() -> list[str]:
-    """The configured private names, lowercased and deduplicated.
-
-    Empty when neither source is configured — that is the public-contributor
-    case, not an error.
-    """
+    """The configured private names, lowercased and deduplicated."""
     raw = os.environ.get(ENV_VAR, "")
     if not raw.strip():
         git_dir = _git_dir()
@@ -84,12 +47,7 @@ def load() -> list[str]:
 
 
 def load_waivers() -> dict[str, dict[str, dict[str, str]]]:
-    """The waived history hits, keyed by kind then full SHA. Empty when unconfigured.
-
-    A malformed file raises rather than reading as empty: an unreadable waiver list
-    that silently waived nothing would fail the history walk with no hint why, and
-    one that silently waived everything is not a shape this can take.
-    """
+    """The waived history hits, keyed by kind then full SHA."""
     git_dir = _git_dir()
     path = git_dir / WAIVER_FILE if git_dir else None
     data = json.loads(path.read_text(encoding="utf-8")) if path and path.is_file() else {}
@@ -104,8 +62,6 @@ def pattern(names: list[str]) -> re.Pattern[str] | None:
 
 
 if __name__ == "__main__":
-    # `python3 scripts/private_names.py` prints one name per line — the shell
-    # interface the pre-commit hook consumes. No names, no output, exit 0.
     for private_name in load():
         print(private_name)
     sys.exit(0)

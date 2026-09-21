@@ -1,17 +1,4 @@
-"""The `author` distribution's composition root — nothing else.
-
-`workhorse-author` is bound here (`workflows/pyproject.toml`), and this module is what the
-script imports: the registry that names the distribution, folds in the node blueprints,
-lists the flows a caller can run by name, and declares what a `--dry-run` gets back from
-each prompt. The graph a bare `run` starts is a flow package like the other four —
-[`main/`](main) — so the five sit side by side and this file stays a table of contents.
-
-The registry declares its own `package`, and that is load-bearing rather than tidy: it is
-the root every prompt path renders against (`surveyor/prompts/assess-unit.md`) and the
-name the repo-flavor lookup uses (`.agents/flavors/author/`). Inferred from the entry
-class instead, both would follow `Author` into `main/` and every sibling flow's prompts
-would fall outside the loader.
-"""
+"""The `author` distribution's composition root — nothing else."""
 from __future__ import annotations
 
 from workhorse.cli import console_script
@@ -79,12 +66,6 @@ workflow = (
             "review-coverage": {"status": "ok"},
             "resolve-operator": {"decision": "answered"},
             "resolve-integrity": {"decision": "answered"},
-            # The sub-flows' turns. Keyed by prompt STEM, so every flow's own copy of an
-            # envelope answers to one entry — `main/prompts/resolve-operator.md` and
-            # `surveyor/prompts/resolve-operator.md` share the one above, and
-            # `epic_edit/prompts/write-story.md` shares `write-story`. That is what they
-            # want here: a stand-in reply is per *role*, and a copy that diverged far
-            # enough to need its own would be a different role.
             "plan-units": {"status": "complete"},
             "assess-unit": {"status": "assessed"},
             "assess-parity-unit": {"status": "assessed"},

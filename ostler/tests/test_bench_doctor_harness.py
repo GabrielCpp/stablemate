@@ -1,25 +1,4 @@
-"""`scripts/bench_ostler_doctor.py` + `make bench-doctor` — the doctor benchmark harness.
-
-The point of the harness is that a timing anyone quotes can be re-derived by someone
-else, so what these tests hold it to is the *decomposition* the cache increments are
-judged on — `model.load` cold and warm, `doctor.run` cold and warm, the eight named
-checks, the three components inside `_check_ui` — plus the book's shape, because a
-timing with no shape beside it is comparable to nothing.
-
-Three properties beyond "it prints numbers":
-
-* the book is an argument with no default. The measured book lives outside this repo, so
-  a `make bench-doctor` that quietly measures *something* is worse than one that stops;
-* `--json` carries the same measurements as the table, so an increment's before/after is
-  a diff and not a paragraph;
-* the harness only measures. It edits no ostler module and changes no `doctor` verdict —
-  a benchmark that perturbs what it times reports a number about itself.
-
-The harness is run the way an operator runs it: as a subprocess, against a real book on
-disk (the shared `repo` fixture, plus UI nodes so the shape counts are not all zero).
-The assertions match label *names*, not layout: the harness may punctuate and nest its
-report however it likes, as long as every measurement is findable and numeric.
-"""
+"""`scripts/bench_ostler_doctor.py` + `make bench-doctor` — the doctor benchmark harness."""
 
 from __future__ import annotations
 
@@ -42,8 +21,6 @@ from conftest import feature_md, write
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = REPO_ROOT / "scripts" / "bench_ostler_doctor.py"
 
-#: Every phase the plan's decomposition names, in the spelling the plan uses. The table
-#: and the JSON both have to cover all of them, or two runs are not comparable.
 PHASES = ("model.load", "doctor.run")
 CHECKS = (
     "_check_ui",
@@ -57,8 +34,6 @@ CHECKS = (
 )
 UI_COMPONENTS = ("_check_ui_file", "_check_code_grounding", "required-bullet")
 
-#: Trailing key components a report is free to append to a measurement's name without
-#: changing which measurement it is (`_check_ui_seconds`, `required_bullet_loop_ms`).
 UNITS = frozenset({"s", "sec", "secs", "second", "seconds", "ms", "elapsed", "time",
                    "loop", "total", "count", "n", "num"})
 
@@ -80,11 +55,7 @@ Shows the [rec](../../area/rec.md) feature.
 
 
 def _norm(text: str) -> str:
-    """Lowercased, with every run of non-alphanumerics collapsed to `_`.
-
-    So `model.load`, `model load` and `Model Load` all compare equal — the harness picks
-    its own label punctuation without this suite dictating it.
-    """
+    """Lowercased, with every run of non-alphanumerics collapsed to `_`."""
     return re.sub(r"[^a-z0-9]+", "_", text.lower()).strip("_")
 
 
@@ -115,11 +86,7 @@ def _strip_units(path: str) -> str:
 
 
 def _timings(leaves: list[tuple[str, object]], *tokens: str) -> list[float]:
-    """The numeric leaves naming this measurement and no narrower one.
-
-    A leaf qualifies when its key path carries every token and *ends* with one of them
-    (units aside) — which is what keeps `_check_ui` from also collecting `_check_ui_file`.
-    """
+    """The numeric leaves naming this measurement and no narrower one."""
     wanted = [_norm(t) for t in tokens]
     found = []
     for path, value in leaves:
@@ -145,11 +112,7 @@ def _counts(leaves: list[tuple[str, object]], *patterns: str) -> list[float]:
 
 @pytest.fixture
 def book(repo: Path) -> Path:
-    """The shared fixture repo, plus a screen and a third feature doc.
-
-    UI nodes and a link target are what make the shape counts non-trivial: a book with
-    zero of both cannot tell "counted it" from "printed a zero".
-    """
+    """The shared fixture repo, plus a screen and a third feature doc."""
     write(repo / "docs/features/groom/gui/screens/dash.md", SCREEN)
     write(repo / "docs/features/area/rec3.md", feature_md("rec3", "Rec 3", area="area"))
     return repo
@@ -191,17 +154,12 @@ def _json_report(book: Path) -> dict:
 
 
 def test_make_bench_doctor_without_docs_refuses_and_measures_nothing():
-    """No `DOCS=`, no default: the measured book cannot be guessed, so the target stops.
-
-    A baked-in default is the failure this rules out — it would measure whatever happened
-    to be there and report a number nobody could place.
-    """
+    """No `DOCS=`, no default: the measured book cannot be guessed, so the target stops."""
     done = _run_make()
 
     assert done.returncode != 0, done.stdout
     combined = done.stdout + done.stderr
     assert "DOCS" in combined, f"the failure has to name the missing argument: {combined!r}"
-    # And nothing was measured on the way to failing.
     assert "model.load" not in combined and "doctor.run" not in combined, combined
 
 
@@ -267,12 +225,6 @@ def _tree_digest(root: Path) -> str:
 
 
 def _doctor_json(book: Path, capsys) -> str:
-    # `--no-index`, because what this compares is the *verdict*. The report also carries the
-    # parse index's hit/miss counters, and those are a measurement of the run rather than a
-    # statement about the book: the second call here is warm by construction — the harness
-    # between the two calls loads the book — so an indexed second run differs from the first
-    # in exactly the way a working cache is supposed to. Uncached, both runs are cold and any
-    # difference left is the harness perturbing what it times, which is the property under test.
     capsys.readouterr()
     ostler_main(["-C", str(book), "doctor", "--json", "--no-index"])
     return capsys.readouterr().out

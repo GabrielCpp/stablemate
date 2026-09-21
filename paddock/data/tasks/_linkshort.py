@@ -1,28 +1,4 @@
-"""The link-shortener acceptance gate: twelve black-box checks over a built product.
-
-The head-to-head fixtures on this app compare a workflow lane against a solo agent, and a
-wall-clock number with no quality bar under it is half a comparison — a lane can always
-get faster by shipping less. This module is the other half: the same twelve-point gate the
-solo baseline was graded on, run against whatever tree a trial left behind.
-
-Black-box on purpose. The gate builds `api/` and talks to the server over HTTP; it never
-reads the product's source, so it grades a Firestore-backed implementation and a
-file-ledger one by the same ruler. Two consequences of that choice shape everything here:
-
-* **The Firestore emulator is part of the harness, not of the product.** The app's
-  architecture decisions mandate Cloud Firestore behind the ledger port, so a faithful
-  product cannot be run against nothing — `gcloud emulators firestore start` stands in for
-  the backing service the way a compose stack would. A product that never touches
-  Firestore simply ignores the emulator env and passes the same checks.
-* **Durability is proved by restarting the server, not by reading a store file.** An
-  earlier draft of this gate read the ledger JSON off disk, which silently failed every
-  implementation that kept its ledger somewhere other than a local file. Kill the server,
-  start it again, and ask whether a minted key still redirects: that is the observable
-  claim "a short link survives a restart" with no opinion about where the bytes live.
-
-The leading underscore keeps `paddock.loader` from treating this as a task module: it is
-the library the link-shortener tasks import, not a second declaration.
-"""
+"""The link-shortener acceptance gate: twelve black-box checks over a built product."""
 
 from __future__ import annotations
 
@@ -39,20 +15,12 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import IO, Any
 
-#: How many checks `run_checks` performs. Named so a report can print `n/12` before the
-#: server even builds — a product that does not compile scores 0 of 12, not 0 of 0.
 TOTAL = 12
 
-#: The port the product's own `main.go` hardcodes. The gate has no way to move it, so a
-#: busy port is a precondition failure the result names rather than a mysterious hang.
 SERVER_PORT = 18081
 
-#: An arbitrary project id for the emulator. Any non-empty value works — the emulator
-#: namespaces data by it and never checks it against anything real.
 PROJECT_ID = "paddock-gate"
 
-#: The cold-JVM reality of `gcloud emulators firestore start`: ~45–60s on this hardware
-#: before it answers HTTP at all. A short wait here reads as "the product is broken".
 EMULATOR_WAIT_S = 120.0
 
 
@@ -83,13 +51,7 @@ def _request(
 
 
 def run_checks(base: str, restart: Callable[[], None]) -> list[dict[str, Any]]:
-    """The twelve checks, over a server already listening at *base*.
-
-    Pure over HTTP plus one *restart* callable, which is what makes the list testable
-    without Go or an emulator: hand it any server and any way of bouncing that server.
-    Every check appends a row whether it passes or not, so the result always carries
-    `TOTAL` rows and a reader can see *which* claim failed rather than only how many.
-    """
+    """The twelve checks, over a server already listening at *base*."""
     checks: list[dict[str, Any]] = []
 
     def note(name: str, ok: bool, detail: str = "") -> None:
@@ -151,7 +113,6 @@ def run_checks(base: str, restart: Callable[[], None]) -> list[dict[str, Any]]:
     return checks
 
 
-# ── process management ────────────────────────────────────────────────────────────────
 
 
 def _free_port() -> int:
@@ -166,11 +127,7 @@ def _port_free(port: int) -> bool:
 
 
 def _spawn(argv: list[str], log: IO[str], **kwargs: Any) -> subprocess.Popen[str]:
-    """Start a service in its own session, so stopping it stops its whole process group.
-
-    `gcloud emulators firestore start` is a shell wrapping a JVM; a bare `terminate()`
-    kills the wrapper and leaves the JVM holding the port for the next round.
-    """
+    """Start a service in its own session, so stopping it stops its whole process group."""
     return subprocess.Popen(
         argv, stdout=log, stderr=subprocess.STDOUT, start_new_session=True, **kwargs
     )
@@ -216,23 +173,10 @@ def _wait_port(port: int, budget_s: float) -> bool:
     return False
 
 
-# ── the gate ──────────────────────────────────────────────────────────────────────────
 
 
 def probe(product: Path, workdir: Path, log_dir: Path) -> dict[str, Any]:
-    """Build, serve and grade one product tree. Returns the gate as data, never raises.
-
-    *product* is any tree with the app's Go module at `api/` — a trial's sealed witness,
-    or a live scratch tree. It is read-only here: the build lands in *workdir* and the
-    server runs with *workdir* as its cwd, so a file-ledger implementation writes its
-    store there instead of into a sealed stage. *log_dir* collects the build, emulator
-    and server logs — at score time that is `run.artifacts`, the one place a score may
-    write.
-
-    `{"ran": False, "reason": ...}` means the gate could not ask the question — a missing
-    toolchain, a busy port — and is deliberately distinct from a 0-of-12: only a product
-    that was actually interrogated gets a score.
-    """
+    """Build, serve and grade one product tree."""
     api = product / "api"
     if not (api / "go.mod").is_file():
         return {"ran": False, "reason": f"no Go module at {api}"}
@@ -248,8 +192,6 @@ def probe(product: Path, workdir: Path, log_dir: Path) -> dict[str, Any]:
     workdir.mkdir(parents=True, exist_ok=True)
     log_dir.mkdir(parents=True, exist_ok=True)
     binary = workdir / "server"
-    # Default (readonly) module mode: a build must not edit a sealed tree's go.mod/go.sum,
-    # and a product whose module files are incomplete is a product that does not build.
     build = subprocess.run(
         ["go", "build", "-o", str(binary), "./cmd/server"],
         cwd=str(api), capture_output=True, text=True, check=False,

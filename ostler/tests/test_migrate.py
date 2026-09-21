@@ -1,5 +1,4 @@
-"""The migration is lossless: an old-format repo folds into the new format with the same typed
-graph, conformant under doctor, and no legacy JSON left behind."""
+"""The migration is lossless: an old-format repo folds into the new format with the same typed graph, conformant under doctor, and no legacy JSON left behind."""
 from __future__ import annotations
 
 import json
@@ -48,20 +47,12 @@ def test_migration_is_lossless(tmp_path: Path):
     story = epic.stories[0]
     assert story.slug == "01-foo" and story.seed_items == ["seed-a1"] and story.title == "Foo"
 
-    # narrative preserved, canonical sections added
     epic_text = (tmp_path / "docs/epics/epic-a/epic.md").read_text()
     assert "build it" in epic_text and "## Seeds" in epic_text and "## Stories" in epic_text
 
-    # feature concept from inventory; queue index
     assert (tmp_path / "docs/features/area/rec.md").exists()
     assert todo.list_epics(load(tmp_path)) == ["epic-a"]
 
-    # Conformant in every way the migration is responsible for. What it cannot make conformant
-    # is the story's *prose*: an old story predates two required sections and arranges the ones
-    # it has in an order the contract now fixes. Both are real work someone has to do, and the
-    # migration inventing empty headings would only hide the first behind a scaffold. So the
-    # residual errors are named here rather than suppressed — this is the cost of one story
-    # contract with no version key, stated where it is paid.
     report = doctor.run(g)
     residual = [f.code for f in report.findings if f.severity == "error"]
     assert sorted(residual) == ["story-section-order", "unwritten-story"]

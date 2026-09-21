@@ -1,10 +1,4 @@
-"""``exercised: false`` on a surface index — a whole surface's obligations declared out of scope.
-
-A legacy surface kept documented while nothing drives it still carries every normative bullet it
-ever had. The declaration on ``features/<surface>/index.md`` drops the obligation-class findings
-under that surface and nothing else; it is malformed when not a boolean and stale when the
-surface has no node left to cover.
-"""
+"""``exercised: false`` on a surface index — a whole surface's obligations declared out of scope."""
 from __future__ import annotations
 
 import re
@@ -76,7 +70,7 @@ def test_a_non_boolean_value_is_malformed(repo: Path):
     assert finding.severity == "error"
     assert finding.path == "docs/features/legacy/index.md"
     assert finding.ref == "legacy#exercised"
-    assert "undeclared-obligation" in _codes(repo)   # a malformed declaration excuses nothing
+    assert "undeclared-obligation" in _codes(repo)
 
 
 def test_a_declaration_on_a_surface_with_no_node_is_stale(repo: Path):
@@ -88,16 +82,9 @@ def test_a_declaration_on_a_surface_with_no_node_is_stale(repo: Path):
 
 
 def test_the_documented_obligation_class_is_the_one_the_gate_applies():
-    """The class is spelled twice — a frozenset here, a sentence in `doctor-codes.md`.
-
-    It has already drifted once: the commit that added `insensitive-check` put it in the
-    documented list and in doctor's emitters and not in the frozenset, so the suppression
-    the reference promised was never implemented, and nothing said so. A reader checking
-    whether a code is dropped reads the prose; only the literal decides.
-    """
+    """The class is spelled twice — a frozenset here, a sentence in `doctor-codes.md`."""
     ref = Path(__file__).resolve().parents[2] / (
         "base-library/library/skills/ostler/okf/references/doctor-codes.md")
-    # The sentence naming the class, from `exercised: false` to the period that ends it.
     sentence = re.search(r"`exercised: false`.*?obligation-class findings under that "
                          r"surface\s*—(.*?)\.\s", ref.read_text(), re.S)
     assert sentence is not None, "doctor-codes.md no longer describes the class in prose"
@@ -105,10 +92,5 @@ def test_the_documented_obligation_class_is_the_one_the_gate_applies():
 
 
 def test_an_unwitnessed_check_is_not_an_obligation_anyone_owes():
-    """It states the harness could not build a witness, not that a claim wants a proof.
-
-    Listing it here would suppress it under `exercised: false` for the one reason it never
-    claims — and the absence has to be asserted, or the next reader adds it as a sibling of
-    `insensitive-check` on the strength of the name.
-    """
+    """It states the harness could not build a witness, not that a claim wants a proof."""
     assert "unwitnessed-check" not in doctor.OBLIGATION_CODES

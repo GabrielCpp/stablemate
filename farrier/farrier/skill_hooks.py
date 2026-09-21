@@ -1,23 +1,4 @@
-"""A skill's declaration that one of its scripts must run at a git hook.
-
-A library skill is text and files; the one thing it cannot do is get itself *run*.
-Until now farrier closed that gap by knowing about one skill by name — the ostler
-staged-files gate was hardcoded in ``hooks``, so a second skill wanting a hook meant a
-second special case in farrier, and a repo that wanted only the first still carried the
-machinery for both.
-
-The declaration moves into the skill instead::
-
-    hooks:
-      - stage: pre-commit
-        run: scripts/check_staged_files.py
-
-Selecting the skill selects its hook, and farrier stops naming any skill in particular.
-
-**Declared, not discovered.** A script under ``scripts/`` is not a hook by virtue of
-being there — a skill bundles helpers it means the *agent* to run, and installing those
-into every commit would be a surprise nobody asked for and nobody could see coming.
-"""
+"""A skill's declaration that one of its scripts must run at a git hook."""
 
 from __future__ import annotations
 
@@ -25,10 +6,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-#: The git hooks farrier wires. Deliberately short: every stage here has to be
-#: implemented in each of the five hook managers, and a stage nothing declares is
-#: machinery with no user. Widening it is this tuple plus the manager wiring — the
-#: validation and the render already read from here.
 STAGES = ("pre-commit",)
 
 
@@ -36,21 +13,13 @@ STAGES = ("pre-commit",)
 class SkillHook:
     """One ``hooks:`` entry, bound to the skill that declared it."""
 
-    #: The skill's *installed* name (prefixed), which is what the run path contains.
     skill: str
     stage: str
-    #: The script, relative to the skill directory — as written in the front matter.
     run: str
 
 
 def declared(data: dict[str, Any]) -> list[dict[str, Any]]:
-    """The raw ``hooks:`` entries of a parsed front matter, dropping malformed shapes.
-
-    Lenient by design, and safe because ``farrier library --check --strict`` is the gate
-    that refuses the malformed ones. Install must not raise on a library it did not
-    write: a repo pinned to an older base library would otherwise stop installing
-    entirely because one skill it does not even select has a typo in a key.
-    """
+    """The raw ``hooks:`` entries of a parsed front matter, dropping malformed shapes."""
     entries = data.get("hooks")
     if not isinstance(entries, list):
         return []
@@ -58,8 +27,7 @@ def declared(data: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def hooks_for(skill: str, data: dict[str, Any]) -> list[SkillHook]:
-    """The valid, wireable hooks a skill declares. Silently drops the rest — see
-    ``declared`` for why install is the wrong place to raise."""
+    """The valid, wireable hooks a skill declares."""
     out: list[SkillHook] = []
     for entry in declared(data):
         stage = str(entry.get("stage") or "").strip()
@@ -70,14 +38,7 @@ def hooks_for(skill: str, data: dict[str, Any]) -> list[SkillHook]:
 
 
 def findings(data: dict[str, Any], source_dir: Path) -> list[tuple[str, str, str]]:
-    """``(level, code, message)`` for every problem with a source's ``hooks:`` block.
-
-    *source_dir* is the skill's directory, so ``run:`` can be checked for pointing at a
-    file that exists. That check is the load-bearing one: a hook naming a script the
-    skill does not ship installs fine, and fails at the moment somebody commits — which
-    is both the worst time to discover it and the time farrier looks most like the
-    culprit.
-    """
+    """``(level, code, message)`` for every problem with a source's ``hooks:`` block."""
     raw = data.get("hooks")
     if raw is None:
         return []

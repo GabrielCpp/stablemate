@@ -1,9 +1,4 @@
-"""`ostler qa frames`: the frames around a step, pulled out of the run's recording.
-
-ffmpeg is faked — the tests pin what the command asks of it (the seek, the window, the
-sampling) and what it makes of the result (file names that are positions in the
-recording, an index in order), not the decoder.
-"""
+"""`ostler qa frames`: the frames around a step, pulled out of the run's recording."""
 
 from __future__ import annotations
 
@@ -73,10 +68,9 @@ def ffmpeg(monkeypatch: pytest.MonkeyPatch) -> _FakeFfmpeg:
 def test_the_frames_around_a_step_are_named_by_their_place_in_the_recording(tmp_path: Path, ffmpeg: _FakeFfmpeg) -> None:
     spec = _spec(tmp_path)
     result = extract_frames(spec, step=STEP_ONE[0], around=0.5, fps=2)
-    # The step sits at 2.4–4.9 s of the recording; half a second either side is 1.9–5.4.
     assert (result.at, result.until, result.start, result.end) == (2.4, 4.9, 1.9, 5.4)
     assert ffmpeg.argv[ffmpeg.argv.index("-ss") + 1] == "1.900"
-    assert ffmpeg.argv.index("-ss") < ffmpeg.argv.index("-i")  # seek before decode
+    assert ffmpeg.argv.index("-ss") < ffmpeg.argv.index("-i")
     assert ffmpeg.argv[ffmpeg.argv.index("-i") + 1] == str(spec / "qa/videos/web.mp4")
     assert ffmpeg.argv[ffmpeg.argv.index("-t") + 1] == "3.500"
     assert result.out_dir == spec / "qa/frames" / STEP_ONE[0]
@@ -107,7 +101,7 @@ def test_a_step_can_be_named_by_a_fragment_of_its_label(tmp_path: Path, ffmpeg: 
     assert extract_frames(spec, step="LAND ON").step_id == STEP_TWO[0]
     data = build_report(spec)
     with pytest.raises(FramesError, match="matches 2 steps"):
-        find_step(data, "e")  # both labels contain it
+        find_step(data, "e")
     with pytest.raises(FramesError, match="no step named"):
         find_step(data, "nothing like this")
 
@@ -132,18 +126,14 @@ def test_a_position_instead_of_a_step(tmp_path: Path, ffmpeg: _FakeFfmpeg) -> No
 
 
 def test_what_cannot_be_extracted_is_said_plainly(tmp_path: Path, ffmpeg: _FakeFfmpeg, monkeypatch: pytest.MonkeyPatch) -> None:
-    # A step the ledger never stamped (an older harness) has no place in the recording.
     log = _log()
     del log[2]["started_offset_ms"], log[2]["ended_offset_ms"]
     with pytest.raises(FramesError, match="has no place in the recording"):
         extract_frames(_spec(tmp_path / "a", log), step=STEP_ONE[0])
-    # A run with no video record at all.
     with pytest.raises(FramesError, match="no recording"):
         extract_frames(_spec(tmp_path / "b", [r for r in _log() if r["kind"] != "video"]), step=STEP_ONE[0])
-    # The record is there but the file is not on this machine (qa/ is not committed).
     with pytest.raises(FramesError, match="not on this machine"):
         extract_frames(_spec(tmp_path / "c", video=False), step=STEP_ONE[0])
-    # No decoder.
     monkeypatch.setattr(frames_mod.shutil, "which", lambda name: None)
     with pytest.raises(FramesError, match="ffmpeg is not installed"):
         extract_frames(_spec(tmp_path / "d"), step=STEP_ONE[0])

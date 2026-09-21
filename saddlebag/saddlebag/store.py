@@ -1,57 +1,26 @@
-"""Secret stores — where passwords actually live.
-
-saddlebag never encrypts anything itself. It delegates to a store that already
-does it properly:
-
-1. the **OS keyring** (macOS Keychain, Windows Credential Manager, Linux Secret
-   Service) whenever a real backend is present — the common case on a laptop,
-   and zero configuration;
-2. a **HashiCorp Vault** KV v2 mount otherwise — for containers, CI, and any
-   host with no desktop session.
-
-If neither is available saddlebag refuses to run rather than degrading to
-plaintext. ``SADDLEBAG_BACKEND=keyring|vault`` overrides the autodetection.
-
-Scoping note: the portable cross-OS keyring contract is exactly
-``(service, username, password)`` — there is no collection or file parameter in
-it. Linux's Secret Service backend exposes a ``preferred_collection`` hook, but
-it takes a D-Bus path and has no macOS/Windows equivalent, so using it would be
-a Linux-only path that silently no-ops elsewhere. Saddlebag therefore scopes its
-secrets with a dedicated **service name** (:data:`SERVICE`), which is a real
-isolation boundary: a lookup under any other service name returns ``None``.
-"""
+"""Secret stores — where passwords actually live."""
 
 from __future__ import annotations
 
 import os
 from typing import Protocol, runtime_checkable
 
-#: Namespace for every secret saddlebag writes to the OS keyring.
 SERVICE = "saddlebag"
 
-#: Default KV v2 mount and path prefix used by the Vault store.
 VAULT_MOUNT = "secret"
 VAULT_PREFIX = "saddlebag"
 
-#: The KV field a Vault secret's value is written under, and the field earlier
-#: versions used — read for back-compat, never written.
 VALUE_FIELD = "value"
 LEGACY_VALUE_FIELD = "password"
 
 
 class StoreUnavailableError(RuntimeError):
-    """No secret store could be opened. Carries operator-facing remediation."""
+    """No secret store could be opened."""
 
 
 @runtime_checkable
 class SecretStore(Protocol):
-    """Put/get/delete a string-keyed secret.
-
-    The key is whatever the caller says it is: a credential's password lives under
-    ``<project>/<cred-id>``, an environment's secret entry under
-    ``<project>/<env-id>/<KEY>``. The store neither knows nor cares which — it is a
-    namespaced string→secret map, and the parameter names below are historical.
-    """
+    """Put/get/delete a string-keyed secret."""
 
     name: str
 
@@ -87,21 +56,11 @@ class KeyringStore:
         try:
             keyring.delete_password(self.service, credential_id)
         except PasswordDeleteError:
-            # Already absent — deletion is idempotent from the pool's point of view.
             pass
 
 
 class VaultStore:
-    """Secrets in a Vault KV v2 mount, one Vault secret per store key.
-
-    Requires the ``vault`` extra (``pip install 'saddlebag[vault]'``) and the
-    usual ``VAULT_ADDR`` / ``VAULT_TOKEN`` environment variables.
-
-    The KV field is :data:`VALUE_FIELD`. It used to be ``password``, which was a
-    lie the moment an environment's ``VITE_FIREBASE_API_KEY`` started living here;
-    reads still fall back to the old field so a Vault written by an earlier
-    saddlebag keeps resolving.
-    """
+    """Secrets in a Vault KV v2 mount, one Vault secret per store key."""
 
     name = "vault"
 
@@ -138,8 +97,6 @@ class VaultStore:
         )
 
     def get(self, credential_id: str) -> str | None:
-        # The exception class is imported by name, not reached through ``hvac.exceptions``:
-        # ``import hvac`` alone does not promise the submodule is bound on the package.
         from hvac.exceptions import InvalidPath
 
         try:
@@ -163,13 +120,7 @@ class VaultStore:
 
 
 def keyring_available() -> bool:
-    """True when a *real* OS keyring backend is present.
-
-    ``keyring`` does not raise when nothing is available — it silently selects
-    ``fail.Keyring``, whose methods raise only on use. Probing the selected
-    backend's type is therefore the reliable check, not a try/except around a
-    write.
-    """
+    """True when a *real* OS keyring backend is present."""
     try:
         import keyring
         import keyring.backends.fail
@@ -184,11 +135,7 @@ def vault_configured() -> bool:
 
 
 def open_store(backend: str | None = None) -> SecretStore:
-    """Open the secret store, preferring the OS keyring, falling back to Vault.
-
-    Raises :class:`StoreUnavailableError` — never degrades to plaintext — when
-    no store is available.
-    """
+    """Open the secret store, preferring the OS keyring, falling back to Vault."""
     backend = backend or os.environ.get("SADDLEBAG_BACKEND")
 
     if backend == "keyring":

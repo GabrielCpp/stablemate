@@ -1,23 +1,4 @@
-"""`ostler qa` — deterministic QA run bookkeeping.
-
-See ostler/docs/QA-RUN.md for the full design rationale.
-
-Commands:
-  ostler qa start   <run-id> --story S --spec DIR [--daemon name:cmd ...]
-  ostler qa step    --id I --label L --mechanism M --cmd CMD [--capture k=$.path] [--out PATH]
-  ostler qa assert  --id I --label L --check TYPE [check-specific flags]
-  ostler qa stop
-  ostler qa report  [--spec DIR] [--out-dir LABEL] [--ledger]
-  ostler qa replay  [--spec DIR]
-  ostler qa run     <plan-file> [--spec DIR] [--stop-on-fail]
-  ostler qa lint    <plan-file>
-  ostler qa validate <plan-file>
-  ostler qa sensitivity [--node SUBSTR]
-  ostler qa context-show [--spec DIR] [--required] [--node SUBSTR] [--limit N]
-  ostler qa compile-plan --spec DIR [--out PATH]
-  ostler qa evidence-map [--spec DIR] [--status S] [--out PATH]
-  ostler qa clean   --spec DIR [--yes]
-"""
+"""`ostler qa` — deterministic QA run bookkeeping."""
 
 from ostler.qa.run import (
     DaemonSpec,

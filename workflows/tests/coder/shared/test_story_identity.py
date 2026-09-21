@@ -1,11 +1,4 @@
-"""The minted story id as the trailer identity — `_story_id` and `changed_files`.
-
-Commit trailers carry the story's minted frontmatter id (`ACME-01H…`) because it
-survives a slug rename; the slug is the fallback for a book that predates minted ids.
-What is worth testing is each end of that seam: the resolver that lifts the id off the
-graph, and the read side that must keep answering to commits written under either
-spelling.
-"""
+"""The minted story id as the trailer identity — `_story_id` and `changed_files`."""
 from __future__ import annotations
 
 import logging
@@ -166,12 +159,7 @@ def test_settlement_prompt_commits_with_the_minted_story_identity() -> None:
 
 
 def test_no_commit_prompt_brackets_the_story_id_into_the_subject() -> None:
-    """The id has exactly one spelling — the `Story:` footer — and this is the guard.
-
-    A second copy in the subject is the same fact in a shape no tool reads: it spends
-    characters release-please wants for the description, and it is a second thing to keep
-    in sync with `commits.subject`, which no longer writes one.
-    """
+    """The id has exactly one spelling — the `Story:` footer — and this is the guard."""
     prompts = Path(coder.__file__).parent
     offenders = [
         str(path.relative_to(prompts))

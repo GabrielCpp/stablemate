@@ -1,24 +1,4 @@
-"""Source read as syntax — the one parser every language front end goes through.
-
-`inventory` used to answer "what does this file declare?" with a regex per language, and the
-answers were wrong in both directions for the same reason: a regex matches *text*, and text
-includes comments, string literals and whatever scope the match happened to land in. A
-commented-out `export function ghost()` became a unit the book owed coverage for; a name
-inside a template literal grounded a `code:` citation; and the shapes the pattern did not
-spell — `export abstract class`, `export const {a, b} = …`, Go's grouped `type (…)` — were
-invisible, so a *correct* citation failed grounding with no way to fix it.
-
-**tree-sitter, not the native toolchain.** A real `go/ast` or `tsc` parse would mean ostler's
-correctness depended on the *target* repo having Go or node installed and its tree being
-buildable — and ostler runs inside agent containers and CI against repos it never builds,
-while `okf-builder` reads working trees mid-edit. A missing toolchain forces a fallback, and a
-fallback is a second grammar that disagrees with the first, which is the exact failure
-`inventory` was extracted to end. tree-sitter ships as a prebuilt wheel, needs nothing from
-the repo it reads, and recovers from a syntax error instead of refusing the file.
-
-The split with `inventory` is deliberate: this module knows how to get a tree and walk it;
-what counts as a *unit*, and which units are public, is language semantics and lives there.
-"""
+"""Source read as syntax — the one parser every language front end goes through."""
 from __future__ import annotations
 
 from collections.abc import Iterator
@@ -29,16 +9,8 @@ from pathlib import Path
 from tree_sitter import Node, Parser, Tree
 from tree_sitter_language_pack import get_parser
 
-#: The distributions whose contents decide what a parse of the same bytes yields — the runtime
-#: and the compiled grammars it loads. Both, because either one moving can change an answer:
-#: the language pack ships the grammars, and the runtime decides how their queries and error
-#: recovery behave.
 GRAMMAR_DISTRIBUTIONS = ("tree-sitter", "tree-sitter-language-pack")
 
-#: The grammar each suffix is read with. Wider than `inventory.SOURCE_SUFFIXES` on purpose:
-#: the QA diff mapper attributes changed lines in `.js`/`.jsx` too, while the coverage
-#: inventory does not count them as units. `.tsx` needs its own grammar — the TypeScript one
-#: reads `<Foo />` as a type assertion.
 LANGUAGES = {
     ".go": "go",
     ".py": "python",
@@ -54,27 +26,13 @@ LANGUAGES = {
 
 @lru_cache(maxsize=None)
 def _parser(language: str) -> Parser:
-    """One parser per grammar, kept for the process. Loading a grammar is not free, and the
-    coverage join asks for the same handful of languages once per file across a whole tree."""
+    """One parser per grammar, kept for the process."""
     return get_parser(language)
 
 
 @lru_cache(maxsize=1)
 def grammar_version() -> str:
-    """What the grammars in this environment are, as one string a caller can put in a key.
-
-    Everything this module answers is a function of two things: the source, and the grammars
-    that read it. Upgrade the language pack and `export abstract class` may start parsing where
-    it did not — the same bytes, a different declaration set — so a symbol table cached on a
-    file's content alone would outlive the parse that produced it. This is the other half of
-    that key, and the first thing ostler caches on that is not document content.
-
-    Named for what is *installed* rather than for when it was asked, so it is stable within a
-    process and across every process on one environment; a version that moved with the clock
-    would invalidate the cache continuously and cache nothing. An absent distribution reads as
-    ``unknown`` rather than raising — a source checkout with no metadata still has to run, and
-    it degrades to "one bucket for every unmeasurable install", never to an error.
-    """
+    """What the grammars in this environment are, as one string a caller can put in a key."""
     return " ".join(_distribution_version(name) for name in GRAMMAR_DISTRIBUTIONS)
 
 
@@ -92,41 +50,17 @@ def language_for(path: str | Path) -> str | None:
 
 @lru_cache(maxsize=4096)
 def _tree(language: str, text: str) -> Tree:
-    """The last few files parsed, kept. `doctor` grounds every citation in a file separately
-    and each one asks for that file's declarations, so a book with forty citations into one
-    module used to re-read it forty times.
-
-    The cache is sized to outlast a single ``extract_evidence`` call across any realistic
-    source tree (4096 covers multi-thousand-file projects with room to spare). The
-    previous ``maxsize=16`` evicted a Tree mid-visit on the api project's 312-file walk
-    and the freed C AST made a child ``Node`` Python wrapper in the still-running visitor
-    a dangling pointer; reading ``node.start_byte`` segfaulted the interpreter. A larger
-    cache means no eviction happens during a single drive, which is the only time the
-    visitor holds ``Node`` references without holding the ``Tree`` reference alongside."""
+    """The last few files parsed, kept."""
     return _parser(language).parse(text.encode())
 
 
 def parse(language: str, text: str) -> Node:
-    """The root node of *text* read as *language*.
-
-    Never raises on malformed input: tree-sitter's error recovery yields a tree with `ERROR`
-    nodes around the part it could not read, and the rest stays usable. That is what makes a
-    file mid-edit — the normal state of a tree `okf-builder` is walking — approximable rather
-    than a hole in the inventory.
-    """
+    """The root node of *text* read as *language*."""
     return _tree(language, text).root_node
 
 
 def error_names(language: str, text: str) -> set[str]:
-    """Every identifier inside a region the parser could not read.
-
-    The counterpart to the recovery above, and the reason grounding does not get *stricter*
-    when a file is broken. A half-typed `def render(self ->` parses to an `ERROR` node with no
-    declaration in it, so a citation to `render` would flip to `missing-code-symbol` for as
-    long as the edit is in flight — a red `doctor` caused by the working tree rather than by
-    the book. The region the parser could not read is the region we have no knowledge about,
-    so it grounds any name it mentions; everywhere else stays exact.
-    """
+    """Every identifier inside a region the parser could not read."""
     root = parse(language, text)
     if not root.has_error:
         return set()
@@ -139,12 +73,7 @@ def error_names(language: str, text: str) -> set[str]:
 
 
 def walk(node: Node) -> Iterator[Node]:
-    """Every named node in the subtree, root first, in source order.
-
-    Iterative rather than recursive: a minified or deeply chained source file nests far enough
-    to hit Python's recursion limit, and a `RecursionError` in the middle of `doctor` reads as
-    a crash rather than as one unreadable file.
-    """
+    """Every named node in the subtree, root first, in source order."""
     stack = [node]
     while stack:
         current = stack.pop()
@@ -153,21 +82,7 @@ def walk(node: Node) -> Iterator[Node]:
 
 
 def text_of(node: Node | None) -> str:
-    """The source *node* spans, decoded. An absent node spans nothing.
-
-    Defensive against the exception path — `node.text` is a C-extension property and
-    has segfaulted deep inside a recursive visit on malformed input; a SIGSEGV
-    escapes Python's exception machinery and tears the interpreter down, which
-    a `try/except` cannot catch. The exception branches below handle the cases
-    where libpython surfaces the fault as `MemoryError` or `ValueError` instead,
-    and return the same `""` the docstring already promises for an absent node.
-
-    The depth cap the Go and tree visitors carry (`behavior_go.MAX_DEPTH`,
-    `behavior_tree.MAX_DEPTH`) is the real answer to the segfault path: it
-    stops the recursion *before* it reaches the subtree whose `node.text`
-    faults. This function does what it can — degrade gracefully on the
-    non-segfault paths — and trusts the visitor's depth guard on the rest.
-    """
+    """The source *node* spans, decoded."""
     if node is None:
         return ""
     try:
@@ -177,16 +92,10 @@ def text_of(node: Node | None) -> str:
 
 
 def field_text(node: Node, field: str) -> str:
-    """The text of *node*'s `field` child — "" when the grammar did not fill it in, which is
-    how an anonymous function or a declaration inside an `ERROR` region presents."""
+    """The text of *node*'s `field` child — "" when the grammar did not fill it in, which is how an anonymous function or a declaration inside an `ERROR` region presents."""
     return text_of(node.child_by_field_name(field))
 
 
 def lines_of(node: Node) -> tuple[int, int]:
-    """*node*'s first and last line, 1-based and inclusive — a declaration's true extent.
-
-    This is the property the line scan could not have: it read a declaration's *start* and
-    guessed the end was wherever the next declaration began, so a hunk landing in a trailing
-    comment was attributed to the function above it.
-    """
+    """*node*'s first and last line, 1-based and inclusive — a declaration's true extent."""
     return node.start_point[0] + 1, node.end_point[0] + 1

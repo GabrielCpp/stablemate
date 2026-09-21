@@ -37,7 +37,7 @@ def test_invisible_elements_excluded_from_all_buckets():
     result = match(elements, regions)
     assert result.matched == []
     assert result.missing == []
-    assert len(result.unexpected) == 1  # region never claimed since the dom element is skipped
+    assert len(result.unexpected) == 1
 
 
 def test_matching_is_deterministic_regardless_of_input_order():

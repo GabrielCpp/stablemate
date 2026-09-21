@@ -1,8 +1,4 @@
-"""Front matter, banners and headings come from the parser, not from a regex over raw text.
-
-Each case here is something the three regexes and the `line.split(":", 1)` loop they
-replaced got wrong. See the `stablemate-structured-parsing` skill.
-"""
+"""Front matter, banners and headings come from the parser, not from a regex over raw text."""
 from __future__ import annotations
 
 from farrier.frontmatter import (
@@ -59,7 +55,7 @@ def test_a_value_containing_a_colon_is_not_truncated():
 
 
 def test_nested_metadata_does_not_leak_top_level_keys():
-    """The line splitter read `  source: x` as a top-level key named `source`."""
+    """The line splitter read ` source: x` as a top-level key named `source`."""
     header, _ = split_front_matter(
         "---\nname: n\nmetadata:\n  source: library/skills/acme/a/SKILL.md\n---\n\nbody\n"
     )

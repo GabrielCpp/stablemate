@@ -1,10 +1,4 @@
-"""App-level tests for the new liveness handlers: the /push/exited endpoint,
-the deletion half of /refresh (prune), and the answered-gate state flip +
-groom:answered broadcast in _handle_command. Docker and the answer write are
-mocked so nothing shells out.
-
-Run: uv run pytest tests/test_app.py
-"""
+"""App-level tests for the new liveness handlers: the /push/exited endpoint, the deletion half of /refresh (prune), and the answered-gate state flip + groom:answered broadcast in _handle_command."""
 from __future__ import annotations
 
 import asyncio
@@ -34,10 +28,6 @@ def isolated_store(monkeypatch, tmp_path):
 
 def _reset() -> None:
     state.WORKFLOWS.clear()
-    # The telemetry cache is upstream of the rows: `_live_loop` re-syncs a native row
-    # from every entry in RUNS on each tick, so a run another file left here is
-    # re-materialized into WORKFLOWS *after* this reset and shows up in the broadcast.
-    # Clearing the rows alone makes the fleet cases order-dependent.
     state.RUNS.clear()
     state._gate_locks.clear()
     state.CLIENTS.clear()
@@ -45,11 +35,6 @@ def _reset() -> None:
     state.HISTORIES.clear()
     state.HISTORY_LOCK = asyncio.Lock()
     sidecar_hub.CONNECTIONS.clear()
-    # Discovery-in-progress is fleet state too. SCANNING defaults to True at
-    # import, and every `_hermetic_client()` starts a background scan that
-    # clears it whenever the loop next gets a turn — so a case that projects
-    # the fleet twice can otherwise catch the flag on either side of that flip
-    # and see two legitimately different payloads.
     state.SCANNING = False
 
 
@@ -61,13 +46,7 @@ class _NoSocket:
 
 
 class _FakeConn(sidecar_hub.SidecarConnection):
-    """A stand-in sidecar connection registered directly into the hub, so the
-    data-plane handlers exercise the socket-preferred path without a real
-    WebSocket.
-
-    A real `SidecarConnection` and not a look-alike: the hub's registry is a dict of
-    them, and what this replaces is the two coroutines a handler awaits, not the
-    type the handler is handed."""
+    """A stand-in sidecar connection registered directly into the hub, so the data-plane handlers exercise the socket-preferred path without a real WebSocket."""
 
     def __init__(self, container_id: str, *, result=None, error: bool = False) -> None:
         super().__init__(container_id, _NoSocket())
@@ -85,7 +64,6 @@ class _FakeConn(sidecar_hub.SidecarConnection):
 
 
 def _hermetic_client() -> TestClient:
-    # Startup runs _startup_scan → keep it off real docker.
     with patch.object(discovery, "scan", return_value=[]), \
          patch.object(discovery, "present_container_ids", return_value=None):
         client = TestClient(app=groom_app.create_app())
@@ -93,7 +71,6 @@ def _hermetic_client() -> TestClient:
     return client
 
 
-# ---- /push/exited marks the worker FINISHED, records the code, clears gates ----
 def test_push_exited_marks_finished_clears_gates_and_records_code():
     _reset()
     wf = WorkflowContainer(container_id="abc123", name="w", state=WorkflowState.BLOCKED, workspace_volume="v")
@@ -102,7 +79,6 @@ def test_push_exited_marks_finished_clears_gates_and_records_code():
 
     client = _hermetic_client()
     try:
-        # already has a volume, so _ensure_volumes is a no-op (no docker call)
         resp = client.post("/push/exited", json={"container_id": "abc123", "exit_code": 2})
     finally:
         client.__exit__(None, None, None)
@@ -123,7 +99,6 @@ def test_push_exited_rejects_missing_container_id():
     assert resp.json() == {"ok": False}
 
 
-# ---- the notify frame: an edge, on its own frame, carrying no markup ----
 def test_push_blocked_sends_the_state_frame_then_a_separate_notify_frame():
     _reset()
     wf = WorkflowContainer(
@@ -148,8 +123,6 @@ def test_push_blocked_sends_the_state_frame_then_a_separate_notify_frame():
 
     assert resp.json() == {"ok": True}
     assert state.WORKFLOWS["abc123"].state == WorkflowState.BLOCKED
-    # The alert rides its own frame rather than a field on the snapshot, so it
-    # fires on the block and not on every clock tick that re-pushes it.
     kinds = [m["type"] for m in captured]
     assert kinds.index("state") < kinds.index("notify")
     notify_frame = next(m for m in captured if m["type"] == "notify")
@@ -199,13 +172,10 @@ def test_the_notify_message_truncates_the_question_to_the_limit():
             groom_app._apply_socket_blocked("abc123", {"file_path": "g.md", "question": question})
         )
 
-    # A toast is an interruption, not the pane: the whole question is already on
-    # the wire in the run's detail payload.
     notify_frame = next(m for m in captured if m["type"] == "notify")
     assert notify_frame["message"] == "w: " + "q" * limit
 
 
-# ---- run detail + its refreshable slices (the fleet list's click target) ----
 def test_worker_detail_and_pushed_slices():
     _reset()
     wf = WorkflowContainer(
@@ -217,16 +187,10 @@ def test_worker_detail_and_pushed_slices():
     client = _hermetic_client()
     try:
         detail = client.get("/worker/abc123")
-        # Async now: its facts ride store reads that must run off the event loop.
         pushed = asyncio.run(groom_app._detail_message(wf))
     finally:
         client.__exit__(None, None, None)
 
-    # The fetch and the push must deliver the *same* object, because the client
-    # feeds both to one store slot: a pushed refresh that carried less than the
-    # fetch would make the pane change every time it reconnected. It can carry the
-    # whole pane — gates included — because the components are keyed, so the answer
-    # textarea keeps its DOM node and a half-typed answer survives the re-render.
     assert detail.json() == pushed["detail"]
     assert pushed["type"] == "detail" and pushed["id"] == "abc123"
     assert pushed["detail"]["found"] is True
@@ -234,9 +198,6 @@ def test_worker_detail_and_pushed_slices():
 
 
 def test_the_live_slice_endpoint_is_gone():
-    # Phase 2 replaced a per-tab 5s poll with a subscription. Leaving the route
-    # registered would let a stale cached page keep polling it forever, and the
-    # push path would never be the only one exercised.
     _reset()
     client = _hermetic_client()
     try:
@@ -245,10 +206,7 @@ def test_the_live_slice_endpoint_is_gone():
         client.__exit__(None, None, None)
 
 
-# ---- the per-tab subscription: who has which run open ----
 def test_watch_registers_the_tab_and_pushes_that_run_immediately():
-    # The immediate push is what makes a reconnect self-healing: the client re-sends
-    # `watch` on every socket open and gets current slices back without a fetch.
     _reset()
     state.WORKFLOWS["abc123"] = WorkflowContainer(
         container_id="abc123", name="w", state=WorkflowState.RUNNING, run_id="run-1"
@@ -266,9 +224,6 @@ def test_watch_registers_the_tab_and_pushes_that_run_immediately():
 
 
 def test_a_detail_push_reaches_only_the_tabs_watching_that_run():
-    # The whole point of the registry. Broadcasting every open run's detail to every
-    # tab costs bandwidth proportional to tabs × runs, and each tab discards nearly
-    # all of it — which is what the old per-tab poll was avoiding by other means.
     _reset()
     for cid in ("abc123", "def456"):
         state.WORKFLOWS[cid] = WorkflowContainer(
@@ -290,8 +245,6 @@ def test_a_detail_push_reaches_only_the_tabs_watching_that_run():
 
 
 def test_a_closed_tab_stops_being_a_watcher():
-    # A subscription pointing at a queue nobody reads would grow WATCHING for the
-    # life of the process, and _push_detail would render for an audience of nobody.
     _reset()
     queue = asyncio.Queue()
     state.add_client(queue)
@@ -302,8 +255,6 @@ def test_a_closed_tab_stops_being_a_watcher():
 
 
 def test_the_clock_refreshes_every_open_pane_alongside_the_fleet():
-    # Same argument as the fleet list: "in node 12m" and the log trail are derived
-    # from `now`, and a merely-running run emits no state change to push.
     _reset()
     state.WORKFLOWS["abc123"] = WorkflowContainer(
         container_id="abc123", name="w", state=WorkflowState.RUNNING, run_id="run-1"
@@ -420,8 +371,6 @@ def test_api_state_is_the_resync_payload():
 
 
 def test_api_state_and_the_socket_push_the_same_payload():
-    # The point of the projection module: recovering from a dead socket is not a
-    # second rendering path that can rot unobserved, because it is the same JSON.
     _reset()
     state.WORKFLOWS["abc123"] = WorkflowContainer(
         container_id="abc123", name="coder-001", state=WorkflowState.RUNNING
@@ -440,9 +389,6 @@ def test_api_state_and_the_socket_push_the_same_payload():
     finally:
         client.__exit__(None, None, None)
 
-    # `ts` is stamped per call, and so is the store's own "last time a query
-    # succeeded" — both move between the two calls without either payload saying
-    # anything different. Everything the browser renders from is compared.
     def _stable(message):
         rest = {k: v for k, v in message.items() if k != "ts"}
         rest["store"] = {k: v for k, v in rest["store"].items() if k != "last_ok_ts"}
@@ -451,12 +397,7 @@ def test_api_state_and_the_socket_push_the_same_payload():
     assert _stable(pushed["message"]) == _stable(body)
 
 
-# ---- the live clock: absence can't be pushed, so the list is re-rendered on a tick ----
 def test_live_loop_repushes_the_run_list_to_connected_clients():
-    # The row's liveness and its "silent 4m" / "in node 12m" are derived from
-    # `now` at projection time. Every other broadcast is edge-triggered, and the event
-    # that should turn a run's dot dead — it stopped emitting — is an absence, which
-    # no ingest can deliver. Without this tick the row keeps asserting it is alive.
     _reset()
     state.WORKFLOWS["abc123"] = WorkflowContainer(
         container_id="abc123", name="coder-001", state=WorkflowState.RUNNING
@@ -481,14 +422,12 @@ def test_live_loop_repushes_the_run_list_to_connected_clients():
 
 
 def test_live_loop_skips_the_render_when_nobody_is_watching():
-    # A tick with no client attached would render the whole fleet into a fan-out of
-    # zero — pure cost on a machine left serving overnight.
     _reset()
     calls = []
 
     async def drive():
         task = asyncio.create_task(groom_app._live_loop())
-        await asyncio.sleep(0.1)  # many ticks at the patched interval
+        await asyncio.sleep(0.1)
         task.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await task
@@ -504,8 +443,6 @@ def test_live_loop_skips_the_render_when_nobody_is_watching():
 
 
 def test_live_loop_survives_a_failing_tick():
-    # The watch must not be the thing that stops: one bad render (or a dead client)
-    # can't be allowed to kill the clock that reports everything else's death.
     _reset()
     calls = []
 
@@ -527,10 +464,9 @@ def test_live_loop_survives_a_failing_tick():
          patch.object(groom_app, "_broadcast_shell", _boom):
         still_running = asyncio.run(drive())
 
-    assert still_running and len(calls) > 1  # kept ticking past the first failure
+    assert still_running and len(calls) > 1
 
 
-# ---- the control-socket fallback for producers that never emit gate context ----
 def test_backfill_wait_gate_fills_path_and_question_from_the_socket(tmp_path):
     run = RunTelemetry(run_id="r", native=True, run_dir=str(tmp_path), wait_kind="operator")
     reply = {"ok": True, "questions": [
@@ -544,9 +480,6 @@ def test_backfill_wait_gate_fills_path_and_question_from_the_socket(tmp_path):
 
 
 def test_backfill_wait_gate_leaves_the_row_blocked_when_nothing_is_listening(tmp_path):
-    # No listener on the socket is not an error here — the row is still BLOCKED
-    # from wait_kind alone (per _row_state/_sync_native_row), just without a
-    # question until some later tick's producer starts a listener.
     run = RunTelemetry(run_id="r", native=True, run_dir=str(tmp_path), wait_kind="operator")
 
     def _boom(*args, **kwargs):
@@ -586,13 +519,12 @@ def test_live_loop_backfills_incomplete_gates_before_syncing_rows(tmp_path):
     assert state.WORKFLOWS["r"].state == WorkflowState.BLOCKED
 
 
-# ---- Files/Diff panels: container+repo picker and per-checkout reads ----
 def test_repos_endpoint_lists_one_entry_per_container_repo():
     _reset()
     state.WORKFLOWS["abc123"] = WorkflowContainer(
         container_id="abc123", name="coder-001", workspace_volume="ws-vol", state=WorkflowState.RUNNING
     )
-    state.WORKFLOWS["novol"] = WorkflowContainer(container_id="novol", name="pending")  # no volume → skipped
+    state.WORKFLOWS["novol"] = WorkflowContainer(container_id="novol", name="pending")
 
     client = _hermetic_client()
     try:
@@ -602,13 +534,11 @@ def test_repos_endpoint_lists_one_entry_per_container_repo():
         client.__exit__(None, None, None)
 
     groups = resp.json()
-    assert [g["container"] for g in groups] == ["abc123"]  # volume-less workflow contributes no group
+    assert [g["container"] for g in groups] == ["abc123"]
     assert [r["label"] for r in groups[0]["repos"]] == ["coder-001/acme", "coder-001/globex"]
 
 
 def test_repos_endpoint_reads_native_run_from_local_disk():
-    # A native run shares groom's host, so its checkouts are enumerated from local
-    # disk (localfs), never through a throwaway docker container.
     _reset()
     state.WORKFLOWS["nat1"] = WorkflowContainer(
         container_id="nat1", name="author-docs-app", native=True,
@@ -627,7 +557,6 @@ def test_repos_endpoint_reads_native_run_from_local_disk():
 
     assert ls.call_args[0] == ("/host/checkout",)
     groups = resp.json()
-    # a bare workspace-root entry (repo="") — the run is browsable even with no checkout under it
     assert [g["repos"] for g in groups] == [[{"repo": "", "label": "author-docs-app"}]]
 
 
@@ -657,7 +586,6 @@ def test_file_endpoint_joins_repo_and_path_and_returns_content():
     finally:
         client.__exit__(None, None, None)
 
-    # `lang` is projected server-side so the extension table lives in one place.
     assert resp.json() == {"path": "src/a.py", "content": "print(1)\n", "lang": "python"}
     assert rf.call_args[0] == ("ws-vol", "acme/src/a.py")
 
@@ -668,7 +596,6 @@ def test_file_endpoint_swallows_unsafe_path():
 
     client = _hermetic_client()
     try:
-        # read_file raises ValueError on a traversal path; the handler must not 500.
         with patch.object(groom_app.docker_io, "read_file", side_effect=ValueError("unsafe")):
             resp = client.get("/file/abc123", params={"repo": "acme", "path": "../../etc/passwd"})
     finally:
@@ -679,9 +606,6 @@ def test_file_endpoint_swallows_unsafe_path():
 
 
 def test_file_endpoint_reads_a_native_runs_workspace_by_gate_path(tmp_path):
-    # The dashboard's gate disclosure asks for `/file/<run>?path=<gate.file_path>` with
-    # no repo: a native gate's path is already relative to the run's workspace, and
-    # that workspace is the volume `/file/` reads from.
     _reset()
     gate = tmp_path / "docs" / "context.md"
     gate.parent.mkdir(parents=True)
@@ -714,7 +638,6 @@ def test_diff_endpoint_passes_repo_through():
     assert gd.call_args[0] == ("ws-vol", "acme")
 
 
-# ---- /refresh prunes containers the scan no longer sees ----
 def test_refresh_prunes_vanished_containers():
     _reset()
     state.WORKFLOWS["gone"] = WorkflowContainer(container_id="gone", name="gone")
@@ -739,11 +662,9 @@ def test_refresh_skips_prune_when_docker_unavailable():
         with client:
             client.post("/refresh")
 
-    # None means "can't tell" → fleet retained, not wiped.
     assert "keep" in state.WORKFLOWS
 
 
-# ---- answered gate: state flips to RUNNING + groom:answered is broadcast ----
 def test_handle_answer_flips_state_and_broadcasts_an_answered_event():
     _reset()
     wf = WorkflowContainer(container_id="abc123", name="w", state=WorkflowState.BLOCKED, workspace_volume="v")
@@ -755,7 +676,7 @@ def test_handle_answer_flips_state_and_broadcasts_an_answered_event():
     async def _fake_answer_gate(
         cid, fp, ans, *, workspace_volume, native=False, allow_headerless=False
     ):
-        state.clear_gate(cid, fp)  # mirror the real clear
+        state.clear_gate(cid, fp)
         return AnswerResult(ok=True, message="answered")
 
     async def _capture_broadcast(message):
@@ -770,9 +691,6 @@ def test_handle_answer_flips_state_and_broadcasts_an_answered_event():
         )
 
     assert state.WORKFLOWS["abc123"].state == WorkflowState.RUNNING
-    # The fleet changed shape (a gate closed) *and* this particular gate was
-    # answered: the first is fleet-wide, the second is what lets a tab decide
-    # whether the answered run is the one it has open.
     kinds = [m["type"] for m in captured["messages"]]
     assert "state" in kinds
     answered = next(m for m in captured["messages"] if m["type"] == "answered")
@@ -803,12 +721,10 @@ def test_handle_answer_failure_does_not_flip_or_dispatch():
             )
         )
 
-    # Gate still open, still blocked, no answered event.
     assert state.WORKFLOWS["abc123"].state == WorkflowState.BLOCKED
     assert "groom:answered" not in captured["fragment"]
 
 
-# ---- /api/run/{run_id}/outbox: addressed by run id, not container id ----
 def test_outbox_get_names_the_gate_the_run_is_parked_on():
     _reset()
     wf = WorkflowContainer(container_id="abc123", name="w", run_id="run-9", workspace_volume="v")
@@ -1099,7 +1015,6 @@ def test_inbox_post_on_a_docker_run_with_no_run_dir_yet_is_an_error():
     assert resp.json() == {"ok": False, "message": "no run directory yet"}
 
 
-# ---- startup only *schedules* discovery; it must not block on the scan ----
 def test_spawn_scan_returns_before_discovery_completes():
     _reset()
     order: list[str] = []
@@ -1114,21 +1029,17 @@ def test_spawn_scan_returns_before_discovery_completes():
         with patch.object(groom_app, "_reconcile", _slow_reconcile):
             await groom_app._spawn_scan()
             order.append("spawn-returned")
-            # The task the spawn just created — `_scan_task` is None only before the
-            # first spawn, which this scenario is past.
             scan_task = groom_app._scan_task
             assert scan_task is not None
-            await scan_task  # let the background task finish
+            await scan_task
 
     asyncio.run(_scenario())
 
-    # spawn returned before the scan even started running — i.e. non-blocking.
     assert order[0] == "spawn-returned"
     assert "scan-done" in order
     assert state.SCANNING is False
 
 
-# ---- SCANNING is cleared even if the background scan raises ----
 def test_background_scan_clears_scanning_on_error():
     _reset()
     state.SCANNING = True
@@ -1145,7 +1056,6 @@ def test_background_scan_clears_scanning_on_error():
     assert state.SCANNING is False
 
 
-# ---- Data plane prefers the live sidecar socket, falls back to volume reads ----
 def test_files_prefers_sidecar_socket_when_connected():
     _reset()
     state.WORKFLOWS["abc123"] = WorkflowContainer(container_id="abc123", name="w", workspace_volume="ws-vol")
@@ -1159,7 +1069,7 @@ def test_files_prefers_sidecar_socket_when_connected():
         client.__exit__(None, None, None)
 
     assert resp.json() == {"paths": ["a.py", "b.py"]}
-    lf.assert_not_called()  # socket served it; no throwaway container
+    lf.assert_not_called()
 
 
 def test_files_falls_back_to_volume_when_socket_errors():
@@ -1210,7 +1120,6 @@ def test_diff_prefers_sidecar_socket():
     gd.assert_not_called()
 
 
-# ---- /reload broadcasts to connected sidecars ----
 def test_reload_broadcasts_to_all_connected_sidecars():
     _reset()
     c1, c2 = _FakeConn("a"), _FakeConn("b")
@@ -1243,9 +1152,8 @@ def test_reload_targets_one_container_when_id_given():
     assert c1.reloaded and not c2.reloaded
 
 
-# ---- hello advertise folds a connected container's full state into the fleet ----
 def _run_apply_hello(container_id: str, data: dict) -> None:
-    async def _noop_ensure(cid: str) -> None:  # skip docker inspect
+    async def _noop_ensure(cid: str) -> None:
         pass
 
     async def _noop_broadcast(fragment) -> None:
@@ -1295,7 +1203,6 @@ def test_apply_hello_finished_when_terminal():
 
 def test_apply_hello_reconnect_rebuilds_gates_authoritatively():
     _reset()
-    # A stale gate lingers from a previous session; the fresh hello has none.
     wf = WorkflowContainer(container_id="abc123def456", name="w", state=WorkflowState.BLOCKED)
     wf.gates["docs/old.md"] = GateInfo(workflow_id="abc123def456", file_path="docs/old.md", question="stale?")
     state.WORKFLOWS["abc123def456"] = wf
@@ -1304,16 +1211,12 @@ def test_apply_hello_reconnect_rebuilds_gates_authoritatively():
         "abc123def456",
         {"identity": {"container_id": "abc123def456"}, "snapshot": {"current_node": "build", "terminal": "", "gates": []}},
     )
-    # Re-advertise is authoritative: the stale gate is gone and the worker is running again.
     assert state.WORKFLOWS["abc123def456"].gates == {}
     assert state.WORKFLOWS["abc123def456"].state == WorkflowState.RUNNING
 
 
 def test_the_shell_stamps_every_asset_url_with_the_files_version():
-    """An unstamped ``/assets/dashboard.js`` is a URL a browser may reuse from
-    cache without asking, so a client change can land while a tab keeps running
-    the old bundle against the new payload — silently.
-    """
+    """An unstamped ``/assets/dashboard.js`` is a URL a browser may reuse from cache without asking, so a client change can land while a tab keeps running the old bundle against the new payload — silently."""
     html = groom_app.stamp_assets(
         b'<link rel="stylesheet" href="/assets/dashboard.css">'
         b'<script type="module" src="/assets/dashboard.js"></script>'
@@ -1324,9 +1227,7 @@ def test_the_shell_stamps_every_asset_url_with_the_files_version():
 
 
 def test_an_asset_that_is_not_on_disk_keeps_its_url():
-    """Stamping is an optimization of the cache story, not a routing decision: a
-    missing file still 404s at its own URL rather than at a mangled one.
-    """
+    """Stamping is an optimization of the cache story, not a routing decision: a missing file still 404s at its own URL rather than at a mangled one."""
     html = b'<script src="/assets/nope.js"></script>'
     assert groom_app.stamp_assets(html) == html
 
@@ -1337,13 +1238,8 @@ def test_the_served_shell_is_the_stamped_one():
     assert b'src="/assets/dashboard.js?v=' in body
 
 
-# --------------------------------------------------------------------------- #
-# Operator gates over the run's control socket: the socket-first answer path
-# and the questions poll that reconciles rows from the run's own listing.
-# --------------------------------------------------------------------------- #
 class _GateConn(_FakeConn):
-    """A `_FakeConn` whose replies differ per RPC method — the answer flow asks
-    `getQuestions` before `answerGate`, and one canned result can't play both."""
+    """A `_FakeConn` whose replies differ per RPC method — the answer flow asks `getQuestions` before `answerGate`, and one canned result can't play both."""
 
     def __init__(self, container_id: str, by_method: dict) -> None:
         super().__init__(container_id)
@@ -1389,11 +1285,9 @@ def test_answer_goes_over_the_socket_first_and_uses_the_runs_own_path():
         result = asyncio.run(groom_app._answer(wf, "abc123", "docs/gate.md", "go ahead"))
 
     assert result.ok is True
-    # Ask-first: the answer carried the path exactly as the run spelled it.
     answered = next(p for m, p in conn.calls if m == "answerGate")
     assert answered["path"] == "/workspace/docs/gate.md"
     assert answered["body"] == "go ahead"
-    # The run persisted the answer itself; groom just settles its row.
     assert wf.gates == {}
     assert wf.state == WorkflowState.RUNNING
 
@@ -1423,7 +1317,6 @@ def test_a_gate_the_run_is_not_waiting_on_falls_back_to_the_file_write():
     wf = WorkflowContainer(container_id="abc123", name="w", state=WorkflowState.BLOCKED, workspace_volume="v")
     wf.gates["docs/other.md"] = GateInfo(workflow_id="abc123", file_path="docs/other.md", question="Q?")
     state.WORKFLOWS["abc123"] = wf
-    # The run lists a different gate than the row being answered.
     sidecar_hub.CONNECTIONS["abc123"] = _GateConn("abc123", {"getQuestions": _LISTING})
 
     called = {}
@@ -1443,7 +1336,7 @@ def test_a_dead_socket_falls_back_to_the_file_write():
     _reset()
     wf = WorkflowContainer(container_id="abc123", name="w", state=WorkflowState.BLOCKED, workspace_volume="v")
     wf.gates["docs/gate.md"] = GateInfo(workflow_id="abc123", file_path="docs/gate.md", question="Q?")
-    state.WORKFLOWS["abc123"] = wf  # no sidecar registered at all
+    state.WORKFLOWS["abc123"] = wf
 
     called = {}
 
@@ -1459,9 +1352,7 @@ def test_a_dead_socket_falls_back_to_the_file_write():
 
 
 def test_push_blocked_writes_the_row_and_dispatches_attendant():
-    """`/push/blocked` writes the gate onto the row, broadcasts a notify, and
-    triggers an attendant off the same arm. No reconciling poll — the push is
-    itself the telemetry."""
+    """`/push/blocked` writes the gate onto the row, broadcasts a notify, and triggers an attendant off the same arm."""
     _reset()
     state.WORKFLOWS["abc123"] = WorkflowContainer(container_id="abc123", name="w", workspace_volume="v")
 
@@ -1482,8 +1373,6 @@ def test_push_blocked_writes_the_row_and_dispatches_attendant():
 
     assert resp.json() == {"ok": True}
     assert state.WORKFLOWS["abc123"].gates["docs/gate.md"].question == "Q?"
-    # The notify frame captures the question text so the dashboard toast can
-    # show it without opening the detail pane.
     assert captured and any("Q?" in m for m in captured)
 
 
@@ -1492,11 +1381,6 @@ if __name__ == "__main__":
     failed = 0
     for fn in fns:
         try:
-            # `make test` runs this file as a script, so pytest's fixtures are not
-            # there to be injected. `tmp_path` is the only one the suite asks for,
-            # and standing it up here is what keeps the two ways of running this
-            # file — `python tests/test_app.py` and `pytest` — reporting the same
-            # result instead of the script runner erroring on the signature.
             if "tmp_path" in inspect.signature(fn).parameters:
                 with tempfile.TemporaryDirectory() as tmp:
                     fn(tmp_path=Path(tmp))

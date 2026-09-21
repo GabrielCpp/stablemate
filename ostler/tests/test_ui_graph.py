@@ -65,21 +65,20 @@ def test_graph_emits_nodes_bullets(repo: Path):
     ids = {n["id"] for n in data["nodes"]}
     assert "docs/features/groom/gui/screens/dash.md" in ids
     assert "docs/features/groom/concepts/diff.md" in ids
-    assert any(n["id"].endswith("#file-row") for n in data["nodes"])  # section node
+    assert any(n["id"].endswith("#file-row") for n in data["nodes"])
 
     row = next(n for n in data["nodes"] if n["id"].endswith("#file-row"))
-    assert row["bullets"].get("selector")           # every `- key: value` captured
+    assert row["bullets"].get("selector")
     assert "extends" in row["bullets"]
     assert row["surface"] == "groom"
 
     diff = next(n for n in data["nodes"] if n["id"].endswith("concepts/diff.md"))
-    assert "diff.py::Diff" in diff["bullets"].get("code", "")  # code: bullet → dedup/coverage source
+    assert "diff.py::Diff" in diff["bullets"].get("code", "")
 
 
 def test_graph_edges_resolve(repo: Path):
     data = graph.build(_repo(repo))
     assert data["counts"]["nodes"] == len(data["nodes"])
-    # the `extends:` edge file-row -> ds#tree-node is present and resolves
     assert any(e["to"] and e["to"].endswith("components/ds.md#tree-node") and e["resolves"]
                for e in data["edges"])
 
@@ -115,14 +114,7 @@ Trailing prose links to [t](target.md) again, and even cites
 
 
 def test_graph_edges_attribute_by_link_position(repo: Path):
-    """`via` follows where a link sits, not what its href is.
-
-    ``alpha:`` and ``beta:`` carry the same href — each edge keeps its own bullet, not
-    whichever bullet the href hit first. ``gamma:`` is a multi-line bullet whose link sits on
-    its continuation line, below the bullet's own start line, and still resolves to ``gamma``.
-    The trailing prose repeats both hrefs past every bullet, including ``omega:``'s span, and
-    both come out ``"prose"`` rather than borrowing ``omega``'s key.
-    """
+    """`via` follows where a link sits, not what its href is."""
     write(repo / "docs/features/demo/target.md", TARGET)
     write(repo / "docs/features/demo/multi.md", MULTI_VIA)
     data = graph.build(load(repo))
@@ -152,11 +144,7 @@ def _count_resolvers(monkeypatch) -> list:
 
 
 def test_build_resolves_links_with_the_resolver_it_is_handed(repo: Path, monkeypatch):
-    """A caller that already has a resolver keeps its anchor memo.
-
-    The memo is per instance, so a build that ignored the argument and made its own would
-    re-read and re-parse every link target the caller had already parsed.
-    """
+    """A caller that already has a resolver keeps its anchor memo."""
     g = _repo(repo)
     resolver = links.LinkResolver(g)
     made = _count_resolvers(monkeypatch)
@@ -164,7 +152,6 @@ def test_build_resolves_links_with_the_resolver_it_is_handed(repo: Path, monkeyp
     data = graph.build(g, resolver=resolver)
 
     assert not made, f"build constructed {len(made)} resolvers of its own, want 0"
-    # The handed-in instance is the one that did the work: its memo now holds the targets.
     assert resolver._anchors, "the handed-in resolver never resolved anything"
     assert any(e["resolves"] for e in data["edges"])
 
@@ -210,18 +197,15 @@ def test_nesting_container_and_inline_typing(repo: Path):
     d = graph.build(load(repo))
     by_title = {n["title"]: n for n in d["nodes"]}
 
-    # inline `## concept:` and nested `### field:` both promote, with hierarchy
     fld = next(n for n in d["nodes"] if n["type"] == "field")
     assert fld["title"].startswith("timeout")
     assert fld["bullets"] == {"type": "float|null", "default": "3600"}
-    assert fld["type_path"] == ["format", "concept", "field"]        # nested under the concept
+    assert fld["type_path"] == ["format", "concept", "field"]
     assert fld["parent"] == by_title["the agent node runs an LLM turn"]["id"]
 
-    # `## Methods` container types its child as a method
     m = next(n for n in d["nodes"] if n["type"] == "method")
     assert m["title"].startswith("run_turn") and m["bullets"].get("sig")
 
-    # a heading that names no type is still promoted — as `untyped`, caught by --title
     ov = by_title.get("Overview")
     assert ov is not None and ov["type"] == "untyped"
 
@@ -230,17 +214,14 @@ def test_selectors(repo: Path):
     write(repo / "docs/features/demo/wf.md", NESTED)
     d = graph.build(load(repo))
 
-    # --path: "timeout of the agent node", relative, no absolute id
     hit = graph.select(d, path="concept:agent / field:timeout")
     assert len(hit) == 1 and hit[0]["title"].startswith("timeout")
     assert graph.select(d, path="field:nope") == []
 
-    # --under (+ node-hop --depth): the concept's subtree holds the field one hop down
     concept = next(n for n in d["nodes"] if n["type"] == "concept")
     under = graph.select(d, under=concept["id"], depth=1)
     assert any(n["type"] == "field" for n in under)
 
-    # bullet filters
     assert graph.select(d, bullet="default=3600")
     assert all("sig" in n["bullets"] for n in graph.select(d, has_bullet="sig"))
     assert graph.select(d, node_type="method") and graph.select(d, title="timeout")
@@ -269,14 +250,7 @@ Jump to the [second one](./queue.md#effects-1).
 
 
 def test_a_repeated_heading_gets_the_anchor_github_renders(repo: Path):
-    """Two headings with one title are two nodes, at the two anchors a browser jumps to.
-
-    An anchor is a property of a heading's *position in a document*, not of its title: GitHub
-    slugs the title and then appends ``-1``, ``-2`` to a slug it has already issued. Minting the
-    id from the title alone gave both `#### Effects` the id ``queue.md#effects``, so the second
-    node was unreachable — ``find_ui_node`` returns the first match — and the link a reader
-    copies off the rendered page, ``#effects-1``, was reported ``missing-anchor``.
-    """
+    """Two headings with one title are two nodes, at the two anchors a browser jumps to."""
     write(repo / "docs/features/groom/concepts/queue.md", REPEATED_HEADING)
     g = load(repo)
 
@@ -285,14 +259,12 @@ def test_a_repeated_heading_gets_the_anchor_github_renders(repo: Path):
     assert "docs/features/groom/concepts/queue.md#effects" in ids
     assert "docs/features/groom/concepts/queue.md#effects-1" in ids
 
-    # Each id reaches *its own* heading, not whichever came first.
     first = g.find_ui_node("docs/features/groom/concepts/queue.md#effects")
     second = g.find_ui_node("docs/features/groom/concepts/queue.md#effects-1")
     assert first is not None and second is not None and first.line < second.line
     assert first.meta["does"] == "the client is added"
     assert second.meta["does"] == "the client is dropped"
 
-    # …and the link resolver agrees with the minting, so `#effects-1` is not a dangling anchor.
     resolver = links.LinkResolver(g)
     assert "effects-1" in resolver.anchors(repo / "docs/features/groom/concepts/queue.md")
 

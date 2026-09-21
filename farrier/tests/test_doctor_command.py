@@ -1,10 +1,4 @@
-"""`farrier doctor` reports what a repo's `agents.yml` leaves a workflow unable to do.
-
-The behaviour under test is the one that makes the command worth having: an undeclared gate
-is silent at run time by design, so the only place a repo can find out it adopted none is a
-command that says so. It warns and exits 0 — not adopting a gate is a choice, and a doctor
-that failed on a choice would be a doctor nobody runs.
-"""
+"""`farrier doctor` reports what a repo's `agents.yml` leaves a workflow unable to do."""
 from __future__ import annotations
 
 from pathlib import Path

@@ -1,20 +1,4 @@
-"""Composition and direct-state tests for the `docs` flow.
-
-Twenty-two YAML nodes became six states around one loop: an author turn, a fail-closed
-grounding gate the author cannot see past, and an independent reviewer downstream of it.
-What is worth testing is which of the three OKF arms a repo lands on, which of the two
-context modes its source roots pick, and that neither the author's claim nor the reviewer's
-approval can skip the gate between them.
-
-The composition tests script only the two agent turns: `detect_okf_docs` loads a real ostler
-graph, the context classifier compares real worktrees, and the gate runs `ostler doctor`.
-Routing-only budget matrices call the deciding state directly instead of rebuilding that
-integration fixture for every counter and progress verdict.
-
-One test calls the gate directly rather than driving the flow: what a *half-grounded* file
-does to the rework brief cannot be staged through `ostler qa context`, and it is the case
-that decides whether the loop can converge at all.
-"""
+"""Composition and direct-state tests for the `docs` flow."""
 from __future__ import annotations
 
 import hashlib
@@ -117,11 +101,7 @@ Users need a thing.
 
 
 def _plan_context(repo_name: str) -> dict[str, Any]:
-    """The plan the dev run left behind, naming the one repo the story touched.
-
-    Which repo it names is the whole input to the context classifier: a repo that is not the
-    docs worktree makes the mapping partial, and partial is what `semantic` mode exists for.
-    """
+    """The plan the dev run left behind, naming the one repo the story touched."""
     return {
         "story": STORY,
         "services": [
@@ -130,7 +110,6 @@ def _plan_context(repo_name: str) -> dict[str, Any]:
     }
 
 
-# --------------------------------------------------------------------------- fixtures
 
 
 @pytest.fixture
@@ -150,7 +129,7 @@ def elsewhere(
     write: Callable[[Path, str], Path],
     ambient: dict[str, str],
 ) -> Path:
-    """A code repo *outside* the docs worktree — the multi-repo shape, i.e. `semantic`."""
+    """A code repo *outside* the docs worktree — the multi-repo shape, i.e."""
     root = tmp_path / "ws"
     api = root / "api"
     api.mkdir(parents=True)
@@ -170,7 +149,7 @@ def alongside(
     write: Callable[[Path, str], Path],
     ambient: dict[str, str],
 ) -> Path:
-    """The docs repo *is* the code repo — the single-worktree shape, i.e. `local`."""
+    """The docs repo *is* the code repo — the single-worktree shape, i.e."""
     (docs / SPEC_REL / "plan-context.json").write_text(
         json.dumps(_plan_context("acme"), indent=2), encoding="utf-8"
     )
@@ -180,32 +159,10 @@ def alongside(
     return docs
 
 
-# --------------------------------------------------------------------------- the agent
 
 
 class _Agent:
-    """The flow's two turns, scripted on the two axes the states branch on.
-
-    `author_status`/`author_nodes` are the claim the author reports; the node list is
-    advisory, and `nodes_until` is the pass after which it names none — the honest repair
-    lap that found nothing left to edit. `review_status` is the reviewer's verdict,
-    `approve_after` the pass it stops asking for revisions on. A gate verdict is not one of
-    these axes: nothing the author can say makes the gate refuse, so a test that needs a
-    refusal stages one with `_stage_gate`.
-
-    `findings_per_pass` varies the reviewer's worklist across passes — the axis a
-    *progress* verdict is measured on, where every other axis here is measured per pass.
-    `explode_after` picks *which* pass dies, so a kill can be staged after a loop has
-    already accumulated a baseline rather than only on the first turn. `cut`/`cut_pass` are
-    the softer ending: the named prompt is stopped at its wall-clock budget on exactly that
-    pass, which is a turn that wrote something and never replied. `cut_from` cuts it on that
-    pass and every one after — the turn that cannot finish inside its budget at all.
-
-    The three `resolver_*` knobs script the author's say on a block: whether it decides at
-    all, what it decided, and whether the decision is this story's or the whole epic's. The
-    default is `escalated`, so a test that says nothing about the resolver gets the verdict
-    the block asked for and nothing else.
-    """
+    """The flow's two turns, scripted on the two axes the states branch on."""
 
     def __init__(
         self,
@@ -246,10 +203,6 @@ class _Agent:
         self.calls: list[str] = []
         self.args: list[dict[str, Any]] = []
 
-    #: The author's two prompts. `document-story` writes the first draft and
-    #: `repair-documentation` edits the cited nodes on every later pass, so they are one
-    #: role and are counted as one: `nth` here means the author's nth turn, not the nth
-    #: turn of whichever prompt it happened to reach.
     AUTHOR_STEMS = ("document-story", "repair-documentation")
 
     def __call__(self, node: Any, ctx: Any, *args: Any, **kwargs: Any) -> Any:
@@ -266,9 +219,6 @@ class _Agent:
             self.cut_from is not None and nth >= self.cut_from
         )
         if stem in self.cut and cut_now:
-            # The transport-level signal, not the pyflow one: raising `AgentTimeout` here
-            # would skip the engine's translation. `retries=0` on the node is what makes
-            # this the first and only invocation.
             raise BackendInvocationError(f"timed out after {node.timeout}s", timed_out=True)
         return f"(scripted) {node.prompt}", answer
 
@@ -299,12 +249,7 @@ class _Agent:
         return self._document_story(data, nth)
 
     def _resolve_operator(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
-        """The author standing in for itself on a block, `context.md` and all.
-
-        An answering resolver really writes the file, because that is the whole protocol
-        between this turn and `read_operator_context` — a decision the resolver only
-        *reported* would reach the repair lap as an empty brief.
-        """
+        """The author standing in for itself on a block, `context.md` and all."""
         if self.resolver_decision == "answered":
             context = Path(data["story_path"]).parent / "context.md"
             context.write_text(
@@ -358,7 +303,6 @@ def _output(run_env: RunEnv, node: Any) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-# --------------------------------------------------------------------------- the pre-gate
 
 
 def test_a_repo_with_no_okf_book_ends_successfully_without_an_agent_turn(
@@ -366,12 +310,7 @@ def test_a_repo_with_no_okf_book_ends_successfully_without_an_agent_turn(
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    """`not_applicable` is a success, and the cheap detector is what makes it cheap.
-
-    Most repos the coder runs against are not managed by an OKF graph. Under the YAML the
-    four call sites treated this exactly like a passed documentation run, and they still do —
-    which is only defensible if no author turn was spent discovering it.
-    """
+    """`not_applicable` is a success, and the cheap detector is what makes it cheap."""
     agent = _Agent()
 
     result = drive_flow(Docs(story=STORY, epic=EPIC), env(), agent)
@@ -392,7 +331,6 @@ def test_an_unresolvable_story_fails_before_anything_else(
         drive_flow(Docs(), env(), _Agent())
 
 
-# ----------------------------------------------------------------------- context modes
 
 
 def test_sources_outside_the_docs_worktree_take_the_semantic_route(
@@ -401,11 +339,7 @@ def test_sources_outside_the_docs_worktree_take_the_semantic_route(
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    """The multi-repo case: no diff to map, so no packet is built and doctor is the authority.
-
-    A partial mapping would be worse than none — it would ground some changed units and leave
-    the rest silently unchecked — so the classifier falls back wholesale rather than per root.
-    """
+    """The multi-repo case: no diff to map, so no packet is built and doctor is the authority."""
     agent = _Agent()
     run_env = env()
 
@@ -473,16 +407,7 @@ def test_sources_inside_the_docs_worktree_take_the_local_route(
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    """The single-worktree case: the diff is mapped onto the graph before anyone reads prose.
-
-    A real `ostler qa context` runs here against a real worktree, so this is also the test
-    that would catch the builder resolving the wrong repo — and it did, before the fix
-    recorded in `nodes/okf.py`: a blank `docs_path` had it discover the *orchestrating*
-    repo's graph and report the docs tree as outside it.
-
-    The source roots reach it re-expressed relative to the worktree, which is the form
-    `ostler qa context` takes.
-    """
+    """The single-worktree case: the diff is mapped onto the graph before anyone reads prose."""
     agent = _Agent()
     run_env = env()
 
@@ -505,17 +430,7 @@ def test_the_author_is_handed_the_grounding_worklist_before_it_writes(
     drive_flow: Callable[..., Any],
     write: Callable[[Path, str], Path],
 ) -> None:
-    """The join the gate does after the author, done once before it instead.
-
-    Without this the first author turn has no gate notes and no worklist, so it derives the
-    same join by hand — a real documentation turn was observed spending 128 shell calls
-    grepping the book for every changed exported symbol. The list is the packet's, computed
-    by the same `ungrounded_refs` the gate calls, so the two cannot disagree; and on a
-    rework pass it is the gate's own `G:` identities minus whatever the pass closed.
-
-    The author here never grounds anything, so every pass fails the gate on the same
-    reference — which is what makes the two lists directly comparable.
-    """
+    """The join the gate does after the author, done once before it instead."""
     write(alongside / "api" / "widget.go", "package api\n\nfunc Widget() {}\n")
     agent = _Agent()
     run_env = env()
@@ -525,7 +440,6 @@ def test_the_author_is_handed_the_grounding_worklist_before_it_writes(
     assert result.status == "blocked", result
     first = agent.args_for("document-story")[0]
     assert first["obligations"] == ["api/widget.go::Widget"], first["obligations"]
-    # The rework pass is handed the gate's own `G:` identities, in the same spelling.
     gate = _output(run_env, verify_story_documentation)
     grounding = [f for f in gate["failures"] if f.startswith("G:")]
     assert grounding == ["G:api/widget.go::Widget"], gate
@@ -539,14 +453,7 @@ def test_the_reviewer_is_handed_the_unnarrowed_story_delta(
     drive_flow: Callable[..., Any],
     write: Callable[[Path, str], Path],
 ) -> None:
-    """The reviewer's scope is what this story changed, and it does not shrink.
-
-    `review-story-documentation.md` refuses on defects outside the story's obligations, which
-    is only bounded if it knows what they are. It reads the same worklist the author gets, but
-    the *unnarrowed* one: the author's list shrinks as the grounding gate closes items, and a
-    reviewer scope that shrank with it would re-legalize on pass two the findings it had ruled
-    out of bounds on pass one — the exact oscillation the bound exists to stop.
-    """
+    """The reviewer's scope is what this story changed, and it does not shrink."""
     write(alongside / "api" / "widget.go", "package api\n\nfunc Widget() {}\n")
 
     class _Grounding(_Agent):
@@ -560,9 +467,6 @@ def test_the_reviewer_is_handed_the_unnarrowed_story_delta(
             )
             return super()._document_story(data, nth)
 
-    # Two reviewer passes, so the second one is reached through `_rework` — which resets the
-    # author's `obligations` to empty and is exactly where a shared parameter would lose the
-    # scope.
     agent = _Grounding(approve_after=2)
 
     result = drive_flow(Docs(story=STORY, epic=EPIC), env(), agent)
@@ -575,28 +479,14 @@ def test_the_reviewer_is_handed_the_unnarrowed_story_delta(
     assert [r["obligations"] for r in review] == [["api/widget.go::Widget"]] * 2, review
 
 
-# --------------------------------------------------------------------------- the gate
 
-#: One registry name per staged gate; see `_stage_gate`.
 _GATE_NAMES = itertools.count(1)
 
 
 def _stage_gate(
     monkeypatch: pytest.MonkeyPatch, *, passes_on: int | None, note: str = "not grounded"
 ) -> list[tuple[Any, ...]]:
-    """Stage the grounding gate's verdict on a schedule: red until `passes_on`, or forever.
-
-    The gate's own judgement is under test a few tests down, against a real book and a real
-    `ostler doctor`. What the loop tests need is the *verdict* on a schedule, and since the
-    gate stopped scoring the author's self-reported node list — it reads the branch's book
-    diff now — no reply the scripted author can give makes it refuse. Staging it is what is
-    left, and it is the seam `test_a_shrinking_failure_set_no_longer_waives_the_grounding_budget`
-    already opens.
-
-    The failure identity is the same every pass, so the progress verdict a stalled lane
-    carries is the real one and not an artefact of the stub. Returns each call's positional
-    arguments in order, which is how a test reads what the flow handed the gate.
-    """
+    """Stage the grounding gate's verdict on a schedule: red until `passes_on`, or forever."""
     seen: list[tuple[Any, ...]] = []
 
     def _gate(*args: Any, **kwargs: Any) -> DocumentationGate:
@@ -607,8 +497,6 @@ def _stage_gate(
             status="invalid", notes=note, failures=["G:api/widget.go::Widget"]
         )
 
-    # A node's name is its identity in the blueprint's registry and a second registration
-    # under one name is a definition error, so each staged gate gets its own.
     _gate.__name__ = f"_staged_gate_{next(_GATE_NAMES)}"
     monkeypatch.setattr(docs_flow, "verify_story_documentation", blueprint.node(_gate))
     return seen
@@ -621,11 +509,7 @@ def test_a_failed_gate_reworks_before_the_reviewer_ever_runs(
     drive_flow: Callable[..., Any],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The gate is upstream of the reviewer, and its brief reaches the author verbatim.
-
-    A book the gate refuses is not a book worth a `power="high"` semantic read: the
-    reviewer would spend its budget on prose whose claims are not grounded yet.
-    """
+    """The gate is upstream of the reviewer, and its brief reaches the author verbatim."""
     _stage_gate(monkeypatch, passes_on=2, note="one symbol is not directly grounded")
     agent = _Agent()
 
@@ -633,9 +517,7 @@ def test_a_failed_gate_reworks_before_the_reviewer_ever_runs(
 
     assert result.status == "passed", result
     assert agent.authored() == 2, agent.counts()
-    # The reviewer never saw the first pass: the gate is upstream of it.
     assert agent.counts()["review-story-documentation"] == 1, agent.counts()
-    # And the second author pass was told exactly what was wrong with the first.
     assert "one symbol is not directly grounded" in agent.author_args()[1]["gate_notes"]
 
 
@@ -646,28 +528,17 @@ def test_a_repair_turn_cut_at_its_budget_is_dispatched_again_rather_than_reporte
     drive_flow: Callable[..., Any],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """An overrun `repair-documentation` is run again; it is never reported as an author.
-
-    The flow used to mint a `documented` status for a turn that never replied and hand it to
-    the gate. In `semantic` mode that word is the only evidence there is, so a turn stopped
-    mid-edit went into the story's record as an author saying the book was written — which
-    downstream QA reads at face value. The turn is re-dispatched instead: the book on disk is
-    still the deliverable, so nothing it finished is lost, and all the next lap needs is to
-    be told that its own worklist is half-applied.
-    """
+    """An overrun `repair-documentation` is run again; it is never reported as an author."""
     _stage_gate(monkeypatch, passes_on=3, note="one symbol is not directly grounded")
     agent = _Agent(cut={"repair-documentation"}, cut_pass=2)
 
     result = drive_flow(Docs(story=STORY, epic=EPIC), env(), agent)
 
     assert result.status == "passed", result
-    # Four author turns: the draft, the cut one, its re-dispatch, and the lap that passed.
     assert agent.authored() == 4, agent.counts()
-    # The cut turn was not retried in place — the engine's `retries=0` holds.
     assert agent.counts()["repair-documentation"] == 3, agent.counts()
     brief = agent.author_args()[2]["gate_notes"]
     assert brief.startswith("Your previous turn was stopped at its wall-clock budget"), brief
-    # And the gate's own findings are still under it — the prefix explains them, not replaces.
     assert "one symbol is not directly grounded" in brief, brief
 
 
@@ -678,13 +549,7 @@ def test_a_repair_turn_that_never_finishes_escalates_instead_of_lapping(
     drive_flow: Callable[..., Any],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Re-dispatching a cut turn is bounded, and the bound is the author gate.
-
-    A repair that cannot finish inside forty-five minutes will not finish inside the next
-    forty-five either, and the honest reading of that is a story whose ungrounded set is too
-    large to repair in one turn — a decision, not a defect. So the overruns are counted and
-    spent, and the story goes to the block arm every other exhausted docs budget takes.
-    """
+    """Re-dispatching a cut turn is bounded, and the bound is the author gate."""
     _stage_gate(monkeypatch, passes_on=None)
     agent = _Agent(cut={"repair-documentation"}, cut_from=2)
 
@@ -692,9 +557,7 @@ def test_a_repair_turn_that_never_finishes_escalates_instead_of_lapping(
 
     assert result.status == "blocked", result
     assert "wall-clock budget" in result.notes, result.notes
-    # Every repair turn was cut, and the third one spent the budget rather than lapping.
     assert agent.counts()["repair-documentation"] == Docs.MAX_REPAIR_OVERRUNS, agent.counts()
-    # It went to the author gate on the way out — the block arm, not a fabricated pass.
     assert agent.counts()["resolve-operator"] == 1, agent.counts()
 
 
@@ -705,14 +568,7 @@ def test_a_repair_lap_with_nothing_left_to_edit_keeps_the_nodes_already_named(
     drive_flow: Callable[..., Any],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The nodes accumulate across passes; the last pass does not replace them.
-
-    `repair`'s brief is "edit the nodes these findings cite", so a lap that correctly
-    concludes the finding needs no edit — the symbol was deleted, or is grounded elsewhere
-    already — answers `documented` with an empty node list. The nodes are what scopes the
-    gate's doctor reading, so taking the last lap's list as the answer would narrow that
-    reading to nothing and stop scoring every node an earlier pass had written.
-    """
+    """The nodes accumulate across passes; the last pass does not replace them."""
     seen = _stage_gate(monkeypatch, passes_on=2)
     agent = _Agent(nodes_until=1)
 
@@ -720,8 +576,6 @@ def test_a_repair_lap_with_nothing_left_to_edit_keeps_the_nodes_already_named(
 
     assert result.status == "passed", result
     assert agent.authored() == 2, agent.counts()
-    # The second author pass named nothing, and the gate still read the node the first one
-    # wrote rather than an empty scope.
     assert [call[7] for call in seen] == [("docs/features/widget.md",)] * 2, seen
 
 
@@ -730,23 +584,7 @@ def test_the_grounding_failure_names_the_symbols_not_the_files(
     logger: logging.Logger,
     write_json: Callable[[Path, Any], Path],
 ) -> None:
-    """The rework brief has to name what the gate actually tested, or the loop cannot end.
-
-    This gate checks `path::symbol` refs and used to report the *files* they live in, which
-    made it unwinnable in the one case that matters — a file that is half grounded. The
-    author sees the same filename it already wrote a bullet for, adds another plausible
-    bullet, and fails on the identical complaint until the four passes are gone; that is
-    exactly how the `link-shortener` benchmark run burned its whole rework budget.
-
-    Naming the refs also settles their *spelling*, the second half of the trap: ostler's
-    inventory writes a Go method as `(*Type).Method`, so an author writing the natural
-    `Type.Method` grounds nothing and no path-level message could ever have said so.
-
-    The gate is called directly here rather than through the flow because the input under
-    test is the obligation packet, and in a real `local` run that file is built by
-    `ostler qa context` off a diff — a half-grounded Go method is not something the flow
-    can be steered into producing.
-    """
+    """The rework brief has to name what the gate actually tested, or the loop cannot end."""
     controller = "api/internal/app/controllers/link.go"
     settled = "api/internal/app/exceptions/errors.go"
     write_json(
@@ -798,21 +636,11 @@ def test_the_grounding_failure_names_the_symbols_not_the_files(
     )
 
     assert gate.status == "invalid", gate
-    # The one ungrounded symbol, spelled as the inventory spells it — not `link.go`, and
-    # not the receiver-less `LinkController.Resolve` an author would reach for.
     assert f"{controller}::(*LinkController).Resolve" in gate.notes, gate.notes
-    # Its already-grounded sibling is not re-litigated, and neither is the file that is
-    # wholly settled: everything named is something still owed.
     assert "Create" not in gate.notes, gate.notes
     assert settled not in gate.notes, gate.notes
-    # A file the inventory sees no symbols in is still owed *as a path* — the one case
-    # where naming the file is naming the reference.
     assert "api/config.yaml" in gate.notes, gate.notes
     assert "2 changed production symbol(s)" in gate.notes, gate.notes
-    # The same statement in the form a later pass can be compared against: one entry per
-    # owed reference, carrying the inventory's spelling rather than a count. `notes` stays
-    # the author's brief and is asserted above unchanged — `failures` is beside it, not
-    # instead of it.
     assert sorted(gate.failures) == [
         "G:api/config.yaml",
         f"G:{controller}::(*LinkController).Resolve",
@@ -824,16 +652,7 @@ def test_grounding_the_enclosing_unit_grounds_what_is_nested_inside_it(
     logger: logging.Logger,
     write_json: Callable[[Path, Any], Path],
 ) -> None:
-    """A nested symbol has no documentable surface of its own, so it cannot be owed alone.
-
-    A React component's every changed line falls inside some local `const`, so the mapper
-    charges the story for `Panel.status` and `Panel.el`. Demanding a `code:` bullet per name
-    is a demand no book can honestly meet — and a run met it the dishonest way, writing
-    bullets that documented local variables as production surface to get past this gate.
-
-    Grounding the owner is the stronger claim, not a weaker one: it says what `Panel` now
-    does, which is what a change inside its body actually altered.
-    """
+    """A nested symbol has no documentable surface of its own, so it cannot be owed alone."""
     panel = "web/app/components/panel.tsx"
     write_json(
         docs / SPEC_REL / CONTEXT_FILE,
@@ -866,8 +685,6 @@ def test_grounding_the_enclosing_unit_grounds_what_is_nested_inside_it(
         author_nodes=("docs/features/widget.md#panel",),
     )
 
-    # `Badge` is a sibling the book never grounded, so the rollup reaches nothing for it:
-    # this closes what an owner covers, it does not forgive an owner that is missing.
     assert gate.status == "invalid", gate
     assert "1 changed production symbol(s)" in gate.notes, gate.notes
     assert f"{panel}::Badge.tone" in gate.notes, gate.notes
@@ -882,14 +699,7 @@ def test_a_doctor_refusal_carries_the_form_the_checker_would_accept(
     write: Callable[[Path, str], Path],
     write_json: Callable[[Path, Any], Path],
 ) -> None:
-    """The same trap as the grounding message above, one gate over.
-
-    A doctor finding carries a `suggestion` — the literal bullet the checker would accept —
-    and the brief rendered only the complaint about the value it rejected. An author told
-    `placement: mostly the middle` is not a placement writes prose again with a percentage in
-    it, is refused again, and spends the rework budget inferring a grammar that was sitting
-    in the finding all along.
-    """
+    """The same trap as the grounding message above, one gate over."""
     screen = "docs/features/groom/gui/screens/s.md"
     write(
         docs / screen,
@@ -915,14 +725,7 @@ def test_a_doctor_refusal_carries_the_form_the_checker_would_accept(
 
 
 def test_every_affected_doctor_error_reaches_the_repair_turn() -> None:
-    """Nothing is omitted, because omitting is what made the loop.
-
-    The brief used to carry twelve findings and the sentence "rerun the gate for the next
-    batch". A story with 124 unparsed `verify:` findings of one shape therefore cost ten
-    laps by construction, each one re-reading the book from a fresh session to close a
-    twelfth of a list one turn could have walked. The repair prompt now iterates `ostler
-    doctor` itself, which only works if it holds the whole set.
-    """
+    """Nothing is omitted, because omitting is what made the loop."""
     findings = [
         {
             "path": "docs/features/groom/gui/screens/s.md",
@@ -936,7 +739,7 @@ def test_every_affected_doctor_error_reaches_the_repair_turn() -> None:
 
     notes = _doctor_errors_note(findings)
 
-    assert len(notes.splitlines()) == 41, notes  # the header plus one line per error
+    assert len(notes.splitlines()) == 41, notes
     assert "omitted" not in notes, notes
     assert ":39 [unparsed-check]" in notes, notes
 
@@ -947,12 +750,7 @@ def test_an_over_long_doctor_list_is_spilled_to_a_file_the_note_names(
     write: Callable[[Path, str], Path],
     write_json: Callable[[Path, Any], Path],
 ) -> None:
-    """A list too big for an argv becomes a path, never a truncation.
-
-    Both halves matter: the turn still gets every error, and the prompt still fits. A stale
-    spill from an earlier pass is removed when the next list is small enough to inline, so
-    nothing ever points at a worklist that no longer holds.
-    """
+    """A list too big for an argv becomes a path, never a truncation."""
     screen = "docs/features/groom/gui/screens/s.md"
     components = "".join(
         f"### body{index}\n- role: article\n- name: none\n- placement: mostly the middle\n\n"
@@ -980,10 +778,8 @@ def test_an_over_long_doctor_list_is_spilled_to_a_file_the_note_names(
     assert f"{gate.doctor_error_count} doctor errors" in gate.notes, gate.notes
     assert len(gate.notes) < 12000, gate.notes
     assert len(spill.read_text(encoding="utf-8").splitlines()) == gate.doctor_error_count + 1
-    # Every identity still travels in `failures`, spilled or not.
     assert len(gate.failures) == gate.doctor_error_count
 
-    # A later pass whose list fits inline clears the stale file rather than leaving it.
     write(
         docs / screen,
         "---\ntype: screen\nslug: s\ntitle: S\n---\n# S\n\n"
@@ -1019,10 +815,7 @@ def test_a_deletion_needs_no_code_bullet(
     write: Callable[[Path, str], Path],
     write_json: Callable[[Path, Any], Path],
 ) -> None:
-    """A deletion is satisfied on its own — no `code:` bullet names it, because a live bullet
-    pointing at a gone target is exactly what `ostler doctor` rejects as a dangling reference,
-    and there is no marker that exempts a ref from having to exist.
-    """
+    """A deletion is satisfied on its own — no `code:` bullet names it, because a live bullet pointing at a gone target is exactly what `ostler doctor` rejects as a dangling reference, and there is no marker that exempts a ref from having to exist."""
     deleted = "api/legacy/handler.go"
     write(
         docs / "docs/features/widget.md",
@@ -1071,13 +864,7 @@ def test_the_snapshot_records_what_was_already_dirty_with_its_bytes(
     logger: logging.Logger,
     write: Callable[[Path, str], Path],
 ) -> None:
-    """Modified *and* untracked, because the case that motivated this is untracked.
-
-    A story that dies in its docs phase never reaches `commit_story`, so the package it
-    wrote stays on disk as untracked files. `git stash create` was the obvious baseline and
-    is exactly wrong here: it does not capture untracked paths, i.e. it misses the only
-    shape this defect takes.
-    """
+    """Modified *and* untracked, because the case that motivated this is untracked."""
     write(docs / "api" / "legacy.go", "package api\n\nfunc Orphan() {}\n")
     (docs / "README.md").write_text("# acme, edited\n", encoding="utf-8")
 
@@ -1094,20 +881,7 @@ def test_work_already_dirty_when_the_story_started_is_not_this_story_s_to_ground
     write: Callable[[Path, str], Path],
     write_json: Callable[[Path, Any], Path],
 ) -> None:
-    """The cascade this gate had: one abandoned story disabling it for the whole repo.
-
-    The packet is built `HEAD..WORKTREE`, and the workflow's contract is that a story ends
-    in a commit. A story that dies before its commit leaves its production code in the
-    tree, and every story selected after it was then held responsible for grounding symbols
-    it had never heard of and its book had no reason to mention — the run that forced this
-    was a QA-plan fix touching no production code at all, failing on seven Go symbols an
-    earlier story had left behind.
-
-    The subtraction is safe in one direction only, which is the third case below: a path
-    the story went on to edit no longer matches its recorded bytes and stays owed. The
-    filter can shrink by mistake, never grow — a story is never excused from grounding code
-    it wrote.
-    """
+    """The cascade this gate had: one abandoned story disabling it for the whole repo."""
     orphan = "api/legacy.go"
     write(docs / orphan, "package api\n\nfunc Orphan() {}\n")
     write_json(
@@ -1137,13 +911,11 @@ def test_work_already_dirty_when_the_story_started_is_not_this_story_s_to_ground
             preexisting=preexisting,
         )
 
-    # No snapshot subtracts nothing, which is what the gate did before it existed.
     assert f"{orphan}::Orphan" in _gate(()).notes
 
     stale = f"{orphan}\0{_sha256(docs / orphan)}"
     assert "not directly grounded" not in _gate((stale,)).notes
 
-    # The same path, edited by this story since the snapshot: back to being its problem.
     (docs / orphan).write_text("package api\n\nfunc Orphan() { println(1) }\n", encoding="utf-8")
     assert f"{orphan}::Orphan" in _gate((stale,)).notes
 
@@ -1154,11 +926,7 @@ def test_not_required_is_a_real_answer_and_still_goes_through_the_gate(
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    """"This story changed nothing the book describes" is a claim, so it is checkable.
-
-    It is exempt from the name-your-nodes rule and from nothing else — it reaches the same
-    gate and the same reviewer as a `documented` claim does.
-    """
+    """"This story changed nothing the book describes" is a claim, so it is checkable."""
     agent = _Agent(author_status="not_required", author_nodes=())
 
     result = drive_flow(Docs(story=STORY, epic=EPIC), env(), agent)
@@ -1173,13 +941,7 @@ def test_an_author_that_did_not_speak_fails_the_flow(
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    """A blank status fails, and does not spend a rework.
-
-    The refusal is the schema's, not the flow's: `status` is a required `Literal`, so a
-    reply carrying none of its three words never becomes a `DocumentationResult` at all.
-    There is nothing for a second author pass to be told — the first one did not say what
-    stopped it — so looping would be spending turns on the same silence.
-    """
+    """A blank status fails, and does not spend a rework."""
     agent = _Agent(author_status="")
 
     with pytest.raises(WorkflowFailed, match="is not a DocumentationResult"):
@@ -1194,18 +956,7 @@ def test_a_blocked_author_returns_a_verdict_instead_of_failing_the_run(
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    """A block is a finding about the story, and it must not take the queue down with it.
-
-    The run that forced this: the author found that the implementation granted every origin
-    when `CORS_ALLOWED_ORIGINS` was unset, the opposite of the fail-closed guarantee its own
-    plan required, and refused to write the book's claim as true. Correct refusal — and it
-    killed the whole run, costing eight epics that had nothing to do with it. The verdict
-    comes back for the caller to place instead; the reviewer is never reached, because there
-    is nothing written to review.
-
-    The author is consulted on the way out — that is `_blocked` — and this resolver
-    escalates, so the verdict is the one the block asked for, unchanged.
-    """
+    """A block is a finding about the story, and it must not take the queue down with it."""
     agent = _Agent(author_status="blocked")
 
     result = drive_flow(Docs(story=STORY, epic=EPIC), env(), agent)
@@ -1215,7 +966,6 @@ def test_a_blocked_author_returns_a_verdict_instead_of_failing_the_run(
     assert agent.counts() == {"document-story": 1, "resolve-operator": 1}, agent.counts()
 
 
-# --------------------------------------------------------------------- the author's say
 
 
 def _never_waits(path: Path, **kwargs: Any) -> None:
@@ -1224,11 +974,7 @@ def _never_waits(path: Path, **kwargs: Any) -> None:
 
 
 class _BlocksOnce(_Agent):
-    """An author that refuses the first draft and writes the book once someone decides.
-
-    The shape every real documentation block has: the refusal is not "I cannot write", it is
-    "two documents answer this differently and I will not pick one".
-    """
+    """An author that refuses the first draft and writes the book once someone decides."""
 
     def _document_story(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
         if nth == 1:
@@ -1242,13 +988,7 @@ def test_a_block_is_put_to_the_author_before_it_ends_the_flow(
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    """The specs were authored by a workflow, so the author is who ratifies the contract.
-
-    A documentation block is a product decision nobody made — and on a product whose specs
-    were themselves written by the author workflow there is no human upstream holding the
-    answer. Filing the story as blocked and moving on defers a decision that one turn can
-    make, so the flow spends that turn and the guided repair lap writes the book.
-    """
+    """The specs were authored by a workflow, so the author is who ratifies the contract."""
     agent = _BlocksOnce(resolver_decision="answered", resolver_answer="One slug per locale.")
 
     result = drive_flow(Docs(story=STORY, epic=EPIC), env(), agent)
@@ -1260,8 +1000,6 @@ def test_a_block_is_put_to_the_author_before_it_ends_the_flow(
         "repair-documentation": 1,
         "review-story-documentation": 1,
     }, agent.counts()
-    # The repair lap was told what was ratified, and by whom — not just re-asked. The answer
-    # travels verbatim, `STATUS:` line and all, exactly as a human operator would have left it.
     brief = agent.author_args()[1]["review_notes"]
     assert brief.startswith("Ratified by the author:"), brief
     assert "One slug per locale." in brief, brief
@@ -1274,11 +1012,7 @@ def test_an_escalating_resolver_blocks_without_parking_the_queue(
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    """In `auto` mode a resolver that will not decide gives up — it never waits on a person.
-
-    The story drain is single-threaded, so an `Await` here parks every epic queued behind
-    this one. The verdict was already survivable; waiting for a human is not.
-    """
+    """In `auto` mode a resolver that will not decide gives up — it never waits on a person."""
     agent = _Agent(author_status="blocked")
 
     with patch.object(pyflow_driver, "wait_for_answer", _never_waits):
@@ -1293,13 +1027,7 @@ def test_the_author_is_consulted_on_a_budget_and_the_block_after_it_stands(
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    """The cap is on the resolver, not the block — `MAX_DOCS_BLOCKS` consults, then it stands.
-
-    Each guided lap is the author's answer being applied. If the book still cannot be
-    written with it in hand, re-asking the same resolver the same question buys another
-    identical answer — so the budget runs out and the deadlock is what the block reports,
-    exactly as `MAX_PLAN_BLOCKS` and `MAX_QA_BLOCKS` bound their own lanes.
-    """
+    """The cap is on the resolver, not the block — `MAX_DOCS_BLOCKS` consults, then it stands."""
     agent = _Agent(author_status="blocked", resolver_decision="answered", resolver_answer="Pick A.")
 
     result = drive_flow(Docs(story=STORY, epic=EPIC), env(), agent)
@@ -1318,11 +1046,7 @@ def test_an_epic_scoped_answer_blocks_the_story_with_the_answer_as_the_finding(
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    """`SCOPE: epic` means the decision is bigger than this story, so this story cannot fix it.
-
-    The answer travels out as the verdict's notes rather than being dropped, because the
-    caller places the block on the epic and that text is what a human reads there.
-    """
+    """`SCOPE: epic` means the decision is bigger than this story, so this story cannot fix it."""
     agent = _Agent(
         author_status="blocked",
         resolver_decision="answered",
@@ -1343,11 +1067,7 @@ def test_operator_mode_human_still_waits_for_a_person(
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    """Someone who asked to be asked is asked: no resolver turn, the driver's `Await` instead.
-
-    The auto resolver is a stand-in for the accountable party, and in `human` mode the
-    accountable party is present. The recovery path is the same one either way.
-    """
+    """Someone who asked to be asked is asked: no resolver turn, the driver's `Await` instead."""
     seen: list[Path] = []
     agent = _Agent(author_status="blocked")
 
@@ -1362,12 +1082,9 @@ def test_operator_mode_human_still_waits_for_a_person(
 
     assert result.status == "blocked", result
     assert agent.counts()["resolve-operator"] == 0, agent.counts()
-    # Once per block, on the same budget the resolver spends in `auto` — a person who keeps
-    # answering a question the book still cannot be written with is in the same deadlock.
     assert seen == [docs / STORY_REL / "context.md"] * Docs.MAX_DOCS_BLOCKS, seen
 
 
-# --------------------------------------------------------------------------- the reviewer
 
 
 def test_a_revision_request_reworks_and_carries_the_notes_forward(
@@ -1376,11 +1093,7 @@ def test_a_revision_request_reworks_and_carries_the_notes_forward(
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    """The reviewer's brief reaches the author, and the gate's brief is not dropped for it.
-
-    Both notes are threaded rather than reset, which is what the YAML's two vars did: a later
-    pass still shows the author what the reviewer said on an earlier one.
-    """
+    """The reviewer's brief reaches the author, and the gate's brief is not dropped for it."""
     agent = _Agent(approve_after=2)
 
     result = drive_flow(Docs(story=STORY, epic=EPIC), env(), agent)
@@ -1405,11 +1118,7 @@ def test_a_blocked_review_fails_rather_than_reworking(
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    """`blocked` is the reviewer saying no pass will fix this, so spending three is wrong.
-
-    It ends the flow with a verdict rather than an exception, for the reason the author's
-    own block does: which story this costs is the caller's call, not the sub-flow's.
-    """
+    """`blocked` is the reviewer saying no pass will fix this, so spending three is wrong."""
     agent = _Agent(review_status="blocked")
 
     result = drive_flow(Docs(story=STORY, epic=EPIC), env(), agent)
@@ -1424,14 +1133,7 @@ def test_a_reviewer_reaching_for_a_synonym_of_blocked_is_refused_by_the_schema(
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    """The refusal words are one signal, and the flow no longer has to sort them by spelling.
-
-    `unfixable`, `not_passed` and `invalid` used to reach `status` and fall through to the
-    revision arm, which spends the whole rework budget re-asking a question already
-    answered and blocks anyway three expensive passes later. The arm reading
-    `CoderResult.blocked` caught them; the closed `Literal` means they never arrive, which
-    is the earlier and cheaper of the two places to say so.
-    """
+    """The refusal words are one signal, and the flow no longer has to sort them by spelling."""
     agent = _Agent(review_status="unfixable")
 
     with pytest.raises(WorkflowFailed, match="is not a DocumentationReview"):
@@ -1441,11 +1143,7 @@ def test_a_reviewer_reaching_for_a_synonym_of_blocked_is_refused_by_the_schema(
 
 
 class _RefusesWithEvidence(_Agent):
-    """A reviewer that refuses *and* names what it read as wrong.
-
-    The realistic shape: a refusal is rarely "I cannot tell", it is "these two documents say
-    different things and picking one is not mine to do" — which is a finding with a target.
-    """
+    """A reviewer that refuses *and* names what it read as wrong."""
 
     def _review_story_documentation(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
         return {
@@ -1469,18 +1167,11 @@ def test_the_reviewers_findings_travel_to_the_operator_gate(
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    """A gate that says only "documentation is impossible" is a gate nobody can answer.
-
-    The reviewer that refused still knows *which* contradiction stopped it. Those findings are
-    exactly what an operator rules on, so they belong in the body of the question rather than
-    in a log line the person reading `context.md` never sees.
-    """
+    """A gate that says only "documentation is impossible" is a gate nobody can answer."""
     agent = _RefusesWithEvidence()
     asked: list[str] = []
 
     def _answer(path: Path, **kwargs: Any) -> None:
-        # Read before writing: the answer replaces the question in place, so what the
-        # operator was shown only exists while they are being asked.
         asked.append(path.read_text(encoding="utf-8"))
         path.write_text("STATUS: ANSWERED\nSCOPE: story\n\nOne slug.\n", encoding="utf-8")
 
@@ -1500,13 +1191,7 @@ def test_only_the_first_pass_authors_and_every_pass_after_it_repairs(
     drive_flow: Callable[..., Any],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Both the gate and the reviewer send the book to `repair`, not back to `document`.
-
-    `document`'s brief is "write this story into the book". Handed that instruction plus a
-    finding against one bullet, the author revisits nodes nobody complained about — so the
-    `power="high"` reviewer meets a changed book each round and, correctly, finds a
-    different real defect in it. Only the first pass may be an authoring pass.
-    """
+    """Both the gate and the reviewer send the book to `repair`, not back to `document`."""
     _stage_gate(monkeypatch, passes_on=2)
     agent = _Agent(approve_after=3)
 
@@ -1514,7 +1199,6 @@ def test_only_the_first_pass_authors_and_every_pass_after_it_repairs(
 
     assert result.status == "passed", result
     assert agent.counts()["document-story"] == 1, agent.counts()
-    # One grounding repair, then two the reviewer asked for.
     assert agent.counts()["repair-documentation"] == 3, agent.counts()
     assert agent.calls[0] == "document-story", agent.calls
 
@@ -1538,11 +1222,7 @@ def test_a_revision_request_with_an_empty_finding_fails_the_flow(
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    """A nonempty findings list cannot bypass the actionable-fields gate.
-
-    `kind` is required and closed, so the finding carries one — everything the repair turn
-    would actually act on is still blank, which is what the gate below reads.
-    """
+    """A nonempty findings list cannot bypass the actionable-fields gate."""
     agent = _Agent(approve_after=99, review_findings=[{"kind": "overclaim"}])
 
     with pytest.raises(
@@ -1558,12 +1238,7 @@ def test_a_finding_id_is_an_opaque_handle(
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    """The id only has to name the same defect twice — no consumer parses its shape.
-
-    The prompt suggests `D1`, and a reviewer that answers `F1` is not reporting a
-    malformed review. Enforcing the suggestion raised `WorkflowFailed` out of an
-    otherwise routine revise pass and killed the whole coder run with it.
-    """
+    """The id only has to name the same defect twice — no consumer parses its shape."""
     agent = _Agent(approve_after=2, review_findings=[_finding("F1")])
 
     result = drive_flow(Docs(story=STORY, epic=EPIC), env(), agent)
@@ -1759,16 +1434,7 @@ def test_the_gates_failure_does_not_spend_the_reviewers_budget(
     drive_flow: Callable[..., Any],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """One mechanical grounding fix must not cost a semantic round.
-
-    The YAML spent one `documentation_rework_count` on both, so this shape — a first pass
-    that names no node, then a reviewer that finds a real, distinct, fixable defect each
-    round — raised on the third refusal with the book one edit from conformant. That is a
-    two-language schema story from a real run, not a hypothetical: the grounding gate is
-    deterministic and converges in a pass or two, while `review-story-documentation` is a
-    `power="high"` read, and letting the cheap loop draw on the expensive one's budget
-    starves it.
-    """
+    """One mechanical grounding fix must not cost a semantic round."""
     _stage_gate(monkeypatch, passes_on=2)
     agent = _Agent(approve_after=4)
 
@@ -1782,7 +1448,6 @@ def test_the_gates_failure_does_not_spend_the_reviewers_budget(
     }, agent.counts()
 
 
-# --------------------------------------------------------------------------- resume
 
 
 def test_a_run_killed_mid_review_resumes_without_re_documenting(
@@ -1791,12 +1456,7 @@ def test_a_run_killed_mid_review_resumes_without_re_documenting(
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    """The reason `document`, `verify` and `review` are three states rather than one.
-
-    The author turn is the expensive thing in this loop and the checkpoint is written before
-    a state runs, so a kill after the gate re-enters at the reviewer with the author's result
-    revived from JSON — not at a second author pass.
-    """
+    """The reason `document`, `verify` and `review` are three states rather than one."""
     run_env = env()
     run_dir = run_env.writer.run_dir
 
@@ -1830,17 +1490,10 @@ def test_a_run_killed_mid_rework_resumes_knowing_what_was_outstanding(
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    """The baseline a progress verdict is measured against has to survive the kill.
-
-    A verdict comparing this pass to the last one is only as durable as the last pass's
-    worklist, and that worklist lives nowhere but the state parameter — which is exactly
-    why it is one. Without this, every resume would report `first_pass` and a run that died
-    once would score as productive no matter what it did afterwards.
-    """
+    """The baseline a progress verdict is measured against has to survive the kill."""
     run_env = env()
     run_dir = run_env.writer.run_dir
 
-    # The kill lands on the *second* author turn, which is a repair and not a re-author.
     with pytest.raises(RuntimeError, match="killed during repair-documentation"):
         drive_flow(
             Docs(story=STORY, epic=EPIC),

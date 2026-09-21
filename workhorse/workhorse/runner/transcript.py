@@ -1,30 +1,4 @@
-"""Keep each agent turn's transcript in the run dir, beside the prompt that caused it.
-
-`prompt.md` is what a node was told and `output.json` is what it answered; everything in
-between — the reasoning, the tool calls, the file it read and then ignored — lives only in
-the agent CLI's own session store. That store is keyed by nothing telemetry can join on,
-exists only on the host that ran the CLI, and the CLI is free to prune it. So a node that
-re-decided the same thing five times is diagnosable for exactly as long as the CLI feels
-like keeping the evidence.
-
-Three sources, in this order:
-
-* **The store**, which is strictly richer than the stream: a Claude session directory
-  carries attachments, queued operations and a whole sibling tree of subagent sidechains
-  that never cross stdout at all.
-* **A public session export**, for a CLI such as OpenCode whose internal database is not
-  a stable filesystem contract but whose export includes reasoning, tool, file and subtask
-  parts.
-* **A tee of the stream**, for a CLI whose store this module cannot resolve and for a
-  container whose store is not on this host. It is opened at the one redaction choke
-  point, so what it keeps is redacted by construction.
-
-Every captured turn records *which* of the two it came from. A consumer must never have
-to guess what it is holding.
-
-Nothing here may fail a turn: a capture that cannot be written is a capture that did not
-happen, which is a worse run dir and not a worse run.
-"""
+"""Keep each agent turn's transcript in the run dir, beside the prompt that caused it."""
 
 from __future__ import annotations
 
@@ -39,26 +13,15 @@ from typing import TextIO
 
 from workhorse import gitstate, turnkey
 
-#: Where captures land inside a run dir.
 TRANSCRIPTS_DIR = "transcripts"
-#: Where a tee writes while the turn is still running and its session id is unknown.
 PENDING_DIR = ".pending"
-#: Per-turn ceiling. A turn runs 0.5-1.1 MB of JSONL; the cap is for the pathological
-#: turn, so it is generous enough that a normal one never notices it.
 DEFAULT_MAX_BYTES = 32 * 1024 * 1024
 
 
-# --------------------------------------------------------------------------- stores
 
 
 def _claude_store(session_id: str) -> list[Path]:
-    """`~/.claude/projects/<cwd-slug>/<session>.jsonl`, plus the sibling directory of
-    the same name holding subagent sidechains and tool results.
-
-    Globbed over the project slugs rather than derived from cwd: the slug is the CLI's
-    own encoding of a working directory, and a run that moved between trees would make a
-    derivation wrong in a way a glob is not.
-    """
+    """`~/.claude/projects/<cwd-slug>/<session>.jsonl`, plus the sibling directory of the same name holding subagent sidechains and tool results."""
     root = Path.home() / ".claude" / "projects"
     found: list[Path] = []
     for project in sorted(root.glob("*")):
@@ -77,11 +40,6 @@ def _codex_store(session_id: str) -> list[Path]:
     return [p for p in sorted(root.glob(f"*/*/*/rollout-*{session_id}.jsonl")) if p.is_file()]
 
 
-#: Backend name → "where does this CLI keep this session". Keyed by name rather than by
-#: adapter class on purpose: the adapters import the classifier that calls this, so
-#: importing the registry here would close that into a cycle.
-#:
-#: A backend absent from this table is not a defect — it means the tee is its source.
 _STORES: dict[str, Callable[[str], list[Path]]] = {
     "claude": _claude_store,
     "codex": _codex_store,
@@ -105,30 +63,19 @@ def _opencode_export(session_id: str) -> bytes | None:
         try:
             loaded = json.loads(result.stdout)
         except ValueError:
-            # A completed `opencode run` can briefly expose a partial export while its
-            # session is being finalized. Re-running the public read is the readiness
-            # check; there is no separate session-settled signal to wait on.
             continue
         if isinstance(loaded, dict):
             return result.stdout
     return None
 
 
-#: Backends whose public CLI can materialize a full session but whose internal store is
-#: not a stable filesystem contract. Kept separate from `_STORES` because these produce
-#: bytes rather than paths.
 _EXPORTERS: dict[str, Callable[[str], bytes | None]] = {
     "opencode": _opencode_export,
 }
 
 
 def store_files(backend: str, session_id: str) -> list[Path]:
-    """What this backend kept for ``session_id``, or an empty list.
-
-    Empty covers every way this can come up short — a CLI with no resolver, a store on
-    another host, a session the CLI already pruned — because the caller does the same
-    thing in all of them: fall back to the tee.
-    """
+    """What this backend kept for ``session_id``, or an empty list."""
     resolver = _STORES.get(backend)
     if resolver is None:
         return []
@@ -139,15 +86,7 @@ def store_files(backend: str, session_id: str) -> list[Path]:
 
 
 def probe_stores(session_id: str) -> tuple[str, list[Path]]:
-    """Which CLI's store holds this session, for a caller that does not know: (backend,
-    files), or ``("", [])`` when none of them do.
-
-    A session map written before the backend was recorded still names the session, and
-    the store is where that session's body is. Probing is exact rather than heuristic —
-    a resolver either finds files under that id or it does not, and the ids are opaque
-    per-CLI tokens no two stores mint the same way — so this recovers the backend rather
-    than guessing at it.
-    """
+    """Which CLI's store holds this session, for a caller that does not know: (backend, files), or ``("", [])`` when none of them do."""
     for backend in _STORES:
         files = store_files(backend, session_id)
         if files:
@@ -175,7 +114,6 @@ def probe_exporters(session_id: str) -> tuple[str, bytes | None]:
     return "", None
 
 
-# -------------------------------------------------------------------------- settings
 
 
 @dataclass(frozen=True, slots=True)
@@ -192,12 +130,7 @@ class _Settings:
     run_dir: Path | None = None
     enabled: bool = False
     max_bytes: int = DEFAULT_MAX_BYTES
-    #: Set once a store capture has actually worked in this run. Until then the tee runs
-    #: alongside, because "this backend has a resolver" is not the same claim as "this
-    #: host has the store" — a container is exactly where the two part company.
     store_proven: bool = False
-    #: Kept for the run's own reporting; also what makes the tee droppable once the
-    #: store is proven.
     backend: str = ""
     captures: list[Path] = field(default_factory=list)
     deferred_exports: list[_DeferredExport] = field(default_factory=list)
@@ -207,14 +140,7 @@ _settings = _Settings()
 
 
 def bind(run_dir: Path, *, enabled: bool = True, max_bytes: int = DEFAULT_MAX_BYTES) -> None:
-    """Point capture at ``run_dir``. Called once, at the process boundary.
-
-    Module state rather than a threaded parameter for the same reason
-    :mod:`workhorse.gitstate` is: the two writers are a stream callback four layers below
-    the run and a classifier that never saw the run's configuration, and threading a
-    setting through both would put a transcript knob in signatures that are about
-    something else.
-    """
+    """Point capture at ``run_dir``."""
     global _settings
     _settings = _Settings(run_dir=run_dir, enabled=enabled, max_bytes=max(0, max_bytes))
 
@@ -234,16 +160,10 @@ def transcripts_dir() -> Path | None:
     return _settings.run_dir / TRANSCRIPTS_DIR
 
 
-# ------------------------------------------------------------------------------ tee
 
 
 class Tee:
-    """A live copy of one turn's stream, written before its session id is known.
-
-    Opened under `.pending/` and named for the visit, because that is all that is known
-    at the time; :func:`capture` renames it once the CLI has said which session this was,
-    or deletes it when the store turned out to have a better copy.
-    """
+    """A live copy of one turn's stream, written before its session id is known."""
 
     def __init__(self, path: Path, max_bytes: int) -> None:
         self._path = path
@@ -259,9 +179,6 @@ class Tee:
         try:
             budget = self._max - self._written
             if budget < len(line):
-                # The cap lands mid-line more often than not. Keep the fragment — it is
-                # still evidence — but close it off, or the marker below would be
-                # concatenated onto it and neither would parse.
                 self._written += self._fh.write(line[:budget])
                 if budget > 0 and not line[:budget].endswith("\n"):
                     self._fh.write("\n")
@@ -272,10 +189,7 @@ class Tee:
             self.close()
 
     def _truncate(self) -> None:
-        """Stop at the cap, saying so in the file rather than by ending mid-line.
-
-        A truncated transcript that announces itself is usable evidence; one that just
-        stops is indistinguishable from a turn that died."""
+        """Stop at the cap, saying so in the file rather than by ending mid-line."""
         self._truncated = True
         if self._fh is None:
             return
@@ -303,11 +217,7 @@ class Tee:
 
 
 def tee_begin(node_id: str) -> Tee | None:
-    """Open a tee for the visit now running, or None when there is nothing to tee into.
-
-    Skipped once a store capture has worked in this run: from that point the tee would be
-    a second, poorer copy of something already kept.
-    """
+    """Open a tee for the visit now running, or None when there is nothing to tee into."""
     if not bound() or _settings.store_proven:
         return None
     key = turnkey.current()
@@ -324,11 +234,10 @@ def tee_begin(node_id: str) -> Tee | None:
         return None
 
 
-# -------------------------------------------------------------------------- capture
 
 
 def _copy_capped(src: Path, dst: Path, budget: int) -> tuple[int, bool]:
-    """Copy at most ``budget`` bytes of ``src``. Returns (bytes written, truncated)."""
+    """Copy at most ``budget`` bytes of ``src``."""
     written = 0
     truncated = False
     with src.open("rb") as fin, dst.open("wb") as fout:
@@ -416,18 +325,11 @@ def _recover_deferred_export() -> None:
 
 
 def capture(backend: str, node_id: str, session_id: str, tee: Tee | None = None) -> Path | None:
-    """Keep this turn's transcript, and return where it landed (None when nothing was).
-
-    Called once the turn is over and the CLI has named its session — which is the first
-    moment either source can be addressed by the visit key the rest of the run record
-    uses.
-    """
+    """Keep this turn's transcript, and return where it landed (None when nothing was)."""
     if not bound() or not session_id:
         return None
     key = turnkey.current()
     if key is None or key.node != node_id:
-        # Same guard as the rest of the visit record: a turn taken outside a visit the
-        # engine opened has no name to file under, and an invented one would collide.
         return None
     root = transcripts_dir()
     if root is None:

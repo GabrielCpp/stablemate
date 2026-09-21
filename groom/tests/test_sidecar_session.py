@@ -1,10 +1,4 @@
-"""Tests for the persistent-session half of groom.sidecar: the data-plane RPC
-handlers (getTree/getFile/getDiff + the traversal guard), the hello advertise,
-the event→frame classifier, and the reload → exit-code-3 path. No real
-WebSocket or groom is involved — a fake socket captures/feeds frames.
-
-Run: uv run python tests/test_sidecar_session.py   (or via pytest)
-"""
+"""Tests for the persistent-session half of groom.sidecar: the data-plane RPC handlers (getTree/getFile/getDiff + the traversal guard), the hello advertise, the event→frame classifier, and the reload → exit-code-3 path."""
 from __future__ import annotations
 
 import asyncio
@@ -18,9 +12,6 @@ from unittest.mock import patch
 from groom import cli, sidecar
 
 
-# --------------------------------------------------------------------------- #
-# Data-plane RPC handlers (local-disk reads with the traversal guard)
-# --------------------------------------------------------------------------- #
 def test_safe_relpath_accepts_normal_and_rejects_traversal():
     assert sidecar._safe_relpath("acme/src/a.py") == "acme/src/a.py"
     for bad in ("/etc/passwd", "../x", "a/../../b", "", "a/../b"):
@@ -39,7 +30,7 @@ def test_rpc_get_tree_lists_files_skipping_vendor_dirs():
         (repo / "src" / "a.py").write_text("x")
         (repo / "README.md").write_text("y")
         (repo / ".git").mkdir()
-        (repo / ".git" / "cfg").write_text("z")  # excluded dir
+        (repo / ".git" / "cfg").write_text("z")
         with patch.object(sidecar, "WORKSPACE_DIR", ws):
             out = sidecar._rpc_get_tree({"repo": "acme"})
     assert out == {"paths": ["README.md", "src/a.py"]}
@@ -86,9 +77,6 @@ def test_git_diff_empty_when_no_repo():
             assert sidecar._rpc_get_diff({"repo": ""}) == {"diff": ""}
 
 
-# --------------------------------------------------------------------------- #
-# _handle_rpc: dispatch + reply framing
-# --------------------------------------------------------------------------- #
 class _FakeWS:
     def __init__(self, incoming=()):
         self.sent: list[dict] = []
@@ -132,9 +120,6 @@ def test_handle_rpc_get_file_traversal_replies_error():
     assert "unsafe" in sock.sent[0]["error"]
 
 
-# --------------------------------------------------------------------------- #
-# hello advertise + event classifier
-# --------------------------------------------------------------------------- #
 def test_hello_frame_carries_identity_and_snapshot():
     with patch.object(sidecar, "snapshot", return_value={"current_node": "n1", "terminal": "", "gates": []}), \
          patch.dict(sidecar.os.environ, {"REPO_NAME": "Acme", "REPO_BRANCH": "main"}, clear=False):
@@ -145,11 +130,7 @@ def test_hello_frame_carries_identity_and_snapshot():
 
 
 def test_hello_carries_the_run_id_that_joins_the_row_to_its_telemetry():
-    """The dashboard keys its telemetry store by run id, and workhorse stamps that
-    id on every span it exports. Without it in the identity, a container's row falls
-    back to looking the store up by container id and never hits — so a run's spans
-    and the row showing that run stay two unconnected things. It also makes two
-    containers of the same workflow+repo distinguishable, which concurrency needs."""
+    """The dashboard keys its telemetry store by run id, and workhorse stamps that id on every span it exports."""
     with patch.object(sidecar, "snapshot", return_value={"gates": []}), \
          patch.dict(
              sidecar.os.environ,
@@ -162,8 +143,7 @@ def test_hello_carries_the_run_id_that_joins_the_row_to_its_telemetry():
 
 
 def test_a_container_launched_without_a_run_id_still_advertises():
-    """Driving compose by hand sets no run id. The row simply has no telemetry to
-    join to — that must not stop the sidecar from reporting itself at all."""
+    """Driving compose by hand sets no run id."""
     with patch.object(sidecar, "snapshot", return_value={"gates": []}), \
          patch.dict(sidecar.os.environ, {}, clear=True):
         identity = sidecar._hello_frame()["identity"]
@@ -193,13 +173,8 @@ def test_classify_event_ignores_a_path_it_cannot_read():
         assert sidecar._classify_event(Path("/nonexistent-groom-test-xyz/x")) is None
 
 
-# --------------------------------------------------------------------------- #
-# The filesystem watch — portable, and started only for mounts that are there
-# --------------------------------------------------------------------------- #
 def test_the_watch_skips_a_mount_that_is_not_mounted_yet():
-    """`awatch` raises FileNotFoundError on a missing path, and a sidecar can start
-    before its /runs volume exists. Dropping the absent root keeps the session up
-    with a working watch on the other one, rather than failing both."""
+    """`awatch` raises FileNotFoundError on a missing path, and a sidecar can start before its /runs volume exists."""
     with tempfile.TemporaryDirectory() as tmp:
         with patch.object(sidecar, "WORKSPACE_DIR", Path(tmp)), \
              patch.object(sidecar, "RUNS_DIR", Path("/nonexistent-groom-test-xyz")):
@@ -207,10 +182,7 @@ def test_the_watch_skips_a_mount_that_is_not_mounted_yet():
 
 
 def test_the_watch_reports_a_gate_written_after_it_started():
-    """The end-to-end property the port has to keep, exercised against the real
-    watcher on whatever platform this runs on — the point of moving off inotify is
-    that this test can run at all on macOS and Windows, not only in the container.
-    """
+    """The end-to-end property the port has to keep, exercised against the real watcher on whatever platform this runs on — the point of moving off inotify is that this test can run at all on macOS and Windows, not only in the container."""
 
     async def _drive():
         with tempfile.TemporaryDirectory() as tmp:
@@ -220,7 +192,7 @@ def test_the_watch_reports_a_gate_written_after_it_started():
                 outbox: asyncio.Queue = asyncio.Queue()
                 stop = asyncio.Event()
                 watcher = asyncio.create_task(sidecar._watch_loop(outbox, stop))
-                await asyncio.sleep(0.5)  # let the backend install its watch
+                await asyncio.sleep(0.5)
                 (ws_dir / "gate.md").write_text(
                     "STATUS: AWAITING_OPERATOR\n\n## Questions from the agent\n\nWhich one?\n"
                 )
@@ -237,9 +209,6 @@ def test_the_watch_reports_a_gate_written_after_it_started():
     assert frame == {"type": "blocked", "file_path": "gate.md", "question": "Which one?"}
 
 
-# --------------------------------------------------------------------------- #
-# reload → exit code 3
-# --------------------------------------------------------------------------- #
 def test_run_session_advertises_hello_then_reload_raises():
     sock = _FakeWS(incoming=[{"type": "reload"}])
     missing = Path("/nonexistent-groom-test-xyz")

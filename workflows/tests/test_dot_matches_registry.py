@@ -1,10 +1,4 @@
-"""The tracked `.dot` diagrams in `workflows/docs/` render exactly what their registry declares.
-
-Each is generated output — `workhorse.pyflow.dot.to_dot` over `registry_graphs(registry)` —
-not a hand drawing, and each workflow's console script exposes a `dot` subcommand that
-reproduces it. Nothing else keeps a tracked `.dot` in step with the flows a registry
-actually declares, so a flow renamed, added, or removed drifts silently until this fails.
-"""
+"""The tracked `.dot` diagrams in `workflows/docs/` render exactly what their registry declares."""
 from __future__ import annotations
 
 from pathlib import Path

@@ -1,10 +1,4 @@
-"""The obligation→evidence join, and the judgments it replaces.
-
-Every case here is a finding a person used to produce by reading three files side by side.
-The point of the module under test is that each one is now arithmetic, so each test asserts
-the *status* — the thing a downstream agent routes on — and not just that some sentence was
-emitted.
-"""
+"""The obligation→evidence join, and the judgments it replaces."""
 
 from __future__ import annotations
 
@@ -21,7 +15,6 @@ CONTRACT = "okf:docs/features/orders/publish.md:contract"
 CONFLICT = "okf:docs/features/orders/publish.md:does:1"
 UNTOUCHED = "okf:docs/features/orders/publish.md:does:2"
 
-#: What the book declares for the conflict branch, canonically spelled.
 DECLARED = 'conflict_on_stale(subject="manifest", token="etag")'
 
 
@@ -117,13 +110,7 @@ def _by_id(data: dict[str, Any]) -> dict[str, dict[str, Any]]:
 
 
 def test_an_obligation_nobody_claimed_is_uncovered(tmp_path: Path) -> None:
-    """The finding three audit refutations produced by hand: nothing observed this.
-
-    A person had to read the plan, notice the obligation appears in no `covers=`, and then
-    convince themselves they had not missed it somewhere. It is a set difference — the
-    obligations in the packet, minus the ones the log mentions — and the only reason it was
-    ever a judgment is that nobody had computed it.
-    """
+    """The finding three audit refutations produced by hand: nothing observed this."""
     spec = _spec(
         tmp_path,
         obligations=[_obligation(CONTRACT), _obligation(UNTOUCHED)],
@@ -140,12 +127,7 @@ def test_an_obligation_nobody_claimed_is_uncovered(tmp_path: Path) -> None:
 def test_a_scenario_that_claims_an_obligation_and_asserts_nothing_is_separated_out(
     tmp_path: Path,
 ) -> None:
-    """`claimed-but-unasserted` is a different repair from `uncovered`, so it is a different word.
-
-    An obligation nobody claimed needs a scenario written. One a scenario claims and never
-    asserts needs *that* scenario fixed — the plan already decided where the evidence goes.
-    Collapsing the two sends the agent to write a scenario that exists.
-    """
+    """`claimed-but-unasserted` is a different repair from `uncovered`, so it is a different word."""
     spec = _spec(
         tmp_path,
         obligations=[_obligation(CONTRACT)],
@@ -165,14 +147,7 @@ def test_a_scenario_that_claims_an_obligation_and_asserts_nothing_is_separated_o
 def test_an_assertion_that_is_not_the_declared_check_does_not_count_as_the_declared_check(
     tmp_path: Path,
 ) -> None:
-    """Oracle strength, as arithmetic.
-
-    This is the reviewer's most-repeated finding — *your assertion would still pass under the
-    defect it exists to exclude*. A write followed by a read cannot tell compare-and-swap
-    from an unconditional overwrite, so the book declares `conflict_on_stale`; the scenario
-    asserts a 200 and moves on. The row is not `covered`, and it names the call that is
-    missing rather than describing the defect in prose.
-    """
+    """Oracle strength, as arithmetic."""
     spec = _spec(
         tmp_path,
         obligations=[_obligation(CONFLICT, declared=[DECLARED])],
@@ -191,12 +166,7 @@ def test_an_assertion_that_is_not_the_declared_check_does_not_count_as_the_decla
 
 
 def test_the_declared_check_observed_and_passing_is_covered(tmp_path: Path) -> None:
-    """The other half: when the plan does invoke it, the join has to say so.
-
-    Canonicalisation is what makes this work at all. The book's spelling and the runner's
-    record go through the same `checks.bind`, so an author who wrote the arguments in a
-    different order is not reported as having asserted nothing.
-    """
+    """The other half: when the plan does invoke it, the join has to say so."""
     spec = _spec(
         tmp_path,
         obligations=[_obligation(CONFLICT, declared=[DECLARED])],
@@ -208,7 +178,6 @@ def test_the_declared_check_observed_and_passing_is_covered(tmp_path: Path) -> N
                 "PASS",
                 CONFLICT,
                 check="conflict_on_stale",
-                # Author order, not spec order.
                 args={"token": "etag", "subject": "manifest"},
             ),
         ],
@@ -226,12 +195,7 @@ def test_the_declared_check_observed_and_passing_is_covered(tmp_path: Path) -> N
 def test_a_failing_assertion_makes_the_obligation_contradicted_not_uncovered(
     tmp_path: Path,
 ) -> None:
-    """A disproof is not a gap, and routing them together sends the wrong agent.
-
-    An obligation with a failing assertion is a product defect: the run went and looked, and
-    the product did not do this. An obligation with no assertion is a QA defect. Both are
-    blocking and they need opposite work.
-    """
+    """A disproof is not a gap, and routing them together sends the wrong agent."""
     spec = _spec(
         tmp_path,
         obligations=[_obligation(CONTRACT)],
@@ -250,13 +214,7 @@ def test_a_failing_assertion_makes_the_obligation_contradicted_not_uncovered(
 
 
 def test_a_published_pass_the_log_does_not_hold_is_contradicted(tmp_path: Path) -> None:
-    """The artifact and the ledger disagreeing, which is the case found by hand.
-
-    `qa-evidence.json` is a summary of the run log, and an audit found a row published with a
-    verdict its refs did not support under an `overall: Pass`. Every consumer downstream
-    reads the summary, so a summary that is wrong about an obligation is worse than one that
-    omits it — nothing below it in the pipeline goes back to the log to check.
-    """
+    """The artifact and the ledger disagreeing, which is the case found by hand."""
     spec = _spec(
         tmp_path,
         obligations=[_obligation(CONTRACT)],
@@ -278,12 +236,7 @@ def test_a_published_pass_the_log_does_not_hold_is_contradicted(tmp_path: Path) 
 def test_a_missing_run_log_refuses_rather_than_reporting_everything_uncovered(
     tmp_path: Path,
 ) -> None:
-    """The join has one dangerous failure mode, and it is silence.
-
-    With no log, every obligation has no bound assertion, and the map would read exactly like
-    a run that asserted nothing — a report that looks like a finding about the QA plan when
-    it is a finding about the caller's arguments. So it refuses.
-    """
+    """The join has one dangerous failure mode, and it is silence."""
     spec = _spec(tmp_path, obligations=[_obligation(CONTRACT)], log=[])
     (spec / "qa" / "qa-run.ndjson").unlink()
 
@@ -292,13 +245,7 @@ def test_a_missing_run_log_refuses_rather_than_reporting_everything_uncovered(
 
 
 def test_an_obligation_in_scope_only_for_context_is_not_a_gap(tmp_path: Path) -> None:
-    """A packet is mostly neighbours, and counting them would drown the answer.
-
-    `qa context` pulls in every obligation a reader needs to understand the change — flow
-    closures, contracts of nodes downstream — and marks them `required: false`. On a real
-    story they outnumber the owed ones ten to one, so treating scope as debt reports a fully
-    evidenced run as a thousand gaps. They are counted, separately, and not as a status.
-    """
+    """A packet is mostly neighbours, and counting them would drown the answer."""
     spec = _spec(
         tmp_path,
         obligations=[_obligation(CONTRACT), _context_only(UNTOUCHED)],
@@ -337,18 +284,7 @@ def test_the_counts_and_the_rendering_lead_with_what_needs_work(tmp_path: Path) 
 
 
 def test_a_scenario_that_aborted_is_unproven_and_never_contradicted(tmp_path: Path) -> None:
-    """The bug this status exists for: a plan defect accusing a clean product.
-
-    A `qa_plan.py` read `body["claim"]["note"]` where the book and the app both said
-    `decision_note`. The `KeyError` aborted the scenario; the driver — correctly — refused to
-    publish a Pass off the green prefix it had managed, and synthesized a failing completion
-    assert over the whole `covers=` list. This join then read that record as an assertion
-    that ran and disagreed, and reported three obligations `contradicted` on a tree with no
-    defect in it at all.
-
-    Nothing observed the product. The status has to say so, and the sentence has to send the
-    repair to the plan.
-    """
+    """The bug this status exists for: a plan defect accusing a clean product."""
     spec = _spec(
         tmp_path,
         obligations=[_obligation(CONTRACT), _obligation(CONFLICT)],
@@ -364,7 +300,6 @@ def test_a_scenario_that_aborted_is_unproven_and_never_contradicted(tmp_path: Pa
 
     assert [rows[CONTRACT]["status"], rows[CONFLICT]["status"]] == ["unproven", "unproven"]
     for row in (rows[CONTRACT], rows[CONFLICT]):
-        # The sentinel is not a disproof, so it is not reported as one.
         assert "failingLogRefs" not in row
         assert row["assertions"]["failing"] == 0
         assert "decide-a-claim:assert:2" in row["abortedLogRefs"]
@@ -374,13 +309,7 @@ def test_a_scenario_that_aborted_is_unproven_and_never_contradicted(tmp_path: Pa
 def test_a_real_failure_inside_an_aborted_scenario_is_still_contradicted(
     tmp_path: Path,
 ) -> None:
-    """Fixing the false positive must not buy it with a false negative.
-
-    A scenario can assert, disagree with the product, and *then* abort — a browser left
-    unclean, a teardown that raised. The plan's own failing assertion is still an
-    observation, and the completion sentinel beside it does not launder it into a plan
-    defect.
-    """
+    """Fixing the false positive must not buy it with a false negative."""
     spec = _spec(
         tmp_path,
         obligations=[_obligation(CONTRACT)],
@@ -402,12 +331,7 @@ def test_a_real_failure_inside_an_aborted_scenario_is_still_contradicted(
 def test_an_obligation_only_passing_inside_an_aborted_scenario_is_unproven(
     tmp_path: Path,
 ) -> None:
-    """A pass before an abort proved a state the steps after it never got to leave.
-
-    That was already refused, and correctly — but as `contradicted`, which named the product
-    for something the run never finished looking at. It is the same fact as the sentinel case
-    and it gets the same status.
-    """
+    """A pass before an abort proved a state the steps after it never got to leave."""
     spec = _spec(
         tmp_path,
         obligations=[_obligation(CONTRACT)],
@@ -427,13 +351,7 @@ def test_an_obligation_only_passing_inside_an_aborted_scenario_is_unproven(
 def test_a_pass_off_a_check_nothing_could_falsify_is_not_covered(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The quietest failure: every declared check ran, passed, and proved nothing.
-
-    Forced here rather than found, because the vocabulary currently has no such check — which
-    is the point of asking. `covered` is what a reader routes on, and routing on it when no
-    observation of the product could have produced anything else is how a rubber stamp
-    becomes a coverage number.
-    """
+    """The quietest failure: every declared check ran, passed, and proved nothing."""
     monkeypatch.setitem(
         sensitivity._VERIFIERS, "conflict_on_stale", lambda observed, args: (True, {}, {})
     )

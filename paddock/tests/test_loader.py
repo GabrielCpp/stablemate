@@ -82,8 +82,6 @@ def test_a_duplicate_step_name_is_an_error(data_dir: Path) -> None:
 
 
 def test_modules_do_not_leak_declarations_into_each_other(data_dir: Path) -> None:
-    # The registry is module-scoped state; loading two tasks in one process must not
-    # append the first module's steps to the second's.
     write(data_dir, "demo", GOOD)
     write(data_dir, "other", GOOD.replace('name="demo"', 'name="other"'))
     tasks = loader.load_all(data_dir)
@@ -105,11 +103,7 @@ def test_an_unknown_task_names_the_ones_that_exist(data_dir: Path) -> None:
 
 
 def test_a_sibling_import_inside_a_step_body_resolves_when_the_step_runs(data_dir: Path) -> None:
-    """A step that imports its sibling lazily, not at module top level, still resolves.
-
-    `python tasks/thing.py` would resolve this import whenever the function ran, not only
-    while the module was being defined, so the loader must too.
-    """
+    """A step that imports its sibling lazily, not at module top level, still resolves."""
     (data_dir / "tasks" / "_sibling.py").write_text(
         'VALUE = "from the sibling"\n', encoding="utf-8",
     )

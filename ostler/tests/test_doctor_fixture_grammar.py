@@ -1,11 +1,4 @@
-"""`doctor` holds the fixture-node grammar (`docs/okf-runbook.md`'s fixture tier) to its rules.
-
-A `fixture` node is a named, static-checkable arrangement: `args:` is what it takes, `provides:`
-is what its last step leaves behind, `needs:` is another fixture it composes on top of. Every
-check here is gated to a repo that has a stack to bring up at all (`_check_fixture_grammar`
-mirrors `_check_runbook`'s own gating) — a repo with no runbook has nothing a fixture arranges
-state in front of.
-"""
+"""`doctor` holds the fixture-node grammar (`docs/okf-runbook.md`'s fixture tier) to its rules."""
 
 from __future__ import annotations
 
@@ -66,8 +59,6 @@ def _fixture_book(*, args: str = "", provides: str = "", needs: str = "",
     if args:
         lines.append(f"- args: {args}")
     if provides:
-        # One entry per `;`, and a `|` inside one splits its headline from its own
-        # `from:`/`read:`/`is:` children — the properties that say where its fact comes from.
         lines.append("- provides:")
         for item in provides.split(";"):
             headline, _, props = item.partition("|")
@@ -142,8 +133,7 @@ def test_fixture_arg_mismatch_is_clean_when_every_arg_is_declared(repo: Path) ->
 
 
 def test_fixture_arg_mismatch_when_a_fixture_bullet_never_passes_a_declared_arg(repo: Path) -> None:
-    """The grammar has no defaults — a declared arg the binding never passes leaves a call
-    without a value it requires, exactly as surely as an unknown one is a typo."""
+    """The grammar has no defaults — a declared arg the binding never passes leaves a call without a value it requires, exactly as surely as an unknown one is a typo."""
     _stack(repo)
     write(repo / "docs/features/acme/fixtures/seeded-acme.md",
           _fixture_book(args="id name", provides="id — the seeded account's id"))
@@ -154,9 +144,7 @@ def test_fixture_arg_mismatch_when_a_fixture_bullet_never_passes_a_declared_arg(
 
 
 def test_fixture_arg_mismatch_applies_to_a_needs_binding(repo: Path) -> None:
-    """A `needs:` binding's `name=value` tokens are checked against the CONSUMER's own
-    `args:` — they land in *its* env, never the target's, which runtime always runs with
-    `{}`. A binding naming something the consumer itself does not declare is flagged."""
+    """A `needs:` binding's `name=value` tokens are checked against the CONSUMER's own `args:` — they land in *its* env, never the target's, which runtime always runs with `{}`."""
     _stack(repo)
     write(repo / "docs/features/acme/fixtures/seeded-acme.md",
           _fixture_book(provides="id — the seeded account's id"))
@@ -184,8 +172,7 @@ def test_fixture_arg_mismatch_is_clean_for_a_needs_binding_matching_declared_arg
 
 
 def test_fixture_needs_target_args_when_a_needs_target_declares_its_own_args(repo: Path) -> None:
-    """Runtime always runs a needs target with `{}` — a target that declares `args:` of its
-    own can never be satisfied, regardless of what the binding passes."""
+    """Runtime always runs a needs target with `{}` — a target that declares `args:` of its own can never be satisfied, regardless of what the binding passes."""
     _stack(repo)
     write(repo / "docs/features/acme/fixtures/seeded-acme.md",
           _fixture_book(args="id", provides="id — the seeded account's id"))
@@ -211,8 +198,7 @@ def test_fixture_needs_target_args_is_clean_when_the_target_declares_no_args(rep
 def test_fixture_arg_mismatch_is_clean_when_a_caller_omits_an_arg_supplied_by_needs(
     repo: Path,
 ) -> None:
-    """A `fixture:` caller need not pass an arg the target's own `needs:` bindings already
-    supply into its env."""
+    """A `fixture:` caller need not pass an arg the target's own `needs:` bindings already supply into its env."""
     _stack(repo)
     write(repo / "docs/features/acme/fixtures/seeded-acme.md",
           _fixture_book(provides="id — the seeded account's id"))
@@ -226,8 +212,7 @@ def test_fixture_arg_mismatch_is_clean_when_a_caller_omits_an_arg_supplied_by_ne
 def test_fixture_arg_mismatch_when_a_caller_also_passes_an_arg_supplied_by_needs(
     repo: Path,
 ) -> None:
-    """A `fixture:` caller passing an arg the target's `needs:` bindings already supply is a
-    second source for the same arg — its own finding, not silently accepted."""
+    """A `fixture:` caller passing an arg the target's `needs:` bindings already supply is a second source for the same arg — its own finding, not silently accepted."""
     _stack(repo)
     write(repo / "docs/features/acme/fixtures/seeded-acme.md",
           _fixture_book(provides="id — the seeded account's id"))
@@ -315,8 +300,6 @@ def test_fixture_step_no_run_is_clean_when_the_step_has_a_run_bullet(repo: Path)
 
 
 def test_fixture_step_run_is_check_expression_as_command(repo: Path) -> None:
-    # A fixture's own steps are shelled the same way a runbook's are (`book_fixtures` reuses
-    # `runbook.step_command`), so a check call on `run:` here is the same mistake.
     _stack(repo)
     write(repo / "docs/features/acme/fixtures/seeded-acme.md",
           "---\ntype: fixture\ntitle: Seeded acme\n---\n# Seeded acme\n\n"
@@ -328,8 +311,7 @@ def test_fixture_step_run_is_check_expression_as_command(repo: Path) -> None:
 
 
 def test_fixture_step_scenario_frame_token_is_not_a_doctor_finding(repo: Path) -> None:
-    """A fixture step runs inside a scenario, so `scenario:` names something real —
-    `runbook-scenario-frame` fires only on a runbook step, where no scenario exists."""
+    """A fixture step runs inside a scenario, so `scenario:` names something real — `runbook-scenario-frame` fires only on a runbook step, where no scenario exists."""
     _stack(repo)
     write(repo / "docs/features/acme/fixtures/seeded-acme.md",
           "---\ntype: fixture\ntitle: Seeded acme\n---\n# Seeded acme\n\n"
@@ -340,20 +322,14 @@ def test_fixture_step_scenario_frame_token_is_not_a_doctor_finding(repo: Path) -
 
 
 def test_fixture_checks_are_skipped_with_no_stack_runbook(repo: Path) -> None:
-    """No runbook claims a stack — nothing a fixture arranges state in front of, so the
-    fixture-grammar checks stay silent even over an otherwise-broken fixture book."""
+    """No runbook claims a stack — nothing a fixture arranges state in front of, so the fixture-grammar checks stay silent even over an otherwise-broken fixture book."""
     write(repo / "docs/features/acme/fixtures/seeded-acme.md",
           _fixture_book(args="id", provides="id — the seeded account's id", step_kind="prepare"))
     assert _findings(repo, "fixture-step-kind") == []
 
 
 def test_unbacked_precondition_when_the_target_declares_no_provides(repo: Path) -> None:
-    """The consumer states the state; the producer never claimed to leave it.
-
-    The prose after the em dash is copied verbatim into a compiled plan's `preconditions=[...]`,
-    where nothing holds the fixture to it. The node that performs the arrangement is the only
-    one that can say what it leaves behind, and here it says nothing at all.
-    """
+    """The consumer states the state; the producer never claimed to leave it."""
     _stack(repo)
     write(repo / "docs/features/acme/fixtures/seeded-acme.md", _fixture_book(args="id"))
     write(repo / ENDPOINT_PATH, _endpoint_book("seeded-acme id=globex — an account exists"))
@@ -381,13 +357,7 @@ def test_unbacked_precondition_is_silent_when_the_bullet_states_no_precondition(
 
 
 def test_a_provides_entry_with_its_own_properties_parses_as_one_value(repo: Path) -> None:
-    """`provides:` is `entries=True` (`registry.BulletKey`): each direct child is one fact, and
-    that fact's own `from:`/`read:` children are its properties, not further facts.
-
-    Before the `_nested_values` split, `_meta_from_bullets` walked the whole subtree, so this
-    single fact — plus its two properties — flattened into three `provides` values at one
-    position instead of one.
-    """
+    """`provides:` is `entries=True` (`registry.BulletKey`): each direct child is one fact, and that fact's own `from:`/`read:` children are its properties, not further facts."""
     _stack(repo)
     write(repo / "docs/features/acme/fixtures/seeded-acme.md", (
         "---\ntype: fixture\ntitle: Seeded acme\n---\n# Seeded acme\n\n"
@@ -414,12 +384,7 @@ _PROVIDES_BOOK = (
 
 
 def _declare_provides_properties(monkeypatch, *names: str) -> None:
-    """Give `provides:` a property vocabulary for the duration of one test.
-
-    No key in the shipped registry declares one yet — `BulletKey.properties` defaults to `()`,
-    which means *undeclared, so unchecked*, precisely so that landing this check did not turn
-    every entry already written in the tree into a finding.
-    """
+    """Give `provides:` a property vocabulary for the duration of one test."""
     import dataclasses
 
     from ostler import registry
@@ -441,12 +406,7 @@ def test_an_entry_property_the_key_does_not_admit_is_reported(repo: Path, monkey
 
 
 def test_a_key_that_declares_no_property_vocabulary_admits_anything(repo: Path, monkeypatch) -> None:
-    """A key with an empty `properties` tuple — the default, and other entries=True keys'
-
-    shipped state — admits anything. `provides:` itself now ships `("from", "read")`,
-    so this test clears it back to `()` to exercise the no-vocabulary case
-    directly, rather than relying on a key that happens to still default to it.
-    """
+    """A key with an empty `properties` tuple — the default, and other entries=True keys'"""
     _declare_provides_properties(monkeypatch)
     _stack(repo)
     write(repo / "docs/features/acme/fixtures/seeded-acme.md", _PROVIDES_BOOK)

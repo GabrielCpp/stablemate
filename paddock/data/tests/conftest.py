@@ -1,10 +1,4 @@
-"""Fixtures for the data suite — currently one, the shared git identity.
-
-A twin of `tests/conftest.py`'s `git_identity` rather than an import of it: `tests` is
-not an importable package name a type checker can resolve unambiguously across the
-workspace (every member has one), and ten duplicated lines beat a resolver exception.
-See that fixture's docstring for the whole story; keep the two in step.
-"""
+"""Fixtures for the data suite — currently one, the shared git identity."""
 
 from __future__ import annotations
 

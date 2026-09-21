@@ -94,12 +94,7 @@ def test_the_real_registry_only_names_codes_doctor_actually_defines():
 
 
 def _colliding_module() -> tuple[types.ModuleType, str]:
-    """Two checkers, each with a nested helper of the same name — `doctor` has three.
-
-    The shape is not contrived: a cycle walk wants a recursive `visit`, so every checker
-    that walks a graph grows one, and they are siblings in different scopes rather than one
-    shared helper. Only one of the two runs here.
-    """
+    """Two checkers, each with a nested helper of the same name — `doctor` has three."""
     source = '''
 class Finding:
     def __init__(self, severity, code, message=""):
@@ -133,13 +128,7 @@ def run():
 
 
 def test_two_helpers_sharing_a_name_are_two_functions(monkeypatch):
-    """A bare `__name__` is not an identity, and the join has to survive that.
-
-    Keyed on the bare name, entering the fixture walk marked *both* `visit`s entered, and
-    `milestone-cycle` — which only the milestone walk can emit — was reported reachable on a
-    book with no milestones in it. That is the failure mode the census exists to prevent,
-    produced by the census: a rule reported as enforced where it is not.
-    """
+    """A bare `__name__` is not an identity, and the join has to survive that."""
     module, source = _colliding_module()
     monkeypatch.setattr(census.inspect, "getsource", lambda _m: source)
     monkeypatch.setattr(census.inspect, "getsourcefile", lambda _m: "<fake_doctor>")
@@ -156,14 +145,7 @@ def test_two_helpers_sharing_a_name_are_two_functions(monkeypatch):
 
 
 def test_a_checker_one_run_skipped_and_another_entered_is_not_unreachable():
-    """The defect `merge` exists for, in the smallest shape that can hold it.
-
-    Half of `doctor` is gated on the `full` profile, so the tree's one `exploration` book
-    reported twenty-nine planning-graph codes unentered and every one of them was written
-    down as excused — then the same registry, run against any `full` book, reported all
-    twenty-nine as dead excuses to delete. Whichever half a maintainer believed, following
-    it broke the other. Entered anywhere is entered.
-    """
+    """The defect `merge` exists for, in the smallest shape that can hold it."""
     exploration = census.Census(
         fired=frozenset(), dormant_clean=frozenset({"observed"}),
         dormant_unreachable=frozenset({"gated"}), profile="exploration",

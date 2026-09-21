@@ -1,11 +1,4 @@
-"""The durable turn-record archive: harvest, idempotency, backfill and retention.
-
-What is asserted here is the archive's contract rather than its file layout: a node
-visited twice yields two records, a tick that finds nothing new copies nothing, a run dir
-that has gone is not an error, and a scratch run's records never become durable.
-
-Run: uv run pytest tests/test_turns.py
-"""
+"""The durable turn-record archive: harvest, idempotency, backfill and retention."""
 
 from __future__ import annotations
 
@@ -21,12 +14,7 @@ from groom import store, turns
 
 
 class _DB:
-    """A throwaway groom.db in its own directory, so the archive is temporary too.
-
-    A directory rather than a bare temp file because ``turns.transcripts_root`` is
-    derived from the database's parent — which is the point of deriving it: pointing
-    ``$GROOM_DB`` at a test location moves the bodies with the index.
-    """
+    """A throwaway groom.db in its own directory, so the archive is temporary too."""
 
     def __enter__(self) -> _DB:
         self._dir = tempfile.TemporaryDirectory()
@@ -46,12 +34,7 @@ class _DB:
 
 @contextlib.contextmanager
 def _workspace() -> Iterator[Path]:
-    """A scratch dir whose *name* does not look throwaway to the archive.
-
-    ``store.is_scratch_run_dir`` reads a ``tmpXXXXXX`` directory in the temp root as a
-    test run and excludes it from the inventory — correctly, and that is asserted below.
-    So a test that needs its fake run to be inventoried cannot use the default prefix.
-    """
+    """A scratch dir whose *name* does not look throwaway to the archive."""
     path = Path(tempfile.mkdtemp(prefix="turnstest-"))
     try:
         yield path
@@ -103,10 +86,8 @@ def _span(run_dir: Path, run_id: str = "R1") -> None:
     }])
 
 
-# --------------------------------------------------------------------------- harvest
 def test_each_visit_is_archived_separately():
-    """Two laps of one node are two records, not one overwritten one — which is the
-    whole reason the archive is keyed by the visit."""
+    """Two laps of one node are two records, not one overwritten one — which is the whole reason the archive is keyed by the visit."""
     with _DB(), _workspace() as tmp:
         rows = _rows()
         run_dir = _run_dir(tmp, rows)
@@ -127,9 +108,7 @@ def test_each_visit_is_archived_separately():
 
 
 def test_a_tick_that_finds_nothing_new_copies_nothing():
-    """Harvest runs while runs are live, so it sees the same record over and over. A
-    record that has not changed must cost a digest and no copy; one that has grown must
-    replace its row rather than duplicate it."""
+    """Harvest runs while runs are live, so it sees the same record over and over."""
     with _DB(), _workspace() as tmp:
         rows = _rows()[:1]
         run_dir = _run_dir(tmp, rows)
@@ -148,13 +127,11 @@ def test_a_tick_that_finds_nothing_new_copies_nothing():
 
 
 def test_a_row_with_no_visit_key_gets_one_reconstructed_from_the_map():
-    """An old session-map line names its node and its session and nothing else. It is
-    still the only address those turns have, so the archive counts them in file order
-    instead of dropping the entire history that predates the visit key."""
+    """An old session-map line names its node and its session and nothing else."""
     with _DB(), _workspace() as tmp:
         rows = [
             {"node": "plan-qa", "session_id": "s0"},
-            {"node": "plan-qa", "session_id": "s0"},  # the same session, recorded twice
+            {"node": "plan-qa", "session_id": "s0"},
             {"node": "dev", "session_id": "s9"},
         ]
         run_dir = _run_dir(tmp, rows)
@@ -173,9 +150,7 @@ def test_a_row_with_no_visit_key_gets_one_reconstructed_from_the_map():
 
 
 def test_a_reconstructed_key_never_aliases_a_real_one():
-    """`generation` 0 is a real generation — a run dir with no `resume_generation` file
-    reads as one — so a reconstructed key has to be distinguishable by shape, not by
-    borrowing a number the engine also mints."""
+    """`generation` 0 is a real generation — a run dir with no `resume_generation` file reads as one — so a reconstructed key has to be distinguishable by shape, not by borrowing a number the engine also mints."""
     with _DB(), _workspace() as tmp:
         real = {
             "node": "plan-qa", "session_id": "s1", "generation": 0, "seq": 1,
@@ -194,8 +169,7 @@ def test_a_reconstructed_key_never_aliases_a_real_one():
 
 
 def test_scratch_runs_are_never_archived():
-    """A suite that runs a workflow under a temp root writes real turn records. Making
-    them durable would fill the archive with runs nobody will come back to."""
+    """A suite that runs a workflow under a temp root writes real turn records."""
     with _DB(), _workspace() as tmp:
         rows = _rows()[:1]
         scratch = Path(tempfile.gettempdir()) / "pytest-of-nobody" / "run"
@@ -211,22 +185,19 @@ def test_scratch_runs_are_never_archived():
 
 
 def test_a_run_dir_that_is_gone_is_not_an_error():
-    """Most rows in `spans` name a directory this host no longer has. That is the normal
-    state of the inventory, not a failure of the harvest."""
+    """Most rows in `spans` name a directory this host no longer has."""
     with _DB():
         _span(Path("/nonexistent/run-dir"))
         assert turns.harvest() == 0
 
 
-# -------------------------------------------------------------------------- backfill
 def test_backfill_archives_from_the_cli_store():
-    """The transcripts already on disk from before capture existed join to a node and a
-    visit exactly, through the run's own session map."""
+    """The transcripts already on disk from before capture existed join to a node and a visit exactly, through the run's own session map."""
     from workhorse.runner import transcript as capture
 
     with _DB(), _workspace() as tmp:
         rows = _rows()[:1]
-        run_dir = _run_dir(tmp, rows)  # no transcripts/ or turns/ content
+        run_dir = _run_dir(tmp, rows)
         _span(run_dir)
         cli_store = tmp / "cli"
         cli_store.mkdir()
@@ -250,9 +221,7 @@ def test_backfill_archives_from_the_cli_store():
 
 
 def test_backfill_finds_the_store_for_a_row_that_never_recorded_a_backend():
-    """The rows worth recovering predate the `backend` field as well as the visit key.
-    Which CLI holds the session is answerable — the store that resolves its id — so the
-    backfill asks instead of skipping the turn for a field nobody wrote."""
+    """The rows worth recovering predate the `backend` field as well as the visit key."""
     from workhorse.runner import transcript as capture
 
     with _DB(), _workspace() as tmp:
@@ -341,14 +310,8 @@ def test_session_models_reads_opencode_export_shape():
             capture._EXPORTERS.pop("acme-cli", None)
 
 
-# --------------------------------------------------------------------------- retention
 def test_the_archive_has_no_retention_of_its_own_and_the_store_sweep_spares_it():
-    """A transcript is wanted precisely when someone returns to a run long after
-    its spans aged out, so the archive kept everything by default and its own
-    prune was only ever reachable by an operator setting a window. It is gone:
-    the one thing that removes a run's transcripts now is :mod:`groom.archive`
-    moving them into the frozen root, and a store sweep must not touch the index
-    that says where they went."""
+    """A transcript is wanted precisely when someone returns to a run long after its spans aged out, so the archive kept everything by default and its own prune was only ever reachable by an operator setting a window."""
     with _DB(), _workspace() as tmp:
         rows = _rows()[:1]
         run_dir = _run_dir(tmp, rows)

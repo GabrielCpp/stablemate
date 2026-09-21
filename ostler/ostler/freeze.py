@@ -1,17 +1,4 @@
-"""`ostler freeze` / `unfreeze` — pin an approved entity as immutable ground truth.
-
-The cross-run drift problem has two halves. `doctor` catches *references* that break; freezing
-catches *the approved content itself* changing. When a human approves a story (or, for greenfield,
-the surface distilled from a mockup), `freeze` records its content fingerprint in the id registry
-(`.agents/ids.json`). Thereafter `doctor` reports a `frozen-mutated` error if the entity's content
-changes, or `frozen-removed` if it disappears — so a later run cannot silently contradict an
-approved decision. This is the anchor greenfield otherwise lacks: the pinned, last-approved version.
-
-`unfreeze` lifts the pin (an explicit, intentional decision to let the entity evolve again).
-
-A frozen entry is keyed by story slug or seed id and records ``{kind, hash, approvedAt,
-approvedBy, note}``.
-"""
+"""`ostler freeze` / `unfreeze` — pin an approved entity as immutable ground truth."""
 from __future__ import annotations
 
 import hashlib
@@ -24,11 +11,7 @@ from ostler.model import Graph
 
 
 def resolve_content(graph: Graph, ident: str) -> tuple[str, str] | None:
-    """Return ``(kind, canonical_content)`` for a story slug or seed id, else None.
-
-    A story's content is its ``story.md`` (the approved spec) when present, else its
-    dependencies entry; a seed's content is its canonical seed-item JSON.
-    """
+    """Return ``(kind, canonical_content)`` for a story slug or seed id, else None."""
     found = graph.find_story(ident)
     if found is not None:
         _, story = found
@@ -48,7 +31,7 @@ def fingerprint(content: str) -> str:
 
 @dataclass
 class FreezePlan:
-    action: str           # "freeze" | "unfreeze"
+    action: str
     ident: str
     error: str = ""
     entry: dict = field(default_factory=dict)
@@ -75,8 +58,7 @@ def _ids_path(graph: Graph) -> Path:
 
 
 def _load_ids(graph: Graph) -> dict | None:
-    """The registry must already exist (the workflow's id allocator creates it). Freezing
-    cannot synthesize the required prefix, so a missing registry is an error."""
+    """The registry must already exist (the workflow's id allocator creates it)."""
     if graph.ids is not None:
         return dict(graph.ids)
     p = _ids_path(graph)

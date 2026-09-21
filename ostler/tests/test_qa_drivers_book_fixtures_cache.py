@@ -1,9 +1,4 @@
-"""`PythonDriver` builds `context["book_fixtures"]` once per driver, not once per scenario.
-
-`load_graph` walks the whole book, so calling it inside `_execute` — as every scenario in
-a suite does — re-pays that cost every scenario for a graph that never changed underneath
-a single driver's lifetime.
-"""
+"""`PythonDriver` builds `context["book_fixtures"]` once per driver, not once per scenario."""
 
 from __future__ import annotations
 

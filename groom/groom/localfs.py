@@ -1,21 +1,4 @@
-"""Local-filesystem reads for **native** runs — the same-host twin of
-:mod:`groom.docker_io`.
-
-A native run shares groom's host, so its workspace and run dir are
-plain paths groom can read directly: no throwaway container, no volume mount, no
-docker at all. These functions mirror the docker_io signatures the dashboard's
-Files/Diff/gate handlers already call, but take a **host base path** instead of a
-docker volume name, so the handlers branch on ``WorkflowContainer.native`` and call
-one or the other with the same shape. That first argument is **positional-only** in
-both modules for exactly that reason: each names it after its own concept (a host
-base path here, a volume name there), and a handler that picks between them at
-runtime must not depend on which name it got.
-
-Path safety is shared with docker_io (``safe_relpath`` rejects traversal); the skip
-set (``_SKIP_DIRS``) matches so both paths agree on what a checkout's tree contains.
-Every function is best-effort — a bad base path yields an empty result, never a
-raise — because a diff/tree panel is a nice-to-have, not on any critical path.
-"""
+"""Local-filesystem reads for **native** runs — the same-host twin of :mod:`groom.docker_io`."""
 
 from __future__ import annotations
 
@@ -30,8 +13,7 @@ _SKIP = set(_SKIP_DIRS)
 
 
 def _base(base: str, repo_dir: str = "") -> Path | None:
-    """The resolved checkout root, or None when it isn't a readable directory —
-    which is also groom's test for "is this run native" (its dir exists here)."""
+    """The resolved checkout root, or None when it isn't a readable directory — which is also groom's test for "is this run native" (its dir exists here)."""
     if not base:
         return None
     root = Path(base)
@@ -41,24 +23,12 @@ def _base(base: str, repo_dir: str = "") -> Path | None:
 
 
 def is_local_dir(path: str) -> bool:
-    """Whether ``path`` is a directory on groom's own host — the signal that a
-    telemetry run is native and can be served from local disk."""
+    """Whether ``path`` is a directory on groom's own host — the signal that a telemetry run is native and can be served from local disk."""
     return bool(path) and Path(path).is_dir()
 
 
 def run_terminal(run_dir: str, /) -> str:
-    """The terminal state a native run wrote into its own ``run.json``, or "" while it
-    is still in progress (and on any unreadable/missing file).
-
-    This is the run's own account of how it ended, and it is on disk the instant the
-    run stops — unlike the root span, which only reaches the collector if the dying
-    process got its exporter flushed. That gap is the whole reason to read it: a run
-    that died mid-flush is exactly the one an operator most needs to see stop.
-
-    It reports the CURRENT session only. ``--resume-run`` re-writes the record with a
-    null terminal before it does anything (``ArtifactWriter.resume``), so a stale
-    ending from a previous session cannot make a live resume read as finished.
-    """
+    """The terminal state a native run wrote into its own ``run.json``, or "" while it is still in progress (and on any unreadable/missing file)."""
     if not run_dir:
         return ""
     try:
@@ -69,23 +39,7 @@ def run_terminal(run_dir: str, /) -> str:
 
 
 def pid_alive(pid: int) -> bool:
-    """Whether a process with this pid exists on groom's host.
-
-    Only meaningful for a native run, which by definition shares groom's host and
-    therefore its pid namespace. Signal 0 checks for existence without delivering
-    anything; ``EPERM`` means the process is there and owned by someone else, which
-    for this question is a yes.
-
-    Existence is not enough on its own, because a **zombie answers signal 0**: a
-    killed process keeps its pid until its parent reaps it, and the parent of a run
-    launched under a supervisor, a `nohup` shell or an agent harness may not reap for
-    a long time — or ever, while it lives. Signalling alone therefore reports the
-    SIGKILL/OOM death this function exists to catch as healthy, and the row stays
-    green until the 3-minute silence window expires, which is precisely the false
-    green :func:`groom.app._native_ending` was written to remove. ``/proc`` is asked
-    for the state so the answer is about *running*, not about existing; where there
-    is no procfs to read, existence is the best answer available and stands.
-    """
+    """Whether a process with this pid exists on groom's host."""
     if pid <= 0:
         return False
     try:
@@ -100,14 +54,11 @@ def pid_alive(pid: int) -> bool:
         stat = Path(f"/proc/{pid}/stat").read_text()
     except OSError:
         return True
-    # The comm field is parenthesised and may itself contain spaces or parens, so the
-    # state code is read from after the LAST ')' rather than by splitting the line.
     return stat.rpartition(")")[2].split()[0] != "Z"
 
 
 def list_files(base: str, /, repo_dir: str = "") -> list[str]:
-    """Repo-relative paths of every file under one checkout, heavy vendor/VCS dirs
-    pruned (same set as the docker path), sorted for a stable tree order."""
+    """Repo-relative paths of every file under one checkout, heavy vendor/VCS dirs pruned (same set as the docker path), sorted for a stable tree order."""
     root = _base(base, repo_dir)
     if root is None:
         return []
@@ -121,8 +72,7 @@ def list_files(base: str, /, repo_dir: str = "") -> list[str]:
 
 
 def list_repo_dirs(base: str, /) -> list[str]:
-    """Base-relative paths of every git checkout within two levels of ``base`` —
-    the parent dir of each ``.git`` — so a multi-repo workspace diffs each repo."""
+    """Base-relative paths of every git checkout within two levels of ``base`` — the parent dir of each ``.git`` — so a multi-repo workspace diffs each repo."""
     root = _base(base)
     if root is None:
         return []
@@ -141,8 +91,7 @@ def find_repo_dir(base: str) -> str:
 
 
 def git_diff(base: str, /, repo_dir: str = "") -> str:
-    """Working-tree-vs-HEAD unified diff for one checkout, run locally (no docker).
-    "" on any failure — the diff panel is not on a critical path."""
+    """Working-tree-vs-HEAD unified diff for one checkout, run locally (no docker)."""
     root = _base(base, repo_dir)
     if root is None and not repo_dir:
         repo_dir = find_repo_dir(base)
@@ -162,8 +111,7 @@ def git_diff(base: str, /, repo_dir: str = "") -> str:
 
 
 def read_file(base: str, /, rel_path: str) -> str | None:
-    """Text of one file under ``base``, or None when missing/unreadable. Guarded by
-    ``safe_relpath`` so a crafted path can't escape the base."""
+    """Text of one file under ``base``, or None when missing/unreadable."""
     if not base:
         return None
     try:
@@ -178,8 +126,7 @@ def read_file(base: str, /, rel_path: str) -> str | None:
 
 
 def write_file(base: str, /, rel_path: str, content: str) -> bool:
-    """Write ``content`` into a file under ``base`` (the native gate-answer path).
-    Returns False on any failure rather than raising."""
+    """Write ``content`` into a file under ``base`` (the native gate-answer path)."""
     if not base:
         return False
     try:

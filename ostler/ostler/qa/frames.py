@@ -1,17 +1,4 @@
-"""Pull the frames around a step out of a run's recording (``ostler qa frames``).
-
-The report says where each step sits in the recording — a step's ``started_offset_ms``
-and the recording's ``actionStartOffsetMs`` are on the same clock, and
-:mod:`ostler.qa.report` does the subtraction. Seeking a 20 s video to 0:06.4 by hand is
-still the slow part of reading one, and a single frame is rarely what a reader wants: the
-question is what the screen showed *around* the moment, not at it. This module names a
-step (or a raw position), widens it by ``around`` seconds on each side, and writes one PNG
-per ``1/fps`` seconds of that window under ``qa/frames/<step>/``, each file named by its
-position in the recording, with an ``index.md`` a reader opens to see them in order.
-
-ffmpeg does the decoding. It is the same binary the recorder needed, so a run that has a
-recording has it; a machine without one gets a clear error, not a traceback.
-"""
+"""Pull the frames around a step out of a run's recording (``ostler qa frames``)."""
 
 from __future__ import annotations
 
@@ -59,11 +46,7 @@ class FramesResult:
 
 
 def find_step(data: Mapping[str, Any], step: str) -> tuple[dict[str, Any], dict[str, Any]]:
-    """The ``(scenario, step)`` the name picks out of a report's data.
-
-    An exact step id wins; failing that, a unique case-insensitive substring of a step's
-    label — the ids are long and the label is what a reader saw in the report.
-    """
+    """The ``(scenario, step)`` the name picks out of a report's data."""
     exact = [
         (scenario, view)
         for scenario in data["scenarios"]
@@ -95,9 +78,7 @@ def frame_window(
     target: str | None = None,
     around: float = DEFAULT_AROUND_SECONDS,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
-    """The recording and the placement ``{"at", "until"}`` (seconds) a request names,
-    before widening. ``step`` reads the report's placement; ``at`` is a raw position in
-    the recording of ``target`` (or the only recording)."""
+    """The recording and the placement ``{"at", "until"}`` (seconds) a request names, before widening."""
     if (step is None) == (at is None):
         raise FramesError("name exactly one of a step or a position (--step / --at)")
     recordings = {r["target"]: r for r in data["recordings"]}
@@ -122,7 +103,7 @@ def frame_window(
             "stepLabel": view["label"],
             "scenario": scenario["id"],
         }
-    if at is None:  # the first check above proved it; this is for the type-checker
+    if at is None:
         raise FramesError("name exactly one of a step or a position (--step / --at)")
     if target is None:
         if len(recordings) > 1:
@@ -150,14 +131,7 @@ def extract_frames(
     label: str | None = None,
     ffmpeg: str = "ffmpeg",
 ) -> FramesResult:
-    """Write the frames around a step (or position) of a run's recording and index them.
-
-    The window is ``[at - around, until + around]`` clamped to the file; one frame every
-    ``1/fps`` seconds of it lands in ``<spec>/qa/frames/<step-id>/`` (``qa/<label>/…`` for
-    a dry run) as ``<seconds>s.png`` — the position in the recording, so the file names
-    read as the player's clock. The directory is emptied first: a re-run with a different
-    window must not leave last time's frames mixed in.
-    """
+    """Write the frames around a step (or position) of a run's recording and index them."""
     if around < 0:
         raise FramesError("--around cannot be negative")
     if fps <= 0:
@@ -186,8 +160,6 @@ def extract_frames(
     if out_dir.exists():
         shutil.rmtree(out_dir)
     out_dir.mkdir(parents=True)
-    # One frame at `start`, then one every 1/fps until `end` inclusive: `-t` bounds the
-    # decode to the window, `fps=` resamples it, and `-ss` before `-i` seeks cheaply.
     span = max(end - start, 1.0 / fps)
     pattern = out_dir / "frame-%05d.png"
     argv = [
@@ -224,14 +196,12 @@ def extract_frames(
 
 
 def _covered(result: FramesResult) -> str:
-    """First to last frame written — the window as sampled, which stops short of ``end``
-    by up to one frame interval."""
+    """First to last frame written — the window as sampled, which stops short of ``end`` by up to one frame interval."""
     return f"{video_clock(result.frames[0].seconds)}–{video_clock(result.frames[-1].seconds)}"
 
 
 def render_index(result: FramesResult, *, spec_dir: Path) -> str:
-    """``index.md`` beside the frames: what they are of, then each frame in order, the
-    ones inside the step's own span marked so the lead-in and lead-out read as such."""
+    """``index.md`` beside the frames: what they are of, then each frame in order, the ones inside the step's own span marked so the lead-in and lead-out read as such."""
     lines = []
     if result.step_id:
         lines.append(f"# Frames around step `{result.step_id}`")

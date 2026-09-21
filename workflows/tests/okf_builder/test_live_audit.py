@@ -1,18 +1,4 @@
-"""Pinning `audit_one_spec` threads `own_repository` into every ledger call it makes.
-
-`ledger.claim_fingerprint` defaults `own_repository` to `""`; a caller that forgets to
-pass the book's own repository folds every repository-qualified citation — same-repo ones
-included — into the unreadable-file sentinel, silently making every fingerprint look
-identical regardless of what the cited file actually says. `audit_one_spec` resolves it
-the same way `doctor.py` does (`book_repository(features_root_of(graph))`), but nothing
-exercised that path end to end before this test: the existing ledger tests call
-`claim_fingerprint` directly, never through the flow that is supposed to feed it.
-
-The book here (docs) and the source it cites (a separate checkout) are deliberately two
-different directories, so a fingerprint that came out right could only have come from a
-real `own_repository`/`repo_root` resolution, not from the two roots being the same
-directory by accident.
-"""
+"""Pinning `audit_one_spec` threads `own_repository` into every ledger call it makes."""
 from __future__ import annotations
 
 import json
@@ -69,13 +55,7 @@ def logger() -> logging.Logger:
 
 @pytest.fixture
 def two_root_book(tmp_path: Path) -> tuple[Path, Path]:
-    """A docs root and a source checkout that are genuinely separate directories.
-
-    Only a book naming its own repository (`docs/features/repository.txt`) and a
-    citation qualified with `repo://<that repository>/...` exercises the code path this
-    test pins — a bare, unqualified citation would resolve against `repo_root` either way
-    and would not tell an `own_repository=""` bug from a correct resolution.
-    """
+    """A docs root and a source checkout that are genuinely separate directories."""
     repo_root = tmp_path / "checkout"
     (repo_root / REPOSITORY).mkdir(parents=True)
     (repo_root / REPOSITORY / "service.py").write_text(
@@ -111,9 +91,6 @@ def test_live_audit_resolves_the_books_own_repository(
     scenario = report.scenarios[0]
     assert scenario.code_refs == (REF,)
 
-    # The compiled claim content is the scenario's own rendered fields (id, covers,
-    # mechanism, ...), not the bare id — reloading the same plan the flow read gives the
-    # exact dict `audit_one_spec` serializes, rather than guessing its shape by hand.
     resolved_spec_dir = resolve_spec_dir(
         Path("docs/specs/story-1") / "qa_plan.py", Path("docs/specs/story-1"), docs_root,
     )
@@ -124,10 +101,6 @@ def test_live_audit_resolves_the_books_own_repository(
     [scenario_data] = document.data["scenarios"]
     claim_content = json.dumps(scenario_data, sort_keys=True, default=str)
 
-    # What the fingerprint must be if `own_repository` were resolved correctly (matches
-    # `charge_is_covered`'s own repository) vs. what it would be if `audit_one_spec` had
-    # forgotten to pass it (the ledger's own default, which folds the repository-qualified
-    # ref into the unreadable sentinel because `REPOSITORY != ""`).
     correct = claim_fingerprint(
         scenario.code_refs, {}, claim_content, repo_root, own_repository=REPOSITORY,
     )
@@ -140,13 +113,7 @@ def test_live_audit_resolves_the_books_own_repository(
 def test_claim_content_change_moves_the_fingerprint(
     logger: logging.Logger, two_root_book: tuple[Path, Path]
 ) -> None:
-    """A book-only edit to the scenario's own asserted content moves the fingerprint.
-
-    Ruling 1's whole point: a claim's own compiled content changing must not be invisible
-    just because the cited file and fixtures did not change. Two otherwise identical plans,
-    one with an edited scenario docstring (`ScenarioDecl.objective`, part of the serialized
-    scenario this test's fingerprint is built from), must fingerprint differently.
-    """
+    """A book-only edit to the scenario's own asserted content moves the fingerprint."""
     docs_root, repo_root = two_root_book
     baseline = audit_one_spec(
         logger, "docs/specs/story-1", docs_path=str(docs_root), repo_dir=str(repo_root),
@@ -188,8 +155,6 @@ def test_fixture_texts_for_resolves_declared_fixtures_by_name() -> None:
     )
     assert texts == {"seed-org": "run: seed-org.sh"}
 
-    # A change to the fixture node's own bullets is a change to the text this function
-    # returns, which `claim_fingerprint` folds in independent of any cited code file.
     fixture_node.bullet_order = [("run", "seed-org-v2.sh", 10)]
     changed = _fixture_texts_for(
         ["okf:x:contract"], obligations_by_id, {"seed-org": fixture_node},
@@ -222,11 +187,7 @@ def _fake_run(
 def test_blocked_when_no_stack_runbook(
     logger: logging.Logger, two_root_book: tuple[Path, Path], monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A book with a served surface but no stack runbook blocks before running anything.
-
-    `ensure_stack` itself already returns this — this pins that `audit_one_spec` surfaces
-    it as `status="blocked"` rather than trying to run the plan against nothing.
-    """
+    """A book with a served surface but no stack runbook blocks before running anything."""
     docs_root, repo_root = two_root_book
     monkeypatch.setattr(
         live_audit_flow, "ensure_stack",
@@ -326,8 +287,6 @@ def test_failing_scenario_is_overwritten_by_a_later_passing_run(
     ledger_path = docs_root / "docs/specs/story-1" / live_audit_flow.LEDGER_FILE
     assert json.loads(ledger_path.read_text())["claims"]["charge-is-covered"]["verdict"] == "failed"
 
-    # rerun_all=True forces a fresh execution even though the fingerprint has not moved,
-    # for the case the failure is a flake and the operator wants the ledger corrected.
     monkeypatch.setattr(live_audit_flow, "run_qa_plan", lambda *a, **k: _fake_run("passed"))
     passing = audit_one_spec(
         logger, "docs/specs/story-1", docs_path=str(docs_root), repo_dir=str(repo_root),
@@ -340,7 +299,6 @@ def test_failing_scenario_is_overwritten_by_a_later_passing_run(
     assert record["charge-is-covered"]["verdict"] == "passed"
 
 
-# --- Book-as-plan-source: no authored `qa_plan.py`, the compiled path -----------------
 
 FIXTURE_NODE = """---
 type: fixture
@@ -363,14 +321,6 @@ title: Seeded thing
 
 FIXTURE_PATH = "docs/features/app/fixtures/seeded-thing.md"
 
-#: One gap-free obligation (`get-thing`: GET, a fixture declared, a plain `http_status`
-#: check, no unresolved template variable) and one obligation that gaps (`create-thing`:
-#: checks declared but no `fixture:` at all, so `compile_plan_gaps` reports
-#: `unresolved-precondition: no fixture arranged for this obligation` — see
-#: `ostler/ostler/qa/compile.py`). `compile_plan` groups obligations into one scenario
-#: per *source file*, so the two live in separate files — otherwise the gap-free
-#: obligation would be folded into the same scenario function as the gapped one and
-#: excluded along with it, rather than compiling and running on its own.
 GET_NODE = """---
 type: endpoint
 title: App things read
@@ -410,9 +360,6 @@ title: App things write
 
 CREATE_PATH = "docs/features/app/server-write.md"
 
-#: Phase 2h reads a target's `base_url` off the book instead of a fixed CLI default, so a
-#: surface with obligations needs a `server` node stating `entry-url:` or every obligation
-#: gaps as `undeclared-entry-url` regardless of what else it declares.
 SERVER_NODE = """---
 type: server
 title: App server
@@ -425,10 +372,6 @@ title: App server
 
 SERVER_PATH = "docs/features/app/server.md"
 
-#: Phase 2j reads a step's driver off the `runbook` that owns its surface, not off the
-#: `server` node: `server` declares no `driver:` key at all, so without this node D1's
-#: dispatch table has nothing to key on and every obligation gaps as `uncompilable-claim`
-#: before the fixture's own point is reached.
 RUNBOOK_NODE = """---
 type: runbook
 slug: app-qa-stack
@@ -460,11 +403,7 @@ def _git(root: Path, *args: str) -> None:
 
 @pytest.fixture
 def compiled_book(tmp_path: Path) -> Path:
-    """A single-root book (docs and source share a git worktree) with no authored plan.
-
-    `book_context` diffs `EMPTY_TREE_SHA..WORKTREE`, which needs a git repository but no
-    commit at all — the empty-tree object is present in every repository already.
-    """
+    """A single-root book (docs and source share a git worktree) with no authored plan."""
     root = tmp_path / "book"
     root.mkdir()
     _git(root, "init")
@@ -488,11 +427,7 @@ def compiled_book(tmp_path: Path) -> Path:
 
 @pytest.fixture
 def compiled_book_with_no_compiling_obligation(tmp_path: Path) -> Path:
-    """A single-root book like `compiled_book`, but missing `get-thing` — the only node in
-    that book that ever declares a `verify:`. With it gone, `create-thing`'s `no-verify-
-    declared` gap is the whole of what the book owes, so `compile_plan_gaps` mints no
-    `@scenario` at all: this is the `Refusal` branch `compiled_book` never reaches.
-    """
+    """A single-root book like `compiled_book`, but missing `get-thing` — the only node in that book that ever declares a `verify:`."""
     root = tmp_path / "book"
     root.mkdir()
     _git(root, "init")
@@ -516,9 +451,7 @@ def test_compiled_book_that_compiles_no_scenario_reports_blocked_with_the_gaps(
     compiled_book_with_no_compiling_obligation: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """When `compile_plan_gaps` refuses the whole book — no obligation compiles to a
-    scenario — `audit_one_spec` must report `blocked` with the gaps that explain why,
-    never a plan file written from a `Refusal` it has no `source` to write."""
+    """When `compile_plan_gaps` refuses the whole book — no obligation compiles to a scenario — `audit_one_spec` must report `blocked` with the gaps that explain why, never a plan file written from a `Refusal` it has no `source` to write."""
     monkeypatch.setattr(live_audit_flow, "ensure_stack", lambda *a, **k: _fake_stack_ready())
     monkeypatch.setattr(live_audit_flow, "run_qa_plan", lambda *a, **k: _fake_run("passed"))
 
@@ -539,13 +472,7 @@ def test_compiled_book_that_compiles_no_scenario_reports_blocked_with_the_gaps(
 def test_compiled_book_reports_blocked_obligations_with_gap_details(
     logger: logging.Logger, compiled_book: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A book with no authored plan uses `compile_plan_gaps`, and reports every gap.
-
-    Before this slice, `discover_spec_dirs()` on a book like this returned `[]`, `LiveAudit`
-    reported zero specs, and the operator gate's `any(...)` over an empty list passed
-    silently — nothing ran and nothing was said. This pins the fix: the compiled path
-    reports the gap, by obligation id and kind, with the compiler's own detail line.
-    """
+    """A book with no authored plan uses `compile_plan_gaps`, and reports every gap."""
     monkeypatch.setattr(live_audit_flow, "ensure_stack", lambda *a, **k: _fake_stack_ready())
     monkeypatch.setattr(live_audit_flow, "run_qa_plan", lambda *a, **k: _fake_run("passed"))
 
@@ -563,11 +490,7 @@ def test_compiled_book_reports_blocked_obligations_with_gap_details(
 def test_compiled_book_runs_a_gap_free_obligation_for_real(
     logger: logging.Logger, compiled_book: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The one obligation that compiles clean is actually executed as a real scenario.
-
-    `get-thing` (GET, fixture declared, plain `http_status`) must reach `run_qa_plan`,
-    get fingerprinted, and gain a ledger row — the gapped `create-thing` must not.
-    """
+    """The one obligation that compiles clean is actually executed as a real scenario."""
     monkeypatch.setattr(live_audit_flow, "ensure_stack", lambda *a, **k: _fake_stack_ready())
 
     ran_only: list[object] = []
@@ -608,15 +531,7 @@ def test_compiled_book_runs_a_gap_free_obligation_for_real(
 def test_compiled_gaps_never_ledgered_and_re_report_every_pass(
     logger: logging.Logger, compiled_book: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Condition 3: a compile gap is not a result — it is never fingerprinted or ledgered.
-
-    A gapped obligation has no scenario to run, so it never becomes a `ScenarioResult`
-    (blocked and failed are distinct — condition 2) and never gains a ledger row (the
-    ledger only records an executed claim's verdict). Because nothing about the gap is
-    ever recorded, re-running reports the identical gap every single pass — there is no
-    ledger-based suppression of book debt the way a passing scenario's fingerprint would
-    suppress a re-run.
-    """
+    """Condition 3: a compile gap is not a result — it is never fingerprinted or ledgered."""
     monkeypatch.setattr(live_audit_flow, "ensure_stack", lambda *a, **k: _fake_stack_ready())
     monkeypatch.setattr(live_audit_flow, "run_qa_plan", lambda *a, **k: _fake_run("passed"))
 
@@ -630,7 +545,6 @@ def test_compiled_gaps_never_ledgered_and_re_report_every_pass(
     assert first.gaps and second.gaps
     assert {g["obligation_id"] for g in first.gaps} == {g["obligation_id"] for g in second.gaps}
 
-    # No `ScenarioResult` for the gapped obligation, on either pass.
     for report in (first, second):
         assert not any("create-thing" in s.id for s in report.scenarios)
 
@@ -644,18 +558,7 @@ def test_strict_mode_violation_is_a_book_gap_not_a_failed_scenario(
     logger: logging.Logger, two_root_book: tuple[Path, Path],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Finding 8: a Playwright strict-mode violation is book debt, never a failed check.
-
-    `compile.py` emits an author's `selector:` locator as-is and never guesses a `.first`
-    on their behalf — `selector:` is unique by intent, not by construction. When that
-    intent is wrong, Playwright's own strict mode raises, and by the time it reaches this
-    flow it is folded into the scenario's `message` as a traceback
-    (`ostler_qa.py`'s `_run`: `except BaseException: ... traceback.format_exc()`). That is
-    attributable to the book, never to the app, so `audit_one_spec` must report it as a
-    `gaps` entry (kind `unresolved-precondition`, keyed to the scenario's own covered
-    obligation id) rather than as a failing `ScenarioResult` or a ledger row a later,
-    unchanged pass would carry forward as a false failure.
-    """
+    """Finding 8: a Playwright strict-mode violation is book debt, never a failed check."""
     docs_root, repo_root = two_root_book
     monkeypatch.setattr(live_audit_flow, "ensure_stack", lambda *a, **k: _fake_stack_ready())
 
@@ -687,7 +590,6 @@ def test_strict_mode_violation_is_a_book_gap_not_a_failed_scenario(
         logger, "docs/specs/story-1", docs_path=str(docs_root), repo_dir=str(repo_root),
     )
 
-    # No failing scenario — the strict-mode-violation outcome is reclassified entirely.
     assert report.scenarios == ()
     assert len(report.gaps) == 1
     [gap] = report.gaps
@@ -695,8 +597,6 @@ def test_strict_mode_violation_is_a_book_gap_not_a_failed_scenario(
     assert gap["obligation_id"] == "okf:docs/features/acme/concepts/charge.md:contract"
     assert "strict mode violation" in gap["detail"]
 
-    # Never ledgered: a later pass with the same (unmoved) fingerprint must re-attempt it,
-    # not silently carry a failure forward the way a genuine failed assertion would.
     ledger_path = docs_root / "docs/specs/story-1" / live_audit_flow.LEDGER_FILE
     assert not ledger_path.exists() or not json.loads(ledger_path.read_text())["claims"]
 
@@ -704,15 +604,7 @@ def test_strict_mode_violation_is_a_book_gap_not_a_failed_scenario(
 def test_authored_plan_takes_precedence_over_the_compiled_book(
     logger: logging.Logger, two_root_book: tuple[Path, Path], monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """An authored `qa_plan.py` wins even when the book itself could also compile a plan.
-
-    `two_root_book`'s spec dir authors a `qa_plan.py`; if the compiled path were ever
-    reached instead, `book_context` would be called against `two_root_book`'s split
-    docs/checkout layout, which `_book_context_or_note` explicitly cannot support (see
-    its own docstring) and would return a blocked report naming that gap. Getting a real
-    `status="ran"` result with the authored scenario's own id proves the authored path,
-    not the compiled one, ran.
-    """
+    """An authored `qa_plan.py` wins even when the book itself could also compile a plan."""
     docs_root, repo_root = two_root_book
     monkeypatch.setattr(live_audit_flow, "ensure_stack", lambda *a, **k: _fake_stack_ready())
     monkeypatch.setattr(live_audit_flow, "run_qa_plan", lambda *a, **k: _fake_run("passed"))

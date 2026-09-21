@@ -1,39 +1,16 @@
-"""Where paddock reads its data and where it keeps the bytes.
-
-Two roots, deliberately apart:
-
-* the **data root** — `paddock/data/` in this repo — is tracked and small: task modules,
-  config TOMLs, pointer TOMLs, and the reference material a score function reads.
-* the **store** is untracked and large: the seed and result zips themselves, plus the
-  work directory a run stages into.
-
-The split is not tidiness. `scripts/check_public.py` scans a binary file by path only
-(a NUL byte in the first 8 kB stops the content scan), so a tracked zip ships its
-contents past the guard that exists to stop exactly that. The pointer is what travels
-in git; the zip travels beside it, verified by sha256.
-"""
+"""Where paddock reads its data and where it keeps the bytes."""
 
 from __future__ import annotations
 
 from pathlib import Path
 
-#: The tracked data directory this repo keeps its tasks in, relative to the repo root.
-#: Beside the package rather than inside it: `[tool.hatch.build]` names the inner
-#: `paddock` directory, so a sibling `data/` ships in no wheel and no sdist — which is
-#: what keeps a hundred-odd fixture files out of every install of the tool.
 DATA_DIRNAME = "paddock/data"
 
-#: Off `/tmp`, which does not survive a reboot. A fixture that evaporates is not a
-#: fixture — the same reason the retired replay harness kept its bundles here.
 STORE = Path.home() / ".local" / "share" / "stablemate" / "paddock"
 
 
 def repo_root(start: Path | None = None) -> Path:
-    """The nearest ancestor of *start* holding a `.git`, or *start* itself if none does.
-
-    Tolerant rather than fatal: paddock is usable against a data directory named
-    explicitly with `--data-dir`, and only the *default* needs a repo to hang off.
-    """
+    """The nearest ancestor of *start* holding a `.git`, or *start* itself if none does."""
     here = (start or Path.cwd()).resolve()
     for candidate in (here, *here.parents):
         if (candidate / ".git").exists():
@@ -58,18 +35,7 @@ def work_dir(store: Path, task: str, label: str) -> Path:
 
 
 def seed_pointer(data_dir: Path, name: str) -> Path:
-    """Where a seed's pointer TOML lives — under `configs/`, with the configs it belongs beside.
-
-    Both are the same kind of thing: small tracked TOML a task names by string and the
-    harness resolves for it, so the separate top-level `seeds/` was a taxonomy nothing
-    switched on.
-
-    Its own subdirectory rather than flat among the configs, because pointers are read by
-    *enumeration* as well as by name: the freshness guard globs them, and `Pointer` forbids
-    extra keys, so a flat mix would hand it a stablemate config to parse. Sorting that out
-    would take a "is this file a seed?" test inside the one guard whose whole job is to not
-    be vacuous. A directory answers it for free.
-    """
+    """Where a seed's pointer TOML lives — under `configs/`, with the configs it belongs beside."""
     return data_dir / "configs" / "seeds" / f"{name}.toml"
 
 

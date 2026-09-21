@@ -1,14 +1,4 @@
-"""`ostler edit` — safe, format-preserving structured edits across JSON and Markdown.
-
-All operations are **dry-run by default**: they compute the changes and print a unified diff but
-write nothing. Pass ``write=True`` to apply.
-
-    relink <old> <new>        replace a path reference everywhere it appears
-    rename <old> <new>        rename a story/epic slug and cascade every reference (+ folder move)
-    settle-review <slug>      flip a story's status from a coder review-resolution verdict,
-                              but ONLY after verifying every artifact/assertion the verdict
-                              cites actually exists (fail-closed — see `settle_review`)
-"""
+"""`ostler edit` — safe, format-preserving structured edits across JSON and Markdown."""
 
 from __future__ import annotations
 
@@ -23,8 +13,6 @@ import yaml
 from ostler import markdown
 from ostler.model import Graph
 
-# Story status the gate stamps for a fully-addressed, artifact-verified resolution
-# vs a verdict that reports an unresolved (blocked) finding.
 STATUS_APPLIED = "Review fixes applied"
 STATUS_BLOCKED = "Blocked"
 
@@ -47,7 +35,7 @@ class FileChange:
 @dataclass
 class EditPlan:
     changes: list[FileChange]
-    moves: list[tuple[Path, Path]]  # (src dir, dst dir)
+    moves: list[tuple[Path, Path]]
     error: str = ""
 
     def render(self) -> str:
@@ -117,13 +105,7 @@ def rename(graph: Graph, old_slug: str, new_slug: str) -> EditPlan:
 
 
 def _href_style_and_target(root: Path, href: str, origin: Path) -> tuple[str, str, str]:
-    """Classify *href* (cited from *origin*) the same way ``Graph.resolve_doc_ref`` does.
-
-    Returns ``(style, target_id, anchor)`` where ``style`` is ``"rooted"`` (leading ``/``),
-    ``"relative"`` (resolves against *origin*'s directory), or ``"bare"`` (a repo-relative
-    path used verbatim) — the three forms ``resolve_doc_ref`` accepts. ``target_id`` is the
-    repo-relative path (no anchor) the href currently names.
-    """
+    """Classify *href* (cited from *origin*) the same way ``Graph.resolve_doc_ref`` does."""
     raw = href.split("?", 1)[0]
     path_part, _, anchor = raw.partition("#")
     if path_part.startswith("/"):
@@ -138,16 +120,7 @@ def _href_style_and_target(root: Path, href: str, origin: Path) -> tuple[str, st
 
 
 def migrate_context(graph: Graph, node_type: str, service: str) -> EditPlan:
-    """Move every ``node_type`` file for *service* into its registry ``context`` folder.
-
-    Compares each matching node's current path against where the registry says it belongs
-    today (``docs/features/<service>/<context>/<name>.md``) and, for anything not already
-    there, plans the physical move plus every link rewrite the move requires: inbound links
-    from other nodes that cited the old path, and outbound relative links from the moved
-    file itself (its directory changed, so a same-directory link to an unmoved sibling needs
-    an extra ``../``). Both directions reuse the exact relative/rooted/bare classification
-    ``Graph.resolve_doc_ref`` uses, so a link's original style is preserved.
-    """
+    """Move every ``node_type`` file for *service* into its registry ``context`` folder."""
     from ostler.registry import UI_TYPES_BY_NAME
 
     uitype = UI_TYPES_BY_NAME.get(node_type)
@@ -227,51 +200,13 @@ def migrate_context(graph: Graph, node_type: str, service: str) -> EditPlan:
     return EditPlan(file_changes, moves)
 
 
-# ---------------------------------------------------------------------------
-# settle-review — artifact-gated story-status transition from a coder verdict
-# ---------------------------------------------------------------------------
-# The coder's apply-review step emits a structured verdict (`review-resolution.json`
-# in the story's spec dir) instead of hand-writing the story status. Ostler is the
-# only tool that mutates the story status, and here it does so ONLY after verifying
-# the verdict's claims against the filesystem — closing the loophole where a
-# remediation agent declares a finding "resolved" (and flips the status) without
-# producing the proof the reviewer asked for. The verdict shape:
-#
-#   {
-#     "status": "applied" | "blocked",          # the agent's overall claim
-#     "findings": [
-#       {
-#         "id": "Finding 1",
-#         "disposition": "addressed" | "blocked",
-#         "artifacts": ["evidence/new-foundation-1280.png", ...],   # files that must exist
-#         "assertions": [                                            # exact-value checks
-#           {"file": "qa/observations.json", "pointer": "form.headingLabel",
-#            "equals": "Foundation area"}
-#         ]
-#       }
-#     ]
-#   }
-#
-# Gate rules (fail-closed):
-#   - every `artifacts` path of an `addressed` finding must exist under the spec dir;
-#   - every `assertions` entry must resolve to its EXACT `equals` value (no "either/or"
-#     — the gate refuses an assertion that was broadened to mask a mismatch);
-#   - a finding may only be `addressed` if all its artifacts+assertions hold; otherwise
-#     the whole transition is refused with the precise reason and NO status is written.
-# A verdict that honestly reports a `blocked` finding passes the gate and stamps the
-# story `Blocked` (the workflow then escalates to the operator).
 
 RESOLUTION_FILE = "review-resolution.json"
-# Per-finding ledger the review loop branches on. settle-review (re)writes it every
-# pass so the workflow can re-apply ONLY the still-open findings (targeted re-verify),
-# escalate a blocked finding by itself, and approve once every finding is verified —
-# instead of re-running a full review that re-litigates already-settled findings.
 SETTLEMENT_FILE = "review-settlement.json"
 
 
 def _navigate(obj, pointer: str):
-    """Resolve a dotted pointer (`a.b.0.c`) against parsed JSON. Returns a sentinel
-    `KeyError`-raising miss as (False, None); a hit as (True, value)."""
+    """Resolve a dotted pointer (`a.b.0.c`) against parsed JSON."""
     cur = obj
     for part in pointer.split("."):
         if isinstance(cur, dict):
@@ -320,9 +255,7 @@ def _verify_finding(spec_dir: Path, finding: dict) -> str:
 
 
 def _story_status_change(graph: Graph, slug: str, status: str) -> FileChange | EditPlan:
-    """Compute (do not write) the story.md status FileChange — same transform as
-    crud.set_status, but as a dry-runnable plan entry. Returns an EditPlan(error=…) on
-    a missing story."""
+    """Compute (do not write) the story.md status FileChange — same transform as crud.set_status, but as a dry-runnable plan entry."""
     found = graph.find_story(slug)
     if found is None or found[1].story_md is None:
         return EditPlan([], [], error=f"no story '{slug}' with a story.md")
@@ -337,12 +270,7 @@ def _story_status_change(graph: Graph, slug: str, status: str) -> FileChange | E
 
 
 def _set_status_bullet(doc: markdown.MarkdownDoc, status: str) -> None:
-    """Rewrite the value of the story's ``- **Status**: …`` bullet in place.
-
-    Located by parsed bullet rather than by matching ``**Status**:`` against the raw body:
-    a story that quotes the status line inside a fence used to have *that* rewritten
-    instead, since the regex took the first hit anywhere in the file.
-    """
+    """Rewrite the value of the story's ``- **Status**: …`` bullet in place."""
     bullet = doc.find_bullet("status")
     if bullet is None:
         return
@@ -354,8 +282,7 @@ def _set_status_bullet(doc: markdown.MarkdownDoc, status: str) -> None:
 
 
 def _ledger_change(spec_dir: Path, ledger: dict) -> FileChange:
-    """Plan the per-finding settlement sidecar write (created if absent, refreshed each
-    pass). Always emitted so the workflow has the authoritative per-finding state."""
+    """Plan the per-finding settlement sidecar write (created if absent, refreshed each pass)."""
     path = spec_dir / SETTLEMENT_FILE
     old = path.read_text(encoding="utf-8") if path.is_file() else ""
     new = json.dumps(ledger, indent=2, sort_keys=True) + "\n"
@@ -363,21 +290,7 @@ def _ledger_change(spec_dir: Path, ledger: dict) -> FileChange:
 
 
 def settle_review(graph: Graph, slug: str) -> EditPlan:
-    """Settle a story's review **per finding** from its `review-resolution.json`.
-
-    For each finding the verdict claims `addressed`, every cited artifact/assertion is
-    verified against the filesystem (fail-closed: unproven proof never counts as done).
-    The outcome is a three-way ledger written to `review-settlement.json`:
-
-      - ``verified`` — addressed AND its proof holds (settled once; stays settled);
-      - ``open``     — addressed but a cited artifact is missing / an assertion is wrong
-                       (re-apply just this finding; never flips status to applied);
-      - ``blocked``  — the verdict reports it unresolvable (escalates individually).
-
-    The story status is flipped to ``Review fixes applied`` ONLY when every finding is
-    verified and none blocked; to ``Blocked`` when any finding is blocked; and is left
-    untouched while findings are merely open (the loop re-applies them). A malformed
-    verdict (no findings / unknown disposition) is still a hard error."""
+    """Settle a story's review **per finding** from its `review-resolution.json`."""
     spec_dir = graph.doc_roots["specs"] / slug
     resolution = spec_dir / RESOLUTION_FILE
     if not resolution.is_file():
@@ -419,15 +332,13 @@ def settle_review(graph: Graph, slug: str) -> EditPlan:
     }
     changes: list[FileChange] = [_ledger_change(spec_dir, ledger)]
 
-    # Status transition is all-or-nothing on the per-finding outcome: applied only when
-    # every finding verified, blocked when any is, otherwise unchanged (open → re-apply).
     if any_blocked:
         status_change = _story_status_change(graph, slug, STATUS_BLOCKED)
     elif all_verified:
         status_change = _story_status_change(graph, slug, STATUS_APPLIED)
     else:
         status_change = None
-    if isinstance(status_change, EditPlan):  # missing story → propagate the error
+    if isinstance(status_change, EditPlan):
         return status_change
     if status_change is not None and status_change.old != status_change.new:
         changes.append(status_change)

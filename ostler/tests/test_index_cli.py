@@ -1,36 +1,4 @@
-"""The index controls — the escape hatch, the visibility, the eviction and the proof.
-
-The store shipped alone (`test_index_store.py`); nothing serves a parse product from it
-yet, and nothing may until these four controls exist. They are what gates the next two
-increments, so they land first:
-
-* ``--no-index`` on **every command that loads a graph**, forcing the uncached path. A
-  cache that is on by default and has no off switch is a cache nobody can bisect against.
-* ``--index-dir DIR`` on the same commands, overriding the resolved default
-  (``$OSTLER_INDEX_DIR`` → ostler's own config → the shared stablemate cache), so a
-  container can be pointed at a copied-in index and a test at a directory of its own.
-* An **index hit/miss line in ``--json``**, so a disagreement between two runs can be
-  diagnosed without instrumenting anything. Under ``--no-index`` the counts are zero.
-* ``ostler cache clean`` — the aged-out entries by default, everything under ``--all`` —
-  reporting what it removed, and succeeding against a directory that is not there. An
-  index directory that does not exist is the normal state on a fresh machine, not an
-  error.
-* ``ostler doctor --verify-index`` — one command CI can run: doctor with the index and
-  doctor without it, diffed. Identical is exit 0; a difference is a non-zero exit that
-  prints the diff.
-
-With no cached product consuming the store yet, the verify mode passes *trivially*, and
-that is the correct result — it is asserted here as such, so the increment that starts
-serving from the store inherits a gate that was already green.
-
-The seam under test is the CLI: ``ostler.cli.main`` and the parser it builds. The
-``index`` block of ``doctor --json`` is the only place the effective index directory is
-observable from outside, which is why the override is asserted through it.
-
-The last section covers the same two controls on :class:`ostler.Ostler`, the in-process
-face of the same commands: a caller that does not spawn a subprocess has no ``--no-index``
-to reach for, so the escape hatch has to exist as a constructor argument as well.
-"""
+"""The index controls — the escape hatch, the visibility, the eviction and the proof."""
 
 from __future__ import annotations
 
@@ -45,9 +13,6 @@ from ostler import api, doctor, index
 from ostler.api import Ostler
 from ostler.cli import _build_parser, main
 
-#: Every leaf command that loads a graph, with argv that runs against the `repo` fixture.
-#: `checks` is deliberately absent: it is the one subcommand that answers before a graph
-#: is loaded, so it has no index to control.
 GRAPH_COMMANDS: dict[str, list[str]] = {
     "doctor": ["doctor"],
     "trace": ["trace", "seed-a1"],
@@ -68,11 +33,7 @@ COMMANDS = pytest.mark.parametrize(
 
 @pytest.fixture
 def index_home(tmp_path, monkeypatch) -> Path:
-    """A resolved index directory of this test's own, and no operator config in reach.
-
-    Every test in this file runs commands that may write an index; none of them may touch
-    the machine's real ``~/.cache/stablemate``.
-    """
+    """A resolved index directory of this test's own, and no operator config in reach."""
     monkeypatch.setenv("STABLEMATE_CONFIG", str(tmp_path / "config/config.toml"))
     monkeypatch.setenv("STABLEMATE_CACHE_DIR", str(tmp_path / "cache"))
     resolved = tmp_path / "resolved-index"
@@ -81,11 +42,7 @@ def index_home(tmp_path, monkeypatch) -> Path:
 
 
 def entry(directory: Path, name: str, *, age_days: float = 0.0) -> Path:
-    """One entry file in *directory*, aged *age_days* into the past.
-
-    Sharded on the first two characters the way the store writes them, so a clean has to
-    walk the tree rather than one flat directory.
-    """
+    """One entry file in *directory*, aged *age_days* into the past."""
     path = directory / name[:2] / name
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(b"payload")
@@ -108,13 +65,9 @@ def report_of(capsys) -> dict:
     return json.loads(out(capsys))
 
 
-#: Older than any plausible age bound, so `cache clean` must take it.
 STALE_DAYS = 90.0
 
 
-# ---------------------------------------------------------------------------
-# --no-index, on every command that loads a graph
-# ---------------------------------------------------------------------------
 @COMMANDS
 def test_every_graph_loading_command_accepts_no_index(argv):
     args = _build_parser().parse_args([*argv, "--no-index"])
@@ -154,9 +107,6 @@ def test_no_index_forces_the_uncached_path(repo, tmp_path, index_home, capsys):
     assert entry_files(index_home) == []
 
 
-# ---------------------------------------------------------------------------
-# --index-dir, on every command that loads a graph
-# ---------------------------------------------------------------------------
 @COMMANDS
 def test_every_graph_loading_command_accepts_an_explicit_index_directory(argv, tmp_path):
     chosen = tmp_path / "chosen"
@@ -190,9 +140,6 @@ def test_an_explicit_index_directory_beats_the_resolved_default(repo, tmp_path, 
     assert Path(report_of(capsys)["index"]["dir"]) == explicit
 
 
-# ---------------------------------------------------------------------------
-# The hit/miss line in --json
-# ---------------------------------------------------------------------------
 def test_json_output_carries_an_index_hit_miss_line(repo, index_home, capsys):
     assert main(["-C", str(repo), "doctor", "--json"]) == 0
     counts = report_of(capsys)["index"]
@@ -211,9 +158,6 @@ def test_the_hit_miss_line_survives_the_rest_of_the_report(repo, index_home, cap
     assert report["errors"] == 0
 
 
-# ---------------------------------------------------------------------------
-# ostler cache clean
-# ---------------------------------------------------------------------------
 def test_cache_clean_removes_the_aged_out_entries_and_keeps_the_rest(tmp_path, index_home, capsys):
     directory = tmp_path / "index"
     stale = [entry(directory, "aa11", age_days=STALE_DAYS),
@@ -298,9 +242,6 @@ def test_cache_clean_cleans_the_resolved_directory_when_given_none(tmp_path, ind
     assert fresh.exists()
 
 
-# ---------------------------------------------------------------------------
-# ostler doctor --verify-index
-# ---------------------------------------------------------------------------
 def test_verify_index_runs_doctor_both_ways(repo, index_home, monkeypatch, capsys):
     """One command, two runs: the cached path and the uncached one."""
     real = doctor.run
@@ -320,8 +261,7 @@ def test_verify_index_runs_doctor_both_ways(repo, index_home, monkeypatch, capsy
 
 
 def test_verify_index_passes_when_the_two_reports_are_identical(repo, index_home, capsys):
-    """With no cached product consuming the store yet this passes trivially — which is the
-    correct result, and the reason the gate is in place before anything is served."""
+    """With no cached product consuming the store yet this passes trivially — which is the correct result, and the reason the gate is in place before anything is served."""
     assert main(["-C", str(repo), "doctor", "--verify-index"]) == 0
 
 
@@ -361,13 +301,6 @@ def test_verify_index_is_accepted_by_the_parser_as_one_command():
     assert _build_parser().parse_args(["doctor"]).verify_index is False
 
 
-# ---------------------------------------------------------------------------
-# The same two controls on the library face
-# ---------------------------------------------------------------------------
-# `Ostler` loads the same graph the CLI does, in a process the caller owns rather than one
-# that exits after a command. An in-process caller that could not turn the index off, or
-# point it somewhere of its own, would have no way to bisect against it at all — a
-# subprocess at least has `--no-index`.
 def test_the_library_face_defaults_to_using_the_index(repo, index_home):
     okf = Ostler(repo)
 
@@ -404,9 +337,6 @@ def test_the_library_face_loads_with_its_own_store_active(repo, tmp_path, index_
     with pytest.MonkeyPatch.context() as patch:
         patch.setattr(api, "load", spy)
         okf.graph
-        # A second load has to be a load: `reload()` drops the in-memory graph, but the
-        # on-disk snapshot would serve the next access straight back if the book had not
-        # moved, and this test is about what happens *during* a load.
         (repo / "docs/features/area/rec3.md").write_text(
             "---\ntype: feature\nid: t-3\ntitle: Rec 3\n---\n\n# Rec 3\n", encoding="utf-8")
         okf.reload().graph

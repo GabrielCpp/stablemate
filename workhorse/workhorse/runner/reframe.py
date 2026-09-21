@@ -1,8 +1,4 @@
-"""The prompts the recovery ladder sends instead of the node's own.
-
-There is no fallback *output* here, deliberately. When every prompt in this module has
-failed the ladder raises and the run stops at its checkpoint; it does not synthesize
-the answer the node never gave."""
+"""The prompts the recovery ladder sends instead of the node's own."""
 
 from __future__ import annotations
 
@@ -23,9 +19,7 @@ def retry_prompt(node: AgentNode, error: OutputParseError) -> str:
 
 
 def timeout_retry_prompt(original_prompt: str, timeout: float) -> str:
-    """Prepend a budget warning to a prompt whose previous attempt was killed for
-    overrunning its wall-clock budget. Tells the retry how long it has so it can
-    size its work to finish — and leave margin to emit its result — this time."""
+    """Prepend a budget warning to a prompt whose previous attempt was killed for overrunning its wall-clock budget."""
     minutes = max(1, int(round(timeout / 60)))
     notice = (
         "⚠️ TIME BUDGET — your previous attempt at this task was STOPPED for "
@@ -40,22 +34,14 @@ def timeout_retry_prompt(original_prompt: str, timeout: float) -> str:
 
 
 def rephrase_prompt(original_prompt: str, node: AgentNode, attempt: int) -> str:
-    """Reframe the node's prompt from scratch for a fresh-session retry.
-
-    Each successive attempt simplifies further: add explicit structure, then
-    truncate and show the exact JSON shape, then a minimal "do your best" form.
-    The goal is to coax a usable answer out of a node the model couldn't (or
-    wouldn't) answer as originally phrased.
-    """
+    """Reframe the node's prompt from scratch for a fresh-session retry."""
     output_keys = [o.key for o in node.outputs]
     strategies = [
-        # 1: keep the full task, add explicit structure and an output contract.
         lambda p: (
             f"Please complete the following task carefully:\n\n{p}\n\n"
             f"IMPORTANT: reply with ONLY a JSON object containing these keys: "
             f"{output_keys}."
         ),
-        # 2: trim the task and show the exact JSON skeleton to fill in.
         lambda p: (
             f"Task: {p[:1000]}\n\n"
             "Reply with ONLY this JSON object, filling in the values:\n"
@@ -63,7 +49,6 @@ def rephrase_prompt(original_prompt: str, node: AgentNode, attempt: int) -> str:
             + "\n".join(f'  "{key}": <value>,' for key in output_keys)
             + "\n}\n```"
         ),
-        # 3: minimal emergency form — reasonable values are acceptable.
         lambda p: (
             "Complete this task as best you can; if unsure, provide reasonable "
             f"values.\n\nTask summary: {p[:500]}\n\n"

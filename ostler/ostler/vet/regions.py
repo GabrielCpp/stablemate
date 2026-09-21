@@ -1,7 +1,4 @@
-"""Merge scanned DOM elements into labeled regions — the deterministic replacement for
-classical-CV pixel segmentation. Both sides of a merge are exact `getBoundingClientRect`
-geometry, so "segmentation" is just grouping-by-identical-rect, not a probabilistic guess.
-"""
+"""Merge scanned DOM elements into labeled regions — the deterministic replacement for classical-CV pixel segmentation."""
 
 from __future__ import annotations
 
@@ -14,19 +11,13 @@ _merge_rects = load_harness_module("ostler_qa_scan").merge_rects
 
 
 class ScannedElement(BaseModel):
-    """One element as the scan reports it — the input side of a merge.
-
-    It lives here rather than beside the CDP connection that produces it because a scan also
-    arrives from a QA scenario that ran the same JS itself, and the live-browser module
-    imports the QA harness host. Keeping the model next to the merge that consumes it is what
-    keeps `ostler.vet` importable from inside `ostler.qa` rather than in a circle with it.
-    """
+    """One element as the scan reports it — the input side of a merge."""
 
     selector: str
     bbox: BBox
-    role: str = ""       # the nearest ancestor that carries one — not this element's own
+    role: str = ""
     own_role: str = Field(default="", alias="ownRole")
-    name: str = ""       # the accessible name, "" when the element has none
+    name: str = ""
     tag: str = ""
 
     model_config = ConfigDict(populate_by_name=True)
@@ -36,21 +27,12 @@ class RegionBox(BaseModel):
     bbox: BBox
     role: str | None
     selectors: list[str]
-    #: Index-parallel to `selectors`: the own role and accessible name of each element that
-    #: shares this rect. They do not collapse the way `role` does, because a name is a property
-    #: of one element and a region is a rect several elements can share.
-    #:
-    #: Both default to empty, and an empty list is **not** an observation that the elements
-    #: have no name — it is a region recorded before the scan reported one. Every reader must
-    #: tell those apart or it will report a disagreement about a page nobody looked at.
     own_roles: list[str] = []
     names: list[str] = []
-    crop: str | None = None  # set by crop.maybe_crop() for an `unlabeled` finding, else unused
+    crop: str | None = None
 
     def observed(self, selector_index: int) -> tuple[str, str] | None:
-        """The (own role, accessible name) recorded for one of this region's selectors, or
-        `None` when this scan recorded none — the absence, kept distinguishable from a name
-        that was observed to be empty."""
+        """The (own role, accessible name) recorded for one of this region's selectors, or `None` when this scan recorded none — the absence, kept distinguishable from a name that was observed to be empty."""
         if selector_index >= len(self.names) or selector_index >= len(self.own_roles):
             return None
         return self.own_roles[selector_index], self.names[selector_index]
@@ -60,15 +42,8 @@ RegionList: TypeAdapter[list[RegionBox]] = TypeAdapter(list[RegionBox])
 
 
 def merge(elements: list[ScannedElement], *, rect_epsilon: float = 1.0) -> list[RegionBox]:
-    """Group elements sharing a (near-)identical rect (rounded to *rect_epsilon* px) into one
-    region. A region's role is the first non-empty role among its members, else ``None``
-    ("unlabeled") — a deliberately limited fallback, not a heuristic guess.
-
-    The grouping itself is the harness's, so a region a QA scenario recorded and a region
-    `vet` computed are the same region; this side only puts the models back on."""
+    """Group elements sharing a (near-)identical rect (rounded to *rect_epsilon* px) into one region."""
     merged = _merge_rects(
-        # `by_alias` so the dicts reaching the harness are spelled the way its own JS spells
-        # them — one vocabulary on both sides of the merge, whichever side produced the scan.
         [element.model_dump(mode="json", by_alias=True) for element in elements],
         rect_epsilon=rect_epsilon,
     )

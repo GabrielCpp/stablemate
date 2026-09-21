@@ -40,8 +40,6 @@ def test_restamp_leaves_a_target_unstamped_when_digest_for_returns_none():
 
 
 def test_restamp_leaves_an_existing_digest_standing_when_digest_for_returns_none():
-    # None from digest_for means "this span was not observed just now", not "clear it" — a
-    # target left alone must keep whatever digest it already carried.
     out = stamp.restamp_leading_code_spans("`api/a.py` @000000000000", lambda _: None)
     assert out == "`api/a.py` @000000000000"
 
@@ -76,8 +74,6 @@ def test_restamp_leaves_a_value_with_no_leading_span_unchanged():
 
 
 def test_restamp_stamps_a_bare_target_directly_abutting_the_digest():
-    # No space before `@`: `refs.parse_code_ref`'s digest suffix is anchored at the string's
-    # end with no whitespace tolerance, so a space here would leak into the parsed path.
     out = stamp.restamp_leading_code_spans("api/a.py", lambda _: "3f9a1c07b2e4")
     assert out == "api/a.py@3f9a1c07b2e4"
 
@@ -106,9 +102,6 @@ def test_restamp_overwrites_a_bare_targets_existing_digest():
 
 
 def test_restamp_leaves_an_empty_token_bullet_unchanged():
-    # `code: none` is the package's sentinel vocabulary (`registry.EMPTY_TOKENS`), not a
-    # citation — a naive bare-target split would otherwise treat "none" as an unresolvable
-    # target and report it, a false positive that did not exist before this fallback existed.
     assert stamp.restamp_leading_code_spans("none", lambda _: "3f9a1c07b2e4") == "none"
 
 
@@ -150,8 +143,6 @@ def test_stamp_page_reports_a_missing_file_as_unresolved(tmp_path: Path):
 
 
 def test_stamp_page_reports_a_bare_missing_target_as_unresolved(tmp_path: Path):
-    # A bare (non-backticked) target that genuinely cannot be resolved must surface exactly
-    # like a backticked one does — invisible to neither `doctor` nor `stamp`.
     _book(tmp_path, "src/missing.py::charge")
     result = stamp.stamp_page(tmp_path, tmp_path, "docs/features/billing/charge.md")
     assert result.stamped == 0
@@ -160,9 +151,6 @@ def test_stamp_page_reports_a_bare_missing_target_as_unresolved(tmp_path: Path):
 
 
 def test_stamp_page_stamps_both_a_backticked_and_a_bare_code_bullet(tmp_path: Path):
-    # One node citing a file through a backtick-quoted `code:` bullet and a sibling bullet
-    # citing another file bare (no backticks at all) — the bug this fixes: the bare bullet
-    # used to come back completely unchanged, neither stamped nor reported unresolved.
     feature = tmp_path / "docs/features/billing/charge.md"
     feature.parent.mkdir(parents=True, exist_ok=True)
     feature.write_text(
@@ -265,8 +253,6 @@ def _two_node_book(root: Path, code: str) -> Path:
 
 
 def test_stamp_page_scoped_to_a_line_range_leaves_the_other_nodes_bullet_stale(tmp_path: Path):
-    # Two nodes on one page cite the same changed file. Stamping only "Alpha"'s line range
-    # must not touch "Beta"'s bullet — the whole point of node-scoped stamping.
     feature = _two_node_book(tmp_path, "`src/service.py::charge`")
     _service(tmp_path)
     lines = feature.read_text(encoding="utf-8").splitlines()
@@ -289,8 +275,6 @@ def test_stamp_page_scoped_to_a_line_range_leaves_the_other_nodes_bullet_stale(t
 def test_stamp_page_only_targets_leaves_a_sibling_citation_on_the_same_node_untouched(
     tmp_path: Path,
 ):
-    # One node cites two files but only one of them was regrounded this turn; the other
-    # citation must be left exactly as it was, not silently refreshed.
     feature = _book(tmp_path, "`src/service.py::charge`, `src/other.py::other`")
     _service(tmp_path)
     other = tmp_path / "src/other.py"
@@ -317,8 +301,6 @@ def test_stamp_page_only_targets_leaves_a_sibling_citation_on_the_same_node_unto
 def test_stamp_page_only_targets_leaves_an_already_stamped_sibling_digest_standing(
     tmp_path: Path,
 ):
-    # Both citations were already stamped by a prior turn; regrounding one of them must not
-    # erase the other's standing digest just because this pass never re-read it.
     feature = _book(tmp_path, "`src/service.py::charge` @000000000000,"
                               " `src/other.py::other` @111111111111")
     _service(tmp_path)
@@ -343,8 +325,6 @@ def test_stamp_page_only_targets_leaves_an_already_stamped_sibling_digest_standi
 
 
 def test_stamp_page_leaves_a_stamped_target_whose_file_was_deleted_standing(tmp_path: Path):
-    # A file that vanished since the last stamp is what dangling-code-ref/unreachable-citation
-    # surface — restamping the node must not also strip the prior, real observation.
     feature = _book(tmp_path, "`src/service.py::charge` @000000000000")
 
     result = stamp.stamp_page(tmp_path, tmp_path, "docs/features/billing/charge.md")
@@ -438,9 +418,6 @@ def test_stamp_targets_scopes_the_restamp_to_the_given_node_and_file(tmp_path: P
 
 
 def test_stamp_targets_leaves_a_nodes_other_stamped_citations_standing(tmp_path: Path):
-    # The turn-finalize repro: a node with several already-stamped citations gets one pair
-    # restamped. Only the assigned bullet's digest may change — the rest go from stamped to
-    # unstamped-citation if their `@digest` is silently dropped here.
     _book(
         tmp_path,
         "`src/service.py::charge` @000000000000, `src/other.py::other` @111111111111",
@@ -510,8 +487,6 @@ def test_stamp_page_reports_a_bullet_whose_line_count_changed_as_unresolved(
 ):
     feature = _book(tmp_path, "`src/service.py::charge`")
     _service(tmp_path)
-    # `restamp_leading_code_spans` never adds or removes a line on its own; force the
-    # mismatch branch by handing it a `digest_for` that turns one line into two.
     original = stamp.restamp_leading_code_spans
     monkeypatch.setattr(
         stamp, "restamp_leading_code_spans",
@@ -524,9 +499,6 @@ def test_stamp_page_reports_a_bullet_whose_line_count_changed_as_unresolved(
 
 
 def test_stamp_page_from_catalog_uses_the_catalogs_digest_not_the_live_files(tmp_path: Path):
-    # The file on disk has drifted since the catalog was last built. Migration must stamp
-    # the *catalog's* stale digest, not re-read the file — so `stale-citation` fires right
-    # after migration, instead of the drift silently looking fresh.
     root = tmp_path
     _book(root, "`src/service.py::charge`")
     _service(root, "def charge(amount):\n    return amount * 2\n")
@@ -606,9 +578,6 @@ def test_cli_stamp_from_catalog_migrates_the_whole_book_and_deletes_the_catalog(
 def test_cli_stamp_from_catalog_with_path_leaves_the_catalog_and_other_pages_migratable(
     tmp_path: Path,
 ):
-    # A --path migration only stamps the pages named on the command line. The catalog must
-    # survive so a later invocation can still migrate the page that was left out this time --
-    # deleting it here would permanently lose that page's digest (bug: c0237c3b).
     billing = tmp_path / "docs/features/billing/charge.md"
     billing.parent.mkdir(parents=True, exist_ok=True)
     billing.write_text(
@@ -654,7 +623,6 @@ def test_cli_stamp_from_catalog_with_path_leaves_the_catalog_and_other_pages_mig
     assert "@" not in refund.read_text(encoding="utf-8")
     assert catalog_path.exists(), "a --path migration must not delete the catalog"
 
-    # The still-unmigrated page's row is still readable -- nothing was lost.
     assert main([
         "-C", str(tmp_path), "stamp", "--from-catalog", "--path",
         "docs/features/billing/refund.md",
@@ -697,10 +665,6 @@ def test_cli_stamp_from_catalog_whole_book_keep_catalog_flag_skips_deletion(tmp_
 def test_cli_stamp_from_catalog_whole_book_covers_every_surface_sharing_one_catalog(
     tmp_path: Path,
 ):
-    # One `sources.json` can be shared by several sibling surfaces under the same features
-    # root (e.g. several books in a multi-repo workspace). Whole-book `--from-catalog` must
-    # migrate every one of them before deleting the catalog -- if `graph.ui_nodes` only saw
-    # a subset, deleting afterward would permanently lose the rest's digests.
     billing = tmp_path / "docs/features/billing/charge.md"
     billing.parent.mkdir(parents=True, exist_ok=True)
     billing.write_text(
@@ -746,10 +710,6 @@ def test_cli_stamp_from_catalog_whole_book_covers_every_surface_sharing_one_cata
 
 
 def test_stamp_touches_exactly_the_targets_doctor_flags_as_unstamped_citation(tmp_path: Path):
-    # Regression for the bare-target bug: `doctor`'s grounding check and `stamp` must agree on
-    # which targets are "cited but not yet stamped" -- a bare target `doctor` flagged that
-    # `stamp` silently skipped is exactly how the bug went unnoticed (doctor kept warning,
-    # stamp never cleared it, forever).
     from ostler import doctor
     from ostler.model import load
 
@@ -778,9 +738,6 @@ def test_stamp_touches_exactly_the_targets_doctor_flags_as_unstamped_citation(tm
 
 
 def test_stamp_page_stamps_a_non_utf8_file_without_crashing(tmp_path: Path):
-    # The original crash: `.read_text(encoding="utf-8")` on a cited file that is not valid
-    # UTF-8 (a `.docx`, a stray binary) raised `UnicodeDecodeError` uncaught. Byte-based
-    # hashing never decodes, so this must stamp cleanly instead.
     feature = _book(tmp_path, "`src/legacy.php`")
     data = b"<?php\n// \xff\xfe not valid utf-8\necho 1;\n"
     target = tmp_path / "src/legacy.php"
@@ -798,11 +755,6 @@ def test_stamp_page_stamps_a_non_utf8_file_without_crashing(tmp_path: Path):
 def test_stamp_page_from_catalog_migrates_an_unchanged_crlf_file_to_its_byte_digest(
     tmp_path: Path,
 ):
-    # The retired catalog's own recipe decoded then hashed the text, which `read_text`
-    # translates CRLF -> LF on the way through -- so a CRLF file's legacy digest never equals
-    # its byte digest. A file unchanged since the catalog was built must still migrate forward
-    # onto its *byte* digest (what live stamping produces from here on), not the catalog's
-    # value, or `stale-citation` would immediately fire on a file nobody touched.
     from ostler import doctor
     from ostler.model import load
 
@@ -811,7 +763,7 @@ def test_stamp_page_from_catalog_migrates_an_unchanged_crlf_file_to_its_byte_dig
     crlf_bytes = SERVICE.replace("\n", "\r\n").encode()
     target = _service(root)
     target.write_bytes(crlf_bytes)
-    legacy_digest = hashlib.sha256(SERVICE.encode()).hexdigest()  # read_text's CRLF -> LF
+    legacy_digest = hashlib.sha256(SERVICE.encode()).hexdigest()
     catalog = source_snapshots.SourceCatalog(
         repositories=(
             source_snapshots.RepositorySnapshot(
@@ -860,8 +812,6 @@ def test_stamp_page_from_catalog_keeps_a_changed_crlf_files_catalog_digest_and_i
             ),
         ),
     )
-    # The live file has drifted since the catalog was built: different content entirely, not
-    # just the CRLF translation the bridge tolerates.
     target = _service(root, "def charge(amount):\n    return amount * 2\n")
     target.write_bytes(target.read_text(encoding="utf-8").replace("\n", "\r\n").encode())
 

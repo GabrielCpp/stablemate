@@ -1,16 +1,4 @@
-"""Tests for the two records a run writes to disk and reads back.
-
-A checkpoint and an event line are not internal values that happen to be serialised:
-they are what a relaunch at hour 30 has to make sense of, after a version change, a
-kill mid-write, or an operator editing the file to unstick the run. So both directions
-go through one model, and these are the tests that say what that model refuses.
-
-The on-disk shapes are also a published surface — `events.jsonl` is joined against
-provider spend by scorecards outside this repo — so the byte-level shape is asserted
-here rather than left to whatever a serialiser felt like doing.
-
-Run: uv run python tests/test_records.py   (or via pytest)
-"""
+"""Tests for the two records a run writes to disk and reads back."""
 from __future__ import annotations
 
 import json
@@ -37,12 +25,10 @@ def _writer(tmp) -> ArtifactWriter:
     return ArtifactWriter("research", Path(tmp), run_id="grammar-semantics")
 
 
-# ------------------------------------------------------------------ the checkpoint
 
 
 def test_the_checkpoint_written_is_the_checkpoint_read():
-    """The round trip, whole: what the engine writes comes back as the same values,
-    off disk, with no caller pulling keys out by hand."""
+    """The round trip, whole: what the engine writes comes back as the same values, off disk, with no caller pulling keys out by hand."""
     with tempfile.TemporaryDirectory() as tmp:
         w = _writer(tmp)
         w.write_state_checkpoint(
@@ -65,8 +51,7 @@ def test_the_checkpoint_written_is_the_checkpoint_read():
 
 
 def test_the_engine_field_is_a_discriminator_not_a_comment():
-    """The two engines shared a runs directory, so a checkpoint has to say which one
-    wrote it — and reading the wrong one must fail by name rather than by coincidence."""
+    """The two engines shared a runs directory, so a checkpoint has to say which one wrote it — and reading the wrong one must fail by name rather than by coincidence."""
     node_graph = parse_checkpoint(json.dumps({"current_id": "plan", "context": {"x": 1}}))
     assert isinstance(node_graph, NodeGraphCheckpoint), node_graph
 
@@ -75,8 +60,7 @@ def test_the_engine_field_is_a_discriminator_not_a_comment():
 
 
 def test_a_checkpoint_that_is_neither_engines_is_refused():
-    """`state` is what a resume calls. A checkpoint missing it is not a checkpoint to
-    fall back through — it is one to say so about, on the way off disk."""
+    """`state` is what a resume calls."""
     exc = _raises(ValidationError, parse_checkpoint, json.dumps({"engine": "pyflow"}))
     assert "state" in str(exc), exc
     _raises(ValidationError, parse_checkpoint, json.dumps({"engine": "pyflow", "state": ""}))
@@ -84,8 +68,7 @@ def test_a_checkpoint_that_is_neither_engines_is_refused():
 
 
 def test_the_annotations_are_optional_because_an_operator_edits_this_file():
-    """The three provenance fields nothing reads back carry defaults on purpose: a
-    hand-trimmed checkpoint at hour 30 must still resume."""
+    """The three provenance fields nothing reads back carry defaults on purpose: a hand-trimmed checkpoint at hour 30 must still resume."""
     cp = parse_checkpoint(json.dumps({"engine": "pyflow", "state": "implement"}))
     resume = read_resume(cp)
     assert resume.state == "implement" and resume.params == {} and resume.inputs == {}
@@ -100,8 +83,7 @@ def test_resume_reads_the_seq_back_off_the_checkpoint():
 
 
 def test_checkpoint_write_returns_the_sequence_it_committed():
-    """The driver keys an execution span to the checkpoint it is about to dispatch.
-    Returning the committed sequence prevents it from guessing at writer internals."""
+    """The driver keys an execution span to the checkpoint it is about to dispatch."""
     with tempfile.TemporaryDirectory() as tmp:
         w = _writer(tmp)
         assert w.write_state_checkpoint("a", {}, inputs={}) == 1
@@ -111,8 +93,7 @@ def test_checkpoint_write_returns_the_sequence_it_committed():
 
 
 def test_an_unreadable_checkpoint_costs_the_seq_and_nothing_else():
-    """Resuming is the failure path's own path; a corrupt checkpoint there must not
-    raise on top of whatever sent us here."""
+    """Resuming is the failure path's own path; a corrupt checkpoint there must not raise on top of whatever sent us here."""
     with tempfile.TemporaryDirectory() as tmp:
         w = _writer(tmp)
         w.write_state_checkpoint("a", {}, inputs={})
@@ -120,13 +101,10 @@ def test_an_unreadable_checkpoint_costs_the_seq_and_nothing_else():
         assert ArtifactWriter.resume(w.run_dir)._seq == 0
 
 
-# ------------------------------------------------------------------- the event log
 
 
 def test_event_extras_stay_top_level_on_disk():
-    """External scorecards read these lines. `next`/`waiting_on`/the per-node-kind
-    context are top-level keys today and stay top-level keys — a record that nested
-    them under `extra` would be a format change wearing a refactor's clothes."""
+    """External scorecards read these lines."""
     with tempfile.TemporaryDirectory() as tmp:
         w = _writer(tmp)
         w.record_node("implement", "enter", blueprint="coder", model="a-model")
@@ -144,15 +122,13 @@ def test_event_extras_stay_top_level_on_disk():
 
 
 def test_the_phase_set_is_closed():
-    """Every consumer switches on `phase`; a fifth value nobody handles would be a
-    silent no-op at the far end of the join."""
+    """Every consumer switches on `phase`; a fifth value nobody handles would be a silent no-op at the far end of the join."""
     _raises(ValidationError, NodeEvent, ts="now", seq=1, node="a", phase="finished")
     assert NodeEvent(ts="now", seq=1, node="a", phase="terminal").phase == "terminal"
 
 
 def test_read_events_skips_a_line_it_cannot_parse():
-    """An append-only log a kill can truncate mid-line: reading instrumentation must
-    not be the thing that fails."""
+    """An append-only log a kill can truncate mid-line: reading instrumentation must not be the thing that fails."""
     with tempfile.TemporaryDirectory() as tmp:
         w = _writer(tmp)
         w.record_node("a", "enter")

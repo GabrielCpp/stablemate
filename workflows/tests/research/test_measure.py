@@ -1,16 +1,4 @@
-"""The deterministic half of the research loop (`research/nodes/measure.py`).
-
-Every function under test here decides something the loop used to leave to a prompt:
-where a crash came from, whether a protocol fits the machine, and whether what came
-back is a measurement at all. They are ordinary functions over two files on disk, so
-they are tested as such — real directories, real `runner.json` / `result.json`, no
-model call anywhere in the file.
-
-That is the property worth protecting. `collect_job` telling `crash` from `invalid`
-from `over_resource` is what lets the same three outcomes route to three different
-owners; a version of it that asked an agent would route them all to whoever the agent
-felt like naming.
-"""
+"""The deterministic half of the research loop (`research/nodes/measure.py`)."""
 from __future__ import annotations
 
 import json
@@ -35,7 +23,6 @@ def _write(directory: Path, name: str, payload: dict) -> None:
     (directory / name).write_text(json.dumps(payload), encoding="utf-8")
 
 
-# ------------------------------------------------------------------ fault locus
 
 
 def _traceback(*files: str) -> str:
@@ -44,12 +31,7 @@ def _traceback(*files: str) -> str:
 
 
 def test_the_deepest_frame_decides_the_locus(tmp_path):
-    """A repo frame under an apparatus frame is a repo fault: the repo is what raised.
-
-    Order matters more than presence here. Both packages appear in almost every
-    traceback this loop will ever see — workhorse launched the thing — so a classifier
-    that asked "is workhorse mentioned?" would route every crash to a human.
-    """
+    """A repo frame under an apparatus frame is a repo fault: the repo is what raised."""
     repo = tmp_path / "repo"
     (repo / "src").mkdir(parents=True)
     stack = _traceback(
@@ -81,12 +63,11 @@ def test_a_third_party_frame_is_not_evidence_about_the_tooling(tmp_path):
 
 
 def test_no_stack_is_unknown_not_a_guess(tmp_path):
-    """A hang, an OOM and a silent wrong answer leave no frames. Say so."""
+    """A hang, an OOM and a silent wrong answer leave no frames."""
     assert measure.classify_fault("Killed\n", str(tmp_path)) == "unknown"
     assert measure.classify_fault("", str(tmp_path)) == "unknown"
 
 
-# -------------------------------------------------------------------- envelope
 
 
 def test_an_undeclared_axis_is_not_a_bound():
@@ -114,7 +95,6 @@ def test_the_job_dir_is_one_directory_per_gate_inside_the_program():
     assert measure.job_dir_for("/w/repo", "programs/alpha", "G1", "-dry").endswith("G1-dry")
 
 
-# ---------------------------------------------------------------- the refusals
 
 
 def test_a_build_with_no_command_is_a_repo_fault(tmp_path):
@@ -124,12 +104,7 @@ def test_a_build_with_no_command_is_a_repo_fault(tmp_path):
 
 
 def test_an_estimate_with_no_probe_behind_it_is_refused_before_the_cpu_is_spent(tmp_path):
-    """The scientist's refusal, not the engineer's: the probe is the designer's work.
-
-    `estimate_s` is what every overrun threshold is derived from, so an estimate with
-    nothing timed behind it makes the whole mid-flight triage unanswerable — and it is
-    far cheaper to say so now than after four hours of a job nobody can judge as long.
-    """
+    """The scientist's refusal, not the engineer's: the probe is the designer's work."""
     refused = measure.submit_job(
         LOG,
         job_dir=str(tmp_path / "G1"),
@@ -140,11 +115,9 @@ def test_an_estimate_with_no_probe_behind_it_is_refused_before_the_cpu_is_spent(
     )
     assert not refused.submitted
     assert refused.fault_locus == "design"
-    # Nothing was launched: the refusal is before the manifest.
     assert not (tmp_path / "G1" / job.MANIFEST_NAME).exists()
 
 
-# --------------------------------------------------------------- classifying
 
 
 def _finished(directory: Path, **runner: object) -> None:
@@ -167,16 +140,11 @@ def test_a_clean_exit_with_a_well_formed_result_is_ok(tmp_path):
     assert collected.outcome == "ok"
     assert collected.metrics == {"accuracy": 0.93}
     assert collected.n_completed == 240 and collected.n_planned == 240
-    # The cost came from the supervisor's file, which the experiment cannot write.
     assert collected.tier == "premium" and collected.wall_s == 9.0
 
 
 def test_a_rehearsal_passes_only_on_a_result_that_says_ok(tmp_path):
-    """Exit 0 plus a file on disk is not a passed rehearsal. A command that writes
-    `status: "blocked"` and exits clean has said it measured nothing; reading only the
-    exit code and the file's existence called that a pass, submitted the real job on
-    the strength of it, and handed the engineer "the build produced no command" two
-    states later about a file that was never wrong."""
+    """Exit 0 plus a file on disk is not a passed rehearsal."""
     directory = _job_dir(tmp_path, "G1-dry")
     cwd = tmp_path / "repo"
     cwd.mkdir()
@@ -216,8 +184,7 @@ def test_a_rehearsal_whose_result_will_not_parse_says_so(tmp_path):
 
 
 def test_a_result_file_with_no_measurement_in_it_is_invalid_not_ok(tmp_path):
-    """`invalid` is a separate outcome from `crash` on purpose: the command believed
-    it succeeded, which is a different bug from one that fell over."""
+    """`invalid` is a separate outcome from `crash` on purpose: the command believed it succeeded, which is a different bug from one that fell over."""
     directory = _job_dir(tmp_path)
     _finished(directory)
     _write(directory, "result.json", {"note": "ran fine"})
@@ -253,7 +220,7 @@ def test_going_over_the_declared_memory_is_the_scientist_s_to_rescope(tmp_path):
 
 
 def test_a_supervisor_that_vanished_is_a_crash_rather_than_silence(tmp_path):
-    """No `runner.json` at all. "We do not know what it cost" is a classification."""
+    """No `runner.json` at all."""
     directory = _job_dir(tmp_path)
     _write(directory, job.HANDLE_NAME, {"pid": 1, "pgid": 1, "tier": "premium",
                                         "started_at": time.time() - 10})
@@ -264,7 +231,6 @@ def test_a_supervisor_that_vanished_is_a_crash_rather_than_silence(tmp_path):
     assert collected.kill_reason == "lost"
 
 
-# ------------------------------------------------------------------- watching
 
 
 def _running(directory: Path, *, elapsed_s: float, estimate_s: float) -> None:
@@ -278,12 +244,7 @@ def _running(directory: Path, *, elapsed_s: float, estimate_s: float) -> None:
 
 
 def test_watching_arms_the_wake_file_before_it_reads_the_state(tmp_path):
-    """Arm first, poll second — the ordering is what makes a days-long wait lossless.
-
-    A wakeup consumed on the previous lap would otherwise answer the next wait
-    instantly; a wakeup that lands after the delete re-creates the file and answers the
-    wait it belongs to. The reverse order drops exactly the event in between.
-    """
+    """Arm first, poll second — the ordering is what makes a days-long wait lossless."""
     directory = _job_dir(tmp_path)
     _running(directory, elapsed_s=5.0, estimate_s=600.0)
     (directory / job.WAKE_NAME).write_text("stale wakeup")
@@ -303,9 +264,7 @@ def test_a_finished_job_is_collected_not_waited_on(tmp_path):
 
 
 def test_an_overrun_past_a_fresh_threshold_goes_to_triage_once(tmp_path):
-    """Time is a bug signal, so an overrun reaches the engineer — but each threshold
-    reaches them once. `seen_multiple` is the highest already triaged, and it rides in
-    the checkpoint precisely so a 10× job does not triage on every wakeup."""
+    """Time is a bug signal, so an overrun reaches the engineer — but each threshold reaches them once."""
     directory = _job_dir(tmp_path)
     _running(directory, elapsed_s=3600.0, estimate_s=360.0)
 
@@ -318,10 +277,7 @@ def test_an_overrun_past_a_fresh_threshold_goes_to_triage_once(tmp_path):
 
 
 def test_a_result_written_in_the_experiment_s_cwd_is_still_the_measurement(tmp_path):
-    """The runner executes the argv verbatim, so a relative `--out` lands in the
-    declared `cwd` and never in the job directory — which the command is not told
-    about. Demanding the job directory made the contract unsatisfiable, and handed the
-    engineer "no result.json was written" about a file sitting on disk."""
+    """The runner executes the argv verbatim, so a relative `--out` lands in the declared `cwd` and never in the job directory — which the command is not told about."""
     directory = _job_dir(tmp_path)
     cwd = tmp_path / "repo" / "experiments"
     cwd.mkdir(parents=True)
@@ -335,7 +291,6 @@ def test_a_result_written_in_the_experiment_s_cwd_is_still_the_measurement(tmp_p
 
     assert collected.outcome == "ok"
     assert collected.metrics == {"accuracy": 0.5}
-    # And it is filed beside `runner.json`, so the pair the lead judges is in one place.
     assert json.loads((directory / "result.json").read_text())["n_completed"] == 10
 
 
@@ -356,8 +311,7 @@ def test_a_result_in_the_job_dir_wins_over_a_leftover_in_the_cwd(tmp_path):
 
 
 def test_a_resubmission_clears_the_previous_attempt_s_result_in_the_cwd(tmp_path):
-    """The cwd is a repo directory reused by every job and cleared by nobody. Left
-    there, the last attempt's result collects as this attempt's."""
+    """The cwd is a repo directory reused by every job and cleared by nobody."""
     directory = _job_dir(tmp_path)
     cwd = tmp_path / "repo"
     cwd.mkdir()
@@ -371,10 +325,6 @@ def test_a_resubmission_clears_the_previous_attempt_s_result_in_the_cwd(tmp_path
         estimate_s=1.0,
         probe_units_timed=1,
     )
-    # Reap the detached supervisor — `submit_job` does not wait by design, so the
-    # caller's test is the natural place to release the Popen. Without this, the
-    # ResourceWarning fires at GC for every test that submits a `true` and walks
-    # away.
     job.wait_submitted(str(directory))
 
     assert not (cwd / "result.json").exists()

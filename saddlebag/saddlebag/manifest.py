@@ -1,27 +1,4 @@
-"""The environment manifest — a checkable-in YAML rendering of an environment.
-
-The pool database is local and unsynced. For credentials that asymmetry is
-tolerable; for *configuration* it would defeat the purpose, because an environment
-that cannot leave the laptop it was defined on has not packaged anything. So the
-thing that travels is not the database but this manifest: every key, its kind, its
-note, its ``required`` flag, the render target and format, and — for ``config``
-entries — the value itself.
-
-It holds **no secret values**, by construction. A ``secret`` entry appears as a
-declaration that a secret is required under that key, never as the secret; the
-value stays in the store. The two halves then meet cleanly on a fresh host: the
-manifest carries the configuration, the store carries the secrets, and
-``env doctor`` names exactly which secrets are still missing.
-
-:func:`load` enforces the no-secrets rule at the file boundary — a hand-edited
-manifest that puts a ``value:`` on a ``secret`` entry is rejected, not imported.
-That is the same fence as the database's ``CHECK`` constraint, at the other end of
-the pipe.
-
-This subsumes ``.env.example`` rather than living beside it: the example file is a
-key list with no kinds, no notes, no required flags, no target and no values, and
-the manifest is a strict superset.
-"""
+"""The environment manifest — a checkable-in YAML rendering of an environment."""
 
 from __future__ import annotations
 
@@ -51,11 +28,7 @@ class Manifest:
 
 
 def to_dict(environment: Environment) -> dict[str, Any]:
-    """The manifest form of an environment. Never contains a secret value.
-
-    Optional fields are omitted when they carry nothing, so a simple environment
-    exports as a short, readable, reviewable file rather than a wall of nulls.
-    """
+    """The manifest form of an environment."""
     data: dict[str, Any] = {"name": environment.name, "env": environment.env}
     if environment.target:
         data["target"] = environment.target
@@ -66,8 +39,6 @@ def to_dict(environment: Environment) -> dict[str, Any]:
     entries: list[dict[str, Any]] = []
     for entry in environment.entries:
         item: dict[str, Any] = {"key": entry.key, "kind": entry.kind}
-        # `value` is populated for config entries only — the model guarantees every
-        # other kind holds None, so this cannot leak even if it wanted to.
         if entry.kind == KIND_CONFIG:
             item["value"] = entry.value
         if entry.cred_ref:
@@ -98,8 +69,6 @@ def _entry_from(item: Any, position: int) -> EnvironmentEntry:
     cred_ref = item.get("from")
 
     if kind != KIND_CONFIG and value is not None:
-        # The whole point of the manifest is that it is safe to commit. A value on
-        # any other kind means someone pasted a secret into a file bound for git.
         raise ManifestError(
             f"{key}: a {kind} entry must not carry a value — its value belongs in "
             "the secret store, not in a manifest"
@@ -118,7 +87,6 @@ def _entry_from(item: Any, position: int) -> EnvironmentEntry:
         return EnvironmentEntry(
             key=key,
             kind=kind,
-            # YAML happily reads `value: 9099` as an int; a .env holds text.
             value=str(value) if value is not None else None,
             cred_ref=str(cred_ref) if cred_ref is not None else None,
             required=bool(item.get("required", True)),
@@ -130,7 +98,7 @@ def _entry_from(item: Any, position: int) -> EnvironmentEntry:
 
 
 def loads(text: str) -> Manifest:
-    """Parse manifest YAML. Raises :class:`ManifestError` on anything malformed."""
+    """Parse manifest YAML."""
     try:
         data = yaml.safe_load(text)
     except yaml.YAMLError as exc:
@@ -177,10 +145,5 @@ def load(path: Path | str) -> Manifest:
 
 
 def is_manifest_path(path: Path | str) -> bool:
-    """Whether ``--from PATH`` names a manifest or a plain ``.env``-shaped key list.
-
-    Dispatch on the suffix, not on a sniff of the contents: ``env import`` decides
-    between "reconstitute this whole environment" and "take these key names and
-    nothing else", and a caller must be able to predict which one they are getting.
-    """
+    """Whether ``--from PATH`` names a manifest or a plain ``.env``-shaped key list."""
     return Path(path).suffix.lower() in (".yaml", ".yml")

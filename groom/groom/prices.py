@@ -1,39 +1,4 @@
-"""What a turn's tokens would have cost, for the harnesses that do not say.
-
-Half the turns in a busy store report no money. A subscription CLI reports a literal
-``$0`` over tens of millions of tokens; an older span carries no usage at all; a harness
-behind a proxy never sees a price. `groom cost` is honest about that — absent is NULL and
-a reported zero stays zero — but honesty alone does not answer the question anyone
-actually has, which is *which of these two loops burned more*.
-
-So this module prices tokens instead of trusting the report: a small table of published
-per-million rates, and one estimate derived from the four token counts every harness does
-report. The estimate is kept in its own column (`est_cost_usd`) and is never summed with
-`total_cost_usd`. They are different claims — one is what a vendor billed, the other is
-what a rate card says the tokens are worth — and a total mixing them is a number nobody
-can act on.
-
-**An unknown model is not priced.** No family guessing, no averaging of neighbours: a
-model absent from the table yields ``None`` and is counted as unpriceable, so the fraction
-of a report that rests on an estimate is always visible. Adding one is a line in
-``~/.config/stablemate/prices.toml`` (``$GROOM_PRICES`` points elsewhere):
-
-```toml
-[models."openai/gpt-5.6-sol"]
-input = 1.25          # $ per million input tokens
-output = 10.0
-cache_read = 0.125    # optional; defaults to 0.1 x input
-cache_write = 2.5     # optional; defaults to 2.0 x input
-```
-
-The cache defaults are the multipliers Anthropic publishes — reads at a tenth of the
-input rate, writes at 1.25x for the five-minute TTL and 2x for the hour — and this module
-takes the *hour*, because a run that keeps one context alive across a long turn is
-exactly what it is used to price. Checked against 528 turns in a live store that reported
-a real price: median per-turn estimate 0.99x the billed amount, aggregate 0.82x — the tail
-it misses is turns that mixed both TTLs and turns billed at the long-context premium. That
-is the accuracy on offer, and it is the reason the column stays separate.
-"""
+"""What a turn's tokens would have cost, for the harnesses that do not say."""
 
 from __future__ import annotations
 
@@ -48,16 +13,11 @@ from platformdirs import user_config_dir
 
 logger = logging.getLogger(__name__)
 
-#: Cache reads bill at a fraction of the input rate; cache writes at a multiple of it.
-#: Both are ratios rather than table columns because that is how they are published —
-#: a vendor that changes the input price changes these with it.
 CACHE_READ_MULTIPLIER = 0.1
 CACHE_WRITE_MULTIPLIER = 2.0
 
-#: Where an operator extends or corrects the table.
 PRICES_FILE_ENV = "GROOM_PRICES"
 
-#: A dated model id — `claude-sonnet-4-5-20250929` — prices as its undated form.
 _DATE_SUFFIX = re.compile(r"-\d{8}$")
 
 
@@ -81,10 +41,6 @@ def _rates(input_rate: float, output_rate: float) -> Price:
     )
 
 
-#: Anthropic first-party rates, in dollars per million tokens. Only the models this
-#: repo's own runs use — the table is a convenience for the common case, not an attempt
-#: at a catalogue, and everything else belongs in the override file where it can be kept
-#: current by whoever is paying the bill.
 DEFAULT_PRICES: dict[str, Price] = {
     "claude-fable-5": _rates(10.00, 50.00),
     "claude-opus-5": _rates(5.00, 25.00),
@@ -99,27 +55,10 @@ DEFAULT_PRICES: dict[str, Price] = {
     "claude-sonnet-4-5": _rates(3.00, 15.00),
     "claude-sonnet-4-0": _rates(3.00, 15.00),
     "claude-haiku-4-5": _rates(1.00, 5.00),
-    # The OpenAI models this repo's own opencode runs use. Explicit cache rates rather
-    # than `_rates`' multipliers, because these are published directly and do not follow
-    # Anthropic's ratios — a cache write is ~1.25x input here, not 2x, and deriving it
-    # would over-charge every cached turn on the backend that needs the estimate most.
-    #
-    # These are the base-tier rates. Both models publish a higher tier above a 272k
-    # context, which this table does not model: the store keeps one rate per model, and a
-    # per-turn context length is not among the counts an estimate is computed from. So an
-    # opencode turn that ran long is under-estimated, in the same direction and for the
-    # same reason as the cache-TTL gap described above.
-    # gpt-5.5 publishes no cache-write rate at all; the providers that quote one quote it
-    # at 1x input, which is what this takes. Under-quoting it would be the one direction
-    # that flatters the estimate, so the flat rate is the conservative reading.
     "gpt-5.5": Price(input=5.00, output=30.00, cache_read=0.50, cache_write=5.00),
     "gpt-5.6": Price(input=5.00, output=30.00, cache_read=0.50, cache_write=6.25),
     "gpt-5.6-sol": Price(input=5.00, output=30.00, cache_read=0.50, cache_write=6.25),
     "gpt-5.6-terra": Price(input=2.00, output=12.00, cache_read=0.20, cache_write=2.50),
-    # `-fast` is not a separate model: it is `gpt-5.6-terra` run in the catalogue's
-    # `modes.fast`, which sets `service_tier: priority` and publishes its own cost block at
-    # a flat 2x standard. It earns a row because the backend stamps the suffixed id on the
-    # span, and an unpriced turn is one a money-ranked report cannot sort at all.
     "gpt-5.6-terra-fast": Price(input=4.00, output=24.00, cache_read=0.40, cache_write=5.00),
     "gpt-5.6-luna": Price(input=0.20, output=1.20, cache_read=0.02, cache_write=0.25),
 }
@@ -136,12 +75,7 @@ def prices_path() -> Path:
 
 
 def _overrides() -> dict[str, Price]:
-    """What the operator's file adds or corrects; empty when there is none.
-
-    A malformed file is logged and ignored rather than raised: pricing is a convenience
-    over telemetry, and a typo in a rate card must not take down the dashboard that
-    reads it.
-    """
+    """What the operator's file adds or corrects; empty when there is none."""
     path = prices_path()
     try:
         raw = tomllib.loads(path.read_text(encoding="utf-8"))
@@ -186,13 +120,7 @@ def _normalize(model: str) -> str:
 
 
 def price_for(model: str) -> Price | None:
-    """This model's rates, or None when nothing in the table names it.
-
-    A routed id carries its route — ``openrouter/openai/gpt-5.6-luna`` — so the lookup
-    drops leading path segments one at a time. That is a narrowing of the same name, not
-    a guess at a different model: the tail of a route is the model the provider ran. A
-    name that survives to nothing stays unpriced.
-    """
+    """This model's rates, or None when nothing in the table names it."""
     rates = table()
     name = _normalize(model)
     while name:
@@ -213,14 +141,7 @@ def estimate(
     cache_read_tokens: int | None = None,
     cache_creation_tokens: int | None = None,
 ) -> float | None:
-    """What those tokens are worth at this model's rates, or None when it has none.
-
-    None also when the turn reported no tokens at all: an estimate of ``0.0`` over an
-    unknown number of tokens is the exact false zero this module exists to distinguish
-    from a real one. A turn reporting some classes and not others prices the ones it
-    reported — an absent cache count means no cache was used often enough that treating
-    it as unknown would refuse to price most of the store.
-    """
+    """What those tokens are worth at this model's rates, or None when it has none."""
     rates = price_for(model)
     if rates is None:
         return None

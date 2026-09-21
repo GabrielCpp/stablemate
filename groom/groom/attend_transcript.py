@@ -1,20 +1,4 @@
-"""The attendant's own transcript root, and the reader that turns one into prose.
-
-Two decisions are load-bearing here, and both are about *where*.
-
-**Outside the run-major tree.** ``transcripts/<run_id>/`` is promoted whole into
-``archives/<run_id>/`` by a single rename when a run is frozen (:mod:`groom.archive`),
-so an attend record stored under the run it was about would be swept away with it. The
-record has to outlive the run — the whole reason for keeping it is reading a season of
-them back and finding the cause that keeps recurring — so it lives in a flat
-``transcripts/attend/<session_id>/`` that nothing archives.
-
-**Copied, not referenced.** ``~/.claude/projects/`` is the CLI's store: it is keyed on
-nothing groom can join, and the CLI is free to prune it. What is not copied is gone.
-
-Nothing here may fail a dispatch. A transcript that cannot be copied is a poorer record
-and not a failed attendance, which is why every path returns rather than raises.
-"""
+"""The attendant's own transcript root, and the reader that turns one into prose."""
 
 from __future__ import annotations
 
@@ -30,15 +14,10 @@ from groom import turns
 
 logger = logging.getLogger(__name__)
 
-#: Flat, one directory per session, never archived — see the module docstring.
 ATTEND_DIR = "attend"
 
-#: Ceiling on one copied session, matching the archive's own. An attendant that read a
-#: very large tree is still a record worth having; it is not worth an unbounded copy.
 MAX_SESSION_BYTES = turns.MAX_RECORD_BYTES
 
-#: How much of one tool result the renderer keeps. The pane shows a conversation, not a
-#: file dump: a 2 MB `Read` result rendered in full is a page nobody scrolls past.
 MAX_DETAIL_CHARS = 4000
 
 
@@ -52,14 +31,7 @@ def session_dir(session_id: str) -> Path:
 
 
 def copy_session(session_id: str) -> int:
-    """Copy this session out of the CLI's store into groom's; bytes written.
-
-    Both halves: the ``<session>.jsonl`` and the sibling ``<session>/`` directory of
-    subagent sidechains, which is where most of what an attendant actually did lives.
-    Resolved through the runner's own glob over the project slugs rather than by
-    deriving the slug from a working directory — the slug is the CLI's encoding of a
-    cwd, and an attendant whose run moved between trees would make a derivation wrong.
-    """
+    """Copy this session out of the CLI's store into groom's; bytes written."""
     if not session_id:
         return 0
     try:
@@ -100,11 +72,10 @@ def ensure_body(session_id: str) -> bool:
     return has_body(session_id)
 
 
-# ----------------------------------------------------------------- reading it back
 
 
 def _text_of(content: Any) -> str:
-    """Every text block in a message body, joined. Thinking is not text."""
+    """Every text block in a message body, joined."""
     if isinstance(content, str):
         return content.strip()
     if not isinstance(content, list):
@@ -117,12 +88,7 @@ def _text_of(content: Any) -> str:
 
 
 def _tool_summary(name: str, args: Any) -> str:
-    """One line naming what the call was *about* — the path, the command, the pattern.
-
-    A tool call renders collapsed, so this line is the whole of what a reader sees
-    until they open it. Picking the argument that identifies the call beats printing
-    the first key alphabetically.
-    """
+    """One line naming what the call was *about* — the path, the command, the pattern."""
     if not isinstance(args, dict):
         return name
     for key in ("file_path", "path", "command", "pattern", "query", "url", "prompt"):
@@ -160,13 +126,7 @@ def _result_text(content: Any) -> str:
 
 
 def _entries(path: Path, sidechain: bool = False) -> list[dict[str, Any]]:
-    """One transcript file as an ordered list of rendered entries.
-
-    Deliberately not a JSON viewer. Prose is prose, a tool call is a collapsed line
-    carrying its arguments and its result, and a thinking block is dropped: this pane
-    exists so an operator can read what the attendant did the way they would read a
-    terminal, and reasoning tokens are neither what it did nor what it said.
-    """
+    """One transcript file as an ordered list of rendered entries."""
     entries: list[dict[str, Any]] = []
     pending: dict[str, dict[str, Any]] = {}
     try:
@@ -190,7 +150,6 @@ def _entries(path: Path, sidechain: bool = False) -> list[dict[str, Any]]:
         role = str(message.get("role") or record.get("type") or "")
         content = message.get("content")
 
-        # A tool result arrives as a "user" turn that is not something a person said.
         results = [
             block
             for block in (content if isinstance(content, list) else [])
@@ -237,11 +196,7 @@ def _entries(path: Path, sidechain: bool = False) -> list[dict[str, Any]]:
 
 
 def render_session(session_id: str) -> dict[str, Any]:
-    """The whole session as a conversation, subagent sidechains folded in after it.
-
-    A pure function over a path, so the test for it needs no process, no CLI and no
-    groom: hand it a directory of JSONL and read the prose back.
-    """
+    """The whole session as a conversation, subagent sidechains folded in after it."""
     directory = session_dir(session_id)
     main = directory / f"{session_id}.jsonl"
     entries: list[dict[str, Any]] = []

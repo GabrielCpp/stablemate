@@ -1,8 +1,4 @@
-"""The ``Renderer`` — stateful rendering of library sources into agent adapters.
-
-Holds the selected skills/prompts and per-repo context, and renders each into the
-Codex/Claude/Copilot file layouts, stamping provenance as it goes.
-"""
+"""The ``Renderer`` — stateful rendering of library sources into agent adapters."""
 from __future__ import annotations
 
 import json
@@ -45,27 +41,7 @@ from farrier.sources import (
 
 
 class Rendered(str):
-    """A generated file's text, plus how it must be written.
-
-    The output map is ``path -> text`` everywhere in farrier, and a bundled script is
-    still text — it differs only in needing the executable bit and in being copied
-    byte-for-byte rather than reformatted. Carrying those two bits on a ``str``
-    subclass keeps every existing consumer (comparisons, ``.startswith``, the
-    ``--check`` diff) working unchanged, and lets the writer branch where it matters.
-
-    ``sources`` and ``parts`` carry provenance for the files that cannot stamp it into
-    themselves. A generated skill names its origin in ``metadata.source`` and needs
-    neither; an aggregated AGENTS.md deliberately carries no banner at all, so the only
-    thing that knows which library files it was joined from is the renderer that joined
-    them. ``parts`` keeps each source's rendered text beside its path, which is what lets
-    ``--check`` say *which half* of a two-source aggregate somebody edited.
-
-    ``assumed`` is the other half of carrying no banner: ownership is normally judged
-    by reading the file, and a file with nothing to read cannot be recognised as
-    farrier's on the *second* install. Without it the conflict check reads the
-    AGENTS.md farrier itself wrote as somebody's hand-written rules file and refuses to
-    install at all — see ``outputs.conflicts``.
-    """
+    """A generated file's text, plus how it must be written."""
 
     executable: bool = False
     verbatim: bool = False
@@ -92,40 +68,13 @@ class Rendered(str):
         return rendered
 
 
-# A generated skill/command is a *copy* of a library source. Without a marker, an
-# agent editing it "fixes" the copy — losing the change on the next `make
-# agent-install`. We stamp the single source of truth into a `metadata` front-matter
-# field so the edit lands in the library instead. Skills carry it natively (openskill
-# format: openskill.sh/docs/creators/skill-format); Claude commands carry the same
-# block — the slash-command parser (and claude-code-acp) ignores keys it does not
-# recognise, so `metadata` is inert to the agent. Codex prompts share this header;
-# Copilot prompts carry it alongside their native fields. Claude instructions get a banner
-# (see local_instruction_banner).
 def skill_metadata_block(
     source: Source,
     dest_rel: str,
     tags: list[str] | None = None,
     regenerate: str = "make agent-install",
 ) -> str:
-    """The `metadata:` block stamping a generated skill/command with its source.
-
-    *tags* are the library source's own `tags:`, carried through so the installed copy
-    still says what it is *for* — a reader of the generated file sees the same query
-    keys `find_by_tags` matches on. They ride inside `metadata:` rather than as a
-    top-level key because the front matter of a generated skill is rebuilt from a
-    fixed set of keys the harnesses recognise, and `metadata:` is the one already
-    agreed to be ours.
-
-    *dest_rel* is where the generated file lives, written the way a shell can be
-    handed it: repo-root-relative at repo scope, ``~/``-prefixed at user scope. It
-    makes the `resolve:` field a copy-pasteable command that turns the (machine-independent,
-    library-anchored) `source:` back into this machine's absolute editable path via
-    ``farrier source`` (which reuses the same library resolution as install). The
-    header stays portable: no absolute path is baked in, so it is stable across
-    machines and under ``--check``.
-
-    Returns the YAML lines (newline-terminated) to splice into the front matter.
-    """
+    """The `metadata:` block stamping a generated skill/command with its source."""
     do_not_edit = (
         "generated — run the `resolve` command below for this machine's editable "
         f"source path, edit that, then `{regenerate}` to regenerate"
@@ -141,22 +90,8 @@ def skill_metadata_block(
     )
 
 
-# Aggregated instruction files (localInstructions → CLAUDE.md) cannot carry YAML
-# front matter — Claude injects them into context verbatim, so a `metadata:` block
-# would read as instructions. Provenance rides in a block-level HTML comment
-# instead: Claude strips those before *context injection*, but anyone (human or
-# agent) opening the file to edit it sees the comment raw — exactly the audience
-# that must be redirected to the library source. Only the claude target gets it;
-# other agents do not strip comments.
 def local_instruction_banner(sources: list[Source], dest_rel: str) -> str:
-    """The DO-NOT-EDIT comment prepended to generated Claude instruction files.
-
-    *dest_rel* is the generated file's repo-root-relative path — like
-    skill_metadata_block's `resolve:` field, it makes the banner's resolve line a
-    copy-pasteable ``farrier source`` command that turns the library-anchored
-    source paths into this machine's absolute editable paths, keeping the banner
-    itself portable and stable under ``--check``.
-    """
+    """The DO-NOT-EDIT comment prepended to generated Claude instruction files."""
     source_lines = "\n".join(f"  {library_source_path(s)}" for s in sources)
     return (
         "<!--\n"
@@ -175,20 +110,7 @@ def asset_banner(
     dest_rel: str,
     overwritten_by: str = "`make agent-install` (or: farrier --repo .)",
 ) -> str:
-    """The DO-NOT-EDIT comment prepended to a generated markdown reference.
-
-    A bundled reference is a copy of a library file exactly as a SKILL.md is, and gets
-    the same redirect-edits-to-the-library treatment — but it cannot use
-    ``skill_metadata_block``: a reference has no front matter of its own, and inventing
-    one would change how the file reads to whoever opens it. The HTML comment carries
-    the same provenance in the shape ``banner_sources`` already parses, so
-    ``farrier source`` resolves a reference like anything else farrier generates. It
-    names the *reference's* own library path, not its skill's: the file an editor has
-    open is the file they need to be sent to.
-
-    Scripts get no banner: a comment leader that is correct in sh and Python is wrong
-    in the next language, and a script's value is that it runs byte-for-byte as written.
-    """
+    """The DO-NOT-EDIT comment prepended to a generated markdown reference."""
     return (
         "<!--\n"
         "DO NOT EDIT — generated by farrier from the agent library.\n"
@@ -201,15 +123,7 @@ def asset_banner(
 
 
 def root_banner(source_rel: str, dest_rel: str) -> str:
-    """The DO-NOT-EDIT comment prepended to a generated root instruction file.
-
-    ``.github/copilot-instructions.md`` is a verbatim render of a library root, and
-    copilot reads it as plain prose — there is no front matter to stamp it in, so the
-    provenance rides in the same HTML comment the aggregated instruction files use.
-    Without it the file carries no mark at all, and ownership — which is read off the
-    file rather than off its path — would take farrier's own output for somebody's
-    hand-written instructions and refuse to install over it.
-    """
+    """The DO-NOT-EDIT comment prepended to a generated root instruction file."""
     return (
         "<!--\n"
         "DO NOT EDIT \u2014 generated by farrier from the agent library.\n"
@@ -222,11 +136,7 @@ def root_banner(source_rel: str, dest_rel: str) -> str:
 
 
 def with_banner(text: str, banner: str) -> str:
-    """*text* with *banner* spliced in after its front matter, or at the very top.
-
-    A root source is prose and normally has no fence, but a banner pushed above one
-    would silently demote it to body text — so the split is parsed, not assumed.
-    """
+    """*text* with *banner* spliced in after its front matter, or at the very top."""
     at = front_matter_end(text)
     if at == 0:
         return banner + text
@@ -236,13 +146,7 @@ def with_banner(text: str, banner: str) -> str:
 
 
 def read_asset_text(asset: Asset) -> str:
-    """A bundled asset's text, with a decodable error message when it is not text.
-
-    The output pipeline is a ``path -> text`` map end to end (rendering, ``--check``
-    diffing, writing), so a binary asset cannot ride through it. Failing here names the
-    offending file; letting it reach ``read_text`` raises a UnicodeDecodeError that
-    names only the codec.
-    """
+    """A bundled asset's text, with a decodable error message when it is not text."""
     try:
         return asset.path.read_text(encoding="utf-8")
     except UnicodeDecodeError as exc:
@@ -254,23 +158,11 @@ def read_asset_text(asset: Asset) -> str:
 
 
 def strip_arguments_placeholder(body: str) -> str:
-    """Drop a command's ``$ARGUMENTS`` line when its body is aggregated instead.
-
-    The placeholder is substituted by the slash-command invocation and by nothing
-    else, so a prompt folded into an always-loaded instruction file would carry a
-    bare ``$ARGUMENTS`` into every session — read by the agent as text, not as the
-    hole it is. Only a line that is exactly the placeholder is removed; one used
-    inline (``run X on $ARGUMENTS``) is left alone, since deleting the line around
-    it would take a sentence with it.
-    """
+    """Drop a command's ``$ARGUMENTS`` line when its body is aggregated instead."""
     lines = [line for line in body.splitlines() if line.strip() != "$ARGUMENTS"]
     return "\n".join(lines)
 
 
-#: Where each harness keeps the skills it reads for *every* project, relative to the
-#: user's home. Not the repo-scope layout with a different root: codex reads a repo's
-#: skills out of the shared ``.agents/`` tree, but its personal ones out of ``~/.codex``,
-#: and copilot has no personal prompt surface at all.
 USER_HARNESS_DIRS = {
     "claude": ".claude",
     "codex": ".codex",
@@ -298,9 +190,6 @@ class Renderer:
     ):
         self.repo = repo
         self.scope = scope
-        # What a reader who has opened a generated file is told to run. At repo scope
-        # the launcher target is the one to name; a home directory has no Makefile, and
-        # `make agent-install` there re-renders whatever repo the shell happens to be in.
         self.regenerate = "make agent-install" if scope == "repo" else "farrier install --user"
         self.overwritten_by = (
             "`make agent-install` (or: farrier --repo .)"
@@ -309,10 +198,6 @@ class Renderer:
         )
         self.prefix = prefix
         self.repo_context = dict(repo_config)
-        # Assigned, not `setdefault`: both are derived from the directory now, and a
-        # `repo.name` left over in someone's agents.yml must not shadow the name the
-        # rest of the toolchain (the workflow kit, the run record, a `.code-workspace`
-        # folder entry) reads off the checkout itself.
         self.repo_context["name"] = repo_prefix(repo)
         self.repo_context["prefix"] = prefix
         self.repo_context["root"] = repo.as_posix()
@@ -321,34 +206,17 @@ class Renderer:
         self.prompts = prompts
         self.skill_lookup = build_lookup(skills, prefix)
         self.prompt_lookup = build_lookup(prompts, prefix)
-        # Every policy in the library, not a selected subset: a policy has no top-level
-        # selection key, because binding one into a localInstructions mapping is the only
-        # thing that brings it into a repo at all. `policy_lookup` is read by
-        # `instruction_sources` and by nothing else — see `policy_source`.
         self.policies = list(policies or [])
         self.policy_lookup = build_policy_lookup(self.policies)
         self._tags: dict[Path, list[str]] = {}
 
     def dest_rel(self, output_path: Path) -> str:
-        """*output_path* as the generated file names itself, for `farrier source`.
-
-        Repo-root-relative at repo scope, because the agent's working directory is the
-        repo root. Home-relative at user scope, written with a leading ``~/`` so the
-        line stays copy-pasteable from any directory — and so it does not read as a
-        path inside whatever repo the reader happens to have open.
-        """
+        """*output_path* as the generated file names itself, for `farrier source`."""
         rel = output_path.relative_to(self.repo).as_posix()
         return f"~/{rel}" if self.scope == "user" else rel
 
     def skill_tags(self, source: Source) -> list[str]:
-        """The `tags:` a library skill declares. Cached — one read per source file.
-
-        A tag is what lets a prompt ask for a *capability* ("this repo's web testing
-        conventions") rather than enumerate the skills that might provide one. The
-        enumeration is the thing being replaced: a prompt listing `react-router-qa`,
-        `flutter-testing`, `go-testing` is naming today's stacks, and a repo whose
-        stack the workflow has never met gets nothing.
-        """
+        """The `tags:` a library skill declares."""
         cached = self._tags.get(source.path)
         if cached is None:
             cached = frontmatter_tags(source.path.read_text(encoding="utf-8"))
@@ -356,13 +224,7 @@ class Renderer:
         return cached
 
     def skills_with_tags(self, tags: list[str]) -> list[Source]:
-        """The selected skills carrying **all** of *tags*, in library order.
-
-        AND, not OR: ``('web', 'tests')`` means the skills that are both, so a
-        second word narrows the query rather than widening it. An empty *tags*
-        matches nothing — an unconstrained query would otherwise answer with the
-        repo's entire installed library.
-        """
+        """The selected skills carrying **all** of *tags*, in library order."""
         wanted = set(tags)
         if not wanted:
             return []
@@ -378,21 +240,11 @@ class Renderer:
         key = name.replace(".", "-")
         source = self.skill_lookup.get(key)
         if source is None and self.prefix and not key.startswith(f"{self.prefix}-"):
-            # A repo-prefixed overlay skill (e.g. acme-developer) stays
-            # addressable by its generic name ("developer") so shared workflow
-            # prompts can reference the repo's overlay without knowing the repo.
             source = self.skill_lookup.get(f"{self.prefix}-{key}")
         return source
 
     def policy_source(self, name: str) -> Source:
-        """The library file a ``policies:`` entry names, or exit.
-
-        No prefix fallback and no optional variant, unlike skills and prompts: a policy
-        is reachable only from a localInstructions mapping, so there is no template
-        helper that has to degrade gracefully when one is absent. A name that resolves
-        to nothing is a config typo, and the file it was meant to put in every turn's
-        context would otherwise just be missing from it.
-        """
+        """The library file a ``policies:`` entry names, or exit."""
         key = name.replace(".", "-")
         source = self.policy_lookup.get(key)
         if source is None:
@@ -433,10 +285,6 @@ class Renderer:
         source = self.prompt_source(name)
         generated = public_name(self.prefix, source)
         if self.scope == "user":
-            # Claude alone has a personal command surface. The other two read personal
-            # skills and nothing else, so a prompt selected for them has nowhere to go —
-            # and installing it as a skill instead would make a slash command silently
-            # become always-loaded text.
             if target != "claude":
                 raise SystemExit(
                     f"{target} has no user-scope prompt directory — prompts are "
@@ -463,12 +311,6 @@ class Renderer:
         raise SystemExit(f"Unknown skill dir target: {target}")
 
     def render_templates(self, content: str, target: str, from_file: Path) -> str:
-        # Rendering is skipped for content that names no helper — most library files are
-        # plain markdown and paying Jinja for them means every `{{ }}` in a code sample
-        # becomes a syntax error. `{%` has to open the gate too: it is how an author says
-        # "this IS a template", and `{% raw %}` in particular is the *only* way to protect
-        # a literal `{{ }}`. Skipping a file that uses it would leak the tags into the
-        # output verbatim — the opposite of what the author asked for.
         if not any(
             token in content
             for token in [
@@ -523,13 +365,7 @@ class Renderer:
             return self.optional_skill_source(instruction_name) is not None
 
         def find_by_tags(*tags: str) -> str:
-            """The installed skills tagged with all of *tags*, as a reference list.
-
-            The install-time half of workhorse's Jinja global of the same name, and it
-            must render the same shape — backticked paths, comma-joined, empty when
-            nothing matches — so a library source reads identically whether farrier
-            rendered it into a repo or workhorse rendered it from the library.
-            """
+            """The installed skills tagged with all of *tags*, as a reference list."""
             wanted = normalize_tags(list(tags))
             refs = sorted(
                 relative_reference(
@@ -540,14 +376,9 @@ class Renderer:
             return ", ".join(f"`{ref}`" for ref in refs)
 
         def workhorse_var(name: str) -> str:
-            """Emit a runtime variable reference that workhorse will fill at run time.
-            Usage in templates: {{ workhorse_var('plan_path') }}
-            Output in installed file: {{ plan_path }}"""
+            """Emit a runtime variable reference that workhorse will fill at run time."""
             return "{{ " + name + " }}"
 
-        # At user scope there is no repo, so `repo.*` is undefined rather than wrong.
-        # A skill installed into every project on the machine cannot be given one
-        # project's name, and rendering it as blank would put that blank in all of them.
         repo_context: Any = (
             self.repo_context
             if self.scope == "repo"
@@ -581,9 +412,6 @@ class Renderer:
                 target=target,
             )
         except UndefinedError as exc:
-            # The value the source asked for was never configured. Left as a Jinja
-            # traceback this reads as a farrier bug; named here it is one line of TOML
-            # or agents.yml the operator has to write.
             raise SystemExit(
                 f"error: {from_file.name} references a template value that is not "
                 f"defined: {exc.message}\n"
@@ -593,15 +421,7 @@ class Renderer:
             ) from exc
 
     def context_manifest(self, target: str) -> dict[str, Any]:
-        """Per-repo manifest consumed by workhorse at run time (see workhorse/templates.py).
-
-        Workflows now run **directly from the library** — they are never copied or
-        rendered into a repo. This manifest captures exactly what the install-time
-        template helpers used to resolve (``instruction_ref``/``isUsingInstruction``/
-        ``template.*``/``skill_dir``), so the library-resident prompts render at run
-        time. All paths are **repo-root-relative** because the agent runs with its
-        working directory at the repo root (``AGENT_REPO_DIR``).
-        """
+        """Per-repo manifest consumed by workhorse at run time (see workhorse/templates.py)."""
         def rel(path: Path) -> str:
             return path.relative_to(self.repo).as_posix()
 
@@ -613,19 +433,11 @@ class Renderer:
             key: rel(self.prompt_output_path(source.id, target))
             for key, source in self.prompt_lookup.items()
         }
-        # Keyed by the same alias names as `instructions`, so a tag query resolves a
-        # matched name through the same lookup a `instruction_ref` would. Untagged
-        # skills are simply absent: a name with no tags can never match a query, and
-        # writing `[]` for each of a skill's several aliases would triple the file
-        # to say nothing.
         instruction_tags = {
             key: tags
             for key, source in self.skill_lookup.items()
             if (tags := self.skill_tags(source))
         }
-        # The manifest is a committed adapter consumed at run time with the working
-        # directory AT the repo root, so pin repo.root to "." — keeping the install
-        # machine's absolute path out of version control (avoids cross-machine drift).
         repo_context = {**self.repo_context, "root": "."}
         return {
             "template": self.template_values,
@@ -672,23 +484,8 @@ class Renderer:
     def generated_assets(
         self, source: Source, target: str, skill_path: Path
     ) -> dict[Path, Rendered]:
-        """The files bundled with *source*, keyed by where they install.
-
-        Each lands beside the generated SKILL.md at the same relative path it has in the
-        library (``references/api.md`` → ``<skill>/references/api.md``), which is what
-        lets a library author link one with the path they see on disk and have it
-        resolve identically under every adapter.
-
-        Markdown references are rendered like a skill body — the same ``instruction_file``
-        / ``repo.*`` helpers, resolved from the *reference's* own location so relative
-        links point where they should. Everything else is copied through untouched:
-        a script or a JSON fixture means whatever its bytes say, and a stray ``{{`` in
-        one is far more likely to be its own syntax than a farrier template.
-        """
+        """The files bundled with *source*, keyed by where they install."""
         if skill_path.name != "SKILL.md":
-            # Assets are addressed relative to their skill's directory. A flat adapter
-            # layout has no such directory, so every skill's assets would land in one
-            # shared folder and the last one rendered would win.
             raise SystemExit(
                 f"Cannot render bundled assets into the flat {target!r} layout "
                 f"({skill_path.name}) — skill assets need a per-skill directory."
@@ -712,28 +509,13 @@ class Renderer:
     def command_description(
         self, source: Source, header: dict[str, str], body: str
     ) -> str:
-        """The `description` for a generated Claude command's front matter.
-
-        Prefer an explicit library `description:`; otherwise fall back to the body's
-        first heading (what shows in claude-code-acp's slash-command menu). This is
-        the prompt analogue of ``skill_description``.
-        """
+        """The `description` for a generated Claude command's front matter."""
         if header.get("description"):
             return header["description"]
         return first_heading(body, public_name(self.prefix, source))
 
     def generated_command(self, source: Source, target: str, output_path: Path) -> str:
-        """Render a library prompt with target-specific fields and shared provenance.
-
-        Without a `description` in the front matter, claude-code-acp has nothing to
-        advertise over ACP and the command never appears in Zed's autocomplete. So,
-        like ``generated_skill``, we emit a header carrying the slash-command keys the
-        parser recognises (description / argument-hint / model / allowed-tools) plus
-        the same `metadata:` provenance block skills get. Farrier-internal keys
-        (`agent`, `name`) are intentionally dropped: the command name comes from the
-        filename, and `agent` only selected the backend at render time. Copilot
-        retains its native header fields and YAML types alongside the provenance.
-        """
+        """Render a library prompt with target-specific fields and shared provenance."""
         header, body = split_front_matter(source.path.read_text(encoding="utf-8"))
         header = {
             key: self.render_templates(value, target, output_path)
@@ -755,8 +537,6 @@ class Renderer:
                 "---",
                 f"description: {yaml_quote(self.command_description(source, header, body))}",
             ]
-            # Pass through the optional slash-command keys when the library author set
-            # them (accepting both kebab and camelCase spellings in the source).
             for key, aliases in (
                 ("argument-hint", ("argument-hint", "argumentHint")),
                 ("model", ("model",)),
@@ -798,8 +578,6 @@ class Renderer:
                 )
 
             for root in roots:
-                # Presence was validated up front (see the roots check below), so a miss
-                # here cannot happen silently; keep the guard for the tests-built Renderer.
                 root_hit = find_in_layers("library", "roots", f"{root}.md")
                 if root_hit is not None:
                     _root_layer, root_path = root_hit
@@ -834,12 +612,6 @@ class Renderer:
                     source, "claude", output_path
                 )
 
-        # Roots render only into the copilot adapter, so an
-        # unknown one used to be skipped in silence — and on a repo with copilot disabled it
-        # was never even looked at. Validate unconditionally: the declaration is wrong
-        # regardless of which assistants happen to be enabled, and finding that out only
-        # after switching assistants on is the kind of delayed surprise this check exists
-        # to prevent.
         unknown_roots = sorted(
             root for root in roots
             if find_in_layers("library", "roots", f"{root}.md") is None
@@ -859,29 +631,11 @@ class Renderer:
             )
 
         if self.scope == "user":
-            # Everything below is a repo's: a launcher whose targets re-render this
-            # checkout, and a context manifest whose paths are repo-root-relative
-            # because the agent runs with its cwd there. A home directory has neither a
-            # make target nor a workflow run, so emitting them would write two files
-            # nothing reads into every user's home.
             return outputs
 
-        # The launcher (.agents/agents.mk) is generated for EVERY repo: its
-        # agent-install/agent-check targets are what keep the adapters current, and
-        # a root Makefile can then include it unconditionally.
         outputs[self.repo / LAUNCHER_AGENTS_MK] = render_agents_mk()
 
-        # The per-repo context manifest maps instruction_ref -> the adapter paths
-        # rendered above, so it is emitted for every install: a workflow run reads
-        # it to resolve skills against THIS repo, and it is farrier's output whether
-        # or not any workflow is installed here.
-        #
-        # Emit one manifest per ENABLED assistant so a run can target the matching
-        # adapters (instruction_ref -> .claude/skills, .github/skills, …). AGENT_CLI
-        # selects which at run time (workhorse auto-detects from AGENT_REPO_DIR).
         enabled_assistants = [t for t in ("claude", "codex", "copilot") if agents.get(t)]
-        # The primary (first enabled) assistant also backs the generic manifest,
-        # for back-compat and workhorse's AGENT_CLI-agnostic auto-detect default.
         manifest_target = enabled_assistants[0] if enabled_assistants else "claude"
         for assistant in enabled_assistants:
             outputs[self.repo / LAUNCHER_CONTEXT_MANIFEST_FMT.format(assistant)] = (
@@ -893,11 +647,6 @@ class Renderer:
             + "\n"
         )
 
-        # Only emit a thin root Makefile when the repo has none — never clobber a
-        # user-authored Makefile. When one already exists, the generated launcher
-        # is wired into it instead via ensure_makefile_include() at install time
-        # (an idempotent include block), so its agent targets are reachable either
-        # way.
         root_makefile = self.repo / LAUNCHER_ROOT_MAKEFILE
         if not root_makefile.exists():
             outputs[root_makefile] = (
@@ -916,14 +665,7 @@ class Renderer:
         prompt_names: list[str] | None = None,
         policy_names: list[str] | None = None,
     ) -> list[Source]:
-        """The library files one localInstructions mapping aggregates, in order.
-
-        Policies, then skills, then prompts — standing rules before the procedures that
-        run under them. The argument order is the historical one (skills first) so the
-        callers that predate policies keep working; the *return* order is the aggregation
-        order, and it is defined here alone so the rendered file and the provenance the
-        pointer carries cannot disagree about it.
-        """
+        """The library files one localInstructions mapping aggregates, in order."""
         return (
             [self.policy_source(name) for name in policy_names or []]
             + [self.skill_source(name) for name in skill_names]
@@ -939,25 +681,7 @@ class Renderer:
         prompt_names: list[str] | None = None,
         policy_names: list[str] | None = None,
     ) -> str:
-        """The aggregated AGENTS.md for one localInstructions mapping.
-
-        Policies first, then skills, then prompts — each body stripped of its
-        front matter and joined by a `---` rule. A prompt is included for the
-        repos that want a procedure always in context rather than invoked as a
-        slash command; it is the same library file the command renders from, so
-        neither copy drifts. A prompt's `$ARGUMENTS` placeholder is dropped on
-        the way in: nothing substitutes it outside a slash-command invocation,
-        so aggregated it is a literal dollar sign in every session's context.
-
-        The file carries no provenance banner at all. Every harness reads
-        AGENTS.md, and only Claude strips block-level HTML comments before
-        loading — so a "generated, do not edit" line here is not installer
-        trivia the others merely pay for, it is an *instruction* sitting in an
-        always-loaded rules file, where an agent can just as easily read it as
-        governing the repo it is about to edit. The banner lives in the CLAUDE.md
-        pointer instead — `render_claude_pointer` — and `farrier source
-        AGENTS.md` answers the same question from either file.
-        """
+        """The aggregated AGENTS.md for one localInstructions mapping."""
         parts: list[tuple[str, str]] = []
         for source in self.instruction_sources(skill_names, prompt_names, policy_names):
             _, body = split_front_matter(source.path.read_text(encoding="utf-8"))
@@ -974,8 +698,6 @@ class Renderer:
                 readme.read_text(encoding="utf-8"), target, output_path
             )
             rendered = f"{rendered}\n\n## Local README\n\n{readme_body.strip()}\n"
-        # The provenance travels with the text because this file, alone among the
-        # generated ones, carries none of its own — see Rendered.
         return Rendered(
             rendered,
             assumed=True,
@@ -991,25 +713,11 @@ class Renderer:
         readme_import: bool = False,
         policy_names: list[str] | None = None,
     ) -> str:
-        """The CLAUDE.md that points Claude at the AGENTS.md beside it.
-
-        Claude Code loads CLAUDE.md, every other harness loads AGENTS.md, and one
-        aggregated body should not be written twice — so this file is a two-line
-        `@` import of the real one. The provenance banner rides here because
-        Claude strips block-level HTML comments before loading, making it free
-        exactly where it is read, and because this is the file whose whole
-        content is machine-written and worth a warning.
-
-        `readme_import` pulls the sibling README in by reference instead of by
-        copy; the caller passes it only when Claude is the sole adapter, since
-        otherwise the README body is already inside the AGENTS.md this imports.
-        """
+        """The CLAUDE.md that points Claude at the AGENTS.md beside it."""
         sources = self.instruction_sources(skill_names, prompt_names, policy_names)
         dest_rel = output_path.relative_to(self.repo).as_posix()
         banner = local_instruction_banner(sources, dest_rel)
         readme = "\n@README.md\n" if readme_import else ""
-        # No `parts`: the body is two lines of pointer, so there is nothing to attribute
-        # a drift to beyond the source list the banner already carries.
         return Rendered(
             f"{banner}@AGENTS.md\n{readme}",
             sources=tuple(library_source_path(source) for source in sources),

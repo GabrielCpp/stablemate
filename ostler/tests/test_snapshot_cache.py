@@ -1,16 +1,4 @@
-"""The whole-graph snapshot cache: it may save a load, and it may never change an answer.
-
-The parse index makes each *document* cheap to re-read. What no caller could avoid until now
-is the load itself — the walk, the frontmatter dispatch and the cross-linking that turn some
-thousands of parsed documents into a graph — and every fresh `Ostler`, in-process or in a new
-`ostler` process, paid it again while nothing in the book had moved.
-
-The bar these tests hold the cache to is the one every cache in this repo is held to: damage
-is a miss, a moved dependency is a miss, and the only observable difference between a hit and
-a miss is how long it took. So each invalidation below asserts the *graph*, not merely the
-counter — a cache that notices a change and still hands back the old answer would satisfy a
-hit/miss assertion perfectly.
-"""
+"""The whole-graph snapshot cache: it may save a load, and it may never change an answer."""
 
 from __future__ import annotations
 
@@ -40,12 +28,7 @@ def loads(monkeypatch: pytest.MonkeyPatch) -> list[int]:
 
 
 def drop_snapshot(directory: Path, key: str | None) -> None:
-    """Delete just the snapshot entry, leaving the parse products warm.
-
-    The store sharded on the first two characters of the key; repeating that here is the
-    price of measuring the two caches apart, and it is asserted rather than assumed — an
-    entry that was not there to delete fails the call.
-    """
+    """Delete just the snapshot entry, leaving the parse products warm."""
     assert key is not None
     entry = directory / key[:2] / key
     entry.unlink()
@@ -55,9 +38,6 @@ def entries(directory: Path) -> list[Path]:
     return sorted(p for p in directory.rglob("*") if p.is_file() and p.name != index.PRUNE_STAMP_NAME)
 
 
-# ---------------------------------------------------------------------------
-# the hit
-# ---------------------------------------------------------------------------
 def test_a_second_instance_over_an_unmoved_book_does_not_load(repo, index_home, monkeypatch):
     counter = loads(monkeypatch)
     first = Ostler(repo).graph
@@ -83,12 +63,7 @@ def test_a_hit_serves_no_document_from_the_parse_index(repo, index_home):
 
 
 def test_writing_into_the_spec_root_does_not_invalidate(repo, index_home, monkeypatch):
-    """The case a key over the whole tree would get wrong.
-
-    A coder run writes a QA plan into `docs/specs/<story>/` between two loads that want the
-    same graph. No document `load` reads has moved, so the snapshot still holds — and if it
-    did not, the cache would miss on every lap of the exact workflow it exists for.
-    """
+    """The case a key over the whole tree would get wrong."""
     Ostler(repo).graph
     counter = loads(monkeypatch)
     write(repo / "docs/specs/01-foo/qa.md", "# QA plan\n")
@@ -100,9 +75,6 @@ def test_writing_into_the_spec_root_does_not_invalidate(repo, index_home, monkey
     assert counter == [0]
 
 
-# ---------------------------------------------------------------------------
-# the invalidations
-# ---------------------------------------------------------------------------
 def test_editing_a_story_invalidates(repo, index_home):
     Ostler(repo).graph
     write(repo / "docs/epics/epic-a/stories/01-foo/story.md",
@@ -181,9 +153,6 @@ def test_ids_json_is_part_of_the_snapshot(repo, index_home):
     assert ids.get("counter") == 2
 
 
-# ---------------------------------------------------------------------------
-# damage, and the off switch
-# ---------------------------------------------------------------------------
 def test_a_corrupt_entry_is_a_miss_not_a_failure(repo, index_home):
     Ostler(repo).graph
     written = entries(index_home)
@@ -239,13 +208,7 @@ def test_no_index_stores_and_serves_no_snapshot(repo, tmp_path, index_home, monk
 
 
 def test_the_probe_order_matches_the_loader(repo, index_home):
-    """`_story_candidates` repeats `model._attach_story_md`'s list; a drift is a stale hit.
-
-    Asserted against the loader's own source rather than against a book, because today the
-    two candidates coincide — `_parse_stories` derives `story.path` as the conventional
-    location, so no fixture can make them differ. The day one does, this fails here instead
-    of as a snapshot that holds while the graph has moved.
-    """
+    """`_story_candidates` repeats `model._attach_story_md`'s list; a drift is a stale hit."""
     okf = Ostler(repo)
     epic = next(e for e in okf.graph.epics if e.name == "epic-a")
     story = next(s for s in epic.stories if s.slug == "01-foo")
@@ -262,12 +225,7 @@ def test_the_probe_order_matches_the_loader(repo, index_home):
 
 
 def big_book(root: Path, features: int = 400, epics: int = 4, stories: int = 8) -> Path:
-    """A book of a few hundred documents — the scale the saving is actually about.
-
-    The `repo` fixture loads in about two milliseconds, which is the same order as digesting
-    its six files, so no ratio measured against it would mean anything. A real book is
-    thousands of documents; this is the smallest tree that behaves like one.
-    """
+    """A book of a few hundred documents — the scale the saving is actually about."""
     for i in range(features):
         write(root / f"docs/features/area{i % 8}/rec{i}.md",
               feature_md(f"rec{i}", f"Rec {i}", area=f"area{i % 8}"))
@@ -282,15 +240,9 @@ def big_book(root: Path, features: int = 400, epics: int = 4, stories: int = 8) 
 
 
 def test_a_warm_snapshot_is_much_faster_than_the_load_it_replaces(tmp_path, index_home):
-    """The ledger's bar: >5x on a warm cache.
-
-    Both halves run against a warm *parse* index, so this measures the saving the snapshot
-    adds on top of the one that already existed — the walk, the dispatch and the linking,
-    which no per-document cache can give back. Against a cold index the margin is larger, and
-    quoting that number would be crediting this cache with the index's work.
-    """
+    """The ledger's bar: >5x on a warm cache."""
     book = big_book(tmp_path / "book")
-    Ostler(book).graph  # warms both the parse index and the snapshot
+    Ostler(book).graph
 
     without = Ostler(book)
     drop_snapshot(index_home, without._snapshot_key())

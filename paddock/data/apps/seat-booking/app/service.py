@@ -1,10 +1,4 @@
-"""The HTTP surface: six routes over `http.server`, no third-party dependency.
-
-The routing is a small hand-written table rather than a framework because the whole app has
-to start from a stock Python image with nothing installed. What the layer *does* is
-deliberately thin — parse, call one transition, serialise — so a defect
-seeded in a status code and a defect seeded in a rule stay distinguishable.
-"""
+"""The HTTP surface: six routes over `http.server`, no third-party dependency."""
 
 from __future__ import annotations
 
@@ -20,8 +14,6 @@ from app.hold import hold as hold_seat
 from app.hold import release
 from app.store import Store, empty_ledger
 
-#: The benchmark owns 18080-18099; seat-booking's number is recorded in
-#: `paddock/data/apps/README.md` alongside every other spec's.
 DEFAULT_PORT = 18083
 DEFAULT_LEDGER = Path("/data/seats.json")
 
@@ -30,7 +22,7 @@ SEAT_BOOKING = re.compile(r"^/api/seats/([A-Za-z0-9]+)/booking$")
 
 
 class Handler(BaseHTTPRequestHandler):
-    """One request. `store` is set on the subclass built in `serve`."""
+    """One request."""
 
     store: Store
     protocol_version = "HTTP/1.1"
@@ -89,21 +81,12 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def _reset_showing(self) -> None:
-        """Empty the ledger: every seat free again, at version 0.
-
-        A fixed twelve-seat showing is a finite resource, and QA drives it repeatedly — a
-        rehearsal, then the scored execution, then a re-run after a repair. Without a way to
-        put the showing back, the third pass fails for having no free seat rather than for
-        anything the story claims, which reads as a defect in whichever scenario happened to
-        run last. So the reset is part of the product and part of the book, not a lever the
-        harness reaches around it for.
-        """
+        """Empty the ledger: every seat free again, at version 0."""
         self.store.write(empty_ledger())
         self.send_response(204)
         self.send_header("Content-Length", "0")
         self.end_headers()
 
-    # ── plumbing ──────────────────────────────────────────────────────────────────────
 
     def _body(self) -> dict[str, Any]:
         length = int(self.headers.get("Content-Length") or 0)
@@ -129,8 +112,6 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def log_message(self, format: str, *args: Any) -> None:  # noqa: A002 - the base's name
-        # One line per request on stdout, which is what `docker compose logs` shows and
-        # what a failing QA scenario is read against.
         print(f"{self.address_string()} {format % args}", flush=True)
 
 

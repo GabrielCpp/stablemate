@@ -1,12 +1,4 @@
-"""A frozen video is not the same observation as a blank one.
-
-`_is_static` reads a recording's motion over its whole duration and cannot tell a
-correctly-rendered, unanimated page from a page that never painted — both are a still
-frame end to end. The defect this closes: four of five scenarios in a real run aborted
-as "painted nothing" while their own `visible(...)` assertions, taken from the same
-scenario's vet scan, passed. The fix reads that scan's region content before trusting
-the freeze verdict.
-"""
+"""A frozen video is not the same observation as a blank one."""
 
 from __future__ import annotations
 

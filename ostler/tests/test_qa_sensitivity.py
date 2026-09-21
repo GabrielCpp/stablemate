@@ -17,8 +17,6 @@ def _trial(text: str) -> sensitivity.Trial:
     return sensitivity.trial(call)
 
 
-#: One declared call per check in the vocabulary, plus a second where an optional argument
-#: changes which mutations the call is meant to catch.
 _WITNESSED_CALLS = [
     'http_status(code=200, path="/policies")',
     'http_status(code=401, title="Unauthorized")',
@@ -54,11 +52,7 @@ _WITNESSED_CALLS = [
 
 
 def test_the_witness_table_covers_the_whole_check_vocabulary() -> None:
-    """The vocabulary and the witness table are two spellings of one list, and nothing else
-    relates them: `focusable` reached the books with no branch in `_plan`, so every book that
-    used it reported `unwitnessed-check` and the fallback marked `pragma: no cover` was the
-    only thing that ran. This is the artifact that relates them, so the next check added to
-    `CHECKS` fails here rather than in a downstream app's doctor."""
+    """The vocabulary and the witness table are two spellings of one list, and nothing else relates them: `focusable` reached the books with no branch in `_plan`, so every book that used it reported `unwitnessed-check` and the fallback marked `pragma: no cover` was the only thing that ran."""
     exercised = set()
     for text in _WITNESSED_CALLS:
         call = checks.parse_check(text)
@@ -76,8 +70,7 @@ def test_every_check_in_the_vocabulary_has_a_witness_and_a_defect(call: str) -> 
 
 
 def test_a_filter_witness_is_the_smallest_document_the_selector_is_satisfied_by() -> None:
-    """The witness carries the key the filter selects on beside the value the claim reads, so
-    a mutation of that value is noticed through the selector and not around it."""
+    """The witness carries the key the filter selects on beside the value the claim reads, so a mutation of that value is noticed through the selector and not around it."""
     path = "people[?(@.who=='ana')].total_cents"
     assert sensitivity._set_path({}, path, 4200) == {"people": [{"who": "ana", "total_cents": 4200}]}
     assert sensitivity._collection("people[*].trips[*]", 2) == {"people": [{"trips": [{"i": 0}, {"i": 1}]}]}
@@ -87,8 +80,7 @@ def test_a_filter_witness_is_the_smallest_document_the_selector_is_satisfied_by(
 
 
 def test_an_index_rooted_path_witnesses_in_a_list_not_a_dict() -> None:
-    """A path whose first step is an index needs a list root, the same as any other index
-    step: `[0].kind` used to hand the root dict to `cursor.append`, which does not exist."""
+    """A path whose first step is an index needs a list root, the same as any other index step: `[0].kind` used to hand the root dict to `cursor.append`, which does not exist."""
     path = "[0].kind"
     assert sensitivity._set_path({}, path, "policy") == [{"kind": "policy"}]
     trial = _trial(f'json_path(path="{path}", equals="policy")')
@@ -97,8 +89,7 @@ def test_an_index_rooted_path_witnesses_in_a_list_not_a_dict() -> None:
 
 
 def test_a_filter_rooted_path_witnesses_in_a_list_not_a_dict() -> None:
-    """The same root-picking rule as a leading index: a filter as the first step still needs
-    a list to select into, not the dict every call starts from."""
+    """The same root-picking rule as a leading index: a filter as the first step still needs a list to select into, not the dict every call starts from."""
     path = "[?(@.who=='ana')].total_cents"
     assert sensitivity._set_path({}, path, 4200) == [{"who": "ana", "total_cents": 4200}]
     trial = _trial(f'json_path(path="{path}", equals=4200)')
@@ -107,9 +98,7 @@ def test_a_filter_rooted_path_witnesses_in_a_list_not_a_dict() -> None:
 
 
 def test_an_empty_path_witnesses_the_whole_document_not_a_container() -> None:
-    """`json_path(path="")` asserts on the whole body: `resolve_path` treats an empty path as
-    naming the document itself, so the witness is `value` and the drop mutation is `None`,
-    not a step walk over zero steps (which used to overrun `zip(..., strict=True)`)."""
+    """`json_path(path="")` asserts on the whole body: `resolve_path` treats an empty path as naming the document itself, so the witness is `value` and the drop mutation is `None`, not a step walk over zero steps (which used to overrun `zip(..., strict=True)`)."""
     assert sensitivity._set_path({}, "", "policy") == "policy"
     assert sensitivity._drop_path("policy", "") is None
     trial = _trial('json_path(path="", equals="policy")')
@@ -143,14 +132,7 @@ def test_a_check_nothing_could_falsify_is_insensitive(monkeypatch: pytest.Monkey
     ],
 )
 def test_a_pattern_that_admits_any_value_gets_no_value_mutation(call: str) -> None:
-    """A pattern loose enough to accept `_OTHER` is a presence assertion, not a value one.
-
-    `absent=false` is only defeated by absence, and a `matches=` pattern that would still
-    match whatever the field-changed mutation writes is the same claim in different syntax:
-    listing that mutation here would score the call sensitive or insensitive on a
-    perturbation its own comparison never rejected, which is not a fact about the check.
-    `doctor._rubber_stamp` reports this shape as `weak-check` instead.
-    """
+    """A pattern loose enough to accept `_OTHER` is a presence assertion, not a value one."""
     trial = _trial(call)
     assert trial.witnessed
     assert trial.flipped == ("the field is not there at all",)
@@ -166,8 +148,7 @@ def test_a_pattern_that_admits_any_value_gets_no_value_mutation(call: str) -> No
     ],
 )
 def test_a_discriminating_check_still_gets_the_value_mutation(call: str) -> None:
-    """A pattern (or an `equals=`) that rejects `_OTHER` is a real value assertion, and the
-    mutation that would falsify it stays in the experiment."""
+    """A pattern (or an `equals=`) that rejects `_OTHER` is a real value assertion, and the mutation that would falsify it stays in the experiment."""
     trial = _trial(call)
     assert trial.witnessed
     assert trial.flipped == ("the field holds something else", "the field is not there at all")
@@ -176,9 +157,7 @@ def test_a_discriminating_check_still_gets_the_value_mutation(call: str) -> None
 
 
 def test_a_denial_of_emission_is_not_asked_to_notice_its_own_claim() -> None:
-    """`emitted(count=0)` claims nothing was emitted, so "nothing was emitted" is the claim
-    itself, not a defect it forbids: listing it as a mutation used to make the check survive
-    by construction and report `insensitive-check` on a working denial."""
+    """`emitted(count=0)` claims nothing was emitted, so "nothing was emitted" is the claim itself, not a defect it forbids: listing it as a mutation used to make the check survive by construction and report `insensitive-check` on a working denial."""
     trial = sensitivity.trial(checks.CheckCall("emitted", {"event": "x", "count": 0}))
     assert trial.witnessed
     assert trial.flipped == ("one more was emitted",)
@@ -187,8 +166,7 @@ def test_a_denial_of_emission_is_not_asked_to_notice_its_own_claim() -> None:
 
 
 def test_a_positive_emission_count_still_gets_both_mutations() -> None:
-    """A `count=` above zero is still falsified by silence, so `emitted`'s narrowing must not
-    drop "nothing was emitted" for anything but the `count=0` denial."""
+    """A `count=` above zero is still falsified by silence, so `emitted`'s narrowing must not drop "nothing was emitted" for anything but the `count=0` denial."""
     trial = sensitivity.trial(checks.CheckCall("emitted", {"event": "x", "count": 2}))
     assert trial.witnessed
     assert trial.flipped == ("nothing was emitted", "one more was emitted")
@@ -197,9 +175,7 @@ def test_a_positive_emission_count_still_gets_both_mutations() -> None:
 
 
 def test_an_emitted_check_with_no_declared_count_is_unchanged() -> None:
-    """No `count=` argument means only the implicit `want = 1`, which is still a positive
-    count: it must keep getting the "nothing was emitted" mutation, same as before this
-    check's `count=0` denial was given its own case."""
+    """No `count=` argument means only the implicit `want = 1`, which is still a positive count: it must keep getting the "nothing was emitted" mutation, same as before this check's `count=0` denial was given its own case."""
     trial = sensitivity.trial(checks.CheckCall("emitted", {"event": "x"}))
     assert trial.witnessed
     assert trial.flipped == ("nothing was emitted",)
@@ -215,11 +191,7 @@ def test_a_pattern_no_string_can_be_invented_for_is_unwitnessed_not_green() -> N
 
 
 def test_an_anchored_omits_pattern_is_no_longer_falsely_insensitive() -> None:
-    """The real book shape: `omits(matches="^(agent|name):")` forbids a value that *starts*
-    with the leak. Framing it (`"… agent: …"`) puts the leak in the middle, which the anchor
-    no longer matches, so that mutation does not violate the claim and must not be the one
-    offered — a check cannot be blamed for surviving a perturbation it was never obliged to
-    catch."""
+    """The real book shape: `omits(matches="^(agent|name):")` forbids a value that *starts* with the leak."""
     trial = _trial(r'omits(subject="detail", matches="^(agent|name):")')
     assert trial.witnessed
     assert trial.sensitive
@@ -227,8 +199,7 @@ def test_an_anchored_omits_pattern_is_no_longer_falsely_insensitive() -> None:
 
 
 def test_an_unanchored_omits_pattern_still_gets_perturbed_and_still_reads_sensitive() -> None:
-    """The fix narrows the arm rather than turns it off: a pattern with no anchor to lose
-    still gets the framed leak, and the check is still expected to catch it."""
+    """The fix narrows the arm rather than turns it off: a pattern with no anchor to lose still gets the framed leak, and the check is still expected to catch it."""
     trial = _trial(r'omits(subject="detail", matches="eyJ[A-Za-z0-9_-]{6,}")')
     assert trial.witnessed
     assert trial.sensitive
@@ -236,9 +207,7 @@ def test_an_unanchored_omits_pattern_still_gets_perturbed_and_still_reads_sensit
 
 
 def test_an_omits_text_leak_keeps_the_framed_mutation() -> None:
-    """`_verify_omits` checks `text=` with substring containment (`args["text"] in haystack`),
-    which has no anchor for framing to break, so the framed form stays a legal perturbation
-    for every `text=` claim, the same as before this fix."""
+    """`_verify_omits` checks `text=` with substring containment (`args["text"] in haystack`), which has no anchor for framing to break, so the framed form stays a legal perturbation for every `text=` claim, the same as before this fix."""
     trial = _trial('omits(subject="detail", text="secret")')
     assert trial.witnessed
     assert trial.sensitive
@@ -248,9 +217,7 @@ def test_an_omits_text_leak_keeps_the_framed_mutation() -> None:
 def test_an_omits_pattern_with_no_legal_perturbation_is_not_measured(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """When neither the framed nor the bare leak would violate the claim, the honest outcome
-    is no perturbation at all, not one that proves nothing: this is the same "not measured"
-    shape `_matching` returning `None` already gets, reached here for a different reason."""
+    """When neither the framed nor the bare leak would violate the claim, the honest outcome is no perturbation at all, not one that proves nothing: this is the same "not measured" shape `_matching` returning `None` already gets, reached here for a different reason."""
     monkeypatch.setattr(sensitivity, "_matching", lambda pattern: "not a match")
     trial = _trial('omits(subject="detail", matches="^only-this$")')
     assert not trial.witnessed
@@ -258,13 +225,7 @@ def test_an_omits_pattern_with_no_legal_perturbation_is_not_measured(
 
 
 def test_a_claim_no_trial_could_witness_has_no_result_rather_than_a_bad_one() -> None:
-    """`unwitnessed` is the absence of a result, not a weaker `insensitive`.
-
-    A two-armed rule has to call this something, and the only arm left is the one that
-    says the check stayed green through a perturbation — which never ran. That reading
-    aims a repair at the check, and the one edit that would satisfy it is a looser
-    pattern: the harness would then witness the claim and report it genuinely insensitive.
-    """
+    """`unwitnessed` is the absence of a result, not a weaker `insensitive`."""
     report = sensitivity.ClaimReport(
         claim="okf:policies.md#issue:returns:1",
         path="docs/policies.md",
@@ -320,10 +281,7 @@ def test_a_synthesized_witness_is_a_member_of_the_language() -> None:
     ],
 )
 def test_an_alternation_the_whole_pattern_must_see_is_witnessed(pattern: str, witness: str) -> None:
-    """A `|` inside a group (`^(true|false)$`), one at the top level with no group at all
-    (`(^|/)..(/|$)`), and one nested behind a non-capturing group all reach `_synthesize`
-    whole now, rather than a fragment the caller cut at the first `|` — which for the first
-    of these left `_synthesize` an unclosed group and a None."""
+    """A `|` inside a group (`^(true|false)$`), one at the top level with no group at all (`(^|/)..(/|$)`), and one nested behind a non-capturing group all reach `_synthesize` whole now, rather than a fragment the caller cut at the first `|` — which for the first of these left `_synthesize` an unclosed group and a None."""
     built = sensitivity._matching(pattern)
     assert built is not None
     assert built == witness
@@ -331,11 +289,7 @@ def test_an_alternation_the_whole_pattern_must_see_is_witnessed(pattern: str, wi
 
 
 def test_a_pattern_this_harness_cannot_synthesize_still_returns_none() -> None:
-    """A lookahead is a real regex feature `_synthesize` never attempted: its vocabulary is
-    literals, classes, groups and counted repeats, and `(?=foo)` is none of those — the `(`
-    arm reads the `?=foo` body as a group whose own attempt to synthesize a witness for
-    `=foo` cannot then be reconciled with the lookahead by `re.search`, so this stays None
-    rather than a guess `_matching` cannot back up."""
+    """A lookahead is a real regex feature `_synthesize` never attempted: its vocabulary is literals, classes, groups and counted repeats, and `(?=foo)` is none of those — the `(` arm reads the `?=foo` body as a group whose own attempt to synthesize a witness for `=foo` cannot then be reconciled with the lookahead by `re.search`, so this stays None rather than a guess `_matching` cannot back up."""
     assert sensitivity._matching("(?=foo)bar") is None
 
 
@@ -367,11 +321,7 @@ def _book(tmp_path: Path, endpoint: str) -> Path:
 
 
 def test_a_claim_no_check_observes_is_counted_undeclared_not_dropped(tmp_path: Path) -> None:
-    """The denominator is every claim the book mints, not every claim that declares a check.
-
-    Dropping the unobserved ones lets a book raise its score by deleting an assertion instead
-    of strengthening one, which is the opposite of what the metric is for.
-    """
+    """The denominator is every claim the book mints, not every claim that declares a check."""
     root = _book(tmp_path, (
         "- errors: `409` when the policy number is already on the books\n"
         '- verify: http_status(409, path="/api/policies")\n'
@@ -383,11 +333,7 @@ def test_a_claim_no_check_observes_is_counted_undeclared_not_dropped(tmp_path: P
 
 
 def test_an_unobserved_claim_does_not_fail_the_command_but_is_named(tmp_path: Path) -> None:
-    """`doctor` refuses an unasserted claim; this command grades the assertions that exist.
-
-    Two refusals for one defect teaches the author to silence whichever complains first, so
-    the report says the number out loud and leaves the gate where it already was.
-    """
+    """`doctor` refuses an unasserted claim; this command grades the assertions that exist."""
     root = _book(tmp_path, "- errors: `422` when a field does not validate\n")
     outcome = sensitivity.cmd_sensitivity(root)
     assert outcome.ok

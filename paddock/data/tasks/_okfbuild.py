@@ -1,22 +1,4 @@
-"""The book-building round: strip a finished app's book, run okf-builder, grade the rebuild.
-
-The frozen-app rounds measure what a QA lane does *with* a book; this family measures
-whether the toolchain can *write* one. The trial tree is a seed capture of a finished
-app, the step deletes `docs/features/<service>/` and commits the deletion, and the
-builder is pointed at the stripped tree — so the run starts from discovery against real
-source, exactly the state a team adopting the toolchain starts from.
-
-The ruler is deliberately deterministic: `ostler doctor` clean, `ostler fmt` canonical,
-the builder's own `coverage.json` saying covered == total, and the graph counts a loaded
-book yields. None of that needs an agent to judge, so the headline is comparable across
-labels the way a detection rate is. The one column that can be absent — the judgment
-layer — prints `–` (see `_frozenapp.BLANK`) rather than `0` when the installed ostler
-does not know the vocabulary yet: a zero would read as "the builder wrote no concepts"
-against a registry that could not have accepted one.
-
-The leading underscore keeps `paddock.loader` from treating this as a task module: it is
-the library each book-building task imports, not a second declaration.
-"""
+"""The book-building round: strip a finished app's book, run okf-builder, grade the rebuild."""
 
 from __future__ import annotations
 
@@ -45,14 +27,7 @@ from paddock import Run, Score
 
 @dataclass(frozen=True, slots=True)
 class Fixture:
-    """One book-building round: which service to strip and rebuild, out of which tree.
-
-    `service` names the book directory (`docs/features/<service>/`) and is what the
-    builder is asked to build; `source_path` is the source root it reads, which the
-    builder defaults to the service name when the two coincide. `budget_s` is generous
-    by default — a build is one long run, not a fan of trials — and `--param budget`
-    still narrows it for a smoke round.
-    """
+    """One book-building round: which service to strip and rebuild, out of which tree."""
 
     service: str
     source_path: str
@@ -60,10 +35,6 @@ class Fixture:
     source_paths: tuple[str, ...] = ()
     budget_s: float = 5400.0
     source_excludes: str = ""
-    #: The judge's own backend, pinned apart from the builder under test — the same
-    #: precedence rule as `_greenfield.judge_backlog`: an unpinned grader would switch
-    #: backends in step with the thing it grades, and a delta between two labels would
-    #: then carry no information about either.
     judge_cli: str = ""
     judge_model: str = ""
     judge_effort: str = ""
@@ -80,45 +51,23 @@ def capture_build_witness(repo: Path, dest: Path, fixture: Fixture) -> Path:
 
 
 def strip_book(run: Run, fixture: Fixture) -> None:
-    """Delete the service's book and commit the deletion, so the build starts at HEAD.
-
-    Committed rather than merely deleted: okf-builder converges whatever state it finds,
-    and an uncommitted deletion leaves the old book one `git checkout` away — a build
-    that "recovered" it from the index would score as a rebuild without performing one.
-    The rest of `docs/` stays: decisions and backlog are inputs a real adoption would
-    also have on disk.
-    """
+    """Delete the service's book and commit the deletion, so the build starts at HEAD."""
     book = book_dir(run.repo, fixture)
     if not book.is_dir():
         raise TrialError(f"no book at {book} — nothing to strip means nothing to rebuild")
     if not (run.repo / ".git").exists():
         raise TrialError(f"{run.repo} is not a git checkout — the strip cannot be committed")
     shutil.rmtree(book)
-    # Identity on the repo rather than the machine, as `materialize` does: a trial must
-    # not depend on the host's global git config, and must not write to it either.
     git("config", "user.email", "benchmark@example.com", cwd=run.repo)
     git("config", "user.name", "stablemate benchmark", cwd=run.repo)
     rel = str(book.relative_to(run.repo))
     git("add", "--all", "--", rel, cwd=run.repo)
-    # `--no-verify` because the seed's own hooks run otherwise, and they reject this
-    # commit: a capture excludes `.claude/`, so the app's farrier pre-commit hook finds
-    # its generated files missing and exits non-zero. The hooks belong to the app under
-    # test; this commit is fixture surgery performed by the harness, not agent work the
-    # hooks exist to gate.
     message = f"strip the {fixture.service} book"
     git("commit", "--quiet", "--no-verify", "-m", message, cwd=run.repo)
 
 
 def run_build(run: Run, fixture: Fixture) -> None:
-    """Drive `workhorse-okf-builder run` over the stripped tree; keep the witness.
-
-    One trial per round: a build is its own control — there is no defect to seed, and
-    the ruler grades the artifact rather than a verdict. The witness is `docs/` plus the
-    config files ostler roots on (`capture_witness`) *plus the source root the book
-    cites* — doctor grades code grounding by resolving every `code:` ref, so a witness
-    without the source scores a converged book as a wall of `dangling-code-ref` errors.
-    Sealing the source keeps the result re-scorable on a machine that never ran it.
-    """
+    """Drive `workhorse-okf-builder run` over the stripped tree; keep the witness."""
     checkout = stablemate_checkout(run)
     budget = run.param_float("budget", fixture.budget_s)
     config = effective(run)
@@ -135,10 +84,6 @@ def run_build(run: Run, fixture: Fixture) -> None:
         params["source_excludes"] = excludes
 
     with no_leaks(checkout, pinned=pin_held(run.pinned)):
-        # farrier regenerates `.agents/agents-context.json`, which is gitignored and so
-        # absent from a seed capture; every prompt path in the run would fail to resolve
-        # without it. It is also where the unpacked seed's machine-local paths get
-        # re-pointed at this machine.
         run.cli(
             *uv_run(checkout, "farrier"),
             "farrier", "install", "--repo", str(run.repo),
@@ -149,13 +94,9 @@ def run_build(run: Run, fixture: Fixture) -> None:
             *uv_run(checkout, "workhorse-workflows"),
             "workhorse-okf-builder", "run",
             "--runs-dir", str(runs_dir), "--run-id", run_id,
-            # Whole-file: the round's models are the tracked config's, not whatever this
-            # machine happens to have set.
             "--config", str(config),
             "--params", json.dumps(params),
             cwd=run.repo,
-            # Enforced by workhorse between states rather than by killing the process,
-            # so an over-budget build stops at a node boundary with its spans intact.
             env={
                 **os.environ,
                 "WORKHORSE_MAX_RUNTIME_S": str(budget),
@@ -258,17 +199,6 @@ def run_paired_build(
             run.write_json(trials_dir(run) / "trials.json", ledger)
 
 
-# ── the rulers ────────────────────────────────────────────────────────────────────────
-#
-# Each one is a pure function of the witness tree, returns `None` when it could not
-# measure — a build that died before writing anything leaves a witness some rulers
-# cannot read, and `None` renders as `–`, which is not a zero — and imports ostler
-# lazily, as `_frozenapp.evidence_statuses` does, so loading a task module stays cheap.
-#
-# The `docs/` guard is not redundancy: handed a directory with no book at all, ostler
-# does not refuse — root discovery settles somewhere and an empty tree reports zero
-# findings — so a build that died before writing anything would score `doctor 0e/0w`
-# clean. A witness without `docs/` is unreadable, and unreadable is `–`.
 
 
 def _readable(witness: Path) -> bool:
@@ -305,12 +235,7 @@ def fmt_check(witness: Path) -> list[str] | None:
 
 
 def coverage_counts(witness: Path, fixture: Fixture) -> dict[str, int] | None:
-    """The builder's own `coverage.json`: how much of the inventory the book covers.
-
-    Read from the file the build committed rather than recomputed, deliberately: the
-    claim under test is the builder's, and recomputing it here would grade this repo's
-    coverage code against itself.
-    """
+    """The builder's own `coverage.json`: how much of the inventory the book covers."""
     path = book_dir(witness, fixture) / "coverage.json"
     if not path.is_file():
         return None
@@ -322,13 +247,7 @@ def coverage_counts(witness: Path, fixture: Fixture) -> dict[str, int] | None:
 
 
 def graph_counts(witness: Path) -> dict[str, int] | None:
-    """What the loaded book amounts to: nodes, and the obligation ids it can mint.
-
-    The private helpers under `build_context` rather than `build_context` itself, for
-    the same reason the app tests use them: minting against a diff needs a git repo and
-    a base, and a witness is a copy of `docs/` — the diffless path is the same code
-    minus exactly the part a witness cannot answer.
-    """
+    """What the loaded book amounts to: nodes, and the obligation ids it can mint."""
     from ostler.model import load
     from ostler.qa.context import _obligations, _serialized_graph
 
@@ -349,12 +268,7 @@ def graph_counts(witness: Path) -> dict[str, int] | None:
 
 
 def judgment_counts(witness: Path) -> dict[str, int] | None:
-    """Concepts, and the `detail:` links pointing at them — the judgment layer's size.
-
-    `None` when the installed registry does not declare the judgment vocabulary on
-    `concept` (the Track-A degrade): against such a registry the builder could not have
-    written a selection rule, so a zero here would blame the build for the toolchain.
-    """
+    """Concepts, and the `detail:` links pointing at them — the judgment layer's size."""
     from ostler import registry
     from ostler.model import load
     from ostler.qa.context import _serialized_graph
@@ -373,12 +287,6 @@ def judgment_counts(witness: Path) -> dict[str, int] | None:
     return {"concepts": len(concepts), "detail_links": inbound}
 
 
-# ── the judge ─────────────────────────────────────────────────────────────────────────
-#
-# Opt-in (`--param judge=true`), and never the headline: an agent grading prose is a
-# different kind of instrument from the rulers above — useful, but not comparable across
-# labels the way a doctor count is. It answers the one question the rulers cannot:
-# whether a normative bullet *earns* its citation, or merely sounds like it does.
 
 BOOK_LEVELS: dict[int, tuple[str, str]] = {
     0: ("ungrounded", "the cited code shows something else, or the citation is missing"),
@@ -389,15 +297,7 @@ BOOK_MAX_LEVEL = max(BOOK_LEVELS)
 
 
 def sample_bullets(witness: Path, fixture: Fixture, limit: int) -> list[dict[str, Any]]:
-    """A deterministic sample of the book's per-bullet obligations, ready to judge.
-
-    The node-level `contract`/`journey` obligations are excluded — they restate a title,
-    which is not a claim a judge can hold against source — and so is anything minted
-    outside the rebuilt book (the surviving epics and specs are inputs, not product).
-    The sample is even-spaced over the sorted ids rather than random, so two scorings of
-    one witness judge the same bullets and their delta is the judge's noise, not the
-    draw's.
-    """
+    """A deterministic sample of the book's per-bullet obligations, ready to judge."""
     from ostler.model import load
     from ostler.qa.context import _obligations, _serialized_graph
 
@@ -430,12 +330,7 @@ def sample_bullets(witness: Path, fixture: Fixture, limit: int) -> list[dict[str
 
 
 def _appraise(text: str, repo: Path) -> dict[str, Any]:
-    """Parse one judge response and apply the citation cap — pure, so tests need no agent.
-
-    The cap mirrors `_greenfield.judge_one`: an `earned` whose cited paths do not resolve
-    in the repo, or that cites nothing at all, drops to `asserted` and is flagged — the
-    judge's most common failure is a confident level resting on a path it invented.
-    """
+    """Parse one judge response and apply the citation cap — pure, so tests need no agent."""
     from workhorse.runner import extract as wh_extract
 
     parsed = wh_extract.parse_json_from_text(text, ["level", "evidence", "reason"]) or {}
@@ -454,16 +349,7 @@ def _appraise(text: str, repo: Path) -> dict[str, Any]:
 
 
 def judge_book(run: Run, fixture: Fixture, witness: Path) -> dict[str, Any] | None:
-    """Have an agent grade a sample of the rebuilt book's bullets against the source.
-
-    Judged over a scratch copy of the staged repo, never `run.repo` itself — the
-    read-only-guard lesson from `_greenfield.judge_backlog`: the judge only reads, but
-    the agent CLI it reads through writes its session transcripts into whatever tree it
-    is pointed at, and a scored run must leave the stage byte-identical to an unscored
-    one. Returns `None` when the witness minted nothing gradeable.
-    """
-    # Lazily, like the ostler imports above: the judge drags workhorse in, and every
-    # book task pays that import at load time otherwise, judge or no judge.
+    """Have an agent grade a sample of the rebuilt book's bullets against the source."""
     import _greenfield as gf
 
     limit = int(run.param_float("judge_sample", 12.0))
@@ -520,7 +406,6 @@ def _judge_line(book_judge: dict[str, Any]) -> str:
     return f"book judge: {', '.join(parts)} (sample of {sample})"
 
 
-# ── the score ─────────────────────────────────────────────────────────────────────────
 
 
 def _doctor_cell(doctor: dict[str, Any] | None) -> str:
@@ -667,11 +552,7 @@ def score_paired_round(
 
 
 def score_round(run: Run, fixture: Fixture) -> Score:
-    """Grade the witness the build left behind — read-only over the stage.
-
-    Recomputed here rather than recorded by the step, so a sealed result zip can be
-    re-scored after a ruler changes without re-running the build.
-    """
+    """Grade the witness the build left behind — read-only over the stage."""
     ledger = run.stage.joinpath(*TRIALS) / "trials.json"
     if not ledger.is_file():
         return Score(headline="no build recorded — the round did not reach a run", detail=())

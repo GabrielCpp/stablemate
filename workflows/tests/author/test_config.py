@@ -173,8 +173,6 @@ def test_mark_roadmap_authored_preserves_the_contract_body(tmp_path: Path) -> No
 
 
 def test_design_prompt_has_no_inventory_write_contract() -> None:
-    # Both flows that design a mockup ship their own copy of the envelope, and a write
-    # contract reintroduced in either one is the defect this guards.
     author = Path(workhorse_workflows.__file__).parent / "author"
     copies = sorted(author.glob("*/prompts/design-mockup.md"))
     assert copies, "no flow ships design-mockup.md"

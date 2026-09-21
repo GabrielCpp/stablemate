@@ -1,8 +1,4 @@
-"""Argument parsing and command dispatch — the ``farrier`` entry point.
-
-Wires the config/layers/sources/renderer/outputs/scaffolds modules together behind
-the subcommands (init, install, config, source, scaffold, version, hooks).
-"""
+"""Argument parsing and command dispatch — the ``farrier`` entry point."""
 from __future__ import annotations
 
 import argparse
@@ -128,14 +124,7 @@ def _add_install_args(parser: argparse.ArgumentParser) -> None:
 
 
 def _run_init(args: argparse.Namespace) -> int:
-    """`farrier init` — write the starter ``agents.yml`` every other command reads.
-
-    Refusing to overwrite is the whole safety story here, and it is a hard error rather
-    than the scaffold command's "exists (kept)": a scaffold seeds a tree where some
-    files legitimately already exist, whereas someone running `init` in a configured
-    repo has confused it with `install`, and telling them so beats printing a success
-    line that did nothing. `--force` is the escape hatch, and it says what it costs.
-    """
+    """`farrier init` — write the starter ``agents.yml`` every other command reads."""
     repo = args.repo.resolve()
     if not repo.is_dir():
         raise SystemExit(f"error: {repo} is not a directory")
@@ -153,14 +142,7 @@ def _run_init(args: argparse.Namespace) -> int:
 
 
 def _run_user_install(args: argparse.Namespace) -> int:
-    """`farrier install --user` — render the user_library tables into the harness homes.
-
-    Deliberately not reachable from a repo install. In Claude Code a personal skill wins
-    over the project's, and in Copilot the project wins, so the same name installed at
-    both scopes is not a harmless duplicate — on one harness it silently shadows what
-    the repo pinned. Which harness gets which skill is therefore the user's call, made
-    once in their config, rather than a side effect of running install in a repo.
-    """
+    """`farrier install --user` — render the user_library tables into the harness homes."""
     home = (args.home or Path.home()).expanduser().resolve()
     outputs = render_user_expected(read_config(), home)
     if args.check:
@@ -171,16 +153,6 @@ def _run_user_install(args: argparse.Namespace) -> int:
 
 
 def _run_install(args: argparse.Namespace) -> int:
-    # Check out the base library, and update it, before anything looks for it. This is the
-    # one command that does: install is an operator asking for a re-render at a moment
-    # they chose, which is the same authority `rm -rf ~/.cache/stablemate` always carried.
-    # It must come first because `resolve_library_dir` reads "no overlay and no base" as a
-    # setup error, and the base is exactly what this call is here to produce.
-    #
-    # `--check` fetches but does not refresh. It writes nothing and runs in CI, where a
-    # library that moved underneath the comparison would turn a drift report into a
-    # coin-flip — the answer would depend on the hour the job ran rather than on the
-    # commit it ran against.
     ensure_base_library_dir(refresh=not args.check)
     set_layers(resolve_library_dir(args.library))
     if getattr(args, "user", False):
@@ -198,11 +170,6 @@ def _run_install(args: argparse.Namespace) -> int:
     try:
         outputs = render_expected(config, repo)
     except SystemExit as exc:
-        # A selection naming a source the visible layers do not have. In the hook that is
-        # a contributor without the private overlay, and failing closed there fails on
-        # every commit they make — the check cannot tell them anything about a file it
-        # cannot render. `make test` runs the same check with the library pinned, which
-        # is where an unrenderable config is somebody's problem.
         if not (args.check and getattr(args, "skip_unresolvable", False)):
             raise
         print(f"Skipped the generated-file check: {exc}")
@@ -216,30 +183,17 @@ def _run_install(args: argparse.Namespace) -> int:
 
 def _run_config(args: argparse.Namespace) -> int:
     if getattr(args, "config_file", None):
-        # Written into the environment rather than threaded through, because the reader
-        # and the four writers below all resolve the path themselves — one assignment
-        # here moves every one of them, and a parameter would have to be added to each.
-        # It is also what a subprocess of this one would need to agree with.
         os.environ[CONFIG_PATH_ENV] = str(args.config_file.expanduser())
     try:
         return _dispatch_config(args)
     except ConfigVersionError as exc:
-        # A config written by a newer stablemate-core. Actionable and deterministic, so
-        # it exits cleanly like every other config error here rather than as a traceback.
         raise SystemExit(f"error: {exc}") from exc
     except UnknownProfileError as exc:
-        # Same class of thing: the operator named something the file does not define, and
-        # the message already lists what it does.
         raise SystemExit(f"error: {exc}") from exc
 
 
 def _flatten(table: dict[str, Any], prefix: str = "") -> list[tuple[str, Any]]:
-    """A nested config table as dotted `key=value` pairs, in file order.
-
-    What an operator cannot do with `cat`: a profile is three tables deep
-    (`power.high.claude.model`), so a TOML echo only reproduces the file they already
-    have, while one line per leaf is greppable and diffable against another profile.
-    """
+    """A nested config table as dotted `key=value` pairs, in file order."""
     lines: list[tuple[str, Any]] = []
     for key, value in table.items():
         path = f"{prefix}{key}"
@@ -278,22 +232,13 @@ def _dispatch_config(args: argparse.Namespace) -> int:
         return 0
 
     if args.config_action == "set-worktree":
-        # Not validated for existence: this names where worktrees will be *created*,
-        # and the directory is routinely made on first use. Refusing an absent path
-        # would make the setting unorderable — you could not configure the machine
-        # before cutting the first worktree.
         root = args.path.expanduser().resolve()
         write_worktree_dir(root)
         print(f"worktree_dir={root}")
         return 0
 
-    # show — with a key: print bare value; without: print all as key=value
     cfg = read_config()
     if args.profile:
-        # Narrowed to the profile and flattened, because that is the shape of the answer:
-        # a profile replaces the top-level tables rather than layering over them, so what
-        # is printed here is the whole config a run on `--profile <name>` resolves from,
-        # not a fragment to be read against the file around it.
         entries = dict(_flatten(select_profile(cfg, args.profile)))
     else:
         entries = dict(cfg)
@@ -319,23 +264,7 @@ def find_agents_config(start: Path) -> Path | None:
 
 
 def mapped_instruction_sources(generated: Path) -> list[str] | None:
-    """Resolve a generated local-instruction file via its repo's agents.yml.
-
-    The file's HTML banner is a generation-time snapshot; `agents.yml →
-    localInstructions` is the live mapping and may have been edited since. So
-    resolution walks up to the repo's agents.yml, finds the mapping targeting
-    this file's directory, and turns its installed skill and prompt names into
-    library source paths with the same selection/prefix machinery install uses.
-    AGENTS.md and its CLAUDE.md pointer come from the same mapping, so both names
-    resolve to the same sources; when two mappings claim a directory the last one
-    wins, mirroring install.
-
-    Returns library-relative source paths; None when the file is not a local
-    instruction file or no agents.yml exists above it (caller may fall back to
-    the banner); exits when agents.yml exists but no longer maps this file —
-    the file is stale, and pointing at its old sources would invite edits that
-    the next install silently discards.
-    """
+    """Resolve a generated local-instruction file via its repo's agents.yml."""
     if generated.name not in LOCAL_INSTRUCTION_FILES:
         return None
     config_path = find_agents_config(generated.parent)
@@ -376,8 +305,6 @@ def mapped_instruction_sources(generated: Path) -> list[str] | None:
     )
     policies = load_layered_sources("policy", "library", "policies")
     renderer = Renderer(repo, prefix, repo_config, {}, skills, prompts, policies)
-    # Same order the aggregation uses, so `farrier source AGENTS.md` lists the sources in
-    # the order their text appears in the file it was asked about.
     return [
         library_source_path(source)
         for source in renderer.instruction_sources(
@@ -387,26 +314,12 @@ def mapped_instruction_sources(generated: Path) -> list[str] | None:
 
 
 def _run_source(args: argparse.Namespace) -> int:
-    """Resolve a generated file back to its editable library source path(s).
-
-    Skills/commands carry a machine-independent, `library/`-anchored
-    `metadata.source` in front matter; local instruction files resolve through
-    their repo's agents.yml (see mapped_instruction_sources). Either way the
-    relative path is joined under the library root resolved exactly as
-    ``install`` does (`--library` > `$FARRIER_LIBRARY_DIR` > home config), so
-    the printed path is the real editable source on *this* machine.
-    """
+    """Resolve a generated file back to its editable library source path(s)."""
     generated = args.file.resolve()
     if not generated.is_file():
         raise SystemExit(f"error: {args.file} is not a file")
     set_layers(resolve_library_dir(args.library))
     text = generated.read_text(encoding="utf-8")
-    # Skills/commands stamp one source in front matter. Local instruction files
-    # resolve through the repo's agents.yml — the live mapping — and only fall
-    # back to their generation-time HTML banner when no agents.yml is found.
-    # A bundled markdown reference has no front matter of its own and is not a local
-    # instruction file either; its banner is its only provenance, and unlike a stale
-    # localInstructions mapping there is nothing live it could disagree with.
     rel_source = frontmatter_metadata(text).get("source")
     if rel_source:
         rel_sources = [rel_source]
@@ -435,9 +348,6 @@ def _run_source(args: argparse.Namespace) -> int:
                 "`farrier config show library_dir`."
             )
         layer, abs_source = hit
-        # With more than one layer, *which* copy you are about to edit is the whole
-        # question — an overlay shadowing the base means the base copy is inert.
-        # stdout stays the bare path so callers can `$(farrier source ...)` it.
         if len(_layers.LAYERS) > 1:
             print(f"note: resolved from layer {layer.name}", file=sys.stderr)
         print(abs_source)
@@ -507,7 +417,6 @@ def _run_scaffold(args: argparse.Namespace) -> int:
     for rel, spec in sorted(files.items()):
         resolved = substitute_scaffold_path(scaffold_id, rel, params)
         target = repo / resolved
-        # Seed semantics: never clobber a file the repo already owns.
         if target.exists():
             print(f"exists (kept): {resolved}")
             continue
@@ -529,7 +438,6 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     sub = parser.add_subparsers(dest="command")
 
-    # init
     init_p = sub.add_parser(
         "init",
         help="Write a starter agents.yml so this repository can be configured",
@@ -546,13 +454,11 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Overwrite an existing agents.yml instead of refusing",
     )
 
-    # install (default)
     install_p = sub.add_parser(
         "install", help="Render/install the selected packs into a repository (default)"
     )
     _add_install_args(install_p)
 
-    # config
     config_p = sub.add_parser("config", help="Manage the farrier home config")
     config_p.add_argument(
         "--config",
@@ -607,7 +513,6 @@ def _build_parser() -> argparse.ArgumentParser:
         "--profile NAME resolves from",
     )
 
-    # source
     source_p = sub.add_parser(
         "source",
         help="Print the editable library source path of a generated skill/command",
@@ -621,7 +526,6 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Library directory (agents/ tree). Overrides $FARRIER_LIBRARY_DIR and the home config.",
     )
 
-    # scaffold
     scaffold_p = sub.add_parser(
         "scaffold",
         help="Seed repository files from a library scaffold definition",
@@ -656,7 +560,6 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Library directory (agents/ tree). Overrides $FARRIER_LIBRARY_DIR and the home config.",
     )
 
-    # workflows
     workflows_p = sub.add_parser(
         "workflows",
         help="List the workflows installed on this machine (from pipx)",
@@ -668,7 +571,6 @@ def _build_parser() -> argparse.ArgumentParser:
              "launcher reads at make time.",
     )
 
-    # library
     library_p = sub.add_parser(
         "library",
         help="Read the library the layer stack resolves, or validate its sources",
@@ -715,8 +617,6 @@ def _build_parser() -> argparse.ArgumentParser:
              "layer shadows, which is the question worth asking.",
     )
 
-    # version
-    # doctor
     doctor_p = sub.add_parser(
         "doctor",
         help="Report what a workflow will be unable to do with this repo's agents.yml",
@@ -728,7 +628,6 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Repository root to diagnose (default: cwd)",
     )
 
-    # hooks (subcommand group — `install` and `list`)
     hooks_p = sub.add_parser(
         "hooks",
         help="Wire or list the git hooks farrier manages in this repo",
@@ -770,17 +669,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 def _run_hooks_install(args: argparse.Namespace) -> int:
-    """`farrier hooks install` — wire this repo's git hooks and (when a library
-    resolves) regenerate the per-repo runner, with no other outputs touched.
-
-    `farrier install` already does this at the end of a render, which is enough for a
-    repo whose every selection resolves. It is not enough for the clone that has no
-    overlay: the render raises there, and hooks that a contributor cannot install are
-    hooks that never run for the contributor most likely to trip one. The verb is
-    reachable on its own — no library required to wire the fence, library required to
-    regenerate the runner, and the runner being stale is reported under ``--dry-run``
-    as the cause-named line the operator needs to see.
-    """
+    """`farrier hooks install` — wire this repo's git hooks and (when a library resolves) regenerate the per-repo runner, with no other outputs touched."""
     repo = args.repo.resolve()
     config_path = repo / "agents.yml"
     config = read_yaml(config_path) if config_path.is_file() else {}
@@ -817,13 +706,7 @@ def _run_hooks_install(args: argparse.Namespace) -> int:
 
 
 def _run_hooks_list(args: argparse.Namespace) -> int:
-    """`farrier hooks list` — every hook the selected skills declare, grouped by stage.
-
-    Read from the same selection the installer uses, never from disk: a runner that
-    doesn't exist yet still has hooks the selection promises, and a runner that's
-    stale is misleading. The verb's question is "what will run here", not "what is
-    wired right now"; drift is `install --check`'s job.
-    """
+    """`farrier hooks list` — every hook the selected skills declare, grouped by stage."""
     repo = args.repo.resolve()
     config_path = repo / "agents.yml"
     if not config_path.is_file():
@@ -857,8 +740,6 @@ def _run_hooks_list(args: argparse.Namespace) -> int:
     include_skills, _, _, _ = collect_selection(config)
     exclude = config.get("exclude") or {}
     all_skills = load_layered_sources("skill", "library", "skills")
-    # Match `install`'s validation: a literal selection that names a file which does
-    # not exist is a typo and hard-fails, a glob that matches nothing is a warning.
     check_selection([("skills", all_skills, include_skills)])
     skills = selected_sources(
         all_skills, include_skills, set(exclude.get("skills", []) or [])
@@ -885,13 +766,7 @@ def _run_hooks_list(args: argparse.Namespace) -> int:
 
 
 def _run_library(args: argparse.Namespace) -> int:
-    """`farrier library list | show | check` — reading and validating the layer stack.
-
-    One verb for all three because they are one question asked three ways, about the
-    same resolved stack. A verb named for a single layer (`base-library`) would lie the
-    moment an overlay shadows something: what you get installed is the stack's answer,
-    not the base's.
-    """
+    """`farrier library list | show | check` — reading and validating the layer stack."""
     set_layers(resolve_library_dir(args.library))
     if not LAYERS:
         raise SystemExit(
@@ -926,11 +801,7 @@ def _run_library_list(args: argparse.Namespace) -> int:
 
 
 def _run_library_show(args: argparse.Namespace) -> int:
-    """One item's library source, undecorated so it pipes.
-
-    The *source*, not the installed adapter file: what you would edit. `farrier source`
-    already covers the other direction, from a generated file back to this one.
-    """
+    """One item's library source, undecorated so it pipes."""
     chosen = [
         (plural, getattr(args, singular))
         for plural, singular in KINDS.items()
@@ -955,16 +826,7 @@ def _run_library_show(args: argparse.Namespace) -> int:
 
 
 def _run_library_check(args: argparse.Namespace) -> int:
-    """The gate on the library's own front matter.
-
-    Checks every layer in the resolution stack, not just the overlay: a base-library
-    skill with a broken fence fails in exactly the same silent way, and the operator
-    running this cannot tell which layer a given skill came from without being told.
-    """
-    # A stack that names the same directory twice is one library, not two — which is how
-    # a repo pins this gate to its own library regardless of what the operator has
-    # configured: point both the overlay and $STABLEMATE_BASE_DIR at it, and the two
-    # entries collapse to a single pass over a single, machine-independent set of files.
+    """The gate on the library's own front matter."""
     roots: list[Path] = []
     for layer in LAYERS:
         root = (layer.root / "library").resolve()
@@ -979,20 +841,10 @@ def _run_library_check(args: argparse.Namespace) -> int:
 
 
 def _run_workflows(args: argparse.Namespace) -> int:
-    """`farrier workflows` — what this machine can run, and where it came from.
-
-    `--names` is the machine-readable form, and it is why this command exists: the
-    generated launcher resolves its run targets by calling it at **make** time
-    rather than having farrier bake the list into `.agents/agents.mk`. A baked list
-    would be a tracked file whose content differs per developer — and, for a local
-    install, one carrying somebody's home directory into the repo.
-    """
+    """`farrier workflows` — what this machine can run, and where it came from."""
     found = pipx.discover()
 
     if args.names:
-        # Space-separated on one line: make's `$(shell …)` collapses newlines to
-        # spaces anyway, and this keeps the empty case an empty line rather than a
-        # stray one.
         print(" ".join(pipx.names(found)))
         return 0
 
@@ -1013,8 +865,6 @@ def _run_workflows(args: argparse.Namespace) -> int:
         for workflow in dist.workflows:
             print(f"    {workflow}")
 
-    # A stale editable install is worth an exit code: it still *runs* here, so
-    # nothing else will report it until a container tries to bind the path.
     return 1 if any(dist.missing for dist in found) else 0
 
 
@@ -1023,13 +873,6 @@ def main(argv: list[str] | None = None) -> int:
 
     parser = _build_parser()
 
-    # Keep `farrier --repo .` working: if no recognised subcommand is given,
-    # inject `install` so existing invocations are unchanged.
-    # Exceptions: bare --help/-h shows the top-level subcommand listing, and so does
-    # a bare `farrier`. Nothing else on this CLI mutates a repository without being
-    # named, and "render every adapter file into whatever directory I happen to be
-    # standing in" is the last default a bare invocation should have — the verbs are
-    # what someone typing `farrier` alone is looking for.
     _SUBCOMMANDS = {
         "init",
         "install",
@@ -1077,8 +920,6 @@ def main(argv: list[str] | None = None) -> int:
             return _run_hooks_install(args)
         if args.hooks_action == "list":
             return _run_hooks_list(args)
-        # The subparser is `required=True`; argparse already exits with a usage error
-        # before we get here. The fallback is for type-checkers that can't see that.
         return 2
 
     if args.command == "doctor":

@@ -1,20 +1,4 @@
-"""A selection entry that names nothing must fail loudly, not vanish.
-
-Selection is a *filter*: `selected_sources` keeps library files matching the patterns in
-agents.yml, so an entry naming a file that does not exist simply contributes nothing and the
-install proceeds. `packs` already guards against that typo (`load_pack`); `skills`,
-`prompts` and `roots` did not, so a misspelled skill produced a repo silently missing a
-skill it declared.
-
-That shape of failure is the worst one available here: the symptom appears much later, as an
-agent running unskilled while every gate downstream still reports success. There is an
-aggregate guard ("Selected packs did not match any skills or prompts") but it only
-fires when *everything* misses — one typo among ten stayed silent.
-
-Literal vs glob is the severity line: a literal name is a promise about a specific file, so a
-miss is a typo and hard-fails. A glob is a filter that is allowed to select nothing, so it
-warns instead.
-"""
+"""A selection entry that names nothing must fail loudly, not vanish."""
 
 from pathlib import Path
 
@@ -67,8 +51,6 @@ def test_unknown_skill_fails_loudly(tmp_path: Path) -> None:
     message = str(excinfo.value)
     assert "unknown skill in agents.yml `skills:`" in message
     assert "demo/typo-skill" in message
-    # The whole point of a verbose error: name the likely intent, list the catalog, say
-    # where it looked, and name the overlay escape hatch.
     assert "did you mean: demo/real-skill?" in message
     assert "Available skills (1):" in message
     assert "Searched these library layers:" in message
@@ -87,8 +69,7 @@ def test_unknown_prompt_fails_loudly(tmp_path: Path) -> None:
 
 
 def test_every_miss_is_reported_in_one_run(tmp_path: Path) -> None:
-    """Collect before raising, so the operator fixes them all at once rather than
-    rediscovering the next typo on each re-run."""
+    """Collect before raising, so the operator fixes them all at once rather than rediscovering the next typo on each re-run."""
     library = make_library(tmp_path)
     repo = tmp_path / "repo"
     write_config(
@@ -127,8 +108,7 @@ def test_valid_selection_still_installs(tmp_path: Path) -> None:
 
 
 def test_unknown_root_fails_loudly(tmp_path: Path) -> None:
-    """Roots render only into the copilot adapter, so an unknown one used to be skipped in
-    silence by the `if root_hit is not None` guard."""
+    """Roots render only into the copilot adapter, so an unknown one used to be skipped in silence by the `if root_hit is not None` guard."""
     library = make_library(tmp_path)
     repo = tmp_path / "repo"
     write_config(
@@ -144,8 +124,7 @@ def test_unknown_root_fails_loudly(tmp_path: Path) -> None:
 
 
 def test_unknown_root_fails_even_with_copilot_disabled(tmp_path: Path) -> None:
-    """The declaration is wrong regardless of which assistants are enabled. Validating only
-    on the copilot path would defer the surprise to whenever someone switches copilot on."""
+    """The declaration is wrong regardless of which assistants are enabled."""
     library = make_library(tmp_path)
     repo = tmp_path / "repo"
     write_config(repo, BASE + "skills:\n  - demo/real-skill\nroots:\n  - ghost-root\n")
@@ -169,9 +148,6 @@ def test_known_root_still_renders(tmp_path: Path) -> None:
     assert (repo / ".github" / "copilot-instructions.md").is_file()
 
 
-# ── packs: already loud, now verbose through the same formatter ──
-# This one was never silent, but it had its own terse message. One operator mistake
-# deserves one answer, so it shares the formatter with skills/prompts/roots.
 
 def test_unknown_pack_is_verbose(tmp_path: Path) -> None:
     library = make_library(tmp_path)
@@ -186,14 +162,11 @@ def test_unknown_pack_is_verbose(tmp_path: Path) -> None:
     assert "unknown pack in agents.yml `packs:`" in message
     assert "did you mean: go?" in message
     assert "Available packs (1):" in message
-    # A pack can arrive via another pack's `includes:`, so a name you never typed can fail.
     assert "includes:" in message
 
 
 def test_empty_catalog_says_the_layer_is_missing_not_the_name(tmp_path: Path) -> None:
-    """The failure mode this codebase actually hits: skills and packs live in a private
-    overlay, so a *correct* name still resolves to nothing when no overlay is configured.
-    Reporting that as a typo sends people hunting for a misspelling that is not there."""
+    """The failure mode this codebase actually hits: skills and packs live in a private overlay, so a *correct* name still resolves to nothing when no overlay is configured."""
     library = make_library(tmp_path)
     repo = tmp_path / "repo"
     write_config(repo, BASE + "skills:\n  - demo/real-skill\npacks:\n  - go\n")
@@ -207,26 +180,17 @@ def test_empty_catalog_says_the_layer_is_missing_not_the_name(tmp_path: Path) ->
 
 
 def test_suggestions_catch_transpositions_difflib_misses(tmp_path: Path) -> None:
-    """difflib's ratio is length-normalized, so a transposition in a short name scores far
-    below any cutoff that is safe on long ones ('og' vs 'go' is 0.5). Anagram equality
-    catches that class exactly, which matters because transposition is the commonest typo."""
+    """difflib's ratio is length-normalized, so a transposition in a short name scores far below any cutoff that is safe on long ones ('og' vs 'go' is 0.5)."""
     from farrier.selection_errors import suggestions
 
     assert suggestions("og", ["go", "flutter"]) == ["go"]
     assert suggestions("codre", ["coder", "author"])[0] == "coder"
-    # Case and separator differences are the same kind of near-miss.
     assert suggestions("Demo/Real_Skill", ["demo/real-skill"]) == ["demo/real-skill"]
-    # And an unrelated name must NOT be offered — a wrong "did you mean" sends the
-    # operator to edit a line that was never the problem.
     assert suggestions("something-entirely-else", ["go", "flutter"]) == []
 
 
 def test_suggestions_drop_non_competitive_runners_up(tmp_path: Path) -> None:
-    """A shared namespace prefix lifts every sibling over the similarity cutoff, so a plain
-    top-N buries the one right answer under near-ties that are not close at all. Real case:
-    a typo'd 'stablemate/ostlr' offered ostler, groom and agent-library. (It was observed
-    when those skills were still spelled 'stablemate/stablemate-ostler', where the doubled
-    prefix made the effect worse; the bare namespace is enough to reproduce it.)"""
+    """A shared namespace prefix lifts every sibling over the similarity cutoff, so a plain top-N buries the one right answer under near-ties that are not close at all."""
     from farrier.selection_errors import suggestions
 
     catalog = [

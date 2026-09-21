@@ -1,15 +1,4 @@
-"""The Litestar web app: dashboard page, one websocket for live push +
-answer/restart, HTTP push endpoints for the in-container sidecar (and the
-``await_operator.py`` backstop push), the JSON read endpoints the browser
-fetches per selection, and the OTLP collector endpoints (``/v1/traces``,
-``/v1/metrics``) that make groom the default local backend for workhorse's
-opt-in OpenTelemetry instrumentation.
-
-Every endpoint here returns JSON and every websocket frame carries JSON: the
-browser renders, and :mod:`groom.projection` is the one place that decides what
-a run looks like on the wire. All state lives in :mod:`groom.state` — this
-module only wires HTTP/websocket handlers to it.
-"""
+"""The Litestar web app: dashboard page, one websocket for live push + answer/restart, HTTP push endpoints for the in-container sidecar (and the ``await_operator.py`` backstop push), the JSON read endpoints the browser fetches per selection, and the OTLP collector endpoints (``/v1/traces``, ``/v1/metrics``) that make groom the default local backend for workhorse's opt-in OpenTelemetry instrumentation."""
 
 from __future__ import annotations
 
@@ -68,27 +57,14 @@ _ASSET_URL_RE = re.compile(rb'(?:href|src)="(/assets/([^"?]+))"')
 
 
 def stamp_assets(html: bytes) -> bytes:
-    """Version every ``/assets/...`` URL in the shell with that file's mtime+size.
-
-    The static router answers with ``etag``/``last-modified`` but no
-    ``cache-control``, which lets a browser reuse a cached bundle heuristically —
-    without asking. A dashboard is long-lived and its client code changes under it,
-    so the failure that buys is silent: an old ``dashboard.js`` rendering a new
-    server payload, no console error, just a pane that stays empty. A stamped URL
-    changes whenever the file does, and a changed URL is a miss no heuristic can
-    override. The shell itself is built per request and carries no validator, so
-    the new stamps always arrive.
-
-    Assets are stamped once at import: they are files shipped inside the package,
-    and re-stating them per request would buy nothing but syscalls.
-    """
+    """Version every ``/assets/...`` URL in the shell with that file's mtime+size."""
 
     def stamp(match: re.Match[bytes]) -> bytes:
         url, name = match.group(1), match.group(2).decode()
         try:
             info = (ASSETS_DIR / name).stat()
         except OSError:
-            return match.group(0)  # not on disk: leave the URL alone, 404 as before
+            return match.group(0)
         version = f"{int(info.st_mtime)}-{info.st_size}".encode()
         return match.group(0).replace(url, url + b"?v=" + version)
 
@@ -101,31 +77,10 @@ _DASHBOARD_HTML = stamp_assets(
 
 _QUESTION_NOTIFY_LIMIT = 200
 
-# How often the absence-driven alert rules (STALL/STUCK) are evaluated. Silence
-# never triggers an ingest, so these need their own clock.
 RULES_TICK_S = float(os.environ.get("GROOM_RULES_TICK_S", "60"))
-# How often the durable store is re-pruned while groom serves. Pruning is a set of
-# DELETEs, wasteful to run every rules tick, so it rides its own slower clock; the
-# startup prune still happens once immediately. Default 1h.
 PRUNE_EVERY_S = float(os.environ.get("GROOM_PRUNE_EVERY_S", "3600"))
-# How often turn records are copied out of visible run dirs into the durable archive.
-# Well under the prune interval: this one is racing a run dir's lifetime, not groom's
-# disk budget, and a record harvested late is a record that may not be there at all.
 HARVEST_EVERY_S = float(os.environ.get("GROOM_HARVEST_EVERY_S", "300"))
-# How often the run list is re-rendered and pushed to every connected dashboard.
-# The list shows clock-derived facts — "alive", "silent 4m", "in node 12m" — that are
-# computed against `now` at render time, so between renders they do not merely lag,
-# they assert something false: a run that died keeps displaying the liveness it had
-# when its last state change was pushed. Absence emits no event, so nothing but a
-# clock can correct that. Kept well under GROOM_LIVE_AFTER_S so a run crossing into
-# silence is shown as silent within one tick, and skipped entirely when nobody is
-# watching. Event-driven broadcasts still fire immediately on a real change; this is
-# the floor, not the mechanism.
 LIVE_TICK_S = float(os.environ.get("GROOM_LIVE_TICK_S", "5"))
-# How often expired runs are written to disk and dropped from the store. Its own,
-# much slower clock than the prune it feeds — a sweep is a large read plus a large
-# delete, and prune can only ever delete what the last sweep archived, so the two
-# are ordered rather than merged. See `groom.archive.ARCHIVE_EVERY_S`.
 ARCHIVE_EVERY_S = archive.ARCHIVE_EVERY_S
 
 
@@ -134,26 +89,14 @@ def _all_workflows() -> list:
 
 
 async def _broadcast_shell(changed: str = "") -> None:
-    """Push the fleet to every tab, and — when one run is what changed — that
-    run's detail slices to the tabs watching it.
-
-    Both halves of a state change travel together: a gate opening changes the row
-    *and* the pane the operator has open, and a caller that pushed one without the
-    other would leave the pane a tick behind the list it was opened from.
-    """
+    """Push the fleet to every tab, and — when one run is what changed — that run's detail slices to the tabs watching it."""
     await state.broadcast(projection.state_message(_all_workflows()))
     if changed:
         await _push_detail(changed)
 
 
 async def _detail_message(wf: WorkflowContainer) -> dict:
-    """One run's detail pane, addressed to the tabs watching that run.
-
-    The same body ``GET /worker/{id}`` returns — the client keys the pane's
-    components by gate path and reconciles, so a re-render keeps the answer
-    textarea's DOM node (and whatever is half-typed in it) while a gate that
-    opened or closed still appears without a round trip.
-    """
+    """One run's detail pane, addressed to the tabs watching that run."""
     tel, facts, logs, history = await _run_facts(wf)
     return projection.detail_message(wf, tel, facts, logs, history=history)
 
@@ -162,7 +105,7 @@ async def _push_detail(container_id: str) -> None:
     """Send one run's detail slices to the tabs watching that run, and nobody else."""
     watchers = state.watchers_of(container_id)
     if not watchers:
-        return  # nobody has it open
+        return
     wf = state.WORKFLOWS.get(container_id)
     if wf is None:
         return
@@ -172,29 +115,21 @@ async def _push_detail(container_id: str) -> None:
 
 
 async def _push_watched() -> None:
-    """Refresh every open detail pane on the clock, for the same reason the run
-    list is re-pushed on one: elapsed labels are derived from ``now``.
-    History stays in memory; incoming telemetry advances it at ingestion."""
+    """Refresh every open detail pane on the clock, for the same reason the run list is re-pushed on one: elapsed labels are derived from ``now``."""
     for run_id in state.watched_ids():
         await _push_detail(run_id)
 
 
 async def _broadcast_notify(message: str) -> None:
-    """A one-shot alert for the tabs to toast (and raise a browser notification
-    for). Kept off the ``state`` frame so it accompanies an actual new block or
-    fired rule, not every reconciliation re-push."""
+    """A one-shot alert for the tabs to toast (and raise a browser notification for)."""
     await state.broadcast({"type": "notify", "message": message})
 
 
 async def _ensure_volumes(container_id: str) -> None:
-    """Fill in the workspace/runs volume names for a container we've only
-    heard about via a sidecar push so far (pushes carry no docker-level
-    metadata — only what the container's own env exposes). Cheap enough to
-    do on first sight of a container and then never again.
-    """
+    """Fill in the workspace/runs volume names for a container we've only heard about via a sidecar push so far (pushes carry no docker-level metadata — only what the container's own env exposes)."""
     wf = state.WORKFLOWS.get(container_id)
     if wf and wf.native:
-        return  # a native row's paths come from telemetry, not a docker inspect
+        return
     if wf and wf.workspace_volume:
         return
     inspect = await asyncio.to_thread(docker_io.docker_inspect, container_id)
@@ -210,19 +145,7 @@ async def _ensure_volumes(container_id: str) -> None:
 
 
 def _sync_native_row(run: RunTelemetry, fired: list[alerts.Alert] | None = None) -> bool:
-    """Project a run's telemetry hot-cache entry onto a dashboard row when the run
-    is **native** — i.e. its dir exists on groom's own host, which is both the test
-    for nativeness and exactly the capability the local-FS panels rely on.
-
-    Under the new model the row reflects *only* telemetry. The held-bridge and the
-    checkpoint walk are gone — telemetry carries the gate path and question
-    directly, and a reload keeps the previous session's last-known state in place
-    via ``RunTelemetry.last_session`` until a fresh point lands.
-
-    Docker runs use the sidecar hello snapshot (treated as docker's telemetry
-    equivalent); this function is for native runs only. Returns True when a row
-    was created or a visible field changed, so the caller knows to broadcast.
-    """
+    """Project a run's telemetry hot-cache entry onto a dashboard row when the run is **native** — i.e."""
     if run.native is None:
         run.native = localfs.is_local_dir(run.run_dir) or localfs.is_local_dir(
             run.workspace
@@ -236,17 +159,6 @@ def _sync_native_row(run: RunTelemetry, fired: list[alerts.Alert] | None = None)
         if before
         else None
     )
-    # Gate: only the telemetry-derived one carries weight. We do not walk
-    # checkpoints, and we do not retain a held state across ingests — a reload
-    # leaves the row on the previous session's last-known state until a new
-    # telemetry point from the new session swaps it on the same tick.
-    #
-    # wait_kind alone is enough to say a gate exists: a producer running code
-    # older than the gate-context telemetry can emit wait_kind with no path or
-    # question at all, and that run is still genuinely blocked. Requiring
-    # wait_gate_path here read that omission as "not blocked" instead. The
-    # live loop backfills path/question over the control socket when they're
-    # missing; until then the gate simply renders with an empty file_path.
     if not run.terminal and run.wait_kind in ("operator", "machine"):
         gate = GateInfo(
             workflow_id=run.run_id,
@@ -271,7 +183,6 @@ def _sync_native_row(run: RunTelemetry, fired: list[alerts.Alert] | None = None)
         repo_name=run.repo,
         repo_branch=run.branch,
         run_id=run.run_id,
-        # Host paths, not volume names — the local-FS panels read them directly.
         workspace_volume=run.workspace,
         runs_volume=run.run_dir,
         current_node=run.current_node,
@@ -279,7 +190,6 @@ def _sync_native_row(run: RunTelemetry, fired: list[alerts.Alert] | None = None)
         pid=run.pid,
         state=new_state,
     )
-    # Keep the action routing registry on the same gate the telemetry reports.
     wf.gates = dict(gates)
     wf.last_session = run.last_session
     _attend_gates(wf, list(wf.gates.values()))
@@ -293,16 +203,7 @@ def _sync_native_row(run: RunTelemetry, fired: list[alerts.Alert] | None = None)
 
 
 async def _project_native_rows(records: list) -> None:
-    """After an OTLP ingest, refresh the dashboard rows of the native runs it
-    touched and broadcast once if any changed.
-
-    A plain heartbeat changes no field here and so pushes nothing — deliberately.
-    The beat has already done its work by the time this runs (``alerts.ingest_*``
-    stamped ``last_heartbeat_ts``), and what it moved is a *time*, which the
-    ``_live_loop`` clock re-derives on its own tick. This broadcast exists to make a
-    real transition — a new run, a node change, a block — visible immediately rather
-    than up to one tick late.
-    """
+    """After an OTLP ingest, refresh the dashboard rows of the native runs it touched and broadcast once if any changed."""
     run_ids = {r.get("run_id") for r in records if r.get("run_id")}
     changed = []
     newly_blocked = []
@@ -341,38 +242,16 @@ async def index() -> Response:
 
 @get("/api/state", include_in_schema=False)
 async def api_state(q: Annotated[str, QueryParameter()] = "") -> dict:
-    """The whole fleet as JSON — **the same payload the websocket pushes**.
-
-    This is the resync path. A tab whose socket has gone quiet (or that reads
-    ``live`` off a half-open TCP connection that will never deliver another
-    frame) polls this and feeds the body through the same ``applyState()`` a push
-    goes through, so recovering from a dead socket is not a second rendering
-    code path that can rot unobserved.
-
-    ``q`` filters the run list the way the socket's does not; the fleet-wide
-    counts stay fleet-wide, because the status bar is a dashboard and not a
-    result count.
-    """
+    """The whole fleet as JSON — **the same payload the websocket pushes**."""
     return projection.state_message(_all_workflows(), q)
 
 
 @get("/repos", include_in_schema=False)
 async def repos() -> list[dict]:
-    """The container+repo picker's contents: one group per container, each with
-    the checkouts found on its volume. There is always one workflow per
-    container, so the container name *is* the ``<workflow>-<runid>`` label; a
-    multi-repo workspace contributes several entries for the one container. Repos
-    are enumerated per container concurrently (each is a throwaway docker run)
-    and only for workflows whose workspace volume is known.
-    """
+    """The container+repo picker's contents: one group per container, each with the checkouts found on its volume."""
     workflows = [wf for wf in _all_workflows() if wf.workspace_volume]
 
-    async def _repos_for(wf: WorkflowContainer) -> tuple:  # (wf, [repo_dir, ...])
-        # A native run shares groom's host, so enumerate its checkouts straight
-        # from local disk — the same branch /files and /diff already take. Routing
-        # it through docker would spin up a throwaway container to read a directory
-        # groom can stat directly, and return [] for a workspace that isn't a
-        # docker volume — which is why a native run had no browsable repos.
+    async def _repos_for(wf: WorkflowContainer) -> tuple:
         lister = localfs.list_repo_dirs if wf.native else docker_io.list_repo_dirs
         dirs = await asyncio.to_thread(lister, wf.workspace_volume)
         return wf, dirs
@@ -382,11 +261,7 @@ async def repos() -> list[dict]:
 
 
 async def _sidecar_rpc(container_id: str, method: str, params: dict) -> dict | None:
-    """Serve a data-plane read from the container's live sidecar socket, or
-    ``None`` when no sidecar is connected or the RPC fails — the caller then
-    falls back to the throwaway-container volume read. Preferring the socket is
-    what collapses the per-read container-create latency to a local-disk read.
-    """
+    """Serve a data-plane read from the container's live sidecar socket, or ``None`` when no sidecar is connected or the RPC fails — the caller then falls back to the throwaway-container volume read."""
     conn = sidecar_hub.get(container_id)
     if conn is None:
         return None
@@ -401,15 +276,7 @@ async def files(
     container_id: Annotated[str, PathParameter()],
     repo: Annotated[str, QueryParameter()] = "",
 ) -> dict:
-    """The repo-relative file paths of one checkout, as ``{"paths": [...]}``.
-
-    A flat list, not a nested tree: the nesting is a pure function of the paths
-    and a display decision the browser is already making (it decides which
-    directories start collapsed), so projecting it here would put half a
-    rendering choice on the wire. ``repo`` is the volume-relative checkout dir
-    from the picker (empty = volume root). Served from the live sidecar when one
-    is connected; otherwise from a throwaway volume read.
-    """
+    """The repo-relative file paths of one checkout, as ``{"paths": [...]}``."""
     served = await _sidecar_rpc(container_id, "getTree", {"repo": repo})
     if served is not None:
         return {"paths": list(served.get("paths") or [])}
@@ -429,17 +296,7 @@ async def file_content(
     repo: Annotated[str, QueryParameter()] = "",
     path: Annotated[str, QueryParameter()] = "",
 ) -> dict:
-    """One file's text plus the highlight.js language its name implies, as
-    ``{"path", "content", "lang"}``.
-
-    The language is decided here rather than in the viewer so the extension table
-    is one table, next to the other presentation policy. The combined
-    ``repo/path`` runs through the traversal guard (``safe_relpath`` in the
-    sidecar or docker_io), so a crafted path can't escape the mounted volume.
-    Empty ``content`` on any failure or missing file — the viewer shows an empty
-    state. Served from the live sidecar when one is connected; otherwise a
-    volume read.
-    """
+    """One file's text plus the highlight.js language its name implies, as ``{"path", "content", "lang"}``."""
     lang = projection.file_lang(path)
     served = await _sidecar_rpc(container_id, "getFile", {"repo": repo, "path": path})
     if served is not None:
@@ -497,11 +354,7 @@ async def _store_history_batch(
     rows: list[dict], writer: Callable[[list[dict]], None], *,
     kind: Literal["spans", "logs", "metrics"] = "spans"
 ) -> None:
-    """Commit and advance watched snapshots atomically with respect to seeding.
-
-    A snapshot cannot contain a just-committed batch and then append it again.
-    Unwatched runs incur only the existing store write, with no history retained.
-    """
+    """Commit and advance watched snapshots atomically with respect to seeding."""
     async with state.HISTORY_LOCK:
         histories = {
             run_id: state.HISTORIES[run_id]
@@ -529,11 +382,7 @@ async def _push_received(rows: list[dict]) -> None:
 
 @get("/worker/{container_id:str}", include_in_schema=False)
 async def worker_detail(container_id: Annotated[str, PathParameter()]) -> dict:
-    """One run's detail pane as JSON — activity, its gates, live metrics, log
-    trail. The same body the websocket pushes to this run's watchers
-    (:func:`groom.projection.detail_message`), so opening a pane and having one
-    refreshed under you land on the same shape.
-    """
+    """One run's detail pane as JSON — activity, its gates, live metrics, log trail."""
     wf = state.WORKFLOWS.get(container_id)
     if wf is None:
         return {"found": False, "id": container_id}
@@ -546,14 +395,7 @@ async def diff(
     container_id: Annotated[str, PathParameter()],
     repo: Annotated[str, QueryParameter()] = "",
 ) -> dict:
-    """One checkout's working-tree git diff, as ``{"diff": "<unified diff>"}``.
-
-    The raw unified text rides through: diff2html parses it in the browser to
-    build the file list and the side-by-side coloring, so splitting it up here
-    would mean reimplementing a parser that already runs on the other end.
-    ``repo`` is the volume-relative checkout dir from the picker (empty = first
-    repo found).
-    """
+    """One checkout's working-tree git diff, as ``{"diff": "<unified diff>"}``."""
     served = await _sidecar_rpc(container_id, "getDiff", {"repo": repo})
     if served is not None:
         return {"diff": served.get("diff") or ""}
@@ -569,11 +411,7 @@ async def diff(
 
 @get("/api/run/{run_id:str}/outbox", include_in_schema=False)
 async def outbox_get(run_id: Annotated[str, PathParameter()]) -> dict:
-    """The gate this run is parked on, if any — its path, question and status.
-
-    The native gate comes from the latest wait telemetry; older containers
-    report their gates through the sidecar snapshot.
-    """
+    """The gate this run is parked on, if any — its path, question and status."""
     wf = _workflow_by_run_id(run_id)
     if wf is None:
         return {"found": False}
@@ -590,10 +428,7 @@ async def outbox_get(run_id: Annotated[str, PathParameter()]) -> dict:
 
 @post("/api/run/{run_id:str}/outbox", include_in_schema=False)
 async def outbox_post(run_id: Annotated[str, PathParameter()], data: dict) -> dict:
-    """Answer the gate this run is parked on. Straight through to ``_answer``,
-    the same path the browser's websocket ``answer`` command takes, so a gate
-    answered from the CLI updates every open tab exactly like one answered here.
-    """
+    """Answer the gate this run is parked on."""
     wf = _workflow_by_run_id(run_id)
     if wf is None:
         return {"ok": False, "message": "no such run"}
@@ -608,9 +443,7 @@ async def inbox_get(
     run_id: Annotated[str, PathParameter()],
     include_all: Annotated[bool, QueryParameter()] = False,
 ) -> dict:
-    """This run's inbox — outstanding messages by default, every message
-    (replied or not) when ``?include_all=true`` — mirroring the CLI's ``read``.
-    """
+    """This run's inbox — outstanding messages by default, every message (replied or not) when ``?include_all=true`` — mirroring the CLI's ``read``."""
     wf = _workflow_by_run_id(run_id)
     if wf is None:
         return {"messages": []}
@@ -622,10 +455,7 @@ async def inbox_get(
 
 @post("/api/run/{run_id:str}/inbox", include_in_schema=False)
 async def inbox_post(run_id: Annotated[str, PathParameter()], data: dict) -> dict:
-    """Append an operator message to this run's inbox — the ``ask`` verb,
-    reachable over HTTP rather than only the CLI so a browser tab (or a
-    babysitting session without shell access to the run dir) can leave one.
-    """
+    """Append an operator message to this run's inbox — the ``ask`` verb, reachable over HTTP rather than only the CLI so a browser tab (or a babysitting session without shell access to the run dir) can leave one."""
     wf = _workflow_by_run_id(run_id)
     if wf is None:
         return {"ok": False, "message": "no such run"}
@@ -641,17 +471,7 @@ async def inbox_post(run_id: Annotated[str, PathParameter()], data: dict) -> dic
 
 
 async def _reconcile() -> int:
-    """One discovery pass: upsert every found workflow, then prune the ones
-    whose container is gone (skipping the prune when docker is unreachable so a
-    transient outage never wipes the fleet). Shared by the background startup
-    scan and the manual /refresh. Returns the number of workflows found.
-
-    Runs on the default thread-pool via ``asyncio.to_thread``; a Ctrl+C landing
-    mid-scan waits for the current docker call to return before the process
-    exits (bounded by DOCKER_TIMEOUT), then shuts down cleanly. A daemon-thread
-    variant was tried to make that instant but crashed uvloop on teardown, so
-    the clean bounded wait is the deliberate choice.
-    """
+    """One discovery pass: upsert every found workflow, then prune the ones whose container is gone (skipping the prune when docker is unreachable so a transient outage never wipes the fleet)."""
     found = await asyncio.to_thread(discovery.scan)
     for wf in found:
         state.WORKFLOWS[wf.container_id] = wf
@@ -663,11 +483,7 @@ async def _reconcile() -> int:
 
 @post("/refresh", include_in_schema=False)
 async def refresh() -> dict:
-    """Re-run the reconciliation scan on demand (e.g. a UI button), so
-    workflows that predate this groom process without ever pushing to it are
-    still discovered without a restart. Flags SCANNING so an empty fleet shows
-    the spinner while the rescan runs.
-    """
+    """Re-run the reconciliation scan on demand (e.g."""
     state.SCANNING = True
     await _broadcast_shell()
     try:
@@ -698,38 +514,20 @@ async def push_progress(data: dict) -> dict:
 
 @get("/api/attend/queue", include_in_schema=False)
 async def attend_queue() -> dict:
-    """Every run currently waiting on an attendant, oldest first — the whole fleet.
-
-    The `session` dispatch mode publishes here instead of spawning, so one interactive
-    Claude polls one endpoint rather than stacking a watch loop per run id, which is
-    the actual limit of babysitting a run by hand today.
-    """
+    """Every run currently waiting on an attendant, oldest first — the whole fleet."""
     return {"mode": attend.mode(), "jobs": attend.queue()}
 
 
 @get("/api/attend/sessions", include_in_schema=False)
 async def attend_sessions() -> dict:
-    """The attendance log: the latest 200, newest first. Nothing is ever pruned.
-
-    No paging, no date filter, no refresh button — the pane exists so a season of
-    attendances can be read back at once and a recurring cause spotted, and 200 rows
-    is that season. The rows themselves are cheap; the transcripts they point at are
-    fetched one at a time.
-    """
+    """The attendance log: the latest 200, newest first."""
     rows = await asyncio.to_thread(store.attend_recent, 200)
     return {"mode": attend.mode(), "sessions": rows}
 
 
 @get("/api/attend/sessions/{session_id:str}", include_in_schema=False)
 async def attend_session(session_id: Annotated[str, PathParameter()]) -> dict:
-    """One attendance, rendered as a conversation — not as JSON.
-
-    The transcript is copied at process exit, and copied here on first read when that
-    did not happen (groom killed mid-attendance, a session recovered from a row). The
-    resume line is handed over ready to paste: the point of keeping these is being
-    able to go *ask* the attendant what it was thinking, and that needs the workspace
-    as much as the session id.
-    """
+    """One attendance, rendered as a conversation — not as JSON."""
     row = await asyncio.to_thread(store.attend_by_session, session_id)
     await asyncio.to_thread(attend_transcript.ensure_body, session_id)
     rendered = await asyncio.to_thread(attend_transcript.render_session, session_id)
@@ -743,12 +541,7 @@ async def attend_session(session_id: Annotated[str, PathParameter()]) -> dict:
 
 @post("/api/attend/sessions/{job_id:str}/stop", include_in_schema=False)
 async def attend_stop(job_id: Annotated[str, PathParameter()]) -> dict:
-    """Kill this attendant and hand its run back to the operator's own terminal.
-
-    Not a way to abandon the run — the run is still parked or still dead, and groom
-    will attend it again on a later announcement unless the operator gets there
-    first. What this ends is the *agent*, so that two of them are never in one tree.
-    """
+    """Kill this attendant and hand its run back to the operator's own terminal."""
     stopped = await asyncio.to_thread(attend.stop, job_id)
     await _broadcast_shell()
     return {"ok": stopped}
@@ -756,28 +549,13 @@ async def attend_stop(job_id: Annotated[str, PathParameter()]) -> dict:
 
 @get("/api/settings/attend", include_in_schema=False)
 async def attend_settings_get() -> dict:
-    """The effective attend settings, and where each value came from.
-
-    ``sources`` is not decoration. A key set in the environment is *not* overridden by
-    a toggle that writes the config — the config wins, but only for the keys it
-    carries — so a UI that showed a bare on/off could show a value the running groom
-    is not using. Saying "environment" is what makes that visible.
-    """
+    """The effective attend settings, and where each value came from."""
     return (await asyncio.to_thread(attend.settings)).as_dict()
 
 
 @post("/api/settings/attend", include_in_schema=False)
 async def attend_settings_post(data: dict) -> dict:
-    """Turn the attendant on or off, persisted to the unified home config.
-
-    Three-valued on purpose: ``off`` is stored as itself, and ``on`` restores the last
-    non-off mode rather than assuming ``headless`` — an operator who runs ``session``
-    mode and toggles off and on should get ``session`` back, not a claude they did not
-    ask for.
-
-    The response is the freshly re-read effective settings, not an echo of what was
-    sent: a save that silently did not take is the one failure a toggle can hide.
-    """
+    """Turn the attendant on or off, persisted to the unified home config."""
     current = await asyncio.to_thread(attend.settings)
     enabled = bool(data.get("enabled"))
     wanted = (current.last_mode or attend.HEADLESS) if enabled else attend.OFF
@@ -795,20 +573,13 @@ async def attend_settings_post(data: dict) -> dict:
 
 @get("/api/dispatch/queues", include_in_schema=False)
 async def dispatch_queues() -> dict:
-    """Every configured queue, with its concurrency and current occupancy.
-
-    The dashboard's dispatch pane and `groom dispatch queues` both read this and
-    nothing else — occupancy is computed from the store on every call rather than
-    tracked in memory, so it is correct even right after a groom restart, before any
-    item on that queue has been touched again.
-    """
+    """Every configured queue, with its concurrency and current occupancy."""
     return {"queues": await asyncio.to_thread(dispatch.queue_status)}
 
 
 @post("/api/dispatch/{queue:str}/items", include_in_schema=False)
 async def dispatch_enqueue(queue: Annotated[str, PathParameter()], data: dict) -> Response:
-    """Enqueue one item onto this queue. 404s a queue with no `[groom.dispatch.<name>]`
-    entry — this endpoint cannot create one, only config can (§3, R4Q1)."""
+    """Enqueue one item onto this queue."""
     params = data.get("params") if isinstance(data.get("params"), dict) else {}
     try:
         item = await asyncio.to_thread(dispatch.enqueue, queue, params)
@@ -829,8 +600,7 @@ async def dispatch_items(queue: Annotated[str, PathParameter()]) -> dict:
 async def dispatch_delete(
     queue: Annotated[str, PathParameter()], item_id: Annotated[str, PathParameter()]
 ) -> dict:
-    """Cancel a still-`pending` item before it ever spawns. `ok: False` if it is
-    already running (or already terminal) — a running item is stopped, not deleted."""
+    """Cancel a still-`pending` item before it ever spawns."""
     del queue
     return {"ok": await asyncio.to_thread(dispatch.cancel_pending, item_id)}
 
@@ -848,10 +618,7 @@ async def dispatch_stop(
 
 @post("/push/blocked", include_in_schema=False)
 async def push_blocked(data: dict) -> dict:
-    """Used both by groom-sidecar and by the await_operator.py backstop push
-    — same shape, same handling, whichever gets there first (or both; the
-    second call is just a harmless re-render).
-    """
+    """Used both by groom-sidecar and by the await_operator.py backstop push — same shape, same handling, whichever gets there first (or both; the second call is just a harmless re-render)."""
     container_id = str(data.get("container_id", ""))[:12]
     file_path = str(data.get("file_path", ""))
     if not container_id or not file_path:
@@ -869,7 +636,6 @@ async def push_blocked(data: dict) -> dict:
 
     await _broadcast_shell(container_id)
     await _broadcast_notify(f"{wf.name}: {question[:_QUESTION_NOTIFY_LIMIT]}")
-    # Legacy pushes retain gate discovery for producers without wait telemetry.
     gate = next(iter(wf.gates.values()))
     _attend_gates(wf, [gate])
     return {"ok": True}
@@ -877,12 +643,7 @@ async def push_blocked(data: dict) -> dict:
 
 @post("/push/exited", include_in_schema=False)
 async def push_exited(data: dict) -> dict:
-    """The workflow process ended (fired once by the container entrypoint via
-    ``groom-sidecar --exit-code``). Mark it FINISHED and drop any open gate —
-    a container that has exited can't act on an answer. The container object
-    usually still exists until ``docker rm``; the refresh/startup prune is what
-    removes it from the list entirely.
-    """
+    """The workflow process ended (fired once by the container entrypoint via ``groom-sidecar --exit-code``)."""
     container_id = str(data.get("container_id", ""))[:12]
     if not container_id:
         return {"ok": False}
@@ -904,24 +665,12 @@ async def push_exited(data: dict) -> dict:
     return {"ok": True}
 
 
-#: Endings that are not a death to attend. ``RELOAD_EXIT_CODE`` is the supervisor
-#: restarting the run on purpose — the thing an attendant does itself — and an
-#: interrupt is a person who has already decided. The terminal set says the same thing
-#: for a native run, whose ending arrives as its root span: a ``--core`` reload or a
-#: ``switch-cli`` re-execs the process and ends that span ``reload`` — the same restart
-#: ``RELOAD_EXIT_CODE`` names, and the run is still going.
 _NOT_A_DEATH_EXIT = frozenset({0, reload_mod.RELOAD_EXIT_CODE})
 _NOT_A_DEATH_TERMINAL = frozenset(alerts.CLEAN_TERMINALS) | {"interrupted", "reload"}
 
 
 def _attend_death(container_id: str) -> None:
-    """Put an attendant on a run that ended without reaching its own end.
-
-    A park and a death are one problem — a run that stopped and cannot restart itself
-    — and differ only in what clears them. A parked run is reloaded and answered; a
-    dead run has no socket, so it is patched and resumed from the checkpoint it still
-    holds. Native rows only, and never raising, for the reasons in :func:`_attend_gates`.
-    """
+    """Put an attendant on a run that ended without reaching its own end."""
     wf = state.WORKFLOWS.get(container_id)
     if wf is None or not wf.native:
         return
@@ -937,11 +686,8 @@ def _attend_death(container_id: str) -> None:
 
 
 async def _dispatch_alerts(fired: list[alerts.Alert]) -> None:
-    """Fan one batch of newly-fired alerts out to every channel: the activity
-    log, the AFK push (ntfy/webhook, off the event loop — urllib blocks), and
-    the browser notification path blocked-gates already use."""
+    """Fan one batch of newly-fired alerts out to every channel: the activity log, the AFK push (ntfy/webhook, off the event loop — urllib blocks), and the browser notification path blocked-gates already use."""
     for alert in fired:
-        # Publish before the external notification channel, which may be slow.
         telemetry = state.RUNS.get(alert.run_id)
         await state.broadcast(AttentionFrame(events=[AttentionEvent(
             run_id=alert.run_id, event=RULE_EVENTS[alert.rule], message=alert.message,
@@ -964,34 +710,15 @@ async def _dispatch_alerts(fired: list[alerts.Alert]) -> None:
 
 
 def _real_runs(records: list[dict]) -> list[dict]:
-    """Drop records a test process produced, before anything stores or alerts on
-    them.
-
-    Workhorse already declines to export from a test process, so on a current
-    producer this filters nothing. It exists for the ones that don't: an older
-    workhorse, or a container image built before that guard. Without it a single
-    `make test` on a machine with `groom serve` up was the collector's largest
-    writer by two orders of magnitude, and the runs worth looking at were buried
-    under scratch dirs nobody would ever open. The run dir is on every decoded
-    record — spans, metrics and logs alike — so one predicate covers all three
-    receivers even though only two of the tables store the column.
-    """
+    """Drop records a test process produced, before anything stores or alerts on them."""
     return [r for r in records if not store.is_test_run_dir(str(r.get("run_dir", "")))]
 
 
 def _truthy(value: str) -> bool:
-    """A query flag, read the way a checkbox writes it (`1`, `on`) and the way a
-    hand-typed URL does (`true`, `yes`). An absent flag and a bare `?flag` are
-    indistinguishable here — both arrive as the empty default — so the flag must
-    carry a value to mean yes."""
+    """A query flag, read the way a checkbox writes it (`1`, `on`) and the way a hand-typed URL does (`true`, `yes`)."""
     return value.strip().lower() in ("1", "true", "yes", "on")
 
 
-# OTLP/HTTP has no "try again" body — the status is the whole channel — so a store
-# that cannot take this batch answers 503 with a Retry-After rather than the bare 500
-# an unhandled exception produces. The exporter retries all of 5xx, so this is not
-# about *whether* it comes back; it is about saying how soon and not lying about the
-# batch having landed. The empty body is a valid Export*ServiceResponse.
 _RETRY_AFTER_S = "5"
 
 
@@ -1006,21 +733,7 @@ def _store_unavailable() -> Response:
 
 @post("/v1/traces", include_in_schema=False)
 async def otlp_traces(request: Request) -> Response:
-    """Standard OTLP/HTTP trace receiver — parse → store → eval rules →
-    broadcast, mirroring push_blocked's shape. A pushed span carries its own
-    identity in the payload, so native (non-Docker) runs appear here without
-    passing the discovery gate.
-
-    The store call goes to a thread, as every other blocking call in this module does.
-    `sqlite3` releases the GIL around its own work, but the commit is still a blocking
-    syscall — and on the event loop it is one every live run pays for every other run:
-    a single collector serving a fleet serializes every export, every alert evaluation
-    and every dashboard request behind whichever write is in flight.
-
-    The thread comes from ``pools.INGEST`` rather than the shared default executor,
-    which docker, discovery and the transcript harvest also draw on. A fleet of
-    concurrent runs saturates that default pool routinely, and when it goes so does
-    the collector — see groom.pools."""
+    """Standard OTLP/HTTP trace receiver — parse → store → eval rules → broadcast, mirroring push_blocked's shape."""
     body = b""
     try:
         body = await request.body()
@@ -1041,23 +754,16 @@ async def otlp_traces(request: Request) -> Response:
     try:
         await _store_history_batch(spans, store.insert_spans)
     except sqlite3.Error:
-        # Returning early on purpose: nothing was stored, so evaluating alerts
-        # or projecting rows off this batch would publish a state the store
-        # does not have, and the exporter is about to send it again.
         return _store_unavailable()
     await _dispatch_alerts(alerts.ingest_spans(spans))
     await _project_native_rows(spans)
     await _push_received(spans)
-    # An empty ExportTraceServiceResponse serializes to zero bytes; OTLP/HTTP
-    # defines success as 200 (Litestar's POST default would be 201).
     return Response(content=b"", media_type="application/x-protobuf", status_code=200)
 
 
 @post("/v1/metrics", include_in_schema=False)
 async def otlp_metrics(request: Request) -> Response:
-    """Standard OTLP/HTTP metric receiver. The cap-wait heartbeat lands here —
-    the liveness signal that suppresses a false STALL during a legitimate
-    multi-hour/day spending-cap sleep."""
+    """Standard OTLP/HTTP metric receiver."""
     try:
         points = _real_runs(otlp.parse_metrics(await request.body()))
     except Exception:  # noqa: BLE001 - undecodable payload, whatever the cause → 400
@@ -1065,9 +771,6 @@ async def otlp_metrics(request: Request) -> Response:
     try:
         await _store_history_batch(points, store.insert_metrics, kind="metrics")
     except sqlite3.Error:
-        # Returning early on purpose: nothing was stored, so evaluating alerts
-        # or projecting rows off this batch would publish a state the store
-        # does not have, and the exporter is about to send it again.
         return _store_unavailable()
     await _dispatch_alerts(alerts.ingest_metrics(points))
     await _project_native_rows(points)
@@ -1077,18 +780,7 @@ async def otlp_metrics(request: Request) -> Response:
 
 @post("/v1/logs", include_in_schema=False)
 async def otlp_logs(request: Request) -> Response:
-    """Standard OTLP/HTTP log receiver.
-
-    This is where a script node's diagnostics land now that workhorse imports and
-    runs scripts in-process rather than spawning them: their records ride the
-    engine's own logger, so they arrive with the same run_id/run_dir resource as
-    the spans and can be read per node with ``groom logs --node``.
-
-    No alert rules fire on logs — deliberately. Liveness is already answered by
-    the heartbeat metrics, and paging on log content would mean guessing which
-    strings are worth waking someone for, per workflow. Committed logs advance
-    watched history and push the pane immediately.
-    """
+    """Standard OTLP/HTTP log receiver."""
     try:
         records = _real_runs(otlp.parse_logs(await request.body()))
     except Exception:  # noqa: BLE001 - undecodable payload, whatever the cause → 400
@@ -1096,9 +788,6 @@ async def otlp_logs(request: Request) -> Response:
     try:
         await _store_history_batch(records, store.insert_logs, kind="logs")
     except sqlite3.Error:
-        # Returning early on purpose: nothing was stored, so evaluating alerts
-        # or projecting rows off this batch would publish a state the store
-        # does not have, and the exporter is about to send it again.
         return _store_unavailable()
     await _push_received(records)
     return Response(content=b"", media_type="application/x-protobuf", status_code=200)
@@ -1108,45 +797,14 @@ async def otlp_logs(request: Request) -> Response:
 
 @get("/api/live", include_in_schema=False)
 async def api_live(run: Annotated[str, QueryParameter()] = "") -> list[dict]:
-    """Where each live run is right now — the rows behind ``groom status``.
-
-    Served from the in-memory ingest cache (``alerts.live_status``): the
-    heartbeat ticks it is built from are never persisted, so the running server
-    is the only process that can answer, and the CLI asks it here rather than
-    opening the SQLite file. Purely in-memory — no store call, nothing to
-    thread.
-    """
+    """Where each live run is right now — the rows behind ``groom status``."""
     return alerts.live_status(run=run)
 
 
-# --------------------------------------------------------------------------- #
-# Operator gates over the run's own control socket.
-#
-# The socket is the channel; the gate file is the record. A parked run answers
-# the `questions` verb in-band and consumes the `answer` verb itself — writing
-# its own gate file before acknowledging — so on the happy path groom never
-# writes into a workspace it doesn't own. Every miss here returns None and the
-# caller falls back to the file write (`answer_gate` re-checks AWAITING under
-# its per-gate lock, so a fallback after a socket-persisted answer refuses
-# rather than double-writing). Discovery mirrors that: the pushes (`blocked`
-# frame, /push/blocked, hello snapshot) support legacy container producers.
-# Native gates are projected from wait telemetry without a socket poll.
-# --------------------------------------------------------------------------- #
 
 
 def _attend_gates(wf: WorkflowContainer, gates: list[GateInfo]) -> None:
-    """Put an attendant on the gates this row reports being parked on.
-
-    Called by native telemetry projection and legacy gate pushes. Only
-    `operator` waits get an attendant. `machine` waits have a job running
-    somewhere that will read the file when the work finishes; dispatching
-    there would fabricate the job's end.
-
-    Only native rows are attended: a container row's `runs_volume` is a
-    docker volume, and an attendant spawned on this host has nothing to open.
-    Never raises — `/push/*` is the path through, and a stalled push path
-    must not itself be able to stall the watchdog.
-    """
+    """Put an attendant on the gates this row reports being parked on."""
     if not wf.native:
         return
     try:
@@ -1168,9 +826,7 @@ def _attend_gates(wf: WorkflowContainer, gates: list[GateInfo]) -> None:
 
 
 def _same_gate(run_path: str, file_path: str) -> bool:
-    """Whether the path a run reports for its gate names the same file as the
-    (possibly workspace-relative) path a groom row carries. Exact match, or the
-    row's path is a slash-bounded suffix of the run's absolute one."""
+    """Whether the path a run reports for its gate names the same file as the (possibly workspace-relative) path a groom row carries."""
     rel = file_path.lstrip("/")
     return bool(run_path) and (run_path == file_path or run_path.endswith(f"/{rel}"))
 
@@ -1178,16 +834,7 @@ def _same_gate(run_path: str, file_path: str) -> bool:
 async def _answer_via_socket(
     wf: WorkflowContainer | None, file_path: str, answer: str
 ) -> AnswerResult | None:
-    """Deliver one answer over the run's control socket, or ``None`` when the
-    file fallback should decide instead.
-
-    Ask-first: list the run's pending questions over its own control socket, match
-    the dashboard's gate against them, then answer with the run's *own* path string —
-    the run refuses a path it isn't waiting on, and groom's reconstruction of an
-    absolute path from a row is not guaranteed to be spelled the way the run spells
-    it. "already answered" is the one terminal refusal: the answer is already in
-    the file, so falling back would double-write.
-    """
+    """Deliver one answer over the run's control socket, or ``None`` when the file fallback should decide instead."""
     if wf is None:
         return None
     listing = await _run_questions(wf)
@@ -1217,21 +864,17 @@ async def _answer_via_socket(
         if reply.get("error") == "no listener":
             return None
     if not reply:
-        return None  # no ack inside the timeout — the file arm decides, safely
+        return None
     if reply.get("ok"):
         return AnswerResult(ok=True, message="answered over the run's control socket")
     error = str(reply.get("error", ""))
     if error == "already answered":
         return AnswerResult(ok=False, message=error)
-    return None  # mismatch race / unknown action (old workhorse) → file path decides
+    return None
 
 
 async def _run_questions(wf: WorkflowContainer) -> dict | None:
-    """The one-shot `questions` round-trip — used only by the answer flow.
-
-    Replaces the old `_socket_questions` that the polling code used to call on
-    every tick. Called when an operator submits an answer, not on a timer.
-    """
+    """The one-shot `questions` round-trip — used only by the answer flow."""
     if wf.native:
         if not wf.runs_volume:
             return None
@@ -1255,24 +898,7 @@ async def _run_questions(wf: WorkflowContainer) -> dict | None:
 
 
 def _gate_abs_path(wf: WorkflowContainer, gate: GateInfo) -> str:
-    """The gate's path on this host, for a consumer that has to open the file.
-
-    `GateInfo.file_path` is workspace-relative — that is the row's key, and the two
-    dashboard-side readers resolve it against the workspace themselves. The attendant is
-    the one consumer that leaves the process with it: it reads the gate for the job body
-    and again at exit for the released `STATUS:`, and a relative path there resolves
-    against *groom's own* working directory instead. That is right only when groom
-    happens to be serving from the same repo the run lives in, and silently wrong for
-    every other repo in the fleet — the gate reads as empty and the attendance records
-    no outcome.
-
-    `base` is set when the gate lives outside the workspace, in which case it is the
-    anchor `file_path` was made relative to.
-
-    `workspace_volume` is only a host path on a **native** row — on a container row it is
-    a docker volume name, and joining to it would build a path that opens nothing. That
-    is safe to rely on here rather than re-test.
-    """
+    """The gate's path on this host, for a consumer that has to open the file."""
     anchor = gate.base or wf.workspace_volume
     if not anchor:
         return gate.file_path
@@ -1280,20 +906,13 @@ def _gate_abs_path(wf: WorkflowContainer, gate: GateInfo) -> str:
 
 
 async def _answer(wf: WorkflowContainer | None, container_id: str, file_path: str, answer: str) -> AnswerResult:
-    """Write an operator's answer into one gate and settle the fleet around it —
-    the state flip, the log, the broadcast. Shared by the websocket ``answer``
-    command and the ``POST /api/run/{run_id}/outbox`` route so a gate answered
-    from a CLI updates every open tab exactly like one answered from the browser.
-    """
+    """Write an operator's answer into one gate and settle the fleet around it — the state flip, the log, the broadcast."""
     gate = wf.gates.get(file_path) if wf else None
     tel = projection.telemetry_for(wf) if wf else None
     if (gate and gate.kind == "machine") or (
         tel and tel.wait_kind == "machine" and _same_gate(tel.wait_gate_path, file_path)
     ):
         return AnswerResult(ok=False, message="machine waits require their producer's result")
-    # A gate can live outside the workspace the run exported (a resume launched
-    # from another cwd); the gate row carries the base it was actually read from,
-    # and the answer must be written back against that same base.
     workspace_volume = (gate.base if gate and gate.base else wf.workspace_volume) if wf else ""
     allow_headerless = bool(gate and gate.legacy_headerless)
     if allow_headerless:
@@ -1304,9 +923,6 @@ async def _answer(wf: WorkflowContainer | None, container_id: str, file_path: st
     if socket_result is not None:
         result = socket_result
         if result.ok:
-            # The run persisted the answer itself, so the bookkeeping the file
-            # writer does inline happens here: drop the gate row. No restart —
-            # a run that just acknowledged over its socket is alive.
             state.clear_gate(container_id, file_path)
     else:
         answer_path = file_path
@@ -1333,19 +949,11 @@ async def _answer(wf: WorkflowContainer | None, container_id: str, file_path: st
             "via": "socket" if socket_result is not None else "file",
         }
     )
-    # A worker whose last gate just cleared is no longer blocked — answer_gate
-    # woke/started it, so reflect RUNNING immediately instead of leaving a
-    # gate-less BLOCKED ghost until the next progress push.
     if result.ok and wf is not None and not wf.gates and wf.state == WorkflowState.BLOCKED:
         wf.state = WorkflowState.RUNNING
 
     await _broadcast_shell(container_id)
     if result.ok:
-        # Every tab is told, and the confirmation toast is all this has to carry:
-        # the watch push above already re-sent the whole detail — gates included —
-        # to whoever has this run open, so the answered gate is gone from their
-        # pane without anybody re-fetching, and no tab touches a half-typed answer
-        # it happens to be holding against a different run.
         await state.broadcast(
             {"type": "answered", "id": container_id, "file_path": file_path}
         )
@@ -1353,14 +961,7 @@ async def _answer(wf: WorkflowContainer | None, container_id: str, file_path: st
 
 
 def _workflow_by_run_id(run_id: str) -> WorkflowContainer | None:
-    """A run addressed by run id rather than container id.
-
-    A native row's dict key already *is* its run id (``state.evict_runs`` looks
-    it up the same way), so the direct lookup below covers it. A container-backed
-    row is keyed by container id instead — its run id is a separate field the
-    sidecar pushed — so that case falls back to a scan of the (small, in-memory)
-    fleet rather than needing a second index kept in sync with the first.
-    """
+    """A run addressed by run id rather than container id."""
     wf = state.WORKFLOWS.get(run_id)
     if wf is not None:
         return wf
@@ -1374,10 +975,7 @@ _INBOX_FILE = "inbox.jsonl"
 
 
 def _docker_inbox_rel_path(runs_volume: str) -> str | None:
-    """The volume-relative path to the latest run's inbox file, or ``None``
-    when the volume has no run directory yet — mirrors how
-    ``discovery._current_run_state`` finds the live run inside a runs volume.
-    """
+    """The volume-relative path to the latest run's inbox file, or ``None`` when the volume has no run directory yet — mirrors how ``discovery._current_run_state`` finds the live run inside a runs volume."""
     dirs = docker_io.list_run_dirs(runs_volume)
     if not dirs:
         return None
@@ -1385,12 +983,7 @@ def _docker_inbox_rel_path(runs_volume: str) -> str | None:
 
 
 def _inbox_messages(wf: WorkflowContainer) -> list[inbox.Message]:
-    """Every message in this run's inbox, oldest first — a plain read over
-    :mod:`workhorse.inbox` for a native run, whose ``runs_volume`` is a real
-    host path. A docker-backed run has no host path to hand that module, so
-    its raw text is read through the same docker volume plumbing
-    ``answer_gate`` uses and parsed with the shared :class:`inbox.Message`.
-    """
+    """Every message in this run's inbox, oldest first — a plain read over :mod:`workhorse.inbox` for a native run, whose ``runs_volume`` is a real host path."""
     if not wf.runs_volume:
         return []
     if wf.native:
@@ -1405,9 +998,7 @@ def _inbox_messages(wf: WorkflowContainer) -> list[inbox.Message]:
 
 
 def _inbox_append(wf: WorkflowContainer, *, message_id: str, body: str, at: str) -> inbox.Message | None:
-    """Append one operator message and return it, or ``None`` when the run
-    has no directory yet to append into (a docker run whose first run dir
-    hasn't been created)."""
+    """Append one operator message and return it, or ``None`` when the run has no directory yet to append into (a docker run whose first run dir hasn't been created)."""
     if wf.native:
         return inbox.append(Path(wf.runs_volume) / _INBOX_FILE, id=message_id, body=body, at=at)
     rel_path = _docker_inbox_rel_path(wf.runs_volume)
@@ -1422,9 +1013,6 @@ def _inbox_append(wf: WorkflowContainer, *, message_id: str, body: str, at: str)
 async def _handle_command(data: dict, queue: asyncio.Queue | None = None) -> None:
     cmd = data.get("cmd")
     if cmd == "watch":
-        # One tab declaring which run's detail pane it has open. The immediate push
-        # back is what makes a reconnect self-healing: the tab re-sends `watch` on
-        # every socket open and gets the current slices without an HTTP fetch.
         if queue is None:
             return
         run_id = str(data.get("run_id", ""))
@@ -1457,18 +1045,7 @@ async def _recv_loop(socket: WebSocket, queue: asyncio.Queue) -> None:
 
 @websocket("/ws")
 async def dashboard_ws(socket: WebSocket) -> None:
-    """One socket per open tab, carrying JSON in both directions: fleet-wide
-    ``state``/``notify``/``answered`` frames plus this tab's own ``detail``
-    frames down, ``{"cmd": "answer"|"watch", ...}`` up.
-
-    The first frame is a full ``state`` snapshot — byte-identical to what
-    ``GET /api/state`` would have returned — so a freshly-opened tab and a tab
-    that just resynced after a dead socket converge through the same code.
-
-    ``detail`` is the one downstream frame that is *not* fleet-wide: it goes only
-    to the tabs that sent ``watch`` for that run (see :mod:`groom.state`'s
-    ``WATCHING``), because which run is open is a property of the tab, not the fleet.
-    """
+    """One socket per open tab, carrying JSON in both directions: fleet-wide ``state``/``notify``/``answered`` frames plus this tab's own ``detail`` frames down, ``{"cmd": "answer"|"watch", ...}`` up."""
     await socket.accept()
     queue: asyncio.Queue = asyncio.Queue()
     state.add_client(queue)
@@ -1488,13 +1065,7 @@ async def dashboard_ws(socket: WebSocket) -> None:
 
 
 async def _apply_hello(container_id: str, data: dict) -> None:
-    """Fold a sidecar's on-connect ``hello`` into the fleet. Re-advertising is
-    authoritative for a connected container, so gates are rebuilt from the
-    snapshot rather than merged — a reconnect after a groom restart self-heals
-    to exactly the container's current state. ``_ensure_volumes`` still fills
-    the docker-level bits (workflow type, volume names) the sidecar can't know,
-    once, for the answer/fallback paths.
-    """
+    """Fold a sidecar's on-connect ``hello`` into the fleet."""
     identity = data.get("identity") or {}
     snapshot = data.get("snapshot") or {}
     await _ensure_volumes(container_id)
@@ -1503,9 +1074,6 @@ async def _apply_hello(container_id: str, data: dict) -> None:
         name=identity.get("name"),
         repo_name=identity.get("repo_name"),
         repo_branch=identity.get("repo_branch"),
-        # The join key for this row's telemetry. `upsert_workflow` skips None and
-        # empty values, so a sidecar that predates this (or a container launched
-        # without a run id) leaves the row exactly as it was.
         run_id=identity.get("run_id") or None,
         workflow_type=identity.get("workflow") or None,
     )
@@ -1513,9 +1081,6 @@ async def _apply_hello(container_id: str, data: dict) -> None:
     wf.gates.clear()
     if snapshot.get("terminal"):
         wf.state = WorkflowState.FINISHED
-        # The run is over, so this is the last chance to take its turn records off a
-        # volume that goes away with the container. Unconditional: a terminal reached
-        # between two announces would otherwise leave the final turns behind.
         conn = sidecar_hub.get(container_id)
         if conn is not None:
             sidecar_turns.schedule(
@@ -1531,7 +1096,6 @@ async def _apply_hello(container_id: str, data: dict) -> None:
                 continue
             wf.gates[file_path] = GateInfo(workflow_id=container_id, file_path=file_path, question=str(gate.get("question", "")))
         wf.state = WorkflowState.BLOCKED if wf.gates else WorkflowState.RUNNING
-        # No poll — the hello snapshot IS the docker-side telemetry.
     await _broadcast_shell(container_id)
 
 
@@ -1541,12 +1105,7 @@ async def _apply_socket_progress(container_id: str, data: dict) -> None:
 
 
 def _apply_socket_turn(conn: sidecar_hub.SidecarConnection, data: dict) -> None:
-    """A container says one of its turn records moved; go and fetch it.
-
-    Pull rather than let the sidecar push: a thrashing node writes turn records as fast
-    as it turns, and the host is the side that has to store them. The announce is a
-    hint — everything it names is re-derived from the container's own listing.
-    """
+    """A container says one of its turn records moved; go and fetch it."""
     sidecar_turns.schedule(
         conn,
         run=str(data.get("run", "")),
@@ -1564,25 +1123,13 @@ async def _apply_socket_blocked(container_id: str, data: dict) -> None:
     wf.gates[file_path] = GateInfo(workflow_id=container_id, file_path=file_path, question=question)
     await _broadcast_shell(container_id)
     await _broadcast_notify(f"{wf.name}: {question[:_QUESTION_NOTIFY_LIMIT]}")
-    # Dispatch attendant off the same push: a parked run gets an offer here,
-    # not at the next reconciling tick. The kind on the gate defaults to
-    # "operator", which is what `attend.attend_gate` admits.
     if wf.gates:
         _attend_gates(wf, list(wf.gates.values()))
 
 
 @websocket("/sidecar")
 async def dashboard_sidecar(socket: WebSocket) -> None:
-    """The container-dialed data-plane socket (distinct from the browser
-    ``/ws``): the sidecar is the client, so no inbound reachability into the
-    container is needed. The first ``hello`` establishes identity and registers
-    the connection in :mod:`groom.sidecar_hub`; thereafter this loop applies
-    streamed ``progress``/``blocked``/``turn`` deltas and resolves the
-    ``rpc_result`` replies to the ``getTree``/``getFile``/``getDiff`` requests the
-    panel handlers issue and the ``listTurns``/``readTurnFile`` requests the turn
-    pull issues. On disconnect the connection is unregistered and its pending
-    RPCs fail fast to the volume-read fallback.
-    """
+    """The container-dialed data-plane socket (distinct from the browser ``/ws``): the sidecar is the client, so no inbound reachability into the container is needed."""
     await socket.accept()
     conn: sidecar_hub.SidecarConnection | None = None
     try:
@@ -1599,7 +1146,7 @@ async def dashboard_sidecar(socket: WebSocket) -> None:
                 sidecar_hub.register(conn)
                 await _apply_hello(container_id, data)
             elif conn is None:
-                continue  # ignore anything before hello establishes identity
+                continue
             elif mtype == "rpc_result":
                 conn.resolve(
                     str(data.get("id", "")),
@@ -1622,12 +1169,7 @@ async def dashboard_sidecar(socket: WebSocket) -> None:
 
 @post("/reload", include_in_schema=False)
 async def reload(container_id: Annotated[str, QueryParameter()] = "") -> dict:
-    """Broadcast a ``reload`` to connected sidecars (all, or one when
-    ``container_id`` is given). Each sidecar closes and exits with code 3; the
-    container entrypoint recopies the edited source and relaunches. A no-op for
-    a container without a live socket — reload is a dev-loop convenience, never
-    workflow-critical.
-    """
+    """Broadcast a ``reload`` to connected sidecars (all, or one when ``container_id`` is given)."""
     targets = [container_id] if container_id else sidecar_hub.connected_ids()
     reloaded = 0
     for cid in targets:
@@ -1642,8 +1184,6 @@ async def reload(container_id: Annotated[str, QueryParameter()] = "") -> dict:
     return {"ok": True, "reloaded": reloaded}
 
 
-# Held module-side so the background scan task isn't garbage-collected while it
-# runs (asyncio keeps only a weak reference to bare tasks).
 _scan_task: asyncio.Task | None = None
 _rules_task: asyncio.Task | None = None
 _live_task: asyncio.Task | None = None
@@ -1651,14 +1191,7 @@ _archive_task: asyncio.Task | None = None
 
 
 async def _rules_loop() -> None:
-    """Periodic evaluation of the time-based alert rules, plus the two housekeeping
-    passes that bound groom's memory over a long serve: evicting finished/dead runs
-    from the hot cache, and re-pruning the durable store on its own slower clock.
-    Each tick is wrapped so one bad evaluation (or an unreachable notifier) never
-    kills the loop — the STALL watch itself must not be able to stall."""
-    # Seeded already-expired so the first tick prunes: startup no longer does
-    # (it must not touch the db before the port binds), and without this a serve
-    # restarted more often than PRUNE_EVERY_S would never prune at all.
+    """Periodic evaluation of the time-based alert rules, plus the two housekeeping passes that bound groom's memory over a long serve: evicting finished/dead runs from the hot cache, and re-pruning the durable store on its own slower clock."""
     last_prune = time.monotonic() - PRUNE_EVERY_S
     last_harvest = time.monotonic()
     while True:
@@ -1666,23 +1199,11 @@ async def _rules_loop() -> None:
         try:
             now = time.time()
             await _dispatch_alerts(alerts.check_time_rules(now))
-            # Native state follows received telemetry; legacy containers also
-            # announce their gates through sidecar snapshots and pushes.
-            # Free finished/dead runs (and the native rows they back) so RUNS and
-            # the per-tick rule walk don't grow unbounded across a week-long serve.
             state.evict_runs(alerts.stale_run_ids(now))
             if time.monotonic() - last_harvest >= HARVEST_EVERY_S:
-                # On its own, faster clock than the prune: a run dir is where a turn
-                # record is written, not where it survives, and the window between the
-                # two is however long that dir outlives the run. Off the loop because it
-                # copies files.
                 await asyncio.to_thread(turns.harvest)
                 last_harvest = time.monotonic()
             if time.monotonic() - last_prune >= PRUNE_EVERY_S:
-                # Fail-closed: prune deletes a run's rows only once the archival
-                # sweep has written them to disk, so what is on disk is the
-                # argument. A wedged archiver shows up as a database that stops
-                # shrinking rather than as rows deleted with no copy behind them.
                 archived = await asyncio.to_thread(archive.archived_run_ids)
                 await asyncio.to_thread(store.prune, store.RETENTION_DAYS, None, archived)
                 last_prune = time.monotonic()
@@ -1691,16 +1212,7 @@ async def _rules_loop() -> None:
 
 
 async def _backfill_wait_gate(run: RunTelemetry) -> None:
-    """Fetch the live question over the control socket when telemetry's copy of
-    gate_path/gate_question is missing.
-
-    A producer running code older than the gate-context telemetry emits
-    ``wait_kind`` but never ``gate_path``/``gate_question`` — the run is still
-    genuinely blocked, but the row has nothing to show or route an attendant
-    to until this fills it in. Native runs only, best-effort: a run with no
-    listener, or one whose nativeness hasn't been determined yet, is left for
-    the next tick.
-    """
+    """Fetch the live question over the control socket when telemetry's copy of gate_path/gate_question is missing."""
     if not run.native or not run.run_dir:
         return
     try:
@@ -1724,35 +1236,12 @@ async def _backfill_wait_gate(run: RunTelemetry) -> None:
 
 
 async def _live_loop() -> None:
-    """Re-render the run list on a clock and push it to every open dashboard.
-
-    Every other broadcast in here is edge-triggered: something changed, so tell the
-    tabs. That is exactly wrong for the half of the list derived from ``now`` rather
-    than from any record — the liveness dot, "silent 4m", "in node 12m". Those are
-    computed at render time, so between edges they freeze at whatever the last state
-    change happened to make them, and a run that has since died goes on claiming it is
-    alive. The event that should correct it — the run stopping — is an *absence*, and
-    an absence cannot be pushed. So the clock is the mechanism, not a fallback.
-
-    The same argument covers the open detail panes, so the tick refreshes those too
-    — one render per *watched* run rather than per client, and none at all when no
-    tab has anything open. With no client connected there is nobody to tell, so the
-    tick is skipped outright rather than rendering into the void. Wrapped per tick
-    for the same reason as the rules loop: the watch must not be the thing that stops.
-
-    This tick is also the socket's own heartbeat: it fires whether or not anything
-    changed, which is what lets the browser read silence as a dead connection rather
-    than as a quiet fleet.
-    """
+    """Re-render the run list on a clock and push it to every open dashboard."""
     while True:
         await asyncio.sleep(LIVE_TICK_S)
         if not state.CLIENTS:
             continue
         try:
-            # A run going quiet is an absence, so no ingest will ever re-sync its
-            # row — but "running" is a recency verdict that goes stale on the
-            # clock. Re-project every native row here so a stopped run's state
-            # stops claiming it is up, for the same reason the tick exists at all.
             died: list[alerts.Alert] = []
             runs = list(state.RUNS.values())
             incomplete = [
@@ -1783,19 +1272,7 @@ async def _stop_live() -> None:
 
 
 async def _archive_loop() -> None:
-    """Write expired runs out to disk on a slow clock, forever.
-
-    Seeded already-expired so the first sweep runs as soon as the port is up:
-    an operator restarting ``groom serve`` more often than ``ARCHIVE_EVERY_S``
-    would otherwise never archive anything, and the backlog this exists to drain
-    is exactly what a fresh install has most of.
-
-    Not run *during* startup, for the reason :func:`_spawn_rules` records: a
-    synchronous sweep holds the database before uvicorn binds, and every exporter
-    meanwhile gets connection refused. Off the loop in a thread, because the pass
-    is blocking SQLite and file IO throughout; wrapped per tick, because a store
-    that cannot be archived must not also stop being served.
-    """
+    """Write expired runs out to disk on a slow clock, forever."""
     last = time.monotonic() - ARCHIVE_EVERY_S
     while True:
         await asyncio.sleep(RULES_TICK_S)
@@ -1827,14 +1304,7 @@ async def _stop_archive() -> None:
 
 
 async def _spawn_rules() -> None:
-    """on_startup hook: start the alert-rule ticker, and nothing else.
-
-    It used to run ``store.prune()`` here, synchronously, before uvicorn could
-    bind the port — which on a store carrying a heartbeat backlog held "Waiting
-    for application startup" for minutes while every exporter got connection
-    refused. The first ``_rules_loop`` tick prunes instead (``last_prune`` is
-    seeded expired there), off the loop, with the port already answering.
-    """
+    """on_startup hook: start the alert-rule ticker, and nothing else."""
     global _rules_task
     _rules_task = asyncio.create_task(_rules_loop())
 
@@ -1845,12 +1315,7 @@ async def _stop_rules() -> None:
 
 
 async def _background_scan() -> None:
-    """The startup discovery pass, run off the event loop *after* the server is
-    already accepting connections. SCANNING stays True until this finishes (the
-    UI shows a spinner); the completion broadcast then swaps in real rows —
-    reaching every connected tab through the same path /refresh uses. Cleared in
-    a finally so a scan error can't strand the spinner forever.
-    """
+    """The startup discovery pass, run off the event loop *after* the server is already accepting connections."""
     try:
         await _reconcile()
     finally:
@@ -1859,14 +1324,7 @@ async def _background_scan() -> None:
 
 
 async def _recover_attend() -> None:
-    """on_startup hook: restart the attendants this groom was holding when it died.
-
-    claude sends no heartbeat and a groom restart kills its children, so a row still
-    saying ``running`` is the only trace one was ever there. Each is restarted on a
-    fresh session against the same row — never a new row, because it is the same
-    attendance of the same stopped run. Off the event loop: it reads the store and
-    spawns processes, and lifespan-startup must still finish and bind the port.
-    """
+    """on_startup hook: restart the attendants this groom was holding when it died."""
     try:
         restarted = await asyncio.to_thread(attend.recover_orphans)
     except Exception:
@@ -1877,12 +1335,7 @@ async def _recover_attend() -> None:
 
 
 async def _recover_dispatch() -> None:
-    """on_startup hook: mark every `running` dispatch row dead pids own as `failed`.
-
-    Off the event loop like `_recover_attend`, and deliberately not the same recovery
-    rule: dispatch never relaunches a dead item into its old row (§3.5) — see
-    `groom.dispatch`'s own docstring for why.
-    """
+    """on_startup hook: mark every `running` dispatch row dead pids own as `failed`."""
     try:
         closed = await asyncio.to_thread(dispatch.recover_orphans)
     except Exception:
@@ -1893,10 +1346,7 @@ async def _recover_dispatch() -> None:
 
 
 async def _spawn_scan() -> None:
-    """on_startup hook: only *schedule* discovery and return immediately, so
-    uvicorn finishes lifespan-startup and binds the port right away instead of
-    blocking on the whole docker scan (the old _startup_scan did the latter).
-    """
+    """on_startup hook: only *schedule* discovery and return immediately, so uvicorn finishes lifespan-startup and binds the port right away instead of blocking on the whole docker scan (the old _startup_scan did the latter)."""
     global _scan_task
     _scan_task = asyncio.create_task(_background_scan())
 

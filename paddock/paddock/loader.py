@@ -1,17 +1,4 @@
-"""Import a task module and freeze what it declared.
-
-Task modules live under `paddock/data/tasks/` as loose files rather than as a package: they
-are data belonging to the repo being benchmarked, not code shipped with paddock, and the
-data directory is selectable with `--data-dir`. So they are loaded by path, each under a
-private module name, with the registry reset around the import.
-
-The module's own directory goes on `sys.path` for the life of the process — the one narrow
-case the sys.path rule allows, because this stands in for the interpreter: a task that
-grows a `_helpers.py` beside it imports it exactly as `python tasks/thing.py` would,
-including from inside a function body that runs later, not only at module import time. The
-directory is added once, idempotently, and never removed — a `finally`-scoped remove would
-put it back exactly where a step's lazy sibling import breaks again.
-"""
+"""Import a task module and freeze what it declared."""
 
 from __future__ import annotations
 
@@ -59,11 +46,7 @@ def load_path(path: Path) -> Task:
 
 
 def load_all(data_dir: Path) -> list[Task]:
-    """Every task in the data directory, each import isolated from the others' failures.
-
-    A broken module raises here rather than being skipped: `paddock list` that quietly
-    omits a task is how a typo survives for a week.
-    """
+    """Every task in the data directory, each import isolated from the others' failures."""
     tasks = [load_path(path) for path in task_paths(data_dir)]
     seen: dict[str, str] = {}
     for item in tasks:

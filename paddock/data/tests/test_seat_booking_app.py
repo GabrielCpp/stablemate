@@ -1,21 +1,4 @@
-"""Integrity tests for the frozen `seat-booking` app.
-
-The app is what standalone QA is *scored against*, so a defect in it is worse than a
-defect in the harness: the harness fails loudly, the fixture just moves the number. These
-tests cover the three ways it can rot silently.
-
-* **The book stops being clean.** A fixture with an `unparsed-check` in it hands the run
-  under measurement a broken obligation and then counts the resulting miss against QA.
-* **A story's manifest stops matching the tree.** `diff.yml` is what materialization reads;
-  a path renamed in the app and not in the manifest produces a trial whose diff is not the
-  story's, which is invisible in the score and fatal to it.
-* **Materialization stops producing a worktree diff.** QA mints obligations from
-  uncommitted changes; a trial that commits everything obligates nothing and every run
-  passes. That failure mode reads exactly like "QA found no problems".
-
-No docker and no agent here — this is the app and the manifest logic, nothing that costs
-money to check.
-"""
+"""Integrity tests for the frozen `seat-booking` app."""
 
 from __future__ import annotations
 
@@ -51,9 +34,6 @@ def _load(name: str, path: Path) -> ModuleType:
     spec = importlib.util.spec_from_file_location(name, path)
     assert spec is not None and spec.loader is not None  # noqa: S101 - a real file on disk
     module = importlib.util.module_from_spec(spec)
-    # The registry is module-global and a task module declares into it at import: reset it
-    # around the load, exactly as `paddock.loader` does, or the second task loaded in this
-    # process refuses on a name the first one claimed.
     REGISTRY.reset()
     with _tasks_dir_on_path():
         sys.modules[name] = module
@@ -62,9 +42,6 @@ def _load(name: str, path: Path) -> ModuleType:
     return module
 
 
-# `_stablemate` first: the modules below import it by name, and a second instance loaded
-# afterwards would shadow it — leaving this file's `sm.TrialError` a different class from
-# the one the code under test raises, and every `pytest.raises` on it a false negative.
 sm = _load("_stablemate", DATA / "tasks" / "_stablemate.py")
 fx = _load("_forensics", DATA / "tasks" / "_forensics.py")
 frozen = _load("_frozenapp", DATA / "tasks" / "_frozenapp.py")
@@ -72,9 +49,6 @@ TASK = _load("_task_under_test", DATA / "tasks" / "seat_booking_qa.py")
 
 STORIES = ("seat-map", "seat-hold", "confirm-booking")
 
-# The widest defect in the key removes a nine-line docstring paragraph along with the two
-# lines of code it described — a variant that leaves the prose in place documents the bug it
-# plants. Well clear of that, and an order of magnitude under a whole-file copy.
 MAX_DEFECT_DIFF_LINES = 24
 
 
@@ -83,21 +57,10 @@ def manifest(story: str) -> dict[str, list[str]]:
     return {"changed": list(data.get("changed") or []), "added": list(data.get("added") or [])}
 
 
-# ── the book ──────────────────────────────────────────────────────────────────────────
 
 
 def test_every_screen_selector_is_one_the_render_scan_can_address() -> None:
-    """A documented selector must be a form `ostler vet` can resolve, or the node reads missing.
-
-    `ostler.vet.placement.is_addressable` is the one spelling of this grammar — the same
-    function backs the doctor's `unaddressable-selector` check (so the shared
-    `test_app_books.py::test_doctor_is_clean` already fails on a regression here too), and
-    this test exists only to name the
-    offending selector directly: `section[aria-label="Seat map"]` addressed exactly the right
-    element and vet reported it `missing` on a clean render, which put a standing failure in
-    every control and made the one defect that moves that region unmeasurable — a
-    misplacement cannot be seen on an element vet never finds.
-    """
+    """A documented selector must be a form `ostler vet` can resolve, or the node reads missing."""
     from ostler.vet.placement import is_addressable  # noqa: PLC0415 - a heavy import only this test needs
 
     screens = sorted((APP / "docs" / "features").rglob("gui/screens/*.md"))
@@ -121,7 +84,6 @@ def test_the_fixture_ships_the_stories_it_claims() -> None:
     assert set(STORIES) <= slugs
 
 
-# ── the manifests ─────────────────────────────────────────────────────────────────────
 
 
 @pytest.mark.parametrize("story", STORIES)
@@ -133,12 +95,7 @@ def test_every_manifest_path_exists_in_the_app(story: str) -> None:
 
 @pytest.mark.parametrize("story", STORIES)
 def test_changed_paths_have_a_pre_image_and_added_paths_do_not(story: str) -> None:
-    """The asymmetry is the whole manifest contract.
-
-    A `changed:` path with no `pre/` would be committed at its finished content and
-    disappear from the story's diff; an `added:` path *with* one would be committed at all,
-    which is the opposite of added. Both produce a trial that runs and reports a number.
-    """
+    """The asymmetry is the whole manifest contract."""
     diff = manifest(story)
     for rel in diff["changed"]:
         assert (APP / "stories" / story / "pre" / rel).is_file(), f"{story}: no pre/ for {rel}"
@@ -164,12 +121,7 @@ def test_no_image_names_a_path_the_manifest_does_not(story: str) -> None:
 
 
 def test_each_story_starts_where_the_previous_one_ended() -> None:
-    """Story N's `pre/` image is story N-1's `post/` image, byte for byte.
-
-    Without this the stories are three unrelated snapshots rather than one history, and a
-    trial on story 3 can present code story 2's trial never contained — so the same defect
-    scores differently depending on which story it was seeded in.
-    """
+    """Story N's `pre/` image is story N-1's `post/` image, byte for byte."""
     for earlier, later in zip(STORIES, STORIES[1:], strict=False):
         for rel in manifest(later)["changed"]:
             after = frozen.story_image(APP, earlier, rel, phase="post")
@@ -179,7 +131,6 @@ def test_each_story_starts_where_the_previous_one_ended() -> None:
             )
 
 
-# ── materialization ───────────────────────────────────────────────────────────────────
 
 
 @pytest.mark.parametrize("story", STORIES)
@@ -211,11 +162,7 @@ def test_materialize_puts_this_story_content_in_the_worktree(story: str, tmp_pat
 
 
 def test_materialize_does_not_ship_the_answer_key(tmp_path: Path) -> None:
-    """The seeded-defect list and the pre-images must not reach the tree QA reads.
-
-    An agent that can read `defects.yml` is not being measured on detection, and nothing in
-    its output would say so.
-    """
+    """The seeded-defect list and the pre-images must not reach the tree QA reads."""
     dest = frozen.materialize(APP, "seat-hold", tmp_path / "seat-booking")
     for name in frozen.NOT_THE_APP:
         assert not (dest / name).exists(), f"{name} was copied into the trial tree"
@@ -223,13 +170,7 @@ def test_materialize_does_not_ship_the_answer_key(tmp_path: Path) -> None:
 
 @pytest.mark.parametrize("story", STORIES)
 def test_materialize_keeps_every_authored_story(story: str, tmp_path: Path) -> None:
-    """The epic and all three story.md files reach the trial.
-
-    Not a restatement of the copy: the exclusion above is by name, and `stories` is also
-    what an epic calls its story folders. Excluding it at any depth deletes every
-    `story.md`, and the run refuses to plan against an unauthored story — a failure that
-    looks like a workflow bug and is a fixture bug.
-    """
+    """The epic and all three story.md files reach the trial."""
     dest = frozen.materialize(APP, "seat-hold", tmp_path / "seat-booking")
     epic = dest / "docs" / "epics" / "0001-seat-booking"
     assert (epic / "epic.md").is_file()
@@ -237,11 +178,7 @@ def test_materialize_keeps_every_authored_story(story: str, tmp_path: Path) -> N
 
 
 def test_materialized_book_is_unchanged(tmp_path: Path) -> None:
-    """The book sits at its authored state on both sides of HEAD.
-
-    A trial whose book is also uncommitted would let QA read the obligations as part of the
-    work under review, which is the situation the OKF context is built to avoid.
-    """
+    """The book sits at its authored state on both sides of HEAD."""
     dest = frozen.materialize(APP, "confirm-booking", tmp_path / "seat-booking")
     changed_docs = subprocess.run(
         ["git", "status", "--porcelain", "--untracked-files=all", "--", "docs"],
@@ -252,16 +189,7 @@ def test_materialized_book_is_unchanged(tmp_path: Path) -> None:
 
 @pytest.mark.parametrize("story", STORIES)
 def test_the_obligation_packet_builds_clean_on_a_trial(story: str, tmp_path: Path) -> None:
-    """Every story's QA context builds with no error-severity health finding.
-
-    This is what a trial does first, and an `unmapped-change` there is not a warning the run
-    walks past: the QA lane sends the packet to a repair agent, which edits the frozen book
-    before a scenario runs. The control then measures a fixture nobody authored, and the
-    minutes and tokens the repair spent land in the score as QA's. It only reproduces on a
-    materialized worktree — `doctor` is clean either way, because the finding is about the
-    story's diff and not about the book on its own — which is why it is checked here rather
-    than left to the round to discover.
-    """
+    """Every story's QA context builds with no error-severity health finding."""
     from ostler.api import Ostler  # noqa: PLC0415 - a heavy import only this test needs
 
     dest = frozen.materialize(APP, story, tmp_path / "seat-booking")
@@ -274,7 +202,6 @@ def test_the_obligation_packet_builds_clean_on_a_trial(story: str, tmp_path: Pat
     assert outcome.ok, outcome.data.get("status")
 
 
-# ── the answer key ────────────────────────────────────────────────────────────────────
 
 
 def defects() -> list[dict[str, str]]:
@@ -287,13 +214,7 @@ def defect_ids() -> list[str]:
 
 
 def obligation_ids() -> set[str]:
-    """Every obligation id this book can mint, independent of any diff.
-
-    `build_context` mints these against a `base..head` diff, which needs a git repo and takes
-    the better part of a minute. The private helpers underneath it are the same code path
-    minus the diff — which is what a check on the answer key wants, since a defect's row must
-    resolve whichever story it is seeded in.
-    """
+    """Every obligation id this book can mint, independent of any diff."""
     from ostler.model import load  # noqa: PLC0415 - a heavy import only these tests need
     from ostler.qa.context import _obligations, _serialized_graph  # noqa: PLC0415
 
@@ -315,12 +236,7 @@ def test_the_answer_key_names_its_defects_once() -> None:
 
 @pytest.mark.parametrize("row", defects(), ids=defect_ids())
 def test_every_defect_variant_exists_on_both_sides(row: dict[str, str]) -> None:
-    """A row names a file that exists as a variant *and* in the app.
-
-    Only the pair is meaningful: a variant with no counterpart in the app tree overwrites
-    nothing the story implements, and an app path with no variant is a row that applies
-    nothing at all. Either way the trial runs and reports a catch it never earned.
-    """
+    """A row names a file that exists as a variant *and* in the app."""
     assert (APP / "defects" / row["id"] / row["path"]).is_file()
     assert (APP / row["path"]).is_file()
 
@@ -342,16 +258,7 @@ def test_every_defect_actually_changes_the_story_image(row: dict[str, str]) -> N
 def test_every_defect_variant_is_the_story_image_plus_one_localized_edit(
     row: dict[str, str],
 ) -> None:
-    """A variant is the story's own file with a small mutation in it — nothing else.
-
-    The failure this catches is drift, not authorship: a payload is a whole copy of a file
-    the app still edits afterwards, so a later refactor of that file leaves the copy behind.
-    Seeding it then reverts the refactor *and* plants the defect, and the trial carries a
-    mutation far larger than the answer key describes — which destroys the localization the
-    key depends on and makes the resulting catch or miss say nothing about QA. It is
-    invisible to every other test here: the payload still differs from the image, still
-    compiles, still lands inside the story's diff.
-    """
+    """A variant is the story's own file with a small mutation in it — nothing else."""
     correct = frozen.story_image(APP, row["story"], row["path"], phase="post").read_text(
         encoding="utf-8"
     )
@@ -383,17 +290,11 @@ def test_every_defect_declares_a_route_and_an_expectation(row: dict[str, str]) -
     assert row["why"].strip()
 
 
-# ── scoring ───────────────────────────────────────────────────────────────────────────
 
 
 @pytest.mark.parametrize("row", defects(), ids=defect_ids())
 def test_seeding_a_defect_stays_inside_the_story_diff(row: dict[str, str], tmp_path: Path) -> None:
-    """Planting the defect changes the seeded file and leaves the rest of the trial alone.
-
-    Both halves matter. A variant that lands somewhere else is a second, undocumented defect
-    the answer key does not name — and a trial carrying two defects scores one of them as a
-    catch whichever one QA found.
-    """
+    """Planting the defect changes the seeded file and leaves the rest of the trial alone."""
     def tree(root: Path) -> dict[Path, bytes]:
         return {
             path: path.read_bytes()
@@ -416,8 +317,6 @@ def test_seeding_a_defect_stays_inside_the_story_diff(row: dict[str, str], tmp_p
 def test_selecting_defects_defaults_to_the_whole_key() -> None:
     assert [row["id"] for row in frozen.select_defects(APP, [])] == defect_ids()
     assert [row["id"] for row in frozen.select_defects(APP, ["D3", "D1"])] == ["D3", "D1"]
-    # A bad `--param defects=` is a task error naming the key, not a bare process exit:
-    # the round is driven by paddock now, and an exit code says nothing to the score.
     with pytest.raises(sm.TrialError, match="no such defect"):
         frozen.select_defects(APP, ["D99"])
 
@@ -445,9 +344,7 @@ def test_a_covered_obligation_over_a_seeded_defect_is_a_miss() -> None:
 
 
 def test_an_audit_row_is_inconclusive_when_the_configuration_gave_the_auditor_no_turn() -> None:
-    """A first-verdict trial never enters `audit`, so a row only the auditor can see is a
-    question this configuration did not ask — scoring it `missed` would grade the absence of
-    a lane, not the plan. A run row in the same trial is still a miss: its route did run."""
+    """A first-verdict trial never enters `audit`, so a row only the auditor can see is a question this configuration did not ask — scoring it `missed` would grade the absence of a lane, not the plan."""
     audit_row = {
         "id": "D9", "obligation": "okf:a#b:contract", "expect": "contradicted", "caught_by": "audit"
     }
@@ -464,8 +361,7 @@ def test_an_audit_row_is_inconclusive_when_the_configuration_gave_the_auditor_no
 
 
 def test_a_catch_by_the_other_route_is_still_a_catch_and_says_so() -> None:
-    """Which route fires is the plan's choice, so the verdict is `caught` either way — but
-    the surprise is written next to it, in the column a reader already has open."""
+    """Which route fires is the plan's choice, so the verdict is `caught` either way — but the surprise is written next to it, in the column a reader already has open."""
     audit_row = {
         "id": "D9", "obligation": "okf:a#b:contract", "expect": "contradicted", "caught_by": "audit"
     }
@@ -501,11 +397,7 @@ def test_a_row_with_an_unknown_route_is_refused_at_load(tmp_path: Path) -> None:
 
 
 def test_a_repaired_defect_is_a_catch_even_though_the_map_reads_covered() -> None:
-    """The loudest detection there is: QA saw it, triaged it `code`, and fixed the product.
-
-    The terminal evidence map is then computed over a repaired app and correctly reports
-    `covered`, so end-state-only scoring calls the best outcome a miss.
-    """
+    """The loudest detection there is: QA saw it, triaged it `code`, and fixed the product."""
     row = {"id": "D1", "obligation": "okf:a#b:contract", "expect": "contradicted"}
     verdict, because = frozen.classify(
         row, {"okf:a#b:contract": "covered"}, {"verdict": "stands"}, survived=False
@@ -541,11 +433,9 @@ def test_a_harness_failure_is_never_scored_as_detection(
 
 
 def test_an_unbilled_round_is_priced_from_tokens_and_marked_as_an_estimate() -> None:
-    """opencode reports a literal `$0` over millions of tokens. Printing `$0.00` there
-    says the round was free and kills the whole column on the mandated backend."""
+    """opencode reports a literal `$0` over millions of tokens."""
     assert fx.money([{"cost_usd": 0.94, "est_cost_usd": 0.71}]) == "$0.94"
     assert fx.money([{"cost_usd": 0.0, "est_cost_usd": 0.71}]) == "~$0.71"
-    # Neither a bill nor a rate for the model: unpriced, and a zero would be a claim.
     assert fx.money([{"cost_usd": 0.0, "est_cost_usd": None}]) == "$?"
 
 
@@ -556,22 +446,14 @@ def test_the_clean_control_scores_false_on_any_contradiction() -> None:
 
 
 def test_the_task_points_at_the_app_and_names_the_trial_dir() -> None:
-    """The declaration is now the task module's `FIXTURE`, not a `fixtures/*.yml` entry.
-
-    Story order is no longer part of it: a round enumerates its stories from the answer key
-    rather than from a hand-written list, so the fixture has no order to get wrong. What it
-    still has to get right is the two paths.
-    """
+    """The declaration is now the task module's `FIXTURE`, not a `fixtures/*.yml` entry."""
     assert DATA / TASK.FIXTURE.app == APP
-    # farrier derives generated skill names from the basename; anything else dangles.
     assert TASK.FIXTURE.repo_dir == "seat-booking"
     assert {row["story"] for row in defects()} <= set(STORIES)
 
 
 def test_the_audit_task_is_the_qa_round_with_the_auditor_turned_on() -> None:
-    """`seat-booking-audit` exists to score the one row a first-verdict round cannot: it
-    must run audit-on, be scoped to exactly the rows filed `caught_by: audit`, and share
-    the QA task's app and repo_dir so the two labels stay comparable row-for-row."""
+    """`seat-booking-audit` exists to score the one row a first-verdict round cannot: it must run audit-on, be scoped to exactly the rows filed `caught_by: audit`, and share the QA task's app and repo_dir so the two labels stay comparable row-for-row."""
     audit = _load("_seat_booking_audit_task", DATA / "tasks" / "seat_booking_audit.py")
     assert audit.FIXTURE.first_verdict is False
     assert audit.FIXTURE.app == TASK.FIXTURE.app

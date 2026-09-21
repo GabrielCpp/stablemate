@@ -1,21 +1,4 @@
-"""``ostler reach`` — derive how to navigate to a screen, from the book alone.
-
-The OKF records how screens are wired together: a component's ``leads-to:`` bullet says
-*activating this takes you there*, and a flow's ``steps:`` are an ordered walk whose consecutive
-entries land on different screens. Both are already in the graph; what was missing is reading them
-as a route rather than as prose.
-
-That is the point of the profile. A screen with no derivable route is not a screen you should
-reach by typing its URL — it is a hole in the book, because a real user could not have gotten
-there either. So an unreachable target is a finding, and this module reports it as one rather
-than falling back to the ``route:`` bullet.
-
-A route is a click-path *plus* what the caller must already satisfy to walk it. Screens declare
-that in two required bullets: ``requires:`` (guard components that redirect when unmet) and
-``params:`` (route parameters naming the interaction that mints the entity). Both are required
-even when empty, so ``none`` is a statement and a missing bullet is a defect — a walk cannot
-distinguish "nothing to satisfy" from "nobody wrote it down".
-"""
+"""``ostler reach`` — derive how to navigate to a screen, from the book alone."""
 
 from __future__ import annotations
 
@@ -28,30 +11,16 @@ from ostler import drivers as drivers_mod, graph as graph_mod, markdown, routes 
 from ostler.model import Graph
 from ostler.qa.runbook import bullet_value
 
-# The one bullet that means "activating this moves the user to that screen". `extends:`/`parent:`
-# are structure and `on:` is attachment; none of them are things a user can do.
 NAV_BULLET = "leads-to"
 STEP_BULLET = "steps"
 GUARD_BULLET = "requires"
 PARAM_BULLET = "params"
-# A screen entered from outside in-app navigation — an emailed deep link, an OAuth callback. Its
-# value says *how*, and only a value that *is* a route (a path or an absolute URL) seeds the
-# traversal: a walk can open `/reset/:token`, and cannot open "reached by typing the URL". Prose
-# is a description, not a door; the screen it sits on still has to be reachable by clicking.
 ENTRY_BULLET = "entry"
 ROUTE_BULLET = "route"
-# The surface's root is the screen whose `route:` is the path of its server's `entry-url:` —
-# the address the walk actually opens — or `/` when no server contract states one. Every other
-# screen is reached from it, or from a route-valued `entry:`.
 ROOT_PATH = "/"
 SERVER_TYPE = "server"
 ENTRY_URL_BULLET = "entry-url"
-# The literal that means "declared, and empty". Anything else is a real precondition.
 NONE = "none"
-# The spellings authors actually use for it. Recognizing only the canonical one is not the strict
-# reading it looks like — it is a silent wrong answer: `name: n/a` would be read as an accessible
-# name, and the derived locator would hunt for a control literally called "n/a", failing at runtime
-# as though the app were at fault. A sentinel the tooling does not know is worse than no sentinel.
 NONE_TOKENS = frozenset({NONE, "n/a", "n.a.", "na", "-", "—", "–", ""})
 
 
@@ -63,22 +32,13 @@ def _values(value: object) -> list[str]:
 
 
 def _is_none(raw: str) -> bool:
-    """Whether a precondition value states "nothing to satisfy".
-
-    Authors rarely write a bare ``none`` — they write ``none — public route, no auth guard``,
-    because the *reason* is the useful part. Matching only the bare token would read that as a
-    guard literally named "none — public route…", inventing a precondition out of an explanation.
-    """
+    """Whether a precondition value states "nothing to satisfy"."""
     head = re.split(r"[—:(]", raw.strip(), maxsplit=1)[0]
     return head.strip().lower() in NONE_TOKENS
 
 
 def preconditions(node: dict) -> dict:
-    """What a caller must satisfy before this screen can render.
-
-    ``declared`` is the honest bit: False means the bullets are missing, which is *not* the same
-    as unconditional. Callers must treat an undeclared screen as unverifiable rather than free.
-    """
+    """What a caller must satisfy before this screen can render."""
     meta = node.get("bullets", {})
     guards, params = [], []
     for raw in _values(meta.get(GUARD_BULLET, "")):
@@ -111,12 +71,7 @@ def _screen_of(node_id: str, by_id: dict) -> str | None:
 
 
 def navigation_edges(data: dict) -> list[dict]:
-    """Every documented screen-to-screen transition, with the action that causes it.
-
-    Two sources, deliberately kept distinct in ``kind`` so a caller can prefer one: a ``leads-to:``
-    component is a single click, while a flow step arrives with whatever state the earlier steps
-    established — cheaper to trust, harder to replay in isolation.
-    """
+    """Every documented screen-to-screen transition, with the action that causes it."""
     by_id = {n["id"]: n for n in data["nodes"]}
     edges: list[dict] = []
 
@@ -129,7 +84,7 @@ def navigation_edges(data: dict) -> list[dict]:
                 continue
             dst = _screen_of(edge["to"], by_id)
             if dst is None or dst == src:
-                continue  # an intra-screen `leads-to:` is a state change, not navigation
+                continue
             edges.append({
                 "from": src, "to": dst, "kind": "leads-to",
                 "action": "activate", "node": node["id"], "label": node["title"],
@@ -145,7 +100,7 @@ def navigation_edges(data: dict) -> list[dict]:
                 continue
             screen = _screen_of(edge["to"], by_id)
             if screen is None:
-                continue  # a step pointing at a concept/API doc, not at a screen
+                continue
             if prev_screen is not None and prev_screen != screen and prev_step is not None:
                 edges.append({
                     "from": prev_screen, "to": screen, "kind": "flow-step",
@@ -166,15 +121,7 @@ def _index(edges: list[dict]) -> dict[str, list[dict]]:
 
 def route(edges: list[dict], start: str, target: str,
           by_id: dict | None = None) -> list[dict] | None:
-    """The shortest documented click-path from *start* to *target*, or None if there is none.
-
-    Breadth-first, so the route is the fewest hops the book describes. ``leads-to:`` edges sort
-    ahead of flow steps at equal depth: a single click replays more reliably than a journey
-    prefix whose earlier steps have to be re-established.
-
-    With *by_id* (the node index from ``graph.build``) each hop carries the destination screen's
-    preconditions, so a caller walking the route knows what to satisfy before each arrival.
-    """
+    """The shortest documented click-path from *start* to *target*, or None if there is none."""
     if start == target:
         return []
 
@@ -210,8 +157,6 @@ def is_route(value: str) -> bool:
     return value.startswith("/") or bool(re.match(r"https?://", value))
 
 
-#: Why `is_route` said no, in the book's own terms — kept beside the predicate it describes so
-#: a caller reporting the reason and a change to the rule stay one edit apart, not two files.
 
 
 def _norm_path(path: str) -> str:
@@ -221,20 +166,7 @@ def _norm_path(path: str) -> str:
 
 
 def root_path(data: dict, driver: str | None = None) -> tuple[str | None, str | None]:
-    """``(path, server)`` — where the surface is entered, and the server contract that says so.
-
-    A sole server states it, and where a book has several the engine takes the first by id
-    rather than asking the author to mark one — every server on one surface serves the same
-    surface, so the disagreement the old marker adjudicated was between statements that were
-    already meant to agree. With no server at all the root is ``/``, which is what the doctor's
-    ``runbook-missing`` already asks the book to state.
-
-    *driver* is the surface's declared ``driver:`` (``surface_driver``), when the caller
-    already knows it. A driver `routes.is_path_addressed` says has no path grammar — today,
-    ``mobile`` — has no root *path* to state at all: ``(None, None)``, rather than inventing
-    ``/`` for a navigator that routes on names. Every other driver, including an undeclared one
-    (``driver=None``), keeps the grammar above unchanged.
-    """
+    """``(path, server)`` — where the surface is entered, and the server contract that says so."""
     if not routes_mod.is_path_addressed(driver):
         return None, None
     servers = sorted((n for n in data["nodes"]
@@ -271,22 +203,7 @@ def _driver_rank(driver: str) -> int:
 
 
 def surface_runbooks(dump: dict, surface: str) -> list[dict]:
-    """Every `runbook` node covering *surface*, in the order the engine consults them.
-
-    A real surface routinely has several runbooks — a lint runbook with `driver: cli`, a browser
-    runbook with `driver: web`, an IaC runbook with `driver: iac` — all correctly naming it
-    through `surfaces:`. That was never a disagreement to adjudicate, and the book used to be
-    asked to settle it by marking one runbook as the one a walk drives. Asking an author to mark
-    which of their own true statements the tooling should read is a question about the tooling,
-    not about the system they are describing, so the engine answers it here instead.
-
-    The order is §4.1's own driver order — `web` first, `none` last — which already ranks how far
-    into a running system each driver reaches: the runbook that drives a browser is what stands
-    for the surface a browser walks, and a lint runbook does not become that by being the one
-    somebody remembered to mark. A driver the vocabulary does not name, or none at all, sorts
-    last rather than out, so a book mid-edit still gets an answer. Ties inside one driver fall to
-    node id, so every machine reading one book reaches the same runbook.
-    """
+    """Every `runbook` node covering *surface*, in the order the engine consults them."""
     by_id = {n["id"]: n for n in dump["nodes"]}
     covering: list[dict] = []
     for node in dump["nodes"]:
@@ -300,13 +217,7 @@ def surface_runbooks(dump: dict, surface: str) -> list[dict]:
 
 
 def _surface_value(dump: dict, surface: str, key: str) -> str | None:
-    """The first non-empty *key* stated by any runbook covering *surface*, in consult order.
-
-    Every scalar the launch contract carries is read this way, so `driver:`, `bundle-id:` and
-    `entry-url:` cannot resolve to three different runbooks' idea of the same system. A runbook
-    silent on one key does not veto the rest: the next one down states it, which is what makes a
-    surface whose browser runbook omits `bundle-id:` still addressable by its mobile one.
-    """
+    """The first non-empty *key* stated by any runbook covering *surface*, in consult order."""
     for node in surface_runbooks(dump, surface):
         value = bullet_value(node["bullets"], key).strip()
         if value:
@@ -315,16 +226,7 @@ def _surface_value(dump: dict, surface: str, key: str) -> str | None:
 
 
 def entry_origin(dump: dict, surface: str) -> str | None:
-    """The ``scheme://host[:port]`` a QA walk should open for *surface*; ``None`` if the book
-    states none.
-
-    Two kinds of source state it, and both are read at full-book scope so a runbook filed under
-    a different surface than the one it stands up still counts: any `runbook` whose `surfaces:`
-    links into this surface, via its own `entry-url:`, and then the surface's own `server` node
-    via that node's. The runbook is asked first because it is the thing a QA session actually
-    brings up, so the address it serves on is the address a walk can reach; the server node
-    states the same fact one remove from the process that makes it true.
-    """
+    """The ``scheme://host[:port]`` a QA walk should open for *surface*; ``None`` if the book states none."""
     origin = _origin(_surface_value(dump, surface, ENTRY_URL_BULLET) or "")
     if origin:
         return origin
@@ -336,12 +238,7 @@ def entry_origin(dump: dict, surface: str) -> str | None:
 
 
 def surface_driver(dump: dict, surface: str) -> str | None:
-    """The `driver:` of the runbook that exercises *surface*; ``None`` if none states one.
-
-    A runbook's `driver:` states what that runbook drives, which alone says nothing about which
-    runbook is *how the surface is exercised*. `surface_runbooks` is what answers that, and this
-    reads the winner's bullet.
-    """
+    """The `driver:` of the runbook that exercises *surface*; ``None`` if none states one."""
     driver = _surface_value(dump, surface, DRIVER_BULLET)
     return driver.lower() if driver else None
 
@@ -352,20 +249,7 @@ def surface_bundle_id(dump: dict, surface: str) -> str | None:
 
 
 def surface_launch_screen(dump: dict, surface: str) -> str | None:
-    """The screen `launch-screen:` names for *surface*; ``None`` if no runbook names one.
-
-    Read in `surface_runbooks` order like every other launch-contract scalar, with one
-    difference: `launch-screen:` is authored as a markdown link (the same way `surfaces:` is),
-    not a bare string, since it names another node rather than stating a literal value — so this
-    reads the link's own href out of `bullet_value` and resolves it against the node's own edges
-    by href, rather than by `edge["via"]`: a node whose `launch-screen:` points at a screen
-    already named in its own `surfaces:` shares that href with the `surfaces:` edge, and
-    `graph._edge_sources` tags the first bullet to claim an href as every edge's `via` for that
-    href — matching by href instead survives that collision, since every edge sharing an href
-    resolves to the same target regardless of which bullet is credited. The returned string is
-    the target document's path with no `#anchor`, the same spelling `screen_routes()` keys on
-    and obligations carry as `source`, so a caller can compare the two directly.
-    """
+    """The screen `launch-screen:` names for *surface*; ``None`` if no runbook names one."""
     for node in surface_runbooks(dump, surface):
         raw = bullet_value(node["bullets"], LAUNCH_SCREEN_BULLET).strip()
         links = markdown.extract_refs(raw).links
@@ -379,12 +263,7 @@ def surface_launch_screen(dump: dict, surface: str) -> str | None:
 
 
 def root_screen(data: dict, driver: str | None = None) -> str | None:
-    """The screen whose ``route:`` is the surface's root path — the one node a walk starts on.
-
-    ``None`` both when no screen's ``route:`` matches (a real book gap) and when *driver* has
-    no path grammar to match against at all (``root_path`` already said so by returning no
-    path) — the two are told apart by the caller, which already has *driver* to ask again.
-    """
+    """The screen whose ``route:`` is the surface's root path — the one node a walk starts on."""
     path, _ = root_path(data, driver)
     if path is None:
         return None
@@ -431,26 +310,7 @@ LAUNCH_SCREEN_NOT_SCREEN = "launch-screen-not-screen"
 def surface_root(data: dict, driver: str | None = None, *,
                  surface: str | None = None
                  ) -> tuple[str | None, str, str | None]:
-    """``(root, reason, detail)`` — the start screen, why there is none, and the evidence for why.
-
-    *reason* is ``""`` on success, else one of the four stable tokens above, each naming exactly
-    one of the ways a surface can fail to state where it starts. A path-addressed driver
-    (`routes.is_path_addressed`) is answered the way it always has been — a screen whose
-    ``route:`` is the surface's root path (`root_screen`/`root_path`), or ``NO_PATH_ROOT`` when
-    no screen's does. A driver with no path grammar has no root *path* to consult at all, so it
-    is answered from `launch-screen:` instead, read via `surface_launch_screen` — which needs
-    *surface* to know which runbook to ask, hence ``NO_SURFACE`` when the caller has not given
-    one. That bullet is then reported in its own words exactly as it can fail: stated nowhere
-    (``NO_LAUNCH_SCREEN``), or naming something that is not a screen on this surface
-    (``LAUNCH_SCREEN_NOT_SCREEN``).
-
-    *detail* is the evidence a caller needs to render the failure without asking the question
-    again: the offending launch-screen id for ``LAUNCH_SCREEN_NOT_SCREEN``, and ``None`` for
-    every other reason — the rest name a fact that needs no further grounding.
-
-    This is the one place that decision is made; `resolve_start` and `unreachable_screens` both
-    read it rather than each drawing the distinctions again.
-    """
+    """``(root, reason, detail)`` — the start screen, why there is none, and the evidence for why."""
     if routes_mod.is_path_addressed(driver):
         root = root_screen(data, driver)
         return (root, "", None) if root is not None else (None, NO_PATH_ROOT, None)
@@ -467,22 +327,7 @@ def surface_root(data: dict, driver: str | None = None, *,
 def unreachable_screens(data: dict, driver: str | None = None, *,
                         surface: str | None = None
                         ) -> tuple[list[str], str | None, list[str], str]:
-    """``(unreachable, root, seeds, reason)``. A ``None`` root means the check could not run.
-
-    A ``None`` root is not the same as a pass; *reason* is the `surface_root` token that says why
-    there is none, so a caller that must report the failure does not have to ask `surface_root`
-    the same question again. It is ``""`` when *root* is not ``None``.
-
-    Reachability is transitive, so this is deliberately not "has an inbound edge": a cluster of
-    screens that link to each other but hangs off nothing is exactly the shape a broken navigation
-    graph takes, and an inbound-degree test scores every member of it as fine. And it starts from
-    the root rather than from every ``entry:``, because an exemption is a claim about the outside
-    world an edge check cannot verify — eight screens each saying "entered from outside" is a
-    book with no navigation in it, passing.
-
-    *driver* and *surface* thread through to `surface_root` — see there for what a driver with
-    no path grammar does, and what *surface* is for.
-    """
+    """``(unreachable, root, seeds, reason)``."""
     root, reason, _detail = surface_root(data, driver, surface=surface)
     if root is None:
         return [], None, [], reason
@@ -496,33 +341,12 @@ class UnknownStart(ValueError):
 
 
 class NoScreens(UnknownStart):
-    """*start* was ``None`` and the surface declares no screens at all.
-
-    An empty domain is not a failed search — the caller asked the open question ("reach any
-    screen") and got a true, vacuous answer, not a typo to correct. A subclass rather than a new
-    `reason` string so a caller that only ever handled `UnknownStart` keeps working unchanged,
-    while one that must tell the two apart — `_cmd_reach`, which answers this on stdout with exit
-    0 rather than `error:` on stderr with exit 2 — can catch it by type instead of matching text.
-    """
+    """*start* was ``None`` and the surface declares no screens at all."""
 
 
 def resolve_start(data: dict, start: str | None, driver: str | None = None, *,
                   surface: str | None = None) -> str:
-    """*start* as a screen id, or the surface's root when none was given.
-
-    A surface with no screens at all is told that directly: a search that finds nothing because
-    there was nothing to find is a different fact from a search that finds nothing because the
-    thing it wanted was missing, and `launch-screen:`, `--from` and a root path are all repairs
-    for the latter — none of them names anything when there is no screen to point at.
-
-    *driver* decides which of the two ``root_screen`` failures this is. A driver with no path
-    grammar — `mobile` names its screens, `cli` routes nothing — has no root path to state, but
-    when *surface* is given it may still state where it starts via `launch-screen:`, so that is
-    consulted first; only when that bullet is silent, or names something that is not a screen on
-    the surface, is the caller told so, rather than sent looking for a screen at `/`. Each of
-    those two is reported in its own words: a message that says the book stated nothing, where
-    the book stated something unusable, sends the reader to the wrong line.
-    """
+    """*start* as a screen id, or the surface's root when none was given."""
     screens = screens_of(data)
     if start is None:
         if not screens:
@@ -555,15 +379,7 @@ def resolve_start(data: dict, start: str | None, driver: str | None = None, *,
 
 def reachability(graph: Graph, *, surface: str | None = None, start: str | None = None,
                  driver: str | None = None) -> dict:
-    """Route every documented screen on *surface* from *start*; report the ones with no path.
-
-    *start* defaults to the surface's root screen — or, for a surface with no path grammar, its
-    `launch-screen:` — and a start that names no screen raises rather than routing from nowhere:
-    a typo in ``--from`` used to yield "0 reachable" — every screen reported as a hole in the
-    book, with the book untouched.
-    The unreachable list is the actionable half: each entry is a screen the book documents but
-    never says how to arrive at, which is exactly the missing coverage a walk cannot close on its own.
-    """
+    """Route every documented screen on *surface* from *start*; report the ones with no path."""
     data = graph_mod.build(graph, surface=surface)
     by_id = {n["id"]: n for n in data["nodes"]}
     edges = navigation_edges(data)
@@ -594,8 +410,6 @@ def reachability(graph: Graph, *, surface: str | None = None, start: str | None 
         },
         "routes": routed,
         "unreachable": sorted(unreachable),
-        # Reachable but with no declared preconditions: the walk can get there and still not
-        # know what state it needs, so these are not "done" either.
         "undeclared": sorted(undeclared),
     }
 

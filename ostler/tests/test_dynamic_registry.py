@@ -8,14 +8,7 @@ from conftest import present, write
 
 
 def parse(template_name: str, raw: dict) -> TemplateKind:
-    """`parse_kind` on a spec the test wrote to be well-formed.
-
-    `parse_kind` returns ``None`` for a spec it rejects, and the tests that are *about*
-    rejection call it directly and assert on that ``None``. Everywhere else the spec is a
-    fixture and the parse is setup, so ruling the ``None`` out once here keeps a regression
-    legible — this line, naming the call — instead of an attribute lookup on ``None``
-    inside whichever assertion happened to run first.
-    """
+    """`parse_kind` on a spec the test wrote to be well-formed."""
     return present(dynamic_registry.parse_kind(template_name, raw))
 
 

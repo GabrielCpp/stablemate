@@ -68,9 +68,6 @@ def _repo_with_graph(repo: Path):
     return load(repo)
 
 
-# ---------------------------------------------------------------------------
-# §6.1 — resolution
-# ---------------------------------------------------------------------------
 def test_resolve_cross_file_anchor(repo: Path):
     graph = _repo_with_graph(repo)
     src = repo / "docs/features/groom/gui/screens/changes-view.md"
@@ -107,18 +104,13 @@ def test_code_ref_is_not_a_doc_link():
     assert links.is_doc_link("../concepts/diff.md")
 
 
-# ---------------------------------------------------------------------------
-# §10 — trace
-# ---------------------------------------------------------------------------
 def test_trace_section_node_outbound_and_inbound(repo: Path):
     graph = _repo_with_graph(repo)
     lines, found = trace.run(graph, "changes-file-row")
     assert found
     text = "\n".join(lines)
     assert "component" in text
-    # outbound edge to tree-node resolves ok
     assert "design-system.md#tree-node  [ok]" in text
-    # inbound: click-file interaction references changes-file-row
     assert "referenced by" in text and "click-file" in text
 
 

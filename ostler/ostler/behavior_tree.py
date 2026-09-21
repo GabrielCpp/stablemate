@@ -1,20 +1,4 @@
-"""Tree-sitter behavior candidates for languages a table can describe.
-
-One visitor, one table per language. A table names the node types that open a symbol
-(a function, a class, an interface), the node types that emit a candidate of a given
-kind, the member-call names that read as a route registration or an HTTP response, and
-the node types whose header is a lexical condition. The visitor keeps the Go extractor's
-id scheme — a candidate's id hashes its path, symbol, kind and tokens — so the memo in
-the ostler index keys the same way for every tree-sitter language.
-
-The first table is TypeScript, shared by ``.ts``, ``.tsx``, ``.js`` and ``.jsx`` since
-the TSX grammar is a superset of the same node vocabulary; the second is PHP. Twig has no
-table: its grammar is flat (``{% endif %}`` is a sibling of ``{% if %}``, not its parent),
-so a visitor that reads enclosure from the tree has nothing to read there.
-
-The depth cap ``MAX_DEPTH`` is the safety net for the same tree-sitter ``Node.text``
-segfault the Go extractor answers with ``_slice`` and ``_field`` here.
-"""
+"""Tree-sitter behavior candidates for languages a table can describe."""
 from __future__ import annotations
 
 import hashlib
@@ -150,11 +134,6 @@ PHP = LanguageTable(
 TABLES: dict[str, LanguageTable] = {"typescript": TYPESCRIPT, "tsx": TYPESCRIPT, "php": PHP}
 
 
-#: Maximum recursion depth the tree-sitter visitor will follow. The same rationale as
-#: ``behavior_go.MAX_DEPTH`` — tree-sitter's `Node.text` is a C-extension property that
-#: has segfaulted deep inside a recursive visit on minified or generated source; the cap
-#: here mirrors the Go one so a single malformed subtree stops the visitor rather than
-#: the interpreter.
 MAX_DEPTH = 500
 
 
@@ -209,11 +188,7 @@ class TreeEvidence:
         """Depth inside a route registration call; its literal argument is the handler."""
 
     def _slice(self, node: Node | None) -> str:
-        """Same shape as ``GoEvidence._slice`` — the bytes ``node`` spans, decoded.
-
-        Never calls ``node.text``; that's the C-extension property that has segfaulted
-        the interpreter on malformed subtrees, and we own the source bytes already.
-        """
+        """Same shape as ``GoEvidence._slice`` — the bytes ``node`` spans, decoded."""
         if node is None:
             return ""
         start, end = node.start_byte, node.end_byte
@@ -292,10 +267,6 @@ class TreeEvidence:
         body = node.child_by_field_name("body")
         self._open(node, name, exported=exported)
         self.context(node)
-        # Bodies with only effects still need an audit candidate. Include private
-        # declarations too: visibility alone cannot decide externally used behavior.
-        # Signature only, as in the Go extractor: the body is already the declaration's
-        # source context, and a second copy in the snippet overflowed one-item packets.
         header = self._header(node, stop=body)
         self.emit(node, "function_contract", text=header, snippet=header)
         for child in node.named_children:
@@ -306,10 +277,6 @@ class TreeEvidence:
         table = self.table
         if node.type in table.skip:
             return
-        # See MAX_DEPTH in behavior_go.py — the same C-extension segfault that the Go
-        # extractor's depth cap answers has fired here on minified JS / generated TS
-        # during benchmarking, and the cap is small enough that no real source trips
-        # it (a representative TS AST sits under ~30 frames even with deep generics).
         if depth > MAX_DEPTH:
             return
         if node.type == table.root:

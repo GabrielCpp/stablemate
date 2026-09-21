@@ -1,14 +1,4 @@
-"""What a run keeps of the agent's own words.
-
-`prompt.md` says what a node was told and `output.json` what it answered; the reasoning
-and the tool calls in between live only in the CLI's session store — on one host, keyed by
-nothing telemetry can join on, and pruned whenever the CLI likes. So each turn is captured
-into the run dir under the same visit key the rest of the turn record uses, from the store
-where there is one and from a tee of the redacted stream where there is not.
-
-    ./.venv/bin/python tests/test_transcript.py
-    ./.venv/bin/python -m pytest tests/test_transcript.py
-"""
+"""What a run keeps of the agent's own words."""
 
 from __future__ import annotations
 
@@ -70,7 +60,6 @@ def test_the_store_is_preferred_and_the_tee_it_beats_is_dropped():
         assert stem is not None
         assert Path(f"{stem}.jsonl").read_text() == '{"from":"store"}\n'
         assert _meta(stem)["source"] == "store"
-        # The poorer copy of something already kept is not evidence, it is bytes.
         assert not tee.path.exists()
         assert stem.name == f"{slug}__sess-1"
 
@@ -99,8 +88,7 @@ def test_a_backend_with_no_store_is_captured_from_the_tee():
 
 
 def test_a_backend_export_is_preferred_over_the_stream_tee():
-    """This fails when a backend's complete session export is discarded in favour of
-    the smaller live event stream."""
+    """This fails when a backend's complete session export is discarded in favour of the smaller live event stream."""
     _reset()
     with tempfile.TemporaryDirectory() as tmp:
         run_dir = Path(tmp) / "run"
@@ -146,8 +134,7 @@ def test_a_failed_backend_export_preserves_the_stream_tee():
 
 
 def test_the_next_turn_promotes_a_provisional_tee_after_the_session_settles():
-    """This fails when an incomplete completion-time export leaves a lower-fidelity tee
-    permanent even though the same session is readable by the next turn."""
+    """This fails when an incomplete completion-time export leaves a lower-fidelity tee permanent even though the same session is readable by the next turn."""
     _reset()
     with tempfile.TemporaryDirectory() as tmp:
         run_dir = Path(tmp) / "run"
@@ -183,8 +170,7 @@ def test_the_next_turn_promotes_a_provisional_tee_after_the_session_settles():
 
 
 def test_opencode_export_uses_the_public_full_session_command():
-    """This fails when the registered OpenCode exporter no longer addresses the completed
-    session through the CLI's supported export surface."""
+    """This fails when the registered OpenCode exporter no longer addresses the completed session through the CLI's supported export surface."""
     completed = subprocess.CompletedProcess(
         args=[], returncode=0, stdout=b'{"messages":[]}', stderr=b""
     )
@@ -201,8 +187,7 @@ def test_opencode_export_uses_the_public_full_session_command():
 
 
 def test_opencode_export_rereads_a_partial_successful_snapshot():
-    """This fails when OpenCode exits zero during session finalization but its partial
-    JSON snapshot is treated as a terminal export failure."""
+    """This fails when OpenCode exits zero during session finalization but its partial JSON snapshot is treated as a terminal export failure."""
     partial = subprocess.CompletedProcess(
         args=[], returncode=0, stdout=b'{"messages":[', stderr=b""
     )
@@ -233,8 +218,6 @@ def test_the_tee_stops_at_the_cap_and_says_so():
         assert tee.truncated
         stem = transcript.capture("no-such-cli", "qa-plan", "sess-3", tee)
         assert stem is not None
-        # A transcript that announces where it stopped is usable evidence; one that just
-        # ends is indistinguishable from a turn that died.
         last = Path(f"{stem}.tee.jsonl").read_text().strip().splitlines()[-1]
         assert json.loads(last)["truncated"] is True
         assert _meta(stem)["truncated"] is True
@@ -279,8 +262,6 @@ def test_a_turn_outside_a_visit_is_not_filed_under_somebody_elses():
         _begin(run_dir, "qa-plan")
         _store(Path(tmp), "sess-6")
 
-        # A library caller driving the runner directly, or a `self.call` node: the engine
-        # opened no visit for it, and an invented key would collide with a real one.
         assert transcript.tee_begin("implement") is None
         assert transcript.capture("acme-cli", "implement", "sess-6") is None
 
@@ -311,8 +292,6 @@ def test_capture_never_faults_the_turn():
         run_dir.mkdir()
         transcript.bind(run_dir)
         _begin(run_dir)
-        # A store resolver that blows up, and a transcripts dir that cannot be created
-        # because a file already holds its name.
         transcript._STORES["acme-cli"] = _raise
         (run_dir / transcript.TRANSCRIPTS_DIR).write_text("not a directory")
 
@@ -321,8 +300,7 @@ def test_capture_never_faults_the_turn():
 
 
 def test_a_session_with_no_recorded_backend_is_found_by_probing_the_stores():
-    """A session map written before the backend was recorded still names the session,
-    and whichever store answers to that id is the one that ran it."""
+    """A session map written before the backend was recorded still names the session, and whichever store answers to that id is the one that ran it."""
     _reset()
     with tempfile.TemporaryDirectory() as tmp:
         _store(Path(tmp), "sess-9", '{"from":"store"}\n')

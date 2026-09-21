@@ -1,17 +1,4 @@
-"""The role registry and the body resolver behind every coder agent turn.
-
-Naming a role instead of a file costs one check the engine used to do for free:
-`pyflow.graph._missing_prompts` only sees *literal* prompt strings, so an
-`self.agent(turn.prompt, …)` is invisible to it and a prompt deleted out from under a
-flow would now surface as a render error mid-run instead of before the first node. The
-first two tests here are that check, restored — every role has an envelope, and every
-envelope is a role or a named piece of workflow mechanics.
-
-Restated over the union of the per-flow `prompts/` directories, because a role is one
-key and not one file: `plan-story` exists once in `dev/`, once in `fix/` and once in
-`main/`, each copy free to diverge. What must hold is that no role is left with nowhere
-to render from, and that no flow ships an envelope nothing can ask for.
-"""
+"""The role registry and the body resolver behind every coder agent turn."""
 from __future__ import annotations
 
 import re
@@ -25,32 +12,18 @@ from workhorse_workflows.coder.shared.schemas.dev import FixResult
 
 CODER = Path(roles.__file__).resolve().parent.parent
 
-#: Every flow package that ships envelopes, by directory name. `genesis` ships none.
 PROMPT_DIRS = sorted(CODER.glob("*/prompts"))
 
-#: The prompts that are the state machine talking to itself. Not roles, not overridable,
-#: and listed here so adding one is a decision rather than an omission.
 MECHANICS = {"resolve-operator", "settle-worktree", "fix-merge"}
 
 
 def _stems(directory: Path) -> set[str]:
-    """The envelopes in a prompt directory — the `_`-prefixed partials are not envelopes.
-
-    Two sibling prompts dispatched for two different reasons stay two files, and the text
-    they share moves into a partial one `{% include %}`s. That file is never a role and is
-    never rendered on its own, so it neither satisfies a role nor has to be declared as
-    mechanics.
-    """
+    """The envelopes in a prompt directory — the `_`-prefixed partials are not envelopes."""
     return {p.stem for p in directory.glob("*.md") if not p.stem.startswith("_")}
 
 
 def _flow(name: str, repo_dir: Path, library_dirs: tuple[str, ...] = ()) -> object:
-    """A stand-in for a flow, defined where a real one lives so `flow_dir` reads `name`.
-
-    `turn` only ever touches these three attributes and the defining module, so faking
-    the module is faking the whole of what it looks at — and it keeps this file from
-    having to import seven flow classes to exercise one resolver.
-    """
+    """A stand-in for a flow, defined where a real one lives so `flow_dir` reads `name`."""
     fake = type("Flow", (), {"repo_dir": repo_dir, "library_dirs": library_dirs})
     fake.__module__ = f"{roles.PACKAGE}.{name}.flow"
     return fake()
@@ -77,7 +50,7 @@ def test_every_prompt_is_a_role_or_declared_mechanics(directory: Path):
 
 
 def test_the_operator_resolver_ships_exactly_once():
-    """Four lanes gate; one prompt answers. A second copy is a copy that drifts."""
+    """Four lanes gate; one prompt answers."""
     copies = sorted(
         f"{d.parent.name}/prompts" for d in PROMPT_DIRS if "resolve-operator" in _stems(d)
     )
@@ -241,13 +214,7 @@ def test_an_unregistered_role_is_caught_on_the_transition(tmp_path):
 
 
 def test_no_library_anywhere_is_not_an_error(tmp_path):
-    """The workflow is installed standalone and must run with nothing else on the machine.
-
-    A run on a box that never met farrier resolves no layer, no override and no body, and
-    that is the *ordinary* path, not a degraded one: the default the workflow ships is the
-    answer. Making an absent library a failure here would have made an optional install
-    load-bearing for every story.
-    """
+    """The workflow is installed standalone and must run with nothing else on the machine."""
     turn = roles.turn(_flow("dev", tmp_path, ()), "dev-fix", returns=FixResult)
 
     assert turn.prompt == "dev/prompts/dev-fix.md"

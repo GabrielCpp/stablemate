@@ -236,14 +236,7 @@ def _story_key(story_row: dict[str, Any]) -> str:
 
 
 def _book_stories_citing(graph: Graph, node_id: str) -> dict[str, dict[str, Any]]:
-    """Every story whose own ``doc_refs`` resolve to this node, keyed by story identity.
-
-    Inverts the same relation :func:`ostler.query._surfaces_referenced` reads forward: a
-    story cites a node by linking to it, and a link resolves through
-    :meth:`Graph.resolve_doc_ref` exactly as a reader's click would. A resolved identity is
-    matched against the node's own id, not against the raw href, so an origin-relative link,
-    a root-anchored one, and the id copied verbatim out of the book all land on the same row.
-    """
+    """Every story whose own ``doc_refs`` resolve to this node, keyed by story identity."""
     found: dict[str, dict[str, Any]] = {}
     for epic in graph.epics:
         for story in epic.stories:
@@ -335,21 +328,7 @@ def node_provenance(
 
 def checkout_for(repository: str, checkouts: dict[str, Path],
                   *, default: str = "") -> Path | None:
-    """The checkout a ``code:`` target lives in.
-
-    A qualified ref (``repo://api-service/...``) names its repository. A bare one predates
-    qualification and can only mean "the" checkout — honoured when exactly one was
-    supplied, because guessing among several would join a node to another repository's
-    history.
-
-    A multi-repo workspace with a *declared* default repository uses that one instead of
-    failing closed. The declaration lives at the book root (see
-    :mod:`ostler.source_snapshots`'s ``book_repository``), so a book that documents one
-    service in one repository of a workspace names that repository once and every
-    unqualified ref resolves through it. A multi-repo workspace *without* a declaration
-    still returns ``None``, so a missing declaration is reported through doctor rather
-    than silently joining a node to the wrong history.
-    """
+    """The checkout a ``code:`` target lives in."""
     if repository:
         return checkouts.get(repository)
     if default and default in checkouts:
@@ -360,14 +339,7 @@ def checkout_for(repository: str, checkouts: dict[str, Path],
 
 
 def default_repository(graph: Graph) -> str:
-    """The repository a book's unqualified ``code:`` refs resolve to, if it declared one.
-
-    A book that documents one service in one repository of a workspace writes the id at
-    its root; a multi-repo workspace that has not declared one has no default here, and
-    :func:`checkout_for` falls back to the single-checkout heuristic or returns ``None``.
-    The function reads the declaration from the graph's *own* features root — the book
-    the graph loads — because the declaration is per-book, not per-graph.
-    """
+    """The repository a book's unqualified ``code:`` refs resolve to, if it declared one."""
     from ostler import source_snapshots
     features = path_mod.features_root_in(graph.root)
     return source_snapshots.book_repository(features)
@@ -376,17 +348,7 @@ def default_repository(graph: Graph) -> str:
 def story_for_node(
     graph: Graph, node_ref: str, checkouts: dict[str, Path]
 ) -> list[dict[str, Any]]:
-    """The story whose intent the code under a node answers to: the ``Story:`` trailer on
-    the most recent commit touching any of the node's ``code:`` targets.
-
-    The link between code and story is the trailer and nothing else — not a packet, not a
-    citation in the story's prose. Several stories over one symbol: the latest commit wins,
-    because it is the intent the code was last written to. ``story`` is ``None`` when no
-    reachable commit over those files carries a trailer, which a caller reads as "the code
-    is the intent" — there is no story to judge it against. A trailer no story in the book
-    resolves is reported as such (``resolved: false``) rather than dropped, so a stale
-    footer stays visible instead of reading as "no story".
-    """
+    """The story whose intent the code under a node answers to: the ``Story:`` trailer on the most recent commit touching any of the node's ``code:`` targets."""
     node = graph.find_ui_node(node_ref)
     if node is None:
         return []
@@ -414,7 +376,7 @@ def story_for_node(
         if parsed.path not in slot["paths"]:
             slot["paths"].append(parsed.path)
 
-    latest: tuple[int, str, str, str] | None = None  # (time, repository, sha, trailer)
+    latest: tuple[int, str, str, str] | None = None
     for checkout, slot in by_checkout.items():
         listing = _git(checkout, "log", "--format=%H %ct", "--", *slot["paths"])
         if listing is None:
@@ -431,12 +393,10 @@ def story_for_node(
             when = int(stamp) if stamp.isdigit() else 0
             repository = slot["repository"][0] or next(
                 (name for name, path in checkouts.items() if path == checkout), "")
-            # The last trailer on a commit is the one an amend appended; one commit
-            # answering two stories is the operator's ambiguity to keep, so report the last.
             candidate = (when, repository, sha, trailers[-1])
             if latest is None or candidate[0] > latest[0]:
                 latest = candidate
-            break  # newest-first: the first commit with a trailer is this checkout's answer
+            break
 
     if latest is None:
         return [{"node": row, "commit": None, "story": None, "resolved": False,

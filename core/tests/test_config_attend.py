@@ -1,10 +1,4 @@
-"""``[groom.attend]``: a nested table a dashboard toggle owns, over an env fallback.
-
-The two things that can go wrong here are both silent. A section write that flattens
-its neighbours takes out ``[power.*]`` exactly the way the string-formatting write once
-did; and a config value that quietly loses to an environment variable makes the toggle
-lie about what the fleet is doing.
-"""
+"""``[groom.attend]``: a nested table a dashboard toggle owns, over an env fallback."""
 
 from __future__ import annotations
 
@@ -86,7 +80,6 @@ def test_the_environment_is_read_while_the_key_is_absent(cfg_file, monkeypatch):
     assert settings.mode == "session"
     assert settings.sources["mode"] == cfgmod.ENV_SOURCE
     assert settings.deny == ("push a red pr", "merge conflict")
-    # A running-but-unconfigured mode is what the toggle should restore.
     assert settings.last_mode == "session"
 
 

@@ -1,32 +1,4 @@
-"""Book-declared fixtures, walked into the shape the harness executes them from.
-
-`ostler.qa.fixtures` is the agents.yml tier: a fixture that is one named invocation of a
-tool this repo already opted into. This module is the *other* tier — a
-[`fixture`](../../base-library/library/skills/ostler/okf/references/node-types/fixture.md)
-node, a file in the book with its own `## Steps`, `args:`, `provides:`, `needs:` and
-`secrets:` bullets. `Qa.fixture()` in the harness checks this tier first and falls back
-to the agents.yml one when a name is absent from it.
-
-The harness (`ostler.qa.harness.ostler_qa`) is stdlib-only and cannot import this module,
-or anything else outside the standard library — it runs under the *project's* own
-interpreter, where ostler is not installed. So the planning happens here, ostler-side,
-and the result is a plain JSON-safe dict handed across the process boundary as
-`context["book_fixtures"]`. It carries `steps` (kind, command, cwd or cwd-frame, timeout),
-the declared `args`/`provides`/`secrets` names, and `needs` bindings with their
-`name=value` args resolved to strings — but never a reference's *value*: `@node.key` and
-`$name` substitution is the harness's own runtime job, not this module's.
-
-**Secrets are NAMES only.** This dict is exactly what lands in the harness's context
-JSON, so a fixture's `secrets:` bullet must never carry anything but the environment
-variable name the harness resolves from its own environment at run time.
-
-Each `steps` entry now carries its own `### id` anchor, and each `provides` entry is a
-`{"key", "from", "read"}` dict rather than a bare key name: `from`/`read` are the
-`provides:` entry's own declared properties (`registry.py`'s `provides` `BulletKey`),
-carried through as plain strings so the harness can bind a fact to the step and path
-that produced it instead of assuming the fixture's last step's whole stdout, keyed by
-the fact's own name.
-"""
+"""Book-declared fixtures, walked into the shape the harness executes them from."""
 
 from __future__ import annotations
 
@@ -65,11 +37,7 @@ def _provides_from_step(raw: str) -> str:
 
 
 def _provides_read_path(raw: str) -> str:
-    """The path portion of a `read:` property: an optional `json` format word, then a path
-
-    in the grammar `ostler_qa.resolve_path` walks — the same one a `json_path` check uses,
-    not a full jq pipeline (no `| length`, no filters beyond `[*]`/`[?(...)]`).
-    """
+    """The path portion of a `read:` property: an optional `json` format word, then a path"""
     text = raw.strip()
     if text[:4].lower() == "json":
         text = text[4:].strip()
@@ -77,21 +45,7 @@ def _provides_read_path(raw: str) -> str:
 
 
 def _declared_provides(node: UINode) -> list[dict[str, str]]:
-    """Every fact a fixture's `provides:` declares, with the property that says where it comes from.
-
-    A fact is **observed** or **asserted**, and the entry says which. `from:` names the step
-    (by its `### id` anchor) whose stdout the fact is read from and `read:` names a JSON path
-    within that stdout, defaulting to the fact's own key when absent. `is:` instead states the
-    value the fixture's own construction makes true — nothing is read, because there is nothing
-    to read it from: a fixture that empties a directory by restarting the service that holds it
-    knows the count is zero from what it did, not from any step's output.
-
-    An entry that declares neither leaves the source undetermined, and `undetermined` is carried
-    here as an empty `from`/`read`/`is` triple rather than resolved to a default. It never
-    reaches the harness: `ostler doctor` refuses the book and `compile_plan` withholds every
-    obligation arranged through the fixture. An entry that declares both is refused the same
-    way, for the same reason — two answers is not one answer.
-    """
+    """Every fact a fixture's `provides:` declares, with the property that says where it comes from."""
     declared: list[dict[str, str]] = []
     for entry in node.entries.get("provides", []):
         head = entry.headline.partition("—")[0].split()
@@ -115,13 +69,7 @@ def _declared_secrets(node: UINode) -> list[str]:
 
 
 def _needs_of(graph: Graph, node: UINode, by_name: dict[str, UINode]) -> list[dict[str, Any]]:
-    """Each `needs:` child as `{"fixture": stem, "args": {name: value}}`.
-
-    Parses the same shape `doctor._needs_binding` checks statically (a markdown link to
-    the target fixture, then `name=value` tokens) — duplicated rather than imported,
-    because `doctor` is a linting layer this module has no business depending on for the
-    shape it hands the harness.
-    """
+    """Each `needs:` child as `{"fixture": stem, "args": {name: value}}`."""
     bindings: list[dict[str, Any]] = []
     for value in _bullet_values(node.meta.get("needs")):
         links = extract_refs(value).links
@@ -130,9 +78,6 @@ def _needs_of(graph: Graph, node: UINode, by_name: dict[str, UINode]) -> list[di
         text, href = links[0]
         target = graph.find_ui_node(graph.resolve_doc_ref(href, origin=node.path))
         if target is None:
-            # A `needs:` link that does not resolve is a book defect, not something to run
-            # the consumer without silently — the harness raises a fault when it reaches
-            # this marker instead of skipping the dependency it names.
             bindings.append({"fixture": None, "unresolved": href, "args": {}})
             continue
         rest = value.replace(f"[{text}]({href})", "", 1).strip()
@@ -153,9 +98,6 @@ def _steps_of(graph: Graph, node: UINode) -> list[dict[str, Any]]:
         command = runbook_mod.step_command(step, runbook_mod.system_root(graph), ".")
         step_id = step.id.rpartition("#")[2]
         if command is None:
-            # No `run:` bullet — the step would execute nothing. Carried as a marker
-            # rather than dropped, so the harness raises a fault when it reaches this
-            # step instead of running the fixture incomplete with no signal.
             steps.append({"kind": kind, "id": step_id, "missing_run": True})
             continue
         entry: dict[str, Any] = {
@@ -173,11 +115,7 @@ def _steps_of(graph: Graph, node: UINode) -> list[dict[str, Any]]:
 
 
 def resolved(graph: Graph) -> dict[str, dict[str, Any]]:
-    """Every `fixture` node in the book, as the harness's `context["book_fixtures"]`.
-
-    One entry per fixture, keyed by file stem — the name a `fixture:`/`needs:` bullet
-    references it by.
-    """
+    """Every `fixture` node in the book, as the harness's `context["book_fixtures"]`."""
     nodes = graph.ui_nodes_of_type("fixture")
     by_name = {Path(n.id).stem: n for n in nodes}
     out: dict[str, dict[str, Any]] = {}

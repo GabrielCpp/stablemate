@@ -1,35 +1,4 @@
-"""Front-matter validation for a library's skills and prompts.
-
-The failure this module exists to catch is **silent**: ``_front_matter`` answers a
-malformed YAML block with ``{}`` rather than an exception, because a generated file
-legitimately has no front matter and a parse error there is not farrier's business to
-raise. For a *library source* the same leniency is a trapdoor — a skill whose fence does
-not parse loses its ``description``, its ``applyTo`` and its ``tags`` at once, and every
-downstream symptom points somewhere else:
-
-- the skill still installs, so nothing errors;
-- its description falls back to "Use for <repo> work involving <first heading>", which
-  reads like an authoring choice rather than a loss;
-- its tags are gone, so ``find_by_tags`` quietly stops returning it — and a tag query
-  that comes back short is indistinguishable from a repo that installs nothing matching.
-
-Two YAML details cause nearly all of it, and neither looks like a mistake:
-
-    applyTo: **/*.go                  # `*` opens an ALIAS -> parse error
-    applyTo: {{ template.x }}/**      # `{` opens a FLOW MAPPING -> parse error
-    description: "... default("app")" # the scalar ends at the inner quote
-
-Quoting the value fixes all three, which is why ``fragile`` findings name the quote as
-the remedy rather than describing the YAML rule.
-
-The quieter half of the problem is a value YAML *accepts* and reads as something other
-than the text written — ``description: Use for API work # and the CLI`` loses its second
-half, ``description: &ref A thing`` loses the ``&ref`` to an anchor. Those cannot be seen
-from the parsed mapping, where the loss has already happened. They are read here off
-``yaml.parse``'s event stream instead, which reports each scalar's quoting style, anchor,
-tag and source span — the parser's own account of how it read the line, rather than this
-module guessing at the grammar with a regex.
-"""
+"""Front-matter validation for a library's skills and prompts."""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -47,14 +16,12 @@ __all__ = ["Finding", "check_library", "check_text", "format_findings"]
 
 _MD = MarkdownIt("commonmark").use(front_matter_plugin)
 
-# Keys farrier reads back off a library source. A value lost here is a value the
-# renderer silently substitutes a default for.
 _LOAD_BEARING = frozenset({"name", "description", "applyTo", "tags"})
 
 
 @dataclass(frozen=True)
 class Finding:
-    """One problem with one file. *level* is ``"error"`` or ``"warning"``."""
+    """One problem with one file."""
 
     path: Path
     level: str
@@ -80,13 +47,7 @@ def _fence(text: str) -> str | None:
 
 
 def _top_level_scalars(fence: str) -> dict[str, yaml.ScalarEvent]:
-    """Each load-bearing top-level key mapped to the parser's event for its value.
-
-    The event is the useful object rather than the parsed value: it carries ``style``
-    (``None`` for an unquoted scalar), any ``anchor`` or ``tag`` the parser consumed on
-    the way, and the source span the value actually occupied — everything needed to ask
-    whether YAML read the line as the text the author wrote.
-    """
+    """Each load-bearing top-level key mapped to the parser's event for its value."""
     events: dict[str, yaml.ScalarEvent] = {}
     depth = 0
     key: str | None = None
@@ -110,15 +71,7 @@ def _top_level_scalars(fence: str) -> dict[str, yaml.ScalarEvent]:
 
 
 def _retyped_tags(fence: str) -> list[tuple[str, str]]:
-    """``(as written, as installed)`` for each tag YAML did not resolve as a string.
-
-    A tag is a query key, so it only has to survive as *itself*. Most of the vocabulary
-    is safe unquoted — `standards`, `planning`, `go` are plain scalars YAML resolves to
-    the text written. But YAML 1.1 resolves ten-odd words to other types, and
-    ``normalize_tags`` then ``str()``s whatever it is back into a tag: ``[on, docs]``
-    installs ``true``. Nothing errors and no tag goes missing — one is simply spelled
-    differently than the file says, so it answers a query nobody asks.
-    """
+    """``(as written, as installed)`` for each tag YAML did not resolve as a string."""
     node = yaml.compose(fence + "\n")
     if not isinstance(node, yaml.MappingNode):
         return []
@@ -128,8 +81,6 @@ def _retyped_tags(fence: str) -> list[tuple[str, str]]:
             continue
         items = value_node.value if isinstance(value_node, yaml.SequenceNode) else []
         for item in items:
-            # `item.tag` is the parser's own resolution, so this asks YAML what it
-            # decided rather than re-deriving the 1.1 bool/null/int tables here.
             if isinstance(item, yaml.ScalarNode) and item.tag != "tag:yaml.org,2002:str":
                 installed = str(yaml.safe_load(f"[{item.value}]")[0]).strip().lower()
                 retyped.append((item.value, installed))
@@ -137,24 +88,13 @@ def _retyped_tags(fence: str) -> list[tuple[str, str]]:
 
 
 def _trailing_text(fence: str, event: yaml.ScalarEvent) -> str:
-    """Whatever sits between the end of *event*'s value and the end of its line.
-
-    Source marks are optional on an event in general (a re-emitted stream carries none),
-    but always present on one the parser produced. Without a span there is no line to
-    look past, so the honest answer is "nothing trailing" rather than a guess.
-    """
+    """Whatever sits between the end of *event*'s value and the end of its line."""
     if event.end_mark is None:
         return ""
     rest = fence[event.end_mark.index :]
     return rest.split("\n", 1)[0].strip()
 
 
-#: The Open Agent Skills limits farrier holds a library to. They are the *published*
-#: ones, not farrier's: a skill is rendered for three harnesses and only the strictest
-#: reader's rules make a source portable. Copilot validates a SKILL.md and rejects one
-#: that breaks them; Claude Code is lenient and installs it anyway — so a library that
-#: only ever ships to Claude drifts past the limits without a symptom, and the first
-#: repo to turn Copilot on discovers a decade of skills at once.
 NAME_LIMIT = 64
 DESCRIPTION_LIMIT = 1024
 BODY_LIMIT = 500
@@ -163,17 +103,7 @@ BODY_LIMIT = 500
 def _spec_findings(
     text: str, data: dict, path: Path, declared: str, description: str
 ) -> list[Finding]:
-    """Where one SKILL.md breaks the Open Agent Skills spec — errors, all of them.
-
-    Only SKILL.md. A prompt is a farrier-side concept rendered into each harness's own
-    command format; there is no published contract for it to violate.
-
-    ``name`` must equal the parent folder because that identity is the spec's, not a
-    convention: the folder is how a harness addresses the skill and the key is how it
-    announces itself, and a skill whose two names disagree is one nothing can reliably
-    refer to. farrier renders both from the same source path, so the pair can only
-    diverge in a hand-written file — which is exactly the file this gate is for.
-    """
+    """Where one SKILL.md breaks the Open Agent Skills spec — errors, all of them."""
     found: list[Finding] = []
     add = lambda code, msg: found.append(Finding(path, "error", code, msg))  # noqa: E731
 
@@ -202,9 +132,6 @@ def _spec_findings(
             "read to *choose* the skill, not to follow it.")
 
     body = text.replace("\r\n", "\n").replace("\r", "\n").split("\n")[front_matter_end(text):]
-    # The blank line after the fence is a separator and the one at EOF is punctuation —
-    # neither is content, and counting them would fail a skill written exactly to the
-    # limit. ``split_front_matter`` drops the leading one for the same reason.
     if body and not body[0].strip():
         body = body[1:]
     if body and not body[-1].strip():
@@ -219,13 +146,7 @@ def _spec_findings(
 
 
 def check_text(text: str, path: Path, *, require_tags: bool = True) -> list[Finding]:
-    """Every finding for one library markdown source.
-
-    Scalar-level checks read the parser's *event stream* rather than the parsed mapping,
-    because the shapes worth reporting are the ones YAML resolves without complaint: a
-    value truncated at an unquoted ``#`` parses to a shorter string, not to an error, and
-    by the time it is a Python object the loss is unrecoverable.
-    """
+    """Every finding for one library markdown source."""
     found: list[Finding] = []
     add = lambda level, code, msg: found.append(Finding(path, level, code, msg))  # noqa: E731
 
@@ -258,18 +179,10 @@ def check_text(text: str, path: Path, *, require_tags: bool = True) -> list[Find
     if path.name == "SKILL.md":
         found.extend(_spec_findings(text, data, path, declared, description))
     elif not description:
-        # For a prompt the fallback is "Use for <repo> work involving <first heading>" —
-        # a restatement of the title, and on a harness that selects by description alone
-        # that is the whole ranking signal spent saying nothing. Still only a warning:
-        # nothing downstream rejects the file, it just ranks badly.
         add("warning", "missing-description",
             "no `description:` — farrier substitutes the first heading, which restates "
             "the title. On Claude the description is the entire selection signal.")
 
-    # Only *unquoted* scalars are at risk, and only where a scalar is what was meant.
-    # `tags: [go, backend]` opens with a YAML indicator because a flow sequence is the
-    # documented spelling for it — the question is never "how does this line start" but
-    # "did YAML read this value as the text the author meant, or as structure".
     for key, event in _top_level_scalars(fence).items():
         if event.style is not None:
             continue
@@ -295,11 +208,6 @@ def check_text(text: str, path: Path, *, require_tags: bool = True) -> list[Find
             f"a skill that answers find_by_tags({installed!r}) and never "
             f"find_by_tags({written!r}). Quote it.")
 
-    # A `hooks:` block is a claim that farrier will run one of this skill's scripts at
-    # every commit in every repo that selects it. It is checked here rather than at
-    # install because the gate has to fail on the machine that *authors* the library —
-    # by install time the malformed entry is already shipped, and the shape farrier
-    # cannot read is the one it treats as no hooks at all.
     if data.get("hooks") is not None and path.name != "SKILL.md":
         add("error", "hooks-not-a-skill",
             "only a SKILL.md may declare `hooks:` — a prompt bundles no scripts, so "
@@ -317,17 +225,7 @@ def check_text(text: str, path: Path, *, require_tags: bool = True) -> list[Find
 
 
 def _stutter_finding(root: Path, sub: str, path: Path) -> Finding | None:
-    """A warning when a source's basename repeats its own parent folder.
-
-    ``flutter/flutter-api`` installs as ``flutter-api``, exactly as ``flutter/api``
-    does — the group join collapses an adjacent duplicate, so both spellings are
-    correct and neither moves an installed name. The stutter is therefore never a
-    build failure, and never worth a flag day across two libraries.
-
-    It is still worth saying: the repetition is invisible in the installed name, so
-    nothing else in the toolchain ever reports it, and a library drifts back into it
-    one file at a time. A warning here is the only place the drift is visible.
-    """
+    """A warning when a source's basename repeats its own parent folder."""
     rel = path.relative_to(root / sub)
     if path.name == "SKILL.md":
         parts = rel.parent.parts
@@ -351,12 +249,7 @@ def _stutter_finding(root: Path, sub: str, path: Path) -> Finding | None:
 
 
 def check_library(roots: list[Path], *, require_tags: bool = True) -> tuple[list[Finding], int]:
-    """``(findings, files_checked)`` over every markdown source under *roots*.
-
-    Prompts are checked with the same parser as skills — a prompt's front matter carries
-    its ``description``, and it fails the same way — but only skills are asked for tags,
-    since a prompt is addressed by name and answers no capability query.
-    """
+    """``(findings, files_checked)`` over every markdown source under *roots*."""
     findings: list[Finding] = []
     checked = 0
     seen: set[Path] = set()
@@ -371,8 +264,6 @@ def check_library(roots: list[Path], *, require_tags: bool = True) -> tuple[list
                     continue
                 seen.add(resolved)
                 text = path.read_text(encoding="utf-8")
-                # A bundled reference (references/api.md and friends) carries no front
-                # matter by design; only files that open a fence are making claims.
                 if sub == "prompts" and _fence(text) is None:
                     continue
                 if path.name != "SKILL.md" and sub == "skills" and _fence(text) is None:

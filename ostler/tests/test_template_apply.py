@@ -83,7 +83,6 @@ def test_two_templates_claude_md_sections_coexist(tmp_path: Path):
     assert "<!-- ostler:template:research:start -->" in text
     assert "<!-- ostler:template:qa:start -->" in text
 
-    # re-applying research must not disturb qa's section
     templates.edit(tmp_path, "research", ["program.note=updated"])
     templates.apply(tmp_path, "research")
     text2 = (tmp_path / "CLAUDE.md").read_text()

@@ -1,10 +1,4 @@
-"""`ostler.qa.tools` — the opt-in/definition split for QA tools.
-
-A name is opted in via `agents.yml`'s `qa: {tools: [...]}`, then resolved to a command
-either from `[qa_tools.<name>]` in the stablemate config or, for the two built-ins,
-from `BUILTIN_TOOLS`. Every case below exercises one edge of that split: opted in but
-undefined, opted in and overridden, opted in and resolved but missing from PATH.
-"""
+"""`ostler.qa.tools` — the opt-in/definition split for QA tools."""
 
 from __future__ import annotations
 
@@ -64,11 +58,7 @@ def test_catalog_resolves_a_user_declared_tool(tmp_path: Path) -> None:
 def test_catalog_errors_on_opted_in_name_with_no_definition(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The message names the config the preflight actually read, not the default path.
-
-    An operator pointed elsewhere by `STABLEMATE_CONFIG` who is told to edit
-    `~/.config/stablemate/config.toml` edits a file nothing reads.
-    """
+    """The message names the config the preflight actually read, not the default path."""
     resolved = tmp_path / "elsewhere" / "config.toml"
     monkeypatch.setenv("STABLEMATE_CONFIG", str(resolved))
     _write_agents_yml(tmp_path, ["ocr-diff"])

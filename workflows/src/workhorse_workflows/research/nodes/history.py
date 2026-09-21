@@ -1,18 +1,4 @@
-"""The program's event log: what the loop did, when, to which gate.
-
-`history.jsonl` sits beside the ledger and is written by the loop itself, one JSON line
-per event, from the moment this module exists. It is the dossier's source for counts a
-prompt would otherwise have to parse out of prose — kills, revivals, apparatus laps,
-reviews — and, since the loop writes it, it needs no parser at all going forward.
-
-A program that predates this file gets one *bootstrapped* from its progress file's
-dated headings (`source: bootstrap`). Bootstrap is idempotent: it runs only when no
-file exists, and every line it writes says where it came from, so a later reader can
-weight parsed history below recorded history.
-
-Every write is soft: a history line that cannot be written is logged and dropped,
-never a reason to stop a run.
-"""
+"""The program's event log: what the loop did, when, to which gate."""
 from __future__ import annotations
 
 import json
@@ -25,7 +11,6 @@ from workhorse_workflows.research.schemas import HistoryEvent
 
 HISTORY_NAME = "history.jsonl"
 
-#: The vocabulary. Unknown events are still written; the dossier only counts these.
 EVENTS = (
     "gate_selected",
     "pass",
@@ -84,7 +69,7 @@ def append_history(
     fingerprint: str = "",
     today: str = "",
 ) -> HistoryEvent:
-    """Append one event line. Soft-fails: the run never stops on bookkeeping."""
+    """Append one event line."""
     record = HistoryEvent(
         date=today or date.today().isoformat(),
         event=event,
@@ -101,10 +86,7 @@ def append_history(
 
 
 def bootstrap_history(path: Path, events: list[HistoryEvent]) -> bool:
-    """Seed a missing history file from parsed prose. Returns whether it wrote.
-
-    Idempotent by construction: an existing file, even an empty one, is left alone.
-    """
+    """Seed a missing history file from parsed prose."""
     if path.exists():
         return False
     stamped = [e.model_copy(update={"source": "bootstrap"}) for e in events]

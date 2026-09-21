@@ -90,7 +90,6 @@ def test_ts_candidates_keep_control_flow_signatures_fields_and_exports(tmp_path:
     assert contracts["Queue.push"].text == "push(item: string): boolean"
     assert contracts["shown"].text == "(a = 1) =>"
     assert {item.text for item in by_kind["function_default"]} == {"limit = 2", "a = 1"}
-    # Fields count in a class body, an interface body or a type alias — not in an inline type.
     assert {item.symbol for item in by_kind["schema_field"]} == {
         "Queue.limit", "Queue.hidden", "Queue.#secret", "Batch.size", "Batch.nested", "Status.ok",
     }
@@ -98,7 +97,6 @@ def test_ts_candidates_keep_control_flow_signatures_fields_and_exports(tmp_path:
     assert [item.text for item in by_kind["http_response"]] == ["res.status(200).json({ ok: true })", "res.status(200)"]
     assert all(item.symbol == "<literal:1>" for item in by_kind["http_response"])
     assert all("ghost" not in item.text for item in inventory.candidates)
-    # Exportedness is the keyword, the re-export clause and member accessibility — never the spelling.
     exported = {item.symbol: item.exported for item in inventory.candidates}
     assert exported["dispatch"] and exported["Queue.push"] and exported["Queue.limit"] and exported["shown"]
     assert exported["other"] and exported["Batch.size"] and exported["Status.ok"]
@@ -187,11 +185,7 @@ def test_ts_book_claims_bind_to_typescript_symbols(tmp_path: Path) -> None:
 
 
 def test_ts_visit_respects_max_depth(tmp_path: Path) -> None:
-    """Tree-sitter visitors cap recursion the same way the Go one does.
-
-    The same fault class — ``Node.text`` segfaulting deep inside a recursive visit
-    on malformed source — has fired here too on minified JS. The cap answers it.
-    """
+    """Tree-sitter visitors cap recursion the same way the Go one does."""
     from ostler.behavior_tree import MAX_DEPTH
 
     deep = MAX_DEPTH + 50
@@ -203,7 +197,5 @@ def test_ts_visit_respects_max_depth(tmp_path: Path) -> None:
     (tmp_path / "deep.ts").write_text(source, encoding="utf-8")
     inventory = extract_evidence(tmp_path, ["deep.ts"])
     assert inventory.files[0].status == "parsed"
-    # Outer function contract survives; the inner returns at depth > MAX_DEPTH
-    # are dropped.
     kinds = {item.kind for item in inventory.candidates}
     assert "function_contract" in kinds

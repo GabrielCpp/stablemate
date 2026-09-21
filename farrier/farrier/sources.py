@@ -1,8 +1,4 @@
-"""The ``Source`` record plus loading, selection, and pack resolution.
-
-Models one library file, loads them across the layer stack (higher layer wins),
-matches them against agents.yml globs, and expands packs into a selection set.
-"""
+"""The ``Source`` record plus loading, selection, and pack resolution."""
 from __future__ import annotations
 
 import fnmatch
@@ -27,17 +23,11 @@ class Source:
     path: Path
     rel: str
     id: str
-    # Which library layer this source was read from. None only for sources built
-    # outside the layer stack (tests); everything ``load_sources`` produces has one.
     layer: Layer | None = None
 
 
 def library_path(path: Path, fallback: str) -> str:
-    """*path* anchored at the last ``library/`` segment, or *fallback*.
-
-    Machine-independent by construction (e.g. ``library/skills/go/go-qa/SKILL.md``) —
-    identical across machines and therefore stable under ``--check``.
-    """
+    """*path* anchored at the last ``library/`` segment, or *fallback*."""
     parts = path.parts
     if "library" in parts:
         idx = len(parts) - 1 - parts[::-1].index("library")
@@ -46,37 +36,17 @@ def library_path(path: Path, fallback: str) -> str:
 
 
 def library_source_path(source: Source) -> str:
-    """The source's path within the prompt library, for provenance banners.
-
-    Falls back to ``source.rel`` if the path is not under a ``library/`` tree (it
-    always is for skills/prompts).
-    """
+    """The source's path within the prompt library, for provenance banners."""
     return library_path(source.path, source.rel)
 
 
 def public_id(source: Source) -> str:
-    """The source's bare basename — its name with neither group nor repo prefix.
-
-    Still the addressable form for a *policy* (``localInstructions`` names one the
-    way an author writes it) and one of the aliases selection accepts. It is no
-    longer the installed name: see ``group_id``.
-    """
+    """The source's bare basename — its name with neither group nor repo prefix."""
     return kebab(Path(source.id).name)
 
 
 def group_id(source: Source) -> str:
-    """``<group>-<basename>`` — the installed name before any repo prefix.
-
-    *group* is the source's **immediate** parent folder, so a nested tree names the
-    leaf group and not the path to it: ``stacks/flutter/api`` installs as
-    ``flutter-api``, never ``stacks-flutter-api``. A source with no parent folder
-    keeps its basename.
-
-    The group is part of the name because user-scope skills carry no repo prefix and
-    land in one directory shared by every project on the machine — a bare ``api``
-    there says nothing about which stack it belongs to, and collides with the next
-    one.
-    """
+    """``<group>-<basename>`` — the installed name before any repo prefix."""
     parts = Path(source.id).parts
     group = kebab(parts[-2]) if len(parts) > 1 else ""
     return compose_name(group, public_id(source))
@@ -86,30 +56,14 @@ def public_name(prefix: str, source: Source) -> str:
     return compose_name(prefix, group_id(source))
 
 
-#: Directories a skill may bundle beside its SKILL.md, shipped with it rather than
-#: installed as skills of their own. ``references/`` holds the long-form material a
-#: SKILL.md points at instead of inlining (examples, tables, snippets) so the always-
-#: loaded body stays short; ``scripts/`` holds the executables a procedure would
-#: otherwise ask the agent to retype.
 ASSET_DIRS = ("references", "scripts")
 
-#: Byproducts the interpreter leaves in ``scripts/`` and nobody authored. A bundled
-#: script is meant to be run, and running one in the library tree writes
-#: ``__pycache__/*.pyc`` beside it — binary, so the install pipeline (a ``path -> text``
-#: map end to end) refuses it and the generated-file check downgrades itself to a skip
-#: on the machine of whoever ran the script. Filtering them out is not leniency about
-#: binaries: nothing declared them assets.
 _BYPRODUCT_DIRS = frozenset({"__pycache__"})
 
 
 @dataclass(frozen=True)
 class Asset:
-    """One file bundled with a skill, to be installed beside its SKILL.md.
-
-    *rel* is the path relative to the owning skill directory (``references/api.md``),
-    which is also its path relative to the generated SKILL.md — so a library author
-    links a reference with exactly the path they see on disk, in every adapter.
-    """
+    """One file bundled with a skill, to be installed beside its SKILL.md."""
 
     path: Path
     rel: str
@@ -120,15 +74,8 @@ class Asset:
 
 
 def asset_owner(root: Path, path: Path) -> Path | None:
-    """The skill directory owning *path*, or None if *path* is not a bundled asset.
-
-    A directory named ``references``/``scripts`` only means *assets* when it sits
-    directly inside a skill — i.e. its parent holds a SKILL.md. Anywhere else it is an
-    ordinary library directory that may legitimately contain skills, so the name alone
-    must not disqualify it.
-    """
+    """The skill directory owning *path*, or None if *path* is not a bundled asset."""
     rel = path.relative_to(root)
-    # rel.parts[:-1] — the filename itself is never an asset-dir marker.
     for index, part in enumerate(rel.parts[:-1]):
         if part in ASSET_DIRS:
             owner = root.joinpath(*rel.parts[:index])
@@ -138,11 +85,7 @@ def asset_owner(root: Path, path: Path) -> Path | None:
 
 
 def skill_assets(source: Source) -> list[Asset]:
-    """Every file bundled under *source*'s ``references/``/``scripts/``, sorted.
-
-    Empty for a flat (non-SKILL.md) source: bundling is a property of the directory
-    form, and a flat ``foo.md`` has no directory of its own to bundle into.
-    """
+    """Every file bundled under *source*'s ``references/``/``scripts/``, sorted."""
     if source.path.name != "SKILL.md":
         return []
     skill_dir = source.path.parent
@@ -160,25 +103,11 @@ def skill_assets(source: Source) -> list[Asset]:
     return sorted(assets, key=lambda asset: asset.rel)
 
 
-#: Filenames that never denote a library source of their own: ``SKILL.md`` is the skill
-#: it names (loaded by the directory form above), and ``README.md`` is prose for a human
-#: reading the tree.
 _NOT_SOURCES = frozenset({"SKILL.md", "README.md"})
 
 
 def load_sources(root: Path, kind: str, layer: Layer | None = None) -> list[Source]:
     sources: list[Source] = []
-    # Load SKILL.md files (new open skill format: <name>/SKILL.md).
-    # Also support flat *.md files for backwards compatibility during migration.
-    #
-    # Markdown under a skill's own references/ or scripts/ is skipped: it belongs to
-    # that skill and ships beside it (see skill_assets). Without this, splitting a long
-    # SKILL.md into references/ would silently register each fragment as a top-level
-    # skill of its own — competing for the library-wide-unique names farrier resolves by.
-    #
-    # A README.md is skipped for the same reason and one more: it is what a human reads
-    # to learn what a tree holds, addressed to nobody's agent, and registering it makes a
-    # source named `readme` that a pack glob can select and an error catalog advertises.
     for path in sorted(
         list(root.rglob("SKILL.md"))
         + [p for p in root.rglob("*.md") if p.name not in _NOT_SOURCES]
@@ -195,27 +124,16 @@ def load_sources(root: Path, kind: str, layer: Layer | None = None) -> list[Sour
 
 
 def load_layered_sources(kind: str, *parts: str) -> list[Source]:
-    """Sources of one kind across every layer, with the higher layer winning.
-
-    Ids are computed relative to each layer's own content root, so ``stablemate/ostler``
-    means the same thing in the overlay and in the base — which is exactly what makes
-    shadowing work: an overlay skill with a base skill's id replaces it wholesale.
-    """
+    """Sources of one kind across every layer, with the higher layer winning."""
     by_id: dict[str, Source] = {}
     for layer, root in layer_dirs(*parts):
         for source in load_sources(root, kind, layer):
-            # layer_dirs is precedence-ordered, so the first writer of an id wins.
             by_id.setdefault(source.id, source)
     return sorted(by_id.values(), key=lambda source: source.id)
 
 
 def parse_scaffold_ids(entries: Any, origin: str) -> set[str]:
-    """A `scaffolds` list names scaffold definition ids (see `farrier scaffold`).
-
-    Each entry must be a plain string id. The legacy `{source-prefix: dest-dir}`
-    mapping form (from the install-time file-tree scaffolds) is rejected with a
-    migration hint — placement now comes from scaffold params at invocation time.
-    """
+    """A `scaffolds` list names scaffold definition ids (see `farrier scaffold`)."""
     ids: set[str] = set()
     for entry in entries or []:
         if not isinstance(entry, str):
@@ -327,26 +245,14 @@ _GLOB_CHARS = set("*?[")
 
 
 def is_glob(pattern: str) -> bool:
-    """Whether a selection entry is a filter rather than a named file.
-
-    The distinction drives severity: a glob matching nothing is a filter that happened to
-    select nothing, which is legitimate. A literal name matching nothing is a **typo** — the
-    config promised a specific file that the library does not have.
-    """
+    """Whether a selection entry is a filter rather than a named file."""
     return any(char in _GLOB_CHARS for char in pattern)
 
 
 def unmatched_patterns(
     all_sources: list[Source], include_patterns: set[str]
 ) -> tuple[list[str], list[str]]:
-    """Include entries that selected nothing, split into ``(literals, globs)``.
-
-    Selection is a filter, so an entry naming a file that does not exist contributes nothing
-    and the render proceeds — the repo silently ends up without a skill it declared. That
-    surfaces much later as an agent running unskilled while every gate still reports success,
-    which is the worst shape a failure can take. ``packs`` already fails loudly on the same
-    typo (``load_pack``); this closes the gap for skills, prompts, and roots.
-    """
+    """Include entries that selected nothing, split into ``(literals, globs)``."""
     literals: list[str] = []
     globs: list[str] = []
     for pattern in sorted(include_patterns):
@@ -381,19 +287,7 @@ def build_lookup(sources: list[Source], prefix: str) -> dict[str, Source]:
 
 
 def build_policy_lookup(sources: list[Source]) -> dict[str, Source]:
-    """Name → policy source, addressed by **bare basename** with no prefix.
-
-    Not ``build_lookup``: that one mixes ``public_name(prefix, source)`` into its keys,
-    and a policy has no prefix to compose with — ``compose_name("", "stablemate-repo")``
-    returns ``"-stablemate-repo"``, so every policy would gain a leading-dash alias and
-    the name an author actually writes would be the only one that is not canonical.
-
-    A policy is named the way it is written in ``localInstructions`` — ``stablemate-repo``,
-    never ``<repo>-stablemate-repo``. The namespace directory organizes the tree and is
-    addressable too (``stablemate/stablemate-repo``), but it is not part of the name; two
-    namespaces claiming one basename is an error naming both files, because the reference
-    in a repo's config could not say which it meant.
-    """
+    """Name → policy source, addressed by **bare basename** with no prefix."""
     lookup: dict[str, Source] = {}
     for source in sources:
         keys = {

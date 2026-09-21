@@ -1,16 +1,4 @@
-"""The `control` verbs that act on a run nobody is serving: `rewind` and `resume`.
-
-Every other `control` verb is a message to a live process, and the process decides what
-to do with it. These two are the opposite: they edit or relaunch a run dir from outside,
-which is only sound while no process holds it. A running driver rewrites the checkpoint
-at its next transition, so a rewind under it is lost; a second process resumed beside it
-is two drivers writing one run dir. So both begin with the same refusal — a pid that
-answers signal 0, or a socket something is listening on — and neither has an override.
-
-`status --params` and `stop --wait` live here too, because they read the same two files
-the refusal does and exist for the same repair: stop the run, wait until it is really
-gone, look at what it holds, move it, bring it back.
-"""
+"""The `control` verbs that act on a run nobody is serving: `rewind` and `resume`."""
 from __future__ import annotations
 
 import json
@@ -35,17 +23,12 @@ from workhorse.records import (
 )
 from workhorse.rewind import RewindError, rewind
 
-#: Where a relaunched run's stdout and stderr go, beside the run it belongs to.
 RESUME_LOG = "resume.log"
 
-#: The flags a `resume NAME` replaces in the recorded resume line. They are one axis
-#: (a profile names its own CLI, and `run` refuses both together), so both are dropped.
 _BACKEND_FLAGS = ("--cli", "--profile")
 
 _POLL_S = 0.5
 
-#: The `terminal` a failed run carries (`workhorse.pyflow.run`); every other value is a
-#: run that finished.
 FAILED = "fail"
 
 
@@ -55,7 +38,7 @@ def fail(message: str) -> NoReturn:
 
 
 def pid_alive(pid: int) -> bool:
-    """Signal 0: a process with this pid exists. Another user's process counts."""
+    """Signal 0: a process with this pid exists."""
     try:
         os.kill(pid, 0)
     except ProcessLookupError:
@@ -68,13 +51,7 @@ def pid_alive(pid: int) -> bool:
 
 
 def refuse_if_running(run_dir: Path, verb: str) -> None:
-    """Exit 1 unless `run_dir` is a finished-nothing, served-by-nobody run.
-
-    A run that reached its `Done` is refused too: its driver decided it was over, and a
-    new position or a relaunch only makes a finished run look unfinished to everything
-    that lists runs. A `fail` terminal is not refused — the driver stamps it on exactly
-    the failures an operator fixes and continues from, which is what these verbs are for.
-    """
+    """Exit 1 unless `run_dir` is a finished-nothing, served-by-nobody run."""
     try:
         record = parse_run_record((run_dir / "run.json").read_text())
     except (OSError, ValidationError):
@@ -91,7 +68,6 @@ def refuse_if_running(run_dir: Path, verb: str) -> None:
         fail(f"{verb}: a process is serving {run_dir}'s control socket — stop it first")
 
 
-# --- rewind ------------------------------------------------------------------------------
 
 
 def parse_param(spec: str, flag: str) -> tuple[str, str]:
@@ -102,8 +78,7 @@ def parse_param(spec: str, flag: str) -> tuple[str, str]:
 
 
 def json_or_text(value: str) -> Any:
-    """`--param n=3` is the number 3 and `--param item=G1` is the string: JSON first,
-    and a value that is not JSON is the text as typed, so a bare word needs no quotes."""
+    """`--param n=3` is the number 3 and `--param item=G1` is the string: JSON first, and a value that is not JSON is the text as typed, so a bare word needs no quotes."""
     try:
         return json.loads(value)
     except ValueError:
@@ -111,12 +86,7 @@ def json_or_text(value: str) -> Any:
 
 
 def turn_output(run_dir: Path, ref: str) -> Any:
-    """The `output.json` named by `ref`: a node dir (its latest visit), a `turns/<visit>`
-    dir, or a file — each relative to the run dir, or absolute.
-
-    This is how a rewind hands a state the answer a previous turn already gave, instead
-    of the operator retyping JSON that is sitting on disk.
-    """
+    """The `output.json` named by `ref`: a node dir (its latest visit), a `turns/<visit>` dir, or a file — each relative to the run dir, or absolute."""
     path = Path(ref) if Path(ref).is_absolute() else run_dir / ref
     if path.is_dir():
         path = path / "output.json"
@@ -158,7 +128,6 @@ def run_rewind(
     print("  resume:  control resume [CLI]")
 
 
-# --- resume ------------------------------------------------------------------------------
 
 
 def resume_line(record: LaunchRecord, cli: str) -> list[str]:
@@ -188,17 +157,7 @@ def _tail(path: Path, lines: int = 30) -> str:
 
 
 def run_resume(run_dir: Path, cli: str, timeout: float) -> subprocess.Popen[bytes]:
-    """Relaunch `run_dir` detached from its recorded resume line, and wait until it serves.
-
-    Detached is the point: the relaunched run must outlive this command and the shell
-    that typed it, which is what a hand-rolled `nohup … &` gets wrong often enough to be
-    worth not typing. Waiting for the socket is the other half — a resume line that dies
-    in its first second (a bad `--cli`, a checkpoint the flow rejects) is reported here,
-    with its log, instead of being discovered an hour later as a run that never came back.
-
-    Returns the child so a caller that outlives this command can reap it; the CLI does
-    not, because it exits and the child is in its own session.
-    """
+    """Relaunch `run_dir` detached from its recorded resume line, and wait until it serves."""
     refuse_if_running(run_dir, "resume")
     try:
         record = parse_launch_record((run_dir / "launch.json").read_text())
@@ -245,7 +204,6 @@ def run_resume(run_dir: Path, cli: str, timeout: float) -> subprocess.Popen[byte
     return child
 
 
-# --- status --params / stop --wait -----------------------------------------------------
 
 
 def position(run_dir: Path) -> str:
@@ -259,8 +217,7 @@ def position(run_dir: Path) -> str:
 
 
 def print_params(run_dir: Path) -> None:
-    """The checkpoint's state and params as JSON, read from disk — so it answers the same
-    for a live run, a stopped one, and one whose process is busy in a script node."""
+    """The checkpoint's state and params as JSON, read from disk — so it answers the same for a live run, a stopped one, and one whose process is busy in a script node."""
     path = run_dir / ArtifactWriter.CHECKPOINT_FILE
     try:
         checkpoint = parse_checkpoint(path.read_text())
@@ -281,12 +238,7 @@ def print_params(run_dir: Path) -> None:
 
 
 def wait_gone(run_dir: Path, timeout: float) -> None:
-    """Block until the pid `run.json` records is gone; exit 1 when it outlives `timeout`.
-
-    An acknowledged stop is the run agreeing to stop at its next slice, not having
-    stopped — and the next step of every repair (rewind, resume) refuses while the pid
-    lives. This is the wait between the two, so it is not a `sleep` someone guesses.
-    """
+    """Block until the pid `run.json` records is gone; exit 1 when it outlives `timeout`."""
     try:
         pid = parse_run_record((run_dir / "run.json").read_text()).pid
     except (OSError, ValidationError):

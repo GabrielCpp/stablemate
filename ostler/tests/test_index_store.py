@@ -1,38 +1,4 @@
-"""`ostler.index` — the persistent, content-addressed parse index store.
-
-`model._FEATURE_DOC_CACHE` is already keyed on a file's **content digest** rather than its
-mtime, and for the right reason: the writer phases of a workflow edit these files between
-loads, so a same-size rewrite inside one filesystem timestamp tick is exactly what a
-stat-keyed cache serves stale. What it lacks is survival — every `ostler` invocation is a
-fresh process. This module is that cache, persisted and generalised.
-
-Nothing in ostler consults it yet (the last test here holds that line), so what these tests
-pin down is the key and the validity rules on their own, before a caller can make either
-hard to change.
-
-The seam under test:
-
-* ``index.epoch_inputs(root)`` — the material of every global input, one entry per label in
-  ``index.EPOCH_LABELS``: the tool version, the schemas, the dynamic kind registry, the
-  config files ostler reads, the freeze manifest and the field-name-and-annotation shape of every
-  stored dataclass (``index.dataclass_shape_digest``).
-* ``index.epoch(root)`` — one combined hash over exactly that mapping, and a pure function
-  of it. No per-input granularity: a partial invalidation that is subtly wrong costs more
-  than a recompute, so any change to any input busts every entry.
-* ``index.index_dir(explicit=None)`` — ``explicit`` → ``$OSTLER_INDEX_DIR`` → ostler's own
-  config key → the default under the shared stablemate cache.
-* ``index.IndexStore(root, directory=..., max_age_s=...)`` with ``get(path)`` / ``put(path,
-  value)``. An entry is keyed on the repo-name-qualified repo-relative path plus the
-  content sha, so one entry serves every worktree and every container while the same bytes
-  at a different path stay distinct. Payloads are pickle stamped with
-  ``index.SCHEMA_VERSION``, rejected in both directions. A write prunes past
-  ``max_age_s``, at most once per ``index.PRUNE_INTERVAL_S`` per directory. Anything
-  unreadable is a miss, never an error the caller has to handle.
-
-``epoch_inputs`` is monkeypatched through the module (``ostler.index.epoch_inputs``) where a
-label's material cannot be moved on disk, so the implementation must call it through the
-module rather than binding it at import.
-"""
+"""`ostler.index` — the persistent, content-addressed parse index store."""
 
 from __future__ import annotations
 
@@ -49,18 +15,11 @@ from ostler._vendor.stablemate_core import config as core_config
 
 from conftest import write
 
-if TYPE_CHECKING:  # the seam below resolves at runtime; the annotation need not
+if TYPE_CHECKING:
     from ostler.index import IndexStore
 
 class _Seam:
-    """`ostler.index`, imported on first use.
-
-    Not `from ostler import index`: until the module exists, a top-level import of it is a
-    *collection* error, which pytest turns into an interrupted run — every other test in
-    the suite stops reporting, and `ty` fails the lint gate before any test runs at all.
-    Resolving on attribute access keeps the failure where it belongs, one red per test at
-    the seam that is missing.
-    """
+    """`ostler.index`, imported on first use."""
 
     def __getattr__(self, name: str):
         return getattr(importlib.import_module("ostler.index"), name)
@@ -70,7 +29,6 @@ index = _Seam()
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
-#: Every global input the epoch is required to cover, in the spelling the store declares.
 EXPECTED_EPOCH_LABELS = frozenset(
     {"version", "schemas", "kinds", "config", "freeze", "shape"}
 )
@@ -102,9 +60,6 @@ def age_everything(directory: Path, seconds: float) -> None:
         os.utime(path, (when, when))
 
 
-# ---------------------------------------------------------------------------
-# The round trip it all rests on
-# ---------------------------------------------------------------------------
 def test_a_stored_payload_survives_a_new_store_over_the_same_directory(tmp_path):
     """Persistence is the whole point: the second store is the next process."""
     root = make_repo(tmp_path / "acme")
@@ -130,9 +85,6 @@ def test_editing_the_file_misses_even_when_its_size_and_mtime_do_not_move(tmp_pa
     assert store(root, directory).get(doc) is None
 
 
-# ---------------------------------------------------------------------------
-# One epoch hash over every global input
-# ---------------------------------------------------------------------------
 def test_the_epoch_covers_every_declared_global_input(tmp_path):
     root = make_repo(tmp_path / "acme")
 
@@ -184,18 +136,9 @@ def test_editing_a_global_input_on_disk_invalidates_every_entry(tmp_path, label,
     assert store(root, directory).get(doc) is None
 
 
-# ---------------------------------------------------------------------------
-# The shape digest: a class name is not a schema
-# ---------------------------------------------------------------------------
 @dataclasses.dataclass
 class _ShapeItemBefore:
-    """A nested stored class, before a field lands on it.
-
-    Module-level, not nested inside a test function: ``typing.get_type_hints`` resolves a
-    string annotation — ``from __future__ import annotations`` turns every one of them into
-    a string — against the defining module's globals, so a class local to a test function is
-    invisible to a forward reference naming it from inside a container field.
-    """
+    """A nested stored class, before a field lands on it."""
 
     headline: str
 
@@ -217,23 +160,7 @@ class _ShapeContainerAfter:
 
 
 def test_adding_a_field_to_a_stored_dataclass_moves_the_shape_digest():
-    """The failure this digest exists to prevent, reproduced on a throwaway pair of classes.
-
-    ``UINode`` gained ``combiners``, then ``entries``, then ``records`` — three times, a field
-    landed on a dataclass whose instances are pickled into the index, and three times a stale
-    entry came back as the *old* shape wearing the *new* class's name: ``isinstance(payload,
-    UINode)`` is true either way, so the reader accepted the pickle and only failed later, when
-    something asked the old instance for the new attribute (``AttributeError: 'UINode' object
-    has no attribute 'records'``, across twenty-seven tests on 2026-09-18). The class's name
-    never changed, so a check keyed on the name — which is exactly what an ``isinstance`` shape
-    check is — cannot see the difference.
-
-    ``dataclass_shape_digest`` is built from the classes' own field names and annotations
-    rather than anything a human has to remember to update, so this test proves the
-    mechanism on synthetic classes rather than on ``UINode`` itself: mutating the real
-    class would only show that *this particular* field addition happens to be caught, not
-    that the digest generalises.
-    """
+    """The failure this digest exists to prevent, reproduced on a throwaway pair of classes."""
 
     @dataclasses.dataclass
     class Before:
@@ -250,14 +177,7 @@ def test_adding_a_field_to_a_stored_dataclass_moves_the_shape_digest():
 
 
 def test_widening_a_fields_annotation_moves_the_shape_digest():
-    """Incident 10, reproduced on a throwaway pair of classes.
-
-    ``UINode.links`` widened from ``(text, href)`` to ``(text, href, line)`` — the field kept
-    its name, so a digest built from names alone did not move, and nine paddock tests read
-    2-tuples out of entries pickled before the change. The digest now reads each field's
-    annotation alongside its name, so two classes with identical field names but a different
-    annotation on one field must disagree.
-    """
+    """Incident 10, reproduced on a throwaway pair of classes."""
 
     @dataclasses.dataclass
     class Before:
@@ -273,24 +193,14 @@ def test_widening_a_fields_annotation_moves_the_shape_digest():
 
 
 def test_the_shape_digest_reaches_a_dataclass_nested_inside_a_container_field():
-    """A field added several containers deep must still move the digest.
-
-    ``UINode.entries`` is ``dict[str, list[Entry]]`` — the field that broke is not on the root
-    class the caller passes in, it is on a dataclass reachable only by unwrapping a ``dict``
-    and a ``list``. A digest that only looked at the root class's own fields would have missed
-    exactly the case this module exists to catch.
-    """
+    """A field added several containers deep must still move the digest."""
     assert index.dataclass_shape_digest(
         _ShapeContainerBefore
     ) != index.dataclass_shape_digest(_ShapeContainerAfter)
 
 
 def test_the_shape_digest_is_a_pure_function_of_the_classes_it_is_given():
-    """Deterministic and salt-free, unlike ``hash()`` on a string, which is salted per run.
-
-    Calling it twice over the same classes in the same process must agree, and calling it a
-    second time proves nothing was memoized on the class object along the way.
-    """
+    """Deterministic and salt-free, unlike ``hash()`` on a string, which is salted per run."""
 
     @dataclasses.dataclass
     class Shape:
@@ -300,9 +210,6 @@ def test_the_shape_digest_is_a_pure_function_of_the_classes_it_is_given():
     assert index.dataclass_shape_digest(Shape) == index.dataclass_shape_digest(Shape)
 
 
-# ---------------------------------------------------------------------------
-# The entry key: repo-name-qualified repo-relative path + content sha
-# ---------------------------------------------------------------------------
 def test_two_worktrees_of_one_repo_resolve_to_one_entry(tmp_path):
     """Repo-relative, not absolute — so one entry serves every worktree and container."""
     first = make_repo(tmp_path / "worktrees/a/acme")
@@ -337,9 +244,6 @@ def test_the_same_relative_path_in_a_different_repo_does_not_collide(tmp_path):
     assert store(globex, directory).get(globex / "docs/features/area/rec.md") is None
 
 
-# ---------------------------------------------------------------------------
-# The payload's schema version, checked in both directions
-# ---------------------------------------------------------------------------
 def test_a_payload_stamped_older_than_the_running_version_is_rejected(tmp_path, monkeypatch):
     root = make_repo(tmp_path / "acme")
     doc = root / "docs/features/area/rec.md"
@@ -364,16 +268,9 @@ def test_a_payload_stamped_newer_than_the_running_version_is_rejected(tmp_path, 
     assert store(root, directory).get(doc) is None
 
 
-# ---------------------------------------------------------------------------
-# Where the index lives
-# ---------------------------------------------------------------------------
 @pytest.fixture
 def isolated_resolution(tmp_path, monkeypatch) -> Path:
-    """No config and a cache root that is not the operator's.
-
-    The env override is cleared by each test rather than here, so that a missing seam is a
-    failure inside the test and never an error raised out of a fixture.
-    """
+    """No config and a cache root that is not the operator's."""
     monkeypatch.setenv("STABLEMATE_CONFIG", str(tmp_path / "config/config.toml"))
     monkeypatch.setenv("STABLEMATE_CACHE_DIR", str(tmp_path / "cache"))
     return tmp_path
@@ -429,9 +326,6 @@ def test_a_store_given_no_directory_writes_where_the_resolution_says(isolated_re
     assert index.IndexStore(root).get(doc) == PAYLOAD
 
 
-# ---------------------------------------------------------------------------
-# Self-bounding: a write prunes
-# ---------------------------------------------------------------------------
 def test_a_write_prunes_entries_past_the_age_bound(tmp_path):
     """An unattended machine must not grow the cache without limit."""
     root = make_repo(tmp_path / "acme")
@@ -466,14 +360,7 @@ def test_a_write_keeps_entries_inside_the_age_bound(tmp_path):
 
 
 def test_a_write_sweeps_at_most_once_per_interval(tmp_path):
-    """The bound is an age, and an age does not need checking once per written entry.
-
-    The sweep is a full ``rglob`` plus a ``stat`` per file, so running it on every ``put``
-    made storing a book cost time quadratic in the size of the cache — the thing that made
-    a cold fill against the index nine times slower than no index at all. What is asserted
-    here is the throttle itself: with the stamp fresh, a second write past the bound leaves
-    a stale entry alone.
-    """
+    """The bound is an age, and an age does not need checking once per written entry."""
     root = make_repo(tmp_path / "acme")
     stale = root / "docs/features/area/rec.md"
     fresh = root / "docs/features/area/rec2.md"
@@ -481,7 +368,7 @@ def test_a_write_sweeps_at_most_once_per_interval(tmp_path):
     directory = tmp_path / "index"
     bound = 3600.0
 
-    store(root, directory, max_age_s=bound).put(stale, PAYLOAD)  # stamps the directory
+    store(root, directory, max_age_s=bound).put(stale, PAYLOAD)
     for path in entry_files(directory):
         if path.name != index.PRUNE_STAMP_NAME:
             os.utime(path, (time.time() - bound * 2, time.time() - bound * 2))
@@ -492,7 +379,7 @@ def test_a_write_sweeps_at_most_once_per_interval(tmp_path):
 
 
 def test_a_stale_stamp_lets_the_next_write_sweep_again(tmp_path):
-    """The throttle defers a sweep; it does not cancel it. The other half of the bound."""
+    """The throttle defers a sweep; it does not cancel it."""
     root = make_repo(tmp_path / "acme")
     stale = root / "docs/features/area/rec.md"
     fresh = root / "docs/features/area/rec2.md"
@@ -501,7 +388,7 @@ def test_a_stale_stamp_lets_the_next_write_sweep_again(tmp_path):
     bound = 3600.0
 
     store(root, directory, max_age_s=bound).put(stale, PAYLOAD)
-    age_everything(directory, index.PRUNE_INTERVAL_S + bound * 2)  # entries and stamp alike
+    age_everything(directory, index.PRUNE_INTERVAL_S + bound * 2)
     store(root, directory, max_age_s=bound).put(fresh, PAYLOAD)
 
     assert store(root, directory, max_age_s=bound).get(stale) is None
@@ -509,12 +396,7 @@ def test_a_stale_stamp_lets_the_next_write_sweep_again(tmp_path):
 
 
 def test_the_stamp_is_not_an_entry(tmp_path):
-    """Neither mode of `clean` counts or removes it.
-
-    Reporting it to an operator would overstate what was evicted by one, and removing it
-    under ``--all`` would hand the next writer a directory that looks never swept — which
-    is the one state that makes a sweep run on the very next write.
-    """
+    """Neither mode of `clean` counts or removes it."""
     root = make_repo(tmp_path / "acme")
     doc = root / "docs/features/area/rec.md"
     directory = tmp_path / "index"
@@ -528,12 +410,7 @@ def test_the_stamp_is_not_an_entry(tmp_path):
 
 
 def test_a_directory_that_cannot_be_stamped_does_not_sweep_on_every_write(tmp_path):
-    """No stamp means no throttle, and a store with no throttle is the quadratic one.
-
-    A read-only cache directory is the realistic way to get there. Reporting not-due is the
-    safe answer: the entries still age out under ``ostler cache clean``, and no write pays
-    for a directory walk it cannot record having done.
-    """
+    """No stamp means no throttle, and a store with no throttle is the quadratic one."""
     root = make_repo(tmp_path / "acme")
     directory = tmp_path / "index"
     directory.mkdir()
@@ -559,9 +436,6 @@ def test_the_age_bound_has_a_default_a_caller_need_not_supply(tmp_path):
     assert store(root, directory).get(doc) == PAYLOAD
 
 
-# ---------------------------------------------------------------------------
-# Damage is a miss, never an error
-# ---------------------------------------------------------------------------
 @pytest.mark.parametrize(
     ("label", "damage"),
     [
@@ -614,30 +488,12 @@ def test_a_missing_file_is_a_miss(tmp_path):
     assert store(root, directory).get(root / "docs/features/area/gone.md") is None
 
 
-# ---------------------------------------------------------------------------
-# The parse products are served from it
-# ---------------------------------------------------------------------------
-#: The two modules that own a read-only parse product: the document accessor every reader goes
-#: through, and the anchor computation — the single largest consumer of it. `markdown.py` and
-#: `graph.py` stay out on purpose. The parser is the thing being cached, not a caller of the
-#: cache, and the graph build reaches its documents through the accessor.
 PRODUCT_MODULES = ("model.py", "links.py")
 
 
 def test_every_parse_product_is_served_from_the_store():
-    """The store shipped ahead of its consumers; this is the increment that connects them.
-
-    A file-level check rather than a behavioural one, because it is the *converse* that the
-    behavioural tests cannot state: `test_index_parse_products.py` shows the accessor is warm,
-    but only reading the modules shows that the anchor computation goes through the same store
-    rather than growing a memo of its own.
-    """
+    """The store shipped ahead of its consumers; this is the increment that connects them."""
     package = REPO_ROOT / "ostler" / "ostler"
-    # Reaching the store means either owning the connection to it or going through `read_doc`,
-    # the one accessor that owns it. `links.py` does the latter — it names no store at all now,
-    # which is the shape the increment was after, so the second half of the check is what keeps
-    # that from being indistinguishable from a module that quietly went back to parsing: a
-    # consumer may not call the splitter for itself.
     served = ("from ostler import index", "from ostler.index", "ostler.index", "IndexStore",
               "read_doc")
     sources = {path.name: path.read_text(encoding="utf-8")
@@ -647,23 +503,12 @@ def test_every_parse_product_is_served_from_the_store():
                 if not any(marker in text for marker in served)]
 
     assert not unserved, f"still parsing without the store: {unserved}"
-    # `model.py` is exempt: its call to the splitter *is* the cache fill.
     assert "markdown.split" not in sources["links.py"], (
         "links.py splits markdown for itself again instead of going through the accessor")
 
 
 def test_the_shape_digest_reaches_every_dataclass_a_production_caller_stores():
-    """The roots are a list, and a list left behind is the failure the digest was built to end.
-
-    `dataclass_shape_digest` generalises over *fields* — a field added anywhere in the graph
-    moves the hash with no edit — but not over *stored types*: `_shape_material` names its
-    roots, and a type nobody named is covered by nothing. When the digest first landed it
-    named two, and the store had four production callers handing it a dataclass. The two it
-    missed are the two that matter most on a source checkout: `api.Snapshot` carries the whole
-    planning `Graph`, and `inventory._SymbolTable` is read back behind `isinstance(payload,
-    _SymbolTable)` — a check keyed on the class's name, which is the exact shape that cannot
-    see a field arrive.
-    """
+    """The roots are a list, and a list left behind is the failure the digest was built to end."""
     from ostler import api, index, inventory, model
 
     reached = index._reachable_dataclasses(

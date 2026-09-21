@@ -1,30 +1,4 @@
-"""``ostler path`` — resolve slugs to canonical filesystem paths.
-
-Uses the configured ``doc_roots`` from ostler.yml / agents.yml, so a repo that moved its
-epics out of ``docs/`` is followed rather than assumed away. The ``resolve_*`` functions
-the CLI prints return paths relative to the repo root; everything else returns an absolute
-path built on the root it was handed.
-
-**This module is where a doc-tree path is derived, for every caller including the
-workflows.** A workflow that needs the epics index, an epic folder, a story folder, the
-backlog file or a feature book joins a *filename it owns* onto a directory from here; it
-does not spell ``docs/epics`` itself. Two derivations of the same location is the failure
-this avoids — the second one does not learn about ``docRoots:``, and the symptom is a run
-writing into a directory nothing reads.
-
-Each derivation comes in up to three spellings, and which one a caller wants is decided by
-what it already holds:
-
-* ``<name>_in(root, ...)`` — graph-free, taking the **repo root**. Loading the graph reads
-  every markdown file under every doc root; deriving a path may not cost that.
-* ``<name>(graph, ...)`` — the same answer against an already-loaded graph, so a caller
-  that has one does not re-read the config.
-* ``<name>_under(container, ...)`` — taking the containing directory itself, for a caller
-  that was *told* which one to use: a workflow run with an operator-supplied ``epics_dir``,
-  or a caller already holding the feature book. The override still gets ostler's rules
-  applied inside it — an epic is still matched by number-or-slug — which is what keeps an
-  override from becoming a second, dumber derivation.
-"""
+"""``ostler path`` — resolve slugs to canonical filesystem paths."""
 
 from __future__ import annotations
 
@@ -35,11 +9,7 @@ from ostler.model import Graph
 
 
 def doc_root_in(root: Path, kind: str) -> Path:
-    """The configured directory for doc kind *kind* (``epics``, ``features``, …) under *root*.
-
-    ``kinds=()`` skips the template registry: the four built-in keys are always present, and
-    a path derivation should not pay for reading ``.agents/templates.yml`` to learn that.
-    """
+    """The configured directory for doc kind *kind* (``epics``, ``features``, …) under *root*."""
     return model.doc_roots(root, kinds=())[kind]
 
 
@@ -54,11 +24,7 @@ def epics_root(graph: Graph) -> Path:
 
 
 def features_root_in(root: Path, service: str = "") -> Path:
-    """The feature book under *root*, scoped to one *service* when the repo has several.
-
-    A multi-repo workspace books each service separately (``docs/features/api-service``);
-    a single-service repo passes no service and books straight into ``docs/features``.
-    """
+    """The feature book under *root*, scoped to one *service* when the repo has several."""
     base = doc_root_in(root, "features")
     return base / service if service else base
 
@@ -70,41 +36,13 @@ def features_root(graph: Graph, service: str = "") -> Path:
 
 
 def resolve_features_root(value: str | None, root: Path) -> str:
-    """The `featuresRoot` a QA context packet names, normalised against *root*.
-
-    `value` is whatever a packet's `featuresRoot` field held: `None` when the key is
-    absent or JSON `null`, `""` when a packet was written before the field existed or for
-    a book that is not nested under a service, or a real posix-relative path, possibly
-    padded with whitespace from hand-edited input. `None` and `""` mean the same thing —
-    "this packet names no book" — and both resolve to the book `features_root_in(root)`
-    discovers under *root*; a real value is only stripped, never otherwise reinterpreted.
-
-    This is the one definition of that rule. `qa/context.py`'s `build_context` calls it to
-    decide what to write, and every later reader of the field — `qa/drivers.py` and
-    `cli.py` — calls it to decide what the field means, so a lookup against the same
-    packet agrees everywhere rather than re-deriving its own answer.
-    """
+    """The `featuresRoot` a QA context packet names, normalised against *root*."""
     stripped = (value or "").strip()
     return stripped or features_root_in(root).relative_to(root).as_posix()
 
 
 def book_prefix_in(root: Path, features_root: str) -> str:
-    """Where a book is nested under *root*, relative to it — `""` when it is not nested.
-
-    **A book is a description, and a description is not located in its subject.** The two
-    facts are independent: `paddock/data/apps/globex/docs/features` is where the book
-    lives, and `paddock/data/apps/globex` is the root of the system it describes. Every
-    path a book writes about its subject — a `code:` citation, a runbook's
-    `working-directory: .` — is relative to the *subject's* root, because the same book has
-    to join to its code whether it is checked out at a repo's top level or nested inside a
-    host tree. Anything reading those paths against the checkout root works right up until
-    a book is read from somewhere else, and then silently addresses the wrong tree.
-
-    The subject's root is recovered by stripping this repo's *default* features-root suffix
-    off the tail of *features_root*: the default is what a book at *root* itself would use,
-    so what remains at the front is the directory it is nested under. `""` when the book
-    already sits at *root*, which is every non-nested caller.
-    """
+    """Where a book is nested under *root*, relative to it — `""` when it is not nested."""
     default_suffix = features_root_in(root).relative_to(root).as_posix()
     if not features_root or features_root == default_suffix:
         return ""
@@ -113,7 +51,7 @@ def book_prefix_in(root: Path, features_root: str) -> str:
 
 
 def book_root_in(root: Path, features_root: str) -> Path:
-    """The root of the system the book at *features_root* describes. See `book_prefix_in`."""
+    """The root of the system the book at *features_root* describes."""
     prefix = book_prefix_in(root, features_root)
     return root / prefix if prefix else root
 
@@ -134,15 +72,7 @@ def roadmaps_root(graph: Graph) -> Path:
 
 
 def backlog_path_in(root: Path) -> Path:
-    """The intake list, ``docs/backlog.md`` under *root* unless ``docRoots:`` says otherwise.
-
-    The one ``docRoots:`` entry naming a file rather than a directory, because there is one
-    backlog and not a tree of them. It is configured there rather than fixed here for the
-    reason every other location is: a run told to keep its own worklist somewhere else used
-    to say so with a parameter, and then wrote a list ``ostler backlog`` and ``doctor`` could
-    not see. An intake list being *unfiled* — nobody has decided which epic an item belongs
-    to — is a fact about the items, not about where the file sits.
-    """
+    """The intake list, ``docs/backlog.md`` under *root* unless ``docRoots:`` says otherwise."""
     return doc_root_in(root, "backlog")
 
 
@@ -162,14 +92,7 @@ def epics_index(graph: Graph) -> Path:
 
 
 def resolve_spec(graph: Graph, story: str) -> str:
-    """Resolve a story (slug or minted id) to its spec directory path (relative to root).
-
-    The directory is keyed by the **minted id** (``ACME-01H…``) — the identity that survives
-    a slug rename and matches the trailer a commit carries — not the slug the caller may
-    have handed in. Two fallbacks keep old trees readable: a story that predates minted ids
-    keys by its slug, and a spec already on disk under the slug stays where its readers know
-    it rather than being shadowed by an empty id-keyed path.
-    """
+    """Resolve a story (slug or minted id) to its spec directory path (relative to root)."""
     specs_root = graph.doc_roots["specs"]
     key = story
     found = graph.find_story(story)
@@ -182,13 +105,7 @@ def resolve_spec(graph: Graph, story: str) -> str:
 
 
 def epic_dirs_under(epics_root: Path) -> list[Path]:
-    """Every epic directory directly under *epics_root*, in name order.
-
-    The ``_under`` family takes the epics directory itself rather than the repo root, for
-    the one caller that has been *told* which directory to use — a workflow whose operator
-    passed an explicit epics path. It is still ostler's rule being applied to it; what the
-    caller overrides is which directory, never how a name resolves inside it.
-    """
+    """Every epic directory directly under *epics_root*, in name order."""
     if not epics_root.is_dir():
         return []
     return [d for d in sorted(epics_root.iterdir()) if (d / "epic.md").is_file()]
@@ -216,22 +133,7 @@ def epic_dir_under(epics_root: Path, name: str) -> Path:
 
 
 def epic_dir_in(root: Path, name: str) -> Path:
-    """The directory of epic *name* under *root*, by number or by bare slug.
-
-    Epic directories are created numbered (`0001-checkout-flow`, see
-    :func:`registry.epic_dir_name`), but the number is presentation, not identity: a bare
-    `checkout-flow` still names that epic here, which is what keeps older un-numbered
-    epics, hand-written `index.md` lines and slug-only prompts working. A numbered name is
-    taken literally — it already says which epic it means, and silently re-pointing
-    `0002-x` at `0001-x` would hide a typo. A name that resolves to nothing comes back as
-    ``epics_root / name`` so callers keep reporting "no epic '<name>'" against the name
-    they were handed.
-
-    Graph-free so that a caller holding only a repo root — a workflow resolving a gate's
-    context file, say — resolves an epic folder by the same rule rather than re-deriving a
-    second, subtly different one. :func:`epic_dir` is this function against an already
-    loaded graph.
-    """
+    """The directory of epic *name* under *root*, by number or by bare slug."""
     return epic_dir_under(epics_root_in(root), name)
 
 
@@ -241,11 +143,7 @@ def epic_dir(graph: Graph, name: str) -> Path:
 
 
 def story_dir_in(root: Path, epic: str, slug: str) -> Path:
-    """The folder of story *slug* in *epic*: ``<epic-dir>/stories/<slug>``.
-
-    The story's own files — ``story.md``, the run's context and feedback notes — are joined
-    onto this by whoever owns their names; the *location* is not theirs to spell.
-    """
+    """The folder of story *slug* in *epic*: ``<epic-dir>/stories/<slug>``."""
     return epic_dir_in(root, epic) / "stories" / slug
 
 
@@ -260,11 +158,7 @@ def story_dir_under(epic_dir_path: Path, slug: str) -> Path:
 
 
 def waivers_path_under(features_root_path: Path) -> Path:
-    """A book's coverage waivers, for a caller that already holds the book directory.
-
-    Inside the book on purpose: a waiver is a claim about *these* features, and a book moved
-    or copied to another repo has to carry its waivers with it or come back red.
-    """
+    """A book's coverage waivers, for a caller that already holds the book directory."""
     return features_root_path / "coverage-waivers.json"
 
 
@@ -304,17 +198,7 @@ def resolve_story(graph: Graph, epic: str, slug: str) -> str:
 
 
 def resolve_branch(slug: str, *, epic: bool = False) -> str:
-    """Resolve a slug to its git branch name.
-
-    An epic branches under ``feat/`` — the one prefix in the system. A story
-    branches on its bare id: ids are minted by ostler and carry a repo prefix,
-    so they are already globally unique and need no namespace of their own.
-
-    An epic's *sequence number* is dropped: `0003-checkout-flow` branches as
-    `feat/checkout-flow`. The number orders the folder listing and says nothing a branch
-    name needs, and leaving it in would give the same epic two branch names depending on
-    whether the caller had resolved the directory yet.
-    """
+    """Resolve a slug to its git branch name."""
     if epic:
         return f"feat/{registry.epic_slug(slug)}"
     return slug

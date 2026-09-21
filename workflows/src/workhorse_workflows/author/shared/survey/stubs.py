@@ -1,12 +1,4 @@
-"""What the survey sub-flows' gates return under `--dry-run`.
-
-Same reason as `nodes/_stubs.py`, and the same shape: every one of these gates branches
-on a `*_ok` boolean whose blank stand-in is `False`, which is the failing arm. In the
-plan stage that arm loops back to the planner and then to the operator resolver — and
-because the registry stubs `resolve-operator` as `answered`, it loops until the
-transition budget is spent rather than blocking. In the emit stage it raises. Neither is
-a finding about the workflow, only about what a blank means.
-"""
+"""What the survey sub-flows' gates return under `--dry-run`."""
 from __future__ import annotations
 
 from workhorse_workflows.author.shared.schemas.survey import (

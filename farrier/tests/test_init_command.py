@@ -1,9 +1,4 @@
-"""farrier init — the starter agents.yml, and the bare-invocation help it pairs with.
-
-`init` is the only command that runs *before* a repo is configured, so it must work
-with no library on the machine, and it must never quietly replace a config someone
-already wrote.
-"""
+"""farrier init — the starter agents.yml, and the bare-invocation help it pairs with."""
 
 from pathlib import Path
 
@@ -25,20 +20,11 @@ def test_init_writes_a_config_the_installer_can_read(tmp_path: Path) -> None:
 
     config = yaml.safe_load((repo / "agents.yml").read_text(encoding="utf-8"))
     assert config["agents"] == {"claude": True}
-    # Seeded with the base library's two rather than left empty: every repo takes both,
-    # so an operator who fills in nothing else still gets the craft contracts and the
-    # toolchain. The stack pack is the part only they can name.
     assert config["packs"] == ["general", "stablemate"]
 
 
 def test_init_needs_no_library_configured(tmp_path: Path, monkeypatch) -> None:
-    """No layer resolution, no base-library fetch — just a file.
-
-    A fresh machine has neither, and `farrier config set-library` is a step someone
-    takes *after* they have a repo to point it at.
-    """
-    # A library path that isn't there; the suite's autouse fixtures already ensure
-    # there is no base library to fall back on either.
+    """No layer resolution, no base-library fetch — just a file."""
     monkeypatch.setenv("FARRIER_LIBRARY_DIR", str(tmp_path / "does-not-exist"))
     repo = tmp_path / "globex"
     repo.mkdir()
@@ -80,12 +66,7 @@ def test_init_rejects_a_repo_path_that_is_not_a_directory(tmp_path: Path) -> Non
 
 
 def test_init_sets_no_repo_name(tmp_path: Path) -> None:
-    """The name is the directory's, so the starter config does not restate it.
-
-    A `repo.name` key here would read as settable, and it is not — the installer
-    derives the prefix from the directory and the workflow tooling derives the same
-    name the same way.
-    """
+    """The name is the directory's, so the starter config does not restate it."""
     repo = tmp_path / "acme"
     repo.mkdir()
 
@@ -93,18 +74,11 @@ def test_init_sets_no_repo_name(tmp_path: Path) -> None:
 
     text = (repo / "agents.yml").read_text(encoding="utf-8")
     assert yaml.safe_load(text).get("repo") is None
-    # It still *appears*, spelled as the installer derives it, in the comment that
-    # shows what an installed skill from this repo is called.
     assert "acme-db" in text
 
 
 def test_bare_farrier_prints_help_rather_than_installing(capsys) -> None:
-    """`farrier` with no arguments used to mean `farrier install --repo .`.
-
-    Rendering every adapter file into whatever directory the shell happens to be in
-    is not a default worth having; the verb listing is what a bare invocation is
-    asking for. Reaching install would raise here — there is no agents.yml in cwd.
-    """
+    """`farrier` with no arguments used to mean `farrier install --repo .`."""
     assert run([]) == 0
 
     out = capsys.readouterr().out
@@ -119,5 +93,4 @@ def test_naming_a_flag_first_still_means_install(tmp_path: Path) -> None:
     repo.mkdir()
 
     with pytest.raises(SystemExit):
-        # No agents.yml: install fails, which is proof it was install that ran.
         run(["--repo", str(repo)])

@@ -1,14 +1,4 @@
-"""Suite-wide guarantees: no network, no reading the developer's real config.
-
-Two routes leak real state into a test here, and both must be closed:
-
-* the base-library cache — resolving a base with nothing configured would clone ~16M
-  from GitHub into the real ~/.cache/stablemate;
-* the config file — pointing $STABLEMATE_CONFIG at a tmpdir is not enough, because
-  when that file is absent read_config() falls back to the legacy per-tool paths
-  (~/.config/workhorse, ~/.config/farrier), so a test would read whatever this
-  machine has configured.
-"""
+"""Suite-wide guarantees: no network, no reading the developer's real config."""
 
 from __future__ import annotations
 

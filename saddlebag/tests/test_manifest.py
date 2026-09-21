@@ -35,7 +35,6 @@ WEB_LOCAL = Environment(
 )
 
 
-# -- export -------------------------------------------------------------------
 
 
 def test_a_secret_entry_exports_as_a_declaration_never_as_a_secret(store):
@@ -66,7 +65,6 @@ def test_export_keeps_render_order():
     assert keys == [e.key for e in WEB_LOCAL.entries]
 
 
-# -- round trip ---------------------------------------------------------------
 
 
 def test_a_manifest_round_trips():
@@ -78,12 +76,10 @@ def test_a_manifest_round_trips():
     assert parsed.entries == WEB_LOCAL.entries
 
 
-# -- load rejects what must not be imported -----------------------------------
 
 
 def test_a_value_on_a_secret_entry_is_rejected():
-    """The DB's CHECK constraint, enforced at the other end of the pipe: someone who
-    pastes a secret into a file bound for git gets an error, not an import."""
+    """The DB's CHECK constraint, enforced at the other end of the pipe: someone who pastes a secret into a file bound for git gets an error, not an import."""
     with pytest.raises(manifest.ManifestError, match="must not carry a value"):
         manifest.loads(
             "name: web-local\nenv: local\n"
@@ -135,14 +131,12 @@ def test_not_yaml_is_rejected():
 
 
 def test_a_numeric_looking_config_value_is_read_as_text():
-    """YAML would hand back `9099` as an int; a .env holds text, and rendering an
-    int would crash the writer rather than quote it."""
+    """YAML would hand back `9099` as an int; a .env holds text, and rendering an int would crash the writer rather than quote it."""
     parsed = manifest.loads("name: w\nenv: local\nentries:\n"
                             "  - key: PORT\n    kind: config\n    value: 9099\n")
     assert parsed.entries[0].value == "9099"
 
 
-# -- dispatch -----------------------------------------------------------------
 
 
 def test_manifest_paths_are_recognised_by_suffix():

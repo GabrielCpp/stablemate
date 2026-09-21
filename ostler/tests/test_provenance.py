@@ -297,8 +297,7 @@ def test_cli_emits_story_provenance_with_checkout_mapping(
 def test_story_for_node_reads_the_latest_trailer_over_the_node_s_code_targets(
     tmp_path: Path,
 ) -> None:
-    """The code-to-story join is the `Story:` trailer on the newest commit touching the
-    node's `code:` files. A trailer no story resolves is reported, not read as "no story"."""
+    """The code-to-story join is the `Story:` trailer on the newest commit touching the node's `code:` files."""
     docs, source, story_id, node_id = _fixture(tmp_path)
 
     stale = Ostler(docs).query("story-for-node", node_id, checkouts={"api-service": source})[0]
@@ -328,13 +327,10 @@ def test_story_for_node_with_no_trailer_means_the_code_is_the_intent(tmp_path: P
     (other / "src/service.py").write_text("x = 1\n", encoding="utf-8")
     _commit(other, "feat: no story behind this")
 
-    # The node's ref names `api-service`; only `web-app` is supplied, so the ref is unjoinable
-    # and the answer is "no story" with the reason on record.
     result = Ostler(docs).query("story-for-node", node_id, checkouts={"web-app": other})[0]
     assert result["story"] is None and result["commit"] is None
     assert result["warnings"] == ["no checkout supplied for repository 'api-service'"]
 
-    # A history with no trailer at all over those files: nothing to judge the code against.
     (docs / "docs/features/billing/create.md").write_text(
         "---\ntype: concept\nslug: create\ntitle: Create invoice\n---\n"
         "# Create invoice\n\n- code: `src/service.py::x`\n", encoding="utf-8")
@@ -349,12 +345,7 @@ def test_story_for_node_with_no_trailer_means_the_code_is_the_intent(tmp_path: P
 def test_a_books_default_repository_resolves_unqualified_refs(
     tmp_path: Path,
 ) -> None:
-    """A book declaring ``web-app`` joins an unqualified ``src/service.py::x`` to it.
-
-    A multi-repo workspace previously returned ``None`` here, and the join went quiet. The
-    root declaration makes the resolution explicit so doctor can flag its absence rather
-    than the join failing silently.
-    """
+    """A book declaring ``web-app`` joins an unqualified ``src/service.py::x`` to it."""
     docs, _source, story_id, _node_id = _fixture(tmp_path)
     other = tmp_path / "web-app"
     other.mkdir()
@@ -365,24 +356,18 @@ def test_a_books_default_repository_resolves_unqualified_refs(
     (other / "src/service.py").write_text("x = 1\n", encoding="utf-8")
     _commit(other, f"feat: the only repo with this file\n\nStory: {story_id}")
 
-    # Replace the fixture node's ref with one that lives in `other`. The fixture created
-    # `docs/features/billing/create.md` citing `repo://api-service/...`; rewrite it as an
-    # unqualified ref whose only checkout is `other`.
     (docs / "docs/features/billing/create.md").write_text(
         "---\ntype: concept\nslug: create\ntitle: Create invoice\n---\n"
         "# Create invoice\n\n- code: `src/service.py::x`\n", encoding="utf-8")
 
     from ostler import source_snapshots
 
-    # No declaration, single checkout: the unqualified ref resolves through the only one.
     bare = Ostler(docs).query(
         "story-for-node", "docs/features/billing/create.md",
         checkouts={"web-app": other},
     )[0]
     assert bare["commit"]["repository"] == "web-app"
 
-    # Declare `web-app` at the features root, with two repos in the workspace: the
-    # unqualified ref now resolves through the declared one, with no warnings.
     source_snapshots.set_book_repository(docs / "docs/features", "web-app")
     declared = Ostler(docs).query(
         "story-for-node", "docs/features/billing/create.md",
@@ -391,8 +376,6 @@ def test_a_books_default_repository_resolves_unqualified_refs(
     assert declared["commit"]["repository"] == "web-app"
     assert declared["warnings"] == []
 
-    # A wrong declaration is read as the id not being in checkouts, so the join falls back
-    # to single-checkout behaviour — but here there are two, so the join goes quiet.
     source_snapshots.set_book_repository(docs / "docs/features", "ios-app")
     quiet = Ostler(docs).query(
         "story-for-node", "docs/features/billing/create.md",
@@ -401,7 +384,6 @@ def test_a_books_default_repository_resolves_unqualified_refs(
     assert quiet["commit"] is None
     assert any("no checkout supplied" in w for w in quiet["warnings"])
 
-    # Remove the declaration entirely: the same quiet outcome, by the same mechanism.
     (docs / "docs/features/repository.txt").unlink()
     no_decl = Ostler(docs).query(
         "story-for-node", "docs/features/billing/create.md",

@@ -1,15 +1,4 @@
-"""The leverage scorecard: does a QA plan use the book it was handed, or just fetch URLs?
-
-Detection alone is gameable in a direction nobody notices. A plan that opens every screen
-by its URL, asserts on rendered strings and never walks a documented journey can still
-catch a seeded defect — and scores identically to one that enters each flow where the book
-says it starts, moves between screens by clicking, and addresses the UI by role. These
-tests pin the six metrics that tell those two apart, and the rule that keeps the number
-honest: an input that is not there prints `–`, never `0`.
-
-Everything here is literal — a book dict, a context packet, a plan module written as a
-string, a run log. No docker, no agent, no network.
-"""
+"""The leverage scorecard: does a QA plan use the book it was handed, or just fetch URLs?"""
 
 from __future__ import annotations
 
@@ -26,12 +15,7 @@ DATA = Path(__file__).parents[1]
 
 @contextlib.contextmanager
 def _tasks_dir_on_path() -> Iterator[None]:
-    """Stand in for the interpreter, exactly as `paddock.loader` does.
-
-    Task modules are loose files that import their siblings by bare name, so a loader —
-    here, the test — has to put their directory on the path the way `python tasks/x.py`
-    would, and take it off again.
-    """
+    """Stand in for the interpreter, exactly as `paddock.loader` does."""
     saved = sys.path[:]
     sys.path.insert(0, str(DATA / "tasks"))
     try:
@@ -48,7 +32,6 @@ with _tasks_dir_on_path():
     _spec.loader.exec_module(frozen)
 
 
-# ── the fixtures every test bends one way ─────────────────────────────────────────────
 
 
 def screen(node_id: str, route: str, *, entry: str = "") -> dict:
@@ -79,7 +62,6 @@ PACKET = {
          "node": "flows/create-policy", "required": True},
         {"id": "okf:gui/screens/policy-new:contract", "kind": "contract",
          "node": "gui/screens/policy-new", "required": True},
-        # Context, not owed: a journey the closure reached and the story does not owe.
         {"id": "okf:flows/renew-policy:end-state", "kind": "journey",
          "node": "flows/renew-policy", "required": False},
     ],
@@ -124,7 +106,6 @@ def score(**overrides) -> dict:
     return frozen.leverage_from(**inputs)
 
 
-# ── entry ─────────────────────────────────────────────────────────────────────────────
 
 
 def test_a_scenario_entering_at_the_documented_start_scores_the_flow() -> None:
@@ -132,11 +113,7 @@ def test_a_scenario_entering_at_the_documented_start_scores_the_flow() -> None:
 
 
 def test_a_scenario_deep_linking_into_the_middle_of_its_flow_does_not() -> None:
-    """The whole point of the metric: `/policies/new` is in the flow, and is not its start.
-
-    A plan that opens the form directly proves the form and nothing about how a user
-    reaches it — which is the half of the journey a router regression lives in.
-    """
+    """The whole point of the metric: `/policies/new` is in the flow, and is not its start."""
     started_late = plan(
         "    qa.goto('/policies/new')\n"
         "    qa.by_role('button', name='Create').click()\n"
@@ -153,7 +130,6 @@ def test_a_scenario_the_run_never_started_earns_nothing() -> None:
     assert score(run_log=[{"kind": "session_start"}])["entry"] == [0, 1]
 
 
-# ── deep links ────────────────────────────────────────────────────────────────────────
 
 
 def test_a_mid_scenario_goto_to_a_documented_non_entry_route_is_a_deep_link() -> None:
@@ -179,7 +155,6 @@ def test_returning_to_an_entry_route_is_arriving_not_deep_linking() -> None:
     assert score(plan_source=reopens)["deep_links"] == 0
 
 
-# ── role addressing ───────────────────────────────────────────────────────────────────
 
 
 def test_role_locators_score_and_text_locators_do_not() -> None:
@@ -200,7 +175,6 @@ def test_a_css_selector_counts_as_addressed() -> None:
     assert score(plan_source=styled)["roles"] == [1, 1]
 
 
-# ── obligations and journeys ──────────────────────────────────────────────────────────
 
 
 def test_obligations_count_only_the_passing_status() -> None:
@@ -216,7 +190,6 @@ def test_a_journey_whose_end_state_was_never_asserted_is_not_complete() -> None:
     assert score(statuses=unproven)["journeys"] == [0, 1]
 
 
-# ── the incomputable ones ─────────────────────────────────────────────────────────────
 
 
 @pytest.mark.parametrize(
@@ -250,8 +223,7 @@ def test_the_line_reads_the_way_the_headline_promises() -> None:
 
 
 def test_the_line_prints_only_the_metrics_the_fixture_declared() -> None:
-    """A fixture with no screen owns three of the six; the other three are not printed as
-    blanks that read like failures, and the line says how many it left out."""
+    """A fixture with no screen owns three of the six; the other three are not printed as blanks that read like failures, and the line says how many it left out."""
     line = frozen.leverage_line(
         {"entry": None, "deep_links": None, "roles": None,
          "obligations": [22, 24], "journeys": [2, 3], "sensitivity": [20, 22]},
@@ -272,7 +244,6 @@ def test_a_fixture_refuses_a_leverage_key_it_does_not_have() -> None:
     assert frozen.Fixture(app="apps/x", repo_dir="x").leverage == frozen.LEVERAGE_KEYS
 
 
-# ── pooling across a scored round ─────────────────────────────────────────────────────
 
 
 def test_pooling_sums_numerator_and_denominator_across_trials() -> None:
@@ -287,11 +258,7 @@ def test_pooling_sums_numerator_and_denominator_across_trials() -> None:
 
 
 def test_pooling_does_not_multiply_a_book_level_metric_by_the_trial_count() -> None:
-    """Every trial in a round reads the same book, so summing its claims invents evidence.
-
-    Twelve trials over a fifty-eight-claim book printed `sensitivity 812/812` — a true ratio
-    over a total no book in the corpus has.
-    """
+    """Every trial in a round reads the same book, so summing its claims invents evidence."""
     pooled = frozen.pool_leverage([
         {"leverage": {"sensitivity": [40, 58], "obligations": [2, 3]}},
         {"leverage": {"sensitivity": [40, 58], "obligations": [2, 3]}},
@@ -307,7 +274,6 @@ def test_pooling_a_ledger_written_before_the_scorecard_existed_is_all_blank() ->
     assert pooled == dict.fromkeys(frozen.LEVERAGE_KEYS)
 
 
-# ── route matching is ostler's, not a second opinion ──────────────────────────────────
 
 
 @pytest.mark.parametrize(

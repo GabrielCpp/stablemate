@@ -1,9 +1,4 @@
-"""`ostler coverage` — the join that makes a book's completeness a computed fact.
-
-The builder's stop condition used to be a value the recheck agent emitted about its own work.
-These tests pin the instrument that replaces it, and in particular the transitive module rule,
-whose non-vacuous clause is the easiest thing here to get subtly, flatteringly wrong.
-"""
+"""`ostler coverage` — the join that makes a book's completeness a computed fact."""
 
 from __future__ import annotations
 
@@ -44,12 +39,8 @@ def _book(repo: Path, *code_refs: str):
     return load(repo)
 
 
-# -- the grammar (§4.1) -------------------------------------------------------------------
 
 def test_a_receiver_qualified_citation_matches_the_inventory(tmp_path: Path) -> None:
-    # The measured defect: books cite `(*FirebaseClaimsWriter).SetRoleClaims` and the inventory
-    # emitted a bare `SetRoleClaims`, so 1136 citations could never match 877 symbols. This is
-    # the join that read 35% on a book that was really at 83%.
     ref = "api/internal/claims.go::(*FirebaseClaimsWriter).SetRoleClaims"
     inv = _inventory(tmp_path, [_symbol("api/internal/claims.go",
                                         "(*FirebaseClaimsWriter).SetRoleClaims")])
@@ -65,7 +56,6 @@ def test_a_citation_is_read_through_its_backticks(tmp_path: Path) -> None:
 
 
 def test_a_node_citing_several_code_bullets_covers_each(tmp_path: Path) -> None:
-    # A repeated bullet key parses to a list, not a string — a node may anchor several symbols.
     inv = _inventory(tmp_path, [_symbol("api/x.go", "Write"), _symbol("api/x.go", "Read")])
     result = coverage.run(_book(tmp_path, "api/x.go::Write", "api/x.go::Read"),
                           surface="api", inventory=inv)
@@ -80,11 +70,8 @@ def test_an_uncited_symbol_is_missing(tmp_path: Path) -> None:
     assert [m["code"] for m in result["missing"]] == ["api/x.go::Read"]
 
 
-# -- the transitive module rule (§4.3) ----------------------------------------------------
 
 def test_a_fully_symbol_covered_module_is_discharged(tmp_path: Path) -> None:
-    # A Go file whose every declared symbol is cited adds nothing the book has not said. On the
-    # measured corpus this rule discharged 238 of 282 uncited modules.
     inv = _inventory(tmp_path, [
         _module("api/x.go"), _symbol("api/x.go", "Write"), _symbol("api/x.go", "Read"),
     ])
@@ -104,11 +91,6 @@ def test_a_partially_symbol_covered_module_is_not_discharged(tmp_path: Path) -> 
 
 
 def test_a_module_declaring_nothing_needs_a_direct_citation(tmp_path: Path) -> None:
-    # THE load-bearing case. Without the `declares at least one symbol` clause the rule is
-    # vacuously true for a file that declares nothing — and would discharge exactly the case
-    # the module unit exists for: a Twig template with no `{% block %}` renders a screen and
-    # must be cited directly. A vacuous rule marks it covered on the strength of having found
-    # nothing in it: silence read as evidence.
     inv = _inventory(tmp_path, [_module("legacy/templates/Home.html.twig")])
     result = coverage.run(_book(tmp_path), surface="api", inventory=inv)
     assert result["covered"] == 0
@@ -125,8 +107,6 @@ def test_a_template_cited_directly_is_covered(tmp_path: Path) -> None:
 
 
 def test_a_template_with_blocks_is_discharged_by_its_blocks(tmp_path: Path) -> None:
-    # A template that DOES declare blocks is an ordinary transitive case — the rule only
-    # refuses to fire on a file that declares nothing.
     twig = "legacy/templates/Home.html.twig"
     inv = _inventory(tmp_path, [_module(twig), _symbol(twig, "title"), _symbol(twig, "content")])
     result = coverage.run(_book(tmp_path, f"{twig}::title", f"{twig}::content"),
@@ -140,11 +120,9 @@ def test_the_module_rule_does_not_leak_across_files(tmp_path: Path) -> None:
         _module("api/y.go"), _symbol("api/y.go", "Read"),
     ])
     result = coverage.run(_book(tmp_path, "api/x.go::Write"), surface="api", inventory=inv)
-    # x.go is discharged by its own symbol; y.go is not discharged by x.go's.
     assert {m["code"] for m in result["missing"]} == {"api/y.go", "api/y.go::Read"}
 
 
-# -- waivers (§5.2) -----------------------------------------------------------------------
 
 def test_a_waived_unit_counts_as_covered(tmp_path: Path) -> None:
     inv = _inventory(tmp_path, [_symbol("api/x.go", "parseRequest")])
@@ -168,7 +146,6 @@ def test_an_unwaived_unit_does_not_count(tmp_path: Path) -> None:
 
 
 def test_a_missing_waivers_file_is_not_an_error(tmp_path: Path) -> None:
-    # Nothing waived yet is the normal state of a fresh book, not a failure.
     inv = _inventory(tmp_path, [_symbol("api/x.go", "Write")])
     result = coverage.run(_book(tmp_path, "api/x.go::Write"), surface="api",
                           inventory=inv, waivers=tmp_path / "nope.json")
@@ -176,12 +153,8 @@ def test_a_missing_waivers_file_is_not_an_error(tmp_path: Path) -> None:
     assert coverage.is_complete(result)
 
 
-# -- silence is never evidence (§3.3) -----------------------------------------------------
 
 def test_an_empty_inventory_is_not_a_complete_book(tmp_path: Path) -> None:
-    # Stage 0 found `doctor` green on a book that does not exist: referential integrity over
-    # zero nodes is vacuously perfect. `covered == total` is vacuously true over zero units the
-    # same way. An empty book and a finished one must not share a verdict.
     result = coverage.run(_book(tmp_path), surface="api", inventory=_inventory(tmp_path, []))
     assert result["covered"] == 0
     assert result["total"] == 0
@@ -189,8 +162,6 @@ def test_an_empty_inventory_is_not_a_complete_book(tmp_path: Path) -> None:
 
 
 def test_a_blind_inventory_cannot_ground_a_pass(tmp_path: Path) -> None:
-    # A tree whose language the front end cannot read reports units it did not find. Coverage
-    # over that is not a measurement, and it must not read as one even at 1/1.
     inv = _inventory(tmp_path, [_symbol("api/x.go", "Write")],
                      errors=["no readable source under legacy/: front end supports …"])
     result = coverage.run(_book(tmp_path, "api/x.go::Write"), surface="api", inventory=inv)
@@ -211,11 +182,7 @@ def test_an_unreadable_inventory_raises_rather_than_reporting_zero(tmp_path: Pat
 
 
 def test_cmd_coverage_reports_an_unreadable_inventory_as_a_failed_outcome(tmp_path: Path) -> None:
-    """The outcome face answers where `run` raises — and never with a clean zero.
-
-    `ok` is false for both shapes of "not complete", so a caller gating on it cannot pass on
-    a join that never ran; `status` is what tells the two apart.
-    """
+    """The outcome face answers where `run` raises — and never with a clean zero."""
     bad = tmp_path / "bad.json"
     bad.write_text('{"nope": 1}')
 
@@ -238,11 +205,8 @@ def test_cmd_coverage_carries_the_join_and_its_verdict(tmp_path: Path) -> None:
     assert outcome.message == coverage.render(outcome.data)
 
 
-# -- scoping ------------------------------------------------------------------------------
 
 def test_surface_scopes_the_citations_to_one_book(tmp_path: Path) -> None:
-    # Two books in one graph (the rewrite scenario): `api`'s citations must not cover `web`'s
-    # units. A book is complete on its own evidence.
     write(tmp_path / "docs/features/api/concepts/a.md",
           "---\ntype: concept\nslug: a\ntitle: A\n---\n# A\n\n- code: `api/x.go::Write`\n\nA.\n")
     write(tmp_path / "docs/features/web/concepts/b.md",
@@ -254,11 +218,9 @@ def test_surface_scopes_the_citations_to_one_book(tmp_path: Path) -> None:
         "web/y.ts::Render"}
     assert {m["code"] for m in coverage.run(graph, surface="web", inventory=inv)["missing"]} == {
         "api/x.go::Write"}
-    # Unscoped, both books' citations count.
     assert coverage.is_complete(coverage.run(graph, surface=None, inventory=inv))
 
 
-# -- the CLI: a gate a `make` target can hold the run to (§13) -----------------------------
 
 def test_cli_exits_nonzero_on_an_incomplete_book(tmp_path: Path, capsys) -> None:
     inv = _inventory(tmp_path, [_symbol("api/x.go", "Write"), _symbol("api/x.go", "Read")])

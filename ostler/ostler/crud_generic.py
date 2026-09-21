@@ -1,9 +1,4 @@
-"""Kind-agnostic CRUD for instances of template-declared kinds (``.agents/templates.yml``).
-
-Mirrors ``crud.py``'s per-type functions (``create_epic``, ``delete_feature``, ...) but driven by
-a ``dynamic_registry.TemplateKind`` looked up at call time instead of a hardcoded shape — the
-``ostler new/find/set/remove <kind> <name> [field=value ...]`` verbs all funnel through here.
-"""
+"""Kind-agnostic CRUD for instances of template-declared kinds (``.agents/templates.yml``)."""
 
 from __future__ import annotations
 
@@ -51,11 +46,7 @@ def _find_path(graph: Graph, kind: TemplateKind, name: str) -> Path | None:
 
 def _resolve_path(graph: Graph, kind: TemplateKind, name: str,
                   fields: dict) -> tuple[Path | None, crud.Result | None]:
-    """Substitute ``{name}``/``{parent}`` into ``kind.path_template``.
-
-    *fields* is mutated: the parent-kind field (e.g. ``program=SMCNv3``) is popped once consumed,
-    so it never ends up written into the child's own frontmatter.
-    """
+    """Substitute ``{name}``/``{parent}`` into ``kind.path_template``."""
     subs = {"name": name}
     if kind.parent:
         if kind.parent not in fields:
@@ -86,8 +77,6 @@ def create_instance(graph: Graph, kind_name: str, name: str, fields: dict) -> cr
 
     fields = dict(fields)
     path, err_result = _resolve_path(graph, kind, name, fields)
-    # One check, not two: `_resolve_path` returns a path or a reason, and asking about the
-    # reason alone left the path an `Optional` that every write below had to re-litigate.
     if path is None:
         return err_result or crud.Result(False, f"cannot place {kind_name} '{name}'")
     if path.exists():
@@ -105,7 +94,7 @@ def create_instance(graph: Graph, kind_name: str, name: str, fields: dict) -> cr
     fm = {"type": kind.name, **fields}
     if kind.id:
         fm["id"] = ids.allocate(graph)
-    fm["type"] = kind.name  # a caller-supplied `type` field must never override the kind's own
+    fm["type"] = kind.name
 
     path.parent.mkdir(parents=True, exist_ok=True)
     title = fields.get("title", name)

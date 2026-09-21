@@ -1,16 +1,4 @@
-"""The `plan-qa` prompt's python example must be a plan the harness would actually accept.
-
-`plan-qa` writes a `qa_plan.py`, and `validate_qa_plan` runs `ostler qa validate` over it; an
-`invalid` verdict routes the flow back to `plan` for another agent turn. So a rule the prompt
-does not state is not a documentation gap — it is a guaranteed extra rework cycle on *every*
-story, paid in wall-clock against the run's budget. That was measured under the YAML format: a
-live benchmark run spent one full re-plan (156s) on two schema rules the example silently
-taught wrong.
-
-The example is what the agent pattern-matches on, so it is checked rather than read. Every
-name it imports and every `qa.…` attribute it calls lives in ostler's harness, not here, and
-prose that restates another package's surface goes stale with no signal at all.
-"""
+"""The `plan-qa` prompt's python example must be a plan the harness would actually accept."""
 from __future__ import annotations
 
 import ast
@@ -28,7 +16,6 @@ PROMPT = (
     Path(workhorse_workflows.__file__).parent / "coder" / "qa" / "prompts" / "plan-qa.md"
 )
 
-#: The fenced ```python block holding the plan skeleton the agent copies.
 _PYTHON_BLOCK = re.compile(r"```python\n(.*?)```", re.DOTALL)
 
 
@@ -44,14 +31,12 @@ def _example_tree() -> ast.Module:
 
 
 def test_the_example_is_valid_python():
-    """An example that does not parse teaches a plan that does not import, and an unimportable
-    plan now fails validation outright rather than an hour later as a driver failure."""
+    """An example that does not parse teaches a plan that does not import, and an unimportable plan now fails validation outright rather than an hour later as a driver failure."""
     _example_tree()
 
 
 def test_the_example_imports_only_names_the_harness_exports():
-    """`ostler_qa` is ostler's, not this package's. A name the example imports that the harness
-    does not define sends every agent copying it into an ImportError at validation."""
+    """`ostler_qa` is ostler's, not this package's."""
     imported = {
         alias.name
         for node in ast.walk(_example_tree())
@@ -64,9 +49,7 @@ def test_the_example_imports_only_names_the_harness_exports():
 
 
 def _qa_attributes() -> set[str]:
-    """Everything a scenario may reach through `qa`: the class's own methods and properties,
-    plus the instance attributes `__init__` binds — `qa.http` and `qa.diagnostics` exist only
-    as assignments, so `dir(Qa)` alone would call them invented."""
+    """Everything a scenario may reach through `qa`: the class's own methods and properties, plus the instance attributes `__init__` binds — `qa.http` and `qa.diagnostics` exist only as assignments, so `dir(Qa)` alone would call them invented."""
     tree = ast.parse(inspect.getsource(harness.Qa).lstrip())
     bound = {
         node.attr
@@ -80,9 +63,7 @@ def _qa_attributes() -> set[str]:
 
 
 def test_the_example_only_calls_qa_attributes_that_exist():
-    """Every affordance the example demonstrates is an attribute of the `Qa` the harness hands
-    the scenario. Naming one it does not have is the same failure as an invented CLI flag — the
-    thing this prompt spends a paragraph forbidding."""
+    """Every affordance the example demonstrates is an attribute of the `Qa` the harness hands the scenario."""
     used = {
         node.value.attr if isinstance(node.value, ast.Attribute) else node.attr
         for node in ast.walk(_example_tree())
@@ -102,9 +83,7 @@ def test_the_example_only_calls_qa_attributes_that_exist():
 
 
 def test_the_example_scenario_would_survive_the_substantiveness_gate():
-    """`ostler qa validate` refuses a scenario that claims coverage and calls no `qa.check`,
-    counted from the source by `count_checks`. The example claims coverage, so the count it
-    produces has to be non-zero — otherwise the prompt ships a skeleton the validator rejects."""
+    """`ostler qa validate` refuses a scenario that claims coverage and calls no `qa.check`, counted from the source by `count_checks`."""
     counts = harness.count_checks(_example_source())
     assert counts, "the example declares no scenario `count_checks` can see"
     for scenario_id, count in counts.items():
@@ -112,14 +91,7 @@ def test_the_example_scenario_would_survive_the_substantiveness_gate():
 
 
 def test_the_prose_names_only_mechanisms_and_drivers_ostler_accepts():
-    """`mechanism` and `driver` are ostler's vocabularies. The prompt enumerates both, and
-    naming one ostler rejects sends the agent confidently into a validation error.
-
-    The driver vocabulary is read from `DRIVER_NAMES`, not from `DRIVERS`: a driver stopped
-    being a bare name when it started declaring what it can observe, and `DRIVERS` is now a
-    tuple of `DriverSpec`. Comparing the prompt's strings against those records rejects every
-    driver the prompt correctly names.
-    """
+    """`mechanism` and `driver` are ostler's vocabularies."""
     text = PROMPT.read_text()
     for label, vocabulary in (("mechanism", harness.MECHANISMS), ("driver", harness.DRIVER_NAMES)):
         clause = re.search(rf"`{label}` is \w+ \(([^)]*)\)", text)
@@ -130,22 +102,14 @@ def test_the_prose_names_only_mechanisms_and_drivers_ostler_accepts():
         assert not unknown, f"plan-qa.md offers {label} {sorted(unknown)}, which ostler rejects"
 
 
-#: The two prompts `Qa._plan_args` renders. Both are fed from that one dict, so a name
-#: either of them reads has to be a key in it.
 PLAN_PROMPTS = (PROMPT, PROMPT.parent / "repair-qa-plan.md")
 
-#: `{{ workhorse_var('x') }}` for the scalars, and the bare `{% if x %}` / `{% for … in x %}`
-#: form the structured arguments use — `verification_setup`, `shared_packages`.
 _SCALAR_ARG = re.compile(r"workhorse_var\(\s*'([a-z_]+)'\s*\)")
 _STRUCTURED_ARG = re.compile(r"{%-?\s*(?:if|for\s+\w+\s+in)\s+([a-z_]+)(?![a-z_(])")
 
 
 def _plan_arg_keys() -> set[str]:
-    """The literal keys of the dict `_plan_args` returns, read from its source.
-
-    Read statically rather than by calling it: the method needs a live flow with a resolved
-    `ImplContext` behind it, and what this test is guarding is the much smaller claim that a
-    name a prompt interpolates is a name the flow passes."""
+    """The literal keys of the dict `_plan_args` returns, read from its source."""
     tree = ast.parse(inspect.getsource(Qa._plan_args).lstrip())
     returns = [n for n in ast.walk(tree) if isinstance(n, ast.Return)]
     assert len(returns) == 1, "_plan_args no longer ends in a single return"
@@ -155,12 +119,8 @@ def _plan_arg_keys() -> set[str]:
 
 
 def test_the_plan_prompts_only_interpolate_arguments_the_flow_passes():
-    """A misspelled name renders as empty and says nothing — Jinja has no undefined error
-    here — so the prompt silently loses the brief it was supposed to carry. That is how
-    `plan-context.json` reached one prompt for months while `plan-qa.md` described it in
-    prose."""
+    """A misspelled name renders as empty and says nothing — Jinja has no undefined error here — so the prompt silently loses the brief it was supposed to carry."""
     keys = _plan_arg_keys()
-    #: Jinja's own names and the loop variables the templates bind themselves.
     local = {"raw", "endraw", "repo", "f", "p", "r", "scenario"}
     for prompt in PLAN_PROMPTS:
         text = prompt.read_text()
@@ -170,14 +130,7 @@ def test_the_plan_prompts_only_interpolate_arguments_the_flow_passes():
 
 
 def test_the_dry_run_scratch_directory_nests_inside_the_ignored_one():
-    """Scratch is a subdirectory of the ledger directory, not a sibling of it.
-
-    The separation that matters is by *file*, not by directory: `verify_qa_evidence` names
-    `qa/qa-run.ndjson` and `qa/run-manifest.json` exactly, so a dry run in `qa/<scenario>/`
-    still cannot leave admissible proof. What nesting buys is that every rehearsal lands
-    under the one directory a repo ignores — the sibling layout it replaces shipped 297 MB
-    of traces and video into a client repo.
-    """
+    """Scratch is a subdirectory of the ledger directory, not a sibling of it."""
     assert QA_SCRATCH_DIRNAME == QA_DIRNAME
     for prompt in PLAN_PROMPTS:
         text = prompt.read_text()
@@ -186,10 +139,7 @@ def test_the_dry_run_scratch_directory_nests_inside_the_ignored_one():
 
 
 def test_no_prompt_passes_a_path_to_out_dir():
-    """`--out-dir` is one label now, and ostler refuses anything with a separator in it. A
-    prompt still rendering `<dir>/<scenario-id>` would teach every plan turn a command that
-    exits `invalid` — and the repo-relative form of it is what produced a committed
-    `docs/specs/x/docs/specs/x/qa-operator-firefox/traces/*.zip`."""
+    """`--out-dir` is one label now, and ostler refuses anything with a separator in it."""
     for prompt in PLAN_PROMPTS:
         for line in prompt.read_text().splitlines():
             match = re.search(r"--out-dir\s+(\S+)", line)

@@ -1,12 +1,4 @@
-"""The container path for turn records: the sidecar's run-dir RPCs and the host's pull.
-
-The property under test is end-to-end and not per-function: a run that only ever existed
-inside a container ends up in the host archive, keyed by the same visit key a local run
-would have used. So most of these drive the *real* sidecar handlers through a fake socket
-rather than a mock — the two halves agreeing is the thing that can break.
-
-Run: uv run pytest tests/test_sidecar_turns.py
-"""
+"""The container path for turn records: the sidecar's run-dir RPCs and the host's pull."""
 
 from __future__ import annotations
 
@@ -60,7 +52,7 @@ def _runs_volume() -> Iterator[Path]:
     Path(f"{stem}.jsonl").write_text('{"role": "user"}\n', encoding="utf-8")
     Path(f"{stem}.meta.json").write_text(json.dumps({"source": "tee"}), encoding="utf-8")
     (run / "turns" / "001-00001-plan-qa" / "prompt.md").write_text("do it", encoding="utf-8")
-    (run / "checkpoint.json").write_text("{}", encoding="utf-8")  # not a turn record
+    (run / "checkpoint.json").write_text("{}", encoding="utf-8")
     try:
         with patch.object(sidecar, "RUNS_DIR", root):
             yield root
@@ -69,11 +61,7 @@ def _runs_volume() -> Iterator[Path]:
 
 
 class _FakeConn:
-    """A sidecar connection whose RPCs are served by the real handlers, in-process.
-
-    The point is that the host's pull and the container's handlers are exercised against
-    each other: a mocked ``rpc`` would let the two drift and still pass.
-    """
+    """A sidecar connection whose RPCs are served by the real handlers, in-process."""
 
     def __init__(self, container_id: str = "c0ffee") -> None:
         self.container_id = container_id
@@ -84,10 +72,8 @@ class _FakeConn:
         return sidecar._RPC_METHODS[method](params)
 
 
-# --------------------------------------------------------------- the sidecar handlers
 def test_list_turns_names_the_turn_surface_and_nothing_else():
-    """A run dir also holds checkpoints and events. The host has other ways to read
-    those, and naming them here would make this RPC a general reader for the volume."""
+    """A run dir also holds checkpoints and events."""
     with _runs_volume():
         out = sidecar._rpc_list_turns({"run": "run-1"})
     listed = sorted(f["path"] for f in out["files"])
@@ -116,8 +102,7 @@ def test_read_turn_file_slices_and_reports_the_end():
 
 
 def test_read_turn_file_refuses_anything_outside_a_turn_record():
-    """Traversal is the guard `_safe_relpath` already gives every read; this is the
-    narrower one — a path with no `..` in it that is simply not a turn record."""
+    """Traversal is the guard `_safe_relpath` already gives every read; this is the narrower one — a path with no `..` in it that is simply not a turn record."""
     with _runs_volume():
         for bad in ("checkpoint.json", "../etc/passwd", "/etc/passwd"):
             try:
@@ -128,9 +113,7 @@ def test_read_turn_file_refuses_anything_outside_a_turn_record():
 
 
 def test_read_turn_file_refuses_a_symlink_out_of_the_volume():
-    """The workspace reads survive on `_safe_relpath` alone because they return text a
-    panel asked for. These return raw bytes of whatever they are pointed at, and a
-    symlink inside the run dir leaves the volume without a single `..` in the request."""
+    """The workspace reads survive on `_safe_relpath` alone because they return text a panel asked for."""
     with _runs_volume() as root:
         with tempfile.NamedTemporaryFile("w", suffix=".jsonl", delete=False) as fh:
             fh.write("secret\n")
@@ -146,21 +129,18 @@ def test_read_turn_file_refuses_a_symlink_out_of_the_volume():
 
 
 def test_a_transcript_write_announces_and_a_checkpoint_write_does_not():
-    """The announce is a hint that costs one small frame per coalesced watch batch —
-    which is what lets a node stream a megabyte of transcript without streaming it here."""
+    """The announce is a hint that costs one small frame per coalesced watch batch — which is what lets a node stream a megabyte of transcript without streaming it here."""
     with _runs_volume() as root:
         frame = sidecar._turn_announce(root / "run-1" / "transcripts" / "x.jsonl")
         assert frame is not None
         assert frame["type"] == "turn" and frame["run"] == "run-1"
-        assert "run_id" in frame  # identity rides along; the host needs it to file the pull
+        assert "run_id" in frame
         assert sidecar._turn_announce(root / "run-1" / "checkpoint.json") is None
         assert sidecar._turn_announce(Path("/workspace/a.py")) is None
 
 
-# ------------------------------------------------------------------------- the pull
 def test_a_container_run_is_pulled_into_the_host_archive():
-    """The whole point: a run dir that exists only inside a container ends up archived
-    under the same visit key a local run would have produced."""
+    """The whole point: a run dir that exists only inside a container ends up archived under the same visit key a local run would have produced."""
     with _DB(), _runs_volume():
         conn = _FakeConn()
         archived = asyncio.run(sidecar_turns.pull(conn, run="run-1", run_id="R1", workflow="coder"))
@@ -176,16 +156,14 @@ def test_a_container_run_is_pulled_into_the_host_archive():
 
 
 def test_a_second_pull_refetches_only_what_grew():
-    """Announces arrive per watch batch on a live run, so most pulls concern files that
-    are still the file they were. Re-reading them over the socket every time would make
-    a chatty container expensive to watch."""
+    """Announces arrive per watch batch on a live run, so most pulls concern files that are still the file they were."""
     with _DB(), _runs_volume() as root:
         conn = _FakeConn()
         asyncio.run(sidecar_turns.pull(conn, run="run-1", run_id="R1"))
         conn.calls.clear()
 
         asyncio.run(sidecar_turns.pull(conn, run="run-1", run_id="R1"))
-        assert conn.calls == ["listTurns"]  # nothing moved, so nothing was read
+        assert conn.calls == ["listTurns"]
 
         transcript = root / "run-1" / "transcripts" / "001-00001-plan-qa__s1.jsonl"
         transcript.write_text('{"role": "user"}\n{"role": "assistant"}\n', encoding="utf-8")
@@ -196,8 +174,7 @@ def test_a_second_pull_refetches_only_what_grew():
 
 
 def test_a_failing_pull_is_not_a_broken_groom():
-    """The sidecar is non-authoritative. A container whose records did not arrive is a
-    poorer archive, and must not surface as an exception in the socket receive loop."""
+    """The sidecar is non-authoritative."""
 
     class _Broken(_FakeConn):
         async def rpc(self, method: str, params: dict, *, timeout: float = 0.0):
@@ -215,9 +192,7 @@ def test_a_failing_pull_is_not_a_broken_groom():
 
 
 def test_the_staged_mirror_is_dropped_once_the_run_is_over():
-    """The mirror is a cache that makes the next pull cheap. After the terminal there is
-    no next pull, and a throwaway container would otherwise leave its copy on disk
-    forever."""
+    """The mirror is a cache that makes the next pull cheap."""
 
     async def _drive(conn) -> None:
         sidecar_turns.schedule(conn, run="run-1", run_id="R1", final=True)
@@ -229,7 +204,7 @@ def test_the_staged_mirror_is_dropped_once_the_run_is_over():
         conn = _FakeConn()
         asyncio.run(_drive(conn))
 
-        assert len(store.query_turns(run="R1")) == 1  # archived before the cache went
+        assert len(store.query_turns(run="R1")) == 1
         assert not (sidecar_turns.staging_root() / conn.container_id).exists()
 
 

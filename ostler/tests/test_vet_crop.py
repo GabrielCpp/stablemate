@@ -27,7 +27,6 @@ def test_crops_each_unlabeled_region_to_in_memory_png_bytes(tmp_path: Path):
     crops = maybe_crop(screenshot, [_region(0, 0, 10, 10), _region(20, 20, 5, 5)])
     assert set(crops) == {0, 1}
     assert all(isinstance(data, bytes) and data.startswith(b"\x89PNG") for data in crops.values())
-    # never written to disk itself
     assert not (tmp_path / "vet").exists()
 
 

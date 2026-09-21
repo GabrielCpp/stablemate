@@ -40,8 +40,6 @@ def wait(url: str, run: str, until: frozenset[EventName], as_json: bool) -> None
         ))
         with connect(endpoint, open_timeout=5, close_timeout=1) as socket:
             while True:
-                # recv (not iteration) raises even on a clean server close: losing
-                # the subscription without a match is a failed monitor.
                 raw = socket.recv()
                 frame = json.loads(raw)
                 if not isinstance(frame, dict):

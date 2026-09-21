@@ -1,11 +1,4 @@
-"""Re-exports `workhorse_workflows.qa.support` for coder's existing call sites.
-
-The functions here moved to the family-neutral `workhorse_workflows.qa.support` — a
-live-audit lane reads the same NDJSON run log and wants the same routing-note
-extraction, so the logic no longer belongs under `coder/shared/`. This module keeps
-coder's imports (`from ...qa_support import X` and `from ... import qa_support` then
-`qa_support.X(...)`) working unchanged.
-"""
+"""Re-exports `workhorse_workflows.qa.support` for coder's existing call sites."""
 from __future__ import annotations
 
 from workhorse_workflows.qa.support import (

@@ -1,25 +1,4 @@
-"""End-to-end tests for the `dev` flow — the gates, the layer loop, the operator.
-
-Several YAML nodes collapsed into states holding the loops that share them — the path gate
-and the per-layer implement/gates/fix loop. What is worth testing is which arm each verdict
-takes and what makes each loop terminate, so the tests are organised by gate rather than by
-node.
-
-**There are no seams here beyond the agent turn.** Every deterministic node runs for real:
-the story is a real authored story in a real docs repo, the workspace is two real git repos
-named by a real `.code-workspace` file, `stamp_specs` really stamps the plan files ostler
-then reads back, `branch_code_repos` really moves both repos onto the story branch, and
-`run_gate` really shells out to the command `agents.yml` names. That is what makes the port's
-parity claim checkable rather than asserted — the flow is driven against the same artifacts
-the YAML engine drove against, and the same files are on disk afterwards.
-
-The scripted agent is scripted the way `surveyor`'s is: it dispatches on the prompt's
-filename, which is the same key the engine derives its node id from, and every handler leaves
-behind the artifacts its reply claims to have written — the plan turn writes
-the per-service plan files and returns the structure Python projects, the resolver
-writes the operator's answer into `context.md`, the lint fixer writes the file that makes the linter pass. A handler that
-only returned a status would be testing the state machine against a fiction.
-"""
+"""End-to-end tests for the `dev` flow — the gates, the layer loop, the operator."""
 from __future__ import annotations
 
 import json
@@ -58,24 +37,17 @@ SPEC_REL = f"docs/specs/{STORY}"
 STORY_REL = f"docs/epics/{EPIC}/stories/{STORY}"
 CONTEXT_REL = f"{STORY_REL}/context.md"
 
-#: What an escalating resolver writes into `context.md` before it hands the block over —
-#: the shape `shared/prompts/resolve-operator.md` mandates for the escalated arm.
 ESCALATION_NOTE = (
     "STATUS: AWAITING_OPERATOR\n\n"
     "Tried the staging bucket and the fixture; neither exists.\n"
     "Please confirm which bucket this story targets.\n"
 )
 
-#: What that resolver reports it ruled out, which the composed gate publishes verbatim.
 RESOLVER_TRIED = (
     "listed both buckets with the workspace credentials — neither is reachable",
     "grepped the epic and the plan for a bucket name — nothing names one",
 )
 
-#: The epic index ostler parses to learn the story exists. Without the `## Stories` heading
-#: and the `### <slug>` subsection the graph does not know the story at all, and
-#: `prepare_story`'s authored gate is skipped rather than satisfied — which would make every
-#: test below pass for the wrong reason.
 EPIC_MD = """---
 title: Epic One
 status: active
@@ -90,9 +62,6 @@ status: active
 - title: Story One
 """
 
-#: An *authored* story: every `registry.STORY_SECTIONS` heading present, and each one the
-#: contract marks `filled=True` actually written. A scaffold with empty sections fails
-#: `prepare_story`, which is the gate `test_an_unauthored_story_is_refused` drives.
 STORY_MD = """---
 type: story
 ---
@@ -128,7 +97,6 @@ Users need a thing.
 - **Status**: Not started
 """
 
-#: The two services the plan declares by default, in implementation order.
 SERVICES: list[dict[str, Any]] = [
     {
         "repo": "api",
@@ -144,25 +112,16 @@ SERVICES: list[dict[str, Any]] = [
     },
 ]
 
-#: The same plan naming a repo the workspace does not carry. `record_plan` rejects
-#: it on the workspace lookup, which is the one failure mode no blind refine pass can repair
-#: by luck — the path gate's escalation arm needs an error that stays an error.
 GHOST: list[dict[str, Any]] = [
     {"repo": "ghost", "path": ".", "type": "go", "plan_file": "plan-api.md"}
 ]
 
 
-# --------------------------------------------------------------------------- fixtures
 
 
 @pytest.fixture
 def docs(repo: Path, write: Callable[[Path, str], Path]) -> Path:
-    """The docs repo, carrying one epic and one authored story under it.
-
-    `repo` is the checkout every coder test is stood in; what is added here is the
-    tree ostler needs to resolve the slug — the epic's own `epic.md`, its `## Stories`
-    listing, and the story folder the flow's `Await` writes its questions into.
-    """
+    """The docs repo, carrying one epic and one authored story under it."""
     write(repo / "docs" / "epics" / EPIC / "epic.md", EPIC_MD)
     write(repo / STORY_REL / "story.md", STORY_MD)
     return repo
@@ -176,12 +135,7 @@ def workspace(
     write: Callable[[Path, str], Path],
     ambient: dict[str, str],
 ) -> dict[str, Path]:
-    """Two real git repos and the VSCode workspace file that names them, in order.
-
-    Real repos rather than bare directories because `branch_code_repos` checks out a branch
-    in each and the test asserts it landed; the paths in the workspace file are relative
-    exactly as a checked-in `.code-workspace` carries them.
-    """
+    """Two real git repos and the VSCode workspace file that names them, in order."""
     root = tmp_path / "ws"
     repos: dict[str, Path] = {}
     for name in ("api", "web"):
@@ -204,40 +158,16 @@ def workspace(
 def lint_gate(
     docs: Path, workspace: dict[str, Path], write: Callable[[Path, str], Path]
 ) -> Path:
-    """Make `api` adopt the lint gate, failing until a marker file exists.
-
-    `run_gate` resolves its command from the orchestrating repo's `agents.yml` before
-    falling back to `make lint`, and keys the map by the service name and then by the cwd's
-    basename — `api` here is the second. The script is the whole gate: it fails while the
-    marker is absent, so the `dev-fix` turn has something real to fix and the loop's exit
-    is a genuinely clean lint rather than a scripted claim of one.
-
-    Returns the marker path so the lint-fixer handler can create it.
-    """
+    """Make `api` adopt the lint gate, failing until a marker file exists."""
     write(docs / "agents.yml", "lint:\n  api: sh lint.sh\n")
     script = write(workspace["api"] / "lint.sh", "test -f .lint-ok\n")
     return script.parent / ".lint-ok"
 
 
-# --------------------------------------------------------------------------- the agent
 
 
 class _Agent:
-    """A scripted stand-in for the flow's prompts, writing what each claims to write.
-
-    The knobs are the flow's branches: `blocked` makes the first N planning turns report a
-    block, `bad_paths` makes the first N plan writes name a repo the workspace has not got,
-    `fix_gate` decides whether the repair turn actually repairs anything, and `explode`
-    raises on a named
-    prompt — a run killed mid-turn. There is no `escalate` knob: the resolver never decides
-    on the operator's behalf, so every resolved block investigates and then waits, the same
-    way every time — and no `scope` knob either, since the answer's `SCOPE:` now comes from
-    whatever stands in for the operator (`_answers`), not from the resolver the agent scripts.
-
-    `impl_blocked` makes the first N implementation turns report they could not write the
-    change, and `stamps_status` makes the first N of them do the one thing the story-status
-    gate exists to catch — write a finished status onto the story.
-    """
+    """A scripted stand-in for the flow's prompts, writing what each claims to write."""
 
     def __init__(
         self,
@@ -257,29 +187,19 @@ class _Agent:
         self.docs = docs
         self.services = services if services is not None else SERVICES
         self.blocked = blocked
-        #: Whether the resolver settles the block itself rather than parking on it — the
-        #: `answered` arm, which writes the operator's answer where a human would have.
         self.resolver_answers = resolver_answers
         self.bad_paths = bad_paths
         self.fix_gate = fix_gate
         self.explode = explode or set()
         self.impl_blocked = impl_blocked
-        #: The first N implementation turns stamp the story `QA passed` — the status the
-        #: queue reads as finished, written by a turn that has not reached QA.
         self.stamps_status = stamps_status
-        #: Report `plan_file` the other way it can legally be read — repo-relative, the form
-        #: the turn was holding when it wrote the file — while writing the file itself
-        #: exactly where it belongs.
         self.repo_relative_plans = repo_relative_plans
-        #: The first N plan turns report a structure whose plan files they never wrote —
-        #: the failure the path gate exists for.
         self.unwritten_plans = unwritten_plans
         self.calls: list[str] = []
         self.args: list[dict[str, Any]] = []
         self.plans = 0
         self.impls = 0
 
-    # -- the seam ---------------------------------------------------------
 
     def __call__(self, node: Any, ctx: Any, *args: Any, **kwargs: Any) -> Any:
         stem = Path(node.prompt).stem
@@ -297,7 +217,6 @@ class _Agent:
     def args_for(self, stem: str) -> list[dict[str, Any]]:
         return [a for s, a in zip(self.calls, self.args, strict=True) if s == stem]
 
-    # -- one handler per prompt -------------------------------------------
 
     def _plan_story(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
         return self._plan(data)
@@ -309,12 +228,7 @@ class _Agent:
         return self._plan(data)
 
     def _plan(self, data: dict[str, Any]) -> dict[str, Any]:
-        """Write the plan files every planning prompt is told to, then report the structure.
-
-        The plan files are written *untyped*: `stamp_specs` runs right after the first plan
-        turn and is what gives them their OKF `type`, so writing them with front-matter
-        already in place would hide whether the stamping step ran at all.
-        """
+        """Write the plan files every planning prompt is told to, then report the structure."""
         self.plans += 1
         services = GHOST if self.plans <= self.bad_paths else self.services
         spec = Path(data["spec_dir"])
@@ -374,16 +288,9 @@ class _Agent:
         self.fix_gate.write_text("", encoding="utf-8")
         return {"status": "fixed", "notes": "satisfied the gate"}
 
-    # -- what the resolver leaves behind ----------------------------------
 
     def _escalate(self) -> None:
-        """What an *escalating* resolver leaves behind — it does not write nothing.
-
-        `shared/prompts/resolve-operator.md` requires the escalated arm to write
-        `STATUS: AWAITING_OPERATOR` into this same file, with what it tried and what the
-        human must supply. Modelling that as "writes nothing" is what let the flow overwrite
-        it unnoticed; see `test_an_escalating_resolver_leaves_its_note_for_the_human`.
-        """
+        """What an *escalating* resolver leaves behind — it does not write nothing."""
         (self.docs / CONTEXT_REL).write_text(ESCALATION_NOTE, encoding="utf-8")
 
 
@@ -399,12 +306,7 @@ def _set_status(docs: Path, status: str) -> None:
 
 
 def _answers(docs: Path, seen: list[str], *, scope: str = "story") -> Callable[..., None]:
-    """A stand-in for the human an `Await` is waiting on.
-
-    Patched over `wait_for_answer`, so it runs where the operator's edit would land: the
-    questions are already in the file by then, which is what `seen` records, and writing the
-    answer over them is what a person answering in place does.
-    """
+    """A stand-in for the human an `Await` is waiting on."""
 
     def answered(path: Path, **kwargs: Any) -> None:
         seen.append(path.read_text(encoding="utf-8"))
@@ -431,7 +333,6 @@ def _output(run_env: RunEnv, node: Any) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-# --------------------------------------------------------------------------- happy path
 
 
 def test_plans_stamps_branches_and_implements_every_layer(
@@ -452,15 +353,12 @@ def test_plans_stamps_branches_and_implements_every_layer(
         "implement-plan": 2,
     }, agent.counts()
 
-    # The plan files the turn wrote untyped are OKF Concepts afterwards: `stamp_specs` ran.
     for name in ("plan-api.md", "plan-web.md"):
         assert (docs / SPEC_REL / name).read_text().startswith("---\n"), name
 
-    # Both code repos moved onto the story branch — `branch_code_repos` ran for real.
     assert _branch_of(workspace["api"]) == STORY
     assert _branch_of(workspace["web"]) == STORY
 
-    # The layers were dispatched in the plan's declared order, each with its own plan file.
     implemented = [
         (a["service_path"], a["plan_file"]) for a in agent.args_for("implement-plan")
     ]
@@ -477,13 +375,7 @@ def test_the_implement_turn_is_handed_the_two_values_its_prompt_reads(
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    """`implement-plan.md` reads two values the YAML node never passed.
-
-    Under the YAML engine a node's declared outputs landed in the run context and the prompt
-    rendered against the whole of it; `Engine.agent` renders against `args` alone, so the
-    port passes them explicitly. This is the assertion that says so — if they are dropped,
-    the prompt silently renders two blanks and nothing else in the suite notices.
-    """
+    """`implement-plan.md` reads two values the YAML node never passed."""
     agent = _Agent(docs)
     run_env = env()
 
@@ -496,13 +388,7 @@ def test_the_implement_turn_is_handed_the_two_values_its_prompt_reads(
 
 
 def test_a_plan_written_before_the_rename_still_carries_its_verification_setup() -> None:
-    """`verification_setup` was `qa_stack`, and old documents are still on disk.
-
-    The rename took the field off its near-homograph with `qa-stack.yml`, which is a
-    different document with a different schema. What it must not take with it is the
-    fixture list out of a `plan-context.json` a resume reads back: `extra="ignore"` would
-    drop the old key without a word, and QA would be handed a story it cannot stand up.
-    """
+    """`verification_setup` was `qa_stack`, and old documents are still on disk."""
     legacy = {"services": [], "qa_stack": {"profile": "seeded", "fixtures": ["acme.json"]}}
 
     assert plan_document(legacy, {})["verification_setup"] == {
@@ -519,12 +405,7 @@ def test_the_new_spelling_wins_when_a_document_somehow_has_both() -> None:
 
 
 def test_a_checkpointed_plan_result_reads_back_under_the_old_field_name() -> None:
-    """The other half of the rename: a resume validates a `PlanResult` written before it.
-
-    A checkpoint is not a document the reader can hand-tolerate — pydantic validates it,
-    and `extra="ignore"` is what makes the resilience ladder soft. The alias is what stops
-    that same setting from eating a real answer on the one turn that produced it.
-    """
+    """The other half of the rename: a resume validates a `PlanResult` written before it."""
     legacy = PlanResult.model_validate({"status": "done", "qa_stack": {"profile": "seeded"}})
 
     assert legacy.verification_setup == {"profile": "seeded"}
@@ -534,12 +415,7 @@ def test_a_checkpointed_plan_result_reads_back_under_the_old_field_name() -> Non
 
 
 def test_the_fixtures_nested_in_the_setup_block_become_the_typed_list() -> None:
-    """The planner writes one `## Verification setup` section, and it always did.
-
-    The typed field is not a second thing to write — it is the one part of that section a
-    later lane *calls*, lifted out of the prose beside it so `qa.fixture()` gets the name
-    the story wrote rather than a name a turn paraphrased out of a dumped object.
-    """
+    """The planner writes one `## Verification setup` section, and it always did."""
     plan = {
         "status": "done",
         "verification_setup": {"profile": "seeded", "fixtures": [{"name": "signed_in"}]},
@@ -548,14 +424,11 @@ def test_the_fixtures_nested_in_the_setup_block_become_the_typed_list() -> None:
     result = PlanResult.model_validate(plan)
 
     assert [f.name for f in result.fixtures] == ["signed_in"]
-    # The prose is untouched: nothing typed here takes anything away from the QA turn.
     assert result.verification_setup["profile"] == "seeded"
 
 
 def test_a_bare_string_fixture_is_the_fixture_it_names() -> None:
-    """The same lift `shared_packages` gets, and for the same reason: `"signed_in"` says
-    exactly what `{"name": "signed_in"}` says, and rejecting it spends a rework lap
-    teaching a planner punctuation."""
+    """The same lift `shared_packages` gets, and for the same reason: `"signed_in"` says exactly what `{"name": "signed_in"}` says, and rejecting it spends a rework lap teaching a planner punctuation."""
     result = PlanResult.model_validate(
         {"status": "done", "qa_stack": {"fixtures": ["signed_in", "seeded_db"]}}
     )
@@ -567,12 +440,7 @@ def test_a_bare_string_fixture_is_the_fixture_it_names() -> None:
 
 
 def test_a_bare_sentence_is_lifted_as_prose_rather_than_as_a_name() -> None:
-    """The same lift, applied to what the corpus actually contains.
-
-    `qa.fixture()` takes a name exactly, so a name is a key or it is nothing. Lifting
-    `"an empty desk (DELETE /api/claims)"` into the name slot handed the QA planner a
-    declaration to look up, and the lane it could not find it in was `agents.yml`.
-    """
+    """The same lift, applied to what the corpus actually contains."""
     result = PlanResult.model_validate(
         {
             "status": "done",
@@ -587,8 +455,7 @@ def test_a_bare_sentence_is_lifted_as_prose_rather_than_as_a_name() -> None:
 
 
 def test_an_explicit_fixture_list_is_not_overwritten_by_the_nested_one() -> None:
-    """A planner that filled in the typed field said what it meant there; the lift is a
-    fallback for the documents that predate it, not a second opinion about them."""
+    """A planner that filled in the typed field said what it meant there; the lift is a fallback for the documents that predate it, not a second opinion about them."""
     result = PlanResult.model_validate(
         {
             "status": "done",
@@ -601,8 +468,7 @@ def test_an_explicit_fixture_list_is_not_overwritten_by_the_nested_one() -> None
 
 
 def test_the_projection_carries_the_fixtures_under_either_spelling() -> None:
-    """`plan-context.json` is read by lanes outside the run that produced it, including
-    ones resuming against a document written before the field existed."""
+    """`plan-context.json` is read by lanes outside the run that produced it, including ones resuming against a document written before the field existed."""
     nested = {"services": [], "qa_stack": {"fixtures": ["seeded_db"]}}
     typed = {"services": [], "fixtures": [{"name": "signed_in", "provides": "a bearer token"}]}
 
@@ -613,10 +479,7 @@ def test_the_projection_carries_the_fixtures_under_either_spelling() -> None:
 
 
 def test_a_nameless_arrangement_is_kept_and_an_empty_entry_is_dropped() -> None:
-    """A nameless fixture is nothing `qa.fixture()` can resolve — but it is still something
-    the story needs standing up, and dropping it told the QA planner the story had declared
-    nothing at all. It is carried as prose instead, apart from the names; only an entry that
-    says neither is dropped, because that one carries no instruction to anybody."""
+    """A nameless fixture is nothing `qa.fixture()` can resolve — but it is still something the story needs standing up, and dropping it told the QA planner the story had declared nothing at all."""
     plan = {
         "services": [],
         "fixtures": [{"provides": "an account"}, "signed_in", {"name": "", "provides": ""}],
@@ -629,11 +492,7 @@ def test_a_nameless_arrangement_is_kept_and_an_empty_entry_is_dropped() -> None:
 
 
 def test_a_sentence_in_the_fixture_list_is_an_arrangement_and_not_a_name() -> None:
-    """Every frozen story in the benchmark corpus describes its arrangements in prose here,
-    and reading one as a name is not harmless: the QA planner was handed a "declared fixture"
-    called `an empty desk (DELETE /api/claims)`, found no such declaration in `agents.yml`,
-    and rewrote the plan *and* the registry to invent it — four agent turns on a round that
-    had been costing zero."""
+    """Every frozen story in the benchmark corpus describes its arrangements in prose here, and reading one as a name is not harmless: the QA planner was handed a "declared fixture" called `an empty desk (DELETE /api/claims)`, found no such declaration in `agents.yml`, and rewrote the plan *and* the registry to invent it — four agent turns on a round that had been costing zero."""
     plan = {
         "services": [],
         "fixtures": ["seeded_accounts", "an empty desk (DELETE /api/claims)"],
@@ -646,13 +505,7 @@ def test_a_sentence_in_the_fixture_list_is_an_arrangement_and_not_a_name() -> No
 
 
 def test_the_summary_says_the_names_apart_from_the_arrangements(tmp_path: Path) -> None:
-    """The two halves of a fixture list are acted on differently and so are said apart.
-
-    A declared name is something the QA plan *calls*; an arrangement is something it has to
-    build for itself. Rendered as one list they read as one instruction, and a QA turn that
-    tried to call a sentence went looking for its declaration, did not find it, and set about
-    writing one — into the plan and into `agents.yml` both.
-    """
+    """The two halves of a fixture list are acted on differently and so are said apart."""
     subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
     spec = tmp_path / SPEC_REL
     spec.mkdir(parents=True)
@@ -678,12 +531,7 @@ def test_the_summary_says_the_names_apart_from_the_arrangements(tmp_path: Path) 
 
 
 def test_a_bare_string_shared_package_is_the_directory_it_names() -> None:
-    """`shared_packages` means "non-service directories the plan changes", so a planner
-    that emits `"docs"` said exactly what `{"path": "docs"}` says — one did, and the
-    string's shape alone ended a four-hour run. The lift is scoped to that list:
-    a bare string in `services` still under-specifies (repo, plan_file) and stays a
-    validation error the ladder re-asks about.
-    """
+    """`shared_packages` means "non-service directories the plan changes", so a planner that emits `"docs"` said exactly what `{"path": "docs"}` says — one did, and the string's shape alone ended a four-hour run."""
     plan = PlanResult.model_validate(
         {"status": "done", "shared_packages": ["docs", {"path": "libs/core"}]}
     )
@@ -701,11 +549,7 @@ def test_an_unauthored_story_is_refused_before_anything_is_planned(
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    """A story ostler knows and reports unauthored fails in `setup`, not in review.
-
-    This is the gate that exists because an author run once produced 44 stubs and reported
-    success. It is in `setup`, so the failure precedes the first agent turn entirely.
-    """
+    """A story ostler knows and reports unauthored fails in `setup`, not in review."""
     write(docs / STORY_REL / "story.md", "---\ntype: story\n---\n\n# Story One\n")
     agent = _Agent(docs)
 
@@ -721,14 +565,7 @@ def test_a_slug_that_resolves_to_no_file_is_refused_before_anything_is_planned(
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    """The other half of the authored gate: the slug resolved, but to a file nobody wrote.
-
-    A slug the graph does not know is not an unauthored story — it is legitimate, story
-    mode can be pointed outside the epics tree — so `prepare_story` only logs it and falls
-    back to the layout rule. What comes back is a path, and the turns below take their
-    story path as authoritative. Reading it here is what keeps a planner from inventing
-    one.
-    """
+    """The other half of the authored gate: the slug resolved, but to a file nobody wrote."""
     agent = _Agent(docs)
 
     with pytest.raises(Exception, match="not readable"):
@@ -743,11 +580,7 @@ def test_no_slug_at_all_is_refused_before_anything_is_planned(
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    """`prepare_story` with nothing to resolve returns blank paths, and blank is not a story.
-
-    The prompts used to carry this as a fallback arm — "if the story path is blank, return
-    blocked" — which paid an agent turn to report what the flow already knew.
-    """
+    """`prepare_story` with nothing to resolve returns blank paths, and blank is not a story."""
     agent = _Agent(docs)
 
     with pytest.raises(Exception, match="no story path"):
@@ -756,17 +589,10 @@ def test_no_slug_at_all_is_refused_before_anything_is_planned(
     assert agent.calls == []
 
 
-# --------------------------------------------------------------------------- path gate
 
 
 def test_validate_is_not_a_reserved_pydantic_name() -> None:
-    """The path gate's state is `validate_paths`, and the name is load-bearing.
-
-    `Workflow` is a pydantic model and state discovery skips every name already on
-    `dir(Workflow)` — `validate` is one of them, pydantic v1's deprecated classmethod. A
-    state called `validate` would not be a state at all: no error, no warning, just a
-    transition to a target nothing dispatches. This asserts the trap stays sprung.
-    """
+    """The path gate's state is `validate_paths`, and the name is load-bearing."""
     assert "validate_paths" in Dev.states
     assert "validate" not in Dev.states
 
@@ -786,7 +612,6 @@ def test_an_unresolvable_service_path_reworks_the_plan(
     assert result.status == "ready", result
     assert agent.counts()["repair-plan-paths"] == 1, agent.counts()
     assert "ghost" in agent.args_for("repair-plan-paths")[0]["review_notes"]
-    # The gate's verdict is the node's, recorded: the second validation passed.
     assert _output(run_env, record_plan)["status"] == "valid"
 
 
@@ -796,12 +621,7 @@ def test_a_plan_whose_files_were_never_written_reworks_the_plan(
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    """A structure naming plan files the turn did not write is a plan defect, not a prompt.
-
-    The implementer is handed the plan as content, so an unwritten file used to arrive as an
-    empty string and the turn invented the work. It is the gate's now: one refine lap, and
-    the second turn writes them.
-    """
+    """A structure naming plan files the turn did not write is a plan defect, not a prompt."""
     agent = _Agent(docs, unwritten_plans=1)
     run_env = env()
 
@@ -820,13 +640,7 @@ def test_a_repo_relative_plan_file_costs_no_refine_lap(
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    """The two readings of `plan_file` name the same file, so neither is a plan defect.
-
-    `plan-story.md` asks for it relative to the spec dir, and the turn that fills it has
-    just written `docs/specs/<story>/plan.md` — so it hands that string back about as often
-    as the short one. Benchmark run `c1` spent a 203 s high-power re-planning lap on the
-    difference, and produced one string rewritten into another string for the same file.
-    """
+    """The two readings of `plan_file` name the same file, so neither is a plan defect."""
     agent = _Agent(docs, repo_relative_plans=True)
     run_env = env()
 
@@ -835,8 +649,6 @@ def test_a_repo_relative_plan_file_costs_no_refine_lap(
     assert result.status == "ready", result
     assert agent.counts()["repair-plan-paths"] == 0, agent.counts()
     assert _output(run_env, record_plan)["status"] == "valid"
-    # Repaired on the way in, not tolerated at the check: every later reader of the
-    # projection — `ostler artifact vet`, QA on a later run — sees the one spelling.
     written = json.loads((docs / SPEC_REL / "plan-context.json").read_text())
     assert [svc["plan_file"] for svc in written["services"]] == ["plan-api.md", "plan-web.md"]
 
@@ -845,12 +657,7 @@ def test_a_plan_file_outside_the_spec_dir_is_still_an_error(
     tmp_path: Path,
     write: Callable[[Path, str], Path],
 ) -> None:
-    """The repair is narrow on purpose: only a path that lands *inside* the spec dir.
-
-    A file that exists somewhere else entirely is not the same file under another notation,
-    it is the wrong file — and passing it through verbatim is what keeps the downstream
-    error naming what the planner actually wrote.
-    """
+    """The repair is narrow on purpose: only a path that lands *inside* the spec dir."""
     root = tmp_path / "book"
     spec = root / "docs" / "specs" / "thing"
     write(spec / "plan-api.md", "# in\n")
@@ -878,13 +685,7 @@ def test_an_unfixable_plan_exhausts_the_budget_and_reaches_the_operator(
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    """Three refine passes that do not fix it escalate rather than looping forever.
-
-    `MAX_VALIDATE_REWORKS` is 3, so the fourth validation is the one that escalates to the
-    gate; the resolver investigates and parks, the operator answers, the plan is reworked
-    with the answer in hand — the fifth write, and the first good one — and the restored
-    budget takes it through the gate.
-    """
+    """Three refine passes that do not fix it escalate rather than looping forever."""
     agent = _Agent(docs, bad_paths=4)
     seen: list[str] = []
 
@@ -905,17 +706,7 @@ def test_a_service_path_nobody_can_repair_never_gives_up(
     drive_flow: Callable[..., Any],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The wider of the two operator cycles never dead-ends, even once the resolver is spent.
-
-    `read_operator` deliberately restores the path-validation budget — the YAML re-emitted
-    `plan_rework_count: 0` and an operator answer really is a fresh licence to re-validate.
-    But a repo the workspace has not got is not a thing an answer can conjure, so the block
-    keeps recurring long after `MAX_PLAN_BLOCKS` resolver turns are spent. `_gate_plan`
-    routes every trip past that cap straight to a human instead of raising — there is no
-    further cap on how many times it may ask. Once "the operator" finally supplies a real
-    fix, the run finishes normally rather than having given up on itself somewhere in the
-    middle.
-    """
+    """The wider of the two operator cycles never dead-ends, even once the resolver is spent."""
     monkeypatch.setenv("WORKHORSE_MAX_TRANSITIONS", "180")
     agent = _Agent(docs, bad_paths=99)
     seen: list[str] = []
@@ -932,14 +723,11 @@ def test_a_service_path_nobody_can_repair_never_gives_up(
         result = drive_flow(Dev(story=STORY), env(), agent)
 
     assert result.status == "ready", result
-    # The resolver only ever gets `MAX_PLAN_BLOCKS` turns; every later block still reaches a
-    # human, which `seen` outgrowing that count proves without a resolver call to match it.
     assert agent.counts()["resolve-operator"] == nodes.MAX_PLAN_BLOCKS, agent.counts()
     assert len(seen) == nodes.MAX_PLAN_BLOCKS + 2, seen
     assert agent.counts()["implement-plan"] > 0, agent.counts()
 
 
-# --------------------------------------------------------------------------- the operator
 
 
 def test_a_resolver_that_grounds_its_answer_settles_the_block_without_a_person(
@@ -948,13 +736,7 @@ def test_a_resolver_that_grounds_its_answer_settles_the_block_without_a_person(
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    """The `answered` arm: a question the documents already settle costs nobody a round trip.
-
-    The resolver may only *apply* a decision somebody wrote down — see
-    `coder/shared/resolution.py` — and when it can, it writes the same `context.md` a human
-    would have and the flow rejoins at the same `read_operator`. Nothing waits, which is what
-    patching `wait_for_answer` to fail proves: reaching it at all would mean the block parked.
-    """
+    """The `answered` arm: a question the documents already settle costs nobody a round trip."""
     agent = _Agent(docs, blocked=1, resolver_answers=True)
 
     def never(path: Path, **kwargs: Any) -> None:
@@ -965,8 +747,6 @@ def test_a_resolver_that_grounds_its_answer_settles_the_block_without_a_person(
 
     assert result.status == "ready", result
     assert agent.counts()["resolve-operator"] == 1, agent.counts()
-    # The answer reached the refiner exactly as a human's would have, and the marker was
-    # flipped, so the next block re-arms instead of re-consuming this answer.
     assert "staging bucket" in agent.args_for("replan-with-answer")[0]["operator_context"]
     assert "STATUS: CONSUMED" in (docs / CONTEXT_REL).read_text()
 
@@ -978,13 +758,7 @@ def test_an_answered_block_still_spends_the_resolver_budget(
     drive_flow: Callable[..., Any],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """An answer that does not clear the block walks toward a person, it does not lap forever.
-
-    This is the failure mode the answering arm introduces: the resolver keeps finding the
-    same written rule, keeps applying it, and the plan keeps coming back blocked. Spending
-    `plan_blocks` on the answering arm too is what makes the cycle terminate at a human
-    rather than at the driver's transition budget.
-    """
+    """An answer that does not clear the block walks toward a person, it does not lap forever."""
     monkeypatch.setenv("WORKHORSE_MAX_TRANSITIONS", "180")
     agent = _Agent(docs, blocked=99, resolver_answers=True)
     seen: list[str] = []
@@ -1021,8 +795,6 @@ def test_a_blocked_plan_goes_to_the_auto_operator_and_is_reworked(
     assert result.status == "ready", result
     assert agent.counts()["resolve-operator"] == 1, agent.counts()
     assert agent.counts()["replan-with-answer"] == 1, agent.counts()
-    # The answer reached the refiner, and the marker was flipped so a later block re-arms
-    # instead of consuming this same answer again.
     assert "staging bucket" in agent.args_for("replan-with-answer")[0]["operator_context"]
     assert "STATUS: CONSUMED" in (docs / CONTEXT_REL).read_text()
 
@@ -1033,11 +805,7 @@ def test_an_epic_scoped_answer_leaves_the_flow_to_be_replanned(
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    """`SCOPE: epic` means the epic premise was wrong, not this story's plan.
-
-    It is the only exit from the flow other than an exhausted dispatch list, and it carries
-    the operator's text back so the queue level can replan against it.
-    """
+    """`SCOPE: epic` means the epic premise was wrong, not this story's plan."""
     agent = _Agent(docs, blocked=1)
     seen: list[str] = []
 
@@ -1057,11 +825,7 @@ def test_human_operator_modes_wait_on_the_story_context_file(
     drive_flow: Callable[..., Any],
     operator_mode: str,
 ) -> None:
-    """Canonical `human` and legacy `operator` skip the resolver and block on the file.
-
-    The questions are written next to the story, which is where `await_operator.py` put them
-    and where the operator answering is reading the story they are about.
-    """
+    """Canonical `human` and legacy `operator` skip the resolver and block on the file."""
     seen: list[str] = []
     agent = _Agent(docs, blocked=1)
 
@@ -1079,19 +843,7 @@ def test_an_escalating_resolver_leaves_its_note_for_the_human(
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    """The escalated arm waits on the file without rewriting it.
-
-    `Await` writes its `questions` with `write_text`, and the escalated arm waits on the very
-    file the resolver has just written `STATUS: AWAITING_OPERATOR` into. Passing the block
-    notes as the ask therefore replaced the resolver's investigation — what it tried, and the
-    concrete thing it needs — with the producer's one-line block summary, so the human
-    arrived to the question instead of the answer-so-far. It also erased the `AWAITING_OPERATOR`
-    /`CONSUMED` history the resolver's own prompt reads back as its "did I already answer
-    this?" loop guard, which is what let the same block escalate round after round.
-
-    Contrast `test_the_human_mode_gate_blocks_on_the_story_folder`: there no resolver ran, so
-    the flow writing the questions is the only thing that puts an ask on disk.
-    """
+    """The escalated arm waits on the file without rewriting it."""
     seen: list[str] = []
     agent = _Agent(docs, blocked=1)
 
@@ -1111,14 +863,7 @@ def test_an_implementation_turn_that_says_it_cannot_reaches_the_operator(
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    """The lane's root-cause bug, from the outside.
-
-    A turn reporting it could not implement the plan used to be discarded where it was
-    produced, and the layer went straight on to lint a change nobody had written — the run
-    reported `ready` over an empty diff. It is a block like any other now: it parks on the
-    story's `context.md`, and the operator's answer re-enters the layer with the answer in
-    hand rather than starting the same turn again blind.
-    """
+    """The lane's root-cause bug, from the outside."""
     agent = _Agent(docs, impl_blocked=1)
     seen: list[str] = []
 
@@ -1129,8 +874,6 @@ def test_an_implementation_turn_that_says_it_cannot_reaches_the_operator(
     assert agent.counts()["resolve-operator"] == 1, agent.counts()
     (gate,) = seen
     assert "the plan names a migration nobody has run" in gate, gate
-    # The layer is re-entered from the top, so the retried turn is the second one — and it
-    # carries what the operator said, which is the whole point of stopping to ask.
     retried = agent.args_for("implement-plan")[1]
     assert "staging bucket" in retried["operator_context"], retried
 
@@ -1160,15 +903,7 @@ def test_a_plan_no_operator_can_unblock_never_gives_up_either(
     drive_flow: Callable[..., Any],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The tight operator cycle: a refine that re-raises the block keeps escalating, not failing.
-
-    `rework_plan` re-gating a still-blocked plan is what keeps the loop honest — a resolver
-    that resolved nothing cannot wave the plan through. Nothing bounds how many times the
-    block itself may recur: `MAX_PLAN_BLOCKS` only bounds how many of those trips get a
-    resolver turn before `_gate_plan` starts routing straight to a human instead, forever if
-    it must. Once a real answer lands the run finishes, rather than the block having ended
-    the run on its own somewhere short of that.
-    """
+    """The tight operator cycle: a refine that re-raises the block keeps escalating, not failing."""
     monkeypatch.setenv("WORKHORSE_MAX_TRANSITIONS", "180")
     agent = _Agent(docs, blocked=99)
     seen: list[str] = []
@@ -1197,13 +932,7 @@ def test_human_operator_mode_never_gives_up_either(
     drive_flow: Callable[..., Any],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """`operator_mode=human` skips the resolver entirely, and has no bound of its own either.
-
-    Only `resolve_plan` increments `plan_blocks`, and human mode never calls it — `_gate_plan`
-    takes the direct-to-human arm unconditionally in this mode, so there is nothing here for
-    `MAX_PLAN_BLOCKS` to bound. A human who answers wrong more times than that is asked again,
-    not handed a failed run.
-    """
+    """`operator_mode=human` skips the resolver entirely, and has no bound of its own either."""
     monkeypatch.setenv("WORKHORSE_MAX_TRANSITIONS", "180")
     seen: list[str] = []
     agent = _Agent(docs, blocked=99)
@@ -1221,8 +950,6 @@ def test_human_operator_mode_never_gives_up_either(
 
     assert result.status == "ready", result
     assert agent.counts()["resolve-operator"] == 0, agent.counts()
-    # More asks than the resolver's own cap, with zero resolver turns — proof this mode was
-    # never tied to that counter at all, not just given a larger one.
     assert len(seen) == nodes.MAX_PLAN_BLOCKS + 2, seen
 
 
@@ -1233,18 +960,13 @@ def test_an_unanswered_context_file_is_not_treated_as_an_answer(
     drive_flow: Callable[..., Any],
     logger: Any,
 ) -> None:
-    """`read_operator_context` reports nothing answered when the file is not there.
-
-    The consume half of `await_operator.py`, on its own: the flow only reaches it once the
-    block is known to be resolved, so this is the guard against a resume that lost the file.
-    """
+    """`read_operator_context` reports nothing answered when the file is not there."""
     answer = read_operator_context(logger, str(docs / STORY_REL / "story.md"))
 
     assert answer.answered is False
     assert answer.scope == "story"
 
 
-# --------------------------------------------------------------------------- lint loop
 
 
 def test_the_gate_lane_repairs_and_re_runs_until_clean(
@@ -1254,11 +976,7 @@ def test_the_gate_lane_repairs_and_re_runs_until_clean(
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    """A dirty layer is repaired and re-gated; the second run is genuinely clean.
-
-    `web` has adopted no gate, so it is `skipped` and moves straight on — which is the
-    opt-in half of the same behavior.
-    """
+    """A dirty layer is repaired and re-gated; the second run is genuinely clean."""
     agent = _Agent(docs, fix_gate=lint_gate)
     run_env = env()
 
@@ -1267,10 +985,7 @@ def test_the_gate_lane_repairs_and_re_runs_until_clean(
     assert result.status == "ready", result
     assert agent.counts()["dev-fix"] == 1, agent.counts()
     assert lint_gate.is_file(), "the fixer did not write what the gate checks for"
-    # The last gate run of the run is `web`'s, which adopted nothing.
     assert _output(run_env, run_gate)["status"] == "skipped"
-    # The fixer was handed one `FailureReport`, built in Python off the gate's own output:
-    # which gate, what it ran, where, and what it printed.
     report = agent.args_for("dev-fix")[0]["report"]
     assert report["source"] == "lint", report
     assert report["command"] == "sh lint.sh", report
@@ -1283,14 +998,7 @@ def test_a_turn_that_stamps_the_story_finished_is_sent_back(
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    """The Status line is a machine-parsed shape, so a gate holds the turn to it.
-
-    `QA passed` on a story the workflow has not QA'd removes it from story selection
-    permanently: every later loop reads the story as built, and nothing ever verifies it.
-    The prompt says so, and this is what makes saying so binding — the turn comes back with
-    a finding naming the file and the value, on the same repair budget every other gate
-    spends.
-    """
+    """The Status line is a machine-parsed shape, so a gate holds the turn to it."""
     agent = _Agent(docs, stamps_status=1)
     run_env = env()
 
@@ -1316,14 +1024,7 @@ def test_a_gate_no_repair_lap_can_satisfy_never_gives_up_either(
     drive_flow: Callable[..., Any],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A spent repair budget is a block, not a give-up.
-
-    The old lint loop was fail-open: two fruitless fix turns and the layer moved on, on the
-    argument that QA re-runs lint as the binding gate. That is the shape AGENTS.md rules
-    out — the run went on to report success over a service nobody had looked at. The budget
-    bounds the *lap* now; the block goes to the operator, as many times as it takes, and the
-    run finishes once something actually clears the gate.
-    """
+    """A spent repair budget is a block, not a give-up."""
     monkeypatch.setenv("WORKHORSE_MAX_TRANSITIONS", "240")
     monkeypatch.setattr(nodes, "MAX_FIX_LAPS", 2)
     agent = _Agent(docs, fix_gate=None)
@@ -1345,7 +1046,6 @@ def test_a_gate_no_repair_lap_can_satisfy_never_gives_up_either(
     assert len(seen) == 2, seen
 
 
-# --------------------------------------------------------------------------- resume
 
 
 def test_a_run_killed_mid_implement_resumes_on_that_layer(
@@ -1354,12 +1054,7 @@ def test_a_run_killed_mid_implement_resumes_on_that_layer(
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    """The checkpoint is written before a state runs, so the layer cursor survives the kill.
-
-    This is the resume shape the port has to match: the state, the flow name, the cursor
-    parameter, and inputs that reconstruct the workflow. The resumed run re-enters on
-    `implement` — it does not re-plan, and it does not re-run the gates.
-    """
+    """The checkpoint is written before a state runs, so the layer cursor survives the kill."""
     run_env = env()
     run_dir = run_env.writer.run_dir
 
@@ -1370,8 +1065,6 @@ def test_a_run_killed_mid_implement_resumes_on_that_layer(
     resume = read_resume(checkpoint)
     assert resume.state == "implement", resume
     assert resume.flow == "Dev", resume
-    # The cursor and the repair lap: the layer loop's `operator_context`/`impl_blocks` are
-    # still at their defaults on a first pass, so nothing carries them into the checkpoint.
     assert resume.params == {
         "index": 0,
         "lap": {"fix_lap": 0, "session_turns": 1, "digest": ""},

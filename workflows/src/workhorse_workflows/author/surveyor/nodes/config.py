@@ -1,7 +1,4 @@
-"""Where the survey's artifacts live, and whether the planner runs at all.
-
-Ported from `base-library/workflows/author/surveyor/scripts/{load-config,check-inventory}.py`.
-"""
+"""Where the survey's artifacts live, and whether the planner runs at all."""
 from __future__ import annotations
 
 import logging
@@ -20,17 +17,7 @@ def load_survey_config(
     survey_dir: str = "docs/survey",
     repo_dir: str = "",
 ) -> SurveyConfig:
-    """Resolve the survey's paths and prove the rubric exists.
-
-    The rubric is the surveyor's ONLY project-facing input: it defines the cross-cutting
-    concern being surveyed (what counts as a finding, what "clean" means) and points at
-    the repo skills the assessors should read. A missing one fails the run here rather
-    than letting the planner and the assessors hallucinate a concern from nothing.
-    Everything else in the config is a path convention under `survey_dir`.
-
-    The message keeps the script's wording minus its `[load-config]` prefix: the run
-    record already names the state that halted, so the prefix was the engine's job.
-    """
+    """Resolve the survey's paths and prove the rubric exists."""
     rubric = rubric.strip() or "docs/survey/rubric.md"
     survey_dir = survey_dir.strip() or "docs/survey"
 
@@ -73,14 +60,7 @@ def check_inventory(
     rules: str = "docs/survey/units.yml",
     repo_dir: str = "",
 ) -> InventoryCheck:
-    """Decide whether the granularity planner needs its one bounded judgment.
-
-    Two things beat the planner, in order. A **frozen inventory**: a prior run (or a
-    mid-run resume) already materialized the unit list, and the survey must consume that
-    exact list — a resume that produced a *different* one would silently break the
-    coverage claim. Failing that, **operator-pinned rules**: an existing rules file is
-    used verbatim, for the day the planner misjudges a repo.
-    """
+    """Decide whether the granularity planner needs its one bounded judgment."""
     inventory_rel = inventory.strip() or "docs/survey/inventory.json"
     rules_rel = rules.strip() or "docs/survey/units.yml"
 

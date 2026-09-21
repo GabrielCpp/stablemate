@@ -1,24 +1,4 @@
-"""Every `self.agent(prompt, returns=Model)` asks for the shape the prompt documents.
-
-`engine._outputs_for` takes the keys a turn is asked for straight off the model's **top-level
-field names** — there is no envelope, and every field is required. `extract_outputs` then
-raises on the first declared key the reply does not carry, which puts the node on the retry →
-compact → reframe ladder and, when that is exhausted, defaults every key to null. So a prompt
-whose example wraps its answer (`{"qa_result": {…}}`), or names a field the model does not
-have, or omits one it does, is not a cosmetic mismatch: it is a turn that can *never* parse.
-
-Nothing surfaces it. `CoderResult` strips nulls so the defaulted reply validates back to the
-model's own defaults, and the flow routes on a blank status down whatever `default:` arm it
-has — a wrong answer, not a crash. The live run that motivated this file spent 134 seconds on
-`code-review`, threw the result away, and carried on. It cost only wall-clock and a wrong
-branch, which is exactly why it survived a port and two readings.
-
-The two halves are checked against each other because neither is checkable alone: the model is
-the contract the engine enforces, and the prompt is the only thing the agent ever sees.
-
-The walk is over the source, like `test_prompts_exist.py`'s, and for the same reason — the
-turns worth checking are the ones buried three sub-flows deep that no runtime sweep reaches.
-"""
+"""Every `self.agent(prompt, returns=Model)` asks for the shape the prompt documents."""
 from __future__ import annotations
 
 import ast
@@ -32,25 +12,13 @@ import workhorse_workflows
 
 PACKAGE = Path(workhorse_workflows.__file__).parent
 
-#: The workflow packages whose turns declare a model. `loop_runner`'s one turn also
-#: declares `Outcome`, but its prompt is the plan handed straight through with no
-#: room for a worked example of the reply shape, so it is left out here; `kit` is the
-#: shared library and has no prompts.
 WORKFLOWS = ("author", "coder", "okf_builder", "research")
 
-#: A fenced ```json block. A prompt may carry several — an artifact it must write, an example
-#: reply — and only one of them has to be the reply.
 BLOCK = re.compile(r"```json\s*\n(.*?)```", re.DOTALL)
 
 
 def _top_level_keys(body: str) -> set[str] | None:
-    """The keys at depth 1 of the first object in `body`, or `None` if there is no object.
-
-    Hand-scanned rather than `json.loads`ed because prompt examples are pseudo-JSON as often
-    as not — `"status": "written" | "blocked"` documents a vocabulary and parses as nothing.
-    Rejecting those would make this check quietly stop covering the prompts most worth
-    covering, so the scanner tracks brace depth and reads the keys it can see.
-    """
+    """The keys at depth 1 of the first object in `body`, or `None` if there is no object."""
     depth = 0
     keys: set[str] = set()
     started = False
@@ -77,12 +45,7 @@ def _top_level_keys(body: str) -> set[str] | None:
 
 
 def _turns(source: Path) -> list[tuple[int, str, ast.expr]]:
-    """Every `self.agent(...)` in `source` as `(line, prompt, returns)`.
-
-    A call missing either argument is skipped rather than failed: `returns=` is optional in
-    the engine (a turn without one is asked for a single scalar key) and a non-literal prompt
-    is `test_prompts_exist.py`'s finding to report, not this file's to report twice.
-    """
+    """Every `self.agent(...)` in `source` as `(line, prompt, returns)`."""
     found: list[tuple[int, str, ast.expr]] = []
     tree = ast.parse(source.read_text(encoding="utf-8"), filename=str(source))
     for node in ast.walk(tree):
@@ -100,8 +63,6 @@ def _turns(source: Path) -> list[tuple[int, str, ast.expr]]:
                 prompt = kw.value
             elif kw.arg == "returns":
                 returns = kw.value
-        # A literal prompt is a path string; a constant of any other type is as much
-        # `test_prompts_exist.py`'s finding as a non-literal one, and drops out with it.
         if returns is not None and isinstance(prompt, ast.Constant):
             if isinstance(prompt.value, str):
                 found.append((node.lineno, prompt.value, returns))
@@ -121,12 +82,7 @@ SITES = _sites()
 
 
 def _model_fields(source: Path, returns: ast.expr) -> set[str]:
-    """The declared output keys, resolved through the module the turn is written in.
-
-    Resolving in the caller's own namespace rather than searching the schema packages is what
-    makes this exact: `returns=QaResult` means whatever that name is bound to *there*, which
-    is the same lookup the engine does at runtime.
-    """
+    """The declared output keys, resolved through the module the turn is written in."""
     module = importlib.import_module(
         ".".join(source.relative_to(PACKAGE.parent).with_suffix("").parts)
     )
@@ -138,12 +94,7 @@ def _model_fields(source: Path, returns: ast.expr) -> set[str]:
 
 
 def test_the_sweep_found_turns_in_every_workflow() -> None:
-    """The guard against a walker that silently matches nothing.
-
-    Every one of these workflows runs model-returning turns, so a package contributing zero
-    means the walk broke — a renamed method, a changed call shape — not that the turns went
-    away. Without this the whole file passes vacuously.
-    """
+    """The guard against a walker that silently matches nothing."""
     by_workflow = {name: 0 for name in WORKFLOWS}
     for name, _source, _lineno, _prompt, _returns in SITES:
         by_workflow[name] += 1
@@ -160,15 +111,9 @@ def test_the_prompt_documents_the_keys_the_turn_is_asked_for(
 ) -> None:
     fields = _model_fields(source, returns)
     if not fields:
-        return  # not a model: the engine asks for one scalar key, and a prompt cannot drift
+        return
     body = (PACKAGE / workflow / prompt).read_text(encoding="utf-8")
     if "{{ result_schema }}" in body:
-        # The contract is not hand-written here: the placeholder is filled at turn time by
-        # `schema_block(...)`, which renders the ```json block this test would otherwise
-        # look for straight from the declared model — `roles.turn` builds it from its own
-        # `returns` argument, so for those sites the pairing holds by construction. What
-        # could still drift is a hand-built args dict rendering a *different* model than
-        # `returns=` names, which sits outside what a per-prompt scan can see.
         return
     examples = [keys for block in BLOCK.findall(body) if (keys := _top_level_keys(block))]
     assert any(keys == fields for keys in examples), (

@@ -1,7 +1,4 @@
-"""Getting the gate's work off this machine: commit onto the result branch and push.
-
-Ported from `base-library/workflows/research/scripts/publish.py`.
-"""
+"""Getting the gate's work off this machine: commit onto the result branch and push."""
 from __future__ import annotations
 
 import logging
@@ -21,12 +18,7 @@ def publish_results(
     program_dir: str = "",
     summary: str = "record research results",
 ) -> PublishResult:
-    """Commit whatever the gate produced onto the result branch and push it.
-
-    Every failure here is soft: an unpushed branch is still a branch on disk, and
-    losing a week of gate work because a remote was unreachable would be the wrong
-    trade for an unattended run.
-    """
+    """Commit whatever the gate produced onto the result branch and push it."""
     if not repo_dir:
         raise WorkflowFailed("publish_results needs a repo_dir")
 

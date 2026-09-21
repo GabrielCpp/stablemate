@@ -1,9 +1,4 @@
-"""`ostler list` / `search` / `query` — retrieval over the typed knowledge graph.
-
-Returns plain dicts/lists (JSON-friendly). ``list`` enumerates Concepts of a type with filters,
-``search`` does full-text over titles/bodies, ``query`` answers the reverse-index questions the
-workflows ask (stories-covering-seed, surfaces-referenced-by-story).
-"""
+"""`ostler list` / `search` / `query` — retrieval over the typed knowledge graph."""
 
 from __future__ import annotations
 
@@ -20,18 +15,13 @@ def _story_row(graph: Graph, epic, story) -> dict:
         "title": story.title, "status": story.status, "covers": story.seed_items,
         "dependsOn": story.dependencies,
         "path": story.path,
-        # Whether the story says anything, and which required sections are still blank —
-        # so a caller never has to open story.md and decide for itself what "written" means.
-        # `hasStoryMd` separates the two ways a story can be unauthored: no file at all, or a
-        # file that is still the scaffold. They need different words in a report.
         "authored": story.authored, "unwrittenSections": list(story.unwritten_sections),
         "hasStoryMd": story.story_md is not None,
     }
 
 
 def _ui_row(graph: Graph, node: UINode) -> dict:
-    """A UI node as a JSON row. Section nodes carry ``anchor``; the ``id`` is ``path#anchor``
-    (file nodes: the repo-relative path) so the agent-fix loop can address either directly."""
+    """A UI node as a JSON row."""
     row = {"type": node.type, "kind": node.kind, "id": node.id, "title": node.title,
            "path": node.path.relative_to(graph.root).as_posix(), "line": node.line}
     if node.kind == "section":
@@ -40,9 +30,6 @@ def _ui_row(graph: Graph, node: UINode) -> dict:
 
 
 def _seed_row(epic, seed) -> dict:
-    # `seed.raw` carries the epic.md `### <id>` metadata bullets with lowercased keys
-    # (`legacySurface:` → "legacysurface", etc.); surface them so the workflow's grounding
-    # / prune gates can read the same fields the old seed.json exposed.
     raw = seed.raw or {}
     return {"type": "seed", "id": seed.id, "epic": epic.name, "status": seed.status,
             "active": seed.active, "summary": seed.summary,
@@ -87,8 +74,6 @@ def list_entities(graph: Graph, etype: str, epic: str | None = None,
         rows = crud_generic.find_instance(graph, etype)
 
     if epic is not None:
-        # By directory name or by bare slug: epic directories are numbered, and a caller
-        # filtering `epic="checkout-flow"` means `0001-checkout-flow`.
         want = registry.epic_slug(epic)
         rows = [r for r in rows
                 if registry.epic_slug(str(r.get("epic") or r.get("name") or "")) == want]
@@ -121,7 +106,7 @@ def search(graph: Graph, q: str, etype: str | None = None) -> list[dict]:
                     path = found[1].story_md if found else None
                 elif t == "feature":
                     path = next((f.path for f in graph.features if f.slug == row["slug"]), None)
-                else:  # UI node — resolve by identity
+                else:
                     node = graph.find_ui_node(row["id"])
                     path = node.path if node else None
                 if path:
@@ -158,23 +143,7 @@ def query(
 
 
 def _surfaces_referenced(graph: Graph, story) -> list[dict]:
-    """Every surface a story points at through OKF book nodes.
-
-    The book is the current channel — a story grounds itself by citing the ids of the
-    surface/component/interaction/flow nodes it works on, and a UI node's id is a
-    repo-relative path, so the citation is an ordinary markdown link. Rows are tagged with
-    ``kind`` so a caller can tell a resolved citation from one that points at nothing:
-    ``ui`` resolved to a node in the graph, ``file`` resolved to a document on disk that is
-    not a UI node (a feature doc, a sibling story), ``missing`` resolved to nothing at all.
-    A dangling citation is reported rather than dropped — silently omitting it would make a
-    typo'd node id indistinguishable from a story that never cited one.
-
-    An anchor **into a document that is itself a book node** is held to the same standard as
-    the path: ``settings.md#save-prophile`` names no section node, so it is ``missing`` rather
-    than ``file``. The file existing is not evidence the cited section does, and that is the
-    likelier typo of the two. An anchor into any other document stays ``file`` — ordinary
-    markdown deep-links into a spec or a sibling story are not node citations to begin with.
-    """
+    """Every surface a story points at through OKF book nodes."""
     rows: list[dict] = []
     seen: set[str] = set()
     for href in story.doc_refs:

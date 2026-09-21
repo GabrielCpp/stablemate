@@ -1,17 +1,4 @@
-"""`farrier doctor` — read a repo's `agents.yml` and say what a workflow will miss.
-
-Everything the coder workflow does to a repo it does from declarations: the `workspace:`
-block says where the services are, and the `services:` block says what command gates each
-one. A missing declaration is never an error at run time — the dev lane skips a gate no
-service adopted, on purpose, because guessing a command means failing a story on a command
-nobody wrote. The cost is that the silence is indistinguishable from a repo that meant it,
-and a repo that simply forgot finds out several stories later that nothing was ever checked.
-
-That gap is what this command closes. It warns; it does not fail. The exit code is 0 for
-any repo whose `agents.yml` parses, because "you have not adopted the test gate" is a fact
-about the repo's choices and not a defect in it — the one non-zero case is a config that
-cannot be read at all, which is a defect in it.
-"""
+"""`farrier doctor` — read a repo's `agents.yml` and say what a workflow will miss."""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -20,10 +7,6 @@ from typing import Any
 
 import yaml
 
-#: The gates the coder workflow's dev lane runs, in the order it asks for them. Kept here
-#: rather than imported: farrier installs into repos that have no workflow package at all,
-#: and a doctor that could not run without one would be useless in exactly the repo that
-#: most needs telling.
 GATES = ("lint", "test")
 
 
@@ -132,7 +115,7 @@ def diagnose(repo: Path) -> list[Finding]:
 
 
 def report(repo: Path) -> int:
-    """Print the diagnosis. Non-zero only when `agents.yml` could not be read."""
+    """Print the diagnosis."""
     findings = diagnose(repo)
     if not findings:
         print(f"agents.yml in {repo}: nothing to report.")

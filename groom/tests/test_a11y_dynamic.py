@@ -1,27 +1,4 @@
-"""Accessibility, measured on the page the operator actually gets.
-
-groom used to lint its accessibility statically, by parsing ``dashboard.html``
-with a hand-rolled tag scanner. That worked while the shell *was* the dashboard.
-It stopped working the moment the panes became Preact islands: the template now
-ships five empty divs, and every control an operator can reach — run rows, the
-answer form, the repo listbox, the file tree, the diff, the trace rows — is
-created by JavaScript from JSON that arrives over a socket. A static reader of
-the template sees none of it, so a green static lint said nothing at all.
-
-So this boots a real groom over a synthetic fleet, drives a real Chromium through
-each pane, and runs axe-core against the live DOM. axe is vendored under
-``tests/vendor/`` — nothing here reaches a CDN, in a test or otherwise.
-
-Scanning ``document`` per mode is deliberate rather than lazy: inactive panes are
-``display:none``, which axe already excludes, so one scan per mode covers that
-mode's pane *plus* the shell around it (activity rail, status bar, toasts) and
-catches a shell regression five times over.
-
-Requires: playwright + its chromium (``uv run playwright install chromium``).
-Skips cleanly, loudly, when either is missing.
-
-Run: uv run pytest tests/test_a11y_dynamic.py
-"""
+"""Accessibility, measured on the page the operator actually gets."""
 from __future__ import annotations
 
 import os
@@ -38,8 +15,6 @@ from unittest.mock import patch
 ROOT = Path(__file__).resolve().parents[1]
 AXE = Path(__file__).resolve().parent / "vendor" / "axe.min.js"
 
-# The panes an operator can reach, and how to get there. Each entry is scanned
-# with axe after `_goto` has driven the page into that state.
 MODES = ("runs", "files", "diff", "settings")
 
 
@@ -57,8 +32,7 @@ def _git(cwd: Path, *args: str) -> None:
 
 
 def _workspace(base: Path) -> Path:
-    """A workspace volume the way a native run leaves one: a checkout under it,
-    committed, then dirtied — so /files has a tree and /diff has a diff."""
+    """A workspace volume the way a native run leaves one: a checkout under it, committed, then dirtied — so /files has a tree and /diff has a diff."""
     repo = base / "acme"
     (repo / "src").mkdir(parents=True)
     (repo / "src" / "app.py").write_text("def main():\n    return 1\n")
@@ -71,8 +45,7 @@ def _workspace(base: Path) -> Path:
 
 
 def _seed(workspace: Path) -> None:
-    """Three runs covering every row state, one of them blocked on a gate whose
-    question is markdown — that gate is what puts the answer form on the page."""
+    """Three runs covering every row state, one of them blocked on a gate whose question is markdown — that gate is what puts the answer form on the page."""
     from groom import state, store
     from groom.models import GateInfo, WorkflowState
 
@@ -135,9 +108,6 @@ def _seed(workspace: Path) -> None:
             for i in range(12)
         ]
     )
-    # A heartbeat inside the live window: the run detail's "Recent telemetry
-    # history" widget reads spans plus liveness for the run under view. Liveness
-    # is memory-only — the beat goes into the ingest cache, never the store.
     from groom import alerts
 
     alerts.ingest_metrics(
@@ -152,12 +122,7 @@ def _seed(workspace: Path) -> None:
 
 
 class _Live:
-    """The booted dashboard: server thread, browser, and the temp dirs both own.
-
-    Built once and shared by every test in the file. A browser launch plus a
-    lifespan startup is ~2s; paying it five times to prove the same five panes
-    accessible is time spent on nothing.
-    """
+    """The booted dashboard: server thread, browser, and the temp dirs both own."""
 
     def __init__(self) -> None:
         self.tmp = tempfile.TemporaryDirectory()
@@ -170,15 +135,9 @@ class _Live:
         store.reset()
         workspace = _workspace(base / "ws")
 
-        # Startup would otherwise run the docker discovery pass, which prunes the
-        # synthetic fleet on its way past. Everything else about the real app —
-        # the 5s live tick, the rules ticker, the routes — is left alone.
         async def _no_reconcile() -> int:
-            return 0  # the real one answers with how many containers it found
+            return 0
 
-        # Stopped in close(): this is a module attribute, not a fixture, so a stub
-        # left behind would silently disarm /refresh for every later test in the
-        # session.
         self._app_module = app_module
         self._reconcile_patch = patch.object(app_module, "_reconcile", _no_reconcile)
         self._reconcile_patch.start()
@@ -229,8 +188,7 @@ _UNAVAILABLE = ""
 
 
 def _live() -> _Live | None:
-    """The shared dashboard, or None with a printed reason when this machine
-    can't run it. Never raises: a missing browser is a skip, not a failure."""
+    """The shared dashboard, or None with a printed reason when this machine can't run it."""
     global _LIVE, _UNAVAILABLE
     if _LIVE is not None:
         return _LIVE
@@ -251,13 +209,7 @@ def _live() -> _Live | None:
 
 
 def teardown_module(module=None) -> None:
-    """Stop the dashboard while the interpreter is still healthy.
-
-    Not atexit: by the time atexit callbacks run, CPython has already banned new
-    threads, and uvicorn's loop spawns one on the way out — so an atexit shutdown
-    ends in a `can't create new thread at interpreter shutdown` traceback printed
-    after the results. pytest calls this hook after the module's tests, and the
-    __main__ runner calls it in a finally."""
+    """Stop the dashboard while the interpreter is still healthy."""
     global _LIVE
     if _LIVE is not None:
         _LIVE.close()
@@ -297,8 +249,7 @@ def _report(mode: str, violations: list[dict]) -> str:
 
 
 def _drive(page, mode: str) -> None:
-    """Put the page in ``mode`` with that pane's content actually loaded — an
-    empty pane passes axe trivially and proves nothing."""
+    """Put the page in ``mode`` with that pane's content actually loaded — an empty pane passes axe trivially and proves nothing."""
     page.click(f'.act-btn[data-mode="{mode}"]')
     if mode == "runs":
         page.click("#runs-list .row.blocked")
@@ -307,17 +258,12 @@ def _drive(page, mode: str) -> None:
         page.click(f'.repo-picker[data-picker="{mode}"]')
         page.wait_for_selector("#repo-menu .repo-item", timeout=10000)
         page.click("#repo-menu .repo-item")
-        # The trees are `#files-tree` / `#diff-tree`, but the viewers are
-        # `#file-view` / `#diff-view` — singular on the files side.
         tree, view = ("files-tree", "file-view") if mode == "files" else ("diff-tree", "diff-view")
         page.wait_for_selector(f"#{tree} .tree-file", timeout=10000)
         page.click(f"#{tree} .tree-file")
         page.wait_for_selector(f"#{view} :not(.fd-empty)", timeout=10000)
 
 
-# --------------------------------------------------------------------------- #
-# axe, once per reachable pane
-# --------------------------------------------------------------------------- #
 def _check_mode(mode: str) -> None:
     live = _live()
     if live is None:
@@ -332,8 +278,6 @@ def _check_mode(mode: str) -> None:
 
 
 def test_runs_pane_with_an_open_gate_is_accessible():
-    # The densest pane and the only one with a form: run rows, the selected run's
-    # detail, the markdown question, and the answer textarea + submit.
     _check_mode("runs")
 
 
@@ -371,14 +315,10 @@ def test_history_shows_loading_then_stored_spans_without_script_logs():
 
 
 def test_files_pane_is_accessible():
-    # Covers the repo combobox/listbox and the disclosure tree, both of which are
-    # ARIA-authored widgets rather than native controls.
     _check_mode("files")
 
 
 def test_diff_pane_is_accessible():
-    # diff2html's generated table is third-party markup groom injects — if it
-    # regresses accessibility, it does so on groom's page.
     _check_mode("diff")
 
 
@@ -386,12 +326,6 @@ def test_settings_pane_is_accessible():
     _check_mode("settings")
 
 
-# --------------------------------------------------------------------------- #
-# Keyboard reachability — what axe cannot see
-# --------------------------------------------------------------------------- #
-# axe checks the markup's accessibility properties; it does not press Tab. These
-# two are the paths an operator has no mouse-free alternative to: choosing a pane
-# and answering a gate.
 def test_the_activity_rail_is_reachable_and_operable_by_keyboard():
     live = _live()
     if live is None:
@@ -405,8 +339,6 @@ def test_the_activity_rail_is_reachable_and_operable_by_keyboard():
             }"""
         )
         assert reached, "an activity-rail button is not in the tab order"
-        # Operable, not merely focusable: focus one and press Enter, and the pane
-        # must actually change — a click-only handler would fail here.
         page.focus('.act-btn[data-mode="diff"]')
         page.keyboard.press("Enter")
         page.wait_for_function("() => document.querySelector('.app').dataset.mode === 'diff'", timeout=5000)
@@ -425,8 +357,6 @@ def test_the_answer_form_is_reachable_and_submittable_by_keyboard():
         _drive(page, "runs")
         page.focus("form[data-answer] textarea")
         page.keyboard.type("sqlite")
-        # Tab must land on the submit button: the textarea and the button are
-        # adjacent in the tab order, so a gate can be answered without a mouse.
         page.keyboard.press("Tab")
         landed = page.evaluate(
             """() => {
@@ -437,7 +367,6 @@ def test_the_answer_form_is_reachable_and_submittable_by_keyboard():
         )
         assert landed, "Tab out of the answer textarea does not reach its submit button"
         page.keyboard.press("Enter")
-        # The answer lands in the gate file on disk, and the form clears.
         page.wait_for_function(
             "() => document.querySelector('form[data-answer] textarea')?.value === ''",
             timeout=10000,

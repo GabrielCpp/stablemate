@@ -1,10 +1,4 @@
-"""``ostler template new/edit/find/delete/apply`` — CRUD over ``.agents/templates.yml``.
-
-The YAML file is the live definition (a kind is usable via ``ostler new/find/set/remove`` the
-moment it's written — see ``dynamic_registry.load_kinds``, consulted by ``model.load()`` on every
-run). ``apply`` only does the remaining disk side effects: ``mkdir -p`` each declared kind's
-``doc_root`` directory and inject a marker-delimited section into ``CLAUDE.md``.
-"""
+"""``ostler template new/edit/find/delete/apply`` — CRUD over ``.agents/templates.yml``."""
 
 from __future__ import annotations
 
@@ -131,9 +125,6 @@ def delete(root: Path, name: str) -> Result:
     return Result(True, f"deleted template '{name}'", [dynamic_registry.templates_path(root)])
 
 
-# ---------------------------------------------------------------------------
-# apply: directory scaffolding + CLAUDE.md guidance (idempotent, re-runnable)
-# ---------------------------------------------------------------------------
 _MARKER_START = "<!-- ostler:template:{name}:start -->"
 _MARKER_END = "<!-- ostler:template:{name}:end -->"
 

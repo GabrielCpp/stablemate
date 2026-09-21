@@ -1,12 +1,4 @@
-"""A repair turn takes every open doctor row on its file and its sibling files, and closes all
-of them.
-
-The checkpoint's row is one `(file, node, code)` — the unit a finding is tracked by across
-rounds. The turn is one file first, because what a turn costs is reading the file and its
-source, and that is paid once however many codes the file carries; then files in the same
-folder, because loading the method is paid once however many files the turn covers
-(`worklist._batch`).
-"""
+"""A repair turn takes every open doctor row on its file and its sibling files, and closes all of them."""
 from __future__ import annotations
 
 import json
@@ -102,7 +94,6 @@ def test_a_repair_fills_from_its_own_file_before_its_siblings(tmp_path: Path) ->
 
     pick = select_item(LOG, str(worklist))
 
-    # a.md's second row fills the bound to one short of full; b.md is taken only with room left.
     assert [r["target"] for r in pick.batch] == [f"{a}#refund#weak-check", f"{b}#capture#weak-check"]
     context = json.loads(pick.item_context)
     assert "path" not in context

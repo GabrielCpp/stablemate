@@ -1,10 +1,4 @@
-"""Base-library resolution order — the single copy, shared by workhorse and farrier.
-
-This lived twice, once per tool, testing two near-identical implementations. Both are
-gone: discovery is core's, so its test is too. A base one tool can find and the other
-cannot is indistinguishable from a broken library, which is why this cannot be
-per-tool.
-"""
+"""Base-library resolution order — the single copy, shared by workhorse and farrier."""
 
 from __future__ import annotations
 
@@ -43,7 +37,6 @@ def cfg(tmp_path, monkeypatch):
     return set
 
 
-# --- the predicate -----------------------------------------------------------
 
 
 def test_is_library_dir_accepts_the_content_dir(tmp_path):
@@ -58,28 +51,18 @@ def test_is_library_dir_rejects_an_empty_or_wrong_dir(tmp_path):
 
 
 def test_is_library_dir_rejects_a_workflows_only_dir(tmp_path):
-    """`workflows/` used to be an accepted alternative to `library/`.
-
-    A workflow is an installed Python distribution now, reached through its own
-    console script, so a directory holding only `workflows/` ships no library
-    content — pointing `set-base` at one should be an error, not a silent empty layer.
-    """
+    """`workflows/` used to be an accepted alternative to `library/`."""
     (tmp_path / "workflows").mkdir()
     assert not is_library_dir(tmp_path)
 
 
 def test_is_library_dir_rejects_the_pre_flattening_layout(tmp_path):
-    """base-library/ used to hold a Python package, not the payload.
-
-    A cache fetched before the flattening looks exactly like this, and accepting it
-    would hand callers a directory with no library content in it.
-    """
+    """base-library/ used to hold a Python package, not the payload."""
     (tmp_path / "stablemate_library" / "library").mkdir(parents=True)
     (tmp_path / "pyproject.toml").write_text("")
     assert not is_library_dir(tmp_path)
 
 
-# --- resolution order --------------------------------------------------------
 
 
 def test_checkout_derivation_is_the_lowest_real_source(tmp_path, cfg, monkeypatch):
@@ -109,8 +92,7 @@ def test_env_var_outranks_everything(tmp_path, cfg, monkeypatch):
 
 
 def test_cache_is_last_and_never_shadows_a_chosen_base(tmp_path, cfg, monkeypatch):
-    """The whole reason the cache sits at the bottom: a download must not silently
-    replace the checkout someone is editing."""
+    """The whole reason the cache sits at the bottom: a download must not silently replace the checkout someone is editing."""
     cached = _make_base(tmp_path / "cached")
     checkout = tmp_path / "checkout"
     derived = _make_base(checkout / "base-library")
@@ -131,7 +113,6 @@ def test_nothing_configured_resolves_to_none(monkeypatch):
     assert base_library_dir() is None
 
 
-# --- fail-soft ---------------------------------------------------------------
 
 
 def test_invalid_override_is_skipped_not_raised(tmp_path, cfg, monkeypatch):
@@ -153,7 +134,6 @@ def test_resolution_never_fetches(tmp_path, monkeypatch):
     base_library_dir()
 
 
-# --- the explicit form, which may fetch --------------------------------------
 
 
 def test_ensure_populates_the_cache_when_nothing_else_resolves(tmp_path, monkeypatch):
@@ -166,9 +146,7 @@ def test_ensure_populates_the_cache_when_nothing_else_resolves(tmp_path, monkeyp
 
 @pytest.mark.parametrize("refresh", [False, True])
 def test_ensure_never_fetches_over_a_chosen_base(tmp_path, cfg, monkeypatch, refresh):
-    """The ordering guarantee has to survive the command that is allowed to download:
-    someone editing a base in place must never have a copy appear underneath them —
-    not even a network probe fires."""
+    """The ordering guarantee has to survive the command that is allowed to download: someone editing a base in place must never have a copy appear underneath them — not even a network probe fires."""
     checkout = tmp_path / "checkout"
     derived = _make_base(checkout / "base-library")
     cfg(stablemate_dir=str(checkout))

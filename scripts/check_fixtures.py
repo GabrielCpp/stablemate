@@ -1,37 +1,5 @@
 #!/usr/bin/env python3
-"""Guard the declared-fixture rule across the benchmark corpus. Wired into `make test`.
-
-A QA fixture is held to the bar a test is held to: it is named, it is declared, and the
-declaration is what admits it. `ostler.qa.fixtures.preflight_errors` already enforces the
-declaration half at the top of a run — but that is a per-run, per-app check, and that is
-exactly what leaves a gap.
-
-The three failures below are all invisible to a run:
-
-- **A declaration with no file behind it**, or one naming a tool the repo never opted
-  into. `preflight_errors` catches these — but only for the app a run happens to be
-  materializing. Four of the five corpus apps are untouched by any given round.
-- **A plan calling `qa.fixture("name")` for a name no `qa: {fixtures:}` entry declares.**
-  This one *does* fail the run, at the moment the scenario reaches for it — which is
-  after the app booted, and reported as a blocked scenario rather than as the typo it is.
-- **A story naming a fixture in its `plan-context.json` that the repo never declared.**
-  Nothing fails on this at all: the QA planner is simply told the story declared it, goes
-  looking for the declaration, does not find it, and writes one — spending agent turns
-  inventing an `agents.yml` entry instead of reporting a story that names a fixture that
-  does not exist.
-
-The corpus is where this bites hardest: its plans are frozen, most rounds spend zero
-agent turns, and a benchmark app is only ever exercised by the one task that names it. A
-drifted fixture declaration in `seat-booking` can sit unnoticed for as long as nobody
-runs `seat-booking-qa`.
-
-This guard is a static sweep and claims nothing beyond it. It does not run a fixture, does
-not check that `provides:` is true, and does not check that a scenario's preconditions are
-the ones its fixtures guarantee — those need the run, not a grep.
-
-Run:
-    uv run --all-packages python scripts/check_fixtures.py
-"""
+"""Guard the declared-fixture rule across the benchmark corpus."""
 
 from __future__ import annotations
 
@@ -42,8 +10,6 @@ from pathlib import Path
 from ostler.qa.fixtures import declared, preflight_errors, referenced
 from workhorse_workflows.coder.shared.schemas.dev import lift_fixture
 
-#: Where the benchmark apps live. The only trees in this repo that carry QA plans at all:
-#: stablemate's own code is tested with pytest, not with an OKF QA lane.
 CORPUS = Path(__file__).resolve().parent.parent / "paddock" / "data" / "apps"
 
 
@@ -70,13 +36,7 @@ def _check_app(root: Path) -> list[str]:
 
 
 def _story_fixture_names(document: dict) -> list[str]:
-    """The fixture *names* a `plan-context.json` declares, under either spelling.
-
-    Read through the same lift the schema applies, so this guard and the prompt the QA
-    planner is handed can never disagree about which entries are names: prose in that list
-    is an arrangement the story described, not a declaration, and holding it to a
-    declaration's bar would fail every story in the corpus for writing English.
-    """
+    """The fixture *names* a `plan-context.json` declares, under either spelling."""
     raw = document.get("fixtures")
     if not isinstance(raw, list):
         setup = document.get("verification_setup") or document.get("qa_stack") or {}
@@ -117,8 +77,6 @@ def _story_declaration_problems(root: Path, spec_root: Path, specs: dict) -> lis
 def main() -> int:
     apps = sorted(path for path in CORPUS.iterdir() if path.is_dir()) if CORPUS.is_dir() else []
     if not apps:
-        # A guard that finds nothing to guard has failed, not passed: the corpus moved and
-        # this check would go on reporting clean for every app it can no longer see.
         print(f"check-fixtures: no benchmark apps under {CORPUS}", file=sys.stderr)
         return 1
 

@@ -1,9 +1,4 @@
-"""The device view hierarchy, translated into the elements the DOM scan produces.
-
-The fixtures below are the shapes a live Android emulator actually printed — including the
-`Running on <device>` banner `maestro hierarchy` puts on stdout ahead of its JSON, which is
-the detail that makes a parser starting at byte zero fail on every device.
-"""
+"""The device view hierarchy, translated into the elements the DOM scan produces."""
 
 from __future__ import annotations
 

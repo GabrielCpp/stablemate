@@ -1,11 +1,4 @@
-"""Tests for the envelope/body split in render().
-
-The workflow ships the **envelope** — provided inputs, the exit-condition stage, the
-result schema — and no longer ships every **body** it wraps: which body applies is a
-question about the *repo* (what it installed, what it overrode), so a state resolves it
-and hands `render` the directory it landed in. The body is then an ordinary Jinja
-include, with the same context and the same helpers as the envelope around it.
-"""
+"""Tests for the envelope/body split in render()."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -41,14 +34,12 @@ def test_the_envelope_includes_a_body_it_does_not_ship(tmp_path):
     out = render("prompts/dev-fix.md", ctx, workflow_dir)
 
     assert "Provided: expense-list" in out
-    # The body renders against the same context, so it is a template and not a paste.
     assert "BODY for expense-list" in out
     assert out.index("Provided") < out.index("BODY") < out.index("Return JSON.")
 
 
 def test_a_body_cannot_shadow_a_template_the_workflow_ships(tmp_path):
-    """The body lives under its own `body/` namespace, so a library file named like one
-    of the workflow's own prompts is inert rather than an override nobody declared."""
+    """The body lives under its own `body/` namespace, so a library file named like one of the workflow's own prompts is inert rather than an override nobody declared."""
     workflow_dir, body_dir = _setup(tmp_path)
     (body_dir / "prompts").mkdir()
     (body_dir / "prompts" / "dev-fix.md").write_text("HIJACKED\n")
@@ -61,11 +52,7 @@ def test_a_body_cannot_shadow_a_template_the_workflow_ships(tmp_path):
 
 
 def test_a_body_named_for_its_envelope_does_not_include_the_envelope(tmp_path):
-    """The body is named for the role, and so is the envelope. Addressed by bare name
-    against a loader that can see the envelope's own directory — which is what rendering
-    by absolute path does — `{% include %}` resolves back to the envelope and Jinja
-    recurses until the interpreter stops it. The `body/` namespace is what rules that
-    out, and it has to hold for the absolute-path form too."""
+    """The body is named for the role, and so is the envelope."""
     workflow_dir, body_dir = _setup(tmp_path)
     ctx = {"story": "s", "_body_dir": str(body_dir), "body_template": "body/dev-fix.md"}
 

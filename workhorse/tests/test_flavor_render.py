@@ -1,14 +1,4 @@
-"""Tests for presence-based prompt *flavor* overrides in render().
-
-A consuming repo extends a base node prompt by dropping a same-named file at
-``<repo_root>/.agents/flavors/<workflow>/<node>.md``. It ``{% extends %}`` the base
-and fills the base's named blocks; with no such file the base renders unchanged
-(its blocks extend to nothing). The engine resolves the override across a
-multi-root Jinja loader (flavor dir + workflow dir) so the ``{% extends %}`` finds
-the base prompt.
-
-Run: ./.venv/bin/python tests/test_flavor_render.py   (or via pytest)
-"""
+"""Tests for presence-based prompt *flavor* overrides in render()."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -46,7 +36,6 @@ def _write_override(repo_root: Path, node: str = "write-story.md", content: str 
 
 
 def test_plain_renders_base_unchanged(tmp_path):
-    # No override dir at all -> base renders; empty block extends to nothing.
     workflow_dir, ctx = _setup(tmp_path)
     out = render("prompts/write-story.md", ctx, workflow_dir)
     assert "Generic authoring instructions." in out
@@ -55,17 +44,15 @@ def test_plain_renders_base_unchanged(tmp_path):
 
 
 def test_override_fills_block_keeps_base(tmp_path):
-    # Override present -> base body intact AND the named block is filled.
     workflow_dir, ctx = _setup(tmp_path)
     _write_override(Path(ctx["_repo_root"]))
     out = render("prompts/write-story.md", ctx, workflow_dir)
-    assert "Generic authoring instructions." in out  # base body intact
+    assert "Generic authoring instructions." in out
     assert "End of base." in out
-    assert "REPO RULE: cite a legacy source per row." in out  # block filled via {% extends %}
+    assert "REPO RULE: cite a legacy source per row." in out
 
 
 def test_override_dir_without_file_for_node_is_base(tmp_path):
-    # A flavor file exists for a DIFFERENT node only -> this node renders the base.
     workflow_dir, ctx = _setup(tmp_path)
     _write_override(Path(ctx["_repo_root"]), node="review-coverage.md", content="irrelevant")
     out = render("prompts/write-story.md", ctx, workflow_dir)
@@ -74,16 +61,12 @@ def test_override_dir_without_file_for_node_is_base(tmp_path):
 
 
 def test_no_repo_root_renders_base(tmp_path):
-    # Without _repo_root in context the engine cannot look up overrides -> base.
     workflow_dir, _ = _setup(tmp_path)
     out = render("prompts/write-story.md", {}, workflow_dir)
     assert "Generic authoring instructions." in out
     assert "REPO RULE" not in out
 
 
-# --------------------------------------------------------------------------------
-# a prompt owned by one flow: `dev/prompts/write-story.md`
-# --------------------------------------------------------------------------------
 
 FLOW_OVERRIDE = (
     '{% extends "dev/prompts/write-story.md" %}\n'
@@ -100,9 +83,6 @@ def _setup_flow(base: Path) -> tuple[Path, dict]:
 
 
 def test_flow_keyed_override_wins(tmp_path):
-    # `.agents/flavors/author/dev/write-story.md` names the flow, so it can `{% extends %}`
-    # the one copy it means -- which a basename-keyed file cannot do once two flows own a
-    # prompt of the same name.
     workflow_dir, ctx = _setup_flow(tmp_path)
     flow_dir = Path(ctx["_repo_root"]) / ".agents" / "flavors" / "author" / "dev"
     flow_dir.mkdir(parents=True)
@@ -113,8 +93,6 @@ def test_flow_keyed_override_wins(tmp_path):
 
 
 def test_basename_override_still_activates_for_a_flow_prompt(tmp_path):
-    # The location consuming repos already use keeps working -- with `{% extends %}`
-    # naming the flow-qualified path, since that is where the base now lives.
     workflow_dir, ctx = _setup_flow(tmp_path)
     _write_override(
         Path(ctx["_repo_root"]),
@@ -125,7 +103,6 @@ def test_basename_override_still_activates_for_a_flow_prompt(tmp_path):
 
 
 def test_flow_keyed_override_beats_basename(tmp_path):
-    # Both present: the one that named the flow is the more specific answer.
     workflow_dir, ctx = _setup_flow(tmp_path)
     repo_root = Path(ctx["_repo_root"])
     _write_override(

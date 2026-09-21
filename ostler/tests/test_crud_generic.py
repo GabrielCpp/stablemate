@@ -105,7 +105,6 @@ def test_full_three_level_nested_path_resolution(tmp_path: Path):
     assert (tmp_path / "specs/SMCNv3/gates/G0/gate.md").exists()
 
     g = load(tmp_path)
-    # finding only needs its immediate parent (gate=G0), not the full ancestor chain
     r3 = crud_generic.create_instance(g, "finding", "f1",
                                       {"gate": "G0", "title": "near-miss on inversion depth"})
     assert r3.ok, r3.message
@@ -113,7 +112,6 @@ def test_full_three_level_nested_path_resolution(tmp_path: Path):
     assert finding_path.exists()
     assert "near-miss on inversion depth" in finding_path.read_text()
 
-    # gate=G0's frontmatter must not have been polluted with the parent-scoping field
     gate_fm = (tmp_path / "specs/SMCNv3/gates/G0/gate.md").read_text()
     assert "program:" not in gate_fm
 
@@ -160,7 +158,6 @@ def test_delete_bundle_shaped_instance_removes_whole_directory(tmp_path: Path):
     res = crud_generic.delete_instance(load(tmp_path), "gate", "G0")
     assert res.ok
     assert not (tmp_path / "specs/SMCNv3/gates/G0").exists()
-    # parent program untouched
     assert (tmp_path / "specs/SMCNv3/program.md").exists()
 
 

@@ -24,12 +24,10 @@ def web(pool: Pool):
                         target="web/.env.local")
 
 
-# -- the invariant: the database itself refuses to hold a secret --------------
 
 
 def test_the_check_constraint_rejects_a_value_on_a_secret_row(pool: Pool, web):
-    """The fence that matters. A bug in a caller — or a caller not yet written —
-    cannot quietly put a secret in the pool DB, because SQLite will not take it."""
+    """The fence that matters."""
     with pytest.raises(sqlite3.IntegrityError):
         pool._conn.execute(
             "INSERT INTO environment_entries (environment_id, key, kind, value) "
@@ -52,7 +50,6 @@ def test_the_model_refuses_a_secret_with_a_value_before_the_db_ever_sees_it(pool
         EnvironmentEntry(key="API_KEY", kind=KIND_SECRET, value="sk_live_oops")
 
 
-# -- CRUD ---------------------------------------------------------------------
 
 
 def test_add_mints_sequential_env_ids(pool: Pool):
@@ -67,8 +64,7 @@ def test_a_duplicate_name_in_the_same_project_is_rejected(pool: Pool, web):
 
 
 def test_a_duplicate_name_is_rejected_even_when_unscoped(pool: Pool):
-    """UNIQUE (project, name) does not catch this on its own — in SQL two NULLs are
-    not equal — so the unscoped case is guarded in env_add."""
+    """UNIQUE (project, name) does not catch this on its own — in SQL two NULLs are not equal — so the unscoped case is guarded in env_add."""
     pool.env_add(name="web-local", env="local")
     with pytest.raises(PoolError, match="already exists"):
         pool.env_add(name="web-local", env="local")
@@ -105,7 +101,6 @@ def test_removing_an_environment_cascades_to_its_entries(pool: Pool, web):
     assert rows == []
 
 
-# -- entries ------------------------------------------------------------------
 
 
 def test_entries_keep_their_render_order(pool: Pool, web):
@@ -158,7 +153,6 @@ def test_needs_store_is_false_for_a_config_only_environment(pool: Pool, web):
     assert present(pool.env_get(web.id)).needs_store is True
 
 
-# -- store keys ---------------------------------------------------------------
 
 
 def test_the_store_key_is_project_qualified(pool: Pool, web):
@@ -171,8 +165,7 @@ def test_an_unscoped_environment_uses_a_bare_store_key(pool: Pool):
 
 
 def test_two_projects_minting_env_001_do_not_collide_in_the_store(tmp_path):
-    """The whole reason keys are qualified: two per-project pools each restart the
-    id sequence, so a bare key would clobber."""
+    """The whole reason keys are qualified: two per-project pools each restart the id sequence, so a bare key would clobber."""
     keys = []
     for project in ("repo-a", "repo-b"):
         with Pool(tmp_path / f"{project}.db") as p:
@@ -180,12 +173,10 @@ def test_two_projects_minting_env_001_do_not_collide_in_the_store(tmp_path):
     assert keys == ["repo-a/env-001/K", "repo-b/env-001/K"]
 
 
-# -- an old pool gains the tables ---------------------------------------------
 
 
 def test_a_pool_predating_environments_simply_gains_the_tables(tmp_path):
-    """CREATE TABLE IF NOT EXISTS: no migration entry needed, and no existing
-    credential is touched."""
+    """CREATE TABLE IF NOT EXISTS: no migration entry needed, and no existing credential is touched."""
     path = tmp_path / "old.db"
     conn = sqlite3.connect(path)
     conn.executescript(

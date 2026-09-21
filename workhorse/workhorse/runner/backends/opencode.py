@@ -1,5 +1,4 @@
-"""OpenCode CLI (``opencode run --format json``) — event vocabulary, adapter, and the
-out-of-band probe for the ChatGPT/Codex provider's usage-window reset."""
+"""OpenCode CLI (``opencode run --format json``) — event vocabulary, adapter, and the out-of-band probe for the ChatGPT/Codex provider's usage-window reset."""
 
 from __future__ import annotations
 
@@ -20,35 +19,17 @@ from workhorse.runner.backends.turn import TurnState, finalize_turn, read_sessio
 
 @dataclass(slots=True)
 class _OpenCodeEvents:
-    """OpenCode's per-turn event reader, and the text parts it has to remember.
+    """OpenCode's per-turn event reader, and the text parts it has to remember."""
 
-    It is a class only because it has state no other backend has: opencode streams
-    the answer as several ``text`` parts that must be reassembled in arrival order.
-    That belongs to this adapter, not on the ``TurnState`` every backend shares — a
-    struct shared by N implementations holding one implementation's private key is
-    exactly the shape the shared module must not have. One instance per turn; the
-    bound ``on_event`` is what the stream loop is handed.
-    """
-
-    #: part id → text. Ids come from opencode; the positional fallback keeps parts
-    #: distinct (and in order) if an event ever arrives without one.
     parts: dict[str | int, str] = field(default_factory=dict)
 
     def on_event(self, event, state: TurnState, node_id) -> None:
-        """OpenCode `run --format json`: NDJSON events with a top-level ``type`` and
-        ``sessionID``. ``text`` parts carry the answer (``part.text``); we accumulate
-        them keyed by part id so multiple text blocks are preserved in order.
-        ``error`` events go to diagnostics. The top-level ``sessionID`` is the resume
-        handle."""
+        """OpenCode `run --format json`: NDJSON events with a top-level ``type`` and ``sessionID``."""
         sid = event.get("sessionID")
         if sid:
             state.session_id = sid
         etype = event.get("type") or ""
         if etype == "step_finish":
-            # One per step, not per turn: a turn that calls three tools emits three,
-            # and only their sum is what the turn consumed. `part.cost` is 0 on
-            # subscription auth — a real zero, which merge() keeps distinct from
-            # "not reported".
             state.usage = state.usage.merge(_usage.normalize(event))
         elif etype == "text":
             part = event.get("part") or {}
@@ -64,33 +45,12 @@ class _OpenCodeEvents:
             state.diagnostics.append(str(msg)[:500])
 
 
-# OpenCode's `--variant` is its provider-specific reasoning knob; its documented
-# levels are minimal/high/max, so map the Claude-superset effort onto those (medium
-# has no opencode variant → leave it unset).
 _OPENCODE_VARIANT = {"low": "minimal", "high": "high", "xhigh": "max", "max": "max"}
 
-# opencode caps every completion at 32 000 output tokens — thinking included — no
-# matter what the model's own limit is, and the only override is this env var (it is
-# read as ``Math.min(model.limit.output, value)``, so a large value is safe on every
-# model). 32k is a TUI-sized budget: a reasoning model handed a 34k-token review
-# packet spends all of it thinking, the completion ends with ``reason: length`` and
-# no text part, and a retry only re-rolls the same dice. A workhorse turn is one
-# batch answer against a schema, so the per-node timeout is the right wall-clock
-# bound and the token cap should be the model's. An operator who names this
-# variable in ``[harness.opencode].env`` keeps their value.
 _OPENCODE_OUTPUT_TOKEN_MAX_ENV = "OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX"
 _OPENCODE_OUTPUT_TOKEN_MAX = "131072"
 
 
-# opencode's openai provider is the ChatGPT/Codex OAuth backend. Every response from
-# it carries the subscription's rate-limit state in `x-codex-*` headers — including
-# `x-codex-primary-reset-at`, the unix epoch when the (5-hour) usage window reopens —
-# and these ride along even on the 429 that reports "The usage limit has been reached".
-# opencode reads them for its TUI percentage but DROPS them on the headless `run` path,
-# so the runner never sees a reset time and falls back to the blind default wait. We
-# read them ourselves, from the very same OAuth token opencode uses, so a Codex cap is
-# waited out until its ACTUAL reset (like Claude's structured rate_limit_event) instead
-# of re-probing on a fixed timer. Mirrors codex CLI's own usage display.
 _CODEX_RESPONSES_URL = "https://chatgpt.com/backend-api/codex/responses"
 _OPENCODE_AUTH_PATH = Path(
     os.environ.get(
@@ -100,16 +60,7 @@ _OPENCODE_AUTH_PATH = Path(
 
 
 def _codex_reset_at(model: str | None, timeout: float = 15.0) -> float | None:
-    """Best-effort unix epoch when the ChatGPT/Codex usage window for ``model`` resets.
-
-    Returns ``x-codex-primary-reset-at`` from the Codex backend, or ``None`` on ANY
-    problem (disabled, non-codex model, missing/expired OAuth, network/parse error) —
-    the caller then falls back to the default cap wait, so this can only ever sharpen
-    the wait, never break the run. Gated to ``openai/*`` models (the Codex provider);
-    OpenRouter caps on opencode go through the daily-key-limit path instead.
-
-    Set ``WORKHORSE_CODEX_RESET_PROBE=0`` to disable the probe entirely.
-    """
+    """Best-effort unix epoch when the ChatGPT/Codex usage window for ``model`` resets."""
     if os.environ.get("WORKHORSE_CODEX_RESET_PROBE", "1").lower() in (
         "0",
         "false",
@@ -124,8 +75,6 @@ def _codex_reset_at(model: str | None, timeout: float = 15.0) -> float | None:
         token, account = creds.get("access"), creds.get("accountId")
         if creds.get("type") != "oauth" or not token:
             return None
-        # A minimal request: when capped it 429s WITH the reset headers and bills
-        # nothing; the headers are what we're after, not any completion.
         body = json.dumps(
             {
                 "model": model.split("/", 1)[1],
@@ -156,9 +105,9 @@ def _codex_reset_at(model: str | None, timeout: float = 15.0) -> float | None:
         try:
             resp = urllib.request.urlopen(req, timeout=timeout)
             headers = resp.headers
-            resp.close()  # don't drain the stream — we only need the headers
+            resp.close()
         except urllib.error.HTTPError as exc:
-            headers = exc.headers  # the 429 (cap) carries the same x-codex-* headers
+            headers = exc.headers
         raw = headers.get("x-codex-primary-reset-at")
         return float(raw) if raw else None
     except Exception:
@@ -166,16 +115,11 @@ def _codex_reset_at(model: str | None, timeout: float = 15.0) -> float | None:
 
 
 class OpenCodeBackend(JsonlBackend):
-    """OpenCode CLI (``opencode run --format json``). Speaks plain chat-completions
-    to whatever provider its model names, so it drives OpenRouter models directly —
-    e.g. ``openrouter/xiaomi/mimo-v2.5`` — with no proxy. The prompt is passed as the
-    positional message (after ``--`` so a leading dash can't be read as a flag), or
-    attaches an oversized message with ``--file``; sessions resume by id via
-    ``--session``. No in-place compaction."""
+    """OpenCode CLI (``opencode run --format json``)."""
 
     name = "opencode"
     default_model = (
-        None  # node/AGENT_MODEL names the provider/model (e.g. openrouter/…)
+        None
     )
     supports_compaction = False
 
@@ -195,12 +139,6 @@ class OpenCodeBackend(JsonlBackend):
     ) -> str:
         sid = read_session_id(session_id_path)
         argv_prompt, attachment = prepare_argv_prompt(prompt, prompt_path)
-        # --print-logs routes ERROR-level logs to stderr (merged into stdout by stream_subprocess),
-        # so quota/limit errors like "The usage limit has been reached" appear as non-JSON lines in
-        # diagnostics. The existing _is_cap() check then catches "usage limit" and triggers the
-        # cap-wait path instead of burning the short-retry budget. Without this flag these logs
-        # go only to ~/.local/share/opencode/log/opencode.log and workhorse never sees them —
-        # opencode's internal exponential backoff runs silently until the watchdog kills it.
         cmd = [
             "opencode",
             "--print-logs",
@@ -220,21 +158,8 @@ class OpenCodeBackend(JsonlBackend):
             print(f"[{node_id}] 🔄 Resuming opencode session: {sid[:8]}...", flush=True)
         if attachment is not None:
             cmd += ["--file", str(attachment)]
-        # `--` ends option parsing so a prompt starting with '-' is still the message.
         cmd += ["--", argv_prompt]
         ensure_prompt_is_not_in_argv(prompt, cmd)
-        # OpenCode reads the message from argv (no stdin prompt channel), so pass
-        # nothing on stdin.
-        # opencode's internal title/summary helper reads `small_model` from config —
-        # there is no CLI flag — so without a pin it rides whatever the machine's
-        # opencode.jsonc says, on whatever provider that names. A helper routed to a
-        # provider the run doesn't otherwise use fails on that provider's own wall
-        # (an OpenRouter credit exhaustion on the title call classified as a cap on
-        # the node and slept a run for 6 days while its coding models were fine).
-        # OPENCODE_CONFIG_CONTENT merges over the user config with highest
-        # precedence, so pin the helper to the turn's own model. An operator who
-        # sets OPENCODE_CONFIG_CONTENT in [harness.opencode].env has taken over the
-        # whole inline config; their value passes through verbatim.
         env_extra = self.harness_env()
         if model and "OPENCODE_CONFIG_CONTENT" not in env_extra:
             env_extra = {
@@ -251,8 +176,6 @@ class OpenCodeBackend(JsonlBackend):
             resilience=resilience, cwd=cwd,
             env_extra=env_extra,
         )
-        # On a Codex usage cap, fetch the precise reset epoch (opencode hides it on the
-        # headless path) so the runner sleeps until the window reopens, not a flat hour.
         rate_reset_at = (
             _codex_reset_at(model) if _failure.is_cap(state.diagnostics_text) else None
         )

@@ -1,9 +1,4 @@
-"""Taking a seat off the market, and giving it back.
-
-One module for the pair because the book cites a transition by symbol and grounds the
-obligation there. `hold` and `release` are the two that only ever move a seat between
-`free` and `held`; the booking a hold leads to is `confirm.py`'s.
-"""
+"""Taking a seat off the market, and giving it back."""
 
 from __future__ import annotations
 
@@ -31,12 +26,7 @@ def hold(store: Store, seat: str) -> dict[str, Any]:
 
 
 def release(store: Store, seat: str) -> None:
-    """Return a held seat to free, touching that seat and no other.
-
-    The narrowness is the point rather than an optimisation: releasing one seat by
-    rewriting the whole map from a rebuilt default is a defect nothing but a key-inventory
-    comparison of the neighbours would catch.
-    """
+    """Return a held seat to free, touching that seat and no other."""
     ledger = store.read()
     record = seat_record(ledger, seat)
     if record["state"] != HELD:

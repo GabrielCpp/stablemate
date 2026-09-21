@@ -1,14 +1,4 @@
-"""The frozen QA plan for `deploy-identity`.
-
-Same mechanism as story 1 — `make -C pulumi plan`, and the JSON it writes — and the same two
-opted-in tools. Nothing serves, so nothing is reached.
-
-Two criteria here are negatives, and a negative cannot be read off the resource the story
-declares. "No project-level role" is a property of the whole plan: a second, wider grant
-beside the narrow one is the defect, and every assertion that reads the narrow grant passes
-in its presence. The same goes for the sweep's uniqueness. Both are therefore written as
-enumerations over every step, not as lookups.
-"""
+"""The frozen QA plan for `deploy-identity`."""
 
 import json
 
@@ -19,9 +9,6 @@ plan(run_id="qa-deploy-identity", story="deploy-identity")
 
 depot = target("depot", driver="python")
 
-# Obligation ids are written out in full at every assertion, never factored into a constant:
-# `ostler qa validate` reads a `covers=` list statically off the AST, so a computed id claims
-# nothing. See story 1's plan for the same note.
 
 DEPLOYER = "serviceAccount:depot-deployer@depot-example.iam.gserviceaccount.com"
 PINNED_PROVIDER = "8.16.0"
@@ -98,8 +85,6 @@ def the_deploy_identity_holds_one_grant_and_it_is_at_the_bucket(qa: Qa) -> None:
         covers=["ac:1", "okf:docs/features/depot/concepts/deploy-identity.md:contract"],
     )
 
-    # Every IAM resource in the plan, not the one this story is proud of. A grant that widened
-    # arrives as an extra step, and a lookup of the narrow one never sees it.
     grants = {
         name: entry
         for name, entry in declared.items()
@@ -133,8 +118,6 @@ def the_deploy_identity_holds_one_grant_and_it_is_at_the_bucket(qa: Qa) -> None:
         covers=["ac:1", "okf:docs/features/depot/concepts/deploy-identity.md:consistency:1"],
     )
 
-    # The negative, over the plan rather than over a name: any IAM resource whose type says
-    # `projects/` binds at the project, whichever role it carries and whoever it names.
     project_level = sorted(name for name, entry in grants.items() if "projects/" in qa.field(entry, "type"))
     qa.check(
         "no IAM resource in the plan binds a role at the project",
@@ -183,8 +166,6 @@ def the_deploy_token_is_a_secret_everywhere_the_plan_shows_it(qa: Qa) -> None:
     planned = the_plan(qa)
     declared = resources(qa, planned)
 
-    # The config block, because that is where a token stored in the clear surfaces: the
-    # resource graph is identical either way, and only the plan's own header differs.
     qa.verify(
         "json_path",
         planned,
@@ -241,8 +222,6 @@ def the_artifact_sweep_is_the_only_job_and_it_runs_nightly_at_three(qa: Qa) -> N
     declared = resources(qa, the_plan(qa))
 
     jobs = sorted(name for name, entry in declared.items() if qa.field(entry, "type") == "gcp:cloudscheduler/job:Job")
-    # A count over the plan. Looking the sweep up by name would pass on a plan carrying a
-    # second job beside it, which is the half of this criterion that is not about the sweep.
     qa.verify("count", jobs, equals=1, subject="Cloud Scheduler jobs in the plan", covers=["ac:4", "okf:docs/features/depot/concepts/artifact-sweep.md:consistency:1"])
     qa.require(
         "the one scheduler job in the plan is the artifact sweep",
@@ -254,7 +233,5 @@ def the_artifact_sweep_is_the_only_job_and_it_runs_nightly_at_three(qa: Qa) -> N
 
     sweep = qa.field(declared, "artifact-sweep")
     qa.verify("json_path", sweep, path="$.inputs.schedule", equals="0 3 * * *", covers=["ac:4", "okf:docs/features/depot/concepts/artifact-sweep.md:consistency:2"])
-    # Asserted beside the schedule rather than after it: `0 3 * * *` in an unstated zone is a
-    # different hour on every machine, so the two fields are one claim.
     qa.verify("json_path", sweep, path="$.inputs.timeZone", equals="Etc/UTC", covers=["ac:4", "okf:docs/features/depot/concepts/artifact-sweep.md:consistency:2"])
     json.dump({"jobs": jobs, "sweep": sweep}, qa.artifact("steps/artifact-sweep.json", kind="json").open("w"))

@@ -8,10 +8,7 @@ from typing import Any
 
 
 def load_params(inline: str | None, file: str | None) -> dict[str, Any]:
-    """Merge workflow params from --params-file then --params (inline wins).
-
-    Each source must be a JSON object (key→value map). Exits with a clear error on
-    a missing file, invalid JSON, or a non-object payload."""
+    """Merge workflow params from --params-file then --params (inline wins)."""
     params: dict[str, Any] = {}
     if file is not None:
         try:

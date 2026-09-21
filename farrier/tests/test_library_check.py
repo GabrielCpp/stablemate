@@ -1,19 +1,4 @@
-"""`farrier library --check` exists because the failure it names is invisible everywhere else.
-
-``_front_matter`` answers malformed YAML with ``{}``, so a skill whose fence does not
-parse still installs — it just loses its description, its ``applyTo`` and its ``tags`` on
-the way, and every downstream symptom (a thin description, a tag query that returns
-nothing) reads like an authoring choice. When this check was first run against the real
-library it found 36 of 130 skills in exactly that state, whole stacks of them, silently.
-
-So the tests that matter here are of two kinds. The first pins the shapes that actually
-broke — the ones an author writes on purpose because they look correct. The second pins
-what must *not* be reported, because a checker that cries about `tags: [go, backend]`
-teaches people to run it with their eyes closed; both false-positive tests below are
-regressions from a first draft that reported 130 warnings and 34 errors that were not.
-
-    ./.venv/bin/python -m pytest tests/test_library_check.py
-"""
+"""`farrier library --check` exists because the failure it names is invisible everywhere else."""
 
 from __future__ import annotations
 
@@ -31,8 +16,6 @@ from farrier.library_check import (
 
 
 def _codes(text: str, path: Path | None = None, **kwargs) -> list[str]:
-    # The default path's directory is `t` so it agrees with `_skill`'s default `name:`;
-    # a mismatch there is its own finding and would show up in every unrelated assertion.
     return [f.code for f in check_text(text, path or Path("skills/t/SKILL.md"), **kwargs)]
 
 
@@ -47,11 +30,10 @@ def _write(root: Path, rel: str, text: str) -> Path:
     return path
 
 
-# --- the three shapes that actually broke the library -------------------------------
 
 
 def test_a_glob_starting_with_a_star_is_an_unparsable_error():
-    """`applyTo: **/*.go` — `*` opens a YAML alias. 94 real skills were written this way."""
+    """`applyTo: **/*.go` — `*` opens a YAML alias."""
     assert _codes(_skill("applyTo: **/*.go\n")) == ["unparsable"]
 
 
@@ -83,7 +65,6 @@ def test_unparsable_is_exactly_the_case_farrier_reads_as_no_front_matter():
     assert _front_matter(intact)["tags"] == ["go"]
 
 
-# --- values YAML accepts but reads as something other than the text written ---------
 
 
 def test_an_unquoted_hash_truncates_the_value_and_is_an_error():
@@ -105,7 +86,6 @@ def test_an_unquoted_template_expression_mid_value_is_a_warning():
     assert _codes(text) == ["fragile"]
 
 
-# --- what must NOT be reported ------------------------------------------------------
 
 
 def test_a_tag_yaml_reads_as_a_bool_or_null_is_reported_with_the_name_it_installs_under():
@@ -152,7 +132,6 @@ def test_a_prompt_is_not_asked_for_tags():
     assert check_text(text, Path("prompts/write.md"), require_tags=False) == []
 
 
-# --- the advisory findings ----------------------------------------------------------
 
 
 def test_a_skill_with_no_tags_is_warned_but_not_failed():
@@ -171,13 +150,6 @@ def test_a_name_matching_its_directory_is_silent():
     assert check_text(_skill("", name="qa-local"), Path("skills/acme/qa-local/SKILL.md")) == []
 
 
-# --- the Open Agent Skills spec -----------------------------------------------------
-#
-# Every one of these is an error rather than a warning, and the reason is asymmetric
-# harness behaviour: Claude Code installs a skill that breaks the spec and says nothing,
-# Copilot refuses it. A library only ever shipped to Claude therefore drifts past the
-# limits with no symptom at all, and the first repo to enable Copilot inherits the whole
-# backlog at once.
 
 
 def test_a_skill_with_no_name_is_an_error_naming_the_folder_it_must_match():
@@ -237,8 +209,7 @@ def test_a_body_at_the_limit_is_clean():
 
 
 def test_the_front_matter_is_not_counted_against_the_body_limit():
-    """A long `description` is its own finding; charging it to the body twice reports
-    one problem as two and points the author at the wrong half of the file."""
+    """A long `description` is its own finding; charging it to the body twice reports one problem as two and points the author at the wrong half of the file."""
     front = "\n".join(f"key{i}: value" for i in range(50))
     body = "\n".join("line" for _ in range(BODY_LIMIT - 1))
     text = f"---\nname: t\ndescription: A thing\ntags: [go]\n{front}\n---\n\n{body}\n"
@@ -246,15 +217,13 @@ def test_the_front_matter_is_not_counted_against_the_body_limit():
 
 
 def test_a_prompt_is_held_to_none_of_the_spec_limits():
-    """The spec governs SKILL.md. A prompt is rendered into each harness's own command
-    format, and there is no published contract for it to break."""
+    """The spec governs SKILL.md."""
     long_name = "x" * (NAME_LIMIT + 10)
     body = "\n".join("line" for _ in range(BODY_LIMIT + 10))
     text = f"---\nname: {long_name}\ndescription: A thing\n---\n\n{body}\n"
     assert check_text(text, Path("prompts/t.md"), require_tags=False) == []
 
 
-# --- structural failures ------------------------------------------------------------
 
 
 def test_a_file_with_no_fence_is_an_error_and_stops_further_checks():
@@ -270,7 +239,6 @@ def test_crlf_front_matter_is_read_the_same_as_lf():
     assert _codes(_skill("applyTo: '**/*.go'\n").replace("\n", "\r\n")) == []
 
 
-# --- walking a library --------------------------------------------------------------
 
 
 def test_check_library_reads_skills_and_prompts_and_counts_what_it_read(tmp_path):
@@ -307,7 +275,6 @@ def test_an_overlay_layer_shadowing_a_base_file_is_checked_once(tmp_path):
     assert (len(findings), checked) == (1, 1)
 
 
-# --- the report ---------------------------------------------------------------------
 
 
 def test_errors_print_before_warnings_so_a_truncated_terminal_shows_what_fails(tmp_path):
@@ -320,7 +287,7 @@ def test_errors_print_before_warnings_so_a_truncated_terminal_shows_what_fails(t
 
     lines = [line for line in report.split("\n") if line]
     assert lines[0].startswith("error:") and lines[1].startswith("warning:")
-    assert lines[0].startswith("error: skills/go/cli/SKILL.md")  # rendered relative to root
+    assert lines[0].startswith("error: skills/go/cli/SKILL.md")
     assert lines[-1] == "1 error(s), 1 warning(s) across 2 sources"
 
 

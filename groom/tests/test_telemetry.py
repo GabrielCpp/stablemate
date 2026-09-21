@@ -1,13 +1,4 @@
-"""Tests for groom's collector role: OTLP decode (groom.otlp), the SQLite
-store (groom.store), the alert rules (groom.alerts), AFK push (groom.notify),
-and the /v1/traces + /v1/metrics receivers wired through the app.
-
-Payloads are built with the real opentelemetry-proto classes (the same wire
-format the workhorse SDK exporter sends), so the decode path is exercised
-end-to-end without an OTel SDK. The DB is pointed at a temp file via GROOM_DB.
-
-Run: uv run pytest tests/test_telemetry.py
-"""
+"""Tests for groom's collector role: OTLP decode (groom.otlp), the SQLite store (groom.store), the alert rules (groom.alerts), AFK push (groom.notify), and the /v1/traces + /v1/metrics receivers wired through the app."""
 from __future__ import annotations
 
 import asyncio
@@ -56,18 +47,12 @@ def _trace_request(specs: list[dict], resource: dict | None = None) -> bytes:
         if spec.get("node"):
             kv = span.attributes.add()
             kv.key, kv.value.string_value = "workhorse.node", spec["node"]
-        # The workflow's rendered `labels:` — what CHURN reads to tell one unit of
-        # work from the next. Real spans also carry workhorse.seq/depth, which the
-        # signature must ignore; `seq` stamps that in deliberately.
         if spec.get("seq") is not None:
             kv = span.attributes.add()
             kv.key, kv.value.int_value = "workhorse.seq", spec["seq"]
         for key, value in (spec.get("labels") or {}).items():
             kv = span.attributes.add()
             kv.key, kv.value.string_value = key, value
-        # Numeric attributes, which is what usage/cost actually arrive as. Their keys
-        # only *look* nested (`usage.output_tokens`) — OTel's attribute model is flat,
-        # so these land in attrs_json as literal dotted keys.
         for key, value in (spec.get("numbers") or {}).items():
             kv = span.attributes.add()
             kv.key = key
@@ -75,9 +60,6 @@ def _trace_request(specs: list[dict], resource: dict | None = None) -> bytes:
                 kv.value.double_value = value
             else:
                 kv.value.int_value = value
-        # `workhorse.cut` — why a span ended without its work finishing. Workhorse
-        # closes the whole open scope on a live reload rather than orphaning it, so
-        # this is the only thing separating an interrupted visit from a completed one.
         if spec.get("cut"):
             kv = span.attributes.add()
             kv.key, kv.value.string_value = "workhorse.cut", spec["cut"]
@@ -102,11 +84,7 @@ def _metrics_request(
     run_dir: str = "",
     attrs: dict[str, str] | None = None,
 ) -> bytes:
-    """One metric point. ``gauge=True`` emits a double gauge (node.active,
-    node.elapsed_s, turn.idle_s); the default is an int sum (the heartbeat and
-    refuel counters). ``ts`` stamps the point, which is what decides whether it
-    is newer than a run's recorded terminal. ``run_dir`` goes on the resource,
-    where the receiver's test-run filter reads it."""
+    """One metric point."""
     request = ExportMetricsServiceRequest()
     resource_metrics = request.resource_metrics.add()
     kv = resource_metrics.resource.attributes.add()
@@ -136,9 +114,7 @@ def _logs_request(
     records: list[dict],
     resource: dict | None = None,
 ) -> bytes:
-    """One ExportLogsServiceRequest. ``severity`` is the OTLP severity_number
-    (9=INFO, 13=WARN, 17=ERROR); ``severity_text`` mimics what the SDK writes,
-    which is deliberately NOT the stdlib name for warnings."""
+    """One ExportLogsServiceRequest."""
     request = ExportLogsServiceRequest()
     resource_logs = request.resource_logs.add()
     for key, value in (
@@ -184,9 +160,6 @@ def _hermetic_client() -> TestClient:
     return client
 
 
-# --------------------------------------------------------------------------- #
-# otlp decode + store
-# --------------------------------------------------------------------------- #
 def test_parse_traces_extracts_identity_node_and_events():
     body = _trace_request(
         [{"name": "plan", "node": "plan", "start": 10.0, "end": 12.5, "events": ["cap_wait"]}]
@@ -217,7 +190,6 @@ def test_store_roundtrip_and_query_filters():
         assert store.query_spans(status="error")[0]["node"] == "build"
         assert [s["node"] for s in store.query_spans(slower_than=30)] == ["build"]
         assert store.query_spans(run="other-run") == []
-        # Re-ingesting the same span id (exporter retry) must not duplicate.
         existing_id = store.query_spans(node="plan")[0]["span_id"]
         store.insert_spans(
             otlp.parse_traces(
@@ -254,7 +226,6 @@ def test_usage_and_cost_land_in_promoted_columns_not_only_attrs_json():
                     [
                         {"name": "agent_turn", "node": "plan-qa", "span_id": "a" * 16,
                          "numbers": _TURN},
-                        # A node span: no agent turn under it, so no usage at all.
                         {"name": "assess", "node": "assess", "span_id": "b" * 16},
                     ],
                     resource={
@@ -272,28 +243,17 @@ def test_usage_and_cost_land_in_promoted_columns_not_only_attrs_json():
         assert turn["input_tokens"] == 62 and turn["output_tokens"] == 17550
         assert turn["cache_read_tokens"] == 2478104
         assert turn["cache_creation_tokens"] == 55369
-        # Parsed from the resource since the collector first shipped, but dropped at
-        # insert for want of a column until now.
         assert turn["pid"] == 4242
-        # A resume reuses the run_id and opens a fresh root span, so this is what
-        # separates a crash-and-resume gap from a process that sat waiting.
         assert turn["resume_generation"] == 2
 
-        # Absent is not zero. A harness that does not report cost reports nothing, and
-        # averaging a real 0.0 together with an unknown would understate spend.
         node = _columns()["b" * 16]
         assert node["total_cost_usd"] is None and node["output_tokens"] is None
         assert node["duration_ms"] is None
 
-        # The attributes stay in attrs_json too, so a query written against the old
-        # shape keeps working — provided it quotes the dotted key.
         conn = store._connection()
         quoted = "SELECT json_extract(attrs_json, '$.\"usage.output_tokens\"') FROM spans"
         row = conn.execute(f"{quoted} WHERE span_id = ?", ("a" * 16,)).fetchone()
         assert row[0] == 17550
-        # And this is the footgun the columns exist to retire: unquoted, SQLite reads
-        # the dot as navigation into an object that isn't there and returns NULL with
-        # no error at all.
         unquoted = "SELECT json_extract(attrs_json, '$.usage.output_tokens') FROM spans"
         assert conn.execute(f"{unquoted} WHERE span_id = ?", ("a" * 16,)).fetchone()[0] is None
 
@@ -356,8 +316,6 @@ def test_repository_snapshots_land_in_span_columns_and_remain_in_attrs():
 
 def test_promoted_columns_are_added_to_a_database_that_predates_them():
     with _TelemetryEnv():
-        # A groom.db from before the columns shipped. CREATE TABLE IF NOT EXISTS is a
-        # no-op on it, so only the ALTER in _migrate can rescue it.
         legacy = sqlite3.connect(store.db_path())
         legacy.execute(
             "CREATE TABLE spans (span_id TEXT PRIMARY KEY, trace_id TEXT NOT NULL,"
@@ -383,8 +341,6 @@ def test_promoted_columns_are_added_to_a_database_that_predates_them():
         )
         rows = _columns()
         assert rows["c" * 16]["output_tokens"] == 17550
-        # The pre-existing row keeps NULL rather than needing a backfill; retention
-        # ages it out on its own.
         assert rows["old"]["output_tokens"] is None
 
 
@@ -404,15 +360,11 @@ def test_node_costs_totals_agent_spend_and_exposes_the_rework_ratio():
             otlp.parse_traces(
                 _trace_request(
                     [
-                        # A looping gate: three turns spread over two stories.
                         _turn("plan-qa", "story-a", 2.0, "01" * 8),
                         _turn("plan-qa", "story-a", 2.0, "02" * 8),
                         _turn("plan-qa", "story-b", 2.0, "03" * 8),
-                        # A node that ran once per story.
                         _turn("implement-plan", "story-a", 1.0, "04" * 8),
                         _turn("implement-plan", "story-b", 1.0, "05" * 8),
-                        # A node span wrapping the turns. It must not be counted, or
-                        # every figure doubles.
                         {"name": "qa", "node": "qa", "span_id": "06" * 8},
                     ]
                 )
@@ -424,36 +376,28 @@ def test_node_costs_totals_agent_spend_and_exposes_the_rework_ratio():
         assert rows["plan-qa"]["turns"] == 3
         assert rows["plan-qa"]["cost_usd"] == 6.0
         assert rows["plan-qa"]["minutes"] == 3.0
-        # The rework signal: three turns across two stories.
         assert rows["plan-qa"]["turns_per_work_id"] == 1.5
         assert rows["implement-plan"]["turns_per_work_id"] == 1.0
-        # Share is of total agent spend, so the two nodes account for all of it.
         assert rows["plan-qa"]["share"] == 0.75
         assert rows["implement-plan"]["share"] == 0.25
 
 
 def test_loop_convergence_reports_the_shape_of_a_lap_distribution():
-    """The mean cannot tell "every story took two passes" from "one story took five",
-    and those want different fixes. So the row carries the distribution, and the
-    headline is the exit rate — how often the gate accepts."""
+    """The mean cannot tell "every story took two passes" from "one story took five", and those want different fixes."""
     with _TelemetryEnv():
         store.insert_spans(
             otlp.parse_traces(
                 _trace_request(
                     [
-                        # A gate that says no more often than yes: 6 turns, 3 stories.
                         _turn("plan-qa", "story-a", 1.0, "11" * 8, start=1000.0),
                         _turn("plan-qa", "story-a", 2.0, "12" * 8, start=1010.0),
                         _turn("plan-qa", "story-a", 4.0, "13" * 8, start=1020.0),
                         _turn("plan-qa", "story-b", 1.0, "14" * 8, start=1030.0),
                         _turn("plan-qa", "story-b", 8.0, "15" * 8, start=1040.0),
                         _turn("plan-qa", "story-c", 1.0, "16" * 8, start=1050.0),
-                        # A node that ran once per story: nothing to fix here.
                         _turn("implement-plan", "story-a", 5.0, "17" * 8),
                         _turn("implement-plan", "story-b", 5.0, "18" * 8),
                         _turn("implement-plan", "story-c", 5.0, "19" * 8),
-                        # A turn with no work_id cannot be attributed to a lap, and a
-                        # node span is not a turn. Neither may enter the counts.
                         {"name": "agent_turn", "node": "plan-qa", "span_id": "1a" * 8},
                         {"name": "qa", "node": "qa", "span_id": "1b" * 8},
                     ]
@@ -470,9 +414,6 @@ def test_loop_convergence_reports_the_shape_of_a_lap_distribution():
         assert (churning["median_laps"], churning["max_laps"]) == (2, 3)
         assert churning["at_max"] == 1
         assert churning["share_ge3"] == 1 / 3
-        # Excess is the laps after the first, priced individually — 2+4 for story-a and
-        # 8 for story-b. Pro-rating the total instead would misprice a loop whose
-        # rework turns cost more than its first.
         assert churning["cost_usd"] == 17.0
         assert churning["excess_cost_usd"] == 14.0
         assert churning["excess_turns"] == 3
@@ -484,25 +425,20 @@ def test_loop_convergence_reports_the_shape_of_a_lap_distribution():
         assert converged["excess_cost_usd"] is None
         assert converged["verdict"] == "converged"
 
-        # Ranked by what the churn costs, which is the number to act on.
         assert [row["node"] for row in store.loop_convergence()] == [
             "plan-qa", "implement-plan"
         ]
 
 
 def test_loop_convergence_can_be_bounded_away_from_an_earlier_run_of_the_same_id():
-    """A benchmark harness replays the same trial under the same run id every round, and
-    the store keeps every round forever. Without a lower bound the union reads as one
-    very expensive round — turns and money the round being measured never spent."""
+    """A benchmark harness replays the same trial under the same run id every round, and the store keeps every round forever."""
     with _TelemetryEnv():
         store.insert_spans(
             otlp.parse_traces(
                 _trace_request(
                     [
-                        # Yesterday's round under this id: two laps on one story.
                         _turn("plan-qa", "story-a", 2.0, "51" * 8, start=1000.0),
                         _turn("plan-qa", "story-a", 3.0, "52" * 8, start=1010.0),
-                        # Today's, which converged on the first lap and cost $1.
                         _turn("plan-qa", "story-a", 1.0, "53" * 8, start=9000.0),
                     ]
                 )
@@ -515,15 +451,11 @@ def test_loop_convergence_can_be_bounded_away_from_an_earlier_run_of_the_same_id
         assert (today["turns"], today["cost_usd"]) == (1, 1.0)
         assert today["excess_turns"] == 0
 
-        # The same bound reaches the raw spans, which is where the wall clock and the
-        # per-node table are read from.
         assert len(store.query_spans(since_ts=8000.0)) == 1
 
 
 def test_loop_convergence_counts_the_turns_whose_cost_cannot_be_trusted():
-    """A thrashing node under subscription auth reports $0 of excess and would sort to
-    the bottom of a money-ranked report. Both ways a turn goes unpriced are counted, so
-    the reader is told to rank that node by laps instead."""
+    """A thrashing node under subscription auth reports $0 of excess and would sort to the bottom of a money-ranked report."""
     with _TelemetryEnv():
         free = {
             "name": "agent_turn", "node": "audit-story", "span_id": "31" * 8,
@@ -540,16 +472,12 @@ def test_loop_convergence_counts_the_turns_whose_cost_cannot_be_trusted():
             )
         )
         row = store.loop_convergence()[0]
-        # A literal 0 sums, so it is "priced" — and that is exactly why it needs its own
-        # count. Only the NULL leaves a visible hole.
         assert (row["turns"], row["priced_turns"]) == (3, 2)
         assert row["zero_cost_turns"] == 1
 
 
 def test_loop_convergence_reports_the_rate_card_beside_the_bill():
-    """The recovery for a `$0` backend: the tokens are reported even when the money is
-    not, so the estimate is what makes such a loop rankable at all. It is carried in its
-    own fields — a report has to be able to say which of the two it is quoting."""
+    """The recovery for a `$0` backend: the tokens are reported even when the money is not, so the estimate is what makes such a loop rankable at all."""
     with _TelemetryEnv():
         priced = {
             "name": "agent_turn", "node": "plan-qa", "span_id": "41" * 8,
@@ -563,15 +491,12 @@ def test_loop_convergence_reports_the_rate_card_beside_the_bill():
         }
         store.insert_spans(otlp.parse_traces(_trace_request([priced, lap_two])))
         row = store.loop_convergence(min_work_items=1)[0]
-        # $15 per million output tokens, and the second lap is the excess.
         assert (row["cost_usd"], row["est_cost_usd"]) == (0.0, 45.0)
         assert (row["est_turns"], row["excess_est_cost_usd"]) == (2, 30.0)
 
 
 def test_loop_convergence_keys_work_items_by_run_so_slugs_may_repeat():
-    """Every coder run has a `story-a`. Keying laps on the slug alone would merge one
-    story's single pass in three runs into a single three-lap item, and report a loop
-    that converges everywhere as one that never does."""
+    """Every coder run has a `story-a`."""
     with _TelemetryEnv():
         for index, run_id in enumerate(("run-a", "run-b", "run-c")):
             store.insert_spans(
@@ -586,17 +511,13 @@ def test_loop_convergence_keys_work_items_by_run_so_slugs_may_repeat():
         assert rows["plan-qa"]["work_items"] == 3
         assert rows["plan-qa"]["exit_rate"] == 1.0
 
-        # And the filters narrow to one run / one workflow, where three items become one
-        # — below the floor, so the node drops out rather than being judged on it.
         assert store.loop_convergence(run="run-a", min_work_items=3) == []
         assert store.loop_convergence(workflow="author", min_work_items=1) == []
         assert len(store.loop_convergence(run="run-a", min_work_items=1)) == 1
 
 
 def test_node_costs_reports_how_many_turns_actually_priced_themselves():
-    """codex reports no money under subscription auth, so a mixed run's `share` is a
-    fraction of only the turns that priced themselves. Counting them is what stops a
-    codex-heavy node from reading as free."""
+    """codex reports no money under subscription auth, so a mixed run's `share` is a fraction of only the turns that priced themselves."""
     with _TelemetryEnv():
         paid = _turn("plan-qa", "story-a", 4.0, "08" * 8)
         free = {
@@ -610,9 +531,6 @@ def test_node_costs_reports_how_many_turns_actually_priced_themselves():
         rows = {row["node"]: row for row in store.node_costs()}
         assert rows["plan-qa"]["cost_turns"] == 1
         assert rows["plan-qa"]["backends"] == "claude"
-        # The unpriced turn is counted and timed, but contributes no spend — and is
-        # NOT silently folded in as 0.0, which would make it look free rather than
-        # unmeasured.
         assert rows["implement-plan"]["turns"] == 1
         assert rows["implement-plan"]["cost_turns"] == 0
         assert rows["implement-plan"]["cost_usd"] is None
@@ -621,12 +539,7 @@ def test_node_costs_reports_how_many_turns_actually_priced_themselves():
 
 
 def test_node_costs_counts_turns_that_priced_themselves_at_exactly_zero():
-    """The failure a NULL check does not catch.
-
-    opencode reports real money through OpenRouter and a literal 0 through a
-    subscription provider. A NULL is excluded from the SUM and shows as a gap; a zero
-    is summed, so a run that spent forty minutes totals $0.00 and looks complete.
-    """
+    """The failure a NULL check does not catch."""
     with _TelemetryEnv():
         free_looking = {
             "name": "agent_turn", "node": "implement-plan", "span_id": "0a" * 8,
@@ -636,16 +549,13 @@ def test_node_costs_counts_turns_that_priced_themselves_at_exactly_zero():
         }
         store.insert_spans(otlp.parse_traces(_trace_request([free_looking])))
         row = store.node_costs()[0]
-        # It is counted as priced — the harness did report a number — and *also*
-        # counted as suspect, which is what lets the total say how much of itself
-        # is real instead of asserting the run was free.
         assert row["cost_turns"] == 1
         assert row["zero_cost_turns"] == 1
         assert row["cost_usd"] == 0.0
 
 
 def test_a_zero_cost_turn_that_spent_no_tokens_is_not_flagged():
-    """An empty turn really did cost nothing. Flagging it would cry wolf on every run."""
+    """An empty turn really did cost nothing."""
     with _TelemetryEnv():
         empty = {
             "name": "agent_turn", "node": "noop", "span_id": "0b" * 8,
@@ -661,9 +571,6 @@ def test_node_costs_reads_spans_ingested_before_the_columns_existed():
         store.insert_spans(
             otlp.parse_traces(_trace_request([_turn("plan-qa", "story-a", 3.0, "07" * 8)]))
         )
-        # Blank the promoted columns, leaving attrs_json — exactly the shape of every
-        # row already in a collector database when this migration lands. Without the
-        # COALESCE fallback the aggregate would report the run as free.
         conn = store._connection()
         conn.execute("UPDATE spans SET total_cost_usd = NULL, duration_ms = NULL")
         conn.commit()
@@ -673,11 +580,7 @@ def test_node_costs_reads_spans_ingested_before_the_columns_existed():
 
 
 def _insert_legacy_metric_rows(rows: list[tuple[str, str, float, float]]) -> None:
-    """Write metric rows straight into the table, bypassing ``insert_metrics``.
-
-    ``insert_metrics`` refuses liveness ticks now, so rows written *before* that
-    filter shipped — the ones the prune migration sweep exists to drain — can
-    only be recreated this way."""
+    """Write metric rows straight into the table, bypassing ``insert_metrics``."""
     conn = store._connection()
     conn.executemany(
         "INSERT INTO metrics (run_id, name, ts, value, attrs_json) VALUES (?, ?, ?, ?, '{}')",
@@ -687,9 +590,7 @@ def _insert_legacy_metric_rows(rows: list[tuple[str, str, float, float]]) -> Non
 
 
 def test_insert_metrics_never_stores_liveness_ticks():
-    """Heartbeats were ~80% of the metrics table with nothing reading their
-    history; they live only in the ingest cache now, so the store must drop
-    them at the door while keeping the diagnostic gauges."""
+    """Heartbeats were ~80% of the metrics table with nothing reading their history; they live only in the ingest cache now, so the store must drop them at the door while keeping the diagnostic gauges."""
     with _TelemetryEnv():
         store.insert_metrics(
             [
@@ -704,10 +605,7 @@ def test_insert_metrics_never_stores_liveness_ticks():
 
 
 def test_the_never_archived_series_go_on_age_alone_with_no_archive_behind_them():
-    """Every other row waits for :mod:`groom.archive` to have written it out.
-    These do not, because nothing writes them out: the liveness ticks and the
-    per-node activity gauges answer "where is this run right now", which is a
-    question about a live groom and meaningless once the run is over."""
+    """Every other row waits for :mod:`groom.archive` to have written it out."""
     with _TelemetryEnv():
         now = 100 * 86400
         old = now - 60 * 86400
@@ -721,7 +619,6 @@ def test_the_never_archived_series_go_on_age_alone_with_no_archive_behind_them()
         store.insert_metrics(
             [
                 {"run_id": "r", "name": "workhorse.turn.idle_s", "ts": old, "value": 42},
-                # A budget series: archived, so it may not go without one.
                 {"run_id": "r", "name": "workhorse.gas", "ts": old, "value": 7},
             ]
         )
@@ -736,9 +633,7 @@ def test_the_never_archived_series_go_on_age_alone_with_no_archive_behind_them()
 
 
 def test_prune_deletes_in_chunks_and_still_drains_everything():
-    """Each chunk is its own transaction, so an OTLP write can interleave with a
-    big prune instead of queuing behind one multi-minute DELETE. Chunking must
-    not change the result: every expired row still goes."""
+    """Each chunk is its own transaction, so an OTLP write can interleave with a big prune instead of queuing behind one multi-minute DELETE."""
     with _TelemetryEnv():
         now = 30 * 86400
         old = now - 20 * 86400
@@ -748,7 +643,6 @@ def test_prune_deletes_in_chunks_and_still_drains_everything():
                 for i in range(10)
             ]
         )
-        # Keeper: inside the window, must survive every chunk pass.
         store.insert_metrics(
             [{"run_id": "r", "name": "workhorse.turn.idle_s", "ts": now - 60, "value": 99}]
         )
@@ -771,13 +665,9 @@ def test_run_summaries_count_spans_and_errors_without_claiming_liveness():
                 )
             )
         )
-        # now near the fixture's own (epoch-small) timestamps, so the recent-window
-        # bound in run_summaries includes them rather than filtering to wall-clock.
         summary = store.run_summaries(now=200.0)[0]
         assert summary["run_id"] == "run-1"
         assert summary["error_count"] == 1 and summary["span_count"] == 2
-        # A root span is history, not a liveness verdict: a resumed run reuses its
-        # run_id, so "a run:* span exists" would mark it dead forever.
         assert "finished" not in summary
 
 
@@ -789,32 +679,22 @@ def test_prune_drops_only_old_rows():
                 + _trace_request([{"name": "new", "start": 2 * 86400, "end": 2 * 86400 + 5}])
             )
         )
-        # `archived` is what authorises the delete; age is what decides which of
-        # that run's rows go. Both spans belong to the archived run, one is inside
-        # the window, and only the expired one may be dropped.
         removed = store.prune(retention_days=1, now=20 + 2 * 86400, archived={"run-1"})
         assert removed == 1 and [s["name"] for s in store.query_spans()] == ["new"]
 
 
-# --------------------------------------------------------------------------- #
-# test-run telemetry: not collected, and evicted where it already landed
-# --------------------------------------------------------------------------- #
 def test_run_dir_predicates_split_certain_test_dirs_from_merely_scratch_ones():
-    # Certain: what the ingest path is allowed to drop silently.
     for certain in (
         "/tmp/pytest-of-gabriel/pytest-1/test_x0/runs/coder",
         "/home/me/repo/.workhorse-test/runs/coder-default",
     ):
         assert store.is_test_run_dir(certain) is True
         assert store.is_scratch_run_dir(certain) is True
-    # A mkdtemp dir is a guess: purge-worthy, but never dropped at ingest.
     assert store.is_test_run_dir("/tmp/tmpab12cd34/runs/coder-default") is False
     assert store.is_scratch_run_dir("/tmp/tmpab12cd34/runs/coder-default") is True
-    # A real run, and a hand-made directory that merely lives under /tmp.
     for real in ("/home/me/repo/.agents/runs/coder-ACME-1", "/tmp/scratch/runs/coder"):
         assert store.is_test_run_dir(real) is False
         assert store.is_scratch_run_dir(real) is False
-    # No run dir on the record is not evidence of anything — leave it alone.
     assert store.is_test_run_dir("") is False and store.is_scratch_run_dir("") is False
 
 
@@ -861,9 +741,6 @@ def test_purge_test_runs_evicts_by_run_dir_across_every_table():
                 otlp.parse_traces(_trace_request([{"name": "plan", "node": "plan"}], resource))
             )
             store.insert_logs(otlp.parse_logs(_logs_request([{"body": "hi"}], resource)))
-            # Metrics carry no run_dir column, so they can only be evicted by the
-            # run_id the spans/logs identified — which is exactly what this pins.
-            # A gauge, not a heartbeat: liveness ticks never reach the table anymore.
             store.insert_metrics(
                 otlp.parse_metrics(
                     _metrics_request(
@@ -871,8 +748,6 @@ def test_purge_test_runs_evicts_by_run_dir_across_every_table():
                     )
                 )
             )
-            # The archive index is keyed by run too, so a suite run's turn records
-            # must go with its telemetry rather than outliving it in the index.
             store.insert_turns([{
                 "run_id": resource["run_id"], "node": "plan", "session_id": "s1",
                 "generation": 1, "seq": 1, "ts": 100.0, "path": "p", "sha256": "d",
@@ -881,20 +756,16 @@ def test_purge_test_runs_evicts_by_run_dir_across_every_table():
 
         preview = store.purge_test_runs(dry_run=True)
         assert preview == {"runs": 1, "spans": 1, "metrics": 1, "logs": 1, "turns": 1}
-        assert len(store.query_spans()) == 2  # dry run deleted nothing
+        assert len(store.query_spans()) == 2
 
         assert store.purge_test_runs() == preview
         assert [s["run_id"] for s in store.query_spans()] == ["real-run"]
         assert [r["run_id"] for r in store.query_logs()] == ["real-run"]
         assert [t["run_id"] for t in store.query_turns()] == ["real-run"]
         assert store.test_run_ids() == set()
-        # Nothing left to do: a second pass is a no-op, not an error.
         assert store.purge_test_runs()["runs"] == 0
 
 
-# --------------------------------------------------------------------------- #
-# alert rules
-# --------------------------------------------------------------------------- #
 def test_watchdog_and_giveup_fire_once_per_run():
     with _TelemetryEnv():
         spans = otlp.parse_traces(
@@ -907,15 +778,11 @@ def test_watchdog_and_giveup_fire_once_per_run():
         )
         fired = alerts.ingest_spans(spans, now=100.0)
         assert sorted(a.rule for a in fired) == ["GAVE-UP", "WATCHDOG"]
-        # Dedupe per (run_id, rule): the same evidence again fires nothing.
         assert alerts.ingest_spans(spans, now=101.0) == []
 
 
 def test_a_run_that_dies_pages_instead_of_quietly_leaving_the_queue_idle():
-    """The gap ENDED closes: a terminal retires the run from STALL and STUCK, so the
-    one moment when *nothing at all* is executing was the one moment nobody was told.
-    The page names the terminal and the error, because "it stopped" and "it finished"
-    are the same silence otherwise."""
+    """The gap ENDED closes: a terminal retires the run from STALL and STUCK, so the one moment when *nothing at all* is executing was the one moment nobody was told."""
     with _TelemetryEnv():
         spans = otlp.parse_traces(
             _trace_request(
@@ -931,9 +798,7 @@ def test_a_run_that_dies_pages_instead_of_quietly_leaving_the_queue_idle():
         fired = alerts.ingest_spans(spans, now=100.0)
         assert [a.rule for a in fired] == ["ENDED"]
         assert "fail" in fired[0].message and "TimeoutError" in fired[0].message
-        # Dedupe: a re-delivered root span is the same ending, not a second one.
         assert alerts.ingest_spans(spans, now=101.0) == []
-        # And the absence rules stay retired — ENDED is what covers this run now.
         assert alerts.check_time_rules(now=100.0 + 100 * 60) == []
 
 
@@ -948,14 +813,12 @@ def test_a_run_that_finishes_cleanly_says_so_rather_than_reporting_a_failure():
 
 
 def test_a_resumed_run_pages_again_when_the_new_session_ends():
-    """``run_id`` is the run dir, so a resume reuses it. Without the fired-set clear a
-    long-lived groom would page for a run's first ending and never for any after it."""
+    """``run_id`` is the run dir, so a resume reuses it."""
     with _TelemetryEnv():
         ended = otlp.parse_traces(
             _trace_request([{"name": "run:coder", "start": 5, "end": 100, "terminal": "fail"}])
         )
         assert [a.rule for a in alerts.ingest_spans(ended, now=100.0)] == ["ENDED"]
-        # The resumed session emits — anything stamped after the old root span proves it.
         alerts.ingest_metrics(
             otlp.parse_metrics(_metrics_request("workhorse.run.heartbeat", ts=200.0)), now=200.0
         )
@@ -972,26 +835,17 @@ def test_churn_fires_on_node_repeats_and_resets_on_refuel():
         )
         assert alerts.ingest_spans(one_visit, now=10.0) == []
         assert alerts.ingest_spans(one_visit, now=11.0) == []
-        # A gas refuel (forward progress) resets the counters...
         alerts.ingest_metrics(
             otlp.parse_metrics(_metrics_request("workhorse.gas.refuels")), now=12.0
         )
         assert alerts.ingest_spans(one_visit, now=13.0) == []
         assert alerts.ingest_spans(one_visit, now=14.0) == []
-        # ...so only a third post-refuel repeat trips the rule.
         fired = alerts.ingest_spans(one_visit, now=15.0)
         assert [a.rule for a in fired] == ["CHURN"]
 
 
 def test_a_drain_iterating_over_its_worklist_is_not_churn():
-    """Regression: okf-builder's drain paged as CHURN on its fifth item.
-
-    ``select_item -> investigate -> record -> select_item`` re-completes the same
-    nodes once per worklist item, and the pyflow engine has no gas tank to refuel,
-    so the old rule counted every healthy iteration and never reset. The labels
-    say which item each iteration was for; a changing ``work_id`` is the progress
-    the refuel counter used to report.
-    """
+    """Regression: okf-builder's drain paged as CHURN on its fifth item."""
     with _TelemetryEnv(), patch.dict(os.environ, {"GROOM_CHURN_REPEATS": "3"}):
         for index, target in enumerate(["cli:yin", "cli:yin-preflight", "server:api", "env:local"]):
             drain = otlp.parse_traces(
@@ -1011,19 +865,7 @@ def test_a_drain_iterating_over_its_worklist_is_not_churn():
 
 
 def test_audit_packet_iteration_is_not_churn():
-    """Regression: the audit sub-flow paged as CHURN on its fifth packet.
-
-    `Audit.start` self-loops with `Continue(None, self.start, ...)`, so `assess_audit`
-    (the wrapper blueprint node) and `behavior-audit` (the agent node) close once per
-    packet. The audit flow had no `labels()` override, so every iteration's signature
-    was `()` and CHURN fired at packet five. `Audit.labels()` now reads
-    `pending[0].digest` off the recorded `assess_audit` output.
-
-    Mirrors `test_a_drain_iterating_over_its_worklist_is_not_churn`'s shape: varying
-    `packet_digest` across iterations. The negative path (same digest repeated) still
-    fires — a test that only asserted the happy path would let a regression that
-    *widened* the rule (e.g. always returning empty labels) slip through.
-    """
+    """Regression: the audit sub-flow paged as CHURN on its fifth packet."""
     happy_digests = [f"pkt-{index:02d}" for index in range(6)]
     with _TelemetryEnv(), patch.dict(os.environ, {"GROOM_CHURN_REPEATS": "5"}):
         for index, digest in enumerate(happy_digests):
@@ -1044,8 +886,6 @@ def test_audit_packet_iteration_is_not_churn():
                 f"audit pass {index} ({digest}) should not churn"
             )
 
-        # Same digest repeated → the rule's own condition: the same unit of work, the
-        # same node, completing again and again. CHURN is the signal, not the bug.
         stuck = [
             {"name": "behavior-audit", "node": "behavior-audit", "seq": seq,
              "labels": {"packet_digest": "pkt-stuck"}}
@@ -1061,19 +901,7 @@ def test_audit_packet_iteration_is_not_churn():
 
 
 def test_rescan_coverage_is_not_churn():
-    """Regression: okf-builder's coverage re-scan paged as CHURN on its fifth round.
-
-    The rescan loop (`rescan_coverage → recheck → seed_recheck → select → checkpoint
-    → rescan_coverage`) reads no new items while the worklist is empty, so
-    `select_item` keeps returning the dry-state `work_id=""` / `progress="X/Y"`.
-    `OkfBuilder.state_labels(params)` adds `rescan_round` whenever `params` carries
-    `rescan`, and the re-scan counter increments on every `compute_coverage` call —
-    so a varying `rescan_round` becomes the forward-progress signal the rule needs.
-
-    Mirrors `test_a_drain_iterating_over_its_worklist_is_not_churn`'s shape. The
-    negative path (same `rescan_round` repeated past the threshold) still fires,
-    because a counter stuck past the bound *is* the bug signal the rule exists for.
-    """
+    """Regression: okf-builder's coverage re-scan paged as CHURN on its fifth round."""
     with _TelemetryEnv(), patch.dict(os.environ, {"GROOM_CHURN_REPEATS": "5"}):
         for index in range(6):
             rescan_round = f"round-{index}"
@@ -1098,7 +926,6 @@ def test_rescan_coverage_is_not_churn():
                 f"rescan pass {index} ({rescan_round}) should not churn"
             )
 
-        # Same rescan_round, no forward progress → CHURN past the threshold.
         stuck = [
             {"name": "recheck-coverage", "node": "recheck-coverage", "seq": seq,
              "labels": {"work_id": "", "progress": "50/100",
@@ -1115,8 +942,7 @@ def test_rescan_coverage_is_not_churn():
 
 
 def test_churn_still_fires_when_the_same_work_repeats():
-    """The condition the rule exists for, now stated precisely: the same node
-    completing again and again for the SAME unit of work."""
+    """The condition the rule exists for, now stated precisely: the same node completing again and again for the SAME unit of work."""
     with _TelemetryEnv(), patch.dict(os.environ, {"GROOM_CHURN_REPEATS": "3"}):
         stuck_item = [
             {"name": "investigate", "node": "investigate", "seq": seq,
@@ -1128,7 +954,6 @@ def test_churn_still_fires_when_the_same_work_repeats():
         fired = alerts.ingest_spans(otlp.parse_traces(_trace_request(stuck_item[2:])), now=12.0)
         assert [a.rule for a in fired] == ["CHURN"]
         assert "on the same work" in fired[0].message
-        # ...and it retires as soon as the run moves to the next item.
         moved_on = _trace_request(
             [{"name": "investigate", "node": "investigate", "seq": 9,
               "labels": {"work_id": "env:local", "progress": "3/16"}}]
@@ -1138,15 +963,7 @@ def test_churn_still_fires_when_the_same_work_repeats():
 
 
 def test_a_reload_cut_visit_is_not_a_completed_repeat():
-    """An operator pushing fixes into a broken flow must not page for churn.
-
-    A live reload interrupts the node mid-turn and re-enters the same state on the
-    pushed code, so the node re-completes under an unchanged label signature — the
-    exact shape CHURN looks for. Workhorse closes the cut scope (an orphaned span is
-    the failure the whole feature exists to avoid) and stamps ``workhorse.cut``; that
-    stamp is the only thing distinguishing "interrupted" from "went round again", and
-    without it the fifth push reports the reload as the loop it was breaking.
-    """
+    """An operator pushing fixes into a broken flow must not page for churn."""
     with _TelemetryEnv(), patch.dict(os.environ, {"GROOM_CHURN_REPEATS": "3"}):
         for seq in range(6):
             reloaded = otlp.parse_traces(
@@ -1159,10 +976,7 @@ def test_a_reload_cut_visit_is_not_a_completed_repeat():
 
 
 def test_a_cut_turn_is_a_completed_turn_not_a_watchdog_kill():
-    """`reload_kill` and `watchdog_kill` both end a streaming turn, and only one of
-    them is a failure. The reload turn accrued real tokens and real wall clock before
-    the operator cut it — it is spend, and it is reported as spend — but nothing about
-    it is an error, so it pages nobody and its span closes with an OK status."""
+    """`reload_kill` and `watchdog_kill` both end a streaming turn, and only one of them is a failure."""
     with _TelemetryEnv():
         cut_turn = otlp.parse_traces(
             _trace_request(
@@ -1172,8 +986,6 @@ def test_a_cut_turn_is_a_completed_turn_not_a_watchdog_kill():
         )
         assert alerts.ingest_spans(cut_turn, now=100.0) == []
         assert state.RUNS["run-1"].fired == set()
-        # And the spend is spend: the tokens were bought before the cut, so they total
-        # like any other turn's rather than being written off with the answer.
         store.insert_spans(cut_turn)
         spend = store.node_costs(run="run-1")
         assert [(row["node"], row["turns"], row["cost_usd"], row["output_tokens"])
@@ -1194,48 +1006,35 @@ def test_stall_fires_on_silence_but_heartbeat_suppresses_it():
     with _TelemetryEnv(), patch.dict(os.environ, {"GROOM_STALL_MIN": "90"}):
         spans = otlp.parse_traces(_trace_request([{"name": "plan", "node": "plan"}]))
         alerts.ingest_spans(spans, now=1000.0)
-        # 89 minutes of silence: nothing.
         assert alerts.check_time_rules(now=1000.0 + 89 * 60) == []
-        # A cap-wait heartbeat arrives: the run is provably alive...
         alerts.ingest_metrics(
             otlp.parse_metrics(_metrics_request("workhorse.cap_wait.heartbeat")),
             now=1000.0 + 89 * 60,
         )
-        # ...so even 91 minutes after the last SPAN there is no STALL.
         assert alerts.check_time_rules(now=1000.0 + 91 * 60) == []
-        # But 91 minutes after the last heartbeat, silence means hang.
         fired = alerts.check_time_rules(now=1000.0 + 89 * 60 + 91 * 60)
         assert [a.rule for a in fired] == ["STALL"]
 
 
 def test_stall_retires_when_the_run_emits_again_and_can_refire():
-    """Regression: a host that idle-slept past the stall window left its run
-    badged STALL forever, however healthily it resumed.
-
-    STALL asserts the process is gone. Anything arriving under the run's id
-    refutes that, so the page is false rather than merely old — and ``fired`` is
-    what the dashboard renders. A run that goes quiet again pages again.
-    """
+    """Regression: a host that idle-slept past the stall window left its run badged STALL forever, however healthily it resumed."""
     with _TelemetryEnv(), patch.dict(os.environ, {"GROOM_STALL_MIN": "90"}):
         spans = otlp.parse_traces(_trace_request([{"name": "plan", "node": "plan"}]))
         alerts.ingest_spans(spans, now=1000.0)
         woke = 1000.0 + 100 * 60
         assert [a.rule for a in alerts.check_time_rules(now=woke)] == ["STALL"]
 
-        # The laptop wakes and the run — never actually dead — beats again.
         alerts.ingest_metrics(
             otlp.parse_metrics(_metrics_request("workhorse.run.heartbeat")), now=woke
         )
         assert "STALL" not in state.RUNS["run-1"].fired
         assert alerts.check_time_rules(now=woke + 60) == []
 
-        # Genuinely silent this time: the rule is armed again, not spent.
         assert [a.rule for a in alerts.check_time_rules(now=woke + 91 * 60)] == ["STALL"]
 
 
 def test_stuck_retires_when_the_node_finally_closes():
-    """STUCK says a node is open past the threshold. When it closes the claim is
-    false, not stale — so the badge goes with it."""
+    """STUCK says a node is open past the threshold."""
     with _TelemetryEnv(), patch.dict(
         os.environ, {"GROOM_STALL_MIN": "90", "GROOM_STUCK_MIN": "75"}
     ):
@@ -1290,9 +1089,6 @@ def test_explicit_wait_suppresses_stuck_and_clears_stale_turn_idle() -> None:
         assert run.wait_elapsed_s == 180 * 60
         assert run.turn_active is False
         assert run.turn_idle_s == 0
-        # STUCK is what an open wait suppresses, and it stays suppressed even though
-        # the node has been open for three hours. WAITING is the *other* rule and is
-        # about the gate itself, so it is the only thing this tick may produce.
         assert [alert.rule for alert in alerts.check_time_rules(now=now)] == ["WAITING"]
 
 
@@ -1320,14 +1116,7 @@ def test_an_operator_gate_pages_the_moment_it_opens() -> None:
 
 
 def test_a_restart_rehydrates_an_already_open_wait_from_the_elapsed_tick() -> None:
-    """wait_kind lives only in the hot cache, set by the edge-triggered
-    workhorse.wait.active point. A groom restart wipes it while the wait stays
-    open on the producer's side, and that edge won't fire again until the gate
-    closes and reopens — so the very next tick groom sees for this run is a
-    bare workhorse.wait.elapsed_s. It still carries wait_kind in its own attrs
-    and must be enough to rediscover the wait, or a restart during any open
-    gate would report that run as unblocked forever.
-    """
+    """wait_kind lives only in the hot cache, set by the edge-triggered workhorse.wait.active point."""
     with _TelemetryEnv():
         fired = alerts.ingest_metrics(
             otlp.parse_metrics(
@@ -1408,7 +1197,6 @@ def test_an_unanswered_gate_pages_again_once_it_has_waited_too_long() -> None:
             now=now,
         )
         assert [alert.rule for alert in alerts.check_time_rules(now=now)] == ["WAITING"]
-        # Deduped per (run, rule): the gate stays open, and the tick keeps running.
         assert alerts.check_time_rules(now=now + 60) == []
 
 
@@ -1443,20 +1231,11 @@ def test_answering_the_gate_retires_both_pages() -> None:
             ),
             now=now + 60,
         )
-        # Both rules assert a wait that is open *now*. Left set, the dashboard badges
-        # a run that is executing again as parked for the life of the process — and
-        # the next gate on the same run would page nobody.
         assert not {"BLOCKED", "WAITING"} & state.RUNS["run-1"].fired
 
 
 def test_a_stale_replay_of_an_already_answered_gate_does_not_reopen_it() -> None:
-    """The SDK retains zero-valued series for every earlier gate and can replay
-    an old workhorse.wait.active=1 point for a gate that has since been answered
-    and superseded by a later one. Once a wait closes, wait_series resets to
-    None, so the existing "different series" guard (which only compares against
-    the *currently open* series) does not see the replay as stale and reopens
-    the wait with the old gate's path/question — the dashboard and any dispatch
-    reading it then act on a question that was already resolved."""
+    """The SDK retains zero-valued series for every earlier gate and can replay an old workhorse.wait.active=1 point for a gate that has since been answered and superseded by a later one."""
     with _TelemetryEnv():
         now = 1000.0
 
@@ -1470,15 +1249,12 @@ def test_a_stale_replay_of_an_already_answered_gate_does_not_reopen_it() -> None
                        "gate_question": question},
             )
 
-        # Gate 1 opens and is answered.
         alerts.ingest_metrics(otlp.parse_metrics(wait_point(1, "13 reviews?")), now=now)
         alerts.ingest_metrics(otlp.parse_metrics(wait_point(0, "13 reviews?")), now=now)
-        # Gate 2 opens — a distinct series (different question) — and is answered too.
         alerts.ingest_metrics(otlp.parse_metrics(wait_point(1, "14 reviews?")), now=now)
         alerts.ingest_metrics(otlp.parse_metrics(wait_point(0, "14 reviews?")), now=now)
         assert state.RUNS["run-1"].wait_kind == ""
 
-        # The SDK replays gate 1's stale active=1 point after both are closed.
         alerts.ingest_metrics(otlp.parse_metrics(wait_point(1, "13 reviews?")), now=now)
 
         run = state.RUNS["run-1"]
@@ -1487,12 +1263,7 @@ def test_a_stale_replay_of_an_already_answered_gate_does_not_reopen_it() -> None
 
 
 def test_a_wait_never_explicitly_closed_clears_once_the_run_moves_to_another_node() -> None:
-    """A resume that finds its gate already answered while the process was down skips
-    its own otel.wait() block entirely, so nobody ever emits the workhorse.wait.active=0
-    point for the wait the earlier (crashed) session opened. That series then sits at
-    active=1 forever in groom's cache even though the run is plainly executing again --
-    a wait blocks the driver loop, so node.active for any other node is proof enough
-    that the wait is over."""
+    """A resume that finds its gate already answered while the process was down skips its own otel.wait() block entirely, so nobody ever emits the workhorse.wait.active=0 point for the wait the earlier (crashed) session opened."""
     with _TelemetryEnv():
         now = 1000.0
         alerts.ingest_metrics(
@@ -1572,9 +1343,7 @@ def test_pyflow_activity_label_is_consumed_without_legacy_prefix() -> None:
 
 
 def test_the_hot_cache_follows_the_cli_the_last_turn_actually_used() -> None:
-    """The ladder picks a backend per turn and falls through when one is capped,
-    so "which CLI is this run using" is a property of the last turn, not of the
-    run. A run that quietly moved to another harness is otherwise invisible."""
+    """The ladder picks a backend per turn and falls through when one is capped, so "which CLI is this run using" is a property of the last turn, not of the run."""
     with _TelemetryEnv():
         alerts.ingest_spans(
             otlp.parse_traces(
@@ -1600,8 +1369,6 @@ def test_the_hot_cache_follows_the_cli_the_last_turn_actually_used() -> None:
         )
         assert (state.RUNS["run-1"].backend, state.RUNS["run-1"].model) == ("codex", "gpt-5")
 
-        # A node span is not a turn and says nothing about the harness. Letting one
-        # through would blank the answer every time a node completed.
         alerts.ingest_spans(
             otlp.parse_traces(_trace_request([{"name": "plan", "node": "plan"}])), now=1002.0
         )
@@ -1609,29 +1376,20 @@ def test_the_hot_cache_follows_the_cli_the_last_turn_actually_used() -> None:
 
 
 def test_turn_heartbeat_suppresses_stall_during_a_long_agent_turn():
-    """Regression: a legitimately long agent turn used to page as a STALL.
-
-    Its node span cannot export until it ends, and it is not a cap sleep, so the
-    run went silent by construction and every rule read that as a hang. The turn
-    heartbeat is the missing liveness proof.
-    """
+    """Regression: a legitimately long agent turn used to page as a STALL."""
     with _TelemetryEnv(), patch.dict(os.environ, {"GROOM_STALL_MIN": "90"}):
         spans = otlp.parse_traces(_trace_request([{"name": "plan", "node": "plan"}]))
         alerts.ingest_spans(spans, now=1000.0)
-        # A long turn starts: no spans will arrive until it finishes, but the
-        # stream loop keeps beating.
         for minute in range(0, 200, 5):
             alerts.ingest_metrics(
                 otlp.parse_metrics(_metrics_request("workhorse.turn.heartbeat")),
                 now=1000.0 + minute * 60,
             )
-        # Over 3 hours after the last span, and still not a stall.
         assert alerts.check_time_rules(now=1000.0 + 195 * 60) == []
 
 
 def test_run_heartbeat_suppresses_stall_for_a_buffered_script_node():
-    """A script node runs as a captured subprocess: no stream, so no turn
-    heartbeat. The run-level heartbeat is its only liveness signal."""
+    """A script node runs as a captured subprocess: no stream, so no turn heartbeat."""
     with _TelemetryEnv(), patch.dict(os.environ, {"GROOM_STALL_MIN": "90"}):
         alerts.ingest_spans(
             otlp.parse_traces(_trace_request([{"name": "prepare", "node": "prepare"}])),
@@ -1645,8 +1403,7 @@ def test_run_heartbeat_suppresses_stall_for_a_buffered_script_node():
 
 
 def test_stuck_fires_when_alive_but_parked_in_one_node():
-    """The case a script-heavy workflow actually hits: the process is fine, the
-    node just never finishes. Invisible to the trace — that span never exports."""
+    """The case a script-heavy workflow actually hits: the process is fine, the node just never finishes."""
     with _TelemetryEnv(), patch.dict(
         os.environ, {"GROOM_STALL_MIN": "90", "GROOM_STUCK_MIN": "75"}
     ):
@@ -1660,7 +1417,6 @@ def test_stuck_fires_when_alive_but_parked_in_one_node():
         alerts.ingest_metrics(
             otlp.parse_metrics(_metrics_request("workhorse.run.heartbeat")), now=now
         )
-        # 74 minutes in the node: not yet.
         alerts.ingest_metrics(
             otlp.parse_metrics(
                 _metrics_request(
@@ -1670,7 +1426,6 @@ def test_stuck_fires_when_alive_but_parked_in_one_node():
             now=now,
         )
         assert alerts.check_time_rules(now=now) == []
-        # 76 minutes: alive, heartbeating, and going nowhere.
         alerts.ingest_metrics(
             otlp.parse_metrics(
                 _metrics_request(
@@ -1682,7 +1437,6 @@ def test_stuck_fires_when_alive_but_parked_in_one_node():
         fired = alerts.check_time_rules(now=now)
         assert [a.rule for a in fired] == ["STUCK"]
         assert "select_item" in fired[0].message
-        # Dedupes: one page per rule per run.
         assert alerts.check_time_rules(now=now + 60) == []
 
 
@@ -1705,8 +1459,7 @@ def test_node_active_gauge_tracks_where_the_run_is_and_clears_on_completion():
 
 
 def test_a_stale_zero_does_not_blank_the_node_now_running():
-    """Gauges re-export their last value, so a 0 for an already-superseded node
-    can arrive after the next node has opened. It must not clear the pointer."""
+    """Gauges re-export their last value, so a 0 for an already-superseded node can arrive after the next node has opened."""
     with _TelemetryEnv():
         for name, value, node in (
             ("workhorse.node.active", 1, "prepare"),
@@ -1721,9 +1474,7 @@ def test_a_stale_zero_does_not_blank_the_node_now_running():
 
 
 def test_live_status_reports_the_open_node_that_has_no_span():
-    """The whole point: a run parked in a node has NO row in `spans` for it (the
-    span writes on completion), yet live_status still says where it is — from the
-    ingest cache, since the heartbeat that named the node is never stored."""
+    """The whole point: a run parked in a node has NO row in `spans` for it (the span writes on completion), yet live_status still says where it is — from the ingest cache, since the heartbeat that named the node is never stored."""
     with _TelemetryEnv():
         alerts.ingest_metrics(
             otlp.parse_metrics(_metrics_request("workhorse.run.heartbeat", node="select_item")),
@@ -1737,7 +1488,6 @@ def test_live_status_reports_the_open_node_that_has_no_span():
             ),
             now=2000.0,
         )
-        # No span for select_item exists — and never will while it hangs.
         assert store.query_spans(node="select_item") == []
         rows = alerts.live_status(now=2000.0)
         assert len(rows) == 1
@@ -1747,8 +1497,7 @@ def test_live_status_reports_the_open_node_that_has_no_span():
 
 
 def test_live_status_row_shape_is_the_cli_json_contract():
-    """``groom status --json`` prints these rows verbatim, so the keys are a
-    public contract — the exact shape the old store-backed query returned."""
+    """``groom status --json`` prints these rows verbatim, so the keys are a public contract — the exact shape the old store-backed query returned."""
     with _TelemetryEnv():
         alerts.ingest_metrics(
             otlp.parse_metrics(_metrics_request("workhorse.run.heartbeat", node="impl")),
@@ -1774,16 +1523,13 @@ def test_live_status_marks_a_run_dead_once_the_heartbeat_stops():
             otlp.parse_metrics(_metrics_request("workhorse.run.heartbeat", node="investigate")),
             now=2000.0,
         )
-        # Heartbeat ts is 2000; well past the liveness window.
         rows = alerts.live_status(now=2000.0 + store.LIVE_AFTER_S + 60)
         assert rows[0]["alive"] is False
         assert rows[0]["node"] == "investigate"
 
 
 def test_live_run_ids_are_the_ones_beating_now():
-    """The only liveness question groom asks, answered from the ingest cache —
-    memory-only now, so a groom that just restarted reports nothing until each
-    run's next export lands (the accepted cost of not persisting ticks)."""
+    """The only liveness question groom asks, answered from the ingest cache — memory-only now, so a groom that just restarted reports nothing until each run's next export lands (the accepted cost of not persisting ticks)."""
     with _TelemetryEnv():
         alerts.ingest_metrics(
             otlp.parse_metrics(_metrics_request("workhorse.run.heartbeat", node="impl")),
@@ -1794,8 +1540,7 @@ def test_live_run_ids_are_the_ones_beating_now():
 
 
 def test_live_status_keeps_the_newest_beat():
-    """An out-of-order batch must not roll ``last_beat_ts`` backwards — the
-    newest producer stamp is the one the status line ages against."""
+    """An out-of-order batch must not roll ``last_beat_ts`` backwards — the newest producer stamp is the one the status line ages against."""
     with _TelemetryEnv():
         for ts in (3000.0, 2000.0):
             alerts.ingest_metrics(
@@ -1807,8 +1552,7 @@ def test_live_status_keeps_the_newest_beat():
 
 
 def test_run_dir_survives_decode_and_storage():
-    """A span must lead back to its artifacts (prompt.md / output.json) in one
-    hop — that join is what a hosted trace backend cannot do."""
+    """A span must lead back to its artifacts (prompt.md / output.json) in one hop — that join is what a hosted trace backend cannot do."""
     with _TelemetryEnv():
         spans = otlp.parse_traces(
             _trace_request(
@@ -1832,7 +1576,6 @@ def test_old_live_run_does_not_fire_an_age_alert():
 def test_terminal_run_does_not_fire_absence_rules():
     with _TelemetryEnv(), patch.dict(os.environ, {"GROOM_STALL_MIN": "1"}):
         spans = otlp.parse_traces(_trace_request([{"name": "plan", "node": "plan"}]))
-        # The root span arriving = the run ended → no further absence alerts
         alerts.ingest_spans(spans, now=0.0)
         root = otlp.parse_traces(
             _trace_request([{"name": "run:coder", "terminal": "terminal"}])
@@ -1842,9 +1585,7 @@ def test_terminal_run_does_not_fire_absence_rules():
 
 
 def test_a_resumed_run_clears_the_previous_sessions_terminal():
-    """``--resume-run`` reuses the run_id, and a root span only exports when it
-    ENDS — so there is no "new session started" event. The newer signal itself is
-    the evidence, and it has to undo the verdict or the run stays dead forever."""
+    """``--resume-run`` reuses the run_id, and a root span only exports when it ENDS — so there is no "new session started" event."""
     with _TelemetryEnv():
         root = otlp.parse_traces(
             _trace_request([{"name": "run:coder", "terminal": "interrupted", "end": 100.0}])
@@ -1854,18 +1595,16 @@ def test_a_resumed_run_clears_the_previous_sessions_terminal():
         assert (run.terminal, run.terminal_ts) == ("interrupted", 100.0)
         run.fired.add("STALL")
 
-        # A single beat from the resumed process, stamped after that root span.
         alerts.ingest_metrics(
             otlp.parse_metrics(_metrics_request("workhorse.run.heartbeat", ts=200.0)),
             now=200.0,
         )
         assert (run.terminal, run.terminal_ts) == ("", 0.0)
-        assert run.fired == set()  # a new session re-arms every rule
+        assert run.fired == set()
 
 
 def test_a_signal_older_than_the_terminal_does_not_revive_the_run():
-    """The inverse guard: telemetry that predates the root span is the same
-    session's backlog, not a resume, and must leave the verdict standing."""
+    """The inverse guard: telemetry that predates the root span is the same session's backlog, not a resume, and must leave the verdict standing."""
     with _TelemetryEnv():
         root = otlp.parse_traces(
             _trace_request([{"name": "run:coder", "terminal": "terminal", "end": 100.0}])
@@ -1878,9 +1617,6 @@ def test_a_signal_older_than_the_terminal_does_not_revive_the_run():
         assert state.RUNS["run-1"].terminal == "terminal"
 
 
-# --------------------------------------------------------------------------- #
-# notify
-# --------------------------------------------------------------------------- #
 def test_notify_posts_to_ntfy_and_webhook_when_configured():
     calls = []
 
@@ -1914,12 +1650,9 @@ def test_notify_noop_without_config_and_swallows_errors():
     with patch.dict(os.environ, {"GROOM_NTFY_TOPIC": "t"}), patch.object(
         notify.urllib.request, "urlopen", side_effect=OSError("down")
     ):
-        notify.push("t", "m")  # must not raise
+        notify.push("t", "m")
 
 
-# --------------------------------------------------------------------------- #
-# receivers (through the app)
-# --------------------------------------------------------------------------- #
 def test_v1_traces_receiver_stores_spans_and_fires_alerts():
     with _TelemetryEnv(), patch.object(notify, "push") as push:
         client = _hermetic_client()
@@ -1954,9 +1687,7 @@ def test_v1_metrics_receiver_records_heartbeat():
 
 
 def test_heartbeats_reach_api_live_without_ever_touching_the_metrics_table():
-    """The whole Part-2 contract in one round trip: a posted heartbeat leaves no
-    row behind, yet ``/api/live`` — what ``groom status`` reads over HTTP —
-    reports the run with the node the beat carried."""
+    """The whole Part-2 contract in one round trip: a posted heartbeat leaves no row behind, yet ``/api/live`` — what ``groom status`` reads over HTTP — reports the run with the node the beat carried."""
     with _TelemetryEnv():
         client = _hermetic_client()
         try:
@@ -1979,15 +1710,11 @@ def test_heartbeats_reach_api_live_without_ever_touching_the_metrics_table():
         assert rows[0]["run_id"] == "run-1"
         assert rows[0]["node"] == "select_item"
         assert rows[0]["last_beat_ts"] == 2000.0
-        # Filtering: naming another run returns nothing, the real id returns it.
-        # (Checked through live_status directly — the client is closed by now.)
         assert alerts.live_status(run="other") == []
 
 
 def test_startup_hooks_never_touch_the_store_synchronously():
-    """The 8-minute "Waiting for application startup" was ``store.prune()`` run
-    inline in an ``on_startup`` hook, before the port bound. Pruning belongs to
-    the background rules tick; creating and starting the app must not call it."""
+    """The 8-minute "Waiting for application startup" was ``store.prune()`` run inline in an ``on_startup`` hook, before the port bound."""
     with _TelemetryEnv(), patch.object(store, "prune") as pruned:
         client = _hermetic_client()
         try:
@@ -1998,15 +1725,7 @@ def test_startup_hooks_never_touch_the_store_synchronously():
 
 
 def test_the_receivers_write_off_the_event_loop():
-    """Every export is one SQLite commit, and a commit is a blocking syscall. Run on the
-    event loop it is not this run's cost but the whole fleet's: one collector serves every
-    live run, so a write in flight stalls every other export, every alert evaluation and
-    every dashboard request behind it.
-
-    Asserted by what the store call can see rather than by a timing: inside a
-    `to_thread` worker there is no running loop, so `get_running_loop()` raises — and if
-    the `await asyncio.to_thread(...)` is ever unwrapped back to a direct call, it
-    returns one instead and the test fails."""
+    """Every export is one SQLite commit, and a commit is a blocking syscall."""
     off_loop: list[str] = []
 
     def _witness(name):
@@ -2040,28 +1759,18 @@ def test_the_receivers_write_off_the_event_loop():
 
 
 def test_pruning_folds_the_write_ahead_log_back_into_the_database():
-    """WAL mode defers the fold to a checkpoint that only runs when a writer finds no
-    reader in the way — and groom writes continuously while the dashboard holds long
-    reads open, which is the one shape where that can starve. It is not a correctness
-    bug, which is what makes it easy to miss: a 293 MB database was found carrying a
-    376 MB WAL beside it. `prune()` is where the explicit checkpoint rides."""
+    """WAL mode defers the fold to a checkpoint that only runs when a writer finds no reader in the way — and groom writes continuously while the dashboard holds long reads open, which is the one shape where that can starve."""
     with _TelemetryEnv():
         store.insert_spans(otlp.parse_traces(_trace_request([{"name": "plan"}])))
         wal = Path(os.environ["GROOM_DB"] + "-wal")
         assert wal.exists() and wal.stat().st_size > 0, "expected WAL mode to be on"
         store.prune()
-        # TRUNCATE, so the log is emptied rather than merely folded in.
         assert wal.stat().st_size == 0
 
 
 def test_commits_do_not_each_pay_an_fsync():
-    """`synchronous=FULL` would cost a disk sync per OTLP export of every live run, to
-    buy durability of the last commits across a power cut — over a table that is
-    explicitly not the record of truth (each run's `events.jsonl` is). `NORMAL` under
-    WAL cannot corrupt the database; it can only lose commits newer than the last
-    checkpoint, which the next export replaces anyway."""
+    """`synchronous=FULL` would cost a disk sync per OTLP export of every live run, to buy durability of the last commits across a power cut — over a table that is explicitly not the record of truth (each run's `events.jsonl` is)."""
     with _TelemetryEnv():
-        # 1 is NORMAL; 2 is FULL, the default this deliberately steps down from.
         assert store._connection().execute("PRAGMA synchronous").fetchone()[0] == 1
 
 
@@ -2082,13 +1791,6 @@ def test_v1_traces_rejects_garbage_with_400():
         assert args[-2] == "DecodeError"
 
 
-# ── Logs (/v1/logs) ────────────────────────────────────────────────────────────
-#
-# Logs are the third OTLP leg and the one that finally makes script nodes legible:
-# they used to run as child processes whose stdout was consumed whole as JSON and
-# whose stderr surfaced only on failure, so their diagnostics were unrecoverable
-# after the fact. workhorse now runs them in-process, so their records arrive here
-# on the engine's own resource.
 
 
 def test_parse_logs_extracts_identity_node_and_body():
@@ -2100,17 +1802,12 @@ def test_parse_logs_extracts_identity_node_and_body():
     assert got["run_id"] == "run-1"
     assert got["workflow"] == "okf-builder"
     assert got["body"] == "picked item 3"
-    # node comes from the record attribute, not the trace context: workhorse never
-    # makes its node spans current, so trace_id is zeroes and only this correlates.
     assert got["node"] == "select_item"
-    # run_dir rides the resource, so a log line leads back to prompt.md/output.json.
     assert got["run_dir"] == "/runs/r1"
 
 
 def test_severity_is_normalized_to_stdlib_names_not_the_sdk_text():
-    """The SDK stamps Python's WARNING with severity_text "WARN". Storing that
-    verbatim made `groom logs --level WARNING` match nothing at all, silently,
-    because the filter compares against the stdlib names. The number wins."""
+    """The SDK stamps Python's WARNING with severity_text "WARN"."""
     records = otlp.parse_logs(
         _logs_request([{"severity": 13, "severity_text": "WARN", "body": "careful"}])
     )
@@ -2163,8 +1860,6 @@ def test_logs_roundtrip_and_query_filters():
         assert {r["body"] for r in store.query_logs(node="select_item")} == {
             "over budget", "exploded"
         }
-        # level is a FLOOR, not equality — being shown warnings but not errors
-        # would be the opposite of useful.
         assert {r["body"] for r in store.query_logs(level="WARNING")} == {
             "over budget", "exploded"
         }
@@ -2182,7 +1877,6 @@ def test_logs_receiver_stores_and_returns_200():
                 content=_logs_request([{"body": "hi", "attrs": {"node": "prepare"}}]),
                 headers={"content-type": "application/x-protobuf"},
             )
-            # OTLP/HTTP defines success as 200; Litestar's POST default is 201.
             assert response.status_code == 200
             assert [r["body"] for r in store.query_logs()] == ["hi"]
         finally:
@@ -2236,7 +1930,7 @@ def test_committed_telemetry_pushes_watched_history_without_database_reads():
         client = _hermetic_client()
         try:
             with client.websocket_connect("/ws") as socket:
-                socket.receive_json()  # initial fleet
+                socket.receive_json()
                 socket.send_json({"cmd": "watch", "run_id": "worker"})
                 while socket.receive_json()["type"] != "detail":
                     pass
@@ -2298,11 +1992,7 @@ def test_logs_receiver_rejects_an_undecodable_body():
 
 
 def test_logs_expire_on_the_same_window_as_everything_else():
-    """Logs used to hold a shorter window of their own, because they are one row
-    per line rather than one per node visit and a few chatty week-long runs would
-    dominate the file. The archive is the answer to that now — a log leaving SQL
-    is a log landing on disk — so one window covers every signal, and a second
-    knob would only decide which half of a run's history goes missing."""
+    """Logs used to hold a shorter window of their own, because they are one row per line rather than one per node visit and a few chatty week-long runs would dominate the file."""
     with _TelemetryEnv():
         now = 100 * 86400
         store.insert_logs(otlp.parse_logs(_logs_request([{"body": "old", "ts": now - 60 * 86400}])))
@@ -2311,17 +2001,10 @@ def test_logs_expire_on_the_same_window_as_everything_else():
         assert [r["body"] for r in store.query_logs()] == ["new"]
 
 
-# --------------------------------------------------------------------------- #
-# the store connection heals instead of wedging
-# --------------------------------------------------------------------------- #
 def test_a_closed_connection_heals_on_the_next_write():
-    """The handle is disposable and the file is not. Before the store recycled,
-    anything that killed the one process-wide connection killed ingest until the
-    process was restarted — `reset()` was reachable from tests only."""
+    """The handle is disposable and the file is not."""
     with _TelemetryEnv():
         store.insert_spans(otlp.parse_traces(_trace_request([{"name": "first"}])))
-        # Exactly what a wedged serve looks like from the caller's side: the next
-        # statement on this handle raises rather than returning.
         store._connection().close()  # noqa: SLF001 - simulating the failure under test
         store.insert_spans(otlp.parse_traces(_trace_request([{"name": "second"}])))
         assert {row["name"] for row in store.query_spans()} == {"first", "second"}
@@ -2329,17 +2012,10 @@ def test_a_closed_connection_heals_on_the_next_write():
 
 
 def test_a_pinned_read_snapshot_does_not_wedge_writes():
-    """The incident itself, with no mocks.
-
-    A serve ran 13h and then answered every OTLP post with a 500 while its read
-    routes stayed 200: one stranded transaction pinned the connection's snapshot, so
-    another process's committed row was invisible and every write died of
-    BUSY_SNAPSHOT forever. Under autocommit a bare SELECT cannot pin anything past
-    its own statement, and `BEGIN IMMEDIATE` cannot leave a transaction half-open.
-    """
+    """The incident itself, with no mocks."""
     with _TelemetryEnv():
         store.insert_spans(otlp.parse_traces(_trace_request([{"name": "before"}])))
-        store.query_spans()          # a read on the live connection
+        store.query_spans()
         assert store._connection().in_transaction is False  # noqa: SLF001 - the invariant
 
         outside = sqlite3.connect(store.db_path())
@@ -2357,8 +2033,6 @@ def test_a_pinned_read_snapshot_does_not_wedge_writes():
             row["name"]
             for row in store._connection().execute("SELECT name FROM metrics")  # noqa: SLF001
         }
-        # Both halves matter: the write landed, and the other process's commit is
-        # visible rather than hidden behind a snapshot taken minutes ago.
         assert {"other.count", "heartbeat"} <= names
 
 
@@ -2381,14 +2055,11 @@ def test_a_failed_write_leaves_no_open_transaction():
             names = {row[0] for row in outside.execute("SELECT name FROM metrics")}
         finally:
             outside.close()
-        # Rolled back, not merely uncommitted-so-far, and visible to another process.
         assert names == {"after"}
 
 
 def test_writes_and_reads_interleave_across_threads():
-    """`check_same_thread=False` buys memory safety and nothing at the transaction
-    level: the receivers write from `asyncio.to_thread` workers while the event loop
-    reads inline, and one connection has exactly one transaction."""
+    """`check_same_thread=False` buys memory safety and nothing at the transaction level: the receivers write from `asyncio.to_thread` workers while the event loop reads inline, and one connection has exactly one transaction."""
     with _TelemetryEnv():
         import threading
 
@@ -2416,15 +2087,13 @@ def test_writes_and_reads_interleave_across_threads():
 
 
 def test_reopen_is_rate_limited():
-    """One reopen fixes a wedged connection; a second one straight after means the
-    file is the problem, which reopening will not fix and thrashing will obscure."""
+    """One reopen fixes a wedged connection; a second one straight after means the file is the problem, which reopening will not fix and thrashing will obscure."""
     with _TelemetryEnv():
         clock = iter([0.0, 1.0, 2.0, 3.0])
         holder = store._Store(monotonic=lambda: next(clock))  # noqa: SLF001 - the unit under test
         try:
             holder.recycle(sqlite3.OperationalError("database is locked"), "insert_spans")
             assert holder.health().reopens == 1
-            # Inside the cooldown: the failure is recorded and re-raised instead.
             try:
                 holder.recycle(sqlite3.OperationalError("still locked"), "insert_spans")
             except sqlite3.OperationalError:
@@ -2440,16 +2109,14 @@ def test_reopen_is_rate_limited():
 
 
 def test_a_blocked_checkpoint_is_reported_and_never_poisons():
-    """`busy == 1` is SQLite's only word for "a reader was in the way and I left the
-    WAL alone" — and it arrives in a result row, which is easy to discard and then
-    wonder for weeks why a 293 MB database carries a 376 MB WAL."""
+    """`busy == 1` is SQLite's only word for "a reader was in the way and I left the WAL alone" — and it arrives in a result row, which is easy to discard and then wonder for weeks why a 293 MB database carries a 376 MB WAL."""
     with _TelemetryEnv():
         store.insert_spans(otlp.parse_traces(_trace_request([{"name": "kept"}])))
         reader = sqlite3.connect(store.db_path())
         try:
             reader.execute("BEGIN")
             reader.execute("SELECT COUNT(*) FROM spans").fetchall()
-            store.checkpoint()          # must not raise
+            store.checkpoint()
             assert store.health().last_checkpoint_busy == 1
         finally:
             reader.close()
@@ -2458,9 +2125,7 @@ def test_a_blocked_checkpoint_is_reported_and_never_poisons():
 
 
 def test_the_receivers_answer_503_when_the_store_is_unavailable():
-    """A 500 says "your batch was malformed or I am broken"; a 503 with Retry-After
-    says "come back in five seconds", which is the true statement and the one that
-    stops the receiver from running alerts off rows it did not store."""
+    """A 500 says "your batch was malformed or I am broken"; a 503 with Retry-After says "come back in five seconds", which is the true statement and the one that stops the receiver from running alerts off rows it did not store."""
     payloads = {
         "/v1/traces": ("insert_spans", _trace_request([{"name": "node"}])),
         "/v1/metrics": ("insert_metrics", _metrics_request("heartbeat")),
@@ -2476,16 +2141,13 @@ def test_the_receivers_answer_503_when_the_store_is_unavailable():
                     response = client.post(route, content=body)
                 assert response.status_code == 503, route
                 assert response.headers["Retry-After"] == "5", route
-                # And the same batch succeeds once the store is back.
                 assert client.post(route, content=body).status_code == 200, route
         finally:
             client.__exit__(None, None, None)
 
 
 def test_store_health_rides_the_state_payload():
-    """13 hours of dropped telemetry produced a healthy-looking dashboard, because
-    every read route answered 200 off a store that had stopped accepting writes.
-    `/api/state` carries the collector's own health beside the fleet's."""
+    """13 hours of dropped telemetry produced a healthy-looking dashboard, because every read route answered 200 off a store that had stopped accepting writes."""
     with _TelemetryEnv():
         store.insert_spans(otlp.parse_traces(_trace_request([{"name": "first"}])))
         store._connection().close()  # noqa: SLF001 - simulating the failure under test
@@ -2493,17 +2155,13 @@ def test_store_health_rides_the_state_payload():
 
         health = projection.state_message([])["store"]
         assert health["reopens"] == 1
-        assert health["last_error"]          # what went wrong is kept, not just a count
-        assert health["ok"] is True          # ...and it healed, which is the difference
+        assert health["last_error"]
+        assert health["ok"] is True
         assert health["path"] == str(store.db_path())
 
 
-# --------------------------------------------------------------------------- #
-# groom status: the CLI asks the running server, not the database
-# --------------------------------------------------------------------------- #
 def test_cli_status_asks_the_running_server_over_http(capsys):
-    """``groom status`` GETs ``/api/live`` from the serve URL — liveness exists
-    only in the server's memory, so there is no file to fall back to."""
+    """``groom status`` GETs ``/api/live`` from the serve URL — liveness exists only in the server's memory, so there is no file to fall back to."""
     with _TelemetryEnv():
         client = _hermetic_client()
         try:
@@ -2518,7 +2176,6 @@ def test_cli_status_asks_the_running_server_over_http(capsys):
             )
 
             def fake_urlopen(url, timeout=0.0):
-                # The CLI's default URL, served by the TestClient app instead.
                 prefix = "http://127.0.0.1:8787"
                 assert url.startswith(prefix + "/api/live")
                 return io.BytesIO(client.get(url[len(prefix):]).content)
@@ -2533,11 +2190,7 @@ def test_cli_status_asks_the_running_server_over_http(capsys):
 
 
 def test_cli_status_prints_the_control_command_for_each_run():
-    """The human-readable status names the next step: ``workhorse-<workflow>
-    control --run <run_dir> status``. ``workflow`` picks the console script and
-    ``run_dir`` is passed as the absolute path, so the printed line works from any
-    cwd — a bare id only resolves under the current directory's ``.agents/runs``.
-    A row missing either field cannot name a command, so it prints none."""
+    """The human-readable status names the next step: ``workhorse-<workflow> control --run <run_dir> status``."""
     now = 1_000.0
     base = {
         "run_id": "okf-1",
@@ -2567,7 +2220,6 @@ def test_cli_status_prints_the_control_command_for_each_run():
 
 
 def test_cli_status_without_a_server_exits_with_guidance(capsys, monkeypatch):
-    # Port 1 on loopback: nothing listens, the connection is refused immediately.
     monkeypatch.setenv("GROOM_URL", "http://127.0.0.1:1")
     try:
         cli.status()

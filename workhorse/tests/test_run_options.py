@@ -1,16 +1,4 @@
-"""What `run` decides around the workflow it was handed.
-
-*Which* workflow is not among them — the console script is the workflow's own and hands
-its registry in. What is left for the CLI to decide, and what these cover, is everything
-*around* it, which is the CLI's contract rather than the driver's:
-
-  * `--runs-dir` defaults to <cwd>/.agents/runs — deduced from the launch dir, not from
-    wherever the workflow package happens to be installed;
-  * `AGENT_REPO_DIR` defaults to the launch cwd for the same reason, and an explicit
-    value wins;
-  * `--resume-run` accepts every spelling that names a run, including the `--run-id`
-    that made it.
-"""
+"""What `run` decides around the workflow it was handed."""
 from __future__ import annotations
 
 import importlib
@@ -27,11 +15,7 @@ run_cmd = importlib.import_module("workhorse.cli.run")
 
 
 class _StubRegistry(Registry):
-    """Stands in for the bound Registry — the CLI only passes it through.
-
-    A real `Registry` rather than a look-alike: the CLI's parameter is the type, and
-    only the entry point (which these tests never reach) is stubbed out.
-    """
+    """Stands in for the bound Registry — the CLI only passes it through."""
 
     def __init__(self) -> None:
         super().__init__('acme-flow')
@@ -48,7 +32,6 @@ def _main(argv: list[str]) -> None:
         pass
 
 
-# ── runs-dir default = <cwd>/.agents/runs ───────────────────────────────────
 
 def test_runs_dir_defaults_to_cwd_dot_agents_runs():
     captured = {}
@@ -67,11 +50,8 @@ def test_runs_dir_defaults_to_cwd_dot_agents_runs():
     assert captured["runs_dir"] == (launch / ".agents" / "runs").resolve()
 
 
-# ── AGENT_REPO_DIR default = launch cwd ──────────────────────────────────────
 
 def test_agent_repo_dir_defaults_to_launch_cwd():
-    # A workflow's scripts run with a cwd that is not necessarily the consuming repo,
-    # so AGENT_REPO_DIR is pinned to the launch dir for them to resolve it from.
     with tempfile.TemporaryDirectory() as tmp:
         launch = Path(tmp) / "repo"
         launch.mkdir()
@@ -84,7 +64,6 @@ def test_agent_repo_dir_defaults_to_launch_cwd():
 
 
 def test_agent_repo_dir_respects_explicit_value():
-    # An explicitly-set AGENT_REPO_DIR (e.g. from the farrier Makefile) wins.
     with tempfile.TemporaryDirectory() as tmp:
         launch = Path(tmp) / "repo"
         launch.mkdir()
@@ -96,7 +75,6 @@ def test_agent_repo_dir_respects_explicit_value():
             assert os.environ["AGENT_REPO_DIR"] == "/pinned/repo"
 
 
-# ── --resume-run accepts what --run-id took ─────────────────────────────────
 
 def _resume_target(argv: list[str], make: str) -> Path | None:
     """Run the CLI with `argv` against a runs dir holding one dir named `make`."""
@@ -117,35 +95,24 @@ def _resume_target(argv: list[str], make: str) -> Path | None:
 
 
 def test_resume_run_takes_the_run_id_that_named_the_dir():
-    """`--run-id shakedown` creates `acme-flow-shakedown`, so `--resume-run shakedown`
-    has to find it.
-
-    The flag's metavar is `PATH_OR_RUN_ID` and it only ever resolved a path or the full
-    dir *name* — so resuming a run with the same id you started it with failed, which is
-    the one spelling anybody types. It matters more than a papercut: a run that will not
-    resume is a run whose checkpoint is silently abandoned, and the fix for that is to
-    start over."""
+    """`--run-id shakedown` creates `acme-flow-shakedown`, so `--resume-run shakedown` has to find it."""
     target = _resume_target(["--resume-run", "shakedown"], make="acme-flow-shakedown")
     assert target is not None and target.name == "acme-flow-shakedown", target
 
 
 def test_resume_run_still_takes_the_dir_name():
-    """The documented spelling keeps working, and keeps winning: a dir that matches the
-    argument outright is never re-read as a run id."""
+    """The documented spelling keeps working, and keeps winning: a dir that matches the argument outright is never re-read as a run id."""
     target = _resume_target(["--resume-run", "acme-flow-shakedown"], make="acme-flow-shakedown")
     assert target is not None and target.name == "acme-flow-shakedown", target
 
 
 def test_an_unresolvable_resume_names_what_was_asked_for(capsys):
-    """The error quotes the argument and the dir searched, not a path the caller never
-    typed — after the run-id fallback, printing the last candidate would name a dir that
-    was never asked for."""
+    """The error quotes the argument and the dir searched, not a path the caller never typed — after the run-id fallback, printing the last candidate would name a dir that was never asked for."""
     _resume_target(["--resume-run", "nope"], make="acme-flow-shakedown")
     err = capsys.readouterr().err
     assert "'nope'" in err and "runs" in err, err
 
 
-# ── --profile: selected, validated, and threaded to the turn ────────────────
 
 _PROFILES = """\
 config_version = 2
@@ -176,13 +143,7 @@ effort = "high"
 
 
 def _run_profiled(argv: list[str], config: Path) -> dict:
-    """Drive `run` against a config file, capturing what the invocation carried.
-
-    Also spies on `select_active_profile` to capture the *table* it returned — not
-    just the name `invocation.config` carries — so a caller can assert what a node
-    would actually resolve a power tier against, not merely that a name string
-    matches.
-    """
+    """Drive `run` against a config file, capturing what the invocation carried."""
     captured: dict = {}
 
     def fake_run_pyflow(invocation):
@@ -217,17 +178,9 @@ def _profiles_config(tmp_path: Path) -> Path:
 
 
 def test_bare_cli_auto_selects_the_profile_keyed_to_that_cli(tmp_path):
-    """`--cli claude` with no `--profile` is not "no profile" — `[profiles.claude]`
-    (key matches the `cli` field) is auto-selected, exactly as if `--profile claude`
-    had been passed. This is the CLI-integration counterpart of core's
-    `test_auto_select_finds_the_profile_whose_key_matches_the_cli`; that test proves
-    the resolver, this one proves `run` actually calls it for a bare `--cli`."""
+    """`--cli claude` with no `--profile` is not "no profile" — `[profiles.claude]` (key matches the `cli` field) is auto-selected, exactly as if `--profile claude` had been passed."""
     captured = _run_profiled(["--cli", "claude"], _profiles_config(tmp_path))
 
-    # `invocation.config.profile` only ever records an *explicit* `--profile` name
-    # (see `RunConfig.profile`'s docstring) — the auto-picked profile is not named
-    # there. What proves the auto-pick happened is the resolved backend and the
-    # profile *table* `select_active_profile` actually returned.
     assert captured["profile"] == ""
     assert captured["backend"] == "claude"
     assert captured["profile_table"].get("cli") == "claude"
@@ -245,10 +198,7 @@ def test_profile_travels_to_the_run_and_carries_its_default_cli(tmp_path):
 
 
 def test_profile_cli_overrides_the_default_cli(tmp_path):
-    """v2: a profile carries its own `cli` field, so the profile wins over the top-level
-    ``default_cli`` — but ``--cli`` is mutually exclusive with ``--profile``, so the test
-    drives that path: no ``--cli`` flag, the profile's own ``cli = "opencode"`` is what
-    runs."""
+    """v2: a profile carries its own `cli` field, so the profile wins over the top-level ``default_cli`` — but ``--cli`` is mutually exclusive with ``--profile``, so the test drives that path: no ``--cli`` flag, the profile's own ``cli = "opencode"`` is what runs."""
     captured = _run_profiled(["--profile", "local"], _profiles_config(tmp_path))
 
     assert (captured["profile"], captured["backend"]) == ("local", "opencode")
@@ -268,8 +218,7 @@ def test_an_unknown_profile_is_refused_before_the_first_state(tmp_path, capsys):
 
 
 def test_a_misspelled_cli_inside_a_profile_is_refused(tmp_path, capsys):
-    """v2: a profile's ``cli`` field naming a CLI no backend implements is the typo
-    that would otherwise fall through to ``get_backend``'s error mid-turn."""
+    """v2: a profile's ``cli`` field naming a CLI no backend implements is the typo that would otherwise fall through to ``get_backend``'s error mid-turn."""
     _run_profiled(["--profile", "typo"], _profiles_config(tmp_path))
 
     err = capsys.readouterr().err
@@ -277,14 +226,10 @@ def test_a_misspelled_cli_inside_a_profile_is_refused(tmp_path, capsys):
 
 
 def test_a_profile_that_maps_nothing_for_the_run_is_refused(tmp_path, capsys):
-    """Under v2 the profile's ``cli`` is the run's CLI by construction — there is no
-    "wrong backend for this profile" to refuse anymore. What remains is the profile
-    that names a CLI but carries no models: the run would still go through, in
-    bare-CLI mode, so the boundary lets it through. This test documents the change."""
+    """Under v2 the profile's ``cli`` is the run's CLI by construction — there is no "wrong backend for this profile" to refuse anymore."""
     _run_profiled(["--profile", "cli-only"], _profiles_config(tmp_path))
 
-    # cli-only has cli = "codex" and no models — bare-CLI mode for codex.
-    assert True  # reached without refusal
+    assert True
 
 
 def test_a_profile_that_only_names_a_cli_stays_legal(tmp_path):
@@ -301,7 +246,6 @@ def test_the_checks_run_on_a_dry_run_too(tmp_path, capsys):
     assert "locl" in capsys.readouterr().err
 
 
-# ── a resume re-applies the profile the run was started under ───────────────
 
 def _resume_profiled(argv: list[str], recorded: str, config: Path) -> dict:
     """Drive a `--resume-run` against a run dir whose run.json names `recorded`."""
@@ -328,9 +272,7 @@ def _resume_profiled(argv: list[str], recorded: str, config: Path) -> dict:
 
 
 def test_a_flagless_resume_re_applies_the_recorded_profile(tmp_path):
-    """The operator resuming a week-old run is rarely the one who chose its models, and
-    re-resolving those nodes against the machine's global set is a substitution nothing
-    in the output would show."""
+    """The operator resuming a week-old run is rarely the one who chose its models, and re-resolving those nodes against the machine's global set is a substitution nothing in the output would show."""
     captured = _resume_profiled([], "local", _profiles_config(tmp_path))
 
     assert (captured["profile"], captured["backend"]) == ("local", "opencode")
@@ -346,8 +288,6 @@ def test_an_explicit_profile_overrides_the_recorded_one(tmp_path):
 def test_a_cli_switch_does_not_restore_the_previous_backends_profile(tmp_path):
     from workhorse.rundir import resume_argv
 
-    # switch-cli re-execs using this producer; its explicit backend must win
-    # over the profile saved by the previous process.
     argv = resume_argv("workhorse-acme-flow", Path("shakedown"), cli="opencode")
     captured = _resume_profiled(argv[4:], "cli-only", _profiles_config(tmp_path))
 
@@ -360,7 +300,6 @@ def test_a_resume_of_a_run_that_had_no_profile_is_unchanged(tmp_path):
     assert (captured["profile"], captured["backend"]) == ("", "claude")
 
 
-# ── --config points the whole process at one config file ────────────────────
 
 def _run_with_config(argv: list[str]) -> None:
     with tempfile.TemporaryDirectory() as tmp:
@@ -373,8 +312,7 @@ def _run_with_config(argv: list[str]) -> None:
 
 
 def test_config_flag_is_written_back_to_the_environment(tmp_path):
-    """The config is re-read per node and by every subprocess, each through its own
-    `config_path()` — so the flag has to move the environment, not just this frame."""
+    """The config is re-read per node and by every subprocess, each through its own `config_path()` — so the flag has to move the environment, not just this frame."""
     named = tmp_path / "bench.toml"
     named.write_text('default_cli = "claude"\n')
 
@@ -393,9 +331,7 @@ def test_config_flag_wins_over_the_environment(tmp_path):
 
 
 def test_without_the_flag_discovery_is_left_alone(tmp_path):
-    """Stamping the *discovered* path would make it explicit — and an explicit path
-    suppresses the legacy per-tool merge, so a machine still on the old files would
-    silently lose them to a flag nobody passed."""
+    """Stamping the *discovered* path would make it explicit — and an explicit path suppresses the legacy per-tool merge, so a machine still on the old files would silently lose them to a flag nobody passed."""
     with patch.dict(os.environ, {}, clear=False):
         os.environ.pop(run_cmd.CONFIG_PATH_ENV, None)
         _run_with_config([])

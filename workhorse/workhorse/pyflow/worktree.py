@@ -1,15 +1,4 @@
-"""Cutting a fresh git worktree and branch for a `--worktree`-dispatched run.
-
-Unlike `workhorse.gitstate`, which observes a tree and never fails a run over it, this
-module *drives* git: `git worktree add` either produces the worktree the run is about to
-live in, or it didn't, and there is no meaningful "empty" answer to fall back to in
-between. So it raises a clear, named error — on a missing `worktree_dir` config, on a
-branch or directory collision, or on the underlying `git` invocation failing — rather
-than returning a sentinel the caller has to re-interpret.
-
-Same subprocess-and-timeout shape as `gitstate.py`, for the same reason: workhorse stays
-dependency-light and does not pull in GitPython for one command.
-"""
+"""Cutting a fresh git worktree and branch for a `--worktree`-dispatched run."""
 
 from __future__ import annotations
 
@@ -17,13 +6,11 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
-#: Generous for a worktree checkout of a normal-sized repo; still short enough that a
-#: wedged filesystem or a huge repo costs the caller a bounded failure, not a hang.
 TIMEOUT_S = 60.0
 
 
 class WorktreeError(Exception):
-    """`--worktree` could not cut a worktree. The message names the fix or the conflict."""
+    """`--worktree` could not cut a worktree."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -35,8 +22,7 @@ class Worktree:
 
 
 def _sanitize(branch: str) -> str:
-    """A branch name into something safe as a path segment: `/` is the only character
-    branch names routinely carry that a directory name cannot."""
+    """A branch name into something safe as a path segment: `/` is the only character branch names routinely carry that a directory name cannot."""
     return branch.replace("/", "-")
 
 
@@ -48,9 +34,7 @@ def add(
     base_ref: str,
     dir_name: str,
 ) -> Worktree:
-    """Run `git worktree add -b <branch> <worktree_dir>/<dir_name> <base_ref>` from
-    ``repo_dir``. Raises :class:`WorktreeError` naming the conflict when the branch or
-    the target directory already exists, or when git itself fails."""
+    """Run `git worktree add -b <branch> <worktree_dir>/<dir_name> <base_ref>` from ``repo_dir``."""
     target = worktree_dir / dir_name
     if target.exists():
         raise WorktreeError(f"worktree directory already exists: {target}")

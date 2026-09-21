@@ -1,10 +1,4 @@
-"""A `vet` record becomes ordinary assertions in the ledger.
-
-The defect this closes reached a green run: the screenshot showing a page crushed into a
-column against the right margin was the one artifact nothing downstream read. Translating
-the record here — rather than reporting it as a signal somebody may act on — is what makes
-a misplaced component fail the story it was built in.
-"""
+"""A `vet` record becomes ordinary assertions in the ledger."""
 
 from __future__ import annotations
 
@@ -82,8 +76,6 @@ def _records(
             "screenshot": str(shot),
             "regions": str(shot.with_suffix(".regions.json")),
             "components": components or [],
-            # Empty by default: most tests below are about the registration, and a device
-            # photograph genuinely carries no URL. The arrival tests pass one on purpose.
             "url": url,
         },
         {"type": "scenario", "id": "s-1", "status": "passed", "assertions": 0, "failures": 0},
@@ -99,15 +91,11 @@ def _asserts(driver: PythonDriver) -> list[dict]:
 
 
 def test_a_misplaced_component_is_a_failed_assertion_carrying_its_numbers(repo: Path) -> None:
-    """`by_role("article")` is true whether the page lays the article across the window or
-    crushes it into a sliver, so the geometry has to arrive as its own assertion — and it
-    has to quote the measured share, because the fix loop reads the ledger and nothing else."""
+    """`by_role("article")` is true whether the page lays the article across the window or crushes it into a sliver, so the geometry has to arrive as its own assertion — and it has to quote the measured share, because the fix loop reads the ledger and nothing else."""
     _book(repo)
     shot = _shot(
         repo,
         [
-            # The scan mints the `:nth(i)` suffix for an element with no id; the book
-            # cannot know an index taken from one render and must not have to.
             _region("article", "article.prose:nth(41)", (1180, 88, 250, 760)),
             _region("navigation", "nav.toc", (0, 88, 240, 760)),
         ],
@@ -122,8 +110,6 @@ def test_a_misplaced_component_is_a_failed_assertion_carrying_its_numbers(repo: 
     assert [r["result"] for r in records] == ["FAIL", "PASS"]
     assert "is placed wrong" in records[0]["label"]
     assert "width is 17.4% of the viewport, documented as 60-100%" in records[0]["label"]
-    # The obligations the scenario declared, not a separate coverage vocabulary: a vet
-    # failure has to make the same acceptance criterion go red that a check does.
     assert records[0]["covers"] == ["ac:1"]
 
 
@@ -150,9 +136,7 @@ def test_the_verdicts_are_filed_beside_the_screenshot(repo: Path) -> None:
 
 
 def test_a_vet_of_a_screen_the_book_does_not_document_fails_the_scenario(repo: Path) -> None:
-    """The failure mode that would quietly undo the whole change: a vet naming nothing
-    registers nothing, reports no disagreement, and is indistinguishable from a correct
-    screen. It is a problem, not an empty verdict list."""
+    """The failure mode that would quietly undo the whole change: a vet naming nothing registers nothing, reports no disagreement, and is indistinguishable from a correct screen."""
     _book(repo)
     shot = _shot(repo, [_region("article", "article.prose", (0, 88, 1400, 760))])
     driver = _driver(repo)
@@ -170,10 +154,7 @@ def test_a_vet_of_a_screen_the_book_does_not_document_fails_the_scenario(repo: P
 def test_a_vet_spelled_in_the_packet_s_frame_resolves_against_a_book_rooted_elsewhere(
     repo: Path,
 ) -> None:
-    """The defect this closes: a compiled plan spells `qa.vet(...)` relative to the
-    packet's `featuresRoot`, not to the checkout's own default `docs/features`. A book
-    nested under a service directory has to resolve there too, or every scenario in that
-    service aborts against a book that was never the one the plan spoke of."""
+    """The defect this closes: a compiled plan spells `qa.vet(...)` relative to the packet's `featuresRoot`, not to the checkout's own default `docs/features`."""
     nested_screen = "shed/docs/features/groom/gui/screens/s.md"
     write(
         repo / nested_screen,
@@ -202,9 +183,7 @@ def test_a_vet_spelled_in_the_packet_s_frame_resolves_against_a_book_rooted_else
 def test_with_no_qa_context_packet_a_vet_reports_the_missing_frame_as_a_problem(
     repo: Path,
 ) -> None:
-    """No packet means no stated frame to resolve `qa.vet`'s argument against. The honest
-    outcome is a problem naming that, not a silent fall back to the checkout's own book and
-    not an empty verdict list that reads as a pass."""
+    """No packet means no stated frame to resolve `qa.vet`'s argument against."""
     _book(repo)
     spec = repo / "docs/specs/story-1"
     spec.mkdir(parents=True, exist_ok=True)
@@ -222,15 +201,13 @@ def test_with_no_qa_context_packet_a_vet_reports_the_missing_frame_as_a_problem(
 
 
 def test_a_scoped_vet_registers_only_the_components_it_names(repo: Path) -> None:
-    """A photograph taken mid-journey establishes some of a screen, not all of it. Naming
-    the components the scenario put on screen is how it says which ones it is answering
-    for — the rest are somebody else's scenario, not a silent pass."""
+    """A photograph taken mid-journey establishes some of a screen, not all of it."""
     _book(repo)
     shot = _shot(
         repo,
         [
             _region("article", "article.prose", (0, 88, 1400, 760)),
-            _region("navigation", "nav.toc", (0, 88, 1400, 760)),  # far wider than 10-25%
+            _region("navigation", "nav.toc", (0, 88, 1400, 760)),
         ],
     )
     driver = _driver(repo)
@@ -243,8 +220,7 @@ def test_a_scoped_vet_registers_only_the_components_it_names(repo: Path) -> None
 
 
 def test_a_scoped_vet_naming_a_component_the_book_does_not_have_fails(repo: Path) -> None:
-    """Scoping narrows what a photograph answers for, so a typo in the list would narrow it
-    to nothing and report a pass. The name has to exist on the screen it names."""
+    """Scoping narrows what a photograph answers for, so a typo in the list would narrow it to nothing and report a pass."""
     _book(repo)
     shot = _shot(repo, [_region("article", "article.prose", (0, 88, 1400, 760))])
     driver = _driver(repo)
@@ -269,10 +245,7 @@ def test_a_screen_that_was_gone_by_the_time_it_was_measured_fails(repo: Path) ->
 
 
 def test_a_vet_speaks_only_for_the_document_it_photographed(repo: Path) -> None:
-    """The fan-out that made an abort-shaped verdict out of a placement one: a vet was
-    filed against the scenario's whole `covers`, so one misplaced component disproved
-    every API obligation the same scenario happened to claim. The obligations of the
-    screen it photographed still go red; the others were never looked at."""
+    """The fan-out that made an abort-shaped verdict out of a placement one: a vet was filed against the scenario's whole `covers`, so one misplaced component disproved every API obligation the same scenario happened to claim."""
     _book(repo)
     shot = _shot(
         repo,
@@ -301,22 +274,13 @@ def test_a_vet_speaks_only_for_the_document_it_photographed(repo: Path) -> None:
     assert result.status == "failed"
     failed = [record for record in _asserts(driver) if record["result"] == "FAIL"]
     assert len(failed) == 1
-    # The screen's own obligation, plus the criterion that names no document at all —
-    # never the HTTP obligation sitting beside them in the same scenario.
     assert failed[0]["covers"] == [f"okf:{SCREEN}#loads:does:1", "ac:1"]
 
 
 def test_a_vet_credits_a_same_as_family_s_obligation_though_the_id_names_another_screen(
     repo: Path,
 ) -> None:
-    """A `same-as:` family collapses onto one id minted for its lexicographic-min member
-    (`context.py::_obligations`), so the id this scenario covers can name a screen other
-    than the one a given vet photographs — `docs/features/groom/gui/screens/other.md`
-    below, never `SCREEN` — while still being the very obligation `SCREEN` states, because
-    the family occupies both documents. `_covers_in` has to credit it by looking the id up
-    in the plan's `occurrenceDocuments` record, not by parsing the document out of the id
-    itself, or every member but the representative loses its own obligation.
-    """
+    """A `same-as:` family collapses onto one id minted for its lexicographic-min member (`context.py::_obligations`), so the id this scenario covers can name a screen other than the one a given vet photographs — `docs/features/groom/gui/screens/other.md` below, never `SCREEN` — while still being the very obligation `SCREEN` states, because the family occupies both documents."""
     _book(repo)
     shot = _shot(
         repo,
@@ -341,22 +305,12 @@ def test_a_vet_credits_a_same_as_family_s_obligation_though_the_id_names_another
     assert result.status == "failed"
     failed = [record for record in _asserts(driver) if record["result"] == "FAIL"]
     assert len(failed) == 1
-    # The family's obligation, credited via SCREEN's own membership in its
-    # occurrenceDocuments, plus the criterion that names no document — never the
-    # obligation whose occurrenceDocuments names a document this vet never photographed.
     assert failed[0]["covers"] == [family_id, "ac:1"]
 
 
 def test_a_failed_verdict_puts_what_the_page_showed_on_the_ledger(repo: Path) -> None:
-    """A reader of `qa-run.ndjson` has the vet JSON beside it and no reason to open it.
-
-    `actual` used to be the literal `"as documented"` whenever the verdict carried no
-    placement disagreement — which is every `missing` verdict, since a component that
-    rendered nowhere has no band to disagree with. The ledger then showed a failed
-    assertion whose `actual` read like a pass. A constant is not an observation.
-    """
+    """A reader of `qa-run.ndjson` has the vet JSON beside it and no reason to open it."""
     _book(repo)
-    # The navigation the book documents rendered; the article did not.
     shot = _shot(repo, [_region("navigation", "nav.toc", (0, 88, 240, 760))])
     driver = _driver(repo)
 
@@ -366,19 +320,11 @@ def test_a_failed_verdict_puts_what_the_page_showed_on_the_ledger(repo: Path) ->
     records = {r["result"]: r for r in _asserts(driver)}
     assert "missing" in records["FAIL"]["params"]["actual"]
     assert "as documented" not in records["FAIL"]["params"]["actual"]
-    # And the passing one quotes the rect it measured, not a restatement of the book.
     assert "matched at x=0, y=88, 240x760" == records["PASS"]["params"]["actual"]
 
 
 def test_a_vet_of_a_screen_the_walk_never_reached_is_a_hard_stop(repo: Path) -> None:
-    """The screen is an argument and the pixels are an observation; nothing else related them.
-
-    A journey that stopped one step short had the book of the screen it was supposed to reach
-    registered against the render of the screen it actually reached — reporting a component
-    `missing` that was never meant to be on that page, and `matched` for an element of a
-    different screen answering the same CSS. Both were observed in one live run, which is why
-    the mismatch stops the registration rather than joining it as another verdict.
-    """
+    """The screen is an argument and the pixels are an observation; nothing else related them."""
     _book(repo)
     shot = _shot(repo, [_region("navigation", "nav.toc", (0, 88, 240, 760))])
     driver = _driver(repo)
@@ -423,11 +369,7 @@ def test_a_vet_on_the_documented_route_registers_and_says_it_confirmed_the_scree
 
 
 def test_a_photograph_with_no_url_says_the_screen_was_never_established(repo: Path) -> None:
-    """A device has no URL, so its vet cannot claim it photographed the screen it names.
-
-    Reported rather than assumed: the verdicts are still worth having, and a reader who can
-    see they were graded without the subject being established knows what they are worth.
-    """
+    """A device has no URL, so its vet cannot claim it photographed the screen it names."""
     _book(repo)
     shot = _shot(
         repo,

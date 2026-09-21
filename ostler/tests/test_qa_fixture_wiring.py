@@ -1,14 +1,4 @@
-"""An end-to-end check that `context.py`'s fixture wiring — `_fixture_provides_index`,
-`_parse_captures`, the `needs`-edge lookup, and ambient fixtures picking up `providesKeys` —
-is actually exercised over a real on-disk book, not just over hand-built packet fields the
-way every other `compile_plan_gaps` test in this tree constructs its fixtures.
-
-Two fixtures, `seeded-acme` (provides `id`) and `seeded-globex` (needs `seeded-acme`,
-provides `project_id`), written exactly per the `fixture` node-type doc. One endpoint node
-wires `fixture: seeded-globex`, a `capture:` bullet, and route/verify references to
-`$name`, `@seeded-acme.id` and `@seeded-globex.project_id` — the three reference forms the
-fixture doc says a route path, a request value or a `verify:` call may use.
-"""
+"""An end-to-end check that `context.py`'s fixture wiring — `_fixture_provides_index`, `_parse_captures`, the `needs`-edge lookup, and ambient fixtures picking up `providesKeys` — is actually exercised over a real on-disk book, not just over hand-built packet fields the way every other `compile_plan_gaps` test in this tree constructs its fixtures."""
 
 from __future__ import annotations
 
@@ -159,14 +149,7 @@ def test_fixture_wiring_resolves_every_reference_over_a_real_book(tmp_path: Path
 
 
 def test_fixture_wiring_compiled_source_captures_before_it_is_consumed(tmp_path: Path) -> None:
-    """`compile_plan` must not just credit `name` as produced — it has to emit the call that
-    actually captures it, before the line that reads `$name` back.
-
-    The book's `capture: name from $.project.name` sits on the same node as the
-    `json_path(... matches="$name")` verify that reads it back, so `qa.capture_field(...)`
-    has to land between the request it reads from and that verify call in the compiled
-    source's own line order, or `$name` would resolve against a capture that never ran.
-    """
+    """`compile_plan` must not just credit `name` as produced — it has to emit the call that actually captures it, before the line that reads `$name` back."""
     packet, _base = _build(tmp_path, capture=True)
     source = compile_plan(packet, story="demo-story")
     assert 'qa.capture_field("name", observed_1.json(), "project.name")' in source
@@ -216,13 +199,7 @@ title: Seeded globex
 
 
 def test_fixture_wiring_needs_binding_checks_against_consumers_own_args(tmp_path: Path) -> None:
-    """A `needs:` binding's names are the CONSUMER's own `args:`, never the target's.
-
-    `seeded-acme` (the needs target) declares no `args:` at all — runtime always runs it with
-    `{}` — while `seeded-globex` (the consumer) declares `acme_id` and its own `needs:` binding
-    supplies it. Doctor must validate the binding against `seeded-globex`'s own `args:`, not
-    `seeded-acme`'s, or this legitimate book trips a false `fixture-arg-mismatch`.
-    """
+    """A `needs:` binding's names are the CONSUMER's own `args:`, never the target's."""
     write(tmp_path / RUNBOOK_PATH, RUNBOOK)
     write(tmp_path / SEEDED_ACME_PATH, SEEDED_ACME)
     write(tmp_path / SEEDED_GLOBEX_PATH, SEEDED_GLOBEX_WITH_NEEDS_ARG)
@@ -235,14 +212,7 @@ def test_fixture_wiring_needs_binding_checks_against_consumers_own_args(tmp_path
 def test_fixture_wiring_gaps_a_provided_fact_whose_source_the_book_leaves_open(
     tmp_path: Path,
 ) -> None:
-    """End to end: strip one `from:`/`read:` pair and the obligations arranging it stop compiling.
-
-    The hand-built packets elsewhere in this suite assert the partition; this asserts the wiring
-    that gets `providesUndetermined` onto an obligation at all — `provides:` entries survive
-    graph serialization with their own properties, the `needs:` closure carries an undetermined
-    key from the fixture that declared it to the one that composes it, and `_parse_fixtures`
-    files it on every arrangement that reaches it.
-    """
+    """End to end: strip one `from:`/`read:` pair and the obligations arranging it stop compiling."""
     _packet, base = _build(tmp_path, capture=True)
     write(tmp_path / SEEDED_ACME_PATH,
           SEEDED_ACME.replace("    - from: [seed-it](#seed-it)\n    - read: account.id\n", ""))
@@ -252,5 +222,4 @@ def test_fixture_wiring_gaps_a_provided_fact_whose_source_the_book_leaves_open(
 
     undetermined = [g for g in result.gaps if g.kind == "undetermined-provided-fact"]
     assert undetermined, [g.kind for g in result.gaps]
-    # Reached through `needs:`: the endpoint arranges `seeded-globex`, which needs `seeded-acme`.
     assert all("seeded-acme.id" in g.detail for g in undetermined)

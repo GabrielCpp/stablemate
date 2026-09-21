@@ -1,14 +1,4 @@
-"""`control rewind`, `control resume`, `status --params` and `stop --wait`.
-
-These are the verbs that act on a run nobody is serving, so what they must never do is
-act on one somebody is: a rewind under a live driver is overwritten at its next transition,
-and a resume beside one is two drivers writing one run dir. The tests below pin that
-refusal first, then the halves that fail quietly — a rewind that writes a checkpoint the
-resume would reject, a resume that dies in its first second and reports success, a
-`--cli` swap that leaves the recorded `--profile` in the line `run` refuses both of.
-
-Run: uv run python tests/test_control_offline.py   (or via pytest)
-"""
+"""`control rewind`, `control resume`, `status --params` and `stop --wait`."""
 
 from __future__ import annotations
 
@@ -44,7 +34,6 @@ class Demo(Workflow):
         return Done(None)
 
 
-#: One registry for the module: a flow class belongs to exactly one.
 _REGISTRY = Registry("demo").entry_point(Demo)
 
 
@@ -102,7 +91,6 @@ def _checkpoint(run_dir: Path) -> PyflowCheckpoint:
     )
 
 
-# --- rewind ------------------------------------------------------------------------------
 
 
 def test_rewind_moves_the_checkpoint_carries_params_by_name_and_records_it(capsys) -> None:
@@ -113,11 +101,7 @@ def test_rewind_moves_the_checkpoint_carries_params_by_name_and_records_it(capsy
         _control(runs, "rewind", "--to", "build", "--param", "item=G2")
 
         checkpoint = _checkpoint(run_dir)
-        # `budget` is a name `build` takes, so it rides along; `verdict` is not, and is
-        # dropped and reported rather than failing the edit.
         assert (checkpoint.state, checkpoint.params) == ("build", {"item": "G2", "budget": 1})
-        # The gate belonged to the state the run left; re-arming it would park the
-        # rewound state on a question it never asked.
         assert checkpoint.waiting_on is None
         backups = list(run_dir.glob("checkpoint.rewound-*.json"))
         assert len(backups) == 1
@@ -232,7 +216,6 @@ def test_rewind_flags_are_refused_on_other_verbs(capsys) -> None:
         assert "takes no --to" in capsys.readouterr().err
 
 
-# --- status --params / stop --wait -------------------------------------------------------
 
 
 def test_status_params_reads_the_checkpoint_without_asking_the_run(capsys) -> None:
@@ -262,7 +245,6 @@ def test_wait_gone_returns_once_the_pid_is_gone_and_fails_while_it_lives(capsys)
         assert "still alive" in capsys.readouterr().err
 
 
-# --- resume ------------------------------------------------------------------------------
 
 
 def test_resume_line_swaps_the_backend_flags_for_the_named_cli() -> None:

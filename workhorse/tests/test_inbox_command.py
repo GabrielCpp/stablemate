@@ -1,13 +1,4 @@
-"""`workhorse-<name> inbox` — read and answer the messages left for a run.
-
-Unlike `control`, this command is file-based: there is no process to talk to, so the
-tests write directly to a run dir's `inbox.jsonl` and assert on what `read`/`reply`
-print and persist. The one behavior shared with `control` — resolving `--run` by id,
-dir name or path, and defaulting to the newest unfinished run — is exercised again here
-because the two commands must not drift on it independently.
-
-Run: uv run python tests/test_inbox_command.py   (or via pytest)
-"""
+"""`workhorse-<name> inbox` — read and answer the messages left for a run."""
 
 from __future__ import annotations
 
@@ -50,9 +41,7 @@ def _inbox(*argv: str) -> None:
 
 
 def test_an_id_groom_knows_is_read_from_the_run_dir_groom_names(capsys, monkeypatch) -> None:
-    """`inbox` resolves a run the way `control` does — including through groom when
-    the id is not under the cwd's runs dir — or the two commands drift on which run
-    an operator's id means."""
+    """`inbox` resolves a run the way `control` does — including through groom when the id is not under the cwd's runs dir — or the two commands drift on which run an operator's id means."""
     with tempfile.TemporaryDirectory() as tmp:
         elsewhere = Path(tmp) / "target-repo" / ".agents" / "runs"
         run_dir = _run_dir(elsewhere, "demo-ghost")

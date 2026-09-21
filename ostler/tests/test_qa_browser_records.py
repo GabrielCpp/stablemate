@@ -1,12 +1,4 @@
-"""The shape of what a browser scenario records about the page it drove.
-
-These are the diagnostics a plan asserts on, so their field names are contract. They live
-in the harness now — inside the scenario's own process, where the page object is — but the
-failures each one was written for are unchanged, which is why the cases came across whole.
-
-The module is loaded by path: it is stdlib-plus-playwright and deliberately not importable
-as `ostler.*`, because the interpreter that runs a scenario is the project's, not ostler's.
-"""
+"""The shape of what a browser scenario records about the page it drove."""
 
 from __future__ import annotations
 
@@ -20,7 +12,6 @@ from typing import Any
 import pytest
 
 _HARNESS = Path(__file__).resolve().parents[1] / "ostler/qa/harness"
-# The harness reaches its siblings the way the subprocess does — by directory, not by package.
 sys.path.insert(0, str(_HARNESS))
 
 _SOURCE = _HARNESS / "ostler_qa_browser.py"
@@ -60,12 +51,7 @@ def _request(
     timing: dict[str, float] | None = None,
     response: Any = None,
 ) -> Any:
-    """A Playwright ``Request`` as the handlers use it.
-
-    `headers` and `post_data` are plain attributes on the real object — no protocol call —
-    which is why the handlers read them and not their `all_headers()` siblings; `timing` is
-    a property whose fields are `-1` for a phase that did not happen.
-    """
+    """A Playwright ``Request`` as the handlers use it."""
     return SimpleNamespace(
         url=url,
         method=method,
@@ -86,8 +72,7 @@ def _response(
     headers: dict[str, str] | None = None,
     body: Any = b"",
 ) -> Any:
-    """A Playwright ``Response``. ``body()`` raises for a redirect, exactly as the driver
-    does — `Response.body: Response body is unavailable for redirect responses`."""
+    """A Playwright ``Response``."""
     declared = headers if headers is not None else {"content-type": "application/json"}
 
     def _body() -> bytes:
@@ -107,14 +92,7 @@ def _response(
 
 
 def test_a_chromium_context_is_granted_the_clipboard_by_default(tmp_path: Path) -> None:
-    """A copy journey is only provable if the context can reach the clipboard.
-
-    Chromium denies an ungranted permission instead of prompting, so
-    ``navigator.clipboard.writeText()`` rejects; an app that catches that renders its
-    failure branch with no console error, and the run blames the product for a harness
-    default. Firefox and WebKit reject the clipboard permission names outright, so the
-    default is Chromium's alone.
-    """
+    """A copy journey is only provable if the context can reach the clipboard."""
     assert _browser(tmp_path).permissions() == ["clipboard-read", "clipboard-write"]
     assert _browser(tmp_path, browser="firefox").permissions() == []
     assert _browser(tmp_path, permissions=["geolocation"]).permissions() == ["geolocation"]
@@ -124,10 +102,7 @@ def test_a_chromium_context_is_granted_the_clipboard_by_default(tmp_path: Path) 
 
 
 def test_every_console_message_is_kept_not_only_the_errors(tmp_path: Path) -> None:
-    """A scenario that fails with an empty ``consoleErrors`` used to leave nothing to read,
-    though the warning that explains it — a React hydration or key warning, levelled
-    ``warn`` — was right there on the console and thrown away.
-    """
+    """A scenario that fails with an empty ``consoleErrors`` used to leave nothing to read, though the warning that explains it — a React hydration or key warning, levelled ``warn`` — was right there on the console and thrown away."""
     browser = _browser(tmp_path, at_ms=1500)
     browser._on_console(
         SimpleNamespace(
@@ -160,10 +135,7 @@ def test_every_console_message_is_kept_not_only_the_errors(tmp_path: Path) -> No
 
 
 def test_an_uncaught_exception_is_recorded_at_all(tmp_path: Path) -> None:
-    """``pageerror`` is not ``console``: an exception nothing catches reaches it, and the
-    console only as a side effect. Unrecorded, a page that threw during hydration produced
-    diagnostics identical to a page that ran cleanly.
-    """
+    """``pageerror`` is not ``console``: an exception nothing catches reaches it, and the console only as a side effect."""
     browser = _browser(tmp_path, at_ms=900)
     browser._on_page_error(
         SimpleNamespace(
@@ -178,17 +150,13 @@ def test_an_uncaught_exception_is_recorded_at_all(tmp_path: Path) -> None:
             "atMs": 900,
             "name": "TypeError",
             "message": "locale is undefined",
-            # The frame that threw: without it the message names no file, and triage
-            # begins by reproducing a run that has already been recorded once.
             "stack": "TypeError: locale is undefined\n    at Intl (app.js:12:4)",
         }
     ]
 
 
 def test_a_request_is_recorded_even_when_nothing_ever_comes_back(tmp_path: Path) -> None:
-    """A request still in flight when the scenario ends is in neither ``responses`` nor
-    ``failedRequests`` — which is exactly the shape of a hung endpoint.
-    """
+    """A request still in flight when the scenario ends is in neither ``responses`` nor ``failedRequests`` — which is exactly the shape of a hung endpoint."""
     browser = _browser(tmp_path, at_ms=200)
     browser._on_request(_request())
 
@@ -208,12 +176,7 @@ def test_a_request_is_recorded_even_when_nothing_ever_comes_back(tmp_path: Path)
 
 
 def test_a_response_record_carries_the_status_a_5xx_assertion_needs(tmp_path: Path) -> None:
-    """``requestfailed`` never fires for a completed 500, so before the ``response``
-    listener existed the diagnostics file had no status in it anywhere. A plan that wrote
-    ``[.responses[]? | select(.status >= 500)] | length == 0`` was reading a key nothing
-    produced, and jq answers a missing field with an empty stream rather than an error —
-    so the assertion passed on every run, including the ones serving 500s.
-    """
+    """``requestfailed`` never fires for a completed 500, so before the ``response`` listener existed the diagnostics file had no status in it anywhere."""
     browser = _browser(tmp_path, at_ms=4200)
     request = _request("http://127.0.0.1:8099/api/docs", method="POST")
     browser._on_response(_response(request, status=503, status_text="Service Unavailable"))
@@ -240,14 +203,7 @@ def test_a_response_record_carries_the_status_a_5xx_assertion_needs(tmp_path: Pa
 def test_an_uncaught_page_error_fails_the_scenario_without_the_plan_asking(
     tmp_path: Path,
 ) -> None:
-    """The gate is the runner's, because a gate the plan writes is a gate it can write
-    four fifths of.
-
-    The corpus has exactly that: a helper checking console errors, failed requests and 5xx
-    responses that never calls ``page_errors()``, so an uncaught exception in the app rode
-    out under a green verdict. Reviewing the missing fifth was a person's job once per
-    plan; here it is a condition the scenario cannot decline to observe.
-    """
+    """The gate is the runner's, because a gate the plan writes is a gate it can write four fifths of."""
     browser = _browser(tmp_path, at_ms=900)
     browser._on_page_error(
         SimpleNamespace(name="TypeError", message="locale is undefined", stack="")
@@ -261,14 +217,7 @@ def test_an_uncaught_page_error_fails_the_scenario_without_the_plan_asking(
 
 
 def test_a_5xx_fails_the_scenario_and_a_4xx_does_not(tmp_path: Path) -> None:
-    """Only the two conditions no scenario ever means to provoke are automatic.
-
-    A scenario proving an error branch provokes a 4xx on purpose and must stay green; a
-    500 is the server failing to answer at all, which no acceptance criterion asks for. The
-    same reasoning keeps console errors and cancelled requests assertable rather than
-    fatal — an app legitimately logs at error level and legitimately abandons an in-flight
-    request on navigation.
-    """
+    """Only the two conditions no scenario ever means to provoke are automatic."""
     browser = _browser(tmp_path, at_ms=4200)
     for status in (404, 422):
         browser._on_response(
@@ -290,11 +239,7 @@ def test_a_5xx_fails_the_scenario_and_a_4xx_does_not(tmp_path: Path) -> None:
 
 
 def test_a_failed_request_record_says_why_it_failed(tmp_path: Path) -> None:
-    """``requestfailed`` fires for an app cancelling its own fetch just as it does for a
-    refused connection. With only the URL recorded the two are the same entry, so a plan
-    that gates on ``.failedRequests | length == 0`` goes red on a benign StrictMode abort
-    and the only way back to green is to stop asserting on the field.
-    """
+    """``requestfailed`` fires for an app cancelling its own fetch just as it does for a refused connection."""
     url = "http://127.0.0.1:8099/v1/pages/p_copy_links/fr"
     browser = _browser(tmp_path, at_ms=3300)
     browser._on_failed_request(_request(url, failure="net::ERR_ABORTED"))
@@ -341,15 +286,7 @@ def _page(elements: list[dict], *, viewport=(1440, 900), document=(1440, 4000)) 
 
 
 def test_a_screenshot_is_measured_not_only_photographed(tmp_path: Path) -> None:
-    """The defect this exists for: a page whose content is a narrow column against the right
-    margin, under a scenario that passes.
-
-    Every assertion a browser plan makes addresses the accessibility tree, and the article
-    below is in that tree at full standing — `by_role("article")` finds it whether it is laid
-    out across the page or crushed into 250px of the 1440 available. So the run's own evidence
-    could not distinguish this page from a correct one, and the only record that could was a
-    PNG nothing downstream reads.
-    """
+    """The defect this exists for: a page whose content is a narrow column against the right margin, under a scenario that passes."""
     browser = _browser(tmp_path)
     browser.page = _page(
         [
@@ -375,8 +312,6 @@ def test_a_screenshot_is_measured_not_only_photographed(tmp_path: Path) -> None:
     )
     assert written == measured
 
-    # The undigested census beside it is what `ostler vet --regions` replays, so it keeps the
-    # regions the digest elides — a documented component is registered against this file.
     regions = json.loads(
         (tmp_path / "screenshots/scenario-target.regions.json").read_text(encoding="utf-8")
     )
@@ -386,10 +321,7 @@ def test_a_screenshot_is_measured_not_only_photographed(tmp_path: Path) -> None:
 
 
 def test_a_document_wider_than_its_window_is_flagged_without_a_threshold(tmp_path: Path) -> None:
-    """Two pathologies need no judgement call, so they are stated in the file rather than left
-    for the reader to derive: a document laid out wider than the viewport, and a region that
-    begins past the right edge. Everything else is a share, and the threshold that makes a
-    share *wrong* belongs to the audit prompt, not to the measurement."""
+    """Two pathologies need no judgement call, so they are stated in the file rather than left for the reader to derive: a document laid out wider than the viewport, and a region that begins past the right edge."""
     browser = _browser(tmp_path)
     browser.page = _page(
         [_element("main", "main", 0, 0, 2200, 900)], viewport=(1440, 900), document=(2200, 900)
@@ -408,14 +340,7 @@ def test_a_document_wider_than_its_window_is_flagged_without_a_threshold(tmp_pat
 def test_the_network_record_carries_what_the_request_and_the_response_said(
     tmp_path: Path,
 ) -> None:
-    """A URL and a status is the Network *list*; the panel a person opens is the headers,
-    the payload and the body.
-
-    Without them a run that reproduced a bug had no more to hand triage than a screenshot
-    of its consequence: an assertion could see the 500 and not the error body naming the
-    column, could see the POST and not the field it sent empty. Both are on the wire the
-    scenario already drove, and both are gone the moment the context closes.
-    """
+    """A URL and a status is the Network *list*; the panel a person opens is the headers, the payload and the body."""
     browser = _browser(tmp_path, at_ms=120)
     request = _request(
         "http://127.0.0.1:8099/v1/pages",
@@ -450,14 +375,7 @@ def test_the_network_record_carries_what_the_request_and_the_response_said(
 def test_a_body_that_cannot_be_kept_says_so_rather_than_reading_as_empty(
     tmp_path: Path,
 ) -> None:
-    """Every path through body capture writes something.
-
-    A record with no ``responseBody`` and no reason beside it is indistinguishable from one
-    whose body was empty, so ``assert "password" not in record.get("responseBody", "")``
-    passes against a body nobody captured. A redirect has no body at all, and a PNG is
-    fingerprinted rather than kept — neither is an empty response, and neither may be
-    recorded as one.
-    """
+    """Every path through body capture writes something."""
     browser = _browser(tmp_path)
     redirected = _request("http://127.0.0.1:8099/old")
     redirect = _response(
@@ -486,12 +404,7 @@ def test_a_body_that_cannot_be_kept_says_so_rather_than_reading_as_empty(
 def test_a_body_past_the_cap_is_truncated_out_loud_and_the_budget_is_finite(
     tmp_path: Path,
 ) -> None:
-    """The evidence directory is not a proxy log.
-
-    One 40 MB bundle would make the diagnostics file unreadable and unopenable, so both a
-    per-body cap and a per-scenario budget apply — and both announce themselves, because a
-    silently shortened body is a body an assertion reads the wrong answer out of.
-    """
+    """The evidence directory is not a proxy log."""
     browser = _browser(tmp_path)
     huge = _request("http://127.0.0.1:8099/bundle.js")
     huge.response = lambda: _response(
@@ -521,14 +434,7 @@ def test_a_body_past_the_cap_is_truncated_out_loud_and_the_budget_is_finite(
 
 
 def test_credentials_are_masked_in_the_traffic_the_run_keeps(tmp_path: Path) -> None:
-    """Recording headers and bodies is recording credentials unless something stops it.
-
-    Evidence outlives the run: it is read in review, attached to a story, archived with the
-    run directory. A declared secret is redacted wherever it appears — header, payload or
-    body — and the header names that carry a credential by definition are masked to a
-    length whether or not the plan declared one, since the *name* is what a plan asserts on
-    and the value is what must not survive.
-    """
+    """Recording headers and bodies is recording credentials unless something stops it."""
     browser = _browser(tmp_path, secrets=["hunter2"])
     request = _request(
         "http://127.0.0.1:8099/session",
@@ -551,13 +457,7 @@ def test_credentials_are_masked_in_the_traffic_the_run_keeps(tmp_path: Path) -> 
 def test_a_console_message_keeps_its_arguments_not_the_consoles_rendering_of_them(
     tmp_path: Path,
 ) -> None:
-    """``console.log("state", store)`` prints ``state {items: Array(3), …}``.
-
-    The ellipsis is where the assertion needed the third item. The handles are live only
-    while the message is being dispatched, so this is the one moment the values can be
-    taken; a handle that will not serialize — a DOM node, a cycle — says so rather than
-    losing the message it belonged to.
-    """
+    """``console.log("state", store)`` prints ``state {items: Array(3), …}``."""
     browser = _browser(tmp_path, at_ms=40, secrets=["hunter2"])
     browser._on_console(
         SimpleNamespace(
@@ -582,10 +482,7 @@ def test_a_console_message_keeps_its_arguments_not_the_consoles_rendering_of_the
 
 
 def test_the_whole_console_is_readable_mid_scenario_not_only_after_it(tmp_path: Path) -> None:
-    """The diagnostics file is written after the scenario returns its verdict, so anything
-    only the file has is unassertable. ``console()`` is the same records, live — the whole
-    console, because the message that explains a failure is routinely a ``warn`` the error
-    filter drops."""
+    """The diagnostics file is written after the scenario returns its verdict, so anything only the file has is unassertable."""
     browser = _browser(tmp_path)
     for level, text in (("warning", "hydration mismatch"), ("error", "boom"), ("log", "ok")):
         browser._on_console(SimpleNamespace(type=level, text=text, location=None, args=[]))
@@ -598,10 +495,7 @@ def test_the_whole_console_is_readable_mid_scenario_not_only_after_it(tmp_path: 
 
 
 def test_a_favicon_the_page_never_asked_for_is_not_the_product_failing(tmp_path: Path) -> None:
-    """Chrome fetches ``/favicon.ico`` whether the markup requests it or not, so a page
-    that ships none logs a 404 at ``error`` level on a completely clean tree. A plan held to
-    "the page logged no console error" would then fail against a correct app and a correct
-    book. It stays in the whole-console view and in the file; it is out of the verdict."""
+    """Chrome fetches ``/favicon.ico`` whether the markup requests it or not, so a page that ships none logs a 404 at ``error`` level on a completely clean tree."""
     browser = _browser(tmp_path)
     browser._on_console(
         SimpleNamespace(
@@ -630,13 +524,7 @@ def test_a_favicon_the_page_never_asked_for_is_not_the_product_failing(tmp_path:
 def test_the_diagnostics_file_is_the_whole_record_and_names_what_it_dropped(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The post-run reader has no browser to open and no session to re-drive.
-
-    The previous file kept 500 of each list silently, which cut a busy SPA off partway
-    through its own startup — and left a reader unable to tell a page that made 500 requests
-    from one that made 12,000. The cap is now set where no real run reaches it, and when it
-    does bite it is stated in the file rather than implied by a count.
-    """
+    """The post-run reader has no browser to open and no session to re-drive."""
     browser = _browser(tmp_path, at_ms=10)
     browser._context = SimpleNamespace(tracing=SimpleNamespace(stop=lambda **_: None))
     request = _request("http://127.0.0.1:8099/v1/pages", post_data='{"a":1}')
@@ -678,11 +566,7 @@ def test_the_diagnostics_file_is_the_whole_record_and_names_what_it_dropped(
 def test_a_request_that_never_completed_is_recorded_as_such_not_as_an_empty_body(
     tmp_path: Path,
 ) -> None:
-    """An `EventSource`, a long poll or a hung endpoint never fires ``requestfinished``, so
-    no body is ever fetched for it — deliberately, since fetching one there would block the
-    event dispatcher for as long as the stream stays open. What must not happen is the
-    resulting record reading like a 200 with an empty body.
-    """
+    """An `EventSource`, a long poll or a hung endpoint never fires ``requestfinished``, so no body is ever fetched for it — deliberately, since fetching one there would block the event dispatcher for as long as the stream stays open."""
     browser = _browser(tmp_path)
     stream = _request("http://127.0.0.1:8099/stream", resource_type="eventsource")
     browser._on_request(stream)
@@ -738,16 +622,7 @@ def _open_options(
 def test_a_required_recording_is_filmed_at_the_viewport_the_target_declares(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The defect: every plan that did not declare a small viewport lost its scenario.
-
-    Playwright does not film at the viewport unless told to — with no `record_video_size` it
-    scales the page to fit inside 800x800, so this class's own 1440x900 default was filmed at
-    800x500. ostler measures the file against the target's declared shape, the mismatch is a
-    scenario problem rather than a note about a file, and the scenario aborts with every
-    obligation it covered unproven. It was invisible because a plan that happened to declare a
-    viewport under 800x800 — as one authored plan did and another did not — escaped by
-    accident, so the failure looked like a property of the plan's author.
-    """
+    """The defect: every plan that did not declare a small viewport lost its scenario."""
     default = _open_options(
         tmp_path, monkeypatch, recording={"required": True, "mode": "viewport"}
     )
@@ -767,12 +642,7 @@ def test_a_required_recording_is_filmed_at_the_viewport_the_target_declares(
 def test_nothing_is_filmed_when_the_target_asks_for_no_viewport_recording(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The size rides with the directory: neither is set unless Playwright is doing the filming.
-
-    `window` mode is ffmpeg grabbing an X display around this process, and an optional
-    recording is not filmed at all — passing a video size in either case would ask Playwright
-    to record where the plan said it should not.
-    """
+    """The size rides with the directory: neither is set unless Playwright is doing the filming."""
     window = _open_options(
         tmp_path, monkeypatch, recording={"required": True, "mode": "window"}
     )
@@ -783,24 +653,16 @@ def test_nothing_is_filmed_when_the_target_asks_for_no_viewport_recording(
 
 
 def test_the_harness_and_ostler_agree_on_the_viewport_a_plan_does_not_declare() -> None:
-    """Two copies of one number, in two interpreters, with an abort between them.
-
-    ostler measures the recording the harness films and rejects anything that is not the
-    target's shape. When the plan declares no viewport both sides fall back to their own
-    default, so a drift here is not a wrong pixel count — it is every browser scenario in
-    every plan that left `viewport=` off, aborting with its obligations unproven.
-    """
+    """Two copies of one number, in two interpreters, with an abort between them."""
     from ostler.qa.drivers import DEFAULT_VIEWPORT
 
     assert ostler_qa_browser.DEFAULT_VIEWPORT == DEFAULT_VIEWPORT
 
 
-# --- Selecting one exchange out of the many a page made (Phase 2l) ------------------------------
 
 
 def _record(browser: Any, url: str, *, status: int = 200, body: bytes = b"{}") -> None:
-    """One complete exchange, through both handlers the real page drives: the status arrives
-    on `response`, the body on `requestfinished`, and they land in the one shared record."""
+    """One complete exchange, through both handlers the real page drives: the status arrives on `response`, the body on `requestfinished`, and they land in the one shared record."""
     request = _request(url)
     response = _response(request, status=status, body=body)
     request.response = lambda: response
@@ -809,10 +671,7 @@ def _record(browser: Any, url: str, *, status: int = 200, body: bytes = b"{}") -
 
 
 def test_a_response_is_selected_by_route_and_read_as_status_url_and_payload(tmp_path: Path) -> None:
-    """`RecordedResponse` is the adapter between a transcript and the four verifiers that
-    read a response. A transcript is not the thing it transcribes, so the translation lives
-    here — at the boundary that produced it — rather than in four verifiers each learning to
-    read a mapping."""
+    """`RecordedResponse` is the adapter between a transcript and the four verifiers that read a response."""
     browser = _browser(tmp_path)
     _record(browser, "http://127.0.0.1:8099/api/widgets", status=201, body=b'{"id": 7}')
     found = browser.response_for("/api/widgets")
@@ -823,8 +682,7 @@ def test_a_response_is_selected_by_route_and_read_as_status_url_and_payload(tmp_
 
 
 def test_a_route_the_page_never_requested_says_what_it_did_request(tmp_path: Path) -> None:
-    """The failure message is the whole value here: a book naming a route the page does not
-    call is a defect in the book, and the routes it *did* call are what a repair needs."""
+    """The failure message is the whole value here: a book naming a route the page does not call is a defect in the book, and the routes it *did* call are what a repair needs."""
     browser = _browser(tmp_path)
     _record(browser, "http://127.0.0.1:8099/api/agents")
     with pytest.raises(LookupError) as excinfo:
@@ -834,9 +692,7 @@ def test_a_route_the_page_never_requested_says_what_it_did_request(tmp_path: Pat
 
 
 def test_two_responses_on_one_route_are_undetermined_rather_than_the_first(tmp_path: Path) -> None:
-    """Undetermined ⇒ do not answer. Which of two exchanges on the same route a claim means
-    is something the book did not say, and taking the first would decide it silently — a
-    green that says the page answered 201 when its retry did."""
+    """Undetermined ⇒ do not answer."""
     browser = _browser(tmp_path)
     _record(browser, "http://127.0.0.1:8099/api/widgets", status=409)
     _record(browser, "http://127.0.0.1:8099/api/widgets", status=201)
@@ -847,8 +703,7 @@ def test_two_responses_on_one_route_are_undetermined_rather_than_the_first(tmp_p
 
 
 def test_a_body_the_recorder_did_not_keep_is_not_read_as_an_empty_one(tmp_path: Path) -> None:
-    """`bodyOmitted` is the recorder saying it chose not to keep this payload. Returning
-    `None` would let a `json_path(absent=True)` pass on a body nobody looked at."""
+    """`bodyOmitted` is the recorder saying it chose not to keep this payload."""
     browser = _browser(tmp_path)
     _record(browser, "http://127.0.0.1:8099/api/widgets")
     browser._responses[0]["bodyOmitted"] = "too large"
@@ -857,9 +712,7 @@ def test_a_body_the_recorder_did_not_keep_is_not_read_as_an_empty_one(tmp_path: 
 
 
 def test_a_window_excludes_the_exchanges_that_preceded_the_action(tmp_path: Path) -> None:
-    """A response recorded before the click is not an observation of the click. The bound and
-    the lookup that respects it are one object, so an index cannot be handed to the wrong
-    call and silently widen the window."""
+    """A response recorded before the click is not an observation of the click."""
     browser = _browser(tmp_path)
     _record(browser, "http://127.0.0.1:8099/api/widgets", status=200)
     window = browser.window()
@@ -868,6 +721,5 @@ def test_a_window_excludes_the_exchanges_that_preceded_the_action(tmp_path: Path
     assert "after the action" in str(excinfo.value)
     _record(browser, "http://127.0.0.1:8099/api/widgets", status=201)
     assert window.response_for("/api/widgets").status == 201
-    # The unbounded lookup still sees both, and says so rather than picking one.
     with pytest.raises(LookupError):
         browser.response_for("/api/widgets")

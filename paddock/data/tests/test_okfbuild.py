@@ -1,11 +1,4 @@
-"""The book-building rulers: pure functions over a witness tree, `–` when they cannot read.
-
-Everything here is literal — a canned book written into `tmp_path`, a hand-rolled
-`trials.json`, no agent, no docker, no builder run. What is pinned is the part a live
-round cannot debug when it goes wrong: that each ruler measures the witness it is given,
-that an unreadable witness renders as `–` and never as `0`, and that the headline says
-what the round did rather than what it hoped.
-"""
+"""The book-building rulers: pure functions over a witness tree, `–` when they cannot read."""
 
 from __future__ import annotations
 
@@ -30,12 +23,7 @@ DATA = Path(__file__).parents[1]
 
 @contextlib.contextmanager
 def _tasks_dir_on_path() -> Iterator[None]:
-    """Stand in for the interpreter, exactly as `paddock.loader` does.
-
-    Task modules are loose files that import their siblings by bare name, so a loader —
-    here, the test — has to put their directory on the path the way `python tasks/x.py`
-    would, and take it off again.
-    """
+    """Stand in for the interpreter, exactly as `paddock.loader` does."""
     saved = sys.path[:]
     sys.path.insert(0, str(DATA / "tasks"))
     try:
@@ -54,7 +42,6 @@ with _tasks_dir_on_path():
 BLANK = okfbuild.BLANK
 
 
-# ── the canned witness ────────────────────────────────────────────────────────────────
 
 
 def fixture() -> object:
@@ -82,7 +69,6 @@ def witness(tmp_path: Path) -> Path:
     return root
 
 
-# ── the rulers ────────────────────────────────────────────────────────────────────────
 
 
 def test_doctor_and_fmt_read_the_witness(tmp_path: Path) -> None:
@@ -104,10 +90,7 @@ def test_an_unreadable_witness_is_none_never_a_count(tmp_path: Path) -> None:
 
 
 def test_sealed_witness_carries_the_source_the_book_cites(tmp_path: Path) -> None:
-    """Doctor resolves every `code:` ref, so a witness sealed without the source root
-    scores a converged book as a wall of `dangling-code-ref` errors — the artifact the
-    first scored run printed (98e over a book whose live doctor said 0). `run_build`
-    seals `fixture.source_path` for exactly this reason."""
+    """Doctor resolves every `code:` ref, so a witness sealed without the source root scores a converged book as a wall of `dangling-code-ref` errors — the artifact the first scored run printed (98e over a book whose live doctor said 0)."""
     repo = tmp_path / "repo"
     write(
         repo / "docs" / "features" / "svc" / "policy-format.md",
@@ -185,7 +168,6 @@ def test_coverage_is_the_builders_own_claim(tmp_path: Path) -> None:
 def test_graph_counts_the_loaded_book(tmp_path: Path) -> None:
     graph = okfbuild.graph_counts(witness(tmp_path))
     assert graph is not None
-    # Two nodes, and at least the node-level contract each one mints.
     assert graph["nodes"] == 2
     assert graph["obligations"] >= 2
 
@@ -198,20 +180,17 @@ def test_judgment_counts_concepts_and_their_inbound_details(tmp_path: Path) -> N
 def test_judgment_is_blank_when_the_registry_lacks_the_vocabulary(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Against a registry with no `rule:` on concept, a zero would blame the build for
-    the toolchain — the column degrades to `–` instead (the Track-A degrade)."""
+    """Against a registry with no `rule:` on concept, a zero would blame the build for the toolchain — the column degrades to `–` instead (the Track-A degrade)."""
     from ostler import registry
 
     monkeypatch.setattr(registry, "declared_keys", lambda node_type: frozenset())
     assert okfbuild.judgment_counts(witness(tmp_path)) is None
 
 
-# ── the judge ─────────────────────────────────────────────────────────────────────────
 
 
 def judged_witness(tmp_path: Path) -> Path:
-    """A witness whose screen carries normative component bullets — something to judge —
-    plus a second service's book, which the sample must treat as out of scope."""
+    """A witness whose screen carries normative component bullets — something to judge — plus a second service's book, which the sample must treat as out of scope."""
     root = witness(tmp_path)
     write(
         root / "docs" / "features" / "svc" / "gui" / "screens" / "widget.md",
@@ -233,11 +212,9 @@ def test_sample_bullets_is_scoped_and_deterministic(tmp_path: Path) -> None:
     root = judged_witness(tmp_path)
     bullets = okfbuild.sample_bullets(root, fixture(), 50)
     assert bullets, "the component's normative bullets must mint something to judge"
-    # Per-bullet claims only, all from inside this service's book.
     assert all(b["page"].startswith("docs/features/svc/") for b in bullets)
     assert all(b["kind"] not in ("contract", "journey") for b in bullets)
     assert {b["kind"] for b in bullets} == {"role", "name", "states"}
-    # The same witness sampled twice judges the same bullets, in the same order.
     assert bullets == okfbuild.sample_bullets(root, fixture(), 50)
 
 
@@ -289,10 +266,7 @@ def test_appraise_clamps_and_survives_garbage(tmp_path: Path) -> None:
 
 
 def test_book_rubric_placeholders_are_exactly_what_the_judge_fills() -> None:
-    """Every `{{…}}` in the rubric must be one `judge_book` fills — a placeholder it
-    does not know ships a template to the judge instead of a question, and `render`
-    fills by exact name (`_greenfield.render` is `str.replace`), so a stray space or a
-    typo inside the braces is a miss, not a near-match."""
+    """Every `{{…}}` in the rubric must be one `judge_book` fills — a placeholder it does not know ships a template to the judge instead of a question, and `render` fills by exact name (`_greenfield.render` is `str.replace`), so a stray space or a typo inside the braces is a miss, not a near-match."""
     rubric = (DATA / "rubric-book.md").read_text(encoding="utf-8")
     found = set(re.findall(r"\{\{[^}]*\}\}", rubric))
     assert found == {"{{page}}", "{{kind}}", "{{claim}}", "{{repo}}", "{{scale}}"}
@@ -308,7 +282,6 @@ def test_judge_line_reads_like_a_tally() -> None:
     assert line == "book judge: earned 9/12, asserted 2, ungrounded 1, 1 capped (sample of 12)"
 
 
-# ── the score ─────────────────────────────────────────────────────────────────────────
 
 
 def make_run(tmp_path: Path, **params: str) -> Run:

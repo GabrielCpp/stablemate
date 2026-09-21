@@ -61,8 +61,6 @@ def test_a_run_stages_the_repo_the_artifacts_and_the_ledger(
 
 
 def test_scratch_stays_out_of_the_result(repo: Path, data_dir: Path, store: Path) -> None:
-    # A task that fans out one tree per trial would otherwise seal nine repos into a zip
-    # nobody keeps; what a step wants preserved it copies into its artifact directory.
     result = run(repo, data_dir, store)
     assert not list(result.stage.rglob("scratch-only.txt"))
     assert (result.stage.parent / "scratch" / "trial-1" / "scratch-only.txt").is_file()
@@ -88,8 +86,6 @@ def test_the_score_is_written_and_the_result_is_sealed(
 def test_a_score_that_mutates_the_result_is_refused(
     repo: Path, data_dir: Path, store: Path
 ) -> None:
-    # Decision 14: scored and unscored runs must produce byte-identical results apart
-    # from score.json, or the zip records the scoring instead of the run.
     body = TASK.replace(
         "def score(run):\n",
         'def score(run):\n    (run.repo / "written-by-score.txt").write_text("no", encoding="utf-8")\n',
@@ -112,8 +108,6 @@ def test_a_score_may_still_log_into_its_own_artifact_directory(
 def test_a_failing_step_stops_the_run_and_the_rest_are_skipped(
     repo: Path, data_dir: Path, store: Path
 ) -> None:
-    # A later step's meaning is conditional on the earlier ones having happened, so a
-    # result produced past a failure scores as something rather than as nothing.
     body = TASK.replace(
         '    (run.repo / "made-by-the-step.txt").write_text("yes", encoding="utf-8")',
         '    raise RuntimeError("boom")',
@@ -186,8 +180,6 @@ def test_params_reach_the_steps_and_are_recorded(repo: Path, data_dir: Path, sto
     }
     ledger = json.loads((result.stage / "steps.json").read_text(encoding="utf-8"))
     assert ledger["params"] == {"defects": "PD-1, PD-2", "budget": "600", "control": "no"}
-    # The tracked pointer says the run was narrowed, so it is never silently compared
-    # against a full one.
     assert result.pointer_path is not None
     assert "budget=600" in ResultPointer.load(result.pointer_path).note
 
@@ -199,8 +191,6 @@ def test_params_reach_the_steps_and_are_recorded(repo: Path, data_dir: Path, sto
 def test_a_malformed_param_is_named(
     repo: Path, data_dir: Path, store: Path, body: str, message: str
 ) -> None:
-    # A knob that does not parse fails the step that read it, by name — it is not
-    # silently coerced into the default the task would have used anyway.
     result = run(repo, data_dir, store, PARAMS_TASK, params={body: "sideways"})
     assert not result.ok
     assert message in (result.outcomes[0].error or "")
@@ -209,9 +199,6 @@ def test_a_malformed_param_is_named(
 def test_a_command_is_teed_to_stderr_while_it_runs(
     repo: Path, data_dir: Path, store: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    # The log a step writes is three directories deep and named after a step that has not
-    # finished yet, so `paddock run > run.log` is the only progress an operator — or the
-    # agent polling on their behalf — can actually watch.
     run(repo, data_dir, store)
     assert "00-sh| hello" in capsys.readouterr().err
 
@@ -228,9 +215,6 @@ def test_quiet_suppresses_the_tee_without_touching_the_log(
 def test_a_scores_caveats_mark_the_pointer_note(
     repo: Path, data_dir: Path, store: Path
 ) -> None:
-    # The scorecard already warns at length, but the scorecard is printed once to a
-    # terminal and the pointer is what a later comparison actually reads. An honest
-    # number and a compromised one look identical there once the warning is gone.
     body = TASK.replace(
         'data={"caught": 2})',
         'data={"caught": 2}, caveats=("operator gate parked: context.md",))',
@@ -245,8 +229,6 @@ def test_a_scores_caveats_mark_the_pointer_note(
 def test_a_failed_step_is_a_caveat_the_runner_derives_itself(
     repo: Path, data_dir: Path, store: Path
 ) -> None:
-    # This is the half a ruler cannot see: a pin that drifted or a build that aborted
-    # fails a step *before* score() gets a turn, so nobody is left to declare it.
     body = TASK.replace(
         '    (run.repo / "made-by-the-step.txt").write_text("yes", encoding="utf-8")',
         '    raise RuntimeError("boom")',
@@ -254,7 +236,6 @@ def test_a_failed_step_is_a_caveat_the_runner_derives_itself(
     result = run(repo, data_dir, store, body)
     assert result.pointer_path is not None
     pointer = ResultPointer.load(result.pointer_path)
-    # The step that raised and the one skipped behind it are different facts.
     assert pointer.caveats == ["step 'touch' failed", "step 'fan_out' skipped"]
     assert pointer.note.startswith(DIAGNOSTIC_MARKER)
 
@@ -272,8 +253,6 @@ def test_a_caveated_result_cannot_be_written_with_a_clean_note() -> None:
 
 
 def test_the_marker_cannot_be_left_behind_on_a_clean_note() -> None:
-    # Enforced in the other direction too: a marker that could arrive by accident —
-    # a copied note, a caveat later removed — is a marker nobody would trust.
     with pytest.raises(ValidationError, match="records no"):
         stub(note=f"{DIAGNOSTIC_MARKER}87%", caveats=[])
 
@@ -281,9 +260,6 @@ def test_the_marker_cannot_be_left_behind_on_a_clean_note() -> None:
 def test_a_self_touch_reaches_the_pointer_not_just_the_log(
     repo: Path, data_dir: Path, store: Path
 ) -> None:
-    # A warning is printed once to a terminal nobody kept. The pointer is what a later
-    # comparison reads, so the round that reached past its pin has to be a diagnostic
-    # there — same fail-close as a parked gate or a failed step.
     body = '''
 from paddock import step, task
 
@@ -304,15 +280,7 @@ def sneak(run):
 def test_a_json_file_is_never_readable_half_written(
     repo: Path, data_dir: Path, store: Path, tmp_path: Path
 ) -> None:
-    """A reader polling one of these files sees the old bytes or the new ones, never none.
-
-    Not a hypothetical: the operator-gate watcher polls its own ledger with a plain
-    `json.loads` while the round that writes it is still going, and a person tails the same
-    files. Truncate-then-write leaves a window where the file exists and is empty, so the
-    poll loop dies on a `JSONDecodeError` against a file that is fine a millisecond later.
-    This test spins that window as fast as both sides will go; it fails on `write_text` and
-    passes on the rename.
-    """
+    """A reader polling one of these files sees the old bytes or the new ones, never none."""
     handle = Run(
         task=prepare(repo, data_dir, store),
         label="t1",

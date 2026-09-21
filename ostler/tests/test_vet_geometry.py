@@ -17,8 +17,8 @@ def test_iou_identical_boxes_is_one():
 
 
 def test_iou_partial_overlap_is_hand_computed():
-    a = _box(0, 0, 10, 10)   # area 100
-    b = _box(5, 5, 10, 10)   # area 100, intersection 5x5=25, union 175
+    a = _box(0, 0, 10, 10)
+    b = _box(5, 5, 10, 10)
     assert iou(a, b) == 25 / 175
 
 

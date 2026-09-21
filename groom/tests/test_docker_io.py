@@ -1,8 +1,4 @@
-"""Tests for groom.docker_io's git-diff helpers, with subprocess.run mocked
-out so nothing here actually shells out to docker.
-
-Run: uv run pytest tests/test_docker_io.py
-"""
+"""Tests for groom.docker_io's git-diff helpers, with subprocess.run mocked out so nothing here actually shells out to docker."""
 from __future__ import annotations
 
 import subprocess
@@ -16,14 +12,13 @@ def _completed(returncode=0, stdout="", stderr=""):
 
 
 def test_list_container_ids_returns_short_id_set():
-    out = "abcdef012345678\n0123456789abcdef\n\n"  # blank line ignored
+    out = "abcdef012345678\n0123456789abcdef\n\n"
     with patch.object(docker_io.subprocess, "run", return_value=_completed(stdout=out)):
         ids = docker_io.list_container_ids()
-    assert ids == {"abcdef012345", "0123456789ab"}  # truncated to 12
+    assert ids == {"abcdef012345", "0123456789ab"}
 
 
 def test_list_container_ids_returns_none_on_docker_failure():
-    # None (not empty set) so a caller can tell "docker down" from "no containers".
     with patch.object(docker_io.subprocess, "run", return_value=_completed(returncode=1)):
         assert docker_io.list_container_ids() is None
 
@@ -83,13 +78,11 @@ def test_grep_awaiting_files_prunes_heavy_dirs_and_parses_paths():
         paths = docker_io.grep_awaiting_files("workhorse_workspace")
 
     assert paths == ["docs/a.md", "docs/b.md"]
-    # The sweep must prune vendor/VCS dirs (a naive `grep -r` over .venv/.git
-    # measured ~10s); assert we go through find+prune, not `grep -r`.
     assert "find" in captured["args"]
     assert "-prune" in captured["args"]
     for skip in docker_io._SKIP_DIRS:
         assert skip in captured["args"]
-    assert "-r" not in captured["args"]  # the old slow flag is gone
+    assert "-r" not in captured["args"]
 
 
 def test_grep_awaiting_files_empty_on_docker_failure():
@@ -107,7 +100,6 @@ def test_list_files_returns_repo_relative_paths_and_prunes_vendor_dirs():
     with patch.object(docker_io.subprocess, "run", _fake_run):
         paths = docker_io.list_files("workhorse_workspace", "Acme")
 
-    # Paths are returned relative to the repo dir (not the volume) and sorted.
     assert paths == ["README.md", "src/a.py"]
     assert "find" in captured["args"] and "/vol/Acme" in captured["args"]
     assert "-prune" in captured["args"]
@@ -117,7 +109,7 @@ def test_list_files_returns_repo_relative_paths_and_prunes_vendor_dirs():
 
 def test_list_files_volume_root_when_repo_dir_empty():
     def _fake_run(args, **kwargs):
-        assert "/vol" in args and "/vol/" not in args  # base is the volume root
+        assert "/vol" in args and "/vol/" not in args
         return _completed(stdout="/vol/top.txt\n/vol/sub/x.py\n")
 
     with patch.object(docker_io.subprocess, "run", _fake_run):
@@ -148,14 +140,12 @@ def test_sidecar_query_parses_snapshot_json():
     snap = '{"current_node": "n1", "terminal": "", "gates": [{"file_path": "a.md", "question": "Q?"}]}'
     with patch.object(docker_io.subprocess, "run", return_value=_completed(stdout=snap)):
         out = docker_io.sidecar_query("abc123")
-    # None is the "socket said nothing usable" answer, which the two tests below own.
     assert out is not None
     assert out["current_node"] == "n1"
     assert out["gates"][0]["file_path"] == "a.md"
 
 
 def test_sidecar_query_returns_none_on_nonzero_exit():
-    # e.g. container not running, or a legacy image without --query.
     with patch.object(docker_io.subprocess, "run", return_value=_completed(returncode=1, stderr="no such flag")):
         assert docker_io.sidecar_query("abc123") is None
 

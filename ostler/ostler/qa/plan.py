@@ -24,38 +24,18 @@ from ostler.qa.harness_host import default_interpreter, describe, load_harness_m
 from ostler.untyped import is_mapping
 from ostler.vet import placement
 
-#: How many drifted filenames a `stale-context:` book-drift problem names before it falls
-#: back to a count. A wholesale book move or rename can touch every file under
-#: `docs/features`, and printing all of them would drown the rest of `validate`'s output in
-#: one line.
 _BOOK_DRIFT_NAME_LIMIT = 20
 
-#: Read off the harness rather than restated, because `describe` produces these values and
-#: this module judges them: a second spelling of any of them is a gate that quietly stops
-#: firing. `DRIVERS` was restated for a while, and drifted — it admitted a `command` driver
-#: the harness rejects at import, so the check below never once fired on it.
 _plan_harness = load_harness_module("ostler_qa")
 COMPUTED: str = _plan_harness.COMPUTED
 DRIVERS: frozenset[str] = frozenset(_plan_harness.DRIVER_NAMES)
 UI_DRIVERS: tuple[str, ...] = tuple(_plan_harness.UI_DRIVER_NAMES)
 
-#: What a `qa-plan.yml` gets told now. The YAML plan's content was a shell heredoc, and every
-#: silent-failure mode it had — a field lookup reading a missing key as an empty stream, an
-#: evidence path meaning two directories depending on which key it sat under, an assertion
-#: proving only that a process exited — had to be caught by a regex standing in for a runtime.
-#: A `qa_plan.py` gets that runtime: a wrong key raises, and the traceback names the line.
-#: The landed `qa-plan.yml` files stay where they are as archived evidence; they do not re-run.
 RETIRED_YAML = (
     "the YAML QA plan is retired — write the plan as `qa_plan.py` in the same spec directory "
     "(one `@scenario`-decorated function per scenario) and delete the .yml"
 )
 
-#: Evidence provenance. `synthetic` — a test suite standing in for the product — is gone: it
-#: named the one thing a QA run must never accept, and a scenario that could declare it could
-#: pass by proving its own harness works. `fixture` stays, because it drives the *real* product
-#: from a canned input, which is a different claim. Declared in four places that must agree
-#: (`qa/plan.py`, `qa/session.py`, `qa/harness/ostler_qa.py`, `cli.py`); a second spelling here
-#: is a gate that quietly stops firing.
 MECHANISMS = {"live", "fixture"}
 LOCATOR_KEYS = {"role", "name", "label", "test_id", "text", "css", "id"}
 
@@ -81,9 +61,6 @@ def resolve_spec_dir(plan_file: Path, spec_dir: Path | None, root: Path) -> Path
     plan_file = plan_file if plan_file.is_absolute() else root / plan_file
     if spec_dir is not None:
         return (spec_dir if spec_dir.is_absolute() else root / spec_dir).resolve()
-    # A plan carries no `spec_dir` escape hatch. Learning one would mean importing the module
-    # before knowing where its evidence goes, and the key only ever existed to let a generated
-    # YAML file sit somewhere other than the spec it describes.
     return plan_file.parent.resolve()
 
 
@@ -107,25 +84,12 @@ def load_plan(plan_file: Path, spec_dir: Path, root: Path) -> tuple[PlanDocument
                 context = loaded
         except json.JSONDecodeError as exc:
             return None, [f"qa-okf-context.json is invalid JSON: {exc}"]
-    # Stamped onto the compiled plan, not read from `document.context` at runtime: the
-    # driver has no book and no packet, only the plan and the scenario it is handed, so
-    # whatever it needs to answer "which documents does this obligation occupy" has to
-    # already be sitting on `data` by the time `run_plan` builds it. `_documented_locators`
-    # is the same shape of lookup, built the same way, for a different question.
     data["obligationDocuments"] = _obligation_documents(context)
     return PlanDocument(resolved_plan, spec_dir, root, data, context), problems
 
 
 def _obligation_documents(context: dict[str, Any]) -> dict[str, list[str]]:
-    """Which documents each packet obligation occupies, keyed by its id.
-
-    A `same-as:` family collapses several documents' obligations onto one id
-    (`context.py::_obligations`), so the id alone no longer says which document a given
-    entry sits on — `occurrenceDocuments` is the packet's own answer, carried here onto the
-    compiled plan so a runtime consumer (`drivers.py::_covers_in`) can look it up instead of
-    parsing the id, which is sound only for a pre-collapse id and silently wrong for one
-    that now names a family.
-    """
+    """Which documents each packet obligation occupies, keyed by its id."""
     return {
         str(obligation["id"]): list(obligation.get("occurrenceDocuments") or [])
         for obligation in context.get("obligations", [])
@@ -134,12 +98,7 @@ def _obligation_documents(context: dict[str, Any]) -> dict[str, list[str]]:
 
 
 def _describe_python_plan(plan_file: Path, root: Path) -> tuple[dict[str, Any] | None, list[str]]:
-    """Read a `qa_plan.py` by importing it in the harness and taking what it declared.
-
-    Every target is stamped with the module it came from and the interpreter it will be run
-    under, because the driver is handed one target dict and nothing else — resolving either
-    of those twice is how the validated plan and the executed plan come apart.
-    """
+    """Read a `qa_plan.py` by importing it in the harness and taking what it declared."""
     data, problems = describe(plan_file, root)
     if data is None:
         return None, problems
@@ -154,19 +113,7 @@ def _describe_python_plan(plan_file: Path, root: Path) -> tuple[dict[str, Any] |
 
 
 def _book_drift_problems(context: dict[str, Any], root: Path) -> list[str]:
-    """`stale-context:` problems for a packet whose recorded `bookFiles` disagree with the tree.
-
-    A distinct prefix from `stale-plan:` on purpose — the two name different links with
-    different repairs. `stale-plan:` (above) is the plan disagreeing with the packet, fixed
-    by `ostler qa compile-plan`; this is the packet disagreeing with the *book*, fixed by
-    `ostler qa context`. `book_digest`, behind `stale-plan:`, hashes the sorted
-    owed-obligation ids and derives them *from the packet itself*, so it can never catch the
-    book having changed underneath a packet that still parses the same obligations out of
-    it. `bookFiles` is the packet's own per-file record of the book it was generated from
-    (`context.py::build_context`); this recomputes the same digests from the tree on disk
-    right now and compares, so a book edited after the packet was written is refused rather
-    than silently kept vouching for.
-    """
+    """`stale-context:` problems for a packet whose recorded `bookFiles` disagree with the tree."""
     recorded = context.get("bookFiles")
     if recorded is None:
         return [
@@ -213,26 +160,7 @@ def _book_drift_problems(context: dict[str, Any], root: Path) -> list[str]:
 
 
 def _story_drift_problems(context: dict[str, Any], root: Path) -> list[str]:
-    """`stale-context:` problems for a packet whose recorded `storyFile` disagrees with the tree.
-
-    Guards the same link `_book_drift_problems` guards for `bookFiles`, but for the second
-    input `build_context` reads from outside `featuresRoot`: the story markdown file its
-    `story` and `acceptanceCriteria` keys were parsed from. `stale-context:`, not
-    `stale-plan:`, because the disagreement is between the packet and its own source, not
-    between the plan and the packet — fixed the same way, by `ostler qa context`.
-
-    The current digest is computed by calling `story_file_record` — the same producer
-    function `build_context` called to write the recorded one — rather than reimplementing
-    its hashing scheme here, for the reason `_book_drift_problems` calls `book_files`
-    instead of hashing independently: producer and consumer cannot then diverge.
-
-    A packet with no `storyFile` key at all predates this guard. Unlike a missing
-    `bookFiles`, this is not necessarily also caught by `_book_drift_problems`: `storyFile`
-    was added in a later commit than `bookFiles`, so a packet generated in between carries
-    a valid `bookFiles` and no `storyFile` — for that packet the book-drift check is
-    satisfied and would say nothing, so this guard has to refuse it on its own account
-    rather than lean on the other one.
-    """
+    """`stale-context:` problems for a packet whose recorded `storyFile` disagrees with the tree."""
     if "storyFile" not in context:
         return [
             "stale-context: qa-okf-context.json predates the story-drift guard "
@@ -282,14 +210,6 @@ def validate_v2(document: PlanDocument) -> list[str]:  # noqa: C901
     for field in ("run_id", "story"):
         if not isinstance(plan.get(field), str) or not plan[field].strip():
             problems.append(f"'{field}' is required and must be non-empty")
-    # `book` is a digest of the obligation id set the plan was compiled from (`compile.
-    # book_digest`, filled in by `ostler qa compile-plan`) — a hand-authored plan leaves it
-    # blank, and blank compares against nothing. A compiled plan with the field carries a
-    # stored fact about the book it read; recomputing the same digest against *this* run's
-    # `qa-okf-context.json` and comparing is how that fact is checked rather than trusted —
-    # `compile-plan --out` never overwrites an existing plan file (authored TODOs would be
-    # destroyed), so a plan compiled before a book edit and run after it otherwise reports
-    # whatever the scenarios happen to assert against obligations that have since changed.
     book = plan.get("book")
     if isinstance(book, str) and book and document.context:
         current = book_digest(document.context)
@@ -370,21 +290,8 @@ def validate_v2(document: PlanDocument) -> list[str]:  # noqa: C901
     for obligation in document.context.get("obligations", []):
         if not isinstance(obligation, dict) or not obligation.get("id"):
             continue
-        # An obligation the context builder marked as context-only names something this
-        # story neither built nor touched — an unimplemented endpoint the closure walked to,
-        # a screen with no `code:` behind it. Demanding an asserted scenario for it is what
-        # sent planners after routes that do not exist. Absent the key, require it: a packet
-        # written before the flag existed says nothing about which of its members are real.
         if obligation.get("required", True) is False:
             continue
-        # `deferred` is stamped by `annotate_deferred_obligations` (`ostler qa context`) onto
-        # exactly the obligations the reference compiler itself produced no evidence for —
-        # gapped and never covered by a compiled `covers=[...]`. Demanding an asserted
-        # scenario here for what the reference compiler could not discharge either is the
-        # defect: a valid, compiled, sound plan refused wholesale because this loop had no
-        # way to tell "genuinely unhandled" from "already explained." An obligation gapped
-        # but still covered elsewhere (the `open-new-widget` shape) carries no `deferred`
-        # key and is still held to the coverage check below.
         if isinstance(obligation.get("deferred"), dict):
             continue
         if obligation["id"] not in asserted_coverage:
@@ -401,14 +308,7 @@ def validate_v2(document: PlanDocument) -> list[str]:  # noqa: C901
 
 
 def _invoked_checks(document: PlanDocument) -> tuple[dict[str, dict[str, checks.CheckCall]], list[str]]:
-    """Every named check the plan invokes, keyed by the obligation the invocation binds.
-
-    Aggregated across scenarios rather than per scenario: an obligation may be discharged by
-    two scenarios — the success path in one, the conflict branch in another — and demanding
-    that one function make every declared observation would refuse plans that are correct.
-    What is *not* aggregated is the binding: a `qa.verify` with no `covers=` proves something
-    about the product, but nothing this join can credit to a claim.
-    """
+    """Every named check the plan invokes, keyed by the obligation the invocation binds."""
     invoked: dict[str, dict[str, checks.CheckCall]] = {}
     problems: list[str] = []
     for scenario in document.data.get("scenarios", []):
@@ -420,9 +320,6 @@ def _invoked_checks(document: PlanDocument) -> tuple[dict[str, dict[str, checks.
                 continue
             bound = checks.bind(str(call.get("check", "")), call.get("args") or {})
             if isinstance(bound, checks.Refusal):
-                # An invocation the vocabulary does not admit is worth its own refusal: it
-                # would otherwise fail only as an obligation nobody bound, which sends the
-                # author looking at the book instead of at the call they mistyped.
                 problems.append(
                     f"scenario '{scenario_id}' calls qa.verify with {bound.message}")
                 continue
@@ -451,14 +348,7 @@ def _near_miss(
     obligation_ids: list[str],
     invoked: dict[str, dict[str, checks.CheckCall]],
 ) -> str:
-    """The call the plan wrote *instead*, when it wrote one that all but matches.
-
-    A set difference says a call is missing; it cannot say the author already wrote that
-    call and got one argument or one `covers=` wrong. Read without that, "no assertion
-    invokes it" against a file plainly containing a `json_path` call reads as *write
-    another one* — so the repair lane adds a near-duplicate, the difference survives, and
-    the story spends its whole budget re-deriving what the diff would have said outright.
-    """
+    """The call the plan wrote *instead*, when it wrote one that all but matches."""
     elsewhere = sorted(
         obligation_id for obligation_id, calls in invoked.items() if call in calls
     )
@@ -471,9 +361,6 @@ def _near_miss(
     declared = checks.parse_check(call)
     if isinstance(declared, checks.Refusal):
         return ""
-    # Closest first, and only when an argument already agrees: the same check name with
-    # nothing in common is a different assertion, and pointing at it would send the repair to
-    # rewrite a call that was right for the claim it was written against.
     closest: tuple[int, str, str] | None = None
     for obligation_id in obligation_ids:
         for text, written in (invoked.get(obligation_id) or {}).items():
@@ -494,26 +381,8 @@ def _near_miss(
 
 
 def _validate_declared_checks(document: PlanDocument, asserted: set[str]) -> list[str]:
-    """Hold each claimed obligation to the observation its `verify:` bullets declare.
-
-    This is where oracle strength stops being a judgment. The reviewer's recurring finding —
-    *your assertion would still pass under the defect it exists to exclude* — was a person
-    reading a scenario and imagining the defect. Here the book names the check and its
-    arguments, and the question is whether the plan invokes that call: a set difference, with
-    the expected call and the defect it excludes in the message.
-
-    Only for obligations the plan already claims. An obligation nobody covers is reported by
-    the coverage loop above, and saying it twice in different words invites a repair that
-    closes one wording and leaves the other standing.
-    """
+    """Hold each claimed obligation to the observation its `verify:` bullets declare."""
     invoked, problems = _invoked_checks(document)
-    # Grouped by the call, not by the obligation. A check binds to the claim it was written
-    # under (`registry.attributed_checks`), but one bullet's nested children still share their
-    # parent's checks, so a `does:` with four sub-claims reports the same missing call four
-    # times, each message naming one id. One `qa.verify` whose
-    # `covers=` lists them all satisfies every one of them (`_invoked_checks` credits the
-    # call to each id it names), so a message per id both overstates the work and reads as
-    # an instruction to write sixteen near-identical assertions.
     missing: dict[str, list[str]] = {}
     named: dict[str, str] = {}
     for obligation in document.context.get("obligations", []):
@@ -562,15 +431,7 @@ def _documented_locators(document: PlanDocument) -> dict[str, dict[str, Any]]:
 def _validate_python_scenarios(
     document: PlanDocument, targets: dict[str, Any]
 ) -> tuple[list[str], set[str]]:
-    """Check what a `qa_plan.py` declared, and which coverage its assertions can carry.
-
-    There is no action vocabulary left to police. What a scenario *does* is Python, checked
-    by the interpreter that runs it — so all that is left here is the part Python cannot see:
-    that the ids are distinct, that the targets exist, and that a scenario claiming an
-    obligation actually asserts something. That last one is `describe`'s static count of
-    `qa.check`/`qa.require` calls in the body — real analysis of a parsed tree, where the
-    v2 format could only pattern-match a shell string and guess.
-    """
+    """Check what a `qa_plan.py` declared, and which coverage its assertions can carry."""
     problems: list[str] = []
     asserted_coverage: set[str] = set()
     scenarios = document.data.get("scenarios")
@@ -649,8 +510,6 @@ def _validate_python_scenarios(
             asserted_coverage.update(claimed_ids & set(covers))
         if "restart" in scenario:
             problems.extend(_validate_restart(scenario_id, scenario["restart"], document))
-        # `describe` recovers the locators from the parsed body, so the book check reads the
-        # same structure it read off a YAML action list — see `extract_locators`.
         driver = targets[scenario["target"]].get("driver")
         if driver == "playwright":
             found = scenario.get("locators")
@@ -675,17 +534,7 @@ def _validate_python_scenarios(
 
 
 def _validate_instances(document: PlanDocument) -> list[str]:
-    """Hold every scenario covering a repeated obligation to concrete, named instances.
-
-    A `one-per:` obligation stands for a family, and the packet's `repeat` block says what a
-    concrete member looks like: the template holes a scenario can bind (`binds`) and the
-    enumerable axis it must sample (`variants`). This checks the sampling contract statically
-    — a covering scenario declares at least one `qa.instance(...)`, each declaration supplies
-    every bindable hole with a written string and nothing the family does not define, and
-    every declared variant value is sampled by some instance. A repeated obligation with no
-    holes and no variants asks nothing here: a template with nothing bindable is the book's
-    defect, and `ostler doctor` (`static-template`) reports it at the source.
-    """
+    """Hold every scenario covering a repeated obligation to concrete, named instances."""
     repeats: dict[str, dict[str, Any]] = {}
     for obligation in document.context.get("obligations", []):
         if is_mapping(obligation) and obligation.get("id") and is_mapping(obligation.get("repeat")):
@@ -796,12 +645,7 @@ def _documented_screens(document: PlanDocument) -> set[str]:
 
 
 def _book_screens(document: PlanDocument) -> set[str]:
-    """Every screen the book can vet, for acceptance-criteria-only UI scenarios.
-
-    Story acceptance criteria can require representative UI evidence outside the current
-    diff-to-OKF packet. The run-time vet still rejects paths that are not real screens with
-    components; validation should not make those AC-only scenarios impossible before they run.
-    """
+    """Every screen the book can vet, for acceptance-criteria-only UI scenarios."""
     try:
         return set(placement.screen_components(load_graph(document.root)))
     except Exception:
@@ -809,13 +653,7 @@ def _book_screens(document: PlanDocument) -> set[str]:
 
 
 def _validate_vets(scenario_id: str, vetted: list[Any], documented: set[str]) -> list[str]:
-    """A UI scenario proves what its screens looked like, against a screen the packet names.
-
-    Not a policy knob and not a warning. Every assertion in the run that motivated this was
-    true of a page whose whole content was a column pinned against one margin — presence is
-    what a role locator proves, and placement is what it cannot. Refusing the plan is the
-    only point at which that costs nothing.
-    """
+    """A UI scenario proves what its screens looked like, against a screen the packet names."""
     if not vetted:
         return [
             f"scenario '{scenario_id}' drives a UI and vets no screen — call "
@@ -838,13 +676,7 @@ def _validate_vets(scenario_id: str, vetted: list[Any], documented: set[str]) ->
 
 
 def _validate_restart(scenario_id: str, restart: Any, document: PlanDocument) -> list[str]:
-    """`@scenario(restart=[...])` names daemons the plan declared, or it names nothing.
-
-    The runner restarts by name, from the `background` declaration it started the daemon
-    from — so a name with no declaration behind it would surface as a runner exception on
-    the scenario's turn, after every scenario before it had already run. The refusal
-    belongs here, where `validate` reads both halves of the plan before anything starts.
-    """
+    """`@scenario(restart=[...])` names daemons the plan declared, or it names nothing."""
     if not isinstance(restart, list) or not all(
         isinstance(name, str) and name.strip() for name in restart
     ):
@@ -876,22 +708,7 @@ def _validate_restart(scenario_id: str, restart: Any, document: PlanDocument) ->
 
 
 def _validate_background(background: Any, *, root: Path | None = None) -> list[str]:
-    """Check the daemons a plan starts before its scenarios run.
-
-    `background` was the one top-level block nobody validated, and it is the block whose
-    entries reach a `subprocess` and a readiness poll. An unrunnable shape therefore failed
-    at *run* time, where the only route back to the plan agent is a status and a sentence —
-    while everything caught here is handed to it as a diagnostic naming the field. That omission
-    is not academic: a `ready_check` mapping crashed the runner, and the coder loop spent
-    its whole rework budget re-planning a plan that was never wrong.
-
-    Both fields lost their shell here. `argv` is a list because a daemon command line ran
-    through `bash -c`, which made `go test ./...` a legal daemon and left the one capability
-    the sandbox exists to remove reachable from the host side of it. `ready_check` is HTTP
-    because its command form was a `curl` invocation wearing a `assert_contains` — the probe
-    was always "does this URL answer with this status", and saying so directly costs nothing
-    and reopens nothing.
-    """
+    """Check the daemons a plan starts before its scenarios run."""
     problems: list[str] = []
     if not isinstance(background, list):
         return ["'background' must be a list"]
@@ -924,14 +741,7 @@ def _validate_background(background: Any, *, root: Path | None = None) -> list[s
 
 
 def _validate_secret(name: str, declaration: Any, root: Path, spec_dir: Path) -> list[str]:
-    """One source per secret: the variable the runner reads, or the file the trial wrote.
-
-    A `from_file` path is root-relative, stays inside the repo, and is never under a spec's
-    disposable `qa/` — the runner empties that directory before the scenarios start, so a
-    secret kept there is gone by the time it is read. Whether the file exists is a runtime
-    question (`check_runtime_requirements`), since the trial writes it after the plan is
-    validated.
-    """
+    """One source per secret: the variable the runner reads, or the file the trial wrote."""
     if not isinstance(declaration, dict) or not set(declaration) <= {"from_env", "from_file"}:
         return [f"secret '{name}' must contain only 'from_env' or 'from_file'"]
     if len(declaration) != 1:
@@ -948,19 +758,11 @@ def _validate_secret(name: str, declaration: Any, root: Path, spec_dir: Path) ->
     return []
 
 
-#: An environment variable name a plan may hand to a tool: upper-case, the convention
-#: every tool reads. `QA_*` is the runner's own namespace, and a secret's variable is
-#: reachable only through `secret()`, so neither is declarable here.
 _TOOL_ENV_NAME = re.compile(r"^[A-Z_][A-Z0-9_]*$")
 
 
 def _validate_tool_env(declared: Any, secrets: Mapping[str, Any]) -> list[str]:
-    """The names a scenario may set on `qa.tool(name).run(env=...)`.
-
-    Declared once at the top of the plan rather than free on the call, because this is
-    the list `ostler qa validate` reads: a scenario body cannot quietly reach `PATH`, the
-    runner's own `QA_*`, or the variable a secret is injected through.
-    """
+    """The names a scenario may set on `qa.tool(name).run(env=...)`."""
     if not isinstance(declared, list):
         return ["'tool_env' must be a list of environment variable names"]
     problems: list[str] = []
@@ -985,15 +787,7 @@ def _validate_tool_env(declared: Any, secrets: Mapping[str, Any]) -> list[str]:
 
 
 def _validate_daemon_cwd(label: str, cwd: Any, root: Path | None) -> list[str]:
-    """Where the daemon starts, when the plan says somewhere other than the repo root.
-
-    `background(cwd=)` was accepted and recorded and then never read — the runner started
-    every daemon at the root regardless, so a plan whose server had to run from its own
-    package directory passed validation and failed readiness with no field named. A
-    relative cwd resolves against the root and must stay inside it: a daemon is the
-    product under test, and the product lives in the repo. One carrying `{{…}}` is
-    expanded at run time and is checked there.
-    """
+    """Where the daemon starts, when the plan says somewhere other than the repo root."""
     if cwd is None:
         return []
     if not isinstance(cwd, str) or not cwd.strip():
@@ -1004,12 +798,7 @@ def _validate_daemon_cwd(label: str, cwd: Any, root: Path | None) -> list[str]:
 
 
 def _validate_daemon_argv(label: str, daemon: Mapping[str, Any]) -> list[str]:
-    """The daemon's program and its arguments, as a list nothing expands.
-
-    `cmd` is named explicitly in the refusal because that is the field an author who has
-    seen an older plan will write, and "argv is required" would read as a missing field
-    rather than as a replaced one.
-    """
+    """The daemon's program and its arguments, as a list nothing expands."""
     if "cmd" in daemon:
         return [
             f"{label}.cmd is retired — a daemon command line ran through a shell, which "
@@ -1029,8 +818,6 @@ def _validate_ready_check(label: str, check: Any) -> list[str]:
     if check is None:
         return []
     if isinstance(check, str):
-        # Polled with `urlopen`, so anything that is not a URL it can open would spend the
-        # whole timeout failing to connect for a reason nobody sees.
         if not check.startswith(("http://", "https://")):
             return [
                 f"{label}.ready_check as a string must be an http(s) URL; "
@@ -1073,12 +860,7 @@ def check_runtime_requirements(
     *,
     targets: set[str] | None = None,
 ) -> list[str]:
-    """What this machine must have before the run starts, for the targets it will use.
-
-    ``targets`` is the set the selected scenarios actually name. Without it a `--scenario`
-    dry run of one HTTP check was blocked because some *other* target in the same plan
-    wanted a mobile toolchain — a requirement that run was never going to reach.
-    """
+    """What this machine must have before the run starts, for the targets it will use."""
     problems: list[str] = []
     for name, target in document.data.get("targets", {}).items():
         if targets is not None and name not in targets:
@@ -1092,13 +874,8 @@ def check_runtime_requirements(
                 import playwright.sync_api  # noqa: F401
             except ImportError:
                 problems.append(f"target '{name}' requires the Playwright Python package")
-            # ffmpeg for both modes: `window` films with it, and every mode is held to
-            # "the recording is not one frozen frame", which is a decode.
             if required and shutil.which("ffmpeg") is None:
                 problems.append(f"target '{name}' requires ffmpeg to record and check evidence")
-            # `window` grabs an X display the recorder starts itself, so Xvfb is a runtime
-            # requirement rather than a fallback, and the whole mode is Linux-only. Both are
-            # caught here so the run is refused up front instead of a scenario in.
             if required and mode == "window" and sys.platform != "linux":
                 problems.append(
                     f"target '{name}' asks for `recording.mode: window`, which films an X "
@@ -1151,34 +928,12 @@ def _known_coverage(context: dict[str, Any]) -> set[str]:
 
 
 def _scenario_allowance(budget: int) -> int:
-    """How many scenarios a plan may declare for *budget* coverable ids.
-
-    Not the budget itself, because a single obligation is legitimately discharged by two
-    scenarios — the success path in one, the conflict branch in another, which
-    `_invoked_checks` already aggregates across. Not unbounded, because every downstream cost
-    of this lane — schema validation, the dry run, the suite run, each fix item, the audit —
-    is linear in scenario count, so a plan with four scenarios per obligation buys four times
-    the lane for the same verdict. Half the budget, and at least one, is the room for the
-    branch split and nothing like the room for a second plan.
-    """
+    """How many scenarios a plan may declare for *budget* coverable ids."""
     return budget + max(1, budget // 2)
 
 
 def _overplanning_problems(document: PlanDocument) -> list[str]:
-    """Reject a plan that verifies more than this change owes.
-
-    The mirror of the under-coverage rule above, and derived from the same packet: an
-    obligation or an acceptance criterion this diff created is what a scenario may be spent
-    on, so the count of them is the budget and a scenario claiming none of them is spending
-    off the packet entirely. Both halves need the packet to say something — a surface the
-    book does not model yet carries no obligations and no criteria, and there the evidence
-    gate already falls back to run-log proof, so there is no budget to derive and this
-    returns nothing rather than refusing every plan that could be written.
-
-    The failure this bounds is not a hypothetical: the coverable set is fenced (`_uncoverable`)
-    but its *multiplicity* was not, so a planner that could not tell which scenario discharged
-    an obligation wrote all of them, and every later lap paid for the whole set.
-    """
+    """Reject a plan that verifies more than this change owes."""
     coverable = _known_coverage(document.context)
     if not coverable:
         return []
@@ -1213,24 +968,7 @@ def _overplanning_problems(document: PlanDocument) -> list[str]:
 
 
 def _uncoverable(cover: str, context: dict[str, Any], known: set[str]) -> str:
-    """Say *why* `covers: [cover]` is not coverable, and what to write instead.
-
-    "unknown ID" alone is true of two different mistakes with opposite repairs, and it
-    describes only the rarer one. An id naming a **documented node that this change does
-    not touch** is not unknown — the node is right there in the book, which is where the
-    plan author read it. Told it is unknown, the author goes back to the book, finds it,
-    and either re-asserts the same id or invents a neighbour; the coverable set is the one
-    place the message never sent them. That lap is not free: a coder run spent one of its
-    three plan reworks re-submitting `…/api.md#tooling:contract` for a real `#tooling`
-    section that simply owned none of the changed files.
-
-    So the two are separated, and the obligations this change *does* carry are named. They
-    are bounded — a diff wide enough to have hundreds is one where the list is the answer.
-    """
-    # `okf:<node>:<key>` for a node-level obligation, `okf:<node>:<key>:<index>` for one
-    # value of an enumerated bullet. A node id carries no `:`, so splitting from the left
-    # names the node in both shapes — `rsplit` on the whole id does not, and left every
-    # value-level id falling through to the worse "unknown ID" wording below.
+    """Say *why* `covers: [cover]` is not coverable, and what to write instead."""
     node = cover.split(":", 2)[1] if cover.startswith("okf:") else ""
     documented = {
         *(str(item) for item in context.get("contracts", [])),
@@ -1262,13 +1000,8 @@ def _contained_path(base: Path, raw: Any) -> Path | None:
     return resolved
 
 
-#: A bullet's leading token — `alert` out of `alert`, and out of `alert — a static region`.
-#: The book writes a clean ARIA role most of the time and trailing prose the rest of it, and
-#: a rule that only fires on the clean spelling is a rule the planner routes around.
 _BULLET_TOKEN_RE = re.compile(r"^[\s`\"']*([^\s—,;(`\"']+)")
 
-#: `n/a` on a `role:`/`route:` bullet is the book saying the node has none — a static region
-#: with no interactive control, a component that never owns a URL. Not an address.
 _ABSENT_BULLET = frozenset({"n/a", "na", "none", "-", "—"})
 
 
@@ -1283,12 +1016,7 @@ def _bullet_tokens(values: Any) -> set[str]:
 
 
 def _route_matches(route: str, url: str) -> bool:
-    """Whether a planned `goto` lands on a route the book documents.
-
-    Segment-wise, because a documented route carries parameters (`/docs/:slug`, `/docs/{id}`)
-    and so does a planned URL (`/docs/{{slug}}`, filled from a prior step). Either side's
-    parameter matches anything; a literal must match a literal.
-    """
+    """Whether a planned `goto` lands on a route the book documents."""
     planned = urlsplit(url).path or "/"
     documented = urlsplit(route).path or "/"
     left = [part for part in planned.strip("/").split("/") if part]
@@ -1307,37 +1035,7 @@ def _validate_book_locators(
     actions: list[Any],
     documented: dict[str, dict[str, Any]],
 ) -> list[str]:
-    """A browser scenario is addressed the way the book says, or it does not validate.
-
-    The OKF book already carries `role:`, `name:`, `selector:` and `route:` for every screen
-    and component; the packet puts them on the obligation. Left as prompt guidance this was
-    ignored outright — every locator written before this gate was a text match on a rendered
-    string, which passes today, breaks on the next copy edit, and proves nothing about the
-    accessible name the book requires. So it is enforced here instead: a `text:` locator is
-    rejected when the book gave an address for everything the scenario covers, a stated role
-    must actually be addressed by role, and a `goto` may only reach a documented route.
-
-    Both role rules are deliberately scoped to leave no dead end. A scenario mixing a
-    role-documented node with one the book gives no address for still needs text for the
-    latter, so the text rejection fires only when *every* covered obligation states a role;
-    and a screen node documenting `role: main` should not force a `get_by_role("main")` next
-    to the assertion that matters, so one role locator satisfies the addressing rule. A gate
-    that demands the impossible is a gate the planner burns its turns against.
-
-    A role and its accessible name are one address, not two claims because they sit on two
-    bullets: `_page_locator_expr` never emits `get_by_role(role)` without a `name=` — Playwright's
-    strict mode raises when a bare role resolves to more than one element, and the compiler has no
-    runtime page to check that against statically — so a role paired with a truthful `name: none`
-    (the element's accessible name genuinely is empty; no `aria-label` gives it one) compiles to
-    `selector:` instead, exactly as `_page_locator_expr`'s own docstring says it will. Demanding a
-    `get_by_role` locator for that node anyway is the same dead end the paragraph above already
-    guards against, just reached from the name side instead of the coverage side: the role is only
-    held to the "must be addressed by role" rule when the node also states a name a `by_role` query
-    could use. Without that name, `selector:` is not a lesser address the scenario settled for — it
-    is the whole address the book has, and a `by_css` locator built from it satisfies the addressing
-    rule. The text-locator rejection is unaffected: a role stated with no name still says "this is
-    not free text," so a text locator on that node is still rejected in favor of the selector.
-    """
+    """A browser scenario is addressed the way the book says, or it does not validate."""
     roles: set[str] = set()
     named_roles: set[str] = set()
     routes: set[str] = set()
@@ -1347,12 +1045,6 @@ def _validate_book_locators(
         node_roles = _bullet_tokens(locators.get("role"))
         addressable = addressable and bool(node_roles or _bullet_tokens(locators.get("selector")))
         roles |= node_roles
-        # `name` genuinely undocumented (the key is absent — a locators dict this thin never
-        # comes off a real packet, where `name:` is required on every role-bearing node type) is
-        # not the same claim as `name` documented and truthfully empty (`name: none`): the first
-        # says nothing about whether a `by_role` query could work, so the old, stricter default
-        # holds; only the second is the book's own word that no accessible name exists, which is
-        # what relaxes the rule below.
         if node_roles and (("name" not in locators) or _bullet_tokens(locators.get("name"))):
             named_roles |= node_roles
         routes |= {route for route in _bullet_tokens(locators.get("route")) if route.startswith("/")}

@@ -28,7 +28,7 @@ def test_valid_entries_parse_with_defaults(tmp_path: Path):
 def test_malformed_entry_is_skipped_and_recorded(tmp_path: Path):
     path = _write(tmp_path / "manifest.json", [
         {"selector": "#nav", "bbox": {"x": 0, "y": 0, "width": 10, "height": 10}},
-        {"selector": "#broken"},  # missing required bbox
+        {"selector": "#broken"},
     ])
     result = load_manifest(path)
     assert len(result.elements) == 1

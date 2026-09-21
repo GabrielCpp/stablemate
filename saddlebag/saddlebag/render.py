@@ -1,29 +1,4 @@
-"""Resolving an environment to values, and checking it without writing.
-
-This is the one place in saddlebag where an environment's secrets are read, and
-it is deliberately small. Two entry points:
-
-* :func:`resolve` turns entries into values — reading ``config`` from the pool DB,
-  ``secret`` from the store, and ``credential-ref`` from a **leased** credential.
-* :func:`check` resolves the same way but takes no lease and writes nothing, then
-  diffs the result against the target file. It is the gate a QA preflight calls,
-  and it is safe to run anywhere because its report names keys, never values.
-
-Two properties are worth stating outright, because they are why this module is
-shaped the way it is:
-
-**The store is opened lazily.** ``open_store`` arrives as a zero-argument callable,
-not an open store, and is called only when an entry actually needs it. An
-environment made entirely of ``config`` entries therefore renders on a host with no
-keyring and no Vault — which is exactly the host (a container, a CI box) where a
-stack most needs to be reproducible. The no-plaintext-fallback rule is untouched:
-it governs material that *is* secret.
-
-**Nothing is written until everything resolves.** Resolution runs in two passes:
-one that reads and collects gaps, and — only if there are none — one that takes
-the leases. A missing key can never leave a half-rendered file behind, and a lease
-that fails to be taken rolls back the leases taken beside it.
-"""
+"""Resolving an environment to values, and checking it without writing."""
 
 from __future__ import annotations
 
@@ -38,10 +13,8 @@ from saddlebag.db import DEFAULT_TTL, Pool, PoolError
 from saddlebag.models import KIND_CONFIG, KIND_CREDENTIAL_REF, KIND_PENDING, KIND_SECRET, Environment, parse_cred_ref
 from saddlebag.store import SecretStore
 
-#: A zero-argument opener, so the store is touched only when an entry needs it.
 StoreOpener = Callable[[], SecretStore]
 
-#: Why an entry could not be resolved. These are the only reasons.
 PENDING = "pending"
 UNSET = "unset"
 DANGLING = "dangling"
@@ -66,12 +39,8 @@ class Gap:
 class Resolution:
     """The resolved environment: values to write, gaps that stop the write."""
 
-    #: KEY -> value, in render order. Optional entries that resolved to nothing are
-    #: simply absent. This is the only object in the module that holds a secret.
     values: dict[str, str] = field(default_factory=dict)
-    #: Required entries that could not be resolved. Non-empty means: do not write.
     gaps: list[Gap] = field(default_factory=list)
-    #: credential id -> lease id, for the credential-refs this resolution leased.
     leases: dict[str, str] = field(default_factory=dict)
 
     @property
@@ -110,19 +79,9 @@ def resolve(
     run_id: str | None = None,
     ttl: int = DEFAULT_TTL,
 ) -> Resolution:
-    """Resolve every entry to a value.
-
-    With ``lease=True`` the credentials behind any ``credential-ref`` entries are
-    leased for ``run_id`` — the same exclusive checkout ``saddlebag acquire`` takes,
-    released by the same ``saddlebag release --run-id``. With ``lease=False``
-    (what ``--check`` uses) they are read but not leased, so the gate has no side
-    effects at all.
-
-    An entry that is *not* required and has no value is dropped from the output
-    rather than recorded as a gap: the rendered file simply omits the key.
-    """
+    """Resolve every entry to a value."""
     result = Resolution()
-    refs: dict[str, str] = {}  # KEY -> credential id, for the leasing pass
+    refs: dict[str, str] = {}
 
     for entry in environment.entries:
         value: str | None = None
@@ -145,8 +104,6 @@ def resolve(
                 refs[entry.key] = credential_id
 
         if gap is not None:
-            # An optional key with nothing behind it is not a gap — it is a key the
-            # rendered file leaves out, which is what "not required" means.
             if entry.required:
                 result.gaps.append(gap)
             continue
@@ -162,15 +119,7 @@ def resolve(
 def _take_leases(
     pool: Pool, credential_ids: set[str], *, run_id: str | None, ttl: int
 ) -> dict[str, str]:
-    """Lease each referenced credential exactly once, all-or-nothing.
-
-    Two entries may point at the same credential (``TEST_USER_EMAIL`` and
-    ``TEST_USER_PASSWORD`` routinely do), so leases are taken per *credential*, not
-    per entry. A credential this run already holds is reused rather than re-leased —
-    otherwise a second ``env render`` inside one run would collide with its own
-    first one. If any lease cannot be taken, the ones taken alongside it are handed
-    back before the error propagates, so a failed render strands nothing.
-    """
+    """Lease each referenced credential exactly once, all-or-nothing."""
     taken: dict[str, str] = {}
     try:
         for credential_id in sorted(credential_ids):
@@ -208,24 +157,20 @@ def read_target(path: Path | str, fmt: str) -> dict[str, str] | None:
 
 @dataclass
 class CheckReport:
-    """What ``env render --check`` found. Names keys; never emits a value."""
+    """What ``env render --check`` found."""
 
     environment: str
     id: str
     target: str | None
     gaps: list[Gap] = field(default_factory=list)
-    #: In the environment, absent from the target file.
     missing: list[str] = field(default_factory=list)
-    #: In the target file, not in the environment.
     extra: list[str] = field(default_factory=list)
-    #: In both, but the file's value is not the one the environment would render.
     drift: list[str] = field(default_factory=list)
-    #: Whether the target file exists at all.
     target_exists: bool = False
 
     @property
     def resolvable(self) -> bool:
-        """Every required key has a value behind it. Nothing here needs a human."""
+        """Every required key has a value behind it."""
         return not self.gaps
 
     @property
@@ -259,12 +204,7 @@ def check(
     *,
     target: Path | str | None = None,
 ) -> CheckReport:
-    """Resolve the environment and diff it against its target file — writing nothing.
-
-    Drift is reported by key name only. The comparison itself does look at values
-    (it has to, to know a key drifted), but no value reaches the report, so the
-    output stays safe to print in CI, hand to an agent, or paste into an issue.
-    """
+    """Resolve the environment and diff it against its target file — writing nothing."""
     resolution = resolve(environment, pool, open_store, lease=False)
     target = target or environment.target
     report = CheckReport(
@@ -278,7 +218,6 @@ def check(
 
     on_disk = read_target(target, environment.format)
     if on_disk is None:
-        # Not rendered yet: every key it should hold is missing.
         report.missing = list(resolution.values)
         return report
 

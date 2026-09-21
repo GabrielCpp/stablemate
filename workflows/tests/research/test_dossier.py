@@ -1,9 +1,4 @@
-"""The program dossier, on a compact extract of the tracebus record.
-
-Every number asserted here is one the real program carried and the loop never
-computed: the required effect against the seed noise of its own eval, the date the
-frozen metric last moved, how many times a gate was killed and revived.
-"""
+"""The program dossier, on a compact extract of the tracebus record."""
 from __future__ import annotations
 
 import json
@@ -55,7 +50,6 @@ def _build(repo: Path, program_dir: str, **kw) -> Dossier:
     )
 
 
-# ── parsers ─────────────────────────────────────────────────────────────────
 
 
 def test_frozen_target_parses_the_readme_table():
@@ -85,7 +79,6 @@ def test_status_tables_split_active_from_superseded():
     by_id = {r.gate_id: r for r in superseded}
     assert "D1" in by_id and "BANKED" in by_id["D1"].status
     assert "D3" in by_id and "KILLED" in by_id["D3"].status
-    # The deliberately malformed G5 row (five cells under a six-column header).
     assert any("G5" in u or "cells" in u for u in unparsed)
 
 
@@ -121,7 +114,7 @@ def test_classify_entry(title: str, expected: str):
 def test_jobs_read_seed_families_and_flags():
     unparsed: list[str] = []
     jobs = {j.gate_id: j for j in D.read_jobs(FIXTURE / "jobs", unparsed)}
-    assert set(jobs) == {"G1", "G0", "D3"}  # -dry skipped
+    assert set(jobs) == {"G1", "G0", "D3"}
     g1 = jobs["G1"]
     assert g1.families["coverage"] == [34.0, 31.0, 36.0]
     assert g1.family_mean["coverage"] == pytest.approx(33.67, abs=0.01)
@@ -140,7 +133,6 @@ def test_pending_results_skip_table_rows_and_spending():
     assert D.pending_results(text) == ["SWE READOUT PENDING"]
 
 
-# ── the series and resolvability ────────────────────────────────────────────
 
 
 def test_metric_series_and_last_move():
@@ -177,7 +169,6 @@ def test_resolvability_passes_with_a_bigger_eval_or_margin():
     assert "not computable" in D.resolvability(FrozenTarget(threshold_count=93, n=147)).statement
 
 
-# ── the node ────────────────────────────────────────────────────────────────
 
 
 def test_build_dossier_fires_the_tracebus_triggers(program):
@@ -191,13 +182,12 @@ def test_build_dossier_fires_the_tracebus_triggers(program):
     assert d.counts["kills"] >= 1 and d.counts["revives"] >= 2
     assert d.active_gate == "G1"
     assert {"apparatus_cycles>=2", "metric_stale", "unresolvable_effect", "reviews_exhausted"} <= set(d.triggers)
-    assert "ceiling_below_target" not in d.triggers  # C = 101 >= 93
+    assert "ceiling_below_target" not in d.triggers
     assert d.circling and d.review_due
     assert any("SWE READOUT PENDING" in p for p in d.pending)
     assert d.churn.get("G1", 0) == 40
     assert any("cells" in u for u in d.unparsed)
     assert len(d.fingerprint) == 12
-    # history bootstrapped from the progress file, once
     hist = repo / pdir / HISTORY_NAME
     assert hist.exists()
     n = len(read_history(hist))
@@ -219,9 +209,7 @@ def test_review_due_is_deduped_by_fingerprint(program):
 
 
 def test_a_review_s_own_recharter_does_not_trigger_the_next_review(program):
-    """Seen on tracebus: the re-charter fixed `unresolvable_effect`, the trigger set
-    shrank, the fingerprint changed, and `start` wanted a second review at once. New
-    evidence needs a gate to have cycled since the review — or another day."""
+    """Seen on tracebus: the re-charter fixed `unresolvable_effect`, the trigger set shrank, the fingerprint changed, and `start` wanted a second review at once."""
     repo, pdir = program
     d = _build(repo, pdir, lead_reviews=6)
     append_history(LOG, str(repo), pdir, "program_review", fingerprint="stale" + d.fingerprint, today=TODAY)
@@ -234,11 +222,7 @@ def test_a_review_s_own_recharter_does_not_trigger_the_next_review(program):
 
 
 def test_fingerprint_ignores_which_gate_is_active():
-    """Seen on maskbus: G0's two revives leave `apparatus_cycles>=2` permanently
-    true (it is a lifetime count, never cleared). Every reviewer since has said, in
-    writing, that this is stale. But the gate advancing from G0 to G1 to G2 to G3
-    kept re-triggering a review anyway, burning the program's review cap on a
-    trigger set and metric evidence that never changed — only `active_gate` did."""
+    """Seen on maskbus: G0's two revives leave `apparatus_cycles>=2` permanently true (it is a lifetime count, never cleared)."""
     base = Dossier(triggers=["apparatus_cycles>=2"], series=[])
     at_g1 = base.model_copy(update={"active_gate": "G1"})
     at_g2 = base.model_copy(update={"active_gate": "G2"})
@@ -251,8 +235,6 @@ def test_stale_apparatus_cycles_does_not_force_a_review_at_every_gate(program):
     d = _build(repo, pdir, lead_reviews=6)
     assert "apparatus_cycles>=2" in d.triggers
     append_history(LOG, str(repo), pdir, "program_review", fingerprint=d.fingerprint, today=TODAY)
-    # The gate advances (new gate_cycles), but nothing about the trigger set or the
-    # metric evidence changed — this must not force another review.
     next_gate = _build(repo, pdir, lead_reviews=6, gate_cycles=1)
     assert next_gate.fingerprint == d.fingerprint
     assert next_gate.review_due is False
@@ -288,7 +270,6 @@ def test_render_and_summary_carry_the_statement(program):
     assert summary.count("\n") == 4 and "unresolvable_effect" in summary
 
 
-# ── history ─────────────────────────────────────────────────────────────────
 
 
 def test_history_append_and_bootstrap(tmp_path: Path):

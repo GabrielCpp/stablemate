@@ -1,18 +1,4 @@
-"""Tests for the dashboard client module as a *whole file* (assets/dashboard.js).
-
-Nothing else in the suite parses this module. The connection-state tests pull one
-pure function out of it by string slicing, so a syntax error anywhere else in the
-file would sail past every Python test and only surface as a blank dashboard in a
-browser. A parse check is therefore not a formality here — it is the only thing
-standing between a typo and a dead page, until the Playwright suite lands.
-
-The rest of the assertions guard the JSON-first contract at the boundary the
-server tests cannot see: that the client reads its endpoints as JSON, that no
-fragment-swapping machinery survives, and that htmx is really gone rather than
-merely unused.
-
-Run: uv run pytest tests/test_dashboard_client.py
-"""
+"""Tests for the dashboard client module as a *whole file* (assets/dashboard.js)."""
 from __future__ import annotations
 
 import shutil
@@ -28,9 +14,7 @@ NODE = shutil.which("node")
 
 
 def _node() -> str:
-    """The node binary. Called only past `_skipped()`, which is what rules its
-    absence out — so the caller below spells the command rather than the question of
-    whether node is installed."""
+    """The node binary."""
     assert NODE is not None
     return NODE
 
@@ -43,9 +27,6 @@ def _skipped() -> bool:
 
 
 def test_the_client_module_parses():
-    # `node --check` parses as a module only for .mjs, and dashboard.js must keep
-    # its .js name because that is what the <script type="module"> tag asks for —
-    # so check a copy under the extension node needs.
     if _skipped():
         return
     with tempfile.TemporaryDirectory() as tmp:
@@ -58,9 +39,6 @@ def test_the_client_module_parses():
 
 
 def test_every_endpoint_is_read_as_json():
-    # The one regression this file exists to catch. Every read endpoint returns
-    # JSON now; a leftover `.text()` would hand a component a string where it
-    # expects an object and fail silently at runtime, not at import.
     src = CLIENT.read_text()
     assert ".text()" not in src
     for route in ("/api/state", "/worker/", "/repos", "/files/", "/file/", "/diff/"):
@@ -68,10 +46,6 @@ def test_every_endpoint_is_read_as_json():
 
 
 def test_no_fragment_swapping_survives():
-    # Fragments were the old transport: the server sent markup keyed by element id
-    # and the client swapped it in. Preact reconciles instead, so any surviving
-    # swap helper would be a second, unreconciled render path writing into a tree
-    # Preact believes it owns.
     src = CLIENT.read_text()
     assert "applyFragments" not in src
     assert "outerHTML" not in src
@@ -79,8 +53,6 @@ def test_no_fragment_swapping_survives():
 
 
 def test_htmx_is_gone_from_the_shipped_surface():
-    # Not merely unreferenced — absent. A vendored copy still on disk is a file the
-    # next person wires back up, and the shell must not load it at all.
     assert not list(ASSETS.glob("htmx*"))
     shell = (ROOT / "groom" / "templates" / "dashboard.html").read_text()
     assert "htmx" not in shell
@@ -88,9 +60,6 @@ def test_htmx_is_gone_from_the_shipped_surface():
 
 
 def test_the_only_markup_the_client_sets_comes_from_a_sanitizer_or_a_renderer():
-    # `dangerouslySetInnerHTML` is the one place untrusted text could become markup.
-    # Every use must be fed by DOMPurify (gate questions), diff2html or highlight.js
-    # — all of which escape — so this counts the sites and pins them to those three.
     src = CLIENT.read_text()
     sites = src.count("dangerouslySetInnerHTML")
     sources = src.count("DOMPurify.sanitize") + src.count("Diff2Html.html") + src.count("highlight(")
@@ -98,8 +67,6 @@ def test_the_only_markup_the_client_sets_comes_from_a_sanitizer_or_a_renderer():
 
 
 def test_the_render_module_is_gone():
-    # Phase 3's endpoint: no server-side HTML anywhere. The module and its tests
-    # were deleted together, and the projection tests carry what they asserted.
     assert not (ROOT / "groom" / "render.py").exists()
     assert not (ROOT / "tests" / "test_render.py").exists()
     for py in (ROOT / "groom").rglob("*.py"):

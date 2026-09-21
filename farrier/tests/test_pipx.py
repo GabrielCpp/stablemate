@@ -1,19 +1,4 @@
-"""Workflow discovery: what this machine can run, read out of `pipx list --json`.
-
-A workflow is a distribution binding a `workhorse-<name>` console script. There is
-no registry to query and no selection list to consult — the installed set IS the
-answer, which is what keeps it from drifting.
-
-Two things are being pinned. First, the classification: a PyPI install needs nothing
-mounted, a local one needs its directory bound into the container, so telling them
-apart is the substantive output. Second, the tolerance: this parses another tool's
-JSON from inside a Makefile, where a pipx upgrade that renames a key must cost a
-missing workflow rather than a traceback in the middle of `make`.
-
-The fixtures below are the real shape, taken from an actual `pipx list --json`.
-
-    ./.venv/bin/python -m pytest tests/test_pipx.py
-"""
+"""Workflow discovery: what this machine can run, read out of `pipx list --json`."""
 from __future__ import annotations
 
 import json
@@ -43,9 +28,6 @@ def _payload(**venvs: dict) -> dict:
     return {"pipx_spec_version": "0.1", "venvs": venvs}
 
 
-# --------------------------------------------------------------------------- #
-# What counts as a workflow
-# --------------------------------------------------------------------------- #
 
 
 def test_a_workflow_is_a_workhorse_prefixed_console_script():
@@ -63,8 +45,7 @@ def test_a_workflow_is_a_workhorse_prefixed_console_script():
 
 
 def test_venvs_that_provide_no_workflow_are_not_reported():
-    """The base library installs as a pipx venv with no apps at all; unrelated tools
-    have apps that are not workflows. Neither is a workflow provider."""
+    """The base library installs as a pipx venv with no apps at all; unrelated tools have apps that are not workflows."""
     found = pipx.parse(
         _payload(
             **{
@@ -78,8 +59,7 @@ def test_venvs_that_provide_no_workflow_are_not_reported():
 
 
 def test_the_bare_prefix_and_the_libraries_themselves_are_not_workflows():
-    """`workhorse-agent` is the engine and `workhorse-workflows` the distribution;
-    neither names a workflow you can run, even though both match the prefix."""
+    """`workhorse-agent` is the engine and `workhorse-workflows` the distribution; neither names a workflow you can run, even though both match the prefix."""
     found = pipx.parse(
         _payload(
             wf=_venv(["workhorse-agent", "workhorse-workflows", "workhorse-", "workhorse-coder"],
@@ -90,8 +70,7 @@ def test_the_bare_prefix_and_the_libraries_themselves_are_not_workflows():
 
 
 def test_a_name_is_reported_once_even_from_two_distributions():
-    """A fork installed alongside the original. Which script wins is pipx's PATH
-    order to settle, not this module's."""
+    """A fork installed alongside the original."""
     found = pipx.parse(
         _payload(
             a=_venv(["workhorse-coder"], "workhorse-workflows", package="workhorse-workflows"),
@@ -101,9 +80,6 @@ def test_a_name_is_reported_once_even_from_two_distributions():
     assert pipx.names(found) == ["coder", "extra"]
 
 
-# --------------------------------------------------------------------------- #
-# PyPI vs local — the distinction the container cares about
-# --------------------------------------------------------------------------- #
 
 
 def test_a_pypi_install_has_no_local_path_to_mount():
@@ -132,8 +108,7 @@ def test_a_local_install_reports_the_directory_the_container_must_bind(tmp_path:
 
 
 def test_an_editable_install_whose_source_is_gone_is_flagged(tmp_path: Path):
-    """It still runs here — the venv holds a built copy — so nothing else reports it
-    until a container tries to bind the path and the error names a mount instead."""
+    """It still runs here — the venv holds a built copy — so nothing else reports it until a container tries to bind the path and the error names a mount instead."""
     (dist,) = pipx.parse(
         _payload(
             wf=_venv(["workhorse-coder"], str(tmp_path / "deleted"), pip_args=["--editable"])
@@ -144,9 +119,7 @@ def test_an_editable_install_whose_source_is_gone_is_flagged(tmp_path: Path):
 
 
 def test_a_deleted_path_is_not_silently_reclassified_as_a_pypi_name(tmp_path: Path):
-    """Classification is by shape, not by existence. Otherwise a local install whose
-    directory vanished would look like a PyPI package of the same name and the
-    container would try to `pip install /home/dev/gone`."""
+    """Classification is by shape, not by existence."""
     (dist,) = pipx.parse(_payload(wf=_venv(["workhorse-coder"], str(tmp_path / "gone"))))
     assert dist.local_path is not None
 
@@ -156,9 +129,6 @@ def test_a_home_relative_path_is_expanded():
     assert dist.local_path == Path("~/src/workflows").expanduser()
 
 
-# --------------------------------------------------------------------------- #
-# Tolerance — this runs inside a Makefile
-# --------------------------------------------------------------------------- #
 
 
 def test_an_unrecognisable_payload_costs_workflows_not_a_traceback():

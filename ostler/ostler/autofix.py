@@ -1,37 +1,4 @@
-"""`ostler autofix` — deterministic repair of shape-detectable format drift.
-
-`fmt`'s sibling in the `edit.py` family of mutating commands. `fmt` canonicalizes what a
-doc already says; this module fixes the narrow class of drift where the *current* content
-alone proves what the bullet is under the *current* registry — no format version, no
-knowledge of what the book used to be. Each fix is a shape predicate, idempotent and
-convergent from any input, so running it on a clean or from-scratch book is a no-op and
-running it twice is the same as running it once.
-
-The second fix: a `json_path` check asserting `equals=None` (or JSON's `null`). The
-vocabulary's `equals` is a scalar and carries no null — a field that holds nothing is
-asserted by its absence, `absent=true` — and the two spellings are exactly what an author
-transcribing a Python default or a JSON sample writes. The fix rewrites that one keyword,
-and only when the result parses as a check.
-
-The first fix: a `verify:` bullet holding test-id citations. The contract split the
-observation (`verify:` — a call in the closed check vocabulary) from the evidence path
-(`tests:` — `path::symbol` citations), and drifted books still carry the citations under
-the old key. A value that fails check parsing, opens with an inline-code citation run,
-and cites only paths with file extensions cannot be a mistyped check — it is the split's
-path half under the split's observation key, and the fix renames the key. Anything the
-predicate cannot prove stays where it is and remains a doctor finding for judgment.
-
-The third fix: a call whose keywords are spelled `name: value` — the shape the vocabulary's
-own signatures (`code: int`) invite when an author substitutes a value for the type. Each
-keyword colon is found on the token stream, so a colon inside a string literal is never
-touched, and the rewrite stands only when the result parses as a check. An unquoted value
-(`path: $.detail`) does not, and stays a finding: which text the author meant to quote is
-judgment.
-
-The fourth fix: a whole `verify:` value wrapped in one inline-code span whose content
-parses as a check. The backticks are the only drift, so they go; a code span that holds a
-check is never read as a citation for the first fix.
-"""
+"""`ostler autofix` — deterministic repair of shape-detectable format drift."""
 
 from __future__ import annotations
 
@@ -47,7 +14,6 @@ from ostler.checks import CheckCall, parse_check, parse_expression, relocatable_
 from ostler.fmt import _target_files
 from ostler.model import Graph, _file_main_section, _inline_type
 
-#: The key whose drifted values this module recognizes, and the key they belong under.
 _DRIFTED_KEY = "verify"
 _TARGET_KEY = "tests"
 
@@ -55,11 +21,7 @@ _HEADING_TO_TYPE_LOWER = {h.lower(): t for h, t in registry.UI_HEADING_TO_TYPE.i
 
 
 def _unwrap_code_span(value: str) -> str:
-    """The value with one inline-code span around the whole of it removed, else unchanged.
-
-    The vocabulary's calls are bare, so `` `json_path(...)` `` fails parsing on its backticks
-    alone. Whether what is inside is a check is the caller's gate, like every rewrite here.
-    """
+    """The value with one inline-code span around the whole of it removed, else unchanged."""
     spans = markdown.leading_code_spans(value)
     stripped = value.strip()
     if len(spans) != 1 or stripped != f"`{spans[0]}`":
@@ -71,12 +33,7 @@ _NULL_EQUALS = re.compile(r"\bequals\s*=\s*(?:None|null)\b")
 
 
 def _is_null_equals(value: str) -> bool:
-    """True when a `verify:` value is provably `json_path(..., equals=None|null)`.
-
-    Proved on the syntax tree, not the text: the call is `json_path`, its `equals` is the
-    constant `None` or the bare name `null`, and no other `one_of` argument is present —
-    so the rewrite cannot leave a call asserting two things at once.
-    """
+    """True when a `verify:` value is provably `json_path(..., equals=None|null)`."""
     try:
         tree = parse_expression(value.strip())
     except SyntaxError:
@@ -95,13 +52,7 @@ def _is_null_equals(value: str) -> bool:
 
 
 def _colon_keywords_as_equals(value: str) -> str:
-    """`value` with every `name: …` keyword spelled `name=…` — unchanged when it has none.
-
-    A keyword colon is a NAME directly inside the call's own parentheses, following its `(`
-    or a `,`, and followed by `:`. Found on tokens rather than text: `subject="a, b: c"` is
-    one STRING token, so the colon a regex would rewrite is not a candidate here. Whether
-    the result is a check is the caller's gate, after every rewrite has composed.
-    """
+    """`value` with every `name: …` keyword spelled `name=…` — unchanged when it has none."""
     try:
         tokens = [t for t in tokenize.generate_tokens(io.StringIO(value).readline)
                   if t.type not in (tokenize.NL, tokenize.NEWLINE, tokenize.ENDMARKER)]
@@ -118,8 +69,7 @@ def _colon_keywords_as_equals(value: str) -> str:
               and tokens[i - 1].type == tokenize.NAME
               and tokens[i - 2].type == tokenize.OP and tokens[i - 2].string in "(,"):
             if token.start[0] != 1:
-                return value  # a wrapped head is not one line to rewrite
-            # Through the whitespace after the colon: `code: 204` reads back as `code=204`.
+                return value
             after = tokens[i + 1].start if i + 1 < len(tokens) else token.end
             spans.append((token.start[1], after[1] if after[0] == 1 else token.end[1]))
     rewritten = value
@@ -130,11 +80,7 @@ def _colon_keywords_as_equals(value: str) -> str:
 
 def _fix_bullet(bullet: markdown.Bullet, uitype: registry.UINodeType | None,
                 body_lines: list[str]) -> tuple[int, int, list[str]] | None:
-    """The one-line rewrite for a drifted bullet, or None if every predicate fails.
-
-    `uitype` is None for an untyped heading: the key move needs the type to own `tests:`,
-    the null rewrite is a property of the call and applies wherever a `verify:` sits.
-    """
+    """The one-line rewrite for a drifted bullet, or None if every predicate fails."""
     if bullet.label != _DRIFTED_KEY:
         return None
     head = body_lines[bullet.line_start]
@@ -164,12 +110,6 @@ def fix_text(text: str) -> str:
                 edits.append(edit)
 
     def promote(section: markdown.Section, container: str | None) -> None:
-        # The same walk `model._promote_section` types nodes by: a container heading
-        # types its direct children and is no node itself; an inline `type:` prefix wins;
-        # otherwise the container's type, else untyped. Nesting composes at any depth, so
-        # a `#### field:` under a record is reached the same way a `### method` is.
-        # Case-insensitive on purpose: a drifted book may not have seen `fmt` yet, and
-        # `## components` holds the same nodes `## Components` does.
         child_container = _HEADING_TO_TYPE_LOWER.get(section.title.strip().lower())
         if child_container is not None:
             for sub in section.children:
@@ -200,12 +140,12 @@ def fix_text(text: str) -> str:
 
 @dataclass
 class AutofixResult:
-    changed: list[Path]        # files whose fixed form differs from disk
-    written: bool              # whether the changes were applied
+    changed: list[Path]
+    written: bool
 
 
 def run_autofix(graph: Graph, paths: list[str], check: bool = False) -> AutofixResult:
-    """Fix every target file. ``check=True`` never writes; it just reports what would change."""
+    """Fix every target file."""
     changed: list[Path] = []
     for path in _target_files(graph, paths):
         try:

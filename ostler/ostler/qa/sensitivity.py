@@ -1,31 +1,4 @@
-"""Whether a declared check can go red at all — measured, not assumed.
-
-`ostler doctor` refuses the two spellings that are *statically* rubber stamps. That is a
-list of known shapes, and the property it stands in for is bigger: an assertion earns a
-claim's `covered` only if there is an observation of the product that would have made it
-fail. Nothing asked that question of the other ten checks, so a call could be legal,
-declared, invoked, green — and incapable of any other verdict.
-
-This asks it by experiment. Every verifier is a pure function of `(observed, args)`
-(`harness/ostler_qa.py`), so a witness observation can be synthesized from the declared
-call, perturbed, and re-verified in-process: no app, no browser, no run. A call is
-**sensitive** when the witness is green and at least one perturbation turns it red, and
-**insensitive** when every perturbation leaves it green — the same verdict whatever the
-product did, which is what a rubber stamp is.
-
-The perturbations are deliberately the ones a defect produces: the field the claim names
-is missing or holds something else, the route that answered was a different one, the
-ledger the write was supposed to leave alone moved, the refusal carries the credential.
-A mutator family is only worth trusting once the corpus's real catches survive it, which
-is why the seeded-defect books are the calibration set rather than a demo.
-
-The experiment has a third outcome and it is not a verdict on the check: **unwitnessed**,
-when no witness this harness can build satisfies the call. That is a limit of the
-synthesizer, and it falls hardest on the most specific patterns a book writes — the ones
-`_matching` cannot invent a member of. Reporting it as `insensitive` said "this check
-cannot go red" on the strength of never having asked, and said it loudest about the
-checks worth keeping.
-"""
+"""Whether a declared check can go red at all — measured, not assumed."""
 
 from __future__ import annotations
 
@@ -43,26 +16,11 @@ from ostler.qa.harness_host import load_harness_module
 _harness = load_harness_module("ostler_qa")
 _VERIFIERS = _harness.VERIFIERS
 
-#: A value nothing in a book asks for, used where a mutation needs "something else".
 _OTHER = "∅ not what was claimed"
 
 
 def matches_admits_other(pattern: str) -> bool:
-    """Whether a `json_path(matches=...)` pattern would let `_OTHER` through.
-
-    A `matches=` check is a value assertion only if the pattern actually excludes something —
-    otherwise it is a presence assertion wearing a value assertion's syntax, the same claim
-    `absent=false` makes outright. The question is computable directly against the verifier's
-    own comparison (`re.search(pattern, value)`) rather than approximated by a list of
-    "vacuous" spellings (`.*`, `.+`, `^.{0,4000}$`, ...): whatever a pattern accepts, if it
-    accepts `_OTHER` too then no value the field could hold would falsify the claim, which is
-    what makes the check a rubber stamp.
-
-    `doctor._rubber_stamp` and this module's `_plan` both call this rather than each deciding
-    it their own way, for the reason `path.resolve_features_root` is the one place that
-    decides where the features root is: two readers computing the same fact from the same
-    input will disagree eventually if the fact is written down twice.
-    """
+    """Whether a `json_path(matches=...)` pattern would let `_OTHER` through."""
     return re.search(pattern, _OTHER) is not None
 
 
@@ -115,14 +73,7 @@ class _Page:
 
 
 class _Focusable:
-    """A control that may or may not take focus, and may or may not fire on a key.
-
-    `focusable` is the only check that *acts* on its subject rather than reading it, so its
-    witness has to be a small machine rather than a bag of answers: `.focus()` either takes
-    focus or does not, and a keypress fires the control only when this witness was built to
-    say so. `activates` names the key the book claims — a control wired to a different key
-    is the defect the check exists to catch, so `fires_on` is the key, not a boolean.
-    """
+    """A control that may or may not take focus, and may or may not fire on a key."""
 
     def __init__(self, *, takes_focus: bool, fires_on: str | None = None) -> None:
         self._takes_focus = takes_focus
@@ -136,16 +87,11 @@ class _Focusable:
         self._focused = self._takes_focus
 
     def receive_key(self, key: str) -> None:
-        # A browser only activates a *focused* control, and only on the key it is wired to.
         if self._focused and self._armed and key == self._fires_on:
             self._activated = True
 
     def evaluate(self, expression: str) -> Any:
-        """Answer the three expressions `_verify_focusable` sends, and refuse a fourth.
-
-        A catch-all here would turn a verifier that learned a new expression into a witness
-        that quietly answers it wrong — a green trial over an experiment that never ran.
-        """
+        """Answer the three expressions `_verify_focusable` sends, and refuse a fourth."""
         if "document.activeElement" in expression:
             return self._focused
         if "addEventListener" in expression:
@@ -171,15 +117,7 @@ class Trial:
 
     @property
     def sensitive(self) -> bool:
-        """Green on the witness, and red under *every* mutation the call is meant to catch.
-
-        A survivor is a defect this call admits, so one is enough to disqualify it: a
-        `visible` verifier that checked only presence, ignoring the `text=` it was given,
-        would let an `any(flipped)` rule score it sensitive off the element-disappearing
-        mutation alone, while the mutation that matters — the element reading something
-        else — walks straight past it. `_plan` lists only mutations the call is expected
-        to catch, which is what makes "all of them" the honest bar.
-        """
+        """Green on the witness, and red under *every* mutation the call is meant to catch."""
         return self.witnessed and bool(self.flipped) and not self.survived
 
 
@@ -194,20 +132,7 @@ class ClaimReport:
 
     @property
     def status(self) -> str:
-        """What the experiment showed: `sensitive`, `insensitive`, `unwitnessed`, `undeclared`.
-
-        `unwitnessed` is not a weaker `insensitive`, it is the absence of a result. A trial
-        is unwitnessed when this harness could not build a witness the call accepts — no
-        verifier, no mutation family, or no string `_matching` can invent for the pattern —
-        and none of those observe anything about the check. Folding them into `insensitive`
-        answered "could it go red?" with "no" on the strength of never having asked, and the
-        answer inverted on exactly the checks worth keeping: a pattern specific enough to
-        defeat the synthesizer (`^(fr|en)$`, a negative lookahead, a multiline anchor) is
-        more discriminating than the `.*` this experiment exists to catch, not less.
-
-        A claim mixing witnessed survivors with unwitnessed trials is `insensitive`: a
-        perturbation did run and the check did survive it, which is a result.
-        """
+        """What the experiment showed: `sensitive`, `insensitive`, `unwitnessed`, `undeclared`."""
         if not self.trials:
             return "undeclared"
         if any(t.sensitive for t in self.trials):
@@ -215,21 +140,10 @@ class ClaimReport:
         return "insensitive" if any(t.witnessed for t in self.trials) else "unwitnessed"
 
 
-# -- witnesses ---------------------------------------------------------------
 
 
 def _set_path(document: dict[str, Any], path: str, value: Any) -> Any:
-    """A document in which `path` resolves to `value`, built the way `resolve_path` walks.
-
-    A selector step is witnessed by the smallest document that satisfies it: `[*]` by a
-    one-element list, `[?(@.key==v)]` by a one-element list whose element carries `key: v`
-    beside whatever the rest of the path puts there. The root container follows the same
-    rule as every other step's `nxt`: a path whose first step is an index or a selector
-    needs a list root, not the dict `document` a caller always starts from, so the root is
-    picked from `steps[0]` the same way `nxt` is picked from `following`. An empty path
-    resolves to the document itself (`resolve_path`'s no-step case), so the witness is
-    `value` itself rather than a container `value` is set inside.
-    """
+    """A document in which `path` resolves to `value`, built the way `resolve_path` walks."""
     steps = _steps(path)
     if not steps:
         return value
@@ -238,8 +152,6 @@ def _set_path(document: dict[str, Any], path: str, value: Any) -> Any:
     for step, following in zip(steps, [*steps[1:], None], strict=True):
         nxt: Any = [] if isinstance(following, int | _harness._Wild | _harness.Filter) else {}
         if isinstance(step, _harness._Wild | _harness.Filter):
-            # One element is the smallest list a selector is satisfied by; a filter's element
-            # carries the key it selects on beside whatever the rest of the path puts there.
             if not cursor:
                 cursor.append(None)
             if following is None:
@@ -266,12 +178,7 @@ def _steps(path: str) -> list[Any]:
 
 
 def _collection(subject: str, size: int) -> dict[str, Any]:
-    """A document in which `count(subject=)` finds `size` things.
-
-    A subject naming a collection holds a list of that many; a subject ending in a selector
-    (`people[*].trips[*]`, `people[?(@.active==true)]`) counts what the selector selects, so
-    the list sits where the selector reads it and each element satisfies it.
-    """
+    """A document in which `count(subject=)` finds `size` things."""
     items: list[Any] = [{"i": i} for i in range(size)]
     steps = _steps(subject)
     last = steps[-1] if steps else None
@@ -291,7 +198,6 @@ def _drop_path(document: Any, path: str) -> Any:
     """The same document with the leaf `path` names taken out of it."""
     steps = _steps(path)
     if not steps:
-        # An empty path names the document itself; dropping it is the document being gone.
         return None
     cursor = document
     for step in steps[:-1]:
@@ -318,20 +224,7 @@ _PATHLIKE = re.compile(
 
 
 def _matching(pattern: str) -> str | None:
-    """A string the pattern accepts, or None when this harness cannot invent one.
-
-    A witness has to be a real member of the language, not a plausible one: an invention the
-    pattern rejects would report a discriminating check as unwitnessed, and one the pattern
-    accepts by accident would credit sensitivity the experiment never showed. So everything
-    built here is checked against the pattern itself before it is returned, and a shape the
-    builder does not understand returns None rather than a guess.
-
-    The whole pattern goes to `_synthesize`, alternation included: a top-level `|` or one
-    nested inside a group is `_synthesize`'s own concern, not something split out here first.
-    The `re.search` guard is what turns a synthesized guess into a true member of the
-    language — it is run against the untouched, original pattern, so a witness this function
-    returns is one the production check would itself accept.
-    """
+    """A string the pattern accepts, or None when this harness cannot invent one."""
     for candidate in (pattern, *pattern.split("|")):
         plain = candidate.strip("^$")
         if re.escape(plain) == plain and re.search(pattern, plain):
@@ -345,12 +238,7 @@ _ESCAPES = {"d": "5", "w": "a", "s": " ", "S": "a", "W": " ", "D": "a"}
 
 
 def _synthesize(pattern: str) -> str | None:
-    """One member of a small regular language: literals, classes, groups, counted repeats.
-
-    Deliberately partial. The patterns a book writes are shapes of a leaked value — a token
-    prefix, a digit run, a header — and the general problem is not worth solving to witness
-    them. Anything past this vocabulary is the caller's None.
-    """
+    """One member of a small regular language: literals, classes, groups, counted repeats."""
     out: list[str] = []
     i = 0
     while i < len(pattern):
@@ -401,12 +289,7 @@ def _from_class(body: str) -> str | None:
 
 
 def _repeat(pattern: str, i: int) -> tuple[int, int]:
-    """How many times the piece just read repeats, and where the pattern continues.
-
-    The lower bound, always: the shortest witness is the one least likely to satisfy some
-    *other* clause of the pattern by accident, and a `{6,}` witnessed by six characters is
-    as much a member of the language as one witnessed by sixty.
-    """
+    """How many times the piece just read repeats, and where the pattern continues."""
     if i >= len(pattern):
         return 1, i
     if pattern[i] == "+":
@@ -422,23 +305,7 @@ def _repeat(pattern: str, i: int) -> tuple[int, int]:
 
 
 def _plan(call: checks.CheckCall) -> tuple[Any, list[tuple[str, Any]], str]:
-    """The witness observation, the mutations to try against it, and why there are none.
-
-    Every mutation listed is one the call is *expected* to catch — a claim's own field gone
-    or altered, a different route, a ledger that moved. A mutation the check is allowed to
-    stay green under (an `except_fields` entry changing) is not a perturbation of the claim
-    and is not listed: the survivors are meant to read as defects. The same rule drops
-    `json_path`'s "holds something else" mutation when `matches_admits_other` says the
-    declared pattern would let it through — that survivor is `_rubber_stamp`'s finding, not
-    this experiment's, the same way `absent=false` already routes there instead of here.
-    `emitted(count=0)` drops "nothing was emitted" for the same reason: that mutation is the
-    claim itself, not a defect a `count=0` denial forbids. `omits(matches=...)` follows the
-    same rule from the opposite direction: framing the leak (`f"… {leak} …"`) is a legal
-    perturbation only when the pattern still matches it, since `_verify_omits` checks
-    `matches=` with `re.search` and an anchor (`^`) can make the framed form miss what the
-    bare leak `_matching` built would have hit. `text=` is checked by substring containment
-    instead, which has no anchor to lose, so framing it is always legal.
-    """
+    """The witness observation, the mutations to try against it, and why there are none."""
     args = call.args
     name = call.name
     if name == "http_status":
@@ -457,9 +324,6 @@ def _plan(call: checks.CheckCall) -> tuple[Any, list[tuple[str, Any]], str]:
     if name == "json_path":
         path = str(args["path"])
         if "absent" in args:
-            # A presence assertion is only defeated by absence: `absent=false` says the field
-            # is there and says nothing about what it holds, so a changed value surviving is
-            # the check working, not a rubber stamp.
             if args["absent"]:
                 return {}, [("the field the claim forbids is there", _set_path({}, path, "x"))], ""
             return _set_path({}, path, "x"), [("the field the claim requires is missing", {})], ""
@@ -611,13 +475,7 @@ def trial(call: checks.CheckCall) -> Trial:
 
 
 def _green(verifier: Any, observed: Any, args: Any) -> bool:
-    """The verifier's verdict, with a raise reading as red.
-
-    A verifier raises when the observation is the wrong *shape* for the check, which is a
-    defect in the scenario rather than in the product — but here the shapes are this
-    module's, so a raise means the mutation was not one the check could look at, and
-    counting it as a catch would credit sensitivity this experiment did not show.
-    """
+    """The verifier's verdict, with a raise reading as red."""
     try:
         passed, _, _ = verifier(observed, args)
     except Exception:  # noqa: BLE001 — every failure to compare is "not green"
@@ -626,13 +484,7 @@ def _green(verifier: Any, observed: Any, args: Any) -> bool:
 
 
 def _minted(node: model.UINode) -> list[tuple[str, int]]:
-    """Every claim obligation the node mints, keyed the way its id is numbered.
-
-    The same walk as `_obligations` in `qa/context.py`: one per normative bullet, counted per
-    key in document order. Read here rather than taken from `attributed_checks` because that
-    map holds only the bullets a `verify:` was attached to, and a claim nothing observes is
-    precisely the one this report exists to name.
-    """
+    """Every claim obligation the node mints, keyed the way its id is numbered."""
     normative = set(registry.normative_keys(node.type))
     counts: dict[str, int] = {}
     minted: list[tuple[str, int]] = []
@@ -645,14 +497,7 @@ def _minted(node: model.UINode) -> list[tuple[str, int]]:
 
 
 def report(graph: Graph) -> list[ClaimReport]:
-    """Every obligation the book mints, and whether the checks on it can go red.
-
-    Every obligation, not every obligation that declares a check. Skipping the undeclared ones
-    makes the metric flatter the book that asserts least: a claim with no check at all would
-    leave the denominator rather than fail, so a book could reach `9/9` by never observing the
-    other fifty-eight things it promises. `ClaimReport.status` has always had an `undeclared`
-    arm for this; it just had no way to fire.
-    """
+    """Every obligation the book mints, and whether the checks on it can go red."""
     rows: list[ClaimReport] = []
     for node in graph.ui_nodes:
         if registry.ui_type(node.type) is None:
@@ -684,9 +529,6 @@ def render(rows: list[ClaimReport]) -> str:
     for row in rows:
         if row.status == "sensitive" and not any(t.survived or not t.witnessed for t in row.trials):
             continue
-        # Not `{row.path}#{row.claim}`: the claim id already opens with the file path, so
-        # prefixing it printed the path twice and produced a string no `covers=` list could
-        # be grepped for. `row.path` still orders the rows and still rides in the JSON.
         lines.append(f"{row.status:<12} {row.claim}")
         if not row.trials:
             lines.append("    unobserved   no `verify:` is attached to this claim")
@@ -699,14 +541,7 @@ def render(rows: list[ClaimReport]) -> str:
                 lines.append(f"    partial      {trial_.call} — survived: {', '.join(trial_.survived)}")
     insensitive = [row for row in rows if row.status == "insensitive"]
     undeclared = [row for row in rows if row.status == "undeclared"]
-    # Counted apart from the insensitive ones, and never folded into a clean verdict: an
-    # unobserved claim is a hole in the book rather than a weak assertion, and `doctor` is
-    # where it is refused. Saying "every declared check can go red" over a book that declares
-    # almost none is true and useless.
     unwitnessed = [row for row in rows if row.status == "unwitnessed"]
-    # Counted apart for the opposite reason: it is a hole in this harness, not in the book.
-    # The line reads "this experiment could not run" and belongs beside the verdict rather
-    # than inside it, so a reader never mistakes the harness's reach for the book's quality.
     if insensitive or undeclared or unwitnessed:
         verdict = (
             f"{len(rows)} claims put to the experiment, "
@@ -723,9 +558,6 @@ def cmd_sensitivity(root: Path, *, node: str = "") -> QaOutcome:
     graph = model.load(cwd=root)
     rows = [row for row in report(graph) if not node or node in row.claim or node in row.path]
     insensitive = [row.claim for row in rows if row.status == "insensitive"]
-    # `ok` reads the insensitive rows only. An unwitnessed row says this harness could not
-    # build a witness the call accepts, which is a statement about the harness; failing the
-    # command on it reports the book bad for being too specific to perturb.
     unwitnessed = [row.claim for row in rows if row.status == "unwitnessed"]
     return QaOutcome(
         ok=not insensitive,

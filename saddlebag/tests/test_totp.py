@@ -6,9 +6,6 @@ import pytest
 
 from saddlebag import totp
 
-# RFC 6238 Appendix B: the seed is the ASCII "12345678901234567890" in base32, and
-# the vectors pin one code per counter. They are the reason this implementation can
-# be thirty lines with no dependency and still be trusted.
 RFC_SEED = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ"
 
 
@@ -32,12 +29,7 @@ def test_accepts_an_unpadded_seed() -> None:
 
 
 def test_an_empty_seed_is_an_error_rather_than_a_valid_looking_code() -> None:
-    """The failure that cost an afternoon: an empty keychain entry.
-
-    ``secret-tool store`` reads from stdin, so a non-interactive shell stores the
-    empty string; HMAC over an empty key computes perfectly well-formed codes that
-    every verifier rejects. Refusing the seed is what turns that into a diagnosis.
-    """
+    """The failure that cost an afternoon: an empty keychain entry."""
     with pytest.raises(totp.SeedError):
         totp.code("   ")
 

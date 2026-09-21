@@ -1,11 +1,4 @@
-"""The obligation packet is rebuilt when its inputs move, and only then.
-
-`build_okf_context` is visited many times per story — on the way in, after every repair
-lap, and again for the docs gate — and each visit paid a full ostler construction to
-re-derive a packet that is a pure function of the book, the diff and its arguments. These
-tests pin both halves of the memo: a repeat visit with nothing moved must not rebuild, and
-*anything* that moves must.
-"""
+"""The obligation packet is rebuilt when its inputs move, and only then."""
 from __future__ import annotations
 
 import json

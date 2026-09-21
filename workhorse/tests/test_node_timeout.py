@@ -1,11 +1,4 @@
-"""Tests for the per-node wall-clock budget.
-
-A node that must run a long command (e.g. a full benchmark) sets `timeout:` so its
-turn isn't killed mid-run. The effective budget is also surfaced to the prompt as
-`node_timeout_s` / `node_timeout_min` so the agent can size its work to fit.
-
-    ./.venv/bin/python -m pytest tests/test_node_timeout.py
-"""
+"""Tests for the per-node wall-clock budget."""
 from __future__ import annotations
 
 import json
@@ -33,8 +26,7 @@ def _node(timeout: float | str | None = "__unset__") -> AgentNode:
 
 
 def _run_capturing(node, *, resilience: AgentResilience | None = None):
-    """Run the node, capturing the prompt-render ctx and the timeout that reaches
-    the invocation layer. Returns (render_ctx, invoke_timeout)."""
+    """Run the node, capturing the prompt-render ctx and the timeout that reaches the invocation layer."""
     seen: dict[str, Any] = {"ctx": None, "timeout": None}
 
     def fake_render(tmpl, ctx, wdir):
@@ -59,13 +51,7 @@ def _run_capturing(node, *, resilience: AgentResilience | None = None):
 
 
 def test_timeout_defaults_to_unset_and_resolves_to_1_hour():
-    """The default budget is the *engine's*, not a literal on the node.
-
-    It used to be a literal 3600 here, which made `resilience.result_timeout_s`
-    unreachable for every node — the fallback was tested by the truthiness of a field
-    that was never falsy. The observable budget is unchanged; what moved is where it
-    comes from, which is what makes AGENT_RESULT_TIMEOUT_S mean anything.
-    """
+    """The default budget is the *engine's*, not a literal on the node."""
     assert _node().timeout is None
 
     _, invoke_timeout = _run_capturing(_node())
@@ -82,23 +68,19 @@ def test_default_budget_threads_to_invocation_and_prompt():
 
 def test_explicit_timeout_overrides_and_reaches_prompt():
     ctx, invoke_timeout = _run_capturing(_node(timeout=300))
-    # An explicit per-node budget reaches the invocation layer (the CLI's wait)...
     assert invoke_timeout == 300
-    # ...and is exposed to the prompt so the agent can size its commands.
     assert ctx["node_timeout_s"] == 300
     assert ctx["node_timeout_min"] == 5
 
 
 def test_explicit_none_falls_back_to_engine_default():
     ctx, invoke_timeout = _run_capturing(_node(timeout=None))
-    # The engine default now lives on the injected settings object, not on the module.
     default_s = AgentResilience().result_timeout_s
     assert invoke_timeout == default_s
     assert ctx["node_timeout_s"] == int(default_s)
 
 
 def test_numeric_string_timeout_parses_to_seconds():
-    # `timeout: 5000` (or "5000") is a plain seconds budget.
     assert _node(timeout="5000").timeout == 5000.0
 
 
@@ -108,9 +90,6 @@ def test_infinity_words_coerce_to_unbounded():
 
 
 def test_unbounded_timeout_threads_through_without_overflow():
-    # The unbounded budget reaches the invocation layer as inf (the stream loop's
-    # `elapsed > inf` is always False → never killed), and the prompt-surfaced budget
-    # is the string "unbounded" rather than a crash on int(inf).
     ctx, invoke_timeout = _run_capturing(_node(timeout="infinity"))
     assert invoke_timeout == float("inf")
     assert ctx["node_timeout_s"] == "unbounded"
@@ -118,11 +97,7 @@ def test_unbounded_timeout_threads_through_without_overflow():
 
 
 def test_the_engine_default_reaches_a_node_that_declares_no_timeout():
-    """The regression that named the bug: AGENT_RESULT_TIMEOUT_S moved nothing.
-
-    `AgentNode.timeout` defaulted to 3600 and the ladder tested it for truthiness, so
-    the operator-settable engine default applied to exactly no node.
-    """
+    """The regression that named the bug: AGENT_RESULT_TIMEOUT_S moved nothing."""
     resilience = AgentResilience.from_env({"AGENT_RESULT_TIMEOUT_S": "7200"})
 
     ctx, invoke_timeout = _run_capturing(_node(), resilience=resilience)
@@ -131,7 +106,6 @@ def test_the_engine_default_reaches_a_node_that_declares_no_timeout():
     assert ctx["node_timeout_s"] == 7200
 
 
-# --- the power tier's wall-clock scale ---------------------------------------
 
 
 def _scaled(scale: float | None):
@@ -157,8 +131,6 @@ def test_a_tier_scale_multiplies_the_node_budget_and_the_prompt():
         ctx, invoke_timeout = _run_capturing(_node(timeout=300))
 
     assert invoke_timeout == 600
-    # The prompt must be told the budget it actually has: an agent sizing its commands
-    # to an unscaled number is exactly the turn that gets killed at the wall.
     assert ctx["node_timeout_s"] == 600
     assert ctx["node_timeout_min"] == 10
 

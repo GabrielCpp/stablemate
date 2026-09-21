@@ -1,12 +1,4 @@
-"""One-shot, idempotent migration from the legacy JSON+markdown layout to the OKF markdown format.
-
-Folds ``seed.json`` + ``dependencies.json`` into each ``epic.md`` (``## Seeds`` / ``## Stories``),
-stamps ``type`` frontmatter on every Concept, turns
-``epics-todo.json`` into ``docs/epics/index.md``, and converts ``features/inventory.json`` entries
-into ``feature`` Concepts. Legacy JSON is deleted. Re-running is a no-op.
-
-Run:  ``python -m ostler.scripts.okf_migrate [REPO_ROOT]``
-"""
+"""One-shot, idempotent migration from the legacy JSON+markdown layout to the OKF markdown format."""
 
 from __future__ import annotations
 
@@ -27,9 +19,6 @@ def _read_json(path: Path) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-# ---------------------------------------------------------------------------
-# epics: fold seed.json + dependencies.json into epic.md
-# ---------------------------------------------------------------------------
 _SEED_META = ("status", "surface", "legacySurface", "backing", "prerequisites", "sourceBullet")
 
 
@@ -53,8 +42,7 @@ def _seed_block(item: dict) -> list[str]:
 
 
 def _story_block(st: dict) -> list[str]:
-    """The story's `### <slug>` metadata in epic.md. Its dependencies are *not* here: they go
-    into the story's own `## Dependencies` section, written by :func:`_write_story_deps`."""
+    """The story's `### <slug>` metadata in epic.md."""
     slug = str(st.get("slug"))
     covers = [str(x) for x in (st.get("seedItems") or [])]
     out = [f"### {slug}"]
@@ -72,8 +60,7 @@ def _story_block(st: dict) -> list[str]:
 
 
 def _stories_from_folders(edir: Path) -> list[dict]:
-    """Synthesize story entries from stories/*/story.md when there is no dependencies.json
-    (the story folders exist on disk but were never declared in a manifest)."""
+    """Synthesize story entries from stories/*/story.md when there is no dependencies.json (the story folders exist on disk but were never declared in a manifest)."""
     out = []
     for story_md in sorted(edir.glob("stories/*/story.md")):
         slug = story_md.parent.name
@@ -88,13 +75,7 @@ def _stories_from_folders(edir: Path) -> list[dict]:
 
 
 def _write_story_deps(edir: Path, stories: list[dict]) -> None:
-    """Carry each story's `dependencies` out of the manifest and into its own story.md.
-
-    The story's `## Fixtures` section is stated here too, as `(none)`. Nothing in the legacy
-    manifest knows which QA fixtures a story arranges with — the concept postdates it — so the
-    migration writes the honest empty answer and `doctor` is what asks for the real one once the
-    story has a qa_plan.py to read it off.
-    """
+    """Carry each story's `dependencies` out of the manifest and into its own story.md."""
     for st in stories:
         slug = str(st.get("slug") or "")
         story_f = edir / "stories" / slug / "story.md"
@@ -116,7 +97,7 @@ def _migrate_epic(edir: Path) -> bool:
     old = markdown.split(epic_f.read_text(encoding="utf-8"))
     fm = (old.frontmatter or {}) if old.has_frontmatter else {}
     if fm.get("type") == "epic" and not has_legacy:
-        return False  # already migrated
+        return False
 
     seed = _read_json(seed_f) if seed_f.exists() else {}
     deps = _read_json(deps_f) if deps_f.exists() else {}
@@ -127,7 +108,6 @@ def _migrate_epic(edir: Path) -> bool:
              or (body.splitlines()[0].lstrip("# ").strip() if body.strip() else edir.name))
     fm["title"] = title
 
-    # strip any pre-existing canonical sections from the old body, then re-append fresh
     lines = body.split("\n")
     cut = len(lines)
     for i, ln in enumerate(lines):
@@ -173,9 +153,6 @@ def _stamp_stories(edir: Path) -> int:
     return n
 
 
-# ---------------------------------------------------------------------------
-# features: stamp type on .md; convert inventory.json entries to Concepts
-# ---------------------------------------------------------------------------
 def _migrate_features(froot: Path) -> int:
     n = 0
     inv = froot / "inventory.json"
@@ -220,9 +197,6 @@ def _migrate_features(froot: Path) -> int:
     return n
 
 
-# ---------------------------------------------------------------------------
-# specs: stamp a spec.* type on each process artifact (conformance only)
-# ---------------------------------------------------------------------------
 def _migrate_specs(sroot: Path) -> int:
     n = 0
     for path in sorted(sroot.glob("*/*.md")):
@@ -232,16 +206,13 @@ def _migrate_specs(sroot: Path) -> int:
         fm = (doc.frontmatter or {}) if doc.has_frontmatter else {}
         if str(fm.get("type", "")).startswith("spec"):
             continue
-        fm.pop("type", None)   # a present-but-blank `type:` must not shadow the stamp
+        fm.pop("type", None)
         fm = {"type": registry.spec_type_for(path.name), **fm}
         path.write_text(f"---\n{_dump_fm(fm)}---\n{doc.body}", encoding="utf-8")
         n += 1
     return n
 
 
-# ---------------------------------------------------------------------------
-# epics-todo.json → docs/epics/index.md
-# ---------------------------------------------------------------------------
 def _migrate_todo(eroot: Path) -> bool:
     todo = eroot / "epics-todo.json"
     if not todo.exists():

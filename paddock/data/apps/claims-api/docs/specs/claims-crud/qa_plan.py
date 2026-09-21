@@ -1,19 +1,4 @@
-"""The frozen QA plan for `claims-crud`.
-
-Every identity this plan signs in with is minted at run time from the auth emulator beside
-the service, so there is no live credential in this file and none in the repo:
-`accounts:signInWithPassword` accepts any string as an API key against the emulator, and the
-three fixture accounts are created by `auth/seed.mjs` before the API is allowed to answer.
-
-The two refusal arms the book promises — a token issued for another project, and one past
-its expiry — cannot be signed in for, because the emulator only ever hands back a live token
-for the project it is running. They are *constructed* instead, and frozen as constants below
-rather than built at run time: the emulator's tokens are unsigned (`alg: none`) and the Admin
-SDK, pointed at an emulator, checks the issuer, the audience and the expiry rather than a
-signature. So a hand-written token with a foreign `iss`/`aud`, or a past `exp`, is exactly
-the credential a real caller would present and be refused for. Neither opens anything: one
-names a project this service was never configured for, the other expired in 2020.
-"""
+"""The frozen QA plan for `claims-crud`."""
 
 import json
 from typing import Any
@@ -23,20 +8,13 @@ from ostler_qa import HttpError, Qa, plan, scenario, target
 
 plan(run_id="qa-claims-crud", story="claims-crud")
 
-#: The auth emulator beside the service, at the path its REST surface is mounted on.
 EMULATOR = "http://localhost:18086/identitytoolkit.googleapis.com/v1"
 
-#: A policy holder. Sees their own claims and nobody else's.
 HOLDER_A = ("holder-a@example.com", "claims-bench-a")
-#: The adjuster. The role is a custom claim the emulator stamps on the token, which is what
-#: `403 Adjusters Only` is decided from.
 ADJUSTER = ("adjuster@example.com", "claims-bench-c")
 
-#: The policy number a submission carries unless the scenario names another.
 _DEFAULT_POLICY_NUMBER = "PL-4471"
 
-#: A well-formed submission. Every field the book documents as required is here, so a plan
-#: overriding one is choosing a value rather than completing the body.
 _SUBMISSION: dict[str, Any] = {
     "policy_number": _DEFAULT_POLICY_NUMBER,
     "incident_date": "2099-03-14",
@@ -62,19 +40,12 @@ def bearer(qa: Qa, identity: dict) -> dict:
 
 
 def submission(policy_number: str = _DEFAULT_POLICY_NUMBER, **overrides: Any) -> dict:
-    """A claim submission body, with `policy_number` first because that is what varies.
-
-    Duplicated per plan rather than shared through a fixture module: `qa: {fixture_modules:}`
-    is retired, and this plan is frozen corpus, so the cost of the duplicate is a fixed one.
-    """
+    """A claim submission body, with `policy_number` first because that is what varies."""
     return {**_SUBMISSION, "policy_number": policy_number, **overrides}
 
 api = target("api", driver="python", base_url="http://localhost:18085")
 
 
-#: `{"alg":"none","typ":"JWT"}` over claims naming `other-insurer-example` as both issuer and
-#: audience, `sub: constructed-holder`, and an expiry in 2286. Well-formed for some other
-#: deployment of this same stack, and never issued by the project this service trusts.
 FOREIGN_PROJECT_TOKEN = (
     "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0."
     "eyJpc3MiOiJodHRwczovL3NlY3VyZXRva2VuLmdvb2dsZS5jb20vb3RoZXItaW5zdXJlci1leGFtcGxlIiwiYXVk"
@@ -85,9 +56,6 @@ FOREIGN_PROJECT_TOKEN = (
 )
 
 
-#: The same shape with this project's own issuer and audience, and an `exp` of 1600003600 —
-#: September 2020. The only thing wrong with it is that the session it stands for is over,
-#: which is the arm the book documents separately from a token that was never ours.
 EXPIRED_TOKEN = (
     "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0."
     "eyJpc3MiOiJodHRwczovL3NlY3VyZXRva2VuLmdvb2dsZS5jb20vY2xhaW1zLWFwaS1leGFtcGxlIiwiYXVkIjoi"
@@ -153,14 +121,10 @@ def file_a_claim_and_prove_it_outlives_the_process(qa: Qa) -> None:
     qa.verify("json_path", body, path="$.claim.policy_number", absent=False, covers=["ac:5", "okf:docs/features/claims/http/claims-api.md#submit-claim:consistency:1"])
     qa.verify("json_path", body, path="$.claim.incident_date", equals="2099-03-14", covers=["ac:5", "okf:docs/features/claims/http/claims-api.md#submit-claim:consistency:1"])
 
-    # The book promises the claim is still on file after the service restarts, and a
-    # re-read inside the process that took the write is exactly what a ledger held in
-    # memory would also answer. The process that accepted the write has to die first.
     restart = qa.tool("docker").run("compose", "-f", "compose.yml", "restart", "app", timeout=120.0)
     qa.check("the service restarts cleanly between the write and the re-read", restart.ok, covers=["okf:docs/features/claims/http/claims-api.md#submit-claim:persistence:1"])
 
     def restarted_service_answers() -> bool:
-        # A refused connection during the restart window is "not yet", not a verdict.
         try:
             return qa.field(qa.http.get("/healthz").json(), "status") == "ok"
         except HttpError:
@@ -173,8 +137,6 @@ def file_a_claim_and_prove_it_outlives_the_process(qa: Qa) -> None:
 
     duplicate = qa.http.post("/api/claims", json_body=submission(), headers=bearer(qa, holder), expect_status=409)
     qa.verify("http_status", duplicate, code=409, title="Duplicate Claim", path="/api/claims", covers=["ac:4", "okf:docs/features/claims/http/claims-api.md#submit-claim:errors:2"])
-    # The register is where the journey ends, so this reading carries the end state as well as
-    # the refusal's consequence: exactly the one claim the holder filed, still Submitted.
     register = qa.http.get("/api/claims", headers=bearer(qa, holder), expect_status=200).json()
     after_duplicate = qa.field(register, "claims")
     qa.verify("json_path", register, path="claims[0].status", equals="Submitted", covers=["ac:1", "okf:docs/features/claims/flows/file-a-claim.md:start:1", "okf:docs/features/claims/flows/file-a-claim.md:end:1", "okf:docs/features/claims/flows/file-a-claim.md:end-state"])
@@ -235,9 +197,6 @@ def refuse_credentials_this_project_never_issued(qa: Qa) -> None:
 
     after = qa.field(qa.http.get("/api/claims", headers=bearer(qa, holder), expect_status=200).json(), "claims")
     qa.verify("unchanged", (before, after), subject="claims", covers=["ac:2", "ac:3", "okf:docs/features/claims/http/claims-api.md#submit-claim:auth:1", "okf:docs/features/claims/http/claims-api.md#submit-claim:auth:2"])
-    # The bodies are written down whole as well as asserted about. `omits` is what holds the
-    # clause — no status code can see a `detail` quoting the credential it rejected — and the
-    # record is what lets a reader check the pattern was looking for the right thing.
     json.dump({"presented": {"foreign": FOREIGN_PROJECT_TOKEN, "expired": EXPIRED_TOKEN}, "anonymous": anonymous.json(), "foreign_project": stranger.json(), "past_expiry": expired.json()}, qa.artifact("steps/refusals.json", kind="json").open("w"))
 
 
@@ -307,14 +266,7 @@ def health_needs_no_token_and_reset_needs_a_role(qa: Qa) -> None:
     ],
 )
 def the_other_writer_of_the_claim_record_still_works(qa: Qa) -> None:
-    """This story changes how a claim is written; deciding writes the same record.
-
-    Nothing here is in the story's diff, and that is the point: a claim the story files and a
-    decision it never touched are two authors of one ledger record, so a change to the shape of
-    that record breaks the half nobody is looking at. The book names the binding —
-    `persistence: claim-record` on both — and this scenario is what stops the split from
-    shipping the app broken.
-    """
+    """This story changes how a claim is written; deciding writes the same record."""
     holder, adjuster = sign_in(qa, HOLDER_A), sign_in(qa, ADJUSTER)
     qa.http.delete("/api/claims", headers=bearer(qa, adjuster), expect_status=204)
     qa.http.post("/api/claims", json_body=submission(), headers=bearer(qa, holder), expect_status=201)
@@ -328,9 +280,6 @@ def the_other_writer_of_the_claim_record_still_works(qa: Qa) -> None:
     qa.verify("json_path", decided_body, path="claim.status", equals="Approved", covers=["okf:docs/features/claims/http/claims-api.md#decide-claim:contract"])
     qa.verify("json_path", decided_body, path="claim.version", equals="2", covers=["okf:docs/features/claims/http/claims-api.md#decide-claim:contract"])
 
-    # The version this quotes was spent by the decision above, and nothing has re-read the claim
-    # since — which is the only arrangement in which a stale token is stale by fact rather than
-    # by construction.
     stale = qa.http.post("/api/claims/cl-1001/decision", json_body={"decision": "deny", "version": version, "note": "Denied on a reading that had moved."}, headers=bearer(qa, adjuster), expect_status=409)
     qa.verify("conflict_on_stale", stale, subject="claim cl-1001", token="version", covers=["okf:docs/features/claims/http/claims-api.md#decide-claim:concurrency:1"])
     qa.verify("http_status", stale, code=409, title="Stale Decision", path="/api/claims/cl-1001/decision", covers=["okf:docs/features/claims/http/claims-api.md#decide-claim:concurrency:1"])

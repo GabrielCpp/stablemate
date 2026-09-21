@@ -1,17 +1,4 @@
-"""Tests for groom.discovery: mount/env/label parsing against a fixture shaped
-like a real `docker inspect` blob (trimmed to the fields discovery.py reads,
-matching a workhorse-author-1 style container), plus the scan()/current-node
-reconciliation logic with docker_io mocked out.
-
-The fixture carries **no `/workflow` mount**, because the harness stopped creating
-one: a workflow became an installed distribution with its own console script rather
-than a directory of yaml handed to a generic runner. This file used to assert that
-the mount was required, against a fixture that still had it — so it went on passing
-while `is_workhorse_container` matched nothing real, and every container reached the
-dashboard only through its sidecar's `hello`.
-
-Run: uv run python tests/test_discovery.py   (or via pytest)
-"""
+"""Tests for groom.discovery: mount/env/label parsing against a fixture shaped like a real `docker inspect` blob (trimmed to the fields discovery.py reads, matching a workhorse-author-1 style container), plus the scan()/current-node reconciliation logic with docker_io mocked out."""
 from __future__ import annotations
 
 from unittest.mock import patch
@@ -54,15 +41,13 @@ def test_a_workflow_container_is_one_told_what_to_run_with_somewhere_to_put_it()
 
 
 def test_the_mounts_alone_are_not_enough_without_a_workflow_to_run():
-    """`/runs` + `/workspace` are generic names. `$WORKFLOW` is what says this
-    container is a workhorse worker rather than something else using them."""
+    """`/runs` + `/workspace` are generic names."""
     no_workflow = _inspect(Config={"Env": ["REPO_NAME=Acme", "PATH=/usr/bin"]})
     assert discovery.is_workhorse_container(no_workflow) is False
 
 
 def test_the_workflow_type_is_what_the_container_was_told_to_run():
-    """By construction, not inference: the entrypoint spawns `$WORKFLOW`'s own
-    console script, so there is nothing to derive from a mount's basename."""
+    """By construction, not inference: the entrypoint spawns `$WORKFLOW`'s own console script, so there is nothing to derive from a mount's basename."""
     assert discovery.container_from_inspect(_inspect()).workflow_type == "author"
 
 
@@ -79,10 +64,7 @@ def test_a_container_from_an_older_harness_still_types_from_its_mount():
 
 
 def test_a_scanned_container_carries_the_run_id_that_joins_it_to_its_telemetry():
-    """Workhorse stamps this on every span it exports and groom keys its telemetry
-    store by it. Without it here, a row discovered by a scan looks up the store by
-    container id and never hits — the run's spans and its dashboard row stay two
-    unrelated things."""
+    """Workhorse stamps this on every span it exports and groom keys its telemetry store by it."""
     assert discovery.container_from_inspect(_inspect()).run_id == (
         "b8f1c2d4-0000-4000-8000-000000000001"
     )
@@ -102,15 +84,12 @@ def test_container_from_inspect_reads_env_name_and_volumes():
     assert wf.workspace_volume == "author-1-workspace"
     assert wf.runs_volume == "author-1-runs"
     assert wf.state == WorkflowState.RUNNING
-    # Secrets present in the container's own env must never surface here.
     assert "ACME_GITHUB_TOKEN" not in vars(wf).values()
     assert "super-secret-value" not in vars(wf).values()
 
 
 def test_the_environment_wins_over_a_leftover_workflow_mount():
-    """A container could carry both — a stale bind and a real `$WORKFLOW`. The
-    environment is what the entrypoint actually spawns, so it decides; the mount's
-    basename is only a guess at what a directory was named."""
+    """A container could carry both — a stale bind and a real `$WORKFLOW`."""
     wf = discovery.container_from_inspect(_inspect(Mounts=[
         {"Type": "bind", "Source": "/host/agents/workflows/coder", "Destination": "/workflow"},
         {"Type": "volume", "Name": "coder-1-runs", "Destination": "/runs"},
@@ -120,8 +99,6 @@ def test_the_environment_wins_over_a_leftover_workflow_mount():
 
 
 def test_workflow_type_falls_back_to_compose_service_label():
-    # A bind straight at .../workflow gives the generic basename, so the compose
-    # service name is used instead.
     wf = discovery.container_from_inspect(_inspect(Config={
         "Env": ["REPO_NAME=Acme"],
         "Labels": {"com.docker.compose.service": "author"},
@@ -146,7 +123,7 @@ def test_find_gates_only_keeps_files_still_awaiting():
              "read_file",
              side_effect=lambda vol, path: {
                  "docs/a.md": "STATUS: AWAITING_OPERATOR\n\n## Questions from the agent\n\nWhich one?\n",
-                 "docs/b.md": "STATUS: CONSUMED\n",  # already answered since the grep ran
+                 "docs/b.md": "STATUS: CONSUMED\n",
              }[path],
          ):
         found = discovery._find_gates("some-volume")
@@ -185,8 +162,6 @@ def test_scan_marks_blocked_workflow_and_finished_run():
     def _fake_grep(volume, mount_subdir=""):
         return ["docs/gate.md"] if volume == "author-1-workspace" else []
 
-    # sidecar_query returns None here so the scan exercises the volume-read
-    # fallback (the path this test covers); the query path is tested separately.
     with patch.object(discovery.docker_io, "docker_ps_all", return_value=[{"ID": "abcdef012345"}, {"ID": "fedcba987654"}]), \
          patch.object(discovery.docker_io, "docker_inspect", side_effect=_fake_inspect), \
          patch.object(discovery.docker_io, "sidecar_query", return_value=None), \
@@ -204,13 +179,10 @@ def test_scan_marks_blocked_workflow_and_finished_run():
     assert "docs/gate.md" in author.gates
     assert author.gates["docs/gate.md"].workflow_id == "abcdef012345"
 
-    # A finished run's terminal state wins even though it has no live gates.
     assert coder.state == WorkflowState.FINISHED
 
 
 def test_scan_uses_sidecar_query_for_running_container():
-    # A running container's state comes from the in-container sidecar's
-    # --query snapshot; the throwaway volume-read primitives must NOT be hit.
     snapshot = {
         "current_node": "resolve_integrity",
         "terminal": "",
@@ -241,8 +213,6 @@ def test_scan_query_terminal_wins_over_gates():
 
 
 def test_scan_stopped_container_skips_query_and_reads_volumes():
-    # A stopped container can't be exec'd, so sidecar_query must not be called;
-    # state comes from the volume-read fallback instead.
     stopped = _inspect(State={"Running": False, "ExitCode": 0})
     with patch.object(discovery.docker_io, "docker_ps_all", return_value=[{"ID": "abcdef012345"}]), \
          patch.object(discovery.docker_io, "docker_inspect", return_value=stopped), \
@@ -257,7 +227,6 @@ def test_scan_stopped_container_skips_query_and_reads_volumes():
 def test_present_container_ids_passes_through_docker_layer():
     with patch.object(discovery.docker_io, "list_container_ids", return_value={"abc123456789"}):
         assert discovery.present_container_ids() == {"abc123456789"}
-    # None (docker unreachable) is propagated so callers skip pruning.
     with patch.object(discovery.docker_io, "list_container_ids", return_value=None):
         assert discovery.present_container_ids() is None
 

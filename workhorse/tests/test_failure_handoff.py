@@ -1,13 +1,4 @@
-"""`WorkflowFailed` writes a diagnostic outbox entry before the process exits.
-
-Every deliberate failure — driver-level or workflow-authored — lands on the same
-`PyflowError` catch in `run_pyflow`. This is the one new capture that catch does: an
-inbox message, `kind="failure"`, naming the failure class, the node the run stopped
-at, and where its artifacts are — so a babysitting session (or a human) reads the
-diagnosis straight from the run dir instead of only a line in a scrollback log.
-
-Run: uv run python tests/test_failure_handoff.py   (or via pytest)
-"""
+"""`WorkflowFailed` writes a diagnostic outbox entry before the process exits."""
 from __future__ import annotations
 
 import tempfile
@@ -25,8 +16,7 @@ from workhorse.pyflow.workflow import Workflow
 
 
 class Greeting(Workflow):
-    """A one-state flow. `drive` is substituted in every test here — see the
-    identical shim in test_run_terminal.py."""
+    """A one-state flow."""
 
     def start(self) -> Transition:
         return Done(None)
@@ -48,11 +38,7 @@ REGISTRY = _build_registry()
 
 
 def _run(tmp: str, failure: BaseException, *, run_id: str = "t") -> tuple[int, Path]:
-    """Drive a run that checkpoints one state, then raises `failure`.
-
-    Returns the exit code and the run dir, so a test can inspect the outbox left
-    behind without threading `writer` out of `run_pyflow` itself.
-    """
+    """Drive a run that checkpoints one state, then raises `failure`."""
     runs_dir = Path(tmp) / "runs"
 
     def fake_drive(wf: Any, env: Any, resume: Any = None) -> Any:
@@ -87,9 +73,7 @@ def test_a_workflow_failure_writes_a_diagnostic_outbox_entry():
 
 
 def test_a_raise_sites_own_failure_class_and_artifacts_reach_the_outbox():
-    """A raise site can attach a specific `failure_class` and artifact paths — see
-    `WorkflowFailed.__init__` — and the handoff surfaces them instead of the bare
-    exception class name."""
+    """A raise site can attach a specific `failure_class` and artifact paths — see `WorkflowFailed.__init__` — and the handoff surfaces them instead of the bare exception class name."""
     with tempfile.TemporaryDirectory() as tmp:
         code, run_dir = _run(
             tmp,
@@ -107,9 +91,7 @@ def test_a_raise_sites_own_failure_class_and_artifacts_reach_the_outbox():
 
 
 def test_a_run_budget_stop_writes_no_outbox_entry():
-    """`RunBudgetExceeded` is an operational stop, not a verdict — see its own
-    docstring. It returns before the diagnostic branch and leaves no `inbox.jsonl`,
-    the same way it leaves the run dir un-terminaled."""
+    """`RunBudgetExceeded` is an operational stop, not a verdict — see its own docstring."""
     with tempfile.TemporaryDirectory() as tmp:
         code, run_dir = _run(tmp, RunBudgetExceeded("out of wall clock"))
 

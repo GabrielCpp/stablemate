@@ -1,22 +1,8 @@
-"""The evidence gate's obligation check — `_obligation_problems`.
-
-An OKF packet holds more than the story built. The graph closure walks from a changed file
-out to whatever the book links it to, and lands on endpoints nobody has written yet and
-screens with no `code:` behind them. The context builder marks those `"required": false`,
-and the plan validator refuses a plan that writes scenarios for them.
-
-This gate read the flag the other way round: it demanded a passing verdict for every member
-of the packet. The two rules together are unsatisfiable — the planner is told to leave the
-context-only ids out of `covers`, then the evidence gate fails the pass for the verdicts
-that omission did not produce, and the flow routes back to planning to do it again. What is
-pinned here is that the two gates read the same flag, and that a packet without the flag is
-still held to the strict reading.
-"""
+"""The evidence gate's obligation check — `_obligation_problems`."""
 from __future__ import annotations
 
 from workhorse_workflows.qa import evidence
 
-#: A verdict shaped the way a runner writes one for an obligation it actually proved.
 PROVED = {"verdict": "pass", "log_refs": ["qa/qa-run.ndjson#3"]}
 
 

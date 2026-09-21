@@ -1,13 +1,4 @@
-"""The command line: parse an invocation, run it, turn what it raised into an exit code.
-
-Every human-facing line this module writes goes to stderr, and stdout carries only the thing
-the caller asked for. That is not a style rule — `tally report --json` is meant to be piped,
-and a progress line on stdout does not degrade the report, it makes it unparseable.
-
-The exit codes are the other half of the contract: 0 for done, 1 for a ledger that is not in
-the state the command needs, 2 for input that is not an expense. A caller scripting `tally`
-distinguishes "fix your file" from "decide what you meant" without reading a message.
-"""
+"""The command line: parse an invocation, run it, turn what it raised into an exit code."""
 
 import argparse
 import json
@@ -19,12 +10,7 @@ from tally.ledger import LedgerError, RowError
 
 
 def build_parser() -> argparse.ArgumentParser:
-    """Every command `tally` accepts, the flags each one takes, and the ledger they act on.
-
-    `--file` is declared here, on the top-level parser rather than on each command, because
-    one invocation acts on one ledger: a global option cannot be given two different values
-    by two subcommands, and every command below reads it off the same namespace.
-    """
+    """Every command `tally` accepts, the flags each one takes, and the ledger they act on."""
     parser = argparse.ArgumentParser(prog="tally", description="a shared-expense ledger")
     parser.add_argument(
         "--file",
@@ -63,12 +49,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def commit_or_preview(path: Path, data: dict, dry_run: bool) -> bool:
-    """Write the ledger, unless this was a dry run — the one place that decision is made.
-
-    Both writing commands route through here so `--dry-run` cannot mean one thing for `add`
-    and another for `import`. A dry run leaves every file on disk byte-for-byte as it was;
-    it does not write and roll back, and it does not write somewhere else.
-    """
+    """Write the ledger, unless this was a dry run — the one place that decision is made."""
     if dry_run:
         print(f"tally: --dry-run, {path} left unchanged", file=sys.stderr)
         return False
@@ -107,8 +88,6 @@ def cmd_report(args: argparse.Namespace) -> int:
     data = ledger.load(args.file)
     summary = report.summarize(data)
     if args.json:
-        # Exactly one object, and nothing else. The note below is on stderr because a caller
-        # who piped this is parsing stdout and cannot skip a line they did not expect.
         print(f"tally: totalling {summary['entries']} entries")
         json.dump(summary, sys.stdout, indent=2, sort_keys=True)
         sys.stdout.write("\n")
@@ -128,11 +107,7 @@ def cmd_export(args: argparse.Namespace) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Run one invocation and hand back its exit code.
-
-    The two exception types are translated here and nowhere else, so every command exits 1 on
-    a ledger-state problem and 2 on bad data without each one remembering to.
-    """
+    """Run one invocation and hand back its exit code."""
     args = build_parser().parse_args(argv)
     try:
         return int(args.handler(args))

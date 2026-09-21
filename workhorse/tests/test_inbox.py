@@ -1,11 +1,4 @@
-"""Tests for the run-scoped inbox primitive (workhorse/inbox.py).
-
-Covered: append is a pure append (no read-modify-write), outstanding vs.
-all_messages, reply rewrites the one matching line, extra fields survive a
-round trip, and a reply to a missing id is an error rather than a silent no-op.
-
-Run: ./.venv/bin/python tests/test_inbox.py   (or via pytest)
-"""
+"""Tests for the run-scoped inbox primitive (workhorse/inbox.py)."""
 from __future__ import annotations
 
 import json
@@ -24,9 +17,7 @@ def test_append_returns_and_persists_the_message(tmp_path: Path):
 
 
 def test_appends_do_not_read_modify_write(tmp_path: Path):
-    """Two appends are two independent writes to the file, not one read + one
-    rewrite of the whole thing — the property that makes concurrent appends safe
-    to interleave rather than clobber."""
+    """Two appends are two independent writes to the file, not one read + one rewrite of the whole thing — the property that makes concurrent appends safe to interleave rather than clobber."""
     path = tmp_path / "inbox.jsonl"
     inbox.append(path, id="m1", body="first", at="t0")
     inbox.append(path, id="m2", body="second", at="t1")
@@ -64,8 +55,7 @@ def test_reply_to_missing_id_raises(tmp_path: Path):
 
 
 def test_extra_fields_survive_a_round_trip(tmp_path: Path):
-    """extra="allow" is what lets a failure-handoff entry carry kind/node/artifact
-    without this module learning that vocabulary."""
+    """extra="allow" is what lets a failure-handoff entry carry kind/node/artifact without this module learning that vocabulary."""
     path = tmp_path / "inbox.jsonl"
     inbox.append(
         path,

@@ -1,10 +1,4 @@
-"""Tests for groom.gates: STATUS-line parsing/writing and answer_gate's
-orchestration. The regex/constants here must stay byte-compatible with the
-await_operator.py scripts in example-org/agents, so the parsing tests pin
-down the exact on-disk shape those scripts themselves produce and expect.
-
-Run: uv run python tests/test_gates.py   (or via pytest)
-"""
+"""Tests for groom.gates: STATUS-line parsing/writing and answer_gate's orchestration."""
 from __future__ import annotations
 
 import asyncio
@@ -76,7 +70,6 @@ def test_apply_answer_flips_status_and_appends_text():
 def test_apply_answer_with_blank_answer_still_flips_status():
     new_text = gates.apply_answer(_GATE_FILE, "   ")
     assert gates.status_of(new_text) == gates.ANSWERED
-    # No trailing answer paragraph is appended for a blank answer.
     assert new_text.rstrip().endswith("Some other section that must not be swallowed.")
 
 
@@ -125,21 +118,15 @@ def test_answer_gate_writes_answer_no_restart_when_still_running():
 
     result = asyncio.run(scenario())
     assert result.ok is True
-    # await_operator.py blocks in place — the normal path never needs a restart.
     assert result.message == "answered"
     assert written["volume"] == "vol-1"
     assert written["rel_path"] == "docs/gate.md"
     assert gates.status_of(written["content"]) == gates.ANSWERED
-    # The answered gate is cleared from in-memory state so the UI stops
-    # showing a form for it even before the container's own push arrives.
     assert "docs/gate.md" not in state.WORKFLOWS["abc123"].gates
 
 
 def test_answer_gate_restarts_when_container_stopped():
-    """Fallback path: inotify was unavailable and await_operator.py exited,
-    or the container predates this redesign — the container is genuinely
-    stopped, so answer_gate must still restart it.
-    """
+    """Fallback path: inotify was unavailable and await_operator.py exited, or the container predates this redesign — the container is genuinely stopped, so answer_gate must still restart it."""
     _reset_state()
     from groom.models import GateInfo
 

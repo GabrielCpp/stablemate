@@ -23,8 +23,7 @@ def codes(report):
 
 
 def _git_track(root: Path) -> None:
-    """Init a repo at *root* and stage everything in it — `git ls-files` reads the index,
-    not a commit, so staging alone is enough for `misplaced-book-page`'s enumeration."""
+    """Init a repo at *root* and stage everything in it — `git ls-files` reads the index, not a commit, so staging alone is enough for `misplaced-book-page`'s enumeration."""
     subprocess.run(["git", "init", "-q"], cwd=root, check=True)
     subprocess.run(["git", "add", "-A"], cwd=root, check=True)
 
@@ -37,13 +36,7 @@ def test_clean_repo_has_no_errors(repo: Path):
 
 
 def test_a_typed_page_outside_every_doc_root_is_flagged_as_misplaced(repo: Path):
-    """A real book page (a declared `type:`) that a move -- or a first draft -- leaves outside
-    `docs/features`, `docs/epics`, `docs/milestones`, `docs/roadmaps`, `docs/specs` and
-    `docs/backlog.md` is invisible to every other check: it is not `okf-missing-type` (it has
-    a type), and nothing walks in to find it, since every book-facing check is rooted at
-    `graph.doc_roots`. `misplaced-book-page` is the one check that walks the tracked tree
-    independently of those roots.
-    """
+    """A real book page (a declared `type:`) that a move -- or a first draft -- leaves outside `docs/features`, `docs/epics`, `docs/milestones`, `docs/roadmaps`, `docs/specs` and `docs/backlog.md` is invisible to every other check: it is not `okf-missing-type` (it has a type), and nothing walks in to find it, since every book-facing check is rooted at `graph.doc_roots`."""
     write(repo / "notes/orphan-concept.md",
           "---\ntype: concept\ntitle: Orphan\n---\n# Orphan\n\nStray content.\n")
     _git_track(repo)
@@ -57,10 +50,7 @@ def test_a_typed_page_outside_every_doc_root_is_flagged_as_misplaced(repo: Path)
 
 
 def test_typed_pages_under_the_configured_doc_roots_are_not_misplaced(repo: Path):
-    """The predicate is "outside every doc root", never "outside `docs/features`" alone --
-    real `epic`/`story`/`spec.*` pages that sit under one of the *other* doc roots must not be
-    flagged, even once git tracking makes the new check actually run.
-    """
+    """The predicate is "outside every doc root", never "outside `docs/features`" alone -- real `epic`/`story`/`spec.*` pages that sit under one of the *other* doc roots must not be flagged, even once git tracking makes the new check actually run."""
     write(repo / "docs/specs/plan.md",
           "---\ntype: spec.plan\ntitle: Plan\n---\n# Plan\n\nBody.\n")
     _git_track(repo)
@@ -70,12 +60,7 @@ def test_typed_pages_under_the_configured_doc_roots_are_not_misplaced(repo: Path
 
 
 def test_typed_pages_inside_a_nested_book_are_not_misplaced(repo: Path):
-    """A subtree with its own `docs/` (a paddock app under `paddock/data/apps/<app>/` is
-    exactly this shape) is a book of its own -- `model.find_root` resolves it as its own
-    root, with its own `doc_roots`, the moment ostler is pointed at it directly. A typed
-    page under that subtree's own `docs/` belongs to *that* book, not to the outer one, and
-    must not be flagged just because it also sits outside the outer book's doc roots.
-    """
+    """A subtree with its own `docs/` (a paddock app under `paddock/data/apps/<app>/` is exactly this shape) is a book of its own -- `model.find_root` resolves it as its own root, with its own `doc_roots`, the moment ostler is pointed at it directly."""
     write(repo / "vendor/widgets-app/docs/epics/epic-x/epic.md",
           "---\ntype: epic\ntitle: Widgets\n---\n# Widgets\n\nBody.\n")
     _git_track(repo)
@@ -85,28 +70,16 @@ def test_typed_pages_inside_a_nested_book_are_not_misplaced(repo: Path):
 
 
 def test_misplaced_book_page_emits_nothing_outside_a_git_repository(repo: Path):
-    """The corpus's standing core property -- git-tracked -- is undetermined when `graph.root`
-    is not inside a git repository at all, and the rule for an undetermined property is
-    silence, never a filesystem walk that would sweep `.venv`/build output and invent
-    findings.
-    """
+    """The corpus's standing core property -- git-tracked -- is undetermined when `graph.root` is not inside a git repository at all, and the rule for an undetermined property is silence, never a filesystem walk that would sweep `.venv`/build output and invent findings."""
     write(repo / "notes/orphan-concept.md",
           "---\ntype: concept\ntitle: Orphan\n---\n# Orphan\n\nStray content.\n")
-    # deliberately no `_git_track(repo)` -- repo is a plain directory, not a git repository
 
     report = doctor.run(load(repo))
     assert "misplaced-book-page" not in codes(report)
 
 
 def test_a_spec_typed_page_under_features_is_flagged_as_misrooted(repo: Path):
-    """`spec.*` is registered under `docs/specs`, not `docs/features` -- and unlike a page
-    outside every root, a `spec.qa-okf-context.md` dropped under `docs/features` (the shape
-    `ostler qa context` writing its scratch output to the wrong directory would produce) IS
-    under a doc root, so `misplaced-book-page` never fires. Its file node is suppressed
-    (`spec` is not a `UINodeType`) but `_parse_ui_nodes` still recurses into its `##`
-    sections, seeding `untyped` nodes into the book with nothing else catching the mismatch
-    between the declared type's registered root and the root the file actually sits under.
-    """
+    """`spec.*` is registered under `docs/specs`, not `docs/features` -- and unlike a page outside every root, a `spec.qa-okf-context.md` dropped under `docs/features` (the shape `ostler qa context` writing its scratch output to the wrong directory would produce) IS under a doc root, so `misplaced-book-page` never fires."""
     write(repo / "docs/features/area/scratch.md",
           "---\ntype: spec.qa-okf-context\ntitle: Scratch\n---\n# Scratch\n\n"
           "## Changed Code\n\n- `a.py` (modified): foo\n")
@@ -122,10 +95,7 @@ def test_a_spec_typed_page_under_features_is_flagged_as_misrooted(repo: Path):
 
 
 def test_typed_pages_under_their_own_registered_root_are_not_misrooted(repo: Path):
-    """The predicate is "inside a doc root that disagrees with the type", never "inside any
-    doc root but `docs/features`" -- a real `spec.*` page under `docs/specs` (its registered
-    home) must not be flagged.
-    """
+    """The predicate is "inside a doc root that disagrees with the type", never "inside any doc root but `docs/features`" -- a real `spec.*` page under `docs/specs` (its registered home) must not be flagged."""
     write(repo / "docs/specs/plan/plan.md",
           "---\ntype: spec.plan\ntitle: Plan\n---\n# Plan\n\nBody.\n")
     _git_track(repo)
@@ -135,14 +105,7 @@ def test_typed_pages_under_their_own_registered_root_are_not_misrooted(repo: Pat
 
 
 def test_a_ui_typed_page_outside_features_is_flagged_as_misrooted(repo: Path):
-    """The reverse direction: a book page whose type belongs under `features`, filed elsewhere.
-
-    It used to be invisible to every check at once -- `misplaced-book-page` passed it (it IS
-    under a doc root), `misrooted-book-page` skipped it (no `doc_root` was registered for a
-    `UINodeType`), and it never became a UI node, because only files under `docs/features`
-    are admitted. Nothing read it and nothing reported it, and a surface is where the file
-    sits, so it could reach no compile target either.
-    """
+    """The reverse direction: a book page whose type belongs under `features`, filed elsewhere."""
     write(repo / "docs/specs/area/stray.md",
           "---\ntype: screen\ntitle: Stray\n---\n# Stray\n\n- route: /stray\n")
     _git_track(repo)
@@ -165,7 +128,6 @@ def test_a_ui_typed_page_under_features_is_not_misrooted(repo: Path):
 
 
 def test_cross_epic_seed_reference_is_flagged(repo: Path):
-    # Point epic-a's story at a seed that belongs to epic-b.
     write(repo / "docs/epics/epic-a/epic.md", epic_md(
         "t-1", "epic-a",
         seeds=[("seed-a1", "researched", "first"), ("seed-a2", "resolved", "done")],
@@ -174,9 +136,8 @@ def test_cross_epic_seed_reference_is_flagged(repo: Path):
 
     report = doctor.run(load(repo))
     assert "cross-epic-seed" in codes(report)
-    # seed-a1 is now uncovered -> orphan
     assert "orphan-seed" in codes(report)
-    assert report.errors  # non-zero exit
+    assert report.errors
 
 
 def test_blocker_naming_no_story_is_flagged(repo: Path):
@@ -254,8 +215,7 @@ def test_story_id_mismatch_between_epic_and_story_is_flagged(tmp_path: Path):
 
 
 def test_a_dependencies_bullet_that_names_no_blocker_is_flagged(repo: Path):
-    """The guard against a silent rewrite: story.md is agent-written, and a body turned into
-    prose empties the DAG with nothing else reporting it."""
+    """The guard against a silent rewrite: story.md is agent-written, and a body turned into prose empties the DAG with nothing else reporting it."""
     text = story_md("01-foo", "Foo", "Not started", depends=["01-bar"])
     write(repo / FOO_STORY, text.replace("- Blocked by: 01-bar", "- Needs: 01-bar"))
 
@@ -267,15 +227,12 @@ def test_a_dependencies_bullet_that_names_no_blocker_is_flagged(repo: Path):
 
 
 def test_resolved_seed_not_required_to_be_covered(repo: Path):
-    # seed-a2 is resolved and covered by nobody -> must NOT be an orphan error.
     report = doctor.run(load(repo))
     assert "orphan-seed" not in codes(report)
 
 
 def test_a_story_covering_a_seed_id_unknown_to_the_whole_book_is_flagged(repo: Path):
-    """Unlike `cross-epic-seed` (the id belongs to a sibling epic), `dangling-seed` is what
-    fires when no epic anywhere claims the id at all.
-    """
+    """Unlike `cross-epic-seed` (the id belongs to a sibling epic), `dangling-seed` is what fires when no epic anywhere claims the id at all."""
     write(repo / "docs/epics/epic-a/epic.md", epic_md(
         "t-1", "epic-a",
         seeds=[("seed-a1", "researched", "first"), ("seed-a2", "resolved", "done")],
@@ -306,16 +263,13 @@ def test_feature_records_parsed(repo: Path):
 
 
 def test_missing_type_is_flagged(repo: Path):
-    # a feature Concept without `type` violates OKF conformance
     write(repo / "docs/features/area/rec.md",
           "---\nslug: rec\ntitle: Rec\n---\n# rec\n\nbody\n")
     assert "okf-missing-type" in codes(doctor.run(load(repo)))
 
 
 def test_a_concept_inserted_mid_file_reparents_its_neighbours_fields(repo: Path):
-    """The failure this catches is invisible in the rendered page: a new `## concept:` written
-    directly above an existing `### Fields` steals that block, and nothing else in the graph
-    objects — the fields are still fields, just hanging off the wrong concept."""
+    """The failure this catches is invisible in the rendered page: a new `## concept:` written directly above an existing `### Fields` steals that block, and nothing else in the graph objects — the fields are still fields, just hanging off the wrong concept."""
     write(repo / "docs/features/area/rec.md", """---
 type: concept
 slug: rec
@@ -370,7 +324,6 @@ title: Rec
 
 
 def test_seedless_epic_no_covers_warning(repo: Path):
-    # a wholly-seedless epic (globex-style) must not raise story-covers-no-seed
     write(repo / "docs/epics/epic-c/epic.md", epic_md(
         "t-3", "epic-c", seeds=[], stories=[("01-x", "X", [])]))
     write(repo / "docs/epics/epic-c/stories/01-x/story.md",
@@ -393,10 +346,7 @@ def test_a_story_that_covers_no_seed_in_a_seeded_epic_is_flagged(repo: Path):
 
 
 def test_an_active_seed_with_no_layers_bullet_is_flagged_unclassified(repo: Path):
-    """`epic_md` never writes a `layers:` bullet, so any active (non-inactive-status) seed it
-    builds already satisfies `not s.layers` — seed-a1 ("researched") in the base `repo`
-    fixture is exactly this shape.
-    """
+    """`epic_md` never writes a `layers:` bullet, so any active (non-inactive-status) seed it builds already satisfies `not s.layers` — seed-a1 ("researched") in the base `repo` fixture is exactly this shape."""
     report = doctor.run(load(repo))
     warns = [f for f in report.findings if f.severity == "warn"]
     assert "unclassified-seed" in {f.code for f in warns}
@@ -424,15 +374,6 @@ research:
     assert "okf-missing-type" in codes(doctor.run(load(repo)))
 
 
-# --------------------------------------------------------------------------- #
-# unwritten-story                                                             #
-# --------------------------------------------------------------------------- #
-#
-# The surface that makes a half-authored book visible. Before it existed, a repo whose stories
-# were all `ostler create story` scaffolds reported itself perfectly healthy — 0 errors on a
-# book that said nothing — because every check the graph ran was satisfied by the file merely
-# existing. These pin the finding down: one per unwritten story, naming which sections are
-# empty, gone the moment they are written.
 
 def _unwritten(root: Path) -> list:
     return [f for f in doctor.run(load(root)).findings if f.code == "unwritten-story"]
@@ -454,9 +395,7 @@ def test_every_unwritten_story_is_named_with_its_empty_sections(tmp_path: Path):
     assert [f.ref for f in found] == ["01-a", "02-b", "03-c"], "one finding per story, not one summary"
     assert all(f.severity == "error" for f in found)
     assert all(f.epic == epic_dir for f in found)
-    # Which sections are empty is the actionable part — "unwritten" alone does not say what to write.
     assert "Context (empty), Acceptance Criteria (empty)" in found[0].message
-    # And it is located: a finding without a path cannot be opened from a report.
     assert found[0].path == f"docs/epics/{epic_dir}/stories/01-a/story.md"
 
 
@@ -479,11 +418,7 @@ def test_writing_the_sections_clears_the_finding(tmp_path: Path):
 
 
 def test_an_old_story_is_unwritten_for_the_sections_it_never_had(tmp_path: Path):
-    """No frontmatter exempts a document from the contract — there is only one, and it is the table.
-
-    Before, dropping the shape key bought this story a weaker section list and a clean report; the
-    sections it is missing are real work, and saying so is the point.
-    """
+    """No frontmatter exempts a document from the contract — there is only one, and it is the table."""
     epic_dir = _scaffolded(tmp_path, ["01-a"])
     story_md = tmp_path / f"docs/epics/{epic_dir}/stories/01-a/story.md"
     text = story_md.read_text(encoding="utf-8")
@@ -501,8 +436,6 @@ def test_an_old_story_is_unwritten_for_the_sections_it_never_had(tmp_path: Path)
 
 
 def test_a_partially_written_story_names_only_the_empty_section(tmp_path: Path):
-    # Half-written is the state a rerun resumes into, so it must be reported as precisely as
-    # a fresh scaffold — otherwise an author run that stopped mid-story looks finished.
     epic_dir = _scaffolded(tmp_path, ["01-a"])
     story_md = tmp_path / f"docs/epics/{epic_dir}/stories/01-a/story.md"
     story_md.write_text(
@@ -518,9 +451,7 @@ def test_a_partially_written_story_names_only_the_empty_section(tmp_path: Path):
 
 
 def test_a_section_the_story_predates_is_reported_missing_not_empty(tmp_path: Path):
-    """A story written before a section was required has no heading to write under, and
-    reporting that as "empty" sends the reader looking for prose that has nowhere to go.
-    The two states need different repairs, so the finding has to tell them apart."""
+    """A story written before a section was required has no heading to write under, and reporting that as "empty" sends the reader looking for prose that has nowhere to go."""
     epic_dir = _scaffolded(tmp_path, ["01-a"])
     story_md = tmp_path / f"docs/epics/{epic_dir}/stories/01-a/story.md"
     body = story_md.read_text(encoding="utf-8")
@@ -703,13 +634,6 @@ epics: []
     assert "backlog-item-in-multiple-milestones" in codes(report)
 
 
-# --------------------------------------------------------------------------- #
-# story-conflict                                                              #
-# --------------------------------------------------------------------------- #
-#
-# The adjudicator's `story` verdict: two criteria that cannot both hold. It may not rewrite
-# intent, and no undetermined fault may stay open, so the story carries the finding until an
-# operator edits the criteria and clears the key.
 
 def test_a_recorded_conflict_is_an_error_on_the_story_until_cleared(repo: Path):
     def conflicts() -> list:
@@ -771,18 +695,7 @@ def test_path_outside_the_book_is_refused_rather_than_reported_clean(repo: Path,
 
 
 def test_every_gap_kind_has_its_own_branch_in_the_doctor_bridge():
-    """`gap_findings` names every kind `compile_plan` mints — no kind reaches the catch-all.
-
-    The catch-all `else` is a runtime safety net, not the thing that decides whether a kind is
-    handled: it turns a missing case into a `Finding` carrying `uncompilable-claim`, which is a
-    valid finding with the wrong code, and a wrong answer is not observable as a missing case.
-    That is how `undeclared-check-locator` and `unstated-claim-combiner` — both real doctor
-    codes, both with their own repair fragment under `okf_builder/main/prompts/repair/` — came
-    to be reported to the builders under a third code whose fragment says something else.
-
-    Two relations, because each catches a different drift: a kind minted in `compile.py` and
-    never declared, and a kind declared and never translated.
-    """
+    """`gap_findings` names every kind `compile_plan` mints — no kind reaches the catch-all."""
     tree = ast.parse((Path(compile_mod.__file__)).read_text())
     minted = {
         node.args[1].value
@@ -816,19 +729,11 @@ def test_a_gap_kind_that_is_not_a_doctor_code_is_translated_not_passed_through()
 
     [finding] = doctor.gap_findings([gap])
 
-    # `warn`, the severity doctor already grades `undeclared-obligation` at when it raises the
-    # same fact from the book alone. One rule graded two ways by which component noticed it is
-    # the drift this bridge exists to avoid.
     assert (finding.severity, finding.code) == ("warn", "undeclared-obligation")
 
 
 def test_a_when_guarded_gap_keeps_its_own_code_rather_than_undeclared_obligation():
-    """`precondition-discharged-by-arrangement` is its own doctor code, not a second spelling
-    of `undeclared-obligation`: the two name different defects. `undeclared-obligation` says
-    the book owes a check and did not write one; this kind says no check was ever owed,
-    because the bullet states a condition rather than an observable claim. Grading them the
-    same code would tell an author the fix is a check, for the one obligation where it is not.
-    """
+    """`precondition-discharged-by-arrangement` is its own doctor code, not a second spelling of `undeclared-obligation`: the two name different defects."""
     oid = "okf:docs/features/demo/api.md#submit-widget:when:1"
     gap = compile_mod.Gap(
         oid, "precondition-discharged-by-arrangement",
@@ -842,22 +747,7 @@ def test_a_when_guarded_gap_keeps_its_own_code_rather_than_undeclared_obligation
 
 
 def test_undeclared_obligation_fires_per_bullet_even_when_the_node_declares_a_check(repo: Path):
-    """SITE-GAP is per-obligation; SITE-BOOK's `declared` flag is node-wide.
-
-    An `endpoint` with two normative bullets (`does`, `status`) and exactly one `verify:` —
-    bound by document order to `does`, the nearer bullet above it — has *something* declared,
-    so SITE-BOOK's `if check_keys and normative and not declared` never fires: `declared` is a
-    node-wide flag, true the moment any bullet on the node carries a check.
-
-    But `status` itself declares nothing, and `registry.attributed_checks` binds a check to the
-    *nearest* normative bullet above it, not to every normative bullet on the node — so the
-    compiler's per-obligation partition (`qa/compile.py`'s `declared`/`undeclared` split, fed by
-    `checksDeclared` from `qa/context.py`) puts the `status` obligation in `undeclared` while
-    `does` sits in `declared`. Only the full context -> compile -> `gap_findings` path sees
-    this: the discriminator between the two raise sites is the finding's `ref` shape — a bare
-    bullet key when SITE-BOOK fires on a node that declares nothing at all, an indexed
-    obligation id when SITE-GAP fires on one bullet of a node that declares plenty.
-    """
+    """SITE-GAP is per-obligation; SITE-BOOK's `declared` flag is node-wide."""
     write(repo / "docs/features/demo/publisher.md",
           "---\ntype: concept\ntitle: Publisher\n---\n# Publisher\n\n"
           "## Methods\n\n### Publish\n- returns: the published revision\n"
@@ -909,14 +799,7 @@ def test_undeclared_obligation_fires_per_bullet_even_when_the_node_declares_a_ch
 
 
 def test_an_unparsed_fixture_gap_keeps_the_code_doctor_already_raises_for_that_bullet():
-    """`_check_book_fixtures` raises `qa-fixture-bullet` on this bullet from the book alone.
-
-    The compiler's kind names the *consequence* — which obligations went uncompiled because of
-    it — not a second defect, so it bridges to that same code at that same severity. A code of
-    its own would grade one rule two ways depending on which component noticed it, which is
-    the drift this bridge exists to avoid; `no-verify-declared` is translated for the same
-    reason.
-    """
+    """`_check_book_fixtures` raises `qa-fixture-bullet` on this bullet from the book alone."""
     oid = "okf:docs/features/demo/flows/add-a-thing.md:end-state"
     gap = compile_mod.Gap(oid, "unparsed-fixture", "this claim's arrangement could not be read")
 
@@ -927,14 +810,7 @@ def test_an_unparsed_fixture_gap_keeps_the_code_doctor_already_raises_for_that_b
 
 
 def test_an_unparsed_check_gap_keeps_the_code_doctor_already_raises_for_that_bullet():
-    """`_check_ui` raises `unparsed-check` on this bullet from the book alone.
-
-    Same bridge as the fixture kind above, for the same reason: the compiler's kind names which
-    obligations went unproven because the bullet could not be read, which is the consequence of
-    one defect and not a second one. Left unbridged it would be a second code for a rule doctor
-    already states — and before the bridge existed at all, the obligation fell through to
-    `no-verify-declared`, which contradicted doctor about the same bullet.
-    """
+    """`_check_ui` raises `unparsed-check` on this bullet from the book alone."""
     oid = "okf:docs/features/policy/gui/screens/policy-list.md#policy-table:contract"
     gap = compile_mod.Gap(oid, "unparsed-check-bullet", "this claim's check could not be read")
 
@@ -945,9 +821,7 @@ def test_an_unparsed_check_gap_keeps_the_code_doctor_already_raises_for_that_bul
 
 
 def test_a_misfiled_test_ref_on_a_type_with_no_tests_key_does_not_suggest_one(repo: Path):
-    """`screen` declares `verify:` and never `tests:` — the message must not send the author to
-    a key the type cannot hold, and the suggestion beside it must offer the check vocabulary
-    rather than either `- tests: …` or the offending value restated under its own key."""
+    """`screen` declares `verify:` and never `tests:` — the message must not send the author to a key the type cannot hold, and the suggestion beside it must offer the check vocabulary rather than either `- tests: …` or the offending value restated under its own key."""
     write(repo / "docs/features/ui/dash.md", screen_md(
         "dash", "Dash", entry=True,
         body="\n- verify: `e2e/dash_test.go::TestDash`\n"))
@@ -963,8 +837,7 @@ def test_a_misfiled_test_ref_on_a_type_with_no_tests_key_does_not_suggest_one(re
 
 
 def test_a_misfiled_test_ref_on_a_type_that_declares_tests_still_offers_it(repo: Path):
-    """`concept` declares both `verify:` and `tests:`, so the same finding on a `concept` page
-    keeps proposing the move — unaffected by the fallback the `screen` case above exercises."""
+    """`concept` declares both `verify:` and `tests:`, so the same finding on a `concept` page keeps proposing the move — unaffected by the fallback the `screen` case above exercises."""
     write(repo / "docs/features/concepts/widget.md", (
         "---\ntype: concept\nslug: widget\ntitle: Widget\n---\n\n# Widget\n\n"
         "- verify: `e2e/dash_test.go::TestDash`\n"))
@@ -989,12 +862,7 @@ def test_gap_findings_reports_a_compile_plan_gap_as_a_doctor_finding():
 
 
 def test_an_unresolved_extends_gap_is_reported_as_a_doctor_finding():
-    """`unresolved-extends` is minted by `qa.compile.compile_plan_gaps`, not by any check
-    `doctor.run` performs on its own walk — `census.py`'s own bridge note says so
-    ("gap_findings has no product caller; gaps surface via qa compile-plan only"), so the
-    only way to exercise the code -> Finding translation is to build the `Gap` directly, the
-    same way every other Gap-based code above is tested.
-    """
+    """`unresolved-extends` is minted by `qa.compile.compile_plan_gaps`, not by any check `doctor.run` performs on its own walk — `census.py`'s own bridge note says so ("gap_findings has no product caller; gaps surface via qa compile-plan only"), so the only way to exercise the code -> Finding translation is to build the `Gap` directly, the same way every other Gap-based code above is tested."""
     oid = "okf:docs/features/demo/api.md#refuse-act:does:1"
     gap = compile_mod.Gap(
         oid, "unresolved-extends",
@@ -1011,12 +879,7 @@ def test_an_unresolved_extends_gap_is_reported_as_a_doctor_finding():
 
 
 def test_an_unparsed_capture_gap_keeps_the_code_doctor_already_raises_for_that_bullet():
-    """`_check_book_captures` raises `unparsed-capture` on this bullet from the book alone.
-
-    The third of the same bridge: the compiler's kind names what the unreadable bullet cost —
-    a fact no later `$name` can resolve against — which is the consequence of one defect and
-    not a second one.
-    """
+    """`_check_book_captures` raises `unparsed-capture` on this bullet from the book alone."""
     oid = "okf:docs/features/demo/http/api.md#submit:does:1"
     gap = compile_mod.Gap(oid, "unparsed-capture-bullet", "this claim's capture could not be read")
 
@@ -1027,13 +890,7 @@ def test_an_unparsed_capture_gap_keeps_the_code_doctor_already_raises_for_that_b
 
 
 def _emitted_codes() -> dict[str, str]:
-    """Every `(code, severity)` pair `doctor.py` can construct, read out of its source.
-
-    A `Finding(...)` whose severity or code is not a literal is unreadable here, so the
-    extraction asserts there are none rather than skipping them — a code a static reader has to
-    execute a ternary to learn is a code no enumeration can see, and an enumeration with a hole
-    in it reports "documented" about a code nobody looked at.
-    """
+    """Every `(code, severity)` pair `doctor.py` can construct, read out of its source."""
     tree = ast.parse(Path(doctor.__file__).read_text())
     calls = [
         node for node in ast.walk(tree)
@@ -1068,20 +925,7 @@ def _documented_codes() -> dict[str, str]:
 
 
 def test_the_reference_page_lists_every_code_doctor_can_raise():
-    """`doctor-codes.md` calls itself the list of every finding, and until now nothing joined it
-    to the findings.
-
-    The drift is silent in both directions and it had already happened twice. Five codes —
-    `unarranged-journey`, `unarranged-state`, `uneven-claim-coverage`, `unidentifiable-screen`,
-    `unparsed-capture` — were raised with no row at all, so a builder handed one of them had
-    nowhere to look, which is the same defect as a missing repair fragment seen one artifact
-    over. And the page's own header claimed a code count twenty-one short of its own table,
-    which is why there is no count here to keep in step: the table is the list.
-
-    okf-builder's `test_drift_tripwire.py` is this test's sibling and covers the other Gate A
-    artifact — that every code has a repair fragment or a reasoned exemption. Neither implies
-    the other: a code can have a fragment the builders read and no row a person can.
-    """
+    """`doctor-codes.md` calls itself the list of every finding, and until now nothing joined it to the findings."""
     emitted, documented = _emitted_codes(), _documented_codes()
     assert set(emitted) == set(documented), {
         "raised with no row": sorted(set(emitted) - set(documented)),
@@ -1090,10 +934,7 @@ def test_the_reference_page_lists_every_code_doctor_can_raise():
 
 
 def test_the_reference_page_states_the_severity_each_code_is_raised_at():
-    """The severity is the half of a row a reader acts on — an error gates a story and a warn
-    does not — and it was wrong for `malformed-variants` and `runbook-missing` in opposite
-    directions, each for as long as nobody re-read the code beside the row.
-    """
+    """The severity is the half of a row a reader acts on — an error gates a story and a warn does not — and it was wrong for `malformed-variants` and `runbook-missing` in opposite directions, each for as long as nobody re-read the code beside the row."""
     emitted, documented = _emitted_codes(), _documented_codes()
     mismatched = {
         code: {"doctor.py": emitted[code], "doctor-codes.md": documented[code]}

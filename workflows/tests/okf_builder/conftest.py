@@ -1,22 +1,4 @@
-"""Shared fixtures for the okf-builder port's tests.
-
-The build is a measurement instrument — `ostler doctor` over the book and a computed
-join of the book's `code:` citations against an inventory walked from source — so a
-useful fixture is a *real* repo whose source and whose book actually correspond. That is
-what `booked` is: one module declaring one function, and one concept doc citing it. Two
-units, both covered, doctor green.
-
-`dirty` is the same repo plus a doc citing a symbol nothing declares, which is the
-cheapest way to make doctor emit an **error** that is neither auto-repairable by
-`ostler fmt` nor in `AUTO_WAIVABLE` — the two arms the convergence loop branches on.
-
-`unbooked` is the same source with no book, which is the other side of the run's one
-entry decision: an empty book is filled top-down from the code, a populated one is
-reconciled to HEAD.
-
-Everything else follows the author suite: nodes run for real against the repo the test
-stands in, and only the agent turn is ever scripted.
-"""
+"""Shared fixtures for the okf-builder port's tests."""
 from __future__ import annotations
 
 import json
@@ -28,8 +10,6 @@ from typing import Any
 
 import pytest
 
-#: The book, the source subtree and the package all share this name — `prepare` defaults
-#: `source_path` to `service`, so a one-input run resolves `<repo>/acme`.
 SERVICE = "acme"
 
 SOURCE = '''"""The billing service."""
@@ -40,8 +20,6 @@ def charge(amount):
     return amount
 '''
 
-#: A minimal OKF concept. The `- code:` bullet is the citation the coverage join reads
-#: and the reference `ostler doctor` grounds against the source file.
 CONCEPT = """---
 type: concept
 slug: {slug}
@@ -57,18 +35,13 @@ title: {title}
 
 @pytest.fixture
 def logger() -> logging.Logger:
-    """The `logger` every node takes first. Diagnostics only — nothing asserts on it."""
+    """The `logger` every node takes first."""
     return logging.getLogger("test.okf_builder")
 
 
 @pytest.fixture
 def repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    """A real git repo, pinned as the consuming repo for the duration of the test.
-
-    Pinned by *chdir*, not by an environment variable: `docs_root` resolves the explicit
-    `docs_path`, else walks up from `repo_dir`, else from the working directory — so
-    standing in the repo is what a node called with neither input sees.
-    """
+    """A real git repo, pinned as the consuming repo for the duration of the test."""
     root = tmp_path / "acme"
     root.mkdir()
     subprocess.run(
@@ -82,15 +55,9 @@ def repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
         ("GIT_AUTHOR_EMAIL", "test@example.com"),
         ("GIT_COMMITTER_NAME", "Test"),
         ("GIT_COMMITTER_EMAIL", "test@example.com"),
-        # ostler's index is content-keyed and machine-wide by default. A verdict the
-        # audit memoizes here must not answer the next test, nor land in the developer's
-        # own cache — the repo's fixtures repeat across tests exactly as a real book does.
         ("OSTLER_INDEX_DIR", str(tmp_path / "ostler-index")),
     ):
         monkeypatch.setenv(key, value)
-    # The smallest installed skill `prepare._references_ok` accepts: the references corpus
-    # is a run precondition (a build whose prompts point at pages that do not exist is
-    # blocked, not degraded), so a repo without it never gets past `start`.
     references = root / ".claude/skills/ostler-okf/references"
     (references / "node-types").mkdir(parents=True)
     (references / "node-types" / "concept.md").write_text("# concept\n", encoding="utf-8")
@@ -102,7 +69,7 @@ def repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 @pytest.fixture
 def write() -> Callable[[Path, str], Path]:
-    """Write text to a path, creating parents. Returns the path, for one-liners."""
+    """Write text to a path, creating parents."""
 
     def _write(path: Path, text: str) -> Path:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -122,12 +89,7 @@ def read_json() -> Callable[[Path], Any]:
 
 @pytest.fixture
 def booked(repo: Path, write: Callable[[Path, str], Path]) -> Path:
-    """A repo whose one-function source is exactly covered by its one-doc book.
-
-    Committed, because `ostler` and the checkpoint's `fmt` both read a working tree and
-    because a build that starts from an uncommitted book is not the state a real run
-    resumes into.
-    """
+    """A repo whose one-function source is exactly covered by its one-doc book."""
     write(repo / "acme/service.py", SOURCE)
     write(
         repo / f"docs/features/{SERVICE}/concepts/charge.md",
@@ -139,13 +101,7 @@ def booked(repo: Path, write: Callable[[Path, str], Path]) -> Path:
 
 @pytest.fixture
 def unbooked(repo: Path, write: Callable[[Path, str], Path]) -> Path:
-    """The same source with no book at all — the first-fill entry the run reads off disk.
-
-    `docs/features/` exists and is empty, which is the state a repo is in before anything
-    has ever documented it: ostler loads a graph, the graph has no nodes, and
-    `book_has_docs` is what says the run must enumerate the code's surfaces top-down
-    instead of reconciling a book to HEAD.
-    """
+    """The same source with no book at all — the first-fill entry the run reads off disk."""
     write(repo / "acme/service.py", SOURCE)
     (repo / "docs/features").mkdir(parents=True, exist_ok=True)
     _commit(repo, "source, no book")
@@ -154,13 +110,7 @@ def unbooked(repo: Path, write: Callable[[Path, str], Path]) -> Path:
 
 @pytest.fixture
 def dirty(booked: Path, write: Callable[[Path, str], Path]) -> Path:
-    """`booked` plus a doc citing `acme/service.py::refund`, which nothing declares.
-
-    `ostler doctor` reports it as a `missing-code-symbol` **error** — grounded (the
-    repair's value must come out of the source, not off the finding), so a repair that
-    never lands blocks its row and parks the run on the operator gate rather than
-    papering over it. One fixture, both arms.
-    """
+    """`booked` plus a doc citing `acme/service.py::refund`, which nothing declares."""
     write(
         booked / f"docs/features/{SERVICE}/concepts/refund.md",
         CONCEPT.format(slug="refund", title="Refund", symbol="refund", prose="Refunding."),

@@ -1,27 +1,5 @@
 #!/usr/bin/env python3
-"""farrier — render the agent prompt library into a repository.
-
-Compatibility facade. The implementation was split by capability into cohesive
-modules (see each for detail):
-
-  - ``config``     — home-config TOML persistence
-  - ``layers``     — base/overlay discovery and the resolution stack
-  - ``naming``     — pure name/id transforms
-  - ``frontmatter``— YAML front-matter and metadata parsing
-  - ``sources``    — the ``Source`` record, loading, selection, packs
-  - ``launcher``   — ``.agents/`` launcher generation
-  - ``renderer``   — the ``Renderer`` class
-  - ``outputs``    — full-render orchestration and repo mutations
-  - ``skill_hooks``— the ``hooks:`` a SKILL.md declares
-  - ``hook_managers``— wiring one command into the repo's hook manager
-  - ``hooks``      — the QA-evidence ignore block
-  - ``scaffolds``  — ``farrier scaffold`` definitions and fetching
-  - ``cli``        — argument parsing and command dispatch
-
-This module re-exports the historical public API so ``farrier.install:main`` (the
-console-script entry point) and ``from farrier.install import ...`` keep resolving.
-New code should import from the capability modules directly.
-"""
+"""farrier — render the agent prompt library into a repository."""
 
 from __future__ import annotations
 

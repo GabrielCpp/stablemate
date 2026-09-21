@@ -1,12 +1,4 @@
-"""The install prefix is the repo directory's name, and nothing else can set it.
-
-`agents.yml` used to accept `repo.prefix` / `repo.name` as an override. That made the
-*names of the generated files* a function of a committed config value rather than of the
-checkout, so the same `agents.yml` rendered a different file set in a clone under a
-different directory name — and the workflow kit, which keys a repo by its directory,
-disagreed with the skills installed into it. The prefix is derived now; these tests are
-what keeps it that way.
-"""
+"""The install prefix is the repo directory's name, and nothing else can set it."""
 
 from pathlib import Path
 
@@ -17,8 +9,6 @@ from farrier.install import main
 
 def make_library(tmp_path: Path) -> Path:
     library = tmp_path / "agents"
-    # Top of the tree on purpose: a source with no parent folder takes no group
-    # prefix, so what these tests assert is the repo prefix and nothing else.
     skills = library / "library" / "skills"
     skills.mkdir(parents=True)
     (skills / "db.md").write_text(

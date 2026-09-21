@@ -1,19 +1,4 @@
-"""What a QA node needs *around* an ostler call — shared by every family that runs one.
-
-The `(returncode, payload, stderr)` adapter that used to live here is gone: `Ostler`'s
-qa and artifact methods answer in `QaOutcome` — `ok`, `message`, `data`, `status` — so a
-node calls the API directly and reads the field it actually branches on. A wrapper that
-flattened three fields into a returncode only to have each of five callers unflatten it
-by its own rule was work with no reader.
-
-What is left is the part that is not ostler's: the run-log parse both gates share, the
-`--source-root` string form the workflow carries, and the routing notes a node hands to
-the model when a check comes back red. None of it is coder-specific — a live-audit lane
-reads the same NDJSON run log and wants the same routing-note extraction — which is why
-this module lives beside `runner` and `evidence` rather than under `coder/shared/`.
-`coder.shared.qa_support` re-exports this module's names so coder's existing call sites
-are unaffected.
-"""
+"""What a QA node needs *around* an ostler call — shared by every family that runs one."""
 from __future__ import annotations
 
 import json
@@ -22,13 +7,8 @@ from typing import Any
 
 from ostler.qa import QaOutcome
 
-#: The plan file, relative to the story's spec dir. A Python module, not YAML: a scenario is
-#: a function `ostler` executes under the project's own interpreter, so a wrong key raises
-#: where a `jq` filter over a missing field used to pass vacuously.
 QA_PLAN_FILE = "qa_plan.py"
 
-#: The runner's per-assertion log, relative to whichever directory the run wrote into —
-#: `<spec_dir>/qa/` for the scored run, `<spec_dir>/qa/<scenario>/` for a dry one.
 QA_RUN_LOG = "qa-run.ndjson"
 
 
@@ -43,16 +23,7 @@ def parse_source_roots(source_roots: list[str]) -> dict[str, list[str]]:
 
 
 def assert_records(log_path: Path) -> list[dict[str, Any]]:
-    """Every `kind == "assert"` record in one `qa-run.ndjson`, in the order it was written.
-
-    The run log is the only account of an assertion that no later turn can edit: the
-    assessor writes `qa-evidence.json`, the runner writes this. Both the evidence gate and
-    the dry-run gate read it, which is why the parse lives here rather than in either.
-
-    A malformed line is skipped rather than raised on. The file is append-only NDJSON a
-    killed run can leave half-written, and one truncated tail is not a reason to lose the
-    hundred records before it.
-    """
+    """Every `kind == "assert"` record in one `qa-run.ndjson`, in the order it was written."""
     if not log_path.is_file():
         return []
     records: list[dict[str, Any]] = []
@@ -85,12 +56,7 @@ def scored_run_log(spec_dir: Path) -> Path:
 
 
 def notes_for(outcome: QaOutcome, fallback: str) -> str:
-    """Concise routing notes off an outcome, keeping the deterministic diagnostics.
-
-    The data the check produced comes first — findings and problem lists are what a repair
-    turn can act on — then the outcome's own message, which is only informative when the
-    check came back red (on a pass it says "wrote …", not why anything holds).
-    """
+    """Concise routing notes off an outcome, keeping the deterministic diagnostics."""
     for key in ("notes", "message", "problems", "errors", "healthFindings"):
         value = outcome.data.get(key)
         if value:

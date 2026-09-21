@@ -1,7 +1,4 @@
-"""Tests for the shared secret-redaction filter (runner/redact.py) and its mount at
-process.stream_subprocess. Runnable two ways:
-    ./.venv/bin/python -m pytest tests/test_redact.py
-"""
+"""Tests for the shared secret-redaction filter (runner/redact.py) and its mount at process.stream_subprocess."""
 from __future__ import annotations
 
 import base64
@@ -73,8 +70,7 @@ def test_no_false_positive_on_ordinary_text():
 
 
 class _BoomingRedactor(SecretRedactor):
-    """A redactor whose rewrite step always raises — the seam for proving the
-    fail-closed contract without waiting for a real internal error to occur."""
+    """A redactor whose rewrite step always raises — the seam for proving the fail-closed contract without waiting for a real internal error to occur."""
 
     def _rewrite(self, text: str) -> str:
         raise RuntimeError("boom")

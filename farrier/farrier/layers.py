@@ -1,12 +1,4 @@
-"""Library discovery and the layer resolution stack.
-
-Where content comes from: resolving the overlay and stacking it above the base,
-highest-precedence first, so an overlay shadows the base name-for-name. ``LAYERS`` is
-mutated in place by ``set_layers`` so every importer of the name sees the current stack.
-
-Locating the *base* is not farrier's business — it is shared with workhorse and lives in
-``stablemate_core.discovery``. This module only stacks what that returns.
-"""
+"""Library discovery and the layer resolution stack."""
 from __future__ import annotations
 
 import os
@@ -21,9 +13,6 @@ from farrier._vendor.stablemate_core.discovery import (
     is_library_dir,
 )
 
-# Re-exported: these moved to stablemate_core, but `farrier.layers` is where the rest of
-# farrier (and its tests) has always imported them from. Named in __all__ so ruff does
-# not prune them as unused.
 __all__ = [
     "BASE_DIR_ENV",
     "BASE_LAYER_NAME",
@@ -43,35 +32,19 @@ __all__ = [
 
 @dataclass(frozen=True)
 class Layer:
-    """One library root in the resolution stack.
-
-    ``name`` labels the layer in provenance banners and error messages. Without it,
-    an overlay silently shadowing a base skill is invisible — you would open the
-    base copy, edit it, and watch the overlay's copy get rendered instead.
-    """
+    """One library root in the resolution stack."""
 
     root: Path
     name: str
 
 
-# Library content resolves across an ordered stack of layers, highest precedence
-# first: the overlay (--library / $FARRIER_LIBRARY_DIR / home config), then the base
-# library (plain data on disk, or fetched). A higher layer shadows a lower
-# one name-for-name, which is how a private overlay overrides a base skill, pack or
-# workflow without forking it. Populated by ``set_layers()`` in ``main()``; a module
-# global because the rendering helpers below reference it directly.
 LAYERS: list[Layer] = []
 
 BASE_LAYER_NAME = "base-library (base)"
 
 
 def set_layers(overlay: Path | None) -> None:
-    """Point the resolution stack at the overlay (if any), then the base (if installed).
-
-    ``LAYERS`` is mutated in place (not rebound) so ``from farrier.layers import
-    LAYERS`` bindings in other modules — and the install.py facade — track the
-    current stack rather than a stale snapshot.
-    """
+    """Point the resolution stack at the overlay (if any), then the base (if installed)."""
     layers: list[Layer] = []
     if overlay is not None:
         layers.append(Layer(root=overlay, name=str(overlay)))
@@ -108,13 +81,7 @@ def searched_layers() -> str:
 
 
 def available_names(*parts: str, suffix: str = "") -> list[str]:
-    """Every name a layer provides under ``<root>/<parts>`` — the catalog for an error's
-    "here is what does exist" half.
-
-    Deduplicated across layers because a shadowed name is still one name to the operator:
-    listing it twice would imply a choice they do not have. ``suffix`` is stripped from
-    the filenames it finds (``.yml`` for packs, ``.md`` for roots).
-    """
+    """Every name a layer provides under ``<root>/<parts>`` — the catalog for an error's "here is what does exist" half."""
     names: set[str] = set()
     for _layer, directory in layer_dirs(*parts):
         for entry in directory.iterdir():
@@ -126,13 +93,7 @@ def available_names(*parts: str, suffix: str = "") -> list[str]:
 
 
 def resolve_library_dir(cli_library: Path | None) -> Path | None:
-    """Resolve the *overlay* library root: --library > $FARRIER_LIBRARY_DIR > home config.
-
-    Returns None when no overlay is configured but a base library is installed — the
-    base alone is a usable library, so that is a supported setup, not an error. Exits
-    with a setup hint only when there is neither an overlay nor a base, or when a
-    configured path is not a usable library directory.
-    """
+    """Resolve the *overlay* library root: --library > $FARRIER_LIBRARY_DIR > home config."""
     candidate: Path | None = None
     source = ""
     if cli_library is not None:
@@ -150,9 +111,6 @@ def resolve_library_dir(cli_library: Path | None) -> Path | None:
     if candidate is None:
         if base_library_dir() is not None:
             return None
-        # Reached after `farrier install` has already tried to fetch the base, so the
-        # cache route is not something to suggest — it was attempted and did not answer.
-        # What is left is the offline causes and the on-disk routes.
         raise SystemExit(
             "error: no library available — no overlay configured, and the base "
             "library could not be fetched.\n"

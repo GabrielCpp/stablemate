@@ -28,7 +28,6 @@ class LiveHistory:
             }
 
     def update_logs(self, rows: list[dict[str, Any]]) -> None:
-        # New arrivals win timestamp ties, matching SQLite's descending row id.
         self.logs = sorted(
             [*reversed(rows), *self.logs], key=lambda row: row["ts"], reverse=True
         )[:self.log_limit]

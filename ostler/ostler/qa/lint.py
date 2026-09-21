@@ -1,11 +1,4 @@
-"""`ostler qa lint` — the static gate a `qa_plan.py` must pass before it may run on the host.
-
-There is no runtime sandbox any more (see `ostler qa run`'s history in QA-RUN.md): a plan
-executes directly on the machine that validated it. Containment moves here instead, and it is
-an **allowlist** of the AST, not a blocklist of dangerous calls — a blocklist has to name every
-way to reach `subprocess`/`eval`/a sandbox escape and loses by default to the one it forgot;
-an allowlist has to name every legitimate plan-authoring construct and loses closed.
-"""
+"""`ostler qa lint` — the static gate a `qa_plan.py` must pass before it may run on the host."""
 
 from __future__ import annotations
 
@@ -14,16 +7,6 @@ from pathlib import Path
 
 from ostler.qa.outcome import QaOutcome
 
-#: Modules a `qa_plan.py` may import. Everything a real plan needs to describe scenarios and
-#: shape data — never a module that reaches the process, the filesystem, or the network
-#: directly, because that capability now belongs only to ostler's own built-in tools
-#: (`ostler.qa.tools`), never to plan code.
-#:
-#: `pathlib` is absent for that reason and not by oversight. It was here, and it made the
-#: `open()` ban decorative: `pathlib.Path("/etc/passwd").read_text()` reaches the same file
-#: through a method call the AST pass had no opinion about. Without it a plan cannot
-#: *construct* a path at all — every `Path` it holds was handed to it by `qa`, which is the
-#: property `_FILESYSTEM_METHODS` below is written to preserve.
 ALLOWED_IMPORT_MODULES = frozenset({
     "collections",
     "dataclasses",
@@ -40,22 +23,12 @@ ALLOWED_IMPORT_MODULES = frozenset({
     "ostler_qa",
 })
 
-#: Bare-name calls a plan may make. Every entry here is inert — it cannot reach outside the
-#: interpreter's own data. `eval`, `exec`, `compile`, `__import__`, `open`, `getattr`,
-#: `setattr`, `delattr`, `vars`, `globals`, `locals`, and `input` are absent deliberately: this
-#: is the allowlist that keeps them out, not a blocklist that has to keep naming them.
 ALLOWED_BUILTIN_CALLS = frozenset({
     "len", "range", "str", "int", "float", "bool", "dict", "list", "tuple", "set",
     "frozenset", "enumerate", "zip", "map", "filter", "sorted", "reversed", "min", "max",
     "sum", "abs", "round", "isinstance", "print", "format",
 })
 
-#: The full set of AST node types a `qa_plan.py` may contain. Anything else — `ast.Global`,
-#: `ast.Nonlocal`, `ast.Yield`, and every node type this set does not name — is rejected by
-#: simply not appearing here, the same "allow, don't blocklist" posture as the import and
-#: builtin-call checks above. `ast.Lambda` is admitted: a lambda is an expression with no
-#: statement body, so `generic_visit` lints whatever it wraps exactly as it would inline, and
-#: it is the spelling `qa.eventually` wants for its sampler.
 ALLOWED_NODE_TYPES = frozenset({
     ast.Module,
     ast.Import, ast.ImportFrom, ast.alias,
@@ -81,13 +54,7 @@ ALLOWED_NODE_TYPES = frozenset({
 
 
 class PlanLintVisitor(ast.NodeVisitor):
-    """Walks a `qa_plan.py`'s AST and collects every construct outside the allowlist.
-
-    Every `visit_*` here rejects; there is deliberately no `visit_Global` or
-    `visit_Yield` that raises a specific message, because the node-type allowlist already
-    rejects them through `generic_visit` — special-casing a banned node type is exactly the
-    blocklist habit this module exists to avoid.
-    """
+    """Walks a `qa_plan.py`'s AST and collects every construct outside the allowlist."""
 
     def __init__(self) -> None:
         self.problems: list[str] = []
@@ -150,21 +117,6 @@ class PlanLintVisitor(ast.NodeVisitor):
         self.generic_visit(node)
 
     def visit_Subscript(self, node: ast.Subscript) -> None:
-        # A *named* key only. `stderr[-2000:]` and `entries[0]` are indexing something the
-        # plan already knows the shape of; the hazard is the plan spelling a field the
-        # product spells differently, and that always reads as a string literal.
-        #
-        # Anywhere in the plan, not only inside an assertion's condition and evidence
-        # arguments. Scoped to the call, the rule policed the last line of the read and left
-        # every line leading to it open, so a plan wrote its own `def _field(obj, path)` —
-        # walking `obj["a"]["b"]` in a helper — and handed the result to `qa.check` as a
-        # value the lint had no reason to look at. The bypass survived a benchmark round.
-        # The raise it produces is the same raise wherever it happens: the scenario dies,
-        # and every obligation it covers reads `unproven` rather than red.
-        #
-        # Reads only. `found["type"] = parts[-2]` stores into a dict the plan just built,
-        # and a store cannot raise the `KeyError` this rule exists to prevent — flagging it
-        # would send an author to `qa.field` for a value that is not being read at all.
         if (
             isinstance(node.ctx, ast.Load)
             and isinstance(node.slice, ast.Constant)
@@ -188,12 +140,6 @@ class PlanLintVisitor(ast.NodeVisitor):
             )
             return
         if isinstance(node.func, ast.Name) and node.func.id not in ALLOWED_BUILTIN_CALLS:
-            # A bare-name call to anything other than a known-safe builtin is only legitimate
-            # when the name resolves to something defined in the plan itself (a helper
-            # function, a decorator target) rather than to a builtin — lint cannot tell which
-            # without a symbol table, so it allows bare calls through here and leaves the
-            # builtin allowlist to name the *specific* builtins that are safe to call; anything
-            # matching a dangerous builtin's name is still caught below.
             if node.func.id in _DANGEROUS_BUILTINS:
                 self.problems.append(
                     f"line {node.lineno}: `{node.func.id}(...)` is not allowed in a "
@@ -203,24 +149,6 @@ class PlanLintVisitor(ast.NodeVisitor):
         self.generic_visit(node)
 
 
-#: Filesystem verbs, rejected wherever they appear as a method call. The receiver is not
-#: examined: lint has no symbol table, so it cannot tell a `Path` from a mock, and a check
-#: that only fired on names it recognised would be a blocklist of receivers instead of a set
-#: of verbs. Nothing in the corpus loses anything — a plan that needs to read a file reads it
-#: through an opted-in tool, which is the norm `depot-infra`'s plan states out loud: "reading
-#: it here rather than through a tool would mean the QA harness's own filesystem access is the
-#: thing under test."
-#:
-#: `open` is deliberately *not* here. `json.dump(..., qa.artifact("steps/x.json",
-#: kind="json").open("w"))` is how every plan in the corpus writes its evidence, and the
-#: python-driver plans read the file their target produced the same way. Both start from a
-#: path `qa` handed out, which is what the missing `pathlib` leaves as the only starting point.
-#:
-#: That is a narrowing, not a proof: `qa.root / ".." / ".."` is still path arithmetic, and an
-#: AST pass cannot decide where a joined path lands. Containment of *where* a plan may write
-#: is a runtime question and is not claimed here — what this closes is the gap between banning
-#: `open()` and leaving `Path(...).read_text()` a method call away, which made the ban read as
-#: a rule while enforcing nothing.
 _FILESYSTEM_METHODS = frozenset({
     "read_text", "read_bytes", "write_text", "write_bytes",
     "unlink", "rmdir", "mkdir", "touch", "chmod", "lchmod",
@@ -228,34 +156,6 @@ _FILESYSTEM_METHODS = frozenset({
 })
 
 
-#: Settle verbs, rejected wherever they stand alone as a **statement**. A `wait_for(...)` that
-#: times out raises, and a raise inside a scenario is not a verdict — the trial ends in a
-#: traceback with `fail_count 0`, so the obligation the wait was standing in front of keeps
-#: whatever verdict the scenario's earlier, greener assertions already gave it. A benchmark
-#: round measured that exact shape: four seeded defects went undetected not because a check
-#: disagreed with the product but because the plan died before reaching the check that would
-#: have. A wait's failure must be a *reading*.
-#:
-#: The harness already ships the settle that reads: `qa.eventually(label, <callable>,
-#: covers=[...])` polls the same condition and records a pass or a fail, so the same timeout
-#: that used to end the trial now names itself in the evidence map. `covers=` is optional, so
-#: even a pure readiness gate is expressible — and strictly more legible than a traceback.
-#: The callable is a lambda, a bound method (`locator.is_visible`) or a named nested function
-#: — `ast.Lambda` is in `ALLOWED_NODE_TYPES`, and its body is linted like any expression.
-#:
-#: Two deliberate widenings, both for the same reason `_FILESYSTEM_METHODS` does not examine
-#: its receiver. **Position**: any settle statement is flagged, not only a terminal one. The
-#: crash that costs a verdict is load-bearing wherever it sits — the round's canonical instance
-#: was the third line of a nine-line block — and "is it followed by evidence?" is an AST
-#: position heuristic, which is the genre of rule that produced this debt rather than caught it.
-#: **Driver**: the verbs are flagged in every plan, not only in one that declares a playwright
-#: target. Lint has no symbol table and cannot resolve a locator back to its target, so a rule
-#: that fired only on receivers it recognised would be a blocklist of receivers instead of a set
-#: of verbs. Plans with no browser contain none of these calls, so the wider rule costs them
-#: nothing.
-#:
-#: A settle used as a *value* is untouched: `with qa.page.expect_response(...)` and any
-#: `x = something.wait_for(...)` are handling the result rather than betting the trial on it.
 _SETTLE_METHODS = frozenset({
     "wait_for", "wait_for_selector", "wait_for_url", "wait_for_load_state",
     "wait_for_timeout", "wait_for_event", "wait_for_function",
@@ -266,9 +166,6 @@ def _settle_verb(call: ast.Call) -> str | None:
     """Name the settle verb a call statement is built on, or `None` if it is not one."""
     if isinstance(call.func, ast.Attribute) and call.func.attr in _SETTLE_METHODS:
         return call.func.attr
-    # `expect(locator).to_be_visible()` — playwright's assertion spelling. The verb is the
-    # root of the attribute chain, not its last link, and the last link is an open vocabulary
-    # (`to_be_visible`, `to_have_text`, …) that a set could only ever half-name.
     inner: ast.expr = call.func
     while isinstance(inner, ast.Attribute):
         inner = inner.value
@@ -279,10 +176,6 @@ def _settle_verb(call: ast.Call) -> str | None:
     return None
 
 
-#: Named explicitly so a bare call to one of these is rejected even though lint has no symbol
-#: table to otherwise distinguish "calls a builtin" from "calls a plan-local helper of the
-#: same name" — the two builtin lists together are the allow/deny split; nothing here is a
-#: general blocklist since only names appearing in this fixed, closed set are ever checked.
 _DANGEROUS_BUILTINS = frozenset({
     "eval", "exec", "compile", "__import__", "open", "getattr", "setattr", "delattr",
     "vars", "globals", "locals", "input",
@@ -290,7 +183,7 @@ _DANGEROUS_BUILTINS = frozenset({
 
 
 def lint_source(source: str, *, filename: str = "<qa_plan.py>") -> list[str]:
-    """Lint already-read plan source. Returns problems, empty when the plan is clean."""
+    """Lint already-read plan source."""
     try:
         tree = ast.parse(source, filename=filename, mode="exec")
     except SyntaxError as exc:

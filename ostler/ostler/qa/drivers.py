@@ -1,9 +1,4 @@
-"""Execution adapter for a QA target: run its scenarios as Python, and keep the ledger.
-
-One driver, because there is one plan format. What a target selects is what the scenario
-process needs around it — a screen recording for a browser, a device recording for a
-simulator — not how its steps are interpreted; the steps are a function body.
-"""
+"""Execution adapter for a QA target: run its scenarios as Python, and keep the ledger."""
 
 from __future__ import annotations
 
@@ -48,13 +43,7 @@ def _declared(record: Mapping[str, Any]) -> tuple[str, Mapping[str, Any]] | None
 
 
 def _document(item_id: str) -> str:
-    """The book file an id names, or `""` for an id that names no document.
-
-    Obligation ids arrive as `okf:<path>.md#<anchor>:does:<n>` and component ids as
-    `<path>.md#<anchor>`; both put their document ahead of the first `#`. An acceptance
-    criterion (`ac:1`) names none, and reads as `""` here rather than as a document of its
-    own — the distinction the caller needs.
-    """
+    """The book file an id names, or `""` for an id that names no document."""
     head = item_id.split("#", 1)[0].removeprefix("okf:")
     return head if "#" in item_id and head.endswith(".md") else ""
 
@@ -62,27 +51,7 @@ def _document(item_id: str) -> str:
 def _covers_in(
     covers: list[str], node_id: str, obligation_documents: Mapping[str, list[str]]
 ) -> list[str]:
-    """The entries of `covers` a placement verdict about `node_id` can speak to.
-
-    A vet answers for one screen, so an obligation belonging to *another* document is
-    outside what the photograph looked at; billed the scenario's whole list, a misplaced
-    button disproved the API obligations standing beside it. Everything that names no
-    document — an acceptance criterion — is kept: it is the scenario's claim as a whole,
-    and a component sitting where the book does not put it is exactly the way a vet is
-    supposed to make one go red.
-
-    An obligation id can no longer answer "which document" on its own: a `same-as:` family
-    collapses several documents' obligations onto one id (`context.py::_obligations`), so
-    `okf:<representative>:...` names the fact, not any one of the screens that state it.
-    `obligation_documents` is the plan's own record of the family's full occupancy
-    (`plan.py::_obligation_documents`, built from the packet's `occurrenceDocuments`), and
-    this looks the id up in it rather than parsing the id — parsing would silently answer
-    for the representative's document only, and drop the entry on every other member's vet,
-    which is the defect this lookup replaces. A covers entry absent from the mapping is not
-    treated as "no document" (that would reopen the same hole from the other side): it is a
-    plan compiled against a stale or missing `qa-okf-context.json`, and this raises rather
-    than guessing.
-    """
+    """The entries of `covers` a placement verdict about `node_id` can speak to."""
     document = _document(node_id)
     kept = []
     for item in covers:
@@ -101,11 +70,6 @@ def _covers_in(
     return kept
 
 
-#: The context size a browser target gets when its plan declares no `viewport`. It is
-#: duplicated in `harness/ostler_qa_browser.py`, which cannot import from here — the harness
-#: is stdlib-plus-playwright and runs in the project's interpreter, not ostler's — and the two
-#: copies have to agree: this module measures the recording that module films, and a
-#: disagreement aborts the scenario rather than reporting a bad file.
 DEFAULT_VIEWPORT = {"width": 1440, "height": 900}
 
 
@@ -114,8 +78,6 @@ class ScenarioResult:
     status: str
     assertions: int = 0
     failures: int = 0
-    #: The scenario stopped short of the end of its body, rather than reaching it and
-    #: disagreeing. Everything it claimed to cover is unproven, whatever passed before.
     aborted: bool = False
     artifacts: list[str] = field(default_factory=list)
     message: str = ""
@@ -141,11 +103,6 @@ class QaDriver:
         self.target = target
         self.root = root
         self.variables = variables
-        # Which documents each packet obligation occupies, keyed by its `okf:` id — the
-        # plan's own answer (`plan.py::_obligation_documents`) to a question a family's
-        # collapsed id can no longer answer by being parsed. `None`/omitted only for a
-        # driver built directly, off-plan, by a test that names no document-bearing covers;
-        # a real run always threads it from `v2.py::run_plan`.
         self.obligation_documents: Mapping[str, list[str]] = obligation_documents or {}
 
     def start(self) -> None:
@@ -159,46 +116,21 @@ class QaDriver:
 
 
 class PythonDriver(QaDriver):
-    """Run one scenario as a Python function in a subprocess, and record what it claims.
-
-    The subprocess boundary is what lets the scenario run under the project's own
-    interpreter — with the project's HTTP client, its fixtures, its Playwright — while
-    ostler keeps the ledger. It talks back over a dedicated pipe rather than stdout, so a
-    `print` in a scenario stays debugging output instead of corrupting the protocol.
-
-    Every assertion arrives already decided. That is the point of the format: the scenario
-    compared parsed objects on the line that produced them, where a missing key raises
-    instead of matching empty.
-    """
+    """Run one scenario as a Python function in a subprocess, and record what it claims."""
 
     def __init__(self, *args: Any, launcher: "Launcher | None" = None, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
-        # *Where* the scenario process runs, which is the one axis a sandbox changes. The
-        # driver keeps everything else — the ledger, the grading, the recorders' contract —
-        # so a containerized run and a local one are the same run with a different launcher.
         self.launcher: Launcher = launcher or LocalLauncher()
-        # The two recorders that cannot move into the scenario process, because both film
-        # something *around* it: ffmpeg grabs the X display the browser is drawn on, and
-        # simctl/adb film a device that outlives any one scenario.
         self._window_recorder: DisplayRecorder | None = None
         self._device_recorder: DeviceRecorder | None = None
         self.launch_env: dict[str, str] = {}
-        # The documented screens, read on the first `vet` record and kept for the target.
         self._screens: dict[str, list[placement.VettedComponent]] | None = None
         self._routes: dict[str, str] = {}
         self._book_problem: str | None = None
-        # Built once per driver, not once per scenario: `load_graph` walks the whole book,
-        # and a suite of scenarios shares one root and one frame — recomputing it per
-        # `_execute` call re-pays that cost every scenario for a graph that never changed
-        # underneath it.
         self._book_fixtures_cache: dict[str, dict[str, Any]] | None = None
 
     def start(self) -> None:
         self.launcher.preflight(self)
-        # Fixture problems block the same way tool problems do, and for the same reason:
-        # a fixture naming a tool the repo never opted into, or a book fixture resolved
-        # against the wrong frame, is not a fixture that will fail loudly later, it is a
-        # declaration nothing behind it can honour.
         problems = [
             *qa_tools.preflight_errors(self.root),
             *qa_fixtures.preflight_errors(self.root),
@@ -217,16 +149,7 @@ class PythonDriver(QaDriver):
             self._start_device(recording)
 
     def _start_window_recorder(self, recording: dict[str, Any]) -> None:
-        """Only for `mode: window` — the opt-in one. `viewport` films inside the scenario.
-
-        The default moved to `viewport` because this recorder cannot exist on every machine
-        the suite runs on. It grabs an X display, which is Linux and nothing else: there is
-        no Xvfb on macOS, `x11grab` is not a format ffmpeg has there, and the only thing
-        avfoundation offers instead is the whole physical desktop — which is the failure
-        this mode already produced on Linux, promoted to the only behavior available.
-        `viewport` asks Playwright to film its own page, so it needs no display, works
-        headless, and is the same evidence on every platform.
-        """
+        """Only for `mode: window` — the opt-in one."""
         if not recording.get("required", True) or recording.get("mode", "viewport") != "window":
             return
         if sys.platform != "linux":
@@ -236,29 +159,17 @@ class PythonDriver(QaDriver):
                 "through Playwright on every platform."
             )
         viewport = self.target.get("viewport", DEFAULT_VIEWPORT)
-        # The launcher chooses the recorder because the two have to agree about which
-        # machine the browser is drawn on: filming the host's X display while the browser
-        # runs in a container yields a valid, empty video, which reads as evidence.
         self._window_recorder = self.launcher.window_recorder(
             self,
             width=int(viewport.get("width", DEFAULT_VIEWPORT["width"])),
             height=int(viewport.get("height", DEFAULT_VIEWPORT["height"])),
             fps=int(recording.get("fps", 30)),
-            # Declared, or none: an ambient `$DISPLAY` is not an answer to "which screen is
-            # the app on". See `DisplayRecorder`.
             display=str(recording.get("display", "")),
         )
-        # The whole environment, including the DISPLAY the browser must be launched onto —
-        # which is the one thing the scenario process cannot work out for itself.
         self.launch_env = self._window_recorder.start()
 
     def _start_device(self, recording: dict[str, Any]) -> None:
-        """Refuse a mobile target whose device is not there — blocked, not failed.
-
-        This has to stay on ostler's side: a scenario that discovers mid-body that no
-        simulator is booted reports it as a failed assertion against the product, and the
-        workflow spends a lap repairing a plan that was correct.
-        """
+        """Refuse a mobile target whose device is not there — blocked, not failed."""
         if shutil.which("maestro") is None:
             raise DriverBlocked("maestro CLI is not installed")
         app_id = str(self.target.get("app_id", ""))
@@ -326,7 +237,6 @@ class PythonDriver(QaDriver):
             scenario_id, covers, records, output, exit_code, timed_out=timed_out
         )
 
-    # -- the subprocess ----------------------------------------------------------------
 
     def _execute(
         self, scenario_id: str, timeout: float
@@ -334,42 +244,16 @@ class PythonDriver(QaDriver):
         context = {
             "root": str(self.root),
             "spec_dir": str(self.session.spec_dir),
-            # Already resolved against --out-dir. Handing the scenario the absolute path is
-            # the deletion of a whole defect class: the same relative `qa/steps/x` used to
-            # mean the spec dir to ostler and the repo root to the shell it ran, and one run
-            # lost 38 of 66 assertions to the disagreement.
             "qa_dir": str(self.session.qa_dir),
-            # Where the run's clock is right now. The scenario process has its own monotonic
-            # zero, so without this every offset it records — a video's start, a console
-            # message's `atMs` — would be measured from a different origin than the ledger's.
             "offset_ms": self.session.offset_ms(),
-            # `{name: command}` for every QA tool this repo opted into and ostler resolved
-            # to a definition — see `ostler.qa.tools`. `start()` already refused the run if
-            # any opted-in tool didn't resolve, so this is always complete by the time a
-            # scenario reaches for `qa.tool(...)`.
             "tools": qa_tools.resolved_commands(self.root),
-            # `{name: {tool, args, provides, timeout}}` for every fixture this repo
-            # declares — see `ostler.qa.fixtures`. Beside `tools` rather than folded
-            # into it because a fixture is not a capability: it is one named invocation
-            # of a command already on the line above, and `start()` refused the run if
-            # any fixture named a tool this repo never opted into.
             "fixtures": qa_fixtures.resolved(self.root),
-            # `{name: {steps, args, provides, needs, secrets}}` for every book `fixture`
-            # node — see `ostler.qa.book_fixtures`. `Qa.fixture()` checks this tier first
-            # and falls back to the `fixtures` entry above. Secrets are NAMES only: the
-            # harness resolves each from its own environment at run time.
             "book_fixtures": self._resolved_book_fixtures(),
         }
         return self.launcher.execute(self, scenario_id, timeout, context)
 
     def _write_output(self, scenario_id: str, output: str) -> None:
-        """Keep the scenario's own stdout — this is where a traceback lands.
-
-        Only when there is some. A quiet scenario used to leave a zero-byte sidecar behind,
-        registered as evidence, and a reviewer opening `qa/steps/` found a directory of
-        empty files and nothing that said what was tested — which reads as a run that
-        recorded nothing, not as a run that had nothing to say.
-        """
+        """Keep the scenario's own stdout — this is where a traceback lands."""
         if not output.strip():
             return
         path = self.session.qa_dir / "steps" / f"{scenario_id}-stdout.txt"
@@ -379,7 +263,6 @@ class PythonDriver(QaDriver):
             path, kind="command-output", scenario=scenario_id, target=self.target_id
         )
 
-    # -- the ledger --------------------------------------------------------------------
 
     def _grade(
         self,
@@ -395,16 +278,8 @@ class PythonDriver(QaDriver):
         action = 0
         terminal: dict[str, Any] | None = None
         problems: list[str] = []
-        # The steps currently open, innermost last. Every assertion and artifact the
-        # scenario records while one is open is stamped with it, so the report can say
-        # "inside *this* step" rather than reading it off the order of the ledger.
         open_steps: list[tuple[str, str]] = []
-        # When each open step began, on the run's clock — the harness stamps it, since by
-        # the time this loop runs the scenario is over and the session clock says nothing.
         step_started: dict[str, int] = {}
-        # Whether any of this scenario's `vet` records saw a region with real extent —
-        # computed once, over the whole materialized record list, so it does not matter
-        # whether the vet record or the video's `artifact` record comes first on the wire.
         painted = self._scenario_painted(records)
         for record in records:
             kind = record.get("type")
@@ -425,20 +300,7 @@ class PythonDriver(QaDriver):
                     scenario=scenario_id,
                     driver="python",
                     action=action,
-                    # The assertion's own binding, never the scenario's as a fallback.
-                    # Inheriting it credited every obligation in `covers` to every assertion
-                    # in the body, so one unrelated passing check reported the whole set
-                    # proven — and deleting the assertion that did the proving left the row
-                    # green. `validate` now refuses a plan whose obligations are not each
-                    # claimed by a check, so an empty binding here is a plan that never ran.
                     covers=list(record.get("covers") or []),
-                    # What `qa.verify()` named and with which arguments, when it was a
-                    # verify at all. A plain `qa.check` carries neither and stays an
-                    # anonymous `scenario_check`; dropping them for a verify made the
-                    # evidence map unable to see any declared check as observed, so every
-                    # obligation a passing `verify:` bullet proved read `claimed-but-
-                    # unasserted` — a whole run's worth of green assertions crediting
-                    # nothing.
                     declared=_declared(record),
                     step=step,
                 )
@@ -466,9 +328,6 @@ class PythonDriver(QaDriver):
             elif kind == "capture":
                 self.session.set_capture(str(record["key"]), str(record["value"]))
             elif kind == "instance":
-                # Which member of a `one-per:` family the scenario drove. A declaration,
-                # not an assertion — it goes on the ledger so a reader of the run can see
-                # the sampled instance, but it grades nothing.
                 self.session.append(
                     {
                         "kind": "instance",
@@ -483,10 +342,6 @@ class PythonDriver(QaDriver):
                 try:
                     verdicts, trouble = self._vet(scenario_id, record, step=step)
                 except ValueError as exc:
-                    # A path the registration cannot place under the spec directory. It used
-                    # to propagate to the runner's bare `except`, which turned one bad
-                    # screenshot into `status="invalid"` for the whole run — the account of
-                    # every scenario that had already passed, thrown away by the last one.
                     verdicts, trouble = [], [f"scenario '{scenario_id}' vet failed: {exc}"]
                 problems.extend(trouble)
                 for verdict in verdicts:
@@ -505,12 +360,6 @@ class PythonDriver(QaDriver):
                         scenario=scenario_id,
                         driver="python",
                         action=action,
-                        # Only the obligations this screen's own document declares. A vet is
-                        # a placement verdict about one screen; billed to the scenario's whole
-                        # `covers` it made a misplaced button disprove the API obligations
-                        # standing beside it in the same scenario — the same fan-out the
-                        # plan-assertion branch above already had fixed, missed here because
-                        # the plan cannot write a `covers=` on a `qa.vet()` to be narrowed by.
                         covers=_covers_in(covers, verdict.node_id, self.obligation_documents),
                         step=step,
                     )
@@ -519,9 +368,6 @@ class PythonDriver(QaDriver):
             elif kind == "scenario":
                 terminal = record
 
-        # A step still open here is the one the scenario died in: it never reached its
-        # `step_end`, so nothing else would put it on the ledger, and it is exactly the
-        # step a reader of a failed run wants named.
         for step_id, label in reversed(open_steps):
             self._step_record(
                 scenario_id,
@@ -536,31 +382,15 @@ class PythonDriver(QaDriver):
         if timed_out:
             message = f"scenario '{scenario_id}' exceeded its timeout and was killed"
         elif terminal is None:
-            # No terminal record means the scenario process died before the harness could
-            # grade it — an ImportError, a segfault, a `sys.exit` in the body. The stdout
-            # tail is the only account of it, so it goes in the message rather than being
-            # left for someone to find in the artifact.
             message = (
                 f"scenario '{scenario_id}' produced no result (exit {exit_code})"
                 f"{self.launcher.no_result_hint()}: " + output.strip()[-500:]
             )
         elif terminal.get("error"):
-            # The hint belongs here as much as above. A scenario that raised inside its body
-            # graded itself, so the terminal record exists — but under the sandbox the raise
-            # is usually a `FileNotFoundError` on a path that plainly *does* exist on the
-            # host, and a reader with no idea the repository was taken away reads that as an
-            # ostler defect and goes looking for it.
             message = str(terminal["error"]).strip()[-2000:] + self.launcher.no_result_hint()
         if problems:
             message = "; ".join([part for part in [message, *problems] if part])
 
-        # The scenario stopped for a reason it did not itself record as an assertion: it was
-        # killed, it raised, it never graded itself, the browser was left unclean, or it
-        # reached the end having asserted nothing. That is a different thing from an
-        # assertion that ran and disagreed — a failing check *is* the account, and the
-        # record it wrote already says which obligation it sank. An abort leaves no such
-        # record, and the asserts that ran before it proved a state the steps after them
-        # never got to leave.
         terminal_status = (terminal or {}).get("status")
         aborted = bool(
             timed_out
@@ -570,17 +400,6 @@ class PythonDriver(QaDriver):
             or (terminal_status != "passed" and not failures)
         )
         if aborted and covers:
-            # Fail closed, over the whole `covers`. Publishing a scenario's obligations from
-            # the green prefix it managed before dying is how a QA lane reported eleven
-            # criteria `Pass` under an `overall: Fail` — and how a run whose one browser
-            # locator timed out on the assertion that would have exposed the defect went out
-            # as a covered obligation. A scenario that did not finish claims nothing, and it
-            # says so in the one vocabulary every reader downstream already speaks.
-            #
-            # `sentinel=True` is what keeps it from saying something *else*, though. This
-            # record is the harness talking about the scenario, not the plan reporting on the
-            # product, and an evidence map that cannot tell the two apart reads a plan's own
-            # `KeyError` as a disproof and accuses a clean tree.
             action += 1
             assertions += 1
             self.session.run_assert(
@@ -637,9 +456,6 @@ class PythonDriver(QaDriver):
             record["unfinished"] = True
         if error:
             record["error"] = str(error)
-        # Where the step sits on the run's clock — the same scale the recording's
-        # `actionStartOffsetMs` uses, so a reader can seek to it. Absent for a step the
-        # harness did not stamp (an older harness) and for the end of one that never closed.
         if started_offset_ms is not None:
             record["started_offset_ms"] = started_offset_ms
         if ended_offset_ms is not None:
@@ -647,15 +463,7 @@ class PythonDriver(QaDriver):
         self.session.append(record)
 
     def _scenario_painted(self, records: list[dict[str, Any]]) -> bool:
-        """Whether any of this scenario's `vet` records scanned a region with real extent.
-
-        `_is_static` reads the video alone: a still frame of a correctly-rendered, unanimated
-        page and a still frame of a blank one are the same time-diff observation, so a freeze
-        verdict cannot by itself tell the two apart. A vet's region scan, captured beside its
-        own screenshot, already answers the sharper question — did anything on the page have
-        nonzero size — so it corroborates or overrules a freeze verdict rather than replacing
-        it: a scenario with no vet step at all still falls back to the freeze verdict alone.
-        """
+        """Whether any of this scenario's `vet` records scanned a region with real extent."""
         for vet_record in records:
             if vet_record.get("type") != "vet":
                 continue
@@ -678,14 +486,7 @@ class PythonDriver(QaDriver):
         step: tuple[str, str] | None = None,
         painted: bool = False,
     ) -> list[str]:
-        """File one artifact the scenario produced, holding a recording to the target's shape.
-
-        The scenario knows *when* it filmed and ostler knows *what a recording must be*: the
-        offsets come over the wire, the measurement is taken here with `ffprobe`, and the two
-        are merged into one artifact entry. Splitting it the other way would put ffprobe in a
-        stdlib-only harness and the target's declared dimensions in a process that never
-        reads the plan.
-        """
+        """File one artifact the scenario produced, holding a recording to the target's shape."""
         path = Path(str(record["path"]))
         kind = str(record.get("kind", "evidence"))
         metadata = record.get("metadata")
@@ -694,9 +495,6 @@ class PythonDriver(QaDriver):
             metadata["step"], metadata["step_label"] = step
         problems: list[str] = []
         if path.is_dir():
-            # A directory is registered file by file, the way `Maestro.run` files its
-            # screenshots: the manifest hashes files, the evidence map reads files, and a
-            # tree that arrived as one opaque row would be neither hashed nor readable.
             files = sorted(child for child in path.rglob("*") if child.is_file())
             if not files:
                 return [f"scenario '{scenario_id}' artifact directory is empty: {path}"]
@@ -725,12 +523,6 @@ class PythonDriver(QaDriver):
                     f"not the target's {width}x{height}"
                 )
             if _is_static(path, measured.get("durationSeconds", 0)) and not painted:
-                # The same guard the window recorder applies to itself, for the same reason:
-                # geometry alone cannot tell a filmed app from a filmed blank — a still,
-                # correctly-rendered page and a still, blank one are the same time-diff
-                # observation. `painted` is that corroboration: a same-scenario vet already
-                # saw a region with real extent, so the freeze verdict is overruled rather
-                # than read as proof the page never drew anything.
                 problems.append(
                     f"scenario '{scenario_id}' recording never changes — the page under test "
                     "painted nothing for the whole recording"
@@ -754,27 +546,9 @@ class PythonDriver(QaDriver):
             return [f"scenario '{scenario_id}' produced an unusable artifact: {exc}"]
         return []
 
-    # -- vetting -----------------------------------------------------------------------
 
     def _packet_features_root(self) -> tuple[str, str | None]:
-        """The frame a `qa.vet` argument is spelled in — the packet's `featuresRoot` — or
-        the reason there is none.
-
-        A node is addressed by a path relative to a root that is a parameter of the call
-        that built the plan, not a property of the node, so `_book` cannot recover that
-        root from `self.root`: the same node has a different name at every root, and
-        `self.root` is only ever the checkout, which is not in general where the book the
-        plan was compiled against lives. The packet beside the session's spec is where the
-        compiler recorded which root it used, and `_book` has to agree with it or every
-        lookup misses.
-
-        An empty or absent `featuresRoot` — a packet built for a book that is not nested
-        under a service, one written before this field existed, or a JSON `null` — is not
-        a stated answer; `path_mod.resolve_features_root` replaces it with the book
-        discovered under `self.root`, the same rule `build_context` applies before writing
-        the field, so a lookup against either book agrees. Only the *absence* of the packet
-        file itself is treated as no frame at all.
-        """
+        """The frame a `qa.vet` argument is spelled in — the packet's `featuresRoot` — or the reason there is none."""
         packet = self.session.spec_dir / "qa-okf-context.json"
         if not packet.is_file():
             return "", (
@@ -792,19 +566,7 @@ class PythonDriver(QaDriver):
         return features_root, None
 
     def _book(self) -> dict[str, list[placement.VettedComponent]]:
-        """The documented screens, read once per target and kept, keyed the way a compiled
-        plan spells its `qa.vet` arguments — see `_packet_features_root`.
-
-        The graph is loaded here rather than handed down from the CLI because `qa run` also
-        arrives through `ostler.api`, and a table built in only one of the two entry points
-        would leave the other's runs silently unvetted — which is the exact failure mode
-        this whole change exists to remove. Both entry points reach this the same way,
-        through `self.session.spec_dir`.
-
-        When the packet naming the frame is missing, `_screens` stays empty and
-        `_book_problem` carries why — `_vet` reports that rather than trying `self.root`'s
-        own book, which would silently vet against a frame the plan never spoke.
-        """
+        """The documented screens, read once per target and kept, keyed the way a compiled plan spells its `qa.vet` arguments — see `_packet_features_root`."""
         if self._screens is None:
             self._screens = {}
             features_root, self._book_problem = self._packet_features_root()
@@ -815,28 +577,11 @@ class PythonDriver(QaDriver):
         return self._screens
 
     def _arrival(self, scenario_id: str, screen: str, record: dict[str, Any]) -> str | None:
-        """Why this photograph is not of *screen*, or None when it is.
-
-        A vet's subject is supplied as an argument and its observation is taken from the
-        page; establishing that the two are the same page is this method, and until it
-        existed nothing did it. A journey that stopped one step short had the book of the
-        screen it was supposed to reach registered against the render of the screen it
-        actually reached — reporting a component `missing` that was never meant to be there,
-        and `matched` for an element of a different screen that answered the same CSS. Both
-        were observed in one run.
-
-        A mismatch is a hard stop rather than a per-component verdict: every verdict the
-        registration would produce is a claim about a correspondence that does not hold, and
-        a pile of them buries the one fact worth reporting.
-        """
+        """Why this photograph is not of *screen*, or None when it is."""
         self._book()
         route = self._routes.get(screen, "")
         url = str(record.get("url", ""))
         if not url or not literal_route(route):
-            # A device (no URL), or a screen whose `route:` names a family of pages. The
-            # subject is not established either way, and saying so in the report is all this
-            # method can do from here — minting the finding belongs where the plan is
-            # compiled, which is the row that follows this one.
             return None
         if arrived_at(url, route):
             return None
@@ -849,14 +594,7 @@ class PythonDriver(QaDriver):
     def _vet(
         self, scenario_id: str, record: dict[str, Any], *, step: tuple[str, str] | None = None
     ) -> tuple[list[placement.ComponentVerdict], list[str]]:
-        """Register one photographed screen against the screen the book documents.
-
-        Anything that makes the registration vacuous — an unknown screen, a screen with no
-        addressable component, a sidecar that is not there, a run with no stated frame to
-        read the book in — is a *problem*, not an empty verdict list. A vacuous vet that
-        reports zero disagreements is indistinguishable from a screen that is correct, and
-        that is the shape of evidence this replaces.
-        """
+        """Register one photographed screen against the screen the book documents."""
         screen = str(record.get("screen", ""))
         shot = Path(str(record.get("screenshot", "")))
         regions_path = Path(str(record.get("regions", "")))
@@ -901,11 +639,6 @@ class PythonDriver(QaDriver):
             "screenshot": shot.name,
             "viewport": {"width": viewport.width, "height": viewport.height},
             "regionCount": len(regions),
-            # How the subject was established, so a reader of the report knows whether
-            # these verdicts are about the screen named above or about whatever the browser
-            # happened to be showing: `confirmed` compared the page's URL against the
-            # screen's `route:`; `unobserved` is a device, which has no URL; `unstated` is a
-            # screen whose route names a family of pages and so cannot be compared.
             "arrival": (
                 "confirmed"
                 if record.get("url") and literal_route(self._routes.get(screen, ""))
@@ -927,17 +660,10 @@ class PythonDriver(QaDriver):
 
 
 class Launcher:
-    """Where a scenario process runs, and what films it.
-
-    Three methods, because three things depend on the machine: whether the runtime is
-    there at all, how the process is started and killed, and which display the browser is
-    drawn on. Everything else about a run — the ledger, the grading, the manifest, the
-    vetting — is host-side and identical either way, which is the property that makes a
-    sandboxed run comparable to a local one rather than a different kind of evidence.
-    """
+    """Where a scenario process runs, and what films it."""
 
     def preflight(self, driver: PythonDriver) -> None:
-        """Refuse a target whose runtime is absent. Raise `DriverBlocked`, never fail it."""
+        """Refuse a target whose runtime is absent."""
         return None
 
     def window_recorder(
@@ -951,12 +677,7 @@ class Launcher:
         raise NotImplementedError
 
     def no_result_hint(self) -> str:
-        """What to add when a scenario dies before grading itself.
-
-        The exit code and a stdout tail are all `_grade` has, and on an unusual runtime that
-        reads as an ostler defect. A launcher that removed a capability on purpose owes the
-        reader that sentence.
-        """
+        """What to add when a scenario dies before grading itself."""
         return ""
 
 
@@ -966,9 +687,6 @@ class LocalLauncher(Launcher):
     def preflight(self, driver: PythonDriver) -> None:
         interpreter = driver.interpreter()
         if not interpreter.exists():
-            # Blocked, not failed: an interpreter that is not there says nothing about the
-            # product, and a run that reports it as a product failure sends the workflow to
-            # repair a plan that is fine.
             raise DriverBlocked(
                 f"target '{driver.target_id}' names interpreter '{interpreter}', which does not "
                 "exist — create the project venv, or drop `interpreter=` to use ostler's own"
@@ -1012,9 +730,6 @@ class LocalLauncher(Launcher):
         )
         os.close(write_fd)
         records: list[dict[str, Any]] = []
-        # Drained on a thread. Both the record pipe and the merged stdout pipe are bounded,
-        # so a scenario that fills one while the driver reads only the other deadlocks —
-        # and it would do it exactly on the verbose scenarios, the ones already in trouble.
         reader = threading.Thread(target=_drain, args=(read_fd, records), daemon=True)
         reader.start()
         timed_out = False
@@ -1030,12 +745,7 @@ class LocalLauncher(Launcher):
 
 
 def _drain(read_fd: int, records: list[dict[str, Any]]) -> None:
-    """Read the record stream to EOF, keeping whatever parsed.
-
-    A malformed line is dropped rather than raised on: the pipe is also how a scenario
-    reports its own failure, and losing every record because the last write was cut short
-    by a kill would throw away the account of what did happen.
-    """
+    """Read the record stream to EOF, keeping whatever parsed."""
     with os.fdopen(read_fd, "r", encoding="utf-8") as stream:
         for line in stream:
             try:
@@ -1053,23 +763,7 @@ def _kill_group(process: subprocess.Popen[bytes]) -> None:
 
 
 class DisplayRecorder:
-    """Film the X display the browser is drawn on — one this recorder owns.
-
-    It owns it because the alternative is what shipped: inheriting `$DISPLAY` and grabbing
-    the top-left `width`x`height` of whatever screen the run happened to be started from.
-    On CI that is an empty root window; on a developer's machine it is their desktop, and
-    the evidence filed under `qa/videos/` is a perfectly valid mp4 of somebody's terminal.
-    Every guard in :meth:`_finalize` passes on that file — ffmpeg crops the grab to the
-    requested geometry, so the size matches, the frame rate matches and the duration
-    matches. Nothing about the recording says it is not the app.
-
-    So the display is not inherited. A fresh Xvfb is started at exactly the viewport size,
-    the browser is launched onto it through the env :meth:`start` returns, and the capture
-    region is that screen and nothing else. A target that really does have a display of its
-    own — a container image that runs one as a service — names it in its `recording` block,
-    where it is a written choice that shows up in the ledger, rather than an ambient
-    variable that decides silently.
-    """
+    """Film the X display the browser is drawn on — one this recorder owns."""
 
     def __init__(
         self,
@@ -1098,9 +792,6 @@ class DisplayRecorder:
             "ffmpeg", "-y", "-f", "x11grab", "-video_size", f"{self.width}x{self.height}",
             "-framerate", str(self.fps), "-i", f"{self.display}.0", "-c:v", "libx264",
             "-preset", "ultrafast", "-pix_fmt", "yuv420p",
-            # `moov` last is the mp4 default, and it is the atom a player needs *first*, so
-            # the evidence would not play in a browser at all — a reviewer cannot tell that
-            # from a recording that never happened.
             "-movflags", "+faststart",
             str(self.path),
         ]
@@ -1109,10 +800,6 @@ class DisplayRecorder:
         if shutil.which("ffmpeg") is None:
             raise DriverBlocked("ffmpeg is required for browser-window recording")
         env = dict(os.environ)
-        # The browser runs on a private X display of its own — never on the desktop this
-        # process inherited. A headed window popping up on the operator's screen is a
-        # nuisance, and a recording of it is evidence of whatever else was on that screen.
-        # An existing display is filmed only where the target asked for one by name.
         if not self.display:
             if shutil.which("Xvfb") is None:
                 raise DriverBlocked(
@@ -1162,12 +849,7 @@ class DisplayRecorder:
         self._finalize()
 
     def _finalize(self) -> None:
-        """Measure the finished file and file it — the half that does not care where ffmpeg ran.
-
-        Split out so a recorder that films inside a container reuses these checks verbatim.
-        They are the ones that matter: a recording of the wrong display is a valid mp4 of an
-        empty desktop, and every guard below is there because that reads as evidence.
-        """
+        """Measure the finished file and file it — the half that does not care where ffmpeg ran."""
         if not self.started:
             return
         if not self.path.is_file() or not self.path.stat().st_size:
@@ -1355,13 +1037,7 @@ def create_driver(
     variables: dict[str, str],
     obligation_documents: Mapping[str, list[str]] | None = None,
 ) -> QaDriver:
-    """Build the one driver there is.
-
-    Every target — command, browser, mobile — is a Python module now, so what used to pick
-    between four action interpreters picks nothing. The function stays because the runner
-    calls it per target and because a second driver is a plausible future; a `driver:` key
-    on the target is a label for the report, not a dispatch.
-    """
+    """Build the one driver there is."""
     return PythonDriver(
         session,
         target_id,
@@ -1373,18 +1049,7 @@ def create_driver(
 
 
 def _is_static(path: Path, duration: float) -> bool:
-    """Is the whole recording one unchanging frame?
-
-    The geometry checks above cannot tell a filmed browser from a filmed empty desktop, and
-    that is the shape the failure takes once the recorder owns its display: Xvfb comes up,
-    ffmpeg films it faithfully, and the browser never draws — it launched headless, or died
-    before its first paint. The result is a valid mp4 of a blank root window filed as proof
-    the scenario ran.
-
-    The threshold is deliberately at the edge of "not one pixel moved" and the freeze has to
-    span the entire recording, so this cannot fire on a real session. A browser drawing a
-    caret is already too much motion for it.
-    """
+    """Is the whole recording one unchanging frame?"""
     if shutil.which("ffmpeg") is None:
         raise RuntimeError("ffmpeg is required to check a recording is not one frozen frame")
     if duration <= 0:

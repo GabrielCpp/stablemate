@@ -1,14 +1,4 @@
-"""What `kit.git`'s two committing helpers are allowed to stage.
-
-The distinction they draw is the whole point of the file. A workflow run is frequently
-launched *from* a checkout somebody else is working in — `repo_dir` is the launch
-directory unless a `--param` says otherwise — so "commit my work" and "commit the
-working tree" are different operations with very different blast radii, and the
-difference has to be visible at the call site.
-
-Git runs for real here against a throwaway repo (`workhorse.testing.make_git_repo`);
-there is nothing to monkeypatch.
-"""
+"""What `kit.git`'s two committing helpers are allowed to stage."""
 from __future__ import annotations
 
 import subprocess
@@ -49,20 +39,15 @@ def _write(root: Path, rel: str, text: str = "x\n") -> None:
 def test_commit_paths_stages_only_the_named_paths(tmp_path: Path) -> None:
     root = make_git_repo(tmp_path / "acme")
     _write(root, "docs/epics/index.md")
-    _write(root, "src/unrelated.py")  # somebody else's in-flight edit
+    _write(root, "src/unrelated.py")
 
     assert commit_paths(root, "author: epic backlog authoring", "docs") is True
     assert _tracked(root) == {"docs/epics/index.md"}
-    assert (root / "src/unrelated.py").exists()  # left in the working tree, uncommitted
+    assert (root / "src/unrelated.py").exists()
 
 
 def test_commit_paths_with_no_pathspecs_commits_nothing(tmp_path: Path) -> None:
-    """The regression this file exists for.
-
-    `commit_paths(root, msg, *changed)` with an empty `changed` used to fall through to
-    `git add -A` — a caller that computed "nothing changed" got a commit of the entire
-    working tree instead of no commit at all.
-    """
+    """The regression this file exists for."""
     root = make_git_repo(tmp_path / "acme")
     _write(root, "src/unrelated.py")
 
@@ -125,13 +110,7 @@ def test_commit_helpers_are_fail_soft_off_a_repo(tmp_path: Path) -> None:
 
 
 def test_a_refused_commit_raises_instead_of_reading_as_an_empty_one(tmp_path: Path) -> None:
-    """The regression that killed a real run.
-
-    A stale `.git/index.lock` makes `git add` refuse. Both helpers used to swallow that
-    and return False — the same value they return for a clean tree — so a *refused* commit
-    read as a story that did no work, with the git error printed nowhere and the work still
-    sitting in the tree.
-    """
+    """The regression that killed a real run."""
     root = make_git_repo(tmp_path / "acme")
     _write(root, "src/feature.py")
     (root / ".git" / "index.lock").write_text("", encoding="utf-8")
@@ -142,4 +121,4 @@ def test_a_refused_commit_raises_instead_of_reading_as_an_empty_one(tmp_path: Pa
         commit_paths(root, "coder: STORY-1", "src")
 
     (root / ".git" / "index.lock").unlink()
-    assert commit_all(root, "coder: STORY-1") is True  # and it lands once git will take it
+    assert commit_all(root, "coder: STORY-1") is True

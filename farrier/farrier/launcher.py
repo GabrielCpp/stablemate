@@ -1,41 +1,11 @@
-"""Generation of the ``.agents/`` launcher scaffolding.
-
-The generated make launcher (agents.mk), plus the path constants naming what the
-installer writes there.
-
-Farrier installs **skills and prompts**, not workflows — a workflow is a Python
-distribution that ships its own console script. But *launching* one in a container
-is per-repo generated state again: N concurrent runs of the same workflow need a
-distinct run id, container name and volume set each, and none of that is
-expressible as a fixed command a reader could be told to type. So the launcher
-carries one run target per **installed** workflow.
-
-Which workflows those are is resolved by `farrier workflows --names` **at make
-time**, not baked in here at render time. This file is tracked in the repo, and the
-installed set is a property of the machine: baking it in would make a tracked file
-differ per developer, churn on every `pipx install`, and — for a workflow installed
-from a local path — carry somebody's home directory into the repo. Make generates
-the per-workflow targets from that list with `$(eval)`, so the targets are real (and
-a typo still gets make's own "No rule to make target") while the file stays the same
-everywhere. See the internal container-concurrent-runs plan §8.2 and its item-4 note.
-"""
+"""Generation of the ``.agents/`` launcher scaffolding."""
 from __future__ import annotations
 
 
-# Launcher scaffolding generated for every install. These are always-owned
-# generated files (registered for --check and cleanup). The thin root Makefile is
-# special-cased: it is only written when no root Makefile already exists, and is
-# never removed by cleanup (a user may hand-author it).
 LAUNCHER_AGENTS_MK = ".agents/agents.mk"
 LAUNCHER_CONTEXT_MANIFEST = ".agents/agents-context.json"
-# Per-assistant context manifests (one per enabled agent) so a Codex/Copilot run
-# resolves instruction_ref to its own adapters. Selected by AGENT_CLI at run time;
-# the generic LAUNCHER_CONTEXT_MANIFEST above stays the primary assistant's copy.
 LAUNCHER_CONTEXT_MANIFEST_FMT = ".agents/agents-context.{}.json"
 LAUNCHER_ROOT_MAKEFILE = "Makefile"
-# The compose override farrier generated per installed workflow while workflows
-# were a farrier concern. Nothing writes it any more; the constant survives so
-# `remove_targets` still deletes a leftover from an older install.
 LAUNCHER_COMPOSE = ".agents/local.compose.yaml"
 
 
@@ -75,14 +45,6 @@ FARRIER ?= farrier
 FARRIER_LIB_ARG := $(if $(wildcard $(AGENTS_DIR)/library),--library "$(AGENTS_DIR)",)
 """
 
-# The containerized-run plumbing, identical in every repo on every machine.
-#
-# Everything here is per-RUN, not per-repo. The compose PROJECT name carries the
-# isolation: docker compose namespaces its named volumes by project, so
-# `-p coder-<uuid>` gives that run its own workspace/claude-state/runs volumes
-# without compose.yaml having to declare anything per-run. That matters most for
-# claude-state, which is HOME — two runs sharing it would rotate one
-# .credentials.json and last-writer-win each other's .gitconfig.
 _RUN_PLUMBING = """
 # ── Containerized runs (one container per run) ────────────────────────────────
 #
@@ -333,20 +295,7 @@ agent-clean: ## Remove one run's container AND its per-run volumes (destructive)
 
 
 def render_agents_mk() -> str:
-    """The make launcher (.agents/agents.mk), generated for every repo.
-
-    Byte-identical everywhere, deliberately. It carries `agent-install` and
-    `agent-check` (which regenerate and verify the adapters farrier renders) plus
-    the containerized-run plumbing, and it derives one `agent-run-<workflow>` target
-    per **installed** workflow by asking `farrier workflows --names` when make parses
-    it. Nothing about which workflows exist is written into this file.
-
-    The installed set is the only source of truth for what is runnable — a selection
-    list in `agents.yml` would be a second one, going stale the moment someone
-    pipx-installs or uninstalls. But it is a property of the *machine*, and this file
-    is tracked in the repo, so the resolution has to happen at make time rather than
-    at render time. See the comment above `agent_run_target` in the emitted file.
-    """
+    """The make launcher (.agents/agents.mk), generated for every repo."""
     phony = (
         ".PHONY: agent-help agent-install agent-check farrier-run-hook "
         "agent-workflows agent-runs agent-logs agent-stop agent-clean"

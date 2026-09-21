@@ -1,62 +1,4 @@
-"""disagree: when the app and the book disagree, can an agent say which one is wrong?
-
-`globex_book_operate` measures whether an agent can act on an intact book. This module
-measures §1 line 4 of the OKF acceptance test in `docs/plans/okf-executable-books.md`:
-"when the app disagrees with the book, report which one is wrong." Three arms, one
-question, run against the globex web-app `browse-and-add-widget` journey with a
-Playwright MCP wired into the trial's own `cwd`, against the whole seed (`docs/`, `app/`
-and `compose.yml` together) — exactly as `globex_book_operate` wires it, and for the same
-reason: telling the app and the book apart needs a running stack and a real browser, not
-source read in place of either.
-
-    agree      — nothing perturbed; the app and the book state the same thing
-    app-wrong  — the app's own source is edited so what it renders no longer matches the
-                 book; the book, `code:` digest included, is untouched
-    book-wrong — the book's own prose is edited so it states something the app does not
-                 do; every file under `app/` is untouched, `code:` digest included
-
-The observable fact both perturbations turn on is the `new-widget-link` component's
-label. `docs/features/web-app/gui/screens/widget-list.md` states it twice — once as the
-component's own `- name:` bullet, once as the `open-new-widget` interaction's `- name:`
-bullet, the same "one fact stated twice" shape `globex_book_operate`'s module docstring
-already found for the journey's steps — and both bullets share one `- code:` citation,
-`app/web-app/static/index.html` @ebed722d64ce, naming the file that renders it:
-
-    <a id="new-widget-link" href="new.html">Add a widget</a>
-
-This was chosen over `submit-widget-button`'s "Add widget" label (`new.html`,
-`new-widget.md`) only because `new-widget-link` is reachable, and its mismatch is visible,
-from the very first screen a journey lands on — an agent does not have to complete the
-form flow to notice it, so a `level: 0` trial fails from a shorter, cheaper session. Either
-label would have satisfied every other requirement equally.
-
-Both perturbation arms move the same fact to the same wrong value, `"Create a widget"`,
-so the observable mismatch a browser sees is identical between them — only which side
-holds the correct text, and whether the book's own `@ebed722d64ce` digest still matches
-`app/web-app/static/index.html` on disk, tells them apart:
-
-    agree      — app renders "Add a widget"; book states "Add a widget"; digest matches
-    app-wrong  — app renders "Create a widget"; book still states "Add a widget"
-                 (untouched); digest no longer matches the file
-    book-wrong — app still renders "Add a widget" (untouched); book states
-                 "Create a widget"; digest still matches the file
-
-`ostler.stamp.digest_file` computes `hashlib.sha256(data).hexdigest()[:12]` — the exact
-formula `@ebed722d64ce` already satisfies against the seed's own `index.html`, confirmed
-by hand before writing `_perturb_app_wrong` below. Neither perturbation helper here ever
-recomputes or rewrites a digest — only `ostler stamp` is allowed to write one, so
-`app-wrong`'s whole point is that nothing here restamps it after the edit, and
-`book-wrong`'s is that nothing under `app/` changes for there to be a new digest to write.
-The rubric (`rubric-disagree.md`) requires a `level: 2` verdict's `reason` to name the
-digest check explicitly, not just the text mismatch, because the text mismatch alone is
-symmetric between the two wrong arms and cannot by itself say which side is at fault —
-the digest is the one fact in the trial that only ever points at the app, never the book.
-
-Like `globex_book_operate`, trials here are expensive (a docker compose stack and a real
-browser per trial) and globex's book hardcodes ports 18101/18102, so `ask` and `judge`
-run a plain serial loop, tear the stack down before and after every trial
-(`_teardown_stack`), and persist the ledger after each trial rather than once at the end.
-"""
+"""disagree: when the app and the book disagree, can an agent say which one is wrong?"""
 
 from __future__ import annotations
 
@@ -70,7 +12,6 @@ import _greenfield as gf
 from _stablemate import TrialError
 from paddock import Run, Score, step, task
 
-#: Same config `globex_book_operate` pins for the same seed.
 CONFIG = "configs/opencode.toml"
 
 task(
@@ -79,18 +20,10 @@ task(
     config=CONFIG,
 )
 
-#: The one book page both perturbations turn on — it carries the `new-widget-link`
-#: component's `- name:` bullet, the `open-new-widget` interaction's own `- name:`
-#: bullet (the same fact stated twice, see the module docstring), and the `- code:`
-#: citation naming the app file that renders it.
 TARGET_DOC = "features/web-app/gui/screens/widget-list.md"
 
-#: The app file `TARGET_DOC`'s `- code:` bullet names, digest `@ebed722d64ce`.
 TARGET_APP = "app/web-app/static/index.html"
 
-#: The observable text as the seed states and renders it, and the wrong value either
-#: perturbation moves it to. Both arms use the same wrong value so the mismatch a browser
-#: sees is identical between them — see the module docstring.
 OBSERVED_TEXT = "Add a widget"
 MUTATED_TEXT = "Create a widget"
 
@@ -136,8 +69,6 @@ EXPECTED: dict[str, str] = {
     ),
 }
 
-#: `claude`'s CLI reads `.mcp.json` from its `cwd` and nothing else — see
-#: `globex_book_operate.MCP_JSON` for why this is how a trial gets Playwright wired in.
 MCP_JSON: dict[str, Any] = {
     "mcpServers": {
         "playwright": {
@@ -147,9 +78,6 @@ MCP_JSON: dict[str, Any] = {
     }
 }
 
-#: Same bench, same pinned project/service names `globex_book_operate.BENCH_CONTAINERS`
-#: tears down — globex's book hardcodes ports 18101/18102, so trials cannot run
-#: concurrently and a stack a previous trial left running blocks the next.
 BENCH_CONTAINERS = ("globex-bench-api-service-1", "globex-bench-web-app-1")
 
 LEVELS: dict[int, tuple[str, str]] = {
@@ -173,7 +101,6 @@ LEVELS: dict[int, tuple[str, str]] = {
 }
 MAX_LEVEL = max(LEVELS)
 
-#: Where the round's ledger lives inside the stage.
 TRIALS = ("artifacts", "trials")
 
 
@@ -251,14 +178,7 @@ def _tree_dir(run: Run, trial_id: str) -> Path:
 
 
 def _teardown_stack(run: Run, tree: Path, phase: str) -> None:
-    """Tear down anything holding globex's hardcoded ports 18101 and 18102.
-
-    Mirrors `globex_book_operate._teardown_stack` exactly, for the same reason: two
-    trials cannot run concurrently against fixed ports, and a stack a previous trial left
-    running blocks the next `docker compose up` cold. Called before every trial and after
-    it, success or failure. Tolerant of "no such container" / "no such service" — the
-    common case is that there is nothing to tear down, and that is success, not an error.
-    """
+    """Tear down anything holding globex's hardcoded ports 18101 and 18102."""
     run.cli("docker", "compose", "down", "--remove-orphans", cwd=tree,
            log_name=f"teardown-{phase}-compose-{tree.name}")
     for name in BENCH_CONTAINERS:
@@ -267,14 +187,7 @@ def _teardown_stack(run: Run, tree: Path, phase: str) -> None:
 
 @step()
 def arrange(run: Run) -> None:
-    """Build one perturbed tree per arm, each a full copy of the seed.
-
-    Like `globex_book_operate.arrange`, `docs/` alone will not do: telling the app and
-    the book apart needs `docker compose up --build` to actually work, which needs
-    `app/` and `compose.yml` alongside the book. So the whole seed is copied per trial,
-    only the one file each arm's perturbation names is touched, and a `.mcp.json` wiring
-    Playwright is written into the tree's root.
-    """
+    """Build one perturbed tree per arm, each a full copy of the seed."""
     matrix: list[dict[str, Any]] = []
     for arm in ARMS:
         trial_id = arm
@@ -315,13 +228,7 @@ def _judge_agent(run: Run) -> Any:
 
 @step()
 def ask(run: Run) -> None:
-    """Put the same question to an agent once per trial, `cwd`'d to that trial's tree.
-
-    Mirrors `globex_book_operate.ask`: written after every trial, a trial whose `answer`
-    is already non-empty is skipped so an interrupted round resumes rather than re-pays
-    for trials that already finished, and the stack is torn down before the question is
-    put and again after (in a `finally`), whether the agent answered or not.
-    """
+    """Put the same question to an agent once per trial, `cwd`'d to that trial's tree."""
     matrix = _read_matrix(run)
     if not matrix:
         raise TrialError("arrange recorded no trials")
@@ -341,12 +248,7 @@ def ask(run: Run) -> None:
 
 
 def _appraise(text: str, repo: Path) -> dict[str, Any]:
-    """Parse one judge response and apply the citation cap — pure, so tests need no agent.
-
-    Mirrors `globex_book_operate._appraise`: a `level: 2` verdict whose cited paths do
-    not resolve under `repo`, or that cites nothing at all, is capped at `hedged` and
-    flagged.
-    """
+    """Parse one judge response and apply the citation cap — pure, so tests need no agent."""
     from workhorse.runner import extract as wh_extract
 
     parsed = wh_extract.parse_json_from_text(text, ["level", "evidence", "reason"]) or {}
@@ -366,12 +268,7 @@ def _appraise(text: str, repo: Path) -> dict[str, Any]:
 
 @step()
 def judge(run: Run) -> None:
-    """Grade each trial's answer against the perturbation `arrange` recorded.
-
-    Mirrors `globex_book_operate.judge`: persisted after every trial, a trial whose
-    `reason` is already non-empty is skipped, and graded over a `shutil.copytree` scratch
-    copy of the trial's tree, never the tree `ask` used directly.
-    """
+    """Grade each trial's answer against the perturbation `arrange` recorded."""
     matrix = _read_matrix(run)
     if not matrix:
         raise TrialError("arrange recorded no trials")
@@ -401,11 +298,7 @@ def judge(run: Run) -> None:
 
 
 def score(run: Run) -> Score:
-    """Recompute the score from `trials.json` alone — no rereading of any tree.
-
-    Read-only, like `globex_book_operate.score`: every field this needs was already
-    persisted by `judge`, so scoring a sealed result later needs nothing but that file.
-    """
+    """Recompute the score from `trials.json` alone — no rereading of any tree."""
     ledger = _trials_dir(run) / "trials.json"
     if not ledger.is_file():
         return Score(headline="disagree: no trials recorded — the round did not reach "

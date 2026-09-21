@@ -1,30 +1,4 @@
-"""End-to-end drives of the `research` state machine (`research/workflow.py`).
-
-Three things are substituted and nothing else is: the agent turn, the clone, and the
-four measurement nodes that would otherwise launch a real detached process for hours.
-`load_program`, `record_spend`, `check_envelope` and `publish_results` run for real
-against a temporary git repo built by :func:`_program_repo`, so a run here exercises
-manifest parsing, the envelope arithmetic, the `Program` `setup()` residue every state
-reads, and a real commit onto the result branch.
-
-Every substitution is **supplied**, not patched: a run's node index and its agent
-backend are fields of `RunEnv`, so `_env` hands over a scripted agent and a scripted
-set of measurement nodes, and nothing here assigns over a module attribute it then has
-to remember to restore. The one exception is `wait_for_answer`, which is a module
-function the driver calls rather than a field — and it is patched because a test must
-never actually block on a file a human is supposed to edit.
-
-What is under test is the loop's arithmetic and, above all, **who each failure goes
-to**. The graph's whole point is that "measured and missed", "produced no measurement"
-and "the apparatus is broken" are three different things with three different owners:
-a rework goes to the scientist, a crash in repo code goes to the engineer with no
-person in the loop, and a tooling fault parks on an operator immediately. Those are
-asserted as *paths*, from outside, by which prompt ran next.
-
-The other invariant is negative and just as load-bearing: **no arm ends in
-`WorkflowFailed`**. Every exhausted budget parks (`Await`) or escalates to the lead.
-`_Parked` is how a park is observed without hanging the suite.
-"""
+"""End-to-end drives of the `research` state machine (`research/workflow.py`)."""
 from __future__ import annotations
 
 import json
@@ -57,9 +31,6 @@ from workhorse_workflows.research.schemas import (
 
 PROGRAM_DIR = "programs/alpha"
 
-#: What the temp program declares it can hold. Real numbers, because `check_envelope`
-#: is not substituted — a design over these is rescoped by the workflow's own
-#: arithmetic rather than by a stand-in that was told to say no.
 PROGRAM_YML = (
     "code_root: src\n"
     "result_branch: alpha/auto\n"
@@ -70,7 +41,6 @@ PROGRAM_YML = (
 )
 
 
-# --------------------------------------------------------------------------- fixtures
 
 
 def _git(repo: Path, *args: str) -> None:
@@ -100,15 +70,7 @@ def _program_repo(root: Path) -> Path:
 
 
 def _install_commit_msg_hook(repo: Path) -> None:
-    """Reject a git subject whose `type(scope):` scope is not lowercase.
-
-    Mirrors the commit convention a real target repo enforces (see
-    `docs/maskbus/AGENTS.md`'s `.githooks/commit-msg`, which many programs turn on with
-    `core.hooksPath`). A gate id like `G1` or `P1` is a fine program-facing name and a
-    bad git scope; a workflow that writes `feat({gate_id}): ...` verbatim must lowercase
-    it, and only a repo that actually enforces this convention would ever catch it not
-    doing so.
-    """
+    """Reject a git subject whose `type(scope):` scope is not lowercase."""
     hooks_dir = repo / ".git" / "hooks"
     hook = hooks_dir / "commit-msg"
     hook.write_text(
@@ -121,13 +83,7 @@ def _install_commit_msg_hook(repo: Path) -> None:
 
 
 class _Agent:
-    """A scripted agent backend, keyed by prompt stem.
-
-    Each entry is the list of replies that prompt returns, in order; the last one
-    repeats, so a test that loops N times on one prompt states the reply once. Every
-    call is recorded, which is how the counters are asserted: the number of times
-    `design-experiment` ran IS the rework counter, observed from outside.
-    """
+    """A scripted agent backend, keyed by prompt stem."""
 
     def __init__(self, script: dict[str, list[dict[str, Any]]]) -> None:
         self.script = {stem: list(replies) for stem, replies in script.items()}
@@ -151,16 +107,7 @@ class _Agent:
 
 
 class _Nodes:
-    """The measurement half, scripted exactly the way the agent is.
-
-    These four nodes are the only ones that would touch a real detached process, and
-    they are unit-tested for real in `test_measure.py`. Here they are the *inputs* to a
-    routing decision: a `Collected(outcome="crash", fault_locus="tooling")` is how a
-    test states "the apparatus broke" without breaking an apparatus.
-
-    A stem with no script gets the healthy default, so a test that is about the rework
-    cap says nothing about jobs at all.
-    """
+    """The measurement half, scripted exactly the way the agent is."""
 
     def __init__(self, **script: list[Any]) -> None:
         self.script = {name: list(replies) for name, replies in script.items()}
@@ -175,9 +122,6 @@ class _Nodes:
             reply = default if not replies else (
                 replies.pop(0) if len(replies) > 1 else replies[0]
             )
-            # A reply may be a function of the call's arguments, which is how a test
-            # names a path — a job's `wake` file — that only exists once the run has
-            # chosen the job directory.
             return reply(kwargs) if callable(reply) else reply
 
         return run
@@ -190,11 +134,6 @@ class _Nodes:
 
     def overrides(self, repo: Path) -> dict[str, Any]:
         return {
-            # In-place mode — what `clone_repo` does when a checkout is already in
-            # front of it — is this return plus `allow_all_directories()`, which writes
-            # `safe.directory=*` into the developer's **global** git config. That is
-            # the container's bind-mount concession, and not something a test may do to
-            # a laptop; the override is the half that is the behaviour.
             "clone_repo": lambda logger, repo_dir="", repo_url="", repo_branch="main": (
                 RepoSetup(repo_dir=str(repo))
             ),
@@ -217,13 +156,7 @@ class _Nodes:
 
 
 class _Parked(Exception):
-    """The run reached an operator gate — raised in place of blocking on it.
-
-    An `Await` is not an ending, so a test cannot assert one by catching a failure. The
-    driver writes the checkpoint and the gate file *before* it waits, so cutting the
-    wait short leaves everything an assertion needs on disk and proves the park was
-    reached rather than merely returned.
-    """
+    """The run reached an operator gate — raised in place of blocking on it."""
 
     def __init__(self, path: Path, text: str) -> None:
         super().__init__(f"parked on {path}")
@@ -261,9 +194,6 @@ def _env(root: Path, repo: Path, agent: _Agent, nodes: _Nodes) -> RunEnv:
     writer = ArtifactWriter("research", root / "runs", run_id="t")
     return RunEnv(
         writer=writer,
-        # Where the engine would render prompts from. No prompt is rendered here (the
-        # scripted agent stands in for the turn), but the real directory keeps the paths
-        # in the recorded steps honest.
         workflow_dir=Path(research.__file__).parent,
         session_id_path=writer.run_dir / ".session_id",
         config=RunConfig(),
@@ -292,25 +222,7 @@ def _drive(
     uncommitted_files: dict[str, str] | None = None,
     **inputs: Any,
 ) -> _Run:
-    """Drive `Research` against a real repo until it terminates, parks, or halts.
-
-    `caps` patches the `MAX_*` constants, which is how a budget is asserted: by
-    *changing the constant*, which is only possible because there is one copy of it.
-    `ledger` seeds the program's spend file, which is how a *prior run's* budget gets
-    into a test without running one.
-
-    `answer` is an operator who is *present*: the block writes it onto the gate and the
-    wait returns, so the run resumes through the block instead of ending at it. Without
-    it a block is the end of the drive, which is what most tests here want.
-
-    `makefile` is real, committed content — the lint/test gate is not one of the
-    substituted nodes (`run_gate` runs for real, against this repo), so a test that
-    wants it dirty has to give it an actual failing target rather than a scripted reply.
-
-    `uncommitted_files` writes real, **uncommitted** content — unlike `makefile`, which
-    is committed before the drive starts. It is how a test states "the engineer's turn
-    left this on disk", the same shape as a real `build-experiment` turn's edits.
-    """
+    """Drive `Research` against a real repo until it terminates, parks, or halts."""
     waited: list[Path] = []
     checkpoints: list[dict[str, Any]] = []
     real_write = ArtifactWriter.write_state_checkpoint
@@ -327,8 +239,6 @@ def _drive(
                 Path(path).write_text(f"{text}\n\n## Operator answer\n\n{answer}\n")
                 return
             raise _Parked(Path(path), text)
-        # A job's own `wake` file: the supervisor touched it, so the wait is over and
-        # `await_result` re-enters and looks again. Nobody was asked anything.
 
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
@@ -410,7 +320,6 @@ def _parking(script: dict[str, list[dict[str, Any]]], **kwargs: Any) -> _Run:
     return outcome
 
 
-#: The turns a gate needs when nothing about the science is under test.
 GATE = {
     "select-next-gate": [
         {"gate_id": "G1", "gate_doc_path": f"{PROGRAM_DIR}/gates/G1.md"},
@@ -421,10 +330,7 @@ GATE = {
     "code-review-experiment": [{"status": "approve"}],
     "record-result": [{"status": "ok", "outcome": "PASS"}],
     "lead-goal-review": [{"verdict": "reached"}],
-    # The program lead waves the gate-level question through: a fresh program has no
-    # circling to find, and every kill and escalation passes here before the lead.
     "program-review": [{"verdict": "continue"}],
-    # A re-charter turn that writes no target: whatever asked for it parks for cause.
     "program-recharter": [{"status": "written"}],
 }
 
@@ -433,13 +339,10 @@ def _script(**overrides: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]
     return {**{stem: list(v) for stem, v in GATE.items()}, **overrides}
 
 
-# --------------------------------------------------------------- the happy path
 
 
 def test_a_gate_designed_built_measured_and_approved_drives_the_program_to_its_goal():
-    """One full pass through the new graph: pick a gate, design it, build it, rehearse
-    it at n=1, submit it, collect the artifact, judge it, record it, find the ladder
-    exhausted, and let the lead declare the North star reached."""
+    """One full pass through the new graph: pick a gate, design it, build it, rehearse it at n=1, submit it, collect the artifact, judge it, record it, find the ladder exhausted, and let the lead declare the North star reached."""
     outcome = _run(_script(**{"gate-check": [{"status": "approved"}]}))
 
     assert isinstance(outcome.result, RecordResult), outcome.result
@@ -447,35 +350,24 @@ def test_a_gate_designed_built_measured_and_approved_drives_the_program_to_its_g
     assert counts["design-experiment"] == 1, counts
     assert counts["build-experiment"] == 1, counts
     assert counts["gate-check"] == 1, counts
-    # The gate's record, then the goal's.
     assert counts["record-result"] == 2, counts
-    # The measurement happened once, outside every turn, and was rehearsed first.
     assert outcome.nodes.counts() == Counter(
         {"dry_run": 1, "submit_job": 1, "watch_job": 1, "collect_job": 1}
     ), outcome.nodes.counts()
 
 
 def test_the_measurement_never_runs_inside_the_reviewing_turn():
-    """The defect this whole rewrite exists to remove.
-
-    `check` used to re-run the experiment — 76 minutes of it — and record "the largest
-    subset that fits" as a partial verdict. It now gets the artifact and nothing that
-    would let it re-measure: no command, no job dir, and not even the progress file the
-    designer wrote, which is what it must not be anchored on.
-    """
+    """The defect this whole rewrite exists to remove."""
     outcome = _run(_script(**{"gate-check": [{"status": "approved"}]}))
 
     (args,) = outcome.agent.args_for("gate-check")
     assert set(args) == {"repo_dir", "program_dir", "gate_id", "gate_doc_path", "result"}
-    # What it judges is the classified artifact, not a command it could have re-run.
     assert args["result"]["outcome"] == "ok", args
     assert args["result"]["n_completed"] == 8, args
 
 
 def test_the_rework_carries_the_criteria_the_check_faulted():
-    """`failed_criteria` crosses two transitions as JSON and arrives at the *scientist*
-    as data — a rework is a protocol change, so it goes to the persona that owns the
-    protocol and not to the one that owns the code."""
+    """`failed_criteria` crosses two transitions as JSON and arrives at the *scientist* as data — a rework is a protocol change, so it goes to the persona that owns the protocol and not to the one that owns the code."""
     outcome = _run(
         _script(
             **{
@@ -500,7 +392,6 @@ def test_the_rework_carries_the_criteria_the_check_faulted():
 
     counts = outcome.agent.counts()
     assert counts["gate-check"] == 2, counts
-    # Two designs, one build per design: the rework re-entered the scientist.
     assert counts["design-experiment"] == 2, counts
     rework = outcome.agent.args_for("design-experiment")[1]
     assert rework["rework_notes"] == "under the bar", rework
@@ -508,13 +399,10 @@ def test_the_rework_carries_the_criteria_the_check_faulted():
     assert rework["failed_criteria"][0]["criterion"] == "accuracy", rework
 
 
-# ------------------------------------------------- who each failure is routed to
 
 
 def test_a_crash_in_repo_code_goes_to_the_engineer_with_nobody_in_the_loop():
-    """The locus decides the owner. A traceback whose deepest frame is in the repo is
-    the one failure the loop is unambiguously equipped to fix itself, so it re-enters
-    `build` — no operator, no science budget spent, and the reason travels."""
+    """The locus decides the owner."""
     nodes = _Nodes(
         collect_job=[
             Collected(
@@ -531,7 +419,6 @@ def test_a_crash_in_repo_code_goes_to_the_engineer_with_nobody_in_the_loop():
 
     counts = outcome.agent.counts()
     assert counts["build-experiment"] == 2, counts
-    # The scientist was not disturbed: a crash is not a protocol problem.
     assert counts["design-experiment"] == 1, counts
     fix = outcome.agent.args_for("build-experiment")[1]
     assert fix["fix_count"] == 1, fix
@@ -539,11 +426,7 @@ def test_a_crash_in_repo_code_goes_to_the_engineer_with_nobody_in_the_loop():
 
 
 def test_a_tooling_fault_reaches_an_operator_immediately_and_names_the_component():
-    """No number of engineer laps repairs workhorse, so the loop does not spend any.
-
-    The block is immediate and it is the *first* thing that happens — the build budget
-    is untouched, because there is nothing in this repo to fix.
-    """
+    """No number of engineer laps repairs workhorse, so the loop does not spend any."""
     nodes = _Nodes(
         collect_job=[
             Collected(
@@ -565,9 +448,7 @@ def test_a_tooling_fault_reaches_an_operator_immediately_and_names_the_component
 
 
 def test_the_engineer_may_declare_a_tooling_fault_only_by_naming_what_is_broken():
-    """The escape hatch, and its price. An engineer that can route its own hard
-    problems to a human by calling them "tooling" has every reason to, so the component
-    it names is published in the question the human reads."""
+    """The escape hatch, and its price."""
     outcome = _parking(
         _script(
             **{
@@ -585,19 +466,11 @@ def test_the_engineer_may_declare_a_tooling_fault_only_by_naming_what_is_broken(
 
     assert "Component: ostler" in outcome.blocked_text, outcome.blocked_text
     assert "the doc graph will not open" in outcome.blocked_text, outcome.blocked_text
-    # It never reached the runner: nothing was rehearsed and nothing was submitted.
     assert outcome.nodes.counts()["dry_run"] == 0, outcome.nodes.counts()
 
 
 def test_a_blocked_design_goes_to_the_lead_and_never_reaches_the_engineer():
-    """The scientist is told to report `blocked` rather than design around a gate that
-    contradicts the program, and the workflow used to forward that to `build` anyway.
-    The shape of the bug this pins: an engineer handed no protocol implements the
-    admission check it *can* write, rehearses it (exit 0, `status: "blocked"`, which
-    the rehearsal accepted), submission refuses the empty command as a repo fault, a
-    build lap is spent, and the second engineer — with nothing left to fix — names the
-    workflow as a tooling fault and parks the run on an operator. Four states and a
-    human to route a refusal that was legible at the first one."""
+    """The scientist is told to report `blocked` rather than design around a gate that contradicts the program, and the workflow used to forward that to `build` anyway."""
     outcome = _parking(
         _script(
             **{
@@ -619,18 +492,11 @@ def test_a_blocked_design_goes_to_the_lead_and_never_reaches_the_engineer():
     assert [h["event"] for h in outcome.history if h["gate_id"] == "G1"][:2] == [
         "gate_selected", "design_blocked",
     ], outcome.history
-    # No engineering budget was spent on it.
     assert outcome.checkpoints[-1]["params"]["budget"]["build_fixes"] == 0
 
 
 def test_a_recharter_ordered_for_a_blocked_design_still_reaches_the_lead():
-    """A design refusal and an unresolvable target are two different questions, and a
-    program review can be right about one while the other stands. Rewriting the target
-    used to send the loop straight back to `start`, which re-picked the same gate,
-    re-hit the same refusal, and needed a fresh program review just to rediscover what
-    this one already knew — the shape of the bug that parked a live run on its 9th
-    review after review 8 had already re-chartered the target and left the design
-    refusal that ordered the review standing untouched."""
+    """A design refusal and an unresolvable target are two different questions, and a program review can be right about one while the other stands."""
     outcome = _parking(
         _script(
             **{
@@ -660,28 +526,16 @@ def test_a_recharter_ordered_for_a_blocked_design_still_reaches_the_lead():
     )
 
     counts = outcome.agent.counts()
-    # The target was fixed once...
     assert counts["program-recharter"] == 1, counts
-    # ...but the design refusal that ordered the review is still standing, so it must
-    # reach the lead rather than send the loop straight back to gate selection.
     assert counts["research-lead-review"] == 1, counts
     review = outcome.agent.args_for("research-lead-review")[0]
     assert review["escalation"] == "design_blocked", review
     assert "regress" in review["notes"], review
-    # Gate selection must not have re-fired a second design on the same gate.
     assert counts["design-experiment"] == 1, counts
 
 
 def test_a_revived_block_tells_the_reviser_what_the_gate_was_blocked_on():
-    """A gate revived after a block is waiting on something, and only the block says what.
-
-    The revival used to receive the lead's verdict alone. When that block was a
-    prerequisite no ladder row owned, the reviser could only re-scope the same gate:
-    selection picked it again, the design blocked on the same missing work, and the
-    program spent its reviews re-opening one gate while every review said "do the
-    prerequisite first". The reviser is the one turn that may write that prerequisite
-    as a gate of its own, and it cannot do that without being told what blocked.
-    """
+    """A gate revived after a block is waiting on something, and only the block says what."""
     outcome = _run(
         _script(
             **{
@@ -711,9 +565,7 @@ def test_a_revived_block_tells_the_reviser_what_the_gate_was_blocked_on():
 
 
 def test_a_blocked_build_goes_to_the_lead_without_touching_the_runner():
-    """Same owner from the engineer's side: a prerequisite that is not on disk is not
-    repaired by another build lap, and rehearsing whatever partial script exists proves
-    nothing about the measurement."""
+    """Same owner from the engineer's side: a prerequisite that is not on disk is not repaired by another build lap, and rehearsing whatever partial script exists proves nothing about the measurement."""
     outcome = _parking(
         _script(
             **{
@@ -739,8 +591,7 @@ def test_a_blocked_build_goes_to_the_lead_without_touching_the_runner():
 
 
 def test_a_build_with_no_command_is_repaired_before_anything_is_rehearsed():
-    """An `ok` build that names no command has nothing a rehearsal could prove; it is
-    the engineer's lap either way, taken now rather than after a wasted dry run."""
+    """An `ok` build that names no command has nothing a rehearsal could prove; it is the engineer's lap either way, taken now rather than after a wasted dry run."""
     outcome = _run(
         _script(
             **{
@@ -760,14 +611,7 @@ def test_a_build_with_no_command_is_repaired_before_anything_is_rehearsed():
 
 
 def test_the_operator_s_answer_reaches_the_state_it_released():
-    """A block is a question, so the state that asked it has to be given the answer.
-
-    It was not, and the shape of that bug is why this test exists: the resumed build was
-    handed its own `notes` back as the reason it had been released, read the same
-    evidence again, reached the same conclusion again, and blocked again — on a path
-    that spends no budget, so nothing ever stopped it. What the operator wrote is the
-    authorization; if it does not arrive, the block is a loop with a file in it.
-    """
+    """A block is a question, so the state that asked it has to be given the answer."""
     outcome = _run(
         _script(
             **{
@@ -788,20 +632,14 @@ def test_the_operator_s_answer_reaches_the_state_it_released():
 
     turns = outcome.agent.args_for("build-experiment")
     assert len(turns) == 2, outcome.agent.counts()
-    # The first ask had nothing on the gate yet; the second was told what came back.
     assert "The host rebooted" not in turns[0]["fix_reason"]
     assert "The host rebooted" in turns[1]["fix_reason"], turns[1]["fix_reason"]
     assert "Do not raise this again" in turns[1]["fix_reason"]
-    # And the release was real: the run went on to rehearse and submit.
     assert outcome.nodes.counts()["dry_run"] == 1, outcome.nodes.counts()
 
 
 def test_a_dirty_lint_gate_is_repaired_before_the_rehearsal_runs():
-    """The lint/test gate is deterministic and runs for real — a Makefile target that
-    actually fails routes back to the engineer with no rehearsal spent, the same way a
-    failed rehearsal itself does. The Makefile here fails every time it is invoked, so
-    the repair never clears it; that is fine, since what is under test is the routing
-    of the first failure, not a second attempt this test cannot script a fix for."""
+    """The lint/test gate is deterministic and runs for real — a Makefile target that actually fails routes back to the engineer with no rehearsal spent, the same way a failed rehearsal itself does."""
     outcome = _parking(
         _script(
             **{
@@ -822,10 +660,7 @@ def test_a_dirty_lint_gate_is_repaired_before_the_rehearsal_runs():
 
 
 def test_a_code_review_verdict_of_revise_is_repaired_before_the_rehearsal_runs():
-    """A build that passes the deterministic gate clean can still be told to revise by
-    the code-review turn — a spec-conformance bug lint and tests cannot see — and that
-    routes back to the engineer exactly as a dirty gate does, before any CPU is spent
-    on a rehearsal."""
+    """A build that passes the deterministic gate clean can still be told to revise by the code-review turn — a spec-conformance bug lint and tests cannot see — and that routes back to the engineer exactly as a dirty gate does, before any CPU is spent on a rehearsal."""
     outcome = _run(
         _script(
             **{
@@ -849,13 +684,7 @@ def test_a_code_review_verdict_of_revise_is_repaired_before_the_rehearsal_runs()
 
 
 def test_an_approved_build_s_code_files_are_committed_before_the_rehearsal_runs():
-    """An engineer's turn writes `code_files` to disk but does not commit them, and a
-    gate is entitled to refuse to run against an uncommitted tree (a reproducibility
-    guard: pin the commit a run measured before trusting its result). Leaving the
-    commit to the next agent that happens to remember it is how a program burns build
-    fixes and program reviews on a fault the workflow could have closed itself; the
-    approved build's files must already be committed by the time the rehearsal sees
-    them."""
+    """An engineer's turn writes `code_files` to disk but does not commit them, and a gate is entitled to refuse to run against an uncommitted tree (a reproducibility guard: pin the commit a run measured before trusting its result)."""
     outcome = _run(
         _script(
             **{
@@ -877,12 +706,7 @@ def test_an_approved_build_s_code_files_are_committed_before_the_rehearsal_runs(
 
 
 def test_a_rehearsal_that_dies_under_the_runner_never_reaches_submission():
-    """The n=1 dry run is through the *real* runner, and it is the handoff it tests.
-
-    A command that works when typed and dies under the runner has failed the only test
-    this state exists to run, and it fails before hours of CPU are spent rather than
-    after.
-    """
+    """The n=1 dry run is through the *real* runner, and it is the handoff it tests."""
     nodes = _Nodes(
         dry_run=[
             DryRun(ok=False, exit_code=1, fault_locus="repo", reason="no such file: run.py"),
@@ -892,15 +716,13 @@ def test_a_rehearsal_that_dies_under_the_runner_never_reaches_submission():
     outcome = _run(_script(**{"gate-check": [{"status": "approved"}]}), nodes=nodes)
 
     assert outcome.nodes.counts()["dry_run"] == 2, outcome.nodes.counts()
-    # One submission, after the rehearsal passed — not two, and not one before it.
     assert outcome.nodes.counts()["submit_job"] == 1, outcome.nodes.counts()
     fix = outcome.agent.args_for("build-experiment")[1]
     assert "the n=1 rehearsal failed" in fix["fix_reason"], fix
 
 
 def test_an_estimate_with_no_probe_behind_it_goes_back_to_the_scientist():
-    """The probe is the scientist's, so its absence is a design lap and not an
-    engineering one — and the refusal is at submission, before the CPU is spent."""
+    """The probe is the scientist's, so its absence is a design lap and not an engineering one — and the refusal is at submission, before the CPU is spent."""
     nodes = _Nodes(
         submit_job=[
             Job(submitted=False, fault_locus="design", error="the probe timed nothing"),
@@ -917,10 +739,7 @@ def test_an_estimate_with_no_probe_behind_it_goes_back_to_the_scientist():
 
 
 def test_a_design_the_machine_cannot_hold_is_rescoped_without_a_person():
-    """`check_envelope` is not substituted: the program declares 32 GB, the design asks
-    for 64, and the workflow's own arithmetic sends it back to be rescoped. An
-    experiment too big for the machine is a protocol to shrink, not an operator's
-    problem and not a science failure."""
+    """`check_envelope` is not substituted: the program declares 32 GB, the design asks for 64, and the workflow's own arithmetic sends it back to be rescoped."""
     outcome = _run(
         _script(
             **{
@@ -941,8 +760,7 @@ def test_a_design_the_machine_cannot_hold_is_rescoped_without_a_person():
 
 
 def test_outgrowing_the_declared_resources_mid_run_is_the_scientist_s_to_rescope():
-    """`over_resource` is neither a crash nor a miss: the protocol asked for less than
-    it needed, which only the persona that declared the number can fix."""
+    """`over_resource` is neither a crash nor a miss: the protocol asked for less than it needed, which only the persona that declared the number can fix."""
     nodes = _Nodes(
         collect_job=[
             Collected(
@@ -958,20 +776,13 @@ def test_outgrowing_the_declared_resources_mid_run_is_the_scientist_s_to_rescope
 
     again = outcome.agent.args_for("design-experiment")[1]
     assert "8200MB" in again["rescope_reason"], again
-    # Not the engineer's: the build was not asked to repair anything.
     assert outcome.agent.args_for("build-experiment")[1]["fix_reason"] == ""
 
 
-# ------------------------------------------------------------- waiting and overrun
 
 
 def test_the_wait_parks_on_the_job_s_own_wake_file_and_asks_nobody_anything():
-    """Hours or days pass here, and no turn and no person is spent on them.
-
-    The park is on the supervisor's `wake` file rather than an operator gate, so
-    nothing is written for a human to answer and the wait ends on the supervisor's
-    first touch.
-    """
+    """Hours or days pass here, and no turn and no person is spent on them."""
     nodes = _Nodes(
         watch_job=[
             lambda kw: JobWatch(
@@ -986,14 +797,11 @@ def test_the_wait_parks_on_the_job_s_own_wake_file_and_asks_nobody_anything():
 
     assert [p.name for p in outcome.waited] == ["wake"], outcome.waited
     assert outcome.nodes.counts()["watch_job"] == 2, outcome.nodes.counts()
-    # No operator gate was ever written.
     assert not any(p.name == research.BLOCKED_NAME for p in outcome.waited)
 
 
 def test_an_overrun_goes_to_the_engineer_and_keeping_going_costs_nothing_else():
-    """Time is a bug signal, not a budget. A job past its estimate is triaged by the
-    engineer rather than killed by a timeout, and keeping going re-enters the wait with
-    the multiple already seen — so one threshold triages once."""
+    """Time is a bug signal, not a budget."""
     nodes = _Nodes(
         watch_job=[
             JobWatch(action="triage", state="running", overrun_multiple=10.0),
@@ -1012,14 +820,12 @@ def test_an_overrun_goes_to_the_engineer_and_keeping_going_costs_nothing_else():
 
     assert outcome.agent.counts()["triage-overrun"] == 1, outcome.agent.counts()
     assert outcome.nodes.counts()["kill_job"] == 0, outcome.nodes.counts()
-    # The second watch carried the multiple the first one triaged.
     assert outcome.nodes.args_for("watch_job")[1]["seen_multiple"] == 10.0
     assert outcome.agent.args_for("triage-overrun")[0]["overrun_multiple"] == 10.0
 
 
 def test_the_engineer_can_kill_a_runaway_job_and_the_gate_is_rebuilt():
-    """The only way a job dies of time — an explicit engineering decision, with a
-    diagnosis attached, that then routes as any other repair does."""
+    """The only way a job dies of time — an explicit engineering decision, with a diagnosis attached, that then routes as any other repair does."""
     nodes = _Nodes(
         watch_job=[
             JobWatch(action="triage", state="running", overrun_multiple=40.0),
@@ -1048,17 +854,10 @@ def test_the_engineer_can_kill_a_runaway_job_and_the_gate_is_rebuilt():
     assert "cache it" in fix["fix_reason"], fix
 
 
-# ------------------------------------------------------------------- the budgets
 
 
 def test_the_rework_cap_hands_the_gate_to_the_lead_and_does_not_stop_the_run():
-    """An exhausted rework budget is a question, not an ending.
-
-    The cap is asserted by *changing the constant*, which is only possible because
-    there is one copy of it. What it buys is the lead: `max_reworks` is an apparatus
-    verdict, and the only persona that can say whether the gate is worth a different
-    shape is the one that owns the program's direction.
-    """
+    """An exhausted rework budget is a question, not an ending."""
     outcome = _parking(
         _script(
             **{
@@ -1078,9 +877,7 @@ def test_the_rework_cap_hands_the_gate_to_the_lead_and_does_not_stop_the_run():
 
 
 def test_the_build_fix_cap_hands_the_gate_to_the_lead_too():
-    """Same shape, different owner upstream: three engineering repairs that never
-    reached a measurement stop being "why did it crash" and become "is this gate worth
-    another shape"."""
+    """Same shape, different owner upstream: three engineering repairs that never reached a measurement stop being "why did it crash" and become "is this gate worth another shape"."""
     nodes = _Nodes(
         collect_job=[Collected(outcome="crash", fault_locus="repo", reason="segfault")]
     )
@@ -1101,8 +898,7 @@ def test_the_build_fix_cap_hands_the_gate_to_the_lead_too():
 
 
 def test_the_rescope_cap_hands_the_gate_to_the_lead():
-    """A design that will not fit the machine twice over is not a rescope away from
-    fitting; it is a gate the program has to reshape."""
+    """A design that will not fit the machine twice over is not a rescope away from fitting; it is a gate the program has to reshape."""
     outcome = _parking(
         _script(
             **{
@@ -1121,12 +917,7 @@ def test_the_rescope_cap_hands_the_gate_to_the_lead():
 
 
 def test_the_lead_review_cap_parks_on_an_operator_rather_than_ending_the_run():
-    """No arm ends in `WorkflowFailed`, and this is the one that used to.
-
-    Answering the block authorizes exactly one more review — the grant is what stops
-    the resume from re-reading the same count and blocking again, which would be a loop
-    with a human in it and worse than the give-up it replaced.
-    """
+    """No arm ends in `WorkflowFailed`, and this is the one that used to."""
     outcome = _parking(
         _script(
             **{
@@ -1144,9 +935,7 @@ def test_the_lead_review_cap_parks_on_an_operator_rather_than_ending_the_run():
 
 
 def test_one_answer_authorizes_a_lead_review_for_a_program_already_past_the_cap():
-    """The spend is program-scoped and the grants are not: a run started on a ledger two
-    reviews over the cap has to be let through by the one answer that says "one more",
-    not re-park on it until the operator has answered once per review over."""
+    """The spend is program-scoped and the grants are not: a run started on a ledger two reviews over the cap has to be let through by the one answer that says "one more", not re-park on it until the operator has answered once per review over."""
     released = _run(
         _script(
             **{
@@ -1169,8 +958,7 @@ def test_one_answer_authorizes_a_lead_review_for_a_program_already_past_the_cap(
 
 
 def test_the_extension_cap_parks_instead_of_halting_the_program():
-    """A program at the extension cap is usually deferring a verdict it could give, so
-    the question goes to a person — and the run stays resumable rather than dying."""
+    """A program at the extension cap is usually deferring a verdict it could give, so the question goes to a person — and the run stays resumable rather than dying."""
     outcome = _parking(
         _script(
             **{
@@ -1193,9 +981,7 @@ def test_the_extension_cap_parks_instead_of_halting_the_program():
 
 
 def test_the_extension_cap_counts_what_earlier_runs_spent():
-    """The counters are program-scoped, not run-scoped. A program driven by six
-    successive runs would otherwise spend the whole extension budget six times over,
-    which makes the cap bound nothing."""
+    """The counters are program-scoped, not run-scoped."""
     outcome = _parking(
         _script(
             **{
@@ -1208,14 +994,12 @@ def test_the_extension_cap_counts_what_earlier_runs_spent():
     )
 
     assert "extended itself 2 times" in outcome.blocked_text, outcome.blocked_text
-    # And the lead was told its own spend before it judged.
     review = outcome.agent.args_for("lead-goal-review")[0]
     assert review["extensions_spent"] == 2, review
 
 
 def test_extending_writes_the_spend_where_the_next_run_reads_it():
-    """`record_spend` runs for real: the ledger the *next* run reads is the artifact
-    that makes the cap survive a relaunch."""
+    """`record_spend` runs for real: the ledger the *next* run reads is the artifact that makes the cap survive a relaunch."""
     outcome = _run(
         _script(
             **{
@@ -1233,15 +1017,10 @@ def test_extending_writes_the_spend_where_the_next_run_reads_it():
     assert "status: reached" in outcome.ledger, outcome.ledger
 
 
-# ------------------------------------------------------- the lead, and the endings
 
 
 def test_a_pre_existing_kill_reaches_the_lead_rather_than_dying():
-    """A kill recorded by an earlier run is a verdict to review, not a reason to stop.
-
-    `revive` is the autonomous arm: the lead decided the kill was wrong, the gate is
-    re-scoped, and the loop continues with no person in it.
-    """
+    """A kill recorded by an earlier run is a verdict to review, not a reason to stop."""
     outcome = _run(
         _script(
             **{
@@ -1264,8 +1043,6 @@ KILLED = {
     "select-next-gate": [{"gate_id": "G1", "gate_doc_path": "g.md", "program_killed": True}],
 }
 
-#: A frozen target the in-code check accepts: 20 tasks of 400 at a 0.5 baseline is
-#: 0.05 against a pooled SE of 0.025 — two SE, exactly the floor.
 RESOLVABLE_README = (
     "# Alpha\n\n## North star\n\n"
     "| Field | Value |\n|---|---|\n"
@@ -1281,11 +1058,7 @@ RESOLVABLE_README = (
 
 
 def test_a_new_direction_is_checked_in_code_and_parks_only_when_its_target_cannot_resolve():
-    """The arm that always reached a person now reaches one only for cause. The lead
-    wrote a new ladder whose README has no resolvable frozen target; the loop reads the
-    README back, computes that, hands the exact statement to the re-charter turn once,
-    and parks with it when the second attempt is no better. The work is committed
-    before the block lands."""
+    """The arm that always reached a person now reaches one only for cause."""
     outcome = _parking(
         _script(
             **KILLED,
@@ -1320,8 +1093,7 @@ def test_a_new_direction_is_checked_in_code_and_parks_only_when_its_target_canno
 
 
 def test_a_new_direction_with_a_resolvable_target_starts_with_nobody_in_the_loop():
-    """The other half: the lead's new README carries a target the eval can resolve, the
-    in-code check passes, and the loop takes the new ladder at once."""
+    """The other half: the lead's new README carries a target the eval can resolve, the in-code check passes, and the loop takes the new ladder at once."""
 
     def writes_readme(kw: dict[str, Any]) -> Any:
         return None
@@ -1345,13 +1117,10 @@ def test_a_new_direction_with_a_resolvable_target_starts_with_nobody_in_the_loop
     assert isinstance(outcome.result, RecordResult), outcome.result
 
 
-# ---------------------------------------------------------- the program lead
 
 
 def test_a_kill_reaches_the_program_lead_before_the_gate_lead():
-    """The program-level question is asked first, on computed evidence: the dossier is
-    built with no model call and rendered into the review, and the gate lead sees the
-    same dossier when the program lead waves the kill through."""
+    """The program-level question is asked first, on computed evidence: the dossier is built with no model call and rendered into the review, and the gate lead sees the same dossier when the program lead waves the kill through."""
     outcome = _run(
         _script(
             **{
@@ -1374,7 +1143,6 @@ def test_a_kill_reaches_the_program_lead_before_the_gate_lead():
     assert review["program_reviews_max"] == research.MAX_PROGRAM_REVIEWS, review
     lead = outcome.agent.args_for("research-lead-review")[0]
     assert lead["dossier"] == review["dossier"]
-    # A revival is reviewed again before it acts.
     assert outcome.agent.counts()["program-review"] == 2, outcome.agent.counts()
     assert outcome.agent.args_for("program-review")[1]["origin"] == "revive"
     assert "program_reviews: 2" in outcome.ledger, outcome.ledger
@@ -1384,8 +1152,7 @@ def test_a_kill_reaches_the_program_lead_before_the_gate_lead():
 
 
 def test_the_program_lead_can_bank_a_killed_program_from_the_kill():
-    """`bank` is reachable from a kill, not only from an exhausted ladder — which is
-    where a circling program never arrives."""
+    """`bank` is reachable from a kill, not only from an exhausted ladder — which is where a circling program never arrives."""
     outcome = _run(
         _script(
             **KILLED,
@@ -1411,9 +1178,7 @@ def test_a_stop_negative_verdict_records_the_program_impossible():
 
 
 def test_a_probe_order_is_written_and_the_ladder_is_read_again():
-    """`probe_first` orders one cheap decisive measurement: the re-charter turn writes
-    it, nothing is re-run, and `start` picks the ladder up with the probe on top. A probe
-    is not a re-charter, so it does not spend that budget."""
+    """`probe_first` orders one cheap decisive measurement: the re-charter turn writes it, nothing is re-run, and `start` picks the ladder up with the probe on top."""
     outcome = _run(
         _script(
             **{
@@ -1446,11 +1211,7 @@ def test_a_probe_order_is_written_and_the_ladder_is_read_again():
 
 
 def test_a_probe_ordered_for_a_blocked_design_does_not_reach_the_lead_yet():
-    """`probe_first` defers the gate-level question until the probe is scored -- it does
-    not resolve anything about the blocked gate the way `recharter` does. Routing it to
-    `lead_review` immediately forces a premature revive/new_direction verdict on a gate
-    that cannot yet be judged, and since `revive` always returns to `program_review`, the
-    two states volley forever without the probe ever running."""
+    """`probe_first` defers the gate-level question until the probe is scored -- it does not resolve anything about the blocked gate the way `recharter` does."""
     outcome = _run(
         _script(
             **{
@@ -1478,9 +1239,7 @@ def test_a_probe_ordered_for_a_blocked_design_does_not_reach_the_lead_yet():
 
 
 def test_a_recharter_is_checked_in_code_and_spends_its_own_budget():
-    """The lead's `why_resolvable` is prose and is never trusted: the written numbers
-    are read back and the effect is compared to seed noise. A target that clears it
-    starts; the ledger counts the re-charter."""
+    """The lead's `why_resolvable` is prose and is never trusted: the written numbers are read back and the effect is compared to seed noise."""
     outcome = _run(
         _script(
             **{
@@ -1638,9 +1397,7 @@ def test_one_answer_authorizes_a_program_review_for_a_program_already_past_the_c
 
 
 def test_a_periodic_review_fires_after_enough_gates_and_the_clock_restarts():
-    """No kill, no escalation: three passes in a row and `start` still asks the program
-    lead whether the ladder is worth a fourth. `continue` goes straight to the gate the
-    selector named, and the cycle counter starts over so it is not asked again at once."""
+    """No kill, no escalation: three passes in a row and `start` still asks the program lead whether the ladder is worth a fourth."""
     outcome = _run(
         _script(
             **{
@@ -1665,13 +1422,11 @@ def test_a_periodic_review_fires_after_enough_gates_and_the_clock_restarts():
         for cp in outcome.checkpoints
         if cp["state"] == "start"
     ]
-    # The review at the third `start` reset the clock; G3 then passed and counted one.
     assert cycles == [0, 1, 2, 1], cycles
 
 
 def test_a_resume_rebuilds_the_program_review_s_parameters_from_the_checkpoint():
-    """`program_review` carries a `LeadReview | None` and a list of criteria; a resume
-    has to bring both back as models, and the `revive` arm reads the review."""
+    """`program_review` carries a `LeadReview | None` and a list of criteria; a resume has to bring both back as models, and the `revive` arm reads the review."""
     seen: list[dict[str, Any]] = []
     real_write = ArtifactWriter.write_state_checkpoint
 
@@ -1703,8 +1458,7 @@ def test_a_resume_rebuilds_the_program_review_s_parameters_from_the_checkpoint()
 
 
 def test_a_lead_verdict_the_loop_cannot_act_on_parks_instead_of_guessing():
-    """The conservative else arm. An unreadable verdict is a question for a person, and
-    the run waits with everything it had rather than picking an arm."""
+    """The conservative else arm."""
     outcome = _parking(
         _script(
             **{
@@ -1720,8 +1474,7 @@ def test_a_lead_verdict_the_loop_cannot_act_on_parks_instead_of_guessing():
 
 
 def test_an_impossible_verdict_ends_clean_and_concludes_the_program():
-    """A recorded negative is a real result, so it is a `Done` — and it writes the
-    ledger status that stops the *next* run until somebody re-authorizes it."""
+    """A recorded negative is a real result, so it is a `Done` — and it writes the ledger status that stops the *next* run until somebody re-authorizes it."""
     outcome = _run(
         _script(
             **{
@@ -1738,9 +1491,7 @@ def test_an_impossible_verdict_ends_clean_and_concludes_the_program():
 
 
 def test_a_banked_result_ends_clean_like_the_other_two_verdicts():
-    """The fourth verdict, and the one a ladder-shaped program otherwise cannot
-    express: the North star is not reached and nothing is ruled out, and yet the
-    strongest result so far is worth shipping now."""
+    """The fourth verdict, and the one a ladder-shaped program otherwise cannot express: the North star is not reached and nothing is ruled out, and yet the strongest result so far is worth shipping now."""
     outcome = _run(
         _script(
             **{
@@ -1756,11 +1507,7 @@ def test_a_banked_result_ends_clean_like_the_other_two_verdicts():
 
 
 def test_a_concluded_program_needs_a_human_before_it_runs_again():
-    """The one halt that is left, and it is at `setup()` — before any state runs.
-
-    It is not a give-up: nothing was attempted, and the program is telling the launcher
-    that a prior run already ended it. `reauthorize` is the human in the loop.
-    """
+    """The one halt that is left, and it is at `setup()` — before any state runs."""
     outcome = _drive(
         _script(**{"select-next-gate": [{"gate_id": "none"}]}),
         ledger="status: banked\nextensions: 0\nlead_reviews: 0\n",
@@ -1771,12 +1518,10 @@ def test_a_concluded_program_needs_a_human_before_it_runs_again():
     assert outcome.agent.calls == [], outcome.agent.calls
 
 
-# ------------------------------------------------------------ the checkpoint
 
 
 def test_the_checkpoint_carries_the_counters_an_operator_would_edit():
-    """The counters travel as one `Budget`, and the checkpoint holds its JSON
-    projection — a legible object under `params.budget`, not a repr to decode."""
+    """The counters travel as one `Budget`, and the checkpoint holds its JSON projection — a legible object under `params.budget`, not a repr to decode."""
     outcome = _run(
         _script(
             **{
@@ -1803,21 +1548,11 @@ def test_the_checkpoint_carries_the_counters_an_operator_would_edit():
         "extension_grants": 0,
         "program_review_grants": 0,
     }
-    # And it is plain JSON: every transition parameter is a str/int/list/dict, which is
-    # what lets `coerce_params` revalidate it back into a `Budget` and a
-    # `list[FailedCriterion]` on the way in.
     json.dumps(outcome.checkpoints)
 
 
 def test_a_resume_rebuilds_the_budget_from_the_checkpoint():
-    """The other half, and the one serialising alone cannot prove.
-
-    `Budget` leaves as JSON and has to come back as a *model*: `check` reads
-    `budget.reworks`, so a resume that handed it the raw dict would fail on an
-    attribute rather than on the science. The checkpoint used here is the one the
-    engine really wrote, taken through `json.dumps` and `read_resume` exactly the way a
-    relaunch takes it off disk.
-    """
+    """The other half, and the one serialising alone cannot prove."""
     seen: list[dict[str, Any]] = []
     real_write = ArtifactWriter.write_state_checkpoint
 
@@ -1861,8 +1596,6 @@ def test_a_resume_rebuilds_the_budget_from_the_checkpoint():
         mid = parse_checkpoint(
             json.dumps([c for c in seen if c["state"] == "check"][1])
         )
-        # The reader accepts either engine's checkpoint; a pyflow run writes the pyflow
-        # one, and only that arm carries the state's arguments.
         assert isinstance(mid, PyflowCheckpoint)
         assert mid.params["budget"]["reworks"] == 1, mid.params
 
@@ -1875,9 +1608,6 @@ def test_a_resume_rebuilds_the_budget_from_the_checkpoint():
                 resume,
             )
 
-    # One more rework and then the cap. A budget that had come back as zero — or as a
-    # dict `check` could not read `.reworks` off — would have spent three checks here
-    # instead of two, so the count IS the assertion that the model was rebuilt.
     counts = second.counts()
     assert counts["gate-check"] == 2, counts
     assert counts["research-lead-review"] == 1, counts

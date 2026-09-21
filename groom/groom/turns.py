@@ -1,34 +1,4 @@
-"""The durable archive of turn records, and the harvester that fills it.
-
-A run directory is where a turn record is *written*; it is not where it lives. Run dirs
-are pruned, moved, live inside a container, or belong to a machine that is not this one —
-so the transcript of the turn that explains a livelock is exactly the artifact most
-likely to be gone by the time anyone goes looking. groom already keeps the durable
-cross-run index beside its own database, and this is the same tree for bodies:
-
-``<groom data dir>/transcripts/<run_id>/<gen>-<seq>-<node>__<session>/``
-
-holding, for that one visit, the transcript the runner captured, the ``prompt.md`` that
-provoked it and the ``output.json`` it answered with. Run-major so a run can be dropped
-in one ``rm -rf``; keyed by the visit so a node visited five times is five directories
-rather than one overwritten one. A run whose session map predates the visit key gets one
-reconstructed from the map's own order — ``legacy-<ordinal>-<node>`` — because the runs
-worth going back to are mostly older than the key that addresses them.
-
-The archive is **additive and idempotent**. Harvest runs on a tick while runs are live,
-so it sees the same record many times: a record whose bytes have not changed is skipped
-on its digest, and one that has grown is re-copied and its index row replaced. Nothing
-here deletes anything a run wrote.
-
-Nothing here has a retention clock, because nothing here is ever deleted. A run whose
-telemetry ages out of SQL is *archived* rather than dropped: :mod:`groom.archive` moves
-this run's directory whole into ``archives/<run_id>/`` and writes its telemetry beside
-it. So a record is written once under ``transcripts/`` and read afterwards from
-whichever of the two roots holds it — which is what :func:`record_path` resolves.
-
-Nothing here may raise into groom's tick. A record that cannot be copied is a record that
-is not archived, which is a poorer archive and not a broken groom.
-"""
+"""The durable archive of turn records, and the harvester that fills it."""
 
 from __future__ import annotations
 
@@ -49,59 +19,30 @@ from groom import prices, store
 
 logger = logging.getLogger(__name__)
 
-#: Ceiling on one archived record. The runner already caps what it writes; this bounds
-#: the *backfill* path too, which copies out of a CLI's own store and so has never been
-#: through that cap.
 MAX_RECORD_BYTES = int(os.environ.get("GROOM_TRANSCRIPT_MAX_BYTES", str(64 * 1024 * 1024)))
 
-#: Subdirectory of a run dir holding what the capture layer wrote.
 RUN_TRANSCRIPTS = capture.TRANSCRIPTS_DIR
-#: Subdirectory of a run dir holding each visit's rendered prompt and parsed output.
 RUN_TURNS = "turns"
-#: What a run's per-turn session map is called.
 SESSION_MAP = "sessions.jsonl"
 
-#: The generation stamped on a record whose row predates the visit key, so a reader can
-#: tell a reconstructed ordinal from a number the run actually counted. Negative because
-#: the engine only ever counts up from zero — ``0`` itself is a real generation, which is
-#: why the marker cannot be a small non-negative sentinel.
 LEGACY_GENERATION = -1
-#: First segment of a reconstructed slug. Non-numeric on purpose: it cannot collide with
-#: a real ``f"{generation:03d}-{seq:05d}-{node}"``.
 LEGACY_PREFIX = "legacy"
 
 
 def transcripts_root() -> Path:
-    """Where archived records live — beside ``groom.db``, wherever that is.
-
-    Derived from :func:`groom.store.db_path` rather than from the platform data dir
-    directly, so a test (or an operator) that points ``$GROOM_DB`` somewhere else moves
-    the bodies with the index instead of writing them into the real archive.
-    """
+    """Where archived records live — beside ``groom.db``, wherever that is."""
     return store.db_path().parent / "transcripts"
 
 
 def archives_root() -> Path:
-    """Where *frozen* runs live — the sibling of :func:`transcripts_root`.
-
-    A run past its retention window is moved here whole by :mod:`groom.archive`,
-    with its telemetry written alongside its records. Siblings under one parent so
-    the promotion is a single same-filesystem :func:`os.rename`, and so the
-    harvester — which only ever knows :func:`transcripts_root` — structurally
-    cannot write into an archived run.
-    """
+    """Where *frozen* runs live — the sibling of :func:`transcripts_root`."""
     return store.db_path().parent / "archives"
 
 
-# ------------------------------------------------------------------------ discovery
 
 
 def _session_rows(run_dir: Path) -> list[dict[str, Any]]:
-    """The run's per-turn session map, one dict per turn, unparseable lines dropped.
-
-    Every key past ``node``/``session_id`` is optional: the map predates the visit key,
-    and a run recorded by an older engine still has to read.
-    """
+    """The run's per-turn session map, one dict per turn, unparseable lines dropped."""
     rows: list[dict[str, Any]] = []
     try:
         text = (run_dir / SESSION_MAP).read_text(encoding="utf-8", errors="replace")
@@ -121,22 +62,7 @@ def _session_rows(run_dir: Path) -> list[dict[str, Any]]:
 
 
 def _visits(rows: list[dict[str, Any]]) -> list[tuple[dict[str, Any], int, int, str]]:
-    """Each session-map row paired with the visit it addresses: (row, generation, seq, slug).
-
-    A row written before the engine stamped a visit key has neither number, and those
-    runs are most of the history anyone comes back to — so rather than skip them, they
-    get a key reconstructed from the map itself: generation :data:`LEGACY_GENERATION`,
-    and a seq counting the *distinct* ``(node, session)`` pairs in file order. The map is
-    append-only, so that ordinal is stable across re-harvests; deduping the pair rather
-    than counting lines is what keeps a session the runner recorded twice from becoming
-    two half-records of one session, since the CLI's store file is the whole session
-    either way.
-
-    The reconstructed slug carries a non-numeric first segment, so it can never alias a
-    real ``NNN-NNNNN-node`` — a genuine generation of ``0`` is reachable (a run dir with
-    no ``resume_generation`` file reads as one), which rules out borrowing a number as
-    the marker.
-    """
+    """Each session-map row paired with the visit it addresses: (row, generation, seq, slug)."""
     ordinals: dict[tuple[str, str], int] = {}
     visits: list[tuple[dict[str, Any], int, int, str]] = []
     for row in rows:
@@ -151,12 +77,7 @@ def _visits(rows: list[dict[str, Any]]) -> list[tuple[dict[str, Any], int, int, 
 
 
 def _sources(run_dir: Path, slug: str, session_id: str) -> list[tuple[str, Path]]:
-    """The files this visit contributed, as (name in the record, path in the run dir).
-
-    Named rather than copied wholesale so a consumer reads one layout regardless of
-    which capture source produced the transcript — and so ``source`` in the index, not
-    a filename, is what says which one it was.
-    """
+    """The files this visit contributed, as (name in the record, path in the run dir)."""
     stem = run_dir / RUN_TRANSCRIPTS / f"{slug}__{session_id}"
     found: list[tuple[str, Path]] = []
     for name, path in (
@@ -176,12 +97,7 @@ def _sources(run_dir: Path, slug: str, session_id: str) -> list[tuple[str, Path]
 
 
 def _capture_source(run_dir: Path, slug: str, session_id: str) -> str:
-    """What capture reported — ``store``, ``export``, ``tee``, or empty when absent.
-
-    Read from the sidecar meta rather than inferred from the filename, because a
-    consumer that has to guess what it is holding will guess wrong about the turn that
-    matters.
-    """
+    """What capture reported — ``store``, ``export``, ``tee``, or empty when absent."""
     meta = run_dir / RUN_TRANSCRIPTS / f"{slug}__{session_id}.meta.json"
     try:
         loaded = json.loads(meta.read_text(encoding="utf-8"))
@@ -190,16 +106,10 @@ def _capture_source(run_dir: Path, slug: str, session_id: str) -> str:
     return str(loaded.get("source", "")) if isinstance(loaded, dict) else ""
 
 
-# -------------------------------------------------------------------------- copying
 
 
 def _digest_of(sources: list[tuple[str, Path]]) -> tuple[str, int]:
-    """A content digest over the whole record, and its size in bytes.
-
-    Over every file rather than the transcript alone: a record whose prompt arrives on
-    one tick and whose transcript grows on the next has changed both times, and a digest
-    that only watched one of them would skip the other.
-    """
+    """A content digest over the whole record, and its size in bytes."""
     sha = hashlib.sha256()
     total = 0
     for name, path in sources:
@@ -227,12 +137,7 @@ def _members(name: str, path: Path) -> list[tuple[str, Path]]:
 
 
 def _copy_record(sources: list[tuple[str, Path]], target: Path) -> int:
-    """Materialize one record under ``target``; bytes written.
-
-    Rewritten from empty each time rather than merged into what is there, so a record
-    that shrank — a re-run that captured less — does not leave the older, longer file
-    beside the newer one pretending to be part of the same turn.
-    """
+    """Materialize one record under ``target``; bytes written."""
     shutil.rmtree(target, ignore_errors=True)
     target.mkdir(parents=True, exist_ok=True)
     written = 0
@@ -250,7 +155,6 @@ def _copy_record(sources: list[tuple[str, Path]], target: Path) -> int:
     return written
 
 
-# ------------------------------------------------------------------------- harvest
 
 
 def _indexed(run_id: str) -> dict[tuple[Any, Any, str], str]:
@@ -262,12 +166,7 @@ def _indexed(run_id: str) -> dict[tuple[Any, Any, str], str]:
 
 
 def harvest_run(run_dir: Path, run_id: str = "", workflow: str = "") -> int:
-    """Archive every turn record this run dir holds that is not already archived.
-
-    Returns the number of records copied — zero on a run that has not moved since the
-    last tick, which is the common case and the reason the digest check comes before any
-    copying.
-    """
+    """Archive every turn record this run dir holds that is not already archived."""
     rows = _session_rows(run_dir)
     if not rows:
         return 0
@@ -283,9 +182,6 @@ def harvest_run(run_dir: Path, run_id: str = "", workflow: str = "") -> int:
             continue
         key = (generation, seq, session_id)
         if key in copied:
-            # The map records one session twice — a retry that kept the session. Both
-            # lines address the one record, and copying it again would only overwrite it
-            # with itself and inflate what this tick claims to have archived.
             continue
         digest, _ = _digest_of(sources)
         if known.get(key) == digest:
@@ -319,12 +215,7 @@ def harvest_run(run_dir: Path, run_id: str = "", workflow: str = "") -> int:
 
 
 def known_runs() -> list[tuple[str, Path, str]]:
-    """Every run telemetry has seen a directory for: (run_id, run_dir, workflow).
-
-    Scratch and test run dirs are excluded — a suite that runs a workflow under
-    ``tempfile.mkdtemp`` produces real turn records, and archiving them durably would
-    fill the archive with runs nobody will ever come back to.
-    """
+    """Every run telemetry has seen a directory for: (run_id, run_dir, workflow)."""
     found: list[tuple[str, Path, str]] = []
     for row in store.run_directories():
         run_dir = str(row["run_dir"])
@@ -335,12 +226,7 @@ def known_runs() -> list[tuple[str, Path, str]]:
 
 
 def harvest() -> int:
-    """Harvest every known run dir that still exists on this host; records copied.
-
-    A run dir that is gone — pruned, or belonging to a container whose records arrive by
-    another path — is skipped silently. Its absence is not an error here; it is the
-    normal state of most of the rows in ``spans``.
-    """
+    """Harvest every known run dir that still exists on this host; records copied."""
     copied = 0
     for run_id, run_dir, workflow in known_runs():
         if not run_dir.is_dir():
@@ -352,20 +238,10 @@ def harvest() -> int:
     return copied
 
 
-# ------------------------------------------------------------------------ backfill
 
 
 def backfill(dry_run: bool = False) -> list[dict[str, Any]]:
-    """Archive turns whose transcript never reached the run dir but is still in the CLI's
-    own store, joining on the session ids in each known run's session map.
-
-    This is what makes the sessions already on disk from before capture existed
-    addressable, and it is an exact join rather than a heuristic: the session map says
-    which node and which visit each of those session files belongs to.
-
-    Returns one dict per record it would archive, so ``--dry-run`` and the real thing
-    report the same thing.
-    """
+    """Archive turns whose transcript never reached the run dir but is still in the CLI's own store, joining on the session ids in each known run's session map."""
     planned: list[dict[str, Any]] = []
     root = transcripts_root()
     for run_id, run_dir, workflow in known_runs():
@@ -381,9 +257,6 @@ def backfill(dry_run: bool = False) -> list[dict[str, Any]]:
             files = capture.store_files(backend, session_id)
             exported = capture.export_session(backend, session_id) if backend and not files else None
             if not files and not backend:
-                # A row from before the map recorded which CLI ran the turn. The store
-                # that holds the session is the one that answers to its id, so ask them
-                # rather than drop a turn for want of a field it was never written with.
                 backend, files = capture.probe_stores(session_id)
                 if not files:
                     backend, exported = capture.probe_exporters(session_id)
@@ -397,9 +270,6 @@ def backfill(dry_run: bool = False) -> list[dict[str, Any]]:
                 digest, size = hashlib.sha256(exported).hexdigest(), len(exported)
             else:
                 digest, size = _digest_of(sources)
-            # Recorded as known straight away, so a session the map names twice is
-            # planned once — what is being copied is the CLI's whole session file, and
-            # both lines point at the same one.
             known[key] = digest
             target = root / run_id / f"{slug}__{session_id}"
             record = {
@@ -439,22 +309,13 @@ def backfill(dry_run: bool = False) -> list[dict[str, Any]]:
     return planned
 
 
-# ---------------------------------------------------------------- model resolution
 
 
-#: Attribute paths a CLI's session record may carry the model under. Both spellings are
-#: read because the record's shape is the CLI's business, not ours.
 _MODEL_KEYS = (("message", "model"), ("model",))
 
 
 def session_models(session_id: str, backend: str = "") -> list[str]:
-    """Every model id this session's own store names, first seen first.
-
-    The turn span says what the *harness was asked for* — which for a CLI invoked as
-    `--model sonnet` is an alias no rate card can name. The session store says what the
-    provider actually ran, per assistant message. That is the difference between
-    recovering a model and guessing one.
-    """
+    """Every model id this session's own store names, first seen first."""
     files = capture.store_files(backend, session_id) if backend else []
     if not files:
         _backend, files = capture.probe_stores(session_id)
@@ -499,14 +360,7 @@ def session_models(session_id: str, backend: str = "") -> list[str]:
 
 
 def _resolved(alias: str, candidates: list[str]) -> str:
-    """The one model in `candidates` that `alias` names and the rate card prices, else "".
-
-    Two conditions, both load-bearing. The candidate has to *contain* the alias, so a
-    session that ran both opus and sonnet resolves each alias to its own model rather
-    than to whichever appeared first. And exactly one has to match — an ambiguous
-    session is left unpriced, because a coin flip between two rates is the kind of
-    number that reads as evidence and is not.
-    """
+    """The one model in `candidates` that `alias` names and the rate card prices, else ""."""
     token = alias.strip().lower()
     matched = {
         candidate
@@ -517,17 +371,7 @@ def _resolved(alias: str, candidates: list[str]) -> str:
 
 
 def resolve_models(run: str = "", dry_run: bool = False) -> dict[str, Any]:
-    """Price the turns whose recorded model is an alias, using their session stores.
-
-    A turn the card cannot price is not always a missing rate — often the rate is there
-    and the *name* is not, because the harness recorded what it was invoked with. This
-    reads the concrete id out of the session the turn ran in and prices the tokens with
-    it, stamping `priced_model` so the estimate says which rate produced it.
-
-    Returns what it resolved and what it could not: `unresolved` maps each model still
-    without a rate to its turn count, which is the list that genuinely needs a
-    `prices.toml` entry.
-    """
+    """Price the turns whose recorded model is an alias, using their session stores."""
     rows = store.unpriceable_turns(run)
     seen: dict[str, list[str]] = {}
     updates: list[tuple[float, str, str]] = []
@@ -569,16 +413,10 @@ def resolve_models(run: str = "", dry_run: bool = False) -> dict[str, Any]:
     }
 
 
-# ------------------------------------------------------------------------- reading
 
 
 def visit_label(row: dict[str, Any]) -> str:
-    """How an index row's visit reads to a human: ``3-17``, or ``legacy-17`` when the key
-    was reconstructed from a session map written before the engine stamped one.
-
-    A reader has to be able to tell the two apart: ``legacy-17`` orders the run's turns
-    and nothing more, where a real ``3-17`` is the seventeenth turn of the third start.
-    """
+    """How an index row's visit reads to a human: ``3-17``, or ``legacy-17`` when the key was reconstructed from a session map written before the engine stamped one."""
     generation, seq = row.get("generation"), row.get("seq")
     if generation == LEGACY_GENERATION:
         return f"{LEGACY_PREFIX}-{seq}"
@@ -586,19 +424,7 @@ def visit_label(row: dict[str, Any]) -> str:
 
 
 def record_path(row: dict[str, Any]) -> Path:
-    """Where an index row's bodies are — live root first, then the frozen one.
-
-    An index row outlives the move into ``archives/``: it is written while the run is
-    live and never rewritten, so its ``path`` is always relative to a root and never
-    says which one. Live is checked first because that is where anything still being
-    written is, and because the frozen copy of a run is only ever reached once the live
-    directory is gone.
-
-    The last resort covers the one case a plain two-root lookup misses: a run id that
-    was archived, resumed and archived again, whose second archive groom minted a
-    derived name for. The bodies are under ``<run_id>-<token>/`` there while the index
-    row still says ``<run_id>/``.
-    """
+    """Where an index row's bodies are — live root first, then the frozen one."""
     relative = str(row.get("path", ""))
     live = transcripts_root() / relative
     if live.exists():
@@ -613,17 +439,11 @@ def record_path(row: dict[str, Any]) -> Path:
             candidate = sibling / tail
             if candidate.exists():
                 return candidate
-    # Nothing holds it. Report where a reader would expect it rather than raising —
-    # a record that was never harvested reads as an empty one, which is the truth.
     return live
 
 
 def read_record(row: dict[str, Any]) -> dict[str, Any]:
-    """One archived record as data: its index row, its files, and the prompt text.
-
-    The transcript itself is *not* read into memory — a record can be tens of megabytes
-    and a caller that wants it wants to stream it. The path is what is returned.
-    """
+    """One archived record as data: its index row, its files, and the prompt text."""
     directory = record_path(row)
     files = sorted(p.relative_to(directory).as_posix() for p in directory.rglob("*") if p.is_file())
     prompt = ""

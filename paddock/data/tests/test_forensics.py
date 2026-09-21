@@ -1,20 +1,4 @@
-"""The forensics every round is read through: timing, reliability, churn.
-
-These are the properties that make a score trustworthy rather than merely printed, and
-each of them has been wrong at least once in a way nothing else noticed:
-
-* a node that slept on a usage cap must NEVER be flagged as a hang, while one that spent
-  the same wall-clock working must be — workhorse waits caps out by design;
-* an operator-gate escalation outranks an ordinary repair, because it is a run that would
-  have halted and asked;
-* a run that predates the workflow source is stale — the check that had itself gone stale,
-  silently, by globbing a layout that no longer existed;
-* churn is a cycle repeating, never merely a node running often — a loop over a queue
-  re-enters the same nodes once per item, and that is the workflow working.
-
-Everything here is literal: events files written by hand, a checkout that is a directory
-with the right shape. No docker, no agent, no run.
-"""
+"""The forensics every round is read through: timing, reliability, churn."""
 
 from __future__ import annotations
 
@@ -77,7 +61,6 @@ def checkout(tmp_path: Path) -> Path:
     return tmp_path / "checkout"
 
 
-# ── timing: cap-wait is never a hang ──────────────────────────────────────────────────
 
 
 def test_cap_wait_is_never_flagged_as_a_hang(tmp_path: Path) -> None:
@@ -118,7 +101,6 @@ def test_flow_containers_are_excluded(tmp_path: Path) -> None:
     assert "qa_phase" not in {n["node"] for n in fx.hang_candidates(runs, artifacts)}
 
 
-# ── reliability ───────────────────────────────────────────────────────────────────────
 
 
 def test_escalation_outranks_repair(tmp_path: Path, checkout: Path) -> None:
@@ -136,8 +118,6 @@ def test_a_run_older_than_the_workflow_source_is_stale(tmp_path: Path, checkout:
     runs = tmp_path / "runs"
     events = write_entered(runs / "run1", "plan_story") / "events.jsonl"
     source = checkout / "workflows" / "src" / "workhorse_workflows" / "flow.py"
-    # Stamped rather than touched: two touches in one test land in the same instant on a
-    # coarse clock, and the comparison is strict.
     os.utime(events, (1_000_000, 1_000_000))
     os.utime(source, (2_000_000, 2_000_000))
 
@@ -155,8 +135,7 @@ def test_a_run_newer_than_the_workflow_source_is_not_stale(tmp_path: Path, check
 
 
 def test_a_checkout_with_no_workflow_source_is_loud(tmp_path: Path) -> None:
-    """The previous spelling was a glob for a deleted layout: it matched nothing, and every
-    staleness verdict silently became False in exactly the way the check exists to catch."""
+    """The previous spelling was a glob for a deleted layout: it matched nothing, and every staleness verdict silently became False in exactly the way the check exists to catch."""
     with pytest.raises(fx.TrialError, match="no workflow source"):
         fx.read_runs(tmp_path / "runs", tmp_path / "empty")
 
@@ -166,7 +145,6 @@ def test_the_real_workflow_source_dates_something() -> None:
     assert fx.newest_source_mtime(DATA.parents[1]) > 0
 
 
-# ── churn: a repeating cycle, not a busy node ─────────────────────────────────────────
 
 
 def test_a_queue_loop_is_not_churn() -> None:
@@ -183,7 +161,6 @@ def test_a_node_retrying_itself_is_churn() -> None:
 
 def test_a_two_node_ping_pong_is_churn() -> None:
     found = fx.cycles(["qa", "fix", "qa", "fix", "qa", "fix", "done"])
-    # Reported as one 3× period-2 cycle, not as the two period-1 non-cycles it is not.
     assert {"cycle": ["qa", "fix"], "repeats": 3} in found
 
 

@@ -23,8 +23,7 @@ def test_default_db_path_honours_the_env_override(monkeypatch, tmp_path):
 
 
 def test_default_db_path_uses_the_platform_data_dir(monkeypatch):
-    """No hard-coded ~/.local/share: the location follows each OS's convention
-    (Application Support on macOS, %LOCALAPPDATA% on Windows, XDG on Linux)."""
+    """No hard-coded ~/.local/share: the location follows each OS's convention (Application Support on macOS, %LOCALAPPDATA% on Windows, XDG on Linux)."""
     monkeypatch.delenv("SADDLEBAG_DB", raising=False)
     path = default_db_path()
     assert path.name == "pool.db"
@@ -32,9 +31,7 @@ def test_default_db_path_uses_the_platform_data_dir(monkeypatch):
 
 
 def test_epoch_zero_round_trips_as_an_instant_not_none():
-    """Regression: epoch 0 is falsy. A truthiness check silently turned an expired
-    lease into 'no lease', so `doctor` under-reported stale leases while `expire`
-    (which compares in SQL) reclaimed them."""
+    """Regression: epoch 0 is falsy."""
     epoch = _dt(0.0)
     assert epoch is not None
     assert epoch.year == 1970
@@ -65,9 +62,6 @@ def test_pool_never_stores_a_password(pool: Pool, db_path: Path):
     pool.add(username="a@x.com", env="staging")
     columns = {r[1] for r in pool._conn.execute("PRAGMA table_info(credentials)")}
     assert "password" not in columns
-    # `password_ref` is the one column whose name contains the word, and it holds a
-    # set of keychain attributes — an address, checked below to be one. Nothing here
-    # may hold the value at that address.
     assert {c for c in columns if "password" in c} == {"password_ref"}
 
 
@@ -85,9 +79,6 @@ def test_a_password_reference_stores_the_address_and_not_the_secret(pool: Pool, 
 
 
 def test_a_reference_survives_a_pool_that_predates_the_column(db_path: Path):
-    # The shape an already-installed saddlebag left behind: no ref columns at all.
-    # Opening it must add them rather than fail, and every existing row reads as
-    # unlinked — which is what those credentials actually are.
     legacy = sqlite3.connect(str(db_path))
     legacy.executescript(
         "CREATE TABLE credentials (id TEXT PRIMARY KEY, username TEXT NOT NULL, "
@@ -120,7 +111,6 @@ def test_unlinking_clears_the_reference(pool: Pool):
 
 
 def test_roles_match_as_a_superset(populated: Pool):
-    # cred-001 holds {admin, billing}; cred-002 holds {admin}.
     both = populated.find(Requirement(roles=("admin", "billing")))
     assert [c.id for c in both] == ["cred-001"]
 
@@ -141,13 +131,11 @@ def test_env_and_surface_match_exactly(populated: Pool):
 def test_project_is_stored_and_filters_exactly(pool: Pool):
     pool.add(username="a@x.com", env="staging", project="checkout-web")
     pool.add(username="b@x.com", env="staging", project="billing-api")
-    pool.add(username="c@x.com", env="staging")  # no project
+    pool.add(username="c@x.com", env="staging")
 
     assert present(pool.get("cred-001")).project == "checkout-web"
     assert [c.id for c in pool.find(Requirement(project="checkout-web"))] == ["cred-001"]
-    # A project filter excludes credentials with no project.
     assert [c.id for c in pool.find(Requirement(project="billing-api"))] == ["cred-002"]
-    # No project filter returns all three.
     assert len(pool.find(Requirement())) == 3
 
 
@@ -160,8 +148,7 @@ def test_project_composes_with_other_filters(pool: Pool):
 
 
 def test_a_pool_without_the_project_column_is_migrated_on_open(db_path):
-    """An old pool.db predates `project`; opening it with a current Pool must add
-    the column additively, not error, and existing rows read project as None."""
+    """An old pool.db predates `project`; opening it with a current Pool must add the column additively, not error, and existing rows read project as None."""
     import sqlite3
 
     conn = sqlite3.connect(str(db_path))
@@ -180,7 +167,6 @@ def test_a_pool_without_the_project_column_is_migrated_on_open(db_path):
         cred = pool.get("cred-001")
         assert cred is not None
         assert cred.project is None
-        # And the migrated pool now accepts a project on new rows.
         pool.add(username="new@x.com", env="staging", project="checkout-web")
         assert present(pool.get("cred-002")).project == "checkout-web"
 
@@ -217,8 +203,6 @@ def test_expired_lease_can_be_reacquired_without_release(populated: Pool, frozen
     populated.acquire("cred-001", ttl=60, now=frozen)
     later = frozen + timedelta(seconds=61)
 
-    # The credential is stale, not locked: the TTL is the backstop that makes a
-    # leaked lease self-healing.
     cred = present(populated.get("cred-001"))
     assert cred.is_stale(later) and not cred.is_locked(later)
 

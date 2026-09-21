@@ -1,32 +1,4 @@
-"""The CI fix loop's deterministic work: the repo pick, the poll, the push.
-
-Ports `select-ci-fix-repo.py`, `await-pr-checks.py`, `push-ci.py` and `push-epic.py`.
-`resolve-workspace-dirs.py` was ported here too while `fix_ci` was the only flow that had
-it; it now lives in `shared/story.py` as `resolve_workspace_dirs`, because `dev`, `review`,
-`docs` and `qa` all run the same forty lines and one of them had to be the definition. The
-old node name survives as an alias on it, so an in-flight CI run still resumes.
-
-**The repo a node works on is a parameter now, not the process's cwd.** Every node in the
-YAML's `fix_ci` graph carried `cwd: {{ current_repo_cwd }}`, and `await-pr-checks.py` has a
-long note explaining that it must therefore use `Path.cwd()` and specifically *not*
-`find_repo_root()`, because the launch checkout would override the per-node cwd. A node
-here runs in the engine's own process, so there is no per-node cwd to inherit from — the
-directory arrives as `repo_dir` instead, which is what the flow always meant and what the
-`cwd:` field was a mechanism for.
-
-That surfaces a latent defect in the YAML rather than creating one: `push-ci.py` ran
-`push-epic.py`, which resolves with `find_repo_root()` and so *did* prefer the launch
-checkout. In a multi-repo workspace the CI loop polled one repo's PR and pushed a
-different repo's branch. It is recorded as a finding in the progress
-ledger; `push_ci_fix` takes `repo_dir` like its neighbours and only falls back to
-`find_repo_root()` when handed nothing, which is the single-repo case the YAML got right.
-
-Two subprocess artifacts are gone. `push-ci.py` was fifty lines of `runpy.run_path`,
-`sys.argv` swapping and `redirect_stdout` whose entire purpose was to reuse another
-script's **exit code** from inside a third process; `push_epic_branch` below is that
-script's body, returning the status string directly. And the `[script-name]` log prefixes
-are gone, as everywhere else in the port.
-"""
+"""The CI fix loop's deterministic work: the repo pick, the poll, the push."""
 from __future__ import annotations
 
 import logging
@@ -51,49 +23,25 @@ from workhorse_workflows.kit import (
 )
 
 def epic_branch(epic: str) -> str:
-    """The branch an epic's work lives on — the one its PR is opened from.
-
-    A helper rather than a literal because the CI gate is handed the *epic* and every
-    GitHub lookup needs the *branch*. Passing the bare epic name to `poll_pr_checks` finds
-    no PR (its head is `feat/<epic>`, never `<epic>`), and the gate reports `unavailable`,
-    which the flow passes through by design — so a whole epic merges with CI never
-    consulted and nothing in the log distinguishes that from an offline run.
-    """
+    """The branch an epic's work lives on — the one its PR is opened from."""
     return f"feat/{epic}" if epic else ""
 
 
 def branch_epic(branch: str) -> str:
-    """The epic an epic branch belongs to — `epic_branch` read the other way.
-
-    A flow handed the branch still owes the bare epic to anything that names the work
-    rather than the ref: the `Epic:` trailer a CI-fix commit carries is the epic, and a
-    trailer reading `feat/EPIC-1` matches no epic in the backlog. Deriving it beats
-    carrying a second parameter that has to agree with the first.
-
-    Only the prefix `epic_branch` mints is stripped, so a branch that never came from it
-    is returned whole rather than silently reshaped.
-    """
+    """The epic an epic branch belongs to — `epic_branch` read the other way."""
     return branch.removeprefix("feat/")
 
 
-#: An Actions run in any of these states is red. `cancelled` and `stale` are included
-#: deliberately: neither is evidence the branch is good, and treating them as green is how
-#: a broken pipeline reads as a passing one.
 FAIL_CONCLUSIONS = frozenset(
     {"failure", "timed_out", "cancelled", "startup_failure", "action_required", "stale"}
 )
 
-#: What a GitHub error message looks like when the token cannot read what was asked for,
-#: as opposed to a transient outage. The status code is checked first; this catches the
-#: cases GitHub reports with a 200 and an explanatory body.
 AUTH_RE = re.compile(
     r"resource not accessible|bad credentials|HTTP 40[13]|requires authentication"
     r"|gh auth login|must authenticate|SAML",
     re.IGNORECASE,
 )
 
-#: Consecutive polls that find no Actions runs at all before the repo is called CI-less.
-#: Not one poll: a run takes a moment to be queued after a push.
 NO_RUNS_POLL_LIMIT = 6
 
 
@@ -105,16 +53,7 @@ def select_ci_repo(
     workspace_file: str = "",
     launch_dir: str = "",
 ) -> CiRepoPick:
-    """The next repo whose CI has not been looked at yet, or "none left".
-
-    `processed` is what makes the loop terminate, and a repo joins it the moment it is
-    *picked* rather than when its CI settles — so a repo whose CI fails and exhausts the
-    fix budget is still not revisited.
-
-    A named `repo` pins the loop to that one repo; a repo named but absent from the
-    workspace is a warning and an empty pick, not a failure, because a workspace that does
-    not carry it is a configuration difference rather than a broken run.
-    """
+    """The next repo whose CI has not been looked at yet, or "none left"."""
     seen = list(processed or [])
     repos = resolve_workspace(workspace_file, launch_dir)
 
@@ -151,37 +90,12 @@ def poll_pr_checks(
     watch_timeout: int = 1200,
     poll_interval: int = 30,
 ) -> CiChecks:
-    """Block until the PR's Actions runs settle, then report what they said.
-
-    CI state is read from the **Actions runs** API rather than the check-runs resource. A
-    fine-grained PAT cannot access check-runs at all ("Resource not accessible by personal
-    access token", HTTP 403) even with Actions:Read granted — there is no fine-grained
-    "Checks" permission for user tokens — while the Actions runs/jobs/logs REST API is
-    readable with it. Gating on Actions is what keeps a least-privilege token working, with
-    no classic PAT and no GitHub App.
-
-    **Not knowing splits in two.** `unavailable` is a fact about a repo that has no CI to
-    read — no branch, no origin, no open PR, no Actions runs, no token configured to look
-    with — and the flow proceeds past it, which is what lets an offline or CI-less run
-    complete. `blocked` is the API refusing or failing: a slug that resolves to no
-    reachable repository, a PR whose head SHA cannot be read, a token GitHub will not
-    accept for Actions. Those used to be `unavailable` too, so a token missing
-    `Actions:Read` reported a green gate for every repo in the workspace; the caller
-    escalates them now. Both are logged at each site, so neither is ever silent.
-
-    The verdict is judged on the PR **head commit**, so stale runs on earlier commits of
-    the branch cannot pollute it. `watch_timeout` (1200s) bounds the wait and
-    `poll_interval` (30s) sets the cadence; a never-settling pipeline reports `failed`
-    rather than hanging the run. Both are arguments rather than environment, so a flow that
-    wants a different cadence says so where the node is called.
-    """
+    """Block until the PR's Actions runs settle, then report what they said."""
     if not branch:
         logger.info("no branch given — nothing to gate")
         return CiChecks(status="unavailable", summary="no branch given")
 
     root = Path(repo_dir) if repo_dir else find_repo_root()
-    # An explicit PR number wins over the branch lookup: a branch that has carried more
-    # than one PR can resolve to a closed one.
     pr_ref = pr_number or branch
 
     token = resolve_github_token(root)
@@ -197,10 +111,6 @@ def poll_pr_checks(
 
     repo, slug = resolve_repo(root, token)
     if repo is None:
-        # A missing slug means the origin is not a github.com URL at all — a repo with no
-        # GitHub CI to read. A slug that resolved and then would not open means the API
-        # refused or could not be reached, which is a failure to look rather than a fact
-        # about the repo.
         if not slug:
             logger.info("origin is not a github.com repo — cannot query CI for %s", branch)
             return CiChecks(status="unavailable", summary="origin not a github.com remote")
@@ -217,8 +127,6 @@ def poll_pr_checks(
     except GithubException:
         head_sha = ""
     if not head_sha:
-        # The PR is there and its head is unreadable, so there is a pipeline to gate on and
-        # no way to find out what it did.
         logger.warning("could not resolve head SHA for %s — CI was never gated", pr_ref)
         return CiChecks(
             status="blocked", summary=f"could not resolve head SHA for {pr_ref}"
@@ -238,11 +146,7 @@ def _resolve_pr(repo, pr_ref: str):
 
 
 def _poll_runs(repo, head_sha: str) -> tuple[int, int, int, str]:
-    """`(total, pending, failed, failing_names)` for the Actions runs on `head_sha`.
-
-    The failing entries carry the run **id** as well as the name, because that is what
-    lets the fixer agent pull the job logs rather than guess from a workflow name.
-    """
+    """`(total, pending, failed, failing_names)` for the Actions runs on `head_sha`."""
     total = pending = failed = 0
     failing: list[str] = []
     for wr in repo.get_workflow_runs(head_sha=head_sha):
@@ -297,8 +201,6 @@ def _watch(
                     "%d/%d run(s) still in progress for %s — waiting", pending, total, branch
                 )
             elif failed > 0:
-                # Settled, and at least one is not green. The summary names the failing
-                # workflows and their run ids so the fixer can pull the job logs.
                 names = names or f"{failed} of {total} run(s) failed"
                 logger.info("CI not green for %s@%s: %s", branch, head_sha, names)
                 return CiChecks(status="failed", summary=names.replace('"', "")[:300])
@@ -323,13 +225,7 @@ def _watch(
 
 
 def _auth_failure(logger: logging.Logger, exc: GithubException, branch: str) -> CiChecks | None:
-    """`blocked` when the token cannot read Actions, `None` when it is worth retrying.
-
-    This was a pass-through, and it is the site that ruling was aimed at: a token without
-    `Actions:Read` produced one `unavailable` per repo, every one of which the loop walked
-    past, so a workspace whose CI could not be read at all reported the same as a workspace
-    whose CI was green. The permission is a thing a person grants, so the run stops for one.
-    """
+    """`blocked` when the token cannot read Actions, `None` when it is worth retrying."""
     err = str(getattr(exc, "data", "") or exc)
     if getattr(exc, "status", None) not in (401, 403) and not AUTH_RE.search(err):
         return None
@@ -346,23 +242,7 @@ def _auth_failure(logger: logging.Logger, exc: GithubException, branch: str) -> 
 def push_epic_branch(
     logger: logging.Logger, root: Path, branch: str
 ) -> Literal["pushed", "unavailable", "failed"]:
-    """Push `branch` from `root` over HTTPS: `pushed`, `unavailable` or `failed`.
-
-    `push-epic.py`'s body, with its exit-code contract as a return value. The three
-    outcomes are distinct on purpose:
-
-    * `unavailable` — nothing to push, or no way to push it (no branch, no token, no
-      origin, a non-github remote). Tolerated, so offline and CI-less runs still complete;
-      the branch is left for a manual push.
-    * `failed` — a push was **attempted** and did not land, or landed without the remote
-      head advancing. `push_branch` verifies that head, because a push can report success
-      while leaving the ref unmoved, and an unverified push is exactly what let the CI fix
-      loop spin against an unmoved PR head until its attempts ran out.
-    * `pushed` — the push landed and the remote head was verified equal to the local one.
-
-    Not a node: two callers reach it, this module's `push_ci_fix` and the main graph's
-    PR step, and both want the status rather than a recorded node output.
-    """
+    """Push `branch` from `root` over HTTPS: `pushed`, `unavailable` or `failed`."""
     if not branch:
         logger.info("no branch given — nothing to push")
         return "unavailable"
@@ -400,12 +280,7 @@ def push_epic_branch(
 
 @blueprint.node
 def push_ci_fix(logger: logging.Logger, repo_dir: str, branch: str) -> PushOutcome:
-    """Push the CI fix, so the next poll has a new head to judge.
-
-    `repo_dir` is the repo the loop picked. It falls back to `find_repo_root()` only when
-    handed nothing, which is the single-repo case; see the module docstring for why the
-    YAML's resolution could pick the wrong repo here.
-    """
+    """Push the CI fix, so the next poll has a new head to judge."""
     root = Path(repo_dir) if repo_dir else find_repo_root()
     status = push_epic_branch(logger, root, branch)
     return PushOutcome(status=status, notes=f"{status} {branch} from {root}")

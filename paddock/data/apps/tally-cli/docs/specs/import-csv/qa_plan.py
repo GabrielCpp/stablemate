@@ -1,20 +1,4 @@
-"""The frozen QA plan for `import-csv`.
-
-Same mechanism as story 1 and for the same reasons: the product is reached over a process
-boundary as `python3 -m tally`, through the `python3` tool `agents.yml` opts into, and the
-target's `driver` is `python` because that names the harness the body runs in — there is no
-driver that names a transport. Nothing here imports `tally`.
-
-What is new is that a scenario has to put a file on disk before the product reads it, and it
-does that the same way it reads one: by handing a snippet to `python3`. A plan that wrote the
-CSV with `pathlib` would be reaching around the boundary it is supposed to be testing through.
-
-The two claims this story exists to make are both invisible to a single successful import.
-`#import-a-csv:consistency:1` is only observable on the *second* import of the same file, and
-`#import-a-malformed-row:does:1` is only observable in the bytes of a ledger that was not
-written — so both are asserted against a count and a digest, never against what the command
-said about itself.
-"""
+"""The frozen QA plan for `import-csv`."""
 
 import json
 
@@ -25,7 +9,6 @@ plan(run_id="qa-import-csv", story="import-csv")
 
 tally = target("tally", driver="python")
 
-#: Read one file as evidence: whether it is there, its digest, and its text.
 _READ = """
 import hashlib, json, pathlib, sys
 p = pathlib.Path(sys.argv[1])
@@ -36,7 +19,6 @@ else:
     json.dump({"exists": False, "sha256": None, "text": None}, sys.stdout)
 """
 
-#: Every file under a directory, keyed by its path and valued by its digest.
 _CENSUS = """
 import hashlib, json, pathlib, sys
 root = pathlib.Path(sys.argv[1])
@@ -49,7 +31,6 @@ for entry in sorted(root.rglob("*")):
 json.dump(found, sys.stdout)
 """
 
-#: Lay a file down for the product to read, over the same boundary everything else crosses.
 _WRITE = """
 import pathlib, sys
 path = pathlib.Path(sys.argv[1])
@@ -59,19 +40,11 @@ path.write_text(sys.argv[2], encoding="utf-8")
 
 
 def run(qa: Qa, ledger, *argv, timeout: float = 120.0):
-    """One invocation of the product, on the ledger this scenario owns.
-
-    Duplicated per plan rather than shared through a fixture module: `qa: {fixture_modules:}`
-    is retired, and this plan is frozen corpus, so the cost of the duplicate is a fixed one.
-    """
+    """One invocation of the product, on the ledger this scenario owns."""
     return qa.tool("python3").run("-m", "tally", "--file", str(ledger), *argv, timeout=timeout)
 
-# Obligation ids are written out in full at every assertion, never factored into a constant:
-# `ostler qa validate` reads a `covers=` list statically off the AST, so a computed id claims
-# nothing.
 
 
-#: Three expenses, none of them already in a freshly initialised ledger.
 THREE_ROWS = (
     "who,what,amount_cents,spent_on\n"
     "ana,taxi,1250,2026-03-01\n"
@@ -79,9 +52,6 @@ THREE_ROWS = (
     "ana,museum,1800,2026-03-02\n"
 )
 
-#: The same three rows under a header that is not the documented one. The rows themselves are
-#: every bit as valid as `THREE_ROWS`, so an import that accepts this file is refusing nothing
-#: — and a check that only ever feeds the product a bad *row* cannot tell the two apart.
 HEADER_IS_NOT_THE_DOCUMENTED_ONE = (
     "person,item,cents,date\n"
     "ana,taxi,1250,2026-03-01\n"
@@ -89,8 +59,6 @@ HEADER_IS_NOT_THE_DOCUMENTED_ONE = (
     "ana,museum,1800,2026-03-02\n"
 )
 
-#: The same file with a fourth row that is not an expense. Line 4 is the offending one, and
-#: the book promises the refusal names it by its 1-based number.
 ROW_FOUR_IS_NOT_MONEY = (
     "who,what,amount_cents,spent_on\n"
     "ana,taxi,1250,2026-03-01\n"
@@ -98,9 +66,6 @@ ROW_FOUR_IS_NOT_MONEY = (
     "ana,museum,twenty euro,2026-03-02\n"
 )
 
-#: Two distinct expenses and one of them a second time. Row 3 is byte-for-byte row 1, so an
-#: import that dedups only against the ledger it started from — and not within the file it is
-#: reading — lands three entries where the book promises two.
 ROW_THREE_IS_ROW_ONE_AGAIN = (
     "who,what,amount_cents,spent_on\n"
     "ana,taxi,1250,2026-03-01\n"
@@ -248,9 +213,6 @@ def importing_the_same_file_twice_leaves_what_importing_it_once_left(qa: Qa) -> 
     )
     after_doc = read(qa, ledger)
 
-    # The second import is the assertion. A `merge` that appends instead of merging is
-    # indistinguishable from a correct one up to this line: same exit code, same message
-    # shape, same ledger. What separates them is how many entries are in the file after.
     again = run(qa, ledger, "import", str(rows))
     qa.verify(
         "exit_status",
@@ -284,11 +246,6 @@ def importing_the_same_file_twice_leaves_what_importing_it_once_left(qa: Qa) -> 
         covers=["ac:2", "okf:docs/features/tally/tally.md#import-a-csv:consistency:1"],
     )
 
-    # The consistency the book asks for is on the file itself, not just the entries the CLI
-    # reports: a second import that merges correctly must leave the on-disk ledger exactly
-    # what the first import left, byte for byte — a merge that re-serialises equivalent
-    # content differently (reordered entries, rewritten floats) would pass every check above
-    # and still fail this one.
     settled_doc = read(qa, ledger)
     qa.verify(
         "unchanged",
@@ -297,10 +254,6 @@ def importing_the_same_file_twice_leaves_what_importing_it_once_left(qa: Qa) -> 
         covers=["okf:docs/features/tally/tally.md#import-a-csv:consistency:1"],
     )
 
-    # Import writes the ledger file, and so does every other command that changes the tally —
-    # the book binds them by name, `persistence: ledger-file`. What the file itself promises is
-    # therefore in no one story's diff, and is proved on the way past here: two imports have
-    # just run, so whatever they left is what a later process has to be able to read.
     document = json.loads(qa.field(settled_doc, "text"))
     qa.check(
         "the ledger is one JSON object carrying a currency string and an entries array",
@@ -314,9 +267,6 @@ def importing_the_same_file_twice_leaves_what_importing_it_once_left(qa: Qa) -> 
             "okf:docs/features/tally/concepts/ledger-file.md:consistency:1",
         ],
     )
-    # `settled` was read by a process that has since exited; this is the next one. Equality
-    # across the two is the claim that the importing command finished its write before it
-    # returned, rather than leaving the tail of it to a flush that may not have happened.
     qa.verify(
         "persists",
         (settled, entries(qa, ledger)),
@@ -326,10 +276,6 @@ def importing_the_same_file_twice_leaves_what_importing_it_once_left(qa: Qa) -> 
             "okf:docs/features/tally/concepts/ledger-file.md:persistence:1",
         ],
     )
-    # Atomicity is not observable from outside a single-threaded plan, but its mechanism is:
-    # a write that renames a temporary path over the file leaves no temporary path behind, and
-    # a half-written ledger would not have parsed two assertions ago. A write that truncated
-    # the real file in place instead is what this would catch.
     directory = census(qa, ledger)
     qa.check(
         "two imports have left the ledger and the CSV, and no half-written file beside them",
@@ -573,8 +519,6 @@ def a_dry_run_reports_what_it_would_do_and_writes_nothing_anywhere(qa: Qa) -> No
             "okf:docs/features/tally/tally.md#dry-run:semantics:1",
         ],
     )
-    # The whole directory, not the ledger: a dry run that wrote somewhere else instead shows
-    # up here as a file that appeared, and nowhere else in the scenario.
     qa.verify(
         "unchanged",
         (before, after),
@@ -585,8 +529,6 @@ def a_dry_run_reports_what_it_would_do_and_writes_nothing_anywhere(qa: Qa) -> No
         ],
     )
 
-    # The default is only a claim if the flag's absence behaves differently. Same command,
-    # same file, one flag less.
     committed = run(qa, ledger, "import", str(rows))
     landed = census(qa, ledger)
     qa.check(
@@ -724,14 +666,7 @@ def two_ledgers_in_one_directory_never_see_each_other(qa: Qa) -> None:
     ],
 )
 def a_row_the_file_lists_twice_imports_once(qa: Qa) -> None:
-    """`#import-a-csv:does:2`: identity is the whole expense, within the file too.
-
-    The one-import form of the dedup claim. A merge that seeds its seen-set from the ledger
-    but never adds to it as it goes is indistinguishable from a correct one on every other
-    scenario in this plan: same exit code, same second-import idempotence (by then the first
-    copy is already in the ledger). Only a single import of a file carrying its own duplicate
-    separates the two.
-    """
+    """`#import-a-csv:does:2`: identity is the whole expense, within the file too."""
     ledger = qa.artifact("dup-row/tally.json", kind="json")
     rows = qa.artifact("dup-row/trip.csv", kind="log")
 

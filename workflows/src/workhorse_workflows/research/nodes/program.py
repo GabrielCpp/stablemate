@@ -1,9 +1,4 @@
-"""Which research program, and what its manifest says.
-
-Ported from `base-library/workflows/research/scripts/load_config.py`. The selection
-ladder is the part worth reading: a program is one folder in the target repo, and
-nothing in this package knows any program by name.
-"""
+"""Which research program, and what its manifest says."""
 from __future__ import annotations
 
 import logging
@@ -14,15 +9,8 @@ from workhorse.pyflow import WorkflowFailed
 from workhorse_workflows.research.nodes._blueprint import blueprint
 from workhorse_workflows.research.schemas import Ledger, Program
 
-#: Keys `program.yml` must carry for the gate loop to have anything to run.
 REQUIRED = ["code_root"]
 
-#: The machine a measurement is allowed to ask for, and the containment floor it is
-#: trusted under. Declared by the program rather than read off the host: a run resumed
-#: on a bigger box must not silently accept a job the program was never sized for, and
-#: a design that overshoots is rescoped by the scientist rather than escalated to a
-#: person. Zero means "unbounded on this axis" — the check only ever refuses a
-#: *declared* limit it can compare against.
 ENVELOPE_DEFAULTS = {
     "min_containment": "premium",
     "envelope_ram_gb": 0,
@@ -31,13 +19,8 @@ ENVELOPE_DEFAULTS = {
     "envelope_disk_gb": 0,
 }
 
-#: The program-scoped counter file, beside `program.yml` and committed with it.
-#: Separate from the manifest because the manifest is written by a human and this is
-#: written by the loop — an operator resetting a program deletes this, not that.
 LEDGER_NAME = "ledger.yml"
 
-#: Statuses that mean a prior run *concluded* the program. Continuing past one is a
-#: decision a person makes, not something a relaunch should do silently.
 CONCLUDED = ("banked", "reached", "impossible")
 
 LEDGER_HEADER = """\
@@ -51,10 +34,10 @@ LEDGER_HEADER = """\
 
 
 def parse_flat_yaml(text: str, source: str) -> dict[str, str]:
-    """Parse a flat `key: value` manifest. No nesting, lists, or multiline values."""
+    """Parse a flat `key: value` manifest."""
     out: dict[str, str] = {}
     for raw in text.splitlines():
-        line = raw.split("#", 1)[0].strip()  # drop comments + surrounding space
+        line = raw.split("#", 1)[0].strip()
         if not line:
             continue
         if ":" not in line:
@@ -82,8 +65,7 @@ def slug(program_dir: str) -> str:
 
 
 def _walk_up(start: Path, predicate: Callable[[Path], bool]) -> Path | None:
-    """First directory at-or-above `start` (bounded by filesystem root) for which
-    `predicate(dir)` is true, or None."""
+    """First directory at-or-above `start` (bounded by filesystem root) for which `predicate(dir)` is true, or None."""
     cur = start.resolve()
     while True:
         if predicate(cur):
@@ -94,18 +76,12 @@ def _walk_up(start: Path, predicate: Callable[[Path], bool]) -> Path | None:
 
 
 def launch_dir(launch: str = "") -> Path:
-    """The directory the run was launched from (the program-selection signal).
-
-    An argument rather than `AGENT_LAUNCH_DIR`/`PWD`: where the operator stood is an
-    input to the selection ladder below, so it travels down from the workflow and is
-    visible in the checkpoint. Empty means the process's own working directory.
-    """
+    """The directory the run was launched from (the program-selection signal)."""
     return Path(launch or Path.cwd()).resolve()
 
 
 def resolve_repo_root(arg_repo: str, launch: str = "") -> Path:
-    """Repo root from (in order): the explicit argument, the launch dir's enclosing
-    `.git`, else cwd."""
+    """Repo root from (in order): the explicit argument, the launch dir's enclosing `.git`, else cwd."""
     if arg_repo:
         return Path(arg_repo).resolve()
     git_root = _walk_up(launch_dir(launch), lambda d: (d / ".git").exists())
@@ -113,18 +89,17 @@ def resolve_repo_root(arg_repo: str, launch: str = "") -> Path:
 
 
 def detect_program_from_launch(repo_root: Path, launch: str = "") -> str:
-    """Walk up from the launch dir to repo_root; return the repo-relative dir of the
-    nearest enclosing `program.yml`, or "" if none is found within the repo."""
+    """Walk up from the launch dir to repo_root; return the repo-relative dir of the nearest enclosing `program.yml`, or "" if none is found within the repo."""
     launch_path = launch_dir(launch)
     try:
-        launch_path.relative_to(repo_root)  # only trust a launch dir inside the repo
+        launch_path.relative_to(repo_root)
     except ValueError:
         return ""
 
     def has_manifest(d: Path) -> bool:
         if (d / "program.yml").is_file():
             return True
-        return d == repo_root  # stop the walk at the repo boundary
+        return d == repo_root
 
     hit = _walk_up(launch_path, has_manifest)
     if hit is None or not (hit / "program.yml").is_file():
@@ -133,16 +108,14 @@ def detect_program_from_launch(repo_root: Path, launch: str = "") -> str:
 
 
 def read_agents_yaml_program(repo_root: Path) -> str:
-    """Top-level `program:` value from the repo's `agents.yml` (the committed default).
-
-    A single top-level key, so a flat scan is enough and no YAML parser is needed."""
+    """Top-level `program:` value from the repo's `agents.yml` (the committed default)."""
     cfg = repo_root / "agents.yml"
     if not cfg.is_file():
-        cfg = repo_root / ".agents.yml"  # pre-farrier-1.0 name
+        cfg = repo_root / ".agents.yml"
     if not cfg.is_file():
         return ""
     for raw in cfg.read_text().splitlines():
-        if raw[:1] in (" ", "\t", "#", ""):  # only a top-level (unindented) key
+        if raw[:1] in (" ", "\t", "#", ""):
             continue
         line = raw.split("#", 1)[0].rstrip()
         if line.startswith("program:"):
@@ -166,12 +139,7 @@ def ledger_path(repo_root: Path, program_dir: str) -> Path:
 
 
 def read_ledger(path: Path) -> Ledger:
-    """The program's spent counters, or a zeroed ledger when it has none yet.
-
-    Tolerant on the way in: a hand-edited count that is not an integer reads as 0
-    rather than failing the run, because a malformed counter must not be the thing
-    that stops a program from being worked on.
-    """
+    """The program's spent counters, or a zeroed ledger when it has none yet."""
     if not path.is_file():
         return Ledger(path=str(path))
     cfg = parse_flat_yaml(path.read_text(), str(path))
@@ -203,12 +171,7 @@ def record_spend(
     program_reviews: int = 0,
     recharters: int = 0,
 ) -> Ledger:
-    """Write the program's spend back to its ledger, for the next run to read.
-
-    Called on every arm that spends one — the two lead-review arms and the extension
-    arm — and just before `publish_results`, so the counter travels with the work it
-    accounts for rather than living only in this run's checkpoint.
-    """
+    """Write the program's spend back to its ledger, for the next run to read."""
     path = ledger_path(Path(repo_dir), program_dir)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
@@ -241,25 +204,7 @@ def load_program(
     launch_dir_path: str = "",
     reauthorize: bool = False,
 ) -> Program:
-    """Select a research program and read its manifest into the run's config.
-
-    A "research program" is one folder in the target repo, defined by a flat
-    `<program_dir>/program.yml` beside its README ladder — no external registry, and
-    nothing per-program in this package. Selection, first match wins:
-
-      1. the explicit `program` param
-      2. the nearest `program.yml` at-or-above the launch dir, bounded by the repo
-      3. a top-level `program:` in the repo's `agents.yml` (the committed default)
-      4. the legacy `.agents/program` pointer
-
-    Rung 1 lost its `$RESEARCH_PROGRAM` alternative: `program` is already a workflow
-    parameter, so the environment spelling was a second way to say the same thing that no
-    checkpoint recorded.
-
-    This is also where the program's ledger is read, and where a *concluded* program
-    stops: `reauthorize` is the human in the loop that a banked result is worth
-    nothing without.
-    """
+    """Select a research program and read its manifest into the run's config."""
     program_dir = program.strip().strip("/")
     repo_root = resolve_repo_root(repo_dir.strip(), launch_dir_path)
 
@@ -296,9 +241,6 @@ def load_program(
     if missing:
         raise WorkflowFailed(f"{manifest} missing required keys: {missing}")
 
-    # Preflight: a program the gate loop can actually consume. select_gate reads the
-    # README ladder first, so a missing README is fatal; a missing code_root is only a
-    # warning (greenfield programs write their first experiment into it).
     if not (repo_root / program_dir / "README.md").is_file():
         raise WorkflowFailed(
             f"{program_dir}/README.md is missing — the gate ladder lives there. "
@@ -335,7 +277,6 @@ def load_program(
         code_root=cfg["code_root"],
         progress_path=cfg.get("progress_path") or f"{program_dir}/PROGRESS.md",
         result_branch=cfg.get("result_branch") or f"{slug(program_dir)}/auto",
-        # Empty → the leads read the README's "North star" section instead.
         goal=cfg.get("goal", ""),
         min_containment=cfg.get("min_containment") or str(
             ENVELOPE_DEFAULTS["min_containment"]
@@ -348,9 +289,6 @@ def load_program(
         lead_reviews_spent=ledger.lead_reviews,
         program_reviews_spent=ledger.program_reviews,
         recharters_spent=ledger.recharters,
-        # Reauthorizing does not un-conclude the program on disk; the loop writes the
-        # status back itself on the arm that spends. Carrying `active` here keeps the
-        # in-run reading of `self.ctx.status` about *this* run.
         status="active" if reauthorize else ledger.status,
     )
 

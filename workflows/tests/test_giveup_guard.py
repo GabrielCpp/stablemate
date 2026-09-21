@@ -1,21 +1,4 @@
-"""`scripts/check_no_giveup.py` fires, and its vocabulary list keeps the names that matter.
-
-The guard is a substring sweep, so *that* it matches is not in doubt. What is in doubt is
-everything around the match: that the sweep reaches the tracked tree, that a hit becomes a
-non-zero exit rather than a printed warning, and — the part no amount of running it on a
-clean tree can show — that the list still names the machinery of the deleted pattern.
-
-The zero-diff streak is the case that forced this file. The guard banned its
-`failure_class` string, which reads like coverage until you check the code it was written
-against: by then that exit had already become a gate, and the string was gone. The counter,
-its cap and the gate it jumped to were the whole mechanism, and the guard would have let
-all three back in. A list that can silently lose an entry is why the required names are
-asserted here rather than left to a reviewer.
-
-The names are spelled in fragments on purpose. This file is tracked under `workflows/`,
-which is exactly what the guard scans, so writing them whole would make the guard fail on
-its own test.
-"""
+"""`scripts/check_no_giveup.py` fires, and its vocabulary list keeps the names that matter."""
 from __future__ import annotations
 
 import importlib.util
@@ -27,7 +10,6 @@ import pytest
 REPO = Path(__file__).resolve().parents[2]
 SCRIPT = REPO / "scripts" / "check_no_giveup.py"
 
-#: Assembled at import time so the literal never appears in this file. See the docstring.
 REQUIRED = (
     "giveup" + "_reason",
     "operator" + "_consulted",

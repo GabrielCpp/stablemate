@@ -30,14 +30,7 @@ def prepare_story(
     story: str = "",
     repo_dir: str = "",
 ) -> StoryTarget:
-    """Resolve exactly ``epic/story`` and give its document every required section it lacks.
-
-    Called unconditionally, on every story, because there is nothing here to branch on. A story
-    written before the contract grew and a story a rework just emptied are missing headings for
-    different reasons and want the same repair, so asking "is this one old?" would only be a way
-    to get the answer wrong. `scaffold_missing_sections` is idempotent and a no-op on a story
-    that already complies.
-    """
+    """Resolve exactly ``epic/story`` and give its document every required section it lacks."""
     epic = epic.strip()
     story = story.strip()
     if not epic or not story:

@@ -1,10 +1,4 @@
-"""Resolving the run's setting: the book, the source subtree, and the drain's memory.
-
-Ported from `base-library/workflows/okf-builder/scripts/prepare.py`. The four positional
-`sys.argv` entries become typed parameters and the JSON envelope becomes a `Prepared`,
-which the workflow's `setup()` returns — so this is the one node whose result every
-state can read.
-"""
+"""Resolving the run's setting: the book, the source subtree, and the drain's memory."""
 from __future__ import annotations
 
 import json
@@ -22,13 +16,7 @@ from workhorse_workflows.okf_builder.shared.worklist import book_has_docs, load_
 
 
 def _ostler_loads(root: Path) -> tuple[bool, str]:
-    """Whether ostler can load an OKF graph at this root, and why not if it cannot.
-
-    This is about the *graph*, not about ostler: an interpreter that cannot import ostler
-    never gets here, because the workflow declares `dist: ostler` in `requires:` and
-    workhorse refuses to start the run. What remains — a root with no book, an unreadable
-    one — is a real, reportable state of the repo, and is what `ostler_ok` branches on.
-    """
+    """Whether ostler can load an OKF graph at this root, and why not if it cannot."""
     try:
         _ = Ostler(root).graph
     except (OSError, ValueError, RuntimeError) as exc:
@@ -36,24 +24,12 @@ def _ostler_loads(root: Path) -> tuple[bool, str]:
     return True, ""
 
 
-#: What the installed ostler-okf skill must carry for the build's prompts to
-#: point anywhere real: the per-type reference pages plus the two grammar sheets.
 _REFERENCES = ("references/node-types", "references/bullet-grammar.md",
                "references/check-vocabulary.md")
 
 
 def _references_ok(root: Path) -> tuple[bool, str]:
-    """Whether an installed ostler-okf skill carries the references corpus.
-
-    The prompts hand agents the path `<skill_dir>/ostler-okf/references/…` as
-    the per-type authority. On a repo whose skills predate the corpus, that path does not
-    exist, and a real run showed what happens next: every turn greps for it, finds
-    nothing, and improvises the contract from memory — the exact drift the corpus exists
-    to stop. A skill that is installed but incomplete is therefore a blocked run, not a
-    degraded one, and the fix is a farrier refresh, not agent persistence.
-    """
-    # Farrier installs the skill under the consuming repo's prefix
-    # (`<repo>-ostler-okf`), so the directory name is matched by suffix.
+    """Whether an installed ostler-okf skill carries the references corpus."""
     installs = [
         p
         for d in BACKEND_SKILL_DIR.values()
@@ -93,33 +69,7 @@ def prepare(
     sources: tuple[SourceRequest, ...] = (),
     worklist_dir: str = "",
 ) -> Prepared:
-    """Resolve paths and initialize (or adopt) the build worklist.
-
-    The worklist is the crawl's memory: a list of typed items `{kind,target,context,
-    status}` where an item's investigation may append deeper items (a surface spawns its
-    elements, an element spawns its handler layer, a layer spawns its callees).
-
-    The workflow supplies ``worklist_dir`` under its run directory. The service path
-    becomes a compatibility link to the latest run; a new run copies that queue before
-    publishing its own link. Existing checkpoints retain the path they recorded, and
-    direct callers without a run directory retain the legacy service path.
-
-    Every unusable setting comes back as a `Prepared` with `ostler_ok` false and a
-    `prepare_error` saying which one — `start()` is where that becomes a failed run.
-
-    `since` is the diff-scope narrowing: it asks for what a branch has touched, narrows
-    the worklist to that, and refuses the run if git cannot answer. With scope gone, a
-    whole-tree reconcile is the run's reading of where it is, and the per-citation
-    `@digest` stamp makes a rebase free — a rebase leaves an unchanged file's stamp
-    matching.
-
-    `recheck_only`, `diff_base`, `workspace_file` and `sources` are **retired and unread**.
-    `story` remains only as commit provenance. These inputs selected between two prepare
-    functions and three ways of computing what was stale; one reconcile against the
-    book's own `@digest` stamps answers all of them, and `recheck_only` falls out of the book
-    already existing. They stay declared for one release because deleting a field kills
-    every in-flight run on reload, so a run that passes one gets a warning, not a crash.
-    """
+    """Resolve paths and initialize (or adopt) the build worklist."""
     root = paths.docs_root(docs_path, repo_dir)
     for name, value in (("since", since), ("recheck_only", recheck_only),
                         ("diff_base", diff_base), ("workspace_file", workspace_file),
@@ -154,31 +104,22 @@ def prepare(
     features = paths.features_root(root, service)
     paths.ensure_build_dir(root)
     shared = paths.worklist_path(root, service)
-    # A queue belongs to the run that mutates it. Adopt the service's previous queue
-    # once, then keep all reads/writes beside this run's checkpoint. Removing build
-    # scratch or starting another builder must not destroy an in-flight queue.
     wl = Path(worklist_dir).resolve() / shared.name if worklist_dir else shared
     seed = wl if wl.exists() else shared
     data, reset = load_worklist(seed, service, features)
     if reset:
-        # The stamped memory was void (wrong service, unreadable, or a book that no longer
-        # exists). Silently starting from zero would look like a resume that lost its work.
         logger.warning(
             "discarded a stale worklist at %s — starting fresh for service %r", wl, service
         )
     wl.parent.mkdir(parents=True, exist_ok=True)
     wl.write_text(json.dumps(data, indent=2), encoding="utf-8")
     if worklist_dir:
-        # Compatibility/discovery alias only; the run never consumes this path after
-        # setup. Publish atomically so another setup sees either complete queue.
         alias = shared.with_name(f".{shared.name}.{uuid4().hex}")
         try:
             alias.symlink_to(wl)
             alias.replace(shared)
         finally:
             alias.unlink(missing_ok=True)
-    # The run's budget baseline: `max_items` bounds *this* run's investigations, not the
-    # worklist's lifetime total, so a resume gets its own allowance.
     baseline = sum(1 for i in data["items"] if i.get("status") == "done")
     logger.info(
         "prepared %s: book %s, source %s, worklist %s (%d items, %d done at baseline)",

@@ -1,41 +1,4 @@
-"""Test utilities for workflow authors.
-
-A workflow is a Python state machine, so testing one needs no harness: a test
-constructs the :class:`~workhorse.pyflow.workflow.Workflow`, substitutes the
-dependencies it wants to control on the run's ``RunEnv``, and drives it with
-:func:`workhorse.pyflow.driver.drive`. What that leaves over — and what lives
-here — are the two things a callable flow still cannot do for itself: stand up a
-real throwaway git repo to act on, and assert on the files it wrote.
-
-Example::
-
-    from workhorse.artifacts import ArtifactWriter
-    from workhorse.config_run import RunConfig
-    from workhorse.pyflow.driver import drive
-    from workhorse.pyflow.engine import RunEnv
-    from workhorse.testing import assert_json_file, make_git_repo
-
-    def test_select_story(tmp_path):
-        repo = make_git_repo(tmp_path / "acme")
-        writer = ArtifactWriter("acme", tmp_path / "runs", run_id="t")
-        result = drive(
-            MyWorkflow(subject="login"),
-            RunEnv(
-                writer=writer,
-                workflow_dir=Path(my_workflow.__file__).parent,
-                session_id_path=writer.run_dir / ".session_id",
-                config=RunConfig(),  # no CLI selected: the null backend, not None
-                # The seams: rebind a node, script a turn, or leave either out to
-                # get the real one. `nodes=` takes `registry.nodes` or a copy from
-                # `registry.override(...)`.
-                nodes=my_workflow.workflow.nodes,
-                agent_runner=StubRunner(scripted_turn),
-            ),
-        )
-        assert_json_file(repo, "docs/state.json", {"status": "done"})
-
-See ``docs/features/workhorse/flows/workhorse-author-test.md`` for the walkthrough.
-"""
+"""Test utilities for workflow authors."""
 
 from __future__ import annotations
 
@@ -51,13 +14,9 @@ __all__ = [
 ]
 
 
-# ── Real throwaway git repo ────────────────────────────────────────────────────
 
 def make_git_repo(path: Path, *, name: str = "test") -> Path:
-    """Initialise a minimal real git repo at ``path`` with one commit.
-
-    Git operations are tested against a REAL (cheap) repo rather than a mocked
-    ``git`` — the ``test_multi_repo_git`` pattern, generalised. Returns ``path``."""
+    """Initialise a minimal real git repo at ``path`` with one commit."""
     path.mkdir(parents=True, exist_ok=True)
     for cmd in (
         ["git", "init", "-q", "-b", "main"],
@@ -75,7 +34,6 @@ def make_git_repo(path: Path, *, name: str = "test") -> Path:
     return path
 
 
-# ── Assertion helpers ─────────────────────────────────────────────────────────
 
 def assert_file(sandbox: Path, rel: str) -> None:
     """Assert that ``sandbox / rel`` exists."""
@@ -95,11 +53,7 @@ def assert_file_contains(sandbox: Path, rel: str, text: str) -> None:
 
 
 def assert_json_file(sandbox: Path, rel: str, subset: dict | list) -> None:
-    """Assert that ``sandbox / rel`` is valid JSON matching ``subset``.
-
-    For dicts: every key/value pair in ``subset`` must be present with equal values.
-    For lists: the parsed JSON must equal ``subset`` exactly.
-    """
+    """Assert that ``sandbox / rel`` is valid JSON matching ``subset``."""
     path = sandbox / rel
     assert path.exists(), f"Expected JSON file {rel!r} to exist in sandbox, but it does not"
     try:

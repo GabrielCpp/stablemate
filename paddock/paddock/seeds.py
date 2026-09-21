@@ -1,20 +1,4 @@
-"""Capture a repo into a seed, and put a seed back on disk.
-
-The three verbs the CLI exposes, with the policy in one place:
-
-* **capture** — zip a repo as it stands, refuse the junk that must never enter a fixture,
-  and write the tracked pointer beside it.
-* **fetch** — bring a pointer's zip onto this machine over plain HTTPS, verified by
-  sha256 before it is allowed into the store.
-* **unpack** — verify, extract, and re-point the machine-local bits that a zip cannot
-  carry correctly.
-
-That last clause is the one with teeth. A repo carries absolute paths in places a zip
-reproduces faithfully and uselessly: a `.git/hooks/*` shim naming an interpreter under
-the capture machine's home, a `.venv` symlink (refused outright), a farrier-installed
-agents layer generated for a path that no longer exists. Unpack rewrites what it can
-identify and says what it could not.
-"""
+"""Capture a repo into a seed, and put a seed back on disk."""
 
 from __future__ import annotations
 
@@ -32,8 +16,6 @@ from paddock.pointer import Pointer, PointerError
 
 logger = logging.getLogger(__name__)
 
-#: How long a fetch may stall with no bytes moving before it is abandoned. A seed is
-#: hundreds of MiB, so this bounds silence, not the transfer.
 FETCH_TIMEOUT_S = 60
 
 
@@ -49,12 +31,7 @@ class Captured:
 
 
 def git_head(repo: Path) -> tuple[str, bool]:
-    """`(HEAD sha, working tree is dirty)`, or `("", False)` outside a git repo.
-
-    Recorded for legibility only — the sha256 is what identifies the seed. A pointer
-    saying which commit a fixture was captured at is how a human reading the tree six
-    months later can tell whether it predates a change they care about.
-    """
+    """`(HEAD sha, working tree is dirty)`, or `("", False)` outside a git repo."""
     def git(*args: str) -> subprocess.CompletedProcess[str]:
         return subprocess.run(
             ["git", *args], cwd=str(repo), capture_output=True, text=True, check=False
@@ -68,22 +45,12 @@ def git_head(repo: Path) -> tuple[str, bool]:
 
 
 def farrier_installed(repo: Path) -> bool:
-    """Whether the repo carries an installed agents layer.
-
-    A seed captured before `farrier install` runs is legal — a genesis task starts from
-    a bare repo on purpose — so this is a warning at capture, never a refusal.
-    """
+    """Whether the repo carries an installed agents layer."""
     return (repo / "agents.yml").exists() or (repo / ".claude").is_dir()
 
 
 def in_tree_source(repo: Path, data_dir: Path) -> str:
-    """*repo* relative to the data directory, or `""` when it is somewhere else on disk.
-
-    What separates a fixture the repo tracks — where an edit to the tree and a stale zip
-    are the same event, and the freshness guard has something to recompute — from a seed
-    captured out of a live session's workdir, which has no in-tree source and so cannot
-    drift from one.
-    """
+    """*repo* relative to the data directory, or `""` when it is somewhere else on disk."""
     try:
         return repo.resolve().relative_to(data_dir.resolve()).as_posix()
     except ValueError:
@@ -93,21 +60,7 @@ def in_tree_source(repo: Path, data_dir: Path) -> str:
 def _carried_over(
     pointer_path: Path, *, url: str, note: str, excludes: tuple[str, ...]
 ) -> tuple[str, str, tuple[str, ...]]:
-    """Inherit `url`, `note` and `excludes` from the pointer being replaced, unless named here.
-
-    A re-capture re-measures the tree; it does not re-decide where the zip is served from,
-    what the seed is, or which globs the tree is measured without. Those are the fields a
-    person typed rather than a hash computed, so a `--force` that silently blanks them costs
-    a fixture its fetch story, its one line of prose, or its reproducible digest — and the
-    usual reason to re-capture is that a file in the tree moved, which is exactly when
-    nobody is thinking about the pointer's flags.
-
-    Empty means inherit, so clearing one is an edit to the TOML rather than a flag. That is
-    the right way round: dropping a url by omission is the failure this exists to stop, and
-    a re-capture is not where you would deliberately go to do it. An explicit `--exclude`
-    replaces the recorded set rather than adding to it, so the flags on the command line are
-    the whole answer when they are given at all.
-    """
+    """Inherit `url`, `note` and `excludes` from the pointer being replaced, unless named here."""
     if not pointer_path.exists():
         return url, note, excludes
     previous = Pointer.load(pointer_path)
@@ -167,13 +120,7 @@ def capture(
 
 
 def fetch(pointer: Pointer, *, store: Path, force: bool = False) -> Path:
-    """Put the pointer's zip in the store, downloading it only if it is not already right.
-
-    The first (and so far only) backend is an unauthenticated HTTPS GET: a public bucket
-    object or a share link. Anything else — an authenticated client, a credential — is
-    deferred until a private fixture actually needs one, and would be a new branch here
-    rather than a change to the pointer format.
-    """
+    """Put the pointer's zip in the store, downloading it only if it is not already right."""
     zip_path = paths.seed_zip(store, pointer.name)
     if zip_path.exists() and not force:
         try:
@@ -201,8 +148,6 @@ def fetch(pointer: Pointer, *, store: Path, force: bool = False) -> Path:
     except (urllib.error.URLError, OSError) as exc:
         draft.unlink(missing_ok=True)
         raise SeedError(f"fetching {pointer.url}: {exc}") from exc
-    # Verified before it is allowed into the store, so a truncated or swapped download
-    # never becomes the thing the next run treats as the fixture.
     actual = archive.digest(draft)
     if actual != pointer.sha256:
         draft.unlink(missing_ok=True)
@@ -216,11 +161,7 @@ def fetch(pointer: Pointer, *, store: Path, force: bool = False) -> Path:
 def unpack(
     pointer: Pointer, *, store: Path, dest: Path, install: bool = True, project: Path | None = None
 ) -> Path:
-    """Extract the seed into *dest*, returning the repo tree inside it.
-
-    *dest* is emptied of any previous copy of this repo first: an unpack that merges into
-    a stale tree is the subtlest way a benchmark run starts from a state nobody captured.
-    """
+    """Extract the seed into *dest*, returning the repo tree inside it."""
     zip_path = fetch(pointer, store=store)
     pointer.verify(zip_path)
     repo = dest / pointer.repo_dir
@@ -235,14 +176,7 @@ def unpack(
 
 
 def reinstall(repo: Path, *, project: Path | None = None) -> bool:
-    """Re-run `farrier install` so the machine-local layer points at *this* path.
-
-    Best-effort by design. A seed of a repo farrier was never run in has nothing to
-    re-point, and a machine without farrier on it can still unpack a seed to look at it;
-    neither is a reason to fail the unpack. What is *not* best-effort is saying so — a
-    silently un-reinstalled tree is a run whose agent reads skills generated for another
-    machine's paths.
-    """
+    """Re-run `farrier install` so the machine-local layer points at *this* path."""
     if not farrier_installed(repo):
         return False
     argv = ["uv", "run", *(("--project", str(project)) if project else ()), "farrier", "install", "--repo", str(repo)]

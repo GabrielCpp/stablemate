@@ -1,9 +1,4 @@
-"""``saddlebag fill`` and ``saddlebag totp`` at the CLI boundary.
-
-The load-bearing assertion in this file is the negative one: whatever the command
-prints, and whatever it logs, must not contain the value it typed. Everything else
-here is the plumbing that gets a value to the browser.
-"""
+"""``saddlebag fill`` and ``saddlebag totp`` at the CLI boundary."""
 
 from __future__ import annotations
 
@@ -32,7 +27,7 @@ def no_inferred_project(monkeypatch: pytest.MonkeyPatch):
 
 
 class RecordingSession:
-    """Stands in for the page's WebSocket. Reports a field that accepts everything."""
+    """Stands in for the page's WebSocket."""
 
     last: "RecordingSession | None" = None
 
@@ -91,7 +86,6 @@ def out(capsys) -> str:
     return capsys.readouterr().out
 
 
-# -- fill -------------------------------------------------------------------
 
 
 def test_fills_the_password_into_the_named_selector(run, credential, fake_browser, capsys):
@@ -144,7 +138,6 @@ def test_a_browser_that_is_not_running_is_reported_not_raised(run, credential, m
     assert run("fill", credential, "--selector", "#pw") == 1
 
 
-# -- totp -------------------------------------------------------------------
 
 
 def test_stores_a_seed_and_types_a_code_rather_than_the_seed(run, credential, fake_browser, capsys, caplog):
@@ -155,9 +148,6 @@ def test_stores_a_seed_and_types_a_code_rather_than_the_seed(run, credential, fa
     code = RecordingSession.last.typed
     assert code is not None
     assert code.isdigit() and len(code) == 6
-    # Either side of a window boundary: the command computes its code microseconds
-    # before the assertion does, and pinning to exactly one window makes this test
-    # fail once every few thousand runs for no reason.
     now = time.time()
     assert code in {totp.code(RFC_SEED, now=now), totp.code(RFC_SEED, now=now - totp.PERIOD_SECONDS)}
     captured = capsys.readouterr()

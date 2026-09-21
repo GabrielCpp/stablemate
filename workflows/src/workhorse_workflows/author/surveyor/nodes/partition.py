@@ -1,19 +1,4 @@
-"""The partition gate, and the artifacts the survey hands to author.
-
-Clustering the finding records into epic/story candidates is the one place in the whole
-surveyor where real synthesis judgment is allowed — so it is also the one place that needs
-a mechanical backstop. `validate_partition` is that backstop: clustering may be smart, but
-it may never be LOSSY. An assessed unit in no cluster would drop silently out of the
-generated backlog, which is exactly the tail-dropping the surveyor exists to prevent.
-
-`emit_artifacts` then writes the survey's whole output as author's *existing* input, so
-author runs unchanged in epic mode. The exhaustiveness claim is proved upstream, here, by
-the chain `verify_records` → `validate_partition` → `emit_artifacts`; author does not
-re-assert it at intake, because a gate there would be searching a haystack containing the
-very backlog this node wrote.
-
-Ported from `surveyor/scripts/{validate-partition,emit-artifacts}.py`.
-"""
+"""The partition gate, and the artifacts the survey hands to author."""
 from __future__ import annotations
 
 import json
@@ -28,8 +13,6 @@ from workhorse_workflows.author.shared.paths import survey_repo_root
 from workhorse_workflows.author.shared.schemas.survey import EmitResult, PartitionCheck
 
 _SLUG_RE = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
-#: `mechanical` is one checklist story over many units; `dedicated` is one gnarly unit
-#: getting its own story. Nothing stack-shaped, and deliberately only two.
 STRATEGIES = {"mechanical", "dedicated"}
 
 SECTION_BEGIN = "<!-- surveyor:begin — generated; do not edit inside this fence -->"
@@ -44,13 +27,7 @@ def validate_partition(
     inventory: str = "docs/survey/inventory.json",
     repo_dir: str = "",
 ) -> PartitionCheck:
-    """Every non-clean unit maps into at least one cluster, and no cluster invents units.
-
-    Structural checks first (unique kebab ids, a title, a known strategy, a non-empty
-    `units` list, every listed unit in the frozen inventory and `assessed`), then the real
-    gate: the orphan sweep. `clean` and operator-accepted `blocked` units carry no
-    remediation work, so they may not appear at all.
-    """
+    """Every non-clean unit maps into at least one cluster, and no cluster invents units."""
     part_rel = partition.strip() or "docs/survey/partition.yaml"
     inv_rel = inventory.strip() or "docs/survey/inventory.json"
     root = survey_repo_root(repo_dir)
@@ -132,7 +109,6 @@ def validate_partition(
             else:
                 clustered_units.add(uid)
 
-    # The real gate: no assessed unit may fall out of the partition.
     orphans = sorted(
         uid
         for uid, st in unit_status.items()
@@ -152,9 +128,7 @@ def validate_partition(
 
 
 def bullet_for(cluster: dict) -> str:
-    """One backlog bullet. The cluster id in it is the traceability hop author's
-    `sourceBullet` chain extends downward: unit → finding → backlog bullet → seed → story.
-    """
+    """One backlog bullet."""
     cid = str(cluster["id"])
     title = str(cluster.get("title", "")).strip()
     strategy = str(cluster.get("strategy", ""))
@@ -176,12 +150,7 @@ def bullet_for(cluster: dict) -> str:
 
 
 def replace_section(text: str, section: str) -> str:
-    """Replace the marker-fenced survey section, or append one if absent.
-
-    Wholesale replacement inside the fence is what makes re-emitting idempotent; anything
-    outside it — a human-curated backlog, coder's `## Filed by coder` section — is
-    untouched.
-    """
+    """Replace the marker-fenced survey section, or append one if absent."""
     begin, end = text.find(SECTION_BEGIN), text.find(SECTION_END)
     if begin != -1 and end != -1 and end > begin:
         return text[:begin] + section + text[end + len(SECTION_END) :]
@@ -198,14 +167,7 @@ def emit_artifacts(
     unit_manifest: str = "docs/survey/unit-manifest.json",
     repo_dir: str = "",
 ) -> EmitResult:
-    """Write the generated backlog bullets and the unit-level manifest.
-
-    The generated backlog is the author handoff. The unit manifest remains survey
-    traceability: every unit carries the bullet ids that cover it, but author does not read
-    or mutate it while writing stories.
-
-    Runs after `validate_partition` passed, so the partition is trusted here.
-    """
+    """Write the generated backlog bullets and the unit-level manifest."""
     part_rel = partition.strip() or "docs/survey/partition.yaml"
     inv_rel = inventory.strip() or "docs/survey/inventory.json"
     manifest_rel = unit_manifest.strip() or "docs/survey/unit-manifest.json"
@@ -232,7 +194,6 @@ def emit_artifacts(
         logger.warning("inventory at %s could not be read", inv_rel)
         return EmitResult(emit_errors=f"inventory at {inv_rel} could not be read")
 
-    # ── Backlog bullets: one per cluster, in the marker-fenced generated section ───────
     ordered = sorted(
         (c for c in clusters if isinstance(c, dict)),
         key=lambda c: (c.get("order", 10**6), str(c.get("id", ""))),
@@ -244,7 +205,6 @@ def emit_artifacts(
     existing = backlog_path.read_text(encoding="utf-8") if backlog_path.is_file() else ""
     backlog_path.write_text(replace_section(existing, section), encoding="utf-8")
 
-    # ── Unit manifest: every unit + the bullets that cover it ──────────────────────────
     bullets_by_unit: dict[str, list[str]] = {}
     clusters_by_unit: dict[str, list[str]] = {}
     for c in ordered:

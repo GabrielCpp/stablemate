@@ -1,30 +1,4 @@
-"""The models the okf-builder seams need: agent replies and node returns.
-
-`self.agent(prompt, returns=T)` validates a model out of whatever the turn produced and
-reads `T`'s fields to build the output keys it asks for; a node returns a plain typed
-value. Nothing here crosses a state boundary — a transition carries keyword arguments
-bound against the next state's own signature, so a state's parameters are its schema.
-
-Every model derives from `OkfResult`, whose two rules come from how workhorse *fails*
-rather than how it succeeds:
-
-* **Every field has a default.** After the resilience ladder's last rung a node that
-  could not be answered emits its declared output keys as `null` and the run advances
-  (`workhorse/docs/GUARDRAILS.md`, "Default to the next node"). A required field would
-  turn that soft failure into a hard one.
-* **Unknown keys are ignored, nulls are dropped**, so a missing answer falls back to the
-  field's own default instead of raising.
-
-Two divergences from the YAML's output keys, both mechanical and both applied throughout:
-
-* the `"yes"`/`"no"` strings a branch matched on are **booleans**, and the counters the
-  YAML carried as `"0"` are **ints**. The YAML had no types, so every gate spelled its
-  own coercion and `guard_rounds` compared `rescan_round` to the *string* `"6"`;
-* `current_item`, `discovered` and `fixup_items` were JSON **strings** because a template
-  argument is text — hence `| tojson` at one callsite, a bare pass-through at another,
-  and `record.py`'s `ast.literal_eval` fallback for when the round trip mangled one.
-  They are typed containers here and the round trip is gone.
-"""
+"""The models the okf-builder seams need: agent replies and node returns."""
 from __future__ import annotations
 
 from typing import Any, Literal
@@ -45,7 +19,6 @@ class OkfResult(BaseModel):
         return data
 
 
-# ── the run's setting: what `prepare` resolved ──────────────────────────────
 
 
 class SourceRequest(BaseModel):
@@ -69,43 +42,21 @@ class SourceRequest(BaseModel):
 
 
 class Prepared(OkfResult):
-    """Where the book, the source and the worklist are, and whether ostler can read them.
+    """Where the book, the source and the worklist are, and whether ostler can read them."""
 
-    `setup()` returns this, so it is `self.ctx` for the whole run: the one thing every
-    state reads and no state writes.
-    """
-
-    #: The drain loop's memory, absolute.
     worklist_path: str = ""
-    #: The book being built, absolute.
     features_root: str = ""
-    #: The docs repo root, absolute.
     repo_root: str = ""
-    #: The subtree the coverage inventory walks, absolute.
     source_root: str = ""
-    #: Echoed back so a state reads one object rather than two.
     service: str = ""
-    #: Comma-separated, relative to `source_root`.
     source_excludes: str = ""
-    #: Whether ostler can load a *graph* at `repo_root` — not whether it imports.
     ostler_ok: bool = False
-    #: Items already `done` when this run started: `max_items` bounds the run, not the file.
     done_baseline: int = 0
-    #: Whether a stale worklist was discarded rather than resumed.
     worklist_reset: bool = False
-    #: Whether the book already holds markdown. It is the run's one entry decision: a
-    #: populated book is *reconciled* to HEAD (straight to the checkpoint, which is what
-    #: `recheck_only` used to ask for by hand), an empty one is filled top-down from the
-    #: code's entry surfaces.
     book_exists: bool = False
-    #: Why the run cannot proceed, when it cannot.
     prepare_error: str = ""
-    #: Stable identity of this build's scope, and the worklist's compatibility stamp.
     scope_id: str = "bulk"
 
-    #: Retired and unread, kept declared for one release: story-mode's parallel prepare is
-    #: gone and a run reconciles the book to HEAD instead. Deleting a field on `self.ctx`
-    #: kills every in-flight run on reload with a bare pydantic `extra_forbidden`.
     mode: str = "bulk"
     story_id: str = ""
     story_path: str = ""
@@ -141,7 +92,6 @@ class Stamped(OkfResult):
     skipped_nodes: list[str] = Field(default_factory=list)
 
 
-# ── the drain loop ──────────────────────────────────────────────────────────
 
 
 class Pick(OkfResult):
@@ -149,47 +99,29 @@ class Pick(OkfResult):
 
     has_item: bool = False
     over_budget: bool = False
-    #: The item as stored, so `record` can close exactly what was opened.
     current_item: dict[str, Any] = {}
-    #: The other repair rows on `current_item`'s file that this turn also takes, as stored
-    #: — `record` closes them with it (`worklist._batch`). Empty for a single-row turn.
     batch: list[dict[str, Any]] = []
     item_kind: str = ""
-    #: For a repair item (`kind == "fix:<code>"`), the bare doctor code — the one value the
-    #: repair prompt dispatches its per-remedy fragment on. Empty for a discovery item.
     item_code: str = ""
-    #: Every distinct doctor code across `current_item` and `batch`, in drain order — one
-    #: fragment each in the repair prompt. `[item_code]` for a single-row turn.
     item_codes: list[str] = []
     item_target: str = ""
     item_context: str = ""
     pending_count: int = 0
     done_count: int = 0
     done_this_run: int = 0
-    #: `"3/12"`, for the label and the activity line.
     progress: str = ""
-    #: `"5 surface · 3 layer"`, the kinds composition.
     kinds: str = ""
 
 
 class Settled(OkfResult):
     """A mid-drain settle: whether doctor was consulted, and what that closed."""
 
-    #: False when the pass was skipped — too soon since the last one, or nothing pending
-    #: that doctor could settle. Doctor is not run on a skip.
     ran: bool = False
-    #: Pending `fix:` rows closed as `stale` because doctor no longer names them.
     settled: int = 0
-    #: `done` repair rows returned to `pending` because doctor still reports their finding
-    #: (a row out of attempts goes `blocked` instead and is not counted here).
     reopened: int = 0
-    #: Repair items a fresh doctor pass would queue — the rows that still have a finding.
     standing: int = 0
     pending_count: int = 0
-    #: The worklist's `done` count after the pass, settled rows included; the next one
-    #: waits `every` more.
     at_done: int = 0
-    #: Doctor failed and nothing was settled; the row that would explain why.
     error: str = ""
 
 
@@ -199,19 +131,11 @@ class Recorded(OkfResult):
     done_count: int = 0
     pending_count: int = 0
     added: int = 0
-    #: Pending `fix:` rows closed as `stale` because the checkpoint's doctor report no
-    #: longer names them.
     settled: int = 0
-    #: Rows that reached `MAX_TARGET_ATTEMPTS` and were blocked instead of re-queued —
-    #: `{target, kind, attempts, reason}` each, for the operator gate to name them.
     blocked: list[dict[str, Any]] = []
-    #: Every blocked row on the worklist, not only the ones this write blocked. The gate
-    #: reports the standing set, so a resumed run does not hand out a shorter list than the
-    #: round that first blocked them.
     blocked_count: int = 0
 
 
-# ── adjudication ────────────────────────────────────────────────────────────
 
 
 class BlockedRows(OkfResult):
@@ -222,44 +146,24 @@ class BlockedRows(OkfResult):
 
 
 class Evidence(OkfResult):
-    """What an adjudication turn reads: the finding, the covering story, the source refs.
-
-    Built mechanically before the turn so the agent judges the *correspondence* — book
-    against source, both against the story — rather than the finding text alone. A finding
-    of the collision class is born with fault undetermined; this is the other side.
-    """
+    """What an adjudication turn reads: the finding, the covering story, the source refs."""
 
     target: str = ""
     kind: str = ""
     code: str = ""
-    #: Every node the finding names — one on a per-node finding, all members on a group.
     nodes: list[str] = []
-    #: Doctor's findings for this row, verbatim.
     findings: list[dict[str, Any]] = []
-    #: The `code:` targets of those nodes, as written in the book.
     code_refs: list[str] = []
-    #: The `story-for-node` row for the latest story with a trailer — `None` when no
-    #: reachable commit over the node's code carries one, which reads as "the code is
-    #: the intent".
     story: dict[str, Any] | None = None
-    #: That story's story.md, verbatim, so the acceptance criteria are in the turn.
     story_text: str = ""
-    #: Whether the trailer found names a story the book resolves.
     story_resolved: bool = False
-    #: What the join could not do — a malformed ref, a checkout it was not given.
     warnings: list[str] = []
-    #: What the last repair turn said when it gave the row back.
     blocked_reason: str = ""
 
 
 class Adjudication(OkfResult):
     """The turn's verdict: which side of the correspondence is wrong, and the why-chain."""
 
-    #: Required, and constrained to the three branches `apply_verdict` routes on. An
-    #: empty reply — a turn that generated nothing, or generated only reasoning — used
-    #: to validate here on the default and then crash the run three frames later, in
-    #: the node that discovered the verdict named no branch. Declaring the literal set
-    #: moves that to the agent boundary, where an unusable reply is a re-asked turn.
     verdict: Literal["book", "code", "story"]
     chain: str = Field(
         default="",
@@ -276,39 +180,27 @@ class Applied(OkfResult):
 
     verdict: str = ""
     target: str = ""
-    #: The seed id a `code` verdict filed, and the epic it landed in.
     seed: str = ""
     epic: str = ""
-    #: Nodes that received a `known-defect:` bullet.
     marked: list[str] = []
-    #: The story a `story` verdict wrote its conflict on.
     story: str = ""
-    #: Whether the row went back to the drain with a fresh allowance.
     requeued: bool = False
 
 
-# ── convergence ─────────────────────────────────────────────────────────────
 
 
 class Checkpoint(OkfResult):
     """The mechanical gate's verdict, and the repair work it queues."""
 
     checkpoint_clean: bool = False
-    #: The tail of `ostler doctor`'s findings, for the log.
     doctor_output: str = ""
-    #: The checkpoint round this pass was, already incremented.
     round: int = 0
-    #: One repair item per offending node, ready to seed onto the worklist.
     fixup_items: list[dict[str, Any]] = []
-    #: Of those, how many need a value derived from source rather than a doc edit.
     backfill_count: int = 0
-    #: Fingerprint of the finding set, to detect an unchanging re-flag.
     fixup_signature: str = ""
-    #: Consecutive rounds the finding set recurred unchanged.
     stall_rounds: int = 0
 
 
-# ── coverage ────────────────────────────────────────────────────────────────
 
 
 class SourceInventory(OkfResult):
@@ -329,24 +221,14 @@ class Coverage(OkfResult):
     coverage_path: str = ""
     coverage_summary: str = ""
     coverage_error: str = ""
-    #: `fix:stale-citation` items — one per node whose cited symbol drifted or moved under it.
-    #: Seeded straight into the worklist rather than adjudicated: an uncovered unit is a
-    #: judgement call (is this a unit at all?), a drifted one is not — the code moved and the
-    #: bullet has to follow it.
     regrounding: list[dict[str, Any]] = Field(default_factory=list)
-    #: The re-scan counter, incremented on *every* exit path — see `nodes/coverage.py`.
     rescan_round: int = 0
 
 
-# ── agent replies ───────────────────────────────────────────────────────────
 
 
 class Discovery(OkfResult):
-    """What a turn found that is not yet on the worklist.
-
-    Each entry is `{kind, target, context}`, and may carry `requeue: true` to reopen an
-    item already marked done.
-    """
+    """What a turn found that is not yet on the worklist."""
 
     discovered: list[dict[str, Any]] = []
 
@@ -354,14 +236,8 @@ class Discovery(OkfResult):
 class Investigation(Discovery):
     """One item documented — and whether it actually was."""
 
-    #: `documented` | `skipped` | `partial`; the default matches no branch.
     doc_status: str = ""
-    #: Why, when it is not `documented`. Recorded on the worklist row and printed by the
-    #: operator gate that a repeatedly-unrepairable target eventually blocks on, so the
-    #: person reading it sees the turn's own sentence rather than only a code and a count.
     note: str = ""
-    #: The subject of the commit that records this turn's book edits, in the target repo's
-    #: `type(scope): description` form. Empty when the turn changed nothing.
     commit_message: str = ""
 
 

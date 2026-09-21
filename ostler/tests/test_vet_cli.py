@@ -15,13 +15,7 @@ from ostler.vet.run import VetOutcome, run_vet
 
 
 def report_of(outcome: VetOutcome) -> VetReport:
-    """The report of a run that completed — `run_vet` sets one whenever `error` is empty.
-
-    Checking `error` here as well means a run that fails for an unrelated reason (an
-    unreadable manifest, a missing regions file) fails on this line quoting the message,
-    rather than on an attribute of `None` in whichever assertion the test happened to
-    write first. The tests that are *about* a run error read `outcome.error` directly.
-    """
+    """The report of a run that completed — `run_vet` sets one whenever `error` is empty."""
     assert not outcome.error, outcome.error
     assert outcome.report is not None, "a run without an error must carry a report"
     return outcome.report
@@ -76,7 +70,7 @@ def test_dry_run_writes_nothing(repo: Path):
     outcome, plan = run_vet(load(repo), screenshot, manifest, "01-foo", regions_file=regions)
     assert not outcome.error
     assert report_of(outcome).summary.status == "clean"
-    assert plan.render()  # non-empty diff of would-be writes
+    assert plan.render()
     assert not vet_md.exists()
 
 
@@ -149,7 +143,7 @@ def test_matched_components_get_named_crops(repo: Path):
 
     vet_dir = repo / "docs/specs/01-foo/vet"
     assert (vet_dir / "default-activity-inbox-mode.png").exists()
-    assert (vet_dir / "default-component-1.png").exists()  # empty-name positional fallback
+    assert (vet_dir / "default-component-1.png").exists()
     report = json.loads((vet_dir / "default-report.json").read_text())
     crops = {p["dom"]["name"]: p["crop"] for p in report["matched"]}
     assert crops["activity-inbox-mode"] == "vet/default-activity-inbox-mode.png"
@@ -161,7 +155,7 @@ def test_unreadable_screenshot_leaves_matched_crops_unset(repo: Path):
     pytest.importorskip("PIL")
     manifest = _write_manifest(repo, [{**NAV_ELEMENT, "name": "nav"}])
     regions = _write_regions(repo, [NAV_REGION])
-    screenshot = _screenshot(repo)  # not a real PNG
+    screenshot = _screenshot(repo)
 
     outcome, _plan = run_vet(load(repo), screenshot, manifest, "01-foo", regions_file=regions)
     assert report_of(outcome).matched[0].crop is None

@@ -1,12 +1,4 @@
-"""What `check_no_shell.py` refuses, and the two shapes it must not refuse.
-
-The guard has two enforcement points over one rule, and they fail differently: the hook that
-denies a tool call is the half that gets in the way, so its false positives are what these
-cases are mostly about — a Python file, a shell script the repo legitimately owns, a Bash
-call that *runs* a script rather than writing one. The sweep is tested against a real tree
-(`the repo itself`), because a fabricated one cannot show that the ALLOWED set still names
-files that exist.
-"""
+"""What `check_no_shell.py` refuses, and the two shapes it must not refuse."""
 
 from __future__ import annotations
 
@@ -62,13 +54,10 @@ def test_denies_authoring_a_shell_script(guard: Any, payload: dict[str, Any]) ->
     [
         _write("scripts/check_no_shell.py"),
         _write("README.md"),
-        # The allowlisted files stay editable, or the rule bans maintaining the exceptions.
         _write(str(REPO / "ostler" / "docker" / "sandbox" / "entrypoint.sh")),
         _write(str(REPO / ".githooks" / "pre-commit")),
-        # Running a script is not writing one.
         _bash("bash ostler/docker/sandbox/entrypoint.sh"),
         _bash("uv run python scripts/check_no_shell.py"),
-        # A `.sh` that is only ever read.
         _bash("grep -n exec ostler/docker/sandbox/entrypoint.sh"),
     ],
 )

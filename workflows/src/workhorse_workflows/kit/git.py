@@ -1,30 +1,4 @@
-"""The git commands workflow scripts need, wrapped so a script never shells out.
-
-GitPython is a thin wrapper over the git CLI, so behaviour matches the subprocess
-calls these replaced while the error handling routes through ``GitError``. Under test
-the git CLI still runs for real against a throwaway repo
-(``workhorse.testing.make_git_repo``) — there is nothing to monkeypatch here; only the
-GitHub seam (:mod:`workhorse_workflows.kit.github`) is faked.
-
-Each helper opens the repo lazily and returns a plain value / bool so callers stay
-fail-soft: a bad repo or failed command yields ``None``/``False``/``-1`` rather than
-raising into an unattended run.
-
-The two commit helpers are the deliberate exception. Their ``False`` means *the tree
-had nothing to commit*, and callers act on it — the coder reads it as "this story did no
-work". Laundering a git refusal (a stale ``index.lock``, a rejecting hook, a failed
-signature) into that same ``False`` tells the caller the opposite of what happened: work
-was done, git would not record it, and the run reports an idle story with the real error
-printed nowhere. So they raise ``GitCommandError`` when git refuses, and reserve ``False``
-for the empty tree.
-
-GitPython is imported at **module scope**. It used to be imported inside every
-function because importing it runs a ``git --version`` probe that crashes when ``git``
-is shadowed by a stub, and workhorse is full of git-free scripts that must import
-``scriptutil`` without a real git on PATH. That is no longer a concern here: this
-module *is* the git half, nothing imports it except code that is about to run git, and
-the engine no longer imports it at all.
-"""
+"""The git commands workflow scripts need, wrapped so a script never shells out."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -74,10 +48,7 @@ def current_branch(path: str | Path) -> str:
 
 
 def active_branch(path: str | Path) -> str | None:
-    """The current branch name, or None when HEAD is detached/unresolvable.
-
-    Unlike :func:`current_branch` (which defaults to ``"main"``), this preserves the
-    'no branch' signal callers use to fall back to a trunk."""
+    """The current branch name, or None when HEAD is detached/unresolvable."""
     try:
         name = open_repo(path).active_branch.name
     except (GitError, TypeError):
@@ -86,9 +57,7 @@ def active_branch(path: str | Path) -> str | None:
 
 
 def checkout(path: str | Path, branch: str, *, create: bool = False, reset: bool = False) -> bool:
-    """Check out ``branch``. ``create`` cuts it with ``-b``; ``reset`` create-or-resets
-    it to the current HEAD with ``-B`` (and wins over ``create``). Returns success; a
-    failure is reported as False rather than raised (best-effort)."""
+    """Check out ``branch``."""
     if reset:
         args = ["-B", branch]
     elif create:
@@ -103,19 +72,7 @@ def checkout(path: str | Path, branch: str, *, create: bool = False, reset: bool
 
 
 def branch_owner(path: str | Path, branch: str) -> str | None:
-    """The working tree that currently has ``branch`` checked out, or None.
-
-    A branch belongs to at most one working tree at a time — git enforces that, and
-    the message it gives already names the holder. This exists so a *caller* can name
-    it too, before trying: with N concurrent runs sharing one repo, "failed to create
-    branch" is a dead end, while "another run is on it, at <path>" says what happened
-    and what to look at.
-
-    Note that git's protection is not total. It refuses `checkout`, `branch -f` and
-    `branch -D` on a branch another worktree holds, but **not** `update-ref`, which
-    will happily move a branch out from under a live checkout. Nothing in this kit
-    calls `update-ref`; if something ever does, it needs this check first.
-    """
+    """The working tree that currently has ``branch`` checked out, or None."""
     try:
         listing = open_repo(path).git.worktree("list", "--porcelain")
     except GitError:
@@ -131,25 +88,7 @@ def branch_owner(path: str | Path, branch: str) -> str | None:
 
 
 def branch_merged(path: str | Path, branch: str, base: str) -> bool:
-    """True when ``branch`` carries nothing ``base`` does not already have.
-
-    Two ways that can be true, and both count:
-
-    * ``branch``'s commits are reachable from ``base`` — an ordinary merge or a
-      fast-forward.
-    * ``branch``'s *content* is identical to ``base``'s, even though its commits are
-      not reachable. This is the **squash merge**: the PR landed as one new commit on
-      base, so nothing on the branch is an ancestor of anything, yet every change it
-      made is already there.
-
-    Missing the second case is not academic — squash is the default merge on most
-    repos, so an ancestry-only check would call every landed epic branch "unmerged"
-    and refuse to reuse it. A squash-merged branch that has since *diverged* still
-    fails both tests, which is the case worth refusing.
-
-    ``base`` is tried as given and then as ``origin/<base>``, because a container may
-    hold only the remote-tracking ref.
-    """
+    """True when ``branch`` carries nothing ``base`` does not already have."""
     for ref in (base, f"origin/{base}") if base and "/" not in base else (base,):
         if not ref or not branch_exists(path, ref):
             continue
@@ -157,15 +96,14 @@ def branch_merged(path: str | Path, branch: str, base: str) -> bool:
             return True
         try:
             open_repo(path).git.diff("--quiet", ref, branch)
-            return True  # no content difference: squash-merged and untouched since
+            return True
         except GitError:
             continue
     return False
 
 
 def commits_ahead(path: str | Path, branch: str, base: str) -> int:
-    """Commits reachable from ``branch`` but not ``origin/<base>``. Returns -1 when
-    the range is unresolvable (e.g. no ``origin/<base>`` yet)."""
+    """Commits reachable from ``branch`` but not ``origin/<base>``."""
     try:
         out = open_repo(path).git.rev_list("--count", f"origin/{base}..{branch}")
         return int(out.strip())
@@ -174,75 +112,44 @@ def commits_ahead(path: str | Path, branch: str, base: str) -> int:
 
 
 def commit_paths(path: str | Path, message: str, *pathspecs: str, verify: bool = True) -> bool:
-    """Stage exactly ``pathspecs`` and commit them.
-
-    Returns False when nothing was staged (or the commit failed), True when a
-    commit was made. The staged-change check is scoped to the same pathspecs, so a
-    scoped commit lands only when those paths actually changed.
-
-    **A call with no pathspecs commits nothing and returns False.** It used to widen to
-    ``git add -A``, which turns a caller whose "what changed" list came out empty — the
-    normal shape ``commit_paths(root, msg, *changed)`` — into a caller that commits the
-    entire working tree, including work the run never did. Sweeping is a different
-    intent and has its own name: :func:`commit_all`.
-
-    ``verify=False`` commits with ``--no-verify``: the target repo's ``pre-commit`` and
-    ``commit-msg`` hooks do not run. A repo's hooks are written for the people and agents
-    who change its code; a workflow whose every commit is scoped to paths it alone writes,
-    and whose content it has already gated itself, is not that committer. A hook that
-    checks the whole working tree then fails such a commit on an unrelated edit somebody
-    else left there. Leave it True anywhere the commit carries code."""
+    """Stage exactly ``pathspecs`` and commit them."""
     if not pathspecs:
         return False
     scope = ["--", *pathspecs]
     try:
         repo = open_repo(path)
     except GitError:
-        return False  # not a repo — nothing to commit here
-    # Probe the scope before staging it. `git add` fails outright on a pathspec that
-    # matches nothing ("did not match any files"), which is an ordinary empty scope, not
-    # a refusal — and swallowing it here is what used to hide the refusals too.
-    # `git status` reports the same scope without erroring on an unmatched pathspec.
+        return False
     if not repo.git.status("--porcelain", *scope).strip():
-        return False  # nothing in scope
+        return False
     repo.git.add(*pathspecs)
     try:
         repo.git.diff("--cached", "--quiet", *scope)
-        return False  # nothing staged
+        return False
     except GitCommandError:
-        pass  # staged changes present
+        pass
     repo.git.commit("-m", message, *(() if verify else ("--no-verify",)), *scope)
     return True
 
 
 def commit_all(path: str | Path, message: str) -> bool:
-    """Stage EVERY change in the working tree (``git add -A``) and commit it. Returns
-    False when there was nothing to commit, and raises when git refused the commit.
-
-    This commits whatever else is in the tree at the time — another process's edits, a
-    half-finished refactor, a stray temp file — under this run's subject line. It is
-    only correct in a checkout the run owns exclusively (a container clone, a dedicated
-    worktree), and it is wrong in a checkout a human is also working in. A workflow that
-    writes a *known* set of paths should name them with :func:`commit_paths`."""
+    """Stage EVERY change in the working tree (``git add -A``) and commit it."""
     try:
         repo = open_repo(path)
     except GitError:
-        return False  # not a repo — nothing to commit here
+        return False
     repo.git.add("-A")
     try:
         repo.git.diff("--cached", "--quiet")
-        return False  # nothing staged
+        return False
     except GitCommandError:
-        pass  # staged changes present
+        pass
     repo.git.commit("-m", message)
     return True
 
 
 def head_sha(path: str | Path, ref: str = "HEAD") -> str:
-    """The full commit sha for ``ref``, or "" when it can't be resolved.
-
-    "" is the honest answer for an unborn HEAD, which is a state a freshly-initialised
-    repo is legitimately in rather than an error to raise on."""
+    """The full commit sha for ``ref``, or "" when it can't be resolved."""
     try:
         return open_repo(path).git.rev_parse(ref).strip()
     except GitError:
@@ -250,8 +157,7 @@ def head_sha(path: str | Path, ref: str = "HEAD") -> str:
 
 
 def short_sha(path: str | Path, ref: str = "HEAD") -> str:
-    """The abbreviated commit sha for ``ref`` (``git rev-parse --short``), or "" when
-    it can't be resolved."""
+    """The abbreviated commit sha for ``ref`` (``git rev-parse --short``), or "" when it can't be resolved."""
     try:
         return open_repo(path).git.rev_parse("--short", ref).strip()
     except GitError:
@@ -259,7 +165,7 @@ def short_sha(path: str | Path, ref: str = "HEAD") -> str:
 
 
 def rename_branch(path: str | Path, old: str, new: str) -> bool:
-    """Rename branch ``old`` to ``new`` (``git branch -m``). Returns success."""
+    """Rename branch ``old`` to ``new`` (``git branch -m``)."""
     try:
         open_repo(path).git.branch("-m", old, new)
         return True
@@ -268,8 +174,7 @@ def rename_branch(path: str | Path, old: str, new: str) -> bool:
 
 
 def restore_paths(path: str | Path, *pathspecs: str) -> bool:
-    """Discard working-tree changes to ``pathspecs`` (``git checkout -- <paths>``).
-    Returns success; a no-pathspec call is a no-op that returns False."""
+    """Discard working-tree changes to ``pathspecs`` (``git checkout -- <paths>``)."""
     if not pathspecs:
         return False
     try:
@@ -280,8 +185,7 @@ def restore_paths(path: str | Path, *pathspecs: str) -> bool:
 
 
 def default_branch(path: str | Path) -> str | None:
-    """The remote's default branch (``origin/HEAD`` → e.g. ``main``), or None when
-    ``origin/HEAD`` is not set / unresolvable."""
+    """The remote's default branch (``origin/HEAD`` → e.g."""
     try:
         ref = open_repo(path).git.symbolic_ref("--short", "refs/remotes/origin/HEAD").strip()
     except GitError:
@@ -300,18 +204,11 @@ def merge_base(path: str | Path, *refs: str) -> str | None:
     return out or None
 
 
-#: Where trunk is looked for, most-authoritative first. A remote name is preferred over a
-#: local branch of the same name because a local `main` can be arbitrarily stale.
 TRUNK_CANDIDATES = ("origin/master", "origin/main", "master", "main")
 
 
 def trunk_base(path: str | Path) -> str:
-    """The ref a branch's own work starts after: its merge base with trunk, else ``HEAD~1``.
-
-    A branch's diff is what stands between this ref and the worktree. ``HEAD`` is not that
-    ref — an agent that commits as it goes leaves a clean worktree, and diffing against
-    ``HEAD`` then reports that the branch changed nothing.
-    """
+    """The ref a branch's own work starts after: its merge base with trunk, else ``HEAD~1``."""
     for branch in TRUNK_CANDIDATES:
         base = merge_base(path, "HEAD", branch)
         if base:
@@ -320,18 +217,7 @@ def trunk_base(path: str | Path) -> str:
 
 
 def merge_ref(path: str | Path, ref: str) -> bool:
-    """Merge ``ref`` into the current branch. True on success, False on conflict.
-
-    A conflicted merge is **aborted** before returning, so the caller never inherits a
-    half-merged worktree — the tree is exactly as it was, and a caller that treats False
-    as "I could not do this, say so" is safe. Reporting the failure rather than raising
-    keeps this on the same fail-soft footing as the rest of the module; the caller owns
-    the decision about whether an unmergeable divergence should stop the run.
-
-    ``--no-edit`` because there is no terminal to answer an editor prompt in, and
-    ``--no-ff`` is deliberately *not* passed: a fast-forward is the common case here and
-    an empty merge commit for it is noise in the history a human reads later.
-    """
+    """Merge ``ref`` into the current branch."""
     try:
         open_repo(path).git.merge(ref, "--no-edit")
         return True
@@ -339,17 +225,12 @@ def merge_ref(path: str | Path, ref: str) -> bool:
         try:
             open_repo(path).git.merge("--abort")
         except GitError:
-            pass  # nothing to abort: the merge failed before it touched the tree
+            pass
         return False
 
 
 def is_ancestor(path: str | Path, ancestor: str, descendant: str) -> bool:
-    """True if ``ancestor`` is reachable from ``descendant`` (``git merge-base --is-ancestor``).
-
-    Answers "does this branch already contain that one's commits". An unresolvable ref is
-    False rather than an error, on the same best-effort footing as the rest of this module:
-    a ref that does not exist is contained by nothing.
-    """
+    """True if ``ancestor`` is reachable from ``descendant`` (``git merge-base --is-ancestor``)."""
     try:
         open_repo(path).git.merge_base("--is-ancestor", ancestor, descendant)
         return True
@@ -358,8 +239,7 @@ def is_ancestor(path: str | Path, ancestor: str, descendant: str) -> bool:
 
 
 def show_file(path: str | Path, ref: str, relpath: str) -> str | None:
-    """The contents of ``relpath`` at ``ref`` (``git show <ref>:<relpath>``), or None
-    when it didn't exist there (or git is unavailable)."""
+    """The contents of ``relpath`` at ``ref`` (``git show <ref>:<relpath>``), or None when it didn't exist there (or git is unavailable)."""
     try:
         return open_repo(path).git.show(f"{ref}:{relpath}")
     except GitError:
@@ -367,8 +247,7 @@ def show_file(path: str | Path, ref: str, relpath: str) -> str | None:
 
 
 def diff_text(path: str | Path, *args: str) -> str:
-    """Raw ``git diff <args>`` output ("" on error). The caller passes the diff
-    arguments, e.g. ``diff_text(root, "--unified=0", base, "HEAD", "--")``."""
+    """Raw ``git diff <args>`` output ("" on error)."""
     try:
         return open_repo(path).git.diff(*args)
     except GitError:
@@ -376,8 +255,7 @@ def diff_text(path: str | Path, *args: str) -> str:
 
 
 def list_tracked_files(path: str | Path, *pathspecs: str) -> list[str]:
-    """Repo-relative paths git tracks (``git ls-files``), optionally limited to
-    ``pathspecs``. Empty list when git is unavailable."""
+    """Repo-relative paths git tracks (``git ls-files``), optionally limited to ``pathspecs``."""
     try:
         out = open_repo(path).git.ls_files(*pathspecs)
     except GitError:
@@ -386,13 +264,7 @@ def list_tracked_files(path: str | Path, *pathspecs: str) -> list[str]:
 
 
 def remote_urls(path: str | Path, name: str = "origin") -> list[str]:
-    """The configured URLs for remote ``name`` — its push URL then its fetch URL,
-    de-duplicated in order. Empty when the remote or repo is absent.
-
-    Uses a bare ``git`` bound to ``path`` (not :func:`open_repo`) plus a per-call
-    ``safe.directory`` trust, so it can read a repo whose working tree is owned by
-    another user — e.g. a host-owned bind mount inside a container, which git would
-    otherwise refuse to touch with a "dubious ownership" error."""
+    """The configured URLs for remote ``name`` — its push URL then its fetch URL, de-duplicated in order."""
     repo_path = str(Path(path).resolve())
     git = Git(repo_path)
     urls: list[str] = []
@@ -407,9 +279,7 @@ def remote_urls(path: str | Path, name: str = "origin") -> list[str]:
 
 
 def set_identity(path: str | Path, name: str, email: str) -> bool:
-    """Set the repo-local ``user.name`` / ``user.email`` (``git config``). Returns
-    success. Used by unattended committers (e.g. a container agent) that have no
-    ambient git identity."""
+    """Set the repo-local ``user.name`` / ``user.email`` (``git config``)."""
     try:
         repo = open_repo(path)
         with repo.config_writer() as cw:
@@ -421,9 +291,7 @@ def set_identity(path: str | Path, name: str, email: str) -> bool:
 
 
 def allow_all_directories() -> None:
-    """Add ``*`` to the GLOBAL ``safe.directory`` list (``git config --global``), so
-    git operates on repos owned by another user — a host-owned bind mount inside a
-    disposable, isolated container. Best-effort: a failure is swallowed."""
+    """Add ``*`` to the GLOBAL ``safe.directory`` list (``git config --global``), so git operates on repos owned by another user — a host-owned bind mount inside a disposable, isolated container."""
     try:
         Git().config("--global", "--add", "safe.directory", "*")
     except GitError:
@@ -438,13 +306,7 @@ def clone(
     single_branch: bool = True,
     ssh_command: str = "",
 ) -> bool:
-    """Clone ``url`` into ``dest`` (``git clone``). Returns success.
-
-    ``ssh_command`` sets ``GIT_SSH_COMMAND`` **for this clone only** — the caller says
-    what host-key policy its remote needs instead of exporting one into the process,
-    where it would silently apply to every other git call in the run. An ambient
-    ``GIT_SSH_COMMAND`` the launcher set is still inherited when this is empty.
-    """
+    """Clone ``url`` into ``dest`` (``git clone``)."""
     kwargs: dict = {}
     if branch:
         kwargs["branch"] = branch
@@ -460,8 +322,7 @@ def clone(
 
 
 def fetch_reset(path: str | Path, branch: str, *, remote: str = "origin") -> bool:
-    """Fetch ``remote`` and hard-reset the local ``branch`` to ``<remote>/<branch>``
-    (``git fetch`` → ``checkout`` → ``reset --hard``). Returns success."""
+    """Fetch ``remote`` and hard-reset the local ``branch`` to ``<remote>/<branch>`` (``git fetch`` → ``checkout`` → ``reset --hard``)."""
     try:
         git = open_repo(path).git
         git.fetch("--quiet", remote)
@@ -475,10 +336,7 @@ def fetch_reset(path: str | Path, branch: str, *, remote: str = "origin") -> boo
 def push_to_origin(
     path: str | Path, branch: str, *, remote: str = "origin", force_with_lease: bool = False
 ) -> bool:
-    """Push ``branch`` to ``remote`` using the checkout's AMBIENT credentials (SSH key
-    or a cached helper) — not a token (see
-    :func:`workhorse_workflows.kit.github.push_branch` for token pushes).
-    ``force_with_lease`` adds ``--force-with-lease``. Returns success."""
+    """Push ``branch`` to ``remote`` using the checkout's AMBIENT credentials (SSH key or a cached helper) — not a token (see :func:`workhorse_workflows.kit.github.push_branch` for token pushes)."""
     args = ["--quiet"]
     if force_with_lease:
         args.append("--force-with-lease")

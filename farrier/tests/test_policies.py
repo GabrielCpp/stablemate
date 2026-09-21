@@ -1,18 +1,4 @@
-"""Policies: library text that only ever lands in a generated AGENTS.md.
-
-A policy is a standing rule an agent has to know *before* it knows it needs one, so
-it is aggregated into the always-loaded instruction file. What makes it a kind of its
-own rather than a skill that happens to be aggregated is what it does **not** cost: a
-skill pays twice here — its body is fully resident in AGENTS.md *and* its name and
-description still sit in the skill index the agent carries every turn, advertising
-something nobody can usefully invoke. A policy is never installed, so there is no
-second charge.
-
-The invariant the tests below pin: a policy is reachable from `agents.yml`
-localInstructions and from nowhere else, ever.
-
-    ./.venv/bin/python -m pytest tests/test_policies.py
-"""
+"""Policies: library text that only ever lands in a generated AGENTS.md."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -84,7 +70,6 @@ FULL_MAPPING = (
 
 
 def test_policy_body_is_aggregated_before_skills_and_prompts(tmp_path):
-    # Standing rules above the procedures that run under them.
     repo, outputs = _render(tmp_path, FULL_MAPPING)
     body = outputs[repo / "AGENTS.md"]
     assert body.index("Commit as you go.") < body.index("Ostler rules.")
@@ -92,14 +77,12 @@ def test_policy_body_is_aggregated_before_skills_and_prompts(tmp_path):
 
 
 def test_policy_front_matter_never_reaches_the_generated_file(tmp_path):
-    # The `description:` argues why the text deserves to be resident forever. It is a
-    # review bar for the author, not a line for the agent to read every turn.
     repo, outputs = _render(tmp_path, FULL_MAPPING)
     assert "This repo's standing rules." not in outputs[repo / "AGENTS.md"]
 
 
 def test_a_policy_is_installed_nowhere(tmp_path):
-    """The invariant. A policy that reached any output path would be a skill again."""
+    """The invariant."""
     repo, outputs = _render(tmp_path, FULL_MAPPING)
     generated = {path for path in outputs if path.name not in ("AGENTS.md", "CLAUDE.md")}
     assert not [path for path in generated if "house-rules" in path.as_posix()]
@@ -109,9 +92,6 @@ def test_a_policy_is_installed_nowhere(tmp_path):
 
 
 def test_a_policy_is_named_by_bare_basename_with_no_prefix(tmp_path):
-    # `demo-` is this repo's install prefix, and every installed skill carries it. A
-    # policy has no installed name to prefix, so the name in agents.yml is the name on
-    # disk — and the prefixed spelling must not quietly work as an alias.
     with pytest.raises(SystemExit) as exc:
         _render(
             tmp_path,
@@ -142,8 +122,6 @@ def test_unknown_policy_names_the_ones_that_exist(tmp_path):
 
 
 def test_one_basename_in_two_namespaces_is_ambiguous(tmp_path):
-    # The reference in a repo's config could not say which was meant, and silently
-    # picking one puts the wrong rules in every turn's context.
     with pytest.raises(SystemExit) as exc:
         _render(
             tmp_path,
@@ -213,8 +191,6 @@ def test_an_overlay_policy_shadows_the_base_one(tmp_path, monkeypatch):
 
 @pytest.mark.parametrize("name", ["AGENTS.md", "CLAUDE.md"])
 def test_source_resolves_a_generated_file_back_to_its_policy(tmp_path, capsys, name):
-    # `farrier source` answers "which file do I edit" — and for a policy that is the
-    # only question there is, since there is no installed copy to open instead.
     root = _library(tmp_path)
     repo = _repo(
         tmp_path,

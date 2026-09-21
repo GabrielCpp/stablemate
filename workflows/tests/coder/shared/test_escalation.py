@@ -1,10 +1,4 @@
-"""The body a coder flow publishes when it stops and asks a human.
-
-`compose_escalation` is a plain node, so it is called plainly here. What the flow tests
-cover is that each gate reaches `Await` with this body; what is covered here is the body
-itself — the ordering a reader depends on, and the two things it must never lose: the
-resolver's note already on disk, and the fact that nobody investigated when nobody did.
-"""
+"""The body a coder flow publishes when it stops and asks a human."""
 from __future__ import annotations
 
 import logging
@@ -37,11 +31,7 @@ def _story(tmp_path: Path) -> str:
 
 
 def test_the_gate_is_a_whole_context_file_the_engine_leaves_alone(tmp_path: Path) -> None:
-    """`format_operator_gate` passes a structured body through and only re-arms it.
-
-    That is the contract this composer is written against: a body that arrived without a
-    `STATUS:` line would be wrapped in the engine's own heading and read as a bare question.
-    """
+    """`format_operator_gate` passes a structured body through and only re-arms it."""
     gate = compose_escalation(
         LOG, story_path=_story(tmp_path), number=1, block_kind="qa", block_notes="the suite is red"
     )
@@ -82,7 +72,6 @@ def test_the_body_answers_the_five_questions_a_reader_arrives_with(tmp_path: Pat
     assert resolution.summary in gate.body
     assert f"- story: `{story}`" in gate.body
     assert "- run dir: `/w/.runs/coder-1`" in gate.body
-    # The order is the reading order, not an accident of construction.
     assert gate.body.index("What blocked") < gate.body.index("tried and ruled out")
     assert gate.body.index("tried and ruled out") < gate.body.index("Where everything is")
 
@@ -90,40 +79,25 @@ def test_the_body_answers_the_five_questions_a_reader_arrives_with(tmp_path: Pat
 def test_the_resolver_s_note_survives_the_write_that_would_have_erased_it(
     tmp_path: Path,
 ) -> None:
-    """The whole reason the escalated arms used to publish nothing.
-
-    `Await` writes its questions over `context.md` with `write_text`, so a body that did not
-    contain the note the resolver had just written there would destroy it — the human would
-    arrive to the question instead of the investigation.
-    """
+    """The whole reason the escalated arms used to publish nothing."""
     story = _story(tmp_path)
     (Path(story).parent / "context.md").write_text(NOTE, encoding="utf-8")
 
     gate = compose_escalation(LOG, story_path=story, number=1, block_kind="qa", tried=["one"])
 
     assert NOTE.strip() in gate.body
-    # And the file's own `STATUS:` line is the composer's, not the quoted one — every
-    # reader in `workhorse.gates` matches the first.
     assert gate.body.startswith("STATUS: AWAITING_OPERATOR")
 
 
 def test_a_gate_nobody_investigated_says_so(tmp_path: Path) -> None:
-    """`human`/`operator` mode reaches the same gate with no resolver behind it.
-
-    An empty `tried` section rendered as a heading with nothing under it reads as "it tried
-    nothing", which is a different and more damning claim than "nothing ran".
-    """
+    """`human`/`operator` mode reaches the same gate with no resolver behind it."""
     gate = compose_escalation(LOG, story_path=_story(tmp_path), number=1, block_kind="review")
 
     assert "no auto-resolver ran" in gate.body
 
 
 def test_the_node_s_own_findings_reach_the_operator(tmp_path: Path) -> None:
-    """A block that arrives here with evidence is one nobody could route.
-
-    Every finding a fixer could act on has already gone to that fixer, so what is left is
-    what the operator has to look at — and prose about "three failures" is not that.
-    """
+    """A block that arrives here with evidence is one nobody could route."""
     gate = compose_escalation(
         LOG,
         story_path=_story(tmp_path),
@@ -139,7 +113,6 @@ def test_the_node_s_own_findings_reach_the_operator(tmp_path: Path) -> None:
 
     assert "### What the node found" in gate.body
     assert "- `web/tests/todo.spec.ts:40` — no seeded editor → add one to the fixture" in gate.body
-    # A finding with no target still shows: unroutable is exactly why it is here.
     assert "- `(no target given)` — the emulator refuses every account" in gate.body
     assert gate.body.index("tried and ruled out") < gate.body.index("What the node found")
     assert gate.body.index("What the node found") < gate.body.index("Where everything is")
@@ -166,6 +139,5 @@ def test_a_long_history_is_bounded_and_says_where_it_was_cut(tmp_path: Path) -> 
 
 
 def test_an_older_resolution_without_a_tried_list_still_parses() -> None:
-    """`tried` is added, defaulted and never required — a resumed run's checkpoint, and a
-    resolver that answered rather than escalated, both predate it."""
+    """`tried` is added, defaulted and never required — a resumed run's checkpoint, and a resolver that answered rather than escalated, both predate it."""
     assert OperatorResolution.model_validate({"decision": "answered", "summary": "use dev"}).tried == []

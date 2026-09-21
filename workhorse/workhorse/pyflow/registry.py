@@ -1,27 +1,4 @@
-"""The module-level object a workflow's console script points at.
-
-```python
-workflow = Registry("coder", package=__package__).add_blueprints(kit.blueprint, blueprint)
-main = console_script(workflow.entry_point(Coder))
-```
-
-This object *is* the workflow, as far as anything outside the module is concerned.
-`main` — *the callable `console_script` returns*, never a call made at import — is what
-the distribution binds as its `workhorse-coder` script, and it carries this registry
-with it. Nothing resolves a workflow by name: a workflow module must stay importable
-without running anything, and the script that imports it already knows which one it got.
-
-`console_script` lives in `workhorse.cli`, not here. A registry that built its own
-console callable had to import the CLI, which imports the driver, which imports this
-module; the arrow points the other way now.
-
-It is also the run's **composition root**. `registry.nodes` is not bookkeeping: it is
-what `self.call` resolves against, so a substituted copy of it (`override(...)`,
-`stub_nodes(...)`) is how a test or a dry run replaces a node without patching anyone's
-module attributes. Registration travels with the flow class as well as the node
-function, which is what lets a handed-off sub-flow bring its own prompts and its own
-node table instead of inheriting its caller's.
-"""
+"""The module-level object a workflow's console script points at."""
 from __future__ import annotations
 
 import dataclasses
@@ -37,54 +14,21 @@ from workhorse.pyflow.errors import WorkflowDefinitionError
 from workhorse.pyflow.names import NameIndex
 from workhorse.pyflow.workflow import Workflow, state
 
-#: Attribute stamped on a registered flow class. `self.handoff(Surveyor, …)` takes the
-#: class, not a name, so the registration has to travel with it — the same idiom as
-#: `NODE_ATTR` on a node function, for the same reason.
 REGISTRY_ATTR = "__workhorse_registry__"
 
 
 def registry_of(cls: type[Workflow]) -> "Registry | None":
-    """The registry that claimed `cls`, or None if it was never registered.
-
-    None means "inherit the caller's world", which is what keeps a sub-flow declared
-    beside its parent working with no ceremony. Read off `cls.__dict__` rather than
-    with `getattr`, so a subclass of a registered flow is unclaimed until it registers
-    itself instead of quietly answering with its base's registry.
-    """
+    """The registry that claimed `cls`, or None if it was never registered."""
     registry = cls.__dict__.get(REGISTRY_ATTR)
     return registry if isinstance(registry, Registry) else None
 
 
 class Registry:
-    """One workflow distribution's flows, nodes and entry point.
-
-    Named `Registry` rather than `Workflow` because the base class a workflow
-    subclasses already owns that name, and the two are different things: the class is
-    the state machine, this is what the packaging metadata points at.
-    """
+    """One workflow distribution's flows, nodes and entry point."""
 
     def __init__(self, name: str = "", package: str | None = None) -> None:
         self.name = name
-        #: The importable package whose directory holds this workflow's `prompts/`, as
-        #: `Registry("coder", package=__package__)`. `None` is accepted because that is
-        #: what `__package__` is typed as — a top-level module has no package — and it
-        #: falls back exactly as an omitted argument does, rather than making every
-        #: callsite launder the one expression this parameter exists to take.
-        #:
-        #: Declared rather than inferred because the registry *is* the composition root:
-        #: the entry class is free to live in a sub-package beside its siblings
-        #: (`coder/main/flow.py`), and a root taken from that class would land inside one
-        #: flow and put every other flow's prompts outside the loader. Unset falls back to
-        #: the entry class's package, which is what every workflow relied on before this
-        #: existed.
         self.package = package or ""
-        #: The module that composed this registry — where `Registry(...)` was written,
-        #: read off the constructing frame because a module-level object's birthplace is
-        #: exactly the frame executing its module body. A live reload re-imports *this*
-        #: module to find the rebuilt registry: the entry class is free to live in a
-        #: sub-package (`coder/main/flow.py`), and every real distribution keeps its
-        #: composition root in a separate `workflow.py` the entry module never imports
-        #: back, so the entry class's own module cannot be the one to look on.
         frame = inspect.currentframe()
         caller = frame.f_back if frame is not None else None
         self.module = str(caller.f_globals.get("__name__", "")) if caller is not None else ""
@@ -92,26 +36,18 @@ class Registry:
         self.flows: dict[str, type[Workflow]] = {}
         self.entry: type[Workflow] | None = None
         self.nodes: NameIndex[NodeSpec] = NameIndex("node", owner=f"workflow {name!r}")
-        #: Canned agent replies for `--dry-run`, by prompt stem. See `stub_agents`.
         self.agent_stubs: dict[str, Any] = {}
 
-    # --- composition --------------------------------------------------------
 
     def add_blueprints(self, *blueprints: Blueprint) -> "Registry":
-        """Fold node libraries in. Plural because composition is the point: a
-        workflow picks up the shared `await_operator` / `commit_all` / `push_branch`
-        rather than re-implementing them a fourth time.
-
-        Merging the indexes here is what makes two blueprints claiming one node name
-        an import-time error rather than a coin flip at `self.output(...)` time.
-        """
+        """Fold node libraries in."""
         for blueprint in blueprints:
             self.blueprints.append(blueprint)
             self.nodes.merge(blueprint.index)
         return self
 
     def add_flows(self, **flows: type[Workflow]) -> "Registry":
-        """Register sub-flows a caller can name, e.g. `workhorse-coder run qa`."""
+        """Register sub-flows a caller can name, e.g."""
         for flow_name, workflow in flows.items():
             if flow_name in self.flows:
                 raise WorkflowDefinitionError(
@@ -123,27 +59,12 @@ class Registry:
         return self
 
     def stub_agents(self, replies: dict[str, Any]) -> "Registry":
-        """Declare what `--dry-run` should get back from each prompt, by stem.
-
-        A value, a dict of the reply model's fields, or a callable taking the render
-        args. Declaring these is what turns a dry run from "every branch reads a blank
-        field and takes an arbitrary path" into a smoke test of the workflow's own
-        happy path — and it is why a fail terminal under `--dry-run` is a real verdict
-        for a workflow that declares them and not for one that does not.
-
-        A dict rather than `**kwargs` because prompt stems are hyphenated
-        (`check-gate`), which is not an identifier.
-        """
+        """Declare what `--dry-run` should get back from each prompt, by stem."""
         self.agent_stubs.update(replies)
         return self
 
     def override(self, **by_name: Callable[..., Any]) -> NameIndex[NodeSpec]:
-        """A copy of `self.nodes` with those nodes bound to those functions.
-
-        What a test hands to `RunEnv(nodes=…)` instead of patching the module the node
-        lives in. The copy is non-mutating, so the registry every other run in the
-        process shares is untouched.
-        """
+        """A copy of `self.nodes` with those nodes bound to those functions."""
         targets: dict[str, NodeSpec] = {}
         for name, fn in by_name.items():
             spec = self.nodes.get(name)
@@ -171,29 +92,12 @@ class Registry:
     def state(
         self, fn: Callable[..., Any] | None = None, *, aliases: Iterable[str] = ()
     ) -> Any:
-        """`@workflow.state(aliases=[...])`, identical to the standalone `@state`.
-
-        Both exist because the spec shows both, and because a class body is often
-        written *above* the `Registry` the module ends with — a decorator that needed
-        the registry to exist first would force the file into one order.
-        """
+        """`@workflow.state(aliases=[...])`, identical to the standalone `@state`."""
         return state(fn, aliases=aliases)
 
-    # --- entry point --------------------------------------------------------
 
     def entry_point(self, entry: type[Workflow]) -> "Registry":
-        """Declare `entry` the flow a bare `workhorse-<name> run` starts.
-
-        Returns `self`, so the declaration composes with the binding the CLI ring
-        owns: `main = console_script(workflow.entry_point(Coder))`.
-
-        This method used to *return* that console callable, which meant the registry
-        imported `workhorse.cli` — and `workhorse.cli` imports the driver, which
-        imports this module. The import had to sit in a function body to keep the two
-        modules loadable, and a function-body import with no ImportError beside it is
-        a cycle being suppressed rather than a dependency being optional. The binding
-        belongs to the ring the console script actually starts.
-        """
+        """Declare `entry` the flow a bare `workhorse-<name> run` starts."""
         _require_workflow("entry", entry)
         if not self.name:
             raise WorkflowDefinitionError(
@@ -206,7 +110,6 @@ class Registry:
         self.flows.setdefault("default", entry)
         return self
 
-    # --- lookup -------------------------------------------------------------
 
     def flow(self, flow_name: str | None) -> type[Workflow]:
         """The workflow class a `<flow>` argument names, or the entry point."""
@@ -229,13 +132,7 @@ class Registry:
         return sorted(self.flows)
 
     def class_named(self, class_name: str | None) -> type[Workflow] | None:
-        """The registered flow whose *class* is named `class_name`, or None.
-
-        A checkpoint records the class, not the flow key, because that is what the
-        driver has in hand — and because two keys may point at one class. This is how
-        `--resume-latest` re-enters the flow that wrote the checkpoint instead of the
-        distribution's default one.
-        """
+        """The registered flow whose *class* is named `class_name`, or None."""
         if not class_name:
             return None
         for workflow in self.flows.values():
@@ -244,17 +141,7 @@ class Registry:
         return None
 
     def directory(self) -> Path:
-        """The workflow's own directory — what holds its `prompts/`.
-
-        `package` when the registry declared one, which is the composition root itself
-        and the only answer that stays right once the entry class moves into a
-        sub-package beside its sibling flows. Otherwise the package the entry class's
-        module lives in — what every workflow relied on before `package` existed, kept
-        so a distribution that declares nothing keeps resolving as it did.
-
-        `package_dir` is what refuses a zip-imported package here rather than at
-        `TemplateNotFound` time.
-        """
+        """The workflow's own directory — what holds its `prompts/`."""
         if self.package:
             return package_dir(self.package, workflow=self.name or None)
         if self.entry is None:

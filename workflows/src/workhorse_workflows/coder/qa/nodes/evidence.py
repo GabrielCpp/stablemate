@@ -1,11 +1,4 @@
-"""The QA evidence gate node — a thin `@blueprint.node` wrapper.
-
-The check itself — parsing `qa-evidence.json`, validating criteria, obligations,
-parity/data-entry/transient proof, visual-fidelity reports, and the run manifest —
-lives in `workhorse_workflows.qa.evidence.verify_qa_evidence`, a plain function shared
-with any other family that needs to fail closed on the same evidence contract. This
-wrapper keeps the node's name, checkpoint and telemetry unchanged.
-"""
+"""The QA evidence gate node — a thin `@blueprint.node` wrapper."""
 from __future__ import annotations
 
 import logging

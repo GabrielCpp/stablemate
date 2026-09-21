@@ -1,41 +1,4 @@
-"""The performances an `arrange:` bullet may declare, as named acts with typed arguments.
-
-`fixture:` arranges the world *around* a surface: a named out-of-process command run beside
-the browser, which is exactly why it cannot reach the surface itself. A precondition like
-*`name` non-empty and `quantity` a non-negative number* is true only once someone has typed
-into the form, and no subprocess can type into a form. The performer of a step is the only
-actor that can establish state on the surface it performs on, so the book needs a second
-arrangement key whose values are performances, and this module is its vocabulary:
-
-    - when: `name` non-empty and `quantity` a non-negative number
-    - arrange: fill(locator="#name-field", value="Widget A")
-    - arrange: fill(locator="#quantity-field", value="3")
-
-The three properties that shape it, each already in force elsewhere:
-
-* **Its subject is a reference into the book.** `locator=` names a `component` or
-  `interaction` by its anchor, the same spelling `visible(locator=…)` uses, so a renamed
-  element shows up in the book rather than going green against an element nothing declares.
-* **Its driver is the performer of the step** — the browser here, a device there, an HTTP
-  client for a request. Which drivers can perform an act is declared per act (`drivers`),
-  because performability is a relation between what the act needs and what a driver can
-  supply, not a property of the act's name.
-* **Its binding is document order**, as `verify:`, `fixture:` and `capture:` already bind:
-  an `arrange:` under a `when:`, or under an endpoint's `status:` arm, arranges *that* arm.
-
-Each spec carries `establishes:` — the state performing it leaves behind — for `excludes:`'s
-reason on a check: it is the sentence a refusal quotes, and the test of whether a proposed
-act earns a place here at all.
-
-**An act's argument type is a property of that act's parameter, not of acts in general.**
-`fill`/`click`/`press`/`select` are all-`str` because their driver is a person: what a
-browser or a device carries out is what the performer types or points at, and a person types
-"3", not 3. That reasoning does not survive a driver that is not a person. Over the wire,
-`{"quantity": 3}` and `{"quantity": "3"}` are different requests, and an app that requires
-the first refuses the second — so `body`'s `value` is typed `scalar`, admitting the JSON
-scalars a request body actually carries, while `fill`'s `value` stays `str`. `bind()` checks
-each argument against its own parameter's declared type rather than one rule for every act.
-"""
+"""The performances an `arrange:` bullet may declare, as named acts with typed arguments."""
 
 from __future__ import annotations
 
@@ -45,29 +8,11 @@ from typing import Any
 
 from ostler.checks import Call, Malformed, Refusal, _typed, literal, parse_call
 
-#: The `driver:` values of §4.1 that can perform an arranged act — the ones that appear on no
-#: `ActSpec.drivers` tuple are `ACT_DRIVER_OMISSIONS`, below, one reason each. `http` does
-#: perform one, though: a request body is not beside the request an HTTP client sends, it IS
-#: the request, so no out-of-process fixture can arrange it.
 WEB = "web"
 MOBILE = "mobile"
 HTTP = "http"
-#: `command`'s performer: a subprocess, not a person or a wire — so what it establishes is the
-#: process that just ran, and `invoke`'s `argv` is typed `str[]`, not `str`, for the reason
-#: `body`'s `value` is typed `scalar` and not `str`: an argv element is not typed prose the way
-#: a form field is, it is one literal token a shell would hand the process unchanged. `argv`
-#: carries only the arguments — the binary is the owning `cli` node's `binary:` to declare,
-#: never this act's to repeat.
 CLI = "cli"
 
-#: Every §4.1 value that appears on no `ActSpec.drivers` tuple in `ACTS`, mapped to the reason
-#: it appears on none — the omissions half of the declaration `WEB`/`MOBILE`/`HTTP`/`CLI` are
-#: the other half of. `artifact` and `iac` share a reason: each has a performer that could only
-#: arrange, and an arrangement it could make is an arrangement `fixture:` already covers.
-#: `none` is a different reason, not the same one repeated: `driver: none` is the book declaring
-#: that nothing performs against this runbook's surfaces at all, so there is no performer here
-#: to carry out any act in the first place — `artifact`/`iac` have a performer that merely
-#: arranges, `none` has no performer.
 ACT_DRIVER_OMISSIONS: dict[str, str] = {
     "artifact": "an arrangement it could make is an arrangement `fixture:` already covers",
     "iac": "an arrangement it could make is an arrangement `fixture:` already covers",
@@ -83,8 +28,6 @@ class ActParam:
     name: str
     type: str
     required: bool = False
-    #: Whether the value names a component the book declares, by its anchor, rather than a
-    #: selector the driver happens to accept — `CheckParam.locator`'s flag and its reason.
     locator: bool = False
 
 
@@ -95,9 +38,6 @@ class ActSpec:
     name: str
     params: tuple[ActParam, ...]
     establishes: str
-    #: The drivers that can perform it. A compiler reading an act whose target's driver is
-    #: absent here has to gap rather than emit — the act is declared, and this run cannot
-    #: perform it, which is a different thing from the book being wrong.
     drivers: tuple[str, ...]
 
     @property
@@ -197,14 +137,7 @@ def _unknown(name: str) -> Refusal:
 
 
 def parse_act(value: str) -> ActCall | Refusal:
-    """Parse one `arrange:` value, or return the `Refusal` saying what was written instead.
-
-    The call grammar is `checks.parse_call`, shared with `verify:` so that one spelling of a
-    declared call serves both keys. What differs is the vocabulary, and one refusal: a value
-    under `arrange:` that is not a call is most often a fixture name, which is a real
-    arrangement written under the wrong key rather than a malformed act — so it relocates
-    instead of being handed a vocabulary it was never reaching for.
-    """
+    """Parse one `arrange:` value, or return the `Refusal` saying what was written instead."""
     parsed = parse_call(value)
     if parsed is None:
         return _not_an_act(value)
@@ -235,13 +168,7 @@ def parse_act(value: str) -> ActCall | Refusal:
 
 
 def bind(name: str, args: Mapping[str, Any]) -> ActCall | Refusal:
-    """An act assembled from an already-separated name and arguments, or why it is not one.
-
-    `checks.bind`'s counterpart and its reason: an `arrange:` bullet arrives as text, and a
-    scenario's compiled call arrives as a name and a dict, and the two have to canonicalise
-    through one set of rules or a plan performing exactly what the book declared would fail
-    the comparison on spelling.
-    """
+    """An act assembled from an already-separated name and arguments, or why it is not one."""
     spec = ACT_BY_NAME.get(name)
     if spec is None:
         return _unknown(name)
@@ -255,9 +182,6 @@ def bind(name: str, args: Mapping[str, Any]) -> ActCall | Refusal:
         if param is None:
             allowed = ", ".join(p.name for p in spec.params)
             return wrong(f"`{spec.name}` has no argument `{key}` — it takes: {allowed}")
-        # Per-parameter, not per-act: a locator is an anchor and a value typed into a control
-        # is what the user typed, so `fill`'s `value` stays `str` — but a wire request holds
-        # JSON scalars, so `body`'s `value` admits them. See the module docstring.
         if not _typed(value, param.type):
             return wrong(f"`{spec.name}`: `{key}` is {param.type}, got "
                          f"{type(value).__name__} — an act's arguments are what the "
@@ -270,13 +194,7 @@ def bind(name: str, args: Mapping[str, Any]) -> ActCall | Refusal:
 
 
 def _not_an_act(value: str) -> Refusal:
-    """Why this value is not an act — naming the likeliest mistake when it is recognisable.
-
-    The habit under `arrange:` is a *fixture name*, because `fixture:` was the only
-    arrangement key the grammar had. That value is not malformed; it is well-formed under
-    `fixture:`, and saying so ends the loop in one lap where handing back the act vocabulary
-    would send the author to invent a performance for state a subprocess already arranges.
-    """
+    """Why this value is not an act — naming the likeliest mistake when it is recognisable."""
     text = value.strip().strip("`")
     if text and "(" not in text:
         return Refusal(

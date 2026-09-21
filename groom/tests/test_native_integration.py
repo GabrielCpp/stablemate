@@ -1,11 +1,4 @@
-"""End-to-end: a native run's OTLP export → the /v1/metrics route → a dashboard row.
-
-Exercises the real wire path (protobuf decode in groom.otlp, ingest in groom.alerts,
-row projection in groom.app) rather than hand-built dicts, so a break anywhere in that
-chain — a resource attribute not denormalized, a verdict miscomputed — is caught.
-
-Run: uv run pytest tests/test_native_integration.py
-"""
+"""End-to-end: a native run's OTLP export → the /v1/metrics route → a dashboard row."""
 from __future__ import annotations
 
 import os
@@ -32,9 +25,7 @@ def _reset() -> None:
 
 
 def _node_active_export(run_dir: str, workspace: str) -> bytes:
-    """A workhorse ``workhorse.node.active`` gauge export carrying the full native
-    resource (run_id/workflow/run_dir/workspace/process.pid) and a ``wf.activity``
-    point attribute — exactly what otel._Telemetry stamps on the live gauge."""
+    """A workhorse ``workhorse.node.active`` gauge export carrying the full native resource (run_id/workflow/run_dir/workspace/process.pid) and a ``wf.activity`` point attribute — exactly what otel._Telemetry stamps on the live gauge."""
     req = ExportMetricsServiceRequest()
     rm = req.resource_metrics.add()
     for key, val in (
@@ -91,8 +82,6 @@ def test_native_metrics_export_materializes_a_dashboard_row():
 
 @pytest.fixture
 def native_root():
-    # The collector deliberately rejects pytest-named run directories. Use an
-    # owned temporary directory with the same spelling as a real native run.
     with tempfile.TemporaryDirectory(prefix="groom-native-") as directory:
         yield Path(directory)
 

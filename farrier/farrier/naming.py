@@ -1,8 +1,4 @@
-"""Pure name/id transforms — kebab-casing, source ids, path references, quoting.
-
-Stateless string helpers with no knowledge of the ``Source`` record or the layer
-stack, so every other module can depend on them without a cycle.
-"""
+"""Pure name/id transforms — kebab-casing, source ids, path references, quoting."""
 from __future__ import annotations
 
 import os
@@ -19,35 +15,14 @@ def kebab(value: str) -> str:
 
 
 def compose_name(prefix: str, base: str) -> str:
-    """Join a prefix onto a base name, collapsing an adjacent duplicate segment.
-
-    Used twice on the way to an installed name: once for the library group (the
-    source's immediate parent folder) and once for the repo. Both need the same
-    collapse, for the same reason — a segment that is already the leading word of
-    what follows it says nothing when repeated. ``flutter/flutter-api`` is
-    ``flutter-api``, not ``flutter-flutter-api``; ``stablemate/ostler`` in the
-    stablemate repo is ``stablemate-ostler``, not ``stablemate-stablemate-ostler``,
-    which would read as "about stablemate" when the skill is about ostler.
-
-    An empty *prefix* composes to *base* unchanged, so a source with no group
-    (a flat file at the top of the tree) is not given a leading dash.
-    """
+    """Join a prefix onto a base name, collapsing an adjacent duplicate segment."""
     if not prefix or base == prefix or base.startswith(f"{prefix}-"):
         return base
     return f"{prefix}-{base}"
 
 
 def repo_prefix(repo: Path) -> str:
-    """The install prefix for a repository: its directory name, kebab-cased.
-
-    Derived, never configured. ``agents.yml`` used to be able to override it with
-    ``repo.prefix`` / ``repo.name``, and the override was a way to make a repo
-    disagree with itself: the prefix on its installed skills is also how the workflow
-    kit, the run record and a `.code-workspace` folder entry name the same checkout,
-    and those read the directory. A clone under a different directory name then
-    rendered a different set of files from the same committed config, which
-    `install --check` reports as drift with nothing to fix.
-    """
+    """The install prefix for a repository: its directory name, kebab-cased."""
     return kebab(repo.name)
 
 
@@ -74,8 +49,6 @@ def strip_known_suffix(path: Path) -> str:
 
 def source_id(root: Path, path: Path) -> str:
     rel = path.relative_to(root)
-    # For SKILL.md files in directories, use the parent directory name as the skill name.
-    # For any other .md files, use the old flat-file logic for backwards compatibility.
     if rel.name == "SKILL.md":
         parts = [kebab(part) for part in rel.parent.parts]
     else:

@@ -1,13 +1,4 @@
-"""Tests for workhorse/runner/worktree_guard.py — the `git` an agent turn sees in a shared tree.
-
-The failure this exists for: two runs editing one checkout, and an agent in one of them
-running `git stash` / `git stash pop` to look at "the file before my edit", which drops
-every uncommitted edit the other run made in between. The end-to-end tests run a real
-repository through the real spawn path, because what is asserted is what `git` did to
-the tree. They skip where git is absent.
-
-Run: ./.venv/bin/python tests/test_worktree_guard.py   (or via pytest)
-"""
+"""Tests for workhorse/runner/worktree_guard.py — the `git` an agent turn sees in a shared tree."""
 from __future__ import annotations
 
 import shutil
@@ -52,9 +43,6 @@ def _agent_runs(command: str, repo: Path) -> tuple[int, str]:
     return rc, "".join(lines)
 
 
-# --------------------------------------------------------------------------- #
-# What is refused
-# --------------------------------------------------------------------------- #
 def test_discarding_commands_are_refused():
     for argv in (
         ["stash"],
@@ -83,7 +71,7 @@ def test_reading_and_recording_commands_pass_through():
         ["log", "--oneline", "-5"],
         ["stash", "list"],
         ["-c", "core.pager=cat", "stash", "show"],
-        ["-C", "checkout", "status"],  # a value that happens to spell a subcommand
+        ["-C", "checkout", "status"],
         ["restore", "--staged", "doc.md"],
         ["reset"],
         ["reset", "doc.md"],
@@ -94,9 +82,6 @@ def test_reading_and_recording_commands_pass_through():
         assert worktree_guard.refusal(argv) is None, argv
 
 
-# --------------------------------------------------------------------------- #
-# Through the spawn path
-# --------------------------------------------------------------------------- #
 def test_a_guarded_turn_cannot_stash_away_another_runs_edit():
     if not HAVE_GIT:
         return
@@ -116,7 +101,6 @@ def test_a_guarded_turn_cannot_stash_away_another_runs_edit():
         assert (repo / "doc.md").read_text() == "another run's edit\n"
         assert subprocess.run(["git", "-C", str(repo), "stash", "list"], capture_output=True,
                               text=True, check=True).stdout == ""
-        # Everything else still reaches the real git.
         assert status_rc == 0 and "M doc.md" in status
 
 
@@ -142,9 +126,6 @@ def test_the_path_is_restored_when_the_scope_ends():
         assert worktree_guard.guarded_path("/usr/bin") == "/usr/bin"
 
 
-# --------------------------------------------------------------------------- #
-# Opting in
-# --------------------------------------------------------------------------- #
 class _Engine:
     """The one engine seam `Workflow.agent` reaches: where the run lives, and the turn."""
 

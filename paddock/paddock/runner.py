@@ -1,22 +1,4 @@
-"""Run a task: unpack the seed, execute the steps, stage the result, score it, seal it.
-
-The staging layout is the contract between a task's steps and everything downstream:
-
-```
-<store>/work/<task>/<label>/
-  stage/                     <- everything here, and only this, becomes the result zip
-    <repo_dir>/              <- the unpacked seed, mutated by the steps
-    artifacts/<step>/        <- run dirs, logs, exit codes; one directory per step
-    steps.json               <- the ledger: order, outcome, duration, commands run
-    score.json               <- written only when the task brought a score function
-  scratch/                   <- steps' own working space, deliberately NOT zipped
-```
-
-`scratch/` exists because a task may fan out — policy-desk runs a fresh tree per trial —
-and a result zip carrying nine copies of a repo is a result nobody will keep. What a step
-wants preserved it copies into its artifact directory, which makes that an explicit
-decision rather than a side effect of where it happened to work.
-"""
+"""Run a task: unpack the seed, execute the steps, stage the result, score it, seal it."""
 
 from __future__ import annotations
 
@@ -70,17 +52,7 @@ class StepOutcome:
 
 
 class _Echo:
-    """Follow a command's log file while it is being written, echoing it to stderr.
-
-    A tail, not a pipe: `subprocess.run` keeps owning the child's stdout, so the timeout,
-    the exit code and the bytes that land in the log are exactly what they were before the
-    echo existed — this thread only ever reads what has already been written.
-
-    Why it exists: a trial that drives an agent CLI for forty minutes writes its only sign
-    of life into a log three directories deep, named after a step that has not finished
-    yet. Teeing makes `paddock run > run.log` the whole story, for the operator and for
-    the agent polling on their behalf.
-    """
+    """Follow a command's log file while it is being written, echoing it to stderr."""
 
     def __init__(self, path: Path, prefix: str, interval: float = 0.25) -> None:
         self._path = path
@@ -106,11 +78,7 @@ class _Echo:
                 return
 
     def _drain(self, offset: int) -> int:
-        """Echo whole lines written since *offset*, and return the new offset.
-
-        Bytes rather than text, and never past the last newline: a partial write is left
-        in place to be re-read whole, so a line never arrives split across two ticks.
-        """
+        """Echo whole lines written since *offset*, and return the new offset."""
         try:
             with self._path.open("rb") as handle:
                 handle.seek(offset)
@@ -128,14 +96,7 @@ class _Echo:
 
 @dataclass
 class Run:
-    """The handle a step and a score function are given.
-
-    A step reaches the repo through `run.repo`, keeps evidence in `run.artifacts`, works
-    in `run.scratch`, and invokes tooling through `run.cli` — which is a subprocess of the
-    real command line, never an in-process import of workhorse. That is not purity for its
-    own sake: the benchmark measures the surface an operator uses, and an in-process call
-    would measure a different one.
-    """
+    """The handle a step and a score function are given."""
 
     task: Task
     label: str
@@ -155,14 +116,7 @@ class Run:
     outcomes: list[StepOutcome] = field(default_factory=list)
 
     def param(self, name: str, default: str = "") -> str:
-        """A `--param name=value` given on the command line, or *default*.
-
-        Params are how a task is run *smaller* than its full self — one defect instead of
-        eleven, a shorter budget — without editing the module or growing a second task.
-        They are recorded in the ledger and in the result pointer's note, because a round
-        run with a param is a different measurement and a result that does not say so is
-        the one that gets compared against a full one.
-        """
+        """A `--param name=value` given on the command line, or *default*."""
         return str(self.params.get(name, default))
 
     def param_list(self, name: str) -> tuple[str, ...]:
@@ -212,13 +166,7 @@ class Run:
         log_name: str = "",
         check: bool = False,
     ) -> CommandResult:
-        """Run a command, tee its output to a log under `artifacts/` and to stderr.
-
-        `PWD` is aligned to *cwd* and `OLDPWD` dropped. An agent CLI that resolves its
-        project root from the environment rather than from `getcwd()` will otherwise treat
-        the harness's own repo as the project and commit its work there — a failure that
-        looks like the benchmark producing no diff at all.
-        """
+        """Run a command, tee its output to a log under `artifacts/` and to stderr."""
         target = cwd or self.repo
         merged = dict(os.environ if env is None else env)
         merged["PWD"] = str(target)
@@ -257,20 +205,8 @@ class Run:
         return json.loads(path.read_text(encoding="utf-8"))
 
     def write_json(self, path: Path, data: object) -> Path:
-        """Write *data* to *path* as JSON, atomically.
-
-        Atomic because these files are read while a round is still running, by something
-        other than whoever wrote them: the operator-gate watcher polls its own ledger to
-        decide whether a gate is already parked, and a person tails the same files to see
-        what a round is doing. `write_text` truncates first, so a reader landing in that
-        window gets an empty file and a `JSONDecodeError` — a poll loop that has been
-        working for an hour dying on a file that is *fine* a millisecond later. Rename is
-        the fix rather than a retry loop: readers stay ordinary `json.loads` calls, and a
-        reader sees the old bytes or the new ones and never a half-written file.
-        """
+        """Write *data* to *path* as JSON, atomically."""
         path.parent.mkdir(parents=True, exist_ok=True)
-        # Beside the target, because `os.replace` is only atomic within one filesystem and
-        # a temp directory may be on another.
         staged = path.with_name(f"{path.name}.{os.getpid()}.writing")
         staged.write_text(json.dumps(data, indent=2), encoding="utf-8")
         os.replace(staged, path)
@@ -313,17 +249,12 @@ def execute(
     stage.mkdir(parents=True, exist_ok=True)
     scratch.mkdir(parents=True, exist_ok=True)
 
-    # Before anything is unpacked or run: the steps drive a tree of paddock's own, so the
-    # round measures one commit of the code and any commit *in* that tree is a leak.
     pinned = project_mod.pin(project, work=work, enabled=pin_project)
     driven = pinned.path if pinned else project
 
     pointer = Pointer.load(paths.seed_pointer(data_dir, task.seed))
     repo = seeds.unpack(pointer, store=store, dest=stage, project=driven)
 
-    # Relative to the *data* dir, not to the repo root: a config is data, it lives
-    # beside the tasks that pin it, and a task that named its own root would break the
-    # moment that root moved — which it has.
     config = Path(task.config)
     config = config if config.is_absolute() else data_dir / config
     config = config.resolve()
@@ -349,10 +280,6 @@ def execute(
         try:
             outcomes = _run_steps(run)
         finally:
-            # Before the ledger, the score and the zip — not in the outer `finally`. A
-            # server still writing into the stage while `archive.create` walks it is a
-            # result nobody can re-derive, and a step that raised is exactly the case
-            # most likely to have left one running.
             reap.reap(stage)
         _write_ledger(run, outcomes)
 
@@ -363,11 +290,6 @@ def execute(
         zip_path: Path | None = None
         pointer_path: Path | None = None
         if seal:
-            # Asked here rather than after `release`, because the question is about the
-            # pinned tree and `release` deletes it.
-            # Both halves of the pin's promise: that one was made, and that the round
-            # stayed inside it. They ride one channel because a reader asking "measured
-            # against what?" is asking one question.
             escaped = project_mod.degraded(
                 pinned, requested=pin_project
             ) + project_mod.escaped(pinned)
@@ -392,13 +314,7 @@ def execute(
 
 
 def _run_steps(run: Run) -> list[StepOutcome]:
-    """Run the steps in order, stopping at the first failure.
-
-    Stopping is the point: a later step's meaning is conditional on the earlier ones
-    having happened, so continuing past a failure produces a result that scores as
-    something rather than as nothing, which is worse than no result at all. What already
-    ran stays staged, and the ledger says where it stopped.
-    """
+    """Run the steps in order, stopping at the first failure."""
     outcomes: list[StepOutcome] = []
     for item in run.task.steps:
         outcomes.append(_run_step(run, item))
@@ -464,21 +380,13 @@ def _score_owned(path: str) -> bool:
 
 
 def _score(run: Run, task: Task) -> Score | None:
-    """Call the task's score function with the staged tree guarded as read-only.
-
-    Decision 14 of the design, enforced rather than documented: a scored and an unscored
-    run must produce byte-identical results apart from `score.json`. A score function that
-    edits what it measures makes the result zip a record of the scoring rather than of the
-    run, and every later comparison against it is comparing the wrong thing.
-    """
+    """Call the task's score function with the staged tree guarded as read-only."""
     if task.score is None:
         return None
     run.step_name = "score"
     run.commands = []
     before = archive.manifest(run.stage)
     score = task.score(run)
-    # The score's own log output is the one thing it is allowed to add — which also moves
-    # the mtime of the `artifacts/` directory holding it.
     changes = [
         line
         for line in archive.diff_manifests(before, archive.manifest(run.stage))
@@ -508,18 +416,7 @@ def _seal(
 ) -> tuple[Path, Path]:
     zip_path = paths.result_zip(store, task.name, label)
     archive.create(stage, zip_path, prefix=label)
-    # The note is what a human reads in the tracked pointer without fetching the zip, so
-    # a run narrowed by `--param` says so there: the same task under a smaller selection
-    # is a different measurement, and one that does not announce it invites a comparison
-    # against a full run that nobody would have made on purpose.
     given = ", ".join(f"{key}={value}" for key, value in sorted(params.items()))
-    # A step that did not succeed is a caveat the runner can see without asking the task,
-    # and it is the one that catches what a ruler cannot: a pin that drifted, or a build
-    # that aborted, both of which fail a step *before* score() gets a turn. The task's own
-    # caveats come from the other side — a parked gate is a fine round mechanically.
-    # Named by their real status rather than all called "failed": the step that raised
-    # and the ones skipped behind it are different facts, and a caveat that blurs them
-    # sends the next reader looking for three defects where there was one.
     failed = [f"step {o.name!r} {o.status}" for o in outcomes if o.status != "ok"]
     caveats = [*failed, *escaped, *(score.caveats if score else ())]
     headline = score.headline if score else ""
@@ -528,8 +425,6 @@ def _seal(
     note = " ".join(part for part in (headline, f"[{given}]" if given else "") if part)
     pointer = ResultPointer(
         name=f"{task.name}/{label}",
-        # A result zip roots at the label, not at the repo: the tree inside it is one
-        # member of the staging area, beside the artifacts and the ledger.
         repo_dir=label,
         sha256=archive.digest(zip_path),
         bytes=zip_path.stat().st_size,

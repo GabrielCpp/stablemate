@@ -1,14 +1,4 @@
-"""The deterministic gate layer: what a service declares is what runs.
-
-The rule these tests hold down is invariant 1 — the workflow assumes nothing about where it
-is deployed. Every command that runs after an implement turn comes out of the repo's own
-`agents.yml`, so a stack this package has never heard of gets gates the moment it writes
-them down, and a service that declares nothing is skipped rather than failed on a command
-somebody guessed.
-
-Nothing is mocked. `run_gate` really shells out, so a `clean` here is a process that really
-exited 0 and a `dirty` is one that really did not.
-"""
+"""The deterministic gate layer: what a service declares is what runs."""
 from __future__ import annotations
 
 import logging
@@ -48,7 +38,6 @@ def _call(node, **kwargs):
     return node(LOG, **kwargs)
 
 
-# ------------------------------------------------------------------ resolution
 
 
 def test_the_services_block_names_the_command_for_each_gate(repo: Path) -> None:
@@ -78,13 +67,7 @@ def test_a_service_name_beats_its_type(repo: Path) -> None:
 def test_the_dispatch_id_is_decomposed_into_the_keys_a_repo_actually_writes(
     repo: Path,
 ) -> None:
-    """`<repo>::<path>` is the workflow's identifier; `api` is what the repo calls it.
-
-    Nobody writes `bench::services/api` in their own `agents.yml`, so a lookup on the raw
-    dispatch id found nothing, fell through to the Makefile convention, and ran a gate the
-    service had explicitly replaced — the declaration silently doing nothing, which is the
-    one failure mode a declarative block must not have.
-    """
+    """`<repo>::<path>` is the workflow's identifier; `api` is what the repo calls it."""
     _agents(
         repo,
         "services:\n"
@@ -103,7 +86,6 @@ def test_the_dispatch_id_is_decomposed_into_the_keys_a_repo_actually_writes(
         "api",
         "go",
     ]
-    # A layer the dispatch named without a path still resolves — on its type, as before.
     assert service_declaration("acme", "go", str(repo))["test"] == "go test ./..."
 
 
@@ -115,16 +97,14 @@ def test_an_undeclared_gate_resolves_to_no_command(repo: Path) -> None:
 
 
 def test_the_legacy_lint_map_still_wins_over_nothing(repo: Path) -> None:
-    """A repo that wrote the old map is already running that gate; moving the key would
-    silently turn it off."""
+    """A repo that wrote the old map is already running that gate; moving the key would silently turn it off."""
     _agents(repo, "lint:\n  api: sh lint.sh\n")
 
     assert gate_command("lint", "api", "go", repo / "api-service", str(repo)) == "sh lint.sh"
 
 
 def test_a_makefile_target_is_the_last_resort(repo: Path) -> None:
-    """`make <gate>` is convention, not assumption — it applies only where the service's
-    own Makefile actually defines the target."""
+    """`make <gate>` is convention, not assumption — it applies only where the service's own Makefile actually defines the target."""
     cwd = repo / "api-service"
     (cwd / "Makefile").write_text("lint:\n\t@true\n", encoding="utf-8")
 
@@ -132,7 +112,6 @@ def test_a_makefile_target_is_the_last_resort(repo: Path) -> None:
     assert gate_command("test", "api", "go", cwd, str(repo)) == ""
 
 
-# ----------------------------------------------------------------- running one
 
 
 def test_a_passing_command_is_clean(repo: Path) -> None:
@@ -172,12 +151,10 @@ def test_a_missing_cwd_is_skipped(repo: Path) -> None:
     assert outcome.status == "skipped"
 
 
-# ------------------------------------------------------- what the turn is told
 
 
 def test_declared_gates_renders_the_commands_that_will_run(repo: Path) -> None:
-    """The implement turn is told what the machine will check, which is the fact the
-    'run the tests — MANDATORY' prose was standing in for."""
+    """The implement turn is told what the machine will check, which is the fact the 'run the tests — MANDATORY' prose was standing in for."""
     _agents(repo, "services:\n  api: {lint: 'golangci-lint run', test: 'go test ./...'}\n")
 
     gates = _call(declared_gates, cwd=str(repo / "api-service"), service="api",
@@ -189,9 +166,7 @@ def test_declared_gates_renders_the_commands_that_will_run(repo: Path) -> None:
 
 
 def test_the_planner_is_told_the_markers_this_workspace_declares(repo: Path) -> None:
-    """Which files mark a service is the repo's answer too, not a list of four this
-    package remembers — a repo whose services are marked some other way had to argue with
-    that list, and one with a single layer was told about three it does not have."""
+    """Which files mark a service is the repo's answer too, not a list of four this package remembers — a repo whose services are marked some other way had to argue with that list, and one with a single layer was told about three it does not have."""
     _agents(repo, "workspace:\n  service_markers: [manifest.toml, service.json]\n")
 
     markers = _call(declared_markers, repo_dir=str(repo))
@@ -220,13 +195,10 @@ def test_declared_gates_says_so_when_the_service_declares_none(repo: Path) -> No
     assert gates.text == "(nothing declared)"
 
 
-# ------------------------------------------------------------- the repair seam
 
 
 def test_the_report_names_the_gate_that_went_red(repo: Path) -> None:
-    """`FailureReport.source` is the gate's own name, so the fix-success rate is trackable
-    per gate and a repair turn can say which one failed — including one this package has
-    never heard of."""
+    """`FailureReport.source` is the gate's own name, so the fix-success rate is trackable per gate and a repair turn can say which one failed — including one this package has never heard of."""
     _agents(repo, "services:\n  api: {test: 'exit 1'}\n")
     outcome = _call(run_gate, cwd=str(repo / "api-service"), service="api", gate="test",
                     repo_dir=str(repo))
@@ -238,19 +210,12 @@ def test_the_report_names_the_gate_that_went_red(repo: Path) -> None:
     assert report.lap == 1
 
 
-# ------------------------------------------------------- where the gate runs
 
 
 def test_a_services_gate_runs_in_the_service_directory_not_the_repo_root(
     repo: Path,
 ) -> None:
-    """The defect this closes cost a benchmark story thirteen repair turns.
-
-    The dispatch hands every state the repo checkout as `cwd`, because that is what an
-    agent turn needs. A command declared under `services.api` is written the way `api`'s
-    own Makefile writes it, and from the root it does not fail the story — it fails to
-    start, and the repair loop is then asked to fix code over a harness error.
-    """
+    """The defect this closes cost a benchmark story thirteen repair turns."""
     _agents(repo, "services:\n  api-service: {test: 'test -f here.marker'}\n")
     (repo / "api-service" / "here.marker").write_text("", encoding="utf-8")
 
@@ -308,17 +273,10 @@ def test_the_convention_looks_for_the_makefile_in_the_service_directory(
     assert gates.commands == ["make test"]
 
 
-# --------------------------------------------------- what a recycled turn is re-seeded with
 
 
 def test_a_new_file_is_in_the_diff_the_gates_read(tmp_path: Path) -> None:
-    """A test file this story just added is *new*, and a new file is in no `git diff`.
-
-    Nothing in the dev lane commits before the gates run, so `git diff --name-only HEAD`
-    sees modifications and nothing else. `changed_files` is what re-seeds a recycled
-    conversation, and a re-seed missing the file the turn had just written told it its own
-    work did not exist.
-    """
+    """A test file this story just added is *new*, and a new file is in no `git diff`."""
     subprocess.run(["git", "init", "-q", "-b", "main"], cwd=tmp_path, check=True)
     (tmp_path / "handler.go").write_text("package api\n", encoding="utf-8")
     (tmp_path / ".gitignore").write_text("build/\n", encoding="utf-8")

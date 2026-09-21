@@ -1,29 +1,4 @@
-"""Which workflows this machine can run, according to pipx.
-
-A workflow is a Python distribution that binds a `workhorse-<name>` console script
-(`workhorse-coder run …`). There is no entry-point group and no registry to query —
-a script carries its own — so the question "what can this machine run?" is answered
-by looking at what is *installed*, and `pipx list --json` is where that lives.
-
-**The installed set is the only source of truth.** There is deliberately no
-selection list in `agents.yml` to reconcile against, because a second source of
-truth goes stale the moment someone `pipx install`s or uninstalls something, and a
-stale list fails later and further away — as a confusing "workflow not found" rather
-than at the moment the set actually changed. Discovery cannot drift from itself.
-
-Two kinds of install, and the difference matters to whoever has to run one in a
-container:
-
-* **From PyPI** — nothing to mount. The container installs the same name and version.
-* **From a local path** — a uv project on this machine. The container has to bind
-  that directory read-only and install from a copy of it, which means the path is
-  part of the answer.
-
-`pipx list --json` carries all of it under `venvs.<n>.metadata.main_package`:
-`package_or_url` (a PyPI name, a VCS URL, or a host path), `pip_args` (which
-contains `--editable` for an editable local install), `apps` (the console scripts
-the venv exposes) and `package_version`.
-"""
+"""Which workflows this machine can run, according to pipx."""
 from __future__ import annotations
 
 import json
@@ -31,19 +6,10 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
-#: A workflow's console script is `workhorse-<name>`; the suffix is the workflow.
-#: This is the whole naming contract — there is no manifest listing them.
 WORKFLOW_SCRIPT_PREFIX = "workhorse-"
 
-#: Scripts matching the prefix that are not workflows. `workhorse` itself is a
-#: library and binds no command, but a future one would land here rather than be
-#: offered as a runnable workflow.
 _NOT_WORKFLOWS = frozenset({"workhorse-agent", "workhorse-workflows"})
 
-#: `package_or_url` values that name a remote rather than a directory. Checked by
-#: prefix rather than by "does this exist on disk", so a *deleted* local path is
-#: still classified as local — which is what lets it be reported as missing rather
-#: than silently reclassified as a PyPI name.
 _REMOTE_SCHEMES = ("git+", "http://", "https://", "hg+", "svn+", "bzr+")
 
 
@@ -51,39 +17,23 @@ _REMOTE_SCHEMES = ("git+", "http://", "https://", "hg+", "svn+", "bzr+")
 class Installed:
     """One pipx-installed distribution that provides at least one workflow."""
 
-    #: The distribution's name, e.g. `workhorse-workflows`.
     distribution: str
-    #: The workflows it provides, sorted — the `<name>` of each `workhorse-<name>`.
     workflows: tuple[str, ...]
-    #: `package_or_url` verbatim: a PyPI name, a VCS URL, or a host path.
     origin: str
     version: str
-    #: True when pipx installed it with `--editable`, i.e. the source is live.
     editable: bool
 
     @property
     def local_path(self) -> Path | None:
-        """The host directory this was installed from, when it was installed from one.
-
-        A path that no longer exists still answers here — see `missing`. Callers
-        that need to *mount* it must check `missing` first.
-        """
+        """The host directory this was installed from, when it was installed from one."""
         if self.origin.startswith(_REMOTE_SCHEMES):
             return None
-        # A bare PyPI name has no separator; anything with one is a path. `~` is
-        # expanded because pipx records whatever the operator typed.
         candidate = Path(self.origin).expanduser()
         return candidate if candidate.is_absolute() or "/" in self.origin else None
 
     @property
     def missing(self) -> bool:
-        """An install whose local source directory is gone.
-
-        Worth reporting rather than ignoring: the tool still *runs* (the venv holds
-        a built copy, or a `.pth` pointing at nothing), so nothing fails until a
-        container tries to bind the path — at which point the error names a mount,
-        not the install that went stale.
-        """
+        """An install whose local source directory is gone."""
         path = self.local_path
         return path is not None and not path.is_dir()
 
@@ -105,12 +55,7 @@ def workflows_from_apps(apps: object) -> tuple[str, ...]:
 
 
 def parse(payload: object) -> list[Installed]:
-    """Read `pipx list --json` output into the distributions that provide workflows.
-
-    Tolerant of shape by design: this parses another tool's output, and a pipx
-    upgrade that renames a key must cost a missing workflow, never a traceback in
-    the middle of `make`.
-    """
+    """Read `pipx list --json` output into the distributions that provide workflows."""
     if not isinstance(payload, dict):
         return []
     venvs = payload.get("venvs")
@@ -144,12 +89,7 @@ def parse(payload: object) -> list[Installed]:
 
 
 def discover() -> list[Installed]:
-    """Ask pipx what is installed. A machine without pipx simply has no workflows.
-
-    Every failure returns an empty list rather than raising: this is called from a
-    Makefile, where the honest answer to "pipx is not installed" is "no workflows
-    are discoverable", not a broken build.
-    """
+    """Ask pipx what is installed."""
     try:
         result = _run(["pipx", "list", "--json"])
     except OSError:
@@ -168,10 +108,5 @@ def _run(cmd: list[str]) -> subprocess.CompletedProcess[str]:
 
 
 def names(found: list[Installed]) -> list[str]:
-    """Every runnable workflow name, sorted and de-duplicated.
-
-    Two distributions providing the same workflow name is a real (if odd) state —
-    a fork installed alongside the original. The name is reported once; which
-    distribution's script wins is pipx's `PATH` order to settle, not this module's.
-    """
+    """Every runnable workflow name, sorted and de-duplicated."""
     return sorted({workflow for dist in found for workflow in dist.workflows})

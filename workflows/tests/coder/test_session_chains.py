@@ -1,15 +1,4 @@
-"""Direct-state tests for repair-loop conversations and routing policy.
-
-Everything here is about the part of that decision the engine cannot make for a state:
-which key a lap runs under, and *when the conversation has to be thrown away* — because
-a chain that outlives what it was repairing is worse than no chain at all, and no test
-downstream of these states can see the difference.
-
-The states are called directly rather than driven. Both sit deep inside a loop whose
-entry costs a real ostler graph, a real stack and a scripted suite run, and none of that
-is what is under test — the scripted turn raises the moment it is reached, so what each
-assertion reads is the call the state was about to make.
-"""
+"""Direct-state tests for repair-loop conversations and routing policy."""
 from __future__ import annotations
 
 import logging
@@ -61,11 +50,7 @@ class _Spy:
     def __init__(self) -> None:
         self.turns: list[dict[str, Any]] = []
         self.resets: list[str] = []
-        #: Which chains already have a conversation behind them. `None` — the default —
-        #: is every chain, which is what a lane entered from the lane before it sees.
         self.open_chains: set[str] | None = None
-        #: What the last `run_qa_plan` recorded, for the states that read it back off the
-        #: engine rather than off the loop. `None` is a run that has not happened yet.
         self.run: QaPlanRun | None = None
 
     def output(self, node: Any) -> Any:
@@ -94,12 +79,7 @@ class _Spy:
 
 @pytest.fixture
 def spy(monkeypatch: pytest.MonkeyPatch) -> _Spy:
-    """Replace the two engine seams on both flows, plus the helpers that need a run.
-
-    `dirs` and the argument builders read node outputs, which only exist inside a
-    driven run. They are stubbed because they are inputs to the turn, not the subject of
-    it; `agent` and `reset_session` are the surface every assertion below reads.
-    """
+    """Replace the two engine seams on both flows, plus the helpers that need a run."""
     seen = _Spy()
 
     def fake_agent(self: Any, prompt: str, **kwargs: Any) -> Any:
@@ -110,8 +90,6 @@ def spy(monkeypatch: pytest.MonkeyPatch) -> _Spy:
         seen.resets.append(key)
 
     def fake_require_engine(self: Any) -> Any:
-        # Asking whether a chain is open goes through the engine; no turn in these tests
-        # reaches a real one, so the resolved id is the chain name itself.
         return SimpleNamespace(
             session_id=seen.session_id,
             output=seen.output,
@@ -125,8 +103,6 @@ def spy(monkeypatch: pytest.MonkeyPatch) -> _Spy:
         monkeypatch.setattr(flow, "logger", property(lambda _: logging.getLogger("test")))
         monkeypatch.setattr(flow, "_require_engine", fake_require_engine)
     monkeypatch.setattr(Qa, "_dirs", lambda _: [])
-    # Everywhere else the helper is a shared module function, so the seam is the name each
-    # module imported it under rather than an attribute on the class.
     for module in (docs_flow, review_flow, dev_flow, nodes):
         monkeypatch.setattr(module, "workspace_dirs", lambda _: [])
     monkeypatch.setattr(Docs, "_author_args", lambda *a, **k: {})
@@ -168,12 +144,10 @@ def _repair_plan(flow: Qa, loop: QaLoop) -> None:
         flow.repair_plan(loop)
 
 
-# ── the docs lane ────────────────────────────────────────────────────────────────────
 
 
 def test_a_docs_repair_lap_continues_the_story_s_own_conversation(spy: _Spy) -> None:
-    """Keyed per story: the point of the chain is that lap N+1 already knows what lap N
-    was editing, and two stories in one run are editing different parts of the book."""
+    """Keyed per story: the point of the chain is that lap N+1 already knows what lap N was editing, and two stories in one run are editing different parts of the book."""
     _repair(_docs(), DocsProgress(chain_laps=1))
 
     assert spy.turns[0]["session"] == f"docs-repair:{STORY}"
@@ -181,66 +155,42 @@ def test_a_docs_repair_lap_continues_the_story_s_own_conversation(spy: _Spy) -> 
 
 
 def test_a_fifth_consecutive_docs_lap_starts_over(spy: _Spy) -> None:
-    """A conversation that has been wrong four times running is a transcript of four
-    rejected repairs, and compaction summarises those as readily as the useful turns."""
+    """A conversation that has been wrong four times running is a transcript of four rejected repairs, and compaction summarises those as readily as the useful turns."""
     flow = _docs()
     _repair(flow, DocsProgress(chain_laps=flow.MAX_CHAIN_LAPS))
 
     assert spy.resets == [f"docs-repair:{STORY}"]
-    # Dropped and immediately reopened — the lap still runs, on a fresh session.
     assert spy.turns[0]["session"] == f"docs-repair:{STORY}"
 
 
 def test_a_stalled_docs_gate_drops_the_conversation_that_stalled(spy: _Spy) -> None:
-    """`stalled` is the gate saying the last pass closed nothing. Continuing the same
-    conversation is the one thing already known not to work."""
+    """`stalled` is the gate saying the last pass closed nothing."""
     _repair(_docs(), DocsProgress(chain_laps=1, gate_progress_verdict="stalled"))
 
     assert spy.resets == [f"docs-repair:{STORY}"]
 
 
 def test_entering_the_docs_flow_drops_the_story_conversation_too(spy: _Spy) -> None:
-    """Docs is the one lane that does not inherit the backbone it names.
-
-    Every other lane joins it to reach the implementer that already read the code. A docs
-    pass runs *again* — after a fix, after an operator answer, after a resume — and the
-    conversation it would resume describes a book and a set of commits that have both been
-    rewritten since, so the author no-ops on edits it remembers making to a tree that no
-    longer holds them. Both chains go, and the author turn opens cold.
-    """
+    """Docs is the one lane that does not inherit the backbone it names."""
     _docs()._reset_chains()
 
     assert spy.resets == [f"story:{STORY}", f"docs-repair:{STORY}"]
 
 
 def test_ending_the_docs_flow_ends_its_chain(spy: _Spy) -> None:
-    """A chain outliving its flow waits for the next entry to resume it, on a book that
-    has moved. Every terminal goes through `_ends` so none can forget."""
+    """A chain outliving its flow waits for the next entry to resume it, on a book that has moved."""
     done = _docs()._ends(DocsResult(status="passed"))
 
     assert isinstance(done.result, DocsResult) and done.result.status == "passed"
     assert spy.resets == [f"docs-repair:{STORY}"]
-    # The backbone chain is left open for whichever lane runs next, not dropped like
-    # the repair chains.
     assert f"story:{STORY}" not in spy.resets
 
 
 def test_every_lane_names_the_same_conversation_without_being_handed_anything(
     spy: _Spy, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """The key is derived from the story slug, and that is the whole transport.
-
-    Handed-off lanes share their parent run's chain directory, so a lane that names the
-    key lands in the conversation the lane before it left — with nothing threaded in and
-    nothing seeded. A lane run on its own finds no chain there and starts cold, which is
-    what makes replaying one lane honest instead of answering out of memory.
-
-    Naming it is all this asserts. Docs names the same key and then drops what is under it
-    on entry — see `test_entering_the_docs_flow_drops_the_story_conversation_too`.
-    """
+    """The key is derived from the story slug, and that is the whole transport."""
     seeded: list[tuple[str, str]] = []
-    # A real file and a real spec dir: a lane's `setup` refuses a slug that resolved to
-    # no story, and `prepare_story` never resolves one without the other.
     story_md = tmp_path / "story.md"
     story_md.write_text("# Story\n", encoding="utf-8")
     spec_dir = tmp_path / "specs" / STORY
@@ -258,10 +208,7 @@ def test_every_lane_names_the_same_conversation_without_being_handed_anything(
     for flow, chain in (
         (_docs(), backbone),
         (_qa(), backbone),
-        # The dev lane derives it in `nodes` rather than on the class; the key is the same.
         (_dev(), backbone),
-        # The review lane names the same key from the other side: the conversation it
-        # rejoins is the implementer's.
         (_review(), lambda f: f._impl_chain()),
     ):
         flow.setup()
@@ -271,14 +218,11 @@ def test_every_lane_names_the_same_conversation_without_being_handed_anything(
 
 
 def test_no_lane_takes_a_session_id_as_a_parameter(spy: _Spy) -> None:
-    """A `Workflow` field is settable from outside with `--params`, and a lane pointed at
-    a conversation from outside answers out of that conversation's memory rather than
-    from the tree in front of it. There is no such field to point."""
+    """A `Workflow` field is settable from outside with `--params`, and a lane pointed at a conversation from outside answers out of that conversation's memory rather than from the tree in front of it."""
     for flow_cls in (Docs, Qa, Dev, Review):
         assert "session_id" not in flow_cls.model_fields
 
 
-# ── the QA-plan lane ─────────────────────────────────────────────────────────────────
 
 
 def test_a_qa_plan_repair_lap_mirrors_the_docs_lane(spy: _Spy) -> None:
@@ -298,8 +242,7 @@ def test_a_fifth_consecutive_qa_plan_lap_starts_over(spy: _Spy) -> None:
 def test_a_qa_plan_lap_that_failed_at_exactly_what_it_failed_at_before_starts_over(
     spy: _Spy,
 ) -> None:
-    """The same signal `_repeating` escalates on: the repair was paid for and the suite
-    fails identically, so the conversation that produced it has nothing left to give."""
+    """The same signal `_repeating` escalates on: the repair was paid for and the suite fails identically, so the conversation that produced it has nothing left to give."""
     spy.run = QaPlanRun(
         status="failed",
         ostler={"scenarios": {"SC-1": {"status": "failed", "assertions": 3, "failures": 1}}},
@@ -317,15 +260,12 @@ def test_a_qa_plan_lap_that_failed_at_exactly_what_it_failed_at_before_starts_ov
 
 
 def test_the_two_lanes_never_share_a_conversation(spy: _Spy) -> None:
-    """One story is repaired in both lanes, and the two repairs edit different files
-    against different worklists."""
+    """One story is repaired in both lanes, and the two repairs edit different files against different worklists."""
     assert _docs()._chain != _qa()._chain
 
 
 def test_ending_the_qa_flow_ends_every_chain_it_opened(spy: _Spy) -> None:
-    """Not just the plan-repair one: the feedback turn and the regression fixer each hold
-    a conversation of their own. The fix loop is not here — it runs on the backbone chain,
-    which is stamped for the next stage rather than dropped."""
+    """Not just the plan-repair one: the feedback turn and the regression fixer each hold a conversation of their own."""
     done = _qa()._ends(QaFlowResult(status="passed"))
 
     assert isinstance(done.result, QaFlowResult) and done.result.status == "passed"
@@ -337,7 +277,6 @@ def test_ending_the_qa_flow_ends_every_chain_it_opened(spy: _Spy) -> None:
     assert f"story:{STORY}" not in spy.resets
 
 
-# ── QA routing budgets ────────────────────────────────────────────────────────────────
 
 
 @pytest.mark.parametrize(
@@ -453,7 +392,6 @@ def test_only_an_unspent_evidence_bonus_can_cross_the_code_rework_ceiling(
     assert routed.bonus_used is routed_bonus
 
 
-# ── the QA fix lane ──────────────────────────────────────────────────────────────────
 
 
 def _apply(flow: Qa, **kwargs: Any) -> None:
@@ -462,10 +400,7 @@ def _apply(flow: Qa, **kwargs: Any) -> None:
 
 
 def test_the_fix_loop_and_the_operator_guided_lap_are_one_conversation(spy: _Spy) -> None:
-    """`apply_resolved` is the fix loop being told its attempt did not land. Handing it a
-    fresh context throws away the one thing it has that the first turn did not: what it
-    already tried. Both run on the story's backbone chain, which also means a fix lap
-    resumes an implement session threaded in from a prior stage rather than a cold one."""
+    """`apply_resolved` is the fix loop being told its attempt did not land."""
     flow = _qa()
     _apply(flow, session=backbone(flow))
     _apply(flow, session=backbone(flow))
@@ -474,14 +409,12 @@ def test_the_fix_loop_and_the_operator_guided_lap_are_one_conversation(spy: _Spy
 
 
 def test_applying_a_product_note_is_not_the_fix_worklist(spy: _Spy) -> None:
-    """An operator's note is new work on a passing story, not another lap at a failure —
-    and resuming the fixer would put it in a conversation about failures it already fixed."""
+    """An operator's note is new work on a passing story, not another lap at a failure — and resuming the fixer would put it in a conversation about failures it already fixed."""
     _apply(_qa(), session=f"qa-feedback:{STORY}")
 
     assert spy.turns[0]["session"] == f"qa-feedback:{STORY}"
 
 
-# ── the dev lane ─────────────────────────────────────────────────────────────────────
 
 
 def _refine(flow: Dev, role: str, worklist: str) -> None:
@@ -490,9 +423,7 @@ def _refine(flow: Dev, role: str, worklist: str) -> None:
 
 
 def test_the_re_planning_loops_never_share_a_conversation(spy: _Spy) -> None:
-    """Two prompts, unrelated worklists. Sharing a key would hand the path-repair pass the
-    operator's answer to a block it was never told about — the stale context each loop
-    deliberately withholds through its arguments."""
+    """Two prompts, unrelated worklists."""
     flow = _dev()
     for role, worklist in (("replan-with-answer", "block-repair"), ("repair-plan-paths", "path-repair")):
         _refine(flow, role, worklist)
@@ -503,8 +434,7 @@ def test_the_re_planning_loops_never_share_a_conversation(spy: _Spy) -> None:
 
 
 def test_a_repair_lap_runs_on_the_story_conversation(spy: _Spy, monkeypatch) -> None:
-    """The turn that wrote the code is the cheapest turn to fix it: a fixer in a fresh
-    context spends its first minutes re-reading a diff it has only just met."""
+    """The turn that wrote the code is the cheapest turn to fix it: a fixer in a fresh context spends its first minutes re-reading a diff it has only just met."""
     flow = _dev()
     layer = SimpleNamespace(cwd="/tmp/api", service="api-service")
     monkeypatch.setattr(nodes, "current_layer", lambda _: layer)
@@ -525,8 +455,7 @@ def test_a_repair_lap_runs_on_the_story_conversation(spy: _Spy, monkeypatch) -> 
 
 
 def test_ending_the_dev_flow_ends_every_plan_chain(spy: _Spy) -> None:
-    """The story chain is not reset here: it is left open under a key the next lane
-    derives for itself, so that lane resumes the conversation rather than reopening one."""
+    """The story chain is not reset here: it is left open under a key the next lane derives for itself, so that lane resumes the conversation rather than reopening one."""
     done = nodes.ends(_dev(), DevResult())
 
     assert isinstance(done.result, DevResult)
@@ -536,7 +465,6 @@ def test_ending_the_dev_flow_ends_every_plan_chain(spy: _Spy) -> None:
     ]
 
 
-# ── the review lane ──────────────────────────────────────────────────────────────────
 
 
 def _apply_review(flow: Review, **kwargs: Any) -> None:
@@ -550,13 +478,10 @@ def _apply_review(flow: Review, **kwargs: Any) -> None:
 
 
 def test_an_apply_turn_rejoins_the_implementer_rather_than_judging_cold(spy: _Spy) -> None:
-    """The half of this lane that changes code is not the half that judges it. A finding is
-    a request to edit a line somebody just wrote, and the turn that wrote it is the cheapest
-    one that can act on it — which is also what makes the low power tier sufficient."""
+    """The half of this lane that changes code is not the half that judges it."""
     _apply_review(_review())
 
     assert spy.turns[0]["prompt"] == "review/prompts/apply-review.md"
-    # The key is the story's; the dev lane earlier in the run is what opened it.
     assert spy.turns[0]["session"] == f"story:{STORY}"
     assert spy.turns[0]["power"] == "low"
 
@@ -564,8 +489,7 @@ def test_an_apply_turn_rejoins_the_implementer_rather_than_judging_cold(spy: _Sp
 def test_the_judging_turns_stay_cold_even_when_the_implementer_is_threaded_in(
     spy: _Spy,
 ) -> None:
-    """The reason the two halves are named apart: a reviewer that inherited the author's
-    context is reviewing its own reasoning, so the feeder chain must never be the story's."""
+    """The reason the two halves are named apart: a reviewer that inherited the author's context is reviewing its own reasoning, so the feeder chain must never be the story's."""
     flow = _review()
 
     assert flow._feeder_chain == f"review-feeders:{STORY}"
@@ -575,9 +499,7 @@ def test_the_judging_turns_stay_cold_even_when_the_implementer_is_threaded_in(
 def test_a_standalone_pr_review_has_no_implementer_to_resume_and_pays_for_it(
     spy: _Spy,
 ) -> None:
-    """No dev lane in front of it means no context to inherit, so the apply turn is cold —
-    and a cold turn needs the reasoning the resumed one did not have to repeat. The chain
-    itself is what says which of the two this is: an unopened chain is a cold turn."""
+    """No dev lane in front of it means no context to inherit, so the apply turn is cold — and a cold turn needs the reasoning the resumed one did not have to repeat."""
     spy.open_chains = set()
     _apply_review(_review())
 
@@ -586,8 +508,7 @@ def test_a_standalone_pr_review_has_no_implementer_to_resume_and_pays_for_it(
 
 
 def test_the_apply_turns_keep_counting_from_what_the_dev_lane_spent(spy: _Spy) -> None:
-    """The cap bounds the *conversation*, not each lane's share of it. A review that
-    restarted the count would hand the recycler a context twice as long as it agreed to."""
+    """The cap bounds the *conversation*, not each lane's share of it."""
     flow = _review()
 
     assert flow._spend_turn(ReviewLoop(session_turns=7)).session_turns == 8
@@ -595,8 +516,7 @@ def test_the_apply_turns_keep_counting_from_what_the_dev_lane_spent(spy: _Spy) -
 
 
 def test_a_conversation_that_fills_up_inside_the_review_lane_is_recycled(spy: _Spy) -> None:
-    """Where the cap is reached is not where it is owned: the dev lane can hand over a
-    conversation already at the threshold, and the next apply turn opens a fresh one."""
+    """Where the cap is reached is not where it is owned: the dev lane can hand over a conversation already at the threshold, and the next apply turn opens a fresh one."""
     flow = _review()
 
     assert flow._spend_turn(ReviewLoop(session_turns=8)).session_turns == 1

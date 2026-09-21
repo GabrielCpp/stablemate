@@ -1,20 +1,4 @@
-"""A skill's `references/` and `scripts/` ship with it instead of becoming skills.
-
-Before this, the library could express exactly one thing per skill: a single SKILL.md.
-That forced two workarounds on authors. Long-form material a body should *point at*
-had to become a sibling skill (`go-service` + `go-service-examples`), burning a
-library-wide-unique name on half a topic and loading a `applyTo` of its own. And a
-procedure's commands had to be retyped by the agent from a fenced block, because a
-script beside the skill was never copied into the repo at all.
-
-So the loader has to skip these directories (or every reference fragment registers as a
-top-level skill and starts colliding with real names), the renderer has to emit them
-beside the generated SKILL.md at the same relative path the library uses (or a link
-that resolves in the library breaks once installed), and scripts have to arrive
-verbatim and executable (or `./scripts/check.sh` fails at the shell).
-
-    uv run pytest tests/test_skill_assets.py
-"""
+"""A skill's `references/` and `scripts/` ship with it instead of becoming skills."""
 from __future__ import annotations
 
 import textwrap
@@ -69,7 +53,6 @@ def _renderer(tmp_path: Path, root: Path, names: list[str]) -> Renderer:
     )
 
 
-# --- the loader: assets are not skills -------------------------------------------
 
 
 def test_reference_markdown_does_not_register_as_its_own_skill(tmp_path):
@@ -82,12 +65,7 @@ def test_reference_markdown_does_not_register_as_its_own_skill(tmp_path):
 
 
 def test_readme_does_not_register_as_a_source(tmp_path):
-    """A tree's README is prose for a human, not a skill named `readme`.
-
-    It sits at the root of a kind's directory, so nothing about a skill's own layout
-    excludes it — and once loaded it takes a library-wide-unique name that a pack glob
-    can select and every "unknown name; here is what exists" catalog advertises.
-    """
+    """A tree's README is prose for a human, not a skill named `readme`."""
     root = _library(tmp_path)
     _skill(root, "go-service")
     (root / "README.md").write_text("# Skills\n\nWhat lives here.\n", encoding="utf-8")
@@ -104,11 +82,7 @@ def test_scripts_are_not_loaded_as_sources(tmp_path):
 
 
 def test_a_references_dir_outside_a_skill_still_holds_skills(tmp_path):
-    """`references/` only means *assets* directly inside a skill.
-
-    Elsewhere it is an ordinary library directory, and the name alone must not
-    disqualify a SKILL.md sitting under it from being a skill.
-    """
+    """`references/` only means *assets* directly inside a skill."""
     root = _library(tmp_path)
     stray = root / "references" / "docs-style"
     stray.mkdir(parents=True)
@@ -132,12 +106,7 @@ def test_nested_skill_dirs_do_not_swallow_each_others_assets(tmp_path):
 
 
 def test_running_a_bundled_script_does_not_bundle_its_bytecode(tmp_path):
-    """A script asset is meant to be run, and running it writes `__pycache__` beside it.
-
-    Nobody authored those bytes and they are not text, so treating them as an asset takes
-    the whole install pipeline down — or, in `--check`, downgrades the generated-file
-    guard to a skip on exactly the machines where the scripts get used.
-    """
+    """A script asset is meant to be run, and running it writes `__pycache__` beside it."""
     root = _library(tmp_path)
     skill_dir = _skill(root, "go")
     _write(skill_dir, "scripts/check.py", "print('ok')\n")
@@ -160,7 +129,6 @@ def test_a_flat_source_bundles_nothing(tmp_path):
     assert skill_assets(source) == []
 
 
-# --- the renderer: assets land beside the generated SKILL.md ----------------------
 
 
 def test_reference_installs_next_to_the_skill_under_every_adapter(tmp_path):
@@ -180,12 +148,7 @@ def test_reference_installs_next_to_the_skill_under_every_adapter(tmp_path):
 
 
 def test_a_reference_keeps_the_path_the_library_author_wrote(tmp_path):
-    """The link in a SKILL.md body is the same string in the library and installed.
-
-    This is the whole ergonomic claim of bundling: an author writes
-    `references/examples.md` because that is what they see on disk, and it resolves
-    without farrier having to rewrite links or the author having to guess an adapter.
-    """
+    """The link in a SKILL.md body is the same string in the library and installed."""
     root = _library(tmp_path)
     skill_dir = _skill(root, "go", body="See [examples](references/examples.md).\n")
     _write(skill_dir, "references/examples.md", "# Examples\n")
@@ -211,7 +174,6 @@ def test_markdown_references_are_templated_from_their_own_location(tmp_path):
         tmp_path / ".claude" / "skills" / "demo-stack-go" / "references" / "x.md"
     ]
 
-    # Relative to the reference's own directory, not the skill's — one level deeper.
     assert "../../demo-stack-testing/SKILL.md" in rendered
 
 
@@ -260,7 +222,6 @@ def test_a_binary_asset_is_rejected_by_name(tmp_path):
     assert "diagram.png" in str(excinfo.value)
 
 
-# --- the write side: verbatim, executable, and checkable --------------------------
 
 
 def test_an_installed_script_is_executable_and_byte_faithful(tmp_path):
@@ -321,17 +282,10 @@ def test_a_removed_reference_is_reported_as_extra(tmp_path, capsys):
     assert "extra: .claude/skills/demo-stack-qa/references/notes.md" in capsys.readouterr().out
 
 
-# --- the template gate ------------------------------------------------------------
 
 
 def test_raw_tags_are_honoured_in_a_file_that_names_no_helper(tmp_path):
-    """`{% raw %}` is the only way to protect a literal `{{ }}`, so it must open the gate.
-
-    Rendering is skipped for content naming no helper — otherwise every `{{ }}` in a code
-    sample is a Jinja syntax error. But a skipped file never strips its own raw tags, so
-    an author escaping a Helm/Actions/mockery template would see `{% raw %}` land in the
-    installed skill verbatim.
-    """
+    """`{% raw %}` is the only way to protect a literal `{{ }}`, so it must open the gate."""
     root = _library(tmp_path)
     _skill(root, "helm", body="Use `{% raw %}{{ .Values.arn }}{% endraw %}` in the chart.\n")
     renderer = _renderer(tmp_path, root, ["helm"])

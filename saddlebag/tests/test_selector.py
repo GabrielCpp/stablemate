@@ -33,7 +33,6 @@ def _runner(reply: str):
     return run
 
 
-# -- prompt -----------------------------------------------------------------
 
 
 def test_prompt_states_the_requirement():
@@ -47,14 +46,10 @@ def test_prompt_carries_candidate_metadata_but_never_a_password():
     prompt = build_prompt(REQUIREMENT, CANDIDATES)
     assert "cred-007" in prompt and "mfa_enabled" in prompt
     assert "password" not in prompt.lower()
-    # Candidate usernames are identifying but not secret; the password is the
-    # thing that must never reach an agent's context.
 
 
 def test_prompt_candidates_are_valid_json():
     prompt = build_prompt(REQUIREMENT, CANDIDATES)
-    # Start after the "Candidates:" header — the requirement line above it also
-    # contains brackets (roles=[...]).
     body = prompt[prompt.index("Candidates:") :]
     blob = body[body.index("[") : body.rindex("]") + 1]
     assert {c["id"] for c in json.loads(blob)} == {"cred-007", "cred-012"}
@@ -64,7 +59,6 @@ def test_empty_requirement_still_renders():
     assert "(no constraints)" in build_prompt(Requirement(), CANDIDATES)
 
 
-# -- parsing ----------------------------------------------------------------
 
 
 def test_parses_a_bare_object():
@@ -106,7 +100,6 @@ def test_non_string_selection_is_an_error():
         parse_response('{"selected": 7}')
 
 
-# -- select -----------------------------------------------------------------
 
 
 def test_select_returns_the_chosen_candidate():

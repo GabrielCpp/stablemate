@@ -1,17 +1,4 @@
-"""The frozen QA plan for `artifact-store`.
-
-Nothing in this repo serves, so there is no target to reach: the mechanism is
-`make -C pulumi plan`, and the evidence is the JSON it writes. `agents.yml` opts this app's
-QA into `make` and `jq` for that, and into nothing else — no credential is needed and no
-Google API is reached, because a preview resolves against the provider plugin rather than
-the cloud.
-
-The plan is taken once per scenario rather than shared, so a scenario that runs alone proves
-what it proves when run alone. It costs a second preview and buys independence.
-
-`jq` is what reads the file. A plan is a document on disk, and reading it here rather than
-through a tool would mean the QA harness's own filesystem access is the thing under test.
-"""
+"""The frozen QA plan for `artifact-store`."""
 
 import json
 
@@ -22,23 +9,12 @@ plan(run_id="qa-artifact-store", story="artifact-store")
 
 depot = target("depot", driver="python")
 
-# Every obligation id below is written out in full at every assertion that claims it, and
-# never factored into a constant. `ostler qa validate` reads a `covers=` list statically, off
-# the AST, so an id assembled from a name — an f-string, a join, a module constant — claims
-# nothing at all and the evidence gate counts the assertion as absent. The repetition is the
-# binding.
 
-#: The provider the program pins, and so the version a plan taken from this tree must name.
 PINNED_PROVIDER = "8.16.0"
 
 
 def the_plan(qa: Qa) -> dict:
-    """Take a plan the documented way, and hand back what it says.
-
-    `make -C pulumi plan` is the command the ops page publishes; using it rather than
-    invoking `pulumi` directly is what makes this evidence about the depot's documented
-    route rather than about pulumi.
-    """
+    """Take a plan the documented way, and hand back what it says."""
     built = qa.tool("make").run("-C", "pulumi", "build", timeout=900.0)
     qa.require("the program builds", built.ok, actual=built.stderr[-2000:], covers=["ac:1", "okf:docs/features/depot/ops/depot-stack.md:contract"])
 
@@ -48,11 +24,6 @@ def the_plan(qa: Qa) -> dict:
     read = qa.tool("jq").run(".", "pulumi/preview.json", timeout=120.0)
     qa.require("the plan it wrote is readable JSON", read.ok, actual=read.stderr[-2000:], covers=["ac:1", "okf:docs/features/depot/ops/depot-stack.md:contract"])
 
-    # "Without reaching a Google API" is the half of the criterion an exit code cannot carry:
-    # the Makefile points the provider at a dead proxy, and its documented discriminator is
-    # that a `googleapi:` diagnostic in the plan means a request left this machine and was
-    # answered. Its absence is what this asserts — the benign `failed to get regions list …
-    # connection refused` warning is the refusal working, not a finding.
     scanned = qa.tool("jq").run('[.. | strings | select(test("googleapi:"))] | length', "pulumi/preview.json", timeout=120.0)
     qa.check(
         "no googleapi: diagnostic anywhere in the plan, so no Google API answered a request",
@@ -65,14 +36,7 @@ def the_plan(qa: Qa) -> dict:
 
 
 def resources(qa: Qa, planned: dict) -> dict:
-    """The plan's steps, keyed by resource name.
-
-    A URN's last segment is the resource's name and the one before it is its type token.
-    They are pulled apart here, in Python, because `json_path` walks dotted and indexed
-    paths only — there is no filter expression that could say "the step whose URN ends
-    `artifacts`", and indexing `steps[4]` would bind every assertion to an ordering the
-    engine never promised.
-    """
+    """The plan's steps, keyed by resource name."""
     found = {}
     for step in qa.field(planned, "steps"):
         parts = qa.field(step, "urn").split("::")
@@ -141,8 +105,6 @@ def the_artifact_bucket_is_declared_with_its_safeties_on(qa: Qa) -> None:
         expected={"enabled": True},
         covers=["ac:3", "okf:docs/features/depot/concepts/artifact-store.md:consistency:3"],
     )
-    # Read as `is False` rather than as falsy: an absent key is the provider's default
-    # rather than the program's statement, and the two are exactly what this story is about.
     qa.check(
         "force-destroy is off, so destroying the stack cannot take the artifacts with it",
         bucket.get("forceDestroy") is False,
@@ -151,10 +113,6 @@ def the_artifact_bucket_is_declared_with_its_safeties_on(qa: Qa) -> None:
         covers=["ac:3", "okf:docs/features/depot/concepts/artifact-store.md:consistency:2"],
     )
 
-    # The pin is asserted where the plan can show it: the provider step's own inputs. A plan
-    # taken on a machine that already holds a plugin reports that plugin's version whether or
-    # not the program asked for it, which is why `defects.yml` files the missing pin as the
-    # auditor's row rather than expecting this assertion to fail on it.
     qa.verify(
         "json_path",
         declared.get("gcp", {}),
@@ -202,8 +160,6 @@ def only_the_build_group_reads_the_artifact_store(qa: Qa) -> None:
     binding = qa.field(declared, "artifacts-readers.inputs")
     members = binding.get("members", [])
 
-    # The whole list, compared as a whole. `"group:builds@example.com" in members` passes on a
-    # binding that also holds `allUsers`, which is the defect this criterion exists for.
     qa.check(
         "the readers binding lists exactly the build group",
         members == ["group:builds@example.com"],
@@ -218,8 +174,6 @@ def only_the_build_group_reads_the_artifact_store(qa: Qa) -> None:
         equals="depot-artifacts-example",
         covers=["ac:4", "okf:docs/features/depot/concepts/artifact-store.md:consistency:4"],
     )
-    # Stated as a property of every member rather than as two named exclusions, so a public
-    # identifier this plan never anticipated is caught by the same assertion.
     public = [member for member in members if member in ("allUsers", "allAuthenticatedUsers")]
     qa.check(
         "no member of the readers binding is a public one",

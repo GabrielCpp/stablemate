@@ -1,15 +1,4 @@
-"""Which doctor findings a story owns when it names a whole document as affected.
-
-A book file is long and its debt is old. A story that adds two bullets near the top of one
-was being charged with every pre-existing error below them, because naming the file was read
-as owning the file. That is not a hypothetical: a live story spent a documentation lap
-hunting a `missing-placement` measurement for a dialog 250 lines past anything it wrote.
-
-So the scoping is tested here directly rather than through the flow, since what it turns on
-is a *git diff* and an anchor's line span — two inputs an end-to-end docs run cannot vary
-deliberately. The graph is built by hand for the same reason: `Ostler`'s loader is exercised for real
-in `test_flow.py`, and what these tests need of it is three anchors at chosen lines.
-"""
+"""Which doctor findings a story owns when it names a whole document as affected."""
 from __future__ import annotations
 
 import logging
@@ -25,8 +14,6 @@ from workhorse_workflows.coder.shared.docs import _finding_affects_nodes, story_
 
 DOC_REL = "docs/features/app/editor.md"
 
-#: A document with three anchors, spread far enough apart that a diff can land inside one
-#: without touching its neighbours — the whole shape under test.
 DOC = "\n".join(
     ["# Editor", "", "intro prose", ""]
     + ["## interaction: toggle bold", "", "- role: button", ""]

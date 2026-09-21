@@ -8,15 +8,7 @@ plan(run_id="qa-create-policy", story="create-policy")
 
 
 def valid_policy(number: str, email: str = "alex@example.com", coverage: str = "auto") -> dict:
-    """A policy the desk accepts, in the coverage type named.
-
-    `auto` carries a VIN and `home` an address because the desk refuses each without the
-    other — a scenario asking for one of those coverages is asking for the field that goes
-    with it, and spelling that out at every call site is how the two drift apart.
-
-    Duplicated per plan rather than shared through a fixture module: `qa: {fixture_modules:}`
-    is retired, and this plan is frozen corpus, so the cost of the duplicate is a fixed one.
-    """
+    """A policy the desk accepts, in the coverage type named."""
     return {
         "policy_number": number,
         "holder_email": email,
@@ -30,16 +22,7 @@ def valid_policy(number: str, email: str = "alex@example.com", coverage: str = "
 
 
 def amendment_body(qa: Qa, policy: dict, premium: Any) -> dict:
-    """A full amendment of `policy` changing only the premium, quoting the version read.
-
-    The version is carried from the record the caller read rather than re-fetched: an
-    amendment that re-reads the policy first is quoting a version that is current by
-    construction, which proves nothing about the stale-write refusal.
-
-    `policy` is a record the desk returned, so every field comes out through `qa.field`:
-    a key the product spells differently is a failed check naming the field, not a
-    `KeyError` that kills the scenario and leaves its obligations unproven.
-    """
+    """A full amendment of `policy` changing only the premium, quoting the version read."""
     return {
         "holder_email": qa.field(policy, "holder_email"),
         "coverage_type": qa.field(policy, "coverage_type"),
@@ -101,9 +84,6 @@ def create_policy_api(qa: Qa) -> None:
     qa.verify("json_path", created_body, path="$.policy.status", equals="Draft", covers=["okf:docs/features/policy/http/policy-desk-api.md#post-policies:does:1"])
     qa.verify("json_path", created_body, path="$.policy.version", equals="1", covers=["okf:docs/features/policy/http/policy-desk-api.md#post-policies:does:1"])
     qa.verify("json_path", created_body, path="$.policy.id", equals="pn-1001", covers=["okf:docs/features/policy/http/policy-desk-api.md#post-policies:does:1"])
-    # The book's persistence bullet promises the record is still on the books after the
-    # service restarts — a same-process re-read is exactly what an in-memory ledger would
-    # also pass, so the process that accepted the write must die before the re-read.
     restart = qa.tool("docker").run("compose", "-f", "compose.yml", "restart", timeout=120.0)
     qa.check(
         "the service restarts cleanly between the write and the re-read",
@@ -111,8 +91,6 @@ def create_policy_api(qa: Qa) -> None:
         covers=["okf:docs/features/policy/http/policy-desk-api.md#post-policies:persistence:1"],
     )
     def restarted_service_answers() -> bool:
-        # A connection refused during the restart window is "not yet", not a verdict —
-        # the harness's `eventually` retries only timeouts, so the swallow lives here.
         try:
             return qa.field(qa.http.get("/healthz").json(), "status") == "ok"
         except HttpError:
@@ -167,15 +145,9 @@ def create_policy_api(qa: Qa) -> None:
     qa.check("duplicate branch leaves exactly one policy", len(qa.field(listing, "policies")) == 1, covers=["ac:2"])
     qa.check("API validation covers date rules", all((field in qa.field(refused_body, "errors") for field in ["start_date", "end_date"])), covers=["ac:6"])
 
-    # Editing writes the same policy record creating one does — the book names the binding,
-    # `persistence: policy-record` here and `concurrency: policy-record` on the edit. A change
-    # to the shape of that record breaks the editor as surely as the creator, and the editor is
-    # in no story's diff, so it is proved here rather than left to whoever touches it next.
     reading = qa.field(qa.http.get("/api/policies/pn-1001", expect_status=200).json(), "policy")
     amended = qa.http.put("/api/policies/pn-1001", json_body=amendment_body(qa, reading, qa.field(reading, "premium") + 1), expect_status=200)
     qa.verify("http_status", amended, code=200, path="/api/policies/pn-1001", covers=["okf:docs/features/policy/http/policy-desk-api.md#put-policy:contract"])
-    # The version below was spent by the amendment above, and nothing has re-read the policy
-    # since — a token re-fetched first is current by construction and refutes nothing.
     stale = qa.http.put("/api/policies/pn-1001", json_body=amendment_body(qa, reading, qa.field(reading, "premium") + 2), expect_status=409)
     qa.verify("conflict_on_stale", stale, subject="policy pn-1001", token="version", covers=["okf:docs/features/policy/http/policy-desk-api.md#put-policy:concurrency:1"])
     qa.verify("http_status", stale, code=409, title="Stale Policy", path="/api/policies/pn-1001", covers=["okf:docs/features/policy/http/policy-desk-api.md#put-policy:concurrency:1"])

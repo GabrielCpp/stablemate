@@ -1,11 +1,4 @@
-"""Tests for `globex_book_operate`, without ever asking an agent anything or running docker.
-
-This only covers the deterministic half of the task: that the module loads and registers
-cleanly, that `arrange`'s perturbations do exactly what the module claims they do, and
-that `_appraise` is pure and testable. `ask` and `judge` invoke a real agent and drive
-docker/a browser, so they are out of scope here — a suite that called them would grade a
-model and a browser, not this module.
-"""
+"""Tests for `globex_book_operate`, without ever asking an agent anything or running docker."""
 
 from __future__ import annotations
 
@@ -65,12 +58,10 @@ def _run(tmp_path: Path) -> Run:
     )
 
 
-# ── the module loads and registers ──────────────────────────────────────────────────────
 
 
 def test_the_module_registers_under_loader_load_all() -> None:
-    """A duplicate task name or an import-time error would fail every task, not just this
-    one — `loader.load_all` is the same entry point `paddock list` and every gate use."""
+    """A duplicate task name or an import-time error would fail every task, not just this one — `loader.load_all` is the same entry point `paddock list` and every gate use."""
     tasks = loader.load_all(DATA)
     names = {item.name for item in tasks}
     assert "globex-book-operate" in names
@@ -80,12 +71,10 @@ def test_the_rubric_file_exists_beside_the_other_rubrics() -> None:
     assert (DATA / "rubric-operate.md").is_file()
 
 
-# ── arrange: the trees it builds ─────────────────────────────────────────────────────────
 
 
 def test_arrange_builds_one_tree_per_line_and_arm_with_app_and_compose(tmp_path: Path) -> None:
-    """One tree per `(line, arm)` pair, where each line's own `arms` picks the pairs —
-    bring-up runs both, journey runs control only, three trials total."""
+    """One tree per `(line, arm)` pair, where each line's own `arms` picks the pairs — bring-up runs both, journey runs control only, three trials total."""
     run = _run(tmp_path)
     TASK.arrange(run)
 
@@ -107,7 +96,6 @@ def test_arrange_builds_one_tree_per_line_and_arm_with_app_and_compose(tmp_path:
         assert "playwright" in mcp["mcpServers"]
 
 
-# ── arrange: control leaves the perturbed bullets intact ────────────────────────────────
 
 
 def test_control_leaves_bring_up_bullets_intact(tmp_path: Path) -> None:
@@ -133,14 +121,12 @@ def test_control_leaves_journey_bullets_intact(tmp_path: Path) -> None:
     assert "  - [submit-new-widget]" in text
 
 
-# ── arrange: absence empties the bullet values, keeps the keys ──────────────────────────
 
 
 def test_bring_up_absence_empties_every_bullet_in_the_table_but_keeps_the_keys(
     tmp_path: Path,
 ) -> None:
-    """Per-key check: every row `BRING_UP_BULLETS` names survives as a valueless bullet,
-    in the file that row names — the key line is untouched, only its value is gone."""
+    """Per-key check: every row `BRING_UP_BULLETS` names survives as a valueless bullet, in the file that row names — the key line is untouched, only its value is gone."""
     run = _run(tmp_path)
     TASK.arrange(run)
     line = TASK.LINES_BY_NAME["bring-up"]
@@ -180,10 +166,7 @@ def test_bring_up_absence_empties_every_bullet_in_the_table_but_keeps_the_keys(
 def test_bring_up_absence_states_neither_18102_nor_the_up_command_anywhere_in_the_book(
     tmp_path: Path,
 ) -> None:
-    """The load-bearing assertion this round adds: not "the two runbooks this arm was
-    written to touch," but every page under the perturbed tree's `docs/` — the round 3
-    defect was a fact restated on a page the scoped version of this test never looked at.
-    `18101` is deliberately not checked here; see `BRING_UP_BULLETS`'s docstring for why."""
+    """The load-bearing assertion this round adds: not "the two runbooks this arm was written to touch," but every page under the perturbed tree's `docs/` — the round 3 defect was a fact restated on a page the scoped version of this test never looked at."""
     run = _run(tmp_path)
     TASK.arrange(run)
     line = TASK.LINES_BY_NAME["bring-up"]
@@ -206,15 +189,7 @@ def test_bring_up_absence_states_neither_18102_nor_the_up_command_anywhere_in_th
 def test_bring_up_absence_leaves_no_code_bullet_routing_to_18102_or_the_up_command(
     tmp_path: Path,
 ) -> None:
-    """The round 4 defect, and the half of the sweep above that reads the book's routes
-    rather than its spelling. The test above asserts no page *states* the two facts; it
-    passed for three rounds while all three bring-up pages still carried
-    `- code: `compose.yml``, which is exactly where both facts live. A citation is a
-    route, and in an OKF book routing a reader to a fact and stating it are the same
-    claim — so an agent that opened `compose.yml` on this arm had followed the book, not
-    gone around it, and the arm's premise was false. This walks every surviving `- code:`
-    bullet and opens the file it cites, so the next fact that hides one hop away fails
-    here instead of being scored as a shortcut."""
+    """The round 4 defect, and the half of the sweep above that reads the book's routes rather than its spelling."""
     run = _run(tmp_path)
     TASK.arrange(run)
     line = TASK.LINES_BY_NAME["bring-up"]
@@ -239,7 +214,6 @@ def test_bring_up_absence_leaves_no_code_bullet_routing_to_18102_or_the_up_comma
         "vacuously, so it is not yet checking anything"
     )
 
-# ── _appraise: pure, no agent involved ───────────────────────────────────────────────────
 
 
 def test_appraise_caps_a_level_two_verdict_whose_citation_does_not_resolve(tmp_path: Path) -> None:

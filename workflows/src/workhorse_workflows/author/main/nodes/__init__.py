@@ -1,39 +1,4 @@
-"""The non-agent work the **main** author machine sequences, grouped by subject.
-
-Importing this package registers every node on the shared `blueprint`, which is the one
-name [`../../workflow.py`](../../workflow.py) needs from here. The submodules are the
-subjects:
-
-* `config` — what the run works on
-* `intake` — validate roadmap provenance and retain story-mode bullet adoption
-* `epics` — which epic is next
-* `stories` — one story at a time: seed it, pick it, validate it, ground it
-* `planner` — the next flat artifact-derived authoring unit
-* `coverage` — whether an epic's stories cover it
-* `artifacts` — the whole-run gates, and the git tail that ships what they passed
-
-The survey graphs' nodes are not here, and they keep a blueprint of their own so a reader
-can see which nodes belong to which machine: what both survey flows call is in
-[`shared/survey/`](../../shared/survey), and what one of them calls sits beside that flow,
-in [`surveyor/nodes/`](../../surveyor/nodes) and
-[`parity_surveyor/nodes/`](../../parity_surveyor/nodes).
-
-`epic-edit` and `story-edit` do import from here, and that is not a leak: they edit the
-same epics, stories and backlog this machine writes, so the node that validates a story or
-adopts a bullet has to be the *same* node or the two would drift. What every flow shares —
-survey included — is in [`shared/`](../../shared) instead.
-
-Ported from `base-library/workflows/author/scripts/`. The same three things change as in
-`research`, and nothing else does: the JSON envelope on stdout becomes a **returned
-model**, the positional `sys.argv` entries become **typed parameters**, and a `sys.exit(1)`
-becomes `raise WorkflowFailed(...)`. Two shapes specific to these scripts go with them:
-
-* every `emit(...)` / `done(...)` helper ended in `sys.exit(0)` — an "outputs and stop"
-  that only made sense for a subprocess. A node returns its model instead, and the
-  *caller* decides whether an unsuccessful result ends the flow;
-* the `[script-name]` log prefixes are gone. The run record already names the state that
-  logged the line, so the prefix was the engine's job all along.
-"""
+"""The non-agent work the **main** author machine sequences, grouped by subject."""
 from __future__ import annotations
 
 from workhorse_workflows.author.main.nodes._blueprint import blueprint

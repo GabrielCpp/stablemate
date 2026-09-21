@@ -1,9 +1,4 @@
-"""Tests for groom.state.prune_workflows — the reconciliation step that drops
-workflows whose containers no longer exist (the deletion half of /refresh and
-startup scan, which otherwise only ever add).
-
-Run: uv run pytest tests/test_state.py
-"""
+"""Tests for groom.state.prune_workflows — the reconciliation step that drops workflows whose containers no longer exist (the deletion half of /refresh and startup scan, which otherwise only ever add)."""
 from __future__ import annotations
 
 from groom import state
@@ -42,7 +37,6 @@ def test_prune_empty_present_removes_everything():
 def test_prune_also_forgets_gate_locks_of_removed():
     _reset()
     _wf("aaa")
-    # Materialize a lock for a gate on the soon-to-be-removed container.
     state.gate_lock("aaa", "docs/gate.md")
     assert any(k.startswith("aaa::") for k in state._gate_locks)
 

@@ -1,9 +1,4 @@
-"""`known-defect:` — a record of a code-side fault, with two mechanical exits.
-
-A waiver silenced a finding for as long as nobody deleted it. A `known-defect:` bullet names
-the seed that fixes the code and the finding it excuses, and doctor takes it back the moment
-the seed closes or the finding stops firing. Both exits fire without a human noticing.
-"""
+"""`known-defect:` — a record of a code-side fault, with two mechanical exits."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -21,11 +16,7 @@ def _findings(repo: Path, code: str) -> list[doctor.Finding]:
 
 
 def _collision(node: str, other: str) -> str:
-    """The address `ambiguous-locator` carries: the node, plus the collision it takes part in.
-
-    The node alone is not one — the same component collides once per screen it is reached from
-    and once per template matching its name — so the ref names the group key and the partner.
-    """
+    """The address `ambiguous-locator` carries: the node, plus the collision it takes part in."""
     return f"{DASH}#{node}#{DASH}:button:Save:{other}"
 
 
@@ -44,7 +35,6 @@ def test_known_defect_is_a_declared_advisory_key():
 def test_an_open_seed_suppresses_exactly_that_code_on_that_node(repo: Path):
     write(repo / DASH, _screen(_excused_save(), DUPLICATE_SAVE))
     ambiguous = _findings(repo, "ambiguous-locator")
-    # The other half of the pair is still ambiguous: the record is per node, not per pair.
     assert [f.ref for f in ambiguous] == [_collision("footer-save-button", "save-button")]
     assert _findings(repo, "stale-defect") == []
     assert _findings(repo, "unknown-bullet") == []
@@ -70,7 +60,6 @@ def test_an_unknown_seed_is_stale_too(repo: Path):
 
 
 def test_a_finding_that_no_longer_fires_makes_the_record_stale(repo: Path):
-    # No duplicate sibling: the excused collision is gone, so the bullet pre-excuses the next.
     write(repo / DASH, _screen(_excused_save()))
     stale = _findings(repo, "stale-defect")
     assert len(stale) == 1
@@ -80,7 +69,6 @@ def test_a_finding_that_no_longer_fires_makes_the_record_stale(repo: Path):
 
 def test_the_record_excuses_one_code_not_the_node(repo: Path):
     write(repo / DASH, _screen(_excused_save(code="unnamed-interactive"), DUPLICATE_SAVE))
-    # The collision still fires on both nodes; the bullet names a code that does not.
     assert len(_findings(repo, "ambiguous-locator")) == 2
     assert len(_findings(repo, "stale-defect")) == 1
 

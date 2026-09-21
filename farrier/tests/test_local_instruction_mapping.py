@@ -1,14 +1,4 @@
-"""`localInstructions` aggregation: which sources go in, and which files come out.
-
-An entry names skills (`skill`/`skills`), prompts (`prompt`/`prompts`), or both —
-prompts are there so a procedure a repo wants *always loaded* stays one library
-file rather than a hand-maintained fragment in every consuming repo's root
-instructions. The aggregated text always lands in AGENTS.md, the one name every
-harness reads natively; CLAUDE.md is generated beside it as an `@AGENTS.md`
-pointer whenever the claude adapter is on, so the body is never written twice.
-
-    ./.venv/bin/python -m pytest tests/test_local_instruction_mapping.py
-"""
+"""`localInstructions` aggregation: which sources go in, and which files come out."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -71,13 +61,10 @@ def test_prompt_body_is_aggregated_after_the_skills(tmp_path):
     )
     body = outputs[repo / "AGENTS.md"]
     assert body.index("Ostler rules.") < body.index("Push as you go.")
-    # The prompt's own front matter never reaches the aggregated file.
     assert "description: Commit and push" not in body
 
 
 def test_arguments_placeholder_is_dropped_when_aggregated(tmp_path):
-    # Nothing substitutes `$ARGUMENTS` outside a slash-command invocation, so
-    # aggregated it would be a literal dollar sign in every session's context.
     repo, outputs = _render(
         tmp_path,
         "  - prompts: [demo-stablemate-commit]\n"
@@ -85,7 +72,6 @@ def test_arguments_placeholder_is_dropped_when_aggregated(tmp_path):
         "    includeReadme: false\n",
     )
     assert "$ARGUMENTS" not in outputs[repo / "AGENTS.md"]
-    # ...but the command itself still renders with it.
     assert "$ARGUMENTS" in outputs[repo / ".claude" / "commands" / "demo-stablemate-commit.md"]
 
 
@@ -104,8 +90,6 @@ def test_mapping_with_no_source_is_rejected(tmp_path):
 
 
 def test_claude_only_repo_still_writes_agents_md_plus_a_pointer(tmp_path):
-    # The body goes where every harness looks, even when only Claude is enabled:
-    # turning codex on later must not move a file or change what it says.
     repo, outputs = _render(
         tmp_path,
         '  - skill: demo-stablemate-ostler\n    paths: ["."]\n    includeReadme: false\n',
@@ -146,7 +130,6 @@ def test_readme_is_imported_when_claude_is_the_only_adapter(tmp_path):
     repo, outputs = _render(
         tmp_path, '  - skill: demo-stablemate-ostler\n    paths: ["."]\n', codex=False
     )
-    # Claude can pull it in by reference, so the always-loaded file stays lean.
     assert "@README.md" in outputs[repo / "CLAUDE.md"]
     assert "Local readme." not in outputs[repo / "AGENTS.md"]
 
@@ -156,8 +139,6 @@ def test_readme_is_copied_when_another_adapter_reads_the_file(tmp_path):
     repo, outputs = _render(
         tmp_path, '  - skill: demo-stablemate-ostler\n    paths: ["."]\n', codex=True
     )
-    # Codex has no import directive, so the body is copied — and Claude then gets
-    # it through the pointer, which must not import it a second time.
     assert "Local readme." in outputs[repo / "AGENTS.md"]
     assert "@README.md" not in outputs[repo / "CLAUDE.md"]
 

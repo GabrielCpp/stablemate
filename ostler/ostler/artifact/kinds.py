@@ -1,14 +1,4 @@
-"""Built-in artifact kinds: filename, scaffold skeleton, and semantic vet rules.
-
-Each kind's ``vet`` returns a list of actionable problem strings (empty = clean).
-Rules deliberately go beyond JSON Schema: file existence, cross-field
-consistency, run-manifest coherence — the checks a producing agent must satisfy
-before its artifact is trusted by a downstream deterministic consumer.
-
-Workspace-specific checks (e.g. "does services[].repo resolve in the developer's
-multi-repo workspace") intentionally stay in the calling workflow, which owns
-that context; ostler validates everything knowable from the repository alone.
-"""
+"""Built-in artifact kinds: filename, scaffold skeleton, and semantic vet rules."""
 
 from __future__ import annotations
 
@@ -30,7 +20,7 @@ class ArtifactKind:
     filename: str
     description: str
     scaffold: Callable[[], Any]
-    vet: Callable[[Any, Path, Path], list[str]]  # (data, spec_dir, repo_root) -> problems
+    vet: Callable[[Any, Path, Path], list[str]]
 
 
 def _is_nonempty_str(value: Any) -> bool:
@@ -46,9 +36,6 @@ def _evidence_exists(ref: Any, root: Path, spec_dir: Path) -> bool:
     return any(c.is_file() for c in candidates)
 
 
-# ---------------------------------------------------------------------------
-# plan-context.json
-# ---------------------------------------------------------------------------
 
 def _plan_context_scaffold() -> dict:
     return {
@@ -118,9 +105,6 @@ def _plan_context_vet(data: Any, spec_dir: Path, root: Path) -> list[str]:
     return problems
 
 
-# ---------------------------------------------------------------------------
-# qa-evidence.json
-# ---------------------------------------------------------------------------
 
 _CRITERION_KINDS = ("behavioral", "parity", "data-entry", "transient")
 
@@ -145,9 +129,7 @@ def _qa_evidence_scaffold() -> dict:
 
 
 def _run_log_tally(spec_dir: Path) -> tuple[int, int]:
-    """(passing, failing) assertion counts from ``qa/qa-run.ndjson`` — the runner's ground
-    truth. A missing/empty log tallies to (0, 0) so an un-modeled surface without real proof
-    is still rejected."""
+    """(passing, failing) assertion counts from ``qa/qa-run.ndjson`` — the runner's ground truth."""
     log_path = spec_dir / "qa" / "qa-run.ndjson"
     if not log_path.is_file():
         return (0, 0)
@@ -168,12 +150,7 @@ def _run_log_tally(spec_dir: Path) -> tuple[int, int]:
 
 
 def _latest_session_run_id(spec_dir: Path) -> str:
-    """The runId the newest ``session_start`` in the run log opened with; "" if there is none.
-
-    Deliberately tolerant of a malformed log: a line that will not parse is `_strict_ndjson`'s
-    to report, and this helper exists to answer one question — which execution do the files in
-    `qa/` belong to. No log, no answer, and no problem raised from here.
-    """
+    """The runId the newest ``session_start`` in the run log opened with; "" if there is none."""
     log_path = spec_dir / "qa" / "qa-run.ndjson"
     if not log_path.is_file():
         return ""
@@ -204,11 +181,6 @@ def _qa_evidence_vet(data: Any, spec_dir: Path, root: Path) -> list[str]:  # noq
     if not isinstance(obligations, list):
         return ["'obligations' must be an array when present."]
     if not criteria and not obligations:
-        # A surface the OKF graph does not model as a feature (an infra/CLI story) yields no
-        # acceptance criteria and no obligations — the diff→OKF mapper has nothing to map. Its
-        # proof is the command assertions in the run log. Admit that case ONLY when the log
-        # shows real passing assertions and zero failures, so an empty/failing log is still
-        # rejected and this can never wave through a vacuous pass.
         passed, failed = _run_log_tally(spec_dir)
         if passed == 0 or failed > 0:
             return ["qa-evidence must contain at least one criterion or OKF obligation "
@@ -241,9 +213,6 @@ def _qa_evidence_vet(data: Any, spec_dir: Path, root: Path) -> list[str]:  # noq
         elif is_sequence(raw_evidence):
             evidence = raw_evidence
         else:
-            # A scalar that is not a path — a number, a mapping. This used to walk straight
-            # into the comprehension below and raise `TypeError` out of a validator whose
-            # whole job is to hand the problem back instead.
             problems.append(f"{cid}: 'evidence' must be a path or a list of paths.")
             evidence = []
         if not [e for e in evidence if _evidence_exists(e, root, spec_dir)]:
@@ -314,20 +283,10 @@ def _qa_evidence_vet(data: Any, spec_dir: Path, root: Path) -> list[str]:  # noq
     if overall == "pass" and any_fail:
         problems.append("overall is Pass but at least one criterion verdict is Fail — inconsistent.")
 
-    # A pass is valid only when it is backed by the current runner-owned ledger.
     run_id = str(data.get("runId", "")).strip()
     if overall == "pass" and not run_id:
         problems.append("overall Pass requires a non-empty runner-produced runId.")
 
-    # …and *every* verdict, pass or not, has to describe the run that is on disk. The two
-    # bindings below this one only fire once `runId` is non-empty and only reach the
-    # manifest, so a `qa-evidence.json` left behind by an earlier execution vetted clean on
-    # the strength of being self-consistent: `overall: Fail` beside seven `Pass` criteria,
-    # written by a version of the aggregator since fixed, sat beside a fresh run log for
-    # hours. Downstream that costs a full turn every pass — the assessor cannot route on a
-    # verdict the log contradicts, so it re-derives the whole thing from `qa-run.ndjson`.
-    # The log's own `session_start` is the authority: the runner rewrites `qa/` per run, so
-    # the newest one names the only execution these files may describe.
     started = _latest_session_run_id(spec_dir)
     if started and started != run_id:
         problems.append(
@@ -392,11 +351,6 @@ def _qa_evidence_vet(data: Any, spec_dir: Path, root: Path) -> list[str]:  # noq
                     if not isinstance(row, dict) or str(row.get("verdict", "")).strip().lower() != "pass":
                         continue
                     item_id = str(row.get("id") or row.get("title") or "?")
-                    # Every check below asks whether the Pass is *supported*. This one asks
-                    # whether it is *contradicted*, which is a different question and the
-                    # only one that catches the failure this gate kept waving through: a
-                    # criterion covered by nine assertions, eight passing, cites one of the
-                    # eight and vets clean while the ninth disproves it in the same log.
                     disproof, aborted = _failing_log_refs(item_id, records)
                     if disproof:
                         problems.append(
@@ -404,12 +358,6 @@ def _qa_evidence_vet(data: Any, spec_dir: Path, root: Path) -> list[str]:  # noq
                             f"assertions covering it ({', '.join(disproof)})."
                         )
                     if aborted:
-                        # Still refused — a scenario that did not finish claims nothing, and
-                        # a Pass harvested from its green prefix is the failure this gate
-                        # exists for. Said in its own words, though: the harness's stop
-                        # record is not an assertion that looked at the product and
-                        # disagreed, and reporting it as one sends a reader hunting for a
-                        # defect that the run never got far enough to observe.
                         problems.append(
                             f"{item_id}: marked Pass but the scenario covering it did not "
                             f"run to completion ({', '.join(aborted)})."
@@ -483,17 +431,7 @@ def _passing_log_ref(ref: str, item_id: str, records: list[dict[str, Any]]) -> b
 def _failing_log_refs(
     item_id: str, records: list[dict[str, Any]]
 ) -> tuple[list[str], list[str]]:
-    """The failing `scenario:assert:action` refs covering `item_id`, split in two.
-
-    First the assertions the *plan* made and lost, then the completion sentinels the
-    harness synthesized over a scenario that died mid-run (`PythonDriver._grade`). Both
-    refuse a `Pass`, and neither is the other: one is the product disagreeing with the
-    book, the other is the run never reaching the question.
-
-    A missing `result` counts as failing: an assertion record the runner wrote without
-    saying it passed has not established anything, and reading it as silence would put the
-    benefit of the doubt on the side that is asking to be believed.
-    """
+    """The failing `scenario:assert:action` refs covering `item_id`, split in two."""
     failing: list[str] = []
     aborted: list[str] = []
     for record in records:
@@ -508,9 +446,6 @@ def _failing_log_refs(
     return failing, aborted
 
 
-# ---------------------------------------------------------------------------
-# backlog-items.json
-# ---------------------------------------------------------------------------
 
 def _backlog_items_scaffold() -> list:
     return []
@@ -540,7 +475,6 @@ def _backlog_items_vet(data: Any, spec_dir: Path, root: Path) -> list[str]:
     return problems
 
 
-# ---------------------------------------------------------------------------
 
 KINDS: dict[str, ArtifactKind] = {
     kind.name: kind

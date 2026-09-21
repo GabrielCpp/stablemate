@@ -1,27 +1,4 @@
-"""The body a coder flow writes when it stops and asks a human.
-
-Every escalation in this package ends at the same two lines: an `Await` on the story's
-`context.md`, and a human — or, more often, an agent babysitting the run — reading that
-file through groom's outbox. What the reader used to get was one of two unhelpful things:
-the producer's block summary alone (the `human`/`operator` arm, which passes `notes`), or
-*nothing at all* — the auto-resolver arms passed `questions=""` on purpose, because
-`Await` writes its `questions` over the file with `write_text` and would otherwise erase
-the note the escalating resolver had just written there.
-
-So the choice was between destroying the investigation and publishing no question. This
-module removes it: the flow composes the whole context file itself — the resolver's note
-included, verbatim — and hands that to `Await`, which `gates.format_operator_gate` then
-passes through untouched because it already carries a `STATUS:` line.
-
-The order is the order a reader needs it in: which escalation this is, what blocked, what
-has already been ruled out, what would unblock it, and where everything lives. The `tried`
-list is the load-bearing one — without it the answerer re-runs every dead end the resolver
-already paid for, which on an unbounded-timeout resolver turn is the expensive half.
-
-There is deliberately no cap on escalations here. A repeat is made *visible* by the
-counter and left to whoever answers; a run-side backstop would turn "ask again" into
-"give up", and the second escalation is often the one that gets a real answer.
-"""
+"""The body a coder flow writes when it stops and asks a human."""
 from __future__ import annotations
 
 import logging
@@ -37,11 +14,6 @@ from workhorse_workflows.coder.shared.schemas._base import Finding
 from workhorse_workflows.coder.shared.schemas.dev import OperatorGate, OperatorResolution
 from workhorse_workflows.coder.shared.schemas.story import StoryPaths
 
-#: How much of the existing `context.md` is carried into the new body. Each escalation
-#: embeds the last one, so an uncapped copy grows quadratically over a story that blocks
-#: five times — and the middle of a long file is exactly where the useful part is not.
-#: The head keeps the first escalation and the answer it got; the tail keeps the most
-#: recent, which includes the note the resolver wrote moments ago.
 HISTORY_HEAD = 4000
 HISTORY_TAIL = 8000
 
@@ -80,23 +52,7 @@ def compose_escalation(
     summary: str = "",
     findings: list[Finding] | None = None,
 ) -> OperatorGate:
-    """Build the gate body for one escalation, preserving what is already on disk.
-
-    `number` is the escalation's ordinal *for this story*, taken from the counter the
-    escalating flow already keeps (`plan_blocks`, `review_blocks`, `QaLoop.escalations`).
-    `tried` and `summary` are the resolver's, and are empty on the `human`/`operator` arm
-    where no resolver ran — the gate then says so rather than implying nothing was tried.
-
-    `findings` is the producing node's own structured evidence, when it had any. A block
-    that reaches this function *with* findings is one nobody could route — every finding a
-    fixer could act on has already been sent to that fixer — so what is left is either
-    evidence with no owner or a defect the lane could not repair with it. Either way the
-    operator needs to see the specifics rather than re-derive them from prose.
-
-    The existing file is read here rather than by the caller because reading it is the
-    whole reason this is a node: it is the one part of the body that is not already in the
-    flow's hands.
-    """
+    """Build the gate body for one escalation, preserving what is already on disk."""
     context = paths.story_context_path(story_path)
     prior = context.read_text(encoding="utf-8") if context.exists() else ""
 
@@ -159,9 +115,6 @@ def compose_escalation(
         len(tried or []),
         extra={"activity": True},
     )
-    # The embedded history carries `STATUS:` lines of its own, and that is safe by
-    # construction: every reader and writer in `workhorse.gates` matches the *first* one,
-    # which is the line above. A quoted history therefore stays history.
     body = "\n".join(lines).rstrip() + "\n"
     return OperatorGate(body=body, number=number or 1)
 
@@ -177,22 +130,7 @@ def escalation(
     findings: Sequence[Finding] = (),
     story: StoryPaths | None = None,
 ) -> OperatorGate:
-    """The gate body for one block, from any lane.
-
-    Four flows had a private `_escalation` differing only in the two strings `block_kind`
-    and `where` and in which counter they read for `number`. That was tolerable while
-    blocking was something three specific gates did; it is not once *every* node can say
-    "not possible", because a fifth copy is then a copy per node rather than per lane.
-
-    So the two strings are parameters and the story identity comes off the flow, which is
-    the part that was never lane-specific: every per-story coder flow resolves a
-    `StoryPaths` in `setup` and parks on the same `context.md` beside the same story.
-
-    `story` is for the one flow whose `ctx` is *not* that: the backlog drain draws a new
-    story per iteration, so its `setup` resolves the workspace instead and the story it is
-    blocked on is a node output rather than the run context. Passing it explicitly is the
-    honest spelling — the alternative is this helper guessing which of the two `ctx` is.
-    """
+    """The gate body for one block, from any lane."""
     ident: StoryPaths | Any = story if story is not None else flow.ctx
     return flow.call(
         compose_escalation,
@@ -211,13 +149,7 @@ def escalation(
 
 
 def context_path(flow: Workflow, story_path: str = "") -> Path:
-    """The file an `Await` writes its questions into: `<story-folder>/context.md`.
-
-    Next to the story, so whoever answers is reading the story it is about. `story_path`
-    overrides `flow.ctx` for the one lane whose `ctx` is not the story being asked about:
-    the backlog drain has a new story per iteration, and the question belongs beside the
-    item it is about rather than beside the run.
-    """
+    """The file an `Await` writes its questions into: `<story-folder>/context.md`."""
     return paths.story_context_path(story_path or flow.ctx.story_path)
 
 

@@ -1,22 +1,4 @@
-"""Every code `ostler doctor` can emit is classified here on purpose.
-
-The August drift happened silently: ostler grew `unminted-claim`,
-`relation-without-subject` and the placement checks while okf-builder's prompts stayed
-frozen, so the newest codes fell through to the generic repair fragment with no guidance
-and the books rotted against a contract nobody had transcribed. This test is the
-tripwire: it reads the codes straight out of `doctor`'s source, and every one must be
-either
-
-* **fragment-covered** — a file under `main/prompts/repair/` written for that defect,
-* in `DEFAULT_PROMPT_CODES` — someone decided `_default.md` (plus the `grounded` flag in
-  the item context, where it applies) is enough, or
-* in `ORG_GRAPH_CODES` — the epic/story/milestone/backlog/runbook planning graph, which a
-  features-book drain never sees.
-
-When ostler adds a code, this fails, and someone classifies it deliberately — writes a
-fragment, or argues in a review why the default suffices. The freeze cannot recur
-silently.
-"""
+"""Every code `ostler doctor` can emit is classified here on purpose."""
 from __future__ import annotations
 
 import ast
@@ -33,17 +15,6 @@ from workhorse_workflows.okf_builder.shared.checkpoint import (
 
 REPAIR_DIR = Path(okf_builder_pkg.__file__).parent / "main" / "prompts" / "repair"
 
-#: Codes whose finding names its own remedy well enough for the generic fragment —
-#: mechanical rewrites (`bad-heading-type`), structural repairs whose
-#: target is in the message (`dangling-link`, `missing-anchor`), and the grounded codes
-#: whose fragment-worthy sibling already carries the pattern (`ambiguous-locator` rides
-#: the `grounded` flag the same way `missing-placement`'s fragment describes). The two
-#: declaration codes and the two `known-defect:` codes name their own remedy in the
-#: suggestion: a malformed value is rewritten, a stale one is deleted. `unparsed-capture` is
-#: the third of those and rides here rather than beside `unparsed-check`'s fragment: that
-#: fragment exists for a population this one has none of — books written before `tests:`, where
-#: the repair is to move a test id off `verify:` and then write the observation. A refused
-#: `capture:` bullet has one shape and its suggestion spells the whole grammar.
 DEFAULT_PROMPT_CODES = frozenset({
     "ambiguous-locator",
     "bad-heading-type",
@@ -85,9 +56,6 @@ DEFAULT_PROMPT_CODES = frozenset({
     "unresolved-relation",
 })
 
-#: Codes about the planning graph — epics, stories, seeds, milestones, the backlog, story
-#: QA runbooks and fixture declarations. They live outside `docs/features/`, so
-#: `scoped_findings` never hands them to this workflow's drain.
 ORG_GRAPH_CODES = frozenset({
     "backlog-item-in-multiple-milestones",
     "cross-epic-dependency",
@@ -129,15 +97,7 @@ ORG_GRAPH_CODES = frozenset({
 
 
 def _emitted_codes() -> set[str]:
-    """The codes `doctor.py` constructs `Finding`s with, read off its AST.
-
-    A grep would match prose and suggestions; the AST matches only the second argument
-    (or `code=`) of a `Finding(...)` call. The one non-literal spelling in the file is a
-    variable bound by a conditional expression over two literals
-    (`"missing-required-section" if … else "empty-required-section"`), so string
-    constants from `IfExp` assignments resolve it; any other dynamic shape is itself
-    drift and fails loudly.
-    """
+    """The codes `doctor.py` constructs `Finding`s with, read off its AST."""
     tree = ast.parse(inspect.getsource(doctor))
     ifexp_strings: dict[str, set[str]] = {}
     for node in ast.walk(tree):
@@ -172,14 +132,6 @@ def _emitted_codes() -> set[str]:
     return codes
 
 
-#: Codes the *builder* mints, not `doctor` — so they carry a repair fragment while never
-#: appearing in doctor's source. `stale-citation` is the coverage join's regrounding row: a
-#: node whose grammar is green and whose cited symbol has been rewritten under it, which no
-#: static check of the book alone could ever see. `dangling` is `backfill.plan`'s own label
-#: for a row grounded in one of `DANGLING_CODES` (`dangling-code-ref`, `missing-code-symbol`)
-#: — the worklist row carries the *reason*, not the doctor code, because either code lands
-#: the same row. Excluded from the retirement half of the tripwire, and only from that half —
-#: an unclassified doctor code still fails.
 BUILDER_CODES = frozenset({"stale-citation", "dangling"})
 
 
@@ -190,9 +142,6 @@ def _fragment_codes() -> set[str]:
 def test_every_doctor_code_is_classified_on_purpose() -> None:
     emitted = _emitted_codes()
     fragments = _fragment_codes()
-    # `NON_ACTIONABLE_CODES` (`checkpoint.py`) is reused rather than duplicated here: those
-    # codes are ostler-only to clear (no agent turn can act on them), which is itself a
-    # deliberate classification, not an oversight this tripwire should flag.
     classified = fragments | DEFAULT_PROMPT_CODES | ORG_GRAPH_CODES | NON_ACTIONABLE_CODES
 
     unclassified = emitted - classified
@@ -221,12 +170,7 @@ def test_the_buckets_do_not_overlap() -> None:
 
 
 def test_the_drain_order_and_grounding_name_real_codes() -> None:
-    """A rename upstream must not quietly strip a code of its rank or its grounding.
-
-    Both sets steer behavior by string match: a code missing from `_CODE_FAMILIES` still
-    drains (just last), and one missing from `GROUNDED_CODES` still repairs (just without
-    the read-the-source demand) — so a stale name fails soft everywhere but here.
-    """
+    """A rename upstream must not quietly strip a code of its rank or its grounding."""
     emitted = _emitted_codes()
     for family in _CODE_FAMILIES:
         assert family <= emitted, sorted(family - emitted)

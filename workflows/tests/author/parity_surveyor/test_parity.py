@@ -1,9 +1,4 @@
-"""The parity survey's two ends: `load_parity_config`, the freeze, and the emitter.
-
-Same shape as the surveyor's tests — real nodes against a real directory tree, with the
-`repo` fixture standing the test in the consuming repo. `launch_repo_root()` falls back
-to the working directory just as `survey_repo_root()` does, so that one fixture pins both.
-"""
+"""The parity survey's two ends: `load_parity_config`, the freeze, and the emitter."""
 from __future__ import annotations
 
 import json
@@ -30,12 +25,11 @@ def _entry(area: str = "billing", slug: str = "invoices", **over: Any) -> dict[s
 
 
 def _record(status: str = "assessed", **over: Any) -> str:
-    """A finding record's front matter. JSON is valid YAML, so no serializer is needed."""
+    """A finding record's front matter."""
     front: dict[str, Any] = {"status": status, **over}
     return f"---\n{json.dumps(front, indent=2)}\n---\n\n# Parity finding\n"
 
 
-# ── load_parity_config ──────────────────────────────────────────────────────
 
 
 def test_config_derives_every_path_under_the_survey_dir(
@@ -118,7 +112,6 @@ def test_config_fails_without_a_target_feature_book(
         load_parity_config(logger, baseline="base.json")
 
 
-# ── expand_parity_inventory ─────────────────────────────────────────────────
 
 
 def test_expand_freezes_one_unit_per_baseline_surface(
@@ -292,7 +285,6 @@ def test_expand_refuses_a_baseline_that_is_entirely_rewritten(
     assert not (repo / "inv.json").exists()
 
 
-# ── emit_parity_backlog ─────────────────────────────────────────────────────
 
 
 @pytest.fixture
@@ -359,8 +351,7 @@ def test_emit_suppresses_a_surface_a_new_feature_already_owns(
     parity_survey: Callable[..., None],
     read_json: Callable[[Path], Any],
 ) -> None:
-    """The suppression is the assessor's one judgment, and it stays auditable: the unit is
-    still in the manifest, with the owner that suppressed it."""
+    """The suppression is the assessor's one judgment, and it stays auditable: the unit is still in the manifest, with the owner that suppressed it."""
     parity_survey(
         [_unit(), _unit(slug="refunds")],
         {
@@ -397,8 +388,7 @@ def test_emit_skips_a_unit_that_is_not_assessed(
     parity_survey: Callable[..., None],
     read_json: Callable[[Path], Any],
 ) -> None:
-    """`clean` means the new app covers it; `blocked` means nobody could tell yet. Neither
-    is a backlog bullet, and neither counts as a suppression."""
+    """`clean` means the new app covers it; `blocked` means nobody could tell yet."""
     parity_survey(
         [_unit(), _unit(slug="statements")],
         {
@@ -487,8 +477,7 @@ def test_emit_appends_its_own_heading_to_an_existing_backlog(
     write: Callable[[Path, str], Path],
     parity_survey: Callable[..., None],
 ) -> None:
-    """A repo can carry both surveys' sections: the parity fence is its own marker pair,
-    so an existing surveyor section is neither replaced nor read."""
+    """A repo can carry both surveys' sections: the parity fence is its own marker pair, so an existing surveyor section is neither replaced nor read."""
     parity_survey(
         [_unit()], {"legacy/billing/invoices": _record(findings=[{"description": "gap"}])}
     )
@@ -581,11 +570,7 @@ def test_emit_reports_an_unreadable_inventory_without_writing_anything(
 def test_emit_raises_on_a_missing_finding_record(
     logger: logging.Logger, repo: Path, write_json: Callable[[Path, Any], Path]
 ) -> None:
-    """A FINDING, kept literal from the script: the record read is unguarded, so a unit
-    with no record crashes the node instead of being reported as incomplete coverage.
-    `verify_records` runs before this and catches it — but only if the flow ordered them
-    that way. Recorded for the deletion loop rather than fixed here, because guarding it
-    would change behavior the YAML engine still exhibits."""
+    """A FINDING, kept literal from the script: the record read is unguarded, so a unit with no record crashes the node instead of being reported as incomplete coverage."""
     write_json(repo / "inv.json", {"version": 1, "units": [_unit()]})
 
     with pytest.raises(OSError):

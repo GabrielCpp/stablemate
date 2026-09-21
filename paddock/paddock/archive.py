@@ -1,21 +1,4 @@
-"""Zip a repository state, and put it back exactly as it was.
-
-`shutil.make_archive` is not enough for what a seed has to carry. A seed is a whole
-repo including `.git`, and three of its properties die in a naive zip:
-
-* **the executable bit** — `.git/hooks/*` and every checked-in script stop being
-  runnable, which makes an unpacked seed behave differently from the tree it was
-  captured from and says nothing about why;
-* **symlinks** — followed and duplicated as regular files, which silently doubles a
-  `node_modules`-shaped tree and turns a relative link into a stale copy;
-* **reproducibility** — a zip carrying each file's mtime hashes differently every
-  capture, so the sha256 in the pointer would stop being a statement about the
-  *content*.
-
-So entries are written sorted, at a fixed timestamp, with the mode preserved in
-`external_attr` — the format zipfile already reads back, just not one it writes by
-default.
-"""
+"""Zip a repository state, and put it back exactly as it was."""
 
 from __future__ import annotations
 
@@ -28,28 +11,15 @@ from dataclasses import dataclass
 from fnmatch import fnmatch
 from pathlib import Path
 
-#: A fixed DOS timestamp for every entry. 1980-01-01 is the earliest the zip format can
-#: represent; any constant would do, and the point is only that it is a constant — see
-#: the reproducibility note above.
 FIXED_TIME = (1980, 1, 1, 0, 0, 0)
 
-#: Directory names that are build output or a local environment, refused at capture
-#: anywhere in the tree. Hand-zipping is what lets a `.venv` into a fixture — with its
-#: absolute interpreter paths, its compiled extensions and its hundreds of megabytes —
-#: and `seed capture` is the contract's one enforcement point.
 JUNK_ANYWHERE = (
     ".venv", "venv", "node_modules", "__pycache__", ".mypy_cache", ".pytest_cache",
     ".ruff_cache", ".tox", ".gradle", ".next", ".turbo", ".parcel-cache",
 )
 
-#: Refused at the repo root only. `build/` and `dist/` are the conventional output
-#: directories there, and ordinary source directories anywhere else — `docs/build` is a
-#: real thing to want in a seed.
 JUNK_AT_ROOT = ("build", "dist", "target", "out")
 
-#: Never captured, junk-scan or not: it is this tool's own work area, and a seed
-#: captured from a repo that has run paddock would otherwise carry a copy of every
-#: result it ever staged.
 ALWAYS_EXCLUDED = (".paddock",)
 
 
@@ -76,12 +46,7 @@ def _excluded(rel: Path, excludes: Sequence[str]) -> bool:
 
 
 def junk_in(root: Path, excludes: Sequence[str] = ()) -> list[str]:
-    """Every build-output or local-environment directory the tree still carries.
-
-    Returned rather than raised so the caller can name all of them at once: a capture
-    that dies on the first `.venv` and then on `node_modules` is two round trips through
-    a multi-gigabyte walk.
-    """
+    """Every build-output or local-environment directory the tree still carries."""
     found: list[str] = []
     for entry in walk(root, excludes):
         if not entry.is_dir:
@@ -94,15 +59,7 @@ def junk_in(root: Path, excludes: Sequence[str] = ()) -> list[str]:
 
 
 def walk(root: Path, excludes: Sequence[str] = ()) -> Iterator[Entry]:
-    """Every file, directory and symlink under *root*, depth-first and sorted.
-
-    Directories are yielded too, and not only for the empty ones: a QA lane's `qa/`
-    output directory is part of the state a seed captures even when the run that made it
-    left nothing in it, and a zip of files alone silently drops it.
-
-    Symlinks are yielded as symlinks and never descended into — following one is how a
-    capture leaves the tree it was pointed at.
-    """
+    """Every file, directory and symlink under *root*, depth-first and sorted."""
     for dirpath, dirnames, filenames in os.walk(root, followlinks=False):
         here = Path(dirpath)
         dirnames.sort()
@@ -113,7 +70,6 @@ def walk(root: Path, excludes: Sequence[str] = ()) -> Iterator[Entry]:
                 continue
             child = here / name
             if child.is_symlink():
-                # A symlinked directory is an entry, not a subtree to walk.
                 yield Entry(rel.as_posix(), child, is_dir=False, is_symlink=True)
                 continue
             kept.append(name)
@@ -128,13 +84,7 @@ def walk(root: Path, excludes: Sequence[str] = ()) -> Iterator[Entry]:
 
 
 def create(root: Path, dest: Path, *, prefix: str, excludes: Sequence[str] = ()) -> Path:
-    """Zip *root* into *dest*, with every entry under `prefix/`.
-
-    The prefix is the directory name the tree unpacks back into, and it is load-bearing
-    rather than cosmetic: farrier derives the names of the files it generates from the
-    repo directory's basename, so a tree unpacked under a different name gets a fresh set
-    of generated skills while the tracked ones the book points at dangle.
-    """
+    """Zip *root* into *dest*, with every entry under `prefix/`."""
     dest.parent.mkdir(parents=True, exist_ok=True)
     draft = dest.with_name(dest.name + ".part")
     entries = sorted(walk(root, excludes), key=lambda e: e.arcname)
@@ -155,7 +105,7 @@ def _write(archive: zipfile.ZipFile, entry: Entry, prefix: str) -> None:
     mode = entry.path.lstat().st_mode
     info.external_attr = (stat.S_IMODE(mode) | (stat.S_IFDIR if entry.is_dir else stat.S_IFREG)) << 16
     if entry.is_dir:
-        info.external_attr |= 0x10  # the MS-DOS directory flag, which unzip(1) reads
+        info.external_attr |= 0x10
         archive.writestr(info, b"")
         return
     info.compress_type = zipfile.ZIP_DEFLATED
@@ -163,13 +113,7 @@ def _write(archive: zipfile.ZipFile, entry: Entry, prefix: str) -> None:
 
 
 def extract(zip_path: Path, dest: Path) -> Path:
-    """Unpack *zip_path* under *dest*, restoring modes and symlinks.
-
-    Every member is checked to land inside *dest* before anything is written. A zip is
-    outside data — a seed can arrive over HTTPS from a bucket nobody in this repo
-    controls — and `..` in a member name is the oldest way an archive writes to a path
-    the extractor never intended.
-    """
+    """Unpack *zip_path* under *dest*, restoring modes and symlinks."""
     dest.mkdir(parents=True, exist_ok=True)
     resolved_dest = dest.resolve()
     with zipfile.ZipFile(zip_path) as archive:
@@ -210,28 +154,11 @@ def digest(path: Path) -> str:
     return hasher.hexdigest()
 
 
-#: Left out of a tree digest. A seed zip carries `.git`, but the digest exists to be
-#: recomputed from a *tracked* source directory — where `.git` is the outer repo's and
-#: belongs to no fixture — so hashing it would make the number differ between the
-#: capture and every later check for reasons that are never the fixture's content.
 TREE_DIGEST_EXCLUDES = (".git",)
 
 
 def tree_digest(root: Path, excludes: Sequence[str] = ()) -> str:
-    """A content hash of *root*, reproducible from the tree rather than from a zip.
-
-    The zip's own sha256 answers "is this archive the one the pointer names". It cannot
-    answer the question a fixture actually raises — "has the source tree moved since the
-    archive was cut" — because a capture of identical content is a byte-identical zip only
-    as long as nothing about the archiving changes, and because the tree is what an author
-    edits. So: sorted relative paths, each with its content and its symlink-ness, hashed in
-    one pass. Directories contribute their name alone, so an emptied directory still shows.
-
-    Mode is deliberately not hashed. The executable bit matters to an unpacked seed and
-    `create` preserves it, but a tracked tree's modes vary with the checkout's umask and
-    filesystem, and a digest that drifted on `git clone` would report skew that is not
-    there — which is how a guard gets disabled.
-    """
+    """A content hash of *root*, reproducible from the tree rather than from a zip."""
     hasher = hashlib.sha256()
     for entry in sorted(walk(root, (*excludes, *TREE_DIGEST_EXCLUDES)), key=lambda e: e.arcname):
         hasher.update(entry.arcname.encode("utf-8"))
@@ -248,14 +175,7 @@ def tree_digest(root: Path, excludes: Sequence[str] = ()) -> str:
 
 
 def manifest(root: Path) -> dict[str, tuple[int, int, bool]]:
-    """`{relative path: (size, mtime_ns, is_symlink)}` for every entry under *root*.
-
-    What "`score` is read-only over the result" is checked with. Not a content hash: the
-    tree is a whole repo including `.git` and the check runs on every scored task, so it
-    has to cost a stat per file rather than a read. Any write a score function makes
-    moves an mtime, which is what the guard is looking for — a rewrite that restores the
-    byte-identical content it found is not a mutation this needs to catch.
-    """
+    """`{relative path: (size, mtime_ns, is_symlink)}` for every entry under *root*."""
     found: dict[str, tuple[int, int, bool]] = {}
     for entry in walk(root):
         info = entry.path.lstat()

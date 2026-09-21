@@ -1,11 +1,4 @@
-"""Where a component is documented to sit, and what a disagreement reads like.
-
-The defect these exist for reached a green QA run: a page whose whole content was a narrow
-column pinned against the right margin, under a scenario asserting `by_role("article")` —
-which is true either way. A `placement:` band is the documented fact that assertion cannot
-carry, so the grammar's failure modes are contract: a band nobody can violate is worse than
-no band at all, because it reads as coverage.
-"""
+"""Where a component is documented to sit, and what a disagreement reads like."""
 
 from __future__ import annotations
 
@@ -54,8 +47,7 @@ def test_a_placement_is_bands_of_the_viewport_and_nothing_else() -> None:
 
 
 def test_every_spelling_that_is_not_a_band_says_why() -> None:
-    """A malformed placement is reported on the bullet, so `parse_placement` returns the
-    reason rather than raising — the doctor needs to keep going and check the next node."""
+    """A malformed placement is reported on the bullet, so `parse_placement` returns the reason rather than raising — the doctor needs to keep going and check the next node."""
     for text, needle in [
         ("wide 60-100%", "not a `key min-max%` pair"),
         ("width 60-100", "not a `key min-max%` pair"),
@@ -71,8 +63,7 @@ def test_every_spelling_that_is_not_a_band_says_why() -> None:
 
 
 def test_a_disagreement_quotes_the_number_that_produced_it() -> None:
-    """The fix loop receives this sentence and nothing else about the geometry, so a
-    disagreement that does not say what was measured is unactionable."""
+    """The fix loop receives this sentence and nothing else about the geometry, so a disagreement that does not say what was measured is unactionable."""
     crushed = BBox(x=1180, y=88, width=250, height=760)
     said = _bands("width 60-100%, x 0-20%").disagreements(crushed, VIEWPORT)
 
@@ -83,9 +74,8 @@ def test_a_disagreement_quotes_the_number_that_produced_it() -> None:
 
 
 def test_a_band_is_inclusive_and_an_unconstrained_key_never_disagrees() -> None:
-    """Bands are authored by reading the running UI, so a value landing exactly on the
-    boundary someone just measured must not be a failure — that is a flake generator."""
-    edge = BBox(x=0, y=0, width=864, height=900)  # 864/1440 == 0.6 exactly
+    """Bands are authored by reading the running UI, so a value landing exactly on the boundary someone just measured must not be a failure — that is a flake generator."""
+    edge = BBox(x=0, y=0, width=864, height=900)
     assert _bands("width 60-100%").disagreements(edge, VIEWPORT) == []
     assert _bands("height 5-20%").disagreements(edge, VIEWPORT) == [
         "height is 100% of the viewport, documented as 5-20%"
@@ -96,8 +86,7 @@ def test_a_band_is_inclusive_and_an_unconstrained_key_never_disagrees() -> None:
 
 
 def test_the_share_is_the_one_the_evidence_beside_the_screenshot_reports() -> None:
-    """`share` is imported from the harness scan rather than restated, so a component can
-    never be inside its band in the layout digest and outside it in the verdict."""
+    """`share` is imported from the harness scan rather than restated, so a component can never be inside its band in the layout digest and outside it in the verdict."""
     box = BBox(x=0, y=0, width=1000, height=900)
     assert _bands("width 69.4-69.4%").disagreements(box, VIEWPORT) == [], (
         "1000/1440 rounds to 0.694 in the digest and must round the same way here"
@@ -117,9 +106,7 @@ def _component(node_id: str, selector: str, placement: str | None = None) -> Vet
 
 
 def test_the_screen_the_book_documents_is_registered_against_the_one_that_rendered() -> None:
-    """The verdict `vet`'s IoU path cannot reach: there, the expected bboxes were measured off
-    the very render under test, so agreement is guaranteed by construction. Here the book names
-    the element and the render supplies the geometry, so the two can disagree."""
+    """The verdict `vet`'s IoU path cannot reach: there, the expected bboxes were measured off the very render under test, so agreement is guaranteed by construction."""
     regions = [
         _region("banner", ["header.site"], (0, 0, 1440, 64)),
         _region("article", ["article.prose:nth(41)"], (1180, 88, 250, 760)),
@@ -147,8 +134,7 @@ def test_the_screen_the_book_documents_is_registered_against_the_one_that_render
 
 
 def test_a_region_no_component_claims_is_counted_not_judged() -> None:
-    """A real screen renders chrome the book does not model. Failing on it would make the
-    check unauthorable, which is how a check stops being authored at all."""
+    """A real screen renders chrome the book does not model."""
     verdicts = check(
         [_component("s.md#main", "#root", "width 90-100%")],
         [
@@ -161,8 +147,7 @@ def test_a_region_no_component_claims_is_counted_not_judged() -> None:
 
 
 def test_a_component_with_no_placement_is_still_checked_for_being_there() -> None:
-    """`placement:` is only demanded of the roles that carry a page, so most components
-    arrive without one. Presence is what remains provable about them."""
+    """`placement:` is only demanded of the roles that carry a page, so most components arrive without one."""
     present, absent = check(
         [_component("s.md#save", "#save"), _component("s.md#undo", "#undo")],
         [_region("button", ["#save"], (1300, 20, 100, 32))],
@@ -173,14 +158,7 @@ def test_a_component_with_no_placement_is_still_checked_for_being_there() -> Non
 
 
 def test_a_component_the_book_says_comes_and_goes_is_not_missing_when_it_is_gone() -> None:
-    """One photograph cannot be every state a screen has.
-
-    A screen documents its error banner and its empty-list placeholder next to its steady
-    state, and a scenario exercising the successful render contains neither. Failing the vet
-    on their absence makes a passing screen unvettable and pushes the author to delete the
-    documentation of the states — so a component the book already says comes and goes is
-    judged on where it sits when it is there, and nothing when it is not.
-    """
+    """One photograph cannot be every state a screen has."""
     verdicts = check(
         [
             _conditional("s.md#error", "#error"),
@@ -198,8 +176,6 @@ def test_a_component_the_book_says_comes_and_goes_is_not_missing_when_it_is_gone
     [
         ({"states": "`full` (default on load), `loading`, `empty`"}, True),
         ({"exclusive-with": "the publish action itself — publishing is a separate story"}, True),
-        # Both keys are written on every component that carries them, so an author who filled
-        # the stub in with the negative said the component is always up — not that nobody looked.
         ({"states": "none — content is fixed regardless of which fixture is active"}, False),
         ({"exclusive-with": "n/a"}, False),
         ({}, False),
@@ -208,20 +184,14 @@ def test_a_component_the_book_says_comes_and_goes_is_not_missing_when_it_is_gone
 def test_only_a_stated_condition_excuses_a_component_from_being_there(
     bullets: dict[str, str], conditional: bool
 ) -> None:
-    """`- states: none` and `- exclusive-with: n/a` are the documented ways to say *no
-    condition*, and they are the whole difference between a component that may be absent and
-    one whose absence is a defect."""
+    """`- states: none` and `- exclusive-with: n/a` are the documented ways to say *no condition*, and they are the whole difference between a component that may be absent and one whose absence is a defect."""
     graph = _graph_with_component({"selector": "#c", **bullets})
 
     assert screen_components(graph)["s.md"][0].conditional is conditional
 
 
 def test_a_selector_that_addresses_by_role_matches_the_role_the_scan_recorded() -> None:
-    """The scan mints `#id` or `tag.class:nth(i)` — never an attribute selector — so a book
-    that addresses a component the accessibility-first way (`p[role="alert"]`) can never be
-    matched by string comparison. The role the scan recorded on the region carries the same
-    fact, and that is what the documented role must be read against; without this, a perfectly
-    rendered alert is reported as rendered nowhere."""
+    """The scan mints `#id` or `tag.class:nth(i)` — never an attribute selector — so a book that addresses a component the accessibility-first way (`p[role="alert"]`) can never be matched by string comparison."""
     regions = [
         _region("alert", ["p:nth(14)"], (240, 128.7, 960, 50)),
         _region("form", ["form:nth(2)"], (240, 194, 960, 600)),
@@ -241,8 +211,7 @@ def test_a_selector_that_addresses_by_role_matches_the_role_the_scan_recorded() 
 
 
 def test_a_role_selector_over_an_id_minted_region_matches_on_role_alone() -> None:
-    """An element with an id is minted as `#id`, which reveals no tag — the id was the better
-    address, not a hidden disagreement, so the documented tag cannot be held against it."""
+    """An element with an id is minted as `#id`, which reveals no tag — the id was the better address, not a hidden disagreement, so the documented tag cannot be held against it."""
     verdicts = check(
         [_component("s.md#banner", 'div[role="alert"]')],
         [_region("alert", ["#flash"], (0, 0, 1440, 40))],
@@ -266,9 +235,7 @@ def _named(
 
 
 def test_a_name_the_accessibility_tree_does_not_compute_is_a_disagreement() -> None:
-    """The defect this exists for: a book states `role: status` + `name: No widgets are on file
-    yet.`, the element carries no author label, and `status` is not a name-from-content role — so
-    `get_by_role("status", name=...)` selects nothing while the element is painted on screen."""
+    """The defect this exists for: a book states `role: status` + `name: No widgets are on file yet.`, the element carries no author label, and `status` is not a name-from-content role — so `get_by_role("status", name=...)` selects nothing while the element is painted on screen."""
     verdicts = check(
         [VettedComponent(
             node_id="screens/widget-list.md#empty",
@@ -288,8 +255,7 @@ def test_a_name_the_accessibility_tree_does_not_compute_is_a_disagreement() -> N
 
 
 def test_a_scan_that_recorded_no_name_is_not_an_observation_that_there_is_none() -> None:
-    """A `regions.json` frozen before the scan reported names is a page nobody looked at. Reading
-    its silence as an empty name would report a disagreement about an unobserved render."""
+    """A `regions.json` frozen before the scan reported names is a page nobody looked at."""
     verdicts = check(
         [VettedComponent(node_id="s.md#c", selector="p.empty", name="Nothing here yet")],
         [_region("status", ["p.empty:nth(12)"], (0, 100, 1440, 24))],
@@ -299,8 +265,7 @@ def test_a_scan_that_recorded_no_name_is_not_an_observation_that_there_is_none()
 
 
 def test_the_name_comparison_is_the_one_the_locator_performs() -> None:
-    """Whitespace collapsed and case folded, whole string — what `get_by_role(name=...)` does.
-    A stricter comparison here would fail runs the compiled check passes."""
+    """Whitespace collapsed and case folded, whole string — what `get_by_role(name=...)` does."""
     verdicts = check(
         [VettedComponent(node_id="s.md#c", selector="#save", name="Save   policy")],
         [_named("form", ["#save"], (0, 0, 100, 40), ["button"], ["save Policy"])],
@@ -310,8 +275,7 @@ def test_the_name_comparison_is_the_one_the_locator_performs() -> None:
 
 
 def test_the_name_is_read_off_the_element_the_selector_addresses() -> None:
-    """A region is a rect and several elements share one; a name belongs to an element. Asking
-    the rect would answer a question about the documented element with another element's name."""
+    """A region is a rect and several elements share one; a name belongs to an element."""
     region = _named(
         "form", ["div.wrap:nth(3)", "#save"], (0, 0, 100, 40), ["", "button"], ["", "Save policy"],
     )
@@ -322,8 +286,7 @@ def test_the_name_is_read_off_the_element_the_selector_addresses() -> None:
 
 
 def test_a_role_selector_reads_the_name_of_the_element_carrying_that_role() -> None:
-    """`region.role` is the nearest ancestor carrying a role, so the member the book addressed is
-    the one whose *own* role is the documented one — not whichever element sorts first."""
+    """`region.role` is the nearest ancestor carrying a role, so the member the book addressed is the one whose *own* role is the documented one — not whichever element sorts first."""
     region = _named(
         "alert", ["div.wrap:nth(3)", "#flash"], (0, 0, 1440, 40), ["", "alert"], ["", "Saved"],
     )
@@ -339,8 +302,7 @@ def test_a_role_selector_reads_the_name_of_the_element_carrying_that_role() -> N
 
 
 def test_a_book_that_names_no_name_has_nothing_to_disagree_with() -> None:
-    """An absent `name:` and a `name:` whose value names emptiness are one claim, and neither is
-    a claim this check can contradict — the component is judged on its placement alone."""
+    """An absent `name:` and a `name:` whose value names emptiness are one claim, and neither is a claim this check can contradict — the component is judged on its placement alone."""
     for meta in ({"selector": "`#save`"}, {"selector": "`#save`", "name": "none"}):
         components = screen_components(_graph_with_component(meta))["s.md"]
         assert [c.name for c in components] == [""], meta

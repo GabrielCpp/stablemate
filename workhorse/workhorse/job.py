@@ -1,85 +1,4 @@
-"""Run one long command *outside* an agent turn, under a bounded, observed supervisor.
-
-An agent turn is the wrong container for a measurement. Its budget is a budget for
-*thinking*, and a command that runs past it is killed and re-entered from scratch with no
-memory — so the longer an experiment runs, the less likely it is that anyone ever sees its
-result. Worse, the same turn that ran it is the one asked to judge it, so a re-check
-re-runs the whole thing.
-
-This module is the other shape: a workflow **submits** a command, gets a handle back, and
-the command runs detached, owned by a supervisor process that outlives the node that
-started it. A later state **polls** it and **collects** two numbers nobody inside the
-command could have written — how it exited, and what it cost.
-
-It is an engine primitive. It is parameterised on a manifest dict and knows no workflow's
-schema: the keys below are verbs (a command, a ceiling, an estimate), not nouns from one
-workflow's vocabulary. `ostler.qa.stack` is the model — a manifest in, a plain dict out.
-
-## The manifest
-
-| key                       | meaning                                                        |
-| ------------------------- | -------------------------------------------------------------- |
-| `command` (required)      | argv list. Not a shell string: this is a measurement, not a recipe. |
-| `cwd`                     | working directory for the command (default: the job dir)        |
-| `env`                     | extra environment, merged over the supervisor's own             |
-| `memory_mb`               | resident-memory ceiling. **Hard** where the tier allows it.     |
-| `cpus`                    | CPU ceiling in whole cores. Advisory except on `premium`.       |
-| `estimate_s`              | what the submitter predicted, from a calibration probe          |
-| `overrun_first_multiple`  | first multiple of `estimate_s` that is worth waking someone for (default 10) |
-| `min_containment`         | the weakest tier this job may run under (default `premium`)     |
-| `result_file`             | the file the command itself writes, relative to the job dir     |
-| `sample_s`                | how often the supervisor samples memory and beats (default 2s)  |
-| `labels`                  | opaque dict recorded into the handle (a commit sha, a gate id)  |
-
-## Containment is tiered, and the tier is recorded with every result
-
-A number measured under a hard ceiling and a number measured under a polling loop are not
-the same number, and a result that does not say which one it is cannot be compared with
-the next one. So the tier is chosen, checked against the manifest's floor, and written
-into the runner artifact:
-
-* **`premium`** — Linux with a delegated systemd user manager. `MemoryMax` and `CPUQuota`
-  are enforced by the kernel: the command cannot exceed them, and an OOM kill is the
-  cgroup's, not a sampler's.
-* **`best_effort`** — other Linux. No scope unit, so the ceiling is a sampled kill.
-* **`advisory`** — macOS and anything else. Sampled kill; the CPU ceiling is a wish.
-
-**Resources are bound; time is not.** A command that runs long is a *bug signal* — it is
-information for whoever wrote it, and killing it destroys that information along with the
-work. So a job is never killed for being slow. Instead the supervisor touches the wake
-file at 10x, 20x, 40x … its estimate, and whoever is watching decides.
-
-`RLIMIT_AS` is deliberately not used. It bounds *address space*, not residency, and every
-arena-allocating numerical library reserves far more of it than it ever touches — so it
-kills correct programs while letting a slow leak through.
-
-## What is written where, and by whom
-
-One writer per file, because two processes appending to one artifact is a race nobody
-reads the loser of.
-
-| file            | writer      | why                                                     |
-| --------------- | ----------- | ------------------------------------------------------- |
-| `manifest.json` | `submit`    | what was asked for                                       |
-| `handle.json`   | `submit`    | pid, pgid, start time — **before the command launches**, so a crash between the two is still findable |
-| `child.json`    | supervisor  | the command's own pgid, for a kill that doesn't take the supervisor with it |
-| `heartbeat`     | supervisor  | mtime is liveness                                        |
-| `wake`          | supervisor  | mtime moves when something happened                      |
-| `runner.json`   | supervisor  | exit code, peak RSS, wall time, kill reason, tier        |
-| `stdout.log` / `stderr.log` | the command | its own output                               |
-| `result_file`   | the command | its own claims                                           |
-
-The split between the last two rows is the point of the whole module. The command writes
-what it *found*; the supervisor writes what it *cost*. A command cannot fake the second
-one, so a classifier reading both can tell "measured and missed" from "produced no
-measurement" without asking a model.
-
-## Liveness is two facts, not one
-
-`kill -0` on the pgid answers "is some process group by that number alive", which after a
-reboot and pid reuse is a different question from the one being asked. So a job counts as
-alive only when the pgid answers **and** the heartbeat is fresh.
-"""
+"""Run one long command *outside* an agent turn, under a bounded, observed supervisor."""
 
 from __future__ import annotations
 
@@ -95,7 +14,6 @@ from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
-#: Tiers, weakest first. Index into this list is the ordering `min_containment` compares on.
 TIERS = ("advisory", "best_effort", "premium")
 
 MANIFEST_NAME = "manifest.json"
@@ -108,39 +26,24 @@ KILL_REQUEST_NAME = "kill-request"
 STDOUT_NAME = "stdout.log"
 STDERR_NAME = "stderr.log"
 
-#: How often the supervisor samples memory, touches the heartbeat, and re-reads its mail.
-#: Two seconds is fine-grained enough that a memory spike is caught before the OOM killer
-#: makes the decision for us, and coarse enough that `ps` is not the job's biggest cost.
 SAMPLE_S = 2.0
 
-#: A heartbeat older than this means the supervisor is gone even if the pgid still answers.
-#: Generous against a loaded machine: a sampler that is merely late must not be read as dead.
 HEARTBEAT_STALE_S = 60.0
 
-#: How long the supervisor waits for `submit` to finish writing `handle.json`. It exists so
-#: the handle is on disk before the command starts, never as a real synchronisation point.
 HANDLE_WAIT_S = 60.0
 
-#: Grace between SIGTERM and SIGKILL, and between asking the supervisor to kill and doing
-#: it ourselves.
 TERM_GRACE_S = 10.0
 KILL_REQUEST_GRACE_S = 30.0
 
-#: Default first overrun multiple. Doubling from there (10x, 20x, 40x, …) is self-limiting:
-#: the wakeups get rarer exactly as fast as the job gets less likely to be worth waiting for.
 OVERRUN_FIRST_MULTIPLE = 10.0
 
 
 class JobError(RuntimeError):
-    """A job could not be submitted or inspected. Callers decide what that means."""
+    """A job could not be submitted or inspected."""
 
 
 class ContainmentUnavailable(JobError):
-    """This machine cannot meet the manifest's `min_containment`.
-
-    Deliberately its own class: a workflow routes a weak machine back to whoever picks
-    machines, which is a different repair from a command that would not start.
-    """
+    """This machine cannot meet the manifest's `min_containment`."""
 
 
 @dataclass(frozen=True)
@@ -171,38 +74,32 @@ def _handle_of(payload: dict) -> Handle:
 class JobStatus:
     """What `poll` can tell without a model call."""
 
-    state: str          # "running" | "finished" | "lost" | "missing"
+    state: str
     alive: bool
     elapsed_s: float
     estimate_s: float
-    overrun_multiple: float   # 0.0 until the first threshold is crossed
+    overrun_multiple: float
     result_ready: bool
     tier: str
 
 
 @dataclass(frozen=True)
 class RunnerResult:
-    """What it cost. Written by the supervisor, never by the command."""
+    """What it cost."""
 
     exit_code: int | None
     peak_rss_mb: float
     wall_s: float
-    kill_reason: str      # "" | "memory" | "operator" | "lost"
+    kill_reason: str
     tier: str
     started_at: float
     finished_at: float
 
 
-# --------------------------------------------------------------------------- tiers
 
 
 def _cgroup_delegated() -> bool:
-    """True when this user's systemd manager has memory and cpu delegated to it.
-
-    Reading the delegated controller list is cheaper and more honest than probing with a
-    throwaway scope: a `systemd-run` that succeeds proves the binary works, not that the
-    controllers a MemoryMax needs are actually present in this user's subtree.
-    """
+    """True when this user's systemd manager has memory and cpu delegated to it."""
     uid = os.getuid()
     candidates = (
         Path(f"/sys/fs/cgroup/user.slice/user-{uid}.slice/user@{uid}.service/cgroup.controllers"),
@@ -235,7 +132,6 @@ def meets(tier: str, floor: str) -> bool:
         raise JobError(f"unknown containment tier: {tier!r} / {floor!r}") from exc
 
 
-# --------------------------------------------------------------------------- paths
 
 
 def _paths(job_dir: Path | str) -> Path:
@@ -251,7 +147,7 @@ def _read_json(path: Path) -> dict:
 
 
 def _write_json(path: Path, payload: dict) -> None:
-    """Write atomically. A reader polling this file must never see half of it."""
+    """Write atomically."""
     tmp = path.with_suffix(path.suffix + ".tmp")
     tmp.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     tmp.replace(path)
@@ -268,17 +164,10 @@ def _age(path: Path) -> float:
         return float("inf")
 
 
-# --------------------------------------------------------------------------- sampling
 
 
 def _rss_tree_mb(root_pid: int) -> float:
-    """Resident memory of `root_pid` and every descendant, in MB.
-
-    `ps -eo pid=,ppid=,rss=` is identical on Linux and macOS and is already installed
-    everywhere this runs, which is why there is no `psutil` dependency here: one sample
-    every two seconds does not justify a wheel that has to be present on every machine a
-    result might be reproduced on.
-    """
+    """Resident memory of `root_pid` and every descendant, in MB."""
     try:
         out = subprocess.run(
             ["ps", "-eo", "pid=,ppid=,rss="],
@@ -342,9 +231,6 @@ def _reap_group(
     _signal_group(pgid, signal.SIGTERM)
     deadline = time.time() + grace
     while time.time() < deadline:
-        # killpg(0) still sees an exited direct child until its parent reaps it. When
-        # this supervisor owns the leader, polling distinguishes that zombie from live
-        # descendants instead of spending the whole grace waiting on a dead process.
         if leader is not None:
             leader.poll()
         if not _pgid_alive(pgid):
@@ -353,15 +239,10 @@ def _reap_group(
     _signal_group(pgid, signal.SIGKILL)
 
 
-# --------------------------------------------------------------------------- overrun
 
 
 def overrun_multiple(elapsed_s: float, estimate_s: float, first: float) -> float:
-    """The largest crossed threshold in `first`, 2x`first`, 4x`first`, … or 0.0.
-
-    Derived from the clock and the estimate alone, so `poll` and the supervisor agree
-    without either of them keeping a ledger the other has to trust.
-    """
+    """The largest crossed threshold in `first`, 2x`first`, 4x`first`, … or 0.0."""
     if estimate_s <= 0 or first <= 0 or elapsed_s <= 0:
         return 0.0
     ratio = elapsed_s / estimate_s
@@ -373,14 +254,8 @@ def overrun_multiple(elapsed_s: float, estimate_s: float, first: float) -> float
     return crossed
 
 
-# --------------------------------------------------------------------------- submit
 
 
-#: Live supervisor processes, keyed by their job directory. A supervisor outlives its
-#: submitter by design — the caller cannot be on the hook for waiting, but the caller
-#: still needs a handle to reap the Popen when the job is done. `wait_submitted` reads
-#: this, `kill` reads it, and pytest reads it (the missing `wait` was the source of
-#: every ResourceWarning in `tests/test_job.py`).
 _supervisor_procs: dict[str, subprocess.Popen[bytes]] = {}
 
 
@@ -403,12 +278,7 @@ def _launch_argv(manifest: dict, tier: str) -> list[str]:
 
 
 def submit(manifest: dict, *, job_dir: Path | str, logger: logging.Logger | None = None) -> Handle:
-    """Start `manifest["command"]` detached and return where it is.
-
-    Idempotent in the sense a resume needs: a job directory whose handle is still alive is
-    adopted rather than launched a second time. Re-entering the state that submitted a
-    four-hour job must not start a fifth hour of it.
-    """
+    """Start `manifest["command"]` detached and return where it is."""
     log = logger or logging.getLogger(__name__)
     directory = _paths(job_dir)
     directory.mkdir(parents=True, exist_ok=True)
@@ -424,7 +294,7 @@ def submit(manifest: dict, *, job_dir: Path | str, logger: logging.Logger | None
         raise ContainmentUnavailable(
             f"this machine offers {tier!r} containment; the job requires at least {floor!r}"
         )
-    _launch_argv(manifest, tier)   # fail here, not in a detached process nobody is reading
+    _launch_argv(manifest, tier)
 
     for stale in (RUNNER_NAME, WAKE_NAME, KILL_REQUEST_NAME, CHILD_NAME, HEARTBEAT_NAME):
         (directory / stale).unlink(missing_ok=True)
@@ -441,14 +311,11 @@ def submit(manifest: dict, *, job_dir: Path | str, logger: logging.Logger | None
         stderr=subprocess.DEVNULL,
         start_new_session=True,
     )
-    # Track the supervisor so a caller can wait on it after `runner.json` exists. Without
-    # this, the detached Popen object lives until garbage collection, and pytest's
-    # ResourceWarning fires for every test that submits and forgets.
     _supervisor_procs[str(directory)] = proc
     handle = Handle(
         job_dir=str(directory),
         pid=proc.pid,
-        pgid=proc.pid,          # start_new_session makes the child its own group leader
+        pgid=proc.pid,
         started_at=time.time(),
         tier=tier,
         labels=dict(manifest.get("labels") or {}),
@@ -461,7 +328,6 @@ def submit(manifest: dict, *, job_dir: Path | str, logger: logging.Logger | None
     return handle
 
 
-# --------------------------------------------------------------------------- poll
 
 
 def _alive(directory: Path, handle: dict) -> bool:
@@ -472,23 +338,12 @@ def _alive(directory: Path, handle: dict) -> bool:
         return False
     heartbeat = directory / HEARTBEAT_NAME
     if not heartbeat.exists():
-        # The supervisor has not reached its first sample yet; the handle's own age is the
-        # only clock there is, and it is allowed the same staleness window.
         return time.time() - float(handle.get("started_at") or 0) < HEARTBEAT_STALE_S
     return _age(heartbeat) < HEARTBEAT_STALE_S
 
 
 def arm(job_dir: Path | str) -> Path:
-    """Clear the wake file, so the supervisor's next event is a fresh edge.
-
-    A watcher that blocks on `wake`'s *existence* has to remove it before it waits, or
-    the wakeup it already consumed answers the next wait immediately. Arming first and
-    then reading authoritative state (`poll`) loses nothing either way round: an event
-    that landed before the delete is visible in `poll`, and an event after it re-creates
-    the file.
-
-    Returns the path, so a caller can hand it straight to whatever it waits with.
-    """
+    """Clear the wake file, so the supervisor's next event is a fresh edge."""
     directory = _paths(job_dir)
     directory.mkdir(parents=True, exist_ok=True)
     wake = directory / WAKE_NAME
@@ -530,11 +385,7 @@ def poll(job_dir: Path | str) -> JobStatus:
 
 
 def collect(job_dir: Path | str) -> RunnerResult:
-    """What the job cost.
-
-    A job whose supervisor died without writing anything still gets a result — `kill_reason`
-    ``"lost"`` with no exit code. "We do not know" is a classification; silence is not.
-    """
+    """What the job cost."""
     directory = _paths(job_dir)
     runner = _read_json(directory / RUNNER_NAME)
     handle = _read_json(directory / HANDLE_NAME)
@@ -562,17 +413,7 @@ def collect(job_dir: Path | str) -> RunnerResult:
 
 
 def wait_submitted(job_dir: Path | str, timeout: float = 30.0) -> int | None:
-    """Reap the supervisor of `job_dir` if one is still alive.
-
-    The supervisor exits once it writes `runner.json`, so a caller that has just
-    collected a result can call this to release the detached Popen immediately rather
-    than waiting for garbage collection. The return value is the supervisor's exit
-    code, or None when no supervisor is tracked (already reaped, never submitted, or
-    submitted by another process).
-
-    A supervisor that has not exited after `timeout` is killed (the job's whole group,
-    not just the supervisor process) and reaped, mirroring `kill`'s backstop.
-    """
+    """Reap the supervisor of `job_dir` if one is still alive."""
     directory = str(_paths(job_dir))
     proc = _supervisor_procs.pop(directory, None)
     if proc is None:
@@ -593,9 +434,6 @@ def wait_submitted(job_dir: Path | str, timeout: float = 30.0) -> int | None:
                         return None
         return proc.returncode
     finally:
-        # Popen's own __del__ only closes the pipes when the object is GC'd. Closing
-        # here releases them the moment the supervisor exits, which is what the
-        # streaming supervisor does for its own pipes (workhorse/runner/process.py).
         for stream in (proc.stdout, proc.stderr, proc.stdin):
             if stream is not None:
                 try:
@@ -605,19 +443,12 @@ def wait_submitted(job_dir: Path | str, timeout: float = 30.0) -> int | None:
 
 
 def kill(job_dir: Path | str, reason: str = "operator") -> RunnerResult:
-    """Stop the job and return what it cost up to that point.
-
-    Asks the supervisor first — it is the one writer of `runner.json`, so a kill it
-    performs is a kill that leaves a readable artifact. Only when it does not answer do we
-    reap the group ourselves and write the artifact in our place.
-    """
+    """Stop the job and return what it cost up to that point."""
     directory = _paths(job_dir)
     handle = _read_json(directory / HANDLE_NAME)
     if not handle:
         raise JobError(f"no job handle in {directory}")
     if (directory / RUNNER_NAME).exists():
-        # The supervisor is on its way out (it just wrote runner.json) — reap it
-        # through `wait_submitted` so the Popen object is released here, not at GC.
         result = collect(directory)
         wait_submitted(directory)
         return result
@@ -634,8 +465,6 @@ def kill(job_dir: Path | str, reason: str = "operator") -> RunnerResult:
     child = _read_json(directory / CHILD_NAME)
     _reap_group(int(child.get("pgid") or 0))
     _reap_group(int(handle.get("pgid") or 0))
-    # The supervisor is part of the group we just reaped, but the Popen object is still
-    # tracked. Reap it now so the caller doesn't see a leaked handle at GC time.
     wait_submitted(directory)
     started_at = float(handle.get("started_at") or 0.0)
     now = time.time()
@@ -653,16 +482,10 @@ def kill(job_dir: Path | str, reason: str = "operator") -> RunnerResult:
     return result
 
 
-# --------------------------------------------------------------------------- supervisor
 
 
 def supervise(job_dir: Path | str) -> int:
-    """The detached half: launch the command, watch it, and write what it cost.
-
-    Runs in its own session (`submit` spawns it with `start_new_session=True`), and gives
-    the command a session of its own again, so killing the command is never an instruction
-    that also kills the process holding the pen.
-    """
+    """The detached half: launch the command, watch it, and write what it cost."""
     directory = _paths(job_dir)
     manifest = _read_json(directory / MANIFEST_NAME)
     heartbeat = directory / HEARTBEAT_NAME
@@ -693,12 +516,6 @@ def supervise(job_dir: Path | str) -> int:
             start_new_session=True,
         )
         _write_json(directory / CHILD_NAME, {"pid": proc.pid, "pgid": proc.pid})
-        # Waited for, not resolved immediately: `systemd-run --scope` only moves `proc.pid`
-        # into its own transient scope after a D-Bus round trip, so reading its cgroup right
-        # after `Popen` returns reads the *launching* cgroup — a shared, ever-growing peak
-        # that belongs to the whole session, not this job. `/proc/<pid>/cgroup` is gone the
-        # moment the process exits, and a `--collect`ed scope takes its counters with it, so
-        # this has to happen before the poll loop, while the command is still alive.
         peak_path = _wait_for_scope_cgroup(proc.pid) if tier == "premium" else None
 
         announced = 0.0
@@ -714,8 +531,6 @@ def supervise(job_dir: Path | str) -> int:
             if requested:
                 kill_reason = requested
             elif memory_mb and tier != "premium" and peak_rss_mb > memory_mb:
-                # Only off the premium tier: there, the kernel already holds this ceiling,
-                # and a sampler racing it would attribute the cgroup's kill to itself.
                 kill_reason = "memory"
             if kill_reason:
                 _reap_group(proc.pid, leader=proc)
@@ -785,18 +600,7 @@ def _wait_for_scope_cgroup(
     timeout: float = 5.0,
     poll_s: float = 0.02,
 ) -> Path | None:
-    """Wait for `pid` to be moved into its own `systemd-run --scope`, then return its `memory.peak`.
-
-    `systemd-run --scope` forks, then only *after* a D-Bus round trip to the user manager
-    does it move itself into the transient scope it just created — so `pid`'s cgroup right
-    after `Popen` returns is still whatever cgroup launched it (the supervisor's own
-    session), not the job's. Reading `memory.peak` from that cgroup reads a live, shared,
-    ever-growing high-water mark that belongs to every process that has ever passed through
-    that session, not this job — which is why unrelated jobs of wildly different sizes have
-    been seen to report the identical, implausibly large peak (docs/maskbus/PROGRESS.md,
-    2026-09-15 G0 finding). Waiting for the cgroup line to actually change is the only way
-    to know the migration has happened before trusting anything read from it.
-    """
+    """Wait for `pid` to be moved into its own `systemd-run --scope`, then return its `memory.peak`."""
     before = read_cgroup(pid)
     deadline = time.time() + timeout
     while time.time() < deadline:
@@ -810,11 +614,7 @@ def _wait_for_scope_cgroup(
 
 
 def _read_peak_mb(path: Path | None) -> float:
-    """The cgroup's own high-water mark in MB, or 0.
-
-    The sampler cannot see a spike between two samples; this counter can. Taking the larger
-    of the two is the only reading that is never an under-report.
-    """
+    """The cgroup's own high-water mark in MB, or 0."""
     if path is None:
         return 0.0
     try:
@@ -824,11 +624,7 @@ def _read_peak_mb(path: Path | None) -> float:
 
 
 def main(argv: list[str] | None = None) -> int:
-    """`python -m workhorse.job supervise <job_dir>` — the detached half's entry point.
-
-    Not a console script. Nothing but `submit` should ever run this, and a name on PATH is
-    an invitation to run it by hand against a directory no `submit` prepared.
-    """
+    """`python -m workhorse.job supervise <job_dir>` — the detached half's entry point."""
     args = list(sys.argv[1:] if argv is None else argv)
     if len(args) != 2 or args[0] != "supervise":
         sys.stderr.write("usage: python -m workhorse.job supervise <job_dir>\n")

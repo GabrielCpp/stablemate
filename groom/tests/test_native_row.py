@@ -1,15 +1,4 @@
-"""Native (non-container) runs as first-class dashboard rows.
-
-A native run shares groom's host and speaks only telemetry, so:
-- its dir existing on this host is the signal that it is native (and the capability
-  the local-FS panels rely on) — a containerized run whose paths don't resolve here
-  is never materialized as a row and never double-lists;
-- the row's "what is it doing" comes from the ``wf.activity`` label carried on the
-  live gauges;
-- Files/Diff/gate reads go through :mod:`groom.localfs`, not docker.
-
-Run: uv run pytest tests/test_native_row.py
-"""
+"""Native (non-container) runs as first-class dashboard rows."""
 from __future__ import annotations
 
 import asyncio
@@ -39,9 +28,6 @@ def _metric(run_id, name, value, *, run_dir="", workspace="", pid=None, node="",
     }
 
 
-# --------------------------------------------------------------------------- #
-# Native verdict + row materialization
-# --------------------------------------------------------------------------- #
 def test_native_run_becomes_a_row(tmp_path):
     _reset()
     run_dir = tmp_path / "coder-run"
@@ -63,9 +49,6 @@ def test_native_run_becomes_a_row(tmp_path):
 
 
 def test_wait_kind_alone_blocks_even_without_a_gate_path(tmp_path):
-    # A producer running code older than the gate-context telemetry emits wait_kind
-    # with no gate_path/gate_question at all. The run is still genuinely blocked —
-    # requiring wait_gate_path here used to read that omission as "not blocked".
     _reset()
     run_dir = tmp_path / "coder-run"
     run_dir.mkdir()
@@ -83,7 +66,6 @@ def test_wait_kind_alone_blocks_even_without_a_gate_path(tmp_path):
 
 def test_containerized_run_is_not_materialized():
     _reset()
-    # run_dir/workspace are container paths that don't exist on this host.
     alerts.ingest_metrics([
         _metric("C1", "workhorse.run.heartbeat", 1,
                 run_dir="/nonexistent-groom-test/runs/coder-x",
@@ -103,8 +85,6 @@ def test_terminal_span_finishes_and_clears_gates(tmp_path):
                                    run_dir=str(run_dir), node="qa")])
     groom_app._sync_native_row(state.RUNS["R2"])
     state.WORKFLOWS["R2"].gates["g"] = GateInfo(workflow_id="R2", file_path="g")
-    # …an open gate, which the terminal span below has to clear.
-    # The root span arriving with a terminal retires the run.
     alerts.ingest_spans([{
         "run_id": "R2", "name": "run:coder", "workflow": "coder",
         "attrs": {"workhorse.terminal": "terminal"},
@@ -116,9 +96,7 @@ def test_terminal_span_finishes_and_clears_gates(tmp_path):
 
 
 def test_resumed_run_under_the_same_run_id_goes_back_to_running(tmp_path):
-    """``--resume-run`` reuses the run_id (it comes from the run dir), so the
-    previous session's root span arrives under the same key as the new session's
-    telemetry. The row must follow the live process, not the dead one."""
+    """``--resume-run`` reuses the run_id (it comes from the run dir), so the previous session's root span arrives under the same key as the new session's telemetry."""
     _reset()
     run_dir = tmp_path / "author-rerun1"
     run_dir.mkdir()
@@ -130,8 +108,6 @@ def test_resumed_run_under_the_same_run_id_goes_back_to_running(tmp_path):
     groom_app._sync_native_row(state.RUNS["rerun1"])
     assert state.WORKFLOWS["rerun1"].state == WorkflowState.FINISHED
 
-    # The resumed session beats. One point stamped after that root span is all the
-    # evidence there is that a process is alive — and it has to be enough.
     beat = _metric("rerun1", "workhorse.run.heartbeat", 1,
                    run_dir=str(run_dir), node="write_story")
     beat["ts"] = 200.0
@@ -143,15 +119,7 @@ def test_resumed_run_under_the_same_run_id_goes_back_to_running(tmp_path):
 
 
 def test_a_run_that_goes_silent_still_reads_as_running(tmp_path):
-    """The new contract: the row reflects telemetry — silence is not state.
-
-    A silent run stayed RUNNING under the old code (if it's not terminal and has
-    no gates, it's RUNNING) and the *liveness chip* is what carries the silence
-    signal. Stopping the run is the run's own job (`terminal` arrives on the
-    root span).
-    This test pins the new contract: an indefinitely silent live run is still
-    RUNNING on the row, with the liveness verdict marking it dead in the UI.
-    """
+    """The new contract: the row reflects telemetry — silence is not state."""
     _reset()
     run_dir = tmp_path / "r"
     run_dir.mkdir()
@@ -163,13 +131,9 @@ def test_a_run_that_goes_silent_still_reads_as_running(tmp_path):
     run = state.RUNS["R5"]
     run.last_heartbeat_ts = run.first_seen_ts = run.last_span_ts = stale
     groom_app._sync_native_row(run)
-    # Telemetry never said terminal. The row stays RUNNING.
     assert state.WORKFLOWS["R5"].state == WorkflowState.RUNNING
 
 
-# --------------------------------------------------------------------------- #
-# Disk and process state cannot overwrite received telemetry.
-# --------------------------------------------------------------------------- #
 def test_disk_terminal_and_dead_pid_do_not_fabricate_telemetry(tmp_path):
     _reset()
     run_dir = tmp_path / "coder-run"
@@ -196,15 +160,11 @@ def test_native_rows_survive_the_docker_prune(tmp_path):
     alerts.ingest_metrics([_metric("R3", "workhorse.run.heartbeat", 1,
                                    run_dir=str(run_dir))])
     groom_app._sync_native_row(state.RUNS["R3"])
-    # A docker reconcile that sees no containers must not drop the native row.
     removed = state.prune_workflows(present_ids=set())
     assert removed == []
     assert "R3" in state.WORKFLOWS
 
 
-# --------------------------------------------------------------------------- #
-# local-FS panels
-# --------------------------------------------------------------------------- #
 def _git_repo(path: Path) -> None:
     path.mkdir(parents=True, exist_ok=True)
     subprocess.run(["git", "init", "-q"], cwd=path, check=True)
@@ -235,14 +195,10 @@ def test_localfs_git_diff(tmp_path):
 def test_localfs_read_write_roundtrip_and_traversal_guard(tmp_path):
     assert localfs.write_file(str(tmp_path), "sub/f.md", "hello") is True
     assert localfs.read_file(str(tmp_path), "sub/f.md") == "hello"
-    # Traversal is rejected, not written outside the base.
     assert localfs.write_file(str(tmp_path), "../escape", "x") is False
     assert localfs.read_file(str(tmp_path), "../escape") is None
 
 
-# --------------------------------------------------------------------------- #
-# Gates raised inside a sub-flow
-# --------------------------------------------------------------------------- #
 def _checkpoint(run_dir: Path, rel: str, state_name: str, waiting_on: str | None) -> None:
     target = run_dir / rel if rel else run_dir
     target.mkdir(parents=True, exist_ok=True)
@@ -273,11 +229,7 @@ def test_answer_gate_native_writes_local_file(tmp_path):
 
 
 def test_a_zombie_pid_is_not_a_live_run():
-    """A killed process keeps its pid until its parent reaps it, and answers signal 0
-    the whole time. The parent of a run launched under a supervisor, a ``nohup`` shell
-    or an agent harness may not reap for a long time — so signalling alone reported the
-    SIGKILL/OOM death this check exists to catch as perfectly healthy, and the row
-    stayed green until the three-minute silence window ran out anyway."""
+    """A killed process keeps its pid until its parent reaps it, and answers signal 0 the whole time."""
     child = subprocess.Popen(["true"])
     try:
         deadline = time.time() + 5
@@ -288,7 +240,7 @@ def test_a_zombie_pid_is_not_a_live_run():
             time.sleep(0.01)
         else:
             raise AssertionError("child never became a zombie")
-        assert os.kill(child.pid, 0) is None  # the old check: still "alive"
+        assert os.kill(child.pid, 0) is None
         assert localfs.pid_alive(child.pid) is False
     finally:
         child.wait()

@@ -1,8 +1,4 @@
-"""Fast, synthetic coverage for groom's retained-run profiler.
-
-No OTel SDK, server, subprocess or clock is involved: each case inserts a handful
-of decoded spans into a throwaway SQLite store and checks the resulting partition.
-"""
+"""Fast, synthetic coverage for groom's retained-run profiler."""
 from __future__ import annotations
 
 import json
@@ -232,28 +228,17 @@ def test_profile_counts_turns_cost_attempts_and_verdicts() -> None:
 
 
 def test_a_verdict_that_buys_no_agent_turn_is_still_counted_as_a_decision() -> None:
-    """The bias the decisions section exists to remove, staged at its smallest.
-
-    Both gates ran twice. `stands` routed to deterministic work and `refuted` routed to
-    another agent turn, so the priced groups see one and not the other — read alone they
-    say the auditor refutes everything. Counting transitions over every span restores the
-    denominator: two of each. This is not hypothetical rounding; on the retained runs
-    `qa.audit_verdict=stands` sat on 99 spans and zero turns.
-    """
+    """The bias the decisions section exists to remove, staged at its smallest."""
     with _DB():
         store.insert_spans(
             [
                 _span("run-1", "workflow_run", 0, 100, attrs={"run_id": "run-1"}),
-                # stands -> the backlog drain, which is a `self.call`, so no turn is priced.
                 _span("v1", "backlog", 0, 10, parent="run-1", node="file_backlog_items",
                       attrs={"qa.audit_verdict": "stands"}),
-                # Cleared between work items, which is what makes the next `stands` a
-                # second decision rather than a continuation of the first.
                 _span("v2", "plan", 10, 20, parent="run-1", node="plan-qa"),
                 _span("v3", "backlog", 20, 30, parent="run-1", node="file_backlog_items",
                       attrs={"qa.audit_verdict": "stands"}),
                 _span("v4", "plan", 30, 40, parent="run-1", node="plan-qa"),
-                # refuted -> a replan, so it does buy a turn and does get priced.
                 _span("v5", "plan", 40, 50, parent="run-1", node="plan-qa",
                       attrs={"qa.audit_verdict": "refuted"}),
                 _span("turn-1", "agent_turn", 40, 50, parent="v5", node="plan-qa",
@@ -306,14 +291,7 @@ def test_a_verdict_held_across_several_spans_is_one_decision_not_several() -> No
 
 
 def test_the_docs_loop_labels_land_in_the_buckets_they_were_named_for() -> None:
-    """The docs subflow's progress labels need no groom change — this is the proof.
-
-    `workhorse_workflows` picked those names to match the two classifiers here: a
-    `_verdict` suffix for the productivity verdict, a canonical non-negative integer for
-    the outstanding count. Nothing on either side imports the other, so if
-    `_VERDICT_SUFFIXES` is ever narrowed or the attempt predicate tightened, this is where
-    it surfaces rather than as a silently empty section of a report.
-    """
+    """The docs subflow's progress labels need no groom change — this is the proof."""
     with _DB():
         store.insert_spans(
             [

@@ -8,15 +8,7 @@ plan(run_id="qa-edit-policy", story="edit-policy")
 
 
 def valid_policy(number: str, email: str = "alex@example.com", coverage: str = "auto") -> dict:
-    """A policy the desk accepts, in the coverage type named.
-
-    `auto` carries a VIN and `home` an address because the desk refuses each without the
-    other — a scenario asking for one of those coverages is asking for the field that goes
-    with it, and spelling that out at every call site is how the two drift apart.
-
-    Duplicated per plan rather than shared through a fixture module: `qa: {fixture_modules:}`
-    is retired, and this plan is frozen corpus, so the cost of the duplicate is a fixed one.
-    """
+    """A policy the desk accepts, in the coverage type named."""
     return {
         "policy_number": number,
         "holder_email": email,
@@ -30,16 +22,7 @@ def valid_policy(number: str, email: str = "alex@example.com", coverage: str = "
 
 
 def amendment_body(qa: Qa, policy: dict, premium: Any) -> dict:
-    """A full amendment of `policy` changing only the premium, quoting the version read.
-
-    The version is carried from the record the caller read rather than re-fetched: an
-    amendment that re-reads the policy first is quoting a version that is current by
-    construction, which proves nothing about the stale-write refusal.
-
-    `policy` is a record the desk returned, so every field comes out through `qa.field`:
-    a key the product spells differently is a failed check naming the field, not a
-    `KeyError` that kills the scenario and leaves its obligations unproven.
-    """
+    """A full amendment of `policy` changing only the premium, quoting the version read."""
     return {
         "holder_email": qa.field(policy, "holder_email"),
         "coverage_type": qa.field(policy, "coverage_type"),
@@ -94,11 +77,6 @@ def amend_policy_and_preserve_the_ledger(qa: Qa) -> None:
     qa.http.delete("/api/policies", expect_status=204)
     created = qa.field(qa.http.post("/api/policies", json_body=valid_policy("PN-1001"), expect_status=201).json(), "policy")
     qa.http.post("/api/policies", json_body=valid_policy("PN-1002", email="sam@example.com"), expect_status=201)
-    # Amending writes the same policy record creating one does — the book binds them by name,
-    # `persistence: policy-record` on the creator and `concurrency: policy-record` on this
-    # editor. A change to the shape of that record breaks the writer as surely as the editor,
-    # and creation is in no story's diff, so what it promises is proved on the way past here.
-    # The promise is survival of a restart, so the process that accepted the write must die.
     restart = qa.tool("docker").run("compose", "-f", "compose.yml", "restart", timeout=120.0)
     qa.check(
         "the service restarts cleanly between the creating write and the re-read",
@@ -107,8 +85,6 @@ def amend_policy_and_preserve_the_ledger(qa: Qa) -> None:
     )
 
     def restarted_service_answers() -> bool:
-        # A connection refused during the restart window is "not yet", not a verdict —
-        # the harness's `eventually` retries only timeouts, so the swallow lives here.
         try:
             return qa.field(qa.http.get("/healthz").json(), "status") == "ok"
         except HttpError:

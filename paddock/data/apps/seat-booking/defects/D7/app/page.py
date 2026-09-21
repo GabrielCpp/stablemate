@@ -1,11 +1,4 @@
-"""The one page the service serves, rendered on the server.
-
-No build step and no client framework, which is a property the benchmark depends on: the
-app has to come up from a stock Python image so a QA sandbox can reach it without a
-toolchain. What it still gives QA is a real accessibility tree — landmarks, a labelled
-region, one button per seat with an accessible name — so `visible(...)`, the layout digest
-and the screenshot half of the harness all have something honest to read.
-"""
+"""The one page the service serves, rendered on the server."""
 
 from __future__ import annotations
 
@@ -14,8 +7,6 @@ from typing import Any
 
 from app.store import FREE
 
-#: Inline, because the page must render identically with no network at all — a sandboxed
-#: browser reaches the service through a forwarded port and nothing else.
 STYLE = """
 body { font-family: system-ui, sans-serif; margin: 0; color: #16202c; background: #f6f7f9; }
 header { padding: 1.5rem 2rem; background: #16202c; color: #fff; }
@@ -32,12 +23,7 @@ main { padding: 2rem; max-width: 46rem; margin: 0 auto; }
 
 
 def render(seats: list[dict[str, Any]]) -> str:
-    """The seat map as one HTML document.
-
-    Every seat in the ledger gets a button, including the ones nobody can take: a map that
-    silently drops booked seats renders a smaller theatre than the one that exists, and
-    the row/number layout stops meaning anything.
-    """
+    """The seat map as one HTML document."""
     buttons = "\n".join(_seat_button(seat) for seat in seats)
     free = sum(1 for seat in seats if seat["state"] == FREE)
     return f"""<!doctype html>
@@ -65,12 +51,7 @@ def render(seats: list[dict[str, Any]]) -> str:
 
 
 def _seat_button(seat: dict[str, Any]) -> str:
-    """One seat. The accessible name is the seat id and nothing else.
-
-    Folding the state into the name — "Seat A1, free" — would make every locator in the
-    book change the moment the seat changed state, so the state travels as text inside the
-    button and as `data-state`, and the name stays the stable thing to address it by.
-    """
+    """One seat. The accessible name is the seat id and nothing else."""
     seat_id = escape(str(seat["id"]))
     state = escape(str(seat["state"]))
     disabled = ""

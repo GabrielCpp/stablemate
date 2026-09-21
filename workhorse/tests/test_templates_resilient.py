@@ -1,10 +1,4 @@
-"""Tests for resilient template rendering: a missing variable or an attribute read
-on a wrong-typed value (a common upstream-LLM-output failure mode) renders as empty
-instead of raising and killing the run — while still logging a warning so the bad
-reference stays visible.
-
-Run: ./.venv/bin/python tests/test_templates_resilient.py   (or via pytest)
-"""
+"""Tests for resilient template rendering: a missing variable or an attribute read on a wrong-typed value (a common upstream-LLM-output failure mode) renders as empty instead of raising and killing the run — while still logging a warning so the bad reference stays visible."""
 from __future__ import annotations
 
 import logging
@@ -13,8 +7,6 @@ from workhorse.templates import render_string
 
 
 def test_attribute_on_wrong_typed_value_renders_empty():
-    # The reported crash: qa_result came back as a bare string, but the node arg
-    # reads `{{ qa_result.notes }}`. Must degrade to empty, not raise.
     out = render_string("notes={{ qa_result.notes }}", {"qa_result": "failed"})
     assert out == "notes="
 
@@ -24,7 +16,6 @@ def test_missing_top_level_var_renders_empty():
 
 
 def test_deep_chain_through_missing_renders_empty():
-    # ChainableUndefined: a.b.c where a is missing must not explode mid-path.
     assert render_string("v={{ a.b.c }}", {}) == "v="
 
 

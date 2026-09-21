@@ -1,9 +1,4 @@
-"""`ostler.qa.fixtures` — the declared arrangements a plan may ask for.
-
-The one failure mode is static and containment-shaped: an app-language fixture can name
-a tool the repo never opted into, which would be a second, unwatched door onto the
-process. Every case below is one of those edges.
-"""
+"""`ostler.qa.fixtures` — the declared arrangements a plan may ask for."""
 
 from __future__ import annotations
 
@@ -43,13 +38,7 @@ def test_a_well_formed_fixture_resolves_to_the_invocation_it_names(tmp_path: Pat
 
 
 def test_a_fixture_naming_an_un_opted_in_tool_is_a_preflight_error(tmp_path: Path) -> None:
-    """The containment property, and the only one that makes `fixtures:` safe to add.
-
-    A fixture is one named invocation of a command the repo already admitted. If it could
-    name any command, `fixtures:` would be a second `tools:` that nothing reviewed — so a
-    fixture pointing somewhere the opt-in list does not go blocks the run rather than
-    running and being noticed later.
-    """
+    """The containment property, and the only one that makes `fixtures:` safe to add."""
     _agents_yml(tmp_path, ONE_FIXTURE.replace("tools: [node]", "tools: [docker]"))
     problems = fixtures.preflight_errors(tmp_path)
     assert len(problems) == 1
@@ -73,9 +62,6 @@ def test_a_malformed_entry_is_an_error_and_never_a_silent_skip(tmp_path: Path) -
     assert errors == ["qa fixture 'seeded' must be a mapping, not str"]
 
 
-# ---------------------------------------------------------------------------
-# `referenced` — what one plan asks for, read off its AST
-# ---------------------------------------------------------------------------
 def test_a_plan_reference_is_read_off_the_ast(tmp_path: Path) -> None:
     plan = tmp_path / "qa_plan.py"
     plan.write_text(
@@ -87,35 +73,28 @@ def test_a_plan_reference_is_read_off_the_ast(tmp_path: Path) -> None:
 
 
 def test_a_computed_fixture_name_is_not_read_as_a_fragment(tmp_path: Path) -> None:
-    """A name built at runtime claims nothing a static check could verify — better none than
-    half of one, which is what a grep would have returned."""
+    """A name built at runtime claims nothing a static check could verify — better none than half of one, which is what a grep would have returned."""
     plan = tmp_path / "qa_plan.py"
     plan.write_text("def s(qa, env):\n    qa.fixture('seeded-' + env)\n", encoding="utf-8")
     assert fixtures.referenced(plan) == set()
 
 
 def test_an_unparseable_plan_yields_nothing(tmp_path: Path) -> None:
-    """`ostler qa lint` and ruff both fail on it first; two vocabularies for one defect helps
-    nobody."""
+    """`ostler qa lint` and ruff both fail on it first; two vocabularies for one defect helps nobody."""
     plan = tmp_path / "qa_plan.py"
     plan.write_text("def broken(:\n", encoding="utf-8")
     assert fixtures.referenced(plan) == set()
 
 
 def test_a_bare_name_is_the_whole_bullet() -> None:
-    """The common case: a claim documented in a state some declared fixture already reaches.
-
-    Nothing else needs saying, and the grammar must not make the book say it — the declaration
-    in `agents.yml` already carries the tool, the argv and the prose.
-    """
+    """The common case: a claim documented in a state some declared fixture already reaches."""
     ref = fixtures.parse_bullet("three-identities")
     assert isinstance(ref, fixtures.FixtureRef)
     assert (ref.name, ref.args, ref.provides) == ("three-identities", (), "")
 
 
 def test_arguments_and_the_state_they_leave_behind_parse_apart() -> None:
-    """The em dash is the join/read split the relation subjects already use: the head is what
-    the harness runs and the tail is what a person reads in `preconditions`."""
+    """The em dash is the join/read split the relation subjects already use: the head is what the harness runs and the tail is what a person reads in `preconditions`."""
     ref = fixtures.parse_bullet("seeded-ledger 3 draft — one draft policy on file")
     assert isinstance(ref, fixtures.FixtureRef)
     assert ref.name == "seeded-ledger"
@@ -124,28 +103,21 @@ def test_arguments_and_the_state_they_leave_behind_parse_apart() -> None:
 
 
 def test_a_quoted_argument_stays_one_argument() -> None:
-    """An arrangement argument is prose often enough — a title, a note — that splitting it on
-    spaces would silently hand the fixture two arguments where the book wrote one."""
+    """An arrangement argument is prose often enough — a title, a note — that splitting it on spaces would silently hand the fixture two arguments where the book wrote one."""
     ref = fixtures.parse_bullet('seeded-ledger "policy of record" — one policy')
     assert isinstance(ref, fixtures.FixtureRef)
     assert ref.args == ("policy of record",)
 
 
 def test_a_value_naming_its_own_emptiness_parses_as_a_decision_not_a_defect() -> None:
-    """`none, because ...` is the one spelling in this repo for "there is nothing here, and
-    here is why" (`registry.self_declared_empty`). A node that needs no arrangement has to be
-    able to say so — the alternative is omitting the bullet, which is what an author who never
-    considered it also does, and a compiler cannot tell those apart from the same absence."""
+    """`none, because ...` is the one spelling in this repo for "there is nothing here, and here is why" (`registry.self_declared_empty`)."""
     parsed = fixtures.parse_bullet("none, because the journey reads a store it finds empty")
     assert isinstance(parsed, fixtures.NoArrangement)
     assert parsed.reason.startswith("none, because")
 
 
 def test_a_bare_none_is_a_blank_left_blank_not_a_stated_emptiness() -> None:
-    """Without a reason it is indistinguishable from a stub, so it is not a stated emptiness.
-    It stays an ordinary reference — to a fixture nobody declares, which `ostler doctor` refuses
-    as `unknown-book-fixture`. Admitting it here would put the undecided case back under the
-    decided case's spelling, which is the collapse this distinction exists to prevent."""
+    """Without a reason it is indistinguishable from a stub, so it is not a stated emptiness."""
     parsed = fixtures.parse_bullet("none")
     assert not isinstance(parsed, fixtures.NoArrangement)
     assert isinstance(parsed, fixtures.FixtureRef)
@@ -153,9 +125,7 @@ def test_a_bare_none_is_a_blank_left_blank_not_a_stated_emptiness() -> None:
 
 
 def test_a_name_no_declaration_could_carry_is_rejected_at_parse_time() -> None:
-    """`Seeded Ledger` cannot be a key under `qa: {fixtures:}`, so it cannot be a reference to
-    one. Saying that here beats a lookup miss, which reads like a missing declaration and sends
-    the author to edit the wrong file."""
+    """`Seeded Ledger` cannot be a key under `qa: {fixtures:}`, so it cannot be a reference to one."""
     problem = fixtures.parse_bullet("Seeded Ledger")
     assert isinstance(problem, str)
     assert "is not a fixture name" in problem
@@ -169,8 +139,7 @@ def test_an_empty_bullet_and_unbalanced_quoting_are_both_sentences() -> None:
 
 
 def test_prose_after_the_dash_may_contain_anything() -> None:
-    """Only the head is a grammar. The tail is a sentence, and a sentence with a comma, a colon
-    or a quote in it must not become a parse error."""
+    """Only the head is a grammar."""
     ref = fixtures.parse_bullet("ledger — one claim, awaiting a decision: \"open\"")
     assert isinstance(ref, fixtures.FixtureRef)
     assert ref.provides == 'one claim, awaiting a decision: "open"'

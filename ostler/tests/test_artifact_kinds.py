@@ -18,9 +18,6 @@ def _spec(tmp_path: Path) -> Path:
     return spec
 
 
-# ---------------------------------------------------------------------------
-# plan-context
-# ---------------------------------------------------------------------------
 
 def test_plan_context_missing_services_is_actionable(tmp_path: Path):
     spec = _spec(tmp_path)
@@ -52,9 +49,6 @@ def test_plan_context_flags_missing_plan_file_and_bad_order(tmp_path: Path):
     assert any("not-a-ref" in p for p in problems)
 
 
-# ---------------------------------------------------------------------------
-# qa-evidence
-# ---------------------------------------------------------------------------
 
 def _passing_evidence(spec: Path) -> dict:
     proof = spec / "qa" / "ac1.txt"
@@ -219,18 +213,7 @@ def test_qa_evidence_runid_manifest_coherence(tmp_path: Path):
 
 
 def test_qa_evidence_left_over_from_an_earlier_run_is_rejected(tmp_path: Path):
-    """A verdict has to describe the run that is on disk, whatever the verdict is.
-
-    The two bindings above only fire once `runId` is non-empty, and only reach the manifest.
-    So a `qa-evidence.json` an earlier execution left behind vetted clean on the strength of
-    being internally consistent — the observed one paired `overall: Fail` with seven `Pass`
-    criteria, written by a version of the aggregator since fixed, and sat beside a fresh run
-    log for hours. Downstream that costs a turn every pass: the assessor cannot route on a
-    verdict its own log contradicts, so it re-derives the lot from `qa-run.ndjson`.
-
-    The log's `session_start` is the authority — the runner rewrites `qa/` per run — and a
-    blank `runId` must not be a way out of the check.
-    """
+    """A verdict has to describe the run that is on disk, whatever the verdict is."""
     spec = _spec(tmp_path)
     (spec / "qa" / "qa-run.ndjson").write_text(
         json.dumps({"kind": "session_start", "run_id": "qa-run-2"}) + "\n",
@@ -250,9 +233,6 @@ def test_qa_evidence_left_over_from_an_earlier_run_is_rejected(tmp_path: Path):
     assert not [p for p in _qa_evidence_vet(stale, spec, tmp_path) if "run on disk" in p]
 
 
-# ---------------------------------------------------------------------------
-# backlog-items
-# ---------------------------------------------------------------------------
 
 def test_backlog_items_rules(tmp_path: Path):
     spec = _spec(tmp_path)
@@ -270,9 +250,6 @@ def test_backlog_items_rules(tmp_path: Path):
     assert any("description" in p for p in problems)
 
 
-# ---------------------------------------------------------------------------
-# run orchestration
-# ---------------------------------------------------------------------------
 
 def test_scaffold_then_vet_roundtrip(tmp_path: Path):
     outcome = scaffold("backlog-items", Path("docs/specs/story-x"), tmp_path)
@@ -289,8 +266,6 @@ def test_scaffold_refuses_overwrite_without_force(tmp_path: Path):
 
 
 def test_scaffolded_plan_context_fails_vet_until_filled(tmp_path: Path):
-    # A fresh skeleton is deliberately NOT clean: placeholders must be replaced
-    # and the plan file must exist before vet passes.
     spec = Path("docs/specs/story-x")
     assert scaffold("plan-context", spec, tmp_path).status == "clean"
     outcome = vet("plan-context", spec, tmp_path)
@@ -321,11 +296,7 @@ def _run_log(spec: Path, *, passes: int, fails: int = 0, run_id: str = "qa-run-1
 
 
 def test_qa_evidence_unmodeled_surface_passes_on_run_log(tmp_path: Path):
-    """An infra/CLI story's changed code has no OKF feature-node owner, so the diff→OKF mapper
-    produces no obligations and _write_evidence records empty criteria+obligations even for a
-    genuine pass. Its proof is the command assertions in the run log — admit that case when the
-    log shows real passing assertions and zero failures. (Live: infra stories passed QA 12/12,
-    then this gate wrongly rejected them for lacking OKF-structured evidence.)"""
+    """An infra/CLI story's changed code has no OKF feature-node owner, so the diff→OKF mapper produces no obligations and _write_evidence records empty criteria+obligations even for a genuine pass."""
     spec = _spec(tmp_path)
     _run_log(spec, passes=12)
     data = {"runId": "qa-run-1", "qa_run_log": "qa/qa-run.ndjson",

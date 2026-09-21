@@ -1,13 +1,4 @@
-"""The frozen QA plan for `claims-tenancy`.
-
-No criterion in this story is observable with one identity. Every rule here is about what a
-*second* caller is handed back for the same ledger, so all three seeded accounts are signed
-in before the first assertion and the register is built by two different holders.
-
-The identities come from the auth emulator beside the service, so there is no credential in
-this file: `auth/seed.mjs` creates the three accounts before the API is allowed to answer,
-and the adjuster's role is a custom claim the emulator stamps on the token.
-"""
+"""The frozen QA plan for `claims-tenancy`."""
 
 import json
 from typing import Any
@@ -17,22 +8,14 @@ from ostler_qa import Qa, plan, scenario, target
 
 plan(run_id="qa-claims-tenancy", story="claims-tenancy")
 
-#: The auth emulator beside the service, at the path its REST surface is mounted on.
 EMULATOR = "http://localhost:18086/identitytoolkit.googleapis.com/v1"
 
-#: A policy holder. Sees their own claims and nobody else's.
 HOLDER_A = ("holder-a@example.com", "claims-bench-a")
-#: A second holder, so tenancy has someone to be kept apart from.
 HOLDER_B = ("holder-b@example.com", "claims-bench-b")
-#: The adjuster. The role is a custom claim the emulator stamps on the token, which is what
-#: `403 Adjusters Only` is decided from.
 ADJUSTER = ("adjuster@example.com", "claims-bench-c")
 
-#: The policy number a submission carries unless the scenario names another.
 _DEFAULT_POLICY_NUMBER = "PL-4471"
 
-#: A well-formed submission. Every field the book documents as required is here, so a plan
-#: overriding one is choosing a value rather than completing the body.
 _SUBMISSION: dict[str, Any] = {
     "policy_number": _DEFAULT_POLICY_NUMBER,
     "incident_date": "2099-03-14",
@@ -58,30 +41,14 @@ def bearer(qa: Qa, identity: dict) -> dict:
 
 
 def submission(policy_number: str = _DEFAULT_POLICY_NUMBER, **overrides: Any) -> dict:
-    """A claim submission body, with `policy_number` first because that is what varies.
-
-    Duplicated per plan rather than shared through a fixture module: `qa: {fixture_modules:}`
-    is retired, and this plan is frozen corpus, so the cost of the duplicate is a fixed one.
-    """
+    """A claim submission body, with `policy_number` first because that is what varies."""
     return {**_SUBMISSION, "policy_number": policy_number, **overrides}
 
 api = target("api", driver="python", base_url="http://localhost:18085")
 
 
 def two_holders_file_one_claim_each(qa: Qa) -> dict:
-    """The one shared arrangement: an emptied desk with cl-1001 for A and cl-1002 for B.
-
-    Written as a helper rather than a precondition step because all three scenarios need
-    the *same* two claims and the ids are what the book's own checks name.
-
-    Both claims are filed on **one** policy, which is the whole point of the arrangement.
-    `list-claims:authorization:1` says a register is scoped by the verified identity and not
-    by anything else; two holders on two policies cannot tell that apart from a register
-    scoped by policy number, because each holder is on exactly one of them either way. The
-    book documents this very pairing — two different holders filing on one policy for one
-    day are two claims and not a duplicate — so the arrangement it describes is the one
-    that can observe the rule it states.
-    """
+    """The one shared arrangement: an emptied desk with cl-1001 for A and cl-1002 for B."""
     a, b, adjuster = sign_in(qa, HOLDER_A), sign_in(qa, HOLDER_B), sign_in(qa, ADJUSTER)
     qa.http.delete("/api/claims", headers=bearer(qa, adjuster), expect_status=204)
     qa.http.post("/api/claims", json_body=submission("PL-5510", description="Water ingress in the basement."), headers=bearer(qa, a), expect_status=201)
@@ -130,8 +97,6 @@ def a_register_holds_the_claims_of_whoever_asked(qa: Qa) -> None:
     mine_body = mine.json()
     qa.verify("http_status", mine, code=200, path="/api/claims", covers=["ac:1", "okf:docs/features/claims/http/claims-api.md#list-claims:does:1", "okf:docs/features/claims/http/claims-api.md#list-claims:contract"])
     qa.verify("json_path", mine_body, path="$.claims[0].version", absent=False, covers=["ac:1", "okf:docs/features/claims/http/claims-api.md#list-claims:does:1"])
-    # Two claims on one field: the book's is that a listed claim carries one of the three
-    # statuses at all, and this scenario's is which one a freshly filed claim carries.
     qa.verify("json_path", mine_body, path="claims[0].status", matches="Submitted|Approved|Denied", covers=["okf:docs/features/claims/http/claims-api.md#list-claims:does:1"])
     qa.verify("json_path", mine_body, path="claims[0].status", equals="Submitted", covers=["ac:1", "okf:docs/features/claims/flows/file-a-claim.md:start:1", "okf:docs/features/claims/flows/file-a-claim.md:end:1", "okf:docs/features/claims/flows/file-a-claim.md:end-state"])
     qa.verify("count", qa.field(mine_body, "claims"), subject="claims", equals=1, covers=["ac:2", "okf:docs/features/claims/http/claims-api.md#list-claims:authorization:1", "okf:docs/features/claims/flows/file-a-claim.md:start:1", "okf:docs/features/claims/flows/file-a-claim.md:end:1", "okf:docs/features/claims/flows/file-a-claim.md:end-state"])
@@ -149,8 +114,6 @@ def a_register_holds_the_claims_of_whoever_asked(qa: Qa) -> None:
 
     qa.check("the adjuster's register is in the order the claims were written", [qa.field(claim, "id") for claim in everything] == ["cl-1001", "cl-1002"], covers=["okf:docs/features/claims/concepts/claim-tenancy.md:contract"])
 
-    # An empty register is a register, not a 404: the adjuster empties the desk and holder A
-    # — who had a claim a moment ago — is still answered on the same terms.
     qa.http.delete("/api/claims", headers=bearer(qa, qa.field(who, "adjuster")), expect_status=204)
     emptied = qa.http.get("/api/claims", headers=bearer(qa, qa.field(who, "a")), expect_status=200)
     qa.verify("http_status", emptied, code=200, path="/api/claims", covers=["ac:4"])

@@ -1,9 +1,4 @@
-"""What the ledger says, in the two shapes something downstream can read.
-
-Neither function prints. `summarize` hands back a dict and `export_rows` writes a named file,
-so the decision about which stream a byte goes to is made in exactly one place — `tally.cli` —
-and a report that has to survive a pipe cannot be corrupted by a progress line added here.
-"""
+"""What the ledger says, in the two shapes something downstream can read."""
 
 import csv
 
@@ -11,11 +6,7 @@ from tally.ledger import COLUMNS, currency_of
 
 
 def summarize(data: dict) -> dict:
-    """Total the ledger, and say per person what they put in.
-
-    `total_cents` is the sum of `per_person`, always: the two are computed from one pass so a
-    reader can check the report against itself without re-reading the ledger.
-    """
+    """Total the ledger, and say per person what they put in."""
     per_person: dict[str, int] = {}
     for entry in data["entries"]:
         per_person[entry["who"]] = per_person.get(entry["who"], 0) + int(entry["amount_cents"])
@@ -28,12 +19,7 @@ def summarize(data: dict) -> dict:
 
 
 def export_rows(data: dict, path) -> int:
-    """Write every entry to `path` as CSV, header first, and say how many rows that was.
-
-    The header is written unconditionally, including for an empty ledger. An export whose
-    header appears only when there is data is an export whose shape depends on its content,
-    and the first thing every reader of a CSV does is skip line one.
-    """
+    """Write every entry to `path` as CSV, header first, and say how many rows that was."""
     with open(path, "w", encoding="utf-8", newline="") as handle:
         writer = csv.writer(handle)
         for entry in data["entries"]:

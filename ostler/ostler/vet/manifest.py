@@ -12,7 +12,7 @@ from ostler.vet.geometry import BBox
 
 class DomElement(BaseModel):
     selector: str
-    name: str = ""  # the documented component's slug; names its per-component crop
+    name: str = ""
     role: str = ""
     bbox: BBox
     visible: bool = True
@@ -25,11 +25,7 @@ class ManifestResult(BaseModel):
 
 
 def load_manifest(path: Path) -> ManifestResult:
-    """Parse the manifest JSON (a list of element dicts) item-by-item.
-
-    A single malformed entry is recorded in ``.errors`` and skipped rather than failing the
-    whole batch, so one bad entry doesn't block vetting the rest of a page.
-    """
+    """Parse the manifest JSON (a list of element dicts) item-by-item."""
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError) as exc:

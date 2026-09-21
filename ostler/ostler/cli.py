@@ -31,24 +31,13 @@ _TYPES = (
 )
 
 
-#: The subcommands that answer without loading a graph, and so have no index to control.
-#: `checks` prints a vocabulary that is a property of ostler rather than of a book;
-#: `cache` operates *on* the index and carries its own `--index-dir` instead.
 _INDEXLESS_COMMANDS = frozenset({"checks", "cache"})
 
-#: Days, the unit `cache clean` takes its age bound in. The seconds live in `index`.
 _DEFAULT_MAX_AGE_DAYS = index_mod.DEFAULT_MAX_AGE_S / (24 * 60 * 60)
 
 
 def _add_index_controls(parser: argparse.ArgumentParser) -> None:
-    """Give *parser* the two index controls, defaulting to *silence*.
-
-    ``argparse.SUPPRESS`` rather than a real default, exactly as ``write_parent`` does it:
-    a subparser applies its own defaults into the shared namespace, so a concrete default
-    here would let ``ostler create --no-index epic …`` be overwritten by the ``epic``
-    parser's ``False`` on the way past. Suppressed, a parser that did not see the flag
-    contributes nothing and the one value :func:`_build_parser` sets stands.
-    """
+    """Give *parser* the two index controls, defaulting to *silence*."""
     parser.add_argument(
         "--no-index", action="store_true", dest="no_index", default=argparse.SUPPRESS,
         help="force the uncached path: read nothing from the parse index and write nothing to it",
@@ -61,25 +50,11 @@ def _add_index_controls(parser: argparse.ArgumentParser) -> None:
 
 
 def _install_index_controls(parser: argparse.ArgumentParser) -> None:
-    """Add the index controls to every subcommand of *parser* that loads a graph.
-
-    Walked rather than spelled out at each ``add_parser`` call, because "every command
-    that loads a graph" is nearly every command ostler has, and a list of sixty would be
-    wrong the first time somebody adds the sixty-first. The recursion reaches nested
-    subcommands (``create epic``, ``qa run``) so the flag is accepted after the leaf verb
-    as well as before it.
-
-    argparse offers no public accessor for the subparsers it has registered, so this reads
-    ``_actions``. The alternative is threading a parent parser through every one of those
-    call sites and still missing the next one.
-    """
+    """Add the index controls to every subcommand of *parser* that loads a graph."""
     for action in parser._actions:
         if not isinstance(action, argparse._SubParsersAction):
             continue
         for name, sub in action.choices.items():
-            # `choices` is declared as a mapping to `object`, and an alias registers the
-            # same parser twice; the isinstance both narrows the type and would skip
-            # anything that is not a parser rather than crashing on it.
             if name in _INDEXLESS_COMMANDS or not isinstance(sub, argparse.ArgumentParser):
                 continue
             _add_index_controls(sub)
@@ -202,7 +177,6 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     st.add_argument("--json", action="store_true", help="emit a per-page summary as JSON")
 
-    # ---- retrieval --------------------------------------------------------
     ls = sub.add_parser("list", help="list Concepts of a type")
     ls.add_argument(
         "--type",
@@ -345,7 +319,6 @@ def _build_parser() -> argparse.ArgumentParser:
     ns.add_argument("epic")
     ns.add_argument("--json", action="store_true")
 
-    # ---- CRUD -------------------------------------------------------------
     cr = sub.add_parser("create", help="create a planning entity (allocates an id)")
     crs = cr.add_subparsers(dest="what", required=True)
     cre = crs.add_parser("epic")
@@ -409,7 +382,6 @@ def _build_parser() -> argparse.ArgumentParser:
                            "before its QA plan exists keeps its `(none)` until the plan says "
                            "otherwise")
 
-    # ---- template-declared kinds: generic instance CRUD + hierarchy CRUD --
     gn = sub.add_parser("new", help="create an instance of a template-declared kind")
     gn.add_argument("kind")
     gn.add_argument("name")
@@ -525,7 +497,6 @@ def _build_parser() -> argparse.ArgumentParser:
     tds.add_parser("reorder").add_argument("names", nargs="+")
     tds.add_parser("list").add_argument("--json", action="store_true")
 
-    # ---- edit / freeze ----------------------------------------------------
     write_parent = argparse.ArgumentParser(add_help=False)
     write_parent.add_argument(
         "--write",
@@ -599,7 +570,6 @@ def _build_parser() -> argparse.ArgumentParser:
         help="don't write; exit 1 if any file carries a fixable drift",
     )
 
-    # ---- path resolution -----------------------------------------------------
     pa = sub.add_parser("path", help="resolve a slug to its canonical path")
     pas = pa.add_subparsers(dest="what", required=True)
     pa_spec = pas.add_parser("spec", help="spec dir for a story (slug or minted id)")
@@ -627,7 +597,6 @@ def _build_parser() -> argparse.ArgumentParser:
     uf = sub.add_parser("unfreeze", help="lift the freeze on a story/seed")
     uf.add_argument("ident")
 
-    # ---- vet ---------------------------------------------------------------
     vt = sub.add_parser(
         "vet", parents=[write_parent], help="deterministic visual-fidelity check"
     )
@@ -663,7 +632,6 @@ def _build_parser() -> argparse.ArgumentParser:
     arls = ars.add_parser("list", help="show registered artifact kinds")
     arls.add_argument("--json", action="store_true")
 
-    # ---- qa ----------------------------------------------------------------
     qa = sub.add_parser(
         "qa", help="deterministic QA run bookkeeping (start/step/assert/stop/run/…)"
     )
@@ -1005,7 +973,6 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     qa_clean.add_argument("--json", action="store_true")
 
-    # ---- cache -------------------------------------------------------------
     ca = sub.add_parser("cache", help="the persistent parse index: evict what it holds")
     cas = ca.add_subparsers(dest="op", required=True)
     cac = cas.add_parser(
@@ -1028,44 +995,25 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     cac.add_argument("--json", action="store_true")
 
-    # One value for the whole run, set here so a suppressed flag on any subparser leaves
-    # it standing. On by default from the first commit: `--no-index` is the escape hatch.
     p.set_defaults(no_index=False, index_dir=None)
     _add_index_controls(p)
     _install_index_controls(p)
     return p
 
 
-# ---------------------------------------------------------------------------
-#: ``{id: handle}`` while the run is abbreviating, empty otherwise. Module state because every
-#: command prints through :func:`_out`, and threading a table through 30 dispatch arms to reach
-#: `print` would be a worse trade than one value set once per run. The mode is tracked separately
-#: because "abbreviating" and "has ids to abbreviate" differ in a fresh repo — the first `create`
-#: there is exactly the case that needs the table extended.
 _HANDLES: dict[str, str] = {}
 _HANDLES_ON = False
 
 
 def _use_handles(graph, args) -> None:
-    """Decide, once per run, whether ids print short.
-
-    Human output abbreviates by default and ``--json`` does not: a person reading a listing wants
-    a token short enough to retype, while a program reading one wants the identity that never
-    changes — a handle lengthens the moment a colliding id is minted, so it is a display form, not
-    a key to store. ``--handles`` / ``--full-ids`` override either default; input is unaffected,
-    since a handle is accepted wherever an id is regardless of how this run prints.
-    """
+    """Decide, once per run, whether ids print short."""
     global _HANDLES, _HANDLES_ON
     _HANDLES_ON = args.handles or (not args.full_ids and not getattr(args, "json", False))
     _HANDLES = ids_mod.table(ids_mod.known(graph)) if _HANDLES_ON else {}
 
 
 def _parse_checkouts(raw_checkouts: list[str]) -> dict[str, Path] | None:
-    """Parse repeated ``--checkout REPOSITORY=PATH`` flags, or ``None`` on a malformed one.
-
-    A caller prints the error and returns 2 when this comes back ``None``; the malformed
-    value itself already went to stderr from here, so the caller need not repeat it.
-    """
+    """Parse repeated ``--checkout REPOSITORY=PATH`` flags, or ``None`` on a malformed one."""
     checkouts: dict[str, Path] = {}
     for raw in raw_checkouts:
         repository, separator, checkout = raw.partition("=")
@@ -1077,13 +1025,7 @@ def _parse_checkouts(raw_checkouts: list[str]) -> dict[str, Path] | None:
 
 
 def _packet_aim(spec: str, root: Path) -> str:
-    """The `featuresRoot` the qa context packet in `spec` recorded, normalised against `root`.
-
-    A missing packet is not an error here: with no `--spec` the caller means the book at
-    the repo root, which `path_mod.resolve_features_root` also answers for a packet whose
-    `featuresRoot` is absent, null, or blank — the same rule `qa/drivers.py` reads a
-    packet's `featuresRoot` by, so the two agree on what an empty or missing field means.
-    """
+    """The `featuresRoot` the qa context packet in `spec` recorded, normalised against `root`."""
     if not spec:
         return path_mod.resolve_features_root(None, root)
     packet = Path(spec) / provenance.CONTEXT_FILE
@@ -1115,14 +1057,9 @@ def _emit(rows, as_json: bool) -> int:
 
 
 def _result(res, as_json: bool = False) -> int:
-    # An id minted by *this* command postdates the table, and it is the one id the caller is most
-    # likely to copy — so fold it in rather than printing the one full id in an abbreviated run.
     if _HANDLES_ON and res.entity_id and res.entity_id not in _HANDLES:
         _HANDLES.update(ids_mod.table([*_HANDLES, res.entity_id]))
     if as_json:
-        # `name` is the name the writer used — an epic lands in a numbered directory, so a
-        # caller that pipes `--json` into a path needs the created name, not the one it asked
-        # for. It falls back to the id-only shape's silence: "" when the writer named nothing.
         _out(json.dumps({"ok": res.ok, "id": res.entity_id,
                           "name": res.entity_name, "message": res.message}))
     else:
@@ -1131,26 +1068,14 @@ def _result(res, as_json: bool = False) -> int:
 
 
 def _surface_driver(dump: dict, surface: str | None) -> str | None:
-    """The driver whose route grammar this surface is addressed in, or ``None`` when it states none.
-
-    `reach.surface_driver` reads the surface's own runbooks in §4.1 driver order, so a surface
-    covered by several settles on one without this command adjudicating anything. ``None``
-    here means no runbook covering the surface states a `driver:` at all.
-    """
+    """The driver whose route grammar this surface is addressed in, or ``None`` when it states none."""
     if surface is None:
         return None
     return reach.surface_driver(dump, surface)
 
 
 def _cmd_reach(graph, args) -> int:
-    """Route to one screen, or audit the whole surface when no target is given.
-
-    Exits non-zero when a route is missing — an unreachable screen is a defect in the book, and a
-    caller that shells out to this should stop rather than navigate by URL and paper over it. A
-    surface whose driver declares no screens at all is a different fact, not a defect: nothing was
-    asked for and missed, so that case is reported on stdout with exit 0 rather than `error:` with
-    exit 2. Naming a start that does not resolve is still a failed search either way.
-    """
+    """Route to one screen, or audit the whole surface when no target is given."""
     dump = graph_mod.build(graph)
     data = graph_mod.subset(dump, args.surface) if args.surface else dump
     driver = _surface_driver(dump, args.surface)
@@ -1160,8 +1085,6 @@ def _cmd_reach(graph, args) -> int:
         _out(json.dumps({"start": None, "message": str(exc)}) if args.json else str(exc))
         return 0
     except reach.UnknownStart as exc:
-        # A start that names nothing must not route from nowhere: that reads as "0 reachable",
-        # every screen a hole in the book, for a typo in the flag.
         _out(json.dumps({"error": str(exc)}) if args.json else f"error: {exc}")
         return 2
     if args.target:
@@ -1181,12 +1104,7 @@ def _cmd_reach(graph, args) -> int:
 
 
 def _cmd_locators(graph, args) -> int:
-    """Emit the derived locators, exiting non-zero when the one-to-one mapping is broken.
-
-    A collision or an unlocatable control means a caller cannot mechanically address what the book
-    documents. Failing here keeps that a documentation defect rather than letting it resurface as a
-    strict-mode violation in somebody's test run.
-    """
+    """Emit the derived locators, exiting non-zero when the one-to-one mapping is broken."""
     data = locators.build(graph, surface=args.surface, screen=args.screen)
     _out(locators.render_json(data) if args.json else locators.render(data))
     broken = (data["collisions"] or data["unnamed"] or data["invalid_roles"]
@@ -1195,13 +1113,7 @@ def _cmd_locators(graph, args) -> int:
 
 
 def _repo_relative(graph, path: str) -> str | None:
-    """*path* as the repo-relative spelling a finding carries, or None when it is not the book's.
-
-    Read from where the command was typed first, so a shell completion works; a path that
-    does not land inside the book from there (typed under `-C`) is taken as repo-relative.
-    A path must exist under one of the book's doc roots: anywhere else no finding can ever
-    be reported, so the answer would be a clean report about a file doctor never read.
-    """
+    """*path* as the repo-relative spelling a finding carries, or None when it is not the book's."""
     root = graph.root.resolve()
     typed = Path(path).resolve()
     candidate = typed if typed.exists() and typed.is_relative_to(root) else root / path
@@ -1214,12 +1126,7 @@ def _repo_relative(graph, path: str) -> str | None:
 
 
 def _node_line_range(graph, node) -> tuple[int, int]:
-    """*node*'s own extent: its heading line up to (not including) the next node's, in its file.
-
-    Every heading is promoted to a node (`model._promote_section`), so the next node in the
-    same file — at any level — is exactly where this one's own content stops and either a
-    child's or a sibling's begins.
-    """
+    """*node*'s own extent: its heading line up to (not including) the next node's, in its file."""
     siblings = sorted(
         (n.line for n in graph.ui_nodes if n.path == node.path and n.line > node.line),
     )
@@ -1260,21 +1167,9 @@ def _cmd_stamp_from_catalog(graph, args) -> int:
             return 2
         pages = sorted({rel for rel in scope if rel is not None})
     else:
-        # Whole-book mode: every page under the book's single features root, not just the
-        # pages one surface happens to own. `_feature_paths` (ostler/model.py) recursively
-        # globs the whole `graph.doc_roots["features"]` tree -- the exact directory
-        # `source_snapshots.catalog_path` derives `sources.json` from -- so one graph load's
-        # `graph.ui_nodes` structurally can never be narrower than the catalog it shares that
-        # root with, even when several surfaces/services nest under it. No row can be left
-        # behind for this to silently drop.
         pages = sorted({node.path.relative_to(graph.root).as_posix() for node in graph.ui_nodes})
     results = [stamp_mod.stamp_page_from_catalog(graph.root, page, catalog) for page in pages]
     catalog_path = source_snapshots.catalog_path(graph.root)
-    # A --path migration only ever stamps the pages named on the command line; every other
-    # still-unmigrated page's catalog row is the only place its digest lives until it is
-    # migrated in a later invocation. Deleting the catalog here would destroy those rows
-    # permanently -- the exact drift-goes-invisible failure this migration exists to avoid.
-    # Only whole-book mode (no --path) may delete it, and only when --keep-catalog opts out.
     deleted = not args.path and not args.keep_catalog
     if deleted:
         catalog_path.unlink(missing_ok=True)
@@ -1379,31 +1274,19 @@ def _cmd_doctor(graph, args, store: index_mod.IndexStore) -> int:
         )
 
     if args.census:
-        # The census is a property of a whole run, so it deliberately ignores --path and
-        # --epic scoping: a checker family skipped because the caller narrowed the tree
-        # is not the same finding as one nothing calls, and only the unscoped run can
-        # tell them apart.
         result = census.take_census(_run_doctor)
         _out(census.render(result))
-        # Reports, does not judge. "This rule is enforced nowhere" is a claim about a set of
-        # runs, and this is one — gating on it here made a code another book exercises into
-        # a failure of whichever book the operator happened to point at. The verdict is taken
-        # over the corpus by `ostler/tests/test_census_corpus.py`, which is where the set is.
         return 0
 
     report = _run_doctor()
     if wanted:
         report = doctor.scope_to_paths(report, wanted)
     if args.json:
-        # The hit/miss line is *added* to the report, never substituted for it: a caller
-        # that gates on `errors` must not have to learn a new shape to keep doing so.
         payload = report.as_dict()
         payload["index"] = store.stats()
         _out(json.dumps(payload, indent=2))
         return 1 if report.errors else 0
     if args.path:
-        # The verdict leads: the caller is a repair turn reading the head of the output,
-        # and the epic summary below is about the whole book, not the file it asked about.
         _out(f"{report.errors} error(s), {report.warnings} warning(s) in {', '.join(wanted)}")
     else:
         _out(f"org: {report.org}   profile: {report.profile}")
@@ -1427,11 +1310,7 @@ def _cmd_doctor(graph, args, store: index_mod.IndexStore) -> int:
 
 
 def _cmd_backfill(graph, args) -> int:
-    """`ostler backfill plan`.
-
-    The impure half — the git diff, the doctor run, reading the inventory — lives here so
-    `backfill.plan` itself stays a function of its arguments.
-    """
+    """`ostler backfill plan`."""
     try:
         data = coverage.load_inventory(args.inventory)
     except (OSError, ValueError, json.JSONDecodeError) as exc:
@@ -1448,26 +1327,11 @@ def _cmd_backfill(graph, args) -> int:
     )
     _out(json.dumps(result.as_dict(), indent=2) if args.json
          else backfill_mod.render(result))
-    # `--check` is the gate; without it the plan is a report and a stale book is not a
-    # failure — the same split `coverage` draws between reading a number and gating on it.
     return 1 if (args.check and not result.is_clean) else 0
 
 
 def _cmd_verify_index(cwd: Path | None, args) -> int:
-    """Run doctor both ways and diff the two reports — the correctness half of the gate.
-
-    One command rather than a flag pair, because CI has to be able to run it without
-    knowing how to compare two invocations' output itself. Both loads happen in this
-    process and each gets its own index session, so the indexed run is the one that reads
-    and writes entries and the other is the cold path it must agree with.
-
-    ``--no-index`` is deliberately ignored here: a mode whose whole job is to run both
-    ways has nothing to do with an escape hatch from one of them.
-
-    Until a parse product is actually served from the store the two runs are the same
-    computation and this passes trivially — which is the correct result, and the point of
-    landing the gate green before anything starts depending on it.
-    """
+    """Run doctor both ways and diff the two reports — the correctness half of the gate."""
     root = find_root(cwd if cwd is not None else Path.cwd())
     reports: list[doctor.Report] = []
     for enabled in (True, False):
@@ -1491,12 +1355,7 @@ def _cmd_verify_index(cwd: Path | None, args) -> int:
 
 
 def _cmd_cache(args) -> int:
-    """``ostler cache clean`` — the eviction `IndexStore.prune` runs automatically.
-
-    Exits zero against a directory that is not there: a fresh machine has no index, and a
-    clean that fails because there was nothing to clean is a clean that cannot be put in a
-    setup script.
-    """
+    """``ostler cache clean`` — the eviction `IndexStore.prune` runs automatically."""
     directory = index_mod.index_dir(args.index_dir)
     removed = index_mod.clean(
         directory,
@@ -1586,8 +1445,6 @@ def _cmd_vet(graph, args) -> int:
         state=args.state,
         iou_threshold=args.iou_threshold,
     )
-    # A run without an error carries a report; treating a missing one as an error keeps the
-    # two exits together instead of reporting "clean" off an object that is not there.
     report = outcome.report
     if outcome.error or report is None:
         message = outcome.error or "vet produced no report"
@@ -1621,7 +1478,6 @@ def _cmd_artifact(graph, args) -> int:
             return 1
         _out(f"scaffolded {outcome.kind} -> {outcome.path}")
         return 0
-    # vet
     outcome = artifact_mod.vet(args.kind, args.spec, graph.root)
     if args.json:
         _out(json.dumps(outcome.to_dict(), indent=2))
@@ -1646,16 +1502,7 @@ def _cmd_qa(graph, args) -> int:  # noqa: C901 — flat QA subcommand dispatch
         return spec_arg if spec_arg.is_absolute() else root / spec_arg
 
     def _resolve_out(out_arg: Path | None) -> Path | None:
-        """A path-valued option against the same root `--spec` is read against.
-
-        `-C` names the tree the command operates on, and argparse hands back a bare relative
-        `Path` that carries no base at all. A command that rebases one of its path arguments
-        and not the other reads two different trees from one invocation: `--spec` finds the
-        book, and `--out` writes the generated plan into whatever directory the process
-        happened to start in — creating the intermediate directories there on the way, and
-        then refusing the next run with "already exists" about a path that does not exist in
-        the book's tree. Same base or the two are not arguments to the same command.
-        """
+        """A path-valued option against the same root `--spec` is read against."""
         if out_arg is None:
             return None
         return out_arg if out_arg.is_absolute() else root / out_arg
@@ -1667,10 +1514,6 @@ def _cmd_qa(graph, args) -> int:  # noqa: C901 — flat QA subcommand dispatch
         for raw in args.daemons:
             parts = raw.split(":", 2)
             name = parts[0]
-            # `shlex.split`, not a shell: it recovers the argv an author wrote with quotes,
-            # and leaves `&&` or `|` as literal arguments that fail at `exec` with the
-            # program named. A daemon has not been able to be a command line since the shell
-            # came out of `start_daemon`, and the CLI is not the place to put one back.
             if len(parts) == 2:
                 daemons.append((name, shlex.split(parts[1]), None))
             elif len(parts) == 3:
@@ -1856,7 +1699,6 @@ def _cmd_qa(graph, args) -> int:  # noqa: C901 — flat QA subcommand dispatch
             story_file=story_file,
         )
         if result.status == "invalid":
-            # The packet was never built — `data` carries the failure, not a graph.
             _out(json.dumps(result.data, indent=2) if args.json else f"error: {result.message}")
             return 1
         _out(json.dumps(result.data, indent=2) if args.json else result.message)
@@ -1929,10 +1771,6 @@ def _cmd_qa(graph, args) -> int:  # noqa: C901 — flat QA subcommand dispatch
             _out(json.dumps(data, indent=2))
         else:
             _out("\n".join(qa_mod.render_evidence_map(data, only=args.status)))
-        # Non-zero when anything is not `covered`, so a caller can gate on the join without
-        # parsing it. `contradicted`, `unproven` and `uncovered` are all blocking and all
-        # mean the published evidence does not describe the run — they differ only in who
-        # has to fix it, which the caller reads off the status rather than the exit code.
         return 0 if data["counts"]["covered"] == len(data["obligations"]) else 1
 
     if op == "clean":
@@ -2003,8 +1841,6 @@ def _cmd_checks(args: argparse.Namespace) -> int:
             for s in specs
         ], indent=2))
         return 0
-    # `excludes` alongside the signature on purpose: it is what makes the choice between two
-    # checks decidable, and an author picking by name alone picks the weaker one.
     _out("\n\n".join(f"{s.signature()}\n    excludes {s.excludes}" for s in specs))
     return 0
 
@@ -2012,19 +1848,12 @@ def _cmd_checks(args: argparse.Namespace) -> int:
 def main(argv: list[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
     cwd = Path(args.chdir) if args.chdir else None
-    # Before the graph: the vocabulary is a property of ostler, not of a book, and an author
-    # who needs to look a signature up is often standing somewhere there is no book to load.
     if args.command == "checks":
         return _cmd_checks(args)
-    # Also before the graph, for the opposite reason: `cache clean` acts on the index, and
-    # a machine whose book will not load is exactly one somebody wants to clean the cache on.
     if args.command == "cache":
         return _cmd_cache(args)
     if args.command == "doctor" and args.verify_index:
         return _cmd_verify_index(cwd, args)
-    # The session wraps the load as well as the dispatch: the parse products the next
-    # increment serves are read during `load`, so a session opened after it would cover
-    # the cheap half of the run and miss the expensive one.
     with index_mod.session(
         find_root(cwd if cwd is not None else Path.cwd()),
         directory=args.index_dir,
@@ -2086,13 +1915,9 @@ def _dispatch(graph, args, store: index_mod.IndexStore) -> int:  # noqa: C901 �
         result = coverage.cmd_coverage(graph, surface=args.surface, inventory=args.inventory,
                                        waivers=args.waivers)
         if result.status == "invalid":
-            # An unreadable inventory is a failure, never an empty one: zero units reads
-            # downstream as "everything is covered". Its own exit code, because a caller
-            # that retries on an incomplete book must not retry on a broken inventory.
             print(f"ostler coverage: {result.message}", file=sys.stderr)
             return 2
         _out(json.dumps(result.data, indent=2) if args.json else result.message)
-        # Exit non-zero on an incomplete book so a `make` target / CI check can gate on it.
         return 0 if result.ok else 1
     if c == "backfill":
         return _cmd_backfill(graph, args)
@@ -2106,7 +1931,6 @@ def _dispatch(graph, args, store: index_mod.IndexStore) -> int:  # noqa: C901 �
             return 2
     if c == "list":
         return _emit(
-            # `list`'s own `--type` is `required=True` — unlike `search`'s, which is a filter.
             query_mod.list_entities(graph, str(args.etype), args.epic, args.status),
             args.json,
         )
@@ -2196,9 +2020,6 @@ def _dispatch(graph, args, store: index_mod.IndexStore) -> int:  # noqa: C901 �
                 "layers": args.layers,
                 "services": args.services,
             }
-            # A handle resolves here too: `seed add` is update-or-create, so naming an existing
-            # seed by its handle updates that seed instead of filing a second one under a name
-            # that only looked new. An id nothing matches is passed through and creates.
             return _result(
                 crud.add_seed(
                     graph, args.epic, ids_mod.resolve(graph, args.id),
@@ -2215,9 +2036,6 @@ def _dispatch(graph, args, store: index_mod.IndexStore) -> int:  # noqa: C901 �
         return _result(crud.set_conflict(graph, args.slug, "" if args.clear else args.text),
                        args.json)
     if c == "unblock":
-        # A bare `ostler unblock` rewrites every stamped story in the repo, which is a
-        # reasonable thing to want and a terrible thing to do by accident — so the widest
-        # scope is the one that has to be spelled out.
         if not (args.slug or args.epic or args.all_stories):
             return _result(crud.Result(False, "name a story, pass --epic, or pass --all"), args.json)
         if args.all_stories and (args.slug or args.epic):

@@ -1,20 +1,4 @@
-"""Generation-copy installs: the bind is copied, never imported.
-
-The property under test is not "a copy happened" — it is that **a running process
-never imports the directory the operator is editing**. That is what a plain
-`uv tool install --editable /mnt/<pkg>-src` gets wrong: a save half-way through a
-multi-file change lands directly in what a live process imports, and a wrong edit has
-nothing to fall back to.
-
-So the tests here are about the two guarantees that buys: a generation dir is written
-once and never mutated, and a refresh that fails leaves the previous generation
-installed rather than nothing.
-
-`uv` is never spawned — `_run` is the module's single spawn point and therefore its
-single seam.
-
-    ./.venv/bin/python -m pytest tests/test_livesource.py
-"""
+"""Generation-copy installs: the bind is copied, never imported."""
 from __future__ import annotations
 
 import subprocess
@@ -50,9 +34,6 @@ class _Uv:
         return subprocess.CompletedProcess(cmd, self.returncode, b"", b"")
 
 
-# --------------------------------------------------------------------------- #
-# Staging
-# --------------------------------------------------------------------------- #
 
 
 def test_a_generation_is_a_copy_of_the_bind_not_the_bind(tmp_path: Path):
@@ -65,8 +46,7 @@ def test_a_generation_is_a_copy_of_the_bind_not_the_bind(tmp_path: Path):
 
 
 def test_an_edit_to_the_bind_does_not_reach_an_existing_generation(tmp_path: Path):
-    """The whole point: what a running process imports is immune to the save the
-    operator is making right now."""
+    """The whole point: what a running process imports is immune to the save the operator is making right now."""
     mount = _mount(tmp_path, **{"mod.py": "VERSION = 1\n"})
     gen = livesource.stage(_source(tmp_path, mount))
     assert gen is not None
@@ -85,7 +65,6 @@ def test_each_stage_is_a_new_directory_so_nothing_is_mutated_in_place(tmp_path: 
     assert first is not None and second is not None
     assert first != second
     assert first.exists() and second.exists()
-    # Chronological order is lexical order, which is what makes generations() a sort.
     assert [p.name for p in livesource.generations(source.root)] == ["0001", "0002"]
 
 
@@ -97,8 +76,7 @@ def test_no_mount_stages_nothing_and_is_not_an_error(tmp_path: Path):
 
 
 def test_the_expensive_and_useless_directories_are_not_copied(tmp_path: Path):
-    """`.venv` and `node_modules` are rebuilt by the install; `.git` can dwarf the
-    source; foreign bytecode is worse than useless."""
+    """`.venv` and `node_modules` are rebuilt by the install; `.git` can dwarf the source; foreign bytecode is worse than useless."""
     mount = _mount(tmp_path)
     for junk in (".git", ".venv", "node_modules", "__pycache__"):
         (mount / junk).mkdir()
@@ -110,9 +88,6 @@ def test_the_expensive_and_useless_directories_are_not_copied(tmp_path: Path):
         assert not (gen / junk).exists(), junk
 
 
-# --------------------------------------------------------------------------- #
-# Installing
-# --------------------------------------------------------------------------- #
 
 
 def test_install_points_uv_at_the_copy_never_at_the_bind(tmp_path: Path, monkeypatch):
@@ -156,8 +131,6 @@ def test_a_failed_install_leaves_the_previous_generation_in_place(tmp_path: Path
     uv.returncode = 1
     assert livesource.refresh(source, tmp_path / "bin") is None
 
-    # The good generation survives — something is still running out of it — and the
-    # failed copy is gone rather than left to make the next number skip.
     assert good.exists()
     assert [p.name for p in livesource.generations(source.root)] == [good.name]
 
@@ -170,14 +143,10 @@ def test_uv_missing_entirely_is_reported_not_raised(tmp_path: Path, monkeypatch)
     assert livesource.refresh(_source(tmp_path, _mount(tmp_path)), tmp_path / "bin") is None
 
 
-# --------------------------------------------------------------------------- #
-# Pruning
-# --------------------------------------------------------------------------- #
 
 
 def test_the_previous_generation_survives_a_refresh(tmp_path: Path, monkeypatch):
-    """Deleting the directory a live process is importing from is exactly the
-    failure this module exists to avoid, so the prune keeps more than one."""
+    """Deleting the directory a live process is importing from is exactly the failure this module exists to avoid, so the prune keeps more than one."""
     source = _source(tmp_path, _mount(tmp_path))
     monkeypatch.setattr(livesource, "_run", _Uv())
 

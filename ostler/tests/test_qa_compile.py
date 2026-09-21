@@ -1,10 +1,4 @@
-"""What a plan compiled from the book alone may and may not claim.
-
-A plan an author writes while reading the implementation tests what the code already does.
-These pin the alternative: the book's own `verify:` grammar, compiled into assertions with
-no source file opened — and, just as load-bearing, what the compiler refuses to invent when
-the book is silent.
-"""
+"""What a plan compiled from the book alone may and may not claim."""
 
 from __future__ import annotations
 
@@ -40,15 +34,6 @@ from ostler.qa.compile import (
 from ostler.qa.outcome import QaOutcome
 
 
-#: Phase 2h reads each target's `base_url` off `context["navigation"][surface]["entryUrl"]`,
-#: falling back to `--base-url` only for a surface stating none, and never at all for an
-#: obligation with no `surface:` — that shape is the http/api side's, which has no notion of
-#: "surface" to look navigation up by. Every test in this file that isn't itself about
-#: entry-url resolution just wants a plan that compiles, so `compile_plan`/`compile_plan_gaps`/
-#: `cmd_compile_plan` below wrap the real ones with this as the `--base-url` fallback, exactly
-#: as if every call in this file had passed it on the command line. The handful of tests
-#: pinning entry-url resolution itself (undeclared-entry-url, per-surface base_url) call the
-#: real, unwrapped functions instead, imported above with a leading underscore.
 _BASE_URL = "http://localhost:8000"
 
 
@@ -87,15 +72,6 @@ def cmd_compile_plan(
 
 
 def _obligation(oid: str, **extra: object) -> dict:
-    # GET, not POST: most tests here are about check compilation, gap kinds, digests, and
-    # coverage bookkeeping — none of it about request bodies. A POST default would make every
-    # one of them arrange a body it has no reason to care about, since there is still no book
-    # grammar to arrange one with (`unarranged-request-body`, compile.py's `_scenario_body`).
-    # The handful of tests actually about POST/body behavior override this explicitly.
-    # `arrangesNothing` for the same reason: a scenario that neither arranges a world nor says
-    # it needs none compiles to nothing at all (`unarranged-scenario`), so without this default
-    # every test here would have to arrange a state it is not about in order to reach the code
-    # it is about. The tests actually about arrangement override it explicitly.
     base = {
         "id": oid,
         "source": "docs/features/demo/api.md",
@@ -111,12 +87,6 @@ def _obligation(oid: str, **extra: object) -> dict:
 
 
 def _context(*obligations: dict) -> dict:
-    # D1's dispatch table keys on `(nodeType, driver)` — every obligation these tests build
-    # defaults to `nodeType: "endpoint"` (`_obligation`) or `"interaction"` (`_page_obligation`),
-    # and each surface those obligations name (the default "" surface here, others via
-    # `navigation=`) needs its own `driver:` for the table to resolve at all, the same as a
-    # real book's `runbook` node states one. Tests about the dispatch table itself, or that
-    # replace `navigation` outright, override this.
     return {"story": "demo-story", "obligations": list(obligations), "navigation": {"": {"driver": "http"}}}
 
 
@@ -153,8 +123,7 @@ def test_a_compiled_plan_is_valid_python() -> None:
 
 
 def test_a_compiled_plan_carries_the_books_own_digest() -> None:
-    """`plan(book=...)` names the obligation id set this compile pass read, so a run against
-    a book that has since changed can tell it apart from one still current."""
+    """`plan(book=...)` names the obligation id set this compile pass read, so a run against a book that has since changed can tell it apart from one still current."""
     context = _context(
         _obligation(
             "okf:docs/features/demo/api.md#post-things:does:1",
@@ -168,9 +137,7 @@ def test_a_compiled_plan_carries_the_books_own_digest() -> None:
 
 
 def test_the_books_digest_ignores_order_and_context_only_obligations() -> None:
-    """Stable under a rewalk that visits the same ids in a different order, and blind to a
-    `required: False` obligation — the plan never owed that one a scenario in the first place,
-    so its coming or going is not a reason to call the plan stale."""
+    """Stable under a rewalk that visits the same ids in a different order, and blind to a `required: False` obligation — the plan never owed that one a scenario in the first place, so its coming or going is not a reason to call the plan stale."""
     a = _obligation("okf:docs/features/demo/api.md#post-things:does:1")
     b = _obligation("okf:docs/features/demo/api.md#post-things:does:2")
     context_only = _obligation("okf:docs/features/demo/api.md#post-things:does:3", required=False)
@@ -237,7 +204,7 @@ def test_an_obligation_the_change_does_not_owe_is_not_compiled() -> None:
 
 
 def test_a_check_needing_a_subject_the_book_never_gave_compiles_to_a_marker() -> None:
-    """`unchanged` observes a before and an after. The book names neither, so nothing is invented."""
+    """`unchanged` observes a before and an after."""
     context = _context(
         _obligation(
             "okf:docs/features/demo/api.md#post-things:persistence:1",
@@ -248,8 +215,6 @@ def test_a_check_needing_a_subject_the_book_never_gave_compiles_to_a_marker() ->
         )
     )
     result = _compile_plan_gaps(context, story="demo-story", base_url=_BASE_URL)
-    # Nothing invented, and nothing half-claimed either: the sibling `http_status` row compiles,
-    # but the two bullets are one claim, so the obligation withdraws whole and stands as its gap.
     oid = "okf:docs/features/demo/api.md#post-things:persistence:1"
     assert isinstance(result, Refusal)
     assert "needs-snapshot" in _gap_kinds(result.gaps, oid)
@@ -282,9 +247,7 @@ def test_the_command_writes_the_plan_and_reports_the_debt(tmp_path: Path) -> Non
 
 
 def test_the_command_reports_gaps_in_doctors_own_finding_shape(tmp_path: Path) -> None:
-    """`compile_plan_gaps`'s `Gap` list surfaces in `cmd_compile_plan`'s JSON output as
-    doctor-shaped dicts — a caller reads `severity`/`code`/`message`/`ref` the same way it
-    would read a `doctor.Finding`, without re-parsing the compiled plan's Python."""
+    """`compile_plan_gaps`'s `Gap` list surfaces in `cmd_compile_plan`'s JSON output as doctor-shaped dicts — a caller reads `severity`/`code`/`message`/`ref` the same way it would read a `doctor.Finding`, without re-parsing the compiled plan's Python."""
     oid = "okf:docs/features/demo/api.md#post-things:does:1"
     context = _context(_obligation(
         oid,
@@ -307,9 +270,7 @@ def test_the_command_reports_gaps_in_doctors_own_finding_shape(tmp_path: Path) -
 
 
 def test_the_command_writes_no_file_when_nothing_compiled(tmp_path: Path) -> None:
-    """A `Refusal` is not a plan with nothing in it — writing an empty or comment-only file
-    over `out` would let a later run believe a plan already exists there, when what actually
-    happened is that nothing here compiled to one at all."""
+    """A `Refusal` is not a plan with nothing in it — writing an empty or comment-only file over `out` would let a later run believe a plan already exists there, when what actually happened is that nothing here compiled to one at all."""
     oid = "okf:docs/features/demo/api.md#get-things:does:1"
     context = _context(
         _obligation(
@@ -329,9 +290,7 @@ def test_the_command_writes_no_file_when_nothing_compiled(tmp_path: Path) -> Non
 
 
 def test_the_command_reports_the_ledger_even_on_a_refusal(tmp_path: Path) -> None:
-    """`owed`/`declared`/`debt`/`gaps` are the same ledger a caller reads on a success — a
-    `Refusal` still owes a reader the count of what the book asked for and what it declared,
-    not just the gaps that explain why none of it reached a scenario."""
+    """`owed`/`declared`/`debt`/`gaps` are the same ledger a caller reads on a success — a `Refusal` still owes a reader the count of what the book asked for and what it declared, not just the gaps that explain why none of it reached a scenario."""
     oid = "okf:docs/features/demo/api.md#get-things:does:1"
     context = _context(
         _obligation(
@@ -378,13 +337,7 @@ def _check(**args: object) -> dict:
 
 
 def test_the_book_arrangement_compiles_to_the_call_and_the_precondition() -> None:
-    """Both halves of a `fixture:` bullet land, in the two places a plan keeps them.
-
-    The name and its arguments become the `qa.fixture(...)` the scenario opens with; the prose
-    after the em dash becomes the precondition. The alternative was a `TODO(arrange)` marker an
-    author filled in by reading the code — which is the contamination this whole compiler exists
-    to remove, arriving through the one door it had left open.
-    """
+    """Both halves of a `fixture:` bullet land, in the two places a plan keeps them."""
     context = _context(
         _obligation(
             "okf:docs/features/demo/api.md#post-things:does:1",
@@ -403,12 +356,7 @@ def test_the_book_arrangement_compiles_to_the_call_and_the_precondition() -> Non
 
 
 def test_one_state_two_claims_is_arranged_once() -> None:
-    """Two claims documented in the same seeded ledger name one arrangement between them.
-
-    Running it twice would be a second ledger rather than the one both claims are about, so the
-    dedup is not tidiness — it is the difference between the state the book described and a
-    state nothing described.
-    """
+    """Two claims documented in the same seeded ledger name one arrangement between them."""
     ledger = {"name": "seeded-ledger", "args": ["2"], "provides": "two policies on file"}
     context = _context(
         _obligation("okf:docs/features/demo/api.md#post-things:does:1",
@@ -419,7 +367,6 @@ def test_one_state_two_claims_is_arranged_once() -> None:
     source = compile_plan(context, story="demo-story")
     assert source.count('qa.fixture("seeded-ledger", "2")') == 1
 
-    # Two that differ in an argument are two states, and both are reached.
     other = {"name": "seeded-ledger", "args": ["5"], "provides": "five policies on file"}
     context["obligations"][1]["fixturesDeclared"] = [other]
     source = compile_plan(context, story="demo-story")
@@ -427,13 +374,7 @@ def test_one_state_two_claims_is_arranged_once() -> None:
 
 
 def test_a_book_that_says_it_needs_nothing_arranged_gets_an_empty_precondition_list() -> None:
-    """`fixture: none, because ...` is an answer, and the plan states it as one.
-
-    An empty `preconditions=[]` used to be the marker for silence, written with a `TODO(arrange)`
-    beside it. Silence no longer compiles at all, so the empty list is free to mean what it
-    reads as: the book was asked what world these claims hold in and said this one, whichever
-    it is.
-    """
+    """`fixture: none, because ...` is an answer, and the plan states it as one."""
     context = _context(
         _obligation("okf:docs/features/demo/api.md#post-things:does:1", checksDeclared=[_check()])
     )
@@ -447,13 +388,7 @@ def _gap_kinds(gaps: list[Gap], oid: str) -> list[str]:
 
 
 def test_a_scenario_that_arranges_nothing_and_says_nothing_compiles_to_nothing() -> None:
-    """Neither an arrangement nor a stated need for none is the one answer nothing may compile.
-
-    The claim would be observed in whatever world the scenario before it left behind, so the
-    red it eventually went would be evidence about the run order and not about the app. The
-    gap is per obligation and the scenario is not emitted — saying nothing about the claim is
-    honest where a failure nobody caused is not.
-    """
+    """Neither an arrangement nor a stated need for none is the one answer nothing may compile."""
     oid = "okf:docs/features/demo/api.md#get-things:does:1"
     context = _context(
         _obligation(
@@ -469,10 +404,7 @@ def test_a_scenario_that_arranges_nothing_and_says_nothing_compiles_to_nothing()
 
 
 def test_a_refusal_carries_every_gap_and_is_never_also_a_plan() -> None:
-    """`Refusal` and `Plan` are a sum, not two views of the same result — a caller that gets a
-    `Refusal` back must never find a `Plan` underneath it, and the gap that explains why nothing
-    compiled must be the whole of what `compile_plan_gaps` hands back, not a value alongside a
-    `source` a caller could read instead of asking which case it has."""
+    """`Refusal` and `Plan` are a sum, not two views of the same result — a caller that gets a `Refusal` back must never find a `Plan` underneath it, and the gap that explains why nothing compiled must be the whole of what `compile_plan_gaps` hands back, not a value alongside a `source` a caller could read instead of asking which case it has."""
     oid = "okf:docs/features/demo/api.md#get-things:does:1"
     context = _context(
         _obligation(
@@ -489,10 +421,7 @@ def test_a_refusal_carries_every_gap_and_is_never_also_a_plan() -> None:
 
 
 def test_a_compiling_context_yields_a_plan_whose_source_declares_a_scenario() -> None:
-    """`Plan.source` is a plan file the plan format admits — at least one `@scenario(` — never
-    the empty, decorator-free module `compile_plan_gaps` used to hand back for "nothing
-    compiled". If this obligation's arrangement and check compile at all, the source it lands
-    in must actually declare the scenario carrying them."""
+    """`Plan.source` is a plan file the plan format admits — at least one `@scenario(` — never the empty, decorator-free module `compile_plan_gaps` used to hand back for "nothing compiled"."""
     context = _context(
         _obligation(
             "okf:docs/features/demo/api.md#post-things:does:1",
@@ -506,11 +435,7 @@ def test_a_compiling_context_yields_a_plan_whose_source_declares_a_scenario() ->
 
 
 def test_a_missing_request_body_is_an_unarranged_request_body() -> None:
-    """`json_body={}` against an endpoint that needs a real one gets refused by the app (422) —
-    a false failure against code that did nothing wrong. Unlike an unresolved path reference or
-    template variable, there is no partial request to send, so the call is withheld entirely and
-    the obligation is never covered, not just annotated with a TODO on a call that still runs.
-    """
+    """`json_body={}` against an endpoint that needs a real one gets refused by the app (422) — a false failure against code that did nothing wrong."""
     oid = "okf:docs/features/demo/globex.md#post-things:does:1"
     context = _context(
         _obligation(
@@ -531,8 +456,7 @@ def _body_act(field: str, value: object) -> dict:
 
 
 def test_an_arranged_request_body_compiles_to_json_body() -> None:
-    """`arrange: body(field=..., value=...)` under the arm fills what `_check`'s bare POST
-    otherwise withholds — the whole reason `body` exists as an act rather than a new key."""
+    """`arrange: body(field=..., value=...)` under the arm fills what `_check`'s bare POST otherwise withholds — the whole reason `body` exists as an act rather than a new key."""
     oid = "okf:docs/features/demo/globex.md#post-things:does:1"
     context = _context(
         _obligation(
@@ -551,9 +475,7 @@ def test_an_arranged_request_body_compiles_to_json_body() -> None:
 
 
 def test_a_half_arranged_request_body_is_still_withheld() -> None:
-    """One act the HTTP driver cannot perform poisons the whole body, the same all-or-nothing
-    rule `_performed_lines` already applies to `fill`/`click` — a request half the book
-    declared is neither the body it wrote nor no body."""
+    """One act the HTTP driver cannot perform poisons the whole body, the same all-or-nothing rule `_performed_lines` already applies to `fill`/`click` — a request half the book declared is neither the body it wrote nor no body."""
     oid = "okf:docs/features/demo/globex.md#post-things:does:1"
     context = _context(
         _obligation(
@@ -573,9 +495,7 @@ def test_a_half_arranged_request_body_is_still_withheld() -> None:
 
 
 def test_an_unparsed_act_is_still_an_unarranged_request_body() -> None:
-    """A bullet under `arrange:` that failed to parse is the same absent body as none at all —
-    a compiler that emitted `json_body={}` around it would be filling in for a mistake it
-    never saw, not for what the author actually wrote."""
+    """A bullet under `arrange:` that failed to parse is the same absent body as none at all — a compiler that emitted `json_body={}` around it would be filling in for a mistake it never saw, not for what the author actually wrote."""
     oid = "okf:docs/features/demo/globex.md#post-things:does:1"
     context = _context(
         _obligation(
@@ -608,8 +528,7 @@ def test_an_unresolved_path_template_variable_is_an_unresolved_precondition() ->
 
 
 def test_a_reference_in_the_path_is_an_unresolved_precondition() -> None:
-    """`@node.key`/`$name` are static syntax `compile_plan` cannot resolve without running the
-    plan — a gap, not a compile-time crash, and the same grammar `fixture:`/`needs:` share."""
+    """`@node.key`/`$name` are static syntax `compile_plan` cannot resolve without running the plan — a gap, not a compile-time crash, and the same grammar `fixture:`/`needs:` share."""
     oid = "okf:docs/features/demo/globex.md#get-thing:does:1"
     context = _context(
         _obligation(
@@ -638,8 +557,7 @@ def test_a_verify_argument_reference_is_an_unresolved_precondition() -> None:
 
 
 def test_no_route_at_all_is_an_uncompilable_claim() -> None:
-    """No `route:` to act on is a book that gives QA nothing to observe — a different repair
-    from a fixture-shaped gap, so it earns its own kind rather than folding into the other."""
+    """No `route:` to act on is a book that gives QA nothing to observe — a different repair from a fixture-shaped gap, so it earns its own kind rather than folding into the other."""
     oid = "okf:docs/features/demo/globex.md#note:does:1"
     context = _context(
         _obligation(
@@ -654,10 +572,7 @@ def test_no_route_at_all_is_an_uncompilable_claim() -> None:
 
 
 def test_an_unrecognized_method_is_an_invalid_http_method_not_uncompilable() -> None:
-    """A `method:` that does not spell a recognized HTTP verb is undetermined, not absent — a
-    different repair (fix the spelling) from `uncompilable-claim` (state a `route:` at all), so
-    it earns its own gap kind naming the value that failed, and it must not fall through to
-    `unarranged-request-body` either (that code is about a method that parsed but has no body)."""
+    """A `method:` that does not spell a recognized HTTP verb is undetermined, not absent — a different repair (fix the spelling) from `uncompilable-claim` (state a `route:` at all), so it earns its own gap kind naming the value that failed, and it must not fall through to `unarranged-request-body` either (that code is about a method that parsed but has no body)."""
     oid = "okf:docs/features/demo/globex.md#weird-things:does:1"
     context = _context(
         _obligation(
@@ -675,8 +590,7 @@ def test_an_unrecognized_method_is_an_invalid_http_method_not_uncompilable() -> 
 
 
 def test_a_subject_pair_check_wanting_a_snapshot_is_a_named_gap() -> None:
-    """`unchanged` wants a before and an after this compiler has no snapshot mechanism to
-    take — a named `needs-snapshot` gap, not the generic `uncompilable-claim`."""
+    """`unchanged` wants a before and an after this compiler has no snapshot mechanism to take — a named `needs-snapshot` gap, not the generic `uncompilable-claim`."""
     oid = "okf:docs/features/demo/globex.md#post-things:persistence:1"
     context = _context(
         _obligation(
@@ -733,8 +647,7 @@ def test_every_out_of_band_verb_gets_the_named_gap(verb: str) -> None:
     ("exit_status", {"code": 0}),
 ])
 def test_every_single_observation_verb_compiles_for_real(verb: str, args: dict) -> None:
-    """`count`/`absent`/`exit_status` are read once, after the action, from what the scenario
-    already holds — they compile to a real `qa.verify(...)` call, not a gap."""
+    """`count`/`absent`/`exit_status` are read once, after the action, from what the scenario already holds — they compile to a real `qa.verify(...)` call, not a gap."""
     oid = "okf:docs/features/demo/globex.md#get-things:persistence:1"
     context = _context(
         _obligation(
@@ -754,9 +667,7 @@ def test_every_single_observation_verb_compiles_for_real(verb: str, args: dict) 
 
 
 def test_checkpoints_and_forbid_scaffolding_never_appear_in_the_gap_report() -> None:
-    """`checkpoints=[]`/`forbid=[]` are unconditional TODO scaffolding, not a fact discovered
-    about any one obligation — so they stay plain source comments, outside the structured
-    report `doctor` reads."""
+    """`checkpoints=[]`/`forbid=[]` are unconditional TODO scaffolding, not a fact discovered about any one obligation — so they stay plain source comments, outside the structured report `doctor` reads."""
     oid = "okf:docs/features/demo/globex.md#post-things:does:1"
     context = _context(_obligation(oid, checksDeclared=[_check()]))
     source, gaps = compile_plan_gaps(context, story="demo-story")
@@ -767,8 +678,7 @@ def test_checkpoints_and_forbid_scaffolding_never_appear_in_the_gap_report() -> 
 
 
 def test_a_reference_to_a_fixture_key_arranged_in_the_same_obligation_is_resolved() -> None:
-    """A fixture arranged for this obligation arranges before it verifies — so a reference to a
-    key that fixture's own `provides:` declares resolves, and is not a gap."""
+    """A fixture arranged for this obligation arranges before it verifies — so a reference to a key that fixture's own `provides:` declares resolves, and is not a gap."""
     oid = "okf:docs/features/acme/api.md#get-thing:does:1"
     context = _context(
         _obligation(
@@ -784,11 +694,7 @@ def test_a_reference_to_a_fixture_key_arranged_in_the_same_obligation_is_resolve
 
 
 def test_only_the_literal_a_reference_was_found_in_is_wrapped_in_resolve() -> None:
-    """`qa.resolve(...)` is the harness's one explicit substitution entry point (Fix 2) — the
-    compiler wraps a literal in it only where `references.find_references` actually found a
-    `@node.key`/`$name`, and leaves every other literal, including one that merely starts with
-    `$` in a way that is not a reference, exactly as it read it.
-    """
+    """`qa.resolve(...)` is the harness's one explicit substitution entry point (Fix 2) — the compiler wraps a literal in it only where `references.find_references` actually found a `@node.key`/`$name`, and leaves every other literal, including one that merely starts with `$` in a way that is not a reference, exactly as it read it."""
     oid = "okf:docs/features/acme/api.md#get-thing:does:1"
     context = _context(
         _obligation(
@@ -807,8 +713,7 @@ def test_only_the_literal_a_reference_was_found_in_is_wrapped_in_resolve() -> No
 
 
 def test_a_capture_resolves_a_reference_on_a_strictly_later_obligation() -> None:
-    """`$name` names a fact an earlier `capture:` bullet left behind — an obligation after the
-    one that captures it may reference it with no gap."""
+    """`$name` names a fact an earlier `capture:` bullet left behind — an obligation after the one that captures it may reference it with no gap."""
     capturing = "okf:docs/features/acme/api.md#post-thing:does:1"
     referencing = "okf:docs/features/acme/api.md#get-thing:does:1"
     context = _context(
@@ -829,11 +734,7 @@ def test_a_capture_resolves_a_reference_on_a_strictly_later_obligation() -> None
 
 
 def test_a_dollar_capture_with_no_route_credits_nothing_and_still_gaps() -> None:
-    """No `route:` means `observed_N` compiles to `None` — nothing was ever requested to read a
-    `$.`-rooted capture off of. Crediting `produced_captures` anyway would let a later `$name`
-    resolve against a capture that can never run, and the emitted call would blow up on
-    `None.json()` with no fault record. This must fall through to the same TODO + gap scaffolding
-    a UI-locator capture gets: no emitted call, no credit."""
+    """No `route:` means `observed_N` compiles to `None` — nothing was ever requested to read a `$.`-rooted capture off of."""
     capturing = "okf:docs/features/demo/globex.md#note:does:1"
     referencing = "okf:docs/features/acme/api.md#get-thing:does:1"
     context = _context(
@@ -858,8 +759,7 @@ def test_a_dollar_capture_with_no_route_credits_nothing_and_still_gaps() -> None
 
 
 def test_a_capture_declared_only_on_a_later_obligation_is_still_a_gap() -> None:
-    """The same-obligation exception generalises to ordering: a reference does not see into the
-    future, so a capture the book only produces afterward leaves the earlier reference a gap."""
+    """The same-obligation exception generalises to ordering: a reference does not see into the future, so a capture the book only produces afterward leaves the earlier reference a gap."""
     referencing = "okf:docs/features/acme/api.md#get-thing:does:1"
     capturing = "okf:docs/features/acme/api.md#post-thing:does:1"
     context = _context(
@@ -880,8 +780,7 @@ def test_a_capture_declared_only_on_a_later_obligation_is_still_a_gap() -> None:
 
 
 def test_a_reference_to_an_unarranged_fixtures_key_is_a_gap() -> None:
-    """`@node.key` names a fact only that fixture's own arrangement produces — a scenario that
-    never arranges it leaves the reference unresolved regardless of what else it did arrange."""
+    """`@node.key` names a fact only that fixture's own arrangement produces — a scenario that never arranges it leaves the reference unresolved regardless of what else it did arrange."""
     oid = "okf:docs/features/acme/api.md#get-thing:does:1"
     context = _context(
         _obligation(
@@ -897,8 +796,7 @@ def test_a_reference_to_an_unarranged_fixtures_key_is_a_gap() -> None:
 
 
 def test_a_key_reached_only_through_needs_is_resolved() -> None:
-    """`seeded-globex` `needs:` `seeded-acme` — arranging the former also arranges the latter, so
-    a reference to a key only `seeded-acme` declares under `provides:` still resolves."""
+    """`seeded-globex` `needs:` `seeded-acme` — arranging the former also arranges the latter, so a reference to a key only `seeded-acme` declares under `provides:` still resolves."""
     oid = "okf:docs/features/acme/api.md#get-thing:does:1"
     context = _context(
         _obligation(
@@ -914,10 +812,7 @@ def test_a_key_reached_only_through_needs_is_resolved() -> None:
 
 
 def test_the_producer_walk_follows_document_order_not_alphabetical_id_order() -> None:
-    """A node written `returns:` (captures `account_id`) before `raises:` (reads `$account_id`)
-    resolves cleanly — even though `raises` sorts before `returns` alphabetically, and
-    `_sort_key` is what orders `obligations` on the way in here. The walk has to use each
-    obligation's stamped `docPosition`, not the order it arrives in, to get this right."""
+    """A node written `returns:` (captures `account_id`) before `raises:` (reads `$account_id`) resolves cleanly — even though `raises` sorts before `returns` alphabetically, and `_sort_key` is what orders `obligations` on the way in here."""
     ledger = {"name": "seeded-ledger", "args": [], "provides": "an account exists"}
     returns = _obligation(
         "okf:docs/features/acme/api.md#post-thing:returns:1",
@@ -934,17 +829,13 @@ def test_the_producer_walk_follows_document_order_not_alphabetical_id_order() ->
         checksDeclared=[{"call": "ok", "name": "json_path", "args": {"path": "$account_id"}}],
         fixturesDeclared=[ledger],
     )
-    # Arrives alphabetically sorted, `raises` before `returns` — the order `_sort_key` produces
-    # and the opposite of the book's own document order stamped in `docPosition` above.
     context = _context(raises, returns)
     _source, gaps = compile_plan_gaps(context, story="demo-story")
     assert _gap_kinds(gaps, raises["id"]) == []
 
 
 def test_the_producer_walk_still_gaps_a_reference_that_precedes_its_producer() -> None:
-    """The mirror of the case above: `raises:` written *before* `returns:` in the book still
-    leaves the reference a gap, because the capture it needs has not happened yet at that point
-    in document order — regardless of what the two obligations' ids alphabetize to."""
+    """The mirror of the case above: `raises:` written *before* `returns:` in the book still leaves the reference a gap, because the capture it needs has not happened yet at that point in document order — regardless of what the two obligations' ids alphabetize to."""
     ledger = {"name": "seeded-ledger", "args": [], "provides": "an account exists"}
     raises = _obligation(
         "okf:docs/features/acme/api.md#post-thing:raises:1",
@@ -967,10 +858,7 @@ def test_the_producer_walk_still_gaps_a_reference_that_precedes_its_producer() -
 
 
 def test_a_checkless_obligation_never_reaches_the_scenario_body() -> None:
-    """The dead `TODO(undeclared)` branch removed from `_scenario_body`: a checkless obligation
-    is book debt, filtered out before the body is ever asked to render one — no scenario is
-    emitted for it, but it is not a silent drop either: the same code that declined to compile
-    it is the code that gaps it, so it still lands in `{emitted, gap}` like every owed id."""
+    """The dead `TODO(undeclared)` branch removed from `_scenario_body`: a checkless obligation is book debt, filtered out before the body is ever asked to render one — no scenario is emitted for it, but it is not a silent drop either: the same code that declined to compile it is the code that gaps it, so it still lands in `{emitted, gap}` like every owed id."""
     oid = "okf:docs/features/demo/globex.md#post-things:does:2"
     context = _context(_obligation(oid))
     result = _compile_plan_gaps(context, story="demo-story")
@@ -979,12 +867,7 @@ def test_a_checkless_obligation_never_reaches_the_scenario_body() -> None:
 
 
 def test_a_when_guarded_checkless_obligation_is_not_book_debt() -> None:
-    """`when:` states a condition the node's other claims hold under, not a claim of its own —
-    there is nothing for a check to prove, so a check-less `when:` obligation is not the same
-    defect `no-verify-declared` names ("the book declares no check for this obligation to
-    prove"), which would send an author looking for a check nothing could ever fail.
-    `precondition-discharged-by-arrangement` is the kind that names the actual reason: the
-    condition is discharged by arrangement (`arrange:`/`fixture:`), not by observation."""
+    """`when:` states a condition the node's other claims hold under, not a claim of its own — there is nothing for a check to prove, so a check-less `when:` obligation is not the same defect `no-verify-declared` names ("the book declares no check for this obligation to prove"), which would send an author looking for a check nothing could ever fail."""
     oid = "okf:docs/features/demo/globex.md#submit-widget:when:1"
     context = _context(_obligation(oid, kind="when"))
     result = _compile_plan_gaps(context, story="demo-story")
@@ -993,11 +876,7 @@ def test_a_when_guarded_checkless_obligation_is_not_book_debt() -> None:
 
 
 def test_a_when_guarded_checkless_obligation_is_left_out_of_the_book_debt_listing() -> None:
-    """The compiled plan's `# Book debt` comment tells an author to go add a `verify:` — the
-    right instruction for a checkless `does:`, and the wrong one for a checkless `when:`, which
-    is discharged by arrangement rather than by a check at all. A `when:` obligation reaching
-    `no_verify_owed` must therefore be gapped under its own kind without landing in that
-    listing, while an ordinary checkless obligation still does."""
+    """The compiled plan's `# Book debt` comment tells an author to go add a `verify:` — the right instruction for a checkless `does:`, and the wrong one for a checkless `when:`, which is discharged by arrangement rather than by a check at all."""
     debt_oid = "okf:docs/features/demo/globex.md#post-things:does:2"
     when_oid = "okf:docs/features/demo/globex.md#submit-widget:when:1"
     compiled_oid = "okf:docs/features/demo/globex.md#post-things:does:1"
@@ -1014,14 +893,6 @@ def test_a_when_guarded_checkless_obligation_is_left_out_of_the_book_debt_listin
     assert _gap_kinds(gaps, when_oid) == ["precondition-discharged-by-arrangement"]
 
 
-# --- Screen page-scenario compilation (slice 4) -----------------------------------------------
-#
-# A screen's `visible(...)` bullets are addressed by navigating there, not by parsing its
-# `route:` as an HTTP verb+path — see `compile.py`'s module-level comment above `_ROUTE` and
-# `_compile_page_scenarios`'s docstring for the full partitioning this drives (Amendment 3).
-# These fixtures mirror the shape `ostler.qa.context._navigation`/`_locators` actually produce
-# (confirmed against paddock's policy-desk fixture, `docs/features/policy/gui/screens/*.md`),
-# rather than reconstructing it from the ruling set alone.
 
 _SCREEN = "docs/features/policy/gui/screens/policy-list.md"
 
@@ -1055,9 +926,7 @@ def _page_obligation(oid: str, node: str, *, surface: str = "policy",
 
 
 def _act(name: str, node: str, locators: dict[str, list[str]], **args: str) -> dict:
-    """One `actsDeclared` row shaped the way `qa context` writes it: the canonical call text,
-    its bound arguments, and the resolved book node each locator argument names.
-    """
+    """One `actsDeclared` row shaped the way `qa context` writes it: the canonical call text, its bound arguments, and the resolved book node each locator argument names."""
     call = f"{name}({', '.join(f'{k}={v!r}' for k, v in args.items())})"
     return {"call": call, "name": name, "args": dict(args),
             "locates": {"locator": {"node": node, "locators": locators}}}
@@ -1071,10 +940,6 @@ def _navigation_context(*obligations: dict, navigation: dict,
                         screen_routes: dict[str, str] | None = None) -> dict:
     ctx = _context(*obligations)
     ctx["navigation"] = navigation
-    # A real packet carries each screen file's `route:` — `qa context` reads it off the book
-    # with the same function the vet driver compares a URL against. Without one the compiler
-    # cannot say a photographed page is the screen it names, and withholds the vet; these
-    # fixtures are about what a plan compiles, so every screen they mention states a plain one.
     ctx["screenRoutes"] = (
         _screen_routes(navigation) if screen_routes is None else dict(screen_routes)
     )
@@ -1115,12 +980,7 @@ def _arrival_navigation(source: str = _SCREEN, surface: str = "policy", *,
 
 
 def test_exclusive_with_pairing_never_shares_a_scenario() -> None:
-    """`empty-register-notice`/`policy-table` (real policy-desk bullets) must never land in the
-    same compiled scenario — the amendment reads `exclusive-with:` as symmetric even though only
-    one side of this real pair writes the bullet. `empty-register-notice`'s real `role: paragraph`
-    carries no `name:`, which after Finding 7 is no longer an addressable subject on its own, so
-    a `selector:` is added here to keep this test about partitioning rather than about locator
-    constructibility (covered separately)."""
+    """`empty-register-notice`/`policy-table` (real policy-desk bullets) must never land in the same compiled scenario — the amendment reads `exclusive-with:` as symmetric even though only one side of this real pair writes the bullet."""
     table = f"{_SCREEN}#policy-table"
     notice = f"{_SCREEN}#empty-register-notice"
     context = _navigation_context(
@@ -1148,11 +1008,7 @@ def test_exclusive_with_pairing_never_shares_a_scenario() -> None:
 
 
 def test_a_page_scenario_with_no_root_path_gaps_uncompilable_claim_not_a_fabricated_root() -> None:
-    """A driver with no path grammar (`routes.is_path_addressed` says no) states no `rootPath`
-    at all — `reach.root_path` now returns `(None, None)` for it rather than the app root. The
-    catch-all this compiler used to own, `nav.get("rootPath") or "/"`, is gone: a screen on such
-    a surface gaps `uncompilable-claim` naming the missing root, instead of opening a scenario
-    on a fabricated `qa.goto("/")` that claims an address the book never stated."""
+    """A driver with no path grammar (`routes.is_path_addressed` says no) states no `rootPath` at all — `reach.root_path` now returns `(None, None)` for it rather than the app root."""
     oid = "okf:policy-list:policy-table:visible:1"
     node = f"{_SCREEN}#policy-table"
     nav = _arrival_navigation()
@@ -1170,11 +1026,7 @@ def test_a_page_scenario_with_no_root_path_gaps_uncompilable_claim_not_a_fabrica
 
 
 def test_an_unarranged_states_claim_produces_a_gap_not_a_scenario() -> None:
-    """A `states:` bullet mints its own obligation (`kind == "states"`) separate from the node's
-    `role:`/`name:` claim. With no fixture arranging it, it compiles to nothing — no scenario,
-    arrival or otherwise — only an `unarranged-state` gap quoting its own requirement text
-    verbatim. Its non-state sibling on the same node is unaffected: it still gets a real
-    scenario, because a `states:` bullet no longer withholds the whole node (Finding a)."""
+    """A `states:` bullet mints its own obligation (`kind == "states"`) separate from the node's `role:`/`name:` claim."""
     node = f"{_SCREEN}#coverage-type-select"
     oid = "okf:new-policy:coverage-type-select:visible:1"
     state_oid = "okf:new-policy:coverage-type-select:states:1"
@@ -1199,9 +1051,7 @@ def test_an_unarranged_states_claim_produces_a_gap_not_a_scenario() -> None:
 
 
 def test_a_fully_arranged_states_claim_compiles_its_own_scenario() -> None:
-    """A `states:` obligation that declares both a check and a fixture compiles into its own
-    dedicated scenario, with `preconditions=[...]` quoting the arranging fixture's own words —
-    it is not merged into the node's plain arrival scenario, and it is not gapped."""
+    """A `states:` obligation that declares both a check and a fixture compiles into its own dedicated scenario, with `preconditions=[...]` quoting the arranging fixture's own words — it is not merged into the node's plain arrival scenario, and it is not gapped."""
     node = f"{_SCREEN}#widget-table"
     oid = "okf:widget-list:widget-table:visible:1"
     state_oid = "okf:widget-list:widget-table:states:2"
@@ -1227,10 +1077,7 @@ def test_a_fully_arranged_states_claim_compiles_its_own_scenario() -> None:
 
 
 def test_states_no_longer_withholds_exclusive_with_on_the_same_node() -> None:
-    """`vehicle-vin-field` in the real `new-policy.md` fixture carries *both* `states:` and
-    `exclusive-with:`. The two are now separate obligations: the `states:` one is gapped on its
-    own id (unarranged), and the `exclusive-with:` claim still compiles into its own isolated
-    scenario — a `states:` bullet no longer blocks a sibling claim from compiling at all."""
+    """`vehicle-vin-field` in the real `new-policy.md` fixture carries *both* `states:` and `exclusive-with:`."""
     node = f"{_SCREEN}#vehicle-vin-field"
     oid = "okf:new-policy:vehicle-vin-field:visible:1"
     state_oid = "okf:new-policy:vehicle-vin-field:states:1"
@@ -1256,14 +1103,7 @@ def test_states_no_longer_withholds_exclusive_with_on_the_same_node() -> None:
 
 
 def test_unarranged_state_reaches_the_same_gap_on_every_driver() -> None:
-    """A check-less `states:` obligation on a `component` node dispatches to a different
-    builder per surface driver (D1: `component` x `driver`, `_OBSERVE_ROW`) — web to the
-    page builder, cli and http to their own. All three owe it the same verdict: gapped
-    `unarranged-state`, never `no-verify-declared`, and never dropped. Three packets
-    identical but for the driver, reproducing the defect where the cli arm re-derived
-    "declares no check" by re-filtering `checksDeclared` (mislabeling the gap) and the
-    http arm dropped the obligation on the floor (tripping the totality assert at the
-    close of `compile_plan_gaps` on a legitimate book)."""
+    """A check-less `states:` obligation on a `component` node dispatches to a different builder per surface driver (D1: `component` x `driver`, `_OBSERVE_ROW`) — web to the page builder, cli and http to their own."""
     requirement = "opens on `auto`."
 
     node = f"{_SCREEN}#coverage-type-select"
@@ -1297,14 +1137,7 @@ def test_unarranged_state_reaches_the_same_gap_on_every_driver() -> None:
 
 
 def test_an_interactions_assertion_never_lands_on_the_arrival_scenario() -> None:
-    """A `## Interactions` row's `visible(...)` asserts state *after* the interaction — it must
-    never be emitted as an arrival assertion on the screen's own page-load scenario. The
-    interaction row itself carries no `role`/`name`/`selector` of its own (only `on`/`trigger`/
-    `does`), so per Finding 1 its `visible(...)` claim has no addressable subject and is gapped
-    as `uncompilable-claim` rather than silently asserting on `qa.page`/the document body — and
-    since that is this fixture's only interaction obligation, nothing survives to claim, so the
-    interaction scenario itself is not emitted at all (a `covers=[]` scenario is a hole in the
-    plan wearing a function signature, never the compiled output)."""
+    """A `## Interactions` row's `visible(...)` asserts state *after* the interaction — it must never be emitted as an arrival assertion on the screen's own page-load scenario."""
     button = f"{_SCREEN}#create-policy-button"
     interaction = f"{_SCREEN}#submit-new-policy"
     interaction_oid = "okf:new-policy:submit-new-policy:visible:1"
@@ -1327,25 +1160,12 @@ def test_an_interactions_assertion_never_lands_on_the_arrival_scenario() -> None
     interactions = [s for s in scenarios if "submit_new_policy(" in s]
     assert len(arrival) == 1
     assert "heading:Policy PN-1001" not in arrival[0]
-    # No addressable subject for the interaction's own `visible(...)` claim, so it is gapped as
-    # `uncompilable-claim` rather than compiled against a guessed operand — and since that is
-    # this scenario's only obligation, nothing survives to claim, so the scenario itself is not
-    # emitted (an emitted `covers=[]` scenario is a hole in the plan wearing a function
-    # signature, never the compiled output).
     assert len(interactions) == 0
-    # Two independent gaps land on this id: the trigger itself is an unverified scaffold click
-    # (`unresolved-precondition`, minted unconditionally for every interaction obligation — see
-    # `_interaction_scenario`), and its `visible(...)` claim has no addressable subject of its
-    # own (`uncompilable-claim`). Both are real, neither supersedes the other.
     assert sorted(_gap_kinds(gaps, interaction_oid)) == ["uncompilable-claim", "unresolved-precondition"]
 
 
 def test_a_subject_only_verb_on_a_page_obligation_is_a_gap_not_a_silent_drop() -> None:
-    """`unchanged` observes a subject (a before/after pair), not the rendered page — a
-    Playwright driver cannot serve it. Before the fix this row was dropped with a bare
-    `continue`: no call, no gap, no note. It must now surface as a real `uncompilable-claim`
-    gap naming the verb — and the obligation goes uncovered, because its `verify:` bullets
-    are a conjunction and the `visible(...)` row is only half of what it claims."""
+    """`unchanged` observes a subject (a before/after pair), not the rendered page — a Playwright driver cannot serve it."""
     node = f"{_SCREEN}#policy-table"
     oid = "okf:policy-list:policy-table:visible:1"
     context = _navigation_context(
@@ -1365,11 +1185,7 @@ def test_a_subject_only_verb_on_a_page_obligation_is_a_gap_not_a_silent_drop() -
 
 
 def test_a_body_observing_verb_on_a_page_obligation_names_driver_and_channel_differently() -> None:
-    """`json_path` observes a `body` — a channel Playwright *can* see, unlike `unchanged`'s
-    `subject`. So the gap is not "this driver is blind to it" but "a browser makes many
-    requests and this claim did not say which one": `json_path`'s own `path=` is a path into
-    the payload, never a route. The message must name the driver, the channel, and the bullet
-    that would settle it."""
+    """`json_path` observes a `body` — a channel Playwright *can* see, unlike `unchanged`'s `subject`."""
     node = f"{_SCREEN}#policy-table"
     oid = "okf:policy-list:policy-table:visible:1"
     context = _navigation_context(
@@ -1389,9 +1205,7 @@ def test_a_body_observing_verb_on_a_page_obligation_names_driver_and_channel_dif
 
 
 def test_a_driver_with_no_declared_channels_gaps_every_claim_and_crashes_on_none() -> None:
-    """Acceptance criterion 3: a driver declaring no capability at all must turn every
-    claim shape routed through `_unobservable_gap` into a gap — never an exception, and
-    never a silently compiled (falsely passing) assertion."""
+    """Acceptance criterion 3: a driver declaring no capability at all must turn every claim shape routed through `_unobservable_gap` into a gap — never an exception, and never a silently compiled (falsely passing) assertion."""
     empty = DriverSpec("empty", frozenset())
     for observes_shape in ("response", "body", "page", "subject", "subject-pair", None):
         name = {
@@ -1404,21 +1218,14 @@ def test_a_driver_with_no_declared_channels_gaps_every_claim_and_crashes_on_none
 
 
 def test_playwright_and_maestro_declare_disjoint_but_overlapping_capabilities() -> None:
-    """Maestro is nameable from the compiler via its own capability declaration — it
-    declares `page` and `subject`, not the HTTP channels Playwright can see, and not the
-    same page/HTTP mix Playwright declares either. Playwright alone also declares
-    `keyboard`: a real keypress it can dispatch at the page, which Maestro's touch UI has
-    no notion of."""
+    """Maestro is nameable from the compiler via its own capability declaration — it declares `page` and `subject`, not the HTTP channels Playwright can see, and not the same page/HTTP mix Playwright declares either."""
     assert PLAYWRIGHT.observes == frozenset({"page", "response", "body", "keyboard"})
     assert MAESTRO.observes == frozenset({"page", "subject"})
     assert PYTHON.observes == frozenset({"response", "body", "subject"})
 
 
 def test_a_reachable_screen_with_no_declared_preconditions_is_undeclared_not_silent() -> None:
-    """Amendment 2: reachable, but the screen's `requires:`/`params:` bullets are literally
-    absent — a third outcome, distinct from `unreachable`, with its own gap kind, and emitted
-    once per screen rather than once per obligation (a live-audit gate renders one line per
-    gap; multiplying this by obligation count would not add information)."""
+    """Amendment 2: reachable, but the screen's `requires:`/`params:` bullets are literally absent — a third outcome, distinct from `unreachable`, with its own gap kind, and emitted once per screen rather than once per obligation (a live-audit gate renders one line per gap; multiplying this by obligation count would not add information)."""
     node = f"{_SCREEN}#policy-table"
     context = _navigation_context(
         _page_obligation("okf:policy-list:policy-table:visible:1", node,
@@ -1432,17 +1239,11 @@ def test_a_reachable_screen_with_no_declared_preconditions_is_undeclared_not_sil
     _source, gaps = compile_plan_gaps(context, story="demo-story")
     undeclared_gaps = [g for g in gaps if g.kind == "screen-preconditions-undeclared"]
     assert len(undeclared_gaps) == 1
-    # One gap per screen (documented exception to Amendment 1's per-obligation rule), but it
-    # must still carry a real, known obligation id — never the screen's source path — so the
-    # live-audit lane's `covers`/`gapped_ids` intersection can filter on it (Finding 2). The
-    # first (sorted) obligation id on the screen stands in for the screen-level fact.
     assert undeclared_gaps[0].obligation_id == "okf:policy-list:policy-table:visible:1"
 
 
 def test_an_unreachable_screen_is_a_finding_not_a_compile_target() -> None:
-    """Correction 5': an unreachable screen is a finding, not a scenario. `unreachable-screen`
-    is doctor's own existing code for this fact (the same one its `reach`-based check mints),
-    reused here rather than collapsing it into the generic `uncompilable-claim`."""
+    """Correction 5': an unreachable screen is a finding, not a scenario."""
     node = f"{_SCREEN}#policy-table"
     oid = "okf:policy-list:policy-table:visible:1"
     context = _navigation_context(
@@ -1458,8 +1259,7 @@ def test_an_unreachable_screen_is_a_finding_not_a_compile_target() -> None:
 
 
 def test_a_zero_screen_book_grows_no_playwright_target() -> None:
-    """Condition 1: a book with no screen nodes on any surface never grows a `web` target, even
-    if a stray page-checked obligation somehow reached the compiler."""
+    """Condition 1: a book with no screen nodes on any surface never grows a `web` target, even if a stray page-checked obligation somehow reached the compiler."""
     node = "docs/features/policy/http/policy-desk-api.md#note"
     context = _navigation_context(
         _page_obligation("okf:note:visible:1", node, surface="policy",
@@ -1478,8 +1278,7 @@ def test_a_zero_screen_book_grows_no_playwright_target() -> None:
 
 
 def test_navigation_is_keyed_by_surface_even_for_a_single_surface_book() -> None:
-    """Amendment 1: `navigation` is keyed by surface, no special-casing a one-surface book —
-    pinned here with two surfaces so a screen on one never resolves against the other's route."""
+    """Amendment 1: `navigation` is keyed by surface, no special-casing a one-surface book — pinned here with two surfaces so a screen on one never resolves against the other's route."""
     policy_screen = "docs/features/policy/gui/screens/policy-list.md"
     claims_screen = "docs/features/claims/gui/screens/claims-list.md"
     policy_node = f"{policy_screen}#policy-table"
@@ -1506,12 +1305,6 @@ def test_navigation_is_keyed_by_surface_even_for_a_single_surface_book() -> None
     assert gaps == []
 
 
-# --- Locator constructibility (Findings 1, 4-7) ------------------------------------------------
-#
-# A compiled `qa.verify(...)`/`qa.by_role(...)`/`qa.by_css(...)` call is only as good as the
-# string arguments the book handed it — Playwright raises at *runtime*, not compile time, when
-# they are wrong, so these are read straight out of the compiled plan's own syntax tree rather
-# than by running a browser.
 
 try:
     from playwright._impl._api_structures import AriaRole as _AriaRole
@@ -1533,7 +1326,7 @@ def _call_kwargs(call: ast.Call) -> dict[str, str | None]:
 
 
 def _call_attr(call: ast.Call) -> str:
-    """The attribute name of *call*'s callee, e.g. `"by_role"` for `qa.by_role(...)`."""
+    """The attribute name of *call*'s callee, e.g."""
     assert isinstance(call.func, ast.Attribute), f"expected an attribute call, got {ast.dump(call.func)}"
     return call.func.attr
 
@@ -1555,37 +1348,19 @@ def _string_args(call: ast.Call) -> list[str]:
 
 
 def test_a_compiled_plan_never_hands_playwright_an_unconstructible_locator() -> None:
-    """Five ways a compiled `by_role`/`by_css` call can be wrong and only fail at runtime, all
-    pinned against one plan compiled from bullets that provoke each of them:
-
-    1. a code-span-wrapped value (`` `button` ``) reaching Playwright with its backticks still
-       on, which raises `InvalidSelectorError` (Finding 6);
-    2. a `role=` value outside Playwright's matchable `AriaRole` set (Finding 5);
-    3. a `role=` value inside `{"generic","none","presentation"}` — real ARIA roles that never
-       match anything via `get_by_role` (Finding 5's correction);
-    4. a `name=` value equal to the literal string `"none"` — the book's sentinel for "no
-       accessible name," never a name to search for (Finding 4);
-    5. a bare `by_role(...)` call with no accompanying `name=` — ambiguous and, unlike a
-       boolean check, one Playwright's strict mode *raises* on rather than failing quietly
-       (Finding 7).
-    """
+    """Five ways a compiled `by_role`/`by_css` call can be wrong and only fail at runtime, all pinned against one plan compiled from bullets that provoke each of them:"""
     screen = "docs/features/policy/gui/screens/policy-list.md"
     context = _navigation_context(
-        # (1) backtick-wrapped role and name.
         _page_obligation("okf:policy-list:backticked:visible:1", f"{screen}#backticked",
                           locators={"role": ["`button`"], "name": ["`Cancel policy`"]},
                           checks=[_visible("button:Cancel policy")]),
-        # (2) an unrecognized role string, falling through to a backtick-wrapped selector.
         _page_obligation("okf:policy-list:bad-role:visible:1", f"{screen}#bad-role",
                           locators={"role": ["widget-nonexistent"], "name": ["Something"],
                                     "selector": ["`.something`"]},
                           checks=[_visible("something")]),
-        # (3) `role: generic` paired with the `name: none` sentinel and a selector fallback.
         _page_obligation("okf:policy-list:generic-role:visible:1", f"{screen}#generic-role",
                           locators={"role": ["generic"], "name": ["none"], "selector": ["dl"]},
                           checks=[_visible("generic")]),
-        # (4)+(5) role-only, no name and no selector: no addressable subject at all -> gap,
-        # never a bare `by_role("table")` call.
         _page_obligation("okf:policy-list:role-only:visible:1", f"{screen}#role-only",
                           locators={"role": ["table"]},
                           checks=[_visible("table")]),
@@ -1603,7 +1378,6 @@ def test_a_compiled_plan_never_hands_playwright_an_unconstructible_locator() -> 
         kwargs = _call_kwargs(call)
         attr = _call_attr(call)
         role = kwargs.get("role") if attr == "by_role" else None
-        # A `by_role` call's first positional argument is the role.
         if attr == "by_role" and call.args:
             first = call.args[0]
             if isinstance(first, ast.Constant) and isinstance(first.value, str):
@@ -1624,10 +1398,7 @@ def test_a_compiled_plan_never_hands_playwright_an_unconstructible_locator() -> 
 
 
 def test_a_bullet_value_wrapped_across_source_lines_still_compiles() -> None:
-    """A long `name:` is prose an author wraps at the margin, and the reader hands back the
-    newlines. Every line break in one is the author's typography — the accessible name is
-    what a screen reader announces, which has no margin — so the value folds to one line
-    instead of being read as a shape no bullet value can have."""
+    """A long `name:` is prose an author wraps at the margin, and the reader hands back the newlines."""
     screen = "docs/features/policy/gui/screens/policy-list.md"
     context = _navigation_context(
         _page_obligation("okf:policy-list:wrapped:visible:1", f"{screen}#wrapped",
@@ -1643,11 +1414,7 @@ def test_a_bullet_value_wrapped_across_source_lines_still_compiles() -> None:
 
 
 def test_an_unavailable_role_set_degrades_to_a_selector_never_to_skipped_validation(monkeypatch) -> None:
-    """Finding 9: when Playwright's `AriaRole` set cannot be derived (the `qa` extra missing, or
-    a future playwright release moving the private module), `_MATCHABLE_ROLES` is `None` — and
-    that must never be read as "validation is optional." `role: generic` must still not compile
-    to `by_role("generic")`; it must fall through to `selector:` exactly as when the role set is
-    known and `generic` is excluded from it."""
+    """Finding 9: when Playwright's `AriaRole` set cannot be derived (the `qa` extra missing, or a future playwright release moving the private module), `_MATCHABLE_ROLES` is `None` — and that must never be read as "validation is optional." `role: generic` must still not compile to `by_role("generic")`; it must fall through to `selector:` exactly as when the role set is known and `generic` is excluded from it."""
     import ostler.qa.compile as compile_mod
 
     monkeypatch.setattr(compile_mod, "_MATCHABLE_ROLES", None)
@@ -1673,13 +1440,7 @@ def _located(locator: str, node: str, locators: dict) -> dict:
 
 
 def test_a_check_is_pointed_at_the_component_its_locator_names() -> None:
-    """The claim is the form's; the thing that shows the refusal is a span declared beside it.
-
-    Before `locates`, the operand came from the obligation's *own* node — so the assertion
-    looked at the form rather than at the span the check names. The `locator=` argument still
-    rides along: resolving a reference into an operand does not repeat the claim, and the
-    claim is what `ostler qa validate` matches against the `verify:` bullet.
-    """
+    """The claim is the form's; the thing that shows the refusal is a span declared beside it."""
     oid = "okf:new-policy:submit:does:1"
     error_span = f"{_SCREEN}#name-error"
     context = _navigation_context(
@@ -1695,18 +1456,12 @@ def test_a_check_is_pointed_at_the_component_its_locator_names() -> None:
     ast.parse(source)
     assert "#name-error" in source
     assert 'name="New policy"' not in source
-    # The declared argument still stands beside the operand: it is the claim's own statement
-    # of its subject, and `visible` marks `locator` required.
     assert 'locator="#name-error"' in source
     assert _gap_kinds(gaps, oid) == []
 
 
 def test_a_check_locator_that_names_no_component_compiles_to_nothing() -> None:
-    """`doctor` refuses this book; `compile_plan` is not `doctor`'s downstream and still sees it.
-
-    The failure to avoid is an assertion emitted against the obligation's own node, which would
-    pass on a screen that never renders the thing the check was written about.
-    """
+    """`doctor` refuses this book; `compile_plan` is not `doctor`'s downstream and still sees it."""
     oid = "okf:new-policy:submit:does:1"
     row = _visible("#no-such-thing")
     row["locates"] = {"locator": {"node": "", "locators": {}}}
@@ -1740,12 +1495,7 @@ def test_a_named_component_with_no_addressable_locator_is_an_uncompilable_claim(
 
 
 def test_an_undetermined_claim_combiner_emits_no_code_at_all() -> None:
-    """A claim whose siblings may be alternatives is undetermined, and undetermined never runs.
-
-    The check above the list either observes this child or refutes it, and the book does not
-    say which — so the compiler gaps it rather than picking the reading (`all`) that the flat
-    grammar happens to produce, which is the one that files a refutation as a proof.
-    """
+    """A claim whose siblings may be alternatives is undetermined, and undetermined never runs."""
     oid = "okf:docs/features/demo/api.md#post-things:does:1"
     context = _context(
         _obligation(
@@ -1762,13 +1512,7 @@ def test_an_undetermined_claim_combiner_emits_no_code_at_all() -> None:
 
 
 def test_an_interactions_check_is_pointed_at_the_component_it_names() -> None:
-    """An interaction's claim is observed by whatever the check names, not by the interaction.
-
-    An interaction row declares `on`/`trigger`/`does` and nothing addressable of its own, so
-    before the `(locator)` argument every one of its `visible(...)` claims was uncompilable. The
-    claim was never unobservable — the book said which component shows the outcome, and the
-    compiler was pointing at the wrong node and passing the right one through as a string.
-    """
+    """An interaction's claim is observed by whatever the check names, not by the interaction."""
     button = f"{_SCREEN}#create-policy-button"
     interaction = f"{_SCREEN}#submit-new-policy"
     interaction_oid = "okf:new-policy:submit-new-policy:does:1"
@@ -1791,22 +1535,12 @@ def test_an_interactions_check_is_pointed_at_the_component_it_names() -> None:
     assert len(interactions) == 1
     assert 'qa.by_role("table", name="Policies on file")' in interactions[0]
     assert 'locator="#policy-table"' in interactions[0]
-    # The claim is observed; the trigger is still a scaffold click, and that gap is unrelated.
     assert _gap_kinds(gaps, interaction_oid) == ["unresolved-precondition"]
     assert interaction_oid in _covers(source)
 
 
 def test_an_interaction_with_no_on_locator_emits_no_assertion() -> None:
-    """A click with nowhere real to land is not a weaker version of the interaction — it is not
-    the interaction at all, so nothing it would have proven is emitted.
-
-    `unresolved-precondition` ordinarily stands beside a real, compiled assertion on purpose
-    (`_ARRANGEMENT_GAPS`): the claim is genuine even though the state was reached by a scaffold.
-    But when `on:` names a component the book gives no locator at all, the compiled click falls
-    back to `qa.page.locator('body')` — not a scaffolded trigger, no trigger. An assertion after
-    it would be observing whatever the page already looked like on arrival, a check that can
-    only fail and reads as the app's defect rather than the book's undeclared locator.
-    """
+    """A click with nowhere real to land is not a weaker version of the interaction — it is not the interaction at all, so nothing it would have proven is emitted."""
     interaction = f"{_SCREEN}#submit-new-policy"
     interaction_oid = "okf:new-policy:submit-new-policy:does:1"
     context = _navigation_context(
@@ -1824,13 +1558,7 @@ def test_an_interaction_with_no_on_locator_emits_no_assertion() -> None:
 
 
 def test_the_scaffold_click_gap_does_not_claim_does_is_unresolved() -> None:
-    """The generic `unresolved-precondition` gap here only ever established one fact: the
-    trigger compiles to a scaffold click, not a verified action. `does:` is quoted as a
-    comment and never parsed or resolved (own docstring), so a node whose `does:` genuinely
-    does resolve — via its own check's cross-file target, the real `open-new-widget` shape —
-    must not have this branch's message assert the opposite about it. Say only what was
-    checked; a node whose `does:` truly does not resolve needs its own check to say so.
-    """
+    """The generic `unresolved-precondition` gap here only ever established one fact: the trigger compiles to a scaffold click, not a verified action."""
     button = f"{_SCREEN}#create-policy-button"
     interaction = f"{_SCREEN}#submit-new-policy"
     interaction_oid = "okf:new-policy:submit-new-policy:does:1"
@@ -1854,10 +1582,7 @@ def test_the_scaffold_click_gap_does_not_claim_does_is_unresolved() -> None:
 
 
 def test_a_gapped_but_covered_obligation_is_not_deferred() -> None:
-    """The `open-new-widget` shape: a real `covers=[...]` claim stands beside its own gap on
-    purpose (`_ARRANGEMENT_GAPS`). `deferred_obligations` must not name this id — a real plan
-    can be held to the same coverage standard the reference compiler itself met.
-    """
+    """The `open-new-widget` shape: a real `covers=[...]` claim stands beside its own gap on purpose (`_ARRANGEMENT_GAPS`)."""
     button = f"{_SCREEN}#create-policy-button"
     interaction = f"{_SCREEN}#submit-new-policy"
     interaction_oid = "okf:new-policy:submit-new-policy:does:1"
@@ -1878,10 +1603,7 @@ def test_a_gapped_but_covered_obligation_is_not_deferred() -> None:
 
 
 def test_a_gapped_and_uncovered_obligation_is_deferred_with_its_gap() -> None:
-    """The mirror: a `submit-new-policy` with nowhere real to land compiles no assertion at
-    all (`test_an_interaction_with_no_on_locator_emits_no_assertion`) — its whole gap is that
-    the reference compiler produced no evidence for it, so it must be named as deferred.
-    """
+    """The mirror: a `submit-new-policy` with nowhere real to land compiles no assertion at all (`test_an_interaction_with_no_on_locator_emits_no_assertion`) — its whole gap is that the reference compiler produced no evidence for it, so it must be named as deferred."""
     interaction = f"{_SCREEN}#submit-new-policy"
     interaction_oid = "okf:new-policy:submit-new-policy:does:1"
     context = _navigation_context(
@@ -1899,9 +1621,7 @@ def test_a_gapped_and_uncovered_obligation_is_deferred_with_its_gap() -> None:
 
 
 def test_annotate_deferred_obligations_stamps_the_packets_own_obligations() -> None:
-    """The producer half: the packet handed to `write_context` carries the reason inline,
-    so a consumer (`validate_v2`) reads it off the obligation rather than recompiling.
-    """
+    """The producer half: the packet handed to `write_context` carries the reason inline, so a consumer (`validate_v2`) reads it off the obligation rather than recompiling."""
     interaction = f"{_SCREEN}#submit-new-policy"
     interaction_oid = "okf:new-policy:submit-new-policy:does:1"
     context = _navigation_context(
@@ -1919,21 +1639,7 @@ def test_annotate_deferred_obligations_stamps_the_packets_own_obligations() -> N
 
 
 def test_interaction_arms_with_an_unarranged_when_emit_no_assertion() -> None:
-    """The real `globex` `new-widget.md` shape: a happy arm and its `extends:`-linked refusal
-    arm share one resolved `on:` button and no fixture that fills the form either declares.
-
-    Both arms compile to the identical scaffold up to their assertions — `goto` → click the
-    same button. With no fixture arranging `name`/`quantity`, the unarranged page is always
-    literally the empty-form state, which happens to be the refusal arm's own precondition:
-    the happy arm's assertion fails for a real reason, and the refusal arm's three assertions
-    pass vacuously, not because the scenario arranged a refusal but because the unarranged
-    world already is one. Suppressing only the failing arm would leave the refusal arm's
-    obligation marked discharged by a scenario that never established its `when:` — 2t's
-    failure mode arriving through 2q's door. A condition under which a claim holds is part of
-    the claim, so both arms — each carrying its own `when:` — withhold their assertion and
-    surface as `unarranged-interaction-precondition` alike; which one would have passed by
-    accident is not the property being tested for.
-    """
+    """The real `globex` `new-widget.md` shape: a happy arm and its `extends:`-linked refusal arm share one resolved `on:` button and no fixture that fills the form either declares."""
     button = f"{_SCREEN}#submit-widget-button"
     submit_oid = "okf:new-widget:submit-new-widget:does:1"
     refuse_oid = "okf:new-widget:refuse-new-widget:does:1"
@@ -1971,18 +1677,7 @@ def test_interaction_arms_with_an_unarranged_when_emit_no_assertion() -> None:
 
 
 def test_an_arranged_interaction_arm_performs_its_acts_and_compiles_its_assertion() -> None:
-    """The same two arms, with the happy one declaring the acts its `when:` needs.
-
-    `fixture:` cannot make this arm's `when:` true — no out-of-process command can type into a
-    form — so the arm declares `arrange: fill(...)` instead, and the compiler performs them
-    after arrival and before the trigger. That is the window in which they are preconditions of
-    the interaction rather than part of it: the observation window opens at the click, so what
-    it holds afterward is still evidence about this interaction alone.
-
-    The arm's claim is then observed in the state the book named, so the assertion compiles and
-    the `unarranged-interaction-precondition` gap goes. The refusal arm arranges nothing and is
-    unchanged, which is the point — the gap is per arm, not per interaction.
-    """
+    """The same two arms, with the happy one declaring the acts its `when:` needs."""
     button = f"{_SCREEN}#submit-widget-button"
     submit_oid = "okf:new-widget:submit-new-widget:does:1"
     refuse_oid = "okf:new-widget:refuse-new-widget:does:1"
@@ -2026,24 +1721,17 @@ def test_an_arranged_interaction_arm_performs_its_acts_and_compiles_its_assertio
     assert lines[fills[1]].strip() == (
         'qa.by_css("input[name=\\"quantity\\"]").fill("3")'
         "  # arrange: fill(locator='#quantity-field', value='3')")
-    # Both fills precede every trigger click, and the arranging arm's own click is the first.
     assert fills[1] < clicks[0]
     assert "unarranged-interaction-precondition" not in _gap_kinds(gaps, submit_oid)
     assert submit_oid in _covers(source)
     assert "#saved-banner" in source
-    # The condition itself is the precondition, named in the book's own words.
     assert "`name` non-empty and `quantity` a non-negative number" in source
-    # The arm that arranges nothing is untouched.
     assert _gap_kinds(gaps, refuse_oid) == ["unarranged-interaction-precondition"]
     assert refuse_oid not in _covers(source)
 
 
 def test_an_act_whose_subject_has_no_locator_withholds_the_whole_arrangement() -> None:
-    """A `when:` is arranged by the whole sequence the book wrote, so half of it is not a
-    weaker arrangement — it is a state no arm declares, neither the documented precondition
-    nor the page's accidental default. An act whose subject the book gives no locator for
-    withholds every act beside it, and the arm keeps the gap that says so, which is true.
-    """
+    """A `when:` is arranged by the whole sequence the book wrote, so half of it is not a weaker arrangement — it is a state no arm declares, neither the documented precondition nor the page's accidental default."""
     button = f"{_SCREEN}#submit-widget-button"
     submit_oid = "okf:new-widget:submit-new-widget:does:1"
     context = _navigation_context(
@@ -2074,15 +1762,7 @@ def test_an_act_whose_subject_has_no_locator_withholds_the_whole_arrangement() -
 
 
 def test_an_arms_acts_reach_the_builder_from_the_bullet_that_declares_no_check() -> None:
-    """The shape a real packet produces, and the one the two tests above do not write.
-
-    `arrange:` binds to the normative bullet above it, and in every book that bullet is
-    `when:` — a condition, not an observation, so the obligation it mints declares no check
-    and is filed as book debt long before the page builders see it. An arrangement is a
-    property of the arm it arranges, not of whichever sibling bullet happens to carry a
-    check, so the acts have to reach the builder from the check-less obligation or they
-    reach nowhere: the arm compiles its assertion against an unfilled form.
-    """
+    """The shape a real packet produces, and the one the two tests above do not write."""
     button = f"{_SCREEN}#submit-widget-button"
     interaction = f"{_SCREEN}#submit-new-widget"
     when_oid = "okf:new-widget:submit-new-widget:when:1"
@@ -2120,13 +1800,7 @@ def test_an_arms_acts_reach_the_builder_from_the_bullet_that_declares_no_check()
 
 
 def test_a_journey_step_performs_its_own_acts_before_it_triggers_it() -> None:
-    """The performer of a step is the only actor that can establish state on the surface it
-    performs on, and a journey performs this step itself — so the step's `arrange:` bullets
-    are performed here, in the same window `_interaction_scenario` uses when it compiles the
-    same interaction alone. A journey is a separate builder, so threading the acts into the
-    interaction scenario does not reach it, and a journey through a form would otherwise
-    click submit on an empty one and land on the refusal the empty form earns.
-    """
+    """The performer of a step is the only actor that can establish state on the surface it performs on, and a journey performs this step itself — so the step's `arrange:` bullets are performed here, in the same window `_interaction_scenario` uses when it compiles the same interaction alone."""
     oid = f"okf:{_FLOW}:end-state"
     open_thing = f"{_SCREEN}#open-thing"
     save_thing = f"{_SCREEN}#save-thing"
@@ -2166,18 +1840,11 @@ def test_a_journey_step_performs_its_own_acts_before_it_triggers_it() -> None:
     first = journey.index('"#open-link"')
     fill = journey.index('.fill("Widget A")')
     second = journey.index('"#save-button"')
-    # The step that arranges performs its acts after arriving through the step before it, and
-    # before its own trigger — the state the click needs exists exactly when the click happens.
     assert first < fill < second
 
 
 def test_a_wrapped_book_bullet_still_compiles_to_valid_python() -> None:
-    """A `does:`/`trigger:` value that wrapped across lines in the book source is still just one
-    string by the time `qa context` hands it here — nothing marks where the line broke. Embedding
-    that embedded newline raw, as a `#`-comment or inside a `\"\"\"`-docstring, ends the comment or
-    (for a stray `\"\"\"`-free case) the line mid-token and turns the wrapped remainder into code;
-    `py_compile`-worthy output is the property under test, not the comment text.
-    """
+    """A `does:`/`trigger:` value that wrapped across lines in the book source is still just one string by the time `qa context` hands it here — nothing marks where the line broke."""
     button = f"{_SCREEN}#create-policy-button"
     interaction = f"{_SCREEN}#submit-new-policy"
     interaction_oid = "okf:new-policy:submit-new-policy:does:1"
@@ -2228,15 +1895,7 @@ def _verify_calls(source: str) -> list[tuple[str, dict]]:
 
 
 def test_every_emitted_assertion_is_legal_against_the_checks_own_signature() -> None:
-    """A compiled call the check vocabulary refuses is a plan `ostler qa validate` rejects.
-
-    The regression this pins was legal Python and illegal in the artifact: the compiler had
-    resolved `locator=` into an operand and then dropped the argument, so every emitted
-    `visible` call was missing a parameter its own `CheckSpec` marks required — and the
-    declared-versus-invoked matcher, which compares the book's call to the plan's, could no
-    longer see that the plan had made the observation at all. Neither the suite nor the
-    interpreter noticed; only a real run of `qa validate` did.
-    """
+    """A compiled call the check vocabulary refuses is a plan `ostler qa validate` rejects."""
     oid = "okf:new-policy:submit:does:1"
     context = _navigation_context(
         _page_obligation(
@@ -2271,12 +1930,7 @@ def _vetted(source: str) -> list[str]:
 
 
 def test_an_arrival_photographs_the_screen_it_arrived_at() -> None:
-    """Presence is what a role locator proves; placement is what it cannot.
-
-    `ostler qa validate` refuses a UI scenario that vets no screen, so a plan compiled
-    without one is a plan that cannot run — and the refusal exists because every assertion
-    in the run that motivated it was true of a page crushed against one margin.
-    """
+    """Presence is what a role locator proves; placement is what it cannot."""
     oid = "okf:new-policy:form:role:1"
     context = _navigation_context(
         _page_obligation(oid, f"{_SCREEN}#new-policy-form",
@@ -2290,12 +1944,7 @@ def test_an_arrival_photographs_the_screen_it_arrived_at() -> None:
 
 
 def test_an_interaction_photographs_the_screen_its_checks_name() -> None:
-    """The state an interaction's claims are about is the one the trigger produced.
-
-    `does:` is not resolved to a target screen, so the documents the checks themselves name
-    are the only evidence of where the run ended up — vetting the screen the claim was
-    *authored* on would file the photograph under the wrong book.
-    """
+    """The state an interaction's claims are about is the one the trigger produced."""
     interaction = f"{_SCREEN}#submit-new-policy"
     interaction_oid = f"okf:{interaction}:does:1"
     elsewhere = "docs/features/demo/gui/screens/policy-list.md"
@@ -2310,31 +1959,18 @@ def test_an_interaction_photographs_the_screen_its_checks_name() -> None:
                           checks=[_located("#policy-table", f"{elsewhere}#policy-table",
                                            {"role": ["table"], "name": ["Policies on file"]})]),
         navigation=_arrival_navigation(),
-        # `elsewhere` is reached by the trigger rather than by a nav hop, so it is absent from
-        # the navigation map and its `route:` has to be stated here for the vet to be compiled.
         screen_routes={_SCREEN: "/new-policy", elsewhere: "/policies"},
     )
     source, _ = compile_plan_gaps(context, story="demo-story")
     assert source is not None
     interactions = [s for s in source.split("@scenario(")[1:] if "submit_new_policy(" in s]
     assert len(interactions) == 1
-    # Read off the fragment, not its tree: a scenario split from its decorator is not a
-    # parseable module, and what is being pinned is which screen this function photographs.
     assert re.findall(r"qa\.vet\(\"(.+?)\"\)", interactions[0]) == [elsewhere]
-    # …and the click comes first: a photograph taken before the trigger is of the wrong state.
     assert interactions[0].index(".click()") < interactions[0].index("qa.vet(")
 
 
 def test_an_obligation_half_of_whose_checks_compile_is_claimed_by_nobody() -> None:
-    """A claim whose refusal is visible on screen *and* leaves a stored count alone is one
-    claim, and `unchanged` observes a `subject` no browser can see.
-
-    The failure this pins is a green filed against an app that renders the error span and
-    moves the count: the scenario reported the span, the count was gapped as unobservable,
-    and the obligation was claimed anyway on the strength of the row that compiled. `ostler
-    qa validate` sees it from the other side — the declared call no assertion invokes,
-    against an id the plan says it covers.
-    """
+    """A claim whose refusal is visible on screen *and* leaves a stored count alone is one claim, and `unchanged` observes a `subject` no browser can see."""
     interaction = f"{_SCREEN}#submit-new-policy"
     oid = f"okf:{interaction}:does:2"
     context = _navigation_context(
@@ -2359,22 +1995,10 @@ def test_an_obligation_half_of_whose_checks_compile_is_claimed_by_nobody() -> No
     assert "uncompilable-claim" in _gap_kinds(gaps, oid)
 
 
-# --- Per-surface `base_url` (Phase 2h) ----------------------------------------------------------
-#
-# `ostler qa compile-plan` used to grow every target's `base_url` from one CLI flag. A book with
-# two services on two ports made that flag a lie for whichever surface didn't get it — these pin
-# the replacement: each surface's own `entry-url:`, read off `navigation[surface]["entryUrl"]`
-# (`reach.entry_origin`, by way of `qa.context._navigation`), with `--base-url` only as the
-# fallback for a surface stating none, and `undeclared-entry-url` the gap when neither exists.
-# The two below call the *real*, unwrapped `compile_plan`/`compile_plan_gaps` — the module-level
-# wrapper above exists so the rest of this file doesn't have to care about entry-url resolution;
-# these two are the tests that do.
 
 
 def test_a_two_surface_book_compiles_two_different_base_urls() -> None:
-    """The `api` target's address comes from the http obligation's own surface, and the `web`
-    target's from the page obligation's — a book with two services on two ports must not see
-    either one's address bleed onto the other's target line."""
+    """The `api` target's address comes from the http obligation's own surface, and the `web` target's from the page obligation's — a book with two services on two ports must not see either one's address bleed onto the other's target line."""
     api_oid = "okf:docs/features/acme/api.md#post-things:does:1"
     page_oid = "okf:new-policy:button:role:1"
     context = _navigation_context(
@@ -2408,10 +2032,7 @@ def test_a_two_surface_book_compiles_two_different_base_urls() -> None:
 
 
 def test_two_surfaces_sharing_one_driver_kind_each_keep_their_own_address() -> None:
-    """Two http surfaces — not one http surface and one page surface — land in the *same*
-    `http_owed` partition (both are `_is_page_obligation` false), which is exactly the case
-    the old `known[0]` alphabetic-first fallback used to collapse onto one address. Each
-    surface's own scenario must reference its own target, not a neighbour's."""
+    """Two http surfaces — not one http surface and one page surface — land in the *same* `http_owed` partition (both are `_is_page_obligation` false), which is exactly the case the old `known[0]` alphabetic-first fallback used to collapse onto one address."""
     alpha_oid = "okf:docs/features/acme/alpha.md#post-things:does:1"
     zulu_oid = "okf:docs/features/acme/zulu.md#post-things:does:1"
     context = _navigation_context(
@@ -2449,16 +2070,12 @@ def test_two_surfaces_sharing_one_driver_kind_each_keep_their_own_address() -> N
         'base_url="http://localhost:18201")' in source
     assert 'zulu_service_api = target("zulu_service_api", driver="python", ' \
         'base_url="http://localhost:18202")' in source
-    # Each surface's own scenario references its own target, not the other surface's.
     assert "    target=alpha_service_api,\n" in source
     assert "    target=zulu_service_api,\n" in source
 
 
 def test_a_surface_with_no_entry_url_and_no_fallback_gaps_instead_of_guessing() -> None:
-    """No `--base-url` and no book-stated `entry-url:` on this obligation's surface: the compiler
-    drops it as `undeclared-entry-url` rather than compiling it against an address nobody wrote
-    down — the failure mode Phase 2h exists to replace (one CLI default applied to every surface,
-    right or wrong)."""
+    """No `--base-url` and no book-stated `entry-url:` on this obligation's surface: the compiler drops it as `undeclared-entry-url` rather than compiling it against an address nobody wrote down — the failure mode Phase 2h exists to replace (one CLI default applied to every surface, right or wrong)."""
     oid = "okf:docs/features/acme/api.md#post-things:does:1"
     context = _context(
         _obligation(
@@ -2469,10 +2086,6 @@ def test_a_surface_with_no_entry_url_and_no_fallback_gaps_instead_of_guessing() 
             ],
         ),
     )
-    # `driver:` (D1's dispatch table) and `entry-url:` are two separate facts a runbook states —
-    # this test is about the second one being absent, so the surface still states a driver
-    # (otherwise the dispatch table itself gaps the obligation first, as `uncompilable-claim`,
-    # before ever reaching the entry-url check this test targets).
     context["navigation"] = {"api-service": {"driver": "http"}}
     result = _compile_plan_gaps(context, story="demo-story")
     assert isinstance(result, Refusal)
@@ -2480,10 +2093,7 @@ def test_a_surface_with_no_entry_url_and_no_fallback_gaps_instead_of_guessing() 
 
 
 def test_a_checkless_obligation_on_a_surface_with_no_entry_url_is_book_debt_not_undeclared_entry_url() -> None:
-    """A bucket that names a performer cannot also carry the things nothing performs: a
-    check-less obligation has no claim for any driver to dispatch, so an unrelated surface with
-    no `entry-url:` must not decide its gap kind. It is `no-verify-declared` regardless of
-    whether the surface's address ever resolved."""
+    """A bucket that names a performer cannot also carry the things nothing performs: a check-less obligation has no claim for any driver to dispatch, so an unrelated surface with no `entry-url:` must not decide its gap kind."""
     oid = "okf:docs/features/acme/api.md#post-things:does:1"
     context = _context(
         _obligation(oid, surface="api-service"),
@@ -2496,8 +2106,7 @@ def test_a_checkless_obligation_on_a_surface_with_no_entry_url_is_book_debt_not_
 
 
 def _settled_origin_context(oid: str, entry_url: str) -> dict:
-    """A surface whose address the engine settled on: several sources may have stated one, and
-    `qa context` read them in §4.1 driver order and put the winner in `entryUrl`."""
+    """A surface whose address the engine settled on: several sources may have stated one, and `qa context` read them in §4.1 driver order and put the winner in `entryUrl`."""
     context = _context(
         _obligation(
             oid,
@@ -2512,9 +2121,7 @@ def _settled_origin_context(oid: str, entry_url: str) -> dict:
 
 
 def test_an_address_the_book_states_outranks_the_operators_base_url() -> None:
-    """`--base-url` answers a book that states no address. A book that states one has already
-    answered, and an operator flag is not an override of it — falling back here would compile a
-    plan against an address the book never wrote down."""
+    """`--base-url` answers a book that states no address."""
     oid = "okf:docs/features/acme/api.md#post-things:does:1"
     result = _compile_plan_gaps(_settled_origin_context(oid, "http://localhost:18101"),
                                 story="demo-story", base_url="http://localhost:8000")
@@ -2525,10 +2132,7 @@ def test_an_address_the_book_states_outranks_the_operators_base_url() -> None:
 
 
 def test_a_surface_stating_no_address_compiles_against_the_base_url() -> None:
-    """Non-vacuity for the test above: the same obligation with the surface's own address
-    removed — the only difference — takes the operator's flag rather than gapping, so the
-    verdict there is a verdict on the book outranking the flag and not on the flag being
-    unusable."""
+    """Non-vacuity for the test above: the same obligation with the surface's own address removed — the only difference — takes the operator's flag rather than gapping, so the verdict there is a verdict on the book outranking the flag and not on the flag being unusable."""
     oid = "okf:docs/features/acme/api.md#post-things:does:1"
     context = _settled_origin_context(oid, "http://localhost:18101")
     del context["navigation"]["api-service"]["entryUrl"]
@@ -2539,8 +2143,7 @@ def test_a_surface_stating_no_address_compiles_against_the_base_url() -> None:
 
 
 def _driverless_context(oid: str) -> dict:
-    """A surface no runbook states a `driver:` for: the engine reads every runbook covering the
-    surface, so `driver` is `None` only when none of them states one at all."""
+    """A surface no runbook states a `driver:` for: the engine reads every runbook covering the surface, so `driver` is `None` only when none of them states one at all."""
     context = _context(
         _obligation(
             oid,
@@ -2556,9 +2159,7 @@ def _driverless_context(oid: str) -> dict:
 
 
 def test_a_surface_stating_no_driver_at_all_gaps_the_absence() -> None:
-    """D1's dispatch table (§4.1) has nothing to look the performer up by, so the obligation
-    cannot be compiled — and the message says the book states no `driver:`, which is the
-    remedy: write one on a runbook covering the surface."""
+    """D1's dispatch table (§4.1) has nothing to look the performer up by, so the obligation cannot be compiled — and the message says the book states no `driver:`, which is the remedy: write one on a runbook covering the surface."""
     oid = "okf:docs/features/acme/api.md#post-things:does:1"
     result = _compile_plan_gaps(_driverless_context(oid), story="demo-story")
     assert isinstance(result, Refusal)
@@ -2567,9 +2168,7 @@ def test_a_surface_stating_no_driver_at_all_gaps_the_absence() -> None:
 
 
 def test_a_surface_whose_runbooks_settled_on_a_driver_compiles_the_claim() -> None:
-    """Non-vacuity for the test above: the same obligation with a settled `driver:` — the only
-    difference — compiles, so the gap there is a verdict on the absence and not on the shape of
-    the obligation."""
+    """Non-vacuity for the test above: the same obligation with a settled `driver:` — the only difference — compiles, so the gap there is a verdict on the absence and not on the shape of the obligation."""
     oid = "okf:docs/features/acme/api.md#post-things:does:1"
     context = _driverless_context(oid)
     context["navigation"]["api-service"] = {"driver": "http", "entryUrl": "http://localhost:18101"}
@@ -2579,16 +2178,7 @@ def test_a_surface_whose_runbooks_settled_on_a_driver_compiles_the_claim() -> No
 
 
 def test_a_selector_the_census_cannot_read_still_compiles_one_whole_scenario() -> None:
-    """Phase 3p': a compile-time gap is a statement about the plan being compiled, and vet's
-    render census is a different observer.
-
-    `[data-state="booked"]` is a selector `placement.is_addressable` rejects, so `ostler vet`'s
-    screen census can never confirm the component present. That is a real finding — and it is
-    doctor's `unaddressable-selector` check, made against the book. It is *not* a gap, because
-    a gap says "this obligation went unobserved by the compiled plan", and this obligation is
-    observed: `qa.by_css` compiles the selector fine and the assertion runs against the live
-    page. Emitting both put the obligation in `covers=[...]` and in the unobserved gap list at
-    once, which is exactly what `compile_plan`'s own mirror assert forbids."""
+    """Phase 3p': a compile-time gap is a statement about the plan being compiled, and vet's render census is a different observer."""
     oid = "okf:docs/features/policy/gui/screens/policy-list.md#seat-grid:verify:1"
     context = _navigation_context(
         _page_obligation(
@@ -2604,20 +2194,9 @@ def test_a_selector_the_census_cannot_read_still_compiles_one_whole_scenario() -
     ast.parse(source)
     assert oid in _covers(source)
     assert _gap_kinds(gaps, oid) == []
-    # The selector reaches the emitted check verbatim: it is compiled, not dropped.
     assert r'locator="[data-state=\"booked\"]"' in source
 
 
-# --- HTTP exchanges a page scenario made (Phase 2l) ---------------------------------------------
-#
-# `DriverSpec.PLAYWRIGHT` has always declared `response` and `body`, and the browser harness has
-# always recorded every response the page fetched. What was missing between them was an
-# *arrangement*: a page scenario has as many responses as the page chose to request, so the
-# operand of an HTTP claim is a selection, and a selection needs a selector and a bound. The
-# selector is `http_status(path=…)` — the one bullet in the vocabulary carrying a route — read
-# once per obligation, because an obligation is one claim. The bound is `qa.window()`, emitted
-# immediately before the scenario's action, because a response recorded before the click is not
-# an observation of the click.
 
 
 def _scenarios(source: str) -> list[str]:
@@ -2630,9 +2209,7 @@ def _http_status(code: int, path: str) -> dict[str, object]:
 
 
 def test_a_page_claim_about_the_response_its_click_provoked_compiles_whole() -> None:
-    """The globex shape: submitting the form is refused, the error span appears, and the
-    page's own POST answered 400. All three rows are one claim and all three compile — the
-    two HTTP rows against the exchange the book named, the page row against the DOM."""
+    """The globex shape: submitting the form is refused, the error span appears, and the page's own POST answered 400."""
     interaction = f"{_SCREEN}#submit-new-policy"
     oid = f"okf:{interaction}:does:2"
     context = _navigation_context(
@@ -2655,21 +2232,16 @@ def test_a_page_claim_about_the_response_its_click_provoked_compiles_whole() -> 
     source, gaps = _result.source, _result.gaps
     ast.parse(source)
     assert oid in _covers(source)
-    # (`unresolved-precondition` is this fixture's own, and orthogonal: it is about reaching
-    # the screen, not about what the claim observes once there.)
     assert "uncompilable-claim" not in _gap_kinds(gaps, oid)
-    # The response check is handed the selected exchange; the body check, its parsed payload.
     assert 'qa.verify("http_status", exchanges.response_for("/api/policies")' in source
     assert 'qa.verify("json_path", exchanges.response_for("/api/policies").json()' in source
-    # …and the window opens before the action, or it would span the arrival's own requests too.
     interactions = [s for s in _scenarios(source) if ".click()" in s]
     assert len(interactions) == 1
     assert interactions[0].index("qa.window()") < interactions[0].index(".click()")
 
 
 def test_an_arrival_claim_about_a_response_opens_its_window_before_the_navigation() -> None:
-    """An arrival scenario's action is `qa.goto`, so the same rule puts the window first —
-    a response recorded before the page was asked for is not an observation of the arrival."""
+    """An arrival scenario's action is `qa.goto`, so the same rule puts the window first — a response recorded before the page was asked for is not an observation of the arrival."""
     oid = "okf:policy-list:policy-table:visible:1"
     context = _navigation_context(
         _page_obligation(oid, f"{_SCREEN}#policy-table",
@@ -2689,9 +2261,7 @@ def test_an_arrival_claim_about_a_response_opens_its_window_before_the_navigatio
 
 
 def test_an_obligation_naming_two_routes_is_two_claims_and_emits_nothing_executable() -> None:
-    """Undetermined ⇒ do not emit executable code. One obligation carrying `http_status` on
-    two different routes has not said which exchange its body check is about, and the
-    compiler has no basis to pick — so it gaps rather than defaulting to either."""
+    """Undetermined ⇒ do not emit executable code."""
     oid = "okf:policy-list:policy-table:visible:1"
     context = _navigation_context(
         _page_obligation(oid, f"{_SCREEN}#policy-table",
@@ -2707,8 +2277,7 @@ def test_an_obligation_naming_two_routes_is_two_claims_and_emits_nothing_executa
 
 
 def test_a_page_scenario_with_no_http_claim_binds_no_window() -> None:
-    """The window is emitted because a row needs it, not because the scenario is a page one —
-    a plan that reads no exchange should not carry a name nothing reads."""
+    """The window is emitted because a row needs it, not because the scenario is a page one — a plan that reads no exchange should not carry a name nothing reads."""
     oid = "okf:policy-list:policy-table:visible:1"
     context = _navigation_context(
         _page_obligation(oid, f"{_SCREEN}#policy-table",
@@ -2722,13 +2291,7 @@ def test_a_page_scenario_with_no_http_claim_binds_no_window() -> None:
 
 
 def test_a_node_nobody_performs_is_observed_by_the_driver_of_its_own_surface() -> None:
-    """A `flow` orders steps that are performed; a `component`, a `screen`, and a `field` are
-    places a claim is true. None of the four is a step, so there is no action to cross with a
-    driver — only a check, run by whatever drives the surface the claim's subject lives on.
-    That makes them a single row (`_OBSERVE_ROW`), not a table: every driver can observe, which
-    is why an `http` driver lands a target here while `_DISPATCH_TABLE` deliberately leaves
-    `interaction`x`http` empty — it cannot *perform* an interaction, but it can assert a status
-    on a journey that ends at an endpoint."""
+    """A `flow` orders steps that are performed; a `component`, a `screen`, and a `field` are places a claim is true."""
     for node_type in ("flow", "component", "screen", "field"):
         assert _dispatch_target(node_type, "web") == ("playwright", "", "")
         assert _dispatch_target(node_type, "http") == ("http", "", "")
@@ -2740,12 +2303,7 @@ def test_a_node_nobody_performs_is_observed_by_the_driver_of_its_own_surface() -
 
 
 def test_a_concept_node_gets_its_own_gap_message_not_a_generic_no_row_for() -> None:
-    """`concept` names no row in `_OBSERVE_ROW` or `_DISPATCH_TABLE` either, exactly like an
-    unrouted type — but it is unrouted for a different reason: a concept is a definition, not a
-    place a claim is observed, so no row is owed and the generic "names no row for" phrasing
-    would mislead an author into adding one. The kind stays `uncompilable-claim`, the same kind
-    an unrouted type already gets, because the author-facing consequence is identical: this
-    claim will not compile."""
+    """`concept` names no row in `_OBSERVE_ROW` or `_DISPATCH_TABLE` either, exactly like an unrouted type — but it is unrouted for a different reason: a concept is a definition, not a place a claim is observed, so no row is owed and the generic "names no row for" phrasing would mislead an author into adding one."""
     target, detail, kind = _dispatch_target("concept", "web")
     assert target is None
     assert kind == "uncompilable-claim"
@@ -2759,10 +2317,7 @@ def test_a_concept_node_gets_its_own_gap_message_not_a_generic_no_row_for() -> N
 
 
 def test_a_field_claim_compiles_on_the_screen_it_sits_on() -> None:
-    """A `field` node's own claim, on a `web`-driven surface, compiles to a real Playwright
-    observation rather than to `uncompilable-claim` — the end-to-end counterpart of the
-    dispatch-level assertion above, run through the page builder the way a `component`'s claim
-    already is."""
+    """A `field` node's own claim, on a `web`-driven surface, compiles to a real Playwright observation rather than to `uncompilable-claim` — the end-to-end counterpart of the dispatch-level assertion above, run through the page builder the way a `component`'s claim already is."""
     oid = "okf:policy-list:vin-field:visible:1"
     context = _navigation_context(
         _page_obligation(oid, f"{_SCREEN}#vin-field",
@@ -2779,8 +2334,7 @@ def test_a_field_claim_compiles_on_the_screen_it_sits_on() -> None:
 
 
 def test_a_field_claim_on_a_cli_surface_compiles_through_the_cli_builder() -> None:
-    """The same claim, on a `cli`-driven surface: `field` reaches the cli builder through
-    `_OBSERVE_ROW` exactly as `command` reaches it through `_DISPATCH_TABLE`'s invariant row."""
+    """The same claim, on a `cli`-driven surface: `field` reaches the cli builder through `_OBSERVE_ROW` exactly as `command` reaches it through `_DISPATCH_TABLE`'s invariant row."""
     oid = "okf:built-target-probe:field:exit-status:1"
     context = _context(
         _obligation(
@@ -2805,8 +2359,7 @@ def test_a_field_claim_on_a_cli_surface_compiles_through_the_cli_builder() -> No
 
 
 def test_a_concept_claim_still_does_not_compile_with_the_new_message() -> None:
-    """Even with a well-formed check declared, a `concept` claim still fails to compile — the
-    change is the message, not the outcome."""
+    """Even with a well-formed check declared, a `concept` claim still fails to compile — the change is the message, not the outcome."""
     oid = "okf:docs/features/demo/concepts/policy.md:contract:1"
     context = _context(
         _obligation(
@@ -2837,9 +2390,6 @@ def _step(ref: str, node_type: str, surface: str) -> dict:
 
 def _flow_obligation(oid: str, *, source: str, surface: str, steps: list[dict],
                      checks: list[dict], fixtures: list[dict] | None = None) -> dict:
-    # Arranged by default, because every test below is about the *walk* and a journey that
-    # arranges nothing compiles to no scenario at all (`unarranged-journey`). Pass
-    # `fixtures=[]` to write the unarranged case on purpose.
     row = {
         "id": oid,
         "node": f"{source}#flow",
@@ -2877,10 +2427,7 @@ def _api_navigation(surface: str = "api") -> dict:
 
 
 def test_a_flow_that_names_no_steps_has_no_walk_to_compile() -> None:
-    """A flow's claim is about what its `steps:` did, so a flow that names none states a claim
-    about a journey nobody wrote down. It gaps rather than being handed to the place-scoped
-    builders, which would address the end-state at the node it names and assert it on arrival —
-    a check that passes in a world where the journey did not happen."""
+    """A flow's claim is about what its `steps:` did, so a flow that names none states a claim about a journey nobody wrote down."""
     oid = "okf:docs/features/policy/flows/file-a-policy.md:end-state"
     context = _navigation_context(
         _obligation(oid, nodeType="flow", surface="policy",
@@ -2896,9 +2443,7 @@ def test_a_flow_that_names_no_steps_has_no_walk_to_compile() -> None:
 
 
 def test_a_journeys_claim_is_observed_where_its_last_step_left_the_world() -> None:
-    """The steps are performed in the order the book wrote them, and the flow's own `verify:`
-    is asserted against the *last* step's response — the only world this scenario actually
-    produced. The steps' own claims are not restated here; they are compiled where they live."""
+    """The steps are performed in the order the book wrote them, and the flow's own `verify:` is asserted against the *last* step's response — the only world this scenario actually produced."""
     oid = f"okf:{_FLOW}:end-state"
     context = _navigation_context(
         _flow_obligation(
@@ -2908,11 +2453,6 @@ def test_a_journeys_claim_is_observed_where_its_last_step_left_the_world() -> No
             checks=[{"call": "it", "name": "http_status", "args": {"status": 200,
                                                                    "path": "/api/things"}}],
         ),
-        # DELETE, not POST: a journey step whose route needs a request body and arranges none
-        # gets withheld entirely (`unarranged-request-body`, compile.py's `_http_journey`) — see
-        # `test_a_journey_step_sends_the_body_its_node_arranges` for the arranged case. This test
-        # is about step ordering across two distinct methods, not about bodies, so both steps use
-        # body-exempt verbs.
         _step_node(f"{_API}#post-things", {"route": ["DELETE /api/things"]}),
         _step_node(f"{_API}#get-things", {"route": ["GET /api/things"]}),
         navigation=_api_navigation(),
@@ -2925,18 +2465,13 @@ def test_a_journeys_claim_is_observed_where_its_last_step_left_the_world() -> No
     post = source.index('observed_1 = qa.http.delete("/api/things"')
     get = source.index('observed_2 = qa.http.get("/api/things")')
     assert post < get
-    # Asserted on the response the walk ended on, not on the one the first step produced.
     assert 'qa.verify("http_status", observed_2' in source
     assert 'qa.verify("http_status", observed_1' not in source
     assert _gap_kinds(gaps, oid) == []
 
 
 def test_a_journey_step_captures_a_field_its_own_verify_then_reads_back() -> None:
-    """A `$.`-rooted capture on a step's node is a fact the *flow's own* `verify:` — running in
-    this same scenario, after every step — is entitled to read back, the same way a strictly
-    later obligation reads a `_scenario_body` capture back. `qa.capture_field(...)` is emitted
-    right after the step that produces it, before the flow's own assertion that references it,
-    and the reference resolves with no gap."""
+    """A `$.`-rooted capture on a step's node is a fact the *flow's own* `verify:` — running in this same scenario, after every step — is entitled to read back, the same way a strictly later obligation reads a `_scenario_body` capture back."""
     oid = f"okf:{_FLOW}:end-state"
     post_node = _step_node(f"{_API}#post-things", {"route": ["POST /api/things"]})
     post_node["actsDeclared"] = [_body_act("name", "Widget A")]
@@ -2964,11 +2499,7 @@ def test_a_journey_step_captures_a_field_its_own_verify_then_reads_back() -> Non
 
 
 def test_a_journeys_own_verify_referencing_nothing_captured_withdraws_it() -> None:
-    """`$name` names a fact a `capture:` bullet must actually have produced in this same walk —
-    a flow's own `verify:` that names one nothing captured is `unresolved-precondition`, the same
-    as any other reference a `_scenario_body` obligation cannot resolve, and — because a
-    `verify:` set is a conjunction — the whole obligation withdraws rather than emitting the
-    rows that happened to resolve on their own."""
+    """`$name` names a fact a `capture:` bullet must actually have produced in this same walk — a flow's own `verify:` that names one nothing captured is `unresolved-precondition`, the same as any other reference a `_scenario_body` obligation cannot resolve, and — because a `verify:` set is a conjunction — the whole obligation withdraws rather than emitting the rows that happened to resolve on their own."""
     oid = f"okf:{_FLOW}:end-state"
     post_node = _step_node(f"{_API}#post-things", {"route": ["POST /api/things"]})
     post_node["actsDeclared"] = [_body_act("name", "Widget A")]
@@ -2988,10 +2519,7 @@ def test_a_journeys_own_verify_referencing_nothing_captured_withdraws_it() -> No
 
 
 def test_a_journeys_own_verify_withdraws_wholesale_not_row_by_row() -> None:
-    """Two rows on the same flow obligation, only one of which references a capture nothing
-    produced: the conjunction rule withdraws both, not just the one that referenced it — the
-    same `whole`-obligation rule `_scenario_body` applies to a row `_operand` cannot observe,
-    carried here to a row a reference cannot resolve."""
+    """Two rows on the same flow obligation, only one of which references a capture nothing produced: the conjunction rule withdraws both, not just the one that referenced it — the same `whole`-obligation rule `_scenario_body` applies to a row `_operand` cannot observe, carried here to a row a reference cannot resolve."""
     oid = f"okf:{_FLOW}:end-state"
     post_node = _step_node(f"{_API}#post-things", {"route": ["POST /api/things"]})
     post_node["actsDeclared"] = [_body_act("name", "Widget A")]
@@ -3015,12 +2543,7 @@ def test_a_journeys_own_verify_withdraws_wholesale_not_row_by_row() -> None:
 
 
 def test_a_capture_on_a_step_the_journey_cannot_compile_is_still_declined() -> None:
-    """A step whose node carries no `route:` withholds the whole journey (`uncompilable-claim`),
-    exactly as `test_a_flow_that_names_no_steps_has_no_walk_to_compile`'s sibling cases do — and
-    a `capture:` declared on that same node names a response this journey never holds either.
-    `_decline_captures_by_node` gaps it (`uncaptured-declaration`) rather than leaving it neither
-    emitted nor gapped, which is what the totality assert in `compile_plan_gaps` would otherwise
-    catch."""
+    """A step whose node carries no `route:` withholds the whole journey (`uncompilable-claim`), exactly as `test_a_flow_that_names_no_steps_has_no_walk_to_compile`'s sibling cases do — and a `capture:` declared on that same node names a response this journey never holds either."""
     oid = f"okf:{_FLOW}:end-state"
     post_node = _step_node(f"{_API}#post-things", {})
     post_node["capturesDeclared"] = [{"name": "widget_id", "from": "$.thing.id"}]
@@ -3041,9 +2564,7 @@ def test_a_capture_on_a_step_the_journey_cannot_compile_is_still_declined() -> N
 
 
 def test_a_journey_step_sends_the_body_its_node_arranges() -> None:
-    """Node-level, unlike the arm-level read in `_scenario_body`'s own tests: a journey step
-    names a node, not an arm, so `_http_journey` reads `acts_by_node` the same way a step's
-    `fill:` acts already are — merged across every obligation sharing that node."""
+    """Node-level, unlike the arm-level read in `_scenario_body`'s own tests: a journey step names a node, not an arm, so `_http_journey` reads `acts_by_node` the same way a step's `fill:` acts already are — merged across every obligation sharing that node."""
     oid = f"okf:{_FLOW}:end-state"
     post_node = _step_node(f"{_API}#post-things", {"route": ["POST /api/things"]})
     post_node["actsDeclared"] = [_body_act("name", "Widget A"), _body_act("quantity", 3)]
@@ -3067,9 +2588,7 @@ def test_a_journey_step_sends_the_body_its_node_arranges() -> None:
 
 
 def test_a_journey_step_with_a_contradictory_body_is_unarranged() -> None:
-    """Phase 1's limitation, named explicitly: two arms of the same node stating different
-    values for the same field merge to a contradiction, not a body any request could carry, so
-    the step withholds the whole request exactly as a half-performable one already does."""
+    """Phase 1's limitation, named explicitly: two arms of the same node stating different values for the same field merge to a contradiction, not a body any request could carry, so the step withholds the whole request exactly as a half-performable one already does."""
     oid = f"okf:{_FLOW}:end-state"
     post_node = _step_node(f"{_API}#post-things", {"route": ["POST /api/things"]})
     post_node["actsDeclared"] = [_body_act("name", "Widget A")]
@@ -3093,11 +2612,7 @@ def test_a_journey_step_with_a_contradictory_body_is_unarranged() -> None:
 
 
 def test_a_journey_step_ignores_its_nodes_refusal_arm_arrangement() -> None:
-    """A journey's steps causally chain, so it can only ever be walking the arm that leaves
-    something for the next step to read back — never the refusal arm (`errors:`/`error:`,
-    `registry.refusal_keys`). The refusal arm's own `arrange: body(...)` states a contradictory
-    value on purpose: if it reached the merge, `_http_body` would refuse the contradiction and
-    this step would gap `unarranged-request-body` instead of compiling."""
+    """A journey's steps causally chain, so it can only ever be walking the arm that leaves something for the next step to read back — never the refusal arm (`errors:`/`error:`, `registry.refusal_keys`)."""
     oid = f"okf:{_FLOW}:end-state"
     post_node = _step_node(f"{_API}#post-things", {"route": ["POST /api/things"]})
     post_node["actsDeclared"] = [_body_act("name", "Widget A"), _body_act("quantity", 3)]
@@ -3126,10 +2641,7 @@ def test_a_journey_step_ignores_its_nodes_refusal_arm_arrangement() -> None:
 
 
 def test_a_journey_step_whose_node_only_declares_a_refusal_arm_is_unarranged() -> None:
-    """A node whose only declared arm is the refusal arm merges to no acts at all once that arm
-    is excluded — not "nothing declared" the way a step that genuinely needs no body would read,
-    so it withholds the request and gaps exactly as an unbuildable body already does, rather than
-    silently sending `json_body={}`."""
+    """A node whose only declared arm is the refusal arm merges to no acts at all once that arm is excluded — not "nothing declared" the way a step that genuinely needs no body would read, so it withholds the request and gaps exactly as an unbuildable body already does, rather than silently sending `json_body={}`."""
     oid = f"okf:{_FLOW}:end-state"
     refusal_only = _step_node(f"{_API}#post-things", {"route": ["POST /api/things"]})
     refusal_only["kind"] = "errors"
@@ -3150,9 +2662,7 @@ def test_a_journey_step_whose_node_only_declares_a_refusal_arm_is_unarranged() -
 
 
 def test_a_journey_step_with_an_unrecognized_method_is_an_invalid_http_method() -> None:
-    """The node-level check mirrors `_scenario_body`'s: a step whose node states a `method:`
-    that does not parse as an HTTP verb is undetermined, so `_http_journey` withholds the whole
-    journey rather than falling through to `unarranged-request-body`."""
+    """The node-level check mirrors `_scenario_body`'s: a step whose node states a `method:` that does not parse as an HTTP verb is undetermined, so `_http_journey` withholds the whole journey rather than falling through to `unarranged-request-body`."""
     oid = f"okf:{_FLOW}:end-state"
     post_node = _step_node(f"{_API}#post-things", {"method": ["FROB"], "path": ["/api/things"]})
     context = _navigation_context(
@@ -3171,9 +2681,7 @@ def test_a_journey_step_with_an_unrecognized_method_is_an_invalid_http_method() 
 
 
 def test_a_check_naming_another_steps_path_is_not_about_this_journeys_end() -> None:
-    """A journey's claim is about the world its last step left. A check naming some other route
-    is a claim about a request this journey did not end on — pointing the driver at the response
-    it does hold would answer a question nobody asked, so it gaps instead."""
+    """A journey's claim is about the world its last step left."""
     oid = f"okf:{_FLOW}:end-state"
     context = _navigation_context(
         _flow_obligation(
@@ -3183,8 +2691,6 @@ def test_a_check_naming_another_steps_path_is_not_about_this_journeys_end() -> N
             checks=[{"call": "it", "name": "http_status", "args": {"status": 201,
                                                                    "path": "/api/things"}}],
         ),
-        # DELETE, not POST: see the comment on the sibling test above — this one is about a
-        # check naming a route other than the journey's last step, not about bodies.
         _step_node(f"{_API}#post-things", {"route": ["DELETE /api/things"]}),
         _step_node(f"{_API}#get-health", {"route": ["GET /healthz"]}),
         navigation=_api_navigation(),
@@ -3197,10 +2703,7 @@ def test_a_check_naming_another_steps_path_is_not_about_this_journeys_end() -> N
 
 
 def test_a_journeys_json_path_check_is_not_about_a_route_at_all() -> None:
-    """`json_path.path` is an identifier into the response *document*, not a route — unlike
-    `http_status.path`, which the guard above this one withholds a journey's own `verify:` for.
-    A `json_path` naming a document path that happens to differ from the journey's last route is
-    not a claim about some other request; it compiles."""
+    """`json_path.path` is an identifier into the response *document*, not a route — unlike `http_status.path`, which the guard above this one withholds a journey's own `verify:` for."""
     oid = f"okf:{_FLOW}:end-state"
     context = _navigation_context(
         _flow_obligation(
@@ -3224,11 +2727,7 @@ def test_a_journeys_json_path_check_is_not_about_a_route_at_all() -> None:
 
 
 def test_two_surfaces_with_same_named_flows_compile_to_distinct_scenario_names() -> None:
-    """`_slug` names a compiled scenario from its book's path, and a stem alone throws away the
-    directory the surface lives in. `web-app/flows/browse-and-add-widget.md` and
-    `mobile-app/flows/browse-and-add-widget.md` share a stem but are two different books — so
-    the two journeys they compile to must land on two different `def` names, or the plan they
-    land in fails to import at all (`ValueError: duplicate scenario id`)."""
+    """`_slug` names a compiled scenario from its book's path, and a stem alone throws away the directory the surface lives in."""
     web_api = "web-app/http/api.md"
     mobile_api = "mobile-app/http/api.md"
     web_flow = "web-app/flows/browse-and-add-widget.md"
@@ -3272,11 +2771,7 @@ def test_two_surfaces_with_same_named_flows_compile_to_distinct_scenario_names()
 
 
 def test_a_journey_across_two_targets_has_no_scenario_shape_to_fit_into() -> None:
-    """A target is the pairing of a driver with a service, and `@scenario(target=...)` binds
-    exactly one. The reason says that — a fact about the harness — rather than claiming no
-    builder exists, because after this row one does. The *kind* says it too: a journey the
-    harness cannot shape is not a claim an author can go and fix, so it does not share
-    `uncompilable-claim` with the books that really are underspecified."""
+    """A target is the pairing of a driver with a service, and `@scenario(target=...)` binds exactly one."""
     oid = f"okf:{_FLOW}:end-state"
     navigation = _api_navigation()
     navigation.update(_arrival_navigation())
@@ -3299,11 +2794,7 @@ def test_a_journey_across_two_targets_has_no_scenario_shape_to_fit_into() -> Non
 
 
 def test_a_mobile_step_with_no_selector_is_the_books_to_finish_not_a_backend_gap() -> None:
-    """D1's table names `maestro` for an interaction on a mobile surface, and this compiler now
-    builds that path — so a mobile step whose own node states no `testID=` selector and no
-    `name:` to fall back on gaps `uncompilable-claim`, the book's own gap, rather than
-    `needs-target-backend`: the backend exists, and there is nothing wrong here a maestro
-    builder could have compiled around."""
+    """D1's table names `maestro` for an interaction on a mobile surface, and this compiler now builds that path — so a mobile step whose own node states no `testID=` selector and no `name:` to fall back on gaps `uncompilable-claim`, the book's own gap, rather than `needs-target-backend`: the backend exists, and there is nothing wrong here a maestro builder could have compiled around."""
     oid = f"okf:{_SCREEN}#open-thing:does:1"
     navigation = _arrival_navigation()
     navigation["policy"]["driver"] = "mobile"
@@ -3322,10 +2813,7 @@ def test_a_mobile_step_with_no_selector_is_the_books_to_finish_not_a_backend_gap
 
 
 def test_a_step_whose_driver_the_book_never_states_is_still_the_books_to_fix() -> None:
-    """The other side of the same branch, and the reason the two need different kinds: with no
-    `driver:` on the surface the table cannot be read at all, and that *is* something an author
-    goes and writes. It keeps `uncompilable-claim`, and a repair turn is the right destination
-    for it."""
+    """The other side of the same branch, and the reason the two need different kinds: with no `driver:` on the surface the table cannot be read at all, and that *is* something an author goes and writes."""
     oid = f"okf:{_SCREEN}#open-thing:does:1"
     navigation = _arrival_navigation()
     del navigation["policy"]["driver"]
@@ -3340,10 +2828,7 @@ def test_a_step_whose_driver_the_book_never_states_is_still_the_books_to_fix() -
 
 
 def test_a_mobile_journey_step_with_no_selector_gaps_uncompilable_claim() -> None:
-    """Every step dispatches to one target, so there is no crossing to report — the single
-    target is `maestro`, which this compiler now builds. A step whose node states no
-    `testID=`/`name:` to address it by is still `uncompilable-claim`, the book's own gap: the
-    backend exists, and no maestro builder could have addressed a view the book never named."""
+    """Every step dispatches to one target, so there is no crossing to report — the single target is `maestro`, which this compiler now builds."""
     oid = f"okf:{_FLOW}:end-state"
     navigation = _arrival_navigation()
     navigation["policy"]["driver"] = "mobile"
@@ -3363,9 +2848,7 @@ def test_a_mobile_journey_step_with_no_selector_gaps_uncompilable_claim() -> Non
 
 
 def test_a_web_journey_arrives_then_clicks_every_step_in_order() -> None:
-    """The journey walks to the screen its first step lives on and performs each `interaction`
-    in document order; the flow's own `verify:` is observed after the last click, where the walk
-    left the page."""
+    """The journey walks to the screen its first step lives on and performs each `interaction` in document order; the flow's own `verify:` is observed after the last click, where the walk left the page."""
     oid = f"okf:{_FLOW}:end-state"
     open_thing = f"{_SCREEN}#open-thing"
     save_thing = f"{_SCREEN}#save-thing"
@@ -3398,15 +2881,11 @@ def test_a_web_journey_arrives_then_clicks_every_step_in_order() -> None:
     first = source.index('"#open-link"')
     second = source.index('"#save-button"')
     assert goto < first < second
-    # The claim is observed after the walk, never before it.
     assert second < source.rindex("#things-table")
 
 
 def test_a_web_journey_with_no_root_path_gaps_uncompilable_claim_not_a_fabricated_root() -> None:
-    """The journey side of the same catch-all removal: a driver with no path grammar states no
-    `rootPath`, so the journey gaps `uncompilable-claim` naming the missing root instead of
-    opening on a fabricated `qa.goto("/")` — no step is compiled and no claim is asserted in a
-    world the walk never actually reached."""
+    """The journey side of the same catch-all removal: a driver with no path grammar states no `rootPath`, so the journey gaps `uncompilable-claim` naming the missing root instead of opening on a fabricated `qa.goto("/")` — no step is compiled and no claim is asserted in a world the walk never actually reached."""
     oid = f"okf:{_FLOW}:end-state"
     open_thing = f"{_SCREEN}#open-thing"
     save_thing = f"{_SCREEN}#save-thing"
@@ -3457,11 +2936,7 @@ def _unarranged_journey_context(**flow_extra: object) -> tuple[str, dict]:
 
 
 def test_a_journey_that_arranges_nothing_compiles_to_no_scenario() -> None:
-    """A journey's claims are about the world its steps left, and the world its steps left is
-    the world they started in plus the walk. With nothing arranging the start, the end-state
-    assertion observes whatever the scenario before it happened to leave — so a red says
-    nothing about the app. The gap removes the case rather than routing it: no scenario is
-    emitted, and the obligation is reported unmet with the reason."""
+    """A journey's claims are about the world its steps left, and the world its steps left is the world they started in plus the walk."""
     oid, context = _unarranged_journey_context()
     result = _compile_plan_gaps(context, story="demo-story")
     assert isinstance(result, Refusal)
@@ -3469,9 +2944,7 @@ def test_a_journey_that_arranges_nothing_compiles_to_no_scenario() -> None:
 
 
 def test_a_journey_that_says_it_needs_no_arrangement_compiles() -> None:
-    """The author who decided the journey holds in whatever world it finds can say so, and
-    that is a different packet from the author who never looked — which is the whole reason
-    `arrangesNothing` is carried beside `fixturesDeclared` rather than folded into it."""
+    """The author who decided the journey holds in whatever world it finds can say so, and that is a different packet from the author who never looked — which is the whole reason `arrangesNothing` is carried beside `fixturesDeclared` rather than folded into it."""
     oid, context = _unarranged_journey_context(arrangesNothing=True)
     _result = _compile_plan_gaps(context, story="demo-story")
     assert isinstance(_result, Plan)
@@ -3483,14 +2956,7 @@ def test_a_journey_that_says_it_needs_no_arrangement_compiles() -> None:
 
 
 def test_a_scenario_ending_on_a_parameterised_route_vets_nothing() -> None:
-    """A screen addressed by `/links/:id/edit` names a family of pages, not one page.
-
-    The driver decides which screen it is looking at by comparing the page's URL against the
-    book's `route:`, so a route that cannot be compared leaves the vet grading a render nothing
-    established as this screen's. The verdicts would still be filed under it, and a pass filed
-    against an unestablished subject is worse than no pass at all — so the call is withheld and
-    the plan says why, on every obligation the scenario claims.
-    """
+    """A screen addressed by `/links/:id/edit` names a family of pages, not one page."""
     oid = "okf:policy-list:policy-table:visible:1"
     context = _navigation_context(
         _page_obligation(oid, f"{_SCREEN}#policy-table",
@@ -3505,17 +2971,11 @@ def test_a_scenario_ending_on_a_parameterised_route_vets_nothing() -> None:
     unidentifiable = [gap for gap in gaps if gap.kind == "unidentifiable-screen"]
     assert [gap.obligation_id for gap in unidentifiable] == [oid]
     assert "/policies/:id/edit" in unidentifiable[0].detail
-    # The claim itself is still observed — what was withheld is the placement grading.
     assert f'covers=["{oid}"]' in source
 
 
 def test_a_screen_the_book_states_no_route_for_vets_nothing() -> None:
-    """Silence and ambiguity reach the compiler the same way: absent from the packet's map.
-
-    `qa context` omits a screen file that states no `route:` and one that states two, because
-    neither gives a reader of a rendered page anything to compare. The scenario is the same in
-    both cases — it ends somewhere it cannot name — so it reports the same gap.
-    """
+    """Silence and ambiguity reach the compiler the same way: absent from the packet's map."""
     oid = "okf:policy-list:policy-table:visible:1"
     context = _navigation_context(
         _page_obligation(oid, f"{_SCREEN}#policy-table",
@@ -3532,12 +2992,7 @@ def test_a_screen_the_book_states_no_route_for_vets_nothing() -> None:
 
 
 def test_a_route_that_is_not_a_path_is_reported_as_one_not_as_a_pattern() -> None:
-    """A book reverse-engineered from a framework writes the route's *name* in this bullet.
-
-    `route: app_bundle_user_home` is a fact about the source, not an address, and telling its
-    author it "names a family of pages" sends them to remove a parameter that is not there.
-    Three unreadable shapes, three repairs, so the gap says which one it read.
-    """
+    """A book reverse-engineered from a framework writes the route's *name* in this bullet."""
     oid = "okf:policy-list:policy-table:visible:1"
 
     def detail_for(route: str) -> str:
@@ -3556,16 +3011,7 @@ def test_a_route_that_is_not_a_path_is_reported_as_one_not_as_a_pattern() -> Non
 
 
 def test_a_fixture_bullet_that_did_not_parse_is_not_the_journey_that_arranges_nothing() -> None:
-    """A rejected `fixture:` bullet and an absent one are not the same state of the book.
-
-    Downstream of the packet both were an empty `fixturesDeclared`, which is how a flow whose
-    bullet had a typo in it came to be gapped `unarranged-journey` — *"add a `fixture:` naming
-    the arrangement, or `fixture: none, because ...`"* — at an author who had added one, and
-    the advice was to do the thing already done. The packet now carries the value the parser
-    rejected together with the parser's own sentence, and the obligation is partitioned out
-    before any builder sees it: the state this claim is documented in is undetermined, and
-    nothing executable comes out of an undetermined arrangement.
-    """
+    """A rejected `fixture:` bullet and an absent one are not the same state of the book."""
     oid = f"okf:{_FLOW}:end-state"
     obligation = _flow_obligation(
         oid, source=_FLOW, surface="api",
@@ -3586,20 +3032,11 @@ def test_a_fixture_bullet_that_did_not_parse_is_not_the_journey_that_arranges_no
     assert _gap_kinds(result.gaps, oid) == ["unparsed-fixture"]
     [gap] = [g for g in result.gaps if g.obligation_id == oid]
     assert "Seeded Ledger" in gap.detail and "is not a fixture name" in gap.detail
-    # Not the undecided case's code, and nothing compiled against a state nobody established.
     assert "unarranged-journey" not in {g.kind for g in result.gaps}
 
 
 def test_a_fixture_providing_a_fact_of_undetermined_source_compiles_nothing() -> None:
-    """A `provides:` entry stating neither `from:`/`read:` nor `is:` is an undetermined arrangement.
-
-    The harness extracts every declared fact eagerly, before any check asks for one, so an entry
-    whose source the book left open aborts the whole scenario — not the one assertion that cites
-    it, and not only when something cites it at all. Left in `owed`, this obligation compiles
-    into a scenario that dies at run time with a message about JSON parsing, three services away
-    from the book that is actually wrong. So the gap is raised here, against the fixture, where
-    the author can act on it.
-    """
+    """A `provides:` entry stating neither `from:`/`read:` nor `is:` is an undetermined arrangement."""
     oid = f"okf:{_FLOW}:end-state"
     obligation = _flow_obligation(
         oid, source=_FLOW, surface="api",
@@ -3647,16 +3084,7 @@ def test_a_fixture_whose_provided_facts_all_state_a_source_compiles() -> None:
 
 
 def test_a_verify_bullet_the_parser_refused_is_not_a_node_that_declared_no_check() -> None:
-    """The gap said the book declares no check, to an author who declared one and misspelled it.
-
-    `_parse_checks` kept the rows that parsed and dropped the rest, so downstream an obligation
-    whose `verify:` bullet nobody could read and one with no `verify:` at all arrived the same
-    way — with no `checksDeclared` — and fell through to `no-verify-declared`. `ostler doctor`
-    refuses that bullet by name, which is what makes the fall-through a disagreement in writing
-    rather than a gap: two readers of one bullet, and the one deciding whether to emit code held
-    the wrong account of it. The packet now carries the refusal, and the obligation is
-    partitioned out before any builder sees it — an observation nobody could read is not one.
-    """
+    """The gap said the book declares no check, to an author who declared one and misspelled it."""
     oid = f"okf:{_SCREEN}#policy-table:contract"
     obligation = _page_obligation(oid, f"{_SCREEN}#policy-table",
                                   locators={"role": ["table"], "name": ["Policies on file"]},
@@ -3674,19 +3102,11 @@ def test_a_verify_bullet_the_parser_refused_is_not_a_node_that_declared_no_check
     [gap] = [g for g in result.gaps if g.obligation_id == oid]
     assert "visble(table:Policies on file)" in gap.detail
     assert "names no check in the vocabulary" in gap.detail
-    # Not the advice to declare what is already declared, and nothing asserted on its behalf.
     assert "no-verify-declared" not in {g.kind for g in result.gaps}
 
 
 def test_a_capture_bullet_the_parser_refused_gaps_where_it_was_written() -> None:
-    """A refused `capture:` costs this claim nothing and costs a later `$name` everything.
-
-    Unlike the two kinds above, the obligation is not partitioned out: its own check is still
-    stated and still emittable, and withholding it would be a second wrong answer. What was
-    lost is the *fact* the bullet would have minted — and without this gap, the only thing said
-    about it is an `unresolved-precondition` on whatever later bullet spells `$claim_id`, whose
-    author wrote it correctly. The gap goes on the bullet that is actually wrong.
-    """
+    """A refused `capture:` costs this claim nothing and costs a later `$name` everything."""
     oid = f"okf:{_SCREEN}#policy-table:contract"
     obligation = _page_obligation(oid, f"{_SCREEN}#policy-table",
                                   locators={"role": ["table"], "name": ["Policies on file"]},
@@ -3705,19 +3125,11 @@ def test_a_capture_bullet_the_parser_refused_gaps_where_it_was_written() -> None
     assert gap.obligation_id == oid
     assert "claim_id $.id" in gap.detail
     assert "names no source" in gap.detail
-    # The claim itself is still proven — the refusal is about the capture, not about the check.
     assert oid in _covers(source)
 
 
 def test_a_capture_no_builder_can_emit_stands_beside_the_claim_rather_than_against_it() -> None:
-    """A UI-locator capture on a routed obligation: the assertion compiles, the binding does not.
-
-    Both halves are true at once, and before `uncaptured-declaration` existed the compiler said
-    so in a vocabulary that made them contradict — an `uncompilable-claim` gap ("nobody looked")
-    minted against an id the same run compiled a real `covers=[...]` for. It survived only
-    because no book in the corpus declares a non-empty `capture:`; the mirror assert in
-    `compile_plan_gaps` would have caught it the day one did.
-    """
+    """A UI-locator capture on a routed obligation: the assertion compiles, the binding does not."""
     oid = "okf:docs/features/acme/api.md#get-things:does:1"
     context = _context(
         _obligation(
@@ -3735,17 +3147,11 @@ def test_a_capture_no_builder_can_emit_stands_beside_the_claim_rather_than_again
     assert _gap_kinds(result.gaps, oid) == ["uncaptured-declaration"]
     assert oid in covered
     assert "qa.capture_field(" not in result.source
-    assert "widget_id" in result.source  # the TODO says what went unbound, so it is not silent
+    assert "widget_id" in result.source
 
 
 def test_a_declared_capture_that_no_builder_accounts_for_is_refused() -> None:
-    """The guard, exercised by removing the thing it guards.
-
-    The defect is not that one builder cannot bind a page value — it is that a builder which
-    cannot has nothing forcing it to *say so*, and a declaration read by nobody is
-    indistinguishable from one the book never wrote. So the assert is aimed at the silence, and
-    the only honest way to test it is to put the silence back.
-    """
+    """The guard, exercised by removing the thing it guards."""
     oid = "okf:docs/features/acme/api.md#get-things:does:1"
     context = _context(
         _obligation(
@@ -3764,9 +3170,7 @@ def test_a_declared_capture_that_no_builder_accounts_for_is_refused() -> None:
 
 
 def test_a_capture_on_an_obligation_nobody_observed_goes_with_its_obligation() -> None:
-    """One silence, reported once. A checkless obligation is already gapped as book debt — a
-    second gap saying its capture went unbound grades the same nothing twice, and would send a
-    repair agent after a `capture:` bullet when the missing thing is the `verify:`."""
+    """One silence, reported once."""
     oid = "okf:docs/features/acme/api.md#get-things:does:1"
     context = _context(
         _obligation(oid, capturesDeclared=[{"name": "widget_id", "from": "#widget-id"}])
@@ -3775,37 +3179,12 @@ def test_a_capture_on_an_obligation_nobody_observed_goes_with_its_obligation() -
     assert _gap_kinds(gaps, oid) == ["no-verify-declared"]
 
 
-# --- D1 registry tripwire: every target named by the dispatch table is accounted for --------
-#
-# `_BUILT_TARGETS` is a claim, not an observation: it says "this compiler emits a scenario for
-# an obligation dispatched here." Direction 1 below checks the claim is *complete* — no target
-# `_DISPATCH_TABLE`/`_OBSERVE_ROW` can name falls through both `_BUILT_TARGETS` and an explicit,
-# reasoned exclusion. Direction 2 checks the harder half: that every member of `_BUILT_TARGETS`
-# is *true* — driving the compiler at each one and reading the emitted plan, not re-asserting a
-# second hardcoded list of "targets that work" beside the first.
 
-#: Targets D1's table names that this compiler does not build a scenario for, on purpose, each
-#: with the reason and the condition that retires the entry. Anything reachable from
-#: `_DISPATCH_TABLE`/`_OBSERVE_ROW` that is neither in `_BUILT_TARGETS` nor named here is an
-#: undecided cell — a target added to the table with no decision recorded — and fails
-#: `test_every_reachable_dispatch_target_is_built_or_named_as_an_exclusion` below.
-#:
-#: Empty today: every target `_DISPATCH_TABLE`/`_OBSERVE_ROW` can name is a member of
-#: `_BUILT_TARGETS`, so there is no acknowledged-unbuilt target to record. The dict stays —
-#: it is the recorded-decision slot the completeness test checks against — and a target added
-#: to the table with no builder behind it goes here, with its reason and the condition that
-#: retires it.
 _ACKNOWLEDGED_UNBUILT_TARGETS: dict[str, str] = {}
 
 
 def test_every_reachable_dispatch_target_is_built_or_named_as_an_exclusion() -> None:
-    """Completeness: nothing D1's table can dispatch to falls through the floor.
-
-    A target that shows up in `_DISPATCH_TABLE` or `_OBSERVE_ROW` with no entry in either
-    `_BUILT_TARGETS` or `_ACKNOWLEDGED_UNBUILT_TARGETS` is a decision nobody recorded — this
-    fails the moment one is added, rather than waiting for a book that exercises it to surface
-    a silent gap nobody meant to ship.
-    """
+    """Completeness: nothing D1's table can dispatch to falls through the floor."""
     reachable = {
         target
         for row in _DISPATCH_TABLE.values()
@@ -3826,8 +3205,7 @@ def test_every_reachable_dispatch_target_is_built_or_named_as_an_exclusion() -> 
 
 
 def _built_target_probe_playwright() -> tuple[dict, str]:
-    """The smallest obligation D1 dispatches to `playwright`: an `interaction` on a
-    `web`-driven surface, reachable from an arrival with nothing else to arrange."""
+    """The smallest obligation D1 dispatches to `playwright`: an `interaction` on a `web`-driven surface, reachable from an arrival with nothing else to arrange."""
     oid = "okf:built-target-probe:playwright:visible:1"
     context = _navigation_context(
         _page_obligation(oid, f"{_SCREEN}#probe",
@@ -3839,8 +3217,7 @@ def _built_target_probe_playwright() -> tuple[dict, str]:
 
 
 def _built_target_probe_http() -> tuple[dict, str]:
-    """The smallest obligation D1 dispatches to `http`: an `endpoint` on the default
-    `http`-driven surface, fully arranged so nothing else could withhold the scenario."""
+    """The smallest obligation D1 dispatches to `http`: an `endpoint` on the default `http`-driven surface, fully arranged so nothing else could withhold the scenario."""
     oid = "okf:built-target-probe:http:does:1"
     context = _context(
         _obligation(
@@ -3855,10 +3232,7 @@ def _built_target_probe_http() -> tuple[dict, str]:
 
 
 def _built_target_probe_cli() -> tuple[dict, str]:
-    """The smallest obligation D1 dispatches to `cli`: a `command` on a `cli`-driven surface,
-    with a real check (`exit_status`), a fixture arranged, and a `run:` (`ostler.acts`'s
-    `invoke`) for the check to bind to — so nothing about this obligation is missing except a
-    builder that reads it."""
+    """The smallest obligation D1 dispatches to `cli`: a `command` on a `cli`-driven surface, with a real check (`exit_status`), a fixture arranged, and a `run:` (`ostler.acts`'s `invoke`) for the check to bind to — so nothing about this obligation is missing except a builder that reads it."""
     oid = "okf:built-target-probe:cli:exit-status:1"
     context = _context(
         _obligation(
@@ -3880,12 +3254,7 @@ def _built_target_probe_cli() -> tuple[dict, str]:
 
 
 def test_a_run_with_no_owning_binary_is_uncompilable() -> None:
-    """`argv` names only the arguments — the executable is the owning `cli` file node's own
-    `binary:` bullet, resolved from `context["cliBinaries"]` by the obligation's shared `source`
-    path. A `cli` node with no `binary:` value (its `source` absent from that dict, exactly what
-    `context.py`'s `_cli_binaries` produces when the bullet is empty) leaves a well-formed
-    `run:` with nothing to name as the executable — that is uncompilable, not a guess at
-    `argv[0]`."""
+    """`argv` names only the arguments — the executable is the owning `cli` file node's own `binary:` bullet, resolved from `context["cliBinaries"]` by the obligation's shared `source` path."""
     oid = "okf:built-target-probe:cli:exit-status:no-binary:1"
     context = _context(
         _obligation(
@@ -3899,7 +3268,7 @@ def test_a_run_with_no_owning_binary_is_uncompilable() -> None:
         )
     )
     context["navigation"][""]["driver"] = "cli"
-    context["cliBinaries"] = {}  # the owning `cli` node declares no `binary:`
+    context["cliBinaries"] = {}
 
     _source, gaps = compile_plan_gaps(context, story="demo-story")
 
@@ -3910,9 +3279,7 @@ def test_a_run_with_no_owning_binary_is_uncompilable() -> None:
 
 
 def test_an_empty_argv_is_a_legal_bare_invocation() -> None:
-    """`argv=[]` is a real, empty argument list — a bare invocation of the binary with no
-    arguments — not indistinguishable from "no `run:` at all". It must compile to a call with no
-    arguments, never gap as `uncompilable-claim`."""
+    """`argv=[]` is a real, empty argument list — a bare invocation of the binary with no arguments — not indistinguishable from "no `run:` at all"."""
     oid = "okf:built-target-probe:cli:exit-status:empty-argv:1"
     context = _context(
         _obligation(
@@ -3938,11 +3305,7 @@ def test_an_empty_argv_is_a_legal_bare_invocation() -> None:
 
 
 def test_an_invocation_on_a_cli_driven_surface_compiles_to_a_real_scenario() -> None:
-    """`invocation` is one of `_OBSERVED_TYPES` — nobody performs it, the claim is observed
-    through whatever drives its surface — so a `cli`-driven surface routes it through
-    `_OBSERVE_ROW` to the same `cli` target `command` reaches through `_DISPATCH_TABLE`. Since
-    `cli` is a member of `_BUILT_TARGETS`, this must compile to a real scenario rather than
-    gap as `needs-target-backend` (no backend) or `uncompilable-claim` (nothing to compile)."""
+    """`invocation` is one of `_OBSERVED_TYPES` — nobody performs it, the claim is observed through whatever drives its surface — so a `cli`-driven surface routes it through `_OBSERVE_ROW` to the same `cli` target `command` reaches through `_DISPATCH_TABLE`."""
     oid = "okf:built-target-probe:invocation:cli:exit-status:1"
     context = _context(
         _obligation(
@@ -3972,11 +3335,7 @@ def test_an_invocation_on_a_cli_driven_surface_compiles_to_a_real_scenario() -> 
 
 
 def _built_target_probe_maestro() -> tuple[dict, str]:
-    """The smallest obligation D1 dispatches to `maestro`: an `interaction` on a
-    `mobile`-driven surface, its own node carrying a `testID=` selector so the check
-    resolves a locator, and its screen's `route:` shaped as a navigator screen name so
-    `qa.vet` has a document to compare against — nothing about this obligation is missing
-    except a builder that reads it."""
+    """The smallest obligation D1 dispatches to `maestro`: an `interaction` on a `mobile`-driven surface, its own node carrying a `testID=` selector so the check resolves a locator, and its screen's `route:` shaped as a navigator screen name so `qa.vet` has a document to compare against — nothing about this obligation is missing except a builder that reads it."""
     oid = "okf:built-target-probe:maestro:visible:1"
     navigation = _arrival_navigation()
     navigation["policy"]["driver"] = "mobile"
@@ -3995,10 +3354,6 @@ def _built_target_probe_maestro() -> tuple[dict, str]:
     return context, oid
 
 
-#: One minimal-obligation builder per member of `_BUILT_TARGETS` — the harness direction 2
-#: needs, not a second copy of the claim under test. `test_every_built_target_has_a_probe`
-#: below fails loudly if `_BUILT_TARGETS` ever grows a member this dict has no entry for, so a
-#: newly built target cannot silently skip the behavioural check by having nothing to drive it.
 _BUILT_TARGET_PROBES = {
     "playwright": _built_target_probe_playwright,
     "http": _built_target_probe_http,
@@ -4006,20 +3361,11 @@ _BUILT_TARGET_PROBES = {
     "maestro": _built_target_probe_maestro,
 }
 
-#: `_BUILT_TARGETS` members direction 2 has *measured* to have no working builder, each with the
-#: reason and the exit condition. This is the known-defect record the brief asks for.
-#: `strict=True` on the xfail this drives means an entry fails the suite the day its target
-#: starts passing, which is the point: nobody can leave a stale "known gap" behind once the fix
-#: lands. `cli` had an entry here — every `cli`-dispatched obligation reached
-#: `_gap_cli_obligations` unconditionally, which appended an `uncompilable-claim` gap and
-#: emitted no scenario — and it is gone now that `_cli_scenario_body` (compile.py) compiles a
-#: `command` obligation that declares a `run:` into `qa.tool(...).run(...)`.
 _KNOWN_BUILT_TARGET_GAPS: dict[str, str] = {}
 
 
 def test_every_built_target_has_a_probe() -> None:
-    """The probe table direction 2 drives must cover `_BUILT_TARGETS` exactly — a target added
-    there with no probe written is untested, not passing, and this is where that shows up."""
+    """The probe table direction 2 drives must cover `_BUILT_TARGETS` exactly — a target added there with no probe written is untested, not passing, and this is where that shows up."""
     assert set(_BUILT_TARGET_PROBES) == _BUILT_TARGETS
 
 
@@ -4037,13 +3383,7 @@ def test_every_built_target_has_a_probe() -> None:
     ],
 )
 def test_every_built_target_actually_emits_a_scenario(target: str) -> None:
-    """Direction 2, behavioural: `_BUILT_TARGETS` says this compiler emits a scenario for an
-    obligation dispatched to *target* — so drive the compiler with one and read the plan it
-    hands back, rather than re-asserting a second hardcoded "targets that work" list beside the
-    one under test. A gap where a scenario was claimed is exactly the defect this test exists
-    to catch; a target with a genuinely absent builder is recorded above as a strict xfail
-    instead of weakening this assertion.
-    """
+    """Direction 2, behavioural: `_BUILT_TARGETS` says this compiler emits a scenario for an obligation dispatched to *target* — so drive the compiler with one and read the plan it hands back, rather than re-asserting a second hardcoded "targets that work" list beside the one under test."""
     context, oid = _BUILT_TARGET_PROBES[target]()
     source, gaps = compile_plan_gaps(context, story="demo-story")
     assert source is not None
@@ -4056,15 +3396,7 @@ def test_every_built_target_actually_emits_a_scenario(target: str) -> None:
 
 
 def test_a_generated_flow_matches_the_hand_written_reference_flows_shape() -> None:
-    """Held against `browse-and-add-widget.flow.yaml`, a hand-written flow a fixture author
-    wrote for globex's own mobile app, not against a second expected-text blob this file's
-    author would write from the same belief as the generator itself. A generator checked only
-    against its own author's expected output is checked against that belief, not against the
-    format — which is exactly how `_maestro_flow_yaml` shipped for a time emitting no
-    `launchApp` at all: every existing test here asserted strings the generator's own author
-    typed, and none of them read the one document in this tree that independently states what
-    a real flow looks like.
-    """
+    """Held against `browse-and-add-widget.flow.yaml`, a hand-written flow a fixture author wrote for globex's own mobile app, not against a second expected-text blob this file's author would write from the same belief as the generator itself."""
     reference_path = (
         Path(__file__).resolve().parents[2] / "paddock" / "data" / "apps" / "globex"
         / "app" / "mobile-app" / ".maestro" / "browse-and-add-widget.flow.yaml"
@@ -4086,10 +3418,7 @@ def test_a_generated_flow_matches_the_hand_written_reference_flows_shape() -> No
 
 
 def test_the_compiled_maestro_target_and_flow_carry_the_books_own_bundle_id() -> None:
-    """Both `appId:` sites — the flow YAML header and `target(..., app_id=...)` in the
-    compiled plan — must thread the surface's *own* `bundleId`, not a fixed placeholder.
-    Varying the value away from every other maestro fixture's `com.example.mobile-app` is
-    what tells apart "reads the book" from "hardcodes one string that happens to match"."""
+    """Both `appId:` sites — the flow YAML header and `target(..., app_id=...)` in the compiled plan — must thread the surface's *own* `bundleId`, not a fixed placeholder."""
     context, oid = _built_target_probe_maestro()
     context["navigation"]["policy"]["bundleId"] = "com.acme.groom"
 
@@ -4105,9 +3434,7 @@ def test_the_compiled_maestro_target_and_flow_carry_the_books_own_bundle_id() ->
 
 
 def test_a_surface_with_no_bundle_id_gaps_undeclared_bundle_id_and_emits_no_maestro() -> None:
-    """A mobile obligation whose surface names no `bundle-id:` must not compile against
-    `_MAESTRO_APP_ID`'s old placeholder — it gaps `undeclared-bundle-id` and the plan carries
-    no scenario, no `target(driver=maestro, ...)`, and no flow file for it."""
+    """A mobile obligation whose surface names no `bundle-id:` must not compile against `_MAESTRO_APP_ID`'s old placeholder — it gaps `undeclared-bundle-id` and the plan carries no scenario, no `target(driver=maestro, ...)`, and no flow file for it."""
     context, oid = _built_target_probe_maestro()
     context["navigation"]["policy"]["bundleId"] = None
 
@@ -4117,10 +3444,7 @@ def test_a_surface_with_no_bundle_id_gaps_undeclared_bundle_id_and_emits_no_maes
 
 
 def test_a_surface_with_no_launch_screen_gaps_undeclared_launch_screen_and_emits_no_maestro() -> None:
-    """Mirrors `test_a_surface_with_no_bundle_id_gaps_undeclared_bundle_id_and_emits_no_maestro`:
-    a settled `bundle-id:` is not enough on its own — a mobile obligation whose surface names
-    no `launch-screen:` still compiles no flow, because the compiler has no way to know which
-    screen a cold `- launchApp` opens on and refuses to guess one."""
+    """Mirrors `test_a_surface_with_no_bundle_id_gaps_undeclared_bundle_id_and_emits_no_maestro`: a settled `bundle-id:` is not enough on its own — a mobile obligation whose surface names no `launch-screen:` still compiles no flow, because the compiler has no way to know which screen a cold `- launchApp` opens on and refuses to guess one."""
     context, oid = _built_target_probe_maestro()
     context["navigation"]["policy"]["launchScreen"] = None
 
@@ -4130,11 +3454,7 @@ def test_a_surface_with_no_launch_screen_gaps_undeclared_launch_screen_and_emits
 
 
 def test_an_obligation_off_the_launch_screen_gaps_unreachable_from_launch() -> None:
-    """A settled `launch-screen:` does not make every mobile obligation reachable: this
-    obligation's own page (`_SCREEN`, via `_built_target_probe_maestro`) is a *different*
-    screen than the one the surface's `launch-screen:` now names, and the book states no way
-    from the one to the other — so it gaps `unreachable-from-launch` rather than compiling a
-    flow that opens on the wrong screen and asserts against it anyway."""
+    """A settled `launch-screen:` does not make every mobile obligation reachable: this obligation's own page (`_SCREEN`, via `_built_target_probe_maestro`) is a *different* screen than the one the surface's `launch-screen:` now names, and the book states no way from the one to the other — so it gaps `unreachable-from-launch` rather than compiling a flow that opens on the wrong screen and asserts against it anyway."""
     context, oid = _built_target_probe_maestro()
     other_screen = "docs/features/policy/gui/screens/other.md"
     context["navigation"]["policy"]["launchScreen"] = other_screen
@@ -4147,10 +3467,7 @@ def test_an_obligation_off_the_launch_screen_gaps_unreachable_from_launch() -> N
 
 
 def test_a_mobile_journey_starting_on_the_launch_screen_compiles_end_to_end() -> None:
-    """The globex shape, pinned directly: a journey whose *first* step's own page is the
-    surface's settled `launch-screen:` still walks and compiles a flow — exercising
-    `_maestro_journey`'s own first-step-only check, which the standalone obligation path
-    `_built_target_probe_maestro` drives never reaches."""
+    """The globex shape, pinned directly: a journey whose *first* step's own page is the surface's settled `launch-screen:` still walks and compiles a flow — exercising `_maestro_journey`'s own first-step-only check, which the standalone obligation path `_built_target_probe_maestro` drives never reaches."""
     oid = f"okf:{_FLOW}:end-state"
     open_thing = f"{_SCREEN}#open-thing"
     save_thing = f"{_SCREEN}#save-thing"
@@ -4195,9 +3512,7 @@ def test_a_mobile_journey_starting_on_the_launch_screen_compiles_end_to_end() ->
 
 
 def _maestro_press_probe(book_key: str) -> tuple[dict, str]:
-    """`_built_target_probe_maestro`'s obligation, with a `press` act added on a control
-    of its own — the smallest fixture that puts a book-stated `key=` through the mobile
-    driver's own `pressKey` vocabulary rather than Playwright's."""
+    """`_built_target_probe_maestro`'s obligation, with a `press` act added on a control of its own — the smallest fixture that puts a book-stated `key=` through the mobile driver's own `pressKey` vocabulary rather than Playwright's."""
     oid = "okf:built-target-probe:maestro:press:1"
     navigation = _arrival_navigation()
     navigation["policy"]["driver"] = "mobile"
@@ -4221,9 +3536,7 @@ def _maestro_press_probe(book_key: str) -> tuple[dict, str]:
 
 
 def test_a_documented_press_key_compiles_to_its_own_documented_spelling() -> None:
-    """A book stated in ordinary title-case prose (`Enter`) is not the same string as Maestro's
-    own lowercase `enter`, so the compiled flow must emit the documented spelling regardless of
-    which casing the book happened to use — with no gap, since the physical key is real."""
+    """A book stated in ordinary title-case prose (`Enter`) is not the same string as Maestro's own lowercase `enter`, so the compiled flow must emit the documented spelling regardless of which casing the book happened to use — with no gap, since the physical key is real."""
     context, oid = _maestro_press_probe("Enter")
     result = _compile_plan_gaps(context, story="demo-story")
     assert isinstance(result, Plan)
@@ -4233,8 +3546,7 @@ def test_a_documented_press_key_compiles_to_its_own_documented_spelling() -> Non
 
 
 def test_a_documented_multi_word_press_key_compiles_to_its_own_documented_spelling() -> None:
-    """The same normalization holds for a two-word key: `Volume Up` in the book's own prose
-    still resolves against Maestro's own `volume up` and is emitted spelled that way."""
+    """The same normalization holds for a two-word key: `Volume Up` in the book's own prose still resolves against Maestro's own `volume up` and is emitted spelled that way."""
     context, oid = _maestro_press_probe("Volume Up")
     result = _compile_plan_gaps(context, story="demo-story")
     assert isinstance(result, Plan)
@@ -4244,8 +3556,7 @@ def test_a_documented_multi_word_press_key_compiles_to_its_own_documented_spelli
 
 
 def test_an_already_canonical_press_key_round_trips_unchanged() -> None:
-    """A book that already writes the documented spelling (`home`) is not a special case this
-    canonicalization has to detour around — it normalizes to itself and compiles the same way."""
+    """A book that already writes the documented spelling (`home`) is not a special case this canonicalization has to detour around — it normalizes to itself and compiles the same way."""
     context, oid = _maestro_press_probe("home")
     result = _compile_plan_gaps(context, story="demo-story")
     assert isinstance(result, Plan)
@@ -4255,11 +3566,7 @@ def test_an_already_canonical_press_key_round_trips_unchanged() -> None:
 
 
 def test_a_key_playwright_has_and_maestro_does_not_is_an_uncompilable_claim() -> None:
-    """`Space` is a real Playwright key (several web books already state it) and is nowhere in
-    Maestro's own `pressKey` table — the mobile driver cannot perform this claim, so it gaps
-    `uncompilable-claim` naming the key, emits no `pressKey` line, and (the shared `whole =
-    False`/`break` semantics the two neighbouring act gaps already use) withholds the rest of
-    this obligation's flow rather than emitting a partial one."""
+    """`Space` is a real Playwright key (several web books already state it) and is nowhere in Maestro's own `pressKey` table — the mobile driver cannot perform this claim, so it gaps `uncompilable-claim` naming the key, emits no `pressKey` line, and (the shared `whole = False`/`break` semantics the two neighbouring act gaps already use) withholds the rest of this obligation's flow rather than emitting a partial one."""
     context, oid = _maestro_press_probe("Space")
     result = _compile_plan_gaps(context, story="demo-story")
     assert isinstance(result, Refusal)
@@ -4269,10 +3576,7 @@ def test_a_key_playwright_has_and_maestro_does_not_is_an_uncompilable_claim() ->
 
 
 def test_the_web_arm_still_compiles_a_press_space_key_unchanged() -> None:
-    """The same `press(key="Space")` a mobile book cannot state is exactly what a web book
-    already states and this repo's own Playwright arm has always compiled unchanged — proving
-    this defect's fix is a fact about the *mobile* driver's own vocabulary, not a change to the
-    `press` act itself, which both drivers still declare (`acts.py`)."""
+    """The same `press(key="Space")` a mobile book cannot state is exactly what a web book already states and this repo's own Playwright arm has always compiled unchanged — proving this defect's fix is a fact about the *mobile* driver's own vocabulary, not a change to the `press` act itself, which both drivers still declare (`acts.py`)."""
     button = f"{_SCREEN}#submit-widget-button"
     submit_oid = "okf:new-widget:submit-new-widget:does:1"
     context = _navigation_context(
@@ -4301,13 +3605,7 @@ def test_the_web_arm_still_compiles_a_press_space_key_unchanged() -> None:
 
 
 def test_a_web_press_key_with_whitespace_is_uncompilable() -> None:
-    """Playwright's own key vocabulary is open — any single character, a large named set, and
-    `+`-joined modifier combos — so it cannot be checked against a closed table the way
-    Maestro's `pressKey` is (`_maestro_press_key`'s 29-name table has no web counterpart on
-    purpose). But no member of that vocabulary contains whitespace, so a web `press` key that
-    does is a Maestro spelling (`volume up`) handed to the wrong driver, not a Playwright key,
-    and this compiles to a gap rather than a `.press("volume up")` line that raises at
-    runtime."""
+    """Playwright's own key vocabulary is open — any single character, a large named set, and `+`-joined modifier combos — so it cannot be checked against a closed table the way Maestro's `pressKey` is (`_maestro_press_key`'s 29-name table has no web counterpart on purpose)."""
     button = f"{_SCREEN}#submit-widget-button"
     submit_oid = "okf:new-widget:submit-new-widget:does:1"
     context = _navigation_context(
@@ -4338,10 +3636,7 @@ def test_a_web_press_key_with_whitespace_is_uncompilable() -> None:
 
 
 def test_a_web_press_modifier_combo_key_compiles_unchanged() -> None:
-    """A `+`-joined modifier combo (`Control+A`) is a real Playwright key with no whitespace in
-    it anywhere, so the whitespace rule must not catch it — the rule is sound on exactly the
-    fact that no single character, named key or combo ever contains a space, not on rejecting
-    anything that looks unfamiliar."""
+    """A `+`-joined modifier combo (`Control+A`) is a real Playwright key with no whitespace in it anywhere, so the whitespace rule must not catch it — the rule is sound on exactly the fact that no single character, named key or combo ever contains a space, not on rejecting anything that looks unfamiliar."""
     button = f"{_SCREEN}#submit-widget-button"
     submit_oid = "okf:new-widget:submit-new-widget:does:1"
     context = _navigation_context(
@@ -4370,10 +3665,7 @@ def test_a_web_press_modifier_combo_key_compiles_unchanged() -> None:
 
 
 def test_the_mobile_arm_is_unaffected_by_the_web_whitespace_rule() -> None:
-    """The whitespace rule is a fact about the *web* driver's own vocabulary — it must not leak
-    into the mobile arm, which already has its own closed-vocabulary check
-    (`_maestro_press_key`) and already accepts `volume up` as one of Maestro's own documented
-    `pressKey` spellings."""
+    """The whitespace rule is a fact about the *web* driver's own vocabulary — it must not leak into the mobile arm, which already has its own closed-vocabulary check (`_maestro_press_key`) and already accepts `volume up` as one of Maestro's own documented `pressKey` spellings."""
     context, oid = _maestro_press_probe("volume up")
     result = _compile_plan_gaps(context, story="demo-story")
     assert isinstance(result, Plan)
@@ -4383,13 +3675,7 @@ def test_the_mobile_arm_is_unaffected_by_the_web_whitespace_rule() -> None:
 
 
 def test_a_web_journey_step_with_a_whitespace_press_key_gaps_only_the_specific_claim() -> None:
-    """A journey step whose `arrange:` names a `press` key with whitespace in it is refused for
-    the same reason `_performed_lines` already refuses it standalone — the key names a Maestro
-    spelling handed to the wrong driver. `_web_journey` must not stack its own generic "step N
-    declares an arrangement this journey cannot make" gap on top of that: the specific gap
-    already says why the step cannot be performed, and the generic one would assert the cause
-    is one of three named things (no driver, no addressable subject, a bullet the act parser
-    refused) when it is in fact a fourth."""
+    """A journey step whose `arrange:` names a `press` key with whitespace in it is refused for the same reason `_performed_lines` already refuses it standalone — the key names a Maestro spelling handed to the wrong driver."""
     oid = f"okf:{_FLOW}:end-state"
     open_thing = f"{_SCREEN}#open-thing"
     save_thing = f"{_SCREEN}#save-thing"

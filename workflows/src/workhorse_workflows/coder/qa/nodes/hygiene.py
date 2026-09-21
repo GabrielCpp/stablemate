@@ -1,18 +1,4 @@
-"""The two pre-commit hygiene gates: relocate stray screenshots, reject sentinel IDs.
-
-Ports `flush-root-screenshots.py` and `check-sentinel-ids.py`. Both run right before the
-commit, both work on the *code* repo rather than the docs repo, and both are the kind of
-check that is worthless unless it is deterministic — an agent asked "did you leave any
-placeholders behind?" answers no.
-
-Both find their repo through `workhorse.scriptutil.find_repo_root`, called on the run's
-`repo_dir` input — the node is told which repo it works on, and walks upward from there
-rather than reading the process's working directory.
-
-The gates disagree about what a problem means, and that stays: a screenshot that cannot be
-moved is logged and the flow continues, while a sentinel ID fails the QA pass. One is
-tidying, the other is a shipped-code defect.
-"""
+"""The two pre-commit hygiene gates: relocate stray screenshots, reject sentinel IDs."""
 from __future__ import annotations
 
 import logging
@@ -26,10 +12,8 @@ from workhorse_workflows.coder.shared.blueprint import blueprint
 from workhorse_workflows.coder.shared.schemas.qa import QaResult, ScreenshotFlush
 from workhorse_workflows.kit import diff_text, list_tracked_files, trunk_base
 
-#: What counts as a screenshot at the repo root.
 IMAGE_EXTS = frozenset({".png", ".jpg", ".jpeg", ".webp", ".gif"})
 
-#: An added line matching any of these is an unreconciled placeholder in shipped source.
 SENTINEL_PATTERNS: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r'["\']0{8}-0{4}-0{4}-0{4}-0{12}["\']', re.IGNORECASE), "all-zeros UUID constant"),
     (re.compile(r'["\']0{32,}["\']', re.IGNORECASE), "all-zeros hex/UUID constant"),
@@ -42,10 +26,8 @@ SENTINEL_PATTERNS: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"\bstub\s+until\b", re.IGNORECASE), "'stub until' placeholder"),
 ]
 
-#: Only these are scanned. A sentinel in a config file is not shipped behavior.
 SOURCE_EXTENSIONS = frozenset({".go", ".ts", ".tsx", ".js", ".jsx"})
 
-#: Filename markers for test files, which are allowed their placeholders.
 TEST_MARKERS = (
     "_test.go",
     ".spec.ts",
@@ -57,21 +39,15 @@ TEST_MARKERS = (
 )
 
 
-# --- stray screenshots -------------------------------------------------------
 
 
 def _tracked_names(root: Path) -> set[str]:
-    """Top-level files git already tracks. Empty when git is unavailable, which makes the
-    move best-effort rather than wrong — nothing is then treated as a committed asset."""
+    """Top-level files git already tracks."""
     return {path for path in list_tracked_files(root) if "/" not in path}
 
 
 def _dest_dir(root: Path, spec_dir: str) -> Path | None:
-    """`<spec_dir>/qa/` under the repo root, or `None` when `spec_dir` is not usable.
-
-    The two guards are against a blank or garbage `spec_dir` resolving to — or above — the
-    repo root, which would make the "destination" the very directory being cleaned.
-    """
+    """`<spec_dir>/qa/` under the repo root, or `None` when `spec_dir` is not usable."""
     spec = spec_dir.strip()
     if not spec:
         return None
@@ -86,7 +62,7 @@ def _dest_dir(root: Path, spec_dir: str) -> Path | None:
 
 
 def _unique_target(dest: Path, name: str) -> Path:
-    """`dest/name`, suffixed `-1`, `-2`, … if it is taken. Moves never overwrite."""
+    """`dest/name`, suffixed `-1`, `-2`, … if it is taken."""
     if not (dest / name).exists():
         return dest / name
     stem, suffix = Path(name).stem, Path(name).suffix
@@ -100,13 +76,7 @@ def _unique_target(dest: Path, name: str) -> Path:
 def flush_root_screenshots(
     logger: logging.Logger, spec_dir: str = "", repo_dir: str = ""
 ) -> ScreenshotFlush:
-    """Move untracked root images into `<spec_dir>/qa/` so `git add -A` cannot commit them.
-
-    QA is supposed to screenshot to an absolute path under the spec dir; in practice a bare
-    filename passed to `page.screenshot()` lands at the agent's cwd instead. Conservative on
-    purpose — top-level only, untracked only, moves rather than deletes — because the cost
-    of being wrong here is destroying a committed asset.
-    """
+    """Move untracked root images into `<spec_dir>/qa/` so `git add -A` cannot commit them."""
     root = find_repo_root(repo_dir)
     strays = sorted(p for p in root.iterdir() if p.is_file() and p.suffix.lower() in IMAGE_EXTS)
     if not strays:
@@ -159,23 +129,10 @@ def flush_root_screenshots(
     return ScreenshotFlush(flushed=flushed, kept_tracked=kept_tracked, notes=note)
 
 
-# --- sentinel IDs ------------------------------------------------------------
 
 
 def _added_lines(root: Path, base_ref: str) -> list[tuple[str, int, str]]:
-    """`(filename, lineno, content)` for every `+` line between `base_ref` and `HEAD`.
-
-    Parsed rather than scanned. The hand-written version this replaces tracked the current
-    file and line number in loop variables and re-derived the line number from
-    `re.search(r"\\+(\\d+)", line)` on the hunk header — which reads the *first* `+N` in
-    `@@ -12,0 +34 @@`, and so read the pre-image start for any header whose old side happens
-    to be spelled without a comma. Worse, every one of its `startswith` tests is a claim
-    about a *line's position in the file*, which a hunk body can forge: a diff of a diff —
-    which this repo contains, in its own test fixtures — carries added lines whose own
-    content begins `+++ b/` or `@@ `, silently re-pointing the filename and line counter at
-    whatever that fixture happened to say. `unidiff` knows a hunk body from a hunk header,
-    and reads the target line number the format already states.
-    """
+    """`(filename, lineno, content)` for every `+` line between `base_ref` and `HEAD`."""
     diff = diff_text(root, "--unified=0", base_ref, "HEAD", "--")
     if not diff:
         return []
@@ -189,8 +146,6 @@ def _added_lines(root: Path, base_ref: str) -> list[tuple[str, int, str]]:
         for patched in patch
         for hunk in patched
         for line in hunk
-        # An added line always has a target line number — it is the post-image the hunk
-        # header counts. The check is what keeps the span type honest for the callers.
         if line.is_added and line.target_line_no is not None
     ]
 
@@ -201,8 +156,7 @@ def _is_test_file(filename: str) -> bool:
 
 
 def _is_comment_line(content: str, filename: str) -> bool:
-    """Whether the line is a pure comment — a heuristic, and only for the two dialects
-    whose sentinels this gate is aimed at. Anything else is scanned."""
+    """Whether the line is a pure comment — a heuristic, and only for the two dialects whose sentinels this gate is aimed at."""
     stripped = content.lstrip()
     if filename.endswith(".go"):
         return stripped.startswith("//")
@@ -215,12 +169,7 @@ def _is_comment_line(content: str, filename: str) -> bool:
 def check_sentinel_ids(
     logger: logging.Logger, story_slug: str = "", repo_dir: str = ""
 ) -> QaResult:
-    """Fail the pass if this branch added a fabricated ID or an "until X exists" stub.
-
-    Every failure to *run* the gate returns `passed`, and that is not an oversight: it is a
-    pre-commit tidiness check over a diff, and a repo with no git history to diff has no
-    added lines to be wrong about. The gate that must fail closed is the evidence gate.
-    """
+    """Fail the pass if this branch added a fabricated ID or an "until X exists" stub."""
     slug = story_slug or "(unknown)"
     root = find_repo_root(repo_dir)
 

@@ -1,14 +1,4 @@
-"""A `verify:` value that is well-formed under `tests:` is one distinction, decided once.
-
-Two questions were being asked of the same value by two modules: which key does it belong
-under (`checks`, composing the refusal a person reads) and may a program move it there
-unattended (`autofix`, rewriting the line). Each module held its own definition, and on a
-bullet citing two test files they disagreed — the finding handed back the whole check
-vocabulary while `autofix` silently relocated the bullet. `checks.relocatable_to_tests` is
-now the single definition, so the classification is a superset of the rewrite by
-construction, and `fixable` is *asked* rather than asserted: a finding claims `ostler
-autofix` clears it only where autofix actually will.
-"""
+"""A `verify:` value that is well-formed under `tests:` is one distinction, decided once."""
 
 from __future__ import annotations
 
@@ -22,7 +12,6 @@ from conftest import screen_md, write
 ENDPOINT_PATH = "docs/features/acme/server.md"
 SCREEN_PATH = "docs/features/ui/dash.md"
 
-#: Every shape a real book writes under `verify:`, with what each one is.
 VALUES: dict[str, str] = {
     "`api-service/internal/account/account_test.go::Test_Create`": "citation",
     "`web-app/app/routes/home.test.tsx`, `web-app/app/routes/locale.test.tsx`": "citation",
@@ -70,12 +59,7 @@ def test_fixable_is_true_exactly_when_autofix_moves_the_bullet(repo: Path) -> No
 
 def test_a_type_that_does_not_own_tests_is_never_told_the_fix_is_automatic(
         repo: Path) -> None:
-    """`screen` declares no `tests:`, so autofix leaves the bullet and the flag says so.
-
-    The value proves itself a citation; where it would go is the part the type decides. A
-    finding claiming `ostler autofix` clears it would send the builders' repair loop to an
-    autofix that never touches the line.
-    """
+    """`screen` declares no `tests:`, so autofix leaves the bullet and the flag says so."""
     value = "`web-app/app/routes/home.test.tsx::renders`"
     assert "tests" not in registry.declared_keys("screen")
     write(repo / SCREEN_PATH,

@@ -13,8 +13,7 @@ def test_positional_and_keyword_arguments_bind_to_the_declared_params() -> None:
 
 
 def test_text_is_identity_not_display() -> None:
-    """Two spellings of one act render one string, so a compiled plan and the bullet it came
-    from compare on substance rather than on argument order."""
+    """Two spellings of one act render one string, so a compiled plan and the bullet it came from compare on substance rather than on argument order."""
     one = acts.parse_act('fill(value="A", locator="#name-field")')
     two = acts.parse_act('fill("#name-field",   "A")')
     assert isinstance(one, acts.ActCall) and isinstance(two, acts.ActCall)
@@ -28,8 +27,7 @@ def test_a_soft_wrapped_bullet_parses_as_markdown_renders_it() -> None:
 
 
 def test_a_bare_name_is_a_fixture_relocated_rather_than_a_malformed_act() -> None:
-    """`fixture:` was the only arrangement key for a long time, so its habit is the likeliest
-    mistake — and it is not a mistake in the value, only in the key above it."""
+    """`fixture:` was the only arrangement key for a long time, so its habit is the likeliest mistake — and it is not a mistake in the value, only in the key above it."""
     refused = acts.parse_act("widgets-on-hand")
     assert isinstance(refused, checks.Refusal)
     assert refused.kind == "misfiled-fixture"
@@ -38,8 +36,7 @@ def test_a_bare_name_is_a_fixture_relocated_rather_than_a_malformed_act() -> Non
 
 
 def test_an_unknown_name_gets_the_act_vocabulary_not_the_check_vocabulary() -> None:
-    """The two keys share a call grammar and not a vocabulary: `visible` is a check and
-    nothing at all here, and handing back the wrong list sends the author to write one."""
+    """The two keys share a call grammar and not a vocabulary: `visible` is a check and nothing at all here, and handing back the wrong list sends the author to write one."""
     refused = acts.parse_act('visible(locator="#x")')
     assert isinstance(refused, checks.Refusal)
     assert refused.kind == "unknown-act"
@@ -55,8 +52,7 @@ def test_a_missing_required_argument_is_refused_with_that_act_s_signature() -> N
 
 
 def test_a_non_string_argument_is_refused_because_a_performer_types_strings() -> None:
-    """`value=3` states a value no driver can deliver without inventing a rendering for it:
-    the user types "3", and the book is the place that says so."""
+    """`value=3` states a value no driver can deliver without inventing a rendering for it: the user types "3", and the book is the place that says so."""
     refused = acts.parse_act('fill(locator="#quantity", value=3)')
     assert isinstance(refused, checks.Refusal)
     assert "is str, got int" in refused.message
@@ -76,8 +72,7 @@ def test_bind_and_parse_agree_so_a_plan_compares_to_the_bullet_it_came_from() ->
 
 
 def test_every_act_declares_at_least_one_driver_that_can_perform_it() -> None:
-    """Performability is a relation between what the act needs and what a driver supplies —
-    an act no driver can perform is a name the book can write and no target can honour."""
+    """Performability is a relation between what the act needs and what a driver supplies — an act no driver can perform is a name the book can write and no target can honour."""
     vocabulary = {"web", "mobile", "http", "cli", "artifact", "iac", "none"}
     for spec in acts.ACTS:
         assert spec.drivers, spec.name
@@ -86,19 +81,14 @@ def test_every_act_declares_at_least_one_driver_that_can_perform_it() -> None:
 
 
 def test_every_web_or_mobile_act_names_the_control_it_operates_by_a_locator() -> None:
-    """An act with no locator would operate whatever the driver last touched, which is not a
-    statement the book can make about a control — true of a person's driver, where the control
-    the performer touches is exactly what the act needs named. `body`'s driver is HTTP: there is
-    no control on a wire, so it names a field instead — see the next test."""
+    """An act with no locator would operate whatever the driver last touched, which is not a statement the book can make about a control — true of a person's driver, where the control the performer touches is exactly what the act needs named."""
     for spec in acts.ACTS:
         if acts.WEB in spec.drivers or acts.MOBILE in spec.drivers:
             assert any(p.locator and p.required for p in spec.params), spec.name
 
 
 def test_body_names_a_field_rather_than_a_control() -> None:
-    """`body`'s subject is a member of the request this step sends, not a component the book
-    declares by anchor — a request field is not a `locator=` name because nothing on the wire
-    is a control the book can point at."""
+    """`body`'s subject is a member of the request this step sends, not a component the book declares by anchor — a request field is not a `locator=` name because nothing on the wire is a control the book can point at."""
     spec = acts.ACT_BY_NAME["body"]
     assert acts.HTTP in spec.drivers
     assert acts.WEB not in spec.drivers and acts.MOBILE not in spec.drivers
@@ -106,9 +96,7 @@ def test_body_names_a_field_rather_than_a_control() -> None:
 
 
 def test_body_admits_the_json_scalars_a_request_can_carry() -> None:
-    """`body`'s `value` is typed `scalar`, not `str` like a person-driven act's — a request
-    field's value is whatever the wire will carry it as, and `{"quantity": 3}` and
-    `{"quantity": "3"}` are different requests."""
+    """`body`'s `value` is typed `scalar`, not `str` like a person-driven act's — a request field's value is whatever the wire will carry it as, and `{"quantity": 3}` and `{"quantity": "3"}` are different requests."""
     call = acts.parse_act('body(field="quantity", value=3)')
     assert isinstance(call, acts.ActCall)
     assert call.args == {"field": "quantity", "value": 3}
@@ -123,24 +111,21 @@ def test_body_admits_a_bool_string_or_float_value_too() -> None:
 
 
 def test_body_refuses_a_value_no_json_scalar_can_be() -> None:
-    """A per-parameter check, not the blanket str rule `fill` uses — but `body` still refuses
-    what no scalar in a JSON body could ever be."""
+    """A per-parameter check, not the blanket str rule `fill` uses — but `body` still refuses what no scalar in a JSON body could ever be."""
     refused = acts.bind("body", {"field": "tags", "value": ["a", "b"]})
     assert isinstance(refused, checks.Refusal)
     assert "is scalar, got list" in refused.message
 
 
 def test_fill_still_refuses_a_non_string_value_per_its_own_parameter() -> None:
-    """The per-parameter rewrite of `bind()` must not have widened `fill`'s own type: its driver
-    is still a person, and a person types "3", not 3."""
+    """The per-parameter rewrite of `bind()` must not have widened `fill`'s own type: its driver is still a person, and a person types "3", not 3."""
     refused = acts.bind("fill", {"locator": "#quantity-field", "value": 3})
     assert isinstance(refused, checks.Refusal)
     assert "is str, got int" in refused.message
 
 
 def test_the_act_key_is_an_arrangement_the_binding_sees_but_not_a_fixture_name() -> None:
-    """The two halves of `arrange_keys`: everything that binds an arrangement to a claim reads
-    both, and only the checkers that resolve a fixture *name* read `fixture_keys`."""
+    """The two halves of `arrange_keys`: everything that binds an arrangement to a claim reads both, and only the checkers that resolve a fixture *name* read `fixture_keys`."""
     assert registry.performed_keys("interaction") == ("arrange",)
     assert registry.fixture_keys("interaction") == ("fixture",)
     assert set(registry.arrange_keys("interaction")) == {"fixture", "arrange"}

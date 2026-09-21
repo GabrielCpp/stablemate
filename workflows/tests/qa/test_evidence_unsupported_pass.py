@@ -1,15 +1,4 @@
-"""The evidence gate's unsupported-Pass check — `_unsupported_pass_problems`.
-
-`log_refs` is written by the assessor, and every other criterion check reads only what it
-cites. So a criterion could name the four assertions of its scenario that passed, omit the
-two that failed, and stand as a fully-proven Pass with no machine disagreeing — the exact
-shape of a half-working feature shipping green. Observed on `02-page-identity`, where a
-scenario's probe fixture was never written, two assertions failed on the missing file, and
-the criterion still read Pass; only the auditor's prose caught it.
-
-What is pinned here is that the run log, not the citation, decides: a scenario the runner
-recorded a FAIL in cannot hold up a Pass, whether or not the refs admit the failure.
-"""
+"""The evidence gate's unsupported-Pass check — `_unsupported_pass_problems`."""
 from __future__ import annotations
 
 import json
@@ -63,8 +52,7 @@ def test_a_pass_on_a_clean_scenario_is_left_alone(tmp_path: Path) -> None:
 
 
 def test_a_criterion_that_admits_the_failure_is_still_flagged(tmp_path: Path) -> None:
-    """Citing the failed assertion does not license the Pass — `_criteria_problems` only
-    checks that refs resolve, so honesty in the citation is not itself proof."""
+    """Citing the failed assertion does not license the Pass — `_criteria_problems` only checks that refs resolve, so honesty in the citation is not itself proof."""
     spec_dir = _spec_dir(
         tmp_path, _assert("ac3-reject-title-argument", "ac3-2-assert_contains", "FAIL")
     )

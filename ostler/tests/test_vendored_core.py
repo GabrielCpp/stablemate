@@ -1,27 +1,4 @@
-"""ostler carries `stablemate_core` the way workhorse and farrier already do.
-
-The persistent parse index lives in the shared stablemate cache directory, and ostler
-cannot name that directory today: it declares no stablemate dependency at all, so
-`~/.cache/stablemate` is unreachable from its code. The fix is the mechanism this repo
-already has — `scripts/vendor_core.py` copies `core/stablemate_core` into each tool that
-ships it — with ostler added as the third destination.
-
-What these tests hold that to:
-
-* the copy is *committed* and byte-identical to `core/stablemate_core`. Committed rather
-  than synthesized at build time because release-please decides what to ship from the
-  paths a commit touched, and byte-identical because two copies of a config writer are
-  only safe while they are the same file;
-* `make check-vendor` — the existing target — covers all three copies, so the drift
-  guard comes for free and no new gate is introduced;
-* the vendored package is importable as `ostler._vendor.stablemate_core` and its
-  cache-directory resolver is reachable from ostler code;
-* `platformdirs` and `tomli-w` are declared, annotated as the *vendored package's*
-  requirements rather than ostler's own — the same comment farrier and workhorse carry,
-  because the copy ships inside the wheel;
-* nothing about ostler's behaviour moves. This commit only makes the shared cache
-  directory reachable: importing ostler still fetches nothing and writes no cache.
-"""
+"""ostler carries `stablemate_core` the way workhorse and farrier already do."""
 
 from __future__ import annotations
 
@@ -42,17 +19,11 @@ VENDOR_SCRIPT = REPO_ROOT / "scripts" / "vendor_core.py"
 CORE = REPO_ROOT / "core" / "stablemate_core"
 OSTLER_VENDOR = REPO_ROOT / "ostler" / "ostler" / "_vendor" / "stablemate_core"
 
-#: Every tool that ships a copy. ostler is the one this packet adds; the other two are
-#: named so a destination silently dropped from the script is a failure too.
 VENDORING_TOOLS = ("farrier", "workhorse", "ostler")
 
 
 def _vendor_script() -> ModuleType:
-    """`scripts/vendor_core.py` as a module, so its destination list can be read.
-
-    Loaded by path rather than imported: `scripts/` is a directory of dev tools, not a
-    package, and the ostler suite runs with its own package root on `sys.path`.
-    """
+    """`scripts/vendor_core.py` as a module, so its destination list can be read."""
     assert VENDOR_SCRIPT.exists(), f"the vendor script is missing: {VENDOR_SCRIPT}"
     spec = importlib.util.spec_from_file_location("stablemate_vendor_core", VENDOR_SCRIPT)
     assert spec is not None and spec.loader is not None
@@ -86,12 +57,7 @@ def _run(
 
 
 def test_the_vendor_script_lists_ostlers_destination():
-    """ostler joins workhorse and farrier in `DESTINATIONS` — one copy per shipping tool.
-
-    Adding the destination is what makes `make vendor` write the copy and `make
-    check-vendor` guard it. A copy placed by hand, with the script left unaware of it,
-    is precisely the drift the script exists to prevent.
-    """
+    """ostler joins workhorse and farrier in `DESTINATIONS` — one copy per shipping tool."""
     destinations = [Path(d).resolve() for d in _vendor_script().DESTINATIONS]
 
     assert OSTLER_VENDOR.resolve() in destinations, (
@@ -103,11 +69,7 @@ def test_the_vendor_script_lists_ostlers_destination():
 
 
 def test_the_committed_copy_is_byte_identical_to_core():
-    """The copy is in the tree, complete, and the same bytes as `core/stablemate_core`.
-
-    Committed rather than synthesized at build time: release-please reads the paths a
-    commit touched, so a core fix that lands only under `core/` reaches nobody.
-    """
+    """The copy is in the tree, complete, and the same bytes as `core/stablemate_core`."""
     assert OSTLER_VENDOR.is_dir(), (
         f"no committed copy at {OSTLER_VENDOR.relative_to(REPO_ROOT)} — run `make vendor`"
     )
@@ -122,12 +84,7 @@ def test_the_committed_copy_is_byte_identical_to_core():
 
 
 def test_check_vendor_passes_and_covers_all_three_copies():
-    """`make check-vendor` is green over three copies.
-
-    No new gate: the guard the other two tools already pay for now guards ostler's copy
-    as well. Whether `check-vendor` is chained onto `make test` is a root-level
-    concern, not ostler's — that one belongs at the root, not here.
-    """
+    """`make check-vendor` is green over three copies."""
     destinations = _vendor_script().DESTINATIONS
     assert len(destinations) == len(VENDORING_TOOLS), (
         f"expected one vendored copy per shipping tool {VENDORING_TOOLS}: {destinations}"
@@ -138,11 +95,7 @@ def test_check_vendor_passes_and_covers_all_three_copies():
 
 
 def test_the_vendored_package_is_importable_under_ostler():
-    """`ostler._vendor.stablemate_core` resolves, and resolves *inside* the ostler package.
-
-    Inside is the point: the wheel has to carry the copy, so an install of ostler alone
-    resolves the shared cache code without a stablemate dependency it cannot have.
-    """
+    """`ostler._vendor.stablemate_core` resolves, and resolves *inside* the ostler package."""
     ostler = importlib.import_module("ostler")
     vendored = importlib.import_module("ostler._vendor.stablemate_core")
 
@@ -154,12 +107,7 @@ def test_the_vendored_package_is_importable_under_ostler():
 
 
 def test_the_cache_directory_resolver_is_reachable_from_ostler_code(monkeypatch, tmp_path):
-    """The shared cache directory can be named from ostler — the whole point of the copy.
-
-    Reachable means the real resolver: it honours `$STABLEMATE_CACHE_DIR` and otherwise
-    falls back to the platform cache dir, so a container that warms the index from the
-    host and an interactive session on that host agree on where it lives.
-    """
+    """The shared cache directory can be named from ostler — the whole point of the copy."""
     base_cache = importlib.import_module("ostler._vendor.stablemate_core.base_cache")
 
     monkeypatch.setenv(base_cache.CACHE_DIR_ENV, str(tmp_path / "elsewhere"))
@@ -173,11 +121,7 @@ def test_the_cache_directory_resolver_is_reachable_from_ostler_code(monkeypatch,
 
 @pytest.mark.parametrize("requirement", ["platformdirs", "tomli-w"])
 def test_pyproject_declares_the_vendored_packages_requirements(requirement: str):
-    """`platformdirs>=4` and `tomli-w>=1.0`, floors included.
-
-    They land in ostler's dependency list because the copy ships inside ostler's wheel,
-    not because ostler imports them.
-    """
+    """`platformdirs>=4` and `tomli-w>=1.0`, floors included."""
     floors = {"platformdirs": 4, "tomli-w": 1}
     pyproject = tomllib.loads((REPO_ROOT / "ostler" / "pyproject.toml").read_text("utf-8"))
     declared = {
@@ -194,11 +138,7 @@ def test_pyproject_declares_the_vendored_packages_requirements(requirement: str)
 
 
 def test_the_requirements_are_annotated_as_the_vendored_packages_own():
-    """The same comment farrier and workhorse carry, for the same reason.
-
-    Two names in a dependency list that nothing in the package imports read as leftovers
-    and get deleted. The comment is what stops that.
-    """
+    """The same comment farrier and workhorse carry, for the same reason."""
     text = (REPO_ROOT / "ostler" / "pyproject.toml").read_text(encoding="utf-8")
     block = text.split("dependencies = [", 1)[1].split("]", 1)[0]
     comments = " ".join(line.strip() for line in block.splitlines() if line.strip().startswith("#"))
@@ -210,13 +150,7 @@ def test_the_requirements_are_annotated_as_the_vendored_packages_own():
 
 
 def test_vendoring_changes_no_ostler_behaviour(tmp_path):
-    """A reachable cache directory is not a used one — this commit only makes it nameable.
-
-    Nothing under `ostler/` outside `_vendor/` may call the base-library fetch, and
-    running the CLI must leave the configured cache directory untouched: an ostler that
-    started cloning from GitHub on `--help` would be a behaviour change smuggled in with
-    a copy.
-    """
+    """A reachable cache directory is not a used one — this commit only makes it nameable."""
     package = REPO_ROOT / "ostler" / "ostler"
     assert OSTLER_VENDOR.is_dir(), f"nothing vendored yet at {OSTLER_VENDOR.relative_to(REPO_ROOT)}"
 

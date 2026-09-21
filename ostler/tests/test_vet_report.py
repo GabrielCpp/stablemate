@@ -11,12 +11,7 @@ from ostler.vet.report import VetReport, build_report, build_vet_concept
 
 
 def _frontmatter(raw: str) -> dict:
-    """The frontmatter of a rendered vet concept — `build_vet_concept` always writes one.
-
-    Asserting that here rather than at each read keeps the failure legible: a builder that
-    stopped emitting frontmatter fails on this line, not with a subscript of None inside
-    whichever assertion happened to run first.
-    """
+    """The frontmatter of a rendered vet concept — `build_vet_concept` always writes one."""
     found = markdown.split(raw).frontmatter
     assert found is not None
     return found
@@ -107,7 +102,6 @@ def test_build_vet_concept_rerun_same_state_replaces_in_place():
     report2 = _build(_dirty_match_result())
     raw2 = build_vet_concept(raw, report2)
     assert _frontmatter(raw2)["states"]["default"]["status"] == "disagreements"
-    # only one "State: default" section, not two
     assert raw2.count("## State: default") == 1
 
 
@@ -128,7 +122,6 @@ def test_build_vet_concept_top_level_status_is_disagreements_if_any_state_is():
     raw2 = build_vet_concept(raw, report2)
     assert _frontmatter(raw2)["status"] == "disagreements"
 
-    # once the disagreeing state goes clean again, overall status follows
     report2_clean = _build(_clean_match_result(), state="expanded")
     raw3 = build_vet_concept(raw2, report2_clean)
     assert _frontmatter(raw3)["status"] == "clean"

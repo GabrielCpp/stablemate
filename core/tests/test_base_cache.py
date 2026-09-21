@@ -1,9 +1,4 @@
-"""The shared base-library cache: fetch-once, freeze, never shadow a real checkout.
-
-Standalone + pytest-compatible. No network: the fetch is patched at its seam and faked
-by building the expected layout on disk — `base-library/library/` plus the `.commit`
-sidecar, which is what a sparse fetch leaves behind now that `.git` does not survive it.
-"""
+"""The shared base-library cache: fetch-once, freeze, never shadow a real checkout."""
 
 from __future__ import annotations
 
@@ -31,7 +26,6 @@ def _fake_clone(dest: Path, *, commit: str = "abc123") -> bool:
     return True
 
 
-# --- fetch -------------------------------------------------------------------
 
 
 def test_fetches_when_absent_and_returns_the_library(monkeypatch, capsys):
@@ -42,8 +36,6 @@ def test_fetches_when_absent_and_returns_the_library(monkeypatch, capsys):
 
     assert base is not None and base.is_dir()
     assert base == bc.cached_library_dir() / bc.BASE_SUBPATH
-    # A fetch hits the network and writes to the cache; it must announce itself, and
-    # say how much it is taking — the narrowing is the operator-visible part.
     out = capsys.readouterr().out
     assert "fetching base library" in out
     assert f"{bc.BASE_SUBPATH}/ only" in out
@@ -84,7 +76,6 @@ def test_deleting_the_cache_is_the_upgrade_path(monkeypatch):
     assert (first, second) == ("old111", "new222")
 
 
-# --- refresh -----------------------------------------------------------------
 
 
 def _at_remote(monkeypatch, sha: str | None) -> None:
@@ -105,11 +96,7 @@ def test_refresh_replaces_the_cache_when_the_remote_moved(monkeypatch):
 
 
 def test_refresh_does_not_clone_when_already_current(monkeypatch):
-    """The reason `remote_commit` exists: a few hundred bytes instead of ~16M.
-
-    `farrier install` runs often and the cache is usually current, so the common case
-    must not pay for a clone to discover it had nothing to do.
-    """
+    """The reason `remote_commit` exists: a few hundred bytes instead of ~16M."""
     _fake_clone(bc.cached_library_dir(), commit="same333")
     _at_remote(monkeypatch, "same333")
     monkeypatch.setattr(
@@ -131,8 +118,7 @@ def test_refresh_fetches_when_the_cache_is_absent(monkeypatch):
 
 
 def test_refresh_keeps_the_cache_when_the_remote_is_unreachable(monkeypatch, capsys):
-    """Offline must leave a working library working — that is the whole asymmetry
-    between a failed fetch (nothing to hand back) and a failed refresh (a good cache)."""
+    """Offline must leave a working library working — that is the whole asymmetry between a failed fetch (nothing to hand back) and a failed refresh (a good cache)."""
     _fake_clone(bc.cached_library_dir(), commit="old111")
     _at_remote(monkeypatch, None)
     monkeypatch.setattr(
@@ -155,8 +141,7 @@ def test_refresh_keeps_the_cache_when_the_clone_fails(monkeypatch):
 
 
 def test_refresh_refuses_to_swap_in_a_non_library(monkeypatch):
-    """A layout that moved upstream must not replace a working cache with a broken one:
-    the damage would outlive the command, and nothing would ever put it back."""
+    """A layout that moved upstream must not replace a working cache with a broken one: the damage would outlive the command, and nothing would ever put it back."""
     _fake_clone(bc.cached_library_dir(), commit="old111")
     _at_remote(monkeypatch, "new222")
 
@@ -183,11 +168,7 @@ def test_refresh_can_be_disabled(monkeypatch):
 
 
 def test_a_failed_swap_puts_the_old_cache_back(monkeypatch):
-    """The old cache is moved aside, not deleted, until the new one is in place.
-
-    So the swap failing halfway is recoverable: what must never happen is a refresh that
-    ends with no cache at all, having destroyed a working one to get there.
-    """
+    """The old cache is moved aside, not deleted, until the new one is in place."""
     _fake_clone(bc.cached_library_dir(), commit="old111")
     _at_remote(monkeypatch, "new222")
     monkeypatch.setattr(
@@ -236,7 +217,6 @@ def test_remote_commit_is_none_when_git_cannot_run(monkeypatch):
     assert bc.remote_commit() is None
 
 
-# --- fail-soft ---------------------------------------------------------------
 
 
 def test_failed_clone_returns_none_and_leaves_no_debris(monkeypatch):
@@ -296,8 +276,6 @@ def test_concurrent_fetch_loser_discards_its_clone(monkeypatch):
     """Two runs race; the rename settles it with no lock file to leak."""
     monkeypatch.setattr(bc, "_clone_into", lambda dest: _fake_clone(dest))
 
-    # The other run lands its clone in the gap between our clone and our rename, so
-    # ours hits a non-empty target -- the exact race the rename is there to settle.
     def rename_conflict(self, target):
         _fake_clone(Path(target), commit="theirs")
         raise OSError("Directory not empty")
@@ -311,15 +289,10 @@ def test_concurrent_fetch_loser_discards_its_clone(monkeypatch):
     assert list(bc.cache_root().glob(".library-fetch-*")) == []
 
 
-# --- lookup is not a fetch ---------------------------------------------------
 
 
 def test_cached_base_never_fetches(monkeypatch):
-    """A lookup that reaches the network is a trap — `config show` would trigger it.
-
-    This split is why a resolution-order test can assert None without touching the
-    network.
-    """
+    """A lookup that reaches the network is a trap — `config show` would trigger it."""
     monkeypatch.setattr(
         bc, "_clone_into", lambda dest: pytest.fail("lookup must never fetch")
     )
@@ -335,8 +308,7 @@ def test_cached_base_finds_an_existing_clone(monkeypatch):
 
 
 def test_base_library_dir_does_not_fetch(monkeypatch):
-    """The regression that started this: base_library_dir cloned into the real
-    ~/.cache during a unit test run."""
+    """The regression that started this: base_library_dir cloned into the real ~/.cache during a unit test run."""
     from stablemate_core.discovery import base_library_dir
 
     monkeypatch.setattr(
@@ -346,7 +318,6 @@ def test_base_library_dir_does_not_fetch(monkeypatch):
     base_library_dir()
 
 
-# --- provenance --------------------------------------------------------------
 
 
 def test_cached_commit_none_when_absent():
@@ -366,8 +337,7 @@ def test_cached_commit_reads_the_sidecar_not_git(monkeypatch, tmp_path):
 
 
 def test_cached_commit_ignores_a_leftover_git_dir(tmp_path):
-    """A hand-assembled or pre-narrowing cache with `.git` but no sidecar reads as
-    unknown rather than as a lie — `?` in the operator's log, not a stale sha."""
+    """A hand-assembled or pre-narrowing cache with `.git` but no sidecar reads as unknown rather than as a lie — `?` in the operator's log, not a stale sha."""
     clone = tmp_path / "clone"
     (clone / ".git").mkdir(parents=True)
     assert bc.cached_commit(clone) is None
@@ -384,16 +354,10 @@ def test_clone_url_is_anonymous():
     assert not bc.BASE_REPO_URL.startswith("git@")
 
 
-# --- the narrowing ------------------------------------------------------------
 
 
 def test_the_fetch_is_sparse_and_leaves_no_repository(monkeypatch, tmp_path):
-    """The trust posture, asserted at the seam: sparse `base-library/`, then documents.
-
-    A regression here would be silent — a full clone works perfectly well and simply
-    puts every `.py` in this repo inside the operator's cache, which is the thing the
-    narrowing exists to prevent.
-    """
+    """The trust posture, asserted at the seam: sparse `base-library/`, then documents."""
     calls: list[list[str]] = []
     dest = tmp_path / "fetched"
 
@@ -409,7 +373,6 @@ def test_the_fetch_is_sparse_and_leaves_no_repository(monkeypatch, tmp_path):
 
     clone = next(c for c in calls if c[:2] == ["git", "clone"])
     assert "--sparse" in clone and "--filter=blob:none" in clone
-    # `--no-cone`: cone mode would also check out the repository root.
     assert calls[1][3:] == [
         "sparse-checkout",
         "set",
@@ -424,8 +387,7 @@ def test_the_fetch_is_sparse_and_leaves_no_repository(monkeypatch, tmp_path):
 def test_a_failed_sparse_checkout_does_not_fall_back_to_a_full_clone(
     monkeypatch, tmp_path
 ):
-    """Fail closed. A git too old for `sparse-checkout` must get no library at all,
-    rather than a full clone that quietly drops the posture."""
+    """Fail closed."""
     dest = tmp_path / "fetched"
 
     def fake_run(cmd, **kwargs):

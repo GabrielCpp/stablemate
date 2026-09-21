@@ -23,22 +23,13 @@ def isolated_store(monkeypatch: pytest.MonkeyPatch, store):
 
 @pytest.fixture(autouse=True)
 def no_inferred_project(monkeypatch: pytest.MonkeyPatch):
-    """Neutralise project inference by default.
-
-    The test process runs inside the stablemate git repo, so real inference would
-    silently tag and scope everything to 'stablemate'. Tests that exercise
-    inference override this explicitly; the rest behave as if run outside a repo.
-    """
+    """Neutralise project inference by default."""
     monkeypatch.setattr(cli, "infer_project", lambda: None)
 
 
 @pytest.fixture
 def run(db_path: Path, capsys, monkeypatch: pytest.MonkeyPatch):
-    """Invoke ``main()`` against the temp pool and return its exit code.
-
-    Captured output is discarded before each invocation, so ``out(capsys)`` after a
-    call yields that command's output alone and not the residue of a setup step.
-    """
+    """Invoke ``main()`` against the temp pool and return its exit code."""
     def _run(*argv: str, stdin: str | None = None) -> int:
         if stdin is not None:
             monkeypatch.setattr("sys.stdin", io.StringIO(stdin))
@@ -46,9 +37,6 @@ def run(db_path: Path, capsys, monkeypatch: pytest.MonkeyPatch):
         with pytest.raises(SystemExit) as exc:
             cli.main(["--db", str(db_path), *argv])
         code = exc.value.code
-        # `main` exits with a status, never with a message: `SystemExit.code` is
-        # `str | int | None` in general, and asserting that here is what lets every
-        # caller compare against a number.
         assert isinstance(code, int)
         return code
 
@@ -69,7 +57,6 @@ def out(capsys) -> str:
     return capsys.readouterr().out
 
 
-# -- add --------------------------------------------------------------------
 
 
 def test_add_stores_metadata_in_pool_and_password_in_store(add_one, db_path, store):
@@ -98,7 +85,6 @@ def test_add_imports_a_password_from_an_env_file(run, tmp_path, db_path, store):
         cred = present(pool.get("cred-001"))
     assert cred.username == "admin@staging.example.com"
     assert cred.roles == ("admin", "billing")
-    # The .env supplied only the secret; the metadata came from the flags.
     assert store.get("cred-001") == "from-dotenv"
 
 
@@ -132,7 +118,6 @@ def test_add_env_file_that_does_not_exist_is_a_usage_error(run, tmp_path):
 def test_add_rejects_two_password_sources_at_once(run, tmp_path):
     env = tmp_path / "cred.env"
     env.write_text("ADMIN_PW=x\n", encoding="utf-8")
-    # argparse mutually-exclusive group -> exit 2 before the command runs.
     assert run("add", "--username", "a@x.com", "--env", "staging",
                "--password-stdin", "--password-env-file", str(env),
                "--password-var", "ADMIN_PW") == 2
@@ -158,7 +143,6 @@ def test_add_rolls_back_metadata_when_the_store_write_fails(db_path, monkeypatch
         assert pool.all() == []
 
 
-# -- list -------------------------------------------------------------------
 
 
 def test_list_json_never_emits_a_password(add_one, run, capsys):
@@ -168,8 +152,6 @@ def test_list_json_never_emits_a_password(add_one, run, capsys):
     assert "hunter2" not in payload
     row = json.loads(payload)[0]
     assert row["id"] == "cred-001"
-    # The only key naming a password says where one is read from, and for a credential
-    # saddlebag stores itself the answer is nothing at all.
     assert [k for k in row if "password" in k] == ["password_ref"]
     assert row["password_ref"] is None
 
@@ -206,7 +188,6 @@ def test_scan_scopes_candidates_by_project(run, capsys):
     assert [r["username"] for r in rows] == ["b@x.com"]
 
 
-# -- project inference from the working directory ----------------------------
 
 
 def test_add_infers_project_from_the_working_directory(run, monkeypatch, db_path):
@@ -233,13 +214,11 @@ def test_empty_project_means_no_project(run, monkeypatch, db_path):
 
 
 def test_list_scopes_to_the_inferred_project(run, monkeypatch, capsys):
-    # Two credentials in different projects, seeded with explicit flags.
     run("add", "--username", "a@x.com", "--env", "staging", "--project", "stablemate",
         "--password-stdin", stdin="pw1")
     run("add", "--username", "b@x.com", "--env", "staging", "--project", "other-repo",
         "--password-stdin", stdin="pw2")
 
-    # Now standing "in" stablemate: a bare list scopes to it.
     monkeypatch.setattr(cli, "infer_project", lambda: "stablemate")
     run("list", "--json")
     assert [r["username"] for r in json.loads(out(capsys))] == ["a@x.com"]
@@ -256,7 +235,6 @@ def test_all_projects_bypasses_inference(run, monkeypatch, capsys):
     assert {r["username"] for r in json.loads(out(capsys))} == {"a@x.com", "b@x.com"}
 
 
-# -- project-prefixed keyring keys (collision safety) ------------------------
 
 
 def test_scoped_credential_uses_a_project_prefixed_store_key(run, monkeypatch, store):
@@ -266,15 +244,12 @@ def test_scoped_credential_uses_a_project_prefixed_store_key(run, monkeypatch, s
 
 
 def test_unscoped_credential_uses_the_bare_id_as_store_key(run, store):
-    # no_inferred_project autouse -> project is None -> no prefix, as before.
     run("add", "--username", "a@x.com", "--env", "staging", "--password-stdin", stdin="pw")
     assert store.secrets == {"cred-001": "pw"}
 
 
 def test_two_projects_minting_the_same_id_do_not_collide(tmp_path, monkeypatch, store):
-    """The whole point: two *separate per-project pools* both mint cred-001
-    (each db restarts the sequence) yet their secrets do not clobber, because the
-    keyring key is project-qualified."""
+    """The whole point: two *separate per-project pools* both mint cred-001 (each db restarts the sequence) yet their secrets do not clobber, because the keyring key is project-qualified."""
     def add(db_name: str, project: str, username: str, password: str) -> None:
         monkeypatch.setattr(cli, "infer_project", lambda: project)
         monkeypatch.setattr("sys.stdin", io.StringIO(password))
@@ -286,15 +261,12 @@ def test_two_projects_minting_the_same_id_do_not_collide(tmp_path, monkeypatch, 
     add("repo-a.db", "repo-a", "a@x.com", "pw-a")
     add("repo-b.db", "repo-b", "b@x.com", "pw-b")
 
-    # Both pools minted 'cred-001'; a bare key would have clobbered. Prefixes don't.
     assert store.secrets == {"repo-a/cred-001": "pw-a", "repo-b/cred-001": "pw-b"}
 
 
 def test_acquire_reads_a_project_prefixed_secret(run, monkeypatch, capsys):
     monkeypatch.setattr(cli, "infer_project", lambda: "stablemate")
     run("add", "--username", "a@x.com", "--env", "staging", "--password-stdin", stdin="pw")
-    # acquire resolves the key from the credential's stored project, not the cwd —
-    # exit 0 proves the store probe found the prefixed key.
     assert run("acquire", "cred-001", "--json") == 0
     assert json.loads(out(capsys))["id"] == "cred-001"
 
@@ -302,7 +274,7 @@ def test_acquire_reads_a_project_prefixed_secret(run, monkeypatch, capsys):
 def test_doctor_checks_the_prefixed_key(run, monkeypatch, capsys, store):
     monkeypatch.setattr(cli, "infer_project", lambda: "stablemate")
     run("add", "--username", "a@x.com", "--env", "staging", "--password-stdin", stdin="pw")
-    store.delete("stablemate/cred-001")  # secret vanishes under its real key
+    store.delete("stablemate/cred-001")
     assert run("doctor", "--json") == 1
     assert json.loads(out(capsys))["orphans"] == ["cred-001"]
 
@@ -321,7 +293,6 @@ def test_list_shows_locked_credentials(add_one, run, capsys):
     assert json.loads(out(capsys))[0]["locked"] is True
 
 
-# -- scan -------------------------------------------------------------------
 
 
 def test_scan_json_lists_candidates_without_leasing(add_one, run, capsys, db_path):
@@ -374,7 +345,6 @@ def test_scan_reports_a_failed_selection(add_one, run, monkeypatch):
     assert run("scan", "--env", "staging", "--select-via", "claude") == 1
 
 
-# -- acquire / release ------------------------------------------------------
 
 
 def test_acquire_json_emits_the_lease_and_never_the_password(add_one, run, capsys):
@@ -436,14 +406,12 @@ def test_release_of_nothing_is_not_an_error(run):
     assert run("release", "--lease-id", "ghost") == 0
 
 
-# -- expire / doctor --------------------------------------------------------
 
 
 def test_expire_reclaims_a_stale_lease(add_one, run, capsys, db_path):
     add_one()
     run("acquire", "cred-001", "--ttl", "1")
 
-    # Reach past the TTL rather than sleeping.
     with Pool(db_path) as pool:
         pool._conn.execute("UPDATE credentials SET expires_at = 0 WHERE id = 'cred-001'")
 
@@ -503,7 +471,6 @@ def test_an_unavailable_store_fails_other_commands(run, monkeypatch):
                "--password-stdin", stdin="hunter2") == 1
 
 
-# -- remove -----------------------------------------------------------------
 
 
 def test_remove_deletes_metadata_and_password(add_one, run, db_path, store):

@@ -1,21 +1,4 @@
-"""What was already dirty when a story started, and what still is.
-
-The coder's contract is that a story ends in a commit, so everything between `HEAD` and the
-worktree is *this* story's work. That contract has a failure mode: a story that dies before
-its commit — a docs failure, a QA give-up, a crash — leaves its production code on disk, and
-every story selected after it then diffs against a tree carrying someone else's package.
-
-Two consumers read the same diff and both were wrong in the same way. The docs grounding gate
-demanded direct OKF grounding for the abandoned story's symbols, and the QA obligation packet
-turned them into scenarios the current story has no business writing. So the reading lives
-here rather than in either of them: `snapshot_worktree_state` records the dirty paths with
-their bytes before the first dev turn, and `untouched_since` answers which of them the story
-has not since touched — the only ones it is safe to subtract.
-
-The subtraction is deliberately one-directional. A path the story *did* edit hashes
-differently and stays its responsibility, so the filter can only ever shrink by mistake,
-never grow: no story is excused from grounding or testing code it actually wrote.
-"""
+"""What was already dirty when a story started, and what still is."""
 from __future__ import annotations
 
 import hashlib
@@ -30,12 +13,7 @@ from workhorse_workflows.kit import open_repo
 
 
 def digest(root: Path, rel: str) -> str:
-    """The sha256 of one worktree file, or `""` when it cannot be read.
-
-    An unreadable path — deleted since the snapshot, or a directory — deliberately digests
-    to a value that matches no recorded entry, so it stays in the story's obligation. This
-    never subtracts something it cannot positively account for.
-    """
+    """The sha256 of one worktree file, or `""` when it cannot be read."""
     try:
         return hashlib.sha256((root / rel).read_bytes()).hexdigest()
     except OSError:
@@ -43,11 +21,7 @@ def digest(root: Path, rel: str) -> str:
 
 
 def untouched_since(root: Path, snapshot: tuple[str, ...]) -> set[str]:
-    """Which snapshotted paths still hold exactly the bytes they held at story start.
-
-    A path the story went on to edit digests differently and is *not* returned, so it stays
-    the story's responsibility — the fail-safe direction described in the module docstring.
-    """
+    """Which snapshotted paths still hold exactly the bytes they held at story start."""
     untouched: set[str] = set()
     for entry in snapshot:
         rel, separator, recorded = str(entry).partition("\0")
@@ -62,17 +36,7 @@ def untouched_since(root: Path, snapshot: tuple[str, ...]) -> set[str]:
 def snapshot_worktree_state(
     logger: logging.Logger, docs_path: str = "", repo_dir: str = ""
 ) -> WorktreeSnapshot:
-    """Record what was already dirty before this story's first dev turn.
-
-    Modified *and* untracked, because the case that motivated this is untracked: a story
-    that died in its docs phase left a whole new package on disk, and the next story's
-    grounding gate demanded seven Go symbols out of it that the next story had never heard
-    of and its book had no reason to mention.
-
-    Failing to read the repo returns an empty snapshot rather than raising. An empty
-    snapshot subtracts nothing, which is the behaviour both consumers had before this node
-    existed — the conservative answer, and the right one for checks meant to fail closed.
-    """
+    """Record what was already dirty before this story's first dev turn."""
     root = Path(find_docs_root(docs_path, repo_dir)).resolve()
     try:
         repo = open_repo(root)

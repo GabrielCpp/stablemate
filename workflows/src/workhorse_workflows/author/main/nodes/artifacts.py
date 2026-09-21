@@ -1,17 +1,4 @@
-"""The whole-run gates, and the git tail that ships what they passed.
-
-Ported from `base-library/workflows/author/scripts/{reconcile-artifacts,ostler-doctor,
-validate-artifacts,commit-author}.py`.
-
-The two YAML nodes `commit_author` and `commit_incomplete` ran the *same* script with a
-different first argument, so they are one node here, called with `mode="incomplete"` on
-the failure edge. They sit on mutually exclusive paths, so `self.output(commit_author)`
-still names exactly one commit.
-
-There is no PR tail. The author workflow commits the epics it wrote onto whatever branch
-the repo is already on and stops there — delivery is the operator's call, and a run that
-cut its own branch to open a PR from was targeting a base it had itself just left.
-"""
+"""The whole-run gates, and the git tail that ships what they passed."""
 from __future__ import annotations
 
 import logging
@@ -26,15 +13,10 @@ from workhorse_workflows.author.shared.paths import launch_repo_root, survey_rep
 from workhorse_workflows.author.shared.schemas.main import Committed, Defects, VerifyReport
 from workhorse_workflows.kit import commit_paths, show_file
 
-# ── reconciliation: what this run silently dropped ──────────────────────────
 
 
 def _subsection_ids(text: str, heading: str) -> set[str]:
-    """The `### <id>` titles directly under the `## <heading>` section of an epic.md.
-
-    Read off the parsed heading tree, so a `##`-looking line inside a fenced example is not a
-    section and the nesting is the parser's rather than a "still inside it" flag.
-    """
+    """The `### <id>` titles directly under the `## <heading>` section of an epic.md."""
     ids: set[str] = set()
     for root in markdown.split(text or "").sections:
         for section in root.walk():
@@ -49,17 +31,7 @@ def verify_reconcile(
     ref: str = "HEAD",
     repo_dir: str = "",
 ) -> VerifyReport:
-    """Scope this run silently dropped, measured against the last committed epics.
-
-    `ostler doctor` catches *dangling* references; it does not catch a **clean removal** —
-    an IDed entity deleted along with every reference to it. That is the "dropped scope"
-    failure: a re-run re-derives an epic and quietly omits a seed item a prior run
-    committed, leaving nothing dangling to find. So this compares the parsed `epic.md`
-    subsection ids on both sides.
-
-    **Removals block, additions don't**, and it is fail-open on infrastructure: no git, no
-    epics dir, or no epic with a committed baseline is a clean `skipped`, never a block.
-    """
+    """Scope this run silently dropped, measured against the last committed epics."""
     ref = ref.strip() or "HEAD"
     root = launch_repo_root(repo_dir)
     epics_rel = paths.epics_dir(root)
@@ -78,7 +50,7 @@ def verify_reconcile(
         epic = epic_md.parent.name
         base = show_file(root, ref, str(epic_md.relative_to(root)))
         if base is None:
-            continue  # brand-new epic (no committed baseline) — nothing to reconcile
+            continue
         checked += 1
         now = epic_md.read_text(encoding="utf-8")
 
@@ -116,7 +88,6 @@ def verify_reconcile(
     return VerifyReport(errors="\n".join(lines), report=summary)
 
 
-# ── referential integrity of the whole graph ────────────────────────────────
 
 
 @blueprint.node(stub=_stubs.holds)
@@ -125,17 +96,7 @@ def verify_integrity(
     epic: str = "",
     repo_dir: str = "",
 ) -> VerifyReport:
-    """`ostler doctor` over the whole graph, as a blocking gate.
-
-    The per-epic coverage validator proves seeds map to stories *within* an epic; story
-    grounding proves one story rests on real seeds. Neither catches the cross-run drift
-    here: a story referencing another epic's seed, a reference resolving to nothing.
-    ostler *computes* those facts; this turns its error-level findings into a gate.
-
-    **Errors block, warnings don't**, and an unloadable graph is a `skipped` — the same
-    opt-in-by-presence stance the other author gates take. `epic` blank means the whole
-    graph, which is what the final gate wants.
-    """
+    """`ostler doctor` over the whole graph, as a blocking gate."""
     okf = Ostler(launch_repo_root(repo_dir))
 
     outcome = okf.doctor(epic=epic.strip() or None)
@@ -170,7 +131,6 @@ def verify_integrity(
     return VerifyReport(errors="\n".join(lines), report=summary)
 
 
-# ── the last gate before the run may report success ─────────────────────────
 
 
 def _is_done(status: str) -> bool:
@@ -193,21 +153,7 @@ def _canonical_epic_names(okf: Ostler, names: list[str]) -> list[str]:
 
 @blueprint.node(stub=_stubs.clean)
 def validate_artifacts(logger: logging.Logger, repo_dir: str = "") -> Defects:
-    """Can the coder engine actually walk what this run produced?
-
-    A valid epics queue, every queued epic loadable with at least one story, every story
-    **authored** by ostler's verdict, and at least one story still selectable — otherwise
-    the coder has nothing to run.
-
-    This gate used to accept a `story.md` that merely existed and carried a
-    `- **Status**:` line, both of which `ostler create story` writes into the scaffold. A
-    queue of 44 empty stubs passed here, the run reported success and opened a PR. An
-    unauthored story is now an error that names the epic, the slug and the empty sections,
-    and it does not count toward `selectable`.
-
-    ostler discovers the graph's doc roots itself, so this takes no location argument —
-    the same rule every node here follows.
-    """
+    """Can the coder engine actually walk what this run produced?"""
     okf = Ostler(survey_repo_root(repo_dir))
 
     try:
@@ -235,8 +181,6 @@ def validate_artifacts(logger: logging.Logger, repo_dir: str = "") -> Defects:
     for s in okf.list("story"):
         by_epic.setdefault(str(s.get("epic", "")), []).append(s)
 
-    # An epic ostler could not load has no epic.md — the graph's own answer, so this node
-    # never stats a file and never gets a second opinion about what a document must contain.
     loadable = {e.name for e in okf.graph.epics}
 
     errors: list[str] = []
@@ -274,15 +218,10 @@ def validate_artifacts(logger: logging.Logger, repo_dir: str = "") -> Defects:
     return Defects(ok=not errors, errors="\n".join(errors))
 
 
-# ── git: keep the work, and ship it ─────────────────────────────────────────
 
 
 def _commit_message(mode: str, epic: str, bullet: str, roadmap: str = "") -> str:
     if mode == "incomplete":
-        # The failure edge of the final gate. The partial prose is worth keeping — it is what
-        # a rerun resumes from — but it must never look like a finished run, and the workflow
-        # ends red right after this so no PR is opened on it. The message is the marker a
-        # human (or a `git log` skim) needs to spot the branch as unfinished.
         if roadmap:
             return f"author: INCOMPLETE — roadmap {Path(roadmap).stem}, do not merge"
         if epic:
@@ -311,24 +250,7 @@ def commit_author(
     docs_dir: str = "docs",
     id_registry: str = ".agents/ids.json",
 ) -> Committed:
-    """Commit the epic/story docs this run wrote, in the one repo it wrote them in.
-
-    Author only ever writes into the docs repo running the workflow — unlike coder there
-    is no affected-repos resolution, so this always commits at the repo root.
-    `mode="incomplete"` is the failure edge and only changes the message.
-
-    **Scoped to what this workflow writes, not to the whole tree.** The repo author runs
-    in is routinely a checkout somebody is *also* working in — `repo_dir` defaults to the
-    directory the run was launched from, so it points straight at their working tree. A
-    `git add -A` here commits their in-flight edits under an `author:` subject, which is
-    how a run ends up owning changes it never made.
-
-    Two scopes, because the run writes in two places: `docs_dir` for the prose, and
-    `id_registry` for ostler's id ledger, which lives outside the docs tree and *must*
-    travel with the documents it numbers — an id minted but left uncommitted is reminted
-    for a different entity by the next run. A scope that does not exist is dropped rather
-    than passed to git, which would fail the whole commit on an unmatched pathspec.
-    """
+    """Commit the epic/story docs this run wrote, in the one repo it wrote them in."""
     repo_root = find_repo_root(repo_dir)
     if not (repo_root / ".git").exists():
         logger.info("no .git at %s — nothing to commit", repo_root)

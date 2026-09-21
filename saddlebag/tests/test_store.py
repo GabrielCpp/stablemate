@@ -1,9 +1,4 @@
-"""Secret-store selection and the keyring adapter.
-
-These tests never touch the real OS keyring. ``keyring`` is a hard dependency, so
-it always imports; what varies is which backend it reports, and that is exactly
-what saddlebag branches on.
-"""
+"""Secret-store selection and the keyring adapter."""
 
 from __future__ import annotations
 
@@ -27,8 +22,6 @@ from saddlebag.store import (
 class _FakeKeyringModule(types.ModuleType):
     """Stands in for the ``keyring`` package, recording (service, user) pairs."""
 
-    # The real package exposes a `backends` submodule; the fixture binds the genuine
-    # one here so `import keyring.backends.fail` still resolves through the stand-in.
     backends: types.ModuleType
 
     def __init__(self, backend: object) -> None:
@@ -60,9 +53,9 @@ def fake_keyring(monkeypatch: pytest.MonkeyPatch):
     """Install a fake ``keyring`` module with a working (non-fail) backend."""
     import keyring.backends.fail
 
-    real_backend = object()  # anything that is not a fail.Keyring
+    real_backend = object()
     module = _FakeKeyringModule(real_backend)
-    module.backends = keyring.backends  # so `import keyring.backends.fail` resolves
+    module.backends = keyring.backends
     monkeypatch.setitem(sys.modules, "keyring", module)
     return module
 
@@ -91,7 +84,7 @@ def test_delete_is_idempotent(fake_keyring):
     kr = KeyringStore()
     kr.put("cred-007", "hunter2")
     kr.delete("cred-007")
-    kr.delete("cred-007")  # must not raise
+    kr.delete("cred-007")
     assert kr.get("cred-007") is None
 
 
@@ -99,15 +92,10 @@ def test_keyring_store_satisfies_the_protocol():
     assert isinstance(KeyringStore(), SecretStore)
 
 
-# -- availability probing ---------------------------------------------------
 
 
 def test_a_null_backend_reads_as_unavailable(monkeypatch: pytest.MonkeyPatch):
-    """`keyring` silently selects fail.Keyring when nothing is installed.
-
-    It does not raise until a method is called, so type-probing the selected
-    backend is the only reliable check.
-    """
+    """`keyring` silently selects fail.Keyring when nothing is installed."""
     import keyring
     import keyring.backends.fail
 
@@ -129,7 +117,6 @@ def test_vault_configured_follows_vault_addr(monkeypatch: pytest.MonkeyPatch):
     assert vault_configured() is True
 
 
-# -- open_store precedence --------------------------------------------------
 
 
 @pytest.fixture(autouse=True)
@@ -156,7 +143,6 @@ def test_no_store_is_a_hard_error_never_plaintext(monkeypatch: pytest.MonkeyPatc
     with pytest.raises(StoreUnavailableError) as exc:
         open_store()
     message = str(exc.value)
-    # The error must tell an operator how to fix it, in both directions.
     assert "VAULT_ADDR" in message
     assert "keyring" in message
 
@@ -188,12 +174,7 @@ def test_vault_without_addr_reports_the_missing_var(monkeypatch: pytest.MonkeyPa
 
 
 def test_vault_connect_uses_the_hvac_client_contract(monkeypatch: pytest.MonkeyPatch):
-    """Guard the hvac call shape without a live server.
-
-    The mocked ``open_store`` tests replace ``VaultStore`` wholesale, so they
-    cannot catch a wrong kwarg name inside it — a real server found ``addr=``
-    where hvac wants ``url=``. This pins the client contract directly.
-    """
+    """Guard the hvac call shape without a live server."""
     hvac = pytest.importorskip("hvac")
 
     seen: dict[str, object] = {}

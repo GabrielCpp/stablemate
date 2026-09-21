@@ -5,15 +5,7 @@ plan(run_id="qa-policy-list", story="policy-list")
 
 
 def valid_policy(number: str, email: str = "alex@example.com", coverage: str = "auto") -> dict:
-    """A policy the desk accepts, in the coverage type named.
-
-    `auto` carries a VIN and `home` an address because the desk refuses each without the
-    other — a scenario asking for one of those coverages is asking for the field that goes
-    with it, and spelling that out at every call site is how the two drift apart.
-
-    Duplicated per plan rather than shared through a fixture module: `qa: {fixture_modules:}`
-    is retired, and this plan is frozen corpus, so the cost of the duplicate is a fixed one.
-    """
+    """A policy the desk accepts, in the coverage type named."""
     return {
         "policy_number": number,
         "holder_email": email,
@@ -219,13 +211,7 @@ def register_empty_and_unreadable_browser(qa: Qa) -> None:
     forbid=["deep-linking to the form or the detail screen", "ending the walk on the register instead of the created policy"],
 )
 def underwrite_journey_browser(qa: Qa) -> None:
-    """Walk the underwriting journey end to end, from the register the book starts it at.
-
-    The register is this story's screen, so the journey that begins there is owed live
-    evidence by it — and the step this walk exists to hold is the last one: creating the
-    policy and returning to the list looks like success from the API's side while leaving
-    the operator somewhere the book does not end.
-    """
+    """Walk the underwriting journey end to end, from the register the book starts it at."""
     qa.http.delete("/api/policies", expect_status=204)
     qa.goto("/policies")
     qa.eventually("the walk starts on the register", qa.by_css("main").is_visible)
@@ -267,14 +253,7 @@ def underwrite_journey_browser(qa: Qa) -> None:
     forbid=["deep-linking to the edit form or the detail screen", "ending the walk on the edit form instead of the amended policy"],
 )
 def amend_journey_browser(qa: Qa) -> None:
-    """Walk the amend journey end to end, from the register the book starts it at.
-
-    The register is this story's screen, so the journey that begins there is owed live
-    evidence by it. The step this walk exists to hold is the one a write-then-read cannot
-    tell apart from an unconditional overwrite: a save whose quoted version the record has
-    already moved past has to be refused, not applied — and only a stale save followed by
-    an accepted one distinguishes compare-and-swap from a plain write.
-    """
+    """Walk the amend journey end to end, from the register the book starts it at."""
     qa.http.delete("/api/policies", expect_status=204)
     qa.http.post("/api/policies", json_body=valid_policy("PN-1001"), expect_status=201)
     qa.goto("/policies")

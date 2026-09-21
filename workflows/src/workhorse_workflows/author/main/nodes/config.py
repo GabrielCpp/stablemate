@@ -1,13 +1,4 @@
-"""What the run works on.
-
-Ported from `base-library/workflows/author/scripts/load-config.py`.
-
-`load_config` drops the script's `try: import yaml / except ImportError: yaml = None`
-guard: PyYAML is a declared dependency of this distribution, so an absent one is a broken
-install rather than a condition to degrade through. A *missing or unparseable*
-`agents.yml` still falls back to the conventions, which is the case the guard actually
-covered in practice.
-"""
+"""What the run works on."""
 from __future__ import annotations
 
 import logging
@@ -40,15 +31,7 @@ def load_config(
     repo_dir: str = "",
     mode: str = "epic",
 ) -> Config:
-    """Resolve the author's paths and prove the selected intake exists.
-
-    Every path here is ostler's answer, read from `docRoots:` — the run has no parameter that
-    can move one, because a run that moved one wrote documents the rest of the toolchain
-    could not find. What is left as an input is the repo and the mode.
-
-    The feature book is read-only grounding for author prompts. New visual references are
-    story-local mockups; author never creates a feature inventory or registers mockups in one.
-    """
+    """Resolve the author's paths and prove the selected intake exists."""
     root = survey_repo_root(repo_dir)
     backlog = paths.backlog_file(root)
     epics_dir = paths.epics_dir(root)
@@ -66,8 +49,6 @@ def load_config(
     data = _template(root)
     features_dir = paths.features_dir(root)
 
-    # Best-effort layer list, a hint for layer-aware prompts only: the prompts use
-    # isUsingInstruction() at install time for the authoritative selection.
     layers = [
         str(li["skill"])
         for li in (data.get("localInstructions") or [])

@@ -1,15 +1,4 @@
-"""Tests for the state graph read off a Python workflow's source, and `--dry-run`.
-
-Dependency-free and standalone like the rest of `tests/`. Nothing here runs an agent:
-the point of both features under test is precisely that nothing has to.
-
-The graph is an over-approximation by design, so what is asserted is that it
-over-approximates in the right direction — both arms of a branch appear, an alias never
-does, and a target the code cannot name statically is reported as unknown rather than
-guessed at.
-
-Run: uv run python tests/test_pyflow_graph.py   (or via pytest)
-"""
+"""Tests for the state graph read off a Python workflow's source, and `--dry-run`."""
 
 from __future__ import annotations
 
@@ -49,17 +38,8 @@ from workhorse.pyflow.graph import (  # noqa: E402
 
 
 class RegistryAt(Registry):
-    """A registry whose workflow directory a test can point at a temp dir.
+    """A registry whose workflow directory a test can point at a temp dir."""
 
-    The real `directory()` derives from the entry class's package, and these
-    workflows are declared in this file — so every run test here has to say where the
-    prompts are. A declared field rather than an assignment over the method: an
-    instance attribute shadowing a method is invisible to a reader and to the
-    checker, and on the module-level singletons below it also outlived the test that
-    set it.
-    """
-
-    #: The directory to answer with, or None to derive it the real way.
     at: Path | None = None
 
     def directory(self) -> Path:
@@ -77,10 +57,7 @@ bp = Blueprint("kit")
 
 @bp.node
 def measure(logger: Any, target: str) -> Report:
-    """The verdict of measuring a target.
-
-    A second paragraph, which a diagram never shows.
-    """
+    """The verdict of measuring a target."""
     return Report(verdict=target)
 
 
@@ -132,11 +109,7 @@ class Endless(Workflow):
 
 
 class Factored(Workflow):
-    """A machine whose seams live in private helpers, the way `research` factors them.
-
-    A leading underscore keeps a method out of state discovery, which is what makes it
-    a legal way to say a repeated turn once. The reader has to follow it anyway.
-    """
+    """A machine whose seams live in private helpers, the way `research` factors them."""
 
     def start(self) -> Transition:
         self._record()
@@ -150,7 +123,6 @@ class Factored(Workflow):
         self.call(measure, "acme")
         return self.agent("prompts/record.md", returns=Report)
 
-    # Mutually recursive on purpose: the scan must terminate and still reach the seam.
     def _ping(self) -> None:
         self._pong()
 
@@ -164,13 +136,7 @@ def _graph(cls: type[Workflow]):
 
 
 def _state(cls: type[Workflow], name: str) -> StateNode:
-    """The named state, or a failure that says which one was missing.
-
-    `FlowGraph.state` returns `None` for a name it does not carry — the right answer
-    for the reader, and never the answer a test here is asserting about. Unwrapping it
-    once means a typo in a state name fails as "no state 'reveiw'" rather than as an
-    attribute error on `None` ten lines later.
-    """
+    """The named state, or a failure that says which one was missing."""
     node = _graph(cls).state(name)
     assert node is not None, name
     return node
@@ -180,7 +146,6 @@ def _edges(cls: type[Workflow], name: str) -> set[tuple[str, str]]:
     return {(edge.target, edge.kind) for edge in _state(cls, name).edges}
 
 
-# --------------------------------------------------------------------------- reading
 
 
 def test_both_arms_of_a_branch_become_edges():
@@ -190,7 +155,6 @@ def test_both_arms_of_a_branch_become_edges():
 def test_a_done_is_an_edge_out_of_the_state_beside_its_other_edge():
     node = _state(Sample, "retry")
     assert _edges(Sample, "retry") == {("", "done"), ("start", "continue")}
-    # `terminal` is read off the edges, not stored beside them, so the two cannot disagree.
     assert node.terminal
     assert not _state(Sample, "start").terminal
 
@@ -218,7 +182,6 @@ class Reasoned(Workflow):
 
 def test_a_chained_because_is_read_as_the_edge_reason():
     start = {(e.target, e.kind, e.reason) for e in _state(Reasoned, "start").edges}
-    # A non-literal reason leaves the edge unlabelled — and it is still one edge.
     assert start == {("hold", "continue", "a run id was given"), ("finish", "continue", "")}
     assert _state(Reasoned, "hold").edges == (
         Edge(target="finish", kind="await", reason="someone must answer"),
@@ -243,7 +206,6 @@ def test_edge_labels_name_the_parameters_the_transition_binds():
     start = _state(Sample, "start")
     by_target = {edge.target: edge.params for edge in start.edges}
     assert by_target["review"] == ("verdict",)
-    # Positional: read off the target's own signature, the way the driver binds it.
     assert by_target["retry"] == ("attempt",)
 
 
@@ -258,9 +220,7 @@ def test_a_seam_inside_a_private_helper_is_attributed_to_the_state():
     graph = _graph(Factored)
     assert _state(Factored, "start").calls == ("measure",)
     assert _state(Factored, "start").prompts == ("prompts/record.md",)
-    # The helper is not a node of its own — nothing runs it but the state.
     assert {node.name for node in graph.states} == {"start", "finish"}
-    # …and preflight therefore still checks the prompt exists.
     assert graph.prompts() == (("start", "prompts/record.md"),)
 
 
@@ -278,7 +238,6 @@ def test_a_target_the_source_cannot_name_is_reported_as_dynamic():
     edges = _state(Dynamic, "start").edges
     assert len(edges) == 1
     assert edges[0].dynamic
-    # …and it stops reachability rather than pretending to reach everything.
     assert _graph(Dynamic).unreachable() == ("finish",)
 
 
@@ -287,7 +246,6 @@ def test_reachability_finds_the_state_nothing_transitions_to():
     assert _graph(Sample).unreachable() == ()
 
 
-# ------------------------------------------------------------------------- preflight
 
 
 def test_preflight_is_quiet_when_every_prompt_resolves():
@@ -319,8 +277,6 @@ def test_preflight_reports_a_machine_that_cannot_terminate():
 def test_preflight_reports_a_transition_to_something_that_is_not_a_state():
     class Broken(Workflow):
         def start(self) -> Transition:
-            # `self.output` is a method of the engine, not a state — which is the
-            # thing preflight has to notice, so the checker is told to allow it.
             return Continue(None, self.output)  # ty: ignore[missing-argument]  # pyright: ignore[reportCallIssue, reportArgumentType]
 
         def finish(self) -> Transition:
@@ -330,20 +286,13 @@ def test_preflight_reports_a_transition_to_something_that_is_not_a_state():
     assert any("not a state" in p for p in problems), problems
 
 
-# ------------------------------------------------------------------------------ dot
 
 
 _SAMPLE: Registry | None = None
 
 
 def _sample_registry() -> Registry:
-    """The one registry that owns `Sample`/`Orphan`, built once for the whole module.
-
-    Registering a class stamps its registry onto the class, and a second registry
-    claiming it raises — that guard is the point of `_claim`. So the registry has to be
-    a module-level singleton rather than rebuilt per test: four tests want it, and
-    whichever ran second used to fail depending on collection order.
-    """
+    """The one registry that owns `Sample`/`Orphan`, built once for the whole module."""
     global _SAMPLE
     if _SAMPLE is None:
         registry = Registry("acme").add_blueprints(bp)
@@ -363,15 +312,14 @@ def test_registry_graphs_render_each_class_once_with_all_its_flow_names():
 def test_dot_renders_one_cluster_per_flow_with_live_names_only():
     dot = to_dot(registry_graphs(_sample_registry()), name="acme")
     assert dot.startswith("digraph acme {")
-    assert dot.count("\n  subgraph cluster_") == 3  # two flows and the legend
+    assert dot.count("\n  subgraph cluster_") == 3
     assert "START" in dot
-    assert '"qa' not in dot  # the alias is not a node
+    assert '"qa' not in dot
     assert "review" in dot
 
 
 def test_dot_draws_a_state_as_the_chain_of_steps_it_runs():
-    """A state's box holds one bubble per seam, in source order, captioned with what
-    the author wrote about it; transitions leave the last bubble and enter the first."""
+    """A state's box holds one bubble per seam, in source order, captioned with what the author wrote about it; transitions leave the last bubble and enter the first."""
     dot = to_dot([_graph(Factored)])
     assert "subgraph cluster_f0__start {" in dot
     assert 'f0__start__0 [label="measure' in dot
@@ -379,7 +327,6 @@ def test_dot_draws_a_state_as_the_chain_of_steps_it_runs():
     assert "f0__start__0 -> f0__start__1" in dot
     assert "f0__start__1 -> f0__finish__0 [ltail=cluster_f0__start, lhead=cluster_f0__finish]" in dot
     assert "f0____start -> f0__start__0 [lhead=cluster_f0__start]" in dot
-    # A state that runs nothing stays a plain box, addressed by its own id.
     plain = to_dot([_graph(Reasoned)])
     assert "cluster_f0__hold" not in plain
     assert 'f0__hold [label="hold"]' in plain
@@ -396,7 +343,6 @@ def test_a_step_carries_the_docstring_line_or_the_prompt_title(tmp_path: Path):
     ]
     start = graph.state("start")
     assert start is not None and start.steps[0].summary == "The verdict of measuring a target."
-    # Without a directory the prompt step is still read, untitled.
     review = _state(Sample, "review")
     assert review.steps == (Step("agent", "prompts/review.md"),)
 
@@ -413,22 +359,17 @@ def test_dot_draws_done_as_an_edge_to_one_end_sink_per_flow():
     assert dot.count('label="END"') == 1
     assert "f0__retry -> f0____end" in dot
     assert "f0__finish -> f0____end" in dot
-    # A flow that never ends has no sink to draw.
     assert "__end" not in to_dot([_graph(Endless)])
 
 
 def test_dot_draws_a_handoff_as_a_coloured_bubble_and_never_an_edge():
     dot = to_dot([_graph(Parent), _graph(Orphan)])
-    # The handoff is a step in the parent's chain, captioned with the child's label.
     assert 'f0__start__0 [label="handoff → Orphan", shape=box, fillcolor=plum]' in dot
-    # Nothing crosses between the flows: no arrow into the child's START, none back.
     assert "-> f1____start" not in dot
     assert "f1____end ->" not in dot
     assert "back to" not in dot
-    # The child stands on its own, with its own START and END, never the same colour.
     assert "f1____start [" in dot and "f1____end [" in dot
     assert "fillcolor=lightgreen" in dot and "fillcolor=gold" in dot
-    # Alone in the document, the bubble reads the same; there is just no child cluster.
     alone = to_dot([_graph(Parent)])
     assert 'label="handoff → Orphan"' in alone
     assert "f1____start" not in alone
@@ -440,14 +381,11 @@ def test_dot_ids_are_flow_prefixed_so_two_flows_may_share_a_state_name():
     assert "f1__start" in dot
 
 
-# -------------------------------------------------------------------------- dry-run
 
 
 def test_dry_run_reports_problems_and_never_opens_a_run_dir():
     from workhorse.pyflow import run as pyflow_run
 
-    # Its own unreachable-state class, not the module-level `Orphan`: that one is
-    # already claimed by `_sample_registry()`, and a class belongs to one registry.
     class Stranded(Workflow):
         def start(self) -> Transition:
             return Done(None)
@@ -506,12 +444,7 @@ def test_dry_run_drives_the_machine_without_running_a_node():
 
 
 def test_a_dry_run_records_which_stand_in_answered_each_seam():
-    """`events.jsonl` is the durable record, so it has to say more than "entered".
-
-    A seam a registered stand-in answered and one that fell back to a blank model look
-    identical in the log otherwise — and the difference is what tells the reader
-    whether the path the run took meant anything.
-    """
+    """`events.jsonl` is the durable record, so it has to say more than "entered"."""
     from workhorse.pyflow import run as pyflow_run
 
     kit = Blueprint("marks")
@@ -550,8 +483,6 @@ def test_a_dry_run_records_which_stand_in_answered_each_seam():
 
     assert code == 0
     events = [json.loads(line) for line in lines]
-    # A state's own enter event is not a seam — it carries `waiting_on`, where a node
-    # carries its blueprint and an agent turn its prompt.
     entered = {
         e["node"]: e.get("stub")
         for e in events
@@ -587,12 +518,7 @@ def test_dry_run_uses_its_own_run_dir_rather_than_a_real_runs_checkpoint():
 
 
 class Halts(Workflow):
-    """A machine that can terminate either way, and whose measurement never says `ok`.
-
-    Both terminals are statically present, so the preflight passes; what decides which
-    one runs is a value — which is exactly the position a stand-in reply puts every
-    branch in under `--dry-run`.
-    """
+    """A machine that can terminate either way, and whose measurement never says `ok`."""
 
     def start(self) -> Transition:
         report = self.call(measure, "over")
@@ -632,9 +558,6 @@ def _run_halting(*, dry_run: bool) -> tuple[int, str]:
 
 
 def test_dry_run_reports_a_fail_terminal_rather_than_failing_on_it():
-    # Under `--dry-run` every agent reply is a blank stand-in, so the machine takes
-    # whichever branch a blank selects — which for any workflow with a reachable fail
-    # terminal can be that terminal. The check is what passed; say where it landed.
     code, out = _run_halting(dry_run=True)
     assert code == 0, out
     assert "fail terminal in 'start'" in out, out
@@ -680,10 +603,7 @@ def _run_with_manifest(manifest: ManifestContext, *, dry_run: bool) -> tuple[int
 
 
 def test_an_unresolvable_skill_reference_warns_a_real_run_and_fails_a_dry_one():
-    """A `{{ instruction_ref(...) }}` that resolves against nothing renders a sentence
-    of prose into a live agent prompt, so the only way it becomes visible is by being
-    said. The driver says it before the first state, and `--dry-run` is where the same
-    list becomes an exit code — the YAML engine's contract, kept."""
+    """A `{{ instruction_ref(...) }}` that resolves against nothing renders a sentence of prose into a live agent prompt, so the only way it becomes visible is by being said."""
     manifest = ManifestContext(
         present=True, instructions={"go": ".claude/skills/acme-go/SKILL.md"}
     )
@@ -698,8 +618,7 @@ def test_an_unresolvable_skill_reference_warns_a_real_run_and_fails_a_dry_one():
 
 
 def test_a_run_carrying_no_manifest_is_not_warned_about_references():
-    """Unresolved is the normal state for a manifest-free run (loop-runner, tests);
-    warning there would train the operator to ignore the warning that matters."""
+    """Unresolved is the normal state for a manifest-free run (loop-runner, tests); warning there would train the operator to ignore the warning that matters."""
     code, out = _run_with_manifest(ManifestContext(), dry_run=True)
     assert code == 0, out
     assert "story-docs" not in out, out
@@ -714,16 +633,10 @@ def test_the_run_parser_carries_dry_run():
     assert args.dry_run is True
 
 
-# ------------------------------------------------------------------------ dot (CLI)
 
 
 def _dot_args(**kwargs: Any) -> Any:
-    """The `dot` Namespace argparse would have built.
-
-    `registry` arrives on the namespace because the console script that started the
-    process is the workflow's own — the command renders whichever workflow it *is*, so
-    a test hands one over the same way the CLI does.
-    """
+    """The `dot` Namespace argparse would have built."""
     import argparse
 
     defaults = {"name": None, "output": None, "registry": None}
@@ -743,8 +656,7 @@ def test_dot_renders_a_python_workflow_from_its_registry():
 
 
 def test_dot_rejects_pin_and_leaf_at_the_parser():
-    """`--pin`/`--leaf` collapsed a *declared* YAML branch. A Python workflow's
-    branches are code, so there is nothing to pin — the flags are gone, not ignored."""
+    """`--pin`/`--leaf` collapsed a *declared* YAML branch."""
     from workhorse.cli.parser import build_parser
 
     for flag in ("--pin", "--leaf"):

@@ -1,10 +1,4 @@
-"""The one name index shared by states and nodes.
-
-Any name that reaches disk needs an alias mechanism: a state name is the checkpoint,
-and a node name is the directory `self.output(node)` reads. So both go through this,
-and both get the same two guarantees — an unknown name fails loudly, and a colliding
-alias fails at registration.
-"""
+"""The one name index shared by states and nodes."""
 from __future__ import annotations
 
 from typing import Generic, TypeVar
@@ -15,20 +9,14 @@ T = TypeVar("T")
 
 
 class NameIndex(Generic[T]):
-    """Live names → targets, plus retired names → live names.
-
-    The alias namespace is *shared* with the live names, which is the whole point:
-    an alias that shadows a live name would route a resume to the wrong place, so
-    it raises here rather than resolving quietly.
-    """
+    """Live names → targets, plus retired names → live names."""
 
     def __init__(self, kind: str, owner: str = "") -> None:
-        self.kind = kind  # "state" | "node", used only in messages
+        self.kind = kind
         self.owner = owner
         self._live: dict[str, T] = {}
         self._aliases: dict[str, str] = {}
 
-    # --- registration -------------------------------------------------------
 
     def register(self, name: str, target: T, aliases: tuple[str, ...] = ()) -> None:
         where = f" on {self.owner}" if self.owner else ""
@@ -73,17 +61,7 @@ class NameIndex(Generic[T]):
             self._alias(alias, name)
 
     def replacing(self, targets: dict[str, T]) -> "NameIndex[T]":
-        """A copy of this index with `targets` swapped in — the substitution primitive.
-
-        Non-mutating, because the index a registry built at import time is shared by
-        every run in the process: a test that substituted in place would leak into the
-        next one, which is the very thing substituting instead of patching is for.
-
-        Names are resolved the way a lookup resolves them, so a retired name works
-        here too; a name this index does not carry is an error rather than a silent
-        addition, since "override" and "define" failing the same way is how a typo
-        becomes a passing test.
-        """
+        """A copy of this index with `targets` swapped in — the substitution primitive."""
         copy: NameIndex[T] = NameIndex(self.kind, owner=self.owner)
         copy._live = dict(self._live)
         copy._aliases = dict(self._aliases)
@@ -98,10 +76,9 @@ class NameIndex(Generic[T]):
             copy._live[live] = target
         return copy
 
-    # --- lookup -------------------------------------------------------------
 
     def live_names(self) -> list[str]:
-        """The names `dot` and `--dry-run` render. Aliases are deliberately absent."""
+        """The names `dot` and `--dry-run` render."""
         return list(self._live)
 
     def items(self) -> list[tuple[str, T]]:

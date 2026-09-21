@@ -1,14 +1,4 @@
-"""The starter ``agents.yml`` that ``farrier init`` writes.
-
-The template is a module constant rather than a packaged data file. The wheel ships
-only the ``farrier`` package (see the hatch wheel target in ``pyproject.toml``), so
-``agents.example.yml`` — the full reference this is a pruned version of — is in the
-sdist and the repo but is *not* on disk next to an installed farrier. A `pipx install
-farrier` has to be able to produce this file with nothing else present.
-
-Nothing here reads the library either, so `farrier init` works before
-`farrier config set-library` and its output is the same on every machine.
-"""
+"""The starter ``agents.yml`` that ``farrier init`` writes."""
 
 from __future__ import annotations
 
@@ -17,9 +7,6 @@ from string import Template
 
 from farrier.naming import repo_prefix
 
-# `$name` is substituted; every brace in here is literal, which is why this is a
-# `string.Template` rather than `str.format` — the file it renders is full of the
-# `{{ template.<key> }}` spelling a reader is meant to copy verbatim.
 _TEMPLATE = Template("""\
 # agents.yml — what farrier renders into this repository.
 #
@@ -86,11 +73,5 @@ packs:
 
 
 def default_config(repo: Path) -> str:
-    """Render the starter ``agents.yml`` for the repository rooted at *repo*.
-
-    The repo's name appears only inside a comment — it is derived from the directory
-    rather than configured (see :func:`farrier.naming.repo_prefix`) — so it is spelled
-    exactly as the installer will derive it, which is what makes the example skill name
-    in that comment the real one.
-    """
+    """Render the starter ``agents.yml`` for the repository rooted at *repo*."""
     return _TEMPLATE.substitute(name=repo_prefix(repo))

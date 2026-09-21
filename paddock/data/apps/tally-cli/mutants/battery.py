@@ -1,23 +1,4 @@
-"""The differential battery the mutant corpus was gated on, frozen beside it.
-
-Not a test suite: it asserts nothing and knows nothing about any mutant. It drives
-`python3 -m tally` through the app's happy paths and its edges and prints one canonical
-transcript — every exit code, both streams, and a census of every file each scenario left
-behind, byte for byte. Two trees behave identically exactly when their transcripts are
-equal, and that equality is the corpus's equivalence gate: a candidate whose transcript
-matches its story image's is indistinguishable by observation, so it goes into
-`mutants.yml` under `discards:` with its reason, never into the pool — a mutant nothing
-can see would sit in the denominator as a survivor no triage could ever retire.
-
-One battery serves all three story images. A scenario that names a command an earlier
-image does not have yet degrades identically on both sides of the gate — argparse refuses
-it the same way in the candidate and in the control — so the scenarios below are written
-against the finished app and compare soundly against any image.
-
-Everything here is deterministic on purpose: scenarios run in a throwaway directory and
-speak only in relative paths, so no absolute path, timestamp or hostname reaches the
-transcript. Stdlib only, like the app it drives.
-"""
+"""The differential battery the mutant corpus was gated on, frozen beside it."""
 
 from __future__ import annotations
 
@@ -31,8 +12,6 @@ Step = tuple[str, ...]
 
 CSV_HEADER = "who,what,amount_cents,spent_on"
 
-#: Deliberately not in alphabetical order by payer: an ordering change in the report is
-#: only visible when insertion order and sorted order disagree.
 TRIP_CSV = "\n".join((
     CSV_HEADER,
     "bob,taxi,900,2026-03-01",
@@ -40,7 +19,6 @@ TRIP_CSV = "\n".join((
     "bob,museum,700,2026-03-02",
 )) + "\n"
 
-#: The same file with its first row repeated — within one import, not across two.
 DOUBLED_CSV = "\n".join((
     CSV_HEADER,
     "bob,taxi,900,2026-03-01",
@@ -48,8 +26,6 @@ DOUBLED_CSV = "\n".join((
     "alice,lunch,1200,2026-03-01",
 )) + "\n"
 
-#: A good row, then a row with too few fields — so the refusal has a line number to name
-#: and the good row has a chance to leak into the ledger.
 MALFORMED_CSV = "\n".join((
     CSV_HEADER,
     "bob,taxi,900,2026-03-01",
@@ -58,8 +34,6 @@ MALFORMED_CSV = "\n".join((
 
 _ADD_LUNCH: Step = ("add", "alice", "lunch", "1200", "2026-03-01")
 
-#: `(name, files seeded before the first step, the invocations)` — each scenario starts
-#: in a fresh empty directory and its census is read after the last step.
 SCENARIOS: tuple[tuple[str, dict[str, str], tuple[Step, ...]], ...] = (
     ("init-fresh", {}, (("init",),)),
     ("init-twice", {}, (("init",), ("init",))),

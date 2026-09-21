@@ -1,10 +1,4 @@
-"""Tests for groom.sidecar_hub: the host-side registry of persistent sidecar
-sessions and its correlation-id RPC. A fake sender captures the frames the hub
-would send over the socket and lets the test drive replies, so nothing touches a
-real WebSocket.
-
-Run: uv run python tests/test_sidecar_hub.py   (or via pytest)
-"""
+"""Tests for groom.sidecar_hub: the host-side registry of persistent sidecar sessions and its correlation-id RPC."""
 from __future__ import annotations
 
 import asyncio
@@ -33,7 +27,6 @@ def test_rpc_sends_request_and_returns_resolved_data():
         conn = SidecarConnection("abc123", sock)
 
         async def _reply():
-            # Wait until the request frame has been sent, then answer it.
             while not sock.sent:
                 await asyncio.sleep(0)
             corr = sock.sent[0]["id"]
@@ -92,7 +85,6 @@ def test_correlation_ids_increment_per_connection():
     async def _scenario():
         sock = _FakeSocket()
         conn = SidecarConnection("abc123", sock)
-        # Fire two RPCs that both time out; we only care about the ids sent.
         await asyncio.gather(
             _swallow(conn.rpc("getTree", {}, timeout=0.01)),
             _swallow(conn.rpc("getTree", {}, timeout=0.01)),
@@ -119,7 +111,6 @@ def test_resolve_is_ignored_after_timeout():
             await conn.rpc("getTree", {}, timeout=0.01)
         except SidecarError:
             pass
-        # A late reply for a request whose future is already gone must not raise.
         conn.resolve("1", ok=True, data={"paths": []})
         return True
 
@@ -132,12 +123,11 @@ def test_register_displaces_and_fails_prior_connection():
     async def _scenario():
         first = SidecarConnection("abc123", _FakeSocket())
         sidecar_hub.register(first)
-        # Give the first connection an in-flight RPC, then a reconnect supersedes it.
         pending = asyncio.create_task(_swallow(first.rpc("getTree", {}, timeout=5)))
-        await asyncio.sleep(0)  # let the rpc register its future
+        await asyncio.sleep(0)
         second = SidecarConnection("abc123", _FakeSocket())
         sidecar_hub.register(second)
-        await pending  # must complete (was failed), not hang on its 5s timeout
+        await pending
         return sidecar_hub.get("abc123") is second
 
     assert asyncio.run(_scenario()) is True
@@ -148,8 +138,8 @@ def test_unregister_only_removes_current_connection():
     first = SidecarConnection("abc123", _FakeSocket())
     second = SidecarConnection("abc123", _FakeSocket())
     sidecar_hub.register(first)
-    sidecar_hub.register(second)  # second is now current
-    sidecar_hub.unregister(first)  # a late close from the superseded socket
+    sidecar_hub.register(second)
+    sidecar_hub.unregister(first)
     assert sidecar_hub.get("abc123") is second
 
 
@@ -165,10 +155,6 @@ def test_send_reload_emits_reload_frame():
     assert asyncio.run(_scenario()) == [{"type": "reload"}]
 
 
-# --------------------------------------------------------------------------- #
-# Operator-gate wrappers: ask_questions / answer_gate over the registered
-# connection's correlation-id RPC
-# --------------------------------------------------------------------------- #
 def test_ask_questions_rides_the_registered_connections_rpc():
     _reset()
 
@@ -224,8 +210,7 @@ def test_answer_gate_carries_run_path_and_body():
 
 
 def test_gate_wrappers_raise_when_no_sidecar_is_connected():
-    """The disconnected case is the fallback trigger: the caller must get the
-    same SidecarError the panels get, not None or a hang."""
+    """The disconnected case is the fallback trigger: the caller must get the same SidecarError the panels get, not None or a hang."""
     _reset()
 
     async def _scenario():

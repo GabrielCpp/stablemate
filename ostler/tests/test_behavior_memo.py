@@ -1,10 +1,4 @@
-"""The verdict memo: an item judged once under one contract is not judged again.
-
-The memo is keyed on content, never on position, and on the pool of counterparts a
-verdict was made against. So a line shift hits, an edited claim misses on its own and on
-every candidate (their pool changed), an edited source misses everything in its file, and
-a changed review contract misses everything.
-"""
+"""The verdict memo: an item judged once under one contract is not judged again."""
 
 from __future__ import annotations
 
@@ -92,7 +86,6 @@ def test_salvage_reasks_conflicting_pair_without_discarding_unrelated_verdicts(
     reduced = reduce_packet(packet, recall)
     assert reduced is not None and reduced.digest != packet.digest
     assert [claim.id for claim in reduced.claims] == ["claim:limit"]
-    # A repair supplies a judgment, rather than tooling inventing a replacement status.
     corrected = judged(packet)
     assert merge_verdicts(packet, recall, corrected).verdicts == corrected
 
@@ -167,13 +160,7 @@ def test_a_reduced_reply_merges_over_the_recall_and_is_remembered_whole(tmp_path
 
 
 def test_a_mixed_candidate_is_not_demoted_on_merge(tmp_path: Path, memo: VerdictMemo) -> None:
-    """``mixed`` admits the contradiction ``merge_verdicts`` used to demote around.
-
-    The merge logic rewrites ``implementation_detail`` linked to ``unresolved`` because
-    the two verdicts were made on different evidence. ``mixed`` is the verdict that
-    records the contradiction directly, so it passes through unchanged: the report
-    keeps ``status = 'mixed'`` and the explanatory note the reviewer wrote.
-    """
+    """``mixed`` admits the contradiction ``merge_verdicts`` used to demote around."""
     packet = packet_for(tmp_path)
     items = next(candidate for candidate in packet.candidates if candidate.symbol == "items")
     total = next(candidate for candidate in packet.candidates if candidate.symbol == "total")
@@ -205,13 +192,7 @@ def test_a_damaged_entry_is_a_miss(tmp_path: Path, memo: VerdictMemo) -> None:
 
 
 def test_salvage_keeps_the_verdicts_a_short_reply_did_answer(tmp_path: Path) -> None:
-    """A reply missing one id is eighteen judgements and a gap, not a worthless reply.
-
-    `validate_verdicts` is all-or-nothing on purpose — that is the right rule for a
-    receipt and the wrong one for a recovery, because re-asking the whole packet is how
-    the same id gets dropped a second time. Salvage partitions instead, and what it
-    keeps reduces to a packet carrying only what is still owed.
-    """
+    """A reply missing one id is eighteen judgements and a gap, not a worthless reply."""
     packet = packet_for(tmp_path)
     full = judged(packet)
     dropped = next(candidate for candidate in packet.candidates if candidate.symbol == "items")
@@ -231,12 +212,7 @@ def test_salvage_keeps_the_verdicts_a_short_reply_did_answer(tmp_path: Path) -> 
 
 
 def test_salvage_drops_a_foreign_id_and_an_individually_invalid_verdict(tmp_path: Path) -> None:
-    """Salvage applies the per-item rules and nothing whole-reply.
-
-    A verdict for an id this packet never supplied has nothing to be merged onto, and one
-    that breaks its own rules is not a judgement — both leave their item owing rather
-    than raising, because the point is to name the gap, not to reject the reply twice.
-    """
+    """Salvage applies the per-item rules and nothing whole-reply."""
     packet = packet_for(tmp_path)
     full = judged(packet)
     total = next(candidate for candidate in packet.candidates if candidate.symbol == "total")
@@ -253,12 +229,7 @@ def test_salvage_drops_a_foreign_id_and_an_individually_invalid_verdict(tmp_path
 
 
 def test_a_salvaged_recall_merges_back_into_a_report_that_validates(tmp_path: Path) -> None:
-    """The repair's whole point: the reduced reply plus the salvage reconstructs a receipt.
-
-    Nothing is weakened by salvaging optimistically, because `merge_verdicts` re-validates
-    the merged whole against the full packet — the cross-item rules a partial reply
-    cannot be judged on are enforced here, on the complete set, exactly once.
-    """
+    """The repair's whole point: the reduced reply plus the salvage reconstructs a receipt."""
     packet = packet_for(tmp_path)
     full = judged(packet)
     dropped = next(candidate for candidate in packet.candidates if candidate.symbol == "items")

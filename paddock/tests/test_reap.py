@@ -1,8 +1,4 @@
-"""The reaper: a round does not get to leave its processes holding ports.
-
-The bug these cover is a sibling-round collision — an earlier round's server still
-answering on the port the next round asks for, which looks like the new build working.
-"""
+"""The reaper: a round does not get to leave its processes holding ports."""
 
 from __future__ import annotations
 
@@ -19,14 +15,13 @@ from paddock import reap
 
 
 def _sleeper(cwd: Path, *, trap: bool = False) -> subprocess.Popen[bytes]:
-    """A process standing in `cwd` and nothing else. `trap` makes it ignore SIGTERM."""
+    """A process standing in `cwd` and nothing else."""
     code = (
         "import signal, time\n"
         + ("signal.signal(signal.SIGTERM, signal.SIG_IGN)\n" if trap else "")
         + "time.sleep(300)\n"
     )
     proc = subprocess.Popen([sys.executable, "-c", code], cwd=str(cwd))
-    # The child's cwd is only readable once it has actually started.
     deadline = time.monotonic() + 10
     while time.monotonic() < deadline:
         try:

@@ -28,7 +28,7 @@ def test_tools_list_reports_resolved_builtin(tmp_path: Path, capsys: pytest.Capt
 
     code, out = _run(tmp_path, ["qa", "tools", "list"], capsys)
 
-    assert code in (0, 1)  # tesseract may or may not be installed on the test host
+    assert code in (0, 1)
     assert "tesseract" in out
 
 
@@ -51,5 +51,4 @@ def test_tools_list_empty_with_no_opt_in(tmp_path: Path, capsys: pytest.CaptureF
 
     assert code == 0
     payload = json.loads(out)
-    # `status` comes from the shared `QaOutcome` envelope every qa command answers in.
     assert payload == {"tools": [], "errors": [], "status": "passed"}

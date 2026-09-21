@@ -1,64 +1,10 @@
-"""Normalize each harness's token/cost reporting onto one canonical shape.
-
-Every agent CLI reports what a turn consumed, and every one of them spells it
-differently. Until this module existed only Claude's ``result`` event was parsed,
-so a telemetry store could compare latency across backends but not tokens and not
-money — 21% of recorded turns carried no usage at all, and all of them were the
-non-Claude ones. Comparing two model classes on cost is exactly the question that
-gap made unanswerable.
-
-The canonical key names are **Claude's**, deliberately: spans carrying them are
-already in the store, and renaming would strand that history behind a query the
-analysis has to special-case.
-
-Verified event shapes (captured from the installed CLIs, 2026-07-27):
-
-- claude   ``{"type":"result", "usage":{"input_tokens","output_tokens",
-           "cache_read_input_tokens","cache_creation_input_tokens"},
-           "total_cost_usd", "duration_ms"}``
-- codex    ``{"type":"turn.completed", "usage":{"input_tokens",
-           "cached_input_tokens","output_tokens","reasoning_output_tokens"}}``
-           — no cost (subscription auth)
-- opencode ``{"type":"step_finish", "part":{"tokens":{"input","output",
-           "reasoning","cache":{"read","write"}}, "cost":0}}`` — one event per
-           *step*, so a multi-tool turn emits several and they must be summed
-- copilot  ``{"type":"result", "sessionId", "exitCode", "usage":{
-           "premiumRequests","totalApiDurationMs","sessionDurationMs",
-           "codeChanges":{...}}}`` (CLI 1.0.65, captured 2026-08-05) — **no token
-           counts and no currency of any kind.** Copilot bills in *premium
-           requests*, so there is nothing here to map onto the token fields, and a
-           copilot turn reports empty: it is routed past ``finalize_turn``'s
-           ``is_empty`` guard and carries only the engine's own duration.
-
-           The `codeChanges` sub-dict is why the recursive search is guarded rather
-           than merely bounded: it is a nested dict of integers sitting directly
-           beside `usage`, and an unguarded search would invent token counts out of
-           a lines-changed tally.
-- cline    ``{"type":"run_result", "usage":{"inputTokens","outputTokens",
-           "cacheReadTokens","cacheWriteTokens","totalCost"}, "durationMs",
-           "text", "model":{...}}`` (CLI 3.0.50, captured 2026-08-05) — the richest
-           of the set: tokens, the cache split, real money and duration in one
-           terminal event, all in camelCase.
-
-           It also carries ``model.info.pricing`` — dollars per million tokens,
-           keyed ``input``/``output``, which is *opencode's spelling for counts*.
-           That is the shape that forced :func:`_as_int` to reject fractional
-           floats; see its docstring.
-
-That fallback is the reason this is tolerant rather than a per-backend switch: an
-unrecognized shape costs a missing attribute, never an exception. A turn that
-reports nothing still gets ``duration_ms`` stamped by the engine itself (see
-``otel.turn_end``), so latency coverage is total regardless of harness.
-"""
+"""Normalize each harness's token/cost reporting onto one canonical shape."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any
 
-# Canonical name → the spellings seen in the wild. Order matters only in that the
-# first alias present wins; the lists are disjoint per canonical key, so it does
-# not matter in practice.
 _ALIASES: dict[str, tuple[str, ...]] = {
     "input_tokens": ("input_tokens", "input", "prompt_tokens", "inputTokens"),
     "output_tokens": ("output_tokens", "output", "completion_tokens", "outputTokens"),
@@ -81,20 +27,12 @@ _ALIASES: dict[str, tuple[str, ...]] = {
         "reasoning",
     ),
 }
-# Nested under a `cache: {read, write}` sub-dict (opencode) rather than flattened
-# into the token dict itself.
 _CACHE_SUBKEYS = {"read": "cache_read_input_tokens", "write": "cache_creation_input_tokens"}
 _COST_KEYS = ("total_cost_usd", "cost_usd", "total_cost", "cost", "totalCost")
-# Keys whose value is the dict actually holding the counts.
 _USAGE_CONTAINERS = ("usage", "tokens", "token_usage", "usageMetadata")
-# A dict is "token-shaped" if it names at least one of these. Guards the recursive
-# fallback from latching onto some unrelated dict that happens to have an `input`.
 _TOKEN_MARKERS = frozenset(
     alias for aliases in _ALIASES.values() for alias in aliases
 ) | {"total"}
-# The canonical token fields, in the order telemetry stamps them onto a span.
-# Same names as ``_ALIASES``'s keys and ``_CACHE_SUBKEYS``'s values, which is what
-# lets an extracted count dict be splatted straight into ``TurnUsage``.
 _TOKEN_FIELDS = (
     "input_tokens",
     "output_tokens",
@@ -105,8 +43,7 @@ _TOKEN_FIELDS = (
 
 
 def _add(total: int | None, part: int | None) -> int | None:
-    """Fold one reported count into a running total, keeping "not reported"
-    distinct from a reported zero: absent + absent stays absent."""
+    """Fold one reported count into a running total, keeping "not reported" distinct from a reported zero: absent + absent stays absent."""
     if part is None:
         return total
     return (total or 0) + part
@@ -114,16 +51,7 @@ def _add(total: int | None, part: int | None) -> int | None:
 
 @dataclass(frozen=True, slots=True)
 class TurnUsage:
-    """What one turn consumed, in the canonical (Claude) key names.
-
-    Every field is optional and ``None`` means *this harness does not say* —
-    deliberately distinct from a reported zero. A real ``0.0`` (an opencode
-    subscription turn) means "this cost nothing"; a missing value means "not
-    measured", and averaging the two together would understate spend. The same
-    reasoning applies per token field: ``reasoning_output_tokens`` is reported by
-    codex and opencode and absent from Claude's ``result`` event, so it is left
-    off the span rather than zeroed.
-    """
+    """What one turn consumed, in the canonical (Claude) key names."""
 
     input_tokens: int | None = None
     output_tokens: int | None = None
@@ -134,8 +62,7 @@ class TurnUsage:
     duration_ms: int | None = None
 
     def token_counts(self) -> dict[str, int]:
-        """The token fields this turn actually reported, canonical name → count.
-        A field the harness did not report is absent here, never zero."""
+        """The token fields this turn actually reported, canonical name → count."""
         return {
             name: count
             for name in _TOKEN_FIELDS
@@ -144,39 +71,18 @@ class TurnUsage:
 
     @property
     def generated_tokens(self) -> int | None:
-        """Every token the model *produced* this turn — the answer and the thinking
-        it did to get there — or ``None`` when the harness reported neither.
-
-        The two fields are one budget. A provider bills reasoning against the same
-        max-output ceiling as the answer, and reports the split inconsistently: the
-        same model on the same node returns ``output=1, reasoning=31999`` on one turn
-        and ``output=32000, reasoning=0`` on the next, for the identical event. Only
-        the sum is stable, which is why the classifier reads this and not either
-        field. ``None`` stays distinct from ``0`` for the reason the rest of this
-        module keeps it: "generated nothing" and "did not say" are different turns.
-        """
+        """Every token the model *produced* this turn — the answer and the thinking it did to get there — or ``None`` when the harness reported neither."""
         if self.output_tokens is None and self.reasoning_output_tokens is None:
             return None
         return (self.output_tokens or 0) + (self.reasoning_output_tokens or 0)
 
     @property
     def is_empty(self) -> bool:
-        """True when the turn reported neither tokens nor money, i.e. there is
-        nothing to fold and nothing worth stamping. Duration alone does not
-        count: the engine measures that itself (``otel.turn_end``)."""
+        """True when the turn reported neither tokens nor money, i.e."""
         return not self.token_counts() and self.total_cost_usd is None
 
     def merge(self, part: TurnUsage) -> TurnUsage:
-        """Fold one report into a running per-turn total, as a new value.
-
-        Needed because opencode reports per *step*: a turn that calls three tools
-        emits three ``step_finish`` events, and only their sum is the turn's cost.
-        Backends that report once per turn merge a single value and are
-        unaffected. Counts and cost add; duration is a span of time, not a
-        quantity, so the last report wins rather than summing into nonsense. An
-        empty ``part`` folds to a no-op, leaving the total (and its absences)
-        alone.
-        """
+        """Fold one report into a running per-turn total, as a new value."""
         if part.is_empty:
             return self
         return TurnUsage(
@@ -203,25 +109,7 @@ class TurnUsage:
 
 
 def _as_int(value: Any) -> int | None:
-    """Coerce a reported count to int, or None if it is not a usable number.
-
-    Booleans are rejected explicitly: ``isinstance(True, int)`` is True in Python,
-    and a stray ``{"cache": {"read": true}}`` would otherwise land in the store as
-    a token count of 1.
-
-    **A fractional float is rejected too, and that is load-bearing rather than
-    fastidious.** A token count is a whole number, so anything with a fraction is
-    some other quantity that happens to sit under a key this table recognizes. The
-    case that forced it: cline's completion event carries a *price table* —
-    ``model.info.pricing = {"input": 0.14, "output": 0.28}`` — dollars per million
-    tokens, under the very keys opencode uses for its counts. Truncating gave
-    ``int(0.14) == 0``, so a run reporting 6337 input tokens recorded 0. A silently
-    fabricated zero is worse than a missing attribute in exactly the way this module
-    exists to prevent, and it is worse still here because it looks like data.
-
-    Whole-valued floats stay acceptable: JSON has one number type, so a backend
-    reporting ``33.0`` means thirty-three.
-    """
+    """Coerce a reported count to int, or None if it is not a usable number."""
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         return None
     if isinstance(value, float) and value != int(value):
@@ -254,12 +142,7 @@ def _read_tokens(source: dict[str, Any]) -> dict[str, int]:
 
 
 def _find_tokens(obj: Any, depth: int = 0) -> dict[str, int]:
-    """Search ``obj`` for the token-shaped dict, preferring a named container.
-
-    Depth is bounded because this runs on every event of every turn: an unbounded
-    walk over a large tool-result payload would be real per-event cost for a
-    backend whose shape we already know.
-    """
+    """Search ``obj`` for the token-shaped dict, preferring a named container."""
     if depth > 4 or not isinstance(obj, dict):
         return {}
     for key in _USAGE_CONTAINERS:
@@ -296,14 +179,7 @@ def _find_cost(obj: Any, depth: int = 0) -> float | None:
 
 
 def normalize(event: dict[str, Any]) -> TurnUsage:
-    """Map one backend's completion event onto the canonical ``TurnUsage``.
-
-    The event stays a raw ``dict``: it is a foreign, version-drifting payload we
-    do not own, so it is read tolerantly and whatever is unrecognized is shrugged
-    off. The typed boundary is the value this returns, not the wire shape it came
-    from. Anything the event did not report stays ``None`` — the span then goes
-    without rather than carrying a fabricated zero.
-    """
+    """Map one backend's completion event onto the canonical ``TurnUsage``."""
     return TurnUsage(
         **_find_tokens(event),
         total_cost_usd=_find_cost(event),

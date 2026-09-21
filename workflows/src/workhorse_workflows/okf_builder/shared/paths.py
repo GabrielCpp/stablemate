@@ -1,23 +1,4 @@
-"""Where things are: the docs-repo root, and every path derived from it.
-
-The YAML computed these in three places that had to agree without being able to check
-each other — `prepare.py` (the build worklist, the features root, the build directory)
-and the workflow document itself, which built two more by string concatenation in an
-argument list (`"{{ worklist_path }}.source.json"`,
-`"{{ features_root }}/coverage-waivers.json"`). A derivation a template owns is a
-derivation no test can reach, so all of them are here.
-
-**Where a document lives is ostler's answer, not this module's.** The book and its
-waivers come from `ostler.path`, so a repo that moved `docs/features` with `docRoots:`
-is followed and the builder writes where `ostler coverage` reads. What is genuinely this
-workflow's stays here: `.agents/okf-build` and the worklist filenames under it are run
-artifacts, not documents, and ostler has no opinion about them.
-
-**These are absolute paths, as strings.** `author`'s are repo-relative because its
-checkpoint carries them across machines; okf-builder's `prepare` emitted `str(root)` and
-every downstream node consumed it as an absolute path. Keeping the spelling avoids a
-whole class of "which root is this relative to" question that the YAML did not have.
-"""
+"""Where things are: the docs-repo root, and every path derived from it."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -25,16 +6,11 @@ from pathlib import Path
 from ostler import path as okf_path
 from workhorse_workflows.kit import find_docs_root
 
-#: The build's run state under the docs repo: worklists and the source inventory.
 BUILD_DIRNAME = ".agents/okf-build"
 
 
 def docs_root(docs_path: str = "", repo_dir: str = "") -> Path:
-    """The docs repo root: the explicit path, else the walk up from `repo_dir`.
-
-    Neither argument is read from the environment: both are run inputs that travel down
-    from the workflow, per the rule in `workflows/README.md`.
-    """
+    """The docs repo root: the explicit path, else the walk up from `repo_dir`."""
     return Path(find_docs_root(docs_path, repo_dir))
 
 
@@ -44,12 +20,7 @@ def features_root(root: Path, service: str) -> Path:
 
 
 def book_scope(root: Path, service: str) -> str:
-    """One service's book as a repo-relative prefix, for matching node paths against.
-
-    The graph reports node paths relative to the docs root, so a substring test needs the
-    book spelled the same way — derived here rather than written out, so a repo that moved
-    its book still matches instead of silently walking nothing.
-    """
+    """One service's book as a repo-relative prefix, for matching node paths against."""
     book = features_root(root, service)
     try:
         return f"{book.resolve().relative_to(Path(root).resolve()).as_posix()}/"
@@ -58,22 +29,12 @@ def book_scope(root: Path, service: str) -> str:
 
 
 def build_dir(root: Path) -> Path:
-    """Where the worklists live. The caller creates it; this only names it."""
+    """Where the worklists live."""
     return root / BUILD_DIRNAME
 
 
 def ensure_build_dir(root: Path) -> Path:
-    """Create the build directory and make it ignore itself. Returns it.
-
-    The self-ignore is load-bearing, not tidiness. What is left here after the browser
-    profile moved to the cache is still run state, not documents — worklists, the source
-    inventory — and it still lives *inside* the docs repo. A coder run in the same
-    checkout commits with `commit_all` (`git add -A`), so anything here that the repo
-    does not ignore gets swept into a story commit and is then in every clone's history
-    forever, where only a rewrite removes it. Writing the `.gitignore` here means a repo
-    is protected the first time okf-builder runs in it, rather than after someone
-    notices.
-    """
+    """Create the build directory and make it ignore itself."""
     build = build_dir(root)
     build.mkdir(parents=True, exist_ok=True)
     marker = build / ".gitignore"
@@ -90,24 +51,12 @@ def worklist_path(root: Path, service: str, scope_id: str = "") -> Path:
 
 
 def ledger_path(root: Path, service: str) -> Path:
-    """The result ledger: run state beside the worklist, not a document.
-
-    One file per service, not per scope — a targeted re-run and a bulk run against the
-    same service are the same claims under the same fingerprints, and splitting the
-    ledger by `scope_id` the way `worklist_path` does would make a scoped run blind to
-    what a bulk run already recorded for the same claim.
-    """
+    """The result ledger: run state beside the worklist, not a document."""
     return build_dir(root) / f"{service or 'all'}.ledger.json"
 
 
 def operator_context_path(root: Path, service: str, scope_id: str = "") -> Path:
-    """Where a budget stop parks its questions, and where an answer resumes the run.
-
-    Run state like the worklist beside it, not a document: the gitignored build dir is the
-    right home because the file's whole life is one `Await` round trip — the workflow
-    writes the pending count and the resume instruction, the operator edits the file, the
-    resume consumes it. Nothing downstream reads it after that.
-    """
+    """Where a budget stop parks its questions, and where an answer resumes the run."""
     suffix = f".{scope_id}" if scope_id else ""
     return build_dir(root) / f"{service or 'all'}{suffix}.context.md"
 
@@ -118,11 +67,7 @@ def source_inventory_path(worklist: str | Path) -> Path:
 
 
 def waivers_path(features: str | Path) -> Path:
-    """The committed coverage waivers: which uncovered units are deliberate, and why.
-
-    Takes the book rather than the root because both callers already hold one, resolved
-    by :func:`features_root`; the filename inside it is ostler's too.
-    """
+    """The committed coverage waivers: which uncovered units are deliberate, and why."""
     return okf_path.waivers_path_under(Path(features))
 
 

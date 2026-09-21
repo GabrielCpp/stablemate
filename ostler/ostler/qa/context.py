@@ -29,23 +29,11 @@ from ostler.qa.outcome import QaOutcome
 from ostler.qa.source_context import SourceRepository
 from ostler.source_snapshots import source_fingerprint
 
-#: The last-resort declaration shape, for a language with no parser and no entry in
-#: `inventory` — and for a Python file `ast` could not read. Declared in
-#: `.agent-checks.toml` for that reason: it is the fallback, never the first answer.
 _SYMBOL_RE = re.compile(
     r"^\s*(?:async\s+)?(?:def|class|function|func|fn)\s+([A-Za-z_$][\w$]*)"
     r"|^\s*(?:export\s+)?(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*="
 )
 _AC_RE = re.compile(r"^(?:AC\s*)?(\d+)\s*[:.)-]\s*(.+)$", re.IGNORECASE)
-#: The file suffixes a `tests:` bullet may cite. A membership test, not an alternation baked
-#: into a pattern: `Path.suffix` already knows where a suffix begins, and the set is the whole
-#: of what this reader needs to decide.
-#:
-#: This used to read `verify:`, back when a node's declared verification *was* the name of a
-#: test. It is not: `verify:` now declares the observation that fulfils the node's obligations
-#: (`ostler.checks`), and a test citation moved to `tests:`, which mints no obligation and is
-#: read by one consumer — the regression node's failure attribution, which needs a test path
-#: and can do nothing with an observation.
 _CITABLE_SUFFIXES = frozenset(
     f".{ext}"
     for ext in (
@@ -54,17 +42,8 @@ _CITABLE_SUFFIXES = frozenset(
     ).split()
 )
 
-#: How many nodes must cite one `code:` symbol before the citation stops localizing the
-#: change. Two nodes citing one symbol is a well-written book, not a fan-out — an endpoint
-#: documenting the wire contract and a concept documenting the domain rule, both honestly
-#: grounded in the one function that implements them. Both are at risk when it changes, and
-#: demoting them left a story whose only changed file was that symbol owing nothing at all.
-#: What the demotion is for is the container: the page component every panel is documented
-#: against, where adding one control marked a dozen unrelated claims changed.
 _CONTAINER_FANOUT = 3
 
-#: Bullets the relation fixpoint joins nodes on. A node naming the same consistency group,
-#: persistence store, event or idempotency key as an already-selected node is pulled in.
 RELATION_KEYS = (
     "consistency",
     "consistency rule",
@@ -75,39 +54,16 @@ RELATION_KEYS = (
     "idempotency",
 )
 
-#: The reason kind the fixpoint stamps for each of those bullets.
 _RELATION_REASON_KINDS = frozenset(key.replace(" ", "-") for key in RELATION_KEYS)
 
-#: Bullets naming an event by name rather than describing an invariant. Their whole value is
-#: already the subject, so they pool with the parsed subjects below and an emitter joins its
-#: consumer without either bullet being rewritten.
 _EVENT_KEYS = ("emits", "consumes")
 
-#: The optional leading identifier on a relation bullet: `booking-record — a confirmed booking
-#: is written through the ledger`. Two nodes are talking about the same record when they name
-#: it, and prose alone never says so — every `persistence:` value in the benchmark corpus is a
-#: unique sentence, so an equality join over the prose matches nothing and the relation rules
-#: are silently inert. The head shape is narrow (lowercase identifier, em dash, space either
-#: side) so an existing sentence cannot claim a subject by accident; a value without one has
-#: none and joins nothing, which is today's behaviour made explicit rather than incidental.
-#: What a node reached only by the one-hop rule is owed live evidence for: the bullets naming
-#: the thing it shares — the record, the event, the lock — and nothing else. Its node-level
-#: contract is owed alongside these, minted apart from them.
 _SHARED_INVARIANT_KEYS = frozenset(RELATION_KEYS) | frozenset(_EVENT_KEYS)
 
 _RELATION_SUBJECT_RE = re.compile(r"^([a-z0-9][a-z0-9._-]*)\s+—\s+(\S.*)$", re.DOTALL)
 
-#: How many nodes one relation subject may bind before it is worth a look. Warned about, never
-#: capped: a record legitimately shared by five screens is legitimately owed by all five, and a
-#: silent cap would report full coverage of a set it had quietly trimmed. What a large count
-#: usually means is a subject named too broadly — `database` rather than the record.
 _RELATION_FANOUT = 6
 
-#: Reason kinds that reach a node *navigationally* — by containment or by a graph link —
-#: and so say nothing about whether the change can break it. Being the parent of a touched
-#: node, or a flow that routes through one, is not a way to be broken by it: a single edited
-#: file otherwise drags in every flow that links to every contract it owns. A node held
-#: solely by these stays in the packet as context and is not owed live evidence.
 _CLOSURE_REASON_KINDS = frozenset(
     {
         "contains-impacted-node",
@@ -118,54 +74,16 @@ _CLOSURE_REASON_KINDS = frozenset(
     }
 )
 
-#: Reason kinds that reach a node by *co-binding*: it names the same consistency group,
-#: persistence subject, event or idempotency key as a node already selected. Unlike the
-#: navigational kinds above, this is real relatedness — those bullets are the invariants a
-#: change breaks when a story is split, and the node holding one is exactly the screen
-#: nobody re-proved.
-#:
-#: They are still context-only *here*, and the reason is the fixpoint below (`while
-#: related:`) rather than relatedness as such. That loop recomputes its selection every lap,
-#: so one shared subject chains transitively across a whole persistence island: a
-#: seven-criterion story came out owing live proof across sixty-seven documents, 194 of its
-#: obligations held by `event-consumer` alone. What is owed instead is one hop — see
-#: `_relation_owed`, which joins from the *required* set rather than from the closure and
-#: stamps `relation-of-required`, a kind deliberately in neither of these two sets.
 _COBINDING_REASON_KINDS = frozenset({"event-consumer", "event-producer"}) | _RELATION_REASON_KINDS
 
-#: What `_is_required` subtracts: reach that is not, on its own, evidence the change can
-#: break the node.
 _CONTEXT_ONLY_REASON_KINDS = _CLOSURE_REASON_KINDS | _COBINDING_REASON_KINDS
 
-#: Bullets that name how to address a node in a running UI. Lifted onto the obligation so a
-#: planner writing a browser locator reads them there rather than re-deriving them from the
-#: sibling `role:`/`name:` obligations it happens to have been handed.
-#:
-#: `states`, `exclusive-with`, `on`, `trigger` and `does` are carried verbatim and uninterpreted
-#: alongside the original set — the book's grammar for partitioning a screen's `visible(...)`
-#: bullets into more than one compiled scenario (a component present only in a named
-#: arrangement, a pair that can never share a scenario, and an `## Interactions` row's subject/
-#: action/destination). `compile.py` reads these to partition; nothing here interprets them.
-#:
-#: Derived from `BulletKey.locator`, not a second hand-maintained tuple: a key that is a locator
-#: on one type and something else on another (`selector:` also names how an `environment` is
-#: chosen) is still read correctly, because `_locators` below filters by the node's own declared
-#: keys before it ever consults this set.
 _LOCATOR_KEYS = tuple(sorted(registry.LOCATOR_KEYS))
-#: Bullet key to packet key, for the few whose bullet spelling (a markdown-hyphen convention)
-#: is not a legal identifier a compiled plan would want to spell as a dict key.
 _LOCATOR_KEY_RENAME = {"exclusive-with": "exclusiveWith"}
 
 
 def _sort_key(obligation_id: str) -> list[tuple[int, int | str]]:
-    """Order obligation ids so `…:raises:10` follows `…:raises:2`.
-
-    The trailing `:{index}` a value-level obligation carries is a number, and sorting the
-    id as one string puts the tenth case between the first and the second. That is only
-    cosmetic until a bullet packs enough cases to reach ten — then the packet a planner
-    reads presents them out of order, and a reviewer citing "the third case" means a
-    different obligation than the planner counted.
-    """
+    """Order obligation ids so `…:raises:10` follows `…:raises:2`."""
     return [(1, int(part)) if part.isdigit() else (0, part) for part in obligation_id.split(":")]
 
 
@@ -201,27 +119,12 @@ def _ref_owns_change(value: str, change: ChangedUnit) -> bool:
 
 
 def _book_root(root: Path, features_root: str) -> str:
-    """The book's own root, relative to *root*, when `--features-root` names a nested book.
-
-    The derivation lives in `path.book_prefix_in`, which carries the reasoning: the same
-    fact the runbook reader needs to resolve a `working-directory: .` against the system a
-    book describes rather than against the checkout it was read from.
-
-    `--source-root` is deliberately kept out of this: its job is attribution for
-    `_surface_owner`, and bending it into a rebase target would make a book's portability
-    depend on the caller repeating a mapping the book already implies.
-    """
+    """The book's own root, relative to *root*, when `--features-root` names a nested book."""
     return path_mod.book_prefix_in(root, features_root)
 
 
 def book_files(root: Path, features_root: str) -> list[dict[str, str]]:
-    """Every `*.md` file under the book at *features_root*, with its path and sha256.
-
-    Paths are relative to the book directory (`root / features_root`) and the list is
-    sorted, so two runs against the same tree agree byte-for-byte. This is the evidence
-    `qa/plan.py`'s book-drift check recomputes against: it diffs the recorded list here
-    against a fresh call on the current tree and names exactly which files moved.
-    """
+    """Every `*.md` file under the book at *features_root*, with its path and sha256."""
     book_dir = root / features_root if features_root else root
     files: list[dict[str, str]] = []
     if not book_dir.is_dir():
@@ -237,14 +140,7 @@ def book_files(root: Path, features_root: str) -> list[dict[str, str]]:
 
 
 def story_file_record(root: Path, story_file: Path | None) -> dict[str, str] | None:
-    """The packet's record of the story file its `story` and `acceptanceCriteria` keys were
-    derived from — `None` when there was no story file to derive them from.
-
-    `qa/plan.py` recomputes this at validate time the same way it recomputes `bookFiles`: it
-    hashes the file named here again and refuses a packet whose story moved underneath it,
-    because `acceptanceCriteria` is load-bearing in validate and a stale set would otherwise
-    be graded against silently.
-    """
+    """The packet's record of the story file its `story` and `acceptanceCriteria` keys were derived from — `None` when there was no story file to derive them from."""
     if story_file is None or not story_file.is_file():
         return None
     try:
@@ -264,14 +160,7 @@ def _book_relative(path: str, book_root: str) -> str:
 
 
 def _matching_refs(refs: set[str], cited: list[str]) -> list[str]:
-    """Citations in *cited* that name something in *refs*, tolerant of symbol spelling.
-
-    A citation and an extracted symbol may spell a qualified method differently — Go's
-    `(*Server).handleCreate` next to a book's `Server.handleCreate` — so the symbol halves
-    are compared part-wise via :func:`ostler.inventory.symbol_parts`, the same tolerance
-    grounding already applies. The citation's own spelling is reported: the book's grammar
-    wins over whatever the front end happens to emit.
-    """
+    """Citations in *cited* that name something in *refs*, tolerant of symbol spelling."""
     parsed_refs = []
     for value in refs:
         try:
@@ -294,9 +183,6 @@ def _matching_refs(refs: set[str], cited: list[str]) -> list[str]:
     return sorted(dict.fromkeys(matches))
 
 
-#: The git empty-tree object, present in every repository without needing a commit —
-#: diffing against it is how `book_context` reads every currently-grounded node as
-#: directly reached, with no real revision required on either side.
 EMPTY_TREE_SHA = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
 
 
@@ -307,21 +193,7 @@ def book_context(
     features_root: str = "",
     repositories: Sequence[SourceRepository] = (),
 ) -> dict[str, Any]:
-    """Every obligation the book currently owns — no story, no diff, nothing to be proportional to.
-
-    `build_context` maps a `base..head` code diff onto the graph so a story's packet stays
-    proportional to what that story touched; that is the right shape when a story exists.
-    A book documenting an already-existing app with no authored story has no diff to be
-    proportional to, and "book is plan source" (measured against a real book, see
-    `audit_one_spec`) means the book's own current content is what a live audit owes
-    evidence for, not nothing.
-
-    This is `build_context` against `EMPTY_TREE_SHA..WORKTREE`: every path the book cites
-    reads as freshly added, so every grounded node the diff-directness test in `_is_required`
-    already applies is required exactly as if the whole tree had just been written — which,
-    from "no prior story reached it", it structurally has. No new obligation-selection logic
-    is added; this only supplies the diff endpoints a whole-book scan has none of otherwise.
-    """
+    """Every obligation the book currently owns — no story, no diff, nothing to be proportional to."""
     return build_context(
         root,
         base=EMPTY_TREE_SHA,
@@ -333,46 +205,7 @@ def book_context(
 
 
 def _navigation(head_graph: Graph) -> dict[str, dict[str, Any]]:
-    """Every surface's derived screen reachability, keyed by surface (Option C, Amendment 1).
-
-    Computed once at context-build time from `reach.py`'s existing navigation-derivation
-    logic — `compile.py` reads this section rather than calling `reach` or touching a live
-    `Graph` itself. Surface-keyed even for a single-surface book: `{surface: reachability(...)}`
-    with exactly one key is not a special case, it is the general shape with one entry.
-
-    A surface with no screen nodes gets a zeroed-out stub instead of a `reach.reachability`
-    call, because that call requires a root screen to start from and a screen-less surface
-    (a pure HTTP/CLI surface) has none — that is not a finding, it is a surface this compiler
-    does not address by navigation at all (Condition 1). A surface *with* screens but no
-    resolvable root (`reach.UnknownStart` — no screen's `route:` is the root path) is a real
-    book gap, reported as every one of that surface's screens being unreachable rather than
-    raised as an exception that would take context-building down with it.
-
-    Every entry also carries `entryUrl` — the surface's `scheme://host[:port]`, read off its
-    `runbook`/`server` nodes by `reach.entry_origin` — for `compile.py` to resolve a
-    `target(...)`'s `base_url` from the book instead of one CLI flag applied to every surface
-    alike. A surface whose sources state several addresses resolves to the first one
-    `reach.surface_runbooks` reaches rather than to an error: they are addresses of one system,
-    and which of them the engine opens is not a question the book is asked to answer.
-
-    Every entry also carries `driver` — the driver of the runbook that exercises this surface
-    (§4.1's D1), read off its `runbook` node(s) by `reach.surface_driver` — for `compile.py`'s
-    dispatch table to key on "who performs this step" instead of inferring it from which check
-    a `does:` bullet happens to declare. Several runbooks naming the same surface through
-    `surfaces:` with different `driver:` values is normal, not a defect — a lint runbook and a
-    browser runbook and an IaC runbook can all be correct about the same surface — and the
-    engine picks between them by §4.1's own driver order (`reach.surface_runbooks`) rather than
-    asking the book to mark one. A book with no runbook covering the surface leaves `driver`
-    `None`, and a step whose driver the book states nowhere is not defaulted: it becomes a gap.
-
-    Every entry also carries `bundleId` — the mobile package/bundle id of the runbook that
-    exercises this surface, read off its `runbook` node(s) by `reach.surface_bundle_id` the same
-    way `driver` is — for `compile.py` to address a Maestro flow's real app instead of a
-    placeholder — and `launchScreen`, the screen `launch-screen:` names on that runbook, read by
-    `reach.surface_launch_screen`, for `compile.py` to know which screen a cold `launchApp`
-    actually opens on, since Maestro's own `- launchApp` names no screen and the book otherwise
-    has no way to say one. Both are `None` when no runbook covering the surface states them.
-    """
+    """Every surface's derived screen reachability, keyed by surface (Option C, Amendment 1)."""
     dump = graph_mod.build(head_graph)
     surfaces = sorted({n["surface"] for n in dump["nodes"] if n.get("surface")})
     navigation: dict[str, dict[str, Any]] = {}
@@ -381,10 +214,6 @@ def _navigation(head_graph: Graph) -> dict[str, dict[str, Any]]:
         driver = reach.surface_driver(dump, surface)
         bundle_id = reach.surface_bundle_id(dump, surface)
         launch_screen = reach.surface_launch_screen(dump, surface)
-        # `root_path` needs *driver* before it can be asked: a `mobile` surface has no path
-        # grammar to state a root path in (`routes.is_path_addressed`), and asking without
-        # driver would get today's web-shaped default back regardless of what this surface
-        # actually is.
         root_path, _server = reach.root_path(surface_dump, driver)
         screens = reach.screens_of(surface_dump)
         entry_url = reach.entry_origin(dump, surface)
@@ -444,19 +273,9 @@ def build_context(
     exclude_paths: Iterable[str] = (),
     repositories: Sequence[SourceRepository] = (),
 ) -> dict[str, Any]:
-    """Map a `base..head` code diff onto the OKF graph and return the obligation packet.
-
-    `exclude_paths` are repo-relative paths to drop from the diff before anything is
-    obligated on them. It exists for the `head="WORKTREE"` caller: the worktree is not a
-    commit, so it can hold work that belongs to whoever left it there rather than to the
-    change under examination, and only that caller can tell the two apart.
-    """
+    """Map a `base..head` code diff onto the OKF graph and return the obligation packet."""
     root = root.resolve()
     excluded_paths = {str(path) for path in exclude_paths}
-    # Repo-relative on purpose: this one is handed to `git ls-tree`, which pathspecs against
-    # the work tree, not the filesystem. Empty means "wherever this repo configures its book",
-    # which ostler answers — spelling `docs/features` here would read the wrong tree in a repo
-    # that moved it.
     features_root = path_mod.resolve_features_root(features_root, root)
     source_roots = source_roots or {}
     book_root = _book_root(root, features_root)
@@ -473,15 +292,7 @@ def build_context(
     base_nodes, base_edges, base_ends, base_scopes, base_details = _serialized_graph(base_graph)
     head_nodes, head_edges, head_ends, head_scopes, head_details = _serialized_graph(head_graph)
     nodes_by_id = _merge_snapshot_nodes(base_nodes, head_nodes)
-    # Head wins per node, as `_merge_snapshot_nodes` does for the nodes themselves; a node
-    # only the base graph still holds keeps the scope it had there.
     node_scopes = {**base_scopes, **head_scopes}
-    # A path the book declares under `config:` is a production unit by declaration. The
-    # non-production and generated-unit filters below are heuristics over the path alone —
-    # a `Pulumi.<stack>.yaml` is dropped as stack config, which is the right default for a
-    # file nobody documented — and a node that names the file has overruled the heuristic
-    # for that file: the deploy token committed in the clear lives in exactly such a file,
-    # and the filter is what made it unreachable. The filters themselves stay pure.
     declared_config = {
         item
         for node in nodes_by_id.values()
@@ -546,9 +357,6 @@ def build_context(
     direct_reasons: dict[str, list[dict[str, str]]] = {}
     changed_code: list[dict[str, Any]] = []
     for change in changes:
-        # `--source-root` and `_surface_owner` stay in `root`'s frame (its whole job is
-        # attribution against those CLI-declared prefixes) — only the book-facing paths
-        # below are rebased onto the book's own root.
         change_book_root = "" if change.repository else book_root
         book_path = _book_relative(change.path, change_book_root)
         book_base_path = _book_relative(change.base_path, change_book_root)
@@ -582,12 +390,6 @@ def build_context(
         )
         mapped = change.status == "deleted"
         for node_id, node in nodes_by_id.items():
-            # Every owning key the node's type declares is read — `code:` everywhere it is
-            # declared, `openapi:` on a server or endpoint, `file:` on a format, `config:` on
-            # an environment or a format — so a node
-            # documented against a schema or a fixture file is reached when that file
-            # changes, without a second `code:` citation repeating the path. Which keys own
-            # is the registry's call (`BulletKey.owns`), not a list kept here.
             bullets = node.get("bullets", {})
             owned_file = False
             for key in registry.owning_keys(str(node.get("type", ""))):
@@ -603,9 +405,6 @@ def build_context(
                     _ref_owns_change(item, book_change)
                     for item in cited
                 ):
-                    # One file-owner reason per node and change, whichever key cited it
-                    # first: citing the same path under `code:` and `openapi:` is one
-                    # owner, not two, so the shared-file count below stays honest.
                     mapped = owned_file = True
                     direct_reasons.setdefault(node_id, []).append(
                         {
@@ -640,42 +439,14 @@ def build_context(
                     }
                 )
 
-    # A bare-file `code:` citation says "this node is documented against that file". It
-    # localizes a change to the node only while the node is the file's *sole* owner. A
-    # global stylesheet or a shared module is cited by every node that renders through it,
-    # so one edited line makes all of them file-owned — and none of that is evidence the
-    # change touched any particular one. Which of those citations are shared is a property
-    # of the whole change set, so it is known here and not inside the loop above.
-    #
-    # A `code:` citation of an exact *symbol* stops localizing for the same reason, but not
-    # at the same count — a symbol is a far better anchor than a bare file, so it takes
-    # `_CONTAINER_FANOUT` nodes rather than two. A container — a toolbar component owning a
-    # dozen documented controls, a page component owning every panel on it — is the honest
-    # anchor for each of them, so editing it to render one new control marks all twelve
-    # changed. A story that added a publish button was charged with proving undo, redo, the
-    # heading toggles and the list toggles, which is a plan the change cannot justify and no
-    # planner can write. Below that count the citation is still evidence: an endpoint and a
-    # concept both grounded in one function are two true readings of it, and a change to it
-    # can break either.
     file_owners: dict[str, set[str]] = {}
     symbol_owners: dict[str, set[str]] = {}
-    # Owners are counted per node whatever key cited the path, so a node naming one file
-    # under two owning keys is one owner.
     for node_id, reasons in direct_reasons.items():
         for reason in reasons:
             if reason["kind"] == "file-owner":
                 file_owners.setdefault(reason["ref"], set()).add(node_id)
             elif reason["kind"] == "changed-code":
                 symbol_owners.setdefault(reason["ref"], set()).add(node_id)
-    # `_CONTAINER_FANOUT`/`> 1` are meant to count *families* citing a path, not nodes — a
-    # three-arm interaction split under D51 (`extends:`) is one documented control, so all
-    # three arms must collapse to one owner before either count runs, rather than manufacture
-    # three distinct owners out of one control and never demote it. Ordinary sibling
-    # components that merely share a `parent:` page are *not* one family for this count —
-    # each is its own owner, which is what lets the fan-out and shared-file thresholds below
-    # actually measure fan-out rather than hide it behind the page they happen to share. The
-    # threshold itself is untouched: a bare file is a weaker anchor than an exact symbol, so
-    # it still demotes at 2 owning families rather than `_CONTAINER_FANOUT`.
     shared_files = {
         ref
         for ref, owners in file_owners.items()
@@ -688,7 +459,6 @@ def build_context(
         >= _CONTAINER_FANOUT
     }
 
-    # Containment and graph links broaden impact without lexical inference.
     impacted = set(direct_reasons)
     for node_id in list(impacted):
         parent = nodes_by_id.get(node_id, {}).get("parent")
@@ -711,14 +481,6 @@ def build_context(
             )
     contracts = impacted - flows
     for source, target in edges:
-        # A flow target is somebody else's journey, never this closure's contract. The two
-        # sets are disjoint by construction one line up, and `_obligations` relies on it:
-        # it runs once per member, and a node in both is walked twice. Only the *base*
-        # obligation carries the role in its id (`:contract` vs `:end-state`), so the
-        # collision surfaces on the bullet-derived ones — a flow filed both ways emits
-        # `:start:1` and `:end:1` twice, `validate_context` reports duplicate ids, and the
-        # documentation gate hands the author a rework brief for a defect that is not in
-        # the book and that no amount of writing can clear.
         if source in journeys and target in nodes_by_id and target not in flows:
             contracts.add(target)
             direct_reasons.setdefault(target, []).append(
@@ -767,11 +529,6 @@ def build_context(
                 direct_reasons.setdefault(node_id, []).extend(reasons)
                 related = True
 
-    # A `detail:` edge from a selected node is the author's own pointer to the concept
-    # holding the selection rule for that implementation. The concept rides along as
-    # judgment context — pulled with a closure-kind reason so it is never owed live
-    # evidence — and its rule/prefers/deprecates bullets are attached to the pointing
-    # node's obligations, where the reviewer choosing between implementations reads them.
     detail_edges = base_details | head_details
     judgment_by_node: dict[str, list[dict[str, Any]]] = {}
     for source, target in sorted(detail_edges):
@@ -824,17 +581,6 @@ def build_context(
                 )
             else:
                 grounded.add(node_id)
-        # Not "this node cites no test": a test citation is diagnostic (`tests:`, read by
-        # regression attribution) and proves nothing about the product. What is worth a warning
-        # is an impacted contract's normative claim that names no observation, because a
-        # scenario written against it is then free to assert something weaker than the claim.
-        # A check names no subject, so its subject is its position — the run of normative
-        # bullets it sits under, which `registry.attributed_checks` binds it to, the engine
-        # `compile_plan` reads for its own `checksDeclared`/`no-verify-declared` split — so
-        # coverage is a fact per claim, not per node: one `verify:` above one claim leaves
-        # every sibling claim on the same node uncovered. Only for a type that *has* a
-        # `verify:` key, which is every authorable type but `step` (whose `verify:` observes
-        # the step, not the product) and `untyped` (which declares no keys at all).
         node_type = str(node.get("type", ""))
         node_bullets = node.get("bullets", {})
         combiners = {int(pos): str(word) for pos, word in (node.get("combiners") or {}).items()}
@@ -864,14 +610,6 @@ def build_context(
         if _is_required(node_id, direct_reasons, grounded, shared_files, shared_symbols)
     }
     if not required_contracts:
-        # A story whose diff reached a grounded node and which nevertheless owes nothing is
-        # reporting a bug in this filter, not a story with nothing to prove: the trial is
-        # handed an empty evidence map and every seeded defect comes back "not owed by this
-        # trial". So when the fan-out demotion is what emptied the set, take the demotion
-        # back rather than ship a packet that asks for nothing. Only `shared_symbols` is
-        # relaxed — a bare-file citation localizes nothing at any count, which is why
-        # `shared_files` is not — and the finding is a warning rather than a silent repair,
-        # because the floor firing means `_CONTAINER_FANOUT` was wrong for this book.
         floored = {
             node_id
             for node_id in contracts
@@ -891,28 +629,6 @@ def build_context(
                     ),
                 }
             )
-    # One hop out from what the diff reached, along a named relation subject. This is the
-    # story split the whole packet exists to catch: change the shape of a persisted record
-    # and update the screen that displays it, and the screen that *creates* that record is
-    # bound to the same record, untouched by the diff, and never re-proved — so the app ships
-    # broken across the two stories and nothing in the run says so.
-    #
-    # One hop from `required_contracts`, not from the closure. The fixpoint above recomputes
-    # its selection every lap, so a single shared subject chains across a whole persistence
-    # island; that is what once made a seven-criterion story owe live proof against
-    # sixty-seven documents. Hopping from the required set instead is bounded by
-    # construction: a node pulled in this way is never itself hopped from.
-    #
-    # `relation-of-required` is in neither context-only set, so `_is_required` needs no change
-    # to honour it — and its `grounded` gate still applies, so a node with nothing built
-    # behind it is still not owed live proof.
-    #
-    # What such a node owes is the invariant it shares, not the whole surface it happens to
-    # document. The sibling endpoint that writes the same record can be broken by a change to
-    # the record's shape; its own `422` body and its own auth rule cannot, and owing them
-    # would make every story re-prove each of its neighbours end to end. So a node reached
-    # only by the hop is owed live evidence for its relation bullets and its contract, and
-    # keeps the rest as context.
     reached_by_the_diff = set(required_contracts)
     required_subjects = {
         subject for node_id in required_contracts for subject in _named_subjects(nodes_by_id[node_id])
@@ -985,13 +701,6 @@ def build_context(
         )
     ]
     obligations.sort(key=lambda item: _sort_key(str(item["id"])))
-    # A `same-as:` family collapses several members' obligations onto one id (`_obligations`'
-    # docstring), so more than one call above can mint the same id — one per member that
-    # states the underlying claim. One member wins every index, rather than the survivors
-    # being a mixture: `same-as-disagreement` refuses a book whose family states a normative
-    # key two ways, so every member's value list for a kind holds the same values, and this
-    # sort is stable, so the member that came first pre-sort is first at every index it
-    # mints. What survives is that one member's list whole.
     seen_obligation_ids: set[str] = set()
     deduped_obligations: list[dict[str, Any]] = []
     for obligation in obligations:
@@ -1008,10 +717,6 @@ def build_context(
         "available": bool(nodes_by_id),
         "base": base,
         "head": head,
-        # The aim. Every later stage reads this packet and none of them is told on its own
-        # argv which book the run is about, so a stage that needs the answer either repeats
-        # a flag the caller must keep in sync or guesses from its cwd. This is the one place
-        # the aim was ever known.
         "featuresRoot": features_root,
         "bookFiles": book_files_list,
         "storyFile": story_file_record_value,
@@ -1027,19 +732,7 @@ def build_context(
         "verificationRefs": verification_refs,
         "verificationIndex": verification_index,
         "navigation": navigation,
-        # A `command` obligation's `run:` names only the arguments (`ostler.acts`'s `invoke`)
-        # — the executable is the owning `cli` **file** node's `binary:`, stated once where the
-        # book already says it rather than repeated in every `argv`. `compile.py` resolves a
-        # `run:` obligation's tool by looking its `source` (the shared file path) up here,
-        # rather than re-walking the graph it no longer has once the packet leaves this
-        # process — a `cli` node with no `binary:` value is simply absent, so a `run:` on that
-        # file is uncompilable (`_cli_binaries` below).
         "cliBinaries": cli_binaries,
-        # Each screen file's `route:`, read by the same function the vet driver reads it
-        # with. The driver decides whether a photographed page is the screen the book
-        # named by comparing that route against a URL; the compiler decides whether that
-        # comparison could be made at all. Two readers, one question — so one function,
-        # and the compiler gets the answer through the packet rather than a second regex.
         "screenRoutes": routes_mod.screen_routes(head_graph),
         "healthFindings": health,
         "story": _story_identity(story_file),
@@ -1048,13 +741,6 @@ def build_context(
     }
 
 
-#: The whole-book verification table, split out of the agent-facing packet. It carries one
-#: row per `verify:` ref in the entire feature graph — impacted or not — because
-#: `_attribute_failures` classifies a failing test as "outside-impact" rather than
-#: "unattributed" only when it can find a non-impacted owner. That makes it the largest
-#: member of the packet by far and the least useful to a reader: on a nine-epic book it was
-#: 61% of a 676 KB file that a planning agent reads in full. The reader keeps
-#: `verificationRefs` — the impacted subset — and the machine reads this beside it.
 VERIFICATION_INDEX_FILE = "qa-okf-verification-index.json"
 
 
@@ -1071,12 +757,6 @@ def write_context(packet: dict[str, Any], spec_dir: Path) -> tuple[Path, Path]:
     return json_path, md_path
 
 
-#: The two obligation sections. They are headings rather than a suffix on each line because the
-#: distinction decides whether a planner owes a scenario, and a suffix could not carry it: a
-#: requirement is rendered verbatim, wraps where the book wrapped it, and put the marker on a
-#: continuation line — so `grep '- \`okf:'` and `grep 'context only'` disagreed, and a planning
-#: agent that derived its owed set per-line derived the wrong one. Under a heading the class of an
-#: entry is positional, which no amount of wrapping can move.
 OWED_HEADING = "## Obligations — owed live evidence"
 CONTEXT_HEADING = "## Context — reached by closure, not owed evidence"
 
@@ -1106,8 +786,6 @@ def render_obligations(
                         f"variants `{variants['path']}` = " + " | ".join(variants["values"])
                     )
                 lines.append(f"  - repeated: {'; '.join(parts)}")
-        # Not under the `locators` flag: judgment and unspecified are prose context, wanted
-        # wherever the obligation is rendered, not a UI-locator detail a caller may strip.
         for entry in obligation.get("judgment", []):
             rules = "; ".join(entry.get("rules", []))
             lines.append(f"  - judgment: `{entry['concept']}`" + (f" — {rules}" if rules else ""))
@@ -1129,19 +807,7 @@ def select_obligations(
     offset: int = 0,
     limit: int | None = None,
 ) -> tuple[list[dict[str, Any]], int]:
-    """Filter and page the obligation list, returning `(page, total_matched)`.
-
-    The packet is written once and read many times, and on a large book it is read by an agent
-    that cannot hold it: the closure is deliberately broad, so a story owing 25 obligations
-    ships beside 151 it only needs for context, and the JSON carrying both is a few hundred
-    kilobytes. Reading it whole truncates, and the reader falls back to re-deriving the split by
-    hand. Selecting a slice is the same information at a size a reader can actually take in, so
-    this is a query over the built packet rather than another way to build one — `build_context`
-    walks the diff and the graph and takes the better part of a minute; a filter must not.
-
-    `node` matches as a substring of the obligation's node path, not a glob: the caller is
-    usually typing a surface prefix at a shell, where a `*` needs quoting to survive.
-    """
+    """Filter and page the obligation list, returning `(page, total_matched)`."""
     matched = [
         item
         for item in packet.get("obligations", [])
@@ -1230,13 +896,7 @@ def cmd_context(
     exclude_paths: Iterable[str] = (),
     repositories: Sequence[SourceRepository] = (),
 ) -> QaOutcome:
-    """Build the obligation packet, write it into *spec_dir*, and report the outcome.
-
-    Every failure that reaches this is data-shaped: a diff git cannot produce, a book
-    that will not load, a spec directory that cannot be written. Catching it here rather
-    than in each caller is the whole point of the function — `cli.py` and the coder
-    workflow had hand-copied the identical `except` around `build_context`.
-    """
+    """Build the obligation packet, write it into *spec_dir*, and report the outcome."""
     try:
         packet = build_context(
             root,
@@ -1248,10 +908,6 @@ def cmd_context(
             exclude_paths=exclude_paths,
             repositories=repositories,
         )
-        # The reference compiler's own account of which obligations it could and could not
-        # discharge, and why, stamped onto the packet it hands on — so `validate_v2` reads
-        # that account instead of re-deriving "unhandled" from a set difference blind to it
-        # (see `annotate_deferred_obligations`).
         story_name = str(packet.get("story", "") or "story")
         annotate_deferred_obligations(packet, story=story_name)
         json_path, md_path = write_context(packet, spec_dir)
@@ -1263,12 +919,7 @@ def cmd_context(
 
 
 def cmd_context_validate(spec_dir: Path) -> QaOutcome:
-    """Read `qa-okf-context.json` out of *spec_dir* and validate it.
-
-    An unreadable or unparseable file is one more entry in `problems` rather than a
-    raise: to the caller asking "does this packet hold", a file that is not there and a
-    packet that is malformed are the same answer.
-    """
+    """Read `qa-okf-context.json` out of *spec_dir* and validate it."""
     context_file = spec_dir / "qa-okf-context.json"
     try:
         packet = json.loads(context_file.read_text(encoding="utf-8"))
@@ -1288,24 +939,7 @@ def cmd_context_validate(spec_dir: Path) -> QaOutcome:
 
 
 def _revision_path_arg(revision: str, path: str) -> str:
-    """The `<rev>:<path>` argument for `git show` / `git cat-file`, forced into the CWD frame.
-
-    `git show <rev>:<path>` and `git cat-file -e <rev>:<path>` resolve *path* against the
-    repository top level unless it is prefixed with `./`, in which case it resolves against
-    the process's CWD instead. Every other path this module hands to git — `ls-tree`
-    pathspecs among them — is already CWD-relative, because `_git`/`_git_bytes` run with
-    `cwd=root`. Left unprefixed, the two frames only agree when `root` is the repository top
-    level; for a book nested elsewhere (`paddock/data/apps/globex` inside this very repo,
-    say), `git cat-file -e HEAD:docs/features` and `git rev-parse HEAD:docs/features` answer
-    against the *host* repo's `docs/features` tree, while `HEAD:./docs/features` answers
-    against the nested book's own tree — and those two trees can name different blobs
-    entirely. Left unguarded, `_revision_holds` reports "present" for a tree the book never
-    had, and `_graph_at_revision` builds its graph from the wrong repository's files.
-
-    An empty *path* or `/dev/null` is passed straight through: those are sentinels its
-    callers already special-case before ever reaching git, and prefixing them would turn a
-    recognized sentinel into a literal (and nonexistent) path.
-    """
+    """The `<rev>:<path>` argument for `git show` / `git cat-file`, forced into the CWD frame."""
     if not path or path == "/dev/null":
         return f"{revision}:{path}"
     if path.startswith("./"):
@@ -1314,21 +948,7 @@ def _revision_path_arg(revision: str, path: str) -> str:
 
 
 def _graph_at_revision(root: Path, revision: str, features_root: str) -> Graph:
-    """The base-side graph at `revision`, built from every `.md` file under `features_root`.
-
-    An empty `Graph` is a legitimate answer — `book_context` asks for one on purpose when
-    `base` is the empty tree — so this cannot return one on faith the way `_revision_text`
-    returns `""`. It asks `_revision_holds`, its companion here exactly as it is `_changed_units`'s,
-    whether `features_root` exists at `revision` at all: absent there is the ordinary case
-    of a features root added or renamed between base and head, and yields the empty graph
-    silently. Present but unreadable is different — `ls-tree` named a path whose blob the
-    object store cannot produce, which is corruption, not a mode this function should
-    disguise as "nothing to graph" — and that raises instead.
-
-    `ls-tree` runs `-z` so a NUL, not a shell-quoted newline or tab, separates entries: a
-    quoted filename otherwise fails `.endswith(".md")` before `git show` is ever tried and
-    the file vanishes from the graph with no signal at all.
-    """
+    """The base-side graph at `revision`, built from every `.md` file under `features_root`."""
     current = load(root)
     graph = Graph(
         root=root,
@@ -1360,27 +980,7 @@ def _serialized_graph(
     dict[str, tuple[str, ...]],
     set[tuple[str, str]],
 ]:
-    """The nodes, every resolved edge, the flow destinations, each node's repeat scope, and
-    the `detail:` edges.
-
-    The last member exists because the general edge set discards `via`: a `detail:` edge is
-    the documented pointer from a competing node to the concept holding its selection rule,
-    and the packet wants exactly those edges back so the concept can ride along as judgment
-    context. Lifted here, where `via` is still on the item, rather than re-resolved later.
-
-    The third member is what tells a journey's destination apart from a step along the way,
-    and it is read off the `end:` bullet rather than off each edge's `via`. `via` keeps the
-    *first* bullet an href appeared under, so a walk that passes through its own destination
-    — `steps:` naming `tally export` before `end:` names it again — attributes that edge to
-    `steps` and leaves the flow with no end at all. The bullet's own links have no such
-    ambiguity, and `_journey_is_required` is the only reader that needs the distinction, so
-    it is derived here rather than changing what `via` means for every other caller.
-
-    Where the `end:` is prose — "the holder's list holds exactly the one claim they filed" —
-    the destination is the walk's last link. A flow's edges come out in document order, so
-    that is the last thing the journey touches before it is over, and it is the node a story
-    has to own to be the one that delivered the journey rather than one step of it.
-    """
+    """The nodes, every resolved edge, the flow destinations, each node's repeat scope, and the `detail:` edges."""
     data = graph_mod.build(graph)
     nodes = {item["id"]: item for item in data["nodes"]}
     edges = {(item["from"], item["to"]) for item in data["edges"] if item.get("to")}
@@ -1408,14 +1008,7 @@ def _serialized_graph(
 
 
 def _in_book(path: str, offset: str) -> str | None:
-    """*path*, spelled from the repository top level, rebased onto the book root *offset*
-    names — or `None` when *path* falls outside the book root entirely.
-
-    `offset` is `""` when the book root *is* the repository top level, in which case every
-    path is already in the book's frame. Otherwise it is the book root's own path from the
-    top level, with a trailing `/`, and a top-level path that does not start with it names a
-    change the book does not cover — not an error, just not this book's to own.
-    """
+    """*path*, spelled from the repository top level, rebased onto the book root *offset* names — or `None` when *path* falls outside the book root entirely."""
     if not offset:
         return path
     return path[len(offset):] if path.startswith(offset) else None
@@ -1496,14 +1089,6 @@ def _changed_units(
             if head == "WORKTREE"
             else _revision_text(toplevel, head, item["new"])
         )
-        # A side with a real (non-`/dev/null`) path that turns out not to exist at all is not
-        # the same state as a side that exists and reads empty — the first is a path this scan
-        # resolved wrong, the second is `_revision_text`/`_working_text` correctly reporting a
-        # compiled artifact, a binary asset, or an empty file. Only the second is nothing to
-        # cite and no behaviour to verify, the same failure mode `_is_generated_unit` exists to
-        # prevent; the first must not be silently folded into it. A *deleted source* file is
-        # not caught by either check: its base side still reads as text, and losing a
-        # documented symbol is a real obligation.
         base_missing = item["old"] not in ("", "/dev/null") and not _revision_holds(
             toplevel, base, item["old"]
         )
@@ -1539,15 +1124,7 @@ def _changed_units(
 
 
 def _patch_set(diff: str) -> PatchSet:
-    """The diff, parsed. A malformed patch yields no units rather than a traceback.
-
-    `unidiff` replaces a hand-written `@@ -a,b +c,d @@` matcher plus a pair of `--- `/`+++ `
-    line prefixes, which between them carried the file's identity in loop-scoped variables:
-    a hunk header appearing before any `+++ ` line — a stray `@@` in a *deleted line's own
-    content*, which `--unified=0` still emits — indexed `units` with whatever path the
-    previous file left behind, and raised `KeyError` on the very first diff. The parser knows
-    a hunk body from a hunk header, so the association is structural.
-    """
+    """The diff, parsed."""
     try:
         return PatchSet(diff)
     except UnidiffParseError:
@@ -1555,19 +1132,7 @@ def _patch_set(diff: str) -> PatchSet:
 
 
 def _symbols_for_lines(text: str, lines: set[int], path: str = "") -> list[str]:
-    """The symbols whose bodies span any of *lines* — the diff's changed units.
-
-    The extents come from `ostler.inventory`, which parses every language it knows. That is
-    what makes a symbol's *extent* real: a node knows where its body ends, so a hunk landing
-    in the middle of a function is attributed to that function. The line scan this replaced
-    knew only where each declaration *started* and assumed it ran until the next one began, so
-    a nested declaration swallowed its neighbours' hunks and a trailing comment belonged to
-    whatever was above it.
-
-    An extensionless file is read as Python, as it always has been; a language no front end
-    knows still falls back to the one-line scan below, because a wrong attribution there is
-    better than none.
-    """
+    """The symbols whose bodies span any of *lines* — the diff's changed units."""
     if not text or not lines:
         return []
     suffix = Path(path).suffix
@@ -1600,14 +1165,7 @@ def _symbols_for_lines(text: str, lines: set[int], path: str = "") -> list[str]:
 
 
 def _revision_text(root: Path, revision: str, path: str) -> str:
-    """The blob's text at `revision`, or "" — the same answer `_working_text` gives for a file
-    it cannot decode, so the two sides of a diff agree about what "unreadable" means.
-
-    Binary is not an exotic input here: a repo that committed a compiled artifact and then
-    deleted it puts that blob on the base side of the very first diff, and `git show` streams
-    its bytes. Decoding those strictly used to raise straight out of `build_context`, so one
-    stray executable in the change set voided the whole obligation packet.
-    """
+    """The blob's text at `revision`, or "" — the same answer `_working_text` gives for a file it cannot decode, so the two sides of a diff agree about what "unreadable" means."""
     if not path or path == "/dev/null":
         return ""
     try:
@@ -1621,15 +1179,7 @@ def _revision_text(root: Path, revision: str, path: str) -> str:
 
 
 def _working_text(root: Path, path: str) -> str:
-    """The working tree's text at `path`, or "" when it is absent or not decodable as UTF-8.
-
-    The empty string is deliberate and is the same answer `_revision_text` gives for the
-    other side of a diff, so the two agree about what "unreadable" means and a binary file
-    does not read as a file that changed. It is not a claim that the file is missing:
-    existence is asked of the filesystem by `_grounding_exists`, precisely so a `code:`
-    bullet citing a binary or undecodable file stays satisfiable rather than becoming
-    permanently ungrounded.
-    """
+    """The working tree's text at `path`, or "" when it is absent or not decodable as UTF-8."""
     candidate = root / path
     try:
         return candidate.read_text(encoding="utf-8")
@@ -1650,13 +1200,6 @@ def _revision_holds(root: Path, revision: str, path: str) -> bool:
 
 def _grounding_exists(root: Path, base: str, head: str, ref: refs_mod.CodeRef) -> bool:
     path, symbol = ref.path, ref.symbol
-    # Existence is asked of the filesystem and the object store, not of `_revision_text` /
-    # `_working_text`. Those answer "" for a file they cannot decode as UTF-8, and reading
-    # that as "not there" made a `code:` bullet citing any *binary* file permanently
-    # unsatisfiable — a `.docx` test fixture, a golden PNG, a compiled sample. The book was
-    # right and the gate refused it, so the only rewrite that cleared the finding was
-    # deleting a true citation. Same shape as the `inventory.declares` note below: a probe
-    # that cannot represent the answer reports the wrong one.
     present = _revision_holds(root, base, path) or (
         (root / path).is_file() if head == "WORKTREE" else _revision_holds(root, head, path)
     )
@@ -1672,12 +1215,6 @@ def _grounding_exists(root: Path, base: str, head: str, ref: refs_mod.CodeRef) -
         )
         if text
     ]
-    # `inventory.declares`, not `_symbols_for_lines`: the two answer different questions and
-    # only the first one is grounding's. `_symbols_for_lines` attributes a *diff hunk* to the
-    # declaration whose body spans it, so it can only ever report classes and functions — a
-    # module-level constant has no body to span. Asking it whether a name exists therefore
-    # made every `code:` bullet naming a constant permanently unsatisfiable: the citation was
-    # reported dangling in both base and head, and no rewrite of the book could clear it.
     return any(inventory.declares(path, text, symbol) for text in texts)
 
 
@@ -1689,14 +1226,7 @@ def _grounding_for_ref(
     repositories: dict[str, SourceRepository],
     book_root: str = "",
 ) -> bool:
-    """Ground one citation in the docs repository or its named source repository.
-
-    A book-relative citation (no `repository:`) is grounded against `root`'s own git
-    tree, which is rooted above the book whenever `--features-root` names a nested book —
-    so its path is rebased onto `root` first, the same rebase the changed-code join
-    applies. A repository-scoped citation already names a path inside that repository's
-    own checkout, which has no book nested inside it, so it is left alone.
-    """
+    """Ground one citation in the docs repository or its named source repository."""
     try:
         parsed = refs_mod.parse_code_ref(ref)
     except ValueError:
@@ -1718,10 +1248,7 @@ def _grounding_for_ref(
 
 
 def _git_bytes(root: Path, *args: str) -> bytes:
-    """Raw stdout. Never `text=True`: git's output is only text by convention — `show` streams
-    a blob verbatim, and `diff` inlines the bytes of any file git guessed was text — so a
-    strict decode inside `subprocess` raises `UnicodeDecodeError` from wherever git was called
-    rather than from a place that can decide what an undecodable file means."""
+    """Raw stdout."""
     result = subprocess.run(["git", *args], cwd=root, capture_output=True)
     if result.returncode:
         stderr = result.stderr.decode("utf-8", errors="replace").strip()
@@ -1730,10 +1257,7 @@ def _git_bytes(root: Path, *args: str) -> bytes:
 
 
 def _git(root: Path, *args: str) -> str:
-    """Decoded leniently: every caller but `_revision_text` wants path lists or hunk headers,
-    which are ASCII, and would rather see a replacement character inside one line of a diff
-    than lose the whole listing. `_revision_text` decodes strictly off `_git_bytes` instead,
-    because there "undecodable" has a meaning — no symbols — and "" is how it is spelled."""
+    """Decoded leniently: every caller but `_revision_text` wants path lists or hunk headers, which are ASCII, and would rather see a replacement character inside one line of a diff than lose the whole listing."""
     return _git_bytes(root, *args).decode("utf-8", errors="replace")
 
 
@@ -1744,12 +1268,7 @@ def _values(value: Any) -> list[str]:
 
 
 def relation_subject(value: str) -> tuple[str | None, str]:
-    """Split a relation bullet into the subject it names and the claim it makes.
-
-    The subject is what two nodes can be found to share; the prose is what a planner reads
-    and what the obligation keeps as its `requirement`, unchanged from before subjects
-    existed. A bullet with no subject yields `None` and its own text.
-    """
+    """Split a relation bullet into the subject it names and the claim it makes."""
     match = _RELATION_SUBJECT_RE.match(value.strip())
     if match is None:
         return None, value.strip()
@@ -1763,19 +1282,7 @@ def _relation_join_key(value: str) -> str:
 
 
 def _cli_binaries(nodes_by_id: dict[str, dict[str, Any]]) -> dict[str, str]:
-    """Every `cli` file node's declared `binary:`, keyed by the file `path` its `command`
-    sections share.
-
-    A `command` section's own `path` is the owning file's (`_node_dict` in `graph.py`: several
-    section nodes share one file's `path`), so a `run:` obligation minted off that section can
-    be matched back to its file's `binary:` by that same path — no parent walk needed, and no
-    reason to widen the obligation packet with a `binary` field per obligation when one dict
-    keyed by path says it once per file.
-
-    A `cli` node with an empty `binary:` bullet is omitted, not mapped to `""`: `- binary:` is
-    scaffolded onto every `cli` node whether authored or not, so presence of the *key* proves
-    nothing — only a non-empty *value* does (`_values`, not `key in bullets`).
-    """
+    """Every `cli` file node's declared `binary:`, keyed by the file `path` its `command` sections share."""
     binaries: dict[str, str] = {}
     for node in nodes_by_id.values():
         if node.get("type") != "cli" or node.get("kind") != "file":
@@ -1787,14 +1294,7 @@ def _cli_binaries(nodes_by_id: dict[str, dict[str, Any]]) -> dict[str, str]:
 
 
 def _named_subjects(node: dict[str, Any]) -> set[str]:
-    """Every subject this node names, pooled across the relation and event bullets.
-
-    Pooled deliberately, as the fixpoint already pools its relation values: `persistence:
-    booking-record` on the concept and `consistency: booking-record` on the endpoint are
-    talking about the same record, and an `emits:` is answered by a `consumes:`. Only named
-    subjects — prose that names nothing is not evidence two nodes are related, however
-    similar the two sentences happen to read.
-    """
+    """Every subject this node names, pooled across the relation and event bullets."""
     bullets = node.get("bullets", {})
     subjects = {
         subject
@@ -1813,19 +1313,7 @@ def _merge_snapshot_nodes(
     base: dict[str, dict[str, Any]],
     head: dict[str, dict[str, Any]],
 ) -> dict[str, dict[str, Any]]:
-    """Head wins; base contributes only the nodes head no longer has.
-
-    Two cases, different in kind. A node in **both** snapshots is one node observed twice,
-    and its bullets are read from head — the revision under test. A node in base **alone**
-    is one the change deleted, carried through whole so the packet can still describe what
-    went away.
-
-    Bullets are replaced, never pooled. Unioning a changed bullet's values puts a value in
-    the packet that *no revision of the book states*: the locator compiler reads the first
-    value and would address the element by the name it carried **before** the edit — making
-    a book repair invisible to the run meant to verify it — and `normative_claims` counts
-    the pooled list and mints an obligation for a claim nobody made.
-    """
+    """Head wins; base contributes only the nodes head no longer has."""
     merged = {node_id: {**node, "bullets": dict(node.get("bullets", {}))} for node_id, node in base.items()}
     for node_id, node in head.items():
         combined = {**merged.get(node_id, {}), **node}
@@ -1839,12 +1327,7 @@ def _code_path(value: str) -> str:
 
 
 def _as_ref(candidate: str) -> str:
-    """``path`` or ``path::name`` when ``candidate`` opens with a citable file, else ``""``.
-
-    Split, not matched: ``::`` is the separator the grammar declares, and everything after it
-    is the name — commas, parentheses, ``>`` and all. The only test applied to the left half is
-    that it looks like one path with a suffix we cite, which `Path` answers.
-    """
+    """``path`` or ``path::name`` when ``candidate`` opens with a citable file, else ``""``."""
     path, separator, symbol = candidate.strip().partition("::")
     path, symbol = path.strip(), symbol.strip()
     if not path or path.split() != [path] or Path(path).suffix.lower() not in _CITABLE_SUFFIXES:
@@ -1853,26 +1336,13 @@ def _as_ref(candidate: str) -> str:
 
 
 def _verification_refs(node: dict[str, Any]) -> list[str]:
-    """Every test a node's ``tests:`` bullets cite, as ``path`` or ``path::name``.
-
-    Backticked refs are read span by span off the markdown parser, because the span boundary is
-    the only thing that says where a test *name* ends — and these names contain commas, dashes
-    and parentheses. Reading the raw bullet with one regex truncated them at the first comma,
-    and the truncated name then matched no test, so the grounding gate told a correctly-cited
-    book its citation did not exist. That is a tool failing to parse the book, which this
-    package treats as the tool's defect, not the book's.
-
-    A bullet citing *without* backticks has no such boundary, so a comma still has to close a
-    ref there. That reading stays lossy on purpose — it is the reason to write the backticks.
-    """
+    """Every test a node's ``tests:`` bullets cite, as ``path`` or ``path::name``."""
     refs: list[str] = []
     for value in _values(node.get("bullets", {}).get("tests")):
         spans = markdown.all_code_spans(value)
         if spans:
             found = [_as_ref(span) for span in spans]
         else:
-            # No spans: each comma-separated chunk holds at most one ref, which starts at the
-            # first word naming a citable file and runs to the end of the chunk.
             found = []
             for chunk in value.split(","):
                 words = chunk.split()
@@ -1909,11 +1379,6 @@ def _is_non_production_path(path: str) -> bool:
         "fixture",
         "golden",
         "goldens",
-        # QA's own scaffolding. A mock backend, a stub server or a fixture harness exists to
-        # make a test runnable; it carries no user-observable behaviour of its own. Treated as
-        # production it gets modelled in the book as features, and then every story that so
-        # much as touches a mock owes live proof of the mock — QA verifying its own harness
-        # instead of the product it was pointed at.
         "mocks",
         "__mocks__",
         "stubs",
@@ -1922,8 +1387,6 @@ def _is_non_production_path(path: str) -> bool:
     }
     if any(part in non_production_dirs for part in parts[:-1]):
         return True
-    # Same reasoning, for the directories that name their purpose rather than sit under a
-    # conventional folder — `tools/qa-mock-backends/`, `mock-server/`, `qa-fixtures/`.
     if any(
         part.startswith(("qa-mock", "mock-", "mock_", "qa-fixture", "fake-", "fake_"))
         or part.endswith(("-mocks", "-mock-backends", "-fixtures"))
@@ -1947,13 +1410,6 @@ def _is_non_production_path(path: str) -> bool:
         "license.md",
     }:
         return True
-    # Build, dependency-manifest, and tooling-config files. No feature Concept owns these
-    # and none should: they carry no user-observable behaviour for QA to verify. Left in,
-    # they fail the documentation gate as "unmapped production units" — which is exactly what
-    # blocked the first greenfield coder story, whose diff legitimately touched go.mod/go.sum/
-    # a Makefile/Pulumi config alongside the real code. Dependency manifests specifically are
-    # NOT ignored elsewhere by design (a version bump can change behaviour), but they have no
-    # OKF owner, so they belong here for the ownership gate.
     build_config_names = {
         "makefile",
         "dockerfile",
@@ -1973,64 +1429,21 @@ def _is_non_production_path(path: str) -> bool:
     }
     if name in build_config_names:
         return True
-    # Pulumi stack config (Pulumi.yaml, Pulumi.<stack>.yaml).
     if name.startswith("pulumi.") and name.endswith((".yaml", ".yml")):
         return True
-    # Log files. Nothing writes one on purpose as a production unit; what lands in a working
-    # tree is a tool's debug output — a Firebase/Firestore emulator's `*-debug.log` is the
-    # case that reached us, dropped into the repo root by the QA stack the gate itself starts.
     if name.endswith(".log"):
         return True
-    # The agent toolchain's own footprint inside a client repo: farrier writes `agents.yml` and
-    # the `.agents/` tree, and a coder run historically left a `qa-stack.yml` beside them. These
-    # say how the repo is built and tested *by us* and never what it does for a user, so no
-    # feature Concept can own them — and unlike a Makefile they are not even the repo's own
-    # scaffolding, they are ours.
-    #
-    # Left in, the ownership gate reports them as unmapped production units, and the only move
-    # left to an agent that must clear the gate is to invent a contract node for them in the
-    # product's feature docs. A greenfield run did exactly that: it added a `#tooling` section
-    # to `docs/features/api/http/api.md` owning `qa-stack.yml` and friends, which cleared the
-    # error and bought a permanent `missing-declared-check` warning in exchange — a contract
-    # that can never declare an observation, because a stack manifest is not a product surface.
-    #
-    # `qa-stack.yml` stays listed though nothing writes one any more: the declaration moved
-    # into the book as an `ops`-context `runbook` node (`ostler/docs/okf-runbook.md`), which is
-    # precisely the shape the objection above points at — an ops node is not a product surface,
-    # so it never reaches this gate. A repo carrying the old file from before the move should
-    # still not be told to invent a contract node for it.
-    #
-    # Root-scoped on purpose: a nested `agents.yml` is somebody's product file, not ours.
     if len(parts) == 1 and name in {"agents.yml", "qa-stack.yml"}:
         return True
-    # The same footprint, at any depth: `okf_builder`'s coverage node writes
-    # `.source-inventory.json` *into the source root it scanned*, so there is one per code tree
-    # and no root-scoping to lean on. The dotted name is unambiguous enough to stand alone.
     if name == ".source-inventory.json":
         return True
-    # CI and agent-tooling dotfile trees. `.opencode/opencode-loop/` records the operator
-    # loop's own sessions inside the target repo; grounding those as product contracts is
-    # the same unwinnable category as `.agents/` run artifacts.
-    #
-    # `.claude/` and `.githooks/` join them for the same reason and were found the same way.
-    # farrier installs the skill bundles under `.claude/skills/`, and several of them carry
-    # executable `scripts/check_*.py`; `make hooks` points `core.hooksPath` at `.githooks/`.
-    # Both are real code by every syntactic test, which is why they reach this function at
-    # all — and neither is the product. A greenfield story that merely had the toolchain
-    # installed after its base commit drew six `unmapped-change` errors naming a skill's
-    # own linter, and the only move left to an agent that must clear the gate is to write a
-    # feature contract for our check scripts in the client's book.
     return bool(
         parts and parts[0] in {".github", ".gitlab", ".agents", ".opencode", ".claude", ".githooks"}
     )
 
 
-#: How a code generator announces itself. Go standardized the wording and everything that
-#: emits Go copies it — protoc, oapi-codegen, mockery, sqlc, ent — and enough tools in other
-#: ecosystems copied it too that matching the sentence beats keeping a table of generators.
 _GENERATED_MARKER = re.compile(r"^\s*(?://|#|/\*|--|<!--)\s*Code generated .*DO NOT EDIT", re.M)
 
-#: Filename conventions that say the same thing without a marker line, by ecosystem.
 _GENERATED_SUFFIXES = (
     ".gen.go",
     ".pb.go",
@@ -2049,45 +1462,19 @@ _GENERATED_SUFFIXES = (
     "_generated.ts",
 )
 
-#: Directories whose whole contents are machine-authored.
 _GENERATED_DIRS = {"mocks", "__mocks__", "generated", "node_modules", "vendor"}
 
-#: How much of a file to read looking for the marker. It is a header line by convention —
-#: the point of the marker is that an editor sees it first — so this is generous already,
-#: and bounded because the files it runs against are exactly the enormous ones.
 _MARKER_SCAN_BYTES = 4096
 
 
 def _is_generated_unit(root: Path, change: ChangedUnit) -> bool:
-    """Is this changed unit machine-authored, and therefore owned by its generator?
-
-    Generated code is production code — it ships, it serves traffic — but it is not a
-    *documentable* unit, and treating it as one is what makes the coder's documentation gate
-    unwinnable. `oapi-codegen` alone contributed 26 symbols to one benchmark story's diff,
-    among them `UnescapedCookieParamError` and `TooManyValuesForParamError`; grounding those
-    means writing OKF nodes for a code generator's internal error types and calling them
-    product contracts. The author cannot do it honestly, so it burns every rework pass and
-    the story fails on a demand no correct answer satisfies. The contract these files encode
-    lives in the thing they were generated *from* — the OpenAPI document, the proto, the
-    interface the mock stands in for — and that source is in the diff too, as a real unit.
-
-    Same reasoning as `_is_non_production_path` and the same remedy, kept separate because
-    the categories are different: that one is scaffolding that never runs, this one runs and
-    is simply not authored by a person.
-
-    The marker scan reads the **worktree**, so a packet built between two revisions relies on
-    the naming conventions alone. That is why the conventions are listed rather than left to
-    the marker: they cover the generators that dominate real diffs, and a miss here is only
-    ever conservative — the unit stays production and the author is asked to ground it.
-    """
+    """Is this changed unit machine-authored, and therefore owned by its generator?"""
     lowered = change.path.lower()
     parts = Path(lowered).parts
     if any(part in _GENERATED_DIRS for part in parts[:-1]):
         return True
     if lowered.endswith(_GENERATED_SUFFIXES):
         return True
-    # A deletion carries the `/dev/null` sentinel rather than a path; joining it onto `root`
-    # would read straight out of the repo, and there is no head file to sniff either way.
     if not change.head_path or Path(change.head_path).is_absolute():
         return False
     try:
@@ -2105,33 +1492,7 @@ def _is_required(
     shared_files: frozenset[str] | set[str] = frozenset(),
     shared_symbols: frozenset[str] | set[str] = frozenset(),
 ) -> bool:
-    """Whether this node's obligations are owed live evidence, or are only context.
-
-    Three conditions, all from the book rather than from inference. The node must be
-    *grounded* — at least one `code:` ref that resolves in base or head — because a node
-    whose `code:` is empty documents something nobody has built yet, and a QA plan cannot
-    exercise a route or a component that has no implementation. And it must be reached by
-    the diff directly rather than only by graph closure, because the closure is deliberately
-    broad: a single edited file drags in every flow that links to every contract it owns.
-    Demanding live proof for the whole closure is what made the packet grow faster than the
-    change did.
-
-    The third is the same argument one level down, for the reach that is *not* closure. A
-    `file-owner` reason is a bare-file citation with no symbol behind it, so it points at
-    the node only as precisely as the file belongs to it. When several nodes cite the same
-    file the citation stops localizing anything — an edit to a global stylesheet owed live
-    proof for every component documented against it, which is a plan the change cannot
-    justify and the planner cannot write. Those nodes stay in the packet as context; a node
-    the diff also reached by an exact symbol keeps its own reason and stays required.
-
-    A `changed-code` reason is demoted on the same test but at a higher count. An exact
-    symbol localizes better than a bare file, so two nodes citing one is a book written
-    well rather than a citation gone vague — the endpoint stating the wire contract and the
-    concept stating the domain rule, both grounded in the function that implements them,
-    both breakable by a change to it. It takes `_CONTAINER_FANOUT` owners before the
-    citation reads as a container: the toolbar that owns every control documented against
-    it, which marks all of them changed when one new control is added.
-    """
+    """Whether this node's obligations are owed live evidence, or are only context."""
     kinds = {
         reason.get("kind", "")
         for reason in direct_reasons.get(node_id, [])
@@ -2147,48 +1508,7 @@ def _journey_is_required(
     required_contracts: set[str],
     end_edges: set[tuple[str, str]],
 ) -> bool:
-    """Whether this flow is owed live evidence, or is only context.
-
-    Not `_is_required`. That rule asks whether the diff reached the node directly and
-    whether the node is *grounded* — and a flow carries no `code:` bullet at all, so it can
-    never be grounded and the answer was structurally `False` for every flow in every repo.
-    The two metrics that measure a plan against its journeys have therefore never had a
-    denominator to divide by.
-
-    What makes a flow owed is one hop away: the story is proven against a contract, and the
-    flow is the document that says where in the product that contract is reached from and
-    what state the operator is left in. So a flow is required when it links a contract that
-    is itself required — the same diff-directness test, read through the link that made the
-    flow part of this packet. A flow reached only via context-only contracts stays context,
-    which is what keeps one edited endpoint from owing a walk of every journey it appears in.
-
-    The link has to be the `end:` one, and that is not a narrowing for tidiness. A journey's
-    obligation is its *end state*, and a story that builds a step in the middle of a walk
-    cannot reach it: a CLI story that ships `init` and `add` would owe an end state only
-    `export` produces, in a story where `export` does not exist yet. The story that delivers
-    the destination is the one that can walk the whole thing, and it is the one asked to.
-
-    An `end:` that names a whole document is satisfied by a required section *inside* it,
-    because that is where a screen's requiredness actually lands: a flow ends at
-    `screens/policy-detail.md` while the story's diff is grounded in
-    `policy-detail.md#policy-summary`, and reading those as different destinations left
-    every journey in the corpus context-only. Containment is one level and one direction —
-    a document takes its anchors, an anchor takes nothing — so an `end:` naming a section
-    still means that section, and a story ending elsewhere in the same file is not
-    conscripted into walking it.
-
-    Reaching the destination is necessary and not sufficient, because two journeys routinely
-    end on the same screen: `create-policy` and `edit-policy` both finish at the policy
-    detail, so the story that builds that screen reaches the end of both while implementing
-    one. So the story must also ground a required contract the flow reaches *somewhere other
-    than its end* — the field it fills, the button it presses, the screen it passes through.
-    That is the part of a walk a story either built or did not, and it is what tells the
-    journey this story delivered apart from the one that merely shares its last screen.
-
-    Where the `end:` is prose rather than a link, the walk's last link stands in for it (see
-    `_serialized_graph`), so both readings apply to every flow and neither has an exemption to
-    be reasoned about separately.
-    """
+    """Whether this flow is owed live evidence, or is only context."""
     reasons = [
         reason
         for reason in direct_reasons.get(node_id, [])
@@ -2209,11 +1529,6 @@ def _reaches_a_required_contract(ref: str, required_contracts: set[str]) -> bool
     return any(contract.startswith(f"{ref}#") for contract in required_contracts)
 
 
-#: What a check row carries about a `(locator)` argument, resolved against the book at packet
-#: time. `node` is the `component`/`interaction` the argument names and `""` when it names
-#: none; `locators` is that node's own `role:`/`name:`/`selector:`, so a compiler can point a
-#: driver at what the *check* names without re-walking the graph — and without being free to
-#: resolve the reference differently from the doctor rule that passed the book.
 LocatorTarget = dict[str, Any]
 
 
@@ -2240,22 +1555,7 @@ def _parse_checks(
 
 
 def _unparsed_checks(values: list[str]) -> list[dict[str, Any]]:
-    """The `verify:` bullets among *values* the parser read and refused, with its own account.
-
-    Carried, not dropped, for the reason `_unparsed_fixtures` above is: `_parse_checks` builds a
-    row only from a value that parsed, so downstream a node that declared no observation and a
-    node whose observation nobody could read arrive identically — with no `checksDeclared` — and
-    `compile_plan` gaps the second `no-verify-declared`, *"the book declares no check for this
-    obligation to prove"*, at an author who declared one. `ostler doctor` does refuse the bullet
-    by name (`unparsed-check`), which makes this worse rather than better: the two readers then
-    disagree in writing about the same bullet, and the one that decides whether to emit code is
-    the one holding the wrong account.
-
-    The refusal's own `kind` rides along with its sentence because a refusal *classifies* — a
-    test reference written under `verify:` is not a typo in an argument — and `parse_check` is
-    the only thing that looked. Re-deriving either here is how the message and the suggestion
-    came to contradict each other in `doctor` once already.
-    """
+    """The `verify:` bullets among *values* the parser read and refused, with its own account."""
     rows: list[dict[str, Any]] = []
     for value in values:
         parsed = checks_mod.parse_check(value)
@@ -2267,13 +1567,7 @@ def _unparsed_checks(values: list[str]) -> list[dict[str, Any]]:
 def _locator_resolver(
     graph: Graph, nodes_by_id: dict[str, dict[str, Any]], node: dict[str, Any]
 ) -> Callable[[str], LocatorTarget]:
-    """Resolve this node's check locators against the book, the way `doctor` resolves them.
-
-    Bound to one node because a `#anchor` is relative to the document it was written in. The
-    empty `node` for an argument that names nothing is deliberate and is not a filtered-out
-    row: `compile_plan` owes a gap for it, and a check row that simply omitted the field would
-    be indistinguishable from one whose check takes no locator at all.
-    """
+    """Resolve this node's check locators against the book, the way `doctor` resolves them."""
     origin = graph.root / str(node.get("path", ""))
 
     def resolve(value: str) -> LocatorTarget:
@@ -2294,35 +1588,13 @@ def _dedup_checks(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 def _fixture_provides_index(nodes_by_id: dict[str, dict[str, Any]]) -> dict[str, list[str]]:
-    """Every book fixture's own `provides:` keys, plus every one reachable through `needs:`.
-
-    Keyed by the fixture node's stem — the same name a `fixture:`/`needs:` bullet cites and
-    `_parse_fixtures` records as `row["name"]` — so a caller holding a fixture row can look its
-    reachable keys up without re-walking the graph. Each entry is spelled `<owner>.<key>`, the
-    same `@<node>.<key>` shape a reference uses: a fixture `needs:` another only composes its
-    state, it does not relabel it, so a reference to `@needed-fixture.key` still names the
-    fixture that actually declared it, not the one that pulled it in. `compile_plan` is the
-    caller: it needs to know every reference a scenario's arranged fixtures resolve, including
-    one supplied only by a fixture *that* fixture `needs:`.
-    """
+    """Every book fixture's own `provides:` keys, plus every one reachable through `needs:`."""
     resolved = _fixture_provides_closure(nodes_by_id)
     return {name: sorted(ref for ref, _ in pairs) for name, pairs in resolved.items()}
 
 
 def _fixture_undetermined_index(nodes_by_id: dict[str, dict[str, Any]]) -> dict[str, list[str]]:
-    """Every reachable `provides:` key whose *source* the book left undetermined, by fixture stem.
-
-    A fact is observed — `from:` a step, `read:` a path in its stdout — or asserted by the
-    fixture's own construction with `is:`. An entry declaring neither, or declaring both, says
-    nothing a harness can act on, and the harness aborts the whole scenario when it reaches one.
-    So this is what `compile_plan` gaps on: *undetermined ⇒ do not emit executable code*. It
-    rides the same `needs:` closure as the keys themselves, because arranging a fixture runs the
-    fixtures it needs, and their extraction aborts just as hard.
-
-    `ostler doctor` reports the same condition per entry as `undetermined-provided-fact`. The two
-    are not redundant: the doctor tells an author their book is under-specified, and this tells a
-    compiler which obligations it must refuse rather than compile into a scenario that dies.
-    """
+    """Every reachable `provides:` key whose *source* the book left undetermined, by fixture stem."""
     resolved = _fixture_provides_closure(nodes_by_id)
     return {name: sorted(ref for ref, bad in pairs if bad) for name, pairs in resolved.items()}
 
@@ -2374,25 +1646,14 @@ def _fixture_provides_closure(
 
 
 def _property_text(value: object) -> str:
-    """One serialized entry property as its text — the JSON-side twin of `Entry.property_text`.
-
-    The graph node dict is JSON, so the `Entry` that knows how to flatten its own property is
-    gone by the time a packet reader sees it; only the `str | list[str]` it carried survives.
-    """
+    """One serialized entry property as its text — the JSON-side twin of `Entry.property_text`."""
     if isinstance(value, list):
         return " ".join(str(v).strip() for v in value if str(v).strip())
     return str(value).strip() if value is not None else ""
 
 
 def _parse_captures(values: list[str]) -> list[dict[str, Any]]:
-    """The `capture: <name> from <json path | UI locator>` declarations among *values*.
-
-    Deduped on name. A bullet that does not parse yields no row here and is carried instead
-    by `_unparsed_captures` below — the division of labour `_parse_fixtures`/`_parse_checks`
-    keep, and for the same reason: dropped, it is the same absent row as a node that declared
-    no capture, and the damage surfaces on a later bullet whose `$name` then resolves against
-    nothing at all.
-    """
+    """The `capture: <name> from <json path | UI locator>` declarations among *values*."""
     rows: list[dict[str, Any]] = []
     for value in values:
         parsed = captures_mod.parse_bullet(value)
@@ -2402,11 +1663,7 @@ def _parse_captures(values: list[str]) -> list[dict[str, Any]]:
 
 
 def _unparsed_captures(values: list[str]) -> list[dict[str, Any]]:
-    """The `capture:` bullets among *values* the parser read and refused, with its own account.
-
-    Deduped on the bullet text, not on a name — a refused bullet has no name, which is the
-    whole of what is wrong with it.
-    """
+    """The `capture:` bullets among *values* the parser read and refused, with its own account."""
     rows: list[dict[str, Any]] = []
     for value in values:
         parsed = captures_mod.parse_bullet(value)
@@ -2419,20 +1676,7 @@ def _parse_acts(
     values: list[str],
     resolve: Callable[[str], LocatorTarget] | None = None,
 ) -> list[dict[str, Any]]:
-    """The acts among *values*, in document order, each with its locator arguments resolved.
-
-    Order is load-bearing here in a way it is not for fixtures, and that is why these rows are
-    deduped on the canonical call text rather than collapsed on a name: filling `name-field`
-    and then `quantity-field` is two performances, and `fill` twice on the same field is a
-    correction the author wrote on purpose. `_parse_fixtures` may key on `(name, args)` because
-    running the same fixture twice reaches the same state; performing the same act twice does
-    not.
-
-    `locates` mirrors `_parse_checks` exactly. An act's locator is a reference into the book
-    (F17), so the packet carries what it resolved to, and an argument that resolves to nothing
-    keeps its empty row rather than vanishing — `compile_plan` owes a gap for it, and a row
-    that dropped the field would be indistinguishable from an act that takes no locator.
-    """
+    """The acts among *values*, in document order, each with its locator arguments resolved."""
     rows: list[dict[str, Any]] = []
     for value in values:
         parsed = acts_mod.parse_act(value)
@@ -2452,15 +1696,7 @@ def _parse_acts(
 
 
 def _unparsed_acts(values: list[str]) -> list[dict[str, Any]]:
-    """The `arrange:` bullets among *values* the act parser read and refused, with its account.
-
-    Carried for the reason `_unparsed_checks` and `_unparsed_fixtures` are: downstream, a
-    bullet nobody wrote and a bullet that did not parse are the same absent row, and the one
-    reader that decides whether to emit code must not gap *"nothing arranges this"* at an
-    author who arranged it and mistyped. The refusal's `kind` rides along because a refusal
-    classifies — a bare fixture name written under `arrange:` is a misfiled bullet, not a typo
-    in an argument — and `parse_act` is the only thing that looked.
-    """
+    """The `arrange:` bullets among *values* the act parser read and refused, with its account."""
     rows: list[dict[str, Any]] = []
     for value in values:
         parsed = acts_mod.parse_act(value)
@@ -2474,14 +1710,7 @@ def _parse_fixtures(
     fixture_provides: dict[str, list[str]] | None = None,
     fixture_undetermined: dict[str, list[str]] | None = None,
 ) -> list[dict[str, Any]]:
-    """The declared arrangements among *values*, in order, deduped on name and arguments.
-
-    A bullet that does not parse yields no row here and is carried instead by
-    `_unparsed_fixtures` below, which says why the packet cannot simply drop it.
-    `fixture_provides` — a book fixture's own
-    keys plus its `needs:` closure, each spelled `<owner>.<key>` — rides along on each row so
-    `compile_plan` can tell what an arrangement makes available without re-walking the graph.
-    """
+    """The declared arrangements among *values*, in order, deduped on name and arguments."""
     rows: list[dict[str, Any]] = []
     for value in values:
         parsed = fixtures_mod.parse_bullet(value)
@@ -2490,10 +1719,6 @@ def _parse_fixtures(
             keys = (fixture_provides or {}).get(parsed.name)
             if keys:
                 row["providesKeys"] = keys
-            # …and of those, the ones whose source the book left undetermined. Carried
-            # separately rather than dropped from `providesKeys`, because the two answer
-            # different questions: what this arrangement makes available, and what about it
-            # `compile_plan` must refuse to emit code for.
             undetermined = (fixture_undetermined or {}).get(parsed.name)
             if undetermined:
                 row["providesUndetermined"] = undetermined
@@ -2502,22 +1727,7 @@ def _parse_fixtures(
 
 
 def _unparsed_fixtures(values: list[str]) -> list[dict[str, Any]]:
-    """The `fixture:` bullets among *values* the parser read and rejected, with its sentence.
-
-    Carried, not dropped. `_parse_fixtures` above builds a row only from a value that parsed,
-    and for years this function did not exist, on the stated ground that the packet says what
-    the book successfully declared and `ostler doctor` says what it tried to. That division
-    holds for a reader that reports to an author and fails for the one reader that has to
-    decide whether to emit code: downstream, a bullet nobody wrote and a bullet that did not
-    parse are the same absent row. So a flow whose `fixture:` bullet had a typo in it was
-    gapped `unarranged-journey` — *"add a `fixture:` naming the arrangement"* — at an author
-    who had added one, and the advice was to do the thing already done.
-
-    The parser is the only reader that saw the text fail, so its own sentence rides along
-    rather than being re-derived here from the value. `compile_plan` turns each of these into
-    an `unparsed-fixture` gap and compiles nothing for the obligation, because the state its
-    claim is documented in is undetermined and undetermined does not become executable.
-    """
+    """The `fixture:` bullets among *values* the parser read and rejected, with its sentence."""
     rows: list[dict[str, Any]] = []
     for value in values:
         parsed = fixtures_mod.parse_bullet(value)
@@ -2527,14 +1737,7 @@ def _unparsed_fixtures(values: list[str]) -> list[dict[str, Any]]:
 
 
 def _no_arrangement_stated(values: list[str]) -> bool:
-    """True when one of *values* is a `fixture:` bullet stating this node arranges nothing.
-
-    Carried beside `fixturesDeclared` rather than folded into it, because the two answer
-    different questions and a compiler needs both: the rows say what is arranged, and this
-    says whether an empty list of rows is a decision or a silence. Collapsing them would
-    give a node that decided it needs no arrangement the same packet as a node whose author
-    never looked — which is the state `unarranged-journey` was added to keep apart.
-    """
+    """True when one of *values* is a `fixture:` bullet stating this node arranges nothing."""
     return any(
         isinstance(fixtures_mod.parse_bullet(value), fixtures_mod.NoArrangement)
         for value in values
@@ -2554,25 +1757,7 @@ def _locators(node: dict[str, Any]) -> dict[str, list[str]]:
 def _extends_target(
     node: dict[str, Any], nodes_by_id: dict[str, dict[str, Any]]
 ) -> tuple[dict[str, Any] | None, bool]:
-    """The base node an `extends:` arm inherits its control identity from (D51).
-
-    Returns `(target, malformed)`. `target` is the resolved node when `extends:` names one
-    that exists and shares this node's type — an interaction arm extends an interaction, an
-    invocation arm an invocation, never across the two. `malformed` is True when `extends:`
-    was stated but the target is missing or of the wrong type, which `_obligations` stamps
-    onto the obligation for `compile.py` to turn into a gap, mirroring
-    `unresolved-precondition`. A node with no `extends:` edge at all returns `(None, False)`
-    — plain absence, not a defect.
-
-    Nothing here is restricted to the two arm types: `component` and `concept` declare
-    `extends:` too, and all four node-type pages define it the same way — "this node is a
-    specialization of that one". What differs is what a *caller* does with the base. D51's
-    call site in `_obligations` gates on `("interaction", "invocation")` because inheriting a
-    **control identity** — `on:`, `trigger:`, `role:`, `name:`, `keyboard:` — is a fact about
-    an arm, and a component inherits no such thing. `_family_root` asks a different question
-    — "is this one documented thing or two?" — which every specialization answers the same
-    way, so it gates on nothing.
-    """
+    """The base node an `extends:` arm inherits its control identity from (D51)."""
     to_ids = [
         edge.get("to")
         for edge in node.get("edges") or []
@@ -2589,14 +1774,7 @@ def _extends_target(
 def _same_as_targets(
     node: dict[str, Any], nodes_by_id: dict[str, dict[str, Any]]
 ) -> list[dict[str, Any]]:
-    """The nodes *node*'s `same-as:` bullet resolves to, in document order.
-
-    Unlike `extends:`, `same-as:` is multi-valued — the motivating case is one shared
-    control documented on several screens, so a node can name two or three siblings at
-    once — and it carries no type restriction: the claim is "this is the same documented
-    thing", not "this is a narrower version of that type". A dangling target is dropped
-    here rather than flagged; that is `unresolved-relation`'s finding, not this reader's.
-    """
+    """The nodes *node*'s `same-as:` bullet resolves to, in document order."""
     return [
         target
         for edge in node.get("edges") or []
@@ -2607,21 +1785,7 @@ def _same_as_targets(
 
 
 def _same_as_component(node_id: str, nodes_by_id: dict[str, dict[str, Any]]) -> frozenset[str]:
-    """Every node id reachable from *node_id* by following declared `same-as:` edges,
-    *node_id* included.
-
-    `same-as:` is a symmetric claim — doctor's `one-way-same-as` requires the reciprocal
-    bullet on both ends — so in a conformant book each edge is discoverable from either
-    side by following only forward edges: A's own `same-as:` names B and B's own
-    `same-as:` names A back, so a walk that starts at A reaches B by A's edge and a walk
-    that starts at B reaches A by B's edge. That is what makes this BFS return the *same*
-    set of ids regardless of which member of the family it starts from — the property
-    `_family_root` needs to pick one deterministic root for a family of any size, rather
-    than land on a different node depending on which member a caller happened to ask
-    about first. A one-way declaration (a doctor-flagged defect) can make the two starting
-    points disagree; that is an accepted consequence of the underlying book being wrong,
-    not of this walk.
-    """
+    """Every node id reachable from *node_id* by following declared `same-as:` edges, *node_id* included."""
     seen = {node_id}
     frontier = [node_id]
     while frontier:
@@ -2638,32 +1802,14 @@ def _same_as_component(node_id: str, nodes_by_id: dict[str, dict[str, Any]]) -> 
 
 
 def _document_of(node_id: str) -> str:
-    """The document part of a node id — everything ahead of its first `#`.
-
-    Distinct from `drivers._document`, which parses an *obligation* id (`okf:`-prefixed,
-    `.md`-suffixed head required) and reads `""` for one that names no document at all. A
-    node id always names a document; there is no degenerate case to guard here.
-    """
+    """The document part of a node id — everything ahead of its first `#`."""
     return node_id.split("#", 1)[0]
 
 
 def _linked_surface(
     node: dict[str, Any], value: Any, nodes_by_id: dict[str, dict[str, Any]]
 ) -> str:
-    """The surface of the node *value*'s own links point at — "" when they point at none.
-
-    A `flow` is not performed by anything: it orders steps that are. So the surface its own
-    `start:`/`end:` claims are observed on is a property of the nodes those bullets name, not of
-    the directory the flow file happens to sit in — a journey a user walks out of a mobile app
-    and finishes in a browser ends on the web surface whichever book records it. `surface` is
-    what `compile.py` keys the owning `driver:` off, so stamping the linked node's surface is
-    what lets a crossing journey's end-state be observed by a driver that can see it.
-
-    Read off the bullet's own links rather than off `edges`' `via`, for the reason
-    `_serialized_graph` gives: `via` keeps the *first* bullet an href appeared under, so a flow
-    whose `end:` names the screen its `start:` already named has that edge attributed to `start`
-    and no `end` edge at all. The href is unambiguous where the attribution is not.
-    """
+    """The surface of the node *value*'s own links point at — "" when they point at none."""
     hrefs = {
         href
         for item in _values(value)
@@ -2684,30 +1830,7 @@ def _linked_surface(
 def _journey_steps(
     node: dict[str, Any], nodes_by_id: dict[str, dict[str, Any]]
 ) -> list[dict[str, str]]:
-    """The nodes a flow's `steps:` names, in the order the book wrote them.
-
-    A journey's claim is about what the sequence produced, so the sequence is part of the
-    claim and has to reach the stage that would walk it. Until this existed the packet said
-    only that a flow *links* these nodes: every `steps:` target arrived as one more
-    `flow-links-contract` entry under `reasons`, in a set, indistinguishable from what
-    `start:`, `end:` and `fixture:` named. A set of links is not a sequence, and a compiler
-    handed one cannot perform a journey — it can only assert the end state on arrival, in a
-    world the steps never ran in, which is exactly what `compile.py`'s flow branch refuses
-    to do.
-
-    Read off the bullet's own links rather than off `edges`' `via`, for the reason
-    `_linked_surface` and `_serialized_graph` both give: `via` keeps the *first* bullet an
-    href appeared under, so a flow whose `steps:` walks back through the screen its `start:`
-    already named loses that step entirely. The href is unambiguous where the attribution is
-    not; `edges` is consulted only to recover the node id an href already resolved to.
-
-    Each step carries its own `nodeType` and `surface`, because those are what D1's dispatch
-    table keys on: a step is performed by whatever drives the surface *it* lives on, not the
-    one the flow's `end:` is observed on. A step whose link resolves to nothing is kept with
-    an empty `ref` rather than dropped — dropping it would hand the next stage a shorter walk
-    that still looks complete, and a journey compiled one step short asserts its end state in
-    a world it did not reach. An absence is not an event.
-    """
+    """The nodes a flow's `steps:` names, in the order the book wrote them."""
     resolved = {
         str(edge["href"]): str(edge["to"])
         for edge in node.get("edges") or []
@@ -2728,52 +1851,7 @@ def _journey_steps(
 
 
 def _family_root(node_id: str, owners: set[str], nodes_by_id: dict[str, dict[str, Any]]) -> str:
-    """The declared-family root *node_id* belongs to among *owners*, for `_CONTAINER_FANOUT`.
-
-    Walks exactly three kinds of declared structure to one root, the three questions that
-    settle whether two nodes are independent implementations or one: a `same-as:` claim —
-    this node and the node it names are one documented thing, rendered or reached in more
-    than one place, the
-    *declared* answer to the question the fan-out count used to guess at from citation
-    counting alone — an `extends:` base case — a three-arm split says "these nodes are one
-    documented control", a narrower, type-matched version of the same claim — and a section
-    node's containing file (`path#anchor` collapses to `path`) — a file plus its own `###`
-    subsections is one documented surface, not several. All three say "this is not a second
-    thing, it is the first thing described again," so all members must count as one family
-    before the fan-out count runs, the same way a citation nobody's own arm makes
-    distinguishing still counts as one control rather than three.
-
-    The `extends:` walk is type-agnostic, because doctor's exclusion is: it asks only
-    whether an `extends:` edge lands inside the group, and all four types that own the key
-    — `concept`, `component`, `interaction`, `invocation` — define it as specialization.
-    Gating this walk on the two arm types instead would have counted a component and the
-    component it specializes as two fan-out owners where doctor counts them as one family,
-    which is the whole thing this helper exists to avoid.
-
-    `same-as:` is resolved differently from `extends:` because it is multi-valued — the
-    motivating case is one shared control documented on several screens, so a node can name
-    several siblings at once — which makes "follow the target" ambiguous: which of several
-    edges is *the* next hop depends on document order, and a walk that picks one arbitrarily
-    can land two members of the same family on two different roots. So rather than following
-    a single edge, this collapses *every* node reachable over declared `same-as:` edges
-    (`_same_as_component`, transitively, in both directions as declared) into one
-    deterministic representative — `min()` of the ids — before trying `extends:` or
-    containment. `min()` is arbitrary but total and id-derived, so every member of the
-    family computes the same representative independent of where the walk started, which is
-    the only property this needs: a root that's the same for the whole family, not a
-    "correct" one.
-
-    The containment walk only collapses onto a file id that is itself one of *owners* —
-    mirroring doctor.py's membership check (`b.id.startswith(f"{a.id}#")` where `a` is
-    also one of the citing nodes) rather than every section sharing a file. Sibling
-    components that merely share a `parent:` page, with no file-level citation of their
-    own, are *not* collapsed: three buttons on one screen citing the screen's renderer
-    are three distinct fan-out owners, not one, because the screen itself never cites
-    the symbol — collapsing them would hide genuine fan-out rather than guard against a
-    false one. Undeclared sprawl — unrelated nodes that each happen to cite the same
-    symbol with no edge between them — does not collapse either: only an edge the book
-    itself stated walks the chain.
-    """
+    """The declared-family root *node_id* belongs to among *owners*, for `_CONTAINER_FANOUT`."""
     seen: set[str] = set()
     current = node_id
     while current not in seen:
@@ -2797,14 +1875,7 @@ def _family_root(node_id: str, owners: set[str], nodes_by_id: dict[str, dict[str
 
 
 def _repeat(node: dict[str, Any], scope: tuple[str, ...]) -> dict[str, Any] | None:
-    """The compiled repeat contract for a node in a `one-per:` scope, or None.
-
-    Everything a planner needs to sample the family is lifted here — the iteration variable,
-    the compiled name-template segments, the bindable holes, and the declared distinctness and
-    variant axes — so `qa plan` can hold a scenario to concrete instances without re-reading
-    the book. A node outside any repeated scope gets no block, which keeps the packet
-    byte-identical for every book that never declares `one-per:`.
-    """
+    """The compiled repeat contract for a node in a `one-per:` scope, or None."""
     own = locators_mod.repeat_of(node)
     scope = scope or ((own,) if own else ())
     if not scope:
@@ -2843,52 +1914,7 @@ def _obligations(
     resolve_locator: Callable[[str], LocatorTarget] | None = None,
     nodes_by_id: dict[str, dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
-    """Mint one obligation per normative bullet, plus the node-level contract.
-
-    `owed_keys` narrows what a *required* node owes live evidence for. It is `None` for a node
-    the change reached, which owes all of it; it names the relation keys for a node reached
-    only by sharing a subject with one, which is at risk through the record they share and not
-    through the refusal shapes it documents on its own account.
-
-    An obligation id is minted off *node*'s `same-as:` family representative
-    (`min(_same_as_component(node["id"], nodes_by_id))`), not off `node["id"]` itself — the
-    family is the relation to collapse on, because `same-as:` is the book's own claim that
-    several occurrences are one documented thing, and `doctor`'s `same-as-disagreement` check
-    (b5762af3) refuses a book where the family disagrees on a `registry.normative_keys` value,
-    which is what makes collapsing the *requirement* sound: nothing discharges a claim no
-    member actually made. It is the requirement alone that check polices. The per-occurrence
-    fields on `base` — `surface`, `locators`, `source` — are the representative's, and
-    `locator:` is normative on no type, so a family whose members are looked at differently
-    (two surfaces, two locators for one control) keeps one way of observing it and drops the
-    rest silently. Every family in the corpus today is single-surface and agrees on its
-    locator; a cross-surface family needs this to carry occupancy the way
-    `occurrenceDocuments` does below, not a representative. `_family_root` is deliberately not used here — it also folds in `extends:` (a
-    specialization, whose narrower claim a base case's evidence must not silently discharge)
-    and file/section containment (a different question about `_CONTAINER_FANOUT`'s fan-out
-    count) — neither belongs in "is this the same documented fact".
-
-    This function still runs once per member: every occurrence keeps minting its own
-    obligations from its own bullets, so a member that states a key its siblings leave silent
-    (legal — `same-as:` exists precisely so a repeat can be written cheaply) still contributes
-    that obligation, under the family id. Nothing here merges the *nodes*; the collapse is
-    entirely in what id two calls to this function produce, and it is `build_context`'s
-    dedupe-by-id, after sorting, that turns byte-identical requirements written on several
-    occurrences into one obligation.
-
-    `nodes_by_id` is `None` only for callers with no graph context (there are none among
-    `context.py`'s own callers today, both of which already pass it); such a caller gets the
-    pre-collapse behavior, minting straight off `node["id"]`.
-
-    `occurrenceDocuments` carries the other half of what the collapse costs a consumer: once
-    an id names a family rather than one occurrence, the id itself can no longer answer "on
-    which document does this obligation sit" — a `_covers_in`-shaped narrowing that used to
-    parse the document out of the id would silently start answering for the representative's
-    document only, which is exactly the defect this field exists to prevent. It is every
-    `<document>` part of the family (`_same_as_component`, not `_family_root` — see above),
-    sorted, and it is always present and never empty: a node in no family still occupies its
-    own document, so the field degrades to that one entry rather than being omitted, and a
-    consumer that reads it never needs a fallback for the solo case.
-    """
+    """Mint one obligation per normative bullet, plus the node-level contract."""
     family = (
         _same_as_component(str(node["id"]), nodes_by_id)
         if nodes_by_id is not None
@@ -2902,32 +1928,18 @@ def _obligations(
         "kind": "journey" if journey else "contract",
         "node": node["id"],
         "occurrenceDocuments": occurrence_documents,
-        # D1's dispatch table keys on the link-target node's *type* (interaction, endpoint,
-        # command, invocation/method, screen) crossed with the owning surface's `driver:` —
-        # compile.py reads this rather than re-deriving it from `checksDeclared`, which is
-        # what let two `does:` bullets on the same node compile under two different drivers.
         "nodeType": node.get("type", ""),
         "source": node["path"],
-        # The key into `packet["navigation"]` this node's screen route lives under (Option C /
-        # Amendment 1) — a screen-addressed obligation is compiled by looking up
-        # `navigation[surface].routes[source]`, and this is how compile.py finds that surface
-        # without re-deriving it from the path the way `graph.py`'s own surface inference does.
         "surface": node.get("surface") or "",
         "requirement": node.get("title") or node["id"],
         "required": required,
         "evidenceRequired": "live" if required else "context",
         "reasons": reasons or [{"kind": "graph-closure", "ref": node["id"]}],
     }
-    # A journey's end-state is observed at the node its `end:` names, so that node's surface is
-    # the one whose `driver:` can see it — see `_linked_surface`.
     if nodes_by_id is not None and node.get("type") == "flow":
         end_surface = _linked_surface(node, node.get("bullets", {}).get("end"), nodes_by_id)
         if end_surface:
             base["surface"] = end_surface
-        # The journey itself, ordered. Rides on `base`, so every obligation this flow mints
-        # carries the same walk — a flow's `start:`, `end:` and its own `verify:` are all
-        # claims about what these steps did, and each of them needs the sequence to be
-        # discharged by anything other than an arrival.
         walk = _journey_steps(node, nodes_by_id)
         if walk:
             base["steps"] = walk
@@ -2935,8 +1947,6 @@ def _obligations(
     if nodes_by_id is not None and node.get("type") in ("interaction", "invocation"):
         extends_target, extends_malformed = _extends_target(node, nodes_by_id)
         if extends_target is not None:
-            # Own bullets win: an arm states its own `when:`/`does:` and, when it has one, its
-            # own `role:`/`name:`; only what it left silent is filled from the base case (D51).
             locators = {**_locators(extends_target), **locators}
         elif extends_malformed:
             base["extendsUnresolved"] = True
@@ -2945,23 +1955,10 @@ def _obligations(
     repeat = _repeat(node, scope)
     if repeat:
         base["repeat"] = repeat
-    # Per bullet, not per node. A node-level list credits every obligation the node mints with
-    # every check the node declares, so one discriminating call covers a sibling claim that
-    # nothing observes — the claim rides on an assertion that was never about it. The book
-    # already writes each check under the claim it observes; `registry.attributed_checks` reads it.
-    # A nested claim list that said its children are alternatives binds a check to none of them:
-    # a check written for one branch refutes the others, so fanning it out would file a
-    # refutation as a proof. `registry._attributed` applies it; this is where the word reaches it.
     combiners = {int(pos): str(word) for pos, word in (node.get("combiners") or {}).items()}
     contract, per_bullet = registry.attributed_checks(
         str(node.get("type", "")), node.get("bulletOrder") or [], combiners
     )
-    # The claims whose nested list never said how its children combine. Stamped rather than
-    # dropped: the obligation is real and a planner still has to read it, but nothing may emit
-    # an assertion against it, because the check written above it observes either all of these
-    # children or exactly one of them and the book does not say which. `compile_plan` turns the
-    # stamp into a gap; the predicate lives in `registry` so it cannot drift from the rule
-    # `doctor` refuses the book with.
     undetermined = {
         claim
         for group in registry.undetermined_claims(
@@ -2974,9 +1971,6 @@ def _obligations(
     contract_unparsed = _unparsed_checks(contract)
     if contract_unparsed:
         base["checksUnparsed"] = contract_unparsed
-    # A fixture written above every claim arranges the state the node as a whole is documented
-    # in, so it rides on `base` and reaches every obligation minted below — see
-    # `registry.attributed_fixtures` for why that differs from how a leading check is filed.
     node_fixtures, fixtures_per_bullet = registry.attributed_fixtures(
         str(node.get("type", "")), node.get("bulletOrder") or [], combiners
     )
@@ -2989,10 +1983,6 @@ def _obligations(
     ambient_nothing = _no_arrangement_stated(node_fixtures)
     if ambient_nothing:
         base["arrangesNothing"] = True
-    # The other arrangement family, bound by the same rule and read by a different parser. A
-    # `when:` over what the user typed is state no fixture can reach, so the acts that
-    # establish it are the only account of the world the claim below is about — carried here
-    # rather than left to the compiler to infer from prose.
     node_acts, acts_per_bullet = registry.attributed_acts(
         str(node.get("type", "")), node.get("bulletOrder") or [], combiners
     )
@@ -3002,32 +1992,12 @@ def _obligations(
     ambient_acts_unparsed = _unparsed_acts(node_acts)
     if ambient_acts_unparsed:
         base["actsUnparsed"] = ambient_acts_unparsed
-    # Unlike a fixture, a capture belongs to the one bullet whose action produces it — it does
-    # not ride ambient on every obligation the node mints, so the per-bullet half is the only
-    # one that yields `capturesDeclared`, the same shape `attributed_checks` yields.
     captures_contract, captures_per_bullet = registry.attributed_captures(
         str(node.get("type", "")), node.get("bulletOrder") or [], combiners
     )
-    # A *refusal* is not a capture, though, and that asymmetry is deliberate: the contract half
-    # is dropped above because a node-level capture credits no bullet's action, but a bullet the
-    # parser could not read is an observation about the node's own text, and the node-level
-    # obligation is where the node's own text lands. Dropped here too, it would be reported by
-    # nobody — which is the defect this stamping exists to close. The per-bullet branch below
-    # pops it back off each copy, so it rides once rather than on every obligation the node mints.
     contract_captures_unparsed = _unparsed_captures(captures_contract)
     if contract_captures_unparsed:
         base["capturesUnparsed"] = contract_captures_unparsed
-    # Where each normative bullet actually sits on the page. `obligations` is later sorted by
-    # `_sort_key`, which orders by id — alphabetical on the key name, not by where the author
-    # wrote it — so a producer walk that wants the book's own order (a capture read before the
-    # reference that consumes it, say) needs this stamped independently of that resort.
-    #
-    # `bullet_order`'s own ordinal (`row[2]`) is a position within *this node's* section — it
-    # resets for every node, so it is only comparable between obligations minted here. A scenario
-    # can owe evidence for several nodes that share one file (`by_source` groups by path, and a
-    # book runs several `### id` sections per file), so the node's own file-absolute heading line
-    # goes in front of it: two nodes never share a line, and within one node the line is constant,
-    # leaving the bullet ordinal to break the tie exactly as it did before.
     node_line = int(node.get("line") or 0)
     doc_position: dict[tuple[str, int], int] = {}
     _seen = {key: 0 for key in registry.normative_keys(str(node.get("type", "")))}
@@ -3047,17 +2017,11 @@ def _obligations(
                 "requirement": requirement,
                 "docPosition": [node_line, doc_position.get((key, index), 0)],
             }
-            # The claim a planner reads is the prose alone, exactly as it read before subjects
-            # existed. The subject is lifted to its own field so the obligation says what it is
-            # about rather than leaving the reader to parse an em dash out of the sentence.
             if key in RELATION_KEYS or key in _EVENT_KEYS:
                 subject, prose = relation_subject(requirement)
                 obligation["requirement"] = prose
                 if subject is not None:
                     obligation["subject"] = subject
-            # Each of a flow's own claims is observed at the node its own bullet names — a
-            # journey that starts on one surface and ends on another owes its two claims to two
-            # drivers, and only the bullet says which.
             if nodes_by_id is not None and node.get("type") == "flow":
                 linked = _linked_surface(node, requirement, nodes_by_id)
                 if linked:
@@ -3100,8 +2064,6 @@ def _obligations(
                 obligation["arrangesNothing"] = True
             else:
                 obligation.pop("arrangesNothing", None)
-            # Ambient first, then this claim's own: the acts run in the order the book wrote
-            # them, and an act above every claim was written to run before all of them.
             performed = list({row["call"]: row for row in [
                 *ambient_acts,
                 *_parse_acts(acts_per_bullet.get((key, index), []), resolve_locator),
@@ -3129,10 +2091,6 @@ def _obligations(
             else:
                 obligation.pop("capturesUnparsed", None)
             output.append(obligation)
-    # Attached after the loop on purpose: `base` *is* the node-level obligation already in
-    # `output`, and the per-bullet `{**base}` copies were taken before this line — so the
-    # judgment and unspecified context ride once, on the node-level row, instead of being
-    # duplicated onto every bullet the node mints.
     if judgment:
         base["judgment"] = judgment
     unspecified = [

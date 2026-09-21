@@ -1,16 +1,4 @@
-"""Claude Code CLI (``claude -p``) — its ``stream-json`` / ``--resume`` / ``/compact``
-protocol, and the adapter that exposes it as an ``AgentBackend``.
-
-This is the only place that knows Claude's event vocabulary. It used to live in
-``runner/ladder.py`` — the CLI-agnostic recovery ladder — with the backend facade
-delegating back into it, which made the generic ring the home of one implementation
-and forced the ladder and ``backends`` to import each other lazily. Claude is now a
-sibling of every other adapter and the ladder imports it not at all.
-
-Unlike the other CLIs, Claude compacts in place: ``/compact`` over ``--resume -p``
-summarizes the conversation and keeps the session id, so the ladder can retry the
-*same* prompt on a smaller session instead of reframing it.
-"""
+"""Claude Code CLI (``claude -p``) — its ``stream-json`` / ``--resume`` / ``/compact`` protocol, and the adapter that exposes it as an ``AgentBackend``."""
 
 from __future__ import annotations
 
@@ -27,8 +15,7 @@ from workhorse.runner.backends import AgentBackend
 
 
 class ClaudeBackend(AgentBackend):
-    """Claude Code CLI (``claude -p``). Owns the protocol below; the resilience
-    ladder sees only ``run_turn`` / ``compact``."""
+    """Claude Code CLI (``claude -p``)."""
 
     name = "claude"
     default_model = "sonnet"
@@ -54,13 +41,6 @@ class ClaudeBackend(AgentBackend):
             "--dangerously-skip-permissions",
             "--output-format", "stream-json",
             "--verbose",
-            # A node's turn is one bounded CLI session, reaped the moment it ends
-            # (success, failure or timeout — see runner/process.py's process-group
-            # kill). The Agent tool can dispatch work that outlives that session
-            # (`run_in_background`), which the ladder has no channel to await or
-            # collect: the session is torn down and the dispatched work is lost
-            # with it, unrecoverable by construction. No node prompt asks for a
-            # subagent, so there is nothing here to preserve by allowing it.
             "--disallowedTools", "Agent",
         ]
         if model:
@@ -77,8 +57,6 @@ class ClaudeBackend(AgentBackend):
                 cmd.extend(["--resume", sid])
                 print(f"[{node_id}] 🔄 Resuming session: {sid[:8]}...", flush=True)
 
-        # Stream through the shared supervised spawn path so timeout and process-group
-        # handling stay identical across harnesses.
         stream = _stream_events(
             cmd,
             node_id,
@@ -112,12 +90,7 @@ class ClaudeBackend(AgentBackend):
         timeout: float,
         resilience: AgentResilience,
     ) -> bool:
-        """Resume the node's session and ask Claude to compact its context.
-
-        Persist the resulting session id and return whether compaction ran. Missing
-        sessions and failed or timed-out compactions return ``False`` so the ladder
-        can reframe instead.
-        """
+        """Resume the node's session and ask Claude to compact its context."""
         if not (session_id_path and session_id_path.exists()):
             return False
         sid = session_id_path.read_text().strip()
@@ -172,8 +145,6 @@ class ClaudeBackend(AgentBackend):
                 env_extra=self.harness_env(),
             )
         except reload.ReloadRequested:
-            # A reload cut is not a failed best-effort compaction: the ladder must
-            # unwind instead of spending a reframe on code being replaced.
             raise
         except Exception as exc:  # noqa: BLE001 — compaction is best-effort
             print(f"[{node_id}] ⚠ compaction call failed: {exc}", flush=True)
@@ -191,23 +162,13 @@ class ClaudeBackend(AgentBackend):
 
 @dataclass(slots=True)
 class ClaudeTurnStream:
-    """What one Claude turn yielded, as its stream-json went past.
-
-    Mutable by construction: the per-line callback writes into it event by event and
-    the process outcome lands once the stream closes. It replaces a seven-element
-    tuple every caller had to decode by counting positions.
-    """
+    """What one Claude turn yielded, as its stream-json went past."""
 
     result_text: str = ""
     session_id: str | None = None
-    #: Anything signalling *how* a turn failed — non-event output lines (e.g.
-    #: "Spending cap reached") and error-result subtypes — for ``classify_turn``.
     diagnostics: list[str] = field(default_factory=list)
     timed_out: bool = False
-    #: True once any ``rate_limit_event`` reported the limit as hit.
     rate_limited: bool = False
-    #: The most recent window-reset epoch seen, used only when the failure is
-    #: otherwise determined to be a cap (for precise wait timing).
     rate_reset_at: float | None = None
     returncode: int = 0
 
@@ -227,13 +188,7 @@ def _stream_events(
     cwd: str | None = None,
     env_extra: dict[str, str] | None = None,
 ) -> ClaudeTurnStream:
-    """Run ``cmd`` through the shared supervised spawn path and parse Claude's
-    stream-json, echoing a concise live view to stdout. Returns the finished
-    ``ClaudeTurnStream``.
-
-    ``timed_out`` indicates the turn hit its deadline (in-loop or watchdog). The
-    timeout/process-group kill all live in ``stream_subprocess`` — this function only
-    interprets the lines."""
+    """Run ``cmd`` through the shared supervised spawn path and parse Claude's stream-json, echoing a concise live view to stdout."""
     stream = ClaudeTurnStream()
 
     def on_line(raw_line: str) -> None:
@@ -243,8 +198,6 @@ def _stream_events(
         try:
             event = json.loads(line)
         except json.JSONDecodeError:
-            # Non-JSON line (e.g. merged stderr) — surface it so logs aren't silent
-            # and keep it as a diagnostic for failure classification.
             print(f"[{node_id}] {line}", flush=True)
             stream.diagnostics.append(line)
             return
@@ -252,13 +205,7 @@ def _stream_events(
         etype = event.get("type")
         if etype == "result":
             stream.result_text = event.get("result", "") or stream.result_text
-            # Attach the turn's duration + token usage to the open turn span so
-            # per-node latency/cost attribution needs no artifact join. Normalized
-            # through the same mapper every other backend uses, so one query shape
-            # reads them all (workhorse/runner/usage.py). Unconditional: Claude's
-            # result event carries `duration_ms` even when it reports no tokens.
             otel.turn_result(_usage.normalize(event))
-            # An error result carries the reason in its subtype / is_error flag.
             if event.get("is_error") or event.get("subtype") not in (None, "success"):
                 stream.diagnostics.append(
                     str(event.get("subtype") or "") + " " + str(event.get("result") or "")
@@ -266,7 +213,7 @@ def _stream_events(
         elif etype == "rate_limit_event":
             blocked, reset_at = _failure.rate_limit_info(event)
             if reset_at is not None:
-                stream.rate_reset_at = reset_at  # last-seen window reset (only if capped)
+                stream.rate_reset_at = reset_at
             if blocked:
                 stream.rate_limited = True
         elif etype == "system" and "session_id" in event:

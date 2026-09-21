@@ -1,31 +1,4 @@
-"""Everything a node reuses: git, GitHub, workspaces, paths, JSON, external CLIs.
-
-All of it used to be ``workhorse.scriptutil``, in the engine distribution. It is here
-instead because a helper a *node* calls is workflow domain, not engine: the engine gained
-nothing from knowing how to open a PR or where a repo's docs live, and every install of it
-paid for ``gitpython``, ``PyGithub`` and ``json5`` — three libraries it never called. What
-stayed behind in workhorse is what the driver itself runs on, and nothing else.
-
-Nodes import the flat surface, exactly as they imported ``scriptutil``::
-
-    from workhorse_workflows.kit import commit_all, github_client, resolve_workspace
-
-**Patch the defining submodule** — :mod:`~workhorse_workflows.kit.git`,
-:mod:`~workhorse_workflows.kit.github`, :mod:`~workhorse_workflows.kit.workspace`,
-:mod:`~workhorse_workflows.kit.paths`, :mod:`~workhorse_workflows.kit.jsonio`,
-:mod:`~workhorse_workflows.kit.tools` — and
-the flat surface follows, because this module resolves a name through ``__getattr__``
-rather than binding it at import time. That is what keeps the seam contract the same one
-``scriptutil`` had: a script node is re-imported on every run, so its
-``from … import github_client`` re-reads the attribute and picks up the fake. A plain
-re-export would have frozen those bindings at *package* import, one process-lifetime
-earlier, and every existing patch would have silently stopped reaching the script.
-
-One rule follows from having several modules where there was one: a helper here calls
-another through its module (``git_kit.origin_url(...)``), never a direct import, so a
-test that fakes ``kit.git.origin_url`` also redirects :mod:`~workhorse_workflows.kit.github`'s
-internal use of it — which is what monkeypatching a single module used to give for free.
-"""
+"""Everything a node reuses: git, GitHub, workspaces, paths, JSON, external CLIs."""
 from __future__ import annotations
 
 import importlib
@@ -48,9 +21,6 @@ _NAMES: dict[str, str] = {
         "default_branch",
         "diff_text",
         "fetch_reset",
-        # The exception the two commit helpers raise when git refuses. Re-exported so a
-        # node that must tell "nothing to commit" from "git said no" still imports only
-        # from the kit, rather than reaching past it into gitpython.
         "GitError",
         "head_sha",
         "is_ancestor",
@@ -113,9 +83,6 @@ _NAMES: dict[str, str] = {
     "run_tool": "workhorse_workflows.kit.tools",
 }
 
-# Computed from the same map `__getattr__` resolves against, so the export list cannot
-# drift from what this module actually exports. A checker wants a literal here — the
-# literal is the duplicate that would drift.
 __all__ = sorted(_NAMES)  # pyright: ignore[reportUnsupportedDunderAll]
 
 
@@ -131,7 +98,7 @@ def __dir__() -> list[str]:
     return __all__
 
 
-if TYPE_CHECKING:  # the names above, for a reader and a type checker
+if TYPE_CHECKING:
     from workhorse_workflows.kit.git import (  # noqa: F401
         active_branch,
         allow_all_directories,

@@ -1,13 +1,4 @@
-"""`validate_partition` and `emit_artifacts` — the last two links in the surveyor's
-exhaustiveness chain.
-
-The partitioner is an agent doing genuine synthesis, so these tests are about the one
-property that must survive that judgment: clustering may reorganize the findings any way it
-likes, but it may not lose one. Then `emit_artifacts` turns the validated clusters into
-author's existing input, idempotently, without touching anything a human wrote.
-
-Ported from `surveyor/scripts/{validate-partition,emit-artifacts}.py`.
-"""
+"""`validate_partition` and `emit_artifacts` — the last two links in the surveyor's exhaustiveness chain."""
 from __future__ import annotations
 
 import json
@@ -59,7 +50,6 @@ def _setup(
     write_json(repo / INVENTORY, {"version": 1, "units": units})
 
 
-# --------------------------------------------------------------- validate_partition
 
 
 def test_a_partition_covering_every_assessed_unit_is_valid(
@@ -82,8 +72,7 @@ def test_a_partition_covering_every_assessed_unit_is_valid(
 def test_an_assessed_unit_in_no_cluster_is_the_gate(
     repo: Path, logger: logging.Logger, write: Write, write_json: WriteJson
 ) -> None:
-    """The whole reason this node exists: a unit with findings and no cluster would fall
-    out of the generated backlog with nothing looking wrong."""
+    """The whole reason this node exists: a unit with findings and no cluster would fall out of the generated backlog with nothing looking wrong."""
     _setup(
         write,
         write_json,
@@ -102,8 +91,7 @@ def test_an_assessed_unit_in_no_cluster_is_the_gate(
 def test_clean_units_need_no_cluster(
     repo: Path, logger: logging.Logger, write: Write, write_json: WriteJson
 ) -> None:
-    """No findings, no remediation work — so a clean unit in a cluster is the error, not a
-    clean unit outside one."""
+    """No findings, no remediation work — so a clean unit in a cluster is the error, not a clean unit outside one."""
     _setup(
         write,
         write_json,
@@ -118,8 +106,7 @@ def test_clean_units_need_no_cluster(
 def test_a_cluster_may_not_invent_a_unit(
     repo: Path, logger: logging.Logger, write: Write, write_json: WriteJson
 ) -> None:
-    """Clusters partition the frozen list. A unit that is not in it was never assessed, so
-    a story built on it would have no evidence behind it."""
+    """Clusters partition the frozen list."""
     _setup(
         write,
         write_json,
@@ -176,7 +163,6 @@ def test_every_structural_cluster_error_is_reported_together(
     assert "strategy 'vibes' not one of ['dedicated', 'mechanical']" in errors
     assert "`remediation_pattern` must be a kebab-case slug" in errors
     assert "must list at least one unit" in errors
-    # And the orphan sweep still runs — a structural failure does not hide a lost unit.
     assert "assessed unit 'src/api' appears in NO cluster" in errors
 
 
@@ -234,7 +220,6 @@ def test_a_missing_inventory_stops_the_gate(
     assert "could not be read" in validate_partition(logger).partition_errors
 
 
-# ------------------------------------------------------------------- emit_artifacts
 
 
 def test_one_bullet_per_cluster_lands_in_the_fenced_section(
@@ -258,7 +243,6 @@ def test_one_bullet_per_cluster_lands_in_the_fenced_section(
     text = (repo / BACKLOG).read_text(encoding="utf-8")
     assert SECTION_BEGIN in text and SECTION_END in text
     assert "- [survey-missing-error-handling] Remediate missing-error-handling (" in text
-    # The bullet carries the hints author needs to keep a mechanical cluster as one story.
     assert "2 unit(s), mechanical checklist — keep as ONE story with a per-unit checklist" in text
     assert "1 unit(s), dedicated)" in text
 
@@ -276,15 +260,13 @@ def test_cluster_notes_ride_along_as_a_hint(
 
     emit_artifacts(logger)
 
-    # Flattened to one line: the bullet is one line of markdown.
     assert "do the api first)" in (repo / BACKLOG).read_text(encoding="utf-8")
 
 
 def test_an_explicit_order_key_sequences_the_bullets(
     repo: Path, logger: logging.Logger, write: Write, write_json: WriteJson
 ) -> None:
-    """Ordering hints are the partitioner's other job; ids break ties so the emission is
-    deterministic across runs."""
+    """Ordering hints are the partitioner's other job; ids break ties so the emission is deterministic across runs."""
     _setup(
         write,
         write_json,
@@ -305,8 +287,7 @@ def test_an_explicit_order_key_sequences_the_bullets(
 def test_re_emitting_replaces_the_section_and_nothing_else(
     repo: Path, logger: logging.Logger, write: Write, write_json: WriteJson
 ) -> None:
-    """The idempotence property. A human-curated backlog and coder's own filed section sit
-    outside the fence, and a second survey run must not disturb them."""
+    """The idempotence property."""
     write(
         repo / BACKLOG,
         "# Backlog\n\n- [hand-written] something a human wants\n\n"
@@ -340,8 +321,7 @@ def test_a_backlog_that_does_not_exist_yet_is_created(
 def test_the_manifest_carries_every_unit_and_what_covers_it(
     repo: Path, logger: logging.Logger, write: Write, write_json: WriteJson, read_json: ReadJson
 ) -> None:
-    """Every unit, not just the clustered ones — the manifest is the frozen list with the
-    traceability hop attached, and a unit with no work says so by carrying no bullets."""
+    """Every unit, not just the clustered ones — the manifest is the frozen list with the traceability hop attached, and a unit with no work says so by carrying no bullets."""
     _setup(
         write,
         write_json,
@@ -361,7 +341,6 @@ def test_the_manifest_carries_every_unit_and_what_covers_it(
     assert manifest["inventory"] == INVENTORY
     by_id = {u["id"]: u for u in manifest["units"]}
     assert set(by_id) == {"src/api", "src/web", "README.md"}
-    # One unit covered by two clusters keeps both handles.
     assert by_id["src/api"]["bullets"] == ["survey-missing-error-handling", "survey-naming"]
     assert by_id["src/api"]["clusters"] == ["missing-error-handling", "naming"]
     assert by_id["README.md"]["bullets"] == []
@@ -372,8 +351,7 @@ def test_the_manifest_carries_every_unit_and_what_covers_it(
 def test_emission_refuses_when_the_partition_is_unreadable(
     repo: Path, logger: logging.Logger, write_json: WriteJson
 ) -> None:
-    """`emit_artifacts` runs after the gate passed, so an unreadable partition here means
-    the chain was skipped — it says so rather than writing an empty backlog section."""
+    """`emit_artifacts` runs after the gate passed, so an unreadable partition here means the chain was skipped — it says so rather than writing an empty backlog section."""
     write_json(repo / INVENTORY, {"units": [_unit("src/api")]})
 
     result = emit_artifacts(logger)

@@ -1,8 +1,4 @@
-"""Standalone tests for farrier's library-layer resolution and config CLI.
-
-Run directly (no pytest required):
-    uv run python tests/test_config_resolution.py
-"""
+"""Standalone tests for farrier's library-layer resolution and config CLI."""
 
 import os
 import tempfile
@@ -22,18 +18,10 @@ def make_library(root: Path) -> Path:
 
 
 def with_temp_config(fn):
-    """Run fn against a throwaway config file, isolated from this machine's real one.
-
-    Redirecting $STABLEMATE_CONFIG alone is not enough: when that file is absent,
-    read_config() falls back to the legacy per-tool paths (~/.config/workhorse,
-    ~/.config/farrier), so a test would read the developer's actual library_dir.
-    Neutralize that route too.
-    """
+    """Run fn against a throwaway config file, isolated from this machine's real one."""
     original_env = os.environ.get(config.CONFIG_PATH_ENV)
     with tempfile.TemporaryDirectory() as tmp:
         os.environ[config.CONFIG_PATH_ENV] = str(Path(tmp) / "config.toml")
-        # `patch.object` rather than an assignment over the module attribute: the name is
-        # typed as the function it holds, and the patch puts the real one back itself.
         try:
             with patch.object(config, "legacy_config_paths", lambda: []):
                 fn(Path(tmp))
@@ -46,12 +34,7 @@ def with_temp_config(fn):
 
 @contextmanager
 def base_library(path: Path | None):
-    """Pretend a base library is present at ``path`` (or absent).
-
-    Stubs the whole lookup: how a base is FOUND is stablemate_core's business and is
-    tested in core/tests/test_discovery.py. What matters here is only how farrier stacks
-    the result against an overlay.
-    """
+    """Pretend a base library is present at ``path`` (or absent)."""
     with patch.object(layers, "base_library_dir", lambda: path):
         yield
 
@@ -67,15 +50,10 @@ def test_is_library_dir():
         assert install.is_library_dir(root)
         assert not install.is_library_dir(Path(tmp))
 
-        # packs/ is NOT required: the base library ships skills and scaffolds with
-        # no packs at all, and a repo selects from it directly in agents.yml.
         packs_only = Path(tmp) / "packs-only"
         (packs_only / "packs").mkdir(parents=True)
         assert not install.is_library_dir(packs_only)
 
-        # `workflows/` used to be an accepted alternative to `library/`, back when a
-        # workflow was a directory of YAML a library could ship. It is a Python package
-        # now, so a directory holding only `workflows/` carries no library content.
         workflows_only = Path(tmp) / "base"
         (workflows_only / "workflows").mkdir(parents=True)
         assert not install.is_library_dir(workflows_only)
@@ -101,12 +79,9 @@ def test_precedence_flag_over_env_over_config():
         flag_lib = make_library(tmp / "flag")
         install.write_library_dir(cfg_lib)
 
-        # config only
         assert install.resolve_library_dir(None) == cfg_lib.resolve()
-        # env overrides config
         os.environ["FARRIER_LIBRARY_DIR"] = str(env_lib)
         assert install.resolve_library_dir(None) == env_lib.resolve()
-        # flag overrides env + config
         assert install.resolve_library_dir(flag_lib) == flag_lib.resolve()
         clear_env()
 
@@ -132,12 +107,7 @@ def test_no_overlay_is_fine_when_base_is_installed():
 
 
 def test_unresolved_errors_with_hint():
-    """No overlay AND no base is the only genuinely unusable case.
-
-    The hint names the causes that can still produce it now that install fetches the
-    base: by the time this raises, the fetch has already been tried and did not answer,
-    so pointing at a package to install would send someone after the wrong thing.
-    """
+    """No overlay AND no base is the only genuinely unusable case."""
 
     def body(tmp: Path):
         clear_env()
@@ -172,8 +142,6 @@ def test_bad_library_path_errors():
     print("ok: bad library path errors")
 
 
-# Base-library resolution order moved to stablemate_core; its test lives in
-# core/tests/test_discovery.py.
 
 def test_overlay_shadows_base():
     """A higher layer wins name-for-name — the whole point of layering."""
@@ -186,7 +154,6 @@ def test_overlay_shadows_base():
             skill = lib / "library" / "skills" / "demo" / "shared"
             skill.mkdir(parents=True)
             (skill / "SKILL.md").write_text(body, encoding="utf-8")
-        # A skill only the base defines still resolves through the overlay.
         only_base = base / "library" / "skills" / "demo" / "base-only"
         only_base.mkdir(parents=True)
         (only_base / "SKILL.md").write_text("# base only", encoding="utf-8")
@@ -201,8 +168,6 @@ def test_overlay_shadows_base():
         assert set(sources) == {"demo/shared", "demo/base-only"}
         assert sources["demo/shared"].path.read_text() == "# from overlay"
         shared, base_only = sources["demo/shared"].layer, sources["demo/base-only"].layer
-        # Both were read off the layer stack, which is where the layer is stamped on;
-        # only a source built outside it (some other test's) has none.
         assert shared is not None and base_only is not None
         assert shared.root == overlay
         assert base_only.name == install.BASE_LAYER_NAME

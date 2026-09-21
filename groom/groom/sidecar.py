@@ -1,41 +1,4 @@
-"""``groom-sidecar`` — runs inside each agent container, watching its own
-``/workspace`` and ``/runs`` mounts and holding one persistent WebSocket open to
-the host's ``groom`` process.
-
-The watch goes through ``watchfiles``, not ``inotify`` directly. The sidecar's
-normal home is a Linux container, where those are the same thing — watchfiles
-uses inotify there — but they stop being the same thing the moment anyone runs
-the sidecar, or its tests, on the machine they develop on. ``inotify_simple``
-imports cleanly on macOS and then fails at ``INotify()`` with a missing-symbol
-``AttributeError``, which reads as a broken sidecar rather than a Linux-only
-dependency. watchfiles carries the per-platform backend (inotify, FSEvents,
-ReadDirectoryChangesW) behind one API, and recurses into new subdirectories
-itself, so the watch-descriptor bookkeeping this module used to do is gone.
-
-The socket is the container's live session: the sidecar dials groom (it is the
-client, so no inbound reachability into the container is needed), advertises its
-identity + full current state on connect, streams ``progress``/``blocked``
-deltas from the watch, and answers ``getTree``/``getFile``/``getDiff`` RPCs from
-local disk — the data plane for groom's Files/Diff panels — plus
-``listTurns``/``readTurnFile``, through which the host pulls this container's
-turn records into its durable archive. A reconnect-with-
-backoff loop (built into ``websockets.connect``) means groom being down is never
-fatal; the sidecar just keeps trying and re-advertises on reconnect.
-
-The session is **non-authoritative and its state ephemeral**: everything
-re-syncs on (re)connect, so a dropped socket, a groom restart, or a container
-recreate is cheap and safe. The sidecar has zero say in the workflow's own exit
-code or behaviour — it observes and serves reads, plus exactly one write path:
-the ``getQuestions``/``answerGate`` RPCs relay an operator's exchange onto the
-run's own control socket, where workhorse itself decides what (if anything)
-changes.
-
-Runs as its own OS process (``groom-sidecar`` in the container entrypoint's
-supervising loop, ahead of workhorse's own run command), not embedded in
-workhorse's event loop. A ``reload`` command over the socket makes it exit with
-:data:`RELOAD_EXIT_CODE` so the entrypoint can recopy edited source and relaunch
-(see ``docs/features/groom/sidecar-live-sessions.md``).
-"""
+"""``groom-sidecar`` — runs inside each agent container, watching its own ``/workspace`` and ``/runs`` mounts and holding one persistent WebSocket open to the host's ``groom`` process."""
 
 from __future__ import annotations
 
@@ -65,27 +28,14 @@ GROOM_HOST = os.environ.get("GROOM_HOST", "host.docker.internal")
 GROOM_PORT = os.environ.get("GROOM_PORT", "8787")
 PUSH_TIMEOUT = float(os.environ.get("GROOM_PUSH_TIMEOUT", "1.0"))
 
-# Exit code reserved for an intentional reload request (outside the normal
-# 0/1/2, 126/127, 128+signal ranges): the entrypoint's supervising loop reads
-# it as "recopy the edited source and relaunch me", anything else as "stop".
 RELOAD_EXIT_CODE = 3
 
 _SKIP_DIR_NAMES = {".git", "node_modules", "__pycache__", ".venv"}
-# Spelled from _SKIP_DIR_NAMES rather than left at watchfiles' own (larger) default,
-# so the watch and `scan_gates` prune the same directories. A gate the pull-side scan
-# reports and the watch never fires on would look like a lost event.
 _WATCH_FILTER = DefaultFilter(ignore_dirs=sorted(_SKIP_DIR_NAMES))
 
 
 def _identity() -> dict:
-    """Who this container is, for the dashboard row and for joining it to telemetry.
-
-    ``run_id`` is the join key. Workhorse stamps it on every span, metric and log it
-    exports, and groom keys its telemetry store by it — but a dashboard row built
-    from a container had no run id at all, so the lookup fell back to the container
-    id and never hit. The result was a row that could show a container running and a
-    separate set of telemetry for the same run, with nothing connecting them.
-    """
+    """Who this container is, for the dashboard row and for joining it to telemetry."""
     return {
         "container_id": socket.gethostname()[:12],
         "name": os.environ.get("REPO_NAME", socket.gethostname()),
@@ -96,15 +46,6 @@ def _identity() -> dict:
     }
 
 
-# --------------------------------------------------------------------------- #
-# Residual best-effort HTTP push (fire-and-forget)
-#
-# The persistent socket is the primary channel; these remain for the one-shot
-# ``exited`` notice the entrypoint fires after workhorse returns (the socket is
-# torn down with the container by then) and for the ``await_operator.py``
-# backstop that POSTs ``/push/blocked`` directly. Discipline is unchanged: short
-# timeout, silent on failure, never blocks or changes the workflow's exit code.
-# --------------------------------------------------------------------------- #
 def _push(path: str, payload: dict) -> None:
     body = json.dumps({**_identity(), **payload}).encode("utf-8")
     url = f"http://{GROOM_HOST}:{GROOM_PORT}{path}"
@@ -124,11 +65,7 @@ def push_blocked(file_path: str, question: str) -> None:
 
 
 def push_exited(exit_code: int) -> None:
-    """Fire-and-forget notice that the workflow process has ended. Invoked once
-    from the container entrypoint after ``workhorse`` returns (see cli
-    ``groom-sidecar --exit-code``) — not from the session, which by then is
-    being torn down with the container.
-    """
+    """Fire-and-forget notice that the workflow process has ended."""
     _push("/push/exited", {"exit_code": exit_code})
 
 
@@ -153,10 +90,7 @@ def _current_node() -> str:
 
 
 def _terminal() -> str:
-    """The latest run's terminal state (non-empty ⇒ the workflow FINISHED),
-    read from ``<latest>/run.json`` — the pull-side complement to the watch
-    loop, which only ever reports the current node.
-    """
+    """The latest run's terminal state (non-empty ⇒ the workflow FINISHED), read from ``<latest>/run.json`` — the pull-side complement to the watch loop, which only ever reports the current node."""
     run_dir = _latest_run_dir()
     if run_dir is None:
         return ""
@@ -169,17 +103,11 @@ def _terminal() -> str:
         return ""
 
 
-# STATUS: is the first line of a gate context file, so a small head read is
-# enough to classify a file without slurping large source files whole.
 _GATE_SCAN_HEAD = 512
 
 
 def scan_gates() -> list[dict]:
-    """A one-shot sweep of ``/workspace`` for every file whose STATUS line reads
-    AWAITING_OPERATOR — the pull-side equivalent of what ``_classify_event``
-    emits reactively, so a fresh ``hello`` advertises gates that were already
-    open before any change event fired. Same directory skips as the watcher.
-    """
+    """A one-shot sweep of ``/workspace`` for every file whose STATUS line reads AWAITING_OPERATOR — the pull-side equivalent of what ``_classify_event`` emits reactively, so a fresh ``hello`` advertises gates that were already open before any change event fired."""
     gates: list[dict] = []
     if not WORKSPACE_DIR.is_dir():
         return gates
@@ -207,11 +135,7 @@ def scan_gates() -> list[dict]:
 
 
 def snapshot() -> dict:
-    """The container's full current state: current graph node, terminal state,
-    and every open gate. Pure file reads — no watch, no network — so it is
-    safe both as the ``hello`` payload and as the one-shot ``--query`` a legacy
-    host uses over ``docker exec``.
-    """
+    """The container's full current state: current graph node, terminal state, and every open gate."""
     return {
         "current_node": _current_node(),
         "terminal": _terminal(),
@@ -219,52 +143,25 @@ def snapshot() -> dict:
     }
 
 
-# --------------------------------------------------------------------------- #
-# watch → event classification (shared by the socket session and the residual
-# HTTP path). Pure: given an already-observed path it decides which frame, if
-# any, to emit, without any transport.
-# --------------------------------------------------------------------------- #
 def _watch_roots() -> list[Path]:
-    """The mounts to hand ``awatch``, minus any that is not there.
-
-    ``awatch`` raises ``FileNotFoundError`` for a path that does not exist, and a
-    sidecar whose ``/runs`` volume has not been mounted yet must still open its
-    session and serve RPCs — the watch is the part that degrades, not the session.
-    With neither mount present there is nothing to watch and no watcher is started.
-    """
+    """The mounts to hand ``awatch``, minus any that is not there."""
     return [root for root in (WORKSPACE_DIR, RUNS_DIR) if root.is_dir()]
 
 
 def _under_mount(path: Path, mount: Path) -> Path | None:
-    """``path`` relative to ``mount``, or ``None`` when it is not under it.
-
-    Compared resolved as well as literal, because the watch backend reports the
-    *real* path and a mount reached through a symlink is a different string for
-    the same directory — macOS's ``/var`` -> ``/private/var`` is the one anybody
-    hits first. On a literal-only comparison a gate under such a mount still
-    classifies, but reports an absolute ``file_path``, and groom's Files panel has
-    no repo-relative path left to open.
-    """
+    """``path`` relative to ``mount``, or ``None`` when it is not under it."""
     try:
         return path.relative_to(mount)
     except ValueError:
         pass
     try:
         return Path(os.path.realpath(path)).relative_to(os.path.realpath(mount))
-    except ValueError:  # includes a different drive on Windows
+    except ValueError:
         return None
 
 
 def _classify_event(path: Path) -> dict | None:
-    """Translate one changed path into the frame to send, or ``None`` when it is
-    uninteresting. A ``/runs`` write means graph progress; a ``/workspace`` write
-    whose STATUS flipped to AWAITING_OPERATOR is a new gate.
-
-    Directories need no special case: a directory is never readable as text, so
-    it falls out at :meth:`~pathlib.Path.read_text` — and unlike the inotify
-    bookkeeping this replaced, a new subtree needs no watch installed for it,
-    because ``awatch`` recurses on its own.
-    """
+    """Translate one changed path into the frame to send, or ``None`` when it is uninteresting."""
     if _under_mount(path, RUNS_DIR) is not None:
         return {"type": "progress", "current_node": _current_node()}
 
@@ -280,15 +177,7 @@ def _classify_event(path: Path) -> dict | None:
 
 
 def _turn_announce(path: Path) -> dict | None:
-    """A ``turn`` frame when a changed path is part of a run's turn-record surface.
-
-    An announce, not a payload: it says *something moved, come and get it*, and the
-    host decides when to pull. So a node writing a transcript line by line costs one
-    small frame per batch the watch coalesces, whatever the transcript grows to.
-
-    Identity rides along because the host needs the run id to file what it pulls, and
-    the container is the only side that knows it.
-    """
+    """A ``turn`` frame when a changed path is part of a run's turn-record surface."""
     relative = _under_mount(path, RUNS_DIR)
     if relative is None:
         return None
@@ -299,11 +188,7 @@ def _turn_announce(path: Path) -> dict | None:
 
 
 def _handle_event(path: Path) -> None:
-    """Residual HTTP path: classify one changed path and fire the matching
-    fire-and-forget push. The socket session (:func:`_run_session`) uses
-    :func:`_classify_event` directly instead; this is retained as the
-    best-effort push shape and for its focused unit tests.
-    """
+    """Residual HTTP path: classify one changed path and fire the matching fire-and-forget push."""
     frame = _classify_event(path)
     if frame is None:
         return
@@ -313,11 +198,6 @@ def _handle_event(path: Path) -> None:
         push_blocked(frame["file_path"], frame["question"])
 
 
-# --------------------------------------------------------------------------- #
-# Data-plane RPC handlers — the reads groom's Files/Diff panels ask for, served
-# from this container's own local disk. The traversal guard travels with the
-# read (this is an unauthenticated file server for its own volume).
-# --------------------------------------------------------------------------- #
 def _safe_relpath(path: str) -> str:
     if not path or path.startswith("/") or path.startswith("\\"):
         raise ValueError(f"unsafe path: {path!r}")
@@ -332,10 +212,7 @@ def _repo_base(repo: str) -> Path:
 
 
 def _find_repo_dirs() -> list[str]:
-    """Volume-relative paths of every git checkout within two levels of the
-    workspace root — mirrors ``docker_io.list_repo_dirs`` so the socket and the
-    fallback agree. ``""`` denotes the workspace root itself being the repo.
-    """
+    """Volume-relative paths of every git checkout within two levels of the workspace root — mirrors ``docker_io.list_repo_dirs`` so the socket and the fallback agree."""
     if not WORKSPACE_DIR.is_dir():
         return []
     repos: list[str] = []
@@ -348,8 +225,7 @@ def _find_repo_dirs() -> list[str]:
 
 
 def _list_tree(repo: str) -> list[str]:
-    """Repo-relative paths of every file in one checkout, heavy vendor/VCS dirs
-    pruned (same set as the watcher). Sorted for a stable tree order."""
+    """Repo-relative paths of every file in one checkout, heavy vendor/VCS dirs pruned (same set as the watcher)."""
     base = _repo_base(repo)
     if not base.is_dir():
         return []
@@ -366,10 +242,7 @@ def _list_tree(repo: str) -> list[str]:
 
 
 def _git_diff(repo: str) -> str:
-    """Unified working-tree-vs-HEAD diff for one checkout, run against local
-    disk. ``""`` falls back to the first repo found. "" on any failure — the
-    diff panel is a nice-to-have, never workflow-critical.
-    """
+    """Unified working-tree-vs-HEAD diff for one checkout, run against local disk."""
     if not repo:
         repos = _find_repo_dirs()
         if not repos:
@@ -397,7 +270,7 @@ def _rpc_get_file(params: dict) -> dict:
     rel = f"{repo}/{path}".lstrip("/") if repo else path
     if not rel:
         return {"content": ""}
-    safe = _safe_relpath(rel)  # raises ValueError on traversal → error result
+    safe = _safe_relpath(rel)
     try:
         content = (WORKSPACE_DIR / safe).read_text(errors="replace")
     except OSError:
@@ -409,36 +282,14 @@ def _rpc_get_diff(params: dict) -> dict:
     return {"diff": _git_diff(str(params.get("repo", "")))}
 
 
-# --------------------------------------------------------------------------- #
-# Turn records: the run-dir half of the data plane.
-#
-# The workspace RPCs above are rooted at WORKSPACE_DIR and stay that way — a
-# container's turn records live under RUNS_DIR, and widening `_rpc_get_file` to
-# reach them would hand the file panel the whole runs volume as a side effect.
-# These are siblings instead, rooted at RUNS_DIR, through the same traversal
-# guard, and narrowed further to the turn-record surface: a run dir also holds
-# checkpoints and events the host has other ways to read.
-#
-# The host *pulls* through these. A container that is thrashing writes turn
-# records as fast as it turns, and a push would let it outrun the host that has
-# to store them — the same reason the file panel pulls today.
-# --------------------------------------------------------------------------- #
 
-#: The only paths within a run dir these RPCs will name or read.
 TURN_SURFACE = ("sessions.jsonl", "transcripts", "turns")
 
-#: Largest slice one ``readTurnFile`` will return, before base64. Bounds the frame,
-#: not the file: a transcript is fetched over as many calls as it takes.
 TURN_CHUNK_BYTES = 512 * 1024
 
 
 def _run_base(run: str) -> Path:
-    """The run dir a turn-record RPC is talking about — named, or the latest.
-
-    An empty name resolves to the latest run rather than erroring, because that is
-    what the host asks for when it heard about a container before it heard which run
-    the container is on.
-    """
+    """The run dir a turn-record RPC is talking about — named, or the latest."""
     if run:
         return RUNS_DIR / _safe_relpath(run)
     latest = _latest_run_dir()
@@ -448,13 +299,7 @@ def _run_base(run: str) -> Path:
 
 
 def _within_runs(path: Path) -> Path:
-    """``path``, having confirmed it really resolves under ``RUNS_DIR``.
-
-    ``_safe_relpath`` rejects ``..`` and absolute paths, which is the whole guard the
-    workspace reads need. It is not the whole guard here: these reads return raw
-    bytes of whatever they are pointed at, and a symlink inside the run dir resolves
-    out of the volume without a single ``..`` in the request.
-    """
+    """``path``, having confirmed it really resolves under ``RUNS_DIR``."""
     root = Path(os.path.realpath(RUNS_DIR))
     resolved = Path(os.path.realpath(path))
     if resolved != root and root not in resolved.parents:
@@ -463,11 +308,7 @@ def _within_runs(path: Path) -> Path:
 
 
 def _turn_files(base: Path) -> list[dict]:
-    """Every file of the turn-record surface in one run dir, with its size.
-
-    The size is what makes a re-pull cheap: the host keeps what it already fetched
-    and asks again only for the files whose length moved.
-    """
+    """Every file of the turn-record surface in one run dir, with its size."""
     files: list[dict] = []
     for name in TURN_SURFACE:
         target = base / name
@@ -495,12 +336,7 @@ def _rpc_list_turns(params: dict) -> dict:
 
 
 def _rpc_read_turn_file(params: dict) -> dict:
-    """One slice of one turn-record file, base64'd.
-
-    base64 rather than text because a truncated transcript is still wanted and a byte
-    slice of UTF-8 does not have to land on a character boundary; the host reassembles
-    bytes and never has to care.
-    """
+    """One slice of one turn-record file, base64'd."""
     base = _run_base(str(params.get("run", "")))
     rel = _safe_relpath(str(params.get("path", "")))
     if rel.split("/")[0] not in TURN_SURFACE:
@@ -520,29 +356,11 @@ def _rpc_read_turn_file(params: dict) -> dict:
     }
 
 
-# --------------------------------------------------------------------------- #
-# Operator-gate relay: the host's side of a Q&A rides the run's own control
-# socket (`control.sock` in the run dir — locally reachable here because /runs
-# is this container's mount). These are the sidecar's only write-capable RPCs,
-# and deliberately thin: the sidecar relays verbatim and workhorse's channel
-# decides everything — which gate is live, whether an answer is accepted, what
-# gets persisted. The reply dict is the run's own, carried back untouched, so
-# groom reasons about one protocol whether the run is native or containerised.
-# --------------------------------------------------------------------------- #
-#: How long one relayed exchange waits for the run to reply. Below the host's
-#: per-RPC deadline (sidecar_hub.RPC_TIMEOUT, 5s) on purpose: a run too busy to
-#: answer must come back as `{}` — the protocol's own "did not answer" — and not
-#: as a host-side timeout indistinguishable from a wedged sidecar.
 CONTROL_TIMEOUT = 4.0
 
 
 def _relay_to_control(run: str, request: control.Request) -> dict:
-    """One control-socket exchange with the named (or latest) run.
-
-    A run with no listener — finished, crashed, or still booting — answers
-    ``no listener`` as a result rather than an exception, because for the host
-    that is an ordinary state to poll through, not a broken sidecar.
-    """
+    """One control-socket exchange with the named (or latest) run."""
     base = _run_base(run)
     try:
         return dict(control.send(str(base), request, timeout=CONTROL_TIMEOUT))
@@ -576,20 +394,12 @@ _RPC_METHODS = {
 }
 
 
-# --------------------------------------------------------------------------- #
-# The persistent socket session
-# --------------------------------------------------------------------------- #
 class ReloadRequested(Exception):
-    """Raised inside a session when groom sends ``reload``; unwinds the session
-    so :func:`_serve` returns :data:`RELOAD_EXIT_CODE`."""
+    """Raised inside a session when groom sends ``reload``; unwinds the session so :func:`_serve` returns :data:`RELOAD_EXIT_CODE`."""
 
 
 def _hello_frame() -> dict:
-    """Full-state advertise sent on every (re)connect. groom folds this into its
-    fleet without a ``docker inspect`` — the socket owns correctness for a
-    connected container, and re-sending it on reconnect self-heals a groom
-    restart.
-    """
+    """Full-state advertise sent on every (re)connect."""
     return {"type": "hello", "identity": _identity(), "snapshot": snapshot()}
 
 
@@ -616,14 +426,7 @@ async def _sender_loop(ws, outbox: asyncio.Queue) -> None:
 
 
 async def _watch_loop(outbox: asyncio.Queue, stop: asyncio.Event) -> None:
-    """Feed the outbox from the filesystem watch until ``stop`` is set.
-
-    A task rather than the event loop's fd reader this replaced: ``awatch`` owns
-    its own thread and hands back already-coalesced batches, so there is no
-    descriptor for the loop to poll and nothing here blocks it. Deletions are
-    dropped — the old inotify mask asked for writes and creations only, and a
-    removed run file is not progress.
-    """
+    """Feed the outbox from the filesystem watch until ``stop`` is set."""
     roots = _watch_roots()
     if not roots:
         return
@@ -638,10 +441,7 @@ async def _watch_loop(outbox: asyncio.Queue, stop: asyncio.Event) -> None:
 
 
 async def _run_session(ws) -> None:
-    """One connected session: advertise, then serve filesystem deltas (outbound
-    via a queue fed by the watch task) and RPC/reload (inbound) until the socket
-    drops or a reload is requested.
-    """
+    """One connected session: advertise, then serve filesystem deltas (outbound via a queue fed by the watch task) and RPC/reload (inbound) until the socket drops or a reload is requested."""
     await ws.send(json.dumps(_hello_frame()))
 
     outbox: asyncio.Queue = asyncio.Queue()
@@ -660,8 +460,6 @@ async def _run_session(ws) -> None:
             elif mtype == "reload":
                 raise ReloadRequested
     finally:
-        # Both: `stop` lets awatch shut its backend thread down cleanly, and the
-        # cancel covers the window before the next batch is yielded.
         stop.set()
         for task in (watcher, sender):
             task.cancel()
@@ -670,11 +468,7 @@ async def _run_session(ws) -> None:
 
 
 async def _serve() -> int:
-    """Dial groom and hold a session open, reconnecting with backoff (built into
-    ``connect``) whenever the socket drops. Returns only on a reload request
-    (with :data:`RELOAD_EXIT_CODE`) — otherwise it retries forever, so groom
-    being down is never fatal.
-    """
+    """Dial groom and hold a session open, reconnecting with backoff (built into ``connect``) whenever the socket drops."""
     uri = f"ws://{GROOM_HOST}:{GROOM_PORT}/sidecar"
     async for ws in connect(uri):
         try:
@@ -684,7 +478,7 @@ async def _serve() -> int:
                 await ws.close()
             return RELOAD_EXIT_CODE
         except ConnectionClosed:
-            continue  # reconnect and re-advertise
+            continue
     return 0
 
 

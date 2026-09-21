@@ -1,9 +1,4 @@
-"""Public API for preparing bounded two-way behavior reviews and checking receipts.
-
-Extraction supplies candidates, not semantic verdicts. Rebuild packets from current
-source and graph before validating persisted receipts. Validation checks the external
-review's shape and binding, never whether its explanations are true.
-"""
+"""Public API for preparing bounded two-way behavior reviews and checking receipts."""
 from __future__ import annotations
 
 import ast
@@ -59,16 +54,7 @@ def packet_digest(packet: AuditPacket) -> str:
 
 
 def extract_evidence(root: Path, paths: Sequence[str], *, context_paths: Sequence[str] = ()) -> EvidenceInventory:
-    """Read selected relative files/directories; retain every failed/unsupported file.
-
-    Prefer explicit files or source directories, not a repository root. Directory
-    walks prune named cache/environment directories and bytecode; excluded paths are
-    recorded. Explicit file selectors still include such files. Empty selector lists
-    are allowed for book-only reviews; an empty string is not a root-directory alias.
-    Symlinks escaping root are rejected. No source or catalog is written.
-    context_paths selects full Python or Go support files for every packet, without adding
-    candidates. Directories are unsupported. Failures remain explicit limitations.
-    """
+    """Read selected relative files/directories; retain every failed/unsupported file."""
     root = root.resolve()
     selected: set[str] = set()
     excluded: set[str] = set()
@@ -199,32 +185,9 @@ def extract_claims(graph: Graph) -> tuple[BookClaim, ...]:
 
 
 def extract_book(graph: Graph, scope: str = "") -> BookClaims:
-    """Use the real graph's normative bullets and existing QA obligation ID spelling.
-
-    Titles and original same-node text are context, not synthetic semantic claims.
-    Context ends at the first child heading, using the document parser's spans.
-    When a node cites no source,
-    use the nearest citing containment ancestor in the same document; do not inherit
-    across documents or replace an explicit but incorrect citation. Citations guide
-    file-local retrieval, never prove support. Locations come from the graph parser.
-
-    `scope` is a repo-relative path prefix that limits which nodes are *read*: only
-    documents under it are opened, re-hashed and checked against the graph's line
-    numbers. Filtering the returned claims instead is not the same thing — the context
-    read below re-reads every node's file off disk and raises when a section has moved
-    underneath the graph, so an unscoped read makes one service's audit fail on another
-    service's book while a concurrent writer is authoring it. The citation index above
-    stays whole-graph on purpose: it answers whether *anything* in the book cites a
-    symbol, and narrowing it would demote candidates cited only from a sibling book.
-    """
+    """Use the real graph's normative bullets and existing QA obligation ID spelling."""
     claims: list[BookClaim] = []
     by_id = {node.id: node for node in graph.ui_nodes}
-    # No node id is spelled twice, so no claim is skipped for colliding with one. Two sections
-    # sharing a heading used to share an id, and every claim under the second was dropped here
-    # with a limitation naming `duplicate-container-heading` — a code that does not fire on the
-    # shape that caused it, so the audit reported a repair nobody could make. `model.document_
-    # anchors` now issues the anchor GitHub renders, which is unique within a document by
-    # construction, and both sections are audited.
     limitations: tuple[str, ...] = ()
     documents: dict[Path, tuple[markdown.MarkdownDoc, str]] = {}
     cited_paths: set[str] = set()
@@ -263,10 +226,6 @@ def extract_book(graph: Graph, scope: str = "") -> BookClaims:
         if section is None:
             raise ValueError(f"Cannot locate book context for {node.id}; reload the graph from current documents")
         end = min((child.line_start for child in section.children), default=section.line_end)
-        # end_line counts the lines actually supplied rather than trusting section.line_end:
-        # a body ending in a newline splits to one more line than it has, so the file's last
-        # section would otherwise advertise a line its own text does not carry, and a reviewer
-        # citing that span is rejected as unseen.
         text = "".join(doc.body.splitlines(keepends=True)[section.line_start:end])
         context = BookContext(path=path, node=node.id, start_line=node.line,
                               end_line=node.line + max(1, len(text.splitlines())) - 1,
@@ -285,15 +244,7 @@ def extract_book(graph: Graph, scope: str = "") -> BookClaims:
 
 
 def exported_symbol(path: str, symbol: str, exported: bool | None = None) -> bool:
-    """Whether a candidate's symbol is exported by its language's rule.
-
-    Go exports a capitalized name, and a method is exported only on an exported type.
-    Python exports a name with no leading underscore, at every level of nesting. The
-    module itself (``<module>``) is never a symbol. This is the tier-1 rule the audit
-    reads; a ``__all__`` that re-exports an underscored name is not consulted.
-    TypeScript exports by keyword and PHP by modifier, not by spelling, so their extractors
-    answer on the candidate (``BehaviorEvidence.exported``) and that answer wins when given.
-    """
+    """Whether a candidate's symbol is exported by its language's rule."""
     if symbol == "<module>":
         return False
     if exported is not None:
@@ -313,13 +264,7 @@ def cited_symbol(path: str, symbol: str, cited_symbols: frozenset[str]) -> bool:
 
 
 def candidate_tier(path: str, symbol: str, cited_symbols: frozenset[str], exported: bool | None = None) -> Literal[1, 2]:
-    """Tier 1 is what the book cites or the language exports; tier 2 is the private rest.
-
-    The builder audits tier 1. Tier 2 — an uncited symbol its language keeps private —
-    is reviewed only by ``ostler audit --tier all``: its behavior reaches a caller
-    through some tier-1 symbol, and that is where a claim about it is checked. A
-    module-level candidate has no name to keep private, so it is always tier 1.
-    """
+    """Tier 1 is what the book cites or the language exports; tier 2 is the private rest."""
     if symbol == "<module>" or exported_symbol(path, symbol, exported) or cited_symbol(path, symbol, cited_symbols):
         return 1
     return 2
@@ -342,43 +287,7 @@ def build_audit_packets(
     max_items: int = 80, max_chars: int = 60_000, skip_undocumented: bool = True,
     tier: Literal[1, "all"] = 1, root: Path | None = None, context_lines: int = 40,
 ) -> AuditPreparation:
-    """Prepare file-local review packets without an all-book Cartesian product.
-
-    A `BookClaims` carries the book side's own limitations — the nodes whose claims were
-    skipped — and every packet repeats them beside the inventory's, so a reviewer and a
-    receipt both know what the book did not put in front of them.
-
-    All symbols in a source file share its citing claims, even when the cited symbol
-    is incorrect. Claims without a matching local file go into explicit book-only
-    packets; files without citing claims retain all their candidates. Repository-
-    qualified citations stay ungrounded: this inventory has no repository mapping.
-    A parsed file with candidates on exported symbols that no claim and no book node
-    cites (a `BookClaims` carries the book's ``cited_paths``) is a fact a rule can
-    compute: it is listed under ``undocumented`` and no packet is built for it, so no
-    reviewer turn is spent finding what the book never mentions. A file some node cites
-    without a claim still reaches a reviewer, who reports what the book leaves out. A
-    file whose candidates all sit on private symbols audits as before, and
-    ``skip_undocumented=False`` builds every file's packet regardless.
-    At ``tier=1`` (the default) only tier-1 candidates — cited by the book or exported
-    by the language's rule (`candidate_tier`) — enter a packet; the rest are counted as
-    ``deferred_candidates`` and named in the file's packet limitations (a file left with
-    nothing to review builds no packet), and ``tier="all"`` reviews them too. Selected counts describe the tier, not the tree.
-    With ``root``, a claim whose every citation names a file that exists under it but is
-    outside the selected files is out of this audit's scope: counted as
-    ``out_of_scope_claims``, named in every packet's limitations, and sent to no reviewer.
-    Without ``root`` such claims stay ungrounded, since nothing can tell them from a
-    citation of a file that is gone (the doctor's finding either way).
-    A packet carries the generic extraction limitations and its own file's, never another
-    file's. Each node's book excerpt is windowed to ``context_lines`` lines on either
-    side of the packet's claims in it; a node whose section fits is carried whole.
-    Oversized files cross only their own evidence/claim chunks, never other files.
-    Per-packet omitted counts name context in sibling packets, not discarded work.
-    The preparation's omitted counts are always zero. Item and serialized-character
-    limits split packets; the character budget includes all deduplicated excerpts,
-    spans and digests. An indivisible oversized context raises instead of truncating.
-    Cross-file semantics require reviewer source/book search and unresolved decisions
-    when local context cannot settle them. No verdict establishes global completeness.
-    """
+    """Prepare file-local review packets without an all-book Cartesian product."""
     if max_items < 2:
         raise ValueError("max_items must be at least 2")
     if max_chars < 1:
@@ -413,7 +322,6 @@ def build_audit_packets(
             try:
                 ref = refs.parse_code_ref(citation)
             except ValueError:
-                # Malformed citations remain visible on the ungrounded claim.
                 elsewhere.append(False)
                 continue
             path = posixpath.normpath(ref.path)
@@ -450,7 +358,6 @@ def build_audit_packets(
                 undocumented.append(finding)
                 continue
         if deferred[module] and not evidence and not local_claims:
-            # Every candidate is tier 2 and nothing cites the file: no review to hold.
             continue
         limitations = (*generic_limitations, *file_limitations[module], *book_limitations, *scope_limitations)
         if module in files_by_path:
@@ -501,15 +408,7 @@ def build_audit_packets(
 
 
 def _outermost_contexts(contexts: Iterable[SourceContext]) -> tuple[SourceContext, ...]:
-    """*contexts* minus any whose lines another of them already spans, in inventory order.
-
-    An enclosing declaration's excerpt is the text of every declaration nested in it, so a
-    packet holding both — a test function and each closure it passes to ``t.Run`` — carried
-    the same lines twice or more, and one long function was enough to push a single-candidate
-    packet over its budget. Nothing is lost: the reviewer reads the nested lines inside the
-    excerpt that survives. Two excerpts over identical lines keep the first, which is the
-    enclosing declaration, because the extractors record a declaration before its members.
-    """
+    """*contexts* minus any whose lines another of them already spans, in inventory order."""
     kept: list[SourceContext] = []
     ordered = list(contexts)
     for index, context in enumerate(ordered):
@@ -560,13 +459,7 @@ def _check_claim_verdict(claim: ClaimVerdict, candidate_ids: set[str]) -> None:
 
 
 def _check_candidate_verdict(packet: AuditPacket, candidate: CandidateVerdict) -> None:
-    """The rules one candidate verdict answers for on its own, apart from the whole reply.
-
-    Every book span it cites has to resolve to exactly one node of this packet's context
-    and land on text that context actually carries. What is deliberately *not* here is
-    the pair of cross-item rules — covered needs a supporting link, implementation_detail
-    forbids one — because neither can be decided from a verdict alone.
-    """
+    """The rules one candidate verdict answers for on its own, apart from the whole reply."""
     if candidate.book_evidence and candidate.status != "covered":
         raise ValueError(f"{candidate.id}: {candidate.status} cannot carry book evidence")
     if len(candidate.book_evidence) != len(set(candidate.book_evidence)):
@@ -594,14 +487,7 @@ def _check_candidate_links(
 
 
 def validate_verdicts(packet: AuditPacket, payload: object) -> AuditReport:
-    """Validate external decisions and links against this exact current packet.
-
-    Raises ValueError (including Pydantic ValidationError) for invalid receipts. A
-    valid receipt is an attributed external review, not an ostler semantic judgment.
-    Links are stated once, on the claim; a candidate's claim links are derived from the
-    claims that name it. Support/contradiction/partial claims require candidate links. Source coverage requires a supported/partial
-    claim link or a resolvable book span, which establishes documentation, not QA proof.
-    """
+    """Validate external decisions and links against this exact current packet."""
     current_digest = packet_digest(packet)
     if packet.digest != current_digest:
         raise ValueError("packet content digest does not match its contents")
@@ -620,10 +506,5 @@ def validate_verdicts(packet: AuditPacket, payload: object) -> AuditReport:
         links = linked_claims[candidate.id]
         _check_candidate_verdict(packet, candidate)
         _check_candidate_links(candidate, links, supported_claims)
-        # ``mixed`` candidates may link to claims by definition: they are internal AND
-        # relevant, and the truthful verdict for a private struct field that bears on
-        # a claim's clauses is ``partial claim, mixed candidate``. The cross-item
-        # exclusivity rule that once forced the validator to reject this shape is
-        # the very contradiction ``mixed`` admits.
     return AuditReport(packet_digest=current_digest, verdicts=verdicts, limitations=(*packet.limitations,
         "Validated book evidence confirms externally reviewed documented source coverage, not QA proof; span resolution does not establish semantic correctness."))

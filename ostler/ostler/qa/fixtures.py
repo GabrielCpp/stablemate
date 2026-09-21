@@ -1,28 +1,4 @@
-"""Declared QA fixtures: the named arrangements a plan may ask for, and where they live.
-
-A fixture is the *arrangement* a scenario needs before it can observe anything — three
-identities in the auth emulator, a ledger with one claim awaiting a decision, a directory
-of files a CLI is pointed at. Until this module existed there was no such concept: an
-arrangement was either a compose boot step nothing could name, or a block of Python
-copied into every plan that needed it, and the second is how a field came to be spelled
-two ways in one repo (`note` for `decision_note`) with no gate able to notice.
-
-A **book fixture node** (`docs/features/<surface>/fixtures/<name>.md`) is the primary way
-to declare one: setup steps in the book's own step vocabulary, `params:` it takes, and the
-`provides:` keys its last step yields. `Qa.fixture` runs a book node first.
-
-This module covers the older, hand-written tier it falls back to: `qa: {fixtures: {...}}`
-runs a command the *app* ships, so the app's own integration tests and the QA lane arrange
-state through the same code. Drift is impossible by construction rather than by review. It
-stays a permanent fallback — not every repo has migrated every fixture into a book node —
-but a fixture should be in the book unless it cannot be, and `migrate()` below turns an
-existing entry into a book node mechanically.
-
-A fixture entry names a tool from the repo's own `qa: {tools: [...]}` opt-in and nothing
-else. That is the containment property and it is checkable without running anything: a
-fixture is a *specific invocation* of a command the repo already admitted, never a new
-door into the process.
-"""
+"""Declared QA fixtures: the named arrangements a plan may ask for, and where they live."""
 
 from __future__ import annotations
 
@@ -37,9 +13,6 @@ from ostler import registry
 from ostler.qa.outcome import QaOutcome
 from ostler.qa.tools import opted_in_tools, qa_block, resolved_commands
 
-#: Seconds a fixture command may take before its result is a timeout. Generous, because
-#: an arrangement is often a container talking to another container, and stingy defaults
-#: here produce flaky runs that read as product defects.
 DEFAULT_TIMEOUT = 120.0
 
 
@@ -63,14 +36,8 @@ class FixtureSpec:
         }
 
 
-#: The em dash separating a fixture reference from the prose saying what state it leaves
-#: behind. The same separator relation subjects use, for the same reason: the head is what a
-#: tool joins on and the tail is what a person reads, and one bullet can carry both.
 _PROVIDES_SEP = "\u2014"
 
-#: What a fixture name may look like in a book bullet. Deliberately the shape `agents.yml`
-#: keys already have — a name that cannot be a key there is a reference nothing could resolve,
-#: and saying so at parse time beats a lookup miss that reads like a missing declaration.
 _NAME_RE = re.compile(r"^[a-z0-9][a-z0-9._-]*$")
 
 
@@ -85,31 +52,13 @@ class FixtureRef:
 
 @dataclass(frozen=True)
 class NoArrangement:
-    """A `fixture:` bullet whose value states that this node arranges nothing, and why.
-
-    A parsed value, not a parse failure, and deliberately not the same thing as an absent
-    `fixture:` bullet. Those two are the same bytes to every reader that only asks whether a
-    row came back — which is how a journey came to be compiled and run against whatever state
-    the previous scenario happened to leave, and its end-state assertion to go red against an
-    app that was working. An author who has decided the journey needs no arrangement can say
-    so here; an author who never decided cannot, and `compile_plan` gaps them apart.
-
-    The reason is required (`registry.self_declared_empty`): a bare `none` is a blank left
-    blank, and admitting it would put the undecided case back under the decided one's spelling.
-    """
+    """A `fixture:` bullet whose value states that this node arranges nothing, and why."""
 
     reason: str
 
 
 def parse_bullet(value: str) -> FixtureRef | NoArrangement | str:
-    """Parse one `fixture:` bullet, or return the sentence explaining why it is not one.
-
-    The grammar is `name [arg ...] [\u2014 what state it leaves behind]`, or a value naming
-    its own emptiness (`none, because ...`) for a node that arranges nothing. Not a call like
-    `verify:`, because a fixture is not one: `qa.fixture` takes a name this repo declared and
-    positional strings appended to the declared argv, and spelling that as Python would invite
-    a book to write arguments the harness has no way to bind.
-    """
+    """Parse one `fixture:` bullet, or return the sentence explaining why it is not one."""
     text = " ".join(value.split())
     if not text:
         return "empty"
@@ -132,12 +81,7 @@ def parse_bullet(value: str) -> FixtureRef | NoArrangement | str:
 
 
 def declared(root: Path) -> tuple[dict[str, FixtureSpec], list[str]]:
-    """Every fixture this repo declares, plus a message for each entry that is malformed.
-
-    A malformed entry is an error rather than a skip. The whole point of declaring a
-    fixture is that something checks it, and a declaration silently dropped for a typo in
-    its key would be the failure mode this module was written to remove.
-    """
+    """Every fixture this repo declares, plus a message for each entry that is malformed."""
     block = qa_block(root).get("fixtures")
     if block is None:
         return {}, []
@@ -160,9 +104,6 @@ def declared(root: Path) -> tuple[dict[str, FixtureSpec], list[str]]:
             continue
         provides = entry.get("provides")
         if not isinstance(provides, str) or not provides.strip():
-            # Not decoration. `provides:` is what a scenario's `preconditions:` are checked
-            # against, and a fixture that cannot say what state it leaves behind cannot be
-            # held to leaving it.
             errors.append(
                 f"qa fixture {name!r} has no `provides:` — say what state it guarantees, "
                 "in the same terms a scenario's `preconditions:` are written in"
@@ -187,28 +128,7 @@ def _title(name: str) -> str:
 
 
 def migrate(root: Path, out_dir: str, *, cfg: dict[str, Any] | None = None) -> QaOutcome:
-    """One-shot, mechanical migration of every `qa: {fixtures:}` entry into a fixture-node file.
-
-    Per the settled design: each `FixtureSpec` becomes a node with one `run:` step holding the
-    *resolved* command (via `tools.resolved_commands`, never the bare `tool:` name) plus its
-    literal `args:`, joined the same way `Tool.run` would have invoked them — an argv, not a
-    tool-name-plus-args pair a reader would have to resolve by hand.
-
-    `provides:`/`args:` carry no mechanical equivalent and are deliberately left off the
-    migrated node: the old `provides:` is one free-text sentence, not the itemized `key —
-    prose` list the node grammar wants, and the old `args:` are literal invocation tokens, not
-    named parameters a `fixture:` caller would bind. The original prose survives as a comment
-    for a human to turn into real `provides:` keys.
-
-    **Which is why this does not report plain success.** `declared()` above refuses a
-    `qa: {fixtures:}` entry with no `provides:` in its own words — it is what a scenario's
-    `preconditions:` are checked against, and a fixture that cannot say what state it leaves
-    behind cannot be held to leaving it — so a migration that converts that checked claim into
-    an HTML comment and prints `migrated 1 qa fixture(s)` says the thing it just dropped came
-    across. Splitting one sentence into named keys is an authoring decision, not a transform,
-    so the fix is not a smarter parser: the outcome carries `status="incomplete"`, names every
-    node whose `provides:` did not survive, and says what is owed on each.
-    """
+    """One-shot, mechanical migration of every `qa: {fixtures:}` entry into a fixture-node file."""
     specs, errors = declared(root)
     if errors:
         return QaOutcome(ok=False, message="\n".join(errors))
@@ -254,11 +174,6 @@ def migrate(root: Path, out_dir: str, *, cfg: dict[str, Any] | None = None) -> Q
             f"— original provides: {spec.provides!r} -->\n\n"
             "## Steps\n\n"
             "### run-it\n\n"
-            # `run`, not `seed`, and not omitted: `kind:` is required on a step node
-            # (`registry.py`'s `step` type), so "nobody said" has no spelling here — and of
-            # the two legal readings, `run` is the one that claims nothing. An `agents.yml`
-            # entry has no field saying whether the command leaves state behind, which is
-            # the same silence that keeps `provides:` from surviving below.
             "- kind: run\n"
             f"- run: {run}\n"
         )
@@ -295,12 +210,7 @@ def cmd_migrate(root: Path, out_dir: str, *, cfg: dict[str, Any] | None = None) 
 
 
 def preflight_errors(root: Path) -> list[str]:
-    """Every reason this repo's declared fixtures could not be used right now.
-
-    One failure, static: a fixture naming a tool the repo never opted into. This is the
-    containment check — it is what keeps `fixtures:` from becoming a second, unwatched
-    door onto the process — so it is an error even when the command happens to exist.
-    """
+    """Every reason this repo's declared fixtures could not be used right now."""
     specs, errors = declared(root)
     opted_in = opted_in_tools(root)
     errors.extend(
@@ -314,13 +224,7 @@ def preflight_errors(root: Path) -> list[str]:
 
 
 def referenced(plan: Path) -> set[str]:
-    """The fixture names one plan asks for, read off its AST.
-
-    Read statically rather than by grep, for the same reason `covers=` is: a name built at
-    runtime claims nothing a static check could verify, and a caller would rather see none
-    than see a fragment of one. An unparseable plan yields nothing — `ostler qa lint` and
-    ruff both fail on it first, and reporting it twice in two vocabularies helps nobody.
-    """
+    """The fixture names one plan asks for, read off its AST."""
     try:
         tree = ast.parse(plan.read_text(encoding="utf-8"))
     except (OSError, SyntaxError):
@@ -341,10 +245,6 @@ def referenced(plan: Path) -> set[str]:
 
 
 def resolved(root: Path) -> dict[str, dict[str, Any]]:
-    """`{name: spec}` for every well-formed fixture, in the form the harness receives.
-
-    Threaded into the harness subprocess's `context["fixtures"]` beside `context["tools"]`
-    — the harness imports only the standard library and cannot read `agents.yml` itself.
-    """
+    """`{name: spec}` for every well-formed fixture, in the form the harness receives."""
     specs, _errors = declared(root)
     return {name: spec.as_context() for name, spec in specs.items()}

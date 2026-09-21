@@ -9,16 +9,7 @@ from workhorse_workflows.author.shared import paths
 
 
 def approved_roadmap(root: Path) -> str:
-    """The one roadmap this repo authors from, repo-relative, or stop before a turn.
-
-    Discovered rather than named. A `roadmap` parameter would be a second record of a
-    location `docRoots:` already gives, and a run pointed at a file outside the roadmaps
-    root authors epics against a plan ostler cannot see. Which roadmap is *approved* is a
-    fact the documents carry in their own frontmatter, so it is read from them.
-
-    Two approved roadmaps is an ambiguity the tree has to settle, not one this function may
-    pick a winner for; both are named so the operator can retire one.
-    """
+    """The one roadmap this repo authors from, repo-relative, or stop before a turn."""
     roadmaps = paths.roadmaps_dir(root)
     directory = root / roadmaps
     candidates = sorted(directory.glob("*.md")) if directory.is_dir() else []

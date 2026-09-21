@@ -1,10 +1,4 @@
-"""The book-fixture tier is framed against the QA context packet, not the checkout root.
-
-`self.root` is the checkout; the book a compiled plan speaks about can live anywhere else
-in the tree, named by the packet's `featuresRoot`. A fixture declared only in that other
-book has to resolve — and a run whose packet cannot say where the book is has to refuse
-once, up front, rather than dying once per scenario deep inside a subprocess.
-"""
+"""The book-fixture tier is framed against the QA context packet, not the checkout root."""
 
 from __future__ import annotations
 
@@ -48,8 +42,7 @@ def _driver(repo: Path, *, features_root: str | None) -> PythonDriver:
 
 
 def test_book_fixtures_resolve_against_the_packets_frame_not_self_root(repo: Path) -> None:
-    """The checkout's own book (`repo`'s `docs/features`) declares no fixture: mirroring a
-    real repo whose book lives elsewhere, this fixture is only under `other-book/`."""
+    """The checkout's own book (`repo`'s `docs/features`) declares no fixture: mirroring a real repo whose book lives elsewhere, this fixture is only under `other-book/`."""
     write(repo / "other-book/docs/features/acme/fixtures/seeded-acme.md", FIXTURE)
     driver = _driver(repo, features_root="other-book/docs/features")
 

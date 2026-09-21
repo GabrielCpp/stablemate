@@ -1,31 +1,4 @@
-"""Every `{{ … }}` a prompt reads is something its own `self.agent(args=…)` passes.
-
-The renderer is deliberately forgiving: `templates.ResilientUndefined` logs a warning and
-renders **empty** rather than raising, because a week-long unattended run must not die on one
-bad reference (`workhorse_var` is even more forgiving — it is `context.get(name, "")`). That is
-the right call for the run and the wrong one for the author: an unpassed variable is a hole in
-the prompt that only a live render shows, and only to whoever is reading the console at that
-second.
-
-The costly shape is not a typo'd argument, though. It is a prompt that documents *another*
-tool's `{{ }}` syntax — Jinja renders the prompt first and eats it. `plan-qa.md` teaches the
-`ostler qa plan` DSL, whose capture references are spelled `{{key}}`; unescaped, the live run
-handed the planner "Use `` to reference values captured by prior steps" and a worked example
-reading `curl -H "Device: " ...`. Not a missing hint — an *instruction to write a broken
-command*, in the one file whose whole job is teaching that DSL. The fix is `{% raw %}`, and
-what makes this test the lock for it is that Jinja's own parser is what reports the variables:
-text inside `{% raw %}` is not a reference, so escaping a block is exactly what turns the
-finding off.
-
-The check is per *prompt*, against the union of what all its call sites pass — deliberately
-weaker than per-site, because per-site is wrong here. A prompt's optional sections are real:
-`rework-story.md` reads `prior_attempts` under an `{% if %}` and is reached both from the
-gate-failure rework (which has a ledger) and the operator-feedback rework (which does not),
-and `coder/workflow.py`'s nested `implement-plan` turn documents omitting three arguments the
-`dev` flow passes as preserved YAML behavior. Flagging those would report decisions as
-defects, and a test that cries wolf on its first eight findings gets deleted. A name that
-*no* site supplies has no such reading: nothing in the workflow can ever fill it.
-"""
+"""Every `{{ … }}` a prompt reads is something its own `self.agent(args=…)` passes."""
 from __future__ import annotations
 
 import ast
@@ -40,13 +13,8 @@ import workhorse_workflows
 
 PACKAGE = Path(workhorse_workflows.__file__).parent
 
-#: Mirrors `test_prompt_output_shape.WORKFLOWS` — the packages whose turns render prompts.
 WORKFLOWS = ("author", "coder", "okf_builder", "research")
 
-#: Names present in every prompt context, so a reference to one is never a missing argument:
-#: the helpers `workhorse.templates._farrier_globals` installs, the manifest namespaces
-#: `workhorse.manifest.context_from` builds (`{{ repo.name }}`), and the two timeout values
-#: `runner.ladder` stamps on before rendering.
 AMBIENT = set(_farrier_globals({}, PACKAGE, quiet=True)) | {
     "template",
     "repo",
@@ -57,13 +25,7 @@ AMBIENT = set(_farrier_globals({}, PACKAGE, quiet=True)) | {
 
 
 def _package_defs() -> dict[str, list[ast.FunctionDef | ast.AsyncFunctionDef]]:
-    """Every module-level function in the package, by name.
-
-    Module-level only, and that is the point: a name a turn calls without a receiver is
-    either defined in its own module or imported from another one, and only a top-level
-    `def` can be imported. Methods share names across lanes freely (`_dirs`, `_chain`), so
-    admitting them here would make the index ambiguous exactly where it must not be.
-    """
+    """Every module-level function in the package, by name."""
     index: dict[str, list[ast.FunctionDef | ast.AsyncFunctionDef]] = {}
     for source in sorted(PACKAGE.rglob("*.py")):
         tree = ast.parse(source.read_text(encoding="utf-8"), filename=str(source))
@@ -73,21 +35,13 @@ def _package_defs() -> dict[str, list[ast.FunctionDef | ast.AsyncFunctionDef]]:
     return index
 
 
-#: Built once — `_defs` consults it for every helper call that is not defined in-module.
 _PACKAGE_DEFS = _package_defs()
 
 
 def _dict_keys(
     node: ast.Dict, spread: str | None, scope: ast.AST, module: ast.Module
 ) -> set[str] | None:
-    """The string keys of a dict literal, or `None` if any of them cannot be named.
-
-    `spread` is the name of a `**kwargs` parameter whose expansion is expected and ignored:
-    a helper that returns `{…, **extra}` names the fixed part here and its caller names the
-    rest. Any *other* `**` expansion is read the same way an `args=` is — `{**helper(…),
-    "qa_dir": …}` is how `coder/qa/flow.py` adds the one argument its lane needs on top of
-    the shared five — and is unreadable only when what it expands is.
-    """
+    """The string keys of a dict literal, or `None` if any of them cannot be named."""
     keys: set[str] = set()
     for key, value in zip(node.keys, node.values, strict=True):
         if key is None:
@@ -105,17 +59,7 @@ def _dict_keys(
 
 
 def _keys_of(node: ast.expr, scope: ast.AST, module: ast.Module) -> set[str] | None:
-    """The keys the expression an `args=` was given resolves to, or `None` if unreadable.
-
-    Four shapes reach it, and all four are load-bearing. A literal `{…}` is the common one.
-    A local `args` variable is how `coder/qa/flow.py::_apply_fixes` adds `operator_feedback`
-    conditionally — the plain fix path's YAML args did not carry the key at all — and reading
-    only the literal would report that omission as a hole in the prompt. `self._helper(…)` is
-    how `research/workflow.py` shares the program triple across a dozen turns. A bare
-    `helper(…)` is the same sharing done by a *module-level* function imported from
-    elsewhere in the package — `coder/shared/resolution.py::resolver_args`, which the five
-    operator gates call rather than each repeating the same five-key literal.
-    """
+    """The keys the expression an `args=` was given resolves to, or `None` if unreadable."""
     if isinstance(node, ast.Dict):
         return _dict_keys(node, None, scope, module)
     if isinstance(node, ast.Name):
@@ -157,14 +101,7 @@ def _keys_of_local(name: str, scope: ast.AST, module: ast.Module) -> set[str] | 
 
 
 def _defs(name: str, module: ast.Module) -> list[ast.FunctionDef | ast.AsyncFunctionDef]:
-    """Every definition of `name`, in `module` if it has one, else across the package.
-
-    The two-step is what lets a turn call a helper it imported. A module that defines the
-    name wins outright — a local definition is what the call site resolves to at run time,
-    and searching wider once it exists would let an unrelated same-named function in another
-    lane decide the vocabulary. Only when the module has none is the name necessarily
-    imported, and then the package index is the only place its body can be.
-    """
+    """Every definition of `name`, in `module` if it has one, else across the package."""
     local = [
         node
         for node in ast.walk(module)
@@ -174,12 +111,7 @@ def _defs(name: str, module: ast.Module) -> list[ast.FunctionDef | ast.AsyncFunc
 
 
 def _keys_of_helper(name: str, call: ast.Call, module: ast.Module) -> set[str] | None:
-    """The keys `helper(**kwargs)` yields: what the helper returns, plus this call's own.
-
-    Only a helper whose returns are dict literals is readable, which is the whole population
-    today. A `**` expansion at the call site is not: its keys live wherever that mapping came
-    from.
-    """
+    """The keys `helper(**kwargs)` yields: what the helper returns, plus this call's own."""
     defs = _defs(name, module)
     if len(defs) != 1:
         return None
@@ -204,11 +136,7 @@ def _keys_of_helper(name: str, call: ast.Call, module: ast.Module) -> set[str] |
 
 
 def _scopes(tree: ast.Module) -> dict[int, ast.AST]:
-    """Each `Call` in `tree` mapped to the innermost function that encloses it.
-
-    Innermost matters: `_keys_of_local` reads assignments out of the returned scope, and the
-    module reads as one flat scope in which two functions' identically named locals merge.
-    """
+    """Each `Call` in `tree` mapped to the innermost function that encloses it."""
     enclosing: dict[int, ast.AST] = {}
 
     def descend(node: ast.AST, scope: ast.AST) -> None:
@@ -223,14 +151,7 @@ def _scopes(tree: ast.Module) -> dict[int, ast.AST]:
 
 
 def _turns(source: Path) -> tuple[list[tuple[int, str, set[str]]], list[int]]:
-    """Every `self.agent(prompt, args=…)` in `source` as `(line, prompt, arg names)`, plus the
-    lines of the sites whose arguments no static reading can name.
-
-    Unreadable means computed — a comprehension, a `**spread`, a dict handed in from
-    elsewhere. There are none today and `test_no_turn_is_unreadable` keeps it that way,
-    because a prompt checked against a *partial* vocabulary invents findings, and this is the
-    one test whose findings must never be wrong.
-    """
+    """Every `self.agent(prompt, args=…)` in `source` as `(line, prompt, arg names)`, plus the lines of the sites whose arguments no static reading can name."""
     found: list[tuple[int, str, set[str]]] = []
     opaque: list[int] = []
     tree = ast.parse(source.read_text(encoding="utf-8"), filename=str(source))
@@ -250,8 +171,6 @@ def _turns(source: Path) -> tuple[list[tuple[int, str, set[str]]], list[int]]:
                 prompt = kw.value
             elif kw.arg == "args":
                 args = kw.value
-        # A prompt is a literal path string; a non-literal (or a constant of some other
-        # type) is `test_prompts_exist.py`'s finding, not this file's.
         if not (isinstance(prompt, ast.Constant) and isinstance(prompt.value, str)):
             continue
         keys: set[str] | None = (
@@ -278,20 +197,13 @@ def _prompts() -> dict[tuple[str, str], tuple[set[str], list[str]]]:
     return found
 
 
-#: Call sites `_turns` could not read arguments from — see `test_no_turn_is_unreadable`.
 OPAQUE: list[str] = []
 
 PROMPTS = _prompts()
 
 
 def _referenced(body: str) -> set[str]:
-    """The names `body` reads, by Jinja's own parse.
-
-    Two spellings reach the same context dict and both count: a bare `{{ name }}`, which the
-    parser reports, and `workhorse_var('name')`, whose argument is a string the parser has no
-    reason to look inside. The second is the sanctioned spelling in these prompts, so reading
-    only the first would check mostly the wrong half.
-    """
+    """The names `body` reads, by Jinja's own parse."""
     env = Environment()
     tree = env.parse(body)
     names = set(find_undeclared_variables(tree))
@@ -305,10 +217,7 @@ def _referenced(body: str) -> set[str]:
 
 
 def test_the_sweep_checks_every_workflow() -> None:
-    """The guard against a walker that matches nothing — the same one
-    `test_prompt_output_shape.py` carries, and for the same reason. Every one of these
-    packages passes literal args to at least one turn, so a zero means the call shape moved,
-    not that the turns did."""
+    """The guard against a walker that matches nothing — the same one `test_prompt_output_shape.py` carries, and for the same reason."""
     by_workflow = {name: 0 for name in WORKFLOWS}
     for name, _prompt in PROMPTS:
         by_workflow[name] += 1
@@ -316,11 +225,7 @@ def test_the_sweep_checks_every_workflow() -> None:
 
 
 def test_no_turn_is_unreadable() -> None:
-    """No turn builds its arguments in a way `_turns` cannot name.
-
-    A site it cannot read contributes nothing to its prompt's vocabulary, so every name that
-    site alone supplies reads as missing — the sweep would start reporting live wiring as
-    holes. Better to fail here, where the message says the walker needs teaching."""
+    """No turn builds its arguments in a way `_turns` cannot name."""
     assert not OPAQUE, OPAQUE
 
 

@@ -1,6 +1,4 @@
-"""Tests that copilot now uses the open skills format (.github/skills/{name}/SKILL.md)
-instead of the legacy flat-file format (.github/instructions/{name}.instructions.md).
-"""
+"""Tests that copilot now uses the open skills format (.github/skills/{name}/SKILL.md) instead of the legacy flat-file format (.github/instructions/{name}.instructions.md)."""
 from __future__ import annotations
 
 import textwrap
@@ -46,12 +44,7 @@ def test_skill_output_path_copilot_uses_open_skills_format(tmp_path):
 
 
 def test_the_copilot_instruction_target_is_gone(tmp_path):
-    """Copilot reads open-format skills natively, so the per-skill copy has no target.
-
-    It is refused rather than quietly aliased to the open path: a cross-reference that
-    still asks for it is asking for a file nothing writes, and that should be an error
-    at render time instead of a dead link in installed text.
-    """
+    """Copilot reads open-format skills natively, so the per-skill copy has no target."""
     renderer, source = _make_renderer(tmp_path)
     with pytest.raises(SystemExit):
         renderer.skill_output_path(source.id, "copilot-instruction")

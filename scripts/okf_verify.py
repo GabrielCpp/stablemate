@@ -1,22 +1,5 @@
 #!/usr/bin/env python3
-"""``make okf-verify`` — the predicate a stop condition can be held to.
-
-Every book under ``docs/features/`` is inventoried from its source and joined against its
-``code:`` citations (``ostler coverage``). An incomplete book exits non-zero.
-
-**Why this exists as a target rather than a report.** A goal phrased as prose — *"the OKF books
-are complete and accurate"* — is judged by the same self-assessment the builder's gate was built
-to remove, now sitting at the outermost loop where nothing checks it. Phrased as ``make
-okf-verify exits 0`` it is something a run can be refused by. That is what the coverage
-instrument is ultimately for: not a number for a report, but a predicate that can say no.
-
-The bar grows one assertion per stage: coverage per book today; screens-confirmed-vs-documented
-and walk-armed-rather-than-skipped once the walk is declared rather than detected.
-
-Service → source root comes from ``workflow.okfBuilder.services`` in ``agents.yml`` when it is
-configured, else a book named ``<x>`` is assumed to document the ``<x>/`` subtree — which is the
-one-repo/one-book convention the builder already defaults to.
-"""
+"""``make okf-verify`` — the predicate a stop condition can be held to."""
 from __future__ import annotations
 
 import logging
@@ -62,9 +45,6 @@ def verify(book: str, services: dict, tmp: Path) -> tuple[bool, str]:
     if isinstance(excludes, str):
         excludes = [p.strip() for p in excludes.split(",") if p.strip()]
 
-    # The same node the okf-builder workflow runs, called as the plain function it is: a
-    # `@blueprint.node` stamps a registration onto the function and hands it straight back,
-    # so nothing here needs an engine to get the inventory this join's source side wants.
     out = tmp / f"{book}.inventory.json"
     inventory_source(
         LOG,

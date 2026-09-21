@@ -1,17 +1,4 @@
-"""The convergence gate's scoping and its severity blindness (`shared/checkpoint.py`).
-
-`test_workflow.py` drives the gate end to end and asserts what the loop *does* with a dirty
-book. What is asserted here is what the gate counts as dirty in the first place, because that
-is the question the whole backfill turns on: the codes deciding whether a book's claims can
-ever be observed — `undeclared-obligation`, `compound-normative-bullet`, `weak-check`,
-`unstated-precondition` — are all warns, so an error-only gate converges happily on a book in
-which nothing is falsifiable.
-
-`scoped_findings` is exercised against literal report dicts rather than through `doctor`.
-The filter is about severity and the path prefix, and doctor is not the
-thing under test — a fixture book able to produce every combination on demand would be a
-larger fiction than the three-key dicts it would be standing in for.
-"""
+"""The convergence gate's scoping and its severity blindness (`shared/checkpoint.py`)."""
 from __future__ import annotations
 
 import json
@@ -39,29 +26,18 @@ def _finding(code: str, severity: str = "warn", *, path: str = f"{BOOK}/a.md") -
 
 
 def test_a_warning_is_a_standing_finding() -> None:
-    """The gate's whole widening in one assertion.
-
-    `undeclared-obligation` is a warn, and it is the finding that says a node's claims reach
-    QA with nothing to bind. A gate that dropped it would call a book converged precisely
-    when its obligations became unprovable.
-    """
+    """The gate's whole widening in one assertion."""
     report = _report(_finding("undeclared-obligation"))
     assert [f["code"] for f in scoped_findings(report, "/repo", "")] == [
         "undeclared-obligation"]
 
 
 def test_findings_outside_the_book_are_not_this_run_s_problem(tmp_path: Path) -> None:
-    """A monorepo's unrelated books cannot be repaired by a run scoped to one of them.
-
-    Widening from errors to every finding widens this exposure too: the sibling books' warns
-    now vastly outnumber their errors, so the scope test is doing more work than it was.
-    """
+    """A monorepo's unrelated books cannot be repaired by a run scoped to one of them."""
     (tmp_path / BOOK).mkdir(parents=True)
     report = _report(
         _finding("undeclared-obligation", path=f"{BOOK}/mine.md"),
         _finding("undeclared-obligation", path="docs/features/globex/theirs.md"),
-        # A prefix must match on a path segment, not on characters: `docs/features/acme-legacy`
-        # is a different book that a naive `startswith` would drag into this run.
         _finding("undeclared-obligation", path="docs/features/acme-legacy/theirs.md"),
     )
     kept = scoped_findings(report, str(tmp_path), str(tmp_path / BOOK))
@@ -69,16 +45,7 @@ def test_findings_outside_the_book_are_not_this_run_s_problem(tmp_path: Path) ->
 
 
 def test_one_item_per_node_and_code() -> None:
-    """The split that makes a per-remedy prompt possible.
-
-    Two codes over two nodes of one file is four items, each carrying one code — because the
-    prompt for an item is chosen from its kind before the turn starts, and no fragment can be
-    written for an item that mixes a dangling link with an unfalsifiable check.
-
-    The refs are doctor's real shape, `<path>#<node>#<member>` — a node id is itself prefixed
-    by the file it lives in. Reading the node as everything before the first `#` yields the
-    *path*, which puts a whole document back into one item and quietly undoes this split.
-    """
+    """The split that makes a per-remedy prompt possible."""
     doc = f"{BOOK}/pay.md"
     findings = [
         {**_finding("undeclared-obligation", path=doc), "ref": f"{doc}#charge#returns", "line": 3},
@@ -92,9 +59,6 @@ def test_one_item_per_node_and_code() -> None:
         "fix:compound-normative-bullet", "fix:compound-normative-bullet",
         "fix:undeclared-obligation", "fix:undeclared-obligation",
     ]
-    # The round is NOT in the target. A survivor is re-queued by `requeue`, which reopens the
-    # row `record` already holds; minting `r3:<path>#<node>#<code>` re-queued it as a brand-new
-    # row instead, one per finding per round, which is how the loop ran forever.
     assert all(i["target"].startswith(doc) for i in items)
     assert all(i["requeue"] is True for i in items)
     for item in items:
@@ -105,25 +69,18 @@ def test_one_item_per_node_and_code() -> None:
 
 
 def test_the_item_order_is_the_drain_order() -> None:
-    """Errors first, then grounding → claim shape → obligations → UI, then the rest.
-
-    `select_item` hands out the first pending item, so this sort decides where a bounded
-    run's allowance goes. On a drifted book with thousands of findings, a run that stops
-    early must have spent itself on the dead citations — a claim about a symbol that no
-    longer exists is not worth rephrasing, and a check bound to it observes nothing —
-    not on whichever code happens to sort first alphabetically.
-    """
+    """Errors first, then grounding → claim shape → obligations → UI, then the rest."""
     doc = f"{BOOK}/pay.md"
     def at(code: str, node: str, severity: str = "warn") -> dict:
         return {**_finding(code, severity, path=doc), "ref": f"{doc}#{node}#member"}
 
     findings = [
-        at("missing-placement", "hero"),               # UI family
-        at("undeclared-obligation", "charge"),          # obligations
-        at("aaa-unclassified", "charge"),               # no family: last despite the alphabet
-        at("compound-normative-bullet", "charge"),      # claim shape
-        at("missing-code-symbol", "refund", "error"),  # error: first regardless of family
-        at("dangling-link", "refund"),                  # grounding: first among the warns
+        at("missing-placement", "hero"),
+        at("undeclared-obligation", "charge"),
+        at("aaa-unclassified", "charge"),
+        at("compound-normative-bullet", "charge"),
+        at("missing-code-symbol", "refund", "error"),
+        at("dangling-link", "refund"),
     ]
     assert [i["kind"] for i in _repair_items(findings)] == [
         "fix:missing-code-symbol",
@@ -136,17 +93,7 @@ def test_the_item_order_is_the_drain_order() -> None:
 
 
 def test_a_group_finding_is_one_item_scoped_to_every_member() -> None:
-    """The item a group-scoped turn can actually repair.
-
-    Doctor's finding is already group-scoped, but its `path` names the lowest-sorting member
-    and its `ref` names the *defect* — a family root and key — so this used to fall through
-    `_node_of` to one document, while the remedy (make every member agree) spans all of them.
-    The repair prompt's "one node" guardrail then correctly refused the other files and the
-    turn reported `skipped`, forever.
-
-    So the identity is the `ref` and the scope is `related`: one item per defect, naming
-    every location it covers and every file they live in.
-    """
+    """The item a group-scoped turn can actually repair."""
     a, b = f"{BOOK}/v1.md", f"{BOOK}/v2.md"
     citation = f"{a}#v1:consistency"
     members = [f"{a}#v1", f"{b}#v2"]
@@ -158,18 +105,11 @@ def test_a_group_finding_is_one_item_scoped_to_every_member() -> None:
     assert ctx["citation"] == citation
     assert ctx["related"] == members
     assert ctx["paths"] == [a, b]
-    # Neither `path` nor `node` is carried: either would name one arbitrary member as *the*
-    # place to open, which is the read the guardrail then honoured.
     assert "path" not in ctx and "node" not in ctx
 
 
 def test_two_group_defects_sharing_a_document_stay_two_items() -> None:
-    """Keying on the member made the batching wrong in the other direction too.
-
-    Two unrelated group defects whose lowest-sorting member is the same file were one item —
-    up to eight of them on the real book — so `attempts` counted a target that meant nothing
-    and one turn was asked for two unrelated remedies.
-    """
+    """Keying on the member made the batching wrong in the other direction too."""
     a = f"{BOOK}/v1.md"
     items = _repair_items([
         {**_finding("same-as-disagreement", path=a), "ref": f"{a}#v1:consistency",
@@ -182,11 +122,7 @@ def test_two_group_defects_sharing_a_document_stay_two_items() -> None:
 
 
 def test_a_ref_that_is_not_a_node_groups_by_the_file() -> None:
-    """Not every finding names a book node, and neither shape may lose one.
-
-    `missing-code-symbol` refs a *source* symbol, and a few checks carry no ref at all. Both
-    fall back to the document, which is the only place a repair turn could open anyway.
-    """
+    """Not every finding names a book node, and neither shape may lose one."""
     doc = f"{BOOK}/pay.md"
     symbol = {**_finding("missing-code-symbol", path=doc), "ref": "acme/service.py::refund"}
     refless = {**_finding("missing-code-symbol", path=doc), "ref": ""}
@@ -198,19 +134,7 @@ def test_a_ref_that_is_not_a_node_groups_by_the_file() -> None:
 
 
 def test_an_indexed_file_node_ref_mints_one_item_per_bullet() -> None:
-    """The row split doctor's per-bullet index causes on a *file* node, on the record.
-
-    Doctor addresses a per-bullet finding as `<node>#<key>:<index>` so two defects under one
-    repeatable key stop sharing an address — without it the drain collapsed them into one row
-    with one three-attempt budget and the repair turn answered whichever sibling it read. A
-    document's file node has the bare path as its id, so its findings ref `<path>#<key>:<n>`
-    and `_node_of` reads that whole segment as the node: one row becomes one row per index.
-
-    That is the intended consequence, not a regression — one row per addressable finding, each
-    with its own budget. It costs a one-time churn on any in-flight run (`settle_stale_rows`
-    closes the old-shaped rows and opens these at `attempts: 0`) and one restart of the
-    whole-book stall comparison, since `_signature` is keyed on `(code, path, ref)`.
-    """
+    """The row split doctor's per-bullet index causes on a *file* node, on the record."""
     doc = f"{BOOK}/pay.md"
     items = _repair_items([
         {**_finding("unparsed-check", path=doc), "ref": f"{doc}#verify:1"},
@@ -222,12 +146,7 @@ def test_an_indexed_file_node_ref_mints_one_item_per_bullet() -> None:
 
 
 def test_a_grounded_code_is_a_flag_not_a_kind() -> None:
-    """`GROUNDED_CODES` stopped naming the item and started describing it.
-
-    The kind has to be the code (the prompt dispatches on it), so "this value must be read out
-    of source rather than off the finding" moves into the context where the repair prompt
-    branches on it.
-    """
+    """`GROUNDED_CODES` stopped naming the item and started describing it."""
     (grounded,) = _repair_items([_finding("missing-placement", path=f"{BOOK}/s.md")])
     (mechanical,) = _repair_items([_finding("undeclared-obligation", path=f"{BOOK}/s.md")])
 
@@ -237,12 +156,7 @@ def test_a_grounded_code_is_a_flag_not_a_kind() -> None:
 
 
 def test_a_node_past_the_chunk_cap_splits_into_distinct_items() -> None:
-    """A node with more findings of one code than a turn should carry is still every finding.
-
-    Silent truncation is the failure the whole gate is built against, so the overflow becomes a
-    second worklist entry rather than a dropped tail — and the two targets must differ, or
-    `record`'s dedupe by `(kind, target)` collapses them back into one.
-    """
+    """A node with more findings of one code than a turn should carry is still every finding."""
     many = [{**_finding("compound-normative-bullet"), "ref": f"{BOOK}/a.md#charge#does", "line": n}
             for n in range(MAX_FINDINGS_PER_ITEM + 1)]
     items = _repair_items(many)
@@ -254,12 +168,7 @@ def test_a_node_past_the_chunk_cap_splits_into_distinct_items() -> None:
 def test_a_book_with_warnings_and_no_errors_is_dirty(
     booked: Path, write: Callable[[Path, str], Path], logger: logging.Logger
 ) -> None:
-    """The gate, end to end, on the case the error-only version called finished.
-
-    `booked` is doctor-green. Adding one method whose normative bullet declares no check
-    leaves the book at zero errors and one warn — which is the exact state a book written
-    before the current contract is in, at scale.
-    """
+    """The gate, end to end, on the case the error-only version called finished."""
     write(
         booked / "docs/features/acme/concepts/charge.md",
         "---\ntype: concept\nslug: charge\ntitle: Charge\n---\n"
@@ -275,11 +184,6 @@ def test_a_book_with_warnings_and_no_errors_is_dirty(
 
 
 def test_an_open_repair_whose_finding_stopped_firing_is_closed_at_the_checkpoint(tmp_path: Path) -> None:
-    # A doctor rule retired under the run (field nodes stopped owing `undeclared-obligation`)
-    # left hundreds of pending rows nothing would ever re-raise; each was a repair turn spent
-    # finding nothing to do. Blocked doctor rows settle by the same rule: a gate parked for
-    # hours on findings a concurrent writer had already cleared asked about nothing. A
-    # coverage `fix:stale-citation` row is not doctor's to settle, blocked or not.
     from workhorse_workflows.okf_builder.shared.worklist import record
 
     doctor = json.dumps({"findings": [{"code": "x"}]})
@@ -344,12 +248,7 @@ def _stale_worklist(path: Path, standing: dict, *, settled_done: int | None = No
 def test_the_drain_settles_a_stale_repair_before_it_is_picked(
     dirty: Path, tmp_path: Path, logger: logging.Logger
 ) -> None:
-    """A pending `fix:` row doctor no longer names is closed mid-drain, not at the checkpoint.
-
-    `dirty` still owes `missing-code-symbol` on refund.md, so that row stands; nothing
-    reports `undeclared-obligation` on charge.md, so that row is the stale one — the turn
-    this pass exists to not spend.
-    """
+    """A pending `fix:` row doctor no longer names is closed mid-drain, not at the checkpoint."""
     from workhorse_workflows.okf_builder.shared.checkpoint import settle_stale
 
     standing = _standing_repair(dirty)
@@ -357,7 +256,6 @@ def test_the_drain_settles_a_stale_repair_before_it_is_picked(
     result = settle_stale(logger, str(worklist), str(dirty), BOOK)
 
     assert result.ran and result.settled == 1 and result.standing == 1 and not result.error
-    # The one closed row counts as done, and the watermark is taken after the close.
     assert result.pending_count == 2 and result.at_done == 31
     data = json.loads(worklist.read_text())
     assert data["settled_done"] == 31
@@ -406,12 +304,7 @@ def test_a_settle_with_nothing_to_settle_does_not_read_doctor(
 def test_a_watermark_above_the_done_count_is_stale(
     dirty: Path, tmp_path: Path, logger: logging.Logger
 ) -> None:
-    """Checkpoint requeues move done rows back to pending, so the done count falls.
-
-    A watermark taken at a higher count would otherwise hold the settle off until the
-    drain re-earned every requeued row plus `every` — hundreds of repair turns on rows
-    doctor had already stopped reporting.
-    """
+    """Checkpoint requeues move done rows back to pending, so the done count falls."""
     from workhorse_workflows.okf_builder.shared.checkpoint import settle_stale
 
     standing = _standing_repair(dirty)
@@ -422,12 +315,7 @@ def test_a_watermark_above_the_done_count_is_stale(
 
 
 def test_reopening_a_stale_closure_is_not_a_failed_repair(tmp_path: Path) -> None:
-    """A row the settle closed `stale` never had a repair turn, so its requeue costs no attempt.
-
-    Counting it spent the budget on flicker, and the block that followed quoted the
-    settle's own note — "doctor no longer reports this finding" — as the reason a finding
-    doctor *does* report could not be fixed.
-    """
+    """A row the settle closed `stale` never had a repair turn, so its requeue costs no attempt."""
     from workhorse_workflows.okf_builder.shared.worklist import record
 
     worklist = tmp_path / "w.json"
@@ -445,8 +333,6 @@ def test_reopening_a_stale_closure_is_not_a_failed_repair(tmp_path: Path) -> Non
     assert row["status"] == "pending" and row["attempts"] == 2
     assert "doc_status" not in row and "note" not in row and "blocked_reason" not in row
 
-    # A row blocked on real attempts, then settled, re-blocks on its own reason when the
-    # finding comes back — not on the settle's note, and not on "no reason".
     worklist.write_text(json.dumps({"items": [
         {"kind": "fix:undeclared-obligation", "target": target, "status": "done",
          "doc_status": "stale", "note": "doctor no longer reports this finding; closed mid-drain",
@@ -478,7 +364,6 @@ def test_a_finding_standing_over_the_node_the_turn_left_costs_an_attempt(tmp_pat
     worklist, doc, row, standing = _repair_row_fixture(tmp_path)
     log = logging.getLogger("t")
     record(log, str(worklist), row, None, doc_status="documented", repo_root=str(tmp_path))
-    # A sibling node changing is not this node changing.
     doc.write_text(doc.read_text().replace("GET /p", "GET /q"))
     record(log, str(worklist), None, standing, repo_root=str(tmp_path))
     item = json.loads(worklist.read_text())["items"][0]
@@ -486,12 +371,7 @@ def test_a_finding_standing_over_the_node_the_turn_left_costs_an_attempt(tmp_pat
 
 
 def test_a_finding_standing_over_a_node_rewritten_since_the_close_is_free(tmp_path: Path) -> None:
-    """The verdict was about text that no longer exists, so it is not a failed repair.
-
-    A run moved to another checkout of the book reopened hundreds of rows its turns had
-    closed on the old tree, and counted every one — escalating the model tier and walking
-    each row toward a block no turn on the current text had earned.
-    """
+    """The verdict was about text that no longer exists, so it is not a failed repair."""
     from workhorse_workflows.okf_builder.shared.worklist import record
 
     worklist, doc, row, standing = _repair_row_fixture(tmp_path)
@@ -504,7 +384,6 @@ def test_a_finding_standing_over_a_node_rewritten_since_the_close_is_free(tmp_pa
     assert item["status"] == "pending" and item["attempts"] == 0
     assert "doc_status" not in item and "note" not in item and "closed_digest" not in item
 
-    # The next close seals the new text, and a failure over it counts again.
     record(log, str(worklist), row, None, doc_status="documented", repo_root=str(tmp_path))
     record(log, str(worklist), None, standing, repo_root=str(tmp_path))
     assert json.loads(worklist.read_text())["items"][0]["attempts"] == 1
@@ -536,12 +415,7 @@ def _behavior_repair_row_fixture(tmp_path: Path) -> tuple[Path, Path, dict, list
 def test_a_behavior_repair_standing_over_a_target_rewritten_since_the_close_is_free(
     tmp_path: Path,
 ) -> None:
-    """A `behavior-repair` row's context is the auditor's prose, not a `{node, path}` scope,
-    so the free reopen a `fix:` row gets when its node changes under it used to be
-    unreachable for these rows — every reopen was counted, even one over a target the
-    previous turn had genuinely rewritten, and a repair that landed still walked the row to
-    `blocked`.
-    """
+    """A `behavior-repair` row's context is the auditor's prose, not a `{node, path}` scope, so the free reopen a `fix:` row gets when its node changes under it used to be unreachable for these rows — every reopen was counted, even one over a target the previous turn had genuinely rewritten, and a repair that landed still walked the row to `blocked`."""
     from workhorse_workflows.okf_builder.shared.worklist import record
 
     worklist, doc, row, standing = _behavior_repair_row_fixture(tmp_path)
@@ -554,11 +428,7 @@ def test_a_behavior_repair_standing_over_a_target_rewritten_since_the_close_is_f
 
 
 def test_a_behavior_repair_settled_by_a_coverage_waiver_is_free(tmp_path: Path) -> None:
-    """An undocumented-file `behavior-repair` is legitimately settled by a
-    `coverage-waivers.json` entry for its `target`, not by an edit to the target itself —
-    so the digest that decides whether a reopen is free has to see the waivers file too,
-    when `features_root` is given.
-    """
+    """An undocumented-file `behavior-repair` is legitimately settled by a `coverage-waivers.json` entry for its `target`, not by an edit to the target itself — so the digest that decides whether a reopen is free has to see the waivers file too, when `features_root` is given."""
     from workhorse_workflows.okf_builder.shared import paths
     from workhorse_workflows.okf_builder.shared.worklist import record
 
@@ -588,12 +458,7 @@ def test_a_behavior_repair_settled_by_a_coverage_waiver_is_free(tmp_path: Path) 
 def test_the_drain_reopens_a_done_repair_whose_finding_still_stands(
     dirty: Path, tmp_path: Path, logger: logging.Logger
 ) -> None:
-    """The settle's doctor read reopens a standing done row now, not when the drain goes dry.
-
-    The row carries no `closed_digest`, so the reopen is a counted attempt — the rule
-    `record` applies at the checkpoint, run sooner, so the row batches with the file's
-    other pending work instead of costing a second turn on it later.
-    """
+    """The settle's doctor read reopens a standing done row now, not when the drain goes dry."""
     from workhorse_workflows.okf_builder.shared.checkpoint import settle_stale
 
     standing = _standing_repair(dirty)
@@ -612,8 +477,7 @@ def test_the_drain_reopens_a_done_repair_whose_finding_still_stands(
 def test_a_done_repair_standing_only_on_fixable_findings_is_left_to_the_checkpoint(
     tmp_path: Path, logger: logging.Logger, monkeypatch
 ) -> None:
-    """The checkpoint's autofix clears a `fixable` finding before its doctor read; the settle
-    must not rewrite the book, so reopening that row mid-drain would buy a turn for nothing."""
+    """The checkpoint's autofix clears a `fixable` finding before its doctor read; the settle must not rewrite the book, so reopening that row mid-drain would buy a turn for nothing."""
     from workhorse_workflows.okf_builder.shared import checkpoint
 
     fixable = {**_finding("dangling-link"), "fixable": True}
@@ -645,12 +509,7 @@ def test_a_done_repair_standing_only_on_fixable_findings_is_left_to_the_checkpoi
 
 
 def test_a_page_documenting_a_test_double_is_one_deletion_row() -> None:
-    """Everything on a `test-subject` page is undone by deleting it, so only the verdict queues.
-
-    A mock page's methods each carry their own verify and grounding findings, and the node-level
-    `test-subject` verdicts repeat the page's. Queuing any of them spends a turn making a mock
-    provable — thousands of turns on a real book — before the deletion that erases the work.
-    """
+    """Everything on a `test-subject` page is undone by deleting it, so only the verdict queues."""
     mock = f"{BOOK}/mock-billing.md"
     product = f"{BOOK}/billing.md"
     findings = [
@@ -693,12 +552,7 @@ def test_test_subjects_drain_before_everything_else() -> None:
 
 
 def test_unstamped_and_unreachable_citations_queue_no_repair_row() -> None:
-    """Neither code is an agent's to fix — ostler itself clears both, so nothing is queued.
-
-    `unstamped-citation` closes when `stamp_turn`/the migration stamps the node;
-    `unreachable-citation` closes via (e)'s provenance checkout mapping. A `fix:` row for
-    either is a turn with no repair it could make.
-    """
+    """Neither code is an agent's to fix — ostler itself clears both, so nothing is queued."""
     doc = f"{BOOK}/billing.md"
     findings = [
         {**_finding("unstamped-citation", path=doc), "ref": f"{doc}#charge#code"},
@@ -709,12 +563,7 @@ def test_unstamped_and_unreachable_citations_queue_no_repair_row() -> None:
 
 
 def test_an_unwitnessed_check_queues_no_repair_row_but_a_sibling_finding_still_does() -> None:
-    """`unwitnessed-check` reports the sensitivity harness's reach, not a book defect.
-
-    The control is the second finding on the same node: `missing-code-symbol` is still
-    returned, which proves the filter dropped `unwitnessed-check` by its code and not by
-    swallowing the node it stands on.
-    """
+    """`unwitnessed-check` reports the sensitivity harness's reach, not a book defect."""
     doc = f"{BOOK}/billing.md"
     findings = [
         {**_finding("unwitnessed-check", path=doc), "ref": f"{doc}#charge#code"},
@@ -728,12 +577,7 @@ def test_an_unwitnessed_check_queues_no_repair_row_but_a_sibling_finding_still_d
 
 
 def _stub_ostler(monkeypatch, findings: list[dict]) -> None:
-    """Point `checkpoint_book` at a fake `Ostler`/`scoped_findings` instead of a real book.
-
-    `checkpoint_book` also calls `run_autofix`/`run_fmt` when `features_root` is given; an
-    empty one takes the "no book to canonicalize" branch instead, so a plain findings list is
-    enough to drive the gate.
-    """
+    """Point `checkpoint_book` at a fake `Ostler`/`scoped_findings` instead of a real book."""
     from workhorse_workflows.okf_builder.shared import checkpoint
 
     class _Doctor:
@@ -752,15 +596,7 @@ def _stub_ostler(monkeypatch, findings: list[dict]) -> None:
 def test_a_book_standing_only_on_non_actionable_and_regrounding_codes_is_clean(
     logger: logging.Logger, monkeypatch,
 ) -> None:
-    """The gate agrees with the queue: nothing here is a turn's to fix, so nothing is queued.
-
-    `cc580da0` widened `_actionable_findings` past `NON_ACTIONABLE_CODES` to also drop
-    `stale-citation` (`REGROUNDING_CODES`) — `_repair_items` already refused to queue it as a
-    node-scoped row, since `coverage.py`'s `_regrounding` join is its one intended source. What
-    was untested is that `checkpoint_book`'s own `clean` gate, which reuses the same filter,
-    reads a book carrying only these three codes as clean rather than parking on a row nothing
-    would ever queue.
-    """
+    """The gate agrees with the queue: nothing here is a turn's to fix, so nothing is queued."""
     doc = f"{BOOK}/billing.md"
     findings = [
         {**_finding("unstamped-citation", path=doc), "ref": f"{doc}#charge#code"},

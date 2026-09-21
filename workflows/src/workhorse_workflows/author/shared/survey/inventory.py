@@ -1,21 +1,4 @@
-"""Materializing the frozen unit list from enumeration rules, and correcting it locally.
-
-The planner (or the operator) decides the *rule*; `expand_inventory` materializes the
-*list*. An agent never emits the inventory itself — an agent listing hundreds of paths
-reintroduces sampled enumeration one stage earlier, and glob/command expansion makes the
-list complete **by construction**. The exhaustiveness claim of the whole survey rests on
-that file, so it is durable, committed, and **frozen once built**: a resumed run that
-produced a *different* list would silently break the coverage claim.
-
-`split_unit` is the one sanctioned correction, and it is deliberately local: a folder unit
-too big to assess in one bounded context is *replaced* by its immediate children and the
-rest of the frozen list is untouched, so the coverage claim survives the correction.
-
-Ported from `base-library/workflows/author/surveyor/scripts/{expand-inventory,split-unit}.py`.
-`import yaml` is at the top of the file with no `ImportError` fallback: the workflow
-declares what it imports and workhorse imports it before node one, so a "PyYAML is
-unavailable, therefore — no findings" verdict is a shape this package cannot express.
-"""
+"""Materializing the frozen unit list from enumeration rules, and correcting it locally."""
 from __future__ import annotations
 
 import json
@@ -31,9 +14,7 @@ from workhorse_workflows.author.shared.survey import stubs
 from workhorse_workflows.author.shared.paths import survey_repo_root
 from workhorse_workflows.author.shared.schemas.survey import Expansion, SplitResult
 
-#: What one enumeration rule may enumerate.
 RULE_KINDS = {"folder", "file", "command"}
-#: The inventory's status vocabulary. `pending` is the only selectable one.
 UNIT_STATUSES = {"pending", "assessed", "clean", "blocked"}
 
 
@@ -43,16 +24,13 @@ def record_slug(unit_id: str) -> str:
 
 
 def _validate_rules(data: object) -> tuple[list[dict], list[str], list[str]]:
-    """Return (rules, excludes, errors). Structural validation only — no expansion."""
+    """Return (rules, excludes, errors)."""
     errors: list[str] = []
     if not isinstance(data, dict):
         return [], [], ["rules file root must be a mapping with a `rules:` list"]
     rules = data.get("rules")
     if not isinstance(rules, list) or not rules:
         return [], [], ["`rules` must be a non-empty list of enumeration rules"]
-    # The mappings, kept as they are checked: a YAML list is a list of *anything*, and the
-    # caller only ever expands this when `errors` came back empty — i.e. when every entry
-    # made it through the check below.
     mappings: list[dict] = []
     for i, rule in enumerate(rules):
         if not isinstance(rule, dict):
@@ -82,7 +60,7 @@ def _validate_rules(data: object) -> tuple[list[dict], list[str], list[str]]:
 def _expand(
     root: Path, rules: list[dict], excludes: list[str]
 ) -> tuple[list[dict], list[str]]:
-    """Expand validated rules into unit entries. Returns (units, errors)."""
+    """Expand validated rules into unit entries."""
     units: list[dict] = []
     seen_ids: set[str] = set()
     errors: list[str] = []
@@ -92,7 +70,7 @@ def _expand(
 
     def add(unit_id: str, kind: str) -> None:
         if unit_id in seen_ids:
-            return  # same unit matched by two rules — one entry
+            return
         seen_ids.add(unit_id)
         units.append({"id": unit_id, "path": unit_id, "kind": kind, "status": "pending"})
 
@@ -147,8 +125,6 @@ def _expand(
                 f"(a rule that enumerates nothing cannot claim coverage)"
             )
 
-    # Record filenames are derived from unit ids; two ids sharing a slug would silently
-    # share one record file and break per-unit coverage — reject at materialization time.
     by_slug: dict[str, str] = {}
     for u in units:
         slug = record_slug(u["id"])
@@ -170,19 +146,13 @@ def expand_inventory(
     inventory: str = "docs/survey/inventory.json",
     repo_dir: str = "",
 ) -> Expansion:
-    """Materialize the unit inventory from the enumeration rules — then freeze it.
-
-    An existing inventory is consumed verbatim and never re-expanded. Units that later
-    vanish without a finding record are a detectable drop (`verify_records`), not silent
-    shrinkage.
-    """
+    """Materialize the unit inventory from the enumeration rules — then freeze it."""
     rules_rel = rules.strip() or "docs/survey/units.yml"
     inv_rel = inventory.strip() or "docs/survey/inventory.json"
 
     root = survey_repo_root(repo_dir)
     inv_path = root / inv_rel
 
-    # ── Freeze: an existing inventory is consumed verbatim, never re-expanded ──────────
     if inv_path.is_file():
         try:
             data = json.loads(inv_path.read_text(encoding="utf-8"))
@@ -286,13 +256,7 @@ def _load_excludes(root: Path, rules_rel: str) -> list[str]:
 def split_unit(
     logger: logging.Logger, inventory: str, unit_id: str, repo_dir: str = ""
 ) -> SplitResult:
-    """Replace a too-big folder unit with its immediate children.
-
-    Only `folder` units can split — a file or command unit has no children, so the
-    assessor must assess it or mark it blocked. The split lineage stays detectable
-    because every child path extends the parent's, which is how `verify_records` tells a
-    split from a silent drop.
-    """
+    """Replace a too-big folder unit with its immediate children."""
     inv_rel = inventory.strip()
     unit_id = unit_id.strip()
     if not inv_rel or not unit_id:
@@ -349,7 +313,7 @@ def split_unit(
         if any(fnmatch(rel, pat) for pat in excludes):
             continue
         if rel in existing_ids:
-            continue  # already its own unit (e.g. matched by another rule)
+            continue
         children.append(
             {
                 "id": rel,

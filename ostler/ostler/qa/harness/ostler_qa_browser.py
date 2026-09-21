@@ -1,17 +1,4 @@
-"""Playwright lifecycle for a browser scenario, inside the scenario's own process.
-
-Imported by `ostler_qa` only when a plan declares a `playwright` target, because playwright
-is a dependency of the *project's* interpreter and of browser plans only — importing it at
-module scope would make every command-only plan need it installed. There is no fallback
-anywhere below: a browser target whose interpreter has no playwright is an error.
-
-What lives here is everything that needs the page object: launch, context, tracing, the
-diagnostics listeners, the failure screenshot. What stays in ostler is everything that
-needs the run: xvfb and ffmpeg around this process, `ffprobe` verification of a recording
-against the target's declared dimensions, and registration of every file named below. The
-split is by which side owns the thing, not by which is easier — a diagnostics listener
-cannot see the page from ostler, and a recording policy cannot see the run from here.
-"""
+"""Playwright lifecycle for a browser scenario, inside the scenario's own process."""
 
 from __future__ import annotations
 
@@ -25,30 +12,12 @@ from urllib.parse import urlsplit
 from ostler_qa_scan import FRAME_JS, SCAN_JS, merge_rects, summarize
 from playwright.sync_api import sync_playwright
 
-#: Stamped into every diagnostics file so a
-#: plan reading one written by an older driver can tell, instead of asserting against a
-#: shape that has since changed and reading the mismatch as a product defect.
-#:
-#: `/2` is the first schema that carries what the DevTools panels show rather than a
-#: summary of it: request and response headers, request payloads, response bodies, timings,
-#: and each console message's structured arguments.
 DIAGNOSTICS_SCHEMA = "browser-diagnostics/2"
 
-#: Stamped into every layout file, for the same reason: it is read by the audit, and an
-#: audit that cannot tell a shape change from a product change reports the first as the second.
 LAYOUT_SCHEMA = "browser-layout/1"
 
-#: How many console/request/response records are kept in the file. Set where no real run
-#: reaches it, because the file *is* the network and console record — the previous 500 cut
-#: a busy SPA off partway through its own startup, and a reader cannot tell a page that
-#: made 500 requests from one that made 12,000. When it does bite it says so, in a
-#: `truncated` block naming what was dropped; the counts stay exact either way.
 DIAGNOSTICS_LIMIT = 50_000
 
-#: Response bodies are kept whole for these content types and fingerprinted-only for the
-#: rest. The line is drawn at "can a person read the diff" rather than at size: a 2 MB
-#: bundle is worth keeping and a 4 KB PNG is not, because the PNG proves nothing a
-#: sha256 and a byte count do not.
 TEXT_BODY_TYPES = (
     "text/",
     "application/json",
@@ -63,21 +32,11 @@ TEXT_BODY_TYPES = (
     "+xml",
 )
 
-#: The cap on one recorded body, and on all of them together. Past either the record keeps
-#: the size and the digest and says which cap it hit — an assertion on a body that was
-#: never captured must fail loudly rather than read a missing key as an empty response.
 MAX_BODY_BYTES = 256 * 1024
 MAX_BODY_BUDGET_BYTES = 8 * 1024 * 1024
 
-#: The longest a single console argument is rendered to. Console arguments are whole
-#: objects — a Redux store logged once is megabytes — and the argument exists to say what
-#: the app thought it had, which survives truncation.
 MAX_CONSOLE_ARG_CHARS = 4096
 
-#: Header values masked to a length even when no secret declares them. A bearer token in
-#: `authorization` is a credential whether or not the plan declared it as one, and QA
-#: evidence is read, archived and attached to reviews. The header *name* stays, because
-#: "the request carried an Authorization header" is a thing plans assert.
 SENSITIVE_HEADERS = frozenset(
     {
         "authorization",
@@ -93,23 +52,11 @@ SENSITIVE_HEADERS = frozenset(
 DEFAULT_VIEWPORT = {"width": 1440, "height": 900}
 
 
-#: Subresources the browser requests on its own behalf, whose failures are the browser's
-#: and not the product's. Kept as a module constant so a plan that genuinely means to assert
-#: on one can pass `ignore_urls=()` and see it.
 BROWSER_ISSUED_URLS: tuple[str, ...] = ("/favicon.ico",)
 
 
 class RecordedResponse:
-    """One recorded exchange, wearing the shape the verifiers were written against.
-
-    `_on_response` records a `dict` — a transcript of what crossed the wire. Every verifier
-    in `ostler_qa` (`_observed_status`, `_verify_omits`, `_verify_json_path`) is written
-    against a *response*: something with `.status`, `.url` and a `.json()`. A canonical
-    string is not a parsed value, and a transcript is not the thing it transcribes, so the
-    adapter belongs here — at the boundary that produced the transcript — rather than as
-    four verifiers each learning to read a mapping. `qa.http`'s responses already satisfy
-    this shape; this is what makes a browser-observed exchange interchangeable with one.
-    """
+    """One recorded exchange, wearing the shape the verifiers were written against."""
 
     __slots__ = ("record",)
 
@@ -126,20 +73,11 @@ class RecordedResponse:
 
     @property
     def text(self) -> str:
-        """The captured body, or "" when there was none to capture.
-
-        A body the recorder omitted (a redirect, a binary payload, past the body budget) is
-        reported by `json()` rather than silently read as empty — see there.
-        """
+        """The captured body, or "" when there was none to capture."""
         return str(self.record.get("responseBody") or "")
 
     def json(self) -> Any:
-        """The body, parsed. Raises rather than returning `None` for a body nobody captured.
-
-        `bodyOmitted` says the recorder chose not to keep this body. Handing back `None`
-        would let a `json_path(...)` on it report "the field is absent", which is a claim
-        about the product made from a fact about the recorder.
-        """
+        """The body, parsed."""
         omitted = self.record.get("bodyOmitted")
         if omitted:
             raise LookupError(
@@ -160,20 +98,12 @@ class ResponseWindow:
         self._since = since
 
     def response_for(self, path: str, *, method: str | None = None) -> RecordedResponse:
-        """The one response on *path* (and *method*, if given) inside this window.
-
-        See `Browser.response_for`.
-        """
+        """The one response on *path* (and *method*, if given) inside this window."""
         return self._browser.response_for(path, method=method, since=self._since)
 
 
 class Browser:
-    """One browser, one context, one page, for the length of one scenario.
-
-    A scenario per process is what deletes `SharedPlaywright`: the driver used to lend one
-    Playwright to every browser target because they shared a process, and the lending was
-    the only reason the lifetime was hard.
-    """
+    """One browser, one context, one page, for the length of one scenario."""
 
     def __init__(
         self,
@@ -192,9 +122,6 @@ class Browser:
         self.emit = emit
         self.recording: dict[str, Any] = dict(target.recording or {"required": True})
         self.viewport: dict[str, Any] = dict(target.viewport or DEFAULT_VIEWPORT)
-        #: `viewport` — Playwright filming its own page — is the default because it is the
-        #: only recording that exists on every platform. `window` grabs an X display, which
-        #: ostler starts around this process, and is Linux-only and opt-in.
         self.mode = str(self.recording.get("mode", "viewport"))
         self.required = bool(self.recording.get("required", True))
         self.video_dir = qa_dir / "videos" / scenario_id
@@ -206,27 +133,14 @@ class Browser:
         self._console_errors: list[str] = []
         self._console: list[dict[str, Any]] = []
         self._page_errors: list[dict[str, Any]] = []
-        # One record per request, mutated in place as the response and then the body
-        # arrive. `_responses` and `_failed_requests` hold *the same dicts*, not copies:
-        # a plan that finds a 500 in `responses()` reads its body off the record it already
-        # has, and the two views cannot drift into disagreeing about one request.
         self._requests: list[dict[str, Any]] = []
         self._failed_requests: list[dict[str, Any]] = []
         self._responses: list[dict[str, Any]] = []
-        # Keyed by `id(request)` and pinning the request objects in `_held`, rather than
-        # keyed by the objects themselves: identity is the only correlation Playwright
-        # offers — two requests to one URL are two records — and keying on the object
-        # assumes the driver never gives its Request an `__eq__`, which is not ours to
-        # assume. Holding the reference is what makes the id safe to reuse as a key.
         self._by_request: dict[int, dict[str, Any]] = {}
         self._held: list[Any] = []
         self._body_budget = MAX_BODY_BUDGET_BYTES
-        #: Values redacted out of every header, payload and body before it is recorded —
-        #: the run's declared secrets, resolved by the runner, which is the only side that
-        #: can resolve them.
         self._secrets = [value for value in secrets if value]
 
-    # -- lifecycle -----------------------------------------------------------------------
 
     def open(self) -> Any:
         self._playwright = sync_playwright().start()
@@ -234,11 +148,6 @@ class Browser:
         browser_type = getattr(self._playwright, name, None)
         if browser_type is None:
             raise ValueError(f"unknown Playwright browser {name!r}")
-        # Headed only for window recording, which is ostler's ffmpeg grabbing a private X
-        # display the runner starts (DisplayRecorder) — not the operator's desktop — and
-        # which is opt-in and Linux-only. Every other mode is headless, including the
-        # default `viewport`: Playwright's own recorder films the page whether or not
-        # there is a screen to draw it on.
         self._browser = browser_type.launch(headless=not (self.required and self.mode == "window"))
         options: dict[str, Any] = {"viewport": self.viewport}
         permissions = self.permissions()
@@ -247,25 +156,11 @@ class Browser:
         if self.required and self.mode == "viewport":
             self.video_dir.mkdir(parents=True, exist_ok=True)
             options["record_video_dir"] = str(self.video_dir)
-            # Pin the film to the viewport. Playwright's default is *not* the viewport: with
-            # no `record_video_size` it scales the page down to fit inside 800x800, so a
-            # 1440x900 context — this class's own default — is filmed at 800x500. ostler then
-            # measures the file with ffprobe and rejects it for not being the target's shape,
-            # and because that rejection is a scenario problem rather than a note about a
-            # file, the whole scenario aborts and every obligation it covered goes unproven.
-            # A plan that declares no viewport was silently in that hole; one that declared a
-            # small enough viewport escaped it by accident.
             options["record_video_size"] = dict(self.viewport)
         self._context = self._browser.new_context(**options)
         self.start_offset_ms = self.clock()
         self.page = self._context.new_page()
         if name == "chromium":
-            # A fixture can rebuild or redeploy a served file and a scenario then navigates to
-            # observe it — the request must reach the app, not the browser's own HTTP cache
-            # holding the response from before the fixture ran (plan row 3aq: a navigation is
-            # a request, and a request answered from a cache is not necessarily an observation
-            # of what the fixture just changed). `Network.setCacheDisabled` is unconditional and
-            # CDP-only, so it is chromium's own no-op for every other engine.
             self._context.new_cdp_session(self.page).send(
                 "Network.setCacheDisabled", {"cacheDisabled": True})
         self._listen(self.page)
@@ -273,12 +168,7 @@ class Browser:
         return self.page
 
     def close(self, *, failed: bool) -> list[str]:
-        """Finalize every artifact and return whatever the recording policy could not meet.
-
-        Returns problems rather than raising them: this runs after the scenario, and an
-        exception here would replace the scenario's own verdict — the thing the reader
-        actually needs — with a complaint about a video file.
-        """
+        """Finalize every artifact and return whatever the recording policy could not meet."""
         problems: list[str] = []
         if failed and self.page is not None:
             problems.extend(self._failure_screenshot())
@@ -288,8 +178,6 @@ class Browser:
             self._context.tracing.stop(path=str(trace))
         except Exception as exc:  # noqa: BLE001 - a lost trace must not lose the verdict
             problems.append(f"playwright trace could not be written: {exc}")
-        # Closing the context is what finalizes a viewport recording, so the video files
-        # below do not exist until this line has run.
         self._context.close()
         self._browser.close()
         self._playwright.stop()
@@ -300,25 +188,7 @@ class Browser:
         return problems
 
     def unclean(self) -> list[str]:
-        """The two browser conditions no scenario is allowed to pass over.
-
-        A plan's own clean-gate is hand-written, and the corpus has one that reads console
-        errors, failed requests and 5xx responses and forgets `page_errors()` — so an
-        uncaught exception in the app under test rode out under a green verdict. A gate a
-        plan writes is a gate a plan can write four fifths of, and reviewing the fifth was
-        a person's job once per plan, forever.
-
-        Only these two are automatic. An uncaught page exception and a 5xx are never a
-        thing a scenario *meant* to provoke — a scenario proving an error branch provokes a
-        4xx. Console errors and cancelled requests stay assertable rather than fatal,
-        because an app legitimately logs at error level and legitimately abandons an
-        in-flight request on navigation.
-
-        Not folded into `close()`: the harness records each problem as a failing assertion
-        bound to the scenario's `covers` *before* closing, so the evidence map reads it as
-        a contradiction of the obligations the scenario set out to prove rather than as a
-        harness complaint that only reddens the scenario row.
-        """
+        """The two browser conditions no scenario is allowed to pass over."""
         problems: list[str] = []
         if self._page_errors:
             first = self._page_errors[0].get("message") or self._page_errors[0]
@@ -335,19 +205,7 @@ class Browser:
         return problems
 
     def permissions(self) -> list[str]:
-        """The permissions the context is opened with.
-
-        A fresh context grants nothing, and Chromium answers an ungranted permission query
-        by *denying* it rather than prompting — there is no UI to prompt into. So
-        `navigator.clipboard.writeText()` rejects with `NotAllowedError` on a page a human
-        would see it succeed on, an app that catches that renders its failure branch with
-        no console error and no failed request, and the run's evidence points at the
-        product instead of at the harness. Clipboard access is therefore the default.
-
-        `permissions=` on the target replaces the default outright — including with `[]`,
-        for a plan whose whole point is the denied branch. The default is Chromium-only
-        because the permission names are: Firefox and WebKit reject them as unknown.
-        """
+        """The permissions the context is opened with."""
         configured = self.target.permissions
         if configured is not None:
             return [str(entry) for entry in configured]
@@ -355,29 +213,9 @@ class Browser:
             return []
         return ["clipboard-read", "clipboard-write"]
 
-    # -- what a scenario may assert on ----------------------------------------------------
-    #
-    # The diagnostics *file* is written by `close`, after the scenario has already returned
-    # its verdict, so it can only be read by the post-run audit. A plan is nonetheless held
-    # to "an unexpected 5xx or console error cannot pass unnoticed", and that demand needs an
-    # expression the scenario itself can assert on — otherwise it arrives as a review finding
-    # no author can act on. These are that expression: the same records the file gets,
-    # readable while the page is still open — headers, payloads, bodies and console
-    # arguments included, so an assertion about what the app said or received is written
-    # against the record rather than against a screenshot of its consequences.
 
     def console_errors(self, *, ignore_urls: Sequence[str] = BROWSER_ISSUED_URLS) -> list[dict[str, Any]]:
-        """Console messages at `error` level so far, minus the ones no page asked for.
-
-        A browser fetches `/favicon.ico` whether the markup requests it or not, so a page
-        that ships none logs a 404 at `error` level on a completely clean tree. A plan
-        holding the product to "the page logged no console error" — the shape the guidance
-        asks every browser plan to write — then reddens against a correct app and a correct
-        book, which is the one thing QA grounded on the book must not do. Excluded by
-        *url*, like `failed_requests` excludes by reason: an app that really does serve a
-        broken favicon route still fails every assertion about that route, and nothing is
-        hidden, since `console()` keeps the whole console including these.
-        """
+        """Console messages at `error` level so far, minus the ones no page asked for."""
         ignored = tuple(ignore_urls)
         return [
             entry
@@ -387,14 +225,7 @@ class Browser:
         ]
 
     def console(self, *, level: str | None = None, contains: str | None = None) -> list[dict[str, Any]]:
-        """Every console message so far, at every level, with its arguments.
-
-        The whole console, because the message that explains a failure is routinely not an
-        error: a `warn` about a duplicate key, an `info` the app logs before the request it
-        is about to get wrong. `level` filters by `type` as Playwright spells it
-        (`log`, `debug`, `info`, `warning`, `error`); `contains` filters on the rendered
-        text.
-        """
+        """Every console message so far, at every level, with its arguments."""
         entries = self._console
         if level is not None:
             entries = [entry for entry in entries if entry.get("type") == level]
@@ -403,12 +234,7 @@ class Browser:
         return list(entries)
 
     def requests(self, *, url_contains: str | None = None) -> list[dict[str, Any]]:
-        """Every request issued, with its headers and payload.
-
-        Includes requests that are still in flight and requests that failed — a record with
-        no `status` is one nothing came back for, which is what a hung endpoint looks like
-        from here.
-        """
+        """Every request issued, with its headers and payload."""
         if url_contains is None:
             return list(self._requests)
         return [entry for entry in self._requests if url_contains in str(entry.get("url", ""))]
@@ -420,66 +246,27 @@ class Browser:
     def failed_requests(
         self, *, ignore: Sequence[str] = ("net::ERR_ABORTED",)
     ) -> list[dict[str, Any]]:
-        """Requests that never completed, minus the ones an app aborts by design.
-
-        Excluding by *reason* rather than by count is the difference between tolerating a
-        navigation the app cancelled and tolerating a refused connection: `len(...) <= 1`
-        goes green on the second one too.
-        """
+        """Requests that never completed, minus the ones an app aborts by design."""
         ignored = set(ignore)
         return [entry for entry in self._failed_requests if entry.get("errorText") not in ignored]
 
     def responses(
         self, *, status_at_least: int = 0, url_contains: str | None = None
     ) -> list[dict[str, Any]]:
-        """Every response seen, with its headers and — for a text body — its content.
-
-        A record carries `responseBody` when the body was captured, and `bodyOmitted`
-        saying why when it was not: a redirect has none, a binary body is fingerprinted
-        rather than kept, and past the scenario's body budget the record keeps the size and
-        the digest. Read `bodyOmitted` before asserting on absence — a body that was never
-        captured is not an empty one.
-        """
+        """Every response seen, with its headers and — for a text body — its content."""
         found = [entry for entry in self._responses if entry.get("status", 0) >= status_at_least]
         if url_contains is not None:
             found = [entry for entry in found if url_contains in str(entry.get("url", ""))]
         return found
 
     def window(self) -> ResponseWindow:
-        """An observation window opening here — what a claim about the next action may read.
-
-        A response observed *before* an interaction is not evidence about that interaction.
-        A scenario that clicks submit and then reads "the 201 on `/api/widgets`" would read
-        the 201 the page already made on arrival just as happily. The scenario opens a window
-        immediately before its action, and every exchange it reads afterward is bounded below
-        by the action it is making a claim about.
-
-        A window, rather than a bare index the caller has to keep passing back: the bound and
-        the lookup that respects it are one thing, and an index handed to the wrong call is a
-        silently wider window.
-        """
+        """An observation window opening here — what a claim about the next action may read."""
         return ResponseWindow(self, len(self._responses))
 
     def response_for(
         self, path: str, *, method: str | None = None, since: int = 0
     ) -> RecordedResponse:
-        """The one response on *path* (and *method*, if given) since *since*.
-
-        A browser makes many requests — that is the property this whole method exists for.
-        The operand of an HTTP claim made from a page scenario is therefore a *selection*,
-        and it is the book's own selection: `http_status(201, path="/api/widgets", method="POST")`
-        already wrote down which exchange it means, and this passes those arguments through
-        rather than inventing a second spelling for them. A request is identified by its
-        method *and* its path, not its path alone — a create-then-list flow POSTs and then
-        GETs the same path, and path alone cannot tell those two exchanges apart.
-
-        Zero matches and several matches are distinct outcomes, and neither is a red. No
-        match means the scenario made a claim about an exchange that never happened; several
-        means the book named a (method, path) pair the page hit more than once, so which one
-        it meant is undetermined. Both are defects in the plan or the book, so both raise —
-        recording either as a failed assertion would file it against the product, and
-        silently taking the first would convert a missing case into a wrong answer.
-        """
+        """The one response on *path* (and *method*, if given) since *since*."""
         window = self._responses[since:]
         found = [
             entry for entry in window
@@ -510,15 +297,7 @@ class Browser:
         return RecordedResponse(found[0])
 
     def layout(self) -> dict[str, Any]:
-        """Where the page put its content, as numbers rather than pixels.
-
-        The scan is `ostler vet`'s, run against the page this scenario is driving. It exists
-        because a screenshot is evidence only a human can read: every assertion a browser plan
-        makes addresses the accessibility tree, and an element is in that tree whether it is
-        laid out across the page or crushed into a 200px column against the right margin. A
-        scenario that proves the right link is on the page therefore passes over a page no
-        user could use, and nothing downstream could see the difference.
-        """
+        """Where the page put its content, as numbers rather than pixels."""
         frame, regions = self._scan()
         return summarize(frame, regions)
 
@@ -526,15 +305,7 @@ class Browser:
         return self.page.evaluate(FRAME_JS), merge_rects(self.page.evaluate(SCAN_JS))
 
     def measure(self, screenshot: Path) -> dict[str, Any]:
-        """Write the two machine-readable records of what a screenshot photographed.
-
-        `<name>.layout.json` is the digest a reader (or the independent audit) holds at once:
-        the window, the laid-out document, and each structural region as a share of the
-        window. `<name>.regions.json` is the same scan undigested, in the shape `ostler vet
-        --regions` replays — every merged region, structural or not. One scan, two readers:
-        the audit needs a page it can judge, and `vet` needs the whole census to register a
-        documented component against.
-        """
+        """Write the two machine-readable records of what a screenshot photographed."""
         frame, regions = self._scan()
         measured = {"schema": LAYOUT_SCHEMA, **summarize(frame, regions)}
         screenshot.parent.mkdir(parents=True, exist_ok=True)
@@ -546,7 +317,6 @@ class Browser:
             self.emit({"type": "artifact", "path": str(path), "kind": kind})
         return measured
 
-    # -- diagnostics ---------------------------------------------------------------------
 
     def _listen(self, page: Any) -> None:
         page.on("console", self._on_console)
@@ -557,13 +327,7 @@ class Browser:
         page.on("requestfinished", self._on_request_finished)
 
     def _on_console(self, message: Any) -> None:
-        """Every console message, whatever its level.
-
-        Only `type == "error"` was ever kept, which threw away the half of the console that
-        explains an error: the warning that preceded it, the app's own trace of the request
-        it was about to make, the React key/hydration warnings that are levelled `warn` and
-        are the actual defect.
-        """
+        """Every console message, whatever its level."""
         if message.type == "error":
             self._console_errors.append(self._safe(message.text))
         location = message.location or {}
@@ -581,13 +345,7 @@ class Browser:
         )
 
     def _console_args(self, message: Any) -> list[Any]:
-        """The message's arguments as values, not as the console's rendering of them.
-
-        `message.text` is what DevTools *prints*: `console.log("state", store)` becomes
-        `state {items: Array(3), …}`, and the object the app was complaining about is gone
-        — an ellipsis where the assertion needed the third item. The handles are still live
-        at this moment, so this is the only place the values can be taken.
-        """
+        """The message's arguments as values, not as the console's rendering of them."""
         args: list[Any] = []
         for handle in getattr(message, "args", None) or []:
             try:
@@ -610,30 +368,18 @@ class Browser:
         return value
 
     def _on_page_error(self, error: Any) -> None:
-        """An uncaught exception on the page.
-
-        `pageerror` is a different event from `console`: an exception nothing catches
-        reaches it, and reaches the console only as a side effect the driver was not
-        guaranteed to see.
-        """
+        """An uncaught exception on the page."""
         self._page_errors.append(
             {
                 "atMs": self.clock(),
                 "name": str(getattr(error, "name", None) or type(error).__name__),
                 "message": self._safe(str(getattr(error, "message", None) or error)),
-                # The frame that threw. Without it a message like "undefined is not a
-                # function" names no file, and triage starts by reproducing the run.
                 "stack": self._safe(str(getattr(error, "stack", "") or "")),
             }
         )
 
     def _on_request(self, request: Any) -> None:
-        """Every request issued, whether or not anything came back.
-
-        `responses` covers what completed and `failedRequests` what failed; a request still
-        in flight when the scenario ends is in neither — which is the exact shape of a hung
-        endpoint. Correlate by `url` and `atMs`.
-        """
+        """Every request issued, whether or not anything came back."""
         record = {
             "atMs": self.clock(),
             "url": request.url,
@@ -645,29 +391,14 @@ class Browser:
         self._remember(request, record)
 
     def _on_failed_request(self, request: Any) -> None:
-        """A request that never completed, with *why* it did not.
-
-        `requestfailed` does not mean the network broke. An app cancelling its own in-flight
-        fetch — an effect cleanup aborting on unmount, a navigation superseding a load —
-        fires it too, with `net::ERR_ABORTED`. Without `errorText` those are
-        indistinguishable from `net::ERR_CONNECTION_REFUSED`, and a plan gating on the
-        count goes permanently red on a benign self-cancel.
-        """
+        """A request that never completed, with *why* it did not."""
         record = self._record(request)
         record["errorText"] = request.failure or ""
-        # A request that never completed has no body to have kept, and says so rather than
-        # leaving the reader to infer an empty response from an absent key.
         record.setdefault("bodyOmitted", "request did not complete")
         self._failed_requests.append(record)
 
     def _on_response(self, response: Any) -> None:
-        """Every HTTP response the page received, including the ones that completed badly.
-
-        `requestfailed` fires only for a request that never completed, so a completed 500
-        used to be invisible — and a plan asserting "no response is 500 or higher" was
-        asserting against a key nothing wrote — which a stream-oriented lookup reads as an
-        empty stream and passes.
-        """
+        """Every HTTP response the page received, including the ones that completed badly."""
         record = self._record(response.request)
         record.update(
             {
@@ -680,15 +411,7 @@ class Browser:
         self._responses.append(record)
 
     def _on_request_finished(self, request: Any) -> None:
-        """The body and the timings, taken at the one moment they are cheap and safe.
-
-        Not in `_on_response`: `Response.body()` blocks until the response has finished
-        loading, and a scenario that opens an `EventSource` or a long poll would block the
-        event dispatcher there for as long as the stream stays open — a harness hang
-        reported as a product timeout. `requestfinished` fires only once loading is done, so
-        the body is already buffered; a stream that never finishes simply never gets one,
-        which is the truthful record of a request still in flight.
-        """
+        """The body and the timings, taken at the one moment they are cheap and safe."""
         record = self._record(request)
         timing = getattr(request, "timing", None)
         if isinstance(timing, dict) and timing.get("responseEnd", -1) >= 0:
@@ -701,9 +424,6 @@ class Browser:
         if response is None:
             record.setdefault("bodyOmitted", "no response object")
             return
-        # `all_headers()` is the raw set, including the `set-cookie` Chromium keeps out of
-        # `headers`; it costs a protocol round-trip, which is affordable here and was not in
-        # the `response` handler.
         try:
             record["responseHeaders"] = self._headers(response.all_headers())
         except Exception:  # noqa: BLE001 - keep whatever the response event already gave
@@ -711,13 +431,7 @@ class Browser:
         self._capture_body(record, response)
 
     def _capture_body(self, record: dict[str, Any], response: Any) -> None:
-        """Record the response body, or record precisely why it is not here.
-
-        Every path writes something. A missing `responseBody` key with no `bodyOmitted`
-        beside it is indistinguishable from an empty body to the plan reading it, and an
-        assertion that "the error payload never mentions the raw SQL" passes vacuously
-        against a body nobody captured.
-        """
+        """Record the response body, or record precisely why it is not here."""
         try:
             raw = response.body()
         except Exception as exc:  # noqa: BLE001 - redirects and aborted loads have no body
@@ -738,15 +452,9 @@ class Browser:
             record["responseBodyTruncated"] = True
         record["responseBody"] = self._safe(raw[:keep].decode("utf-8", errors="replace"))
 
-    # -- recording helpers ----------------------------------------------------------------
 
     def _record(self, request: Any) -> dict[str, Any]:
-        """The record for this request, creating it if the `request` event was missed.
-
-        A redirect leg, a service-worker fetch or a request already in flight when the
-        listeners attached can reach a later event first. Creating on demand keeps that
-        request in the network record instead of dropping it.
-        """
+        """The record for this request, creating it if the `request` event was missed."""
         record = self._by_request.get(id(request))
         if record is None:
             record = {
@@ -796,29 +504,14 @@ class Browser:
 
     @staticmethod
     def _why(exc: Exception) -> str:
-        """The driver's own sentence about a missing body, kept short.
-
-        Playwright says "Response body is unavailable for redirect responses"; a reader who
-        gets `bodyOmitted: "redirect"` instead has to go and find out what the harness meant
-        by it.
-        """
+        """The driver's own sentence about a missing body, kept short."""
         first = str(exc).strip().splitlines()[0] if str(exc).strip() else type(exc).__name__
         return first[:200]
 
     def _write_diagnostics(self) -> None:
-        """The console and the network, as the run's own copy of what DevTools showed.
-
-        Written whole. The post-run reader — a person, the story assessment, the
-        independent audit — has no browser to open and no session to re-drive, so anything
-        this file summarizes away is gone: the payload the app posted, the error body the UI
-        rendered as "something went wrong", the header that was missing. What is capped is
-        capped out loud, in `truncated`.
-        """
+        """The console and the network, as the run's own copy of what DevTools showed."""
         for record in self._requests:
             if "responseBody" not in record:
-                # Written at close because in-flight is a legitimate state *during* the
-                # scenario and a permanent one after it: a request with no body and no
-                # reason would otherwise read as an empty response to everything downstream.
                 record.setdefault("bodyOmitted", "still in flight when the scenario ended")
         path = self.qa_dir / "traces" / f"{self.scenario_id}-diagnostics.json"
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -850,7 +543,6 @@ class Browser:
         path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
         self.emit({"type": "artifact", "path": str(path), "kind": "browser-diagnostics"})
 
-    # -- artifacts -----------------------------------------------------------------------
 
     def _failure_screenshot(self) -> list[str]:
         path = self.qa_dir / "screenshots" / f"{self.scenario_id}-failure.png"
@@ -879,8 +571,6 @@ class Browser:
                     "type": "artifact",
                     "path": str(video),
                     "kind": "video",
-                    # ostler measures the file with ffprobe and holds it to the target's
-                    # declared dimensions; the offsets are the part only this side knows.
                     "metadata": {
                         "mode": "viewport",
                         "actionStartOffsetMs": self.start_offset_ms,

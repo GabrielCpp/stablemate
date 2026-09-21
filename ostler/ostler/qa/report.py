@@ -1,27 +1,4 @@
-"""The run, rendered for the person who has to sign it off.
-
-A QA run leaves a complete account of itself — the ledger, the manifest, the assertion
-files, the screenshots and their vet verdicts, the published evidence — and none of it is
-shaped for a reader. `qa-run.ndjson` is fifty kilobytes of records in time order;
-`qa-evidence.json` lists, under each criterion, every artifact of every scenario that
-touched it; `qa evidence-map` joins obligations only. A reviewer asked "was ac:4 actually
-tested, and what did the run see?" had to reconstruct the answer from three files, and in
-practice did not — which is how an agent's prose in `qa.md` became the thing people read, and
-prose is exactly what a reviewer cannot distinguish from a rubber stamp.
-
-This module renders the same facts **per acceptance criterion and per obligation**: which
-scenario and which step exercised it, each assertion with its check, what was observed
-against what was expected, PASS or FAIL, and the files that back it — and it renders them
-deterministically from the ledger, so the document says what the run did and nothing else.
-It is written once at the end of every run (`qa-report.md` beside the spec, `qa/<label>/
-report.md` for a dry run) and re-rendered on demand by `ostler qa report`.
-
-Two things are deliberate about its shape. It is self-contained in text: `qa/` is ignored by
-the repo, so the tables carry the observed values themselves and the links to the raw files
-are a convenience for the machine that ran it. And it never reads `qa_plan.py` or the
-planner's prose: a report that quoted the plan's intent would be reporting a claim, and the
-point is to report what happened.
-"""
+"""The run, rendered for the person who has to sign it off."""
 
 from __future__ import annotations
 
@@ -37,24 +14,13 @@ from ostler.util import is_mapping
 
 VERSION = 1
 
-#: Where the scored run's report lives — beside `qa-evidence.json`, committed with the story.
 REPORT_FILE = "qa-report.md"
-#: A dry run's report sits beside that run's own ledger, under `qa/<label>/`.
 SCRATCH_REPORT_FILE = "report.md"
 
-#: The three answers a criterion can get. `UNPROVEN` is not a softer `FAIL`: it says no
-#: assertion that ran to completion ever looked, which routes to the plan rather than to the
-#: product — the same split :mod:`ostler.qa.evidence_map` draws between `uncovered` /
-#: `unproven` and `contradicted`.
 VERDICTS = ("FAIL", "UNPROVEN", "PASS")
 
-#: Ledger artifact kinds that are bookkeeping rather than evidence a reader wants listed:
-#: the assertion files are already linked from their assertion rows, and the rest are the
-#: run's own outputs about itself.
 _HOUSEKEEPING_KINDS = frozenset({"assertion-result", "run-ledger", "qa-evidence", "qa-report"})
-#: Sidecars of a screenshot, folded into the screenshot line rather than listed on their own.
 _SCREENSHOT_SIDECARS = frozenset({"layout", "regions", "vet"})
-#: Artifacts that describe the scenario as a whole rather than one step of it.
 _SCENARIO_LEVEL_KINDS = frozenset({"playwright-trace", "browser-diagnostics", "command-output"})
 
 _CELL_LIMIT = 120
@@ -80,19 +46,10 @@ def _label_of(qa_dirname: str) -> str | None:
     return qa_dirname[len(prefix):] if qa_dirname.startswith(prefix) else qa_dirname
 
 
-# ----------------------------------------------------------------------------- building
 
 
 def build_report(spec_dir: Path, *, label: str | None = None, qa_dirname: str | None = None) -> dict[str, Any]:
-    """Read one run's artifacts and return the report as data.
-
-    ``label`` reads a dry run's ledger under ``<spec>/qa/<label>/`` instead of the scored
-    one; ``qa_dirname`` names that directory outright for a caller that already holds it
-    (``run_plan`` does) and must agree with ``label`` when both are given. Raises :class:`ReportError` when there is no ledger to read; everything else that is
-    missing — the context packet, the manifest, a sidecar — becomes a warning in the report,
-    because a report that refused to render a broken run would be absent exactly when it is
-    needed.
-    """
+    """Read one run's artifacts and return the report as data."""
     spec_dir = Path(spec_dir)
     qa_dirname = _qa_dirname(label, qa_dirname)
     label = _label_of(qa_dirname)
@@ -135,8 +92,6 @@ def build_report(spec_dir: Path, *, label: str | None = None, qa_dirname: str | 
             "durationSeconds": record.get("durationSeconds"),
             "width": record.get("width"),
             "height": record.get("height"),
-            # The run-clock offset of the recording's first and last frame: what turns a
-            # step's ``started_offset_ms`` into a time inside the file.
             "actionStartOffsetMs": record.get("actionStartOffsetMs"),
             "actionEndOffsetMs": record.get("actionEndOffsetMs"),
         }
@@ -237,16 +192,7 @@ def build_report(spec_dir: Path, *, label: str | None = None, qa_dirname: str | 
 
 
 def _scenarios(log: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Every scenario in ledger order, its steps, and what each step recorded.
-
-    Attribution of an assertion or an artifact to a step reads the ``step`` field the driver
-    stamps on the record. A ledger written before that field existed carries only the
-    ``step`` record itself, appended when the step closed, and an assertion between two
-    step records may have run inside the second or between the two — order cannot tell
-    them apart, and guessing put fixture checks under the wrong heading. Such a ledger
-    lists its assertions per scenario, outside any step, and says so in the warnings.
-    Once one record anywhere carries a stamp, anything unstamped is genuinely outside a step.
-    """
+    """Every scenario in ledger order, its steps, and what each step recorded."""
     stamped = any("step" in record for record in log if record.get("kind") not in ("step", "scenario_start", "scenario_stop"))
     order: list[str] = []
     by_id: dict[str, dict[str, Any]] = {}
@@ -309,8 +255,6 @@ def _scenarios(log: list[dict[str, Any]]) -> list[dict[str, Any]]:
         scenario = by_id[scenario_id]
         for step in scenario["steps"]:
             if not step.get("closed"):
-                # Stamped records named a step the ledger never closed: the scenario died
-                # inside it before the driver could write the step record.
                 step["unfinished"] = True
                 step["exit_code"] = 1
             step.pop("closed", None)
@@ -320,14 +264,7 @@ def _scenarios(log: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 def _place_in_recordings(scenarios: list[dict[str, Any]], recordings: list[dict[str, Any]]) -> None:
-    """Give every step the recording knows about a ``video`` placement.
-
-    A step's ``started_offset_ms``/``ended_offset_ms`` and the recording's
-    ``actionStartOffsetMs`` are on the same clock (the run's), so the step's place in the
-    file is a subtraction. The placement is ``{"path", "at", "until"}`` in seconds into the
-    recording of the scenario's target, clamped to the file; ``None`` when the step has no
-    stamp, the target was not recorded, or the step lies wholly outside the recording.
-    """
+    """Give every step the recording knows about a ``video`` placement."""
     by_target = {r["target"]: r for r in recordings if r.get("actionStartOffsetMs") is not None}
     for scenario in scenarios:
         recording = by_target.get(scenario["target"])
@@ -408,7 +345,6 @@ def _assert_view(record: Mapping[str, Any]) -> dict[str, Any]:
         "scenario": str(record.get("scenario", "")),
         "step": str(record.get("step", "") or ""),
         "stepLabel": str(record.get("step_label", "") or ""),
-        # The raw file is recorded absolute; the report links it relative to the spec.
         "file": f"qa/asserts/{Path(raw).name}" if raw else "",
     }
 
@@ -560,12 +496,10 @@ def _all_asserts(scenario: Mapping[str, Any]) -> Iterable[dict[str, Any]]:
     yield from scenario["outside"]["asserts"]
 
 
-# ----------------------------------------------------------------------------- rendering
 
 
 def render_report(data: Mapping[str, Any], *, spec_dir: Path | None = None) -> str:
-    """The report as markdown. ``spec_dir`` lets the renderer read a screenshot's vet
-    verdict off disk; without it the screenshot is linked and the verdict line is omitted."""
+    """The report as markdown."""
     lines: list[str] = []
     counts = data["counts"]
     label = data.get("label")
@@ -610,7 +544,6 @@ def render_report(data: Mapping[str, Any], *, spec_dir: Path | None = None) -> s
     )
     lines.append("")
 
-    # -- summary
     lines.append("## Summary")
     lines.append("")
     lines.append("### Acceptance criteria")
@@ -644,7 +577,6 @@ def render_report(data: Mapping[str, Any], *, spec_dir: Path | None = None) -> s
         lines.append(f"_{data['contextOnly']} further obligation(s) are in scope for reading only and owe no evidence._")
     lines.append("")
 
-    # -- criteria
     lines.append("## Acceptance criteria")
     lines.append("")
     if not data["criteria"]:
@@ -653,7 +585,6 @@ def render_report(data: Mapping[str, Any], *, spec_dir: Path | None = None) -> s
     for subject in data["criteria"]:
         lines.extend(_render_subject(subject, spec_dir, heading=f"{subject['id']} — {subject['verdict']}"))
 
-    # -- obligations
     lines.append("## OKF obligations")
     lines.append("")
     if not data["obligations"]:
@@ -672,7 +603,6 @@ def render_report(data: Mapping[str, Any], *, spec_dir: Path | None = None) -> s
             extra.append("Insensitive (cannot go red): " + ", ".join(f"`{call}`" for call in subject["checksInsensitive"]))
         lines.extend(_render_subject(subject, spec_dir, heading=heading, extra=extra))
 
-    # -- scenarios
     lines.append("## Scenarios, step by step")
     lines.append("")
     if not data["scenarios"]:
@@ -681,7 +611,6 @@ def render_report(data: Mapping[str, Any], *, spec_dir: Path | None = None) -> s
     for scenario in data["scenarios"]:
         lines.extend(_render_scenario(scenario, spec_dir))
 
-    # -- warnings
     lines.append("## Warnings")
     lines.append("")
     if data["warnings"]:
@@ -737,8 +666,7 @@ def _video_note(step: Mapping[str, Any], spec_dir: Path | None) -> str:
 
 
 def _spec_arg(spec_dir: Path | None) -> str:
-    """The ``--spec`` a reader types: the spec dir relative to the working directory when
-    it is under it (the usual ``docs/specs/<story>``), the absolute path otherwise."""
+    """The ``--spec`` a reader types: the spec dir relative to the working directory when it is under it (the usual ``docs/specs/<story>``), the absolute path otherwise."""
     if spec_dir is None:
         return "SPEC"
     try:
@@ -899,12 +827,10 @@ def _capitalise(text: str) -> str:
     return text[:1].upper() + text[1:] if text else text
 
 
-# ----------------------------------------------------------------------------- writing
 
 
 def report_path(spec_dir: Path, *, label: str | None = None, qa_dirname: str | None = None) -> Path:
-    """Where a run's report lives: ``<spec>/qa-report.md``, or ``<spec>/qa/<label>/report.md``
-    for a dry run, beside the ledger it renders."""
+    """Where a run's report lives: ``<spec>/qa-report.md``, or ``<spec>/qa/<label>/report.md`` for a dry run, beside the ledger it renders."""
     spec_dir = Path(spec_dir)
     qa_dirname = _qa_dirname(label, qa_dirname)
     if qa_dirname == QA_DIRNAME:
@@ -913,12 +839,7 @@ def report_path(spec_dir: Path, *, label: str | None = None, qa_dirname: str | N
 
 
 def write_report(spec_dir: Path, *, label: str | None = None, qa_dirname: str | None = None) -> Path:
-    """Build, render and write the report; returns the path written.
-
-    The scored report carries the `spec.<stem>` frontmatter every spec doc carries, so it is
-    an OKF Concept like `qa.md` beside it. The dry-run one sits under `qa/`, which the spec
-    glob never reaches, and so is left untyped.
-    """
+    """Build, render and write the report; returns the path written."""
     spec_dir = Path(spec_dir)
     qa_dirname = _qa_dirname(label, qa_dirname)
     data = build_report(spec_dir, qa_dirname=qa_dirname)
@@ -932,11 +853,7 @@ def write_report(spec_dir: Path, *, label: str | None = None, qa_dirname: str | 
 
 
 def run_id_of(path: Path) -> str | None:
-    """The run id a written report was rendered from, or `None` for a file that is not one.
-
-    Read off the marker `render_report` writes, so a downstream gate can tell a report of
-    *this* run from one left behind by the last.
-    """
+    """The run id a written report was rendered from, or `None` for a file that is not one."""
     try:
         text = path.read_text(encoding="utf-8")
     except OSError:

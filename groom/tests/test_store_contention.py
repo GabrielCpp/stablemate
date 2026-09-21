@@ -1,19 +1,4 @@
-"""Ingest that has nothing to store must not queue behind the store lock.
-
-Diagnosed from a live wedge: groom stopped ingesting for minutes at a time while
-plain GETs kept answering in milliseconds. One thread sat in a page-cache read
-holding the process-wide store lock, and :func:`store._resilient` takes that lock
-*before* the writer it wraps can decide the batch is empty — so every other
-ingest thread piled up behind it, including the no-op exports that are most of
-what a fleet of mostly-idle exporters sends. Those waits exhausted the shared
-thread pool, the dashboard's own live tick could no longer reach the store, and
-the browser read the resulting silence as a dead connection.
-
-The invariant these tests pin: a batch with no rows in it is answered without
-ever touching the lock, and a batch that does carry rows still lands.
-
-Run: uv run pytest tests/test_store_contention.py
-"""
+"""Ingest that has nothing to store must not queue behind the store lock."""
 from __future__ import annotations
 
 import os
@@ -26,12 +11,7 @@ from contextlib import contextmanager
 from groom import store
 from groom.models import LIVENESS_METRICS
 
-# Long enough that a call which waits for the lock cannot be mistaken for a slow
-# one, short enough that a regression costs a couple of seconds rather than a
-# hung suite.
 HOLD_S = 2.0
-# A call that never takes the lock does no I/O at all; anything near HOLD_S means
-# it queued.
 BUDGET_S = 0.25
 
 
@@ -82,9 +62,6 @@ class _DB:
         os.unlink(self._tmp.name)
 
 
-# --------------------------------------------------------------------------- #
-# an empty batch never reaches the lock
-# --------------------------------------------------------------------------- #
 def test_empty_span_batch_does_not_wait_for_the_store_lock():
     with _lock_held():
         waited, _ = _elapsed(lambda: store.insert_spans([]))
@@ -105,20 +82,13 @@ def test_empty_turn_batch_does_not_wait_for_the_store_lock():
 
 
 def test_liveness_only_metric_batch_does_not_wait_for_the_store_lock():
-    """The heartbeats are dropped rather than stored, so the batch has no rows.
-
-    They were ~80% of everything this table ever saw, which makes the all-ticks
-    batch the single most common thing arriving at the metrics receiver.
-    """
+    """The heartbeats are dropped rather than stored, so the batch has no rows."""
     ticks = [{"run_id": "R1", "name": name, "ts": 1.0, "value": 1.0} for name in LIVENESS_METRICS]
     with _lock_held():
         waited, _ = _elapsed(lambda: store.insert_metrics(ticks))
     assert waited < BUDGET_S, f"a liveness-only batch queued for the lock ({waited:.3f}s)"
 
 
-# --------------------------------------------------------------------------- #
-# a batch with rows in it still lands
-# --------------------------------------------------------------------------- #
 def test_non_empty_batches_still_write():
     with _DB():
         assert store.insert_turns([{

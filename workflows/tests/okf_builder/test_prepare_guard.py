@@ -1,11 +1,4 @@
-"""The installed-skill guard (`prepare._references_ok`) against farrier's layout.
-
-Farrier installs a skill under the consuming repo's prefix — `ostler-okf` lands as
-`<repo>-ostler-okf` — and the first prefixed repo showed what the old exact-name
-lookup did with that: refused every run on a repo whose skill was present and
-complete. Both spellings are therefore pinned here, along with the two refusals the
-guard exists for (no install at all, an install that predates the references corpus).
-"""
+"""The installed-skill guard (`prepare._references_ok`) against farrier's layout."""
 from __future__ import annotations
 
 from pathlib import Path

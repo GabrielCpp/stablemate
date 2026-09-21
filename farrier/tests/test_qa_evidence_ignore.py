@@ -1,11 +1,4 @@
-"""The QA-evidence ignore block that ships with the staged-files gate.
-
-The hook *wiring* moved out of this module and into `hook_managers` (see
-`test_hook_managers.py`); what stays here is the other half of shipping the gate — the
-ignore rules that keep a run's artifacts out of the index before any hook has to refuse
-them. Both are guarded on the gate script being among the outputs, so a repo that did
-not select the ostler skill gets neither and no explaining.
-"""
+"""The QA-evidence ignore block that ships with the staged-files gate."""
 
 from __future__ import annotations
 
@@ -25,14 +18,10 @@ def repo(tmp_path: Path) -> Path:
     return tmp_path
 
 
-# ---------------------------------------------------------------------------
-# the ignore block
-# ---------------------------------------------------------------------------
 
 
 def test_the_ignore_block_names_artifacts_not_the_qa_directory(repo: Path):
-    """`**/qa/` would swallow a source package called `qa`, and a new file born ignored
-    is the silent failure this repo has already paid for once."""
+    """`**/qa/` would swallow a source package called `qa`, and a new file born ignored is the silent failure this repo has already paid for once."""
     assert "**/qa/" not in QA_GITIGNORE_BLOCK
     assert "**/qa/**/traces/" in QA_GITIGNORE_BLOCK
 
@@ -63,14 +52,10 @@ def test_the_block_is_refreshed_in_place_when_it_changes(repo: Path):
     assert "dist/" in text
 
 
-# ---------------------------------------------------------------------------
-# what triggers it
-# ---------------------------------------------------------------------------
 
 
 def test_the_install_follows_the_skill_that_ships_the_gate(repo: Path):
-    """A repo that selected the skill has already chosen the rules; one that did not
-    gets nothing, and no explaining."""
+    """A repo that selected the skill has already chosen the rules; one that did not gets nothing, and no explaining."""
     skill = compose_name(repo_prefix(repo), "ostler")
     gate = repo / ".claude/skills" / skill / "scripts/check_staged_files.py"
 

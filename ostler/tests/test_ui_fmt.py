@@ -28,12 +28,11 @@ def test_bullet_reorder_and_spacing():
     )
     out = fmt.format_text(text)
     body = out.splitlines()
-    # canonical order for interaction: on, trigger, when, does, ...
     i_on = body.index("- on: [x](#x)")
     i_trigger = body.index("- trigger: click")
     i_does = body.index("- does:")
     assert i_on < i_trigger < i_does
-    assert "prose after." in body   # trailing prose preserved
+    assert "prose after." in body
 
 
 def test_heading_casing_and_anchor_kebab():
@@ -73,14 +72,7 @@ def test_idempotent():
 
 
 def test_soft_wrapped_bullet_value_is_not_duplicated():
-    """A bullet whose value wraps across source lines must survive untouched.
-
-    `_emit_bullet` used to rebuild the first line from `bullet.text`, which holds the whole
-    wrapped value newline and all, and then append `raw[1:]` on top — so each run emitted every
-    continuation line twice and the next run doubled it again. It is not an exotic input: OKF
-    docs wrap prose at a column, so it hit essentially every authored `when:`/`detail:` bullet,
-    and an agent that ran `fmt` had to hand-repair the output and then skip the formatter.
-    """
+    """A bullet whose value wraps across source lines must survive untouched."""
     text = (
         "---\ntype: screen\nslug: s\ntitle: T\n---\n# T\n\n"
         "## Interactions\n\n### click\n"
@@ -96,7 +88,6 @@ def test_soft_wrapped_bullet_value_is_not_duplicated():
 
 
 def test_reorder_does_not_strand_blank_between_bullets():
-    # A trailing blank line before the next heading must not migrate between reordered bullets.
     text = (
         "---\ntype: screen\nslug: s\ntitle: T\n---\n# T\n\n"
         "## Components\n\n### row\n- extends: [t](d.md#t)\n- selector: `.x`\n\n"
@@ -106,8 +97,8 @@ def test_reorder_does_not_strand_blank_between_bullets():
     body = out.splitlines()
     i_sel = body.index("- selector: `.x`")
     i_ext = body.index("- extends: [t](d.md#t)")
-    assert i_sel + 1 == i_ext                       # adjacent, no blank between
-    assert body[i_ext + 1] == ""                    # single blank before next heading
+    assert i_sel + 1 == i_ext
+    assert body[i_ext + 1] == ""
     assert body[i_ext + 2] == "## Interactions"
 
 
@@ -137,7 +128,6 @@ def test_fmt_check_exit_code(repo: Path, capsys):
     write(repo / "docs/features/s.md",
           "---\ntitle: T\ntype: screen\nslug: s\n---\n# T\n")
     assert main(["-C", str(repo), "fmt", "--check"]) == 1
-    # after formatting, --check is clean
     assert main(["-C", str(repo), "fmt"]) == 0
     assert main(["-C", str(repo), "fmt", "--check"]) == 0
 
@@ -156,7 +146,6 @@ def test_fmt_writes_canonical(repo: Path):
     write(p, "---\ntitle: T\ntype: screen\nslug: s\n---\n# T\n")
     main(["-C", str(repo), "fmt"])
     assert p.read_text().startswith("---\ntype: screen\nslug: s\ntitle: T\n")
-    # loads clean afterwards
     assert load(repo).ui_nodes_of_type("screen")
 
 
@@ -195,12 +184,7 @@ def test_a_check_written_above_every_claim_stays_above_them():
 
 
 def test_every_bullet_that_binds_by_document_order_moves_with_its_claim():
-    """`verify:` is not the only key `registry._attributed` binds to the claim above it.
-
-    `fixture:` and the capture keys bind exactly the same way, so a formatter that groups only
-    the checks re-files an arrangement onto whichever claim sorts last — here, the store the
-    *creation* needs would end up describing the refusal.
-    """
+    """`verify:` is not the only key `registry._attributed` binds to the claim above it."""
     text = (
         "---\ntype: api\nslug: s\ntitle: T\n---\n# T\n\n"
         "## Endpoints\n\n### submit\n"

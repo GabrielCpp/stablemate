@@ -1,29 +1,4 @@
-"""Embedded SQLite persistence for telemetry — the durable, searchable half of
-groom's collector role (stdlib ``sqlite3``, no database server).
-
-The in-memory ring in :mod:`groom.state` stays the hot cache for the live
-dashboard and alert-rule state; this file is the queryable fleet index that
-survives ``groom serve`` restarts. Each run's own ``events.jsonl`` on disk
-remains the append-only record-of-truth — SQLite exists for cross-run search
-(slowest nodes, error spans, cost per run, who cap-waited), not as the primary
-record. Spans older than the retention window are pruned to bound growth.
-
-One writer, many readers. Every write goes through a single process-wide
-connection — which has exactly one transaction and one snapshot, and is shared
-across threads — so :class:`_Store` holds it behind an ``RLock``, opens it in real
-autocommit (``isolation_level=None``) so no failure path can strand an open
-transaction, and wraps multi-statement writes in an explicit ``BEGIN IMMEDIATE``.
-When a statement fails anyway the connection is recycled and the call retried once
-(:func:`_resilient`), because a collector meant to run for weeks cannot answer a
-wedged handle with a 500 forever. :func:`health` is what that looks like from outside.
-
-Reads take none of that. Every query runs on a ``query_only`` connection belonging
-to the calling thread (:meth:`_Store.read_connection`, :func:`_reading`), because
-WAL already gives a reader a consistent snapshot alongside the writer — the lock
-was never buying correctness there. Putting reads under it did buy an outage: one
-slow cold read on a saturated disk held the lock, and the dashboard, the live tick
-and every OTLP receiver queued behind a query none of them had asked for.
-"""
+"""Embedded SQLite persistence for telemetry — the durable, searchable half of groom's collector role (stdlib ``sqlite3``, no database server)."""
 
 from __future__ import annotations
 
@@ -54,21 +29,7 @@ from groom.models import (
 
 logger = logging.getLogger(__name__)
 
-# Days a run's telemetry stays queryable in SQL. Not a data-loss dial: a run past
-# this window is written to disk by groom.archive and only then deleted, so the
-# number says how long something is *searchable in SQL*, not how long it exists.
-# One window for spans, logs and metrics together — logs used to have a shorter
-# one of their own because they are the highest-volume table by orders of
-# magnitude and nothing behind them caught what the sweep dropped. With an
-# archive behind them that argument survives and the number does not need to
-# differ: 30 days under archival costs less than 14 did under none, because the
-# rows leave rather than accumulate.
 RETENTION_DAYS = float(os.environ.get("GROOM_RETENTION_DAYS", "30"))
-# How far back the fleet/telemetry views (run_summaries) scan. The whole DB is
-# retained for `RETENTION_DAYS` and stays queryable with raw SQL, but a live-ops
-# dashboard only wants recent runs, and bounding the scan here is what keeps
-# these queries from doing a full-table GROUP BY pass that grows with total
-# history rather than with what's on screen. Default 24h.
 ACTIVE_WINDOW_S = float(os.environ.get("GROOM_ACTIVE_WINDOW_S", "86400"))
 
 _SCHEMA = """
@@ -207,17 +168,13 @@ CREATE INDEX IF NOT EXISTS dispatch_recent ON dispatch_items(enqueued_at DESC);
 
 
 def db_path() -> Path:
-    """``$GROOM_DB`` (tests point it at a temp file), else the platform data
-    dir — read per call so a test's env var takes effect without reimport."""
+    """``$GROOM_DB`` (tests point it at a temp file), else the platform data dir — read per call so a test's env var takes effect without reimport."""
     env = os.environ.get("GROOM_DB")
     if env:
         return Path(env)
     return Path(user_data_dir("groom")) / "groom.db"
 
 
-# Columns added to `spans` after the table first shipped. CREATE TABLE IF NOT
-# EXISTS silently does nothing on an existing DB, so a new column has to be
-# ALTERed in or every query naming it fails on a pre-existing groom.db.
 _ADDED_SPAN_COLUMNS = (
     ("run_dir", "TEXT NOT NULL DEFAULT ''"),
     ("duration_ms", "INTEGER"),
@@ -244,10 +201,6 @@ _ADDED_SPAN_COLUMNS = (
     ("priced_model", "TEXT"),
 )
 
-#: The same, for `logs`. A log record carries the head observed when it was *emitted*
-#: rather than one for the whole run, because a workflow — or the agent inside a turn —
-#: may move HEAD at any point, and a run-level value would be wrong for most of the
-#: records. NULL means nothing observed a tree, which is not the same as an unknown hash.
 _ADDED_LOG_COLUMNS = (
     ("head", "TEXT"),
     ("workspace", "TEXT"),
@@ -257,14 +210,6 @@ _ADDED_LOG_COLUMNS = (
     ("repositories", "TEXT"),
 )
 
-# OTel attribute key -> the `spans` column it is promoted to. OTel's attribute model
-# is a flat dict whose keys merely *look* dotted, so `usage.output_tokens` is stored
-# in attrs_json as a literal key with a dot in it and
-# `json_extract(attrs_json,'$.usage.output_tokens')` silently returns NULL — SQLite
-# reads the dot as navigation. Only `'$."usage.output_tokens"'` works. Rather than
-# make every caller remember that, the handful of fields every cost query wants get
-# real columns. The rest stay in attrs_json (quote the key), and the promoted ones
-# stay there too, so queries written against the old shape keep working.
 _PROMOTED_SPAN_COLUMNS = (
     ("duration_ms", "duration_ms", int),
     ("total_cost_usd", "total_cost_usd", float),
@@ -272,9 +217,6 @@ _PROMOTED_SPAN_COLUMNS = (
     ("usage.output_tokens", "output_tokens", int),
     ("usage.cache_read_input_tokens", "cache_read_tokens", int),
     ("usage.cache_creation_input_tokens", "cache_creation_tokens", int),
-    # Observations, not assertions: the pair being unequal is the record that something
-    # moved HEAD inside the span, and the store says nothing about why. A span over a
-    # tree nobody looked at carries neither.
     ("git.head.start", "head_start", str),
     ("git.head.end", "head_end", str),
     ("workspace.path.start", "workspace_start", str),
@@ -289,23 +231,10 @@ _PROMOTED_SPAN_COLUMNS = (
     ("workhorse.repositories.end", "repositories_end", str),
 )
 
-#: Promoted from the decoded span record rather than from its OTel attributes — these
-#: two are *resource* attributes, which `otlp.parse_traces` lifts into named fields.
 _PROMOTED_SPAN_FIELDS = ("pid", "resume_generation")
 
-#: Computed here rather than reported by anyone: what this turn's tokens are worth at
-#: the rate card in `groom.prices`. Its own column, never folded into `total_cost_usd` —
-#: what a vendor billed and what a rate card says are different claims, and a sum of the
-#: two is a number no one can act on. NULL when the model has no published rate here,
-#: which is what makes the unpriced share of a report countable.
-#:
-#: `priced_model` is the other half of that claim: *which* rate produced the estimate.
-#: It is usually the model the turn reported, but not always — a turn whose harness
-#: recorded an alias (`sonnet`) is priced by the concrete id its session store names, and
-#: an estimate whose provenance is invisible is one nobody can check or correct.
 _DERIVED_SPAN_COLUMNS = ("est_cost_usd", "priced_model")
 
-#: Every column `insert_spans` writes past the plain ones, in order.
 _SPAN_VALUE_COLUMNS = (
     *(column for _key, column, _cast in _PROMOTED_SPAN_COLUMNS),
     *_PROMOTED_SPAN_FIELDS,
@@ -314,14 +243,7 @@ _SPAN_VALUE_COLUMNS = (
 
 
 def _promoted(span: dict[str, Any], attrs: dict[str, Any]) -> tuple[Any, ...]:
-    """The promoted and derived columns' values for one span, in `_SPAN_VALUE_COLUMNS` order.
-
-    A missing or unparseable field yields NULL, never 0. Workhorse's normalizer draws
-    the same distinction on purpose (`runner/usage.py`): a harness that does not report
-    money reports nothing rather than `0.0`, because averaging a real zero together
-    with an unknown understates spend. Coercing to 0 here would throw that away at the
-    last step.
-    """
+    """The promoted and derived columns' values for one span, in `_SPAN_VALUE_COLUMNS` order."""
     values: dict[str, Any] = {}
     for key, column, cast in _PROMOTED_SPAN_COLUMNS:
         raw = attrs.get(key)
@@ -342,12 +264,7 @@ def _promoted(span: dict[str, Any], attrs: dict[str, Any]) -> tuple[Any, ...]:
 
 
 def _estimated(model: str, tokens: dict[str, Any]) -> float | None:
-    """This turn's tokens at the rate card, or NULL when the model is not in it.
-
-    Reads the token counts already cast for the promoted columns rather than the raw
-    attributes, so the estimate and the counts a report shows beside it can never
-    disagree about what the turn used.
-    """
+    """This turn's tokens at the rate card, or NULL when the model is not in it."""
     return prices.estimate(
         model,
         tokens.get("input_tokens"),
@@ -357,13 +274,8 @@ def _estimated(model: str, tokens: dict[str, Any]) -> float | None:
     )
 
 
-# Columns added to `attend_sessions` after it first shipped — same reason as
-# `_ADDED_SPAN_COLUMNS`. Empty until the first one is added; the entry in `_migrate`
-# is what makes adding one a one-line change rather than a schema question.
 _ADDED_ATTEND_COLUMNS: tuple[tuple[str, str], ...] = ()
 
-# Columns added to `dispatch_items` after it first shipped — same reason as
-# `_ADDED_ATTEND_COLUMNS`.
 _ADDED_DISPATCH_COLUMNS: tuple[tuple[str, str], ...] = ()
 
 
@@ -383,20 +295,12 @@ def _migrate(conn: sqlite3.Connection) -> None:
 _P = ParamSpec("_P")
 _T = TypeVar("_T")
 
-# How long after recycling the connection a further failure is answered by raising
-# rather than by reopening again. A wedged handle heals on the first reopen; a broken
-# *file* (disk full, corruption) would otherwise close-and-open on every request.
 REOPEN_COOLDOWN_S = 5.0
 
 
 @dataclass(frozen=True, slots=True)
 class StoreHealth:
-    """What the store would say if asked whether it is still storing.
-
-    ``ok`` is not "the last call succeeded" but "nothing has failed since the last
-    successful reopen" — the distinction that matters after a two-week serve, where
-    a single healed blip and an hour of dropped batches look identical in a counter.
-    """
+    """What the store would say if asked whether it is still storing."""
 
     ok: bool
     path: str
@@ -412,35 +316,13 @@ class StoreHealth:
 
 
 class _Store:
-    """The process's one SQLite handle, and the discipline that keeps it usable.
-
-    Three things are load-bearing and each of them was learned from a serve that had
-    silently stopped storing 13 hours earlier:
-
-    * ``isolation_level=None``. Under Python's legacy implicit-transaction mode, any
-      exception between the implicit ``BEGIN`` and the ``commit()`` leaves the
-      connection inside a transaction; every later ``SELECT`` joins it and re-pins the
-      read snapshot, and every later write dies of ``SQLITE_BUSY_SNAPSHOT`` — forever,
-      because nothing reopened. Autocommit removes the failure mode rather than
-      handling it.
-    * one ``RLock`` around every statement. ``check_same_thread=False`` buys memory
-      safety from SQLite's serialized mode and nothing at the transaction level, and a
-      connection has exactly one transaction: without the lock a worker thread's write
-      and the event loop's inline read are the same transaction. It is also what makes
-      :meth:`recycle` safe — closing a handle another thread is mid-``executemany`` on
-      is not a recovery.
-    * :meth:`recycle`. The handle is disposable; the file is not.
-    """
+    """The process's one SQLite handle, and the discipline that keeps it usable."""
 
     def __init__(self, monotonic: Callable[[], float] = time.monotonic) -> None:
-        # Injected so the reopen cooldown is testable without a real sleep.
         self.monotonic = monotonic
         self.lock = threading.RLock()
         self._conn: sqlite3.Connection | None = None
         self._path: Path | None = None
-        # Read handles, one per calling thread and outside `lock` entirely — see
-        # `read_connection`. `_generation` is how they learn the writer's handle
-        # was thrown away underneath them.
         self._readers = threading.local()
         self._generation = 0
         self._reopens = 0
@@ -458,8 +340,6 @@ class _Store:
         with self.lock:
             path = db_path()
             if self._conn is not None and self._path != path:
-                # `db_path()` is read per call so a test's `$GROOM_DB` takes effect;
-                # honour that here too rather than answering the old file.
                 self._close_quietly()
             if self._conn is None:
                 self._conn = self._open(path)
@@ -471,16 +351,7 @@ class _Store:
         conn = sqlite3.connect(path, check_same_thread=False, isolation_level=None)
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA journal_mode=WAL")
-        # An fsync per commit is the wrong trade for this file. Every OTLP batch is one
-        # commit, so `FULL` costs a disk sync per export of every live run — and what it
-        # buys is durability of the last few commits across a power cut, over a table
-        # that is explicitly not the record of truth (each run's `events.jsonl` is).
-        # `NORMAL` under WAL cannot corrupt the database; it can only lose commits newer
-        # than the last checkpoint, which the next export replaces anyway.
         conn.execute("PRAGMA synchronous=NORMAL")
-        # The CLI, `groom export` and the test suite are separate processes on this same
-        # file; without a busy timeout a concurrent writer is an instant "database is
-        # locked" rather than a wait of a few milliseconds.
         conn.execute("PRAGMA busy_timeout=5000")
         conn.executescript(_SCHEMA)
         _migrate(conn)
@@ -488,12 +359,7 @@ class _Store:
 
     @contextmanager
     def writing(self) -> Iterator[sqlite3.Connection]:
-        """One atomic write. `BEGIN IMMEDIATE`, and `ROLLBACK` on any exception.
-
-        ``IMMEDIATE`` rather than a deferred ``BEGIN``: the write lock is taken up
-        front, so a transaction cannot fail half-way through on a snapshot upgrade —
-        which is the shape that used to strand one.
-        """
+        """One atomic write."""
         with self.lock:
             conn = self.connect()
             conn.execute("BEGIN IMMEDIATE")
@@ -507,13 +373,7 @@ class _Store:
             self._last_write_ts = time.time()
 
     def recycle(self, exc: BaseException, where: str) -> None:
-        """Throw the handle away so the next call opens a fresh one.
-
-        Raises the original exception instead when it is called again inside
-        ``REOPEN_COOLDOWN_S``: one reopen fixes a wedged connection, and a second
-        one this soon means the file itself is the problem, which reopening will
-        not fix and thrashing will only obscure.
-        """
+        """Throw the handle away so the next call opens a fresh one."""
         with self.lock:
             self._failures += 1
             self._last_error = f"{type(exc).__name__}: {exc}"
@@ -532,9 +392,7 @@ class _Store:
             )
 
     def reset(self) -> None:
-        """Close the connection and forget every failure with it (tests switch
-        ``$GROOM_DB`` between cases, and a counter that survived would be another
-        case's)."""
+        """Close the connection and forget every failure with it (tests switch ``$GROOM_DB`` between cases, and a counter that survived would be another case's)."""
         with self.lock:
             self._close_quietly()
             self.retire_reader()
@@ -556,23 +414,10 @@ class _Store:
             with suppress(sqlite3.Error):
                 self._conn.close()
         self._conn = None
-        # Readers are not closed from here: another thread may be mid-statement on
-        # one, and closing a connection under it is a crash rather than a cleanup.
-        # They retire themselves the next time they see a generation that has moved.
         self._generation += 1
 
     def read_connection(self) -> sqlite3.Connection:
-        """A read-only connection belonging to the calling thread.
-
-        The fast path takes no lock at all — that is the entire point. Both checks
-        it makes are plain attribute reads, so a read stays fast while another
-        thread holds the write lock for however long its disk makes it.
-
-        Per thread rather than shared because a sqlite3 connection carries one
-        transaction and one snapshot: handing the same one to two pool threads
-        interleaves their statements. The pools are small and long-lived, so this
-        is a handful of handles for the life of the process, not one per request.
-        """
+        """A read-only connection belonging to the calling thread."""
         path = db_path()
         cached: _Reader | None = getattr(self._readers, "handle", None)
         if (
@@ -583,26 +428,14 @@ class _Store:
             return cached.conn
         self.retire_reader()
         with self.lock:
-            # Only the writer creates the file, applies the schema and runs the
-            # migrations, and only a read-write connection can recover a hot WAL —
-            # none of which a `query_only` handle is allowed to do. This is the one
-            # place a read touches the lock, once per thread, on its first query.
             self.connect()
             if not (self._path or path).exists():
-                # A writer handle can outlive its file: sqlite keeps the descriptor
-                # valid after the path is unlinked, so writes still land somewhere
-                # nothing can be opened by name any more. Reopening re-creates the
-                # file and re-applies the schema, which is what the reader needs to
-                # have something to attach to at all.
                 self._close_quietly()
                 self.connect()
             generation, opened = self._generation, self._path or path
         conn = sqlite3.connect(opened, check_same_thread=False, isolation_level=None)
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA busy_timeout=5000")
-        # A write sent down the read path should fail here and name itself, rather
-        # than quietly contend for the file with the writer this split exists to
-        # keep out of the way.
         conn.execute("PRAGMA query_only=1")
         self._readers.handle = _Reader(conn, generation, opened)
         return conn
@@ -616,16 +449,7 @@ class _Store:
                 cached.conn.close()
 
     def recycle_reader(self, exc: BaseException, where: str) -> None:
-        """A read failed: retire that handle, and leave the writer alone.
-
-        Deliberately not :meth:`recycle`. A reader's broken handle says nothing
-        about the writer's, and closing the writer here would abort whatever
-        transaction another thread has open on it.
-
-        The counters are stamped without the lock: they feed a health display, and
-        taking the write lock to record a number is exactly the wait this path was
-        built to avoid. A lost increment under a race is the cheaper of the two.
-        """
+        """A read failed: retire that handle, and leave the writer alone."""
         self._failures += 1
         self._last_error = f"{type(exc).__name__}: {exc}"
         self._last_error_ts = time.time()
@@ -633,8 +457,7 @@ class _Store:
         self.retire_reader()
 
     def note_ok(self) -> None:
-        """Stamp a statement that ran. What :attr:`StoreHealth.ok` is measured against:
-        a failure older than the last good call has been healed, one newer has not."""
+        """Stamp a statement that ran."""
         self._last_ok_ts = time.time()
 
     def note_prune(self, ts: float | None = None) -> None:
@@ -648,8 +471,6 @@ class _Store:
         wal = path.with_name(path.name + "-wal")
         wal_bytes = wal.stat().st_size if wal.exists() else 0
         return StoreHealth(
-            # A failure older than the last statement that ran is history; one newer
-            # than it is the store being down right now.
             ok=self._last_error_ts <= self._last_ok_ts,
             path=str(path),
             last_ok_ts=self._last_ok_ts,
@@ -677,15 +498,8 @@ _STORE = _Store()
 
 
 def _resilient(fn: Callable[_P, _T]) -> Callable[_P, _T]:
-    """Serialize a store call, and heal the connection under it exactly once.
+    """Serialize a store call, and heal the connection under it exactly once."""
 
-    The retry calls the *undecorated* body, so depth is bounded at two by
-    construction rather than by a counter. Decorate leaf functions only: a decorated
-    function that calls another one multiplies attempts.
-    """
-
-    # Read once, and defensively: `Callable` is not necessarily a function, and the
-    # name is only ever a label in a log line.
     name = getattr(fn, "__name__", "store call")
 
     @functools.wraps(fn)
@@ -694,11 +508,6 @@ def _resilient(fn: Callable[_P, _T]) -> Callable[_P, _T]:
             try:
                 result = fn(*args, **kwargs)
             except sqlite3.Error as exc:
-                # `sqlite3.Error`, the base, deliberately: the wedge arrives as
-                # OperationalError and a recycled handle as ProgrammingError, and
-                # sorting "recoverable" from the rest by message or errno is a guess.
-                # A genuine IntegrityError fails the same way on the retry and
-                # propagates, costing one reopen.
                 _STORE.recycle(exc, name)
             else:
                 _STORE.note_ok()
@@ -711,15 +520,7 @@ def _resilient(fn: Callable[_P, _T]) -> Callable[_P, _T]:
 
 
 def _reading(fn: Callable[_P, _T]) -> Callable[_P, _T]:
-    """:func:`_resilient` for a query: heal once, and take no lock doing it.
-
-    Same one-retry contract, because a read hits the same disposable handle — but
-    without the serialisation, since :meth:`_Store.read_connection` gives this
-    thread a connection nothing else is using.
-
-    Decorate leaf functions only, as with :func:`_resilient`: a decorated function
-    that calls another one multiplies attempts.
-    """
+    """:func:`_resilient` for a query: heal once, and take no lock doing it."""
     name = getattr(fn, "__name__", "store read")
 
     @functools.wraps(fn)
@@ -739,27 +540,7 @@ def _reading(fn: Callable[_P, _T]) -> Callable[_P, _T]:
 
 
 def _noop_on_empty(zero: Any) -> Callable[[Callable[_P, _T]], Callable[_P, _T]]:
-    """Answer a batch with nothing in it *before* :func:`_resilient` takes the lock.
-
-    This reads as redundant with the ``if not rows: return`` at the top of each
-    writer, and is not. That guard runs with the store lock already held, so an
-    export carrying zero rows still queues behind whatever write is in flight —
-    and against a saturated host that wait is seconds, spent on work that was
-    always going to be nothing. Empty exports are also the common case, not the
-    rare one: every idle exporter in a fleet of concurrent runs sends them on its
-    own schedule, and each one costs a thread from the ingest pool for as long as
-    it waits. Exhaust that pool and the dashboard's own live tick, which reaches
-    the store the same way, stops sending frames.
-
-    The batch is taken as the first positional argument. A caller that passes it
-    by keyword falls through to the wrapped function, whose own guard still
-    holds — slower, never wrong.
-
-    ``zero`` is the value the wrapped function itself returns for an empty batch,
-    typed ``Any`` because binding it to the return variable narrows it to the
-    literal it was written as and then rejects the wider annotation on the
-    function it is decorating.
-    """
+    """Answer a batch with nothing in it *before* :func:`_resilient` takes the lock."""
 
     def decorate(fn: Callable[_P, _T]) -> Callable[_P, _T]:
         @functools.wraps(fn)
@@ -782,8 +563,7 @@ def _read_connection() -> sqlite3.Connection:
 
 
 def reset() -> None:
-    """Close the module connection so the next call reopens (tests switch
-    GROOM_DB between cases)."""
+    """Close the module connection so the next call reopens (tests switch GROOM_DB between cases)."""
     _STORE.reset()
 
 
@@ -800,8 +580,7 @@ def health_dict() -> dict[str, Any]:
 @_noop_on_empty(None)
 @_resilient
 def insert_spans(spans: list[dict[str, Any]]) -> None:
-    """Upsert decoded spans (see groom.otlp.parse_traces). INSERT OR REPLACE:
-    an exporter retry re-sending a batch must not error or duplicate."""
+    """Upsert decoded spans (see groom.otlp.parse_traces)."""
     if not spans:
         return
     with _STORE.writing() as conn:
@@ -836,26 +615,7 @@ def insert_spans(spans: list[dict[str, Any]]) -> None:
 
 
 def insert_metrics(points: list[dict[str, Any]]) -> None:
-    """Append decoded metric points (see groom.otlp.parse_metrics).
-
-    Plain INSERT, and a point has no id to key on, so a batch the receiver answered
-    503 to and the exporter re-sent can land twice. That is the trade the 503 buys:
-    every reader of this table asks it by recency or by aggregate, where a duplicate
-    is cosmetic, and the alternative on the other side of the choice is a batch the
-    exporter drops for good.
-
-    The pure liveness ticks (``LIVENESS_METRICS``) are dropped here, not stored:
-    they were ~80% of the table's rows and nothing reads their history — the live
-    picture is the in-memory cache groom.alerts folds them into at ingest. Filtered
-    at this layer rather than in the OTLP handler because that handler's other
-    consumer (``alerts.ingest_metrics``) must keep seeing them.
-
-    The filter runs here, ahead of the store lock, rather than inside the write:
-    a batch that is entirely liveness ticks is a batch with no rows to store, and
-    since those ticks are most of what arrives, that is the shape a busy fleet
-    sends most often. Taking the lock to discover it has nothing to do is the
-    contention this split exists to avoid — see :func:`_noop_on_empty`.
-    """
+    """Append decoded metric points (see groom.otlp.parse_metrics)."""
     points = [p for p in points if p.get("name") not in LIVENESS_METRICS]
     if not points:
         return
@@ -890,14 +650,7 @@ def _log_attribute(attrs: dict[str, Any], key: str) -> str | None:
 @_noop_on_empty(None)
 @_resilient
 def insert_logs(records: list[dict[str, Any]]) -> None:
-    """Append decoded log records (see groom.otlp.parse_logs).
-
-    Plain INSERT, unlike spans: a log record has no id to key on and there is no
-    natural primary key to invent. The exporter *does* retry a 5xx, so a batch this
-    store refused can arrive twice — accepted deliberately (see
-    :func:`insert_metrics`) rather than paid for with a synthetic dedup key and the
-    schema migration one would need.
-    """
+    """Append decoded log records (see groom.otlp.parse_logs)."""
     if not records:
         return
     with _STORE.writing() as conn:
@@ -930,7 +683,6 @@ def insert_logs(records: list[dict[str, Any]]) -> None:
         )
 
 
-# Ordered loudest-first; an index into this is "at least this severe".
 _SEVERITY_ORDER = ("FATAL", "ERROR", "WARNING", "INFO", "DEBUG", "TRACE")
 
 
@@ -943,13 +695,7 @@ def query_logs(
     limit: int = 200,
     before_ts: float | None = None,
 ) -> list[dict[str, Any]]:
-    """The log search behind ``groom logs``, newest first.
-
-    ``level`` is a floor, not an equality match — asking for WARNING and being
-    shown warnings but no errors would be the opposite of useful. ``before_ts`` is
-    the keyset cursor: pass the ``ts`` of the last row of the previous page to fetch
-    the next, so a chatty run's logs page instead of loading a whole run at once.
-    """
+    """The log search behind ``groom logs``, newest first."""
     where, params = [], []
     if run:
         where.append("run_id = ?")
@@ -983,18 +729,7 @@ def query_logs(
 
 
 def _promoted_or_attr(column: str, key: str) -> str:
-    """The promoted column, falling back to the attribute it was promoted from.
-
-    The columns are populated at ingest and deliberately not backfilled, so every
-    span already in the store has NULL in them. Without this fallback an aggregate
-    would read as "this run cost nothing" for the whole retention window after the
-    columns ship — a wrong answer, and a much worse one than a slow answer, since
-    nothing about it looks like missing data.
-
-    Note the quoting. OTel attribute keys are flat strings that merely look nested,
-    so the literal key is `usage.output_tokens` and the JSON path has to quote it;
-    unquoted, SQLite reads the dot as navigation and silently returns NULL.
-    """
+    """The promoted column, falling back to the attribute it was promoted from."""
     return f"COALESCE({column}, json_extract(attrs_json, '$.\"{key}\"'))"
 
 
@@ -1007,10 +742,6 @@ _cache_write = _promoted_or_attr(
     "cache_creation_tokens", "usage.cache_creation_input_tokens"
 )
 
-#: `est_cost_usd` is derived here rather than reported by a harness, so — unlike the
-#: promoted columns — there is no attribute to fall back to for a span that predates
-#: it. History gets an estimate only by being repriced, which is why this is a command
-#: and not a COALESCE.
 _ESTIMABLE = (
     "name = 'agent_turn' AND ("
     f"{_input} IS NOT NULL OR {_output} IS NOT NULL"
@@ -1020,11 +751,7 @@ _ESTIMABLE = (
 
 @_reading
 def unpriced_models(run: str = "") -> dict[str, int]:
-    """Models with turns the rate card cannot price, and how many turns each has.
-
-    Answers "what would I gain by adding a rate" without writing anything, which is
-    what makes it safe to print from a bare `groom prices`.
-    """
+    """Models with turns the rate card cannot price, and how many turns each has."""
     clauses = [_ESTIMABLE]
     params: list[Any] = []
     if run:
@@ -1032,8 +759,6 @@ def unpriced_models(run: str = "") -> dict[str, int]:
         params.append(run)
     conn = _read_connection()
     rows = conn.execute(
-        # By the rate that priced it where there is one, so a turn whose alias was
-        # resolved against its session store stops reading as a gap in the card.
         "SELECT COALESCE(priced_model, json_extract(attrs_json, '$.model')) AS model,"  # noqa: S608
         f" COUNT(*) AS turns FROM spans WHERE {' AND '.join(clauses)} GROUP BY model",
         params,
@@ -1047,18 +772,7 @@ def unpriced_models(run: str = "") -> dict[str, int]:
 
 
 def reprice(run: str = "", missing_only: bool = True) -> dict[str, Any]:
-    """Recompute `est_cost_usd` over turns already in the store.
-
-    Two occasions want this and they want opposite defaults, so both are here: after
-    adding a model to `prices.toml` only the rows that never got an estimate need one
-    (`missing_only`, the default), and after *correcting* a rate every row priced at
-    the old one is wrong (`missing_only=False`).
-
-    Returns what was touched and, more usefully, what could not be: `unpriced` maps
-    each model with token counts and no rate to how many of its turns are affected.
-    That list is the answer to "what do I add to the override file", and printing it
-    is the only thing that keeps an estimate's coverage from silently being a subset.
-    """
+    """Recompute `est_cost_usd` over turns already in the store."""
     clauses = [_ESTIMABLE]
     params: list[Any] = []
     if run:
@@ -1070,9 +784,6 @@ def reprice(run: str = "", missing_only: bool = True) -> dict[str, Any]:
     updates: list[tuple[float, str, str]] = []
     unpriced: Counter[str] = Counter()
     for row in rows:
-        # `priced_model` first: a turn whose alias was resolved against its session store
-        # must reprice at the concrete model's rate, not fall back to the alias the
-        # harness reported and lose the estimate it already has.
         model = str(row["priced_model"] or row["model"] or "")
         estimated = _estimated(model, dict(row))
         if estimated is None:
@@ -1109,11 +820,7 @@ def _estimable_turns(clauses: list[str], params: list[Any]) -> list[sqlite3.Row]
 
 @_reading
 def unpriceable_turns(run: str = "") -> list[dict[str, Any]]:
-    """Turns with tokens, no estimate, and a model no rate covers.
-
-    The input to any recovery that goes looking outside the span for what the model
-    really was — the turn's own attributes have already been shown not to answer.
-    """
+    """Turns with tokens, no estimate, and a model no rate covers."""
     clauses = [_ESTIMABLE, "est_cost_usd IS NULL"]
     params: list[Any] = []
     if run:
@@ -1128,11 +835,7 @@ def unpriceable_turns(run: str = "") -> list[dict[str, Any]]:
 
 @_resilient
 def apply_estimates(updates: list[tuple[float, str, str]]) -> int:
-    """Write `(est_cost_usd, priced_model, span_id)` triples; rows touched.
-
-    The model is written with the estimate and never separately: a stored estimate whose
-    rate cannot be named is one no later pass can recompute or disprove.
-    """
+    """Write `(est_cost_usd, priced_model, span_id)` triples; rows touched."""
     with _STORE.writing() as conn:
         conn.executemany(
             "UPDATE spans SET est_cost_usd = ?, priced_model = ? WHERE span_id = ?",
@@ -1143,43 +846,7 @@ def apply_estimates(updates: list[tuple[float, str, str]]) -> int:
 
 @_reading
 def node_costs(run: str = "", limit: int = 100) -> list[dict[str, Any]]:
-    """Per-node agent spend for a run: where the money and the rework went.
-
-    Only `agent_turn` spans are counted. A node span wraps its turn, so totalling
-    both would double every figure; and a node with no turn under it (an in-process
-    `self.call`) spent no agent money by definition.
-
-    `turns_per_work_id` is the rework signal. A workflow stamps `work_id` as a label
-    (the coder workflow uses the story slug), so a node that averages one turn per
-    work item ran once per story and a node averaging four re-ran three times. That
-    ratio, not the raw turn count, is what separates an expensive node from a
-    *looping* one.
-
-    Cost is summed over rows where it is non-NULL, and two counts say how trustworthy
-    that sum is — because a harness can decline to price a turn in two different ways
-    and only one of them is visible as a gap:
-
-    * `cost_turns` — turns carrying any cost at all. codex reports **none** under
-      subscription auth, so on a codex run this is 0 and every `cost_usd` is NULL.
-    * `zero_cost_turns` — turns that reported cost `0` *while reporting output tokens*.
-      This is the dangerous one. opencode's cost depends on the provider behind it, not
-      on opencode: through OpenRouter a turn reports real money, and through a
-      subscription OAuth provider the identical turn reports a literal `0`. A NULL is
-      excluded from the sum and shows up as a gap; a zero is summed, so a run that
-      spent forty minutes totals $0.00 and looks complete. A turn that emitted tokens
-      did not cost nothing — it was not priced. (A genuinely free model reports the
-      same way, which is why this is surfaced rather than corrected.)
-
-    So the unit of cost coverage is **harness × provider**, not harness. `backends`
-    names who ran each node; the CLI says out loud when either count implies the total
-    is partial.
-
-    `est_cost_usd` is the same turns priced at `groom.prices`' rate card, over the
-    `est_turns` of them whose model it knows. It is reported *beside* `cost_usd` and
-    never added to it: one is what a vendor billed and the other is what tokens are
-    worth, and a column mixing them answers nothing. Rows only carry it once
-    :func:`reprice` has run over them.
-    """
+    """Per-node agent spend for a run: where the money and the rework went."""
     clauses, params = ["name = 'agent_turn'"], []
     if run:
         clauses.append("run_id = ?")
@@ -1198,9 +865,6 @@ def node_costs(run: str = "", limit: int = 100) -> list[dict[str, Any]]:
         f" SUM({_duration}) / 60000.0 AS minutes,"
         f" SUM({_output}) AS output_tokens"
         f" FROM spans WHERE {' AND '.join(clauses)}"
-        # Minutes, not turns, breaks the tie: on a run where nothing priced itself the
-        # cost key is uniformly NULL, and ranking the remainder by turn count would put
-        # a node with many cheap turns above one that spent an hour in three.
         " GROUP BY node ORDER BY cost_usd DESC NULLS LAST, minutes DESC LIMIT ?",
         (*params, max(1, min(int(limit), 1000))),
     ).fetchall()
@@ -1217,10 +881,6 @@ def node_costs(run: str = "", limit: int = 100) -> list[dict[str, Any]]:
     ]
 
 
-#: Exit-rate thresholds for :func:`loop_convergence`. A gate that accepts four times
-#: in five is doing its job; one that accepts one time in five is not a gate, it is a
-#: budget being spent. The boundaries are round numbers chosen to be legible, not
-#: fitted — the number to act on is `excess_cost_usd`, and the verdict only sorts.
 _LOOP_VERDICTS = (
     (0.8, "converged"),
     (0.5, "loose"),
@@ -1228,22 +888,12 @@ _LOOP_VERDICTS = (
     (0.0, "thrashing"),
 )
 
-#: Below this many work items a lap distribution says nothing: one story that took
-#: four passes is an anecdote, and calling it "thrashing" would put noise at the top
-#: of a report whose whole purpose is ranking.
 MIN_LOOP_WORK_ITEMS = 3
 
 
 @dataclass(frozen=True, slots=True)
 class Lap:
-    """One turn of a loop, as the three numbers ranking it needs.
-
-    `cost` is what the harness billed and `est` is what `groom.prices` says the tokens
-    were worth; `suspect_zero` marks the turn that reported exactly $0 while emitting
-    output. They stay three fields rather than one resolved number because collapsing
-    them here would decide, inside the store, whether a report is quoting a bill or a
-    rate card — a distinction the caller has to be able to label.
-    """
+    """One turn of a loop, as the three numbers ranking it needs."""
 
     cost: float | None
     suspect_zero: bool
@@ -1257,66 +907,7 @@ def loop_convergence(
     min_work_items: int = MIN_LOOP_WORK_ITEMS,
     since_ts: float | None = None,
 ) -> list[dict[str, Any]]:
-    """Per-node lap distributions: which review→rework loops converge, and what the
-    ones that don't are costing.
-
-    `node_costs` reports `turns_per_work_id`, which is this function's `mean_laps`.
-    The mean alone cannot separate the two ways a node averages four turns — *every*
-    work item taking four passes, versus most taking one and a handful taking twenty —
-    and those want opposite fixes. So the unit here is the **lap count per work item**,
-    and what is reported is its shape.
-
-    The headline is `exit_rate` = `work_items / turns`: the probability that any given
-    lap is the last one for that work item. It is the maximum-likelihood estimate of
-    the per-lap acceptance probability of a memoryless loop, which is what a review
-    gate is — it re-reads a rewritten artifact with no memory of how many times it has
-    already objected. Read it as *how often this gate says yes*. A gate at 0.8 accepts
-    four times in five; a gate at 0.2 asks five times before it is satisfied, and the
-    four refusals are the churn.
-
-    `since_ts` bounds the window from below. A caller that reuses a run id — a benchmark
-    harness replays the same trial under the same name every round — otherwise pools every
-    round that ever ran under that id, and the union reads as one very expensive round.
-
-    `excess_turns` and `excess_cost_usd` are the laps after the first, and their money
-    — the part of the bill that exists only because the loop did not converge. That is
-    the number to rank by; the verdict is a label on it. Cost is attributed per turn
-    rather than pro-rated, so a loop whose repeat laps are cheaper than its first (a
-    rework prompt is usually shorter than the original) is not overcharged.
-
-    `max_laps` and `at_max` are reported without a verdict attached, deliberately. A
-    loop bounded by a `MAX_*` budget is censored — every work item that would have run
-    longer stops at exactly the cap — so a pile at the maximum is *suggestive* of a
-    budget being exhausted rather than a gate being satisfied. It is only suggestive:
-    this module cannot see the workflow's constants, and a naturally long tail lands in
-    the same place. Whoever reads a big `at_max` should go look at the `MAX_*` for that
-    loop, which is why the number is here at all.
-
-    Work items are keyed by `(run_id, work_id)`. Story slugs repeat across runs — every
-    coder run has an `01-*` — so keying on the slug alone would silently merge one
-    story's laps in three runs into a single nine-lap item and report a converging loop
-    as a thrashing one.
-
-    Two counts keep the ranking honest, because a harness can decline to price a turn
-    two ways and only one of them leaves a hole (`node_costs` documents this at length).
-    `priced_turns` is the turns reporting any cost; `zero_cost_turns` is the turns
-    reporting exactly `0` *while emitting output tokens*, which sum happily and make a
-    thrashing node read as free. Under subscription auth a node can churn hundreds of
-    laps for a reported $0, so ordering by `excess_cost_usd` alone would sort the worst
-    loop in such a run to the bottom. `excess_turns` breaks the tie, and the CLI says
-    out loud when the money is only partly observed.
-
-    `est_cost_usd` / `excess_est_cost_usd` are the same two sums over `groom.prices`'
-    rate card instead of the harness's report, across the `est_turns` of them whose
-    model the table names. They are reported *beside* the billed figures and never
-    added to them, exactly as in `node_costs`: one is what a vendor charged, the other
-    is what the tokens are worth, and a loop under subscription auth has only the
-    second. That is what makes a `$0` backend rankable at all — but only once its model
-    has rates, so a report quoting the estimate must quote `est_turns` with it.
-
-    Nodes with fewer than `min_work_items` items are dropped: see
-    :data:`MIN_LOOP_WORK_ITEMS`.
-    """
+    """Per-node lap distributions: which review→rework loops converge, and what the ones that don't are costing."""
     clauses = [
         "name = 'agent_turn'",
         "json_extract(attrs_json, '$.work_id') IS NOT NULL",
@@ -1338,17 +929,12 @@ def loop_convergence(
             " json_extract(attrs_json, '$.work_id') AS work_id,"
             f" {_cost} AS cost_usd, {_cost} = 0 AND COALESCE({_output}, 0) > 0 AS suspect_zero,"
             " est_cost_usd, start_ts"
-            # The tiebreaker is not decoration. Laps are ordered so `laps[1:]` is "every pass
-            # after the first", and `spans_start` is a DESC index: on equal `start_ts` sqlite
-            # walks it backwards and hands back the *last* arrival first, so the excess sums
-            # the wrong lap. `end_ts` then arrival order settles it.
             f" FROM spans WHERE {' AND '.join(clauses)} ORDER BY start_ts, end_ts, rowid",
             params,
         )
         .fetchall()
     )
 
-    # node -> (run_id, work_id) -> [(cost, suspect_zero, est_cost) of each lap, in order]
     laps: dict[str, dict[tuple[str, str], list[Lap]]] = {}
     for row in rows:
         item = (row["run_id"], str(row["work_id"]))
@@ -1371,7 +957,6 @@ def _loop_row(node: str, items: dict[tuple[str, str], list[Lap]]) -> dict[str, A
     every = [lap for laps in items.values() for lap in laps]
     priced = [lap.cost for lap in every if lap.cost is not None]
     estimated = [lap.est for lap in every if lap.est is not None]
-    # The laps after the first, by their own cost — not the total pro-rated.
     excess = [
         lap.cost for laps in items.values() for lap in laps[1:] if lap.cost is not None
     ]
@@ -1485,25 +1070,7 @@ def _profile_groups(
 
 
 def _profile_verdict_decisions(spans: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """How many times each gate actually reached each verdict, cost aside.
-
-    `_profile_groups` answers "what did this verdict cost", and it can only answer it over
-    `agent_turn` spans, because turns are what carry a price. That makes it the wrong
-    denominator for "how often": a label is stamped on every span opened after the state
-    entry that set it, so a verdict routing to another agent turn is counted and a verdict
-    routing to deterministic work is not. The bias is not random — it is exactly toward the
-    expensive outcomes, so a rubber-stamp gate and a gate that changes everything can look
-    alike. `qa.audit_verdict=stands` sat on 99 spans and 0 turns while `refuted` showed 4.
-
-    A decision is a *transition*: the run of consecutive spans carrying one value counts
-    once, and a value is re-counted after the dimension is cleared, which is how a gate
-    reaching the same verdict on the next work item stays two decisions rather than one.
-    Absence is what clearing looks like on the wire — `verdict_labels` emits only non-empty
-    strings and every span is stamped with the whole current set.
-
-    Traces are tracked separately so two flows in flight cannot alias each other's verdicts.
-    Spans must arrive in start order; `run_profile` selects them that way.
-    """
+    """How many times each gate actually reached each verdict, cost aside."""
     current: dict[tuple[str, str], str] = {}
     counts: Counter[tuple[str, str]] = Counter()
     for span in spans:
@@ -1587,9 +1154,6 @@ def _profile_time_partition(
 
     points = sorted({start_ts, end_ts, *events})
     active: Counter[str] = Counter()
-    # Seconds, not a count: a `Counter` here is an int-valued mapping that happens to
-    # accept `+=` on a float, so every duration accumulated below would be silently
-    # truncated the moment anything read it as the int its type says it is.
     totals: defaultdict[str, float] = defaultdict(float)
     waits: defaultdict[str, float] = defaultdict(float)
     for left, right in zip(points, points[1:], strict=False):
@@ -1631,12 +1195,7 @@ def _profile_time_partition(
 
 @_reading
 def run_profile(run: str) -> dict[str, Any] | None:
-    """Partition one run's retained wall time and aggregate its agent rework.
-
-    This reads every span for the named run directly. Reusing :func:`query_spans`
-    would silently truncate a long run at its search-page limit and produce a precise-
-    looking partial total.
-    """
+    """Partition one run's retained wall time and aggregate its agent rework."""
     if not run:
         return None
     rows = (
@@ -1652,9 +1211,6 @@ def run_profile(run: str) -> dict[str, Any] | None:
     spans = [
         {**dict(row), "attrs": json.loads(row["attrs_json"] or "{}")} for row in rows
     ]
-    # Gauges only, now that the heartbeat ticks are never stored: a run that died
-    # before its first gauge export contributes no metric bounds, and its wall
-    # clock falls back to the span envelope alone.
     metric_bounds = (
         _read_connection()
         .execute(
@@ -1688,8 +1244,6 @@ def run_profile(run: str) -> dict[str, Any] | None:
     }
 
 
-# The spans-table columns, named explicitly rather than `SELECT *` so a schema
-# migration can't silently change a query result's shape.
 _SPAN_COLUMNS = (
     "span_id, trace_id, parent_id, run_id, workflow, repo, branch, node, name,"
     " run_dir, start_ts, end_ts, status, attrs_json, head_start, head_end,"
@@ -1708,11 +1262,7 @@ def query_spans(
     before_ts: float | None = None,
     since_ts: float | None = None,
 ) -> list[dict[str, Any]]:
-    """The /traces search: filter the spans table, newest first. ``slower_than``
-    is a minimum duration in seconds. ``before_ts`` is the keyset cursor — the
-    ``start_ts`` of the last row of the previous page — so a broad query pages
-    rather than materializing everything under one big LIMIT. Raw SQL against
-    groom.db remains the ad-hoc escape hatch; this covers the common questions."""
+    """The /traces search: filter the spans table, newest first."""
     clauses, params = ["1=1"], []
     if run:
         clauses.append("run_id = ?")
@@ -1775,19 +1325,7 @@ def detail_spans(run: str) -> list[dict[str, Any]]:
 def run_summaries(
     limit: int = 50, now: float | None = None, run: str = ""
 ) -> list[dict[str, Any]]:
-    """One row per run for the fleet/telemetry view: workflow, span window, and
-    span/error counts. ``run`` narrows it to a single run — the detail pane's
-    question, answered by the same aggregate.
-
-    Deliberately says nothing about whether the run is *running*. It used to,
-    via ``MAX(name LIKE 'run:%') AS finished``, which is a claim history cannot
-    support: a root span proves some session of this run_id ended, and since
-    ``--resume-run`` reuses the run_id (it comes from the run dir), that stayed
-    true forever — a resumed run read as finished while it was mid-node. Liveness
-    is a recency question and only :func:`groom.alerts.live_run_ids` answers it.
-
-    Bounded to the last ``ACTIVE_WINDOW_S`` so the GROUP BY scans recent history
-    rather than the whole retained table; older runs stay queryable via raw SQL."""
+    """One row per run for the fleet/telemetry view: workflow, span window, and span/error counts."""
     cutoff = (now if now is not None else time.time()) - ACTIVE_WINDOW_S
     params: list[Any] = [cutoff]
     run_clause = ""
@@ -1811,65 +1349,29 @@ def run_summaries(
     return [dict(row) for row in rows]
 
 
-# How stale the last heartbeat may be before a run is presumed dead. Workhorse
-# beats every ~10s, but the SDK's periodic reader only ships metrics every 60s by
-# default, so anything under ~2 export intervals would flag healthy runs. Lives
-# here (not groom.alerts, whose live_status applies it) because it is a property
-# of the telemetry stream, not of any one reader of it.
 LIVE_AFTER_S = float(os.environ.get("GROOM_LIVE_AFTER_S", "180"))
 
 
-# Path fragments that mark a run dir as a test process's, with no ambiguity:
-# pytest's tmp_path factory roots every case under `pytest-of-<user>/`, and the
-# workhorse/groom suites put their run dirs under `.workhorse-test/`. A path
-# containing one of these is not a run anyone will come back to.
 _TEST_RUN_DIR_MARKERS = ("/pytest-of-", "/.workhorse-test/", "/.groom-test/")
 
-# `tempfile.mkdtemp`'s naming: `tmp` + random suffix, as a directory sitting
-# directly in the temp root. This is the *heuristic* signal — a suite that builds
-# its own scratch dir instead of using pytest's leaves no other trace — and it is
-# why only the explicit purge consults it, never ingest.
 _PY_TEMP_DIR = re.compile(r"^tmp[A-Za-z0-9_]{6,}$")
 
 
 def _temp_roots() -> tuple[str, ...]:
-    """Temp-dir prefixes a throwaway run dir sits under.
-
-    ``/tmp`` is listed unconditionally, not just when it is this host's temp
-    root: the producer may be a container while the collector is the host, and
-    the run dir on the wire is the *producer's* path.
-    """
+    """Temp-dir prefixes a throwaway run dir sits under."""
     roots = {tempfile.gettempdir().rstrip("/"), "/tmp"}
     return tuple(f"{root}/" for root in sorted(roots) if root)
 
 
 def is_test_run_dir(run_dir: str) -> bool:
-    """Did this run dir certainly come from a test process?
-
-    Deliberately narrow, because this is the predicate the ingest path drops on
-    and a silent drop of real telemetry is worse than keeping some junk. Only
-    the unambiguous markers count; ``/tmp`` alone does not.
-
-    Workhorse already declines to export from a test process
-    (``workhorse.otel._under_test``), so this is the collector's belt-and-braces
-    half, covering producers on an older version or in a container.
-    """
+    """Did this run dir certainly come from a test process?"""
     if not run_dir:
         return False
     return any(marker in run_dir for marker in _TEST_RUN_DIR_MARKERS)
 
 
 def is_scratch_run_dir(run_dir: str) -> bool:
-    """Does this run dir look throwaway — a certain test dir, or a Python temp one?
-
-    The wider net :func:`purge_test_runs` casts. It catches what
-    :func:`is_test_run_dir` cannot: a suite that calls ``tempfile.mkdtemp``
-    itself, which is how the biggest single junk run in a real store
-    (150k+ spans) was written. It is a heuristic — a genuine run launched from a
-    ``mkdtemp`` directory matches too — so it is confined to a command the
-    operator runs deliberately and can preview with ``--dry-run``, rather than
-    to the ingest path where the same guess would delete evidence unasked.
-    """
+    """Does this run dir look throwaway — a certain test dir, or a Python temp one?"""
     if is_test_run_dir(run_dir):
         return True
     for root in _temp_roots():
@@ -1880,13 +1382,7 @@ def is_scratch_run_dir(run_dir: str) -> bool:
 
 @_reading
 def _test_run_ids() -> set[str]:
-    """The run ids whose run dir says they were throwaway (:func:`is_scratch_run_dir`).
-
-    Classified in Python rather than SQL because the predicate is a path
-    heuristic, not a LIKE pattern. Only ``spans`` and ``logs`` carry ``run_dir``
-    — ``metrics`` does not — so a run that only ever emitted heartbeats before
-    its first node completed is invisible here and is left alone.
-    """
+    """The run ids whose run dir says they were throwaway (:func:`is_scratch_run_dir`)."""
     conn = _read_connection()
     pairs: set[tuple[str, str]] = set()
     for table in ("spans", "logs"):
@@ -1907,22 +1403,12 @@ def test_run_ids() -> set[str]:
     return _test_run_ids()
 
 
-# Bound on ids per DELETE, so a store holding thousands of test runs does not
-# build one statement with thousands of parameters (SQLite caps them).
 _PURGE_CHUNK = 500
 
 
 @_resilient
 def purge_test_runs(dry_run: bool = False, vacuum: bool = True) -> dict[str, int]:
-    """Delete every span/metric/log belonging to a test run.
-
-    Returns ``{"runs": n, "spans": n, "metrics": n, "logs": n}`` — with
-    ``dry_run`` the same counts are reported and nothing is deleted.
-
-    ``vacuum`` rewrites the file afterwards: SQLite keeps freed pages for reuse,
-    so a store where test runs were most of the rows stays its old size on disk
-    until it is vacuumed, which is the visible half of the problem this solves.
-    """
+    """Delete every span/metric/log belonging to a test run."""
     run_ids = sorted(_test_run_ids())
     counts = {"runs": len(run_ids), "spans": 0, "metrics": 0, "logs": 0, "turns": 0}
 
@@ -1938,18 +1424,11 @@ def purge_test_runs(dry_run: bool = False, vacuum: bool = True) -> dict[str, int
                 counts[table] += cursor.fetchone()["n"] if dry_run else cursor.rowcount
 
     if dry_run:
-        # Counting only: a `BEGIN IMMEDIATE` here would take the write lock to
-        # answer a question that writes nothing.
         sweep(_connection())
         return counts
     with _STORE.writing() as conn:
         sweep(conn)
     if vacuum and counts["runs"]:
-        # Outside the transaction — VACUUM cannot run inside one — and under the
-        # store lock, which serialises it against every other writer. Readers hold
-        # their own connections and do not honour this lock, but each of their
-        # statements is its own autocommit read: SQLite's own file locking makes
-        # them wait out the rewrite rather than observe it half-done.
         with _STORE.lock:
             _connection().execute("VACUUM")
     return counts
@@ -1958,13 +1437,7 @@ def purge_test_runs(dry_run: bool = False, vacuum: bool = True) -> dict[str, int
 @_noop_on_empty(0)
 @_resilient
 def insert_turns(rows: list[dict[str, Any]]) -> int:
-    """Index archived turn records; how many rows the index gained or replaced.
-
-    INSERT OR REPLACE on the visit key plus the session, so re-harvesting a run — which
-    happens on every tick while it is live — updates the row of a transcript that has
-    grown rather than duplicating it. No transcript text goes in here: the bodies live
-    under :func:`groom.turns.transcripts_root` and this table is how they are found.
-    """
+    """Index archived turn records; how many rows the index gained or replaced."""
     if not rows:
         return 0
     with _STORE.writing() as conn:
@@ -2003,12 +1476,7 @@ def query_turns(
     workflow: str = "",
     limit: int = 200,
 ) -> list[dict[str, Any]]:
-    """Archived turns, newest visit last — a node's laps read top to bottom.
-
-    Ordered by the visit key rather than by ``ts``, because that is the order the run
-    actually took them in and it survives a checkpoint rewind, which a wall clock read
-    across two generations does not.
-    """
+    """Archived turns, newest visit last — a node's laps read top to bottom."""
     clauses: list[str] = []
     params: list[Any] = []
     for column, value in (
@@ -2033,11 +1501,7 @@ def query_turns(
 
 @_reading
 def run_directories() -> list[dict[str, Any]]:
-    """Every run telemetry has seen a directory for: run_id, run_dir, workflow.
-
-    The run inventory the archive harvests from. Distinct rather than grouped, because a
-    run that moved between directories is two rows here and both may hold records.
-    """
+    """Every run telemetry has seen a directory for: run_id, run_dir, workflow."""
     return [
         dict(row)
         for row in _read_connection().execute(
@@ -2047,20 +1511,8 @@ def run_directories() -> list[dict[str, Any]]:
     ]
 
 
-# Rows per DELETE inside the prune, each chunk its own transaction. An unbounded
-# DELETE over a backlog holds the write lock for the whole sweep — observed as
-# minutes on a store carrying millions of expired heartbeat rows — and every OTLP
-# batch arriving meanwhile burns its busy_timeout behind it and 503s. Between
-# chunks the lock drops, so writers interleave. Bigger than purge_test_runs'
-# `_PURGE_CHUNK` because that one bounds SQL parameters per statement, and this
-# one bounds time under the lock.
 _PRUNE_CHUNK = 50_000
 
-# The metric series that leave the store without ever being written to an
-# archive. The seven gauges are exempt by policy (see
-# ``UNARCHIVED_DELETABLE_METRICS``); the three heartbeat counters are rows an
-# older groom persisted before ingest started dropping them, so a current store
-# accumulates none and this half of the sweep matches nothing.
 _NEVER_ARCHIVED_METRICS = UNARCHIVED_DELETABLE_METRICS + LIVENESS_METRICS
 
 
@@ -2076,13 +1528,7 @@ def _delete_chunk(table: str, clause: str, params: tuple[Any, ...]) -> int:
 
 
 def _chunked_delete(table: str, clause: str, params: tuple[Any, ...]) -> int:
-    """``DELETE FROM <table> WHERE <clause>``, ``_PRUNE_CHUNK`` rows per transaction.
-
-    Undecorated on purpose, so the store lock is taken and released once per
-    chunk rather than held for the whole sweep: a writer arriving mid-sweep
-    interleaves instead of burning its ``busy_timeout`` behind one long DELETE.
-    A re-run after a mid-sweep failure just resumes deleting what still matches.
-    """
+    """``DELETE FROM <table> WHERE <clause>``, ``_PRUNE_CHUNK`` rows per transaction."""
     removed = 0
     while True:
         count = _delete_chunk(table, clause, params)
@@ -2093,13 +1539,7 @@ def _chunked_delete(table: str, clause: str, params: tuple[Any, ...]) -> int:
 
 @_reading
 def _expired_run_ids(cutoff: float) -> set[str]:
-    """Run ids still holding at least one row older than ``cutoff``.
-
-    The prune deletes per run, and the set of runs it is *allowed* to delete
-    grows without bound as the archive fills. Intersecting that set with this
-    one keeps the delete loop proportional to what is actually expired rather
-    than to how long groom has been running.
-    """
+    """Run ids still holding at least one row older than ``cutoff``."""
     conn = _read_connection()
     found: set[str] = set()
     for sql in (
@@ -2116,40 +1556,11 @@ def prune(
     now: float | None = None,
     archived: set[str] | None = None,
 ) -> int:
-    """Drop expired telemetry for runs that are safe to drop; rows removed.
-
-    **Fail-closed.** Age alone no longer authorises a delete: a run's rows go
-    only once :mod:`groom.archive` has written them to disk, and ``archived``
-    is that set of run ids. Passing nothing therefore deletes nothing but the
-    exemptions below — which is the correct behaviour for a groom whose
-    archival sweep is broken or has not run yet. Data that overstays its
-    retention is an operator's disk-space problem; data deleted because the
-    archiver was down is gone.
-
-    Two exemptions delete without an archive behind them:
-
-    * **Scratch runs** (:func:`is_scratch_run_dir`) — a suite's ``mkdtemp``
-      run dir is junk by construction, and archiving it forever would be the
-      bug rather than the safeguard.
-    * **The never-archived metric series** (``_NEVER_ARCHIVED_METRICS``) —
-      per-tick liveness gauges that answer "where is this run right now" and
-      mean nothing once it is not. They are swept for every run regardless of
-      archival, which is what keeps them from dominating the file.
-
-    Rows carrying an empty ``run_id`` are swept too. Ingest refuses them now
-    (see :mod:`groom.otlp`), so these are legacy rows only — and being
-    run-major, the archive has nowhere to put them.
-
-    ``turns`` is deliberately untouched: it indexes transcripts on disk, which
-    :mod:`groom.archive` moves into the frozen run directory rather than
-    deleting.
-    """
+    """Drop expired telemetry for runs that are safe to drop; rows removed."""
     stamp = now if now is not None else time.time()
     cutoff = stamp - retention_days * 86400
     removed = 0
 
-    # Every run, archived or not: these series are never written to an archive,
-    # so nothing is waiting on one before they can go.
     placeholders = ",".join("?" * len(_NEVER_ARCHIVED_METRICS))
     removed += _chunked_delete(
         "metrics",
@@ -2157,9 +1568,6 @@ def prune(
         (cutoff, *_NEVER_ARCHIVED_METRICS),
     )
 
-    # Expired first, and nothing else if it is empty: `_test_run_ids` is a
-    # distinct scan over two large tables, and on the common tick — a store whose
-    # oldest run is inside the window — there is nothing for it to authorise.
     expired = _expired_run_ids(cutoff)
     deletable = (set(archived) if archived else set()) | {""}
     if expired:
@@ -2178,17 +1586,7 @@ def prune(
 
 @dataclass(frozen=True, slots=True)
 class RecentRun:
-    """One row of :func:`recent_runs` — what ``groom recent`` shows.
-
-    Built from the spans table (which ranks runs) merged with the metrics
-    table (which gives a heartbeat-aware ``max_ts``). Each pass is a single
-    indexed GROUP BY, hence the half-second wall time on the 1.4GB production
-    store where :func:`run_bounds`'s four-table merge takes forty seconds.
-    The trade-off is named in the helper's docstring: spanning gives recency
-    ranking, metrics give liveness — and a run that has emitted spans but
-    whose process died at the last heartbeat shows its last activity, not
-    "now-30-minutes".
-    """
+    """One row of :func:`recent_runs` — what ``groom recent`` shows."""
 
     run_id: str
     workflow: str = ""
@@ -2198,14 +1596,7 @@ class RecentRun:
 
 @dataclass(frozen=True)
 class RunBounds:
-    """What :mod:`groom.archive` needs to decide a run is done and name its file.
-
-    ``max_ts`` is the run's last sign of life across all three tables —
-    liveness gauges included, precisely because a run still ticking has not
-    finished even if no span has closed. ``spans``/``logs``/``metrics`` count
-    only the rows that would actually be *written*, so a run holding nothing
-    but expired gauges reports zero and is never archived into an empty file.
-    """
+    """What :mod:`groom.archive` needs to decide a run is done and name its file."""
 
     run_id: str
     workflow: str = ""
@@ -2225,12 +1616,7 @@ class RunBounds:
 
 @_reading
 def run_bounds() -> dict[str, RunBounds]:
-    """Per-run timestamp bounds, archivable row counts and identity.
-
-    One grouped pass per table rather than a query per run: the archiver runs
-    over the whole store every few hours, and a per-run round trip is the shape
-    that stops scaling first.
-    """
+    """Per-run timestamp bounds, archivable row counts and identity."""
     conn = _read_connection()
     span: dict[str, tuple[float, float, int]] = {}
     log: dict[str, tuple[float, float, int]] = {}
@@ -2255,8 +1641,6 @@ def run_bounds() -> dict[str, RunBounds]:
         ARCHIVED_METRICS,
     ):
         metric[row["run_id"]] = (row["lo"] or 0.0, row["hi"] or 0.0, row["n"] or 0)
-    # SQLite resolves the bare columns from the row that produced MAX(start_ts),
-    # so this is the newest span's identity rather than an arbitrary one.
     for row in conn.execute(
         "SELECT run_id, workflow, repo, branch, run_dir, MAX(start_ts)"
         " FROM spans WHERE run_id != '' GROUP BY run_id"
@@ -2294,30 +1678,9 @@ def run_bounds() -> dict[str, RunBounds]:
 
 @_reading
 def recent_runs(limit: int = 10, workflow: str = "") -> list[RecentRun]:
-    """Top runs ordered by most-recent activity, alive or dead.
-
-    Two indexed GROUP BYs and a Python-side merge — one over ``spans`` for
-    the recency ranking (and the workflow filter, since metrics carries
-    ``run_id`` only), one over ``metrics`` for the heartbeat-aware ``max_ts``.
-    Spans close at *node end* — minutes apart for a long-running node, while
-    metrics stream every ~10s — and a recency check that saw only ``end_ts``
-    would say a healthy live run is dead the moment one node sits between
-    visits. Merging on the metrics side gives \"alive in the last 180s\" the
-    same meaning the dashboard's chip uses, without paying for
-    :func:`run_bounds`'s four-table union.
-
-    ``limit`` is enforced in SQL after the merge on the post-merge ordering, so
-    a wider screening pass gives exactly the top N ranked by their *latest
-    telemetry*, not \"the N whose last span was most recent, regardless of
-    whether they have heartbeats.\" ``limit=0`` returns every run; the caller
-    is doing archival work and should use :func:`run_bounds` instead.
-    """
+    """Top runs ordered by most-recent activity, alive or dead."""
     conn = _read_connection()
 
-    # First pass: ranked selection by spans. The ``MAX(MAX(start_ts, end_ts))``
-    # is read as MAX(start_ts OR end_ts) by SQLite — the bigger of the two,
-    # which is \"either the visit opened or it closed\". A start_ts is written
-    # immediately on visit entry, so this stays current even mid-visit.
     sql_spans = (
         "SELECT run_id, MAX(MAX(start_ts, end_ts)) AS max_ts,"
         " MAX(workflow) AS workflow, COUNT(*) AS spans"
@@ -2332,7 +1695,7 @@ def recent_runs(limit: int = 10, workflow: str = "") -> list[RecentRun]:
         sql_spans += " LIMIT ?"
         params_spans = params + (
             limit * 4,
-        )  # widen the screening so merging has headroom
+        )
     else:
         params_spans = params
     spans_rows = (
@@ -2351,9 +1714,6 @@ def recent_runs(limit: int = 10, workflow: str = "") -> list[RecentRun]:
     if not spans_by_id:
         return []
 
-    # Second pass: metrics max_ts for the spans-seen runs only. ``MAX(ts)
-    # WHERE run_id IN (...)`` uses the index; without a cap, the GROUP BY
-    # walks every metric row.
     placeholders = ",".join("?" * len(spans_by_id))
     metrics_rows = conn.execute(
         f"SELECT run_id, MAX(ts) AS max_ts FROM metrics"  # noqa: S608 - bound placeholders
@@ -2382,13 +1742,7 @@ def recent_runs(limit: int = 10, workflow: str = "") -> list[RecentRun]:
 
 @_reading
 def unarchived_row_counts() -> dict[str, int]:
-    """What is in the store that :func:`prune` may delete with no archive behind it.
-
-    Computed on demand rather than accumulated: these are the two §2 exemptions
-    plus the legacy rows ingest now refuses, and each is one grouped count. A
-    number that has to be maintained across a restart would be a third source of
-    truth about a store that already has one.
-    """
+    """What is in the store that :func:`prune` may delete with no archive behind it."""
     conn = _read_connection()
     placeholders = ",".join("?" * len(_NEVER_ARCHIVED_METRICS))
     counts = {
@@ -2405,11 +1759,8 @@ def unarchived_row_counts() -> dict[str, int]:
     return counts
 
 
-# Rows the archiver holds in memory at once, per signal. The archive file is
-# written streaming, so this bounds the reader rather than the output.
 _ARCHIVE_PAGE = 5_000
 
-# kind -> (table, the column the archive orders on)
 _ARCHIVE_STREAMS: dict[str, tuple[str, str]] = {
     "span": ("spans", "start_ts"),
     "log": ("logs", "ts"),
@@ -2424,16 +1775,7 @@ def archive_page(
     after: tuple[float, int] = (0.0, 0),
     limit: int = _ARCHIVE_PAGE,
 ) -> list[dict[str, Any]]:
-    """One page of a run's archivable rows, keyset-paginated after ``(ts, rowid)``.
-
-    Keyset rather than ``OFFSET`` because the pages are read while the store is
-    live: an OFFSET walk re-scans everything before it and shifts under
-    concurrent inserts, and either one silently drops rows out of an archive
-    that is then treated as complete.
-
-    Each row carries ``_ts`` (the ordering stamp) and ``_rowid`` for the next
-    call's cursor. ``metric`` is filtered to ``ARCHIVED_METRICS``.
-    """
+    """One page of a run's archivable rows, keyset-paginated after ``(ts, rowid)``."""
     table, ts_col = _ARCHIVE_STREAMS[kind]
     clause = ""
     params: list[Any] = [run_id]
@@ -2452,13 +1794,7 @@ def archive_page(
 
 
 def delete_run_telemetry(run_id: str) -> int:
-    """Drop every span, log and metric belonging to ``run_id``; rows removed.
-
-    Unconditional on age — the archiver calls this once the run's file is on
-    disk, and a row younger than the retention window that was nonetheless
-    written to the archive must leave with the rest of it or the archive stops
-    being the single copy.
-    """
+    """Drop every span, log and metric belonging to ``run_id``; rows removed."""
     if not run_id:
         return 0
     removed = 0
@@ -2468,34 +1804,13 @@ def delete_run_telemetry(run_id: str) -> int:
 
 
 def _checkpoint() -> None:
-    """Fold the write-ahead log back into the database file, and truncate it.
-
-    SQLite checkpoints on its own, but only when a writer finds no reader in the way —
-    and this process writes continuously while the dashboard holds long read queries
-    open, which is the one shape where auto-checkpointing can starve indefinitely. It
-    is not a correctness problem and that is what makes it easy to miss: the WAL simply
-    grows, and a 293 MB database was observed carrying a 376 MB WAL beside it. Called on
-    the prune tick because a checkpoint after a large DELETE is also when it reclaims
-    the most — and prune must only ever be called off the event loop (the periodic
-    tick runs it via ``asyncio.to_thread``): a checkpoint over a big WAL blocks for
-    seconds, and there is no startup-hook caller anymore for exactly that reason.
-
-    `TRUNCATE` rather than `PASSIVE`: passive is what was already happening and not
-    working. A busy checkpoint returns rather than blocking, so a reader mid-query costs
-    this tick and not the next one.
-    """
+    """Fold the write-ahead log back into the database file, and truncate it."""
     try:
         with _STORE.lock:
             row = _connection().execute("PRAGMA wal_checkpoint(TRUNCATE)").fetchone()
     except sqlite3.Error as exc:
-        # Never worth failing the prune over: the WAL being large is a disk-space
-        # question, and the rows are already gone.
         logger.warning("groom: WAL checkpoint declined: %s", exc)
         return
-    # The row is `(busy, log_frames, checkpointed)` and it is the only place SQLite
-    # says a checkpoint did nothing. Discarding it is how a WAL grows for weeks with
-    # no error anywhere: `busy == 1` means a reader was in the way and the file was
-    # left alone. Recorded rather than merely logged so `/api/state` can show it.
     busy = int(row[0]) if row else 0
     _STORE.note_checkpoint(busy)
     if busy:
@@ -2511,23 +1826,12 @@ def checkpoint() -> None:
     _checkpoint()
 
 
-# ---------------------------------------------------------------------------
-# attend_sessions: one row per attendant groom dispatched at a stopped run
-# ---------------------------------------------------------------------------
 
-#: The two states an attendance is ever in. There is no third: an attendant carries no
-#: heartbeat, so "running" means only that groom has not yet watched its process exit —
-#: a claim :func:`groom.attend.recover_orphans` re-checks against the pid at boot.
 ATTEND_RUNNING, ATTEND_COMPLETED = "running", "completed"
 
 
 def _attend_row(row: sqlite3.Row) -> dict[str, Any]:
-    """A row with ``session_ids`` back as the ordered list it is stored as JSON for.
-
-    Ordered, newest last: an attendance that outlived a groom restart is re-run from a
-    *fresh* session rather than resumed, and the earlier ids are what make the earlier
-    attempts findable afterwards.
-    """
+    """A row with ``session_ids`` back as the ordered list it is stored as JSON for."""
     record = dict(row)
     raw = record.get("session_ids") or ""
     try:
@@ -2556,12 +1860,7 @@ def attend_start(
     pid: int | None = None,
     started_at: float | None = None,
 ) -> None:
-    """Record a dispatch as ``running``, before the attendant's first byte of output.
-
-    The session id is minted by groom and passed to the CLI, not scraped from it, which
-    is what lets the row exist from the moment the process does — a crash in between
-    otherwise leaves a claude nobody can find.
-    """
+    """Record a dispatch as ``running``, before the attendant's first byte of output."""
     with _STORE.writing() as conn:
         conn.execute(
             "INSERT OR REPLACE INTO attend_sessions (job_id, run_id, workflow, run_dir,"
@@ -2588,12 +1887,7 @@ def attend_start(
 
 @_resilient
 def attend_append_session(job_id: str, session_id: str, pid: int | None = None) -> None:
-    """Re-arm an existing row with a fresh session and pid, keeping its history.
-
-    Boot recovery updates the row rather than opening a new one: the *attendance* is the
-    same piece of work — this run is still stopped — and a second row would say groom
-    tried twice when what happened is that groom was restarted once.
-    """
+    """Re-arm an existing row with a fresh session and pid, keeping its history."""
     with _STORE.writing() as conn:
         row = conn.execute(
             "SELECT session_ids FROM attend_sessions WHERE job_id = ?", (job_id,)
@@ -2623,7 +1917,7 @@ def attend_finish(
     released_state: str = "",
     ended_at: float | None = None,
 ) -> None:
-    """Flip a row to ``completed``. Called by the thread that owned the process."""
+    """Flip a row to ``completed``."""
     with _STORE.writing() as conn:
         conn.execute(
             "UPDATE attend_sessions SET status = ?, exit_code = ?, ended_at = ?,"
@@ -2640,12 +1934,7 @@ def attend_finish(
 
 @_reading
 def attend_running_for_run(run_id: str) -> dict[str, Any] | None:
-    """The attendant currently on this run, if there is one.
-
-    This is the whole dispatch rule: one attendant per run, serial. No timer, no budget —
-    a run that is still stopped when its attendant finishes gets another one on the next
-    rules tick, and a run that is not does not.
-    """
+    """The attendant currently on this run, if there is one."""
     row = (
         _read_connection()
         .execute(
@@ -2674,10 +1963,7 @@ def attend_latest_for_run(run_id: str) -> dict[str, Any] | None:
 
 @_reading
 def attend_latest_by_run() -> dict[str, dict[str, Any]]:
-    """The latest attendance per run, for the projection that links a blocked row to it.
-
-    One query rather than one per run: the rules tick renders the whole fleet.
-    """
+    """The latest attendance per run, for the projection that links a blocked row to it."""
     rows = _read_connection().execute(
         "SELECT * FROM attend_sessions ORDER BY started_at ASC"
     )
@@ -2692,12 +1978,7 @@ def attend_latest_by_run() -> dict[str, dict[str, Any]]:
 
 @_reading
 def attend_recent(limit: int = 200) -> list[dict[str, Any]]:
-    """The latest attendances, newest first. Nothing is ever pruned from this table.
-
-    Create-once, keep-forever: the corpus is the point. Reading back a season of
-    attendances is how a recurring cause in the *workflows* shows up at all, and a
-    retention window would delete exactly the old end of that trend.
-    """
+    """The latest attendances, newest first."""
     rows = _read_connection().execute(
         "SELECT * FROM attend_sessions ORDER BY started_at DESC LIMIT ?",
         (max(1, limit),),
@@ -2735,14 +2016,7 @@ def attend_orphans() -> list[dict[str, Any]]:
     return [_attend_row(row) for row in rows]
 
 
-# ---------------------------------------------------------------------------
-# dispatch_items: one row per item enqueued onto a groom dispatch queue
-# ---------------------------------------------------------------------------
 
-#: The five states a dispatch item is ever in (independent of the underlying
-#: `RunRecord`'s own resumable/terminal model — `docs/plans/groom-dispatch-queue-and-loop-runner.md`
-#: §3.2). `cancelled` is groom's own bookkeeping the moment a stop is sent, or the
-#: moment a still-`pending` item is dropped before it ever ran.
 DISPATCH_PENDING = "pending"
 DISPATCH_RUNNING = "running"
 DISPATCH_DONE = "done"
@@ -2751,11 +2025,7 @@ DISPATCH_CANCELLED = "cancelled"
 
 
 def _dispatch_row(row: sqlite3.Row) -> dict[str, Any]:
-    """A row with ``params`` back as the object it was enqueued with.
-
-    Stored as a JSON blob passed through verbatim (§3.4) — parsed back here the same
-    way `_attend_row` parses `session_ids`, so a caller never touches raw JSON text.
-    """
+    """A row with ``params`` back as the object it was enqueued with."""
     record = dict(row)
     raw = record.get("params") or ""
     try:
@@ -2774,9 +2044,7 @@ def dispatch_enqueue(
     params: dict[str, Any] | None = None,
     enqueued_at: float | None = None,
 ) -> None:
-    """Record a new item as ``pending``. ``command`` is copied from the queue's config
-    now, not re-read at launch time, so a later config edit never changes what an
-    already-pending item runs (§3.4)."""
+    """Record a new item as ``pending``."""
     with _STORE.writing() as conn:
         conn.execute(
             "INSERT OR REPLACE INTO dispatch_items (item_id, queue, command, params,"
@@ -2824,13 +2092,7 @@ def dispatch_finish(
     exit_code: int | None = None,
     ended_at: float | None = None,
 ) -> bool:
-    """Flip a row to a terminal state (`done` / `failed` / `cancelled`) — but only if
-    it is not terminal already. Called both by the thread that owned the process, once
-    it exits, and by `stop` on an operator's say-so the moment it sends the kill —
-    whichever gets here first wins, so a process `stop()` already marked `cancelled`
-    cannot be relabelled `failed` a moment later by the exit code its own kill
-    produced. Returns whether this call is the one that won, which is also whether its
-    caller is the one that now owns the item's queue slot to release."""
+    """Flip a row to a terminal state (`done` / `failed` / `cancelled`) — but only if it is not terminal already."""
     with _STORE.writing() as conn:
         cursor = conn.execute(
             "UPDATE dispatch_items SET status = ?, exit_code = ?, ended_at = ?"
@@ -2849,9 +2111,7 @@ def dispatch_finish(
 
 @_resilient
 def dispatch_cancel_pending(item_id: str) -> bool:
-    """Cancel a still-`pending` item without ever spawning a process. `False` if the
-    item is not `pending` (already running, or already terminal) — a `running` item is
-    `stop`'s job, not this one's."""
+    """Cancel a still-`pending` item without ever spawning a process."""
     with _STORE.writing() as conn:
         cursor = conn.execute(
             "UPDATE dispatch_items SET status = ?, ended_at = ?"
@@ -2903,8 +2163,7 @@ def dispatch_running_for_queue(queue: str) -> list[dict[str, Any]]:
 
 @_reading
 def dispatch_orphans() -> list[dict[str, Any]]:
-    """Every row still claiming to be `running`, across every queue — what boot
-    recovery re-checks (§3.5)."""
+    """Every row still claiming to be `running`, across every queue — what boot recovery re-checks (§3.5)."""
     rows = _read_connection().execute(
         "SELECT * FROM dispatch_items WHERE status = ? ORDER BY started_at ASC",
         (DISPATCH_RUNNING,),

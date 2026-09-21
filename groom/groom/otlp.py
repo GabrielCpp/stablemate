@@ -1,25 +1,4 @@
-"""Decode standard OTLP/HTTP protobuf export requests into plain dicts.
-
-groom speaks the real OTLP wire format (``opentelemetry-proto``) rather than a
-private JSON shape so the workhorse producer can point the stock OTel SDK
-exporter at it — and, symmetrically, at Jaeger/Tempo — with zero code change.
-Only decoding lives here; storage is :mod:`groom.store`, rules are
-:mod:`groom.alerts`.
-
-Spans/metric points come out as flat dicts (see ``parse_traces`` /
-``parse_metrics``) carrying the workhorse resource identity (run_id, workflow,
-repo, branch) denormalized onto every record, so the store and the alert rules
-never need to re-join resources.
-
-A record whose resource carries no ``run_id`` is **dropped here**, at the single
-door every row arrives through. Such a row belongs to no run directory, joins to
-no transcript and cannot be archived — archival is run-major, so a row with no run
-is a row with nowhere to go. Dropping it at the door rather than storing it is what
-keeps that invariant from having to be a ``CHECK`` constraint, which on four live
-tables means a full rebuild of every existing ``groom.db``. The drops are counted
-(:data:`dropped_no_run_id`) and warned about once per batch, so a misconfigured
-emitter is visible rather than silent.
-"""
+"""Decode standard OTLP/HTTP protobuf export requests into plain dicts."""
 
 from __future__ import annotations
 
@@ -40,10 +19,6 @@ from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import (
 
 logger = logging.getLogger(__name__)
 
-#: Records refused for carrying no ``run_id``, by signal — ``traces`` / ``logs`` /
-#: ``metrics``. Cumulative for the life of the process, read by ``groom archive
-#: status``: a producer misconfigured for a week shows up as a number climbing
-#: rather than as telemetry nobody ever went looking for.
 _dropped = Counter()
 _dropped_lock = threading.Lock()
 
@@ -55,12 +30,7 @@ def dropped_no_run_id() -> dict[str, int]:
 
 
 def _note_dropped(signal: str, count: int) -> None:
-    """Count a batch's refusals and say so once, rather than once per record.
-
-    Per batch and not per record because the failure mode this reports is an emitter
-    with no ``run_id`` *at all*, which produces every record in every batch — a
-    per-record line would bury the log it is meant to make visible.
-    """
+    """Count a batch's refusals and say so once, rather than once per record."""
     if not count:
         return
     with _dropped_lock:
@@ -76,9 +46,6 @@ def _note_dropped(signal: str, count: int) -> None:
 _STATUS_NAMES = {0: "UNSET", 1: "OK", 2: "ERROR"}
 _NANOS = 1e9
 
-# OTLP severity_number → name, bucketed to the stdlib logging levels workhorse
-# actually emits. The wire carries 1-24 (four sub-levels per tier); collapsing to
-# the tier is what lets `groom logs --level WARNING` mean the obvious thing.
 _SEVERITY_TIERS = (
     (21, "FATAL"), (17, "ERROR"), (13, "WARNING"), (9, "INFO"), (5, "DEBUG"), (1, "TRACE"),
 )
@@ -103,8 +70,7 @@ def _attrs(key_values: Any) -> dict[str, Any]:
 
 
 def _int_or_none(value: Any) -> int | None:
-    """A resource attribute coerced to int, or None when absent/unparseable — so a
-    missing pid stays distinguishable from pid 0 rather than defaulting to a number."""
+    """A resource attribute coerced to int, or None when absent/unparseable — so a missing pid stays distinguishable from pid 0 rather than defaulting to a number."""
     if value is None or value == "":
         return None
     try:
@@ -114,10 +80,7 @@ def _int_or_none(value: Any) -> int | None:
 
 
 def parse_traces(body: bytes) -> list[dict[str, Any]]:
-    """Decode an ``ExportTraceServiceRequest`` into one dict per span:
-    identity + timing columns ready for the spans table, plus an ``attrs``
-    dict (span attributes, events, status message) the store JSON-encodes.
-    Raises on undecodable input — the receiver turns that into a 400."""
+    """Decode an ``ExportTraceServiceRequest`` into one dict per span: identity + timing columns ready for the spans table, plus an ``attrs`` dict (span attributes, events, status message) the store JSON-encodes."""
     request = ExportTraceServiceRequest.FromString(body)
     dropped = 0
     records: list[dict[str, Any]] = []
@@ -149,17 +112,9 @@ def parse_traces(body: bytes) -> list[dict[str, Any]]:
                         "workflow": str(resource.get("workflow", "")),
                         "repo": str(resource.get("repo", "")),
                         "branch": str(resource.get("branch", "")),
-                        # The run's artifact dir: what makes a span → prompt.md /
-                        # output.json lookup one hop instead of a hunt through runs/.
                         "run_dir": str(resource.get("run_dir", "")),
-                        # Local-FS identity for a same-host (native) run: the repo
-                        # working tree and the run's pid. Empty for a containerized
-                        # producer whose paths don't exist on groom's host.
                         "workspace": str(resource.get("workspace", "")),
                         "pid": _int_or_none(resource.get("process.pid")),
-                        # How many times this run dir has been started. A resume
-                        # reuses the run_id and opens a fresh root span, so this is
-                        # what separates a crash-and-resume gap from an idle one.
                         "resume_generation": _int_or_none(
                             resource.get("workhorse.resume_generation")
                         ),
@@ -176,16 +131,7 @@ def parse_traces(body: bytes) -> list[dict[str, Any]]:
 
 
 def _severity(number: int, text: str) -> str:
-    """The record's level name, normalized to a stdlib logging level.
-
-    Derived from ``severity_number`` in preference to ``severity_text``, even
-    though the text is what the producer wrote — because the two disagree: the
-    OTel SDK stamps Python's WARNING as the text "WARN". Storing that verbatim
-    made ``groom logs --level WARNING`` match nothing at all, silently, since the
-    filter compares against the stdlib names. The number is the canonical field
-    and maps cleanly, so it wins; the text is only a fallback for a producer that
-    left the number unset.
-    """
+    """The record's level name, normalized to a stdlib logging level."""
     for floor, name in _SEVERITY_TIERS:
         if number >= floor:
             return name
@@ -193,19 +139,7 @@ def _severity(number: int, text: str) -> str:
 
 
 def parse_logs(body: bytes) -> list[dict[str, Any]]:
-    """Decode an ``ExportLogsServiceRequest`` into one dict per log record.
-
-    Logs are the third leg, and the one that closes the loop for script nodes:
-    they used to run as child processes whose stdout was swallowed whole into a
-    JSON parse, so their diagnostics were unrecoverable after the fact. Now that
-    workhorse runs them in-process, their records arrive here on the engine's own
-    resource — same ``run_id`` and ``run_dir`` as the spans — so a log line joins
-    to the node span and the on-disk artifacts without a correlation step.
-
-    ``node`` is read from the record's attributes rather than the trace context:
-    workhorse never makes its node spans *current*, so ``trace_id`` is zeroes and
-    only the explicit attribute correlates (see workhorse's ``otel.current_node``).
-    """
+    """Decode an ``ExportLogsServiceRequest`` into one dict per log record."""
     request = ExportLogsServiceRequest.FromString(body)
     dropped = 0
     records: list[dict[str, Any]] = []
@@ -218,9 +152,6 @@ def parse_logs(body: bytes) -> list[dict[str, Any]]:
         for scope_logs in resource_logs.scope_logs:
             for record in scope_logs.log_records:
                 attrs = _attrs(record.attributes)
-                # observed_time is when the SDK saw it; time_unix_nano can be 0 if
-                # the producer never set it. Falling back keeps a record from
-                # landing at the epoch and sorting before every other row.
                 ts = record.time_unix_nano or record.observed_time_unix_nano
                 records.append(
                     {
@@ -241,8 +172,7 @@ def parse_logs(body: bytes) -> list[dict[str, Any]]:
 
 
 def _points(metric: Any) -> Any:
-    """The data points of the metric kinds workhorse emits (gauge/sum); other
-    kinds (histogram etc.) are skipped rather than mis-read."""
+    """The data points of the metric kinds workhorse emits (gauge/sum); other kinds (histogram etc.) are skipped rather than mis-read."""
     kind = metric.WhichOneof("data")
     if kind == "gauge":
         return metric.gauge.data_points
@@ -267,11 +197,6 @@ def parse_metrics(body: bytes) -> list[dict[str, Any]]:
             )
             continue
         workflow = str(resource.get("workflow", ""))
-        # Denormalized like the spans, because metrics — not spans — are what
-        # reaches groom *early* (heartbeats and node.active start at second zero,
-        # while the first span exports only when a node completes and the root span
-        # only when the run ends). So a native run's dashboard row is materialized
-        # from these, and it needs the same identity a span carries.
         repo = str(resource.get("repo", ""))
         branch = str(resource.get("branch", ""))
         run_dir = str(resource.get("run_dir", ""))

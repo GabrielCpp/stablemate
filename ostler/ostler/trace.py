@@ -1,7 +1,4 @@
-"""`ostler trace` — walk the organization graph from any node.
-
-Accepted tokens are seed ids, story slugs, UI node ids, section anchors, or doc paths.
-"""
+"""`ostler trace` — walk the organization graph from any node."""
 
 from __future__ import annotations
 
@@ -10,8 +7,7 @@ from ostler.model import Graph, UINode
 
 
 def _find_ui(graph: Graph, token: str) -> UINode | None:
-    """Resolve *token* to a UI node: exact identity (path / path#anchor), then section anchor,
-    then a file node's slug or filename stem."""
+    """Resolve *token* to a UI node: exact identity (path / path#anchor), then section anchor, then a file node's slug or filename stem."""
     node = graph.find_ui_node(token)
     if node is not None:
         return node
@@ -34,7 +30,6 @@ def _trace_ui(graph: Graph, token: str) -> list[str] | None:
            f"  title: {node.title or '—'}",
            f"  file:  {rel}:{node.line}"]
 
-    # outbound edges — every doc link in the node's region, with resolution status
     for _text, href, _line in node.links:
         target = resolver.resolve(node.path, href)
         if target is None:
@@ -47,7 +42,6 @@ def _trace_ui(graph: Graph, token: str) -> list[str] | None:
             status = "ok"
         out.append(f"  → {target.node_id}  [{status}]")
 
-    # inbound edges — other UI nodes whose links resolve to this node
     for other in graph.ui_nodes:
         if other is node:
             continue
@@ -63,7 +57,6 @@ def run(graph: Graph, token: str) -> tuple[list[str], bool]:
     """Return (lines, found)."""
     out: list[str] = []
 
-    # 1) story slug
     hit = graph.find_story(token)
     if hit:
         epic, story = hit
@@ -79,7 +72,6 @@ def run(graph: Graph, token: str) -> tuple[list[str], bool]:
             out.append(f"  seed  {sid}: {label}")
         return out, True
 
-    # 2) seed id
     epic = graph.epic_of_seed(token)
     if epic:
         seed = next(s for s in epic.seeds if s.id == token)
@@ -93,7 +85,6 @@ def run(graph: Graph, token: str) -> tuple[list[str], bool]:
             out.append("  covered by: NOTHING (orphan)" if seed.active else "  covered by: — (inactive)")
         return out, True
 
-    # 3) UI-profile node (screen/component/interaction/… — walks resolved path links)
     ui = _trace_ui(graph, token)
     if ui is not None:
         return ui, True

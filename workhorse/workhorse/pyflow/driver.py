@@ -1,16 +1,4 @@
-"""`drive()` — the loop that turns a class of methods into a run.
-
-It is `_step_loop` with a coarser node: checkpoint, run one state, read the transition
-it returned, step. What changed is the unit. A YAML node is a step the engine composes;
-a state is a step the *author* composes, with native control flow inside it, and the
-only things that cross the persistence boundary are its name and its arguments.
-
-Resume is coarse and there is no intra-state memo: resuming is calling that state again
-with those parameters, and nothing inspects what the previous attempt got through. So
-the checkpoint file is the whole of the resume state — there is no second, invisible
-cache that can disagree with it — and state bodies must be idempotent rather than
-merely deterministic.
-"""
+"""`drive()` — the loop that turns a class of methods into a run."""
 from __future__ import annotations
 
 import inspect
@@ -35,7 +23,6 @@ from workhorse._vendor.stablemate_core.clock import SYSTEM_CLOCK, Clock
 
 logger = logging.getLogger("workhorse.engine")
 
-#: How often a still-waiting run says so, in seconds.
 HEARTBEAT_S = 300.0
 
 
@@ -45,28 +32,14 @@ class Resume:
 
     state: str
     params: dict[str, Any]
-    #: The workflow instance's own fields, as `model_dump(mode="json")` wrote them.
-    #: A resume rebuilds the instance from these, not from `--params` — the run's
-    #: inputs were fixed when it started and a later invocation must not change them.
     inputs: dict[str, Any] = field(default_factory=dict)
     ctx: Any = None
-    #: `type(wf).__name__` of the flow that wrote it, so a bare `--resume-latest`
-    #: re-enters that flow rather than the distribution's default one.
     flow: str | None = None
     waiting_on: str | None = None
 
 
 def read_resume(checkpoint: Checkpoint) -> Resume:
-    """Narrow a parsed `checkpoint.json` to what a resume needs.
-
-    Refuses a YAML-engine checkpoint outright. The two engines share a runs directory
-    and a `--resume-latest`, and a `current_id` is not a state name — resuming one from
-    the other would either explode confusingly or, worse, match a name by coincidence.
-
-    Everything else the old body checked — a present, non-empty `state`, `params` and
-    `inputs` that are objects — the model checks on the way off disk, so what is left
-    here is the one refusal that is a *policy* rather than a shape.
-    """
+    """Narrow a parsed `checkpoint.json` to what a resume needs."""
     if not isinstance(checkpoint, PyflowCheckpoint):
         raise WorkflowFailed(
             "this run directory holds a checkpoint from the YAML engine "
@@ -87,14 +60,7 @@ def read_resume(checkpoint: Checkpoint) -> Resume:
 def coerce_params(
     bound: Any, params: dict[str, Any], *, state: str
 ) -> dict[str, Any]:
-    """Validate a checkpoint's params against the state's own signature.
-
-    The third of the three moments arguments are checked — `ParamSpec` at author time,
-    `signature.bind` at transition time, and this on the way back off disk. It is what
-    pairs with the checkpoint being hand-editable: if a human is meant to edit it,
-    something has to validate the edit. It also puts `"docs/epics"` back into a `Path`,
-    which JSON cannot carry.
-    """
+    """Validate a checkpoint's params against the state's own signature."""
     signature = inspect.signature(bound)
     unknown = sorted(set(params) - set(signature.parameters))
     if unknown:
@@ -139,12 +105,7 @@ def coerce_params(
 
 
 def _revive_ctx(wf: Workflow, raw: Any) -> Any:
-    """Rebuild `self.ctx` from the checkpoint rather than re-running `setup()`.
-
-    The tier table says `ctx` is written once, after setup. Calling `setup()` again on
-    a resume would write it twice — and `setup()` is where a run decides things like
-    its base branch, which must not be re-decided halfway through.
-    """
+    """Rebuild `self.ctx` from the checkpoint rather than re-running `setup()`."""
     if raw is None:
         return None
     try:
@@ -160,24 +121,10 @@ def _revive_ctx(wf: Workflow, raw: Any) -> Any:
 
 
 def answered(path: Path) -> bool:
-    """Whether the operator gate at `path` has actually been answered.
-
-    The gate file carries its own state — `gates.format_operator_gate` writes
-    `STATUS: AWAITING_OPERATOR`, groom's dashboard flips it to `ANSWERED`, and three
-    workflows already read it — so *that* is the edge, not the file's mtime. Waiting on
-    the mtime is what used to resume a run on an editor autosave, or on an operator
-    saving half a thought: the answer was not written yet, but the file was touched.
-
-    Anything other than an explicit `AWAITING_OPERATOR` counts as answered, including a
-    file with no header at all. An operator who replaces the whole file with their answer
-    has answered it, and `gates.status_of` deliberately reports "absent" rather than
-    guessing, leaving that call here.
-    """
+    """Whether the operator gate at `path` has actually been answered."""
     try:
         text = path.read_text()
     except OSError:
-        # Not there yet: an `Await` with no questions can name a file the operator has
-        # still to create, and a missing gate is unanswered rather than answered.
         return False
     return gates.status_of(text) != "AWAITING_OPERATOR"
 
@@ -192,28 +139,7 @@ def wait_for_answer(
     deadline: float | None = None,
     kind: str = "operator",
 ) -> Request | None:
-    """Block until the gate at `path` is answered, or a control request arrives.
-
-    Two arms, and both are load-bearing. The re-read is *authoritative*: the answer is a
-    file a human edits at leisure, possibly from a machine that can reach the run dir and
-    nothing else, so a run has to resume on it whether or not anyone sends a message.
-    The channel makes it *prompt*, and is what lets an operator reach a run that is
-    otherwise going to sit here for days.
-
-    A re-read rather than inotify, still: inotify is Linux-only — a runner that cannot
-    wait for a human on macOS is not portable — and against a latency budget measured in
-    days the two are indistinguishable.
-
-    While parked here, the run is also the party that *answers*: a `questions` query on
-    the channel lists this gate (registered below, cleared on every exit), and an
-    `answer` request is consumed in place — judged, written into the gate file, and
-    acknowledged — rather than returned to the caller, because only this frame knows
-    which gate the run is blocked on. The file write comes before the ack, so the reply
-    never claims an answer the disk does not hold; the wait then ends on the very
-    re-read that has always ended it.
-
-    Returns the request that interrupted the wait, or None when the gate was answered.
-    """
+    """Block until the gate at `path` is answered, or a control request arrives."""
     log = log or logger
     waited = 0.0
     operator = kind == "operator"
@@ -244,8 +170,6 @@ def wait_for_answer(
                 if operator:
                     _consume_answer(request, path, channel, log)
                 else:
-                    # A machine wait's file is a supervisor's wake file, not a question;
-                    # writing an operator's prose into it would fabricate the job's end.
                     channel.reply(
                         {
                             "ok": False,
@@ -256,12 +180,6 @@ def wait_for_answer(
                 continue
             waited += interval
             if waited % HEARTBEAT_S < interval:
-                # Names the condition, not just the file: an operator who edited the
-                # gate without flipping its status is the one case this wait will not
-                # end on its own, and this line is where they find that out. On a
-                # `machine` wait there is no such case and no such person — nobody is
-                # ever going to write STATUS: ANSWERED in a supervisor's wake file — so
-                # asking for one reads as a run begging for input it does not want.
                 condition = (
                     "STATUS: ANSWERED in" if operator else "the job to finish in"
                 )
@@ -277,14 +195,7 @@ def wait_for_answer(
 
 
 def _pending_gate(path: Path, kind: str, since: str) -> list[dict[str, object]]:
-    """What this run is blocked on, for the channel's `questions` verb.
-
-    Read live from the gate file on every query, never cached: the file is the
-    authoritative side of the exchange, so what a poller is shown is exactly what an
-    editor would see. An answered or missing-and-questionless gate lists as nothing
-    pending — the wait will notice within a tick and this listing must not outrun it
-    by claiming a question the operator already dealt with.
-    """
+    """What this run is blocked on, for the channel's `questions` verb."""
     if answered(path):
         return []
     return [{"path": str(path), "question": _gate_question(path), "kind": kind, "since": since}]
@@ -301,15 +212,7 @@ def _gate_question(path: Path) -> str:
 def _consume_answer(
     request: Request, path: Path, channel: ControlChannel, log: logging.Logger
 ) -> None:
-    """One `answer` request, judged and — when it is this gate's — written to disk.
-
-    Persist first, acknowledge second: the reply races the process's own survival, and
-    an ack for an answer that never reached the file would be the one lie a resume
-    cannot recover from. The converse order only costs the sender a retry, which the
-    already-answered refusal absorbs. The wait itself is ended by nothing here — the
-    caller's next `answered()` re-read sees the status this wrote, so the socket path
-    and the hand-edit path end the wait through the same door.
-    """
+    """One `answer` request, judged and — when it is this gate's — written to disk."""
     asked = str(path)
     if request.path and request.path != asked:
         channel.reply(
@@ -322,8 +225,6 @@ def _consume_answer(
     try:
         text = path.read_text()
     except OSError:
-        # An `Await` with no questions can name a file nobody has created yet;
-        # answering it creates it, header and all.
         text = ""
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -336,16 +237,7 @@ def _consume_answer(
 
 
 def _park(path: Path, env: RunEnv, *, kind: str) -> None:
-    """Block on `path` until answered, honouring control requests while parked.
-
-    The wait consumes what it can — an `answer` for this gate, a `questions` query —
-    and hands back anything it cannot. `cut_by` is the one policy for those: a profile
-    switch and an `--at-boundary` reload are acknowledged and held (the boundary after
-    the answer applies them), an unknown verb is declined — all of which resume the
-    wait — and a cutting reload unwinds right now. The checkpoint carrying
-    `waiting_on` went to disk before any caller parks here, so the re-entered run
-    knows to park on this same gate.
-    """
+    """Block on `path` until answered, honouring control requests while parked."""
     while True:
         interrupted = wait_for_answer(
             path,
@@ -369,12 +261,7 @@ def _park(path: Path, env: RunEnv, *, kind: str) -> None:
 
 
 def _ask(path: Path, questions: str, log: logging.Logger) -> None:
-    """Write the ask, so the operator has something to answer.
-
-    A gate file that is already there is re-armed and **appended to**, never replaced:
-    a state can block on the same path more than once, and the answers it was given the
-    first time are still the answers — see `gates.append_operator_gate`.
-    """
+    """Write the ask, so the operator has something to answer."""
     if not questions:
         return
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -389,19 +276,7 @@ def _ask(path: Path, questions: str, log: logging.Logger) -> None:
 
 
 def _resume_in_place(wf: Workflow, env: RunEnv) -> Resume | None:
-    """A sub-flow's own checkpoint, read back because its parent is re-entering it.
-
-    Only `handoff` asks for this, and only for the state a resume re-entered. Three
-    things have to agree before the checkpoint is adopted, because the same file is
-    also what a *finished* visit leaves behind: it has to be a pyflow checkpoint, it
-    has to name this class, and its inputs have to be the ones this invocation was
-    constructed with. The last is what keeps a loop that runs the same flow per story
-    from resuming story A's checkpoint into story B.
-
-    Every disagreement — including an unreadable file — starts the child clean rather
-    than raising: a resume that cannot reuse the child's progress is slower, and one
-    that cannot start at all is a dead unattended run.
-    """
+    """A sub-flow's own checkpoint, read back because its parent is re-entering it."""
     path = env.run_dir / ArtifactWriter.CHECKPOINT_FILE
     try:
         checkpoint = parse_checkpoint(path.read_text())
@@ -426,12 +301,7 @@ def _resume_in_place(wf: Workflow, env: RunEnv) -> Resume | None:
 def drive(
     wf: Workflow, env: RunEnv, resume: Resume | None = None, *, resume_in_place: bool = False
 ) -> Any:
-    """Run `wf` to a `Done`, returning its result.
-
-    `resume_in_place` is the sub-flow spelling of `resume`: the caller has no
-    checkpoint in hand, only the knowledge that this flow is being re-entered after a
-    kill, so the checkpoint is read from the scope the child writes into.
-    """
+    """Run `wf` to a `Done`, returning its result."""
     if env.driver is None:
         env.driver = drive
     wf._bind(Engine(env))
@@ -444,12 +314,6 @@ def drive(
         state, params = resume.state, resume.params
         env.log.info("[workhorse] resume → state '%s'", state)
         if resume.waiting_on is not None:
-            # The checkpoint parked on a gate: a reload cut the wait, or the process
-            # died mid-park. Re-arm it before running the state, or a resume would
-            # walk straight past the question into a state expecting its answer.
-            # Only a file still reading AWAITING_OPERATOR re-parks — that header is
-            # written by operator gates alone, so a machine wait's wake file (or a
-            # gate answered while the run was down) skips straight in as before.
             gate = Path(resume.waiting_on)
             try:
                 parked = gates.status_of(gate.read_text()) == "AWAITING_OPERATOR"
@@ -464,29 +328,18 @@ def drive(
         state, params = wf.start_state, {}
 
     resuming = resume is not None
-    #: Why the transition that led here was taken — `.because(...)` on the outcome of
-    #: the previous state, printed beside the state it leads to.
     why = ""
     inputs = wf.model_dump(mode="json")
     ctx_payload = _ctx_payload(wf)
     flow_name = type(wf).__name__
     budget = type(wf).max_transitions or env.config.max_transitions
     refuel_on = type(wf).REFUEL_ON
-    # What the budget actually bounds: transitions *since the last forward step*. With
-    # no `REFUEL_ON` no token is ever produced, nothing refills, and this is the flat
-    # ceiling it has always been. See `Workflow.REFUEL_ON` for why a drain needs the
-    # other reading.
     remaining, refuel_token = budget, None
-    # One tracker per logger, so an activity a sub-flow sets survives the parent's
-    # next transition instead of being published over by a second instance.
     activity = activity_log.install(env.log)
 
     while True:
         token = _refuel_token(refuel_on, params)
         if token is not None and token != refuel_token:
-            # The first token of a run is a sighting, not a refuel — there is nothing
-            # to compare it against and the tank is full anyway. Counting it would put
-            # a refuel on the meter for every drain that ever started one item.
             if refuel_token is not None:
                 env.log.debug("[workhorse] refuel → %s (%s)", token, state)
                 otel.gas_refuel(state)
@@ -499,17 +352,6 @@ def drive(
         kwargs = coerce_params(bound, params, state=spec.name)
 
         activity.rebase({**env.labels, **_labels(wf, env.log, kwargs)})
-        # Commit the position *before* the budget check, not after. A `Continue`'s params
-        # are only durable once some iteration checkpoints them, and this is that write —
-        # so a check that raises first discards the transition that produced them, and the
-        # resume replays the state it already ran with the arguments it had on entry. That
-        # is not merely wasted work: the replayed state is handed *stale* arguments, so a
-        # gate's findings vanish and the next turn is told there were none. (Seen for real:
-        # a QA plan turn spent nine minutes, its validator emitted 24 diagnostics, the clock
-        # ran out on the transition carrying them, and the resumed turn — told the loop was
-        # clean — reported "no changes needed" and burned another pass.) Writing first costs
-        # one checkpoint on the aborting iteration and keeps the module's own invariant:
-        # state parameters *are* the checkpoint.
         state_seq = env.writer.write_state_checkpoint(
             spec.name, jsonable(params), inputs=inputs, flow=flow_name, ctx=ctx_payload
         )
@@ -518,21 +360,8 @@ def drive(
                 "run exceeded its WORKHORSE_MAX_RUNTIME_S wall-clock budget, counted "
                 "from the run's original start. Raise the budget and resume."
             )
-        # The boundary half of the reload. The stream loop cuts a turn that is burning
-        # tokens; this catches every other moment — a request that arrived while a
-        # script node ran, and the `--at-boundary` request the stream loop deliberately
-        # ignores. It sits *after* the checkpoint above, so the state about to run is
-        # already durable and the re-entry replays it having lost nothing. The request
-        # carries what it asked for on the exception, because the request came off the
-        # channel and there is nothing left on disk for the unwind to re-read.
         boundary = reload.boundary_requested()
         if boundary is not None and boundary.action == reload.SWITCH_PROFILE:
-            # Applied here, in this process, rather than re-entering: the profile is
-            # re-read and re-narrowed on every turn, so assigning the name is the whole
-            # switch. `reload.boundary_requested` deliberately left it unanswered — this
-            # is the frame that knows whether it could be applied, and a refusal
-            # acknowledged as a success would leave a week-long run spending on the models
-            # nobody chose.
             reply = ladder.switch_profile(env.agent_runner, boundary.profile)
             if reply.get("ok"):
                 env.log.info(
@@ -549,34 +378,12 @@ def drive(
                 cli=boundary.cli,
             )
         env.log.info("[workhorse] state  → %s%s", spec.name, _because(why))
-        # Armed for the resumed state only — see `RunEnv.resume_pending`. A state
-        # further along the run is being entered for the first time, and a handoff it
-        # makes is a fresh invocation whatever a stale child checkpoint says.
         env.resume_pending = resuming
-        # The state's own span, and every node span its body leaves open, close in
-        # this scope's `finally` — at the depth that opened them, carrying the error
-        # on the innermost frame only. The reload path below restores the depth
-        # itself, which leaves the scope a no-op there.
         with otel.scope():
             otel.state_start(spec.name, state_seq)
             try:
                 outcome = bound(**kwargs)
             except reload.ReloadRequested:
-                # Every `drive` frame closes its own scope on the way out, innermost first:
-                # a handoff runs a nested `drive` inside this state's body, so the unwind
-                # passes through one of these per level. `_end_execution` also sweeps
-                # whatever this frame left open above it — the agent node's own span, which
-                # never received the `done` event that normally ends it, because the turn
-                # was cut. So a reload exports the same span tree a completed transition
-                # does, minus the outcome attribute it never earned. That is the point: an
-                # operator who reloads a broken flow must not pay for it in spans that never
-                # leave the process, which is exactly what makes a reload read as a crash.
-                #
-                # They close marked, not bare: a node visit that ended here did not finish
-                # its work, and a reader with only the two timestamps cannot tell that from
-                # one that did. Unmarked, five reloads of a flow an operator is fixing are
-                # five completed visits to the same node on the same labels — groom's churn
-                # rule, i.e. the reload paging as the loop it exists to break.
                 otel.state_end(spec.name, state_seq, None, cut="reload")
                 raise
         resuming = env.resume_pending = False
@@ -606,14 +413,10 @@ def drive(
                 ctx=ctx_payload,
                 waiting_on=str(outcome.path),
             )
-            # "blocked" is a claim about who is stalled, and it is only true of an
-            # operator gate. A machine wait has a job running for it right now.
             verb = "blocked on" if outcome.kind == "operator" else "waiting on"
             env.log.info(
                 "[workhorse] await  → %s %s%s", verb, outcome.path, _because(outcome.reason)
             )
-            # Publish the written gate so pre-authored questions and earlier
-            # exchanges reach the detail pane along with this wait's question.
             with otel.wait(
                 outcome.kind,
                 spec.name,
@@ -638,13 +441,7 @@ def drive(
 
 
 def _refuel_token(keys: frozenset[str], params: dict[str, Any]) -> str | None:
-    """The value of `keys` in `params`, as one comparable string — or `None`.
-
-    `None` means "this hop says nothing about progress", which is different from "no
-    progress": a state that does not take the parameter leaves the last token standing
-    rather than clearing it, so returning to the drain from a checkpoint round does not
-    read as a fresh advance.
-    """
+    """The value of `keys` in `params`, as one comparable string — or `None`."""
     if not keys:
         return None
     seen = {k: params[k] for k in sorted(keys) if k in params}
@@ -654,14 +451,7 @@ def _refuel_token(keys: frozenset[str], params: dict[str, Any]) -> str | None:
 
 
 def _labels(wf: Workflow, log: logging.Logger, params: dict[str, Any]) -> dict[str, str]:
-    """The workflow's own telemetry dimensions. A label that throws costs one
-    attribute and nothing else — never the run.
-
-    `params` is what the state about to run was bound with, passed through so a
-    workflow can report which attempt of a bounded budget this is. It is the
-    workflow's data and the engine does not read it. `state_labels` defaults to
-    `labels()`, so a workflow that needs neither pays nothing for either.
-    """
+    """The workflow's own telemetry dimensions."""
     try:
         declared = wf.state_labels(params)
     except Exception as exc:  # noqa: BLE001 — instrumentation must not fail a run

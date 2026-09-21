@@ -1,17 +1,4 @@
-"""The `coder` distribution's composition root — nothing else.
-
-`workhorse-coder` is bound here (`workflows/pyproject.toml`), and this module is what the
-script imports: the registry that names the distribution, folds in its node blueprint,
-lists the flows a caller can run by name, and declares what a `--dry-run` gets back from
-each prompt. The graph a bare `run` starts is a flow package like the other eight —
-[`main/`](main) — so the nine sit side by side and this file stays a table of contents.
-
-The registry declares its own `package`, and that is load-bearing rather than tidy: it is
-the root every prompt path renders against (`dev/prompts/implement-plan.md`) and the name
-the repo-flavor lookup uses (`.agents/flavors/coder/`). Inferred from the entry class
-instead, both would follow `Coder` into `main/` and every sibling flow's prompts would fall
-outside the loader.
-"""
+"""The `coder` distribution's composition root — nothing else."""
 from __future__ import annotations
 
 from workhorse.cli import console_script
@@ -29,8 +16,6 @@ from workhorse_workflows.coder.shared.blueprint import blueprint
 workflow = (
     Registry("coder", package=__package__)
     .add_blueprints(blueprint)
-    # The seven registered Python sub-flows, by the name `workhorse-coder run <name>`
-    # takes. Five are reached by `handoff`; `genesis` and `fix` are entered directly.
     .add_flows(
         genesis=Genesis,
         dev=Dev,
@@ -42,8 +27,6 @@ workflow = (
     )
     .stub_agents(
         {
-            # Keyed by prompt STEM: the reply that makes a dry run *progress* past each
-            # gate rather than taking the pessimistic blank arm.
             "plan-story": {"status": "complete"},
             "repair-plan-paths": {"status": "done"},
             "replan-with-answer": {"status": "done"},

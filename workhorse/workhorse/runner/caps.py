@@ -14,13 +14,7 @@ from workhorse.runner.failure import BackendInvocationError
 
 
 def parse_reset_seconds(text: str, now: datetime) -> float | None:
-    """Seconds from ``now`` until the cap reset time named in ``text`` — e.g.
-    'resets 3:50am', 'resets at 11pm', 'resets 15:50'. Returns the next future
-    occurrence of that clock time, or None if no time is found (caller defaults).
-
-    ``now`` is passed in, never read here: this is a parser, and a parser that
-    reads the clock cannot be exercised without one.
-    """
+    """Seconds from ``now`` until the cap reset time named in ``text`` — e.g."""
     m = re.search(r"resets?(?:\s+at)?\s+(\d{1,2})(?::(\d{2}))?\s*([ap]m)", text, re.IGNORECASE)
     if m:
         hour = int(m.group(1)) % 12
@@ -46,15 +40,7 @@ def cap_delay_seconds(
     resilience: AgentResilience,
     clock: Clock,
 ) -> tuple[float, str]:
-    """How long to sleep for a cap, and a human 'resuming around' label.
-
-    Prefers the structured ``reset_at`` epoch (precise, timezone-correct) when the
-    error carries one, bounded by ``resilience.cap_max_wait_s``; otherwise parses
-    a reset time from the message text; otherwise uses the default wait.
-
-    Both paths read "now" from the injected ``clock``, so a cap that reopens eight
-    hours out is a test that states the hour rather than one that patches ``time``.
-    """
+    """How long to sleep for a cap, and a human 'resuming around' label."""
     now = clock.now()
     if exc.reset_at is not None:
         secs = exc.reset_at - now.timestamp()
@@ -62,7 +48,6 @@ def cap_delay_seconds(
             delay = min(secs, resilience.cap_max_wait_s) + resilience.cap_wait_margin_s
             when = (now + timedelta(seconds=delay)).strftime("%a %H:%M")
             return delay, when
-        # Reset already passed (stale event / clock skew) → retry promptly.
         return resilience.cap_wait_margin_s, "reset already passed — retrying shortly"
 
     parsed = parse_reset_seconds(str(exc), now)
@@ -82,29 +67,7 @@ def sleep_with_notice(
     channel: ControlChannel = NULL_CHANNEL,
     honour: Callable[[Request], Request | None] = lambda request: request,
 ) -> Request | None:
-    """Sleep ``total_s`` seconds, printing a 'still paused' line every
-    ``resilience.cap_tick_s``
-    so a long, legitimate wait can't be mistaken for a hang. Each tick also emits
-    the cap-wait heartbeat metric — the external liveness proof that lets a
-    collector tell a legitimate multi-day cap sleep from an actual hang.
-
-    Returns the control request that cut the wait short, or None if it ran to term.
-    This is the longest wait in the engine — a weekly cap reopens days out — so it is
-    also the one an operator is most likely to want to reach into: to reload a fix, or
-    to move the run onto a CLI that is not capped. Waiting through the channel makes
-    that a wake-up rather than a message read whenever the window happened to close.
-
-    ``honour`` is how the caller says which requests are its business: it is handed each
-    request that arrives and returns the one to stop for, or None to keep waiting. The
-    default stops for anything, since a caller that passes no policy has none. What it
-    exists for is the request this wait must *not* end on — an `--at-boundary` reload, or
-    an action this run does not know — which would otherwise cut a multi-day cap window
-    short by simply having been delivered.
-
-    The slice handed to ``wait_until`` is the whole tick rather than its default second,
-    which is what keeps an unattached run's sleeping *identical* to what it was: with no
-    channel there is nothing to select on, so a tick is one ``clock.sleep(chunk)``.
-    """
+    """Sleep ``total_s`` seconds, printing a 'still paused' line every ``resilience.cap_tick_s`` so a long, legitimate wait can't be mistaken for a hang."""
     remaining = total_s
     otel.heartbeat(node_id, remaining)
     while remaining > 0:
@@ -114,8 +77,6 @@ def sleep_with_notice(
             honoured = honour(request)
             if honoured is not None:
                 return honoured
-            # Declined: re-enter the tick rather than counting it as elapsed. The message
-            # has been answered and, where it matters, held for the state boundary.
             continue
         remaining -= chunk
         otel.heartbeat(node_id, remaining)

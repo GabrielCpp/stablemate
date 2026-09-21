@@ -1,16 +1,4 @@
-"""Standalone tests for `farrier config --config` and `config show --profile`.
-
-Reading a profile is what the operator does *before* launching a run on it — "what
-does `cheap` actually map high to" — and a `cat` of the TOML answers that only if they
-can hold three levels of table in their head. So `show --profile` narrows the config
-the same way a run does and flattens the result to one dotted line per leaf.
-
-`--config` is the other half: it names the file, so the same question can be asked of
-a config that is not this machine's home one.
-
-Run directly (no pytest required):
-    uv run python tests/test_config_profiles_cli.py
-"""
+"""Standalone tests for `farrier config --config` and `config show --profile`."""
 
 import io
 import os
@@ -45,12 +33,7 @@ model = "qwen"
 
 @contextmanager
 def written(text: str = CONFIG):
-    """A config file on disk, with this process's own $STABLEMATE_CONFIG restored after.
-
-    `_run_config` writes the resolved path into the environment — that is the mechanism
-    under test — so a test that did not put the old value back would hand every later
-    test in the same process this temporary file.
-    """
+    """A config file on disk, with this process's own $STABLEMATE_CONFIG restored after."""
     before = os.environ.get(config.CONFIG_PATH_ENV)
     with tempfile.TemporaryDirectory() as tmp:
         path = Path(tmp) / "config.toml"
@@ -72,8 +55,7 @@ def _show(*argv: str) -> list[str]:
 
 
 def test_the_config_flag_reads_the_file_it_names():
-    """Not the home config, and without the caller having to export anything: the
-    operator comparing two config files is the case this exists for."""
+    """Not the home config, and without the caller having to export anything: the operator comparing two config files is the case this exists for."""
     with written() as path:
         lines = _show("--config", str(path), "show")
 
@@ -81,8 +63,7 @@ def test_the_config_flag_reads_the_file_it_names():
 
 
 def test_a_profile_is_shown_flattened_to_dotted_keys():
-    """One line per leaf, which is what makes two profiles diffable against each other.
-    A TOML echo would only reproduce the file the operator already has."""
+    """One line per leaf, which is what makes two profiles diffable against each other."""
     with written() as path:
         lines = _show("--config", str(path), "show", "--profile", "cheap")
 
@@ -95,10 +76,7 @@ def test_a_profile_is_shown_flattened_to_dotted_keys():
 
 
 def test_the_profile_replaces_the_top_level_rather_than_layering_over_it():
-    """The property the whole feature rests on, asserted where an operator can see it:
-    `[profiles.claude.powers.high] model = "opus"` is above the profile in the same
-    file, and the selected profile's own entry is the *whole* answer rather than an
-    override on top of it."""
+    """The property the whole feature rests on, asserted where an operator can see it: `[profiles.claude.powers.high] model = "opus"` is above the profile in the same file, and the selected profile's own entry is the *whole* answer rather than an override on top of it."""
     with written() as path:
         lines = _show("--config", str(path), "show", "--profile", "cheap")
 
@@ -106,8 +84,7 @@ def test_the_profile_replaces_the_top_level_rather_than_layering_over_it():
 
 
 def test_a_key_is_looked_up_by_its_dotted_path_within_the_profile():
-    """`show <key>` already means "print one bare value"; inside a profile the keys are
-    the dotted ones, so this is the same verb rather than a second spelling."""
+    """`show <key>` already means "print one bare value"; inside a profile the keys are the dotted ones, so this is the same verb rather than a second spelling."""
     with written() as path:
         lines = _show("--config", str(path), "show", "powers.high.model",
                       "--profile", "cheap")
@@ -116,8 +93,7 @@ def test_a_key_is_looked_up_by_its_dotted_path_within_the_profile():
 
 
 def test_an_unknown_profile_exits_cleanly_and_lists_the_ones_there_are():
-    """A misspelling is the common case, and a traceback would neither name the file
-    nor say what it could have meant."""
+    """A misspelling is the common case, and a traceback would neither name the file nor say what it could have meant."""
     with written() as path:
         try:
             _show("--config", str(path), "show", "--profile", "chaep")
@@ -128,8 +104,7 @@ def test_an_unknown_profile_exits_cleanly_and_lists_the_ones_there_are():
 
 
 def test_a_key_the_profile_does_not_set_says_which_profile_it_looked_in():
-    """The top-level config may well have it, so "not set" alone reads as a bug in the
-    tool rather than as a gap in the profile."""
+    """The top-level config may well have it, so "not set" alone reads as a bug in the tool rather than as a gap in the profile."""
     with written() as path:
         try:
             _show("--config", str(path), "show", "powers.high.codex.model",
@@ -148,15 +123,13 @@ def test_a_config_with_no_profiles_at_all_still_shows_the_top_level():
 
 
 def test_set_worktree_records_a_directory_that_does_not_exist_yet():
-    """`set-worktree` names where worktrees will be *cut*, so requiring the directory to
-    exist would make the machine unconfigurable before the first worktree."""
+    """`set-worktree` names where worktrees will be *cut*, so requiring the directory to exist would make the machine unconfigurable before the first worktree."""
     with written('default_cli = "codex"\n') as path:
         absent = path.parent / "worktrees"
         lines = _show("--config", str(path), "set-worktree", str(absent))
 
         assert lines == [f"worktree_dir={absent}"]
         assert _show("--config", str(path), "show", "worktree_dir") == [str(absent)]
-        # the write is still non-destructive
         assert _show("--config", str(path), "show", "default_cli") == ["codex"]
 
 

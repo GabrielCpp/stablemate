@@ -1,45 +1,4 @@
-"""Wire farrier's one git-hook command into whichever hook manager the repo uses.
-
-Farrier's older doctrine was file-drop: it wrote a whole `pre-commit` hook it owned, or
-it refused and printed a snippet to paste. That is why the staged-files gate has never
-been installed in *this* repo — `.githooks/pre-commit` was already somebody else's, so
-farrier declined, silently, for as long as the file has existed. A gate nobody notices
-is not installed is worse than no gate: every report still says the install succeeded.
-
-So ownership gets finer instead of louder. Farrier claims **one fenced region** of the
-manager's file:
-
-    # >>> farrier: hooks (generated) >>>
-    ...
-    # <<< farrier: hooks <<<
-
-Line-oriented, like the two fences that already ship (`QA_GITIGNORE_BLOCK` in
-`.gitignore`, `MAKEFILE_INCLUDE_MARKER` in the root `Makefile`), which is what keeps
-`pyyaml` farrier's only parsing dependency: reading `.pre-commit-config.yaml` in order
-to write it back would mean a round-tripping loader, and a round-trip that reflows the
-user's comments is an edit to their file we did not intend to make.
-
-Inside the fence there is always exactly one command, `make farrier-run-hook`, and what
-that runs is a file farrier owns whole (`.agents/hooks/pre-commit`, plus the drift check
-built into the target itself). Everything per-repo lives on farrier's side of the fence,
-so the region spliced into the user's file is the same few lines in every repo and does
-not churn when a skill selection changes.
-
-Which manager to wire is **declared, not sniffed** — `agents.yml`:
-
-    hooks:
-      manager: pre-commit    # | lefthook | husky | githooks | none
-
-Detection remains as the default for a repo that says nothing, because that is what
-farrier did before and a config key that must be set before hooks work at all would
-silently turn them off for every repo already installed. `none` is the opt-out; deleting
-the fence is not one, since `agents.yml` is the authority on what is installed and the
-next `farrier install` puts it back.
-
-The runner (`.agents/hooks/pre-commit`) is a per-repo render output that lists every
-skill-declared hook in selection order — `install_runner` writes it, mirroring the same
-`dry_run` contract `install_manager` follows.
-"""
+"""Wire farrier's one git-hook command into whichever hook manager the repo uses."""
 
 from __future__ import annotations
 
@@ -49,26 +8,17 @@ from typing import Any
 
 from farrier.skill_hooks import SkillHook
 
-#: The command inside the fence. Deliberately outside the `agent-*` namespace:
-#: `.agents/agents.mk` mints a dynamic `agent-run-<workflow>` target per installed
-#: workflow, so `agent-run-hook` would collide with a workflow named `hook`.
 HOOK_COMMAND = "make farrier-run-hook"
 
 FENCE_START = "# >>> farrier: hooks (generated) >>>"
 FENCE_END = "# <<< farrier: hooks <<<"
 
-#: The per-repo half: the skill-declared hooks, rendered as a script farrier owns whole
-#: and `make farrier-run-hook` execs. A generated output like any other, so a hand-edit
-#: to it is drift and reports itself as drift.
 HOOK_RUNNER = ".agents/hooks/pre-commit"
 
-#: lefthook's body, kept out of `lefthook.yml` entirely — `extends:` lets the fence in
-#: the user's file be a single reference and the commands live in a file we own.
 LEFTHOOK_INCLUDE = ".agents/lefthook.farrier.yml"
 
 MANAGERS = ("pre-commit", "lefthook", "husky", "githooks", "none")
 
-#: Where the fence goes, per manager. `none` splices nowhere and strips everywhere.
 _FENCE_FILES = {
     "pre-commit": ".pre-commit-config.yaml",
     "lefthook": "lefthook.yml",
@@ -76,9 +26,6 @@ _FENCE_FILES = {
     "githooks": ".githooks/pre-commit",
 }
 
-#: The first line of the body farrier used to own *whole-file*. A repo still carrying it
-#: is migrated rather than appended to — appending would leave the old gate invocation
-#: and the new one both in the file, running the same check twice and reporting it twice.
 LEGACY_HOOK_MARKER = "# >>> farrier: staged-files gate (generated) >>>"
 
 
@@ -97,12 +44,7 @@ def configured_manager(config: dict[str, Any], repo: Path) -> str:
 
 
 def detect_manager(repo: Path) -> str:
-    """What the repo looks like, by marker file.
-
-    `core.hooksPath` is corroboration only and never the sole signal: a husky repo whose
-    `npm install` has not run yet is fully configured with that config empty, and a
-    config-only probe would call it bare and wire the wrong manager into it.
-    """
+    """What the repo looks like, by marker file."""
     for name in (".pre-commit-config.yaml", ".pre-commit-config.yml"):
         if (repo / name).is_file():
             return "pre-commit"
@@ -117,9 +59,6 @@ def detect_manager(repo: Path) -> str:
     return "githooks"
 
 
-# ---------------------------------------------------------------------------
-# the fence
-# ---------------------------------------------------------------------------
 
 
 def fence(body: str) -> str:
@@ -142,7 +81,7 @@ def splice(existing: str, block: str) -> str:
 
 
 def unsplice(existing: str) -> str:
-    """*existing* with the farrier fence removed. The `manager: none` operation."""
+    """*existing* with the farrier fence removed."""
     lines = existing.splitlines()
     if FENCE_START not in lines or FENCE_END not in lines:
         return existing
@@ -162,9 +101,6 @@ def fenced_body(existing: str) -> str | None:
     return "\n".join(lines[start + 1 : end])
 
 
-# ---------------------------------------------------------------------------
-# what each manager's fence contains
-# ---------------------------------------------------------------------------
 
 _PRE_COMMIT_ENTRY = f"""  - repo: local
     hooks:
@@ -211,13 +147,7 @@ def lefthook_include_text() -> str:
 
 
 def runner_text(hooks: list[SkillHook]) -> str:
-    """`.agents/hooks/pre-commit` — every skill-declared hook, in selection order.
-
-    The drift check is *not* here: it is built into the `farrier-run-hook` target so it
-    runs whether or not any skill declares anything, and so deleting this file cannot
-    turn it off. What is here is per-repo by nature, which is also why it is a rendered
-    output rather than a line in the byte-identical `agents.mk`.
-    """
+    """`.agents/hooks/pre-commit` — every skill-declared hook, in selection order."""
     lines = [
         "#!/bin/sh",
         "# Generated by farrier from the `hooks:` front matter of the installed skills.",
@@ -248,9 +178,6 @@ def runner_text(hooks: list[SkillHook]) -> str:
     return "\n".join(lines)
 
 
-# ---------------------------------------------------------------------------
-# installing it
-# ---------------------------------------------------------------------------
 
 
 def _make_executable(path: Path) -> None:
@@ -270,13 +197,7 @@ def _set_hooks_path(repo: Path, value: str) -> None:
 def install_manager(
     repo: Path, manager: str, *, dry_run: bool = False
 ) -> list[str]:
-    """Splice (or strip) farrier's fence. Returns the lines to print.
-
-    Under ``dry_run=True`` nothing is written, the executable bit is not set, and
-    ``core.hooksPath`` is left alone — every action the verb would have taken is
-    reported with a ``[dry-run]`` prefix instead. The format mirrors the run-path
-    messages so a dry-run and a real run can be diffed line by line.
-    """
+    """Splice (or strip) farrier's fence."""
     if manager == "none":
         removed = []
         for rel in _FENCE_FILES.values():
@@ -298,9 +219,6 @@ def install_manager(
     path = repo / rel
     existing = path.read_text(encoding="utf-8") if path.is_file() else ""
     if LEGACY_HOOK_MARKER in existing:
-        # Whole-file ownership, from before the fence existed. Appending to it would
-        # leave the old gate invocation beside the new one — the same check twice, and
-        # the second report reading as a second problem.
         existing = ""
     if manager in ("husky", "githooks") and not existing.strip():
         existing = _SHELL_PREAMBLE
@@ -337,13 +255,7 @@ def install_runner(
     *,
     dry_run: bool = False,
 ) -> list[str]:
-    """Regenerate ``.agents/hooks/pre-commit`` from the declared hooks.
-
-    *hooks=None* signals "no library was resolvable": the function is silent
-    without ``--dry-run`` (the next ``farrier install`` will regenerate), and
-    under ``--dry-run`` prints the line that names the cause so the operator can
-    see why the regeneration step was skipped.
-    """
+    """Regenerate ``.agents/hooks/pre-commit`` from the declared hooks."""
     path = repo / HOOK_RUNNER
     if hooks is None:
         if dry_run:
@@ -364,14 +276,7 @@ def install_runner(
 
 
 def fence_drift(repo: Path, manager: str) -> list[str]:
-    """The fenced regions that no longer match what farrier would write.
-
-    Reported by `--check` for the same reason a generated file is: the region is
-    farrier's, `install` overwrites it, and an edit made there is an edit about to be
-    lost. A *missing* fence counts — `agents.yml` is the authority on what is installed,
-    so deleting the block is drift rather than an opt-out (`manager: none` is the
-    opt-out).
-    """
+    """The fenced regions that no longer match what farrier would write."""
     if manager == "none":
         return [
             rel

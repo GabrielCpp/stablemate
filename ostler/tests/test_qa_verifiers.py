@@ -1,9 +1,4 @@
-"""What the harness's differential verifiers refuse, called as the functions they are.
-
-These are pure comparisons, so they are exercised directly rather than through a plan in a
-subprocess: the thing under test is what counts as *observing* a lifecycle claim, and a whole
-run around it would prove the driver works, not that a no-op is caught.
-"""
+"""What the harness's differential verifiers refuse, called as the functions they are."""
 
 from __future__ import annotations
 
@@ -19,8 +14,7 @@ harness = load_harness_module("ostler_qa")
 
 @pytest.mark.parametrize("check", ["created", "removed"])
 def test_a_lifecycle_check_refuses_an_after_only_observation(check: str) -> None:
-    """The after-read alone is the mistake — it passes identically on a subject that was
-    already there — so the harness says so at the call rather than asserting presence."""
+    """The after-read alone is the mistake — it passes identically on a subject that was already there — so the harness says so at the call rather than asserting presence."""
     with pytest.raises(TypeError) as raised:
         harness.VERIFIERS[check]({"id": "b-1"}, {"subject": "the booking"})
     assert f"{check} observes a change" in str(raised.value)
@@ -32,9 +26,7 @@ def test_a_lifecycle_check_refuses_an_after_only_observation(check: str) -> None
     [
         (None, {"id": "b-1"}, True),
         ([], [{"id": "b-1"}], True),
-        # Already there: the pass this check exists to withhold.
         ({"id": "b-0"}, {"id": "b-1"}, False),
-        # Nothing happened.
         (None, None, False),
     ],
 )
@@ -52,7 +44,6 @@ def test_created_is_the_absence_before_and_the_presence_after(
     [
         ({"id": "h-1"}, None, True),
         ([{"id": "h-1"}], [], True),
-        # Never there: absence afterwards attributes nothing to the action.
         (None, None, False),
         ({"id": "h-1"}, {"id": "h-1"}, False),
     ],
@@ -80,17 +71,14 @@ class _Response:
     ("url", "declared", "passes"),
     [
         ("http://localhost:8080/api/claims", "/api/claims", True),
-        # The query is not the route: a filtered read answers the same path.
         ("http://localhost:8080/api/claims?mine=1", "/api/claims", True),
-        # The pass this argument exists to withhold — a 200 read off the wrong route.
         ("http://localhost:8080/api/claims", "/api/claims/cl-9999", False),
     ],
 )
 def test_http_status_compares_the_route_that_answered(
     url: str, declared: str, passes: bool
 ) -> None:
-    """`path=` says *which* request answered. Ignoring it lets a scenario that meant to read
-    one route and read another observe the same status and call the claim covered."""
+    """`path=` says *which* request answered."""
     ok, actual, expected = harness.VERIFIERS["http_status"](
         _Response(200, {}, url), {"code": 200, "path": declared}
     )
@@ -100,16 +88,14 @@ def test_http_status_compares_the_route_that_answered(
 
 
 def test_http_status_refuses_a_bare_status_when_a_path_was_declared() -> None:
-    """An integer carries no route, so the declared comparison cannot be made — a scenario
-    defect, told at the call rather than filed against the product."""
+    """An integer carries no route, so the declared comparison cannot be made — a scenario defect, told at the call rather than filed against the product."""
     with pytest.raises(TypeError) as raised:
         harness.VERIFIERS["http_status"](200, {"code": 200, "path": "/api/claims"})
     assert "which request answered" in str(raised.value)
 
 
 def test_count_walks_its_subject_into_the_document_it_was_given() -> None:
-    """`{"claims": [a, b]}` has one key and two claims. Counting the document instead of the
-    subject satisfies `equals=1` while the product returned two — the accidental pass."""
+    """`{"claims": [a, b]}` has one key and two claims."""
     ok, actual, _ = harness.VERIFIERS["count"](
         {"claims": [{"id": "cl-1"}, {"id": "cl-2"}]}, {"subject": "claims", "equals": 1}
     )
@@ -127,8 +113,7 @@ def test_count_reads_a_response_body_before_resolving_its_subject() -> None:
 
 
 def test_count_is_red_when_the_document_has_no_such_subject() -> None:
-    """The product omitting the collection is a defect of the product, so it goes red rather
-    than raising — the shape the scenario handed over was the right one."""
+    """The product omitting the collection is a defect of the product, so it goes red rather than raising — the shape the scenario handed over was the right one."""
     ok, actual, _ = harness.VERIFIERS["count"](
         {"policies": []}, {"subject": "claims", "equals": 0}
     )
@@ -137,8 +122,7 @@ def test_count_is_red_when_the_document_has_no_such_subject() -> None:
 
 
 def test_count_leaves_an_already_extracted_collection_alone() -> None:
-    """A subject no path can address — a CLI's "entries in the ledger" — still counts the
-    collection the scenario extracted for it."""
+    """A subject no path can address — a CLI's "entries in the ledger" — still counts the collection the scenario extracted for it."""
     ok, actual, _ = harness.VERIFIERS["count"](
         [1, 2, 3], {"subject": "entries in the ledger", "equals": 3}
     )
@@ -147,8 +131,7 @@ def test_count_leaves_an_already_extracted_collection_alone() -> None:
 
 
 def test_json_path_equals_compares_a_json_scalar_by_type() -> None:
-    """`equals=8250` is a number, not the string "8250": a product that serialises an
-    amount as text is a different product, and `true` is not `1`."""
+    """`equals=8250` is a number, not the string "8250": a product that serialises an amount as text is a different product, and `true` is not `1`."""
     verify = harness.VERIFIERS["json_path"]
     assert verify({"amount": 8250}, {"path": "amount", "equals": 8250})[0] is True
     assert verify({"amount": 8250}, {"path": "amount", "equals": 8250.0})[0] is True
@@ -172,8 +155,7 @@ LEDGER = {
 
 
 def test_a_filter_segment_selects_the_entry_by_what_it_holds_not_where_it_sits() -> None:
-    """`people[?(@.who=='ana')].total_cents` is a claim about ana, not about entry 0 — the
-    order the product writes its list in is not what the book claimed."""
+    """`people[?(@.who=='ana')].total_cents` is a claim about ana, not about entry 0 — the order the product writes its list in is not what the book claimed."""
     verify = harness.VERIFIERS["json_path"]
     args = {"path": "people[?(@.who=='ana')].total_cents", "equals": 4200}
     assert verify(LEDGER, args)[0] is True
@@ -187,8 +169,7 @@ def test_a_filter_segment_selects_the_entry_by_what_it_holds_not_where_it_sits()
 
 
 def test_a_selector_that_picks_out_two_values_is_an_ambiguous_claim_not_a_pass() -> None:
-    """Two selections and one `equals=` is a book that failed to single the entry out; the
-    verdict is red and reports what was selected so the author sees the ambiguity."""
+    """Two selections and one `equals=` is a book that failed to single the entry out; the verdict is red and reports what was selected so the author sees the ambiguity."""
     verify = harness.VERIFIERS["json_path"]
     ok, actual, expected = verify(LEDGER, {"path": "people[?(@.total_cents==1300)].who", "equals": "bo"})
     assert ok is False
@@ -208,8 +189,7 @@ def test_count_counts_what_a_wildcard_or_filter_selects() -> None:
 
 
 def test_json_path_without_a_comparison_is_red_not_green() -> None:
-    """`ostler.checks` refuses this call where it is declared. Should one reach the harness
-    anyway, an assertion that cannot fail must not report a pass."""
+    """`ostler.checks` refuses this call where it is declared."""
     ok, actual, expected = harness.VERIFIERS["json_path"](
         {"item": {"id": "abc"}}, {"path": "$.item.id"}
     )
@@ -219,8 +199,7 @@ def test_json_path_without_a_comparison_is_red_not_green() -> None:
 
 
 def test_omits_reads_the_field_its_subject_names() -> None:
-    """The C9 shape: a well-formed refusal carrying the credential it rejected. Status, title
-    and body all read correctly, so the leak is only visible to a check that looks for it."""
+    """The C9 shape: a well-formed refusal carrying the credential it rejected."""
     leak = "The bearer token eyJhbGciOi… was not accepted."
     ok, actual, _ = harness.VERIFIERS["omits"](
         _Response(401, {"title": "Unauthorized", "detail": leak}, "http://x/api/claims"),
@@ -241,8 +220,7 @@ def test_omits_passes_when_the_subject_says_nothing_it_may_not() -> None:
 
 
 def test_omits_searches_everything_when_its_subject_does_not_resolve() -> None:
-    """A leak lands where the defect put it, not where the author guessed. So a subject that
-    names no field in the document widens the search rather than reading as absence."""
+    """A leak lands where the defect put it, not where the author guessed."""
     ok, actual, _ = harness.VERIFIERS["omits"](
         _Response(401, {"error": {"note": "token eyJabc rejected"}}, "http://x/api/claims"),
         {"subject": "$.detail", "text": "eyJabc"},
@@ -262,8 +240,7 @@ def test_omits_searches_a_plain_string_observation() -> None:
 
 
 def test_absent_false_is_a_presence_assertion_that_can_go_red() -> None:
-    """A book spelling `absent=false` claims the field is there. Reading it as "no comparison
-    was given" made the claim unprovable: green was impossible whatever the product answered."""
+    """A book spelling `absent=false` claims the field is there."""
     present, _, _ = harness.VERIFIERS["json_path"](
         {"policies": [{"version": "1"}]}, {"path": "policies[0].version", "absent": False}
     )
@@ -276,11 +253,7 @@ def test_absent_false_is_a_presence_assertion_that_can_go_red() -> None:
 
 
 class _StyledLocator:
-    """An element whose painted text is not its DOM text — a stylesheet's doing.
-
-    `text-transform: uppercase` on a status pill is the corpus's instance: the markup says
-    `free`, the book documents `free`, and the browser paints `FREE`.
-    """
+    """An element whose painted text is not its DOM text — a stylesheet's doing."""
 
     def __init__(self, *, rendered: str, dom: str) -> None:
         self._rendered = rendered
@@ -297,8 +270,7 @@ class _StyledLocator:
 
 
 def test_visible_reads_the_dom_when_css_repainted_the_text() -> None:
-    """The one thing QA grounded on the book must not do is redden against a correct app,
-    and casing applied by CSS is not a disagreement with the book about content."""
+    """The one thing QA grounded on the book must not do is redden against a correct app, and casing applied by CSS is not a disagreement with the book about content."""
     element = _StyledLocator(rendered="A1\nFREE", dom="A1free")
     ok, actual, expected = harness.VERIFIERS["visible"](element, {"text": "free"})
     assert ok is True
@@ -307,16 +279,14 @@ def test_visible_reads_the_dom_when_css_repainted_the_text() -> None:
 
 
 def test_visible_still_fails_on_text_neither_reading_carries() -> None:
-    """The fallback widens the spellings, not the verdict: a string the element does not
-    say is absent from both readings, which is what keeps the check able to go red."""
+    """The fallback widens the spellings, not the verdict: a string the element does not say is absent from both readings, which is what keeps the check able to go red."""
     element = _StyledLocator(rendered="A1\nFREE", dom="A1free")
     ok, _actual, _expected = harness.VERIFIERS["visible"](element, {"text": "booked"})
     assert ok is False
 
 
 def test_exit_status_reads_exit_code_and_refuses_other_subjects() -> None:
-    """The check observes the one thing a command's output never carries — how the process
-    ended — and a plan that hands it a response or a document has mis-wired the claim."""
+    """The check observes the one thing a command's output never carries — how the process ended — and a plan that hands it a response or a document has mis-wired the claim."""
     verify = harness.VERIFIERS["exit_status"]
     assert verify(SimpleNamespace(exit_code=0), {"code": 0}) == (True, 0, 0)
     ok, actual, expected = verify(SimpleNamespace(exit_code=2), {"code": 0})
@@ -328,13 +298,10 @@ def test_exit_status_reads_exit_code_and_refuses_other_subjects() -> None:
         verify({"exit_code": 0}, {"code": 0})
 
 
-# --- `qa.window()`, the facade side of Phase 2l -------------------------------------------------
 
 
 def _qa(recorder: Any, driver: str = "playwright") -> Any:
-    """`Qa.window` reads three attributes and nothing else, so it is exercised against them
-    rather than around a whole scenario process — the thing under test is which drivers may
-    answer the question, and a real run would prove the browser works instead."""
+    """`Qa.window` reads three attributes and nothing else, so it is exercised against them rather than around a whole scenario process — the thing under test is which drivers may answer the question, and a real run would prove the browser works instead."""
     return SimpleNamespace(
         diagnostics=recorder,
         scenario_id="new_widget_submit",
@@ -344,10 +311,7 @@ def _qa(recorder: Any, driver: str = "playwright") -> Any:
 
 def test_a_scenario_reading_an_exchange_on_a_driver_that_records_none_says_which(
 ) -> None:
-    """Observability is a relation between what a claim needs and what a driver can supply.
-    A plan compiled for `playwright` and run against a `python` target asks a recorder that
-    is not there; the error names the scenario, the target and the driver, because the
-    repair is in the book's `driver:`, not in the scenario."""
+    """Observability is a relation between what a claim needs and what a driver can supply."""
     for recorder in (None, object()):
         with pytest.raises(RuntimeError) as raised:
             harness.Qa.window(_qa(recorder, driver="python"))
@@ -358,8 +322,7 @@ def test_a_scenario_reading_an_exchange_on_a_driver_that_records_none_says_which
 
 
 def test_a_browser_scenario_gets_the_recorder_s_own_window() -> None:
-    """The window comes from the recorder, not from a second copy of its bookkeeping — one
-    object holds both the bound and the lookup that respects it."""
+    """The window comes from the recorder, not from a second copy of its bookkeeping — one object holds both the bound and the lookup that respects it."""
     sentinel = object()
     recorder = SimpleNamespace(window=lambda: sentinel)
     assert harness.Qa.window(_qa(recorder)) is sentinel

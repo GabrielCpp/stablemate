@@ -18,7 +18,6 @@ def test_is_stable_from_a_subdirectory(tmp_path: Path):
     nested = repo / "saddlebag" / "saddlebag"
     nested.mkdir(parents=True)
     (repo / ".git").mkdir()
-    # Deep inside the repo, the answer is still the repo, not the subdir.
     assert infer_project(nested) == "stablemate"
 
 

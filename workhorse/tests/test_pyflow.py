@@ -1,17 +1,4 @@
-"""Tests for the Python state-machine engine (`workhorse.pyflow`).
-
-Dependency-free and standalone, like the rest of `tests/`: nothing here touches the
-network, the agent CLI or the clock. Both seams are fields of the run's own `RunEnv`,
-handed to the run rather than assigned onto a module: `agent_runner` is a scripted
-stand-in for the recovery ladder, and `clock` is a `FakeClock`, so a test that exercises
-a week-long `Await` costs microseconds.
-
-What is asserted here is mostly the *contract* rather than the mechanics: the three
-tiers of state, the `(state, params)` checkpoint, and the naming rules that decide
-whether a run checkpointed on Tuesday can still resume on Friday after a rename.
-
-Run: ./.venv/bin/python tests/test_pyflow.py   (or via pytest)
-"""
+"""Tests for the Python state-machine engine (`workhorse.pyflow`)."""
 
 from __future__ import annotations
 
@@ -59,24 +46,15 @@ from workhorse.pyflow.names import NameIndex  # noqa: E402
 from workhorse.records import NodeGraphCheckpoint  # noqa: E402
 from workhorse.runner.failure import BackendInvocationError  # noqa: E402
 
-Transition = Any  # states are annotated loosely here; the driver checks the runtime type
+Transition = Any
 
 
-# --------------------------------------------------------------------------- helpers
 
 
 class ScriptedRunner:
-    """A stand-in for the recovery ladder, whose `run` is whatever the test supplies.
-
-    The ladder is the run's own dependency (`RunEnv.agent_runner`), so a test states
-    what an agent turn replies by handing the run a different one — never by
-    reassigning a function onto `pyflow.engine` (rule 5: a monkeypatched name is a
-    missing injection point).
-    """
+    """A stand-in for the recovery ladder, whose `run` is whatever the test supplies."""
 
     def __init__(self, run: Any) -> None:
-        # An attribute, not a method: `env.agent_runner.run(...)` must call the
-        # supplied function with the ladder's own arguments, unbound.
         self.run = run
 
 
@@ -88,29 +66,13 @@ def _env(
     reopen: bool = False,
     **kwargs: Any,
 ) -> RunEnv:
-    """A run environment rooted in `tmp`, with the agent backend stubbed out.
-
-    `config` is an argument rather than a constant because the driver's own guards —
-    the transition budget, the `Await` poll interval — are `RunConfig` fields now, so a
-    test states the budget it asserts against instead of setting an env var.
-
-    `reopen` picks which of the writer's two constructors a test means, the way
-    `pyflow.run._open_run` picks between them for a real run: a fresh start builds one
-    (and empties the run dir, since a params-derived id lands on the same path every
-    time), a resume re-binds to the dir already there and keeps its contents. A test
-    that drives a `Resume` must pass it — a fresh writer over a resumable run dir is
-    not a thing the CLI can do, and it would delete the very artifacts being resumed.
-    """
+    """A run environment rooted in `tmp`, with the agent backend stubbed out."""
     run_dir = Path(tmp) / "runs" / f"{name}-t"
     writer = (
         ArtifactWriter.resume(run_dir)
         if reopen
         else ArtifactWriter(name, Path(tmp) / "runs", run_id="t")
     )
-    # No backend, and none to substitute: `RunConfig.backend` defaults to the null
-    # adapter, so a ladder built from this config drives a CLI that fails every turn
-    # with a sentence rather than one that is absent. The tests that DO run agent turns
-    # hand `_env` an `agent_runner=` of their own.
     if config is None:
         config = RunConfig()
     return RunEnv(
@@ -134,7 +96,6 @@ def _raises(exc_type: type[BaseException], fn: Any, *args: Any, **kwargs: Any) -
     raise AssertionError(f"expected {exc_type.__name__}, nothing was raised")
 
 
-# --------------------------------------------------------------------------- fixtures
 
 
 class Payload(BaseModel):
@@ -162,7 +123,6 @@ def locate(logger: Any, subject: str = "?", repo_dir: str = "own-default", docs_
     return Payload(kind=f"{subject}:{repo_dir}:{docs_path}", count=0)
 
 
-# --------------------------------------------------------------- registration & names
 
 
 def test_public_methods_are_states_and_helpers_are_not():
@@ -246,7 +206,6 @@ def test_a_dead_state_name_fails_loudly_and_names_the_fix():
     assert "start" in text, text
 
 
-# ----------------------------------------------------------------------- the run loop
 
 
 class Linear(Workflow):
@@ -290,10 +249,6 @@ def test_the_checkpoint_is_the_state_and_its_params():
         assert cp["state"] == "boom", cp
         assert cp["params"] == {"attempt": 2}, cp
         assert cp["flow"] == "Stops", cp
-        # `repo_dir` and `library_dirs` ride along because the base declares them: every
-        # run works on a checkout, and resolves its content against whatever library
-        # layers the machine has, so both are inputs of every workflow whether or not
-        # one was passed — and both are therefore in the checkpoint a resume reads.
         assert cp["inputs"] == {
             "subject": "login", "repo_dir": "", "library_dirs": []
         }, cp
@@ -306,8 +261,6 @@ def test_a_transition_that_does_not_match_the_next_signature_fails_at_transition
 
         class Mistyped(Workflow):
             def start(self) -> Transition:
-                # The mismatch is the subject of the test: `finish` takes `count`, and
-                # the checker is told to allow the call the runtime must reject.
                 return Continue(  # ty: ignore[missing-argument]
                     None,
                     self.finish,
@@ -351,13 +304,7 @@ def test_the_transition_budget_ends_a_ping_pong():
 
 
 def test_a_workflow_that_pins_no_budget_uses_the_runs_own():
-    """`WORKHORSE_MAX_TRANSITIONS` reaches the driver as a `RunConfig` field.
-
-    It used to be read from `os.environ` inside a `Workflow` classmethod, so the only
-    way to state a budget in a test was to mutate the environment — configuration read
-    below the edge (rule 4.1). The class attribute still wins when a flow sets one,
-    which is what keeps a long workflow's own `max_transitions = 4000` authoritative.
-    """
+    """`WORKHORSE_MAX_TRANSITIONS` reaches the driver as a `RunConfig` field."""
     with tempfile.TemporaryDirectory() as tmp:
         env = _env(tmp, config=RunConfig(max_transitions=3))
 
@@ -373,12 +320,7 @@ def test_a_workflow_that_pins_no_budget_uses_the_runs_own():
 
 
 def test_a_declared_progress_parameter_refills_the_budget():
-    """A drain outlives a budget far smaller than its backlog.
-
-    Six transitions on a budget of four: without the refill this dies on item three.
-    What the budget bounds under `REFUEL_ON` is transitions since the last forward
-    step, and every lap here takes one.
-    """
+    """A drain outlives a budget far smaller than its backlog."""
     with tempfile.TemporaryDirectory() as tmp:
         env = _env(tmp)
 
@@ -399,12 +341,7 @@ def test_a_declared_progress_parameter_refills_the_budget():
 
 
 def test_a_refilling_budget_still_ends_a_ping_pong_that_does_not_progress():
-    """The refill is not an exemption: the token has to actually move.
-
-    `stuck` re-enters itself with the same `progress` forever — the shape a real drain
-    takes when it stops closing items — and it dies on exactly the budget a workflow
-    declaring nothing would have.
-    """
+    """The refill is not an exemption: the token has to actually move."""
     with tempfile.TemporaryDirectory() as tmp:
         env = _env(tmp)
 
@@ -420,20 +357,11 @@ def test_a_refilling_budget_still_ends_a_ping_pong_that_does_not_progress():
 
         exc = _raises(WorkflowFailed, drive, Stuck(), env)
         assert "transition budget exhausted after 4 transitions without" in str(exc), exc
-        # The message names the last step the run did make, so an operator reading it
-        # knows whether they are looking at a stall or at a backlog they underestimated.
         assert "3/9" in str(exc), exc
 
 
 def test_a_state_that_takes_no_progress_parameter_does_not_re_arm_the_refill():
-    """A hop that says nothing about progress leaves the last token standing.
-
-    The drain's own checkpoint round is exactly this: several states that never see
-    `progress`, then a return to the loop carrying the value it already had. Were the
-    absent parameter read as "no token", coming back would look like a fresh advance
-    and the round trip would refill the budget on its own — a ping-pong through a
-    third state would then run forever.
-    """
+    """A hop that says nothing about progress leaves the last token standing."""
     with tempfile.TemporaryDirectory() as tmp:
         env = _env(tmp)
 
@@ -454,7 +382,6 @@ def test_a_state_that_takes_no_progress_parameter_does_not_re_arm_the_refill():
         assert "transition budget exhausted after 6" in str(exc), exc
 
 
-# --------------------------------------------------------------------------- freezing
 
 
 def test_the_instance_freezes_once_setup_returns():
@@ -466,7 +393,6 @@ def test_the_instance_freezes_once_setup_returns():
             subject: str = "login"
 
             def setup(self) -> None:
-                # setup() itself may still write — the freeze starts when it returns.
                 self.subject = "settled"
                 wrote.append(self.subject)
                 return None
@@ -480,7 +406,6 @@ def test_the_instance_freezes_once_setup_returns():
         assert "Continue(result, self.next_state, subject=" in str(exc), exc
 
 
-# ----------------------------------------------------------------------------- resume
 
 
 def test_a_resume_re_enters_the_checkpointed_state_without_re_running_setup():
@@ -527,7 +452,6 @@ def test_a_checkpoint_written_under_the_old_name_resumes_the_renamed_state():
 
         resume = Resume(state="qa_gate", params={"story": "login"}, flow="Renamed")
         assert drive(Renamed(), env, resume) == "login"
-        # The checkpoint it rewrites carries the LIVE name, so the next resume is clean.
         assert _checkpoint(env)["state"] == "qa", _checkpoint(env)
 
 
@@ -584,7 +508,6 @@ def test_read_resume_refuses_a_yaml_checkpoint():
     assert "plan" in str(exc), exc
 
 
-# ------------------------------------------------------------------------ self.output
 
 
 def test_output_reads_the_recorded_value_back_typed():
@@ -631,7 +554,6 @@ def test_output_raises_when_the_node_has_not_run():
 def test_output_falls_back_to_a_directory_written_under_the_old_node_name():
     with tempfile.TemporaryDirectory() as tmp:
         env = _env(tmp)
-        # What a run started before the rename left on disk.
         env.writer.write_step("survey", "survey()\n", {"kind": "old", "count": 3}, {})
 
         class Reads(Workflow):
@@ -641,7 +563,6 @@ def test_output_falls_back_to_a_directory_written_under_the_old_node_name():
         assert drive(Reads(), env) == 3
 
 
-# ----------------------------------------------------------------------------- Await
 
 
 def test_await_writes_the_ask_and_checkpoints_before_it_waits():
@@ -732,14 +653,7 @@ def test_await_with_no_questions_preserves_a_pre_authored_gate():
 
 
 def test_a_machine_await_is_not_reported_as_an_operator_gate():
-    """A detached job's wait is a wait, not a block.
-
-    Every `Await` used to report itself to telemetry as `operator`, so a 40-hour
-    measurement rendered in groom as a human failing to answer a gate and fired
-    BLOCKED and WAITING with the text "nothing is running for it". Something was:
-    the supervisor that writes this very file. The kind is what tells them apart,
-    and groom exempts every non-operator wait already.
-    """
+    """A detached job's wait is a wait, not a block."""
     with tempfile.TemporaryDirectory() as tmp:
         wake = Path(tmp) / "wake"
 
@@ -769,17 +683,11 @@ def test_a_machine_await_is_not_reported_as_an_operator_gate():
             ("start", 1, "machine", "start"),
             ("end", 1, "completed", ""),
         ], fake.waits
-        # An empty ask writes nothing, so the supervisor's file is the only thing here.
         assert wake.read_text() == "done\n"
 
 
 def test_await_ignores_a_save_that_left_the_gate_unanswered():
-    """A touch is not an answer.
-
-    The gate used to resume on the file's mtime, so an editor autosave — or an operator
-    saving half a reply and going to lunch — resumed the run on a gate still marked
-    AWAITING_OPERATOR. The status the file already carries is what the wait reads now.
-    """
+    """A touch is not an answer."""
     with tempfile.TemporaryDirectory() as tmp:
         ask = Path(tmp) / "operator.md"
         ask.write_text("STATUS: AWAITING_OPERATOR\n\nwhich branch?\n")
@@ -805,18 +713,11 @@ def test_await_ignores_a_save_that_left_the_gate_unanswered():
         clock = HalfAnswers()
         env = _env(tmp, clock=clock)
         assert drive(Blocks(), env) == "STATUS: ANSWERED\n\nmain\n"
-        # The draft cost a second wait; under the mtime rule it would have cost one.
         assert clock.slept == [env.config.await_poll_s] * 2, clock.slept
 
 
 def test_an_answer_over_the_socket_lands_in_the_gate_file_and_resumes_the_run():
-    """The socket is the channel; the file stays the record.
-
-    The answer arrives as a control request, but what the resumed state reads — and what
-    a crash right after the ack would resume from — is the gate file the wait itself
-    wrote, `STATUS: ANSWERED` with the operator's prose appended. A request that names
-    no path answers the gate the run is parked on.
-    """
+    """The socket is the channel; the file stays the record."""
     with tempfile.TemporaryDirectory() as tmp:
         ask = Path(tmp) / "operator.md"
 
@@ -851,11 +752,7 @@ def test_an_answer_over_the_socket_lands_in_the_gate_file_and_resumes_the_run():
 
 
 def test_a_reload_cuts_a_parked_operator_wait():
-    """An operator pushing fixed code must not wait out the human being asked.
-
-    The checkpoint carrying `waiting_on` went to disk before the wait began, so the
-    unwind loses nothing — the re-entered run knows which gate it was parked on.
-    """
+    """An operator pushing fixed code must not wait out the human being asked."""
     with tempfile.TemporaryDirectory() as tmp:
         ask = Path(tmp) / "operator.md"
 
@@ -883,7 +780,6 @@ def test_a_reload_cuts_a_parked_operator_wait():
 
         assert isinstance(exc, reload.ReloadRequested) and exc.core is True
         assert channel.replies == [{"ok": True, "cut": True}]
-        # The gate is still armed: the re-entered run re-parks on it, nothing answered.
         assert gates.status_of(ask.read_text()) == "AWAITING_OPERATOR"
 
 
@@ -910,12 +806,7 @@ def test_an_answer_for_another_gate_is_refused_and_the_wait_goes_on():
 
 
 def test_a_hand_edit_that_beats_the_socket_answer_wins():
-    """The file is authoritative, so the slower of the two channels is told, not obeyed.
-
-    An operator edits the gate in their editor while a teammate answers from the
-    dashboard: whichever lands first is the answer, and writing the second one over it
-    would silently replace what the run is about to read.
-    """
+    """The file is authoritative, so the slower of the two channels is told, not obeyed."""
     with tempfile.TemporaryDirectory() as tmp:
         ask = Path(tmp) / "operator.md"
         ask.write_text("STATUS: AWAITING_OPERATOR\n\nwhich branch?\n")
@@ -939,8 +830,7 @@ def test_a_hand_edit_that_beats_the_socket_answer_wins():
 
 
 def test_a_machine_wait_refuses_an_operator_answer():
-    """A machine wait's file is a supervisor's wake file; an answer written into it
-    would fabricate the job's end."""
+    """A machine wait's file is a supervisor's wake file; an answer written into it would fabricate the job's end."""
     with tempfile.TemporaryDirectory() as tmp:
         wake = Path(tmp) / "wake"
         channel = FakeChannel(
@@ -959,7 +849,6 @@ def test_a_machine_wait_refuses_an_operator_answer():
 
         assert got is None
         assert channel.replies == [
-            # No question listed: a machine wait is a wait, not an ask.
             {"ok": True, "questions": []},
             {"ok": False, "error": "this run is not blocked on an operator gate right now"},
         ]
@@ -993,21 +882,13 @@ def test_a_parked_wait_lists_its_gate_for_the_questions_verb_and_clears_it_after
                 ],
             }
         ]
-        # The wait cleared its registration on the way out: the same query now says the
-        # run is blocked on nothing, rather than replaying the answered gate forever.
         after = FakeChannel(Request(action=control.QUESTIONS))
         assert control.wait_until(lambda: False, timeout=1.0, clock=FakeClock(), channel=after) is None
         assert after.replies == [{"ok": True, "questions": []}]
 
 
 def test_resume_re_parks_on_the_gate_the_checkpoint_was_waiting_on():
-    """A resume must not walk past the question into a state expecting its answer.
-
-    The checkpoint written on `Await` names the *next* state with `waiting_on` set, so
-    a resume used to enter that state whether or not anyone had answered — which is
-    what made cutting a parked wait unsafe. Re-arming the wait is what makes reload →
-    resume → parked-again lose nothing.
-    """
+    """A resume must not walk past the question into a state expecting its answer."""
     with tempfile.TemporaryDirectory() as tmp:
         ask = Path(tmp) / "operator.md"
         ask.write_text("STATUS: AWAITING_OPERATOR\n\nwhich branch?\n")
@@ -1038,8 +919,7 @@ def test_resume_re_parks_on_the_gate_the_checkpoint_was_waiting_on():
 
 
 def test_resume_skips_a_gate_answered_or_gone_while_the_run_was_down():
-    """Only a file still reading AWAITING_OPERATOR re-parks: an answered gate, and a
-    machine wait's wake file (which never carries the header), go straight in."""
+    """Only a file still reading AWAITING_OPERATOR re-parks: an answered gate, and a machine wait's wake file (which never carries the header), go straight in."""
     for content in ("STATUS: ANSWERED\n\nmain\n", None):
         with tempfile.TemporaryDirectory() as tmp:
             gate = Path(tmp) / "operator.md"
@@ -1109,7 +989,6 @@ def test_a_reload_cut_wait_re_parks_on_resume_and_the_answer_still_lands():
         assert channel.replies == [{"ok": True, "path": str(ask)}]
 
 
-# ---------------------------------------------------------------------- self.handoff
 
 
 def test_handoff_drives_a_sub_flow_in_its_own_scope_and_returns_its_result():
@@ -1128,13 +1007,10 @@ def test_handoff_drives_a_sub_flow_in_its_own_scope_and_returns_its_result():
                 return Done(self.handoff(SubFlow, token="login"))
 
         assert drive(Parent(), env) == {"token": "login"}
-        # The sub-flow's nodes live under the handoff's own scope, so a node name
-        # reused by parent and child cannot overwrite the other's output.json.
         assert (env.run_dir / "sub_flow" / "_flow" / "measure" / "output.json").is_file()
         assert not (env.run_dir / "measure").exists()
 
 
-# ----------------------------------------------------------------- Workflow.injects
 
 
 def test_call_fills_an_injects_field_the_node_declares_and_the_callsite_omitted():
@@ -1153,8 +1029,7 @@ def test_call_fills_an_injects_field_the_node_declares_and_the_callsite_omitted(
 
 
 def test_a_field_the_workflow_did_not_list_is_never_injected():
-    """`injects` is an allowlist, not name-matching: a node's `subject` argument must
-    not be captured from a same-named input the state chose not to pass."""
+    """`injects` is an allowlist, not name-matching: a node's `subject` argument must not be captured from a same-named input the state chose not to pass."""
     with tempfile.TemporaryDirectory() as tmp:
         env = _env(tmp)
 
@@ -1169,9 +1044,7 @@ def test_a_field_the_workflow_did_not_list_is_never_injected():
 
 
 def test_a_callsite_value_wins_over_the_input_including_positionally():
-    """`skip=1` is what makes the positional case work: the node's logger is supplied
-    by the seam, so `locate`'s first positional is `subject` and its second is
-    `repo_dir` — already answered, and not to be answered twice."""
+    """`skip=1` is what makes the positional case work: the node's logger is supplied by the seam, so `locate`'s first positional is `subject` and its second is `repo_dir` — already answered, and not to be answered twice."""
     with tempfile.TemporaryDirectory() as tmp:
         env = _env(tmp)
 
@@ -1185,8 +1058,7 @@ def test_a_callsite_value_wins_over_the_input_including_positionally():
 
 
 def test_an_empty_input_injects_nothing_so_the_node_default_stands():
-    """An unset input is not an answer. Overwriting the node's own default with a
-    blank would claim the callsite said something it did not."""
+    """An unset input is not an answer."""
     with tempfile.TemporaryDirectory() as tmp:
         env = _env(tmp)
 
@@ -1213,8 +1085,7 @@ def test_a_node_that_does_not_declare_the_field_is_called_unchanged():
 
 
 def test_handoff_propagates_the_injects_fields_to_the_sub_flow():
-    """A `handoff` constructs a fresh workflow, so nothing crosses that boundary that
-    is not an argument — which is why a sub-flow used to see none of the run's setting."""
+    """A `handoff` constructs a fresh workflow, so nothing crosses that boundary that is not an argument — which is why a sub-flow used to see none of the run's setting."""
     with tempfile.TemporaryDirectory() as tmp:
         env = _env(tmp)
 
@@ -1234,7 +1105,6 @@ def test_handoff_propagates_the_injects_fields_to_the_sub_flow():
 
         assert drive(Parent(repo_dir="/src", docs_path="/book"), env) == "sub:/src:/book"
 
-# ------------------------------------------------------------------------ self.agent
 
 
 def test_agent_validates_the_reply_into_the_declared_model():
@@ -1263,11 +1133,7 @@ def test_agent_validates_the_reply_into_the_declared_model():
 
 
 def test_agent_hands_the_result_model_to_the_ladder_as_its_validator():
-    """The shape check must run INSIDE the ladder's corrective-retry loop, not after
-    it: a reply carrying every declared key but a wrong-shaped value used to pass key
-    extraction and end the whole run as `WorkflowFailed` in `_coerce`, with no repair
-    layer ever seeing it. The engine therefore hands `returns.model_validate` down as
-    the runner's `validate` hook — asserting on the seam is what pins that."""
+    """The shape check must run INSIDE the ladder's corrective-retry loop, not after it: a reply carrying every declared key but a wrong-shaped value used to pass key extraction and end the whole run as `WorkflowFailed` in `_coerce`, with no repair layer ever seeing it."""
     with tempfile.TemporaryDirectory() as tmp:
         seen: list[Any] = []
 
@@ -1285,19 +1151,13 @@ def test_agent_hands_the_result_model_to_the_ladder_as_its_validator():
 
         validate = seen[0]
         assert validate is not None
-        # It is the model's own validation, verbatim: the good shape passes, the
-        # wrong shape raises with the field named — the text the corrective retry
-        # quotes back to the agent.
         validate({"kind": "ok", "count": 2})
         exc = _raises(Exception, lambda: validate({"kind": "ok", "count": "many"}))
         assert "count" in str(exc)
 
 
 def test_agent_carries_cwd_and_add_dirs_onto_the_node():
-    """`cwd` decides whose CLAUDE.md, skills and git context a turn sees, so a
-    workflow that runs against a checkout it computed must be able to say where.
-    They land on the same `AgentNode` the YAML engine builds, so the render, the
-    de-dupe and the `--add-dir` flags are the runner's existing behavior."""
+    """`cwd` decides whose CLAUDE.md, skills and git context a turn sees, so a workflow that runs against a checkout it computed must be able to say where."""
     with tempfile.TemporaryDirectory() as tmp:
         nodes: list[Any] = []
 
@@ -1315,8 +1175,6 @@ def test_agent_carries_cwd_and_add_dirs_onto_the_node():
                     cwd=Path("/repos/acme"),
                     add_dirs=["/repos/docs", Path("/repos/api-service")],
                 )
-                # Saying nothing must leave the model's own defaults in place
-                # rather than overwrite them with None.
                 self.agent("prompts/plain.md", returns=Payload)
                 return Done(None)
 
@@ -1329,14 +1187,7 @@ def test_agent_carries_cwd_and_add_dirs_onto_the_node():
 
 
 def test_an_overrun_turn_reaches_the_state_as_a_catchable_agent_timeout():
-    """A state whose deliverable is a FILE has to be able to land a cut turn.
-
-    Without a name it can catch, an overrun ends the run — even though the partial
-    draft the turn wrote is sitting on disk and the state has a repair path for
-    exactly that. `BackendInvocationError` cannot be that name: it lives in
-    `workhorse.runner.failure`, and a workflow importing the runner is what pyflow's
-    cheap-import rule exists to prevent. So the translation happens here.
-    """
+    """A state whose deliverable is a FILE has to be able to land a cut turn."""
     with tempfile.TemporaryDirectory() as tmp:
 
         def cut(node: Any, ctx: Any, *args: Any, **kwargs: Any) -> Any:
@@ -1356,14 +1207,7 @@ def test_an_overrun_turn_reaches_the_state_as_a_catchable_agent_timeout():
 
 
 def test_a_spent_turn_that_is_not_a_timeout_is_a_separate_catchable_name():
-    """Two names, not one, and not a subtype either.
-
-    A state that caught a crashed CLI as a timeout would go on to repair a file the turn
-    never wrote, so `AgentTimeout` stays exactly as narrow as it was. But the verdict on
-    a turn that produced *nothing* is just as much a fact about the node — a state may
-    want to gate on it, and enumerating cannot reach a name that lives behind pyflow's
-    import line. So it crosses as `AgentTurnFailed`, catchable and distinct.
-    """
+    """Two names, not one, and not a subtype either."""
     with tempfile.TemporaryDirectory() as tmp:
 
         def crash(node: Any, ctx: Any, *args: Any, **kwargs: Any) -> Any:
@@ -1385,12 +1229,7 @@ def test_a_spent_turn_that_is_not_a_timeout_is_a_separate_catchable_name():
 
 
 def test_a_spent_turn_nobody_catches_still_ends_the_run():
-    """The new name changes what a state *can* do, not what happens when it does nothing.
-
-    A workflow that does not handle a dead provider must still stop — inventing an answer
-    for a node is the one thing the ladder never does — and the runner name it used to
-    propagate as was never something a state could catch anyway.
-    """
+    """The new name changes what a state *can* do, not what happens when it does nothing."""
     with tempfile.TemporaryDirectory() as tmp:
 
         def crash(node: Any, ctx: Any, *args: Any, **kwargs: Any) -> Any:
@@ -1410,10 +1249,7 @@ def test_a_spent_turn_nobody_catches_still_ends_the_run():
 
 
 def test_the_context_manifest_is_the_outer_layer_of_an_agent_turn():
-    """A ported library prompt calls `instruction_ref(...)` / `template.*`, and those
-    helpers read the farrier manifest off the render context. It is the OUTER layer —
-    always present so they resolve, always overridable by the state's own arguments,
-    which is the same precedence the YAML engine gives it."""
+    """A ported library prompt calls `instruction_ref(...)` / `template.*`, and those helpers read the farrier manifest off the render context."""
     with tempfile.TemporaryDirectory() as tmp:
         seen: list[Any] = []
 
@@ -1424,9 +1260,6 @@ def test_the_context_manifest_is_the_outer_layer_of_an_agent_turn():
         env = _env(
             tmp,
             agent_runner=ScriptedRunner(fake_run_agent),
-            # The manifest as the value, not as the keys it projects: the test says
-            # what a run carries and lets `as_context` decide which reserved key an
-            # instruction lands under, which is the only place that decision lives.
             manifest=ManifestContext(
                 present=True,
                 instructions={"go": ".claude/skills/acme-go/SKILL.md"},
@@ -1453,8 +1286,7 @@ def test_the_context_manifest_is_the_outer_layer_of_an_agent_turn():
 
 
 def test_a_run_with_no_manifest_renders_exactly_its_arguments():
-    """The manifest-free case (loop-runner, most tests) must add no keys at all —
-    an empty seat, not a placeholder one."""
+    """The manifest-free case (loop-runner, most tests) must add no keys at all — an empty seat, not a placeholder one."""
     with tempfile.TemporaryDirectory() as tmp:
         seen: list[Any] = []
 
@@ -1474,7 +1306,6 @@ def test_a_run_with_no_manifest_renders_exactly_its_arguments():
         assert seen[0] == {"unit": "CASE-1"}
 
 
-# ------------------------------------------------------------------------------ because
 
 
 def test_a_transitions_reason_is_logged_beside_the_step_it_leads_to():
@@ -1504,21 +1335,14 @@ def test_a_transitions_reason_is_logged_beside_the_step_it_leads_to():
 
         assert "[workhorse] state  → finish — nothing to review" in seen
         assert "[workhorse] done   ← finish — the book is complete" in seen
-        # The entry state was led to by nothing, so it says nothing.
         assert "[workhorse] state  → start" in seen
 
 
-# ---------------------------------------------------------------------------- activity
 
 
 def test_a_states_flagged_log_line_becomes_the_run_activity():
-    """The YAML engine's per-node `activity:` has no counterpart in a state machine —
-    a state is one method that may do several things. So the run's activity is
-    whichever log line most recently flagged itself, and the driver's per-transition
-    label rebase preserves it. See `tests/test_activity.py` for the semantics."""
+    """The YAML engine's per-node `activity:` has no counterpart in a state machine — a state is one method that may do several things."""
     with tempfile.TemporaryDirectory() as tmp:
-        # Its own logger, at INFO: a logger left at the root's inherited WARNING drops
-        # the flagged record before any filter sees it, and the test would pass blind.
         log = logging.getLogger("tests.pyflow.activity")
         log.setLevel(logging.INFO)
         log.filters.clear()
@@ -1545,8 +1369,6 @@ def test_a_states_flagged_log_line_becomes_the_run_activity():
         finally:
             otel.install(previous)
 
-        # The flagged line publishes, and the transition into `finish` rebases the
-        # declared labels without clearing it.
         assert fake.labels[-1] == {
             "work_id": "ACME-9",
             "activity": "assessing legacy/report/list",
@@ -1554,9 +1376,7 @@ def test_a_states_flagged_log_line_becomes_the_run_activity():
 
 
 def test_labels_may_read_the_parameters_the_state_was_bound_with():
-    """A bounded retry budget is already a state parameter — it has to be, since
-    state parameters *are* the checkpoint. So the attempt number is in hand at the
-    moment labels are read, and reporting it needs no copy stashed on `self`."""
+    """A bounded retry budget is already a state parameter — it has to be, since state parameters *are* the checkpoint."""
     with tempfile.TemporaryDirectory() as tmp:
         env = _env(tmp)
         fake = RecordingTelemetry()
@@ -1579,13 +1399,11 @@ def test_labels_may_read_the_parameters_the_state_was_bound_with():
         finally:
             otel.install(previous)
 
-        # One label set per transition: start, then each visit to `work`.
         assert [labels.get("attempt") for labels in fake.labels] == ["0", "0", "1", "2"]
 
 
 def test_a_zero_argument_labels_override_keeps_working():
-    """The original contract. Deciding by signature means an override written before
-    the parameter existed must not start being handed one."""
+    """The original contract."""
     with tempfile.TemporaryDirectory() as tmp:
         env = _env(tmp)
         fake = RecordingTelemetry()
@@ -1607,8 +1425,7 @@ def test_a_zero_argument_labels_override_keeps_working():
 
 
 def test_a_labels_override_that_raises_costs_only_its_own_labels():
-    """Instrumentation must never fail a run — including a params-reading override
-    handed a state whose parameters are not what it assumed."""
+    """Instrumentation must never fail a run — including a params-reading override handed a state whose parameters are not what it assumed."""
     with tempfile.TemporaryDirectory() as tmp:
         env = _env(tmp)
         fake = RecordingTelemetry()
@@ -1629,7 +1446,6 @@ def test_a_labels_override_that_raises_costs_only_its_own_labels():
         assert fake.labels[-1] == {}
 
 
-# --------------------------------------------------------------------------- dry run
 
 
 def test_dry_run_records_the_calls_without_making_them():
@@ -1657,17 +1473,10 @@ def test_dry_run_records_the_calls_without_making_them():
         assert (env.run_dir / "touch_the_world" / "output.json").is_file()
 
 
-# ------------------------------------------------------------- the composition root
 
 
 def test_the_run_builds_its_ladder_on_the_run_s_clock():
-    """The run's clock reaches the agent ladder, not just the driver's `Await` poll.
-
-    The two used to be built apart — the CLI made a ladder eagerly, the engine made a
-    second one lazily, and neither passed `RunEnv.clock` — so a run handed a fake clock
-    still waited out an eight-hour cap window for real. `__post_init__` is the single
-    construction site that can see the field, which is what makes it one clock per run.
-    """
+    """The run's clock reaches the agent ladder, not just the driver's `Await` poll."""
     with tempfile.TemporaryDirectory() as tmp:
         clock = FakeClock()
         env = _env(tmp, clock=clock)
@@ -1676,17 +1485,14 @@ def test_the_run_builds_its_ladder_on_the_run_s_clock():
 
 
 def test_a_supplied_ladder_is_used_as_given():
-    """Substitution still wins over construction — otherwise the seam every workflow
-    author's test uses (`agent_runner=StubRunner(...)`) would be overwritten by a real
-    ladder built from the run's config."""
+    """Substitution still wins over construction — otherwise the seam every workflow author's test uses (`agent_runner=StubRunner(...)`) would be overwritten by a real ladder built from the run's config."""
     with tempfile.TemporaryDirectory() as tmp:
         scripted = ScriptedRunner(lambda *a, **k: ("", {}))
         assert _env(tmp, agent_runner=scripted).agent_runner is scripted
 
 
 def test_the_ladder_carries_the_run_s_configured_knobs():
-    """`RunConfig` is read once at the CLI edge; the ladder is what that value becomes,
-    so a knob set there must arrive without any other module reading configuration."""
+    """`RunConfig` is read once at the CLI edge; the ladder is what that value becomes, so a knob set there must arrive without any other module reading configuration."""
     with tempfile.TemporaryDirectory() as tmp:
         config = RunConfig(print_prompt=False, model_override="a-model")
         runner = _env(tmp, config=config).agent_runner
@@ -1697,9 +1503,7 @@ def test_the_ladder_carries_the_run_s_configured_knobs():
 
 
 def test_the_run_index_supplies_the_body_the_callsite_only_names():
-    """`self.call(measure, …)` passes the function because `Concatenate[Logger, P]`
-    needs it for typing; what runs is whatever the run's index holds under that name.
-    That is the whole seam — a test substitutes instead of patching the node's module."""
+    """`self.call(measure, …)` passes the function because `Concatenate[Logger, P]` needs it for typing; what runs is whatever the run's index holds under that name."""
     with tempfile.TemporaryDirectory() as tmp:
         registry = Registry("acme").add_blueprints(bp)
 
@@ -1711,7 +1515,6 @@ def test_the_run_index_supplies_the_body_the_callsite_only_names():
             kind=f"substituted:{subject}", count=0
         )))
         assert drive(Calls(), env) == "substituted:login"
-        # Non-mutating: the registry every other run in the process shares is untouched.
         assert present(registry.nodes.get("measure")).fn is measure
 
 
@@ -1723,9 +1526,7 @@ def test_overriding_a_node_the_registry_does_not_have_names_the_registered_ones(
 
 
 def test_a_node_missing_from_the_run_index_is_an_error_not_a_fallback():
-    """Falling back to the stamp would make the seam advisory — holding or not
-    depending on whether the node's blueprint had been folded in, which is the bug
-    `add_blueprints` exists to remove."""
+    """Falling back to the stamp would make the seam advisory — holding or not depending on whether the node's blueprint had been folded in, which is the bug `add_blueprints` exists to remove."""
     with tempfile.TemporaryDirectory() as tmp:
         other = Blueprint("globex")
 
@@ -1763,9 +1564,7 @@ def test_a_declared_stub_is_what_a_dry_run_runs_in_place_of_the_node():
 
 
 def test_a_dry_run_answers_a_prompt_with_the_reply_the_registry_declared():
-    """Undeclared, every reply is a blank model and the machine takes whichever branch
-    a blank selects. Declaring one per stem is what turns a dry run into a smoke test
-    of the workflow's own happy path."""
+    """Undeclared, every reply is a blank model and the machine takes whichever branch a blank selects."""
     with tempfile.TemporaryDirectory() as tmp:
         registry = Registry("acme").stub_agents(
             {"review": {"kind": "approved", "count": 3}}
@@ -1799,12 +1598,7 @@ def test_the_agent_ladder_is_a_run_dependency_not_a_module_attribute():
 
 
 class _CrashingChild(Workflow):
-    """The sub-flow's declared shape, named so a caller can say what it hands over.
-
-    `handoff(Child, subject=...)` binds against the child's own generated `__init__`,
-    so a factory returning the base `type[Workflow]` would lose `subject` — the
-    parameter every caller below passes. The behaviour lives in the subclass the
-    factory builds; only the field is here."""
+    """The sub-flow's declared shape, named so a caller can say what it hands over."""
 
     subject: str
 
@@ -1828,10 +1622,7 @@ def _crashing_child(visited: list[str], crashes: list[bool]) -> type[_CrashingCh
 
 
 def test_a_resume_re_enters_the_sub_flow_where_it_died_rather_than_at_its_start():
-    """A resume lands in the state that was running — and if that state is a handoff,
-    the run was really inside the child. Restarting the child from `start` replays
-    every agent turn it had already finished, which for a long sub-flow is the whole
-    cost of the run."""
+    """A resume lands in the state that was running — and if that state is a handoff, the run was really inside the child."""
     with tempfile.TemporaryDirectory() as tmp:
         visited: list[str] = []
         Child = _crashing_child(visited, [True])
@@ -1851,8 +1642,7 @@ def test_a_resume_re_enters_the_sub_flow_where_it_died_rather_than_at_its_start(
 
 
 def test_a_flow_entered_a_second_time_starts_clean_despite_the_checkpoint_it_left():
-    """A flow that ran to completion also leaves a checkpoint, so a loop body calling
-    the same flow again must not fast-forward through the previous visit's ending."""
+    """A flow that ran to completion also leaves a checkpoint, so a loop body calling the same flow again must not fast-forward through the previous visit's ending."""
     with tempfile.TemporaryDirectory() as tmp:
         visited: list[str] = []
         Child = _crashing_child(visited, [])
@@ -1867,9 +1657,7 @@ def test_a_flow_entered_a_second_time_starts_clean_despite_the_checkpoint_it_lef
 
 
 def test_a_sub_flow_checkpoint_from_a_different_invocation_is_not_adopted():
-    """The guard that makes the one above hold even under a resume: same flow class,
-    different arguments — a per-story loop resumed between stories — is a fresh run of
-    the child, not story A's checkpoint continued as story B."""
+    """The guard that makes the one above hold even under a resume: same flow class, different arguments — a per-story loop resumed between stories — is a fresh run of the child, not story A's checkpoint continued as story B."""
     with tempfile.TemporaryDirectory() as tmp:
         visited: list[str] = []
         Child = _crashing_child(visited, [True])
@@ -1889,9 +1677,7 @@ def test_a_sub_flow_checkpoint_from_a_different_invocation_is_not_adopted():
 
 
 def test_a_handoff_into_another_registrys_flow_runs_in_that_registrys_world():
-    """A sub-flow is a different program: it renders its own `prompts/` and calls its
-    own nodes, so one shipped in another distribution does not look for its templates
-    under its caller's package — and a node its caller substituted stays real for it."""
+    """A sub-flow is a different program: it renders its own `prompts/` and calls its own nodes, so one shipped in another distribution does not look for its templates under its caller's package — and a node its caller substituted stays real for it."""
     with tempfile.TemporaryDirectory() as tmp:
         child_bp = Blueprint("globex")
 
@@ -1903,8 +1689,6 @@ def test_a_handoff_into_another_registrys_flow_runs_in_that_registrys_world():
             def start(self) -> Transition:
                 return Done(self.call(measure, "login").kind)
 
-        # A registry's directory comes from the package its entry class lives in;
-        # a class declared in a test file has none, so borrow a real package's.
         SubFlow.__module__ = "workhorse.pyflow.registry"
         child = Registry("globex").add_blueprints(child_bp)
         child.entry_point(SubFlow)
@@ -1930,7 +1714,6 @@ def test_a_flow_class_may_belong_to_only_one_registry():
     assert "two workflows" in str(exc), exc
 
 
-# -------------------------------------------------------------------------- Registry
 
 
 def test_entry_point_declares_the_default_flow_and_chains():
@@ -1943,10 +1726,7 @@ def test_entry_point_declares_the_default_flow_and_chains():
 
 
 def test_the_registry_does_not_reach_back_into_the_cli_ring():
-    """`workhorse.cli` imports the driver, which imports the registry. When the
-    registry also built the console callable it had to import the CLI from inside a
-    function body to keep both modules loadable — a suppressed cycle, not an optional
-    dependency. Binding now lives in the CLI, so nothing here names it."""
+    """`workhorse.cli` imports the driver, which imports the registry."""
     tree = ast.parse(Path(registry_mod.__file__).read_text(encoding="utf-8"))
     imported = {
         name
@@ -1969,12 +1749,7 @@ def test_a_registry_without_a_name_cannot_be_a_command():
 
 
 def test_declared_outputs_take_required_from_the_result_model():
-    """A field with a default is optional on the model, so it is optional in the ask.
-
-    Deciding it here instead would hold a schema that deliberately defaults everything
-    (so a failed node degrades softly) to a stricter contract than it wrote — and bill a
-    whole extra turn per inapplicable field to find that out.
-    """
+    """A field with a default is optional on the model, so it is optional in the ask."""
     from workhorse.pyflow.engine import _outputs_for
 
     class Impl(BaseModel):
@@ -2008,13 +1783,7 @@ if __name__ == "__main__":
 
 
 def test_blocking_twice_on_one_gate_appends_rather_than_replacing_it():
-    """The second `Await` on a path re-arms the file; it does not start it over.
-
-    The engine used to `write_text` the ask unconditionally, so the second block threw
-    away the first block's questions *and* the operator's answers to them. That is not a
-    lost audit trail — the states after this gate read this file for those answers, and a
-    run resumed from the second block would proceed having silently lost them.
-    """
+    """The second `Await` on a path re-arms the file; it does not start it over."""
     with tempfile.TemporaryDirectory() as tmp:
         ask = Path(tmp) / "docs" / "questions.md"
         observed: list[str] = []
@@ -2051,6 +1820,5 @@ def test_blocking_twice_on_one_gate_appends_rather_than_replacing_it():
         assert "which branch?" in second_ask, second_ask
         assert "chosen: main" in second_ask, second_ask
         assert "which release?" in second_ask, second_ask
-        # Re-armed, and the first `STATUS:` line is the only one there is to disagree.
         assert second_ask.count("STATUS:") == 1, second_ask
         assert second_ask.startswith("STATUS: AWAITING_OPERATOR"), second_ask

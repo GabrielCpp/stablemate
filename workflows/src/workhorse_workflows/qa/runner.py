@@ -1,20 +1,4 @@
-"""Bring a book's stack up and run its compiled plan through ostler — family-neutral.
-
-Plain, undecorated functions: no `Workflow` state, no `@blueprint.node`. `coder`'s
-`ensure_stack`/`run_qa_plan` nodes (`coder/qa/nodes/qa.py`) are thin wrappers around the
-two public functions here, so a coder run's node names, checkpoints and telemetry are
-unchanged — only the body moved. A live-audit lane (or any other family) calls these two
-functions directly, the same way `coder` does, since `Workflow.call` takes any function
-object and never checked blueprint membership in the first place.
-
-Coder-specific return types (`StackStatus`, `QaPlanRun`, `QaStatus`) stay imported from
-`coder.shared.schemas.qa` rather than duplicated here — they subclass `CoderResult`,
-which is explicitly the base for "every agent reply and node return in the coder
-workflow" and is read generically by coder's own resolution/repair-loop machinery
-(`blocked`, `actionable`). Cloning them into a neutral module would either fork that
-machinery or leave the clones unused; importing them is the smaller, honest dependency
-until a second family needs a verdict shape `CoderResult` cannot express.
-"""
+"""Bring a book's stack up and run its compiled plan through ostler — family-neutral."""
 from __future__ import annotations
 
 import logging
@@ -30,9 +14,6 @@ from workhorse_workflows.kit import find_docs_root
 from workhorse_workflows.kit.credentials import scoped_envs
 from workhorse_workflows.qa.support import QA_PLAN_FILE, notes_for
 
-#: The four states `ostler qa run` is allowed to report, keyed by what it spelled.
-#: Anything else is `invalid` — a runner that answered something unrecognized has not
-#: established a verdict.
 RUN_STATUSES: dict[str, QaStatus] = {
     "passed": "passed",
     "failed": "failed",
@@ -40,7 +21,6 @@ RUN_STATUSES: dict[str, QaStatus] = {
     "invalid": "invalid",
 }
 
-#: How long a secret's mint recipe gets before it counts as hung rather than slow.
 SECRET_MINT_TIMEOUT_S = 60.0
 
 
@@ -50,15 +30,7 @@ def _entry_result(
     near: str,
     graph: Graph,
 ) -> dict:
-    """Of a successful bring-up, the result the caller actually needs to drive.
-
-    With one manifest there is only one answer. With several, `near` — the spec under
-    audit — says which surface the caller is about to drive, and the manifest whose
-    runbook sits in that same surface is the one whose `entry_url` (and process handles)
-    the caller wants; every other manifest came up only because the environment needs it
-    serving too. Falls back to the last result when `near` is absent or names no surface
-    among the runbooks, the same "last one" a single-manifest caller always got.
-    """
+    """Of a successful bring-up, the result the caller actually needs to drive."""
     if near and len(results) > 1:
         near_path = Path(near)
         features_root = path_mod.features_root(graph)
@@ -72,21 +44,7 @@ def _entry_result(
 
 
 def _merge_secrets(manifests: list[dict]) -> tuple[dict[str, str], str]:
-    """Every manifest's mint recipes in one namespace, or the reason there cannot be one.
-
-    A QA run substitutes secrets by bare name into one process environment, so two stack
-    runbooks that mint different recipes under one name are asking for two values of a
-    single variable and only one of them can be live. Neither is more right than the
-    other, so this refuses rather than picking: a run that silently took the first would
-    drive the second service with the first service's credential and fail somewhere with
-    no mention of a secret.
-
-    The refusal is a debt, not the fix. A name is unique only within the scope that
-    issues it, and here two issuing scopes share one flat run namespace — the vocabulary
-    has no way to say *whose* secret a name is. It goes when a secret reference can name
-    its service; until then this is the honest answer, and it fires only on a book that
-    declares the collision.
-    """
+    """Every manifest's mint recipes in one namespace, or the reason there cannot be one."""
     secrets: dict[str, str] = {}
     sources: dict[str, str] = {}
     for manifest in manifests:
@@ -109,37 +67,7 @@ def ensure_stack(
     repo_dir: str = "",
     near: str = "",
 ) -> StackStatus:
-    """Bring the durable QA stack up (or adopt one already serving) before the runner.
-
-    A long-running stack has to start *outside* any agent turn, or the turn's teardown kills
-    it mid-build. The lifecycle is `ostler.qa.runbook.bring_up_stacks` (which owns the
-    one-at-a-time, stop-at-the-first-failure bring-up policy) and the recipe is
-    `ostler.qa.runbook.load_stacks`, which reads it off the book's `runbook` nodes — this
-    function is only the outcome's translator.
-
-    `near` is the filesystem path of the spec under audit. It is passed straight through to
-    `load_stacks`, which uses it only to narrow an *ambiguous* selection (several stack
-    runbooks across several environments) to the one environment `near`'s surface belongs
-    to; it plays no part once a selection has already resolved. This function additionally
-    uses it, on a successful multi-manifest bring-up, to pick which manifest's `entry_url`
-    to report — see `_entry_result`.
-
-    An empty manifest list is two different answers, split by what the book describes.
-    `none` means the book serves something but declares no way to bring it up, and unlike
-    the `skip` it replaces it is not a pass: a repo that never authored a runbook used to
-    run QA against nothing and say so only in a log line, which is how one story spent an
-    entire run's budget discovering it. `unneeded` means the book serves nothing — the
-    same `has_served_surface` test the doctor's `runbook-missing` gates on — so the empty
-    manifest is the repo's documented topology, not a gap. Collapsing the two was how an
-    artifact-only repo got told, every lap, to author a runbook its own doctor said it
-    did not need: the setup fixer could not comply, the operator gate could not clear it,
-    and the story escalated forever.
-
-    A book with several stack runbooks bound to *one* environment used to be a third
-    refusal here — this runner would not pick which one to skip. It no longer refuses:
-    `load_stacks` hands back one manifest per runbook and they come up together, in
-    document order, the same policy `ostler qa stack up` already used.
-    """
+    """Bring the durable QA stack up (or adopt one already serving) before the runner."""
     root = find_docs_root(docs_path, repo_dir)
     graph = model.load(root)
     manifests, selection = runbook.load_stacks(
@@ -193,9 +121,6 @@ def ensure_stack(
         "failed_step": last.get("failed_step", ""),
     }
     step = last.get("failed_step", "unknown")
-    # The step's own message goes in the notes, because the notes are what the setup
-    # fixer is briefed with: told only *which* step failed, it re-derives the failure
-    # from scratch — an expensive turn spent rediscovering a line the stack already had.
     error = (last.get("error") or "").strip()
     manifest = last.get("manifest") or {}
     return StackStatus(
@@ -213,27 +138,7 @@ def ensure_stack(
 def _mint_qa_secrets(
     secrets: dict[str, str], root: Path, logger: logging.Logger
 ) -> tuple[dict[str, str], str]:
-    """Run the runbook's `secrets:` recipes; return ``({NAME: token}, error)``.
-
-    A short-lived credential (a token signed against a local auth emulator, say) goes
-    stale between QA-plan authoring and the run that spends it — minutes to hours apart
-    in this flow. The runbook's `prepare`/`seed`/`health` steps run once per stack
-    bring-up, not once per plan execution, so they cannot be the freshening point; this
-    runs immediately before the one call that spends the token.
-
-    Each recipe is a repo-owned shell command (never interpreted here) that resolves
-    whatever the repo needs and prints the fresh secret to stdout and nothing else. This
-    module knows none of that shape; it runs the recipe and reads its output back.
-
-    A non-empty `error` means the plan must not run this pass: a stale or absent secret
-    would only fail with a confusing 401 deep inside the runner, not at the boundary
-    that actually knows what broke. The first failure stops the loop, because a partial
-    set is a run that fails later for a reason the caller has already been told.
-
-    The tokens are returned to the caller's local scope only, never logged, and never
-    part of a node's return value — see `workhorse_workflows.kit.credentials.scoped_envs`,
-    which is the only place they are allowed to touch `os.environ`.
-    """
+    """Run the runbook's `secrets:` recipes; return ``({NAME: token}, error)``."""
     minted: dict[str, str] = {}
     cwd = str(root.resolve())
     for name, recipe in secrets.items():
@@ -268,29 +173,7 @@ def run_qa_plan(
     only: list[str] | None = None,
     plan_file: str | None = None,
 ) -> QaPlanRun:
-    """Execute the QA plan through ostler and normalize its four-state outcome.
-
-    `plan_file`, when given, overrides the default `<spec_dir>/qa_plan.py` path — the
-    live-audit lane's compiled-from-the-book fallback writes its plan under a scratch run
-    directory outside the book tree (never back into `docs/specs`) and passes that path
-    here rather than an authored spec dir's default location.
-
-    The returncode is deliberately ignored: `failed` and `blocked` are answers the runner
-    is *supposed* to give, and both exit non-zero. The status comes off the payload, and
-    only an unrecognized one becomes `invalid`.
-
-    Before the run, the book's runbook `secrets:` (if any) are minted and set in the
-    process environment for the duration of `Ostler(...).qa_run` only — see
-    `_mint_qa_secrets`. `qa_run` executes the plan **in this process**, so a `secret(...,
-    from_env=...)` in the plan reads whatever this scope just set; nothing shells out for
-    the plan itself, so there is no other boundary to cross the value at.
-
-    `only`, when given, narrows the run to those scenario ids — a real, scored subset
-    (`Ostler.qa_run`'s `only` without a `label` still writes `qa-evidence.json`), not the
-    unpublished dry run `only` is paired with elsewhere. A targeted re-run passes the
-    claims whose ledger fingerprint moved; `None` runs the whole plan, unchanged from
-    before this parameter existed.
-    """
+    """Execute the QA plan through ostler and normalize its four-state outcome."""
     docs_root = find_docs_root(docs_path, repo_dir)
     plan = plan_file if plan_file is not None else str(Path(spec_dir) / QA_PLAN_FILE)
     docs_graph = model.load(docs_root)

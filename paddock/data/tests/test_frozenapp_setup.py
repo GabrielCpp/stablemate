@@ -1,12 +1,4 @@
-"""The frozen-app trial's setup ordering: what the before-commit has to already contain.
-
-One property, and it is the one that cost every trial of the first scoring round a
-`repair-qa-context` lap: the QA lane mints its obligations from `HEAD..WORKTREE`, so
-anything created in the trial tree *after* the before-commit is indistinguishable from the
-story's implementation. `farrier install` creates half a dozen such files. It therefore has
-to run inside `materialize`, before the commit — and a test is the only thing that keeps it
-there, because moving it back out breaks nothing that fails loudly.
-"""
+"""The frozen-app trial's setup ordering: what the before-commit has to already contain."""
 
 from __future__ import annotations
 
@@ -32,12 +24,7 @@ APP = DATA / "apps" / "policy-desk"
 
 @contextlib.contextmanager
 def _tasks_dir_on_path() -> Iterator[None]:
-    """Stand in for the interpreter, exactly as `paddock.loader` does.
-
-    Task modules are loose files that import their siblings by bare name, so a loader —
-    here, the test — has to put their directory on the path the way `python tasks/x.py`
-    would, and take it off again.
-    """
+    """Stand in for the interpreter, exactly as `paddock.loader` does."""
     saved = sys.path[:]
     sys.path.insert(0, str(DATA / "tasks"))
     try:
@@ -84,8 +71,6 @@ def test_the_install_layer_is_committed_with_the_before_tree(tmp_path: Path) -> 
 
     dest = frozenapp.materialize(APP, "create-policy", tmp_path / "policy-desk", install)
 
-    # The generated file exists and is *not* part of the diff the QA lane will be asked to
-    # own — which is the whole property. Were `install` run after the commit, it would be.
     assert (dest / generated).is_file()
     assert dirty(dest) == manifest("create-policy")
 
@@ -96,7 +81,6 @@ def test_materialize_without_an_installer_is_unchanged(tmp_path: Path) -> None:
     assert dirty(dest) == manifest("create-policy")
 
 
-# ── fixture-scoped and audit-on rounds ────────────────────────────────────────────────
 
 
 def make_run(tmp_path: Path, **params: str) -> Run:
@@ -121,9 +105,7 @@ def fixture(**overrides: object):  # noqa: ANN201 - frozenapp.Fixture, loaded ab
 
 @pytest.mark.skipif(not APP.is_dir(), reason="the policy-desk fixture is not in this tree")
 def test_fixture_defects_scope_the_round_and_a_param_still_narrows(tmp_path: Path) -> None:
-    """A task may pin the rows it exists to measure — an audit task re-buying the whole
-    answer key would spend five QA-route trials to score the one audit-route row — and
-    `--param defects=…` keeps overriding, because narrowing a run is the operator's call."""
+    """A task may pin the rows it exists to measure — an audit task re-buying the whole answer key would spend five QA-route trials to score the one audit-route row — and `--param defects=…` keeps overriding, because narrowing a run is the operator's call."""
     scoped = frozenapp.plan_round(make_run(tmp_path), APP, fixture(defects=("P2",)))
     assert scoped == [("create-policy", None)] + [
         (story, row) for story, row in scoped if row and row["id"] == "P2"
@@ -139,10 +121,7 @@ def test_fixture_defects_scope_the_round_and_a_param_still_narrows(tmp_path: Pat
 def test_audit_on_reaches_the_trial_params_and_the_ledger(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """`first_verdict=False` is only real if both readers see it: the lane must be told to
-    run past the verdict (`stop_at_first_verdict: false` in `--params`), and the ledger
-    must say the auditor had a turn (`audit_turn: true`), or `classify` scores an `audit`
-    row as inconclusive on a round that paid for the audit."""
+    """`first_verdict=False` is only real if both readers see it: the lane must be told to run past the verdict (`stop_at_first_verdict: false` in `--params`), and the ledger must say the auditor had a turn (`audit_turn: true`), or `classify` scores an `audit` row as inconclusive on a round that paid for the audit."""
     run = make_run(tmp_path, no_control="yes")
     fx_row = fixture(first_verdict=False, defects=("P2",))
     commands: list[tuple[str, ...]] = []

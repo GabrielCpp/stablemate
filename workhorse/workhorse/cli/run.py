@@ -1,17 +1,4 @@
-"""`run` — the arguments it takes and the invocation it builds.
-
-Everything here is the CLI's contract rather than any engine's: which flow, the repo
-dir, the backend, the runs dir, params, the context manifest and the resume flags. It
-ends by handing the driver one :class:`RunInvocation`.
-
-*Which workflow* is not among them. The console script that reached this module is the
-workflow's own, and it hands its `Registry` in — so there is no name to resolve, and no
-way for this command to be pointed at a different workflow than the one it is.
-
-This is also the process's one environment read. `AGENT_*` and `WORKHORSE_*` become a
-`RunConfig` and a `TelemetryHost` here, and travel on the invocation; nothing the
-driver calls goes back to `os.environ` for them.
-"""
+"""`run` — the arguments it takes and the invocation it builds."""
 from __future__ import annotations
 
 import argparse
@@ -40,15 +27,11 @@ from workhorse._vendor.stablemate_core.config import (
 from workhorse._vendor.stablemate_core.discovery import base_library_dir
 from workhorse.cli.params import load_params
 from workhorse.config_run import RunConfig
-# Bound under its historical private name, which is also what lets a test patch the
-# loader on this module and have the CLI see it.
 from workhorse.manifest import load_context_manifest as _load_context_manifest
 from workhorse.packaged import PackagedWorkflowError
 from workhorse.pyflow.registry import Registry
 from workhorse.pyflow.run import RunInvocation, run_pyflow
 from workhorse.records import parse_run_record
-# Re-imported under its historical private name: the run-identity rules live in
-# `rundir` so the driver can obey them without importing this module.
 from workhorse.rundir import find_latest_resumable as _find_latest_resumable
 from workhorse.rundir import resolve_run_dir
 from workhorse.runner.backends.registry import backend_names, get_backend
@@ -193,10 +176,6 @@ def run(args: argparse.Namespace) -> None:
 
 def invocation(args: argparse.Namespace) -> RunInvocation:
     """Everything `run` decided, as the one value the driver is handed."""
-    # The console script holds its own workflow and hands it in — the CLI never looks
-    # one up. `directory()` is asked for here rather than at the first prompt render,
-    # so a package installed in a shape whose prompts can't be read (a zipapp, a
-    # zip-safe egg) says so now instead of as a `TemplateNotFound` several nodes in.
     registry: Registry = args.registry
     try:
         registry.directory()
@@ -207,19 +186,8 @@ def invocation(args: argparse.Namespace) -> RunInvocation:
 
     _apply_config_path(getattr(args, "config", None))
 
-    # The consuming repo is the directory workhorse is launched in — same <cwd> rule
-    # as the runs-dir default below. Pin AGENT_REPO_DIR to the launch dir when the
-    # caller hasn't set it, so every *subprocess* (the agent CLI and whatever it
-    # shells out to) agrees on the repo without needing the farrier Makefile.
-    #
-    # The workflow itself does not read it: this is the boundary, and what crosses it
-    # is `repo_dir`, resolved below and handed over as a run parameter.
     os.environ.setdefault("AGENT_REPO_DIR", str(Path.cwd().resolve()))
 
-    # --cli and --profile are mutually exclusive: a profile carries its own `cli`
-    # field naming the CLI it runs under, so passing both flags leaves the run with
-    # two opinions about which CLI runs. Hard-fail here rather than silently picking
-    # one, so the operator sees the contradiction before any turn starts.
     if args.cli and getattr(args, "profile", None):
         print(
             "error: --cli and --profile are mutually exclusive — a profile carries "
@@ -228,19 +196,10 @@ def invocation(args: argparse.Namespace) -> RunInvocation:
         )
         sys.exit(2)
 
-    # --cli (else AGENT_CLI, else the config's `default_cli`, else claude) selects the
-    # backend for the run. The resolved name is written back to AGENT_CLI so the whole
-    # process — and every agent subprocess it spawns — reads one answer: the manifest
-    # and template layers ask the environment for the active CLI at their own edges,
-    # and a config default that only `get_backend` knew about would have them
-    # projecting a Claude manifest for an opencode run.
     if args.runs_dir:
         runs_dir = Path(args.runs_dir).resolve()
     else:
         runs_dir = (Path.cwd() / ".agents" / "runs").resolve()
-    # Resolved before the profile below, and only because the profile may come *from* it:
-    # a run being resumed already chose a model set, and the flag it chose with is not on
-    # this command line.
     resume_run_dir = _resume_run_dir(args, runs_dir, registry.name)
 
     profile_name = (getattr(args, "profile", None) or "").strip()
@@ -248,9 +207,6 @@ def invocation(args: argparse.Namespace) -> RunInvocation:
         profile_name = _recorded_profile(resume_run_dir)
     cfg = load_config()
     try:
-        # When --profile is set, the profile names its CLI — the run uses that. Otherwise
-        # auto-pick the profile whose `cli` matches the resolved CLI; if none, the run is
-        # bare-CLI and the workflow emits no --model/--effort flags.
         if profile_name:
             profile = select_profile(cfg, profile_name)
             resolved_cli = _profile_cli_or_raise(profile, profile_name)
@@ -267,10 +223,6 @@ def invocation(args: argparse.Namespace) -> RunInvocation:
 
     os.environ["AGENT_CLI"] = resolved_cli
 
-    # Resolve the active backend now so an unknown name fails fast with a clear
-    # message instead of mid-run — and because this is the ring that gets to know
-    # adapters exist. What travels on the invocation is the adapter itself, so
-    # nothing further in has to reach back to the registry to find one.
     try:
         backend = get_backend()
     except ValueError as e:
@@ -279,21 +231,8 @@ def invocation(args: argparse.Namespace) -> RunInvocation:
 
     _check_profile_resolves(profile_name, profile, backend.name)
 
-    # Default behavior is auto: a single stable run dir per program that is resumed
-    # in place (continuing the same session/context), or started fresh in that dir
-    # if absent. The explicit --resume-run/--resume-latest flags below are manual
-    # overrides that target a specific dir instead. auto stays on either way — when
-    # resume_run_dir is set, the driver uses it directly and skips auto resolution.
-    # `repo_dir` is `Workflow`'s one universal input, and this is the only place it is
-    # resolved: the environment is read *here*, at the edge, so that everything inside
-    # the run receives it as an ordinary parameter. An explicit `--param repo_dir=…`
-    # wins, which is what makes a run against a checkout other than the launch
-    # directory expressible at all.
     params = load_params(args.params, args.params_file)
     params.setdefault("repo_dir", os.environ.get("AGENT_REPO_DIR") or str(Path.cwd().resolve()))
-    # Same boundary, same reason: the library ladder is three environment variables and a
-    # config file deep, and a workflow may read none of them. It is walked here and handed
-    # down as a parameter, so `--param library_dirs=[…]` can point a run at a checkout.
     params.setdefault("library_dirs", library_dirs(cfg))
 
     return RunInvocation(
@@ -309,8 +248,6 @@ def invocation(args: argparse.Namespace) -> RunInvocation:
         worktree=getattr(args, "worktree", False),
         worktree_branch=getattr(args, "worktree_branch", None),
         worktree_base=getattr(args, "worktree_base", None),
-        # Read last, after `--cli` and the repo-dir default above have had their say,
-        # so what the run is given is the environment as the CLI finally settled it.
         config=replace(
             RunConfig.from_env(os.environ), backend=backend, profile=profile_name
         ),
@@ -319,24 +256,7 @@ def invocation(args: argparse.Namespace) -> RunInvocation:
 
 
 def library_dirs(cfg: dict[str, Any]) -> list[str]:
-    """The library roots this run resolves content against, highest precedence first.
-
-    Public because the ladder is not only the CLI's. A checkpoint carries this list, so
-    anything that writes or repairs one off-process — a benchmark harness transplanting a
-    frozen checkpoint into a fresh round, an operator fixing a run dir moved between
-    machines — has to compute the same value this does, and a second implementation of a
-    four-rung ladder is a second answer to "which library did that run read?".
-
-    The same two layers farrier renders across, in the same order: the *overlay*
-    (`$FARRIER_LIBRARY_DIR`, else the shared config's `library_dir`), then the *base*
-    (`stablemate_core.discovery.base_library_dir`, itself a four-rung ladder ending at
-    the fetched cache). A layer that is not on disk is dropped rather than passed on as
-    a path that will not resolve — an absent overlay is the normal state, not an error.
-
-    Lookup only, exactly as `base_library_dir` is: a run that needs a base library it
-    has not got says so where that is the actual problem, and never as a 16M download
-    triggered by building an invocation.
-    """
+    """The library roots this run resolves content against, highest precedence first."""
     roots: list[str] = []
     overlay = os.environ.get("FARRIER_LIBRARY_DIR") or get_config_value("library_dir", cfg)
     for candidate in (overlay, base_library_dir()):
@@ -349,12 +269,7 @@ def library_dirs(cfg: dict[str, Any]) -> list[str]:
 
 
 def _resolve_active_cli(args: argparse.Namespace, cfg: dict[str, Any]) -> str:
-    """Resolve the active CLI for a non-`--profile` run: --cli → $AGENT_CLI → config.
-
-    The same ladder ``select_active_profile`` then drives: the profile whose `cli`
-    matches the answer is auto-selected, else the run is bare-CLI. This function only
-    answers "what CLI are we on"; the profile narrowing is the caller's job.
-    """
+    """Resolve the active CLI for a non-`--profile` run: --cli → $AGENT_CLI → config."""
     return (
         args.cli
         or os.environ.get("AGENT_CLI")
@@ -363,32 +278,15 @@ def _resolve_active_cli(args: argparse.Namespace, cfg: dict[str, Any]) -> str:
 
 
 def _profile_cli_or_raise(profile: dict[str, Any], name: str) -> str:
-    """The CLI a `--profile`-selected profile declares, stripped and lowercased.
-
-    `select_profile` already validated the field is present, so this only normalizes.
-    """
+    """The CLI a `--profile`-selected profile declares, stripped and lowercased."""
     cli = profile.get("cli")
     if not isinstance(cli, str) or not cli.strip():
-        # select_profile raises ConfigError for this case; defensive for the type
-        # narrowing only.
         raise ConfigError(f"[profiles.{name}] has no cli field")
     return cli.strip().lower()
 
 
 def _check_profile_resolves(name: str, profile: dict[str, Any], backend: str) -> None:
-    """Refuse a selected profile whose `cli` field names a backend workhorse does not drive.
-
-    Under v2 the profile's CLI is the active CLI (see ``invocation``), so the v1
-    "profile has no entries for the chosen backend" mismatch cannot occur — a profile
-    is *for* its CLI, and selecting it for a different CLI is exactly what the
-    mutual-exclusion check at the top of ``invocation`` now prevents. What remains is
-    the typo: a profile that names a CLI no backend implements would silently fall
-    through to ``get_backend``'s "unknown CLI" error mid-turn, so it is caught here
-    where failing is safe.
-
-    A profile that declares only `cli` and no models stays legal — bare-CLI mode for
-    that profile, exactly as a run without `--profile` is bare-CLI mode globally.
-    """
+    """Refuse a selected profile whose `cli` field names a backend workhorse does not drive."""
     if not name:
         return
     consulted = f"(in {config_path()})"
@@ -415,23 +313,7 @@ def _check_profile_resolves(name: str, profile: dict[str, Any], backend: str) ->
 
 
 def _apply_config_path(raw: str | None) -> None:
-    """Point the whole process at the config `--config` named, or leave discovery alone.
-
-    Written back into $STABLEMATE_CONFIG rather than carried on the invocation, exactly
-    as `--cli` is written back into $AGENT_CLI, and for the same reason: the config is
-    re-read per node and by every subprocess this run spawns, each through its own
-    `config_path()`. A flag that only reached the resolver here would name one file while
-    the per-node re-read named another — a divergence with no visible symptom.
-
-    Nothing is written back when the flag is absent: stamping the *discovered* path would
-    make it explicit, and an explicitly named path suppresses the legacy per-tool merge in
-    `load_config` — so a machine still on the pre-unification files would silently lose
-    them to a flag nobody passed.
-
-    A path that is not a file is refused here rather than read as an empty config. `run`
-    is the boundary where failing is safe, and the alternative is a week-long run on
-    default models because the file was named with a typo.
-    """
+    """Point the whole process at the config `--config` named, or leave discovery alone."""
     if not raw:
         return
     path = Path(raw).expanduser()
@@ -442,18 +324,7 @@ def _apply_config_path(raw: str | None) -> None:
 
 
 def _recorded_profile(run_dir: Path) -> str:
-    """The profile a run was started under, read back off its `run.json`.
-
-    A resume is a continuation, not a new decision: the operator who typed `--profile
-    cheap` a week ago is rarely the one typing `--resume-run` now, and re-resolving the
-    same nodes against the machine's global model set is a substitution nothing in the
-    output would show. So the recorded name is re-applied unless this command line names
-    one, which overrides it. An explicit ``--cli`` also overrides the saved selection:
-    ``switch-cli`` re-execs with that flag and must select the new backend's profile.
-
-    Best-effort: a run dir with no readable record simply has no profile to re-apply, and
-    the run proceeds on the top-level tables as it always did.
-    """
+    """The profile a run was started under, read back off its `run.json`."""
     try:
         return parse_run_record((run_dir / "run.json").read_text()).profile
     except (OSError, ValidationError):

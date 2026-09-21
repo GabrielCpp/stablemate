@@ -1,9 +1,4 @@
-"""`ostler next-epic` / `next-story` — selection over the markdown graph.
-
-Replaces the workflows' select-next-epic / select-next-story scripts. ``next-epic`` returns the
-first milestone-ordered epic that still has unfinished work; ``next-story`` returns the next
-runnable story (dependencies satisfied, not yet done) in dependency order.
-"""
+"""`ostler next-epic` / `next-story` — selection over the markdown graph."""
 
 from __future__ import annotations
 
@@ -12,10 +7,6 @@ from ostler.model import Epic, Graph, Story
 
 _DONE_STATUSES = {"qa passed", "passed", "done", "merged", "complete"}
 
-#: The openings of every status a coder run stamped when it gave up on a story. Each
-#: carries a trailing explanation — `QA give-up after 3
-#: attempts — needs manual review: docs/specs/x/qa.md` — so this is a prefix vocabulary,
-#: not a set of whole values like :data:`_DONE_STATUSES`.
 _BLOCKED_PREFIXES = ("blocked", "docs blocked", "qa give-up", "qa give up")
 
 
@@ -25,30 +16,13 @@ def is_done(status: str) -> bool:
 
 
 def is_blocked(status: str) -> bool:
-    """Whether a status is a give-up stamp — a story set aside for a human, not built.
-
-    Distinct from the ``blocked`` *state* of :func:`next_story_report`, which is derived per
-    run from the skip set and the dependency graph and owns no storage. This one is the mark
-    that outlives the run, and it is why it needs a reader: nothing else in the graph
-    distinguishes "not started" from "tried three times and gave up", so an agent that
-    re-selects the story reads the stamp and believes the work is unsalvageable. (Observed:
-    a planner handed a story whose code was green on every gate answered ``blocked`` and
-    wrote no plan, because the status still said give-up.)
-
-    A blocked story is emphatically NOT done — selection already retries it on the next run.
-    Unblocking is about the label the next agent reads, not about eligibility.
-    """
+    """Whether a status is a give-up stamp — a story set aside for a human, not built."""
     s = (status or "").strip().lower()
     return not is_done(s) and s.startswith(_BLOCKED_PREFIXES)
 
 
 def epic_by_name(graph: Graph, name: str) -> Epic | None:
-    """The epic named by its directory (`0001-checkout-flow`) or by its bare slug.
-
-    Both spellings are accepted for the same reason `path.epic_dir` accepts both: the
-    number is creation order, not identity, and plenty of callers — older index lines,
-    prompts, an operator on the command line — only ever knew the slug.
-    """
+    """The epic named by its directory (`0001-checkout-flow`) or by its bare slug."""
     exact = next((e for e in graph.epics if e.name == name), None)
     if exact is not None or registry.epic_seq(name) is not None:
         return exact
@@ -61,12 +35,7 @@ def epic_done(epic: Epic) -> bool:
 
 
 def epic_authored(epic: Epic) -> bool:
-    """Whether every story in the epic has a written story.md — the *authoring* completion rule.
-
-    Distinct from :func:`epic_done`, which is about building. An epic whose stories are all
-    bare scaffolds is not authored, however many story.md files exist on disk: file presence
-    was the test that let an author rerun skip nine epics of empty stories and report success.
-    """
+    """Whether every story in the epic has a written story.md — the *authoring* completion rule."""
     return (epic.epic_md is not None and bool(epic.stories)
             and all(s.authored for s in epic.stories))
 
@@ -92,16 +61,7 @@ def _milestone_epic_order(graph: Graph) -> list[str]:
 
 
 def dag_order(epic: Epic) -> list[Story]:
-    """The epic's stories in dependency order (a dependency precedes its dependents).
-
-    Ties and cycles keep declaration order, so a malformed DAG degrades to the file's own
-    sequence rather than dropping stories.
-
-    This is the *authoring* order (:func:`_author_report`). The build path does not need it:
-    a story is only runnable once every dependency is done, so no two runnable stories can
-    depend on each other and reordering them cannot change which comes first. It iterates the
-    epic's declared order directly — see :func:`next_story_report` on what that order is.
-    """
+    """The epic's stories in dependency order (a dependency precedes its dependents)."""
     by_slug = {s.slug: s for s in epic.stories if s.slug}
     order: list[Story] = []
     seen: set[str] = set()
@@ -153,20 +113,7 @@ def _story_dict(epic: Epic, story: Story) -> dict:
 
 
 def _author_report(epic: Epic, skip: frozenset[str] = frozenset()) -> dict:
-    """``need="author"`` — the first story in DAG order that still has no written story.md.
-
-    Dependencies order the work but do not gate it: an unauthored dependency is a reason to
-    write it *first*, not a reason to stall, so on this axis nothing ever waits on a
-    dependency. Stories already authored are counted, not re-selected, which is what lets a
-    rerun resume mid-epic instead of starting over or (as it did) skipping the epic entirely.
-
-    ``skip`` is the author's own give-up set — a story the run parked because it exhausted its
-    rework budget. It is excluded from selection but never counted as authored, exactly as on
-    the build axis: otherwise a story nothing can fix stays first-unauthored forever and the
-    epic's other 100 stories never get written. When every unauthored story is parked the state
-    is ``blocked``, not ``done`` — the epic has unwritten scope in it and a caller that reads
-    ``done`` would prune it.
-    """
+    """``need="author"`` — the first story in DAG order that still has no written story.md."""
     ordered = dag_order(epic)
     authored = [s.slug for s in ordered if s.authored]
     pending = [s for s in ordered if not s.authored]
@@ -195,60 +142,7 @@ def _author_report(epic: Epic, skip: frozenset[str] = frozenset()) -> dict:
 def next_story_report(graph: Graph, epic_name: str,
                       skip: frozenset[str] | set[str] | None = None,
                       need: str = "build") -> dict:
-    """Why there is (or is not) a next story in ``epic_name`` — not just whether there is one.
-
-    ``next_story`` answers with a story or ``None``, and that ``None`` covers four different
-    situations: the epic does not exist, every story is done, every remaining story was given
-    up on this run, or every remaining story is waiting on a dependency that will never be
-    satisfied. Callers cannot tell them apart — and the coder workflow's caller treats all of
-    them as "epic finished", opens a PR and merges it. Only the first two of the four are
-    finished; the other two merge an epic with unbuilt scope in it. That is the bug this
-    function exists to make impossible: the caller gets a ``state``, not an absence.
-
-    ``state`` is one of:
-
-    ``ready``       a runnable story — ``story`` holds it. When several are runnable it is the
-                    first in the epic's **declared** order, i.e. the order `## Stories` lists
-                    them in, which is the order they were created in. A slug's numeric prefix
-                    is *not* an ordering contract — ostler never mints it and never sorts on
-                    it — so an epic that declares `03` before `02` builds `03` first, and that
-                    is correct: a story's own `## Dependencies` section is where sequence is
-                    stated, and a story with no
-                    unmet dependency is by definition parallel to the ones around it. (Reading
-                    the prefix as the queue is what made a run look like it *skipped* a story.)
-    ``done``        every story in the epic is done. The only state that means "prune it".
-    ``blocked``     stories remain but none is runnable: each is either in ``skip`` or waiting
-                    on an unmet dependency (``waiting_on`` names which). Not finished.
-    ``no-stories``  the epic exists but lists no stories at all. Deliberately NOT ``done`` —
-                    an empty epic is unwritten scope, and treating it as complete drops it
-                    from the queue silently. Distinct from stories that exist and are
-                    unauthored, which is what ``Story.authored`` reports.
-    ``no-epic``     no epic by that name in the graph.
-
-    ``done``/``total``/``remaining``/``skipped``/``waiting_on`` are the census, and they are
-    filled the same way whatever the state — including ``ready``, which is where a caller
-    tracking progress spends the entire build. They are not a description of why the epic
-    stalled; ``detail`` is.
-
-    ``skip`` is a set of story slugs to treat as ineligible without treating them as *done*:
-    a story the caller has given up on this run. Excluding it is essential — otherwise, since
-    a given-up story is not "done", it stays first-runnable forever and the selector keeps
-    returning it. The caller then rejects it and, finding nothing else, prunes the whole epic
-    while other independent stories sit "Not started". (Observed: an epic merged with 20 of 21
-    stories unbuilt after one story gave up on QA.) A skipped story is NOT added to ``done``,
-    so its dependents stay blocked — you don't build on unverified work — but every story that
-    does not depend on it remains selectable.
-
-    ``need`` picks which question is being asked. ``"build"`` (the default, everything above)
-    is the coder's: which story can be implemented next. ``"author"`` is the author's: which
-    story does not yet honor ``registry.STORY_SECTIONS``. There is deliberately no third,
-    stricter authoring mode — "written" and "written to the current contract" were once separate
-    questions because a frontmatter stamp could answer one without the other, and with the stamp
-    gone they are the same question asked of the document. On the authoring axis ``skip`` applies
-    exactly as above and only the dependency machinery does not (see :func:`_author_report`).
-    These are separate axes and a story is routinely finished on one and untouched on another, so
-    a caller must say which it means; the report shape is identical.
-    """
+    """Why there is (or is not) a next story in ``epic_name`` — not just whether there is one."""
     epic = epic_by_name(graph, epic_name)
     if epic is None:
         return {"state": "no-epic", "story": None, "epic": epic_name, "total": 0, "done": 0,
@@ -270,12 +164,6 @@ def next_story_report(graph: Graph, epic_name: str,
         report["detail"] = f"epic '{epic.name}' lists no stories in `## {registry.STORIES_HEADING}`"
         return report
 
-    # The not-done stories, and why each is not runnable — per story, since the reasons
-    # differ within one epic. Counted *before* selection so `remaining` means the same
-    # thing in every state, as it already does on the `author` path. It used to be filled
-    # only after the `ready` return below, which left `ready` — the one state a caller
-    # reading progress is actually in — reporting `done=0, remaining=[]`. The coder's
-    # labels rendered that as "0/0" for the whole of every epic it was building.
     for story in epic.stories:
         if story.slug in done:
             continue
@@ -287,7 +175,6 @@ def next_story_report(graph: Graph, epic_name: str,
         if unmet:
             report["waiting_on"][story.slug] = unmet
 
-    # First runnable in the epic's declared order — see the docstring on why that is the order.
     for story in epic.stories:
         if _runnable(epic, story, done, skip):
             report["state"] = "ready"
@@ -316,10 +203,5 @@ def next_story_report(graph: Graph, epic_name: str,
 def next_story(graph: Graph, epic_name: str,
                skip: frozenset[str] | set[str] | None = None,
                need: str = "build") -> dict | None:
-    """The next runnable story in ``epic_name`` — not done, not skipped, all deps done.
-
-    Thin wrapper over :func:`next_story_report` for callers that only need the story (the
-    ``ostler next-story`` CLI). Anything that decides what to do when there *is* no story
-    should call the report instead — see its docstring for why ``None`` is not enough.
-    """
+    """The next runnable story in ``epic_name`` — not done, not skipped, all deps done."""
     return next_story_report(graph, epic_name, skip=skip, need=need)["story"]

@@ -1,12 +1,4 @@
-"""Tests for kit.credentials.scoped_env: the one write-access to os.environ this
-package allows.
-
-A minted secret (a QA token freshly signed against a local auth emulator, say) must
-reach a callee that reads `os.environ` itself, without ever becoming a node's return
-value — see the module docstring. These tests are the contract that write is scoped:
-set for the block, restored exactly afterward, on both the happy path and an
-exception, whether or not the name held a prior value.
-"""
+"""Tests for kit.credentials.scoped_env: the one write-access to os.environ this package allows."""
 from __future__ import annotations
 
 import os

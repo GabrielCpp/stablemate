@@ -1,8 +1,4 @@
-"""`ostler backlog` — the intake list as managed markdown (``docs/backlog.md`` by default).
-
-Bullets are ``- [<id>] <text>`` optionally grouped under ``## <section>`` headings. Replaces the
-former bespoke append/prune scripts.
-"""
+"""`ostler backlog` — the intake list as managed markdown (``docs/backlog.md`` by default)."""
 
 from __future__ import annotations
 
@@ -14,12 +10,7 @@ from ostler.result import Result
 
 
 def _path(graph: Graph) -> Path:
-    """Where this graph keeps its intake list — ``docRoots: backlog:``, and nothing else.
-
-    There is no override. One used to exist, and it let a caller adopt ids into a list
-    ``ostler backlog`` and ``doctor`` do not read — a second record of a location the
-    config already gives, disagreeing with it.
-    """
+    """Where this graph keeps its intake list — ``docRoots: backlog:``, and nothing else."""
     return path_mod.backlog_path(graph)
 
 
@@ -50,8 +41,6 @@ def add(graph: Graph, item_id: str, text: str, section: str = "") -> Result:
     lines = doc.body.split("\n")
     bullet = f"- [{item_id}] {text}".rstrip()
     if section:
-        # The section's parsed span already ends where the next heading begins, which is
-        # exactly where a new item belongs — no scan for the next `## ` line.
         found = doc.find_section(section)
         if found is not None:
             lines.insert(min(found.line_end, len(lines)), bullet)

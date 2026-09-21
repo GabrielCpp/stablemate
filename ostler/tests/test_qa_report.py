@@ -1,10 +1,4 @@
-"""The per-criterion report a reviewer reads instead of the ledger.
-
-Each test pins one thing the report must say — or refuse to say — for a person deciding
-whether the run can be trusted: the verdict per criterion, which step earned it, what was
-observed, and the warnings that name what was never looked at. The rendering is
-deterministic, so the tests read the markdown as text and the data as a dict.
-"""
+"""The per-criterion report a reviewer reads instead of the ledger."""
 
 from __future__ import annotations
 
@@ -179,7 +173,6 @@ def _recorded_log() -> list[dict[str, Any]]:
     ]
 
 
-# ----------------------------------------------------------------------------- verdicts
 
 
 def test_a_criterion_is_pass_when_an_assertion_covering_it_passed(tmp_path: Path) -> None:
@@ -259,7 +252,6 @@ def test_a_sentinel_failure_does_not_fail_the_criterion(tmp_path: Path) -> None:
     spec = _spec(tmp_path, log=log, criteria=[_criterion("ac:1", "Sign in works.")])
     data = build_report(spec)
     assert data["criteria"][0]["verdict"] == "PASS"
-    # The tally matches the runner's — sentinels included — and says how many are sentinels.
     assert data["counts"]["assertions"] == 2
     assert data["counts"]["failed"] == 1
     assert data["counts"]["sentinelsFailed"] == 1
@@ -267,7 +259,6 @@ def test_a_sentinel_failure_does_not_fail_the_criterion(tmp_path: Path) -> None:
     assert "harness sentinel" in render_report(data)
 
 
-# ----------------------------------------------------------------------------- attribution
 
 
 def test_assertions_and_screenshots_sit_under_the_step_that_recorded_them(tmp_path: Path) -> None:
@@ -287,7 +278,6 @@ def test_assertions_and_screenshots_sit_under_the_step_that_recorded_them(tmp_pa
     assert "the tree has a root" not in ac1
     assert "![after-sign-in.png](qa/screenshots/after-sign-in.png)" in ac1
     assert "[s-1.json](qa/asserts/s-1.json)" in ac1
-    # The step-by-step account lists every step once, in order, and the stray assertion apart.
     steps = text.split("## Scenarios, step by step", 1)[1]
     assert steps.index("1. **sign in with the provisioned account** — ok") < steps.index("2. **fetch the page tree** — ok")
     assert "- _Outside any step_" in steps
@@ -320,8 +310,7 @@ def test_a_step_stamped_but_never_recorded_is_also_unfinished(tmp_path: Path) ->
 
 
 def test_a_ledger_without_stamps_lists_assertions_per_scenario_and_says_so(tmp_path: Path) -> None:
-    """Order cannot tell an assertion inside a step from one between two steps, so the
-    report does not guess — and tells the reader why there is no step-by-step account."""
+    """Order cannot tell an assertion inside a step from one between two steps, so the report does not guess — and tells the reader why there is no step-by-step account."""
     log = [
         _start(),
         _scenario_start("s", "ac:1"),
@@ -341,7 +330,6 @@ def test_a_ledger_without_stamps_lists_assertions_per_scenario_and_says_so(tmp_p
     assert "this ledger does not say which step each ran in" in render_report(data)
 
 
-# ----------------------------------------------------------------------------- obligations
 
 
 def test_an_obligation_s_status_is_the_evidence_map_s(tmp_path: Path) -> None:
@@ -378,7 +366,6 @@ def test_a_context_only_obligation_owes_nothing_and_is_not_a_row(tmp_path: Path)
     assert "No OKF obligations in scope" in render_report(data)
 
 
-# ----------------------------------------------------------------------------- warnings
 
 
 def test_the_warnings_name_what_a_reviewer_should_distrust(tmp_path: Path) -> None:
@@ -433,7 +420,6 @@ def test_a_missing_ledger_is_a_refusal(tmp_path: Path) -> None:
         build_report(spec)
 
 
-# ----------------------------------------------------------------------------- writing
 
 
 def test_the_scored_report_is_a_typed_spec_doc_carrying_its_run_id(tmp_path: Path) -> None:
@@ -478,7 +464,6 @@ def test_a_screenshot_s_vet_verdict_is_read_off_its_sidecar(tmp_path: Path) -> N
     )
     text = render_report(build_report(spec), spec_dir=spec)
     assert "vet: screen `docs/features/web/gui/screens/tree.md`, 1 finding(s): sign-out missing" in text
-    # Without a spec dir the screenshot is still linked; the verdict line is simply absent.
     assert "vet:" not in render_report(build_report(spec))
 
 
@@ -487,20 +472,17 @@ def test_rendering_is_deterministic(tmp_path: Path) -> None:
     assert write_report(spec).read_text() == write_report(spec).read_text()
 
 
-# ----------------------------------------------------------------------------- recordings
 
 
 def test_a_stamped_step_is_placed_in_the_recording_of_its_target(tmp_path: Path) -> None:
     spec = _spec(tmp_path, log=_recorded_log(), criteria=[_criterion("ac:1", "Tree loads.")])
     data = build_report(spec)
     steps = data["scenarios"][0]["steps"]
-    # (started − actionStart)/1000: the step's own clock minus the recording's first frame.
     assert steps[0]["video"] == {"path": "qa/videos/web.mp4", "at": 2.4, "until": 4.9}
     assert steps[1]["video"] == {"path": "qa/videos/web.mp4", "at": 4.9, "until": 5.25}
     assert data["recordings"][0]["actionStartOffsetMs"] == 8000
 
     text = render_report(data, spec_dir=spec)
-    # The reader sees the player's clock, a seekable link, and the command that pulls the frames.
     assert "1. **sign in with the provisioned account** — ok — recording [0:02.4–0:04.9](qa/videos/web.mp4#t=2.4)" in text
     assert "`ostler qa frames --spec " in text
     assert "--step s-step-1`" in text
@@ -511,7 +493,6 @@ def test_a_stamped_step_is_placed_in_the_recording_of_its_target(tmp_path: Path)
 
 def test_a_step_is_not_placed_in_a_recording_it_is_outside_of(tmp_path: Path) -> None:
     log = _recorded_log()
-    # Before the first frame entirely, and after the last one entirely.
     log[2]["started_offset_ms"], log[2]["ended_offset_ms"] = 1_000, 2_000
     log[4]["started_offset_ms"], log[4]["ended_offset_ms"] = 40_000, 41_000
     data = build_report(_spec(tmp_path, log=log))
@@ -527,10 +508,9 @@ def test_a_step_straddling_the_first_frame_is_clamped_to_it(tmp_path: Path) -> N
 
 
 def test_an_unstamped_step_or_an_unrecorded_target_has_no_place(tmp_path: Path) -> None:
-    # Older ledgers carry no step timestamps; an api scenario has no recording to sit in.
     log = [*_stamped_log()[:-1], _video(), _stop()]
     data = build_report(_spec(tmp_path, log=log))
     assert all(step["video"] is None for step in data["scenarios"][0]["steps"])
-    assert "| Frames |" in render_report(data)  # the recording exists, the hint still shows
+    assert "| Frames |" in render_report(data)
     data = build_report(_spec(tmp_path, log=_stamped_log()))
     assert "| Frames |" not in render_report(data)

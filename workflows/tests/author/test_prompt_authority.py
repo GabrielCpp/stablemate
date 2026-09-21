@@ -1,11 +1,4 @@
-"""Author prompts agree on who may decide previously unspecified behavior.
-
-Each flow owns its own copy of the envelopes it renders, so `write-story`, `audit-story`
-and `rework-story` each exist twice over — once under `main/prompts/` and once under
-`epic_edit/prompts/`. The copies are free to diverge, which is exactly why this is
-restated over every one of them: an agreement about *authority* that held in one copy and
-not the other would be a story the two flows write to different contracts.
-"""
+"""Author prompts agree on who may decide previously unspecified behavior."""
 from __future__ import annotations
 
 from pathlib import Path

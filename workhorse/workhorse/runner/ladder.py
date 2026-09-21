@@ -53,8 +53,6 @@ def _write_prompt_for_inspection(node_id: str, prompt: str, run_dir: Path | None
         return None
     prompt_path = run_dir / node_id / "prompt.md"
     prompt_path.parent.mkdir(parents=True, exist_ok=True)
-    # Replaced, not rewritten: this path is still hardlinked to the last visit's copy
-    # under turns/, and a write through it would overwrite that visit's prompt.
     write_unlinked(prompt_path, prompt)
     return prompt_path
 
@@ -64,24 +62,11 @@ def _print_prompt_path(node_id: str, prompt_path: Path) -> None:
     print(f"[{node_id}] prompt: {prompt_path}", flush=True)
 
 
-# Warned about once per name, not once per turn: this resolves for every agent node of a
-# run that may last a week, and a profile deleted from the config would otherwise bury the
-# log in one identical line per turn.
 _warned_missing_profile: set[str] = set()
 
 
 def _profile_config(profile: str) -> dict[str, Any] | None:
-    """The config the resolvers below read: narrowed to ``profile``, or the whole file.
-
-    Loaded per turn on purpose — the "fix the config and let the run pick it up" story
-    depends on a running process observing a changed file, and a profile is no different.
-
-    A profile that has *disappeared* from the config mid-run is warned about and resolves
-    as empty rather than raising: a config read must never be what ends an unattended run,
-    and the check that this profile exists already ran at the boundary. Empty rather than
-    the top-level tables, because a run silently moving onto the machine's global model
-    set is the substitution profiles exist to prevent.
-    """
+    """The config the resolvers below read: narrowed to ``profile``, or the whole file."""
     if not profile:
         return None
     try:
@@ -94,46 +79,19 @@ def _profile_config(profile: str) -> dict[str, Any] | None:
 
 
 def resolved_profile(profile: str) -> dict[str, Any]:
-    """What ``profile`` holds right now, for the record rather than for a resolution.
-
-    Same read the turns take, exposed once so the copy `run.json` keeps is literally the
-    tables this run resolves against — a second reader of the config could disagree with
-    the first, and a provenance record that disagrees is worse than none.
-    """
+    """What ``profile`` holds right now, for the record rather than for a resolution."""
     return _profile_config(profile) or {}
 
 
 @dataclass
 class ProfileSelection:
-    """Which named model set the run is on *now* — one box every frame shares.
-
-    A mutable holder rather than a string on the frozen runner, because
-    `control switch-profile` applies in-process and a run has several references to its
-    runner by then: a handoff copies the `RunEnv`, so a string replaced on one of them
-    would put the parent flow back on the old model set the moment the child returned.
-    One box is what makes "the run's profile" a single fact instead of one per frame.
-
-    The name only. What it selects is re-read from the config every turn, which is why a
-    switch needs nothing but this assignment.
-    """
+    """Which named model set the run is on *now* — one box every frame shares."""
 
     name: str = ""
 
 
 def switch_profile(runner: "AgentRunner | None", name: str) -> dict[str, object]:
-    """Move a live run onto the ``name`` model set, and say what happened.
-
-    The return value is the operator's reply rather than an exception, because all three
-    outcomes are things they have to be *told*: a switch that was refused and read as one
-    that landed would leave a week-long run spending on the models nobody chose.
-
-    Both refusals are the ones the CLI boundary makes at startup, applied to the run as it
-    now is: an unknown profile, and a profile whose `cli` field disagrees with the CLI
-    this run is actually driving. Under v2 the CLI is the profile's CLI by construction
-    (--profile and --cli are mutually exclusive), so a successful switch-cli moves the
-    run to a profile whose `cli` matches the new backend — what `profile_has_backend`
-    reads.
-    """
+    """Move a live run onto the ``name`` model set, and say what happened."""
     if runner is None:
         return {"ok": False, "error": "this run drives no agent, so it resolves no models"}
     try:
@@ -149,13 +107,7 @@ def switch_profile(runner: "AgentRunner | None", name: str) -> dict[str, object]
             f"first, or pick a profile whose cli matches the new backend.",
         }
     was, runner.profile.name = runner.profile.name, name
-    # Warned-about names are forgotten on the way past: a profile re-created in the config
-    # after having been deleted deserves to be complained about again if it goes missing a
-    # second time, and the set is what would otherwise swallow that.
     _warned_missing_profile.discard(name)
-    # The root span has not exported yet — it closes with the run — so re-stamping it is
-    # what keeps telemetry saying which models the run actually spent on. Last write wins,
-    # which for a run moved at hour two of a hundred is the answer worth having.
     otel.run_attribute("workhorse.profile", name)
     return {"ok": True, "profile": name, "was": was}
 
@@ -166,25 +118,7 @@ def _resolve_power_settings(
     model_override: str | None,
     profile: str = "",
 ) -> tuple[str | None, str | None, float]:
-    """Resolve a node's abstract ``power`` into concrete backend settings.
-
-    Per field, the power mapping wins when present. Model then falls through to the
-    run-level override (``AGENT_MODEL`` / ``AGENT_CLAUDE_MODEL``, resolved once at the
-    CLI boundary and handed down), then the profile's ``default`` table; effort falls
-    through to that table directly (it has no override). Anything still unset stays
-    None so the harness default applies.
-
-    The third value is the wall-clock multiplier for this tier, defaulting to ``1.0``
-    — a run that configures nothing keeps every budget byte-identical. It rides here
-    rather than beside the node numbers because a node's ``timeout=`` states the shape
-    of the work ("a QA plan is about twenty minutes"), which is true whatever model
-    does it; how fast a model executes a unit of that work is a property of the model,
-    which is exactly what the ``[powers.<tier>]`` tables describe.
-
-    ``profile`` narrows *which* config those two tables are read from, and narrowing is
-    the whole mechanism: a selected profile replaces the top level rather than layering
-    over it, so neither resolver has to know profiles exist.
-    """
+    """Resolve a node's abstract ``power`` into concrete backend settings."""
     cfg = _profile_config(profile)
     mapped = resolve_power(power, backend_name, cfg)
     fallback = resolve_backend_default(backend_name, cfg)
@@ -195,37 +129,18 @@ def _resolve_power_settings(
 
 @dataclass(frozen=True)
 class AgentRunner:
-    """The fail-soft recovery ladder, for one run.
-
-    Every field is a collaborator or a policy the whole run shares — the backend to
-    drive, the knobs to drive it with, the clock to wait on, and the two console/model
-    settings the CLI boundary resolved from the environment. What varies per node (the
-    node itself, its context, where its prompt renders from) is a parameter of
-    :meth:`run`, so no caller has to forward the run's context field by field.
-    """
+    """The fail-soft recovery ladder, for one run."""
 
     backend: AgentBackend
     resilience: AgentResilience = field(default_factory=AgentResilience)
-    #: How the ladder waits and what it calls "now". Injected, so a run that sleeps
-    #: through an eight-day cap window is a test that costs microseconds.
     clock: Clock = SYSTEM_CLOCK
-    #: Echo each node's rendered-prompt path to the console (WORKHORSE_PRINT_PROMPT).
     print_prompt: bool = True
-    #: Run-level model override, already resolved from the environment.
     model_override: str | None = None
-    #: The named model set this run resolves its models from, or "" for the config's
-    #: top-level tables. A shared box rather than a string because `control
-    #: switch-profile` moves it while the run is going — see :class:`ProfileSelection`.
     profile: ProfileSelection = field(default_factory=ProfileSelection)
 
     @classmethod
     def from_config(cls, config: RunConfig, *, clock: Clock = SYSTEM_CLOCK) -> AgentRunner:
-        """The ladder this run's configuration describes.
-
-        The one construction point: the environment was read once into ``RunConfig``
-        at the CLI boundary, and this turns that value into the service the engine
-        calls. Nothing below here reads configuration of its own.
-        """
+        """The ladder this run's configuration describes."""
         return cls(
             backend=config.backend,
             resilience=config.resilience,
@@ -273,96 +188,26 @@ class AgentRunner:
         run_dir: Path | None = None,
         validate: Callable[[dict[str, Any]], object] | None = None,
     ) -> tuple[str, dict[str, Any]]:
-        """
-        Render the prompt, invoke the agent, and parse its declared outputs — resiliently.
-
-        This worker is built to run unattended for days, so a recoverable failure must
-        never crash the whole run. Recovery escalates through three layers:
-
-        1. **Transient retries** (inside :meth:`turn`): rate limits, overloads,
-           network blips, timeouts, *empty* results and spending caps are retried or
-           waited out with backoff. That budget is measured in days, not minutes —
-           an outage the run can sleep through is not a failure.
-        2. **Compact & continue** (here): if the node exhausts the model's context
-           window (the headless CLI returns instead of auto-compacting), the session
-           is compacted and the node retried on it — preserving the node's progress —
-           up to ``resilience.max_compact_attempts`` times before reframing.
-        3. **Reframe** (here): if invocation or output parsing still fails, the prompt
-           is rephrased from scratch in a fresh session and the node is retried, up to
-           ``resilience.max_rephrase_attempts`` times — or ``node.retries`` when the
-           node names its own budget. A node the agent can't answer as-phrased often
-           succeeds when re-asked more simply; a node whose deliverable is a file its
-           caller can salvage sets ``retries: 0`` and lets the caller act on the draft
-           instead of paying for the same turn again.
-        When all three are spent the node **raises**, ending the run at a resumable
-        checkpoint for an operator to look at. There is deliberately no fourth layer
-        that invents the node's outputs: a null verdict from a review node, or a null
-        plan from a dev node, is not a degraded answer but a fabricated one, and every
-        node downstream then does real work on it. A run that stops is recoverable by
-        resuming it; a run that continues on fabricated outputs is not recoverable at
-        all, because nothing downstream records that the answer was never given.
-
-        **Sessions.** Each node is a fresh prompt and starts from a *clean context* —
-        we do NOT chain one node's conversation into the next. The persisted agent
-        session is resumed only when ``resume_session`` is True, which the controller
-        sets to continue *this same node* after an interruption (a crash mid node) and
-        the engine sets for a **session chain** — a node that named
-        ``self.agent(..., session=key)``, whose session file is its own under
-        ``.sessions/`` and whose laps are deliberately one conversation
-        (:mod:`workhorse.sessions`); ``session_chain`` is that key, carried only so the
-        log can name it. A normal forward move to a new node always starts clean. (The
-        compact-and-continue layer above also resumes the session, but only within
-        this same call, to recover the node it is already running.)
-
-        A chain whose session the CLI will not resume — expired, pruned, or from
-        another machine — is **not** a failure of the node: the session is dropped and
-        the same prompt runs once more on a fresh one. Reframing it instead would
-        spend a rephrase budget simplifying a prompt that was never the problem.
-
-        **The backend is injected, never resolved here.** ``AGENT_CLI`` is read once at
-        the CLI boundary and the chosen adapter is handed down, so the ladder names no
-        CLI and imports none — the reason the ladder and ``backends`` no longer have to
-        import each other lazily.
-
-        Returns (rendered_prompt, extracted_outputs_dict).
-        """
+        """Render the prompt, invoke the agent, and parse its declared outputs — resiliently."""
         node_id = node.id
         resilience = self.resilience
         ctx = context.as_dict()
 
-        # The node's abstract power tier maps through user config to concrete
-        # model/effort for the active backend. Missing config falls back to the run's
-        # override then the backend's defaults, preserving harness behavior. This is
-        # resolved BEFORE the budget below because the tier also carries the wall-clock
-        # scale, and the scaled budget is what the prompt is told a few lines down.
         model, node_effort, timeout_scale = _resolve_power_settings(
             node.power, self.backend.name, self.model_override, self.profile.name
         )
         model = model or self.backend.default_model
 
-        # The wall-clock budget for this node's turn: the node's own timeout when set,
-        # else the engine default, times the tier's model-speed scale. Surfaced to the
-        # prompt (node_timeout_s/min) so the agent can size its commands to finish — a
-        # turn killed at the budget restarts the node from scratch with no memory,
-        # wasting the whole budget.
         base_timeout = (
             node.timeout
             if node.timeout is not None and node.timeout > 0
             else resilience.result_timeout_s
         )
         effective_timeout = base_timeout * timeout_scale
-        # An unbounded budget (timeout: infinity) means "never kill this turn". The stream
-        # loops compare `elapsed > timeout`, so float('inf') naturally never trips; only the
-        # prompt-surfaced ints need a non-numeric stand-in (int(inf) would overflow).
         unbounded = effective_timeout == float("inf")
 
-        # Render per-node CWD first so it can be forwarded into the prompt context.
-        # _flavor_override uses _node_cwd to look up flavors relative to the per-node
-        # repo root (e.g. web-app) rather than the global _repo_root (the orchestrating
-        # repo), enabling each workspace repo to provide its own flavor independently.
         rendered_cwd = render_string(node.cwd, ctx).strip() if node.cwd else None
 
-        # Render node args as Jinja2 strings, merge into context for prompt rendering
         rendered_args = {k: render_string(v, ctx) for k, v in node.args.items()}
         prompt_ctx = {
             **ctx,
@@ -373,17 +218,11 @@ class AgentRunner:
         }
         rendered_prompt = render(node.prompt, prompt_ctx, workflow_dir)
 
-        # Persist the full rendered prompt before launching the agent so even failed or
-        # interrupted nodes are inspectable. Console output stays compact: only the path.
         prompt_path = _write_prompt_for_inspection(node_id, rendered_prompt, run_dir)
         if prompt_path is not None and self.print_prompt:
             _print_prompt_path(node_id, prompt_path)
 
-        # Render additional directories and the rest of the per-node dispatch config.
         if isinstance(node.add_dirs, str):
-            # Template string that resolves to a context list (e.g. "{{ affected_repo_paths }}").
-            # Jinja2 renders a list variable as its string repr, so look up the native context
-            # value directly when the template is a bare variable reference.
             bare = re.fullmatch(r"\{\{\s*(\w+)\s*\}\}", node.add_dirs.strip())
             if bare:
                 native = ctx.get(bare.group(1), [])
@@ -396,24 +235,14 @@ class AgentRunner:
                 d for d in (render_string(d, ctx).strip() for d in node.add_dirs) if d
             ]
 
-        # The backend already sets cwd as the agent's working directory — passing it
-        # again via --add-dir is redundant and clutters the CLI invocation.
         if rendered_cwd and rendered_add_dirs:
             cwd_resolved = Path(rendered_cwd).resolve()
             rendered_add_dirs = [d for d in rendered_add_dirs if Path(d).resolve() != cwd_resolved]
 
-        # New node = clean context: drop any session left by a previous node so this
-        # node's first attempt does not --resume someone else's conversation. When
-        # resume_session is set we keep it, so the interrupted node continues where it
-        # left off (the controller only asks for this on the re-entered node).
         if not resume_session and session_id_path and session_id_path.exists():
             session_id_path.unlink()
 
-        # ``rephrase`` advances only on a genuine reframe; a context-compaction retry
-        # re-runs the SAME prompt on the compacted session without consuming a reframe.
         rephrase = 0
-        # The node's own reframe budget when it declares one — including 0, which is why
-        # this is an `is None` test and not a truthiness one.
         rephrase_budget = (
             resilience.max_rephrase_attempts if node.retries is None else node.retries
         )
@@ -424,8 +253,6 @@ class AgentRunner:
                 if rephrase == 0
                 else rephrase_prompt(rendered_prompt, node, rephrase)
             )
-            # A reframed attempt starts a FRESH session so the prior, unhelpful
-            # exchange doesn't bias the model toward repeating its mistake.
             if rephrase > 0:
                 if session_id_path and session_id_path.exists():
                     session_id_path.unlink()
@@ -447,11 +274,6 @@ class AgentRunner:
                 )
                 return rendered_prompt, outputs
             except (BackendInvocationError, OutputParseError) as exc:
-                # Layer 0: the session this turn was asked to resume no longer exists.
-                # Nothing about the node is wrong, so this consumes no budget of any
-                # kind: drop the dead id and run the same prompt on a fresh session.
-                # Bounded by the file — once unlinked the condition cannot recur, so
-                # this cannot loop.
                 if (
                     isinstance(exc, BackendInvocationError)
                     and is_unresumable_session(str(exc))
@@ -469,9 +291,6 @@ class AgentRunner:
                     )
                     continue
 
-                # Layer 2: context window exhausted → compact this session and retry the
-                # SAME prompt on it, keeping the node's progress. Only when compaction
-                # is unavailable/ineffective do we fall through to a (lossy) reframe.
                 if (
                     isinstance(exc, BackendInvocationError)
                     and exc.overflow
@@ -494,20 +313,13 @@ class AgentRunner:
                         timeout=resilience.result_timeout_s,
                         resilience=resilience,
                     ):
-                        continue  # retry same prompt on the compacted session
+                        continue
                     print(
                         f"[{node_id}] ⚠ compaction unavailable/ineffective; "
                         f"falling back to reframe",
                         flush=True,
                     )
 
-                # Non-recoverable backend/CLI failure (non-transient, non-overflow):
-                # the agent CLI crashed or its server returned a hard error (e.g.
-                # "Unexpected server error"). Reframing the prompt can't bring back a
-                # dead CLI, and fabricating default outputs would corrupt the workflow
-                # (e.g. an empty write_epic), so stop the ladder and surface it for a
-                # clean abort. Transient-exhausted and overflow failures fall through to
-                # the reframe/default layers below, unchanged.
                 if (
                     isinstance(exc, BackendInvocationError)
                     and not exc.transient
@@ -519,15 +331,12 @@ class AgentRunner:
                     )
                     raise
 
-                # Layer 3: reframe in a fresh session.
                 if rephrase < rephrase_budget:
                     print(
                         f"[{node_id}] ⚠ node failed ({exc}); will reframe and retry",
                         flush=True,
                     )
                     otel.turn_event("reframe", node=node_id, attempt=rephrase + 1)
-                    # Brief, escalating pause so a reframe doesn't hammer a struggling
-                    # service back-to-back.
                     delay = min(10 * (rephrase + 1), 60)
                     budget = active_recovery_wait_budget()
                     if budget is not None:
@@ -546,18 +355,12 @@ class AgentRunner:
                     rephrase += 1
                     continue
 
-                # Nothing left to try. Stop here rather than inventing this node's
-                # answer — the run dir holds the checkpoint, so an operator resumes it.
                 print(
                     f"[{node_id}] ✖ all {rephrase_budget} reframings "
                     f"failed ({exc}); stopping the run — resume it once the cause is "
                     f"cleared",
                     flush=True,
                 )
-                # The class and bucket ride the event as well as the turn span: an
-                # OutputParseError is raised after the turn span has already closed
-                # cleanly (the CLI answered; the answer would not parse), so this is
-                # the only place that failure mode is nameable.
                 otel.turn_event(
                     "exhausted",
                     error=True,
@@ -568,15 +371,7 @@ class AgentRunner:
                 raise
 
     def _reenter_on(self, cut: control.Request | None, node_id: str, where: str) -> None:
-        """Unwind the ladder for a reload that ended one of its waits, or do nothing.
-
-        Every wait in here is a wait *between* turns, so there is nothing to cut and
-        nothing to unwind but the ladder itself — raising is how the node re-enters
-        against the code the operator just pushed. `cut` has already been through
-        `reload.cut_by`, the same policy the streaming loop applies, so a request that
-        is not a reload, or is an `--at-boundary` one, arrives here as None: answered,
-        held where it matters, and not a reason to stop waiting.
-        """
+        """Unwind the ladder for a reload that ended one of its waits, or do nothing."""
         if cut is None:
             return
         print(f"[{node_id}] ⟳ reload requested during {where}", flush=True)
@@ -601,13 +396,7 @@ class AgentRunner:
         effort: str | None = None,
         validate: Callable[[dict[str, Any]], object] | None = None,
     ) -> dict[str, Any]:
-        """Invoke the agent and parse the node's declared outputs.
-
-        When the response can't be parsed into the declared outputs, re-prompt within
-        the SAME session up to ``resilience.max_output_retries`` times with a corrective
-        message
-        before giving up (raising ``OutputParseError`` for the caller's reframe layer).
-        """
+        """Invoke the agent and parse the node's declared outputs."""
         max_output_retries = self.resilience.max_output_retries
         for attempt in range(max_output_retries + 1):
             result_text = self.turn(
@@ -620,15 +409,6 @@ class AgentRunner:
             try:
                 outputs = extract_outputs(result_text, node)
                 if validate is not None:
-                    # The caller's shape check runs INSIDE the corrective-retry loop, so
-                    # a reply whose keys are all present but whose values are the wrong
-                    # shape — a bare string where a model asked for an object — is a
-                    # parse failure like any other: the agent is re-asked in the same
-                    # session with the exact error quoted, then reframed, and only an
-                    # exhausted ladder stops the run. Before this hook, that reply
-                    # sailed through here and died downstream as a hard failure no
-                    # repair layer ever saw (the 'refine-plan returned something that
-                    # is not a PlanResult' run-killer).
                     try:
                         validate(outputs)
                     except Exception as invalid:
@@ -645,11 +425,8 @@ class AgentRunner:
                     f"(attempt {attempt + 1}/{max_output_retries + 1}): {exc}; retrying",
                     flush=True,
                 )
-                # Resume the same session (session id was just persisted) and nudge the
-                # agent to emit only the required JSON.
                 prompt = retry_prompt(node, exc)
 
-        # Unreachable: the loop either returns outputs or raises on the final attempt.
         raise AssertionError("the _invoke_and_parse retry loop exited without a result")
 
     def turn(
@@ -668,24 +445,7 @@ class AgentRunner:
         effort: str | None = None,
         invoke_retries: int | None = None,
     ) -> str:
-        """Run one agent-CLI turn for ``prompt``, recovering from transient failures.
-
-        Two recovery modes:
-        - **Spending/usage cap** — a *scheduled* failure that clears only when the
-          subscription window resets. We sleep until that reset (parsed from the
-          message, else a default), announcing it on the console, then retry. This is
-          NOT bounded by the short-retry budget: a cap always recovers eventually, so
-          the run rides it out instead of dying.
-        - **Short transient** (rate limit, overload, network) — bounded exponential
-          backoff, then fail fast. ``invoke_retries`` bounds this for one turn; None
-          means the run's ``resilience.max_invoke_retries``.
-
-        Persists the resulting session id (when available) so a subsequent call
-        resumes the same conversation.
-
-        ``self.backend`` is the injected port: this drives ``run_turn`` and knows
-        nothing else about which CLI is behind it.
-        """
+        """Run one agent-CLI turn for ``prompt``, recovering from transient failures."""
         resilience = self.resilience
         backend = self.backend
         budget = active_recovery_wait_budget() or RecoveryWaitBudget.from_resilience(resilience)
@@ -694,14 +454,10 @@ class AgentRunner:
         )
         short_attempt = 0
         cap_waits = 0
-        # The prompt sent on the current attempt. After a budget timeout we prepend a
-        # warning (see below) so the retry knows it overran and how long it has.
         attempt_prompt = prompt
         while True:
             try:
                 print(f"[{node_id}] 🚀 Invoking {backend.name} (model: {model or 'default'})", flush=True)
-                # One agent-turn span per CLI invocation; the result event's
-                # duration/usage attach via otel.turn_result, from inside the adapter.
                 otel.turn_start(
                     node_id,
                     model,
@@ -711,10 +467,6 @@ class AgentRunner:
                     cwd=cwd,
                     add_dirs=tuple(add_dirs or ()),
                 )
-                # `timeout` above is already the scaled budget, so without this a later
-                # comparison cannot tell "the config scaled this node" from "somebody
-                # edited the number in the workflow" — the exact confound a two-config
-                # benchmark must not have. Silent at 1.0: an unscaled run says nothing.
                 if budget_scale != 1.0:
                     otel.turn_event(
                         "budget_scaled",
@@ -737,17 +489,6 @@ class AgentRunner:
                 otel.turn_end()
                 return result
             except reload.ReloadRequested:
-                # The one exit from this loop that consumes nothing: no short retry, no
-                # cap wait, no backoff, and no budget. The operator cut the turn; the
-                # turn did not fail, so a counter incremented here would spend part of
-                # the recovery the *next* genuine failure is entitled to.
-                #
-                # It still has to close the span — and close it *cleanly*. The turn
-                # accrued real tokens, cost and wall clock before the cut, and the
-                # `reload_kill` event the stream loop already recorded is on this span;
-                # ending it with an ERROR status would make groom count a deliberate
-                # reload among the failures. Not closing it at all is the unclosed span
-                # this whole feature exists to avoid.
                 otel.turn_end()
                 raise
             except BackendInvocationError as exc:
@@ -759,12 +500,6 @@ class AgentRunner:
                 print(f"[{node_id}] ⚠ {backend.name} invocation failed: {exc}", flush=True)
                 if not exc.transient:
                     raise
-                # A budget timeout: warn the next attempt that it overran and give it the
-                # wall-clock budget so it can size its work to fit. Other transients
-                # (rate limit, overload, network) retry the prompt unchanged.
-                # Cap-triggered early aborts also carry timed_out=True (the stream loop
-                # breaks the same way) but must NOT get the budget warning — the model
-                # never actually ran; the cap cleared externally.
                 is_cap_hit = exc.reset_at is not None or is_cap(str(exc))
                 if exc.timed_out and not is_cap_hit:
                     print(
@@ -782,13 +517,6 @@ class AgentRunner:
                     delay, when = cap_delay_seconds(
                         exc, resilience=resilience, clock=self.clock
                     )
-                    # Sleep at most one probe interval, then re-attempt. The reported
-                    # reset is the window's SCHEDULED reopening, not a promise that
-                    # nothing reopens it sooner — an operator who resets the limit by
-                    # hand, tops up credits or changes plan clears the cap immediately,
-                    # and a single multi-day sleep would ride straight past that. The
-                    # re-attempt costs one CLI invocation that fails at once while the
-                    # cap still holds.
                     probing = 0 < resilience.cap_probe_s < delay
                     sleep_s = resilience.cap_probe_s if probing else delay
                     if probing:
@@ -824,10 +552,6 @@ class AgentRunner:
                             channel=control.armed(),
                             honour=reload.cut_by,
                         )
-                    # The wait a reload most needs to be able to end. A weekly cap
-                    # reopens days out, and until the channel existed those were days
-                    # in which the run could not be reached at all — the fix was pushed
-                    # and then sat there until the window happened to close.
                     self._reenter_on(interrupted, node_id, "a cap wait")
                     print(
                         f"[{node_id}] ▶ cap probe interval elapsed — re-attempting "
@@ -853,9 +577,6 @@ class AgentRunner:
                 otel.turn_event(
                     "retry", node=node_id, attempt=short_attempt, delay_s=int(delay)
                 )
-                # Ticked, not silent: once the backoff reaches its cap a single sleep
-                # is half an hour, which to a collector is indistinguishable from a
-                # wedged turn. The same notice loop the cap wait uses proves liveness.
                 budget.consume("retry", delay)
                 with otel.wait("retry", node_id):
                     interrupted = sleep_with_notice(

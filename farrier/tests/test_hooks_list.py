@@ -1,13 +1,4 @@
-"""`farrier hooks list` — the per-stage catalogue of declared hooks.
-
-The verb's question is preventive: an operator wants to know what will run at the
-next commit, *before* committing. The answer comes from the selection — not from
-disk — so the tests below stub a minimal library and exercise the round trip from
-`agents.yml` to the printed catalogue. Drift is `install --check`'s job; surfacing
-it here would duplicate a gate.
-
-    ./.venv/bin/python -m pytest tests/test_hooks_list.py
-"""
+"""`farrier hooks list` — the per-stage catalogue of declared hooks."""
 
 from __future__ import annotations
 
@@ -45,9 +36,7 @@ def library(tmp_path: Path) -> Path:
 
 @pytest.fixture(autouse=True)
 def _wire_library(monkeypatch, library: Path):
-    """The list verb resolves its library through `cli.resolve_library_dir`,
-    which reads the home config rather than the test fixture. Pin the
-    resolution to the fixture path so each test sees the library it set up."""
+    """The list verb resolves its library through `cli.resolve_library_dir`, which reads the home config rather than the test fixture."""
     monkeypatch.setattr(cli, "resolve_library_dir", lambda _cli: library)
 
 
@@ -60,9 +49,6 @@ def _seed_repo(repo: Path, *, manager: str = "githooks") -> None:
     )
 
 
-# ---------------------------------------------------------------------------
-# the catalogue itself
-# ---------------------------------------------------------------------------
 
 
 def test_list_groups_declared_hooks_by_stage(library: Path, tmp_path: Path, capsys):
@@ -82,9 +68,7 @@ def test_list_groups_declared_hooks_by_stage(library: Path, tmp_path: Path, caps
 def test_list_with_no_declared_hooks_prints_none_per_stage(
     library: Path, tmp_path: Path, capsys
 ):
-    """A skill with no `hooks:` block still gets one block per stage, with
-    `(none)` under every one — the verb's contract is "every stage", not
-    "stages with hooks"."""
+    """A skill with no `hooks:` block still gets one block per stage, with `(none)` under every one — the verb's contract is "every stage", not "stages with hooks"."""
     skill = library / "library" / "skills" / "demo" / "ungated" / "SKILL.md"
     skill.parent.mkdir(parents=True)
     skill.write_text(
@@ -111,10 +95,7 @@ def test_list_with_no_declared_hooks_prints_none_per_stage(
 def test_list_with_manager_none_prints_header_note(
     library: Path, tmp_path: Path, capsys
 ):
-    """`manager: none` is a runtime fact about wiring, not a fact about
-    selection: the hooks are still listed, prefixed by the header that names
-    the cause so an operator turning the manager back on tomorrow knows what
-    will start running."""
+    """`manager: none` is a runtime fact about wiring, not a fact about selection: the hooks are still listed, prefixed by the header that names the cause so an operator turning the manager back on tomorrow knows what will start running."""
     set_layers(library)
     repo = tmp_path / "demo"
     repo.mkdir()
@@ -127,15 +108,10 @@ def test_list_with_manager_none_prints_header_note(
     assert "  demo-gated  scripts/check.py" in out
 
 
-# ---------------------------------------------------------------------------
-# error and absence paths
-# ---------------------------------------------------------------------------
 
 
 def test_list_with_no_agents_yml_exits_nonzero(tmp_path: Path, capsys):
-    """Doctor's precedent: a missing `agents.yml` is a non-zero exit so a
-    script that gates on the verb's exit sees the same signal it would see
-    from `farrier doctor`."""
+    """Doctor's precedent: a missing `agents.yml` is a non-zero exit so a script that gates on the verb's exit sees the same signal it would see from `farrier doctor`."""
     repo = tmp_path / "demo"
     repo.mkdir()
 
@@ -148,9 +124,7 @@ def test_list_with_no_agents_yml_exits_nonzero(tmp_path: Path, capsys):
 def test_list_with_no_library_prints_hint_and_exits_zero(
     tmp_path: Path, capsys, monkeypatch
 ):
-    """No library is a setup choice, not a failure of this repo: print the
-    cause-named hint and exit 0 so the verb stays read-only in the case
-    where the operator has not yet configured one."""
+    """No library is a setup choice, not a failure of this repo: print the cause-named hint and exit 0 so the verb stays read-only in the case where the operator has not yet configured one."""
     set_layers(None)
     monkeypatch.setattr(cli, "resolve_library_dir", lambda _cli: None)
     repo = tmp_path / "demo"

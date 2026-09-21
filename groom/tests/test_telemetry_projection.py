@@ -27,8 +27,6 @@ def test_shutdown_metric_flush_cannot_reopen_a_completed_generation():
         **session, "name": "run:okf-builder", "end_ts": 100,
         "attrs": {"workhorse.terminal": "terminal"},
     }], now=100)
-    # Workhorse shuts down the meter provider after closing the root span. Its
-    # cumulative metrics therefore receive a collection timestamp after the end.
     alerts.ingest_metrics([{
         **session, "name": "workhorse.node.active", "value": 0,
         "ts": 101, "attrs": {"node": "commit"},
@@ -42,7 +40,6 @@ def test_shutdown_metric_flush_cannot_reopen_a_completed_generation():
         "name": "workhorse.run.heartbeat", "value": 1, "ts": 1001,
     }], now=1001)
     assert projection.liveness(wf, tel, now=1001) == ("live", "alive")
-    # A delayed flush from generation 1 must not undo generation 2's activity.
     alerts.ingest_spans([{
         **session, "name": "run:okf-builder", "end_ts": 100,
         "attrs": {"workhorse.terminal": "terminal"},
@@ -141,7 +138,6 @@ def test_native_absolute_gate_answer_falls_back_to_its_own_directory(tmp_path):
     result = asyncio.run(app._answer(state.WORKFLOWS["r"], "r", str(gate), "Proceed"))
     assert result.ok
     assert "Proceed" in gate.read_text(encoding="utf-8")
-    # An acknowledged command does not invent a telemetry transition.
     detail = projection.run_detail(state.WORKFLOWS["r"], tel)
     assert detail["state"] == "blocked"
     assert detail["gates"][0]["file_path"] == str(gate)

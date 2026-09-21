@@ -1,15 +1,4 @@
-"""The QA-plan repair's proof-of-work gate — `verify_qa_dry_run`.
-
-A repair turn's answer is a claim: "I fixed the scenarios that failed." Believing it costs a
-full suite run to disprove, and the loop that pays for it has six laps. So the gate reads the
-scratch evidence the prompt requires the turn to leave — one `qa-run.ndjson` per repaired
-scenario, under `<spec_dir>/qa/<scenario>/` — and a repair that did not run what it
-claimed to repair is sent straight back without spending the run.
-
-The three refusals are the three ways a turn can look finished and not be: it never ran the
-scenario, it ran it and left it red, or it left a log with nothing in it (a run that died
-before its first assertion, or an out-dir the runner rmtree'd and never refilled).
-"""
+"""The QA-plan repair's proof-of-work gate — `verify_qa_dry_run`."""
 from __future__ import annotations
 
 import json
@@ -53,10 +42,7 @@ def test_a_scenario_that_was_never_dry_run_is_refused_by_name(tmp_path: Path) ->
 
     assert gate.status == "failed"
     assert "`copy-link`" in gate.notes and "no dry run" in gate.notes, gate.notes
-    # The one it did prove is still recorded, so the next brief is not asked to redo it.
     assert gate.verified == ["create-document"], gate.verified
-    # And the refusal teaches the command, because the turn that skipped it plainly did
-    # not have it to hand.
     assert "--out-dir" in gate.notes, gate.notes
 
 
@@ -71,8 +57,7 @@ def test_a_dry_run_that_still_fails_is_not_a_finished_repair(tmp_path: Path) -> 
 
 
 def test_a_log_with_no_assertion_in_it_does_not_count_as_evidence(tmp_path: Path) -> None:
-    """An empty log is the cheapest forgery and the commonest accident, and both read the
-    same from here: nothing ran, so nothing was proven."""
+    """An empty log is the cheapest forgery and the commonest accident, and both read the same from here: nothing ran, so nothing was proven."""
     _dry_run(tmp_path, "copy-link")
 
     gate = verify_qa_dry_run(LOGGER, str(tmp_path), ("copy-link",))
@@ -82,9 +67,7 @@ def test_a_log_with_no_assertion_in_it_does_not_count_as_evidence(tmp_path: Path
 
 
 def test_the_gate_reads_the_ignored_subtree_not_a_sibling(tmp_path: Path) -> None:
-    """`--out-dir <id>` resolves to `<spec_dir>/qa/<id>/`, so that is where the gate has to
-    look. The sibling it used to read was outside every repo's ignore, which is how 297 MB
-    of traces and video got committed."""
+    """`--out-dir <id>` resolves to `<spec_dir>/qa/<id>/`, so that is where the gate has to look."""
     out = tmp_path / "qa" / "copy-link"
     out.mkdir(parents=True)
     (out / QA_RUN_LOG).write_text(
@@ -95,8 +78,7 @@ def test_the_gate_reads_the_ignored_subtree_not_a_sibling(tmp_path: Path) -> Non
 
 
 def test_a_scenarios_own_out_dir_claims_its_unlabelled_assertions(tmp_path: Path) -> None:
-    """A single-scenario run may leave the `scenario` field off its records — the out-dir
-    already names it. Requiring the label would refuse every honest dry run."""
+    """A single-scenario run may leave the `scenario` field off its records — the out-dir already names it."""
     out = tmp_path / QA_SCRATCH_DIRNAME / "copy-link"
     out.mkdir(parents=True)
     (out / QA_RUN_LOG).write_text(
@@ -107,8 +89,7 @@ def test_a_scenarios_own_out_dir_claims_its_unlabelled_assertions(tmp_path: Path
 
 
 def test_another_scenarios_records_in_the_out_dir_prove_nothing(tmp_path: Path) -> None:
-    """A whole-suite run pointed at one scenario's out-dir would otherwise pass the gate for
-    a scenario it left red, because *some* assertion in the file is green."""
+    """A whole-suite run pointed at one scenario's out-dir would otherwise pass the gate for a scenario it left red, because *some* assertion in the file is green."""
     out = tmp_path / QA_SCRATCH_DIRNAME / "copy-link"
     out.mkdir(parents=True)
     (out / QA_RUN_LOG).write_text(
@@ -132,8 +113,7 @@ def test_no_scenarios_to_prove_is_a_pass_and_not_a_refusal(tmp_path: Path) -> No
 
 
 def test_a_missing_spec_dir_argument_fails_closed(tmp_path: Path) -> None:
-    """The gate cannot read what it cannot locate, and an unreadable gate that passes is
-    worse than no gate: it certifies every repair from then on."""
+    """The gate cannot read what it cannot locate, and an unreadable gate that passes is worse than no gate: it certifies every repair from then on."""
     gate = verify_qa_dry_run(LOGGER, "", ("copy-link",))
 
     assert gate.status == "failed"

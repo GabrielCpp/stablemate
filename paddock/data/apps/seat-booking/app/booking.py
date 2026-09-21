@@ -1,15 +1,4 @@
-"""What a seat is: the projection every surface reads, and the refusals it can raise.
-
-Kept apart from the HTTP layer on purpose: every rule the book states as a `does:` or a
-`raises:` is a function in this package, so a scenario that fails names the transition
-rather than the route. `service.py` translates the `Refused` exceptions below into status
-codes and does no deciding of its own.
-
-The transitions themselves live one to a module — `hold.py`, `confirm.py` — because the
-book grounds an obligation at the symbol it cites, and two transitions sharing a file would
-share that file's grounding: a defect seeded in either would localize to neither. What
-stays here is what more than one of them needs.
-"""
+"""What a seat is: the projection every surface reads, and the refusals it can raise."""
 
 from __future__ import annotations
 
@@ -46,17 +35,7 @@ def seat_record(ledger: dict[str, Any], seat: str) -> dict[str, Any]:
 
 
 def seat_map(store: Store) -> list[dict[str, Any]]:
-    """Every seat, in row-then-number order, whatever state it is in.
-
-    The whole map rather than the free ones: a client that only ever hears about free seats
-    cannot render a seat map, and a scenario counting rows could not tell an empty theatre
-    from a sold-out one.
-
-    A booked seat carries the booking it is holding. Without it the map publishes no field
-    that distinguishes one booking from another, and the durability criterion the booking
-    story is judged on — still booked, *under the same name*, after a restart — would be
-    asking QA to prove a claim through a field the API never exposes.
-    """
+    """Every seat, in row-then-number order, whatever state it is in."""
     ledger = store.read()
     return [
         {

@@ -1,25 +1,4 @@
-"""Keep an agent turn from discarding uncommitted work it does not own.
-
-Several runs can drive agents in one working tree at once, and a workflow that leaves
-its progress uncommitted until the end — a docs drain that commits only a clean book —
-keeps every run's work in that shared tree for hours. Git's restoring commands cannot
-tell whose uncommitted change they are throwing away: an agent that runs `git stash`
-to see "the file before my edit", then pops it, silently drops every edit another run
-made in between, and `git checkout -- <path>` does the same to a single file. A
-prompt that says "never run git" does not hold; the turn that ignores it looks like
-any other.
-
-So the prevention sits where the command is issued. While a workflow that declares
-`PROTECT_WORKTREE` runs an agent turn, the turn's `PATH` starts with a directory whose
-`git` is this file: it refuses the commands in `refusal` with a message saying how to
-get the same answer without touching the tree, and hands every other invocation to the
-real `git` unchanged. Deterministic nodes run in the driver's own process and never see
-the shim, so a workflow's own commit step is unaffected.
-
-This module is copied verbatim to be that shim, which is why it imports nothing but
-the standard library: the copy runs on every `git` an agent issues, and must start in
-milliseconds with no package on its path.
-"""
+"""Keep an agent turn from discarding uncommitted work it does not own."""
 from __future__ import annotations
 
 import os
@@ -29,16 +8,11 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from pathlib import Path
 
-#: Global options that take their value as the NEXT argument, so the subcommand is not
-#: mistaken for the value. `--git-dir=x` spells its value inline and needs no entry.
 _OPTIONS_WITH_VALUE = frozenset({"-C", "-c", "--git-dir", "--work-tree", "--namespace",
                                  "--exec-path", "--config-env", "--super-prefix"})
 
-#: `git stash` subcommands that only read.
 _STASH_READS = frozenset({"list", "show"})
 
-#: `git reset` modes that rewrite the working tree. A bare or `--soft`/`--mixed` reset
-#: moves only HEAD and the index.
 _RESET_REWRITES = frozenset({"--hard", "--merge", "--keep"})
 
 _ALTERNATIVE = (
@@ -64,15 +38,7 @@ def _subcommand(argv: list[str]) -> tuple[str, list[str]]:
 
 
 def refusal(argv: list[str]) -> str | None:
-    """Why `git <argv>` would discard uncommitted work in a shared tree, or None to run it.
-
-    The set is the commands that overwrite or remove working-tree content they did not
-    write: every stash but a read (a stash pop restores the tree to the stash's moment,
-    dropping what landed since), `checkout`/`switch` (a path checkout discards that
-    file's edits, a branch switch rewrites the tree under every other run), `restore`
-    unless it touches only the index, a tree-rewriting `reset`, and a `clean` that
-    deletes.
-    """
+    """Why `git <argv>` would discard uncommitted work in a shared tree, or None to run it."""
     command, args = _subcommand(argv)
     options = {arg.split("=", 1)[0] for arg in args if arg.startswith("-")}
     operands = [arg for arg in args if not arg.startswith("-")]
@@ -80,7 +46,6 @@ def refusal(argv: list[str]) -> str | None:
         return "`git stash` sets aside every uncommitted change in the tree, not only yours"
     if command in ("checkout", "switch"):
         return f"`git {command}` overwrites working-tree files other runs are editing"
-    # Only an index-only restore is safe; `--staged --worktree` still rewrites the tree.
     if command == "restore" and (options & {"--worktree", "-W"} or not options & {"--staged", "-S"}):
         return "`git restore` discards working-tree edits other runs made"
     if command == "reset" and options & _RESET_REWRITES:

@@ -1,41 +1,4 @@
-"""The QA scenario harness: what a `qa_plan.py` imports, and what runs it.
-
-This module is deliberately **one stdlib-only file**. It executes under the *project's*
-interpreter — the venv of the repo under test — where ostler is not installed and cannot
-be, so it may import nothing but the standard library and must stay copyable by putting
-one directory on `PYTHONPATH`.
-
-It has two modes, both entered by `ostler.qa.drivers.PythonDriver`:
-
-``describe``
-    Import the plan module, let its decorators register, print the declaration set as
-    JSON on stdout, run nothing. This is what lets `ostler qa validate` read a plan it
-    cannot itself import, and it is why **module-level code must be side-effect-free**:
-    a decorator registration, never a request.
-
-``run <scenario>``
-    Execute one scenario function, streaming `step` / `assert` / `artifact` / `capture`
-    records as JSONL on **fd 3**. Stdout stays the scenario's own, so a `print` in a
-    scenario lands in the step log rather than corrupting the protocol.
-
-The reason the whole format moved here from YAML is that shell fails silently and Python
-does not. `data["responses"]` raises `KeyError`; a stream-oriented field lookup reads a
-missing field as an empty stream and passes vacuously. Every affordance below is shaped to
-keep that property: `qa.http` raises on an unexpected status, `qa.dir` is handed in already
-resolved, and a scenario that records no assertion cannot pass.
-
-`@node.key`/`$name` substitution is opt-in, never automatic. `qa.http`, the locator
-helpers (`qa.by_role`, `qa.by_label`, `qa.by_test_id`, `qa.by_text`, `qa.by_css`) and
-`qa.goto` all take their string arguments as plain literals — none of them resolve
-anything on their own, because the harness cannot tell an actual reference apart from an
-incidental literal that merely contains `@` or `$` (a body `{"handle": "@acme.dev"}`, a
-price `"$5"`, a label "Pay $total"). `qa.resolve(value)` is the one place substitution
-happens, substituting every `@node.key`/`$name` occurrence embedded anywhere in *value*.
-A hand-written scenario that wants a fixture's provided fact or an earlier capture in an
-HTTP path, header, body or locator string calls `qa.resolve(...)` on it itself, before
-handing it to `qa.http`/a locator helper/`qa.goto`; `qa.compile`'s generated plans wrap
-exactly the literals the book's own declarations say carry a reference the same way.
-"""
+"""The QA scenario harness: what a `qa_plan.py` imports, and what runs it."""
 
 from __future__ import annotations
 
@@ -74,51 +37,23 @@ __all__ = [
     "tool_env",
 ]
 
-#: The fd the record stream goes to. Not stdout: a scenario's own `print` is useful
-#: output that belongs in its step log, and interleaving it with the protocol would make
-#: every debugging `print` a parse error.
 RECORD_FD = 3
 
-#: Overrides `RECORD_FD`. `subprocess`'s `pass_fds` inherits a descriptor under the
-#: number it already has in the parent, which is whatever `os.pipe()` handed out — so the
-#: parent names the number instead of the child assuming it.
 RECORD_FD_ENV = "OSTLER_QA_RECORD_FD"
 
-#: Overrides both of the above, and takes strict precedence over them. An inherited
-#: descriptor does not cross a container boundary, so a sandboxed scenario is handed a path
-#: on a bind-mounted directory and appends to it instead. Precedence has to be strict
-#: rather than "whichever is set": an fd number left over from the host names, inside the
-#: container, either a closed descriptor or an unrelated open file, and `_Recorder` swallows
-#: `OSError` — so the failure mode of getting this wrong is a run that records nothing and
-#: says nothing about it.
 RECORD_PATH_ENV = "OSTLER_QA_RECORD_PATH"
 
-#: A book fixture's own `run:` recipe is a shell string (it may chain with `&&`, same as a
-#: stack manifest step), so it runs through a shell the same way `ostler.qa.stack._run_step`
-#: runs one — never `shell=True` on a string this file interpolated itself, since nothing
-#: below ever builds *this* string from an argument or a reference value.
 _SHELL = shutil.which("bash") or "/bin/sh"
 
-#: `@node.key` / `$name` — duplicated from `ostler.qa.references` rather than imported,
-#: because this file is stdlib-only and runs under the project's own interpreter, where
-#: ostler is not installed. The boundary is file-locality, not dependency-purity: even a
-#: stdlib-pure ostler module still lives outside the one file this harness is copied as.
 _NODE_REF = re.compile(r"(?<![\w.])@([a-zA-Z0-9][a-zA-Z0-9_-]*)\.([a-zA-Z0-9][a-zA-Z0-9_-]*)")
 _CAPTURE_REF = re.compile(r"(?<![\w.])\$([a-zA-Z0-9][a-zA-Z0-9_-]*)")
 
-#: See `ostler.qa.plan.MECHANISMS` for why `synthetic` is not here.
 MECHANISMS = ("live", "fixture")
 
 
 @dataclass(frozen=True)
 class DriverSpec:
-    """A driver's declared observation channels — a capability, not a bare name.
-
-    This is the single declaration. `ostler.qa.compile` cannot import this file — this
-    harness is stdlib-only and runs under the *target project's* interpreter, where `ostler`
-    is not installed (see `DEFAULT_VIEWPORT` in `ostler.qa.drivers` for the same pattern) —
-    so it reads `DRIVERS` by path instead, with `ostler.qa.harness_host.load_harness_module`.
-    """
+    """A driver's declared observation channels — a capability, not a bare name."""
     name: str
     observes: frozenset[str]
 
@@ -130,29 +65,16 @@ DRIVERS = (
 )
 DRIVER_NAMES = tuple(driver.name for driver in DRIVERS)
 
-#: The drivers that drive a user interface, and so the ones whose scenarios must vet. There
-#: is no exemption list on purpose: the single defect that motivated this passed a run whose
-#: every assertion was true, and an opt-out would have been taken by exactly that plan.
 UI_DRIVERS = tuple(driver for driver in DRIVERS if driver.name in ("playwright", "maestro"))
 UI_DRIVER_NAMES = tuple(driver.name for driver in UI_DRIVERS)
 
-#: Stamped into the layout digest a *device* screenshot writes, so a reader can tell which
-#: source measured it: a phone has no laid-out document to overflow, and reporting the
-#: browser's schema over a view hierarchy would invite an audit to look for a flag that
-#: cannot appear there.
 DEVICE_LAYOUT_SCHEMA = "device-layout/1"
 
 DEFAULT_HTTP_TIMEOUT = 30.0
 
-#: How long `qa.eventually` keeps looking, and how often — Playwright's own `expect()`
-#: defaults, deliberately: an author who already knows what `expect` costs knows what this
-#: costs, and a plan that needs a different number is saying something about the product.
 DEFAULT_EVENTUALLY_TIMEOUT = 5.0
 EVENTUALLY_INTERVAL = 0.1
 
-#: When this process started, so a diagnostics timestamp can be placed on the *run's* clock
-#: rather than its own. The driver hands over the run offset it was at when it spawned us;
-#: everything recorded here is that plus the time since this line ran.
 _PROCESS_START = time.monotonic()
 
 
@@ -161,12 +83,9 @@ class HttpError(RuntimeError):
 
 
 class CheckFailed(AssertionError):
-    """A `qa.require` that did not hold. Recorded, then raised to end the scenario."""
+    """A `qa.require` that did not hold."""
 
 
-# --------------------------------------------------------------------------------------
-# Declarations
-# --------------------------------------------------------------------------------------
 
 
 @dataclass
@@ -194,15 +113,7 @@ class Target:
 
 @dataclass
 class Secret:
-    """A value the runner injects from its own side and redacts from the ledger.
-
-    Holding the *source* rather than the value is what keeps a secret out of the declaration
-    JSON that `describe` prints — `describe` runs during validation, and its output is
-    read by a reviewer and written to the run log. The source is an environment variable
-    (`from_env`) or a file the trial wrote before the run (`from_file`, a path relative to
-    the repo root); the runner reads whichever one and hands the scenario the value under
-    the secret's own name.
-    """
+    """A value the runner injects from its own side and redacts from the ledger."""
 
     name: str
     from_env: str | None = None
@@ -295,15 +206,7 @@ REGISTRY = _Registry()
 
 
 def plan(*, run_id: str, story: str, book: str = "") -> None:
-    """Name the run and the story. Exactly one call per module.
-
-    `book` is a digest of the obligation id set the plan was compiled from (`ostler qa
-    compile-plan` fills it in; a hand-authored plan may leave it blank). It names *what the
-    plan was read from*, not what it asserts — `ostler qa run` recomputes the same digest
-    against the book at run time and reports `stale-plan` when they differ, rather than
-    running scenarios that quote obligations the book no longer states or omitting scenarios
-    for ones it has since gained.
-    """
+    """Name the run and the story."""
     if REGISTRY.run_id:
         raise ValueError("plan() was already called; a module declares one run")
     REGISTRY.run_id, REGISTRY.story, REGISTRY.book = run_id, story, book
@@ -341,13 +244,7 @@ def target(
 
 
 def secret(name: str, *, from_env: str | None = None, from_file: str | None = None) -> Secret:
-    """Declare a secret by its source — exactly one of `from_env` or `from_file`.
-
-    `from_env` names the variable the runner reads; `from_file` names a file, relative to
-    the repo root, that the trial writes before the run (a token minted by setup, a
-    password an infra step generated) — the runner reads it once, strips one trailing
-    newline, and never writes the value anywhere a reviewer reads.
-    """
+    """Declare a secret by its source — exactly one of `from_env` or `from_file`."""
     if name in REGISTRY.secrets:
         raise ValueError(f"duplicate secret {name!r}")
     if (from_env is None) == (from_file is None):
@@ -357,24 +254,11 @@ def secret(name: str, *, from_env: str | None = None, from_file: str | None = No
     return declared
 
 
-#: The shape of an environment variable name a plan may hand to a tool. Upper-case on
-#: purpose: it is the convention every tool reads, and a lower-case name is almost always
-#: a typo for one.
 _ENV_NAME = re.compile(r"^[A-Z_][A-Z0-9_]*$")
 
 
 def tool_env(*names: str) -> None:
-    """Declare the environment variable names a scenario may set on a `qa.tool(...).run`.
-
-    The environment a tool inherits is the runner's, and a scenario cannot change it — a
-    product that reads `TZ`, `LANG`, `NO_COLOR` or its own `FOO_HOME` was being observed
-    under whatever the operator's shell had, and an obligation about locale-, timezone- or
-    directory-dependent behaviour was unwritable. This declares, once per plan, the names a
-    scenario is allowed to state; `run(env={...})` with a name outside the list raises.
-    It is a declaration rather than a free `env=` because the declared set is what
-    `ostler qa validate` reads: a plan cannot quietly reach `PATH`, `LD_PRELOAD` or a
-    secret's variable from inside a scenario body.
-    """
+    """Declare the environment variable names a scenario may set on a `qa.tool(...).run`."""
     for name in names:
         if not isinstance(name, str) or not _ENV_NAME.match(name):
             raise ValueError(f"tool_env name {name!r} must match [A-Z_][A-Z0-9_]*")
@@ -384,7 +268,7 @@ def tool_env(*names: str) -> None:
 
 
 def input_file(name: str, path: str) -> str:
-    """Declare a fixture the plan reads. Validation checks it exists and is in the spec dir."""
+    """Declare a fixture the plan reads."""
     REGISTRY.inputs[name] = path
     return path
 
@@ -400,22 +284,7 @@ def background(
     cwd: str | None = None,
     timeout: float = 30.0,
 ) -> None:
-    """Declare a daemon the runner starts before the first scenario and stops after the last.
-
-    `argv` is a list, not a command line, and there is no shell behind it. A daemon used to
-    be a string run through `bash -c`, which meant `background("x", cmd="go test ./...")`
-    was a legal way to smuggle a unit suite into a run whose whole premise is that it
-    observes the product — and it survived the sandbox, because the daemon starts on the
-    host. An argv list has no `&&`, no `|`, no expansion: the first element is a program and
-    the rest are its arguments, and a plan that wants a pipeline has to say which program.
-
-    Readiness is `ostler`'s to poll, not the scenario's — it is what a scenario is entitled
-    to assume, and a scenario that has to wait for its own stack turns a startup failure
-    into a product failure. It is an HTTP probe: a URL, and optionally the method and status
-    that mean "up". `ready_method="POST", ready_status=201` is there for a service whose
-    only route is a POST, which is what the retired command form was actually being used
-    for — the capability was HTTP the whole time, spelled as a `curl` invocation.
-    """
+    """Declare a daemon the runner starts before the first scenario and stops after the last."""
     entry: dict[str, Any] = {
         "name": name,
         "argv": list(argv),
@@ -445,22 +314,7 @@ def scenario(
     restart: Sequence[str] = (),
     timeout: float | None = None,
 ) -> Callable[[FunctionType], FunctionType]:
-    """Register a scenario function.
-
-    `covers` is the machine-checkable link to the OKF obligations and acceptance criteria
-    this scenario proves; `ostler qa validate` set-diffs it against the story's obligation
-    packet and fails closed on anything uncovered. It is the one declaration that cannot
-    move into the body — validation happens before anything runs.
-
-    `restart` names declared `background` daemons the runner stops and starts again
-    immediately before this scenario runs — the seam a persistence obligation needs. A
-    write in one scenario and a read in the next, with a restart declared between them,
-    observes that the value survived the process; without it every read is
-    request-scoped and a product that keeps its state in memory passes. The runner owns
-    the restart (it holds the PID and the readiness probe), so the scenario body stays a
-    sequence of requests and a `reset_paths` the daemon declares is *not* re-applied —
-    a restart keeps the state, which is the point.
-    """
+    """Register a scenario function."""
     if mechanism not in MECHANISMS:
         raise ValueError(f"mechanism must be one of {MECHANISMS}, got {mechanism!r}")
     target_name = target.name if isinstance(target, Target) else target
@@ -498,18 +352,10 @@ def _definition_line(func: Callable[..., None]) -> int:
         return 0
 
 
-# --------------------------------------------------------------------------------------
-# The record stream
-# --------------------------------------------------------------------------------------
 
 
 class _Recorder:
-    """Writes JSONL records to a path, to `RECORD_FD`, or nowhere.
-
-    A closed fd is the normal case under `describe` and under a scenario a developer runs
-    by hand with plain `python qa_plan.py`; dropping the records is what makes that work
-    without a special mode.
-    """
+    """Writes JSONL records to a path, to `RECORD_FD`, or nowhere."""
 
     def __init__(self, fd: int | None = None) -> None:
         self._stream: Any = None
@@ -539,9 +385,6 @@ class _Recorder:
             self._stream = None
 
 
-# --------------------------------------------------------------------------------------
-# HTTP
-# --------------------------------------------------------------------------------------
 
 
 @dataclass
@@ -556,12 +399,7 @@ class Response:
         return self.body.decode("utf-8", errors="replace")
 
     def json(self) -> Any:
-        """Parse the body as JSON, naming the URL and a body excerpt when it is not.
-
-        `json.JSONDecodeError`'s own message is `Expecting value: line 1 column 1`, which
-        in a QA log is indistinguishable between "the server returned HTML" and "the
-        server returned nothing at all".
-        """
+        """Parse the body as JSON, naming the URL and a body excerpt when it is not."""
         try:
             return json.loads(self.body)
         except json.JSONDecodeError as exc:
@@ -572,14 +410,7 @@ class Response:
 
 
 class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
-    """Turns a 3xx response into an `HTTPError` instead of following it.
-
-    `urlopen`'s default opener follows 301/302/303/307 transparently, which is right for a
-    scenario that only cares where a request eventually lands — but a scenario asserting on
-    the redirect itself (`follow-link`'s `Location` header) needs the 3xx response as-is.
-    Returning `None` here is the stdlib's own documented way to decline a redirect; the
-    caller sees it as the `HTTPError` `Http.request` already turns into a `Response`.
-    """
+    """Turns a 3xx response into an `HTTPError` instead of following it."""
 
     def redirect_request(self, req, fp, code, msg, headers, newurl):  # noqa: ANN001, ANN201
         return None
@@ -589,13 +420,7 @@ _NO_REDIRECT_OPENER = urllib.request.build_opener(_NoRedirectHandler)
 
 
 class Http:
-    """A small stdlib HTTP client bound to a target's `base_url`.
-
-    Loud by default: any status outside `expect_status` raises `HttpError` carrying the
-    body. That is the `curl -fsS` behaviour every shell scenario had to remember to ask
-    for, made the default — a scenario that means to assert a 404 says so, and one that
-    did not mean to get a 500 finds out on the line that caused it.
-    """
+    """A small stdlib HTTP client bound to a target's `base_url`."""
 
     def __init__(
         self,
@@ -607,10 +432,6 @@ class Http:
         self.base_url = (base_url or "").rstrip("/")
         self.timeout = timeout
         self.headers: dict[str, str] = {}
-        #: Called just before an `expect_status` mismatch raises, so the scenario's owner can
-        #: write the observation down. Without it the loudest kind of failure — the product
-        #: answering something the plan said it would not — leaves no assertion behind, and
-        #: the evidence map reads the obligation as unasserted rather than contradicted.
         self._on_unexpected_status = on_unexpected_status
 
     def url_for(self, path: str) -> str:
@@ -692,24 +513,10 @@ def _allowed_statuses(expect_status: int | Sequence[int] | None) -> set[int] | N
     return set(expect_status)
 
 
-# --------------------------------------------------------------------------------------
-# The scenario-facing object
-# --------------------------------------------------------------------------------------
 
 
 def _not_yet(exc: BaseException) -> bool:
-    """Does this exception mean "the page has not got there yet", or "the plan is wrong"?
-
-    Only the first is swallowed and retried, and the narrowness is load-bearing. A
-    `KeyError` or a `NameError` inside the condition is a defect in the *scenario*; swallowing
-    it would burn the whole deadline and then report a plan defect as a product failure —
-    which is the exact mis-hypothesis `eventually` exists to end, recreated inside its own
-    fix. `CheckFailed` is excluded for the same reason: a `qa.require` that ran inside the
-    condition has already recorded its own verdict and is not a signal to look again.
-
-    Playwright is matched by module rather than by import, because this file may import
-    nothing outside the standard library.
-    """
+    """Does this exception mean "the page has not got there yet", or "the plan is wrong"?"""
     if isinstance(exc, CheckFailed):
         return False
     return isinstance(exc, (TimeoutError, AssertionError)) or type(exc).__module__.split(".")[
@@ -718,12 +525,7 @@ def _not_yet(exc: BaseException) -> bool:
 
 
 def _sampled(actual: Any) -> Any:
-    """Read an `actual=` that may be a callable, after the poll loop has settled.
-
-    A callable `actual` is the only way to report the value that *decided* the verdict
-    rather than one read before the wait began — and evidence must never be able to fail
-    the scenario, so an exception becomes its own record.
-    """
+    """Read an `actual=` that may be a callable, after the poll loop has settled."""
     if not callable(actual):
         return actual
     try:
@@ -732,16 +534,7 @@ def _sampled(actual: Any) -> Any:
         return repr(exc)
 
 
-# --------------------------------------------------------------------------------------
-# The named checks a `verify:` bullet declares, as observations
-#
-# Each verifier takes the observed value and the declared arguments and returns
-# `(passed, actual, expected)`. It raises — never returns False — when `observed` is the
-# wrong *shape*, because a shape mismatch is a defect in the scenario, and recording it as
-# a red assertion would file it against the product.
-# --------------------------------------------------------------------------------------
 
-#: Distinguishes "this path is absent" from "this path holds None" in `unchanged`.
 _MISSING = object()
 
 
@@ -776,12 +569,7 @@ def _pair(observed: Any, check: str) -> tuple[Any, Any]:
 
 
 def _paths(value: Any, prefix: str = "") -> dict[str, Any]:
-    """Every leaf of a JSON-ish value, keyed by its dotted path.
-
-    Flat, so a diff can name the field that moved. Lists are indexed rather than compared
-    as wholes: `keys_unchanged` exists to catch a move implemented as a copy, and a list
-    compared as one value reports "the list changed" — the finding it was meant to replace.
-    """
+    """Every leaf of a JSON-ish value, keyed by its dotted path."""
     if isinstance(value, dict):
         out: dict[str, Any] = {}
         for key, item in value.items():
@@ -807,11 +595,7 @@ WILD = _Wild()
 
 @dataclass(frozen=True)
 class Filter:
-    """The `[?(@.key==value)]` segment: the elements whose `key` holds `value`.
-
-    `key` may itself be dotted (`@.meta.who`); `value` is a JSON scalar compared the way
-    `json_path(equals=)` compares — `'ana'` is a string, `3` a number, `true` a bool.
-    """
+    """The `[?(@.key==value)]` segment: the elements whose `key` holds `value`."""
 
     key: str
     value: Any
@@ -829,14 +613,7 @@ _FILTER = re.compile(
 
 
 def path_steps(path: str) -> list[PathStep]:
-    """The segments of a path, in the one grammar every reader of a document path shares.
-
-    `a.b`, `a[0]`, `a.0` name keys and indices as they always did (a dotted all-digit
-    segment indexes a list when it meets one). Two segments select rather than name:
-    `[*]` takes every element, `[?(@.key==value)]` takes the elements whose `key` holds
-    `value`. Either turns the walk into a *projection* — a list of selections — that the
-    segments after it map over. A leading `$` is the JSONPath root token, not a key.
-    """
+    """The segments of a path, in the one grammar every reader of a document path shares."""
     steps: list[PathStep] = []
     text = path.strip()
     if text.startswith("$"):
@@ -907,15 +684,7 @@ def _selected(current: Any, step: _Wild | Filter) -> list[Any]:
 
 
 def resolve_path(document: Any, path: str) -> tuple[bool, Any]:
-    """Walk `path` into `document`: whether it resolved, and to what.
-
-    A path of keys and indices resolves to the one value it names, or not at all. A path with
-    a `[*]` or a `[?(...)]` segment resolves to a **list of selections** — possibly empty, and
-    `resolved` is then whether anything was selected — with the segments after the selector
-    applied to every selection (those it does not resolve in drop out). `a[*].id` is every id;
-    `people[?(@.who=='ana')].total_cents` is a one-element list when exactly one person is ana,
-    which is what a check against it wants to be told.
-    """
+    """Walk `path` into `document`: whether it resolved, and to what."""
     steps = path_steps(path)
     current: Any = document
     projected = False
@@ -962,9 +731,6 @@ def _verify_http_status(observed: Any, args: Mapping[str, Any]) -> tuple[bool, A
         expected["title"], actual["title"] = args["title"], found
         passed = passed and found == args["title"]
     if "path" in args:
-        # Which request answered, not just how. A status asserted without it passes on a
-        # response to a different route entirely — the scenario that meant to read
-        # `/api/claims/cl-9999` and read `/api/claims` instead observes the same 200.
         url = getattr(observed, "url", None)
         if not isinstance(url, str):
             raise TypeError(
@@ -978,13 +744,7 @@ def _verify_http_status(observed: Any, args: Mapping[str, Any]) -> tuple[bool, A
 
 
 def _scalar_equal(observed: Any, expected: Any) -> bool:
-    """`json_path(equals=)` against what the document holds, typed the way JSON types it.
-
-    A bool matches only a bool (`true` is not `1`); an int and a float compare numerically
-    (`8250` is `8250.0`); a string matches the same string exactly — `"8250"` is not `8250`,
-    because a product that serialises a number as a string is a different product. A list
-    or an object at the path never equals a scalar, and is reported as what was found.
-    """
+    """`json_path(equals=)` against what the document holds, typed the way JSON types it."""
     if isinstance(expected, bool) or isinstance(observed, bool):
         return isinstance(observed, bool) and isinstance(expected, bool) and observed is expected
     if isinstance(expected, (int, float)):
@@ -995,14 +755,7 @@ def _scalar_equal(observed: Any, expected: Any) -> bool:
 
 
 def _matchable(value: Any) -> str:
-    """*value* rendered the way a `json_path(matches=...)` pattern is written against.
-
-    The book documents a JSON document, so a pattern is authored against JSON's own
-    spelling of a value: `None` reads `null`, `True` reads `true`, `['a']` reads `["a"]`.
-    A `str` is exempt from that encoding — it is matched as itself, with no surrounding
-    quotes added, because `json.dumps` would wrap it in `"..."` and silently fail every
-    plain string and substring pattern the book already has.
-    """
+    """*value* rendered the way a `json_path(matches=...)` pattern is written against."""
     if isinstance(value, str):
         return value
     return json.dumps(value)
@@ -1011,17 +764,11 @@ def _matchable(value: Any) -> str:
 def _verify_json_path(observed: Any, args: Mapping[str, Any]) -> tuple[bool, Any, Any]:
     resolved, value = _resolve_path(observed, args["path"])
     if "absent" in args:
-        # `absent=false` is a presence assertion, not the absence of one: it goes red when the
-        # product omits the field, which is the whole of what a book that spells it that way
-        # claims. Reading it as "no comparison given" made every such bullet unprovable.
         want_absent = bool(args["absent"])
         return resolved is not want_absent, {"present": resolved}, {"present": not want_absent}
     if not resolved:
         return False, {"present": False}, {"path": args["path"]}
     if _is_projection(args["path"]):
-        # A selector must single something out before a value claim is made about it. Two
-        # selections and one claim is an ambiguous book, not a half-pass — and it is reported
-        # as what was selected, so the author sees the ambiguity rather than a value mismatch.
         if len(value) != 1:
             return False, {"selected": value}, {"selected": "exactly one"}
         value = value[0]
@@ -1030,10 +777,6 @@ def _verify_json_path(observed: Any, args: Mapping[str, Any]) -> tuple[bool, Any
     if "matches" in args:
         return (re.search(args["matches"], _matchable(value)) is not None, value,
                 f"~ {args['matches']}")
-    # Unreachable through `ostler.checks.bind`, which refuses a `json_path` with no
-    # comparison at validate time — presence alone passes on the default the defect also
-    # produces, so it is not an assertion. A call that arrives here anyway got past the
-    # declaration gate, and the honest verdict for an assertion that cannot fail is red.
     return False, value, "equals=, matches= or absent=true — presence asserts nothing"
 
 
@@ -1060,16 +803,7 @@ def _verify_keys_unchanged(observed: Any, args: Mapping[str, Any]) -> tuple[bool
 
 
 def _verify_count(observed: Any, args: Mapping[str, Any]) -> tuple[bool, Any, Any]:
-    """How many of `subject` there are — the subject resolved, not taken on trust.
-
-    A scenario may hand over the collection itself, or the document holding it. In the
-    second case counting `observed` counts the document's own keys: `{"claims": [a, b]}`
-    is one key and satisfies `equals=1` while the product returned two claims. So when
-    the observation is a document, `subject` is walked into it — and a subject that does
-    not resolve is red, because the product omitting the collection is a defect, not a
-    scenario shape error. A subject naming something no path can address (a CLI's
-    "entries in the ledger") leaves an already-extracted collection counted as it is.
-    """
+    """How many of `subject` there are — the subject resolved, not taken on trust."""
     document: Any = observed
     reader = getattr(document, "json", None)
     if callable(reader):
@@ -1079,10 +813,6 @@ def _verify_count(observed: Any, args: Mapping[str, Any]) -> tuple[bool, Any, An
         if not resolved:
             return False, {"subject": args["subject"], "present": False}, args["equals"]
     if isinstance(document, bool):
-        # A bool is an int in Python, so it would otherwise be *returned as the count* —
-        # `equals=1` satisfied by a product that answered `true`. It is neither a count nor
-        # something with a length, so it is red, and red with a reason rather than a
-        # `TypeError` raised out of the verifier.
         return False, {"subject": args["subject"], "countable": False}, args["equals"]
     found = document if isinstance(document, int) else len(document)
     return found == args["equals"], found, args["equals"]
@@ -1098,13 +828,7 @@ def _verify_absent(observed: Any, args: Mapping[str, Any]) -> tuple[bool, Any, A
 
 
 def _verify_created(observed: Any, args: Mapping[str, Any]) -> tuple[bool, Any, Any]:
-    """Absent before the action, present after — both halves, or it proves nothing.
-
-    The `(before, after)` pair is insisted on rather than inferred for the reason the check
-    exists: an after-only read cannot tell a creation from a subject that was already there,
-    and that is precisely the pass this excludes. A scenario that has only the after-read is
-    told so by `_pair`, at the call, instead of quietly asserting presence.
-    """
+    """Absent before the action, present after — both halves, or it proves nothing."""
     before, after = _pair(observed, "created")
     was_absent, is_present = _empty(before), not _empty(after)
     return (
@@ -1115,8 +839,7 @@ def _verify_created(observed: Any, args: Mapping[str, Any]) -> tuple[bool, Any, 
 
 
 def _verify_removed(observed: Any, args: Mapping[str, Any]) -> tuple[bool, Any, Any]:
-    """Present before the action, absent after — the mirror of `created`, and for the mirror
-    reason: absence afterwards alone passes on a subject that was never there."""
+    """Present before the action, absent after — the mirror of `created`, and for the mirror reason: absence afterwards alone passes on a subject that was never there."""
     before, after = _pair(observed, "removed")
     return (
         not _empty(before) and _empty(after),
@@ -1126,15 +849,7 @@ def _verify_removed(observed: Any, args: Mapping[str, Any]) -> tuple[bool, Any, 
 
 
 def _readings(observed: Any) -> list[str]:
-    """Every spelling of an element's text the page can offer, rendered first.
-
-    `inner_text()` reports what the browser paints, so a `text-transform: uppercase`
-    stylesheet turns a documented `free` into `FREE` and an assertion quoting the book
-    reddens against a product doing exactly what the book says. Casing applied by CSS is
-    a presentation choice, not a claim about content, so the DOM's own text is consulted
-    too. A genuinely different string is absent from both, which is what keeps the check
-    able to go red.
-    """
+    """Every spelling of an element's text the page can offer, rendered first."""
     readings: list[str] = []
     for reader in ("inner_text", "text_content"):
         read = getattr(observed, reader, None)
@@ -1161,13 +876,7 @@ def _verify_visible(observed: Any, args: Mapping[str, Any]) -> tuple[bool, Any, 
 
 
 def _enabled(observed: Any, check: str) -> bool:
-    """Whether the product will let a user act on this control.
-
-    Insisted on rather than inferred, the way `_pair` insists on a before/after: "can it be
-    used" is a question only a real page element answers, and a truthiness fallback would
-    turn an observation nobody made into the answer `False` — which reads downstream as the
-    control being disabled, a wrong answer wearing a finding's clothes.
-    """
+    """Whether the product will let a user act on this control."""
     if not hasattr(observed, "is_enabled"):
         raise TypeError(
             f"{check} observes whether a control accepts the action — pass the element "
@@ -1187,16 +896,7 @@ def _verify_inert(observed: Any, args: Mapping[str, Any]) -> tuple[bool, Any, An
 
 
 def _verify_focusable(observed: Any, args: Mapping[str, Any]) -> tuple[bool, Any, Any]:
-    """Reachable by a real keypress, and — when `activates` names one — responsive to it.
-
-    `observed` is the locator itself, the way `visible`/`actionable` take it. `.focus()` is
-    the dispatch; reading `document.activeElement` back is the only way to know the browser
-    agreed, the same insistence `_enabled` makes for `actionable`/`inert`. When `activates`
-    is given, a click listener armed before the keypress catches whether the browser's own
-    Enter/Space-activates-a-focused-control behavior actually fired — a custom widget built
-    without it leaves focus working and the keypress silently doing nothing, which no read of
-    what is on the screen can see.
-    """
+    """Reachable by a real keypress, and — when `activates` names one — responsive to it."""
     if not hasattr(observed, "focus"):
         raise TypeError(
             f"focusable observes a control through real keyboard focus — pass the element "
@@ -1234,18 +934,7 @@ def _verify_emitted(observed: Any, args: Mapping[str, Any]) -> tuple[bool, Any, 
 
 
 def _verify_omits(observed: Any, args: Mapping[str, Any]) -> tuple[bool, Any, Any]:
-    """What the subject must not carry — the one assertion the rest of the vocabulary cannot make.
-
-    Every other check says what a value *is*, and a book's clause about what a response may not
-    contain has no positive form: the refusal that quotes the credential it rejected has the
-    right status, the right title and a well-formed body, so nothing that reads what is there
-    can go red. This reads it looking for what must not be.
-
-    `subject` names a field when the observation is a document the path resolves in, and stands
-    for the whole of it otherwise — a response body, a command's output. A subject that does not
-    resolve searches everything rather than passing: a leak lands wherever the defect put it, not
-    where the author guessed, and the wrong guess must not read as absence.
-    """
+    """What the subject must not carry — the one assertion the rest of the vocabulary cannot make."""
     document = observed
     reader = getattr(document, "json", None)
     if callable(reader):
@@ -1277,13 +966,7 @@ def _rendered(document: Any) -> str:
 
 
 def _verify_exit_status(observed: Any, args: Mapping[str, Any]) -> tuple[bool, Any, Any]:
-    """The process ended the way the book says it does.
-
-    Observes a `ToolResult` or a `MaestroResult` — anything carrying an integer `exit_code`.
-    A plan that only read the output of a command cannot tell a success from a failure that
-    printed on the way out; this reads the one thing the output does not carry. Handing it
-    a response or a document is a plan defect, not a failure, so it raises.
-    """
+    """The process ended the way the book says it does."""
     code = getattr(observed, "exit_code", None)
     if isinstance(code, bool) or not isinstance(code, int):
         raise TypeError(
@@ -1295,20 +978,9 @@ def _verify_exit_status(observed: Any, args: Mapping[str, Any]) -> tuple[bool, A
 
 def _verify_conflict_on_stale(observed: Any, args: Mapping[str, Any]) -> tuple[bool, Any, Any]:
     status, _ = _observed_status(observed)
-    # Any refusal counts, 409 is what the contract usually says. What must not pass is a 2xx:
-    # an unconditional overwrite accepts the stale write and reports success, which is the
-    # exact defect this check exists to exclude.
     return 400 <= status < 500, status, "a refusal (4xx)"
 
 
-#: What observing each named check means, keyed by the name a `verify:` bullet declares.
-#:
-#: The vocabulary itself lives in `ostler.checks` — this file is stdlib-only and executes
-#: under the project's interpreter, where ostler is not installed, so the names are spelled
-#: twice on purpose. `ostler.checks` is the authority on *what may be declared*; this table
-#: is the authority on *what observing it means*. A name here with no spec there is
-#: unreachable — no bullet can declare it — and a spec there with no entry here fails at the
-#: call, by name, on the line that made it. Neither drifts silently.
 VERIFIERS: dict[str, Callable[[Any, Mapping[str, Any]], tuple[bool, Any, Any]]] = {
     "http_status": _verify_http_status,
     "json_path": _verify_json_path,
@@ -1331,16 +1003,7 @@ VERIFIERS: dict[str, Callable[[Any, Mapping[str, Any]], tuple[bool, Any, Any]]] 
 
 
 class _Missing:
-    """The value `qa.field` yields for something the product did not put there.
-
-    `None` would be the obvious answer and it is the wrong one: the plan that asked is
-    about to call `len()` on it, iterate it, or compare it, and each of those raises —
-    which is the abort `qa.field` exists to prevent, moved one line down. So this answers
-    every question negatively instead. It is falsy, empty, contains nothing, indexes to
-    itself, and equals nothing at all — not even another absence — so the comparison it
-    lands in comes out `False` and the check goes red with the rest of the scenario still
-    to run.
-    """
+    """The value `qa.field` yields for something the product did not put there."""
 
     __slots__ = ()
 
@@ -1363,9 +1026,6 @@ class _Missing:
         return self
 
     def __eq__(self, other: object) -> bool:
-        # Including another absence: `qa.field(a, "x") == qa.field(b, "x")` must not pass
-        # by both sides being gone, which is a whole assertion that cannot go red. Ask with
-        # `is MISSING` when the absence is the thing being asserted.
         return False
 
     def __ne__(self, other: object) -> bool:
@@ -1387,26 +1047,12 @@ class _Missing:
         return False
 
 
-#: The one absence. Exported so a plan can say `qa.field(body, "a.b") is MISSING` when the
-#: absence is the thing it means to assert.
 MISSING = _Missing()
 
 
 @dataclass
 class FixtureFault:
-    """One book-fixture step that could not prove its state, classified per Q38.
-
-    ``environment``
-        The step never got to run at all: a spawn failure, a missing `cwd`, or a secret
-        this fixture declares that is absent from the harness's own environment. None of
-        these say anything about the book or the product — the run itself could not start.
-
-    ``defect``
-        The step ran and then failed on its own terms: it timed out, it exited non-zero,
-        or it exited 0 without the `provides` it declared (missing from the JSON, or the
-        output was not JSON at all). A timeout is a defect, not an environment fault — the
-        process started; it just did not finish in time.
-    """
+    """One book-fixture step that could not prove its state, classified per Q38."""
 
     fixture: str
     step_index: int
@@ -1416,13 +1062,7 @@ class FixtureFault:
 
 
 class Qa:
-    """Everything a scenario is given. One instance per scenario process.
-
-    `dir` is the single most important attribute: the evidence directory, already
-    resolved against `--out-dir`. Under YAML the same relative string meant the spec
-    directory under `out:` and the repo root inside `cmd:`, and one run lost 38 of 66
-    assertions to that. Here there is one spelling and it is a `Path`.
-    """
+    """Everything a scenario is given."""
 
     def __init__(
         self,
@@ -1446,33 +1086,11 @@ class Qa:
         self.spec_dir = spec_dir
         self.dir = qa_dir
         self.covers = list(covers)
-        #: `{name: command}` for every QA tool this repo opted into (`agents.yml`'s
-        #: `qa: {tools: [...]}`) and ostler resolved to a definition. Built and preflighted
-        #: on ostler's side of the process boundary — see `ostler.qa.tools` — because this
-        #: file cannot read `agents.yml` or the stablemate config; it only ever imports the
-        #: standard library.
         self._tool_commands = dict(tools or {})
-        #: The fixtures this repo declared (`agents.yml`'s `qa: {fixtures: {...}}`),
-        #: resolved on ostler's side of the boundary — see `ostler.qa.fixtures`. Each
-        #: entry is one named invocation of a tool already in `_tool_commands`, which is
-        #: why `fixture()` below runs through `tool()` rather than around it.
         self._fixtures = {name: dict(spec) for name, spec in (fixtures or {}).items()}
-        #: The book's own `fixture` nodes, planned ostler-side — see `ostler.qa.book_fixtures`.
-        #: `fixture()` below checks this tier first and falls back to `_fixtures` above when
-        #: a name is absent from it.
         self._book_fixtures = {name: dict(spec) for name, spec in (book_fixtures or {}).items()}
-        #: `needs:` runs once per scenario: a fixture already run with the same resolved args
-        #: is not re-run, it is returned. Keyed on the fixture name and its args, frozen —
-        #: never on identity, since two `qa.fixture(...)` calls with the same binding are the
-        #: same need, however many scenario lines ask for it.
         self._book_fixture_memo: dict[tuple[str, tuple[tuple[str, str], ...]], ToolResult] = {}
-        #: `@node.key` facts a book fixture's `provides:` declared, keyed by fixture name then
-        #: key. Deliberately a separate dict from `_captures` below (`$name`), never a shared
-        #: namespace: a fixture's own `@node.key` and a scenario's `$name` capture must never
-        #: collide just because an author picked the same string for both.
         self._node_facts: dict[str, dict[str, str]] = {}
-        #: The environment variable names the plan declared through `tool_env(...)` — the
-        #: only ones `qa.tool(name).run(env=...)` may set.
         self._tool_env_allowed = frozenset(tool_env)
         self._recorder = recorder
         self._captures: dict[str, str] = {}
@@ -1480,34 +1098,16 @@ class Qa:
         self._index = 0
         self.assertions = 0
         self.failures = 0
-        #: How many screens this scenario handed to the book. Zero on a UI target is a
-        #: failure, not a stylistic omission — see `_run`.
         self.vets = 0
         self.offset_base_ms = offset_base_ms
-        #: The Playwright page, for a `playwright` target. `None` otherwise, and reaching
-        #: for it says so — a scenario declared against the wrong target is a mistake worth
-        #: an `AttributeError` on the line that made it.
         self.page: Any = None
-        #: The live console/network record for a `playwright` target: `console()`,
-        #: `console_errors()`, `page_errors()`, `requests()`, `failed_requests()`,
-        #: `responses()`. Records carry what the DevTools panels show — request and response
-        #: headers, request payloads, text response bodies, timings, and each console
-        #: message's structured arguments — so an assertion about what the app sent or was
-        #: told is written against the traffic rather than inferred from the rendering. The
-        #: diagnostics *file* is written after the scenario returns, so this is the only way
-        #: a scenario can fail itself on a 5xx or an uncaught exception it provoked.
         self.diagnostics: Any = None
         self.maestro = Maestro(self)
         self.tesseract = Tesseract(self)
         self.convert = Convert(self)
 
     def tool(self, name: str) -> "Tool":
-        """A user- or machine-declared external command, opted into via `agents.yml`.
-
-        The generic escape hatch for a repo's own tools (`ocr-diff`, a linter, whatever)
-        that have no typed wrapper — `qa.tesseract`/`qa.convert` are this same mechanism
-        with a friendlier surface for the two built-ins, and reach it the same way.
-        """
+        """A user- or machine-declared external command, opted into via `agents.yml`."""
         command = self._tool_commands.get(name)
         if command is None:
             raise RuntimeError(
@@ -1518,27 +1118,7 @@ class Qa:
         return Tool(self, name, command)
 
     def fixture(self, name: str, *args: str) -> "ToolResult":
-        """Put the product into a state this repo declared, and write down that it happened.
-
-        The state a scenario needs before it can observe anything — identities seeded, a
-        ledger with one claim on file — arranged by a command the *app* ships, so the app's
-        own integration tests and this plan reach that state through the same code. That
-        sharing is the whole point: a field spelled two ways in two arrangements is a defect
-        no reviewer reliably catches and no gate could see while the second arrangement was a
-        block of Python copied into a plan.
-
-        Extra `args` are appended to the declared ones, for the fixture that takes a
-        parameter (*which* showing, *how many* rows) without becoming a second fixture.
-
-        A fixture that fails raises. The scenario's preconditions are false, so nothing it
-        goes on to record would be about the product — and an aborted scenario now says
-        exactly that (`unproven`), rather than accusing the product of the plan's own
-        arrangement failing.
-
-        Checks the book's own `fixture` nodes first (`name=value` extra args bind that
-        fixture's declared `args:`), falling back to this repo's agents.yml tier — the one
-        named invocation of an opted-in tool — when *name* is absent from the book.
-        """
+        """Put the product into a state this repo declared, and write down that it happened."""
         if name in self._book_fixtures:
             return self._exec_book_fixture(name, self._parse_fixture_args(args))
         spec = self._fixtures.get(name)
@@ -1569,7 +1149,6 @@ class Qa:
             )
         return result
 
-    # -- book fixtures -------------------------------------------------------------------
 
     @staticmethod
     def _parse_fixture_args(args: Sequence[str]) -> dict[str, str]:
@@ -1580,20 +1159,7 @@ class Qa:
         return parsed
 
     def _resolve_ref(self, owner: str, value: str) -> str:
-        """*value*, with every embedded `@node.key` and `$name` reference substituted.
-
-        `owner` is whatever is consuming the reference — a fixture name for a `needs:`
-        binding, or a scenario's own id for a reference resolved through `qa.resolve` —
-        and names nothing but where to point a fault. A reference need not be the whole
-        string: a route path is typically `/orgs/@acme.id/projects`, one segment of a
-        larger literal, so every occurrence is substituted wherever it sits — a `needs:`
-        binding, which names exactly one fact and nothing else, resolves the same way,
-        since substituting its one embedded reference is indistinguishable from replacing
-        the whole string. A reference that fails to resolve is a book/code defect — it
-        names something that was never going to exist — so each failing occurrence emits
-        its own fault record; once every occurrence has been checked, a run with any
-        failures raises, naming all of them, rather than stopping at the first.
-        """
+        """*value*, with every embedded `@node.key` and `$name` reference substituted."""
         failures: list[str] = []
         spans: list[tuple[int, int, str]] = []
         for match in _NODE_REF.finditer(value):
@@ -1629,32 +1195,11 @@ class Qa:
         return "".join(out)
 
     def resolve(self, value: str) -> str:
-        """A scenario's own value, with every embedded `@node.key`/`$name` substituted.
-
-        The same substitution a book fixture's `needs:` binding goes through
-        (`_resolve_ref`), open to a scenario's own steps — an HTTP path, header or body
-        value, or a UI locator or typed string — before it reaches the network or the
-        page, per Q38's "resolve before the value reaches the call" rule. This is the
-        *only* place substitution happens: `qa.http` and the locator helpers (`by_role`,
-        `by_label`, `by_test_id`, `by_text`, `by_css`, `goto`) treat every string argument
-        as a plain literal and never call this on their own — a body carrying a literal
-        `@acme.dev` handle or a `$5` price, or a label reading "Pay $total", has no way to
-        tell itself apart from an actual reference by shape alone, so nothing but an
-        explicit `qa.resolve(...)` call ever substitutes. A hand-written scenario reaches
-        for this directly wherever it wants a fixture's provided fact or an earlier
-        capture; `qa.compile`, which reads the book's own `capture:`/`fixture:`/`needs:`
-        declarations, is the only thing that knows a *compiled* literal needs it, and
-        wraps that literal with this call in the generated source instead.
-        """
+        """A scenario's own value, with every embedded `@node.key`/`$name` substituted."""
         return self._resolve_ref(self.scenario_id, value)
 
     def _resolve_value(self, value: Any) -> Any:
-        """`resolve()`, recursively, for a JSON-shaped dict/list body.
-
-        Explicit-only, like `resolve()` itself: nothing in this harness calls this on a
-        caller's behalf. A scenario or a compiled plan that wants every string inside a
-        nested body substituted passes the body through this directly.
-        """
+        """`resolve()`, recursively, for a JSON-shaped dict/list body."""
         if isinstance(value, str):
             return self.resolve(value)
         if isinstance(value, dict):
@@ -1664,16 +1209,7 @@ class Qa:
         return value
 
     def capture_field(self, key: str, data: Any, path: str) -> Any:
-        """Capture a JSON-path read from observed data — a defect if the path finds nothing.
-
-        Composes `field` with `capture`. `field` alone answers `MISSING` in silence,
-        because a missing field is often the assertion itself — but a *capture* that finds
-        nothing is not something a later step can route around: `$key` would resolve to a
-        fault of its own, at whatever line consumes it, and the earlier, sharper defect —
-        the path never existed in the response the plan captures it from — would go
-        unnamed. So this raises here, at the point the capture was meant to be produced,
-        the same as every other book/code defect this harness stops a scenario for.
-        """
+        """Capture a JSON-path read from observed data — a defect if the path finds nothing."""
         value = self.field(data, path)
         if value is MISSING:
             detail = f"capture {key!r} from {path!r} found nothing in the observed data"
@@ -1691,13 +1227,7 @@ class Qa:
 
     @property
     def scenario_dir(self) -> Path:
-        """This scenario's own directory under `self.dir`, created on demand.
-
-        The `working-directory: scenario:` frame resolves here, and `qa.tool(...).run(...,
-        cwd=qa.scenario_id)` resolves to this same directory through `Tool._cwd` — one
-        formula, so a fixture step carrying the frame and the command it arranges for land
-        in the same place.
-        """
+        """This scenario's own directory under `self.dir`, created on demand."""
         resolved = (self.dir.resolve() / self.scenario_id).resolve()
         resolved.mkdir(parents=True, exist_ok=True)
         return resolved
@@ -1708,8 +1238,6 @@ class Qa:
         kind = str(step.get("kind", ""))
         command = str(step.get("command", ""))
         cwd = str(self.scenario_dir) if step.get("cwd-frame") == "scenario" else str(step.get("cwd") or self.root)
-        # book_fixtures.py resolves this to an always-valid float ostler-side (stack.boot_timeout),
-        # so the harness reads it as-is rather than re-parsing or re-defaulting a raw value here.
         timeout = float(step["timeout"])
         if not Path(cwd).is_dir():
             self._fault(fixture, index, kind, "environment", f"cwd {cwd!r} does not exist")
@@ -1733,11 +1261,6 @@ class Qa:
         result = ToolResult(command=argv, stdout=done.stdout, stderr=done.stderr, exit_code=done.returncode)
         if not result.ok:
             body = (result.stderr or result.stdout).strip()[:500]
-            # `bash -c` exits 126/127 for "found the name, couldn't run it" and "never found
-            # the name" alike — the same code a typo in the recipe produces. That similarity
-            # is exactly why this is a defect, not an environment fault (see the docstring
-            # above): the fault detail still has to say which shape of exit this is, so triage
-            # is not left re-deriving "command not found" from a bare number.
             prefix = (
                 f"command not found (exit {result.exit_code})"
                 if result.exit_code in (126, 127)
@@ -1755,21 +1278,7 @@ class Qa:
         step_results: Mapping[str, "ToolResult"],
         last_index: int,
     ) -> dict[str, str]:
-        """Bind each declared `provides:` fact the way its own entry says the fact comes to be.
-
-        A fact is **observed** — `from:` the step whose stdout holds it, `read:` the path within
-        that stdout, defaulting to the fact's own key — or **asserted** by the fixture's own
-        construction, and then `is:` carries the value and nothing is read. Which of the two is
-        the book's to say, and there is no third branch here: an entry that declares neither
-        never reaches this method, because `ostler doctor` refuses the book and `compile_plan`
-        withholds every obligation arranged through the fixture. The fault below is the floor
-        under that, not a fallback — it names the undetermined entry instead of guessing.
-
-        What it replaced was a guess: an entry with no `from:` fell back to the fixture's last
-        step and its whole stdout parsed as JSON. That is right only for a fixture whose last
-        step happens to print JSON, and every other one died in `json.loads` with a message
-        about a step the author never pointed at.
-        """
+        """Bind each declared `provides:` fact the way its own entry says the fact comes to be."""
         facts: dict[str, str] = {}
         for entry in declared:
             key = entry["key"]
@@ -1809,13 +1318,7 @@ class Qa:
         return facts
 
     def _exec_book_fixture(self, name: str, args: Mapping[str, str]) -> "ToolResult":
-        """Run one book `fixture` node's steps, memoized on `(name, frozen args)` per scenario.
-
-        `needs:` runs depth-first before this fixture's own steps, and each secret is
-        resolved from the harness's own environment — never the book — right before the
-        first step that might use it, so a name absent there is an environment fault before
-        anything spawns.
-        """
+        """Run one book `fixture` node's steps, memoized on `(name, frozen args)` per scenario."""
         memo_key = (name, tuple(sorted(args.items())))
         cached = self._book_fixture_memo.get(memo_key)
         if cached is not None:
@@ -1828,10 +1331,6 @@ class Qa:
                 detail = f"needs a fixture link that does not resolve ({need.get('unresolved')!r})"
                 self._fault(name, -1, "needs", "defect", detail)
                 raise RuntimeError(f"qa fixture {name!r} {detail}")
-            # A need's own `args:` bind into *this* fixture's env once the need has run —
-            # they are how this fixture receives a dependency's `@node.key` provides, not
-            # arguments passed to the dependency (which takes none here): the reference
-            # cannot resolve until the fixture it names has already produced its facts.
             self._exec_book_fixture(str(need["fixture"]), {})
             for key, value in need.get("args", {}).items():
                 env[key] = self._resolve_ref(name, value)
@@ -1884,16 +1383,7 @@ class Qa:
         return result
 
     def instance(self, obligation: str, bindings: dict[str, object]) -> None:
-        """Declare which concrete member of a repeated family this scenario exercises.
-
-        A `one-per:` obligation stands for a whole family of generated elements, and a
-        scenario that covers it proves nothing until it says *which* instance it drove —
-        `qa.instance(obligation, {"stage.name": "Fondations"})` writes that choice into the
-        run log, and `qa validate` holds the plan to the family's contract statically: every
-        bindable template hole supplied, no unknown keys, and every declared variant value
-        sampled by some instance. This records a declaration, like `fixture`, not an
-        assertion — the checks that follow are what carry the evidence.
-        """
+        """Declare which concrete member of a repeated family this scenario exercises."""
         self._recorder.emit(
             {
                 "type": "instance",
@@ -1903,28 +1393,11 @@ class Qa:
             }
         )
 
-    # -- assertions --------------------------------------------------------------------
 
     def _status_mismatch(
         self, method: str, url: str, status: int, allowed: Sequence[int]
     ) -> None:
-        """Write down an `expect_status` the product did not meet, before it raises.
-
-        `qa.http.post(..., expect_status=409)` *is* an assertion — the plan said the product
-        refuses this, and it did not. Until this record existed the mismatch only ever became
-        an `HttpError`, which aborts the scenario before any `qa.check` runs: the run log then
-        held no assertion bound to the obligation, and the evidence map called it
-        `claimed-but-unasserted` — a QA gap — when what actually happened was the product
-        contradicting the book. A seeded compare-and-swap defect was detected exactly this way
-        and scored as a miss.
-
-        Bound to the scenario's whole `covers`, unlike a bare `check`, which binds only what
-        it was given. The two cases are not symmetrical: a passing check credited to every
-        obligation the scenario declared would report the set proven by one observation,
-        whereas this record can only ever *add* a contradiction, and only to obligations this
-        scenario itself claimed — and it aborts the scenario, so none of the rest of that
-        claim will be shown either.
-        """
+        """Write down an `expect_status` the product did not meet, before it raises."""
         self._record(
             f"{method} {url} answers {list(allowed)}",
             False,
@@ -1934,28 +1407,7 @@ class Qa:
         )
 
     def field(self, data: Any, path: str, default: Any = MISSING) -> Any:
-        """Read one value out of observed product data without ever raising.
-
-        The name a plan spells is a claim about the product, and when the product spells
-        it differently that is exactly the contradiction the run exists to find. Reached
-        by subscript it is not a contradiction at all — the `KeyError` kills the scenario
-        mid-way, so nothing after it observes anything, and the obligations it covered
-        come back `unproven` instead of red. A whole seeded field-casing defect went
-        uncaught that way.
-
-        So walk the path instead. `path` is the harness's one path grammar: dotted keys, a
-        segment that is all digits indexing a sequence, and the two selectors `[*]` and
-        `[?(@.key==value)]`. A selector yields a list of selections — except that exactly one
-        selection comes back as the value itself, which is what a claim about *the entry whose
-        who is ana* means — and no selection yields `default`. Anything missing, of the wrong
-        shape, or out of range yields `default`, which is `MISSING` unless the caller names
-        another — and `MISSING` is a value every way of asking about it answers negatively,
-        so it fails the check it is compared in loudly, in the right place, with the rest of
-        the scenario still to run.
-
-            qa.check("attributed to the caller", qa.field(body, "claim.holder_uid") == uid, covers=[...])
-            qa.check("ana's total", qa.field(body, "people[?(@.who=='ana')].total_cents") == 4200, covers=[...])
-        """
+        """Read one value out of observed product data without ever raising."""
         try:
             resolved, value = resolve_path(data, path)
         except ValueError:
@@ -1975,11 +1427,7 @@ class Qa:
         expected: Any = None,
         covers: Sequence[str] | None = None,
     ) -> bool:
-        """Record one claim about behaviour. Returns the verdict; never raises.
-
-        Use it when the scenario can keep going and prove more after a failure — several
-        independent claims about the same response, say. `require` is the one that stops.
-        """
+        """Record one claim about behaviour."""
         return self._record(label, condition, actual, expected, covers)
 
     def require(
@@ -2006,34 +1454,7 @@ class Qa:
         expected: Any = None,
         covers: Sequence[str] | None = None,
     ) -> bool:
-        """Record one claim about behaviour that the page is allowed to arrive at.
-
-        The difference from `check` is the type of `condition`, and it is the whole point:
-        `check` receives an **already-collapsed bool**, so Python samples the DOM and hands
-        this harness a dead `False` that cannot be retried, re-read, or told apart from
-        "not yet". `.count()`, `.get_attribute()`, `.inner_text()` and `page.evaluate()`
-        sample once and never retry, so against a UI still resolving a fetch or a re-render
-        they report whatever was on screen at that instant — and the failure that produces
-        wears the exact shape of a product defect: intermittent, with a plausible actual.
-        A live story spent its whole repair budget on that wrong hypothesis.
-
-        So hand over the sampler, not its result::
-
-            qa.eventually("badge shown", lambda: page.text("#badge"), covers=["ac:2"])
-
-        A lambda, a bound method (`badge.is_visible`), or — when the claim is several
-        statements — a named nested function::
-
-            def badge_is_up() -> bool:
-                return badge.count() > 0
-
-            qa.eventually("badge shown", badge_is_up, covers=["ac:2"])
-
-        The condition is evaluated once before any sleep, so an already-true claim costs
-        nothing and records `settled_ms: 0`. `actual` may be a callable too, and is then
-        read after the poll loop settles — the value that decided the verdict rather than
-        one sampled before the wait began.
-        """
+        """Record one claim about behaviour that the page is allowed to arrive at."""
         if not callable(condition):
             raise TypeError(
                 f"qa.eventually({label!r}, …) needs a callable to re-sample, and was handed "
@@ -2069,13 +1490,7 @@ class Qa:
         expected: Any = None,
         covers: Sequence[str] | None = None,
     ) -> None:
-        """`eventually`, stopping the scenario when the page never arrives.
-
-        The stopping variant matters more here than it does for `check`: when the state a
-        journey was waiting for never came, every later assertion is reading a page that is
-        not the one the plan is about, and the run reports a cascade of failures whose
-        actual values are all noise. That is what made the motivating run unreadable.
-        """
+        """`eventually`, stopping the scenario when the page never arrives."""
         if not self.eventually(
             label,
             condition,
@@ -2096,25 +1511,7 @@ class Qa:
         label: str = "",
         **args: Any,
     ) -> bool:
-        """Make the observation an obligation's `verify:` bullet declares, and record it.
-
-        This is the assertion whose strength is not the author's to choose. `qa.check` takes
-        an already-collapsed bool, so the scenario decides what "the manifest is unchanged"
-        means and can decide it weakly — mask the object before diffing, compare three
-        entries but never the key inventory, read back through the session that wrote. Here
-        the book names the check and its arguments, `ostler qa validate` refuses a plan that
-        does not invoke exactly that call, and the comparison is `VERIFIERS`'. The assertion
-        cannot be weaker than the claim because the assertion *is* the claim.
-
-            qa.verify("http_status", response, code=409, title="Manifest Conflict",
-                      covers=[OBLIGATION])
-
-        `observed` is what the scenario went and got — a response, a parsed document, a
-        locator, or the `(before, after)` pair a differential check compares. Its shape is
-        the check's, and a wrong one raises rather than recording red: a scenario that hands
-        `unchanged` a single value has a defect of its own, and filing that against the
-        product is how a QA run reports a bug nobody has.
-        """
+        """Make the observation an obligation's `verify:` bullet declares, and record it."""
         verifier = VERIFIERS.get(check)
         if verifier is None:
             raise ValueError(
@@ -2135,10 +1532,7 @@ class Qa:
     def _poll(
         self, condition: Callable[[], Any], timeout: float, interval: float
     ) -> tuple[bool, int, int]:
-        """Re-sample `condition` until it holds or the deadline passes.
-
-        Returns the verdict, how many times it looked, and how long it took to settle.
-        """
+        """Re-sample `condition` until it holds or the deadline passes."""
         started = time.monotonic()
         polls = 0
         while True:
@@ -2176,32 +1570,19 @@ class Qa:
             "passed": passed,
             "actual": actual,
             "expected": expected,
-            # The assertion's own binding only. Falling back to `self.covers` — the
-            # scenario's whole list — stamped every obligation onto every assertion in
-            # the body, so one passing check reported the entire set proven and deleting
-            # the check that did the proving left the evidence row green. `validate`
-            # refuses a plan whose obligations are not each claimed, so a bare
-            # `qa.check` here is an extra claim, not an uncredited one.
             "covers": list(covers) if covers is not None else [],
         }
-        # Absent rather than zero on a plain `check`: a `settled_ms: 0` on an assertion that
-        # was never retried is a claim about a sample nobody took, and a reader deciding
-        # whether a red assertion is a race would believe it.
         if extra:
             record.update(extra)
         self._recorder.emit(record)
         return passed
 
-    # -- steps -------------------------------------------------------------------------
 
     @contextmanager
     def step(self, label: str) -> Iterator[None]:
         """Group the work of one phase under a named step record in the ledger."""
         self._index += 1
         step_id = f"{self.scenario_id}-step-{self._index}"
-        # Stamped on the run's clock here, not when the driver grades the stream: grading
-        # happens after the scenario exits, so the ledger's own offsets all cluster at the
-        # end. These are what place a step inside the recording.
         self._recorder.emit(
             {"type": "step_start", "id": step_id, "label": label, "offset_ms": self.offset_ms()}
         )
@@ -2223,7 +1604,6 @@ class Qa:
             {"type": "step_end", "id": step_id, "label": label, "failed": False, "offset_ms": self.offset_ms()}
         )
 
-    # -- evidence ----------------------------------------------------------------------
 
     def capture(self, key: str, value: Any) -> None:
         """Publish a value into the run ledger so a later report can name it."""
@@ -2234,15 +1614,7 @@ class Qa:
         return self._captures[key]
 
     def artifact(self, path: str | Path, *, kind: str) -> Path:
-        """Register a file — or a directory of files — as evidence.
-
-        Relative paths resolve inside `qa.dir`. The runner reads the path once the scenario
-        has finished, so the usual shape is to register first and write after, and what it
-        finds there decides the rest: a file is one manifest entry; a directory is one entry
-        per file under it (a CLI that writes a report tree, a browser that films a folder of
-        frames), each carrying the directory it came from; a directory with nothing in it is
-        a problem, because an artifact that says nothing is not evidence of anything.
-        """
+        """Register a file — or a directory of files — as evidence."""
         resolved = Path(path)
         if not resolved.is_absolute():
             resolved = self.dir / resolved
@@ -2263,13 +1635,6 @@ class Qa:
         """Now, on the run's clock — the same scale every other driver's records use."""
         return self.offset_base_ms + round((time.monotonic() - _PROCESS_START) * 1000)
 
-    # -- the browser -------------------------------------------------------------------
-    #
-    # `qa.page` is the whole Playwright API and a scenario may use it directly. These five
-    # helpers exist for one reason beyond brevity: `describe` reads their constant
-    # arguments out of the parsed tree, so `ostler qa validate` can still hold a browser
-    # scenario to the role and name the OKF book documents for what it covers. A locator
-    # written as `qa.page.get_by_text(...)` is invisible to that check.
 
     def by_role(self, role: str, *, name: str | None = None, **kwargs: Any) -> Any:
         return self.browser_page.get_by_role(role, name=name, **kwargs)
@@ -2281,39 +1646,17 @@ class Qa:
         return self.browser_page.get_by_test_id(value)
 
     def by_text(self, text: str | re.Pattern[str], **kwargs: Any) -> Any:
-        # Playwright's own default (`exact=False`, whitespace-normalised substring), not a
-        # pinned `exact=True`. The pinned form silently matched nothing whenever the page
-        # rendered the text inside a larger node — a composite string, a filename quoted in
-        # a sentence — and the miss reads downstream as a product defect rather than as a
-        # locator that cannot match. `str | Pattern` for the same reason `by_label` takes
-        # `**kwargs`: an author who needs a case-insensitive match should not have to drop
-        # to `qa.page.get_by_text`, which `extract_locators` cannot see.
         return self.browser_page.get_by_text(text, **kwargs)
 
     def by_css(self, selector: str) -> Any:
         return self.browser_page.locator(selector)
 
     def goto(self, url: str, **kwargs: Any) -> Any:
-        """Navigate a relative path against the target's `base_url`.
-
-        Takes *url* as a plain literal — pass it through `qa.resolve(...)` first when it
-        names a fixture's provided fact or an earlier capture.
-        """
+        """Navigate a relative path against the target's `base_url`."""
         return self.browser_page.goto(self.http.url_for(url), **kwargs)
 
     def window(self) -> Any:
-        """Open an observation window over the exchanges this page is about to make.
-
-        The operand of an HTTP claim made from a *page* scenario is a selection, not "the
-        response": a browser makes many requests, and one observed before the action is not
-        evidence about the action. A scenario opens a window immediately before the click or
-        the navigation its claim is about, then reads
-        `window.response_for("/api/widgets")` afterward — which raises rather than guessing
-        when the path matched nothing, or matched more than once.
-
-        The recorder lives in `ostler_qa_browser`, which only a playwright target has, so
-        this says which driver is missing rather than failing on an absent attribute.
-        """
+        """Open an observation window over the exchanges this page is about to make."""
         recorder = self.diagnostics
         if recorder is None or not hasattr(recorder, "window"):
             raise RuntimeError(
@@ -2324,13 +1667,7 @@ class Qa:
         return recorder.window()
 
     def capture_text(self, key: str, locator: Any) -> str:
-        """Capture a locator's text — a defect if it matches nothing on the page.
-
-        The UI half of `capture_field`: a locator built from `qa.by_role`/`qa.by_text`/etc.
-        that matches zero elements is a book/code defect the same way an absent JSON path
-        is — the scenario named something the page was never going to have — so this
-        raises here rather than handing a later step a reference that can never resolve.
-        """
+        """Capture a locator's text — a defect if it matches nothing on the page."""
         if locator.count() == 0:
             detail = f"capture {key!r} locator matched no elements on the page"
             self._fault(self.scenario_id, -1, "capture", "defect", detail)
@@ -2340,14 +1677,7 @@ class Qa:
         return value
 
     def screenshot(self, name: str = "") -> Path:
-        """Photograph the page, measure where it put its content, and register both.
-
-        The `.layout.json` beside the image is the half a machine can read: `ostler vet`'s
-        DOM scan of the same instant, every structural region's box against the viewport. A
-        screenshot alone can only be judged by a person looking at it, and nothing in the run
-        looks at it — which is how a page that renders as a narrow column against one margin
-        passes a scenario that proves every element it names is present.
-        """
+        """Photograph the page, measure where it put its content, and register both."""
         path = self.dir / "screenshots" / f"{self.scenario_id}-{name or 'screenshot'}.png"
         path.parent.mkdir(parents=True, exist_ok=True)
         self.browser_page.screenshot(path=str(path), full_page=True)
@@ -2356,14 +1686,7 @@ class Qa:
         return path
 
     def device_screenshot(self, name: str = "", *, source: str = "maestro") -> Path:
-        """The same thing for a phone: photograph the screen, and measure what is on it.
-
-        A device has no DOM, so the regions come from its view hierarchy —
-        `maestro hierarchy` by default, `uiautomator` where Maestro does not reach on
-        Android. Both are translated into the element shape the DOM scan produces, so the
-        `.layout.json` and `.regions.json` written here are the same documents a browser
-        writes and are read by the same audit and the same `placement:` check.
-        """
+        """The same thing for a phone: photograph the screen, and measure what is on it."""
         hierarchy = _harness_module("ostler_qa_hierarchy")
         path = self.dir / "screenshots" / f"{self.scenario_id}-{name or 'screenshot'}.png"
         hierarchy.screenshot(path)
@@ -2381,29 +1704,13 @@ class Qa:
         return path
 
     def vet(self, screen: str, name: str = "", components: list[str] | None = None) -> Path:
-        """Photograph a screen and hand ostler the screen it is supposed to be.
-
-        `screenshot` records geometry nobody has an opinion about. This one names the
-        documented screen, so ostler can register what rendered against what the book placed
-        — and a component sitting where the book does not put it becomes a failed assertion
-        in the ledger, inside the story, rather than a picture somebody might open.
-
-        The resolving happens on the ostler side: the harness runs under the project's
-        interpreter, has never seen the book, and cannot import ostler to look.
-
-        `components` narrows the registration to the anchors it names, for a photograph
-        taken mid-journey that establishes part of a screen rather than the whole of it.
-        Omit it and the whole screen is answered for, which is the honest default; a name
-        the screen does not document fails the scenario rather than narrowing to nothing.
-        """
+        """Photograph a screen and hand ostler the screen it is supposed to be."""
         state = name or "vet"
         if self.target.driver == "playwright":
             path = self.screenshot(state)
         elif self.target.driver == "maestro":
             path = self.device_screenshot(state)
         else:
-            # Said here rather than left to `browser_page`, whose advice — declare the target
-            # with driver='playwright' — is exactly wrong for a scenario that drives no UI.
             raise RuntimeError(
                 f"scenario {self.scenario_id!r} vets '{screen}' on a '{self.target.driver}' "
                 "target, which renders nothing to vet — declare the target with "
@@ -2417,12 +1724,6 @@ class Qa:
             "screenshot": str(path),
             "regions": str(path.with_suffix(".regions.json")),
             "components": components or [],
-            # Where the photograph was taken. The screen is an argument — what the scenario
-            # says the page should be — and the pixels are an observation of whatever the
-            # browser was showing; nothing else in this record relates the two. Without it a
-            # walk that never reached the screen has the book of one screen registered
-            # against the render of another, and every verdict is about a correspondence
-            # that does not exist. A device has no URL, and says so with "".
             "url": str(self.page.url) if self.target.driver == "playwright" else "",
         })
         return path
@@ -2439,24 +1740,13 @@ class Qa:
 
 
 class Maestro:
-    """Run a Maestro flow from inside the scenario, and hand back what it did.
-
-    The verdict is the caller's: `run` returns the result and the scenario asserts on it,
-    the way it asserts on an HTTP response. Under the YAML format the driver appended a
-    single synthetic `maestro-flow` assertion of its own, which made a mobile scenario's
-    coverage ride on the exit code of the CLI rather than on anything the plan claimed.
-    """
+    """Run a Maestro flow from inside the scenario, and hand back what it did."""
 
     def __init__(self, qa: Qa) -> None:
         self._qa = qa
 
     def flow(self, commands: Sequence[Any]) -> str:
-        """Build flow text from Maestro commands.
-
-        YAML is a superset of JSON and Maestro's parser accepts it, which is what lets a
-        stdlib-only harness write a flow at all. A scenario with a hand-written flow file
-        passes its path to `run` instead.
-        """
+        """Build flow text from Maestro commands."""
         app_id = self._qa.target.app_id
         if not app_id:
             raise ValueError(f"target '{self._qa.target.name}' declares no app_id")
@@ -2539,12 +1829,7 @@ class ToolResult:
 
 
 class Tool:
-    """One opted-in external command, resolved to an argv on this machine.
-
-    Handed back by `Qa.tool(name)`, never constructed directly — the command it runs
-    came from the opt-in/definition split in `ostler.qa.tools`, not from anything this
-    scenario wrote.
-    """
+    """One opted-in external command, resolved to an argv on this machine."""
 
     def __init__(self, qa: Qa, name: str, command: str) -> None:
         self._qa = qa
@@ -2558,16 +1843,7 @@ class Tool:
         cwd: str | Path | None = None,
         env: Mapping[str, str] | None = None,
     ) -> ToolResult:
-        """Run the tool once, from the repo root unless *cwd* says where, with *env* overlaid.
-
-        For a product whose contract is what it does to the directory it was run in, the
-        working directory is the one fact the scenario most needs to state. *cwd* is
-        resolved against `qa.dir` and must stay inside it — the run's own scratch space,
-        created on demand — so a scenario can observe "the default file lands beside the
-        caller" without ever pointing a tool at the repo. *env* overlays the inherited
-        environment with names the plan declared through `tool_env(...)`; an undeclared
-        name raises here, on the line that wrote it.
-        """
+        """Run the tool once, from the repo root unless *cwd* says where, with *env* overlaid."""
         if shutil.which(self._command) is None:
             raise RuntimeError(
                 f"qa tool {self.name!r} names command {self._command!r}, which is not "
@@ -2661,38 +1937,14 @@ class Convert:
         return dest
 
 
-# --------------------------------------------------------------------------------------
-# describe
-# --------------------------------------------------------------------------------------
 
-#: The methods on `qa` that append an assertion record. A scenario claiming coverage and
-#: calling none of them proves nothing, and unlike shell that is now statically visible.
-#: `eventually`/`require_eventually` are in here for one reason and it is worth stating:
-#: `count_checks` and `extract_check_covers` both key off this set, so a retrying assertion
-#: counts as an assertion and its `covers=` binds with no other edit. Leaving them out would
-#: have made the doctrine's recommended spelling the one that fails validation.
-#: `verify` is in here for the same reason: it records an assertion, and its `covers=` binds
-#: exactly as the others' does. It is also the *only* one `extract_check_calls` reads, since
-#: it is the only one that names a check from the book.
 CHECK_METHODS = frozenset({"check", "require", "eventually", "require_eventually", "verify"})
 
-#: The method that photographs a screen and hands it to the book for registration. A UI
-#: scenario that never calls it proves every element it names is *present* and nothing at
-#: all about where they landed — which is the shape of run this exists to stop passing.
 VET_METHOD = "vet"
 
 
 def count_checks(source: str) -> dict[str, int]:
-    """How many `qa.check` / `qa.require` calls each top-level function contains.
-
-    Static, by `ast`, and that is the point: the YAML format could only be defended by
-    `_exit_sentinel`, a regex guessing whether a shell string proved anything. Here the
-    question "does this scenario assert" has an actual answer before anything runs.
-
-    Counts calls nested in loops, `with` blocks and helper branches, and calls in the
-    module-level helpers the scenario invokes — see `_reachable_calls` for why following
-    them is the honest reading rather than the lenient one.
-    """
+    """How many `qa.check` / `qa.require` calls each top-level function contains."""
     reachable = _reachable_calls(ast.parse(source))
     return {
         name: sum(
@@ -2705,22 +1957,7 @@ def count_checks(source: str) -> dict[str, int]:
 
 
 def _reachable_calls(tree: ast.Module) -> dict[str, list[ast.Call]]:
-    """Every call each top-level function makes, following the module helpers it calls.
-
-    A scenario that factors its assertions into `verify_created(qa, observation)` and calls
-    it asserts exactly as much as one that inlines them — the ledger the run writes cannot
-    tell the two apart, because at runtime there is no difference. Reading only the
-    scenario's own body made the static half disagree: the plan bound its obligations
-    correctly and validation answered `no assertion invokes it`, naming neither the real
-    problem nor its fix. Inlining is not a fix either, since a node's `verify:` bullets fan
-    out onto every obligation it mints and the resulting plan repeats the same twenty-id
-    call in every scenario.
-
-    Calls in each function are ordered by position and the caller's own come first, so the
-    action numbers the locator problems cite still count down the scenario as written.
-    Recursion terminates on the visited set, so a helper pair that calls each other is read
-    once rather than forever.
-    """
+    """Every call each top-level function makes, following the module helpers it calls."""
     functions = {
         node.name: node
         for node in tree.body
@@ -2751,30 +1988,7 @@ def _reachable_calls(tree: ast.Module) -> dict[str, list[ast.Call]]:
 
 
 def extract_check_covers(source: str) -> dict[str, list[str]]:
-    """Which obligation ids each scenario's `qa.check`/`qa.require` calls claim, as written.
-
-    The scenario-level `covers=` is a promise about the whole function; this is the part that
-    says *which assertion* discharges it. Without the distinction the two are impossible to
-    tell apart, and the gap is not theoretical: a scenario declaring `covers=["ac:4"]` passed
-    validation on the strength of any one assertion anywhere in its body, so deleting the two
-    checks that actually exercised AC4 turned a failing run green while the ledger went on
-    reporting AC4 covered. Removing an assertion has to fail here, loudly, instead of reading
-    downstream as a product that started working.
-
-    Only ids the parse can *read* are recovered, and anything else contributes `COMPUTED` —
-    which matches no obligation, so the obligation stays unclaimed and the caller reports it.
-    That is deliberate rather than lenient: a binding validation cannot read is a binding the
-    evidence gate cannot count either.
-
-    A module-level `NAME = "okf:…"` counts as readable, because it is: the value is in the
-    parse tree, one assignment away, and resolving it makes the static answer agree with the
-    runtime one instead of contradicting it. Obligation ids run to ninety characters and a
-    plan binding twenty of them per call is unreadable spelled out; every author reaches for
-    the constant, and before this the gate answered a correctly-bound assertion with "no
-    assertion invokes it" — which names neither the real problem nor its fix. A name assigned
-    more than once is left `COMPUTED`: which value reached the call is then a question the
-    parse genuinely cannot answer.
-    """
+    """Which obligation ids each scenario's `qa.check`/`qa.require` calls claim, as written."""
     tree = ast.parse(source)
     constants = _module_constants(tree)
     found: dict[str, list[str]] = {}
@@ -2794,23 +2008,14 @@ def extract_check_covers(source: str) -> dict[str, list[str]]:
 
 
 def _resolve(node: ast.expr, constants: dict[str, Any]) -> Any:
-    """The value the parse can attribute to this expression, or `None` when it cannot.
-
-    A bare name is looked up in the module's own constants — the value is one assignment
-    away in the same tree, so reading it is still static.
-    """
+    """The value the parse can attribute to this expression, or `None` when it cannot."""
     if isinstance(node, ast.Name):
         return constants.get(node.id)
     return _literal(node)
 
 
 def _covers_ids(node: ast.expr, constants: dict[str, Any]) -> list[str]:
-    """The obligation ids a `covers=` argument binds, with `COMPUTED` for each unreadable one.
-
-    Both halves of the binding — the scenario's claim and the check call `ostler qa validate`
-    compares against the book — read this, so a spelling that binds in one has to bind in the
-    other. They disagreeing is what reports a correctly-bound assertion as absent.
-    """
+    """The obligation ids a `covers=` argument binds, with `COMPUTED` for each unreadable one."""
     written = _resolve(node, constants)
     if isinstance(written, (list, tuple)):
         return [item if isinstance(item, str) else COMPUTED for item in written]
@@ -2821,12 +2026,7 @@ def _covers_ids(node: ast.expr, constants: dict[str, Any]) -> list[str]:
 
 
 def _module_constants(tree: ast.Module) -> dict[str, Any]:
-    """Module-level `NAME = <literal>` bindings, minus every name bound more than once.
-
-    Rebinding is the whole reason for the exclusion rather than last-write-wins: a name the
-    module reassigns has no single value at the point of a call, and guessing one would put
-    an id in the ledger the run never asserted.
-    """
+    """Module-level `NAME = <literal>` bindings, minus every name bound more than once."""
     constants: dict[str, Any] = {}
     rebound: set[str] = set()
     for node in tree.body:
@@ -2849,27 +2049,11 @@ def _module_constants(tree: ast.Module) -> dict[str, Any]:
     return constants
 
 
-#: The method that makes a declared observation, and the one `extract_check_calls` reads.
 VERIFY_METHOD = "verify"
 
 
 def extract_check_calls(source: str) -> dict[str, list[dict[str, Any]]]:
-    """Which named checks each scenario invokes, with the arguments it wrote and what it binds.
-
-    This is the half of the binding that `ostler qa validate` compares against the book: an
-    obligation whose `verify:` bullet declares `keys_unchanged(subject="pages")` is only
-    covered by a scenario that calls exactly that, with those arguments, bound to that id.
-    A weaker assertion is no longer a judgment call about whether the oracle is strong
-    enough — it is a call that is not the declared one, and the difference is a string
-    comparison.
-
-    Static, and only what the parse can read: an argument it cannot becomes `"*"`, which
-    canonicalises to a call matching no declaration, so the obligation stays unbound and the
-    caller says so. A module-level constant it can read, and does — the same spelling has to
-    bind here and in `extract_check_covers`, or a plan passes one half of the binding and is
-    reported absent by the other. Read before anything runs, which is the only moment at
-    which the answer is still cheap.
-    """
+    """Which named checks each scenario invokes, with the arguments it wrote and what it binds."""
     tree = ast.parse(source)
     constants = _module_constants(tree)
     found: dict[str, list[dict[str, Any]]] = {}
@@ -2900,9 +2084,6 @@ def extract_check_calls(source: str) -> dict[str, list[dict[str, Any]]]:
     return found
 
 
-#: How a locator helper is spelled, and the strategy key it stands for. Both the `qa.` form
-#: and Playwright's own `page.` form are listed: a scenario is free to use the page directly,
-#: and the book check should still see what it addressed.
 LOCATOR_METHODS = {
     "by_role": "role",
     "get_by_role": "role",
@@ -2916,28 +2097,12 @@ LOCATOR_METHODS = {
     "locator": "css",
 }
 
-#: Stands in for a locator argument that is computed rather than written. A role addressed
-#: through a variable still counts as *addressed by role* — the check that would otherwise
-#: fire says no locator uses a role at all, which would be false.
 COMPUTED = "*"
 
 
 def extract_locators(source: str) -> dict[str, list[dict[str, Any]]]:
-    """The locators and navigations each scenario writes, in the shape `validate` reads.
-
-    Static, and it has to be: `_validate_book_locators` holds a browser scenario to the
-    role, name and route the OKF book documents for what it covers, and validation runs
-    before anything is executed. Under YAML the action list was the plan; here the plan is
-    code, so the list is recovered from the parsed tree instead.
-
-    Only what is written literally is recovered. A computed role becomes `"*"` — addressed
-    by role, matching no documented one — and a computed `goto` URL is omitted rather than
-    reported as a route the book does not document.
-    """
+    """The locators and navigations each scenario writes, in the shape `validate` reads."""
     found: dict[str, list[dict[str, Any]]] = {}
-    # `_reachable_calls` orders each function's calls by position, so a locator wrapped in
-    # `.click()` no longer sorts after a bare one written below it — the problems this feeds
-    # name the offending action by its number in the scenario.
     for name, calls in _reachable_calls(ast.parse(source)).items():
         actions: list[dict[str, Any]] = []
         for call in calls:
@@ -2967,13 +2132,7 @@ def _locator_action(call: ast.Call, method: str) -> dict[str, Any] | None:
 
 
 def extract_vets(source: str) -> dict[str, list[str]]:
-    """Which screens each scenario hands to the book, as written.
-
-    Recovered statically for the same reason the locators are: "does this browser scenario
-    prove the page looked right" has to have an answer before a run spends an hour arriving
-    at one. A computed screen becomes `"*"` — vetted, but naming a document validation
-    cannot check against the packet.
-    """
+    """Which screens each scenario hands to the book, as written."""
     found: dict[str, list[str]] = {}
     for name, calls in _reachable_calls(ast.parse(source)).items():
         screens: list[str] = []
@@ -2986,22 +2145,11 @@ def extract_vets(source: str) -> dict[str, list[str]]:
     return found
 
 
-#: How a scenario declares which member of a repeated family it drives, and the method
-#: `extract_instances` reads.
 INSTANCE_METHOD = "instance"
 
 
 def extract_instances(source: str) -> dict[str, list[dict[str, Any]]]:
-    """The concrete instances each scenario declares for repeated obligations, as written.
-
-    Static for the same reason the covers bindings are: a scenario covering a `one-per:`
-    obligation owes named instances *before* anything runs, and validation is where the
-    debt is called. Only what the parse can read is recovered — a computed obligation id
-    becomes `COMPUTED` (matching nothing, so the coverage it would claim stays unclaimed),
-    a binding value that is not a written string becomes `COMPUTED`, and a bindings
-    argument that is not a literal dict is reported as `None` so the caller can say the
-    declaration itself is unreadable rather than guess at its keys.
-    """
+    """The concrete instances each scenario declares for repeated obligations, as written."""
     tree = ast.parse(source)
     constants = _module_constants(tree)
     found: dict[str, list[dict[str, Any]]] = {}
@@ -3017,8 +2165,6 @@ def extract_instances(source: str) -> dict[str, list[dict[str, Any]]]:
                     bindings_node = keyword.value
             bindings: dict[str, Any] | None = None
             if isinstance(bindings_node, ast.Dict):
-                # Read the dict node entry by entry: a computed *value* still leaves the
-                # key — the half validation checks — readable, and becomes `COMPUTED`.
                 bindings = {}
                 for key_node, value_node in zip(bindings_node.keys, bindings_node.values):
                     key = _resolve(key_node, constants) if key_node is not None else None
@@ -3072,14 +2218,7 @@ def _describe(module_path: Path) -> dict[str, Any]:
 
 
 def _load(module_path: Path) -> None:
-    """Import the plan module by path, with its own directory and the spec root importable.
-
-    Two entries, for two different things. The plan's own directory has always been here.
-    The spec root — the directory holding every story's spec directory — is what makes
-    `import _fixtures.<name>` resolve: fixture modules are shared across stories by
-    definition, so they cannot live beside any one plan. `ostler.qa.lint` decides which of
-    them a plan may name; this only decides where Python looks.
-    """
+    """Import the plan module by path, with its own directory and the spec root importable."""
     import importlib.util
 
     sys.path.insert(0, str(module_path.parent.parent))
@@ -3092,20 +2231,10 @@ def _load(module_path: Path) -> None:
     spec.loader.exec_module(module)
 
 
-# --------------------------------------------------------------------------------------
-# run
-# --------------------------------------------------------------------------------------
 
 
 def _harness_module(name: str) -> Any:
-    """Import a sibling harness module by name.
-
-    Not a module-scope `import ostler_qa_hierarchy`, because this file is also loaded from
-    the *ostler* side by path (`harness_host.load_harness_module`) with the harness
-    directory nowhere on `sys.path` — a top-level sibling import would make loading this
-    module for its constants raise `ModuleNotFoundError`. Inside a scenario the directory is
-    already on `PYTHONPATH`; the insert is what makes the two callers agree.
-    """
+    """Import a sibling harness module by name."""
     import importlib
 
     sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -3113,12 +2242,7 @@ def _harness_module(name: str) -> Any:
 
 
 def _secret_values() -> list[str]:
-    """Every declared secret this process can resolve, for redaction.
-
-    A secret whose variable is not set is skipped rather than raised on: the scenario that
-    needs it will raise on its own `qa.secret(...)` call, naming it, and a redaction pass
-    is the wrong place to discover a missing credential.
-    """
+    """Every declared secret this process can resolve, for redaction."""
     values: list[str] = []
     for declared in REGISTRY.secrets.values():
         try:
@@ -3129,14 +2253,7 @@ def _secret_values() -> list[str]:
 
 
 def _open_browser(qa: Qa) -> Any:
-    """Start Playwright for a browser target and hand the page to the scenario.
-
-    The import is here rather than at module scope because this file also runs under the
-    interpreter of a project that tests nothing but an HTTP API, and playwright is a heavy
-    dependency to demand of it. There is no fallback: a `playwright` target on an
-    interpreter without playwright is an error, and it says which interpreter and what to
-    install rather than degrading into a scenario that silently proves nothing.
-    """
+    """Start Playwright for a browser target and hand the page to the scenario."""
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     try:
         import ostler_qa_browser
@@ -3156,9 +2273,6 @@ def _open_browser(qa: Qa) -> Any:
         scenario_id=qa.scenario_id,
         clock=qa.offset_ms,
         emit=qa._recorder.emit,  # noqa: SLF001 - one module, split across two files
-        # The recorded traffic now carries headers and bodies, so the redaction the ledger
-        # path does on this side has to reach it too — a token posted to a login endpoint
-        # would otherwise land verbatim in an evidence file that outlives the run.
         secrets=_secret_values(),
     )
     qa.page = browser.open()
@@ -3170,15 +2284,7 @@ BROWSER_CLEAN_EXPECTED = "no uncaught page error and no response of status 500 o
 
 
 def _bind_browser_unclean(qa: Qa, problems: Sequence[str]) -> list[str]:
-    """Record each browser problem as a failing assertion bound to the scenario's covers.
-
-    The browser's clean-gate used to ride only on the scenario record's `error`, which
-    reddened the scenario while every assertion it had recorded stayed green — so a
-    scenario whose page threw was scored by the evidence map as *unproven* at worst and as
-    covered when its own checks passed. Binding the problem to `qa.covers` puts a failing
-    assertion under every obligation the scenario claimed, which is the only reading that
-    holds: the run observed the product under this scenario and the product broke.
-    """
+    """Record each browser problem as a failing assertion bound to the scenario's covers."""
     for problem in problems:
         qa._record(  # noqa: SLF001 - same module, the scenario-process side of the ledger
             "the browser stayed clean",
@@ -3215,9 +2321,6 @@ def _run(module_path: Path, scenario_id: str, context: dict[str, Any]) -> int:
     browser = None
     status, error = "passed", None
     try:
-        # Inside the try: a browser that will not start is a scenario that errored, with a
-        # traceback in the record. Outside it the process would die before emitting anything
-        # and the driver could only report that no result arrived.
         if target_decl.driver == "playwright":
             browser = _open_browser(qa)
         declared.func(qa)
@@ -3225,31 +2328,15 @@ def _run(module_path: Path, scenario_id: str, context: dict[str, Any]) -> int:
         status = "failed"
     except BaseException:  # noqa: BLE001 - the traceback is the scenario's verdict
         status, error = "errored", traceback.format_exc()
-        # Also to stdout, which ostler keeps as an artifact. The record carries the same
-        # text, but a person debugging a red scenario opens the output file — and finding it
-        # empty is what sends them to re-run the scenario by hand to see the exception.
         print(error, file=sys.stdout)
     if browser is not None:
-        # An uncaught page error or a 5xx is recorded as a failing assertion bound to the
-        # scenario's obligations before the browser closes, so the evidence map reads it as
-        # `contradicted` rather than as a harness complaint beside a green ledger.
         unclean = _bind_browser_unclean(qa, browser.unclean())
-        # Closing is what finalizes the trace and the video, so it happens before the
-        # verdict is emitted — but its complaints are appended to the verdict, never
-        # substituted for it.
         problems = [*unclean, *browser.close(failed=status != "passed" or bool(unclean))]
         if problems:
             status = "failed" if status == "passed" else status
             error = "; ".join([part for part in [error, *problems] if part])
     if qa.failures:
         status = "failed" if status == "passed" else status
-    # A scenario that claims coverage and recorded nothing has proved nothing. Reporting it
-    # as passed is exactly the vacuity this format exists to end, so it is a failure here
-    # rather than a reviewer's job four laps later.
-    # The same vacuity one layer out: on a UI target every assertion can hold while the page
-    # renders as a sliver against one margin. `validate` refuses a plan whose UI scenario
-    # never vets; this is the half a plan cannot lie its way past, since it counts the calls
-    # that actually ran.
     if status == "passed" and target_decl.driver in UI_DRIVER_NAMES and qa.vets == 0:
         status = "failed"
         error = (
@@ -3294,9 +2381,5 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
-    # `python -m ostler_qa` binds this file to `__main__`, so a plan's own
-    # `from ostler_qa import scenario` would import a *second* copy — with a second,
-    # empty REGISTRY, and a describe that reports no scenarios at all. Alias the name to
-    # the running module before any plan is imported.
     sys.modules.setdefault("ostler_qa", sys.modules["__main__"])
     raise SystemExit(main())

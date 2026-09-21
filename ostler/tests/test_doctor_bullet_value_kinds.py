@@ -1,10 +1,4 @@
-"""`doctor` holds a bullet whose key declares a `value_kind` to the parser its consumer runs.
-
-`BulletKey.required` checks presence only — a role, not a grammar. `value_kind` is the flag
-that says what the value may *say*, checked by calling the exact parser a consumer (the route
-reader, the reachability walk, the HTTP-verb table) already runs over it, never a second one
-invented for the declaration. See `ostler.values` and `_check_bullet_value_kinds` (doctor.py).
-"""
+"""`doctor` holds a bullet whose key declares a `value_kind` to the parser its consumer runs."""
 
 from __future__ import annotations
 
@@ -62,12 +56,7 @@ def test_a_valid_http_method_is_clean(repo: Path) -> None:
 
 
 def test_a_prose_entry_is_clean(repo: Path) -> None:
-    """`entry:` says by what means the screen is reached, and a means is not an address.
-
-    It was held to a route grammar once, which made this the only illegal spelling of the
-    one thing the key exists to say. `reach.prose_entry` reads exactly this value, so the
-    grammar and the consumer disagreed in writing about the same bullet.
-    """
+    """`entry:` says by what means the screen is reached, and a means is not an address."""
     write(repo / SCREEN_PATH, _screen_book(entry="no; it is reached from the dashboard"))
     found = [f for f in _findings(repo, "unparsable-bullet-value") if "#entry:" in f.ref]
     assert found == []
@@ -92,12 +81,7 @@ def test_a_parameterized_route_does_not_raise(repo: Path) -> None:
 
 
 def test_a_backtick_wrapped_route_is_clean(repo: Path) -> None:
-    """The corpus writes `route:` as a markdown code span (`` `/widgets` ``), same as `role:`.
-
-    `node.meta` hands the value back with the backticks still on it; the value kind must
-    unwrap it the same way `ostler.routes.screen_routes` and `bullet_value` already do, not
-    fall through to `why_unreadable` on a string that merely *starts* with a backtick.
-    """
+    """The corpus writes `route:` as a markdown code span (`` `/widgets` ``), same as `role:`."""
     write(repo / SCREEN_PATH, _screen_book(route="`/widgets`"))
     found = [f for f in _findings(repo, "unparsable-bullet-value") if "#route:" in f.ref]
     assert found == []
@@ -138,10 +122,6 @@ def test_a_malformed_server_entry_url_is_reported(repo: Path) -> None:
     assert "url" in found[0].message
 
 
-#: A surface whose runbook declares `driver: mobile` — `_check_bullet_value_kinds` asks
-#: `routes.route_grammar("mobile")` for its screens' `route:` bullets, which names
-#: `routes.is_screen_name_shaped` instead of the `is_path_shaped` grammar `web`/`http` (and
-#: any undeclared driver) get, per `routes.ROUTE_GRAMMAR`.
 MOBILE_SCREEN_PATH = "docs/features/mobile/gui/screens/widget-list.md"
 MOBILE_RUNBOOK_PATH = "docs/features/mobile/ops/qa-stack.md"
 
@@ -159,9 +139,7 @@ def _mobile_runbook() -> str:
 
 
 def test_a_mobile_surface_route_shaped_like_a_screen_name_is_clean(repo: Path) -> None:
-    """`_check_bullet_value_kinds` picks the mobile row of `routes.ROUTE_GRAMMAR`, not the
-    path grammar, on a `mobile`-driven surface: a bare navigator screen name — never a path,
-    since a navigator that routes on names has no path to state — is a clean `route:`."""
+    """`_check_bullet_value_kinds` picks the mobile row of `routes.ROUTE_GRAMMAR`, not the path grammar, on a `mobile`-driven surface: a bare navigator screen name — never a path, since a navigator that routes on names has no path to state — is a clean `route:`."""
     write(repo / MOBILE_RUNBOOK_PATH, _mobile_runbook())
     write(repo / MOBILE_SCREEN_PATH, _mobile_screen_book("WidgetList"))
     found = [f for f in _findings(repo, "unparsable-bullet-value") if "#route:" in f.ref]
@@ -169,10 +147,7 @@ def test_a_mobile_surface_route_shaped_like_a_screen_name_is_clean(repo: Path) -
 
 
 def test_a_mobile_surface_route_shaped_like_a_path_is_reported(repo: Path) -> None:
-    """The mirror of the test above, and the one that actually proves the point: were this
-    check merely skipping validation for `mobile` rather than switching grammars, a path-shaped
-    value would pass here too. It does not — the mobile row rejects it, same as the path
-    grammar would reject a bare screen name on a `web` surface."""
+    """The mirror of the test above, and the one that actually proves the point: were this check merely skipping validation for `mobile` rather than switching grammars, a path-shaped value would pass here too."""
     write(repo / MOBILE_RUNBOOK_PATH, _mobile_runbook())
     write(repo / MOBILE_SCREEN_PATH, _mobile_screen_book("/widget-list"))
     found = [f for f in _findings(repo, "unparsable-bullet-value") if "#route:" in f.ref]
@@ -181,23 +156,13 @@ def test_a_mobile_surface_route_shaped_like_a_path_is_reported(repo: Path) -> No
 
 
 def test_a_route_on_a_surface_with_no_driver_declared_keeps_the_path_grammar(repo: Path) -> None:
-    """Every surface but `mobile` — including one with no `driver:` declared at all, this
-    file's ordinary `SCREEN_PATH` fixture — keeps being checked by `is_path_shaped`, the
-    default row `routes.route_grammar` falls back to: a screen-name-shaped value fails it."""
+    """Every surface but `mobile` — including one with no `driver:` declared at all, this file's ordinary `SCREEN_PATH` fixture — keeps being checked by `is_path_shaped`, the default row `routes.route_grammar` falls back to: a screen-name-shaped value fails it."""
     write(repo / SCREEN_PATH, _screen_book(route="WidgetList"))
     found = [f for f in _findings(repo, "unparsable-bullet-value") if "#route:" in f.ref]
     assert len(found) == 1
     assert "not a path" in found[0].message
 
 
-#: A surface whose runbook declares `driver: cli` — `iac`/`cli` are the `routes.ROUTE_GRAMMAR`
-#: rows that state no driver *ever* addresses by route (`routes.is_never_routed`). No corpus
-#: book puts a `screen` on such a surface — neither driver owns one by design — but the doctor
-#: check must not special-case that away: were `_check_bullet_value_kinds` still reaching
-#: `route_grammar` only for `mobile`, a `cli` surface's stray `route:` would silently keep the
-#: path grammar instead of being held to the row the table already claims for it. This fixture
-#: forces the case the table has stated since `cli` was added to it, and proves the doctor
-#: actually reads that row rather than merely declaring it.
 CLI_SCREEN_PATH = "docs/features/tally/gui/screens/widget-list.md"
 CLI_RUNBOOK_PATH = "docs/features/tally/ops/qa-stack.md"
 
@@ -215,10 +180,7 @@ def _cli_runbook() -> str:
 
 
 def test_a_route_on_a_route_less_cli_surface_is_reported(repo: Path) -> None:
-    """`routes.ROUTE_GRAMMAR["cli"]` is `is_never_routed` — no value passes it. A `route:` that
-    would be perfectly clean on a `web` surface (a leading-`/` path) must still be reported
-    here, because it is the surface's driver, not the bullet's shape, that this row objects to.
-    """
+    """`routes.ROUTE_GRAMMAR["cli"]` is `is_never_routed` — no value passes it."""
     write(repo / CLI_RUNBOOK_PATH, _cli_runbook())
     write(repo / CLI_SCREEN_PATH, _cli_screen_book("/widget-list"))
     found = [f for f in _findings(repo, "unparsable-bullet-value") if "#route:" in f.ref]
@@ -226,10 +188,6 @@ def test_a_route_on_a_route_less_cli_surface_is_reported(repo: Path) -> None:
     assert "states no routes at all" in found[0].message
 
 
-#: `component`'s `selector:` is the same driver-decided-grammar shape as `screen`'s `route:`,
-#: but keyed off `placement.SELECTOR_GRAMMAR` instead of `routes.ROUTE_GRAMMAR`, and reported
-#: as `conflicting-selector-driver` rather than `unparsable-bullet-value` since a cross-swapped
-#: selector parses fine as a selector — it is just addressed to the wrong driver.
 WEB_SCREEN_PATH = "docs/features/acme/gui/screens/widget-list.md"
 WEB_RUNBOOK_PATH = "docs/features/acme/ops/qa-stack.md"
 
@@ -249,9 +207,7 @@ def _web_runbook() -> str:
 
 
 def test_a_web_surface_selector_shaped_like_a_scheme_address_is_reported(repo: Path) -> None:
-    """A browser drives this surface — it queries the DOM, not a `scheme=value` address, so a
-    `testID=...` selector copied over from a mobile screen is reported here even though it
-    parses fine as a selector on its own terms."""
+    """A browser drives this surface — it queries the DOM, not a `scheme=value` address, so a `testID=...` selector copied over from a mobile screen is reported here even though it parses fine as a selector on its own terms."""
     write(repo / WEB_RUNBOOK_PATH, _web_runbook())
     write(repo / WEB_SCREEN_PATH, _component_screen_book("testID=name-input"))
     found = [f for f in _findings(repo, "conflicting-selector-driver") if "#selector:" in f.ref]
@@ -267,8 +223,7 @@ def test_a_web_surface_selector_shaped_like_css_is_clean(repo: Path) -> None:
 
 
 def test_a_mobile_surface_selector_shaped_like_css_is_reported(repo: Path) -> None:
-    """The mirror case: Maestro resolves a `scheme=value` address or visible text, never CSS,
-    so a `#name` selector copied over from a web screen is reported here."""
+    """The mirror case: Maestro resolves a `scheme=value` address or visible text, never CSS, so a `#name` selector copied over from a web screen is reported here."""
     write(repo / MOBILE_RUNBOOK_PATH, _mobile_runbook())
     write(repo / MOBILE_SCREEN_PATH, _component_screen_book("#name"))
     found = [f for f in _findings(repo, "conflicting-selector-driver") if "#selector:" in f.ref]
@@ -284,9 +239,7 @@ def test_a_mobile_surface_selector_shaped_like_a_scheme_address_is_clean(repo: P
 
 
 def test_a_mobile_surface_selector_shaped_like_bare_text_is_clean(repo: Path) -> None:
-    """The asymmetry guard: `is_mobile_representable` only rejects unmistakable DOM syntax, so
-    a selector that is neither CSS nor a `scheme=value` address — plain visible text, which
-    Maestro can address directly — must not be flagged just for failing to look like CSS."""
+    """The asymmetry guard: `is_mobile_representable` only rejects unmistakable DOM syntax, so a selector that is neither CSS nor a `scheme=value` address — plain visible text, which Maestro can address directly — must not be flagged just for failing to look like CSS."""
     write(repo / MOBILE_RUNBOOK_PATH, _mobile_runbook())
     write(repo / MOBILE_SCREEN_PATH, _component_screen_book("Name field"))
     found = [f for f in _findings(repo, "conflicting-selector-driver") if "#selector:" in f.ref]
@@ -294,9 +247,7 @@ def test_a_mobile_surface_selector_shaped_like_bare_text_is_clean(repo: Path) ->
 
 
 def test_a_selector_on_a_never_rendering_cli_surface_is_reported(repo: Path) -> None:
-    """`placement.SELECTOR_GRAMMAR["cli"]` is `is_never_selected` — no value passes it, the same
-    as `routes.is_never_routed` for `route:`. No corpus book puts a `component` on a `cli`
-    surface by design, but the check must still hold the row rather than default past it."""
+    """`placement.SELECTOR_GRAMMAR["cli"]` is `is_never_selected` — no value passes it, the same as `routes.is_never_routed` for `route:`."""
     write(repo / CLI_RUNBOOK_PATH, _cli_runbook())
     write(repo / CLI_SCREEN_PATH, _component_screen_book("#name"))
     found = [f for f in _findings(repo, "conflicting-selector-driver") if "#selector:" in f.ref]
@@ -312,11 +263,7 @@ def _http_runbook() -> str:
 
 
 def test_a_component_on_an_http_driven_surface_reads_css_like_web(repo: Path) -> None:
-    """`placement.SELECTOR_GRAMMAR["http"]` reads the same `is_web_representable` grammar as
-    `web`, mirroring `routes.ROUTE_GRAMMAR`'s identical grouping — a surface can host an
-    `http`-driven API runbook alongside the `web`-rendered screens it serves, so a plain CSS
-    selector on such a screen's component must stay clean, and a `scheme=value` one copied over
-    from a mobile screen must still be reported."""
+    """`placement.SELECTOR_GRAMMAR["http"]` reads the same `is_web_representable` grammar as `web`, mirroring `routes.ROUTE_GRAMMAR`'s identical grouping — a surface can host an `http`-driven API runbook alongside the `web`-rendered screens it serves, so a plain CSS selector on such a screen's component must stay clean, and a `scheme=value` one copied over from a mobile screen must still be reported."""
     write(repo / WEB_RUNBOOK_PATH, _http_runbook())
     write(repo / WEB_SCREEN_PATH, _component_screen_book("#name"))
     found = [f for f in _findings(repo, "conflicting-selector-driver") if "#selector:" in f.ref]
@@ -332,10 +279,7 @@ def test_a_component_on_an_http_driven_surface_scheme_address_is_reported(repo: 
 
 
 def test_a_malformed_selector_still_trips_unaddressable_selector(repo: Path) -> None:
-    """`conflicting-selector-driver` is a second, driver-aware check beside the existing
-    driver-blind `unaddressable-selector` (`vet.placement.is_addressable`), not a replacement
-    for it — a CSS attribute-predicate selector still can never be matched against a real
-    census, on any driver, and must still be reported under its own code."""
+    """`conflicting-selector-driver` is a second, driver-aware check beside the existing driver-blind `unaddressable-selector` (`vet.placement.is_addressable`), not a replacement for it — a CSS attribute-predicate selector still can never be matched against a real census, on any driver, and must still be reported under its own code."""
     write(repo / WEB_RUNBOOK_PATH, _web_runbook())
     write(repo / WEB_SCREEN_PATH, _component_screen_book('[data-state="booked"]'))
     found = [f for f in _findings(repo, "unaddressable-selector") if "#selector:" in f.ref]

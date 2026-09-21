@@ -1,12 +1,4 @@
-"""The mockup gate, decided from seed tags rather than from a model turn.
-
-`check_mockup_needed` is the whole of the decision, so the table below is the contract:
-`frontend` plus `design: required` mandates a design turn, `design: preserve` skips one,
-an explicit non-frontend tag set skips one, and anything unknown fails closed.
-
-Nothing is stubbed — the graph is a real ostler repo built through `crud`, which is also
-what validates the layer vocabulary these tests write.
-"""
+"""The mockup gate, decided from seed tags rather than from a model turn."""
 from __future__ import annotations
 
 import logging
@@ -47,10 +39,7 @@ def _epic(
         ({"s1": ["backend"]}, False, ["backend"]),
         ({"s1": ["backend", "infra"]}, False, ["backend", "infra"]),
         ({"s1": ["frontend", "backend"]}, True, ["frontend", "backend"]),
-        # The union runs over every covered seed, so one frontend seed carries the story.
         ({"s1": ["backend"], "s2": ["frontend"]}, True, ["backend", "frontend"]),
-        # Unclassified is unknown, not "no frontend": an untagged seed costs a wasted design
-        # turn rather than silently dropping a screen nobody designed.
         ({"s1": []}, True, []),
         ({"s1": ["backend"], "s2": []}, True, ["backend"]),
     ],
@@ -71,7 +60,7 @@ def test_the_gate_is_the_union_of_the_covered_seeds_layers(
 def test_a_story_the_graph_cannot_resolve_still_gets_a_mockup(
     logger: logging.Logger, repo: Path
 ) -> None:
-    """Fail closed on absence. A missing story is not a backend story."""
+    """Fail closed on absence."""
     _epic(repo, {"s1": ["backend"]}, covers=["s1"])
 
     gate = check_mockup_needed(logger, story_slug="99-ghost", repo_dir=str(repo))

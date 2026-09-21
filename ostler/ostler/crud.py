@@ -1,9 +1,4 @@
-"""`ostler` mutation — create/delete epics, stories, features; add/remove seeds; set status.
-
-All structural mutation goes through here so id allocation (``ids.py``) and the canonical markdown
-layout (``SPEC.md`` / ``registry.py``) stay correct. Writers apply immediately and return a
-:class:`Result`; the CLI prints its message.
-"""
+"""`ostler` mutation — create/delete epics, stories, features; add/remove seeds; set status."""
 
 from __future__ import annotations
 
@@ -14,12 +9,9 @@ import yaml
 
 from ostler import ids, markdown, model, path as path_mod, registry, select, todo as todo_mod
 from ostler.model import Graph
-from ostler.result import Result   # re-exported: `from ostler.crud import Result` still works
+from ostler.result import Result
 
 
-# ---------------------------------------------------------------------------
-# markdown section helpers (operate on a MarkdownDoc's body, preserving frontmatter)
-# ---------------------------------------------------------------------------
 def _insert_subsection(doc: markdown.MarkdownDoc, heading: str, block: list[str]) -> None:
     """Insert a ``### …`` *block* under the ``## heading`` section, creating it if absent."""
     body_lines = doc.body.split("\n")
@@ -51,12 +43,7 @@ def _remove_subsection(doc: markdown.MarkdownDoc, heading: str, sub_title: str) 
 
 
 def _dependency_lines(depends: list[str]) -> list[str]:
-    """The body of a story's ``## Dependencies`` section: a bullet each, or the bare ``(none)``.
-
-    The empty tokens are dropped rather than written: `--depends '(none)'` is how a caller says
-    "no blockers", and rendering it as `- Blocked by: (none)` would state a blocker named
-    `(none)` — the exact bullet the section must never carry.
-    """
+    """The body of a story's ``## Dependencies`` section: a bullet each, or the bare ``(none)``."""
     slugs = [d.strip() for d in depends if d.strip().lower() not in registry.EMPTY_TOKENS]
     if not slugs:
         return [registry.STORY_DEPS_NONE]
@@ -64,20 +51,14 @@ def _dependency_lines(depends: list[str]) -> list[str]:
 
 
 def _write_section_body(doc: markdown.MarkdownDoc, heading: str, body: list[str]) -> bool:
-    """Rewrite one ``## heading`` body in a story doc; False when it has no such heading.
-
-    Replaces the section's whole body rather than editing bullets in place: the list is
-    ostler's to state, and a stale ``- Blocked by:`` left behind by a shorter new list would be
-    read as a real blocker. Refusing when the heading is absent is what keeps a malformed story
-    from silently acquiring a second section of the same name.
-    """
+    """Rewrite one ``## heading`` body in a story doc; False when it has no such heading."""
     section = doc.find_section(heading)
     if section is None:
         return False
     lines = doc.body.split("\n")
     end = section.line_end
     while end > section.line_start + 1 and not lines[end - 1].strip():
-        end -= 1                                  # keep the blank line before the next heading
+        end -= 1
     lines[section.line_start + 1:end] = ["", *body]
     doc.body = "\n".join(lines)
     doc._sections = None
@@ -90,16 +71,10 @@ def _write_dependencies(doc: markdown.MarkdownDoc, depends: list[str]) -> bool:
 
 
 def ensure_dependencies(doc: markdown.MarkdownDoc, depends: list[str]) -> None:
-    """State *depends* in a story doc's ``## Dependencies``, adding the section when it has none.
-
-    The tolerant form of :func:`_write_dependencies`, for a migration meeting story.md files
-    written before the section existed. `update_story` deliberately does *not* use it: there, a
-    missing heading means the story is malformed and the operator should hear about it.
-    """
+    """State *depends* in a story doc's ``## Dependencies``, adding the section when it has none."""
     if _write_dependencies(doc, depends):
         return
     lines = doc.body.split("\n")
-    # Directly under the H1 — the blockers are the first thing a reader of the story needs.
     after_title = next((i + 1 for i, ln in enumerate(lines) if ln.startswith("# ")), 0)
     lines[after_title:after_title] = [
         "", f"## {registry.STORY_DEPS_HEADING}", "", *_dependency_lines(depends),
@@ -117,23 +92,13 @@ def _fixture_lines(fixtures: list[str]) -> list[str]:
 
 
 def ensure_fixtures(doc: markdown.MarkdownDoc, fixtures: list[str]) -> None:
-    """State *fixtures* in a story doc's ``## Fixtures``, adding the section when it has none.
-
-    The tolerant form, for a migration meeting story.md files written before the section
-    existed. Those stories arranged state anyway — in a block of Python copied into each plan
-    that needed it — so the migration writes ``(none)`` and the first `doctor` run over a repo
-    with QA plans is what says which names belong there instead.
-    """
+    """State *fixtures* in a story doc's ``## Fixtures``, adding the section when it has none."""
     if _write_section_body(doc, registry.STORY_FIXTURES_HEADING, _fixture_lines(fixtures)):
         return
     lines = doc.body.split("\n")
     deps = doc.find_section(registry.STORY_DEPS_HEADING)
-    # Directly under Dependencies when there is one, so the two machine-stated lists stay
-    # together; under the H1 otherwise, which is where Dependencies itself would have gone.
     at = deps.line_end if deps is not None else next(
         (i + 1 for i, ln in enumerate(lines) if ln.startswith("# ")), 0)
-    # A section's end already carries whatever blank lines separated it from the next heading;
-    # back over them so the insertion owns its own spacing and cannot double it.
     while at > 0 and not lines[at - 1].strip():
         at -= 1
     lines[at:at] = [
@@ -147,9 +112,6 @@ def dump_frontmatter(fm: dict) -> str:
     return yaml.safe_dump(fm, sort_keys=False, allow_unicode=True)
 
 
-# ---------------------------------------------------------------------------
-# milestones
-# ---------------------------------------------------------------------------
 def create_milestone(
     graph: Graph,
     name: str,
@@ -217,19 +179,8 @@ def _set_milestone_epics(milestone: model.Milestone, epics: list[str]) -> None:
     milestone.path.write_text(doc.render(), encoding="utf-8")
 
 
-# ---------------------------------------------------------------------------
-# epics
-# ---------------------------------------------------------------------------
 def create_epic(graph: Graph, name: str, title: str, prefix: str | None = None) -> Result:
-    """Create ``<epics>/NNNN-<slug>/epic.md`` — the epic's directory carries its order.
-
-    The number is minted here and nowhere else, one past the highest already on disk. It
-    makes a listing of the epics root read in the order the epics were written, which is
-    the order they are meant to be worked; it is not an identity, so every command that
-    takes an epic name also accepts the bare slug (:func:`path.epic_dir`). A caller that
-    numbered the name itself keeps its number. The name that ended up on disk comes back as
-    ``entity_name``, since it is the one the caller must write files under.
-    """
+    """Create ``<epics>/NNNN-<slug>/epic.md`` — the epic's directory carries its order."""
     eroot = graph.doc_roots["epics"]
     existing = path_mod.epic_dir(graph, name)
     if (existing / "epic.md").exists():
@@ -285,9 +236,6 @@ def delete_epic(graph: Graph, name: str) -> Result:
     )
 
 
-# ---------------------------------------------------------------------------
-# stories
-# ---------------------------------------------------------------------------
 def _story_block(slug: str, title: str, sid: str, covers: list[str]) -> list[str]:
     return [
         f"### {slug}",
@@ -299,13 +247,7 @@ def _story_block(slug: str, title: str, sid: str, covers: list[str]) -> list[str
 
 
 def _story_body(title: str, depends: list[str]) -> str:
-    """The story.md skeleton, generated from ``registry.STORY_SECTIONS``.
-
-    Scaffolding from the same table the checks read is the point: a hardcoded skeleton drifts
-    into satisfying its own validators, which is how a repo full of empty stories reported
-    itself authored. Sections carrying a machine-written field get their `stub`; the `filled`
-    ones are left deliberately blank so they read as unwritten until an author writes them.
-    """
+    """The story.md skeleton, generated from ``registry.STORY_SECTIONS``."""
     lines = [f"# Story: {title}", ""]
     for spec in registry.STORY_SECTIONS:
         lines += [f"## {spec.heading}", ""]
@@ -325,10 +267,6 @@ def create_story(graph: Graph, epic_name: str, slug: str, title: str,
         return Result(False, f"no epic '{epic_name}'")
     story_md = edir / "stories" / slug / "story.md"
     if story_md.exists():
-        # Idempotent on purpose: the author workflow's bounded rework loops re-run
-        # `ostler create story`, and `split-stories.md` documents this as a no-op. Keep the
-        # existing story body and its already-allocated id untouched — re-allocating would
-        # break every reference to it.
         return Result(True, f"story '{slug}' already exists in epic '{epic_name}'", [story_md])
 
     sid = ids.allocate(graph, prefix)
@@ -337,12 +275,6 @@ def create_story(graph: Graph, epic_name: str, slug: str, title: str,
                        _story_block(slug, title, sid, covers or []))
     epic_md.write_text(doc.render(), encoding="utf-8")
 
-    # The allocated id belongs in the story's own frontmatter, not only in the epic's
-    # `## Stories` block. A story.md is read on its own constantly — by the coder workflow
-    # picking up work, by `ostler trace`, by a human opening the file — and without the id
-    # there is no way to name the story from the file itself; you have to go back to the
-    # parent epic and match on slug. Ids are ostler-minted and repo-prefixed (`TODO-15`), so
-    # carrying it here is what makes the story addressable in the graph.
     fm = {
         "type": "story",
         "id": sid,
@@ -365,18 +297,7 @@ def update_story(
     depends: list[str],
     fixtures: list[str] | None = None,
 ) -> Result:
-    """Replace a story's graph metadata without touching its id, body, status, or extra fields.
-
-    Two files, because the two edges live where each is readable: `covers` names seeds defined in
-    the epic and is rewritten there, while the blockers are rewritten in the story's own
-    ``## Dependencies`` section. Both are written or the call fails — a half-applied update would
-    leave the DAG stating one thing in one file and another in the other.
-
-    *fixtures* is optional and rewritten tolerantly, because unlike the other two it is not known
-    when a story is created: which arrangements a story needs is settled by its QA plan, which is
-    written much later. ``None`` leaves the section alone; a list — including the empty one —
-    states it, adding the section to a story.md written before the contract required it.
-    """
+    """Replace a story's graph metadata without touching its id, body, status, or extra fields."""
     found = graph.find_story(slug)
     if found is None:
         return Result(False, f"no story '{slug}'")
@@ -428,25 +349,7 @@ def update_story(
 
 
 def scaffold_missing_sections(graph: Graph, slug: str) -> Result:
-    """Give one story every ``registry.STORY_SECTIONS`` heading it lacks, in the table's order.
-
-    **This is not a migration.** There is no version to move between and nothing is stamped:
-    the operation asks the document which required headings it is missing and adds those, which
-    is a question with the same answer for a story written last year, a story a rework just
-    emptied, and a story scaffolded five seconds ago. Running it is idempotent, and running it
-    on a current story is a no-op — so an authoring lane can call it unconditionally on entry
-    instead of branching on whether this story is "old".
-
-    Placement is derived from the contract rather than from a fixed offset. Each missing
-    heading is inserted immediately before the first section that follows it in
-    ``STORY_SECTIONS``, so what this produces and what an author writing the story from the
-    scaffold produces are the same document — the property
-    :func:`ostler.model.section_order_problems` then holds every story to.
-
-    Existing frontmatter and body text are untouched: a section that is present but empty is
-    left alone, because "unwritten" is a thing the author fixes and the scaffolder must not
-    paper over.
-    """
+    """Give one story every ``registry.STORY_SECTIONS`` heading it lacks, in the table's order."""
     found = graph.find_story(slug)
     if found is None:
         return Result(False, f"no story '{slug}' with a story.md")
@@ -475,12 +378,7 @@ def scaffold_missing_sections(graph: Graph, slug: str) -> Result:
 
 
 def _insert_at(doc: markdown.MarkdownDoc, position: int) -> int:
-    """The body line a ``STORY_SECTIONS[position]`` heading belongs on, in this document.
-
-    The first later contract section that the document actually has, else the end: a story
-    missing both of the last two prose sections gets them in table order above
-    ``## Implementation Status`` without either one needing to know the other is coming.
-    """
+    """The body line a ``STORY_SECTIONS[position]`` heading belongs on, in this document."""
     for spec in registry.STORY_SECTIONS[position + 1:]:
         section = doc.find_section(spec.heading)
         if section is not None:
@@ -513,9 +411,6 @@ def set_status(graph: Graph, slug: str, status: str) -> Result:
     fm = doc.frontmatter or {"type": "story", "slug": slug}
     fm["status"] = status
     doc.raw_frontmatter = dump_frontmatter(fm)
-    # Rewrite the body's `- **Status**:` bullet in place, located through the parsed tree rather
-    # than by matching the rendered text: only the real field is touched, and its indentation,
-    # list marker and emphasis survive verbatim.
     bullet = model.status_bullet(doc)
     if bullet is not None:
         lines = doc.body.split("\n")
@@ -528,11 +423,7 @@ def set_status(graph: Graph, slug: str, status: str) -> Result:
 
 
 def set_conflict(graph: Graph, slug: str, conflict: str) -> Result:
-    """Record, or clear, a story's acceptance-criteria conflict (frontmatter ``conflict:``).
-
-    Written by the adjudicator's ``story`` verdict, cleared by the operator who rewrote the
-    criteria. An empty *conflict* removes the key; doctor's ``story-conflict`` follows it.
-    """
+    """Record, or clear, a story's acceptance-criteria conflict (frontmatter ``conflict:``)."""
     found = graph.find_story(slug)
     if found is None or found[1].story_md is None:
         return Result(False, f"no story '{slug}' with a story.md")
@@ -553,27 +444,7 @@ def set_conflict(graph: Graph, slug: str, conflict: str) -> Result:
 
 def unblock(graph: Graph, *, story: str = "", epic: str = "",
             status: str = registry.DEFAULT_STORY_STATUS) -> Result:
-    """Clear the give-up stamp off a story, an epic's stories, or the whole graph.
-
-    The coder workflow no longer stamps these — a give-up ends the run instead — but every
-    story stamped by a run that predates that still carries one, and `Blocked` is still
-    written by hand. The reason this is a command rather than an operator editing
-    frontmatter: the stamp is a *sentence* (``QA
-    give-up after 4 attempts — needs manual review: docs/specs/11-copy-link/qa.md``), it is
-    written into two places in every story.md (the frontmatter field and the body bullet),
-    and a run gives up on several stories at once — six in one observed epic, all of which an
-    operator then had to find and retype identically. `set_status` can do one of them if you
-    already know the slug and the exact replacement; this knows which stories are stamped.
-
-    Only a story :func:`select.is_blocked` reads as blocked is rewritten. A done story is
-    never touched — the vocabulary check would let ``QA passed`` through no more than it lets
-    ``Not started`` through, and silently resetting finished work is the one failure this
-    must not have. Which makes it idempotent: unblocking twice writes nothing the second
-    time and still succeeds, so a script can run it unconditionally.
-
-    Scope is exactly one of `story` / `epic` / neither (the whole graph); the CLI is what
-    refuses an accidental sweep, by making the graph-wide form ask for ``--all``.
-    """
+    """Clear the give-up stamp off a story, an epic's stories, or the whole graph."""
     if story and epic:
         return Result(False, "pass a story or an epic, not both")
 
@@ -608,28 +479,16 @@ def unblock(graph: Graph, *, story: str = "", epic: str = "",
 
     message = f"unblocked {len(cleared)} → {status}: {', '.join(cleared)}" if cleared else ""
     if failures:
-        # Partial success is still a write, so the paths already rewritten are reported —
-        # a caller that commits `res.paths` must not lose them to an unrelated story's
-        # missing story.md.
         message = (message + "; " if message else "") + f"could not unblock {', '.join(failures)}"
         return Result(False, message, paths)
     return Result(True, message, paths)
 
 
-# ---------------------------------------------------------------------------
-# seeds (live in epic.md `## Seeds`)
-# ---------------------------------------------------------------------------
 def _tags(value: object) -> list[str]:
-    """A list-valued seed meta argument as normalized tags, from a list or a comma string.
-
-    Callers reach `add_seed` from both the CLI (`--layer` repeated → a list) and Python
-    (a comma-joined string), and the seed block stores one spelling, so normalize here.
-    """
+    """A list-valued seed meta argument as normalized tags, from a list or a comma string."""
     parts = value if isinstance(value, (list, tuple)) else [value]
     tags: list[str] = []
     for part in parts:
-        # Split inside each part too: `--layer frontend,backend` is the spelling an agent
-        # reaches for even when the flag is repeatable, and it should mean the same thing.
         for piece in str(part or "").split(","):
             tag = piece.strip().lower()
             if tag and tag not in tags:
@@ -645,9 +504,6 @@ def add_seed(graph: Graph, epic_name: str, seed_id: str, status: str = registry.
         return Result(False, f"no epic '{epic_name}'")
     if status not in registry.SEED_STATUSES:
         return Result(False, f"invalid status '{status}' (one of {', '.join(registry.SEED_STATUSES)})")
-    # `layers` is a closed vocabulary because the author's mockup gate branches on it: an
-    # unrecognized token would read as "not frontend" and silently skip a design turn, which
-    # is exactly the class of failure the gate exists to prevent. Reject it at write time.
     bad = [t for t in _tags((meta or {}).get("layers")) if t not in registry.SEED_LAYERS]
     if bad:
         return Result(False, f"invalid layer{'s' if len(bad) > 1 else ''} "
@@ -658,9 +514,6 @@ def add_seed(graph: Graph, epic_name: str, seed_id: str, status: str = registry.
                              f"(one of {', '.join(registry.SEED_DESIGNS)})")
     doc = markdown.split(epic_md.read_text(encoding="utf-8"))
     sec = doc.find_section(registry.SEEDS_HEADING)
-    # Update-or-create: `write-epic.md` documents re-running this as updating the seed rather
-    # than duplicating it, and the author's bounded rework loops depend on that. The block is
-    # fully regenerated from the arguments, so an update is a replace.
     existed = sec is not None and any(c.title.strip() == seed_id for c in sec.children)
     if existed:
         _remove_subsection(doc, registry.SEEDS_HEADING, seed_id)
@@ -695,9 +548,6 @@ def remove_seed(graph: Graph, epic_name: str, seed_id: str) -> Result:
     return Result(True, f"removed seed '{seed_id}' from epic '{epic_name}'", [epic_md])
 
 
-# ---------------------------------------------------------------------------
-# features
-# ---------------------------------------------------------------------------
 def create_feature(graph: Graph, slug: str, title: str, area: str = "",
                    route: str = "", prefix: str | None = None) -> Result:
     froot = graph.doc_roots["features"]
@@ -716,20 +566,7 @@ def create_feature(graph: Graph, slug: str, title: str, area: str = "",
 
 
 def create_spec(specs_root: Path, slug: str, doc: str, title: str = "") -> Result:
-    """Create — or retro-stamp — a coder process artifact at ``docs/specs/<slug>/<doc>``.
-
-    Idempotent on purpose: the coder writes these docs as free-form markdown, so this has to be
-    callable *after* the write as well as before it. An existing file keeps its body and gains only
-    the ``type`` it was missing; an already-typed file is left completely alone. No id is allocated
-    — a spec is a process artifact, not a graph node (``registry`` requires only ``type``).
-
-    Takes the specs *root*, not a ``Graph``, and it is the only mutation here that does. It reads
-    no node, resolves no id and consults no other document — the graph was only ever a way to
-    spell one configured directory. Asking for it cost a full parse of every markdown file in the
-    book: twenty-four seconds on a real one, paid once per file by the coder's ``stamp_specs``,
-    which runs after every writer phase. ``ostler.path.specs_root_in`` derives the same directory
-    from config alone.
-    """
+    """Create — or retro-stamp — a coder process artifact at ``docs/specs/<slug>/<doc>``."""
     name = doc if doc.endswith(".md") else f"{doc}.md"
     if "/" in slug or "/" in doc:
         return Result(False, f"spec slug/doc must be single path segments, got '{slug}/{doc}'")
@@ -743,7 +580,7 @@ def create_spec(specs_root: Path, slug: str, doc: str, title: str = "") -> Resul
         declared = registry.type_of(fm)
         if declared:
             return Result(True, f"spec '{slug}/{name}' already typed ({declared})", [path])
-        fm.pop("type", None)   # a present-but-blank `type:` must not shadow the stamp
+        fm.pop("type", None)
         path.write_text(f"---\n{dump_frontmatter({'type': type_value, **fm})}---\n{mdoc.body}",
                         encoding="utf-8")
         return Result(True, f"stamped spec '{slug}/{name}' ({type_value})", [path])

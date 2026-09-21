@@ -1,10 +1,4 @@
-"""farrier scaffold — YAML scaffold definitions rendered on demand.
-
-Scaffolds are no longer install-time file copies: `scaffolds/*.yml` in the
-library define parameterized file trees, `agents.yml → scaffolds:` lists the
-ids a repo may use, and `farrier scaffold <id> --param k=v` seeds the files
-(never overwriting existing ones).
-"""
+"""farrier scaffold — YAML scaffold definitions rendered on demand."""
 
 from pathlib import Path
 
@@ -211,8 +205,8 @@ def test_scaffold_empty_dirs_null_and_empty_mapping(tmp_path: Path, capsys) -> N
             "  params:\n"
             "    dir: api\n"
             "  tree:\n"
-            "    $dir/logs:\n"          # null value
-            "    $dir/cache: {}\n"      # empty mapping
+            "    $dir/logs:\n"
+            "    $dir/cache: {}\n"
             "    $dir/main.go: |\n"
             "      package main\n"
         ),
@@ -228,7 +222,6 @@ def test_scaffold_empty_dirs_null_and_empty_mapping(tmp_path: Path, capsys) -> N
     assert "created: api/logs/" in out
     assert "created: api/cache/" in out
 
-    # Re-run: existing directories are kept and reported, never an error.
     run(["scaffold", "svc", "--repo", str(repo), "--library", str(library)])
     assert "exists (kept): api/logs/" in capsys.readouterr().out
 

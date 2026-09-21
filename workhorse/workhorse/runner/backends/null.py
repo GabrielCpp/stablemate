@@ -1,19 +1,4 @@
-"""The absence of an agent CLI, as an adapter rather than as ``None``.
-
-A run may legitimately have no agent in it: a dry run, or a test driving script
-nodes only. That used to be spelled ``RunConfig.backend = None``, which made every
-holder of a backend nullable in principle and non-nullable in practice —
-``AgentRunner.backend`` is typed ``AgentBackend`` and every ladder path calls
-``self.backend.name`` unguarded, so an agentless run that reached an agent node
-died on an ``AttributeError`` rather than on a sentence.
-
-So absence is an implementation of the port instead. Nothing branches on it: the
-field's type is the port, the ladder drives it like any other CLI, and the one
-place that knows what "no CLI" means is here.
-
-It is deliberately NOT in ``registry``: this is not a CLI an operator can select
-with ``AGENT_CLI``, it is what a run has when nobody selected one.
-"""
+"""The absence of an agent CLI, as an adapter rather than as ``None``."""
 
 from __future__ import annotations
 
@@ -28,14 +13,7 @@ if TYPE_CHECKING:
 
 
 class NullBackend(AgentBackend):
-    """Fails every turn with an actionable message, in the ladder's own vocabulary.
-
-    The failure is non-transient and non-overflow, which is the ladder's existing
-    "non-recoverable CLI failure" branch: it aborts the run cleanly at the first
-    agent node instead of reframing three times and then defaulting the node's
-    outputs. That is the right reading — no amount of rephrasing supplies a CLI,
-    and defaulting past an agent node would advance a run on fabricated outputs.
-    """
+    """Fails every turn with an actionable message, in the ladder's own vocabulary."""
 
     name = "none"
     default_model = None

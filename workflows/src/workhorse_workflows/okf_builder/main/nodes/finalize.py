@@ -1,20 +1,4 @@
-"""The scoped git commits that record the OKF book: one per turn, and the completed book.
-
-**Every commit here skips the target repo's hooks.** A repo's `pre-commit` and
-`commit-msg` hooks are written for whoever changes its code. This workflow commits only
-the book it alone writes, and has gated that book with its own doctor. The hook that
-blocked it was a generated-file drift check over the whole working tree, so an unrelated
-hand edit anywhere in the checkout stopped every book commit (`kit.git.commit_paths`).
-
-**Why a commit per turn.** A run used to leave the book uncommitted until it was clean,
-often for days. `HEAD` then predated every edit the run had made, and a repair turn that
-restored a file from `HEAD` to undo its own change erased the run's earlier repairs with
-it. `commit_turn` runs before and after every turn, so `HEAD` is where the turn started
-and `git diff -- <book>` is exactly what the turn wrote. The pre-turn call records
-whatever deterministic nodes wrote to the book since the last turn. The post-turn call
-records the turn under the subject the turn wrote, because the turn is the only
-participant that knows what it changed.
-"""
+"""The scoped git commits that record the OKF book: one per turn, and the completed book."""
 from __future__ import annotations
 
 import json
@@ -38,20 +22,13 @@ from workhorse_workflows.okf_builder.shared.schemas import Committed, Stamped
 _SUBJECT = "docs: update the OKF book"
 _SUBJECT_MAX = 72
 
-#: Seconds between attempts when another process holds the index lock.
 _LOCK_BACKOFF_S = (1.0, 2.0, 4.0, 8.0)
 
 _HUNK_RE = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@")
 
 
 def _edited_ranges(repo: Path, pre_turn_sha: str, pathspec: str) -> dict[str, list[tuple[int, int]]]:
-    """Per-file line ranges (1-based, end-exclusive) this turn's diff actually touched.
-
-    Parsed from `git diff --unified=0`'s hunk headers, in the same coordinate system as
-    `stamp.node_line_range` — end-exclusive — so a range can be intersected against a
-    node's own extent directly. A "0-line" hunk (a pure deletion, no `+` side) still marks
-    the one-line boundary it fell on, so text removed from a node still counts as edited.
-    """
+    """Per-file line ranges (1-based, end-exclusive) this turn's diff actually touched."""
     ranges: dict[str, list[tuple[int, int]]] = {}
     current: str | None = None
     for line in diff_text(repo, "--unified=0", pre_turn_sha, "--", pathspec).splitlines():
@@ -97,15 +74,7 @@ def commit_turn(
     story: str = "",
     lock_retries: int = len(_LOCK_BACKOFF_S),
 ) -> Committed:
-    """Commit whatever changed in the book, under `subject`; never fail the run.
-
-    A refused commit leaves the edits in the tree, and the next call's scope is the same
-    book, so they land with the next commit. The hard stop belongs to `commit_book`, the
-    commit that must land. Several runs in one checkout share one index, so a held
-    `index.lock` is expected and waited out. That shared index is the property this retry
-    handles rather than removes: a run dispatched with `--worktree` has its own index and
-    never waits here.
-    """
+    """Commit whatever changed in the book, under `subject`; never fail the run."""
     root = Path(repo_root).resolve()
     pathspec = _book_pathspec(root, features_root)
     message = _message(story, subject)
@@ -138,31 +107,7 @@ def stamp_turn(
     item_context: str = "",
     doc_status: str = "",
 ) -> Stamped:
-    """Stamp exactly the `@digest` targets this turn earned, gated by the turn's own errors.
-
-    Two sources of stampable targets, both scoped to what *this* turn actually resolved.
-    A `fix:stale-citation` row restamps only the `(node, file)` pairs it was assigned —
-    and only when the turn's own `doc_status` says it finished (a `documented` verdict, or
-    unstated; any other verdict means the turn never claimed to have re-read the citation).
-    A `partial` or `skipped` turn never re-read the citation, so marking it fresh would
-    hide that gap; the row simply comes back on the next join. New-citation stamping below
-    stays unconditional even on such a turn:
-    it stamps only targets `doctor` already found `unstamped-citation` (never an error),
-    on nodes the turn's own diff shows it wrote — doctor gates that claim on its own.
-    Any node the turn's own diff actually touched also gets its still-unstamped targets,
-    read off `doctor`'s `unstamped-citation` findings. "Touched" is node-level, not
-    page-wide: the book-pathspec diff (`HEAD` at turn start vs. the working tree now, the
-    same boundary `commit_turn` relies on) is parsed into per-file edited line ranges,
-    which are intersected against each candidate node's own line extent
-    (`stamp.node_line_range`) — a page with two sections earns a stamp only on the one the
-    turn actually edited, not its untouched sibling. Either way a node carrying an error
-    finding of its own — from this same `doctor` pass, scoped to just these pages — is
-    withheld entirely: a stamp asserts the citation was re-read and still holds, and a
-    book `doctor` already disagrees with cannot make that claim.
-
-    Called from `flow.py` right before the post-turn `commit_turn`, so a stamp lands in
-    the same book commit as the edits it is about.
-    """
+    """Stamp exactly the `@digest` targets this turn earned, gated by the turn's own errors."""
     repo = Path(repo_root).resolve()
     pathspec = _book_pathspec(repo, features_root)
     with index_mod.session(repo):
@@ -221,11 +166,6 @@ def stamp_turn(
             return any(lo < r_hi and r_lo < hi for r_lo, r_hi in ranges)
 
         def _restamp_blocked(node_id: str, file_target: str) -> bool:
-            # A `fix:stale-citation` row exists *because* doctor reported exactly this
-            # stale-citation on this (node, file) pair — that is the one error the
-            # restamp itself is meant to clear, not evidence the restamp is unsafe. Any
-            # other error on the node (a different stale citation, a missing symbol) still
-            # blocks it.
             if _page_of(node_id) in blocked_pages:
                 return True
             for finding in report.findings:

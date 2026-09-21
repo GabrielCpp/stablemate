@@ -1,29 +1,4 @@
-"""The gap classes — every way a warm index can be wrong, and the report that must not change.
-
-A cache is only worth having if a stale answer is impossible, so each way the world moves between
-two runs gets a test of its own, and each asks the same question: *does the run against the warm
-index produce exactly the report the cold run produces?*
-
-The five gap classes, one test each:
-
-* a **deleted** file — its entry is still on disk, and the links into it must still dangle;
-* a **renamed** file — the content is unchanged, so a content-only key would serve the old answer
-  under the new path (and keep the old path alive);
-* an edited **config** file — the same, by a different door;
-* a **tool version** bump — the global input with no on-disk home, moved at
-  `index.epoch_inputs`, which is the seam the store documents for exactly this.
-
-For the first two the index must still be *used* (a file that did not change is still served warm);
-for the last three it must be wholly abandoned — hits zero, misses non-zero — because what moved
-was an input to every entry.
-
-`doctor --verify-index` is the same contract as one command CI can run, and it is asserted here
-against a populated, an empty and a partially stale index. It passes trivially today; what these
-add is that it passes *while the index is actually being used*.
-
-Cached and uncached reports are collected in separate processes, so nothing in-process can carry
-an answer between them and make a disagreement invisible.
-"""
+"""The gap classes — every way a warm index can be wrong, and the report that must not change."""
 
 from __future__ import annotations
 
@@ -59,20 +34,13 @@ def assert_agree(cached: dict, uncached: dict) -> None:
 
 @pytest.fixture
 def warm(ui_book: Path, tmp_path: Path, index_home: Path) -> Path:
-    """A populated index directory for `ui_book`, written by a process that has since exited.
-
-    Deliberately does not assert that anything was written: every test here goes on to assert
-    what the index was used *for*, and a red belongs in the test rather than in a fixture.
-    """
+    """A populated index directory for `ui_book`, written by a process that has since exited."""
     directory = tmp_path / "index"
     done = ostler_process(ui_book, "doctor", "--json", "--index-dir", str(directory))
     assert done.returncode in (0, 1), done.stderr or done.stdout
     return directory
 
 
-# ---------------------------------------------------------------------------
-# (5) the gap classes
-# ---------------------------------------------------------------------------
 def test_a_deleted_file_still_dangles_every_link_into_it(ui_book: Path, warm: Path):
     (ui_book / "docs" / "features" / "area" / "rec.md").unlink()
 
@@ -80,8 +48,6 @@ def test_a_deleted_file_still_dangles_every_link_into_it(ui_book: Path, warm: Pa
     uncached = doctor_report(ui_book, "--no-index")
 
     dangling = [f for f in cached["findings"] if f["code"] == "dangling-link"]
-    # The ref carries the citing location: the same broken href is cited from two files
-    # in a real book, and the fix is in a different one each time.
     assert {f["ref"] for f in dangling} == {
         "docs/features/ui/dash.md:12:../area/rec.md",
         "docs/features/ui/dash.md:12:../area/rec.md#rec"}
@@ -122,11 +88,7 @@ def test_an_edited_config_file_abandons_every_entry(ui_book: Path, tmp_path: Pat
 
 def test_a_tool_version_bump_abandons_every_entry(ui_book: Path, warm: Path,
                                                   monkeypatch: pytest.MonkeyPatch, capsys):
-    """The one global input with no file behind it — moved at the seam the store documents.
-
-    In-process, because a monkeypatch does not reach a subprocess; the uncached side stays in a
-    process of its own, so the comparison is still against a genuinely cold run.
-    """
+    """The one global input with no file behind it — moved at the seam the store documents."""
     real = index.epoch_inputs
     monkeypatch.setattr(index, "epoch_inputs",
                         lambda root: {**real(root), "version": "99.0.0"})
@@ -139,9 +101,6 @@ def test_a_tool_version_bump_abandons_every_entry(ui_book: Path, warm: Path,
     assert cached["index"]["hits"] == 0 and cached["index"]["misses"] > 0
 
 
-# ---------------------------------------------------------------------------
-# (4) verify mode, over the three states an index can be in
-# ---------------------------------------------------------------------------
 def test_verify_index_agrees_against_a_populated_index(ui_book: Path, warm: Path, capsys):
     code = main(["-C", str(ui_book), "doctor", "--verify-index", "--index-dir", str(warm)])
     printed = capsys.readouterr().out
@@ -165,19 +124,7 @@ def test_verify_index_agrees_against_an_empty_index(ui_book: Path, tmp_path: Pat
 def test_verify_index_catches_a_store_that_round_trips_a_document_wrongly(
     ui_book: Path, warm: Path, monkeypatch: pytest.MonkeyPatch, capsys
 ):
-    """The mode's whole purpose, and for the document products it was inert until it wasn't.
-
-    `--verify-index` runs the indexed and the uncached path in one process, so the two halves
-    only disagree if the uncached one recomputes what the indexed one read. The document memo
-    used to serve a parsed document across both stores — on the argument that these products
-    are a pure function of the bytes and no store can disagree about them, which is precisely
-    the assumption this mode exists to test. A corrupt entry was therefore never read by the
-    half meant to catch it, and the gate reported "agree" and exited 0.
-
-    Corrupting the read side of the round trip is the smallest faithful stand-in for a store
-    that damages an entry: only a *hit* goes through `_doc_from_products`, so the uncached half
-    is untouched and the disagreement is exactly the one a real corruption would produce.
-    """
+    """The mode's whole purpose, and for the document products it was inert until it wasn't."""
     original = model._doc_from_products
 
     def truncating(payload):

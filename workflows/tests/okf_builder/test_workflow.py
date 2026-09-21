@@ -1,46 +1,4 @@
-"""End-to-end drives of the okf-builder workflow (`okf_builder/workflow.py`).
-
-Nothing is stubbed except the agent turn. `prepare`, `select_item`, `record`,
-`checkpoint_book`, `inventory_source` and `compute_coverage` all run for real against the
-`booked` / `dirty` fixtures — so a drive here exercises ostler's real `fmt` and `doctor`,
-the real source walk, and the real coverage join. The verdicts under test are arithmetic
-and ostler's, not a script's.
-
-The agent seam is patched where the engine reads it
-(`RunEnv.agent_runner`) and dispatches on the prompt's stem,
-the same key the engine derives its node id from. Unlike author's stub this one mostly
-does *not* write artifacts: the book is the fixture, and the point of most drives here is
-that the deterministic gates rule on a book the agent did not touch. The one handler that
-does write is the fixup repair, because a fixup loop that never converges is a different
-test from one that does — and both are below.
-
-What the port could get wrong, and what is therefore under test here:
-
-* the run's one entry decision, read off the book rather than passed in: an empty book is
-  filled top-down from the code's surfaces (`unbooked`), a populated one is reconciled to
-  HEAD from the checkpoint (`booked`) — which is what the retired `recheck_only` used to
-  ask for by hand.
-* the drain: seed, pick, investigate, record, re-pick, and the dry exit into the
-  convergence gate — with `rnd`/`rescan`/`stall`/`signature` riding through five states
-  as parameters where the YAML kept them in one run-global `vars` namespace. The bug that
-  namespace caused (`round` and `rescan_round` sharing a counter) cannot be reproduced
-  here because it cannot be *written* here, but the round numbering it corrupted is
-  asserted directly.
-* the two arms of `checkpoint`: a dirty book queues one repair item per offending node and
-  doctor code and re-enters the drain; a repaired book converges to the coverage re-scan.
-* `MAX_TARGET_ATTEMPTS`: a repair that never lands blocks its own row and parks the run on
-  an operator gate naming it, rather than being re-drilled forever or quietly waived.
-* the `max_items` valve, which is an **operator gate** and not a quiet success: a partial
-  book must not read as a finished one, and a budget stop is not a defect, so the run
-  blocks on an `Await` and a refuel answer grants another allowance.
-* `handoff` into `live-audit`, whose own `discover_compiled_targets` gates it — a service
-  with no documented screen surface has nothing to audit, and the run's terminal `reports`
-  come back empty.
-* resume, which is why the checkpoint lands before the agent turn: a run killed while
-  investigating re-investigates that item and no earlier one.
-* `labels()`, which reads `self.output(select_item)` and must not crash before the first
-  pick.
-"""
+"""End-to-end drives of the okf-builder workflow (`okf_builder/workflow.py`)."""
 from __future__ import annotations
 
 import json
@@ -76,20 +34,10 @@ from workhorse_workflows.okf_builder.workflow import OkfBuilder
 SERVICE = "acme"
 BOOK = f"docs/features/{SERVICE}"
 REFUND = f"{BOOK}/concepts/refund.md"
-#: The repair item `dirty` produces, minus its round prefix: `<path>#<node>#<code>`, which is
-#: what makes two findings of different codes on one node two separately-promptable turns.
-#: `missing-code-symbol` refs a *source* symbol rather than a book node, so its item groups by
-#: the document — the only place the repair turn could open.
 REPAIR = f"{REFUND}#{REFUND}#missing-code-symbol"
 
-#: What the scripted enumeration hands back by default: one surface, whose investigation
-#: this book does not actually need — the fixture is already complete, which is what makes
-#: the coverage verdict below a statement about the join rather than about the stub.
 SURFACE = {"kind": "surface", "target": "acme/service.py", "context": "the billing entry"}
 
-#: What an investigation of that surface writes into an empty book. A first fill converges
-#: only if the turn actually documents something, so the drives against `unbooked` hand the
-#: scripted turn the one doc the `booked` fixture ships with.
 CHARGE_DOC = """---
 type: concept
 slug: charge
@@ -104,21 +52,10 @@ Charging.
 FILLS = {"acme/service.py": {f"{BOOK}/concepts/charge.md": CHARGE_DOC}}
 
 
-# ------------------------------------------------------------------ the scripted agent
 
 
 class _Agent:
-    """A scripted stand-in for the workflow's four agent turns.
-
-    It dispatches on the prompt's filename — the same key the engine derives its node id
-    from, and the same key the registry's dry-run stubs use.
-
-    The knobs are the graph's branches: `surfaces` is what the enumeration discovers,
-    `spawn` lets one item's investigation open deeper ones, `repair` makes the
-    investigation of a fixup item actually delete the offending doc (the convergent
-    fixup loop; without it the loop stalls, which is the other test), and `explode` raises
-    instead of investigating — a run killed mid-turn.
-    """
+    """A scripted stand-in for the workflow's four agent turns."""
 
     def __init__(
         self,
@@ -138,24 +75,12 @@ class _Agent:
         self.repo = repo
         self.surfaces = [dict(SURFACE)] if surfaces is None else surfaces
         self.spawn = dict(spawn or {})
-        #: Per-target `{repo-relative path: text}` the investigation writes — how a first
-        #: fill of an empty book gets a book to measure.
         self.writes = dict(writes or {})
         self.repair = repair
-        #: What a *repair* turn reports back. `documented` is the scripted default; a
-        #: `partial`/`skipped` is the turn saying the finding cannot be cleared from the
-        #: book, which is what spends the target's attempt allowance.
         self.doc_status = doc_status
         self.note = note
-        #: What the *adjudication* turn says about a row at the attempt limit — which side
-        #: of the book/code correspondence is wrong. `story` is the default because it is
-        #: the one verdict that routes straight to the operator gate, which is the
-        #: behaviour the gate tests were written against.
         self.verdict = verdict
-        #: A substring of a repair item's context that makes the turn land — how a test
-        #: says "the repair turn can fix it once it is told this".
         self.lands_on = lands_on
-        #: The subject a turn asks its book edits to be committed under.
         self.commit_message = commit_message
         self.explode = set(explode or ())
         self.calls: list[str] = []
@@ -165,7 +90,6 @@ class _Agent:
         self.add_dirs: list[list[str]] = []
         self.powers: list[str | None] = []
 
-    # -- the seam ---------------------------------------------------------
 
     def __call__(self, node: Any, ctx: Any, *args: Any, **kwargs: Any) -> Any:
         stem = Path(node.prompt).stem
@@ -187,7 +111,6 @@ class _Agent:
     def powers_for(self, stem: str) -> list[str | None]:
         return [p for s, p in zip(self.calls, self.powers, strict=True) if s == stem]
 
-    # -- the turns --------------------------------------------------------
 
     def _enumerate_surfaces(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
         return {"discovered": self.surfaces}
@@ -204,9 +127,6 @@ class _Agent:
         if self.lands_on and self.lands_on in str(data.get("item_context", "")):
             self.repair, self.doc_status = True, "documented"
         if self.repair and str(data["item_kind"]).startswith("fix:"):
-            # A repair target is `<path>#<node>#<code>` — no round prefix, because the round
-            # is not part of a finding's identity. The repair the doctor finding calls for is
-            # "stop citing a symbol that does not exist", and deleting the doc does it.
             doc = self.repo / target.split("#")[0]
             doc.unlink(missing_ok=True)
         status = self.doc_status if str(data["item_kind"]).startswith("fix:") else "documented"
@@ -217,8 +137,6 @@ class _Agent:
             "commit_message": self.commit_message,
         }
 
-    #: A `fix:` item renders `main/prompts/repair.md` instead, so the dispatch above sees a
-    #: different stem for the same node. Same turn, same seam — the prompt is what differs.
     _repair = _investigate
 
     def _adjudicate(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
@@ -230,16 +148,9 @@ class _Agent:
         }
 
     def _recheck_coverage(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
-        # The recheck prompt is the seeder now (okf-digest-scoped-build §5): a fresh
-        # book lands here because every unit is in the join's `missing` list, and the
-        # prompt's classifier turns that list into the surface/runbook items the drain
-        # documents. The test stands in for the classifier by handing the worklist the
-        # items `surfaces` describes — the same items the old `enumerate-surfaces`
-        # turn used to mint.
         return {"needs_journeys": False, "discovered": list(self.surfaces)}
 
 
-# ------------------------------------------------------------------------- the harness
 
 
 def _env(tmp: Path, *, run_dir: Path | None = None) -> RunEnv:
@@ -272,7 +183,6 @@ def _run_worklist_path(env: RunEnv) -> Path:
     return Path(checkpoint.ctx["worklist_path"])
 
 
-# ---------------------------------------------------------------------- repair power
 
 
 def test_repair_power_keeps_a_single_mechanical_first_attempt_low() -> None:
@@ -312,40 +222,24 @@ def test_investigation_power_promotes_only_a_retried_item() -> None:
     assert investigation_power({"attempts": 1}) == "medium"
 
 
-# ---------------------------------------------------------------------------- the drain
 
 
 def test_an_empty_book_is_filled_top_down_from_the_code_s_surfaces(
     unbooked: Path, tmp_path: Path, read_json: Callable[[Path], Any]
 ) -> None:
-    """The first fill: seed one surface, document it, converge, hand off.
-
-    There is no book to reconcile against, so the entry is the join — and every artifact
-    below is the YAML's artifact: the worklist with its item closed, the source inventory
-    walked from `acme/`, and the coverage join written into the book the turn just wrote.
-    The verdict is arithmetic — one module and one symbol, both cited by the doc the
-    investigation produced.
-
-    The recheck agent is the seeder now (okf-digest-scoped-build §5): the empty book hits
-    `checkpoint` (clean), `rescan_coverage` (missing = everything), and lands at
-    `recheck`, which classifies the missing list into the surface item the drain
-    documents. The pre-plan ``enumerate-surfaces`` agent turn is gone.
-    """
+    """The first fill: seed one surface, document it, converge, hand off."""
     agent = _Agent(unbooked, writes=FILLS)
     env = _env(tmp_path)
     result = _drive(env, agent)
 
-    # The live audit runs via `self.call(...)`, not an agent turn, so it leaves no mark here.
     assert agent.counts() == {"recheck-coverage": 1, "investigate": 1}, agent.counts()
     assert agent.powers == ["medium", "low"]
 
-    # The drain closed what it opened.
     items = _worklist(unbooked)
     assert [(i["kind"], i["target"], i["status"]) for i in items] == [
         ("surface", "acme/service.py", "done")
     ], items
 
-    # The coverage join ran for real and is complete: 2 units, 2 covered.
     coverage = read_json(unbooked / BOOK / "coverage.json")
     assert coverage["total"] == 2, coverage
     assert coverage["covered"] == 2, coverage
@@ -355,31 +249,18 @@ def test_an_empty_book_is_filled_top_down_from_the_code_s_surfaces(
         "acme/service.py::charge",
     }, inventory
 
-    # `recheck` ran exactly once — as the seeder (okf-digest-scoped-build §5). After the
-    # drain closes the seeded surface, the next rescan finds coverage_complete and the
-    # loop converges without a second adjudication.
     assert agent.counts()["recheck-coverage"] == 1, agent.counts()
 
-    # The run's value is the live audit's: this service documents no screen, so there is
-    # nothing to audit and the terminal report list comes back empty.
     assert result["reports"] == [], result
 
 
 def test_a_book_that_exists_is_reconciled_to_head_rather_than_re_enumerated(
     booked: Path, tmp_path: Path, read_json: Callable[[Path], Any]
 ) -> None:
-    """The other entry, and the reason `recheck_only` is retired.
-
-    A populated book has a checkpoint and a coverage join that between them name every
-    unit it owes work on, so re-enumerating its surfaces buys nothing and costs a turn per
-    run. This book owes nothing: doctor is green, the join is 2/2, and the run converges
-    without spending a single agent turn — which is exactly what an operator who forgot to
-    pass `recheck_only` did *not* get before.
-    """
+    """The other entry, and the reason `recheck_only` is retired."""
     agent = _Agent(booked)
     result = _drive(_env(tmp_path), agent)
 
-    # The live audit runs via `self.call(...)`, not an agent turn: no turn is spent at all.
     assert agent.counts() == {}, agent.counts()
     assert _worklist(booked) == [], _worklist(booked)
     coverage = read_json(booked / BOOK / "coverage.json")
@@ -400,13 +281,7 @@ def test_a_completed_book_is_committed_with_optional_story_provenance(
     story: str,
     expected_message: str,
 ) -> None:
-    """The successful tail commits the book, and nothing beside that book.
-
-    A bulk reconciliation has no story to cite. A narrowed run may still carry the
-    retiring story input, and that provenance belongs in git's parsed trailer rather
-    than in the subject. In either mode, another process's work outside this service's
-    book must remain untouched.
-    """
+    """The successful tail commits the book, and nothing beside that book."""
     unrelated = booked / "notes.txt"
     unrelated.write_text("another process is working here\n", encoding="utf-8")
 
@@ -444,19 +319,11 @@ def test_a_completed_book_is_committed_with_optional_story_provenance(
 def test_the_build_scratch_ignores_itself_so_a_commit_all_cannot_eat_it(
     booked: Path, tmp_path: Path
 ) -> None:
-    """`.agents/okf-build/` carries its own `.gitignore`, from the first run onward.
-
-    What is left in it is run state — worklists, the source inventory — and it lives inside
-    the docs repo. A coder run in the same checkout commits with `commit_all` (`git add
-    -A`), so an unignored scratch is swept into a story commit and then lives in every
-    clone's history, where only a rewrite removes it. That is not hypothetical; it is why
-    this test exists.
-    """
+    """`.agents/okf-build/` carries its own `.gitignore`, from the first run onward."""
     _drive(_env(tmp_path), _Agent(booked))
 
     assert (booked / paths.BUILD_DIRNAME / ".gitignore").read_text() == "*\n"
 
-    # The property, not the file: git offers nothing here to `add -A`.
     stray = booked / paths.BUILD_DIRNAME / "acme.worklist.json.source.json"
     stray.write_text("{}")
     status = subprocess.run(
@@ -466,11 +333,7 @@ def test_the_build_scratch_ignores_itself_so_a_commit_all_cannot_eat_it(
 
 
 def test_an_investigation_opens_the_items_it_reveals(unbooked: Path, tmp_path: Path) -> None:
-    """The drain is a crawl, not a list: `record_item` writes back what the turn found.
-
-    That write is its own state precisely so a crash mid-turn re-investigates rather than
-    closing an item nothing documented — which is what the resume test below drives.
-    """
+    """The drain is a crawl, not a list: `record_item` writes back what the turn found."""
     agent = _Agent(
         unbooked,
         writes=FILLS,
@@ -490,12 +353,7 @@ def test_an_investigation_opens_the_items_it_reveals(unbooked: Path, tmp_path: P
 def test_a_source_root_that_is_not_a_directory_fails_the_run(
     booked: Path, tmp_path: Path
 ) -> None:
-    """`prepare` carries its failure as data and `start` is where it becomes a failed run.
-
-    A build whose instrument is missing must not be indistinguishable from a build that
-    is done, so this is `WorkflowFailed` rather than an early `Done` — and the message is
-    `prepare`'s own, which the YAML's `type: fail` node could not carry.
-    """
+    """`prepare` carries its failure as data and `start` is where it becomes a failed run."""
     agent = _Agent(booked)
     with pytest.raises(WorkflowFailed, match="is not a directory"):
         _drive(_env(tmp_path), agent, source_path="nope")
@@ -503,37 +361,22 @@ def test_a_source_root_that_is_not_a_directory_fails_the_run(
     assert agent.counts() == {}, agent.counts()
 
 
-# ----------------------------------------------------------------------- the fixup loop
 
 
 def test_a_dirty_doctor_queues_one_repair_per_node_and_code_and_reconverges(
     dirty: Path, tmp_path: Path
 ) -> None:
-    """A book that exists re-enters at the checkpoint, which is the repair mode's shape.
-
-    Round 1 finds the ungrounded `code:` citation, queues one `fix:missing-code-symbol` item
-    targeting the offending node, and sends it back through the drain. The scripted repair
-    lands, round 2 is clean, and the coverage re-scan closes the run. The target carries no
-    round: a finding's identity is where it is and what it is, so a second round's item is
-    the *same* row `record` reopens rather than a new one its dedupe cannot recognise.
-    """
+    """A book that exists re-enters at the checkpoint, which is the repair mode's shape."""
     agent = _Agent(dirty, repair=True)
     result = _drive(_env(tmp_path), agent)
 
-    # Discovery was skipped entirely, and the one turn rendered the *repair* prompt —
-    # `investigate.md` no longer carries repair instructions, so the stem is the assertion.
     assert agent.counts() == {"repair": 1}, agent.counts()
     assert agent.powers_for("repair") == ["medium"]
     assert agent.targets == [REPAIR], agent.targets
     args = agent.args_for("repair")[0]
     assert args["item_kind"] == "fix:missing-code-symbol", args
-    # The bare code rides separately, because that is what the repair prompt dispatches on.
     assert args["item_code"] == "missing-code-symbol", args
-    # The finding's own JSON travels to the turn as its context, not just the file name.
     assert "missing-code-symbol" in args["item_context"]
-    # The turn is handed the book as it found it, outside the tree it edits: the repair
-    # deleted the doc, and the baseline still holds it — the "before" HEAD cannot be while
-    # the run's earlier repairs sit uncommitted.
     baseline = Path(args["baseline"])
     assert not baseline.is_relative_to(dirty), baseline
     assert (baseline / Path(REFUND).relative_to(BOOK)).is_file(), sorted(baseline.rglob("*"))
@@ -545,12 +388,7 @@ def test_a_dirty_doctor_queues_one_repair_per_node_and_code_and_reconverges(
 def test_a_turn_commits_its_book_edits_under_its_own_subject_past_a_rejecting_hook(
     dirty: Path, tmp_path: Path
 ) -> None:
-    """Each turn lands as its own commit, so `HEAD` is where the next turn starts.
-
-    The subject is the one the turn wrote, because only the turn knows what it changed, and
-    the target repo's hooks are skipped: they are written for its coders, and one rejecting
-    every commit must not keep the book uncommitted.
-    """
+    """Each turn lands as its own commit, so `HEAD` is where the next turn starts."""
     hook = dirty / ".git/hooks/pre-commit"
     hook.write_text("#!/bin/sh\nexit 1\n")
     hook.chmod(0o755)
@@ -563,7 +401,6 @@ def test_a_turn_commits_its_book_edits_under_its_own_subject_past_a_rejecting_ho
     subjects = [c.summary for c in repo.iter_commits(f"{before}..HEAD")]
     assert subject in subjects, subjects
     turn = next(c for c in repo.iter_commits(f"{before}..HEAD") if c.summary == subject)
-    # The turn's commit is its edit alone: the parent still holds what the repair deleted.
     assert f"{BOOK}/concepts/refund.md" not in repo.git.ls_tree("-r", "--name-only", turn.hexsha)
     assert f"{BOOK}/concepts/refund.md" in repo.git.ls_tree("-r", "--name-only", turn.parents[0].hexsha)
 
@@ -571,21 +408,7 @@ def test_a_turn_commits_its_book_edits_under_its_own_subject_past_a_rejecting_ho
 def test_a_repair_that_never_lands_blocks_the_target_and_parks_on_the_gate(
     dirty: Path, tmp_path: Path
 ) -> None:
-    """The per-target bound: one row, spent, then a human — not a fourth identical turn.
-
-    The finding is the same one every round, so it is the same worklist row every round:
-    `_repair_items` mints an identity that does not carry the round, and `record` reopens
-    the row it already holds instead of appending a twin. Three reopens exhaust the
-    allowance, the fourth blocks the row, and with nothing else pending the run `Await`s.
-
-    That is the whole termination argument. The old shape asserted the defect — a fresh
-    `r{n}:` row per round, unrecognisable as a repeat — and the run only ever stopped
-    because the *set-level* stall counter happened to hold on a one-finding book. On a real
-    book any other finding moving anywhere reset it, which is how a run reached round
-    nineteen re-drilling sixteen findings it was not fixing.
-
-    Blocking is not waiving: doctor still reports the finding, and the gate says so.
-    """
+    """The per-target bound: one row, spent, then a human — not a fourth identical turn."""
     agent = _Agent(dirty, doc_status="partial", note="the symbol is gone from source")
     seen: list[str] = []
     with (
@@ -594,56 +417,41 @@ def test_a_repair_that_never_lands_blocks_the_target_and_parks_on_the_gate(
     ):
         _drive(_env(tmp_path), agent)
 
-    # One repair turn per attempt, and every one against the same target — no round prefix,
-    # so `record`'s `(kind, target)` dedupe sees the repeat it is there to see.
     assert agent.counts()["repair"] == MAX_TARGET_ATTEMPTS, agent.counts()
     assert agent.targets == [REPAIR] * MAX_TARGET_ATTEMPTS, agent.targets
 
-    # One row, blocked — not three rows, and not a row still being handed out.
     rows = [i for i in _worklist(dirty) if str(i["kind"]).startswith("fix:")]
     assert [(i["target"], i["status"], i["attempts"]) for i in rows] == [
         (REPAIR, "blocked", MAX_TARGET_ATTEMPTS)
     ], rows
 
-    # The gate names the target and quotes the turn's own sentence, so the operator reads
-    # what could not be repaired rather than only that something could not be.
     assert REPAIR in seen[0], seen[0]
     assert "the symbol is gone from source" in seen[0], seen[0]
-    # And it says plainly that nothing was excused on the way here.
     assert "not excused" in seen[0], seen[0]
 
-    # Nothing was repaired, which is the honest outcome the book still shows.
     assert (dirty / REFUND).exists()
 
 
 def test_answering_the_blocked_gate_returns_the_target_with_a_fresh_allowance(
     dirty: Path, tmp_path: Path
 ) -> None:
-    """The gate is a block, not an end — answering resumes the drain.
-
-    `workflows/AGENTS.md` puts no cap on how many times a run may bounce off an operator
-    gate, so `retry_blocked` clears `attempts` rather than nudging it: an operator who says
-    "try again" is buying another full allowance, not one more turn. Here the operator's
-    answer is followed by a repair that finally lands, and the run converges.
-    """
+    """The gate is a block, not an end — answering resumes the drain."""
     agent = _Agent(dirty, doc_status="partial", note="cannot reach it from the book")
     seen: list[str] = []
 
     def answer_then_repair(path: Path, **kwargs: Any) -> None:
         seen.append(path.read_text(encoding="utf-8"))
-        agent.repair = True  # whatever the operator did, the next turn can land it
+        agent.repair = True
         agent.doc_status = "documented"
         path.write_text("STATUS: ANSWERED\n\nFixed by hand.\n", encoding="utf-8")
 
     with patch.object(pyflow_driver, "wait_for_answer", answer_then_repair):
         result = _drive(_env(tmp_path), agent)
 
-    # Three spent attempts, the gate, then one more turn that repaired it.
     assert agent.counts()["repair"] == MAX_TARGET_ATTEMPTS + 1, agent.counts()
     assert not (dirty / REFUND).exists()
     assert result["reports"] == [], result
 
-    # The row was returned to the drain and closed, with its counter reset on the way.
     rows = [i for i in _worklist(dirty) if str(i["kind"]).startswith("fix:")]
     assert [(i["status"], i["attempts"]) for i in rows] == [("done", 0)], rows
 
@@ -658,15 +466,7 @@ def charge(amount):
 
 
 def _stamp_charge(repo: Path) -> None:
-    """Stamp `charge`'s citation with the digest of the file it currently cites.
-
-    `booked`'s bullet carries no `@digest` — deliberately, since most drives have nothing
-    to do with staleness (`conftest.CONCEPT`). A bullet with no digest can only ever be
-    `unstamped-citation`; it is never `stale-citation`, no matter how far the cited file
-    later drifts. A test that means to exercise drift on an already-covered citation has to
-    stamp it first, the same way a real turn's finalize step would — see
-    `test_regrounding.py`'s `_stamp`.
-    """
+    """Stamp `charge`'s citation with the digest of the file it currently cites."""
     result = stamp_mod.stamp_page(
         repo, paths.features_root(repo, SERVICE), f"{BOOK}/concepts/charge.md",
     )
@@ -693,11 +493,8 @@ def _park_stale_citation(repo: Path) -> None:
 def test_a_blocked_regrounding_row_with_nothing_uncovered_parks_on_the_gate(
     booked: Path, tmp_path: Path
 ) -> None:
-    """A requeue that lands on a blocked row is dropped by `record`, on purpose — so the
-    state around it must not hand the drain an empty worklist and let the re-scan lap the
-    same join until its round cap. With no uncovered unit left to adjudicate, the blocked
-    row is the operator's, now, and the gate names it."""
-    _drive(_env(tmp_path), _Agent(booked))  # converges and claims the watermark
+    """A requeue that lands on a blocked row is dropped by `record`, on purpose — so the state around it must not hand the drain an empty worklist and let the re-scan lap the same join until its round cap."""
+    _drive(_env(tmp_path), _Agent(booked))
     _stamp_charge(booked)
     (booked / "acme/service.py").write_text(DRIFTED_SOURCE, encoding="utf-8")
     _park_stale_citation(booked)
@@ -720,8 +517,7 @@ def test_a_blocked_regrounding_row_with_nothing_uncovered_parks_on_the_gate(
 def test_a_blocked_regrounding_row_does_not_starve_the_uncovered_units(
     booked: Path, tmp_path: Path
 ) -> None:
-    """The other arm: an uncovered unit still gets its adjudication turn while the
-    re-grounding row stays blocked, instead of the recheck being skipped every round."""
+    """The other arm: an uncovered unit still gets its adjudication turn while the re-grounding row stays blocked, instead of the recheck being skipped every round."""
     _drive(_env(tmp_path), _Agent(booked))
     (booked / "acme/service.py").write_text(
         DRIFTED_SOURCE + "\n\ndef refund(amount):\n    return -amount\n", encoding="utf-8"
@@ -740,21 +536,14 @@ def test_a_blocked_regrounding_row_does_not_starve_the_uncovered_units(
 
 
 def test_the_rescan_cap_gate_answers_through_the_unblock() -> None:
-    """The cap gate's answer must go through `retry_blocked`: a fresh round allowance on a
-    worklist whose rows are still blocked re-scans the same book six more times."""
+    """The cap gate's answer must go through `retry_blocked`: a fresh round allowance on a worklist whose rows are still blocked re-scans the same book six more times."""
     (checkpoint,) = [s for s in state_graph(OkfBuilder).states if s.name == "checkpoint"]
     (edge,) = [e for e in checkpoint.edges if "re-scan cap hit" in (e.reason or "")]
     assert edge.target == "retry_blocked", edge
 
 
 class _Parked(Exception):
-    """Raised by the patched `wait_for_answer` to stop a run right at its `Await`.
-
-    A budget stop always escalates now, and never terminates on its own — so a test that
-    only wants to prove the gate was reached, without scripting an answer and the drain
-    that follows it, stops the run here. Nothing in `drive()` catches around the
-    `wait_for_answer` call, so this propagates cleanly to `pytest.raises`.
-    """
+    """Raised by the patched `wait_for_answer` to stop a run right at its `Await`."""
 
 
 def _parked_at(seen: list[str]) -> Callable[..., None]:
@@ -780,14 +569,7 @@ def _answers(seen: list[str]) -> Callable[..., None]:
 def test_the_item_ceiling_blocks_on_an_operator_gate_not_a_finished_book(
     unbooked: Path, tmp_path: Path
 ) -> None:
-    """`max_items` is a safety valve for a quota-limited run, and reaching it *blocks*.
-
-    A budget stop is not a defect, so the run parks on an `Await` instead of dying —
-    `ended_at: null` abandonment was the normal ending of a real backfill campaign, and
-    this is the shape that retires it. The partial book is canonicalized on the way out —
-    the checkpoint runs — so what is left behind is well-formed, and the pending item
-    survives in the worklist the gate's eventual answer resumes into.
-    """
+    """`max_items` is a safety valve for a quota-limited run, and reaching it *blocks*."""
     agent = _Agent(
         unbooked,
         writes=FILLS,
@@ -803,7 +585,6 @@ def test_the_item_ceiling_blocks_on_an_operator_gate_not_a_finished_book(
     ):
         _drive(_env(tmp_path), agent, max_items=1)
 
-    # The gate says what stopped and what an answer buys — the operator reads this cold.
     assert len(seen) == 1, seen
     assert "1-item ceiling with 1 item(s) still pending" in seen[0], seen[0]
     assert "fresh allowance" in seen[0], seen[0]
@@ -817,13 +598,7 @@ def test_the_item_ceiling_blocks_on_an_operator_gate_not_a_finished_book(
 def test_a_refuel_answer_grants_another_allowance_and_the_drain_finishes(
     unbooked: Path, tmp_path: Path
 ) -> None:
-    """The far side of the gate: `refuel` multiplies the ceiling instead of resetting it.
-
-    `done_baseline` is frozen at setup, so a fresh allowance cannot come from a new
-    baseline mid-run — it comes from `max_items * (refuels + 1)`. One answered gate must
-    therefore finish this two-item drain under `max_items=1`, and the run must converge
-    exactly as an unbounded one would.
-    """
+    """The far side of the gate: `refuel` multiplies the ceiling instead of resetting it."""
     agent = _Agent(
         unbooked,
         writes=FILLS,
@@ -836,28 +611,18 @@ def test_a_refuel_answer_grants_another_allowance_and_the_drain_finishes(
     with patch.object(pyflow_driver, "wait_for_answer", _answers(seen)):
         result = _drive(_env(tmp_path), agent, max_items=1)
 
-    # Blocked exactly once: item one spent the first allowance, the answer bought the
-    # second, and the drain went dry before a third was needed.
     assert len(seen) == 1, seen
     assert agent.counts()["investigate"] == 2, agent.counts()
     assert all(i["status"] == "done" for i in _worklist(unbooked)), _worklist(unbooked)
     assert result["reports"] == [], result
 
 
-# -------------------------------------------------------------------------------- resume
 
 
 def test_a_run_killed_mid_investigation_resumes_on_that_item_alone(
     unbooked: Path, tmp_path: Path
 ) -> None:
-    """The drain's state is the worklist, not the machine.
-
-    So the checkpoint written *before* the agent turn is enough: the resumed run
-    re-investigates the item that was in flight and no earlier one, because the earlier
-    one is already `done` on disk and `select_item` hands out the `active` one first. This
-    is the YAML's resume behavior — its `refuel` node re-entered the same way —
-    reproduced without a gas tank.
-    """
+    """The drain's state is the worklist, not the machine."""
     first = _Agent(
         unbooked,
         writes=FILLS,
@@ -891,24 +656,16 @@ def test_a_run_killed_mid_investigation_resumes_on_that_item_alone(
         resume,
     )
 
-    # Nothing upstream re-ran: not the enumeration, not the first item. The live audit
-    # runs `self.call(...)`, not an agent turn, so it leaves no mark on `second.counts()`.
     assert second.counts() == {"investigate": 1}, second.counts()
     assert second.targets == ["acme/other.py"], second.targets
     assert all(i["status"] == "done" for i in _worklist(unbooked)), _worklist(unbooked)
     assert result["reports"] == [], result
 
 
-# -------------------------------------------------------------------------------- labels
 
 
 def test_the_labels_name_the_service_and_the_item(unbooked: Path, tmp_path: Path) -> None:
-    """The YAML's three `labels:` templates, as one method reading `self.output(...)`.
-
-    Before the first pick there is no output to read, and that is the normal state of a
-    run's first transitions — the guard against `NodeNotRunError` is what makes those
-    service-only transitions rather than crashed ones.
-    """
+    """The YAML's three `labels:` templates, as one method reading `self.output(...)`."""
     seen: list[dict[str, str]] = []
     real_rebase = pyflow_activity.ActivityLog.rebase
 
@@ -923,18 +680,11 @@ def test_the_labels_name_the_service_and_the_item(unbooked: Path, tmp_path: Path
     stamped = [labels for labels in seen if labels.get("work_id")]
     assert stamped, seen
     assert {labels["work_id"] for labels in stamped} == {"acme/service.py"}, stamped
-    # `progress` is the worklist's own count, so a dashboard can read it without knowing
-    # anything about OKF.
     assert any(labels.get("progress") for labels in stamped), stamped
-    # Unprefixed, unlike the YAML engine's `wf.work_id`.
     assert not any(k.startswith("wf.") for labels in seen for k in labels), seen
 
 
-# ------------------------------------------------------------------- adjudication
 
-#: A screen whose two buttons share a role and an accessible name — the collision class
-#: of finding. Doctor raises `ambiguous-locator` on each node, and the book alone cannot
-#: say whether the book or the source is the side that is wrong.
 COLLIDING_SCREEN = """\
 ---
 type: screen
@@ -962,12 +712,6 @@ title: Dashboard
 - name: Save
 - verify: created(subject="draft")
 """
-#: Both selectors are `tag.class` on purpose. `ambiguous-locator` is the defect this fixture
-#: states, and a bare `.btn-save` states a *second*, independent one: `vet`'s render scan mints
-#: `#id` and `tag.class` and nothing else, so a class with no tag in front of it is a selector
-#: the census can never resolve — `unaddressable-selector`, one per node, on top of the
-#: collision. A fixture for one defect that carries two makes every count downstream of it
-#: (adjudications, seeds, repair laps) a count of something else.
 DASHBOARD = f"{BOOK}/screens/dashboard.md"
 
 
@@ -978,10 +722,7 @@ def _blocked_rows(repo: Path) -> list[dict[str, Any]]:
 def test_a_book_verdict_returns_the_row_to_the_drain_with_the_chain(
     dirty: Path, tmp_path: Path
 ) -> None:
-    """`book`: the source is right and the book misdescribes it, so the row is not a
-    gate — it is one more repair, with the adjudicator's chain as the fact the repair
-    turn was missing. No operator is asked."""
-    # The chain reaches the next repair turn as context, and that turn lands it.
+    """`book`: the source is right and the book misdescribes it, so the row is not a gate — it is one more repair, with the adjudicator's chain as the fact the repair turn was missing."""
     agent = _Agent(
         dirty, doc_status="partial", note="cannot tell from the book", verdict="book",
         lands_on="adjudication",
@@ -990,7 +731,7 @@ def test_a_book_verdict_returns_the_row_to_the_drain_with_the_chain(
     with patch.object(pyflow_driver, "wait_for_answer", _parked_at(seen)):
         result = _drive(_env(tmp_path), agent)
 
-    assert seen == [], seen  # never parked
+    assert seen == [], seen
     assert agent.counts()["adjudicate"] == 1, agent.counts()
     assert agent.counts()["repair"] == MAX_TARGET_ATTEMPTS + 1, agent.counts()
     assert not (dirty / REFUND).exists()
@@ -1003,19 +744,7 @@ def test_a_book_verdict_returns_the_row_to_the_drain_with_the_chain(
 def test_a_code_verdict_files_a_seed_and_records_the_defect_on_the_nodes(
     booked: Path, tmp_path: Path, write: Callable[[Path, str], Path]
 ) -> None:
-    """`code` on a UI node: the source is the side at fault, so the book keeps saying
-    what it says and carries the record — a seed in the invariant epic (no story covers
-    the nodes) and a `known-defect:` bullet naming it on each node. Doctor takes the
-    finding back while the seed is open, and the adjudication side of the fixture fully
-    converges before the run ever reaches the live audit.
-
-    `COLLIDING_SCREEN` is a `type: screen` node with no stack runbook, so once the
-    worklist drains, the run reaches `semantic_audit` with a served surface and nothing
-    to bring it up — the compiled book-as-plan-source path (`discover_compiled_targets`)
-    correctly reports it blocked and parks the operator gate; this is the known,
-    intentional consequence of a served surface without a runbook, not a bug this test
-    exists to guard against. The assertions below all read state the adjudication turns
-    already wrote before that park, so they hold regardless."""
+    """`code` on a UI node: the source is the side at fault, so the book keeps saying what it says and carries the record — a seed in the invariant epic (no story covers the nodes) and a `known-defect:` bullet naming it on each node."""
     from ostler import Ostler
 
     from workhorse_workflows.okf_builder.main.nodes.adjudicate import INVARIANT_EPIC
@@ -1030,7 +759,6 @@ def test_a_code_verdict_files_a_seed_and_records_the_defect_on_the_nodes(
         _drive(_env(tmp_path), agent)
     assert seen and "live audit" in seen[0], seen
 
-    # One finding per node, so one adjudication per node — each with its own seed.
     assert agent.counts()["adjudicate"] == 2, agent.counts()
     rows = _blocked_rows(booked)
     assert {(i["status"], i["doc_status"], i["verdict"]) for i in rows} == {
@@ -1046,25 +774,12 @@ def test_a_code_verdict_files_a_seed_and_records_the_defect_on_the_nodes(
     epic = next(e for e in graph.epics if e.name.endswith(INVARIANT_EPIC))
     assert sorted(s.id for s in epic.seeds) == seeds, epic.seeds
     assert all(s.status == "backlog" for s in epic.seeds)
-    # One bullet under each heading, not two under one: the finding is raised per node and
-    # the record sits on the node it excuses.
     head, _, tail = text.partition("### footer-save-button")
     assert head.count("- known-defect:") == 1 and tail.count("- known-defect:") == 1, text
 
 
 class _CapturedHandoff(Exception):
-    """Raised in place of actually driving `LiveAudit`, carrying what it was called with.
-
-    `prepare` names the service's source subtree `<checkout>/<service>` (`source_root`),
-    distinct from the checkout itself (`repo_root`) the moment a book holds more than one
-    surface directory — `booked`'s fixture already shapes the repo this way (the git root
-    is `.../acme`, the source subtree `.../acme/acme`). `LiveAudit`'s own `repo_dir` means
-    the checkout, not a source subtree (`audit_one_spec`'s docstring), so a handoff that
-    passes `source_root` there resolves `find_repo_root` on a directory with no `.git`,
-    and `features_root_of(...).relative_to(repo_root)` raises inside the sub-flow with a
-    misleading "separate docs repo" complaint. This intercepts the handoff before any of
-    that runs and pins what `semantic_audit` actually sent.
-    """
+    """Raised in place of actually driving `LiveAudit`, carrying what it was called with."""
 
     def __init__(self, kwargs: dict[str, Any]) -> None:
         super().__init__("captured live-audit handoff")
@@ -1080,16 +795,7 @@ def _ctx(env: RunEnv) -> dict[str, Any]:
 def test_semantic_audit_hands_live_audit_the_checkout_not_the_source_subtree(
     booked: Path, tmp_path: Path
 ) -> None:
-    """`semantic_audit` must call `handoff(LiveAudit, docs_path=repo_root, repo_dir=repo_root)`,
-    not `repo_dir=source_root` — the regression that blocked every multi-surface book's
-    audit with a "separate docs repo" note the checkout never earned.
-
-    `booked` already gives `repo_root` and `source_root` different values (a nested
-    `<checkout>/<service>` subtree), which is what makes this test two-sided: passing
-    `source_root` for `repo_dir` and passing `repo_root` both satisfy an assertion that
-    only checks the two are equal to each other, so the fixture asserting they *differ*
-    is the guard against a fixture that would pass either way.
-    """
+    """`semantic_audit` must call `handoff(LiveAudit, docs_path=repo_root, repo_dir=repo_root)`, not `repo_dir=source_root` — the regression that blocked every multi-surface book's audit with a "separate docs repo" note the checkout never earned."""
     from workhorse_workflows.okf_builder.main import flow as main_flow
 
     def _capture(**kwargs: Any) -> Any:
@@ -1113,10 +819,7 @@ def test_semantic_audit_hands_live_audit_the_checkout_not_the_source_subtree(
 def test_a_story_verdict_with_no_story_parks_with_the_chain_on_the_gate(
     dirty: Path, tmp_path: Path
 ) -> None:
-    """`story`: the intent itself is in conflict, which is the operator's to rewrite. The
-    row stays blocked exactly as the repair turn left it, and the gate prints the verdict
-    and the chain beside the turn's own sentence — nothing is excused, and the operator
-    reads what was decided rather than only that something could not be repaired."""
+    """`story`: the intent itself is in conflict, which is the operator's to rewrite."""
     agent = _Agent(dirty, doc_status="partial", note="the symbol is gone", verdict="story")
     seen: list[str] = []
     with (
@@ -1139,14 +842,7 @@ def test_a_story_verdict_with_no_story_parks_with_the_chain_on_the_gate(
 def test_an_adjudication_that_names_no_side_parks_instead_of_killing_the_run(
     dirty: Path, tmp_path: Path
 ) -> None:
-    """A turn that generates nothing is a block, not a death.
-
-    The reply used to validate on the schema's defaults and crash three frames down, in
-    the node that discovered the verdict named no branch — which ended the run and left a
-    dead process nobody could resume. `verdict` is now a required literal, so the empty
-    reply is rejected at the agent boundary and re-asked; when the re-ask is no better,
-    the state gates. The row keeps its attempts, so answering re-reads this same row.
-    """
+    """A turn that generates nothing is a block, not a death."""
     agent = _Agent(dirty, doc_status="partial", note="the symbol is gone", verdict="")
     seen: list[str] = []
     with (
@@ -1158,14 +854,11 @@ def test_an_adjudication_that_names_no_side_parks_instead_of_killing_the_run(
     assert seen, "the run parked rather than dying"
     assert "could not adjudicate" in seen[0], seen[0]
     rows = _blocked_rows(dirty)
-    # No verdict was applied, so the row carries none — it is exactly the row the
-    # answer will hand back to the same turn.
     assert [(i["status"], i.get("verdict", "")) for i in rows] == [("blocked", "")], rows
 
 
 def test_every_okf_builder_transition_says_why_it_is_taken() -> None:
-    """The diagram's edge labels and the run log's `— why` come from `.because(...)` on
-    each transition; a transition landed without one reads as bare plumbing on both."""
+    """The diagram's edge labels and the run log's `— why` come from `.because(...)` on each transition; a transition landed without one reads as bare plumbing on both."""
     unlabelled = [
         f"{OkfBuilder.__name__}.{node.name} -> {edge.target or 'END'}"
         for node in state_graph(OkfBuilder).states

@@ -1,19 +1,4 @@
-"""The greenfield round's ruler: the backlog trace, the judge, and the phase environment.
-
-A benchmark whose own scoring is wrong is worse than no benchmark, and these are the
-properties that make this one's score mean something:
-
-* every bullet traces to the epic that claims it, and an *unclaimed* bullet surfaces as
-  unclaimed rather than going missing from the score;
-* a judge's behavioural claim is capped unless it cites paths that actually exist — the
-  judge's commonest failure is a confident claim about a file that is not there;
-* the structural score never claims `built`, which is precisely what static structure
-  cannot know;
-* a budget reaches workhorse, which stops *between states* with the checkpoint intact,
-  rather than a `timeout(1)` that kills mid-node and destroys the evidence.
-
-No agent runs here: the judge's backend is canned and everything else is a temp tree.
-"""
+"""The greenfield round's ruler: the backlog trace, the judge, and the phase environment."""
 
 from __future__ import annotations
 
@@ -108,7 +93,6 @@ def add_epic(repo: Path, name: str, bullets: list[str], stories: dict[str, str])
             f"---\ntype: story\nslug: {slug}\nstatus: {status}\n---\n# Story\n", encoding="utf-8")
 
 
-# ── the backlog trace ─────────────────────────────────────────────────────────────────
 
 
 def test_bullets_trace_to_the_epic_that_claims_them(run: Run, fixture: Any) -> None:
@@ -119,7 +103,6 @@ def test_bullets_trace_to_the_epic_that_claims_them(run: Run, fixture: Any) -> N
     assert by_id["todo-create"]["epics"] == ["core"]
     assert len(by_id["todo-create"]["stories"]) == 2
     assert [s["slug"] for s in by_id["todo-create"]["stories_done"]] == ["api-create"]
-    # An unclaimed bullet must surface as unclaimed, not go missing from the score.
     assert by_id["todo-delete"]["epics"] == []
 
 
@@ -129,11 +112,9 @@ def test_structural_scoring_never_claims_built(run: Run, fixture: Any) -> None:
     bullets = gf.structural_only(gf.trace_bullets(run, fixture))
 
     assert {b["id"]: b["level"] for b in bullets} == {"todo-create": 1, "todo-delete": 0}
-    # A story marked "QA passed" must not lift the bullet past `planned` on its own.
     assert gf.satisfaction(bullets) == pytest.approx(100 * 1 / 6, abs=0.1)
 
 
-# ── the judge, and the citation check that keeps it honest ────────────────────────────
 
 
 class FakeBackend:
@@ -151,13 +132,7 @@ class FakeBackend:
 
 
 def fake_judge(response: str) -> Any:
-    """A `Judge` whose agent turn is canned — the two collaborators are real.
-
-    `judge_one` takes the whole `Judge`, not a bare backend, so the resilience and clock it
-    hands to the turn are the round's rather than module state. Only the backend is
-    substituted; a real `AgentResilience` keeps the retry budget the shipped code would
-    use, and no retry is reached anyway because a canned turn never fails.
-    """
+    """A `Judge` whose agent turn is canned — the two collaborators are real."""
     return gf.Judge(FakeBackend(response), gf.AgentResilience(), gf.SYSTEM_CLOCK)
 
 
@@ -210,8 +185,7 @@ def test_an_unparseable_or_failed_judgement_scores_zero(run: Run, fixture: Any) 
 
 
 def test_rubric_placeholders_are_all_filled(run: Run, fixture: Any) -> None:
-    """A typo'd placeholder ships the judge a literal `{{stories}}`, and it then invents
-    the context instead of being given it."""
+    """A typo'd placeholder ships the judge a literal `{{stories}}`, and it then invents the context instead of being given it."""
     add_epic(run.repo, "core", ["todo-create"], {"api-create": "QA passed"})
     bullet = next(b for b in gf.trace_bullets(run, fixture) if b["id"] == "todo-create")
     judging = fake_judge(json.dumps({"level": 0, "evidence": [], "reason": "x"}))
@@ -229,38 +203,30 @@ def test_render_leaves_json_braces_alone() -> None:
         '{"level": 2} and todo-create'
 
 
-# ── the phase environment: the budget is fixture data ─────────────────────────────────
 
 
 def test_a_budget_becomes_workhorses_own_ceiling(run: Run, fixture: Any) -> None:
-    """The budget must reach workhorse, which stops between states with the checkpoint
-    intact — not a `timeout(1)` that kills mid-node and destroys the evidence."""
+    """The budget must reach workhorse, which stops between states with the checkpoint intact — not a `timeout(1)` that kills mid-node and destroys the evidence."""
     assert gf.phase_env(run, fixture, "author")["WORKHORSE_MAX_RUNTIME_S"] == "900.0"
     assert gf.phase_env(run, fixture, "coder")["WORKHORSE_MAX_RUNTIME_S"] == "2700.0"
-    # An unbudgeted phase stays unbounded rather than inheriting another phase's ceiling.
     assert "WORKHORSE_MAX_RUNTIME_S" not in gf.phase_env(run, fixture, "genesis")
 
 
 def test_a_param_overrides_the_fixtures_budget(run: Run, fixture: Any) -> None:
-    """A round shortened for a smoke test says so on the command line, not by editing the
-    tracked fixture every other round then forgetting to put it back."""
+    """A round shortened for a smoke test says so on the command line, not by editing the tracked fixture every other round then forgetting to put it back."""
     shortened = dataclasses.replace(run, params={"budget_coder": "60"})
     assert gf.phase_env(shortened, fixture, "coder")["WORKHORSE_MAX_RUNTIME_S"] == "60.0"
 
 
-# ── the shipped tasks ─────────────────────────────────────────────────────────────────
 
 
 def test_every_greenfield_task_carries_a_backlog_with_bullets() -> None:
-    """A backlog that moved or lost its `- [id] …` bullets scores every bullet absent, and
-    it does so quietly: the round still runs and the report still prints."""
+    """A backlog that moved or lost its `- [id] …` bullets scores every bullet absent, and it does so quietly: the round still runs and the report still prints."""
     found = 0
     for path in loader.task_paths(DATA):
         spec = importlib.util.spec_from_file_location(f"_probe_{path.stem}", path)
         assert spec is not None and spec.loader is not None  # noqa: S101 - a real file on disk
         module = importlib.util.module_from_spec(spec)
-        # In `sys.modules` before execution, exactly as `paddock.loader` does: a dataclass
-        # resolves its own annotations through there, and a module absent from it dies.
         sys.modules[spec.name] = module
         REGISTRY.reset()
         try:
@@ -270,9 +236,6 @@ def test_every_greenfield_task_carries_a_backlog_with_bullets() -> None:
             sys.modules.pop(spec.name, None)
             REGISTRY.reset()
         declared = getattr(module, "FIXTURE", None)
-        # `gf` is loaded from a path rather than imported, so `gf.Fixture` is not a name a
-        # checker can resolve — the `is None` half is what says the rest of this loop body
-        # runs on a fixture that exists.
         if declared is None or not isinstance(declared, gf.Fixture):
             continue
         found += 1
@@ -280,24 +243,16 @@ def test_every_greenfield_task_carries_a_backlog_with_bullets() -> None:
         assert backlog.is_file(), f"{path.name}: no backlog at {backlog}"
         assert gf.parse_backlog(backlog), f"{path.name}: backlog has no `- [id] …` bullets"
         if declared.decision_records:
-            # The records version with the seed and `check_public.py` scans them, both of
-            # which need a real tracked directory under `paddock/data/` — and a task that
-            # names records it does not have sends every round's resolvers to an empty
-            # shelf, where they escalate questions the operator already settled.
             records = DATA / declared.decision_records
             assert records.is_dir(), f"{path.name}: no decision records at {records}"
             assert sorted(records.glob("*.md")), f"{path.name}: {records} holds no records"
         if declared.grill_capture:
-            # The frozen operator turn. Both halves or neither: the checkpoint without the
-            # gate file resumes into a lane whose answer is missing, and the gate file
-            # without the checkpoint is a round that still parks on the grill.
             capture = DATA / declared.grill_capture
             for half in ("checkpoint.json", gf.GRILL_GATE):
                 assert (capture / half).is_file(), f"{path.name}: no {half} in {capture}"
     assert found, "no greenfield task declares a Fixture — the backlog-driven half is gone"
 
 
-# ── the operator gate ─────────────────────────────────────────────────────────────────
 
 GATE = (
     "STATUS: AWAITING_OPERATOR\n"
@@ -316,13 +271,7 @@ def park(run: Run, name: str = "_author-context.md") -> Path:
 
 
 def watch_once(run: Run, fixture: Any, monkeypatch: pytest.MonkeyPatch, *, expect: int) -> None:
-    """Run the watcher until the ledger has `expect` entries, then stop it.
-
-    The real watcher lives beside a phase that blocks for minutes; here it is driven to a
-    quiescent point and joined, so the test asserts on a finished thread rather than on a
-    race. `expect=0` waits out a fixed slice instead — for the cases whose whole claim is
-    that nothing was written.
-    """
+    """Run the watcher until the ledger has `expect` entries, then stop it."""
     monkeypatch.setattr(gf, "GATE_POLL_S", 0.01)
     stop, thread = gf.gates_watched(run, fixture, "author")
     thread.start()
@@ -330,8 +279,6 @@ def watch_once(run: Run, fixture: Any, monkeypatch: pytest.MonkeyPatch, *, expec
         deadline = time.monotonic() + 10.0
         while len(gf.operator_gates_of(run)) < expect and time.monotonic() < deadline:
             time.sleep(0.01)
-        # A further slice, so a wrongly-repeated entry has time to show up rather than
-        # being outrun by the stop — and so an `expect=0` case is a real wait.
         time.sleep(0.1)
     finally:
         stop.set()
@@ -342,12 +289,7 @@ def watch_once(run: Run, fixture: Any, monkeypatch: pytest.MonkeyPatch, *, expec
 def test_a_gate_still_awaiting_past_the_grace_is_parked(
     run: Run, fixture: Any, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The one thing the watcher does at a gate: notice, and stop the round on it.
-
-    A round with nobody at the keyboard cannot get past a gate whose lane has no
-    resolver — so the value of noticing is the minute it costs instead of the hour, and
-    the ledger entry that says the score covers a partial round.
-    """
+    """The one thing the watcher does at a gate: notice, and stop the round on it."""
     monkeypatch.setattr(gf, "GATE_GRACE_S", 0.0)
     gate = park(run)
     watch_once(run, fixture, monkeypatch, expect=1)
@@ -356,18 +298,13 @@ def test_a_gate_still_awaiting_past_the_grace_is_parked(
     assert entry["action"] == "parked"
     assert entry["gate"] == "docs/epics/_author-context.md"
     assert "no operator" in entry["reason"]
-    # Untouched. The watcher reads gates; it has never been the thing that answers one.
     assert gate.read_text(encoding="utf-8") == GATE
 
 
 def test_the_watcher_never_answers_a_gate(
     run: Run, fixture: Any, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """It used to, for one gate class, from a sheet of replies applied positionally — and
-    positionally is the whole defect: a gate's questions are generated per round, so a
-    sheet written against one round's questions got stamped `ANSWERED` over another's. The
-    repair that looks obvious is forbidden too: checking whether the sheet *covers* what
-    was asked makes the harness judge semantics at gate time."""
+    """It used to, for one gate class, from a sheet of replies applied positionally — and positionally is the whole defect: a gate's questions are generated per round, so a sheet written against one round's questions got stamped `ANSWERED` over another's."""
     monkeypatch.setattr(gf, "GATE_GRACE_S", 0.0)
     gate = park(run)
     watch_once(run, fixture, monkeypatch, expect=1)
@@ -380,9 +317,7 @@ def test_the_watcher_never_answers_a_gate(
 def test_a_gate_answered_inside_the_grace_is_not_a_stall(
     run: Run, fixture: Any, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Most gates on a round's path have an auto-resolver, and a resolver that grounds its
-    answer writes it in seconds. Parking on first sight would score every one of those as
-    a stall, and `parked` would stop meaning "the round stopped here"."""
+    """Most gates on a round's path have an auto-resolver, and a resolver that grounds its answer writes it in seconds."""
     gate = park(run)
     watch_once(run, fixture, monkeypatch, expect=0)
     assert gf.operator_gates_of(run) == []
@@ -395,14 +330,9 @@ def test_a_gate_answered_inside_the_grace_is_not_a_stall(
 def test_how_much_grace_a_cleared_gate_spent_is_logged(
     run: Run, fixture: Any, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
-    """A gate that clears inside the grace stays out of the ledger — but the grace is a
-    number somebody has to calibrate, and the only evidence for it is how long real
-    resolvers actually take. One clearing at 115s of a 120s grace is the warning that the
-    next fixture needs a longer one; unlogged, it arrives instead as a burned round."""
+    """A gate that clears inside the grace stays out of the ledger — but the grace is a number somebody has to calibrate, and the only evidence for it is how long real resolvers actually take."""
     monkeypatch.setattr(gf, "GATE_POLL_S", 0.01)
     gate = park(run)
-    # One watcher across both states, because that is the only way it happens for real:
-    # the elapsed time it reports is measured from when *this* thread first saw the gate.
     stop, thread = gf.gates_watched(run, fixture, "author")
     with caplog.at_level(logging.INFO, logger=gf.logger.name):
         thread.start()
@@ -420,8 +350,7 @@ def test_how_much_grace_a_cleared_gate_spent_is_logged(
 
 
 def test_a_gate_is_parked_once(run: Run, fixture: Any, monkeypatch: pytest.MonkeyPatch) -> None:
-    """The round stops on a gate the first time; a watcher that keeps re-parking the same
-    file turns one stop into a ledger nobody can read a count off."""
+    """The round stops on a gate the first time; a watcher that keeps re-parking the same file turns one stop into a ledger nobody can read a count off."""
     monkeypatch.setattr(gf, "GATE_GRACE_S", 0.0)
     park(run)
     watch_once(run, fixture, monkeypatch, expect=1)
@@ -434,12 +363,9 @@ def test_a_parked_gate_is_a_warning_on_the_score() -> None:
     lines = gf.warnings([], [], [{"gate": "docs/epics/_author-context.md",
                                  "action": "parked", "reason": "no operator"}])
     assert any("stayed parked" in line for line in lines)
-    # A round nobody stopped and nobody reached into is the only one that warns about
-    # neither: `hand` has its own warning, for the same reason.
     assert not gf.warnings([], [], [])
 
 
-# ── the frozen grill capture ──────────────────────────────────────────────────────────
 
 ANSWERED_GATE = GATE.replace("AWAITING_OPERATOR", "ANSWERED") + "\nA1 — `201 Created`.\n"
 
@@ -454,8 +380,6 @@ def capture(run: Run, *, waiting_on: str = "docs/epics/_author-context.md") -> A
         "state": "refactor_backlog",
         "flow": "Author",
         "waiting_on": waiting_on,
-        # Both of these name the machine the capture was taken on, and one of them names a
-        # library that is not this round's. Rendering them is the point of the seeding.
         "inputs": {"repo_dir": "/elsewhere/stage/link-shortener", "library_dirs": [],
                    "backlog": "docs/backlog.md"},
         "ctx": {"repo_root": "/elsewhere/stage/link-shortener",
@@ -470,10 +394,7 @@ def capture(run: Run, *, waiting_on: str = "docs/epics/_author-context.md") -> A
 def test_the_capture_is_seeded_as_a_checkpoint_the_round_resumes_from(
     run: Run, fixture: Any
 ) -> None:
-    """The mechanism, in one assertion: an `Await` checkpoint names the state it will
-    resume *into*, so a round that starts from this one starts at `refactor_backlog` —
-    past the one gate the product reserves for a human, with nothing about the loop frozen.
-    """
+    """The mechanism, in one assertion: an `Await` checkpoint names the state it will resume *into*, so a round that starts from this one starts at `refactor_backlog` — past the one gate the product reserves for a human, with nothing about the loop frozen."""
     capture(run)
     git_init(run.repo)
 
@@ -484,12 +405,9 @@ def test_the_capture_is_seeded_as_a_checkpoint_the_round_resumes_from(
         .read_text(encoding="utf-8"))
     assert seeded["state"] == "refactor_backlog"
     assert seeded["run_id"] == gf.AUTHOR_RUN_ID
-    # A resume rebuilds the instance from the checkpoint's own inputs, never from
-    # `--params` — so a path left as the capturing machine's is the path this round reads.
     assert seeded["inputs"]["repo_dir"] == str(run.repo)
     assert seeded["ctx"]["repo_root"] == str(run.repo)
     assert seeded["waiting_on"] == str(run.repo / "docs" / "epics" / gf.GRILL_GATE)
-    # Carried through untouched: the capture is the round's inputs, not a subset of them.
     assert seeded["inputs"]["backlog"] == "docs/backlog.md"
 
 
@@ -502,8 +420,6 @@ def test_the_answered_gate_lands_where_the_flow_will_read_it(run: Run, fixture: 
     gate = run.repo / "docs" / "epics" / gf.GRILL_GATE
     assert gate.read_text(encoding="utf-8") == ANSWERED_GATE
     assert gf.gate_answered(gate)
-    # On the branch the parked run was on: `close` reads it off the ctx and fails on a
-    # branch that is not there.
     head = subprocess.run(["git", "-C", str(run.repo), "branch", "--show-current"],
                           capture_output=True, text=True, check=True)
     assert head.stdout.strip() == "author/author-grill"
@@ -512,9 +428,7 @@ def test_the_answered_gate_lands_where_the_flow_will_read_it(run: Run, fixture: 
 def test_a_declared_capture_that_is_missing_is_an_error_not_a_shrug(
     run: Run, fixture: Any
 ) -> None:
-    """Read from the tracked data dir, never from the tree the round mutates — so a
-    capture that is not there is a broken `--data-dir`, and a round that silently ran
-    without it would park on the grill after paying for a genesis."""
+    """Read from the tracked data dir, never from the tree the round mutates — so a capture that is not there is a broken `--data-dir`, and a round that silently ran without it would park on the grill after paying for a genesis."""
     with pytest.raises(gf.TrialError, match="no frozen grill capture"):
         gf.seed_grill_capture(run, dataclasses.replace(fixture, grill_capture="nope"))
 
@@ -535,8 +449,7 @@ def git_init(repo: Path) -> None:
 
 
 def test_the_scaffolding_is_committed_before_the_first_story(run: Run) -> None:
-    """Untracked installer output is what a story's settle lap parks on — so it is a
-    baseline commit, dated before story one, rather than an unrecorded file."""
+    """Untracked installer output is what a story's settle lap parks on — so it is a baseline commit, dated before story one, rather than an unrecorded file."""
     subprocess.run(["git", "-C", str(run.repo), "init", "-q"], check=True)
     subprocess.run(["git", "-C", str(run.repo), "config", "user.email", "t@example.com"],
                    check=True)
@@ -560,7 +473,7 @@ def test_a_baseline_with_nothing_to_commit_is_not_an_error(run: Run) -> None:
     (run.repo / "Makefile").write_text("all:\n", encoding="utf-8")
     gf.commit_baseline(run)
 
-    gf.commit_baseline(run)  # no exception
+    gf.commit_baseline(run)
 
     assert gf.git_commits(run.repo) == 1
 
@@ -580,24 +493,20 @@ def test_a_hand_answer_is_recorded_and_says_so_loudly(run: Run) -> None:
 
 
 def test_a_hand_answer_is_not_counted_as_parked() -> None:
-    """Two different findings: parked means the round went on without a decision, hand
-    means it went on with one no future round will make for itself."""
+    """Two different findings: parked means the round went on without a decision, hand means it went on with one no future round will make for itself."""
     lines = gf.warnings([], [], [{"gate": "g", "action": "hand", "note": "n"}])
     assert not any("stayed parked" in line for line in lines)
 
 
-# ── the agent's own exhaust ───────────────────────────────────────────────────────────
 
 
 def test_the_produced_repo_ignores_the_agent_runtime(run: Run) -> None:
-    """The coder lane refuses to sweep unrecorded files into a story's commit and parks on
-    a human gate instead — so the CLI's session store and the QA daemon's log, which
-    reappear on every story, cost a whole round rather than skewing one."""
+    """The coder lane refuses to sweep unrecorded files into a story's commit and parks on a human gate instead — so the CLI's session store and the QA daemon's log, which reappear on every story, cost a whole round rather than skewing one."""
     (run.repo / ".gitignore").write_text(".agents/runs/\n", encoding="utf-8")
     gf.ignore_agent_runtime(run)
 
     written = (run.repo / ".gitignore").read_text(encoding="utf-8")
-    assert written.startswith(".agents/runs/\n")  # what genesis wrote is left alone
+    assert written.startswith(".agents/runs/\n")
     assert ".opencode/\n" in written
     assert "**/qa/**/*.log\n" in written
 
@@ -607,14 +516,11 @@ def test_the_runtime_ignore_is_written_once(run: Run) -> None:
     once = (run.repo / ".gitignore").read_text(encoding="utf-8")
     gf.ignore_agent_runtime(run)
     assert (run.repo / ".gitignore").read_text(encoding="utf-8") == once
-    # A genesis that wrote no `.gitignore` at all still gets one, rather than a crash.
     assert once.startswith("\n" + gf.IGNORE_HEADER)
 
 
 def test_a_repo_root_gate_is_seen_too(run: Run, fixture: Any, monkeypatch: pytest.MonkeyPatch) -> None:
-    """The coder lane's dirty-tree, CI and merge gates land at the repo root, not under
-    `docs/`. A glob that only knew about the author lane's was blind to them — and a gate
-    nobody watches does not park with a ledger entry, it stalls the round in silence."""
+    """The coder lane's dirty-tree, CI and merge gates land at the repo root, not under `docs/`."""
     gate = run.repo / "dirty-tree-operator-context.create-short-links.md"
     gate.write_text(GATE, encoding="utf-8")
     monkeypatch.setattr(gf, "GATE_POLL_S", 0.01)
@@ -632,8 +538,6 @@ def test_a_repo_root_gate_is_seen_too(run: Run, fixture: Any, monkeypatch: pytes
     entry, = gf.operator_gates_of(run)
     assert entry["gate"] == "dirty-tree-operator-context.create-short-links.md"
     assert entry["action"] == "parked"
-    # Seen and parked wherever it is written: this one sits at the repo root rather than
-    # under a docs directory, and a gate the watcher does not see costs the round an hour.
     assert gate.read_text(encoding="utf-8") == GATE
 
 
@@ -656,23 +560,16 @@ def test_a_coder_gate_is_parked_and_left_alone_too(
 
     entry, = gf.operator_gates_of(run)
     assert entry["action"] == "parked"
-    # Every lane, one behaviour. A coder gate asks about the state of a repo mid-round —
-    # nothing written down before the round started could answer it, and the watcher was
-    # never the thing that would have tried.
     assert gate.read_text(encoding="utf-8") == GATE
 
 
 def test_a_context_file_that_is_not_a_gate_is_passed_over(
     run: Run, fixture: Any, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The globs are deliberately loose, and `gate_answered` is what makes that safe: a
-    regenerated `qa-okf-context.md` carries no `AWAITING_OPERATOR` header, so it reads as
-    answered rather than as a gate the harness should be touching."""
+    """The globs are deliberately loose, and `gate_answered` is what makes that safe: a regenerated `qa-okf-context.md` carries no `AWAITING_OPERATOR` header, so it reads as answered rather than as a gate the harness should be touching."""
     noise = run.repo / "docs" / "specs" / "s" / "qa-okf-context.md"
     noise.parent.mkdir(parents=True)
     noise.write_text("# obligations\n\n- a thing\n", encoding="utf-8")
-    # `expect=0`: the point is that nothing is ever recorded, so the watcher is given a
-    # handful of polls and then stopped rather than waited on.
     watch_once(run, fixture, monkeypatch, expect=0)
 
     assert gf.operator_gates_of(run) == []
