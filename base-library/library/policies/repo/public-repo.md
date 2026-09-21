@@ -3,7 +3,7 @@ name: public-repo
 description: "The standing rule for a repository that ships publicly while its author also works on private ones: no private project's name may appear in the tree, examples use neutral placeholders, and the denylist itself lives outside the repo because a denylist publishes the words it bans. Carries the two-layer enforcement (a commit hook over staged changes, a whole-tree-and-history sweep over everything else) with the script and command names templated."
 ---
 
-## This repo is public (load-bearing)
+## This repo is public
 
 This repository ships publicly. **No private project's name may appear in it** —
 not in prose, not in a fixture, not in a code comment, not in a path. Examples
