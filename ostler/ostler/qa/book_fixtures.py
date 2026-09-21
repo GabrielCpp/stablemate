@@ -150,7 +150,7 @@ def _steps_of(graph: Graph, node: UINode) -> list[dict[str, Any]]:
     steps: list[dict[str, Any]] = []
     for step in runbook_mod.steps_of(graph, node):
         kind = runbook_mod.bullet_value(step.meta, "kind")
-        command = runbook_mod.step_command(step, graph.root, ".")
+        command = runbook_mod.step_command(step, runbook_mod.system_root(graph), ".")
         step_id = step.id.rpartition("#")[2]
         if command is None:
             # No `run:` bullet — the step would execute nothing. Carried as a marker

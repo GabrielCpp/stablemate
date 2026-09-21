@@ -154,3 +154,21 @@ def test_resolved_never_carries_a_secret_value_anywhere_in_the_dict(repo: Path) 
     # The name is expected to appear — what must never appear is a value for it, and
     # there is no value in this book to leak, which is the point: the grammar has no
     # slot for one.
+
+
+def test_resolved_steps_cwd_against_the_subject_root_not_the_checkout(tmp_path: Path) -> None:
+    """A fixture step with no `working-directory:` of its own defaults to `.` against the
+    *subject's* root — the directory the book describes — never the directory the book
+    happened to be checked out from. `runbook.system_root` is what every sibling resolver
+    (`_from_runbook`, `_from_server`) already calls; this fixture's own resolver used
+    `graph.root` instead, which is identical to the subject root for a book loaded at its
+    own root (every other test in this file) and diverges only once the book is loaded
+    from somewhere else — nested under `service/`, here.
+    """
+    write(tmp_path / "service/docs/features/acme/fixtures/seeded-acme.md", SEEDED_ACME)
+    graph = load(tmp_path, root_overrides={"features": "service/docs/features"})
+
+    fixtures = book_fixtures.resolved(graph)
+
+    [step] = fixtures["seeded-acme"]["steps"]
+    assert step["cwd"] == str((tmp_path / "service").resolve())

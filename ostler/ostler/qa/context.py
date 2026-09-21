@@ -1367,6 +1367,32 @@ def cmd_context_validate(spec_dir: Path) -> QaOutcome:
     )
 
 
+def _revision_path_arg(revision: str, path: str) -> str:
+    """The `<rev>:<path>` argument for `git show` / `git cat-file`, forced into the CWD frame.
+
+    `git show <rev>:<path>` and `git cat-file -e <rev>:<path>` resolve *path* against the
+    repository top level unless it is prefixed with `./`, in which case it resolves against
+    the process's CWD instead. Every other path this module hands to git — `ls-tree`
+    pathspecs among them — is already CWD-relative, because `_git`/`_git_bytes` run with
+    `cwd=root`. Left unprefixed, the two frames only agree when `root` is the repository top
+    level; for a book nested elsewhere (`paddock/data/apps/globex` inside this very repo,
+    say), `git cat-file -e HEAD:docs/features` and `git rev-parse HEAD:docs/features` answer
+    against the *host* repo's `docs/features` tree, while `HEAD:./docs/features` answers
+    against the nested book's own tree — and those two trees can name different blobs
+    entirely. Left unguarded, `_revision_holds` reports "present" for a tree the book never
+    had, and `_graph_at_revision` builds its graph from the wrong repository's files.
+
+    An empty *path* or `/dev/null` is passed straight through: those are sentinels its
+    callers already special-case before ever reaching git, and prefixing them would turn a
+    recognized sentinel into a literal (and nonexistent) path.
+    """
+    if not path or path == "/dev/null":
+        return f"{revision}:{path}"
+    if path.startswith("./"):
+        return f"{revision}:{path}"
+    return f"{revision}:./{path}"
+
+
 def _graph_at_revision(root: Path, revision: str, features_root: str) -> Graph:
     """The base-side graph at `revision`, built from every `.md` file under `features_root`.
 
@@ -1396,7 +1422,7 @@ def _graph_at_revision(root: Path, revision: str, features_root: str) -> Graph:
     entries = [entry for entry in result.split("\0") if entry]
     for rel in sorted(entry for entry in entries if entry.endswith(".md")):
         try:
-            text = _git(root, "show", f"{revision}:{rel}")
+            text = _git(root, "show", _revision_path_arg(revision, rel))
         except RuntimeError as exc:
             raise RuntimeError(
                 f"{revision} lists {rel} under {features_root} but its blob is unreadable: {exc}"
@@ -1665,7 +1691,7 @@ def _revision_text(root: Path, revision: str, path: str) -> str:
     if not path or path == "/dev/null":
         return ""
     try:
-        blob = _git_bytes(root, "show", f"{revision}:{path}")
+        blob = _git_bytes(root, "show", _revision_path_arg(revision, path))
     except RuntimeError:
         return ""
     try:
@@ -1696,7 +1722,7 @@ def _revision_holds(root: Path, revision: str, path: str) -> bool:
     if not path or path == "/dev/null":
         return False
     try:
-        _git_bytes(root, "cat-file", "-e", f"{revision}:{path}")
+        _git_bytes(root, "cat-file", "-e", _revision_path_arg(revision, path))
     except RuntimeError:
         return False
     return True

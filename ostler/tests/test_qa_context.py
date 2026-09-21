@@ -3214,3 +3214,96 @@ def test_a_filename_git_would_quote_is_not_dropped(tmp_path: Path):
     graph = _graph_at_revision(tmp_path, base, "docs/features")
 
     assert [node.id for node in graph.ui_nodes]
+
+
+def test_a_nested_book_graphs_its_own_tree_not_the_hosts(tmp_path: Path):
+    """`root` is the *subject's* root — `paddock/data/apps/globex`, say — not the repo
+    top level; `_git`/`_git_bytes` run with `cwd=root`, so every path this module hands
+    git is CWD-relative, but `<rev>:<path>` is repo-root-relative unless prefixed `./`.
+
+    Here the host repo has its OWN `docs/features/demo/item.md` at its top level, and the
+    nested book being measured has a file at the *same relative path* with different
+    content. Left unprefixed: `git cat-file -e HEAD:docs/features` (cwd=service) answers
+    for the host's tree and reports "present"; `git show HEAD:docs/features/demo/item.md`
+    (cwd=service) then streams the HOST's blob, because that path also happens to exist
+    at the repo top level. That is not a crash — it is a confident wrong answer: the
+    nested book's graph is built from a file it never wrote. `./`-prefixing both calls
+    (`_revision_path_arg`) makes them resolve against `cwd` instead, and the graph comes
+    back from the book's own tree.
+    """
+    outer = tmp_path
+    service = outer / "service"
+    (outer / "docs/features/demo").mkdir(parents=True)
+    (service / "docs/features/demo").mkdir(parents=True)
+    (outer / "docs/features/demo/item.md").write_text(
+        "---\ntype: concept\ntitle: Host Item\n---\n# Host Item\n",
+        encoding="utf-8",
+    )
+    (service / "docs/features/demo/item.md").write_text(
+        "---\ntype: concept\ntitle: Service Item\n---\n# Service Item\n",
+        encoding="utf-8",
+    )
+    _git(outer, "init")
+    _git(outer, "config", "user.email", "qa@example.com")
+    _git(outer, "config", "user.name", "QA")
+    _git(outer, "add", ".")
+    _git(outer, "commit", "-m", "base")
+    base = _git(outer, "rev-parse", "HEAD")
+
+    graph = _graph_at_revision(service, base, "docs/features")
+
+    assert [node.title for node in graph.ui_nodes] == ["Service Item"]
+
+
+def test_a_nested_book_graphs_when_the_host_has_no_matching_path(tmp_path: Path):
+    """Companion to the false-positive case above: here the host repo's own
+    `docs/features` tree exists (so the presence guard reports "present" even unprefixed)
+    but holds no file at the path the nested book's `docs/features` actually lists. Left
+    unprefixed, `git show HEAD:docs/features/demo/item.md` (cwd=service) looks for that
+    path at the repo top level, finds nothing there, and `_graph_at_revision` raises "lists
+    ... but its blob is unreadable" — treating a perfectly readable nested book as
+    corrupt. `./`-prefixing resolves the same call against `cwd` and the book graphs.
+    """
+    outer = tmp_path
+    service = outer / "service"
+    (outer / "docs/features").mkdir(parents=True)
+    (service / "docs/features/demo").mkdir(parents=True)
+    (outer / "docs/features/OTHER.md").write_text(
+        "---\ntype: concept\ntitle: Other\n---\n# Other\n", encoding="utf-8"
+    )
+    (service / "docs/features/demo/item.md").write_text(
+        "---\ntype: concept\ntitle: Service Item\n---\n# Service Item\n",
+        encoding="utf-8",
+    )
+    _git(outer, "init")
+    _git(outer, "config", "user.email", "qa@example.com")
+    _git(outer, "config", "user.name", "QA")
+    _git(outer, "add", ".")
+    _git(outer, "commit", "-m", "base")
+    base = _git(outer, "rev-parse", "HEAD")
+
+    graph = _graph_at_revision(service, base, "docs/features")
+
+    assert [node.title for node in graph.ui_nodes] == ["Service Item"]
+
+
+def test_a_book_at_the_repo_root_is_unaffected_by_the_cwd_fix(tmp_path: Path):
+    """The control: a book that already sits at the repository top level — the ordinary
+    case, and every other test in this file — must behave exactly as it did before the
+    `./`-prefix was introduced. This test passing is the result: it is what shows the fix
+    is a frame correction for the nested case, not a rewrite of the working one.
+    """
+    (tmp_path / "docs/features/demo").mkdir(parents=True)
+    (tmp_path / "docs/features/demo/item.md").write_text(
+        "---\ntype: concept\ntitle: Item\n---\n# Item\n", encoding="utf-8"
+    )
+    _git(tmp_path, "init")
+    _git(tmp_path, "config", "user.email", "qa@example.com")
+    _git(tmp_path, "config", "user.name", "QA")
+    _git(tmp_path, "add", ".")
+    _git(tmp_path, "commit", "-m", "base")
+    base = _git(tmp_path, "rev-parse", "HEAD")
+
+    graph = _graph_at_revision(tmp_path, base, "docs/features")
+
+    assert [node.title for node in graph.ui_nodes] == ["Item"]
