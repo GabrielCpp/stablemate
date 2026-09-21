@@ -208,6 +208,37 @@ type: runbook
     assert step["run"] == "export PORT=8080; export MODE=test; ./warm.sh || true"
 
 
+def test_prose_env_child_is_not_exported(tmp_path: Path) -> None:
+    (tmp_path / ".git").mkdir()
+    make_runbook(tmp_path, """---
+type: runbook
+---
+
+# QA stack
+
+- driver: web
+
+## Steps
+
+### warm
+
+- kind: prepare
+- run: ./warm.sh
+- env:
+  - fixed in [Local](local.md) `backing:` — `DB_HOST=db`, `DB_PORT=3306`
+  - PORT=8080
+  - `MODE=test`
+
+### serve
+
+- kind: service
+- run: ./serve.sh
+- health: curl -fsS localhost:8080
+""")
+    step = rb.load_stack(tmp_path)["prepare"][0]
+    assert step["run"] == "export PORT=8080; export MODE=test; ./warm.sh"
+
+
 def test_secrets_are_name_to_recipe(tmp_path: Path) -> None:
     (tmp_path / ".git").mkdir()
     make_runbook(tmp_path, """---

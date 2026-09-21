@@ -206,6 +206,10 @@ def step_command(node: UINode, root: Path, default_cwd: str) -> dict[str, str] |
     return _step_command(node, root, default_cwd)
 
 
+#: A shell assignment: a name, `=`, then whatever the shell will take.
+_ASSIGNMENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*=")
+
+
 def _env_exports(node: UINode) -> str:
     """A step's `env:` children as a shell prefix.
 
@@ -213,8 +217,19 @@ def _env_exports(node: UINode) -> str:
     `TOKEN=$(scripts/mint.sh)` — because the step already runs through `bash -c` and
     inventing a second syntax for the same thing buys nothing. Wiring that must be fresh
     per *plan run* rather than per bring-up is `secrets:` on the runbook instead.
+
+    The child is read through `bullet_text` like every other value, so the assignment may
+    be written bare or backticked. A child that is not an assignment is prose — a note
+    saying where the wiring already comes from, which is a thing the book is meant to be
+    able to say — and it is not exported. Merely containing an `=` is not enough: a
+    sentence that *mentions* `HOST=db` would otherwise become the command, and the step
+    runs it through a shell.
     """
-    assignments = [item for item in _children(node.meta, "env") if "=" in item]
+    assignments = [
+        value
+        for value in (bullet_text(item) for item in _children(node.meta, "env"))
+        if _ASSIGNMENT.match(value)
+    ]
     return "".join(f"export {item}; " for item in assignments).strip()
 
 
