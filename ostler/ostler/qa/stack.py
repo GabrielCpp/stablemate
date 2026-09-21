@@ -367,7 +367,9 @@ def ensure_stack(
         up again: ``if-fresh`` (default), ``always``, or ``never`` (see below).
       * ``fresh`` — a probe command (exit 0 ⇔ the running stack reflects the current code)
         that gates adoption under ``reuse: if-fresh``.
-      * ``app_cwd`` / ``repo_root`` / ``boot_timeout`` — launch context and ceiling.
+      * ``app_cwd`` / ``repo_root`` / ``boot_timeout`` — step context and ceiling.
+      * ``launch_cwd`` — where the launch itself runs, which is the `service` step's
+        own ``working-directory:`` and not the runbook's, falling back to ``app_cwd``.
       * ``launch`` — an **idempotent, self-freshening** bring-up command (e.g.
         ``docker compose up -d --build``) owned by :func:`boot_app`. Safe to re-run: on
         no change it is a cache-hit no-op; on changed code it rebuilds and recreates.
@@ -412,6 +414,7 @@ def ensure_stack(
     reuse = str(manifest.get("reuse", "if-fresh"))
     timeout_s = boot_timeout(str(manifest.get("boot_timeout", "")))
     launch_cmd = manifest.get("launch", "")
+    launch_cwd = manifest.get("launch_cwd") or app_cwd
     health_url = entry_url.rstrip("/") + "/" + health_path.lstrip("/") if entry_url else ""
 
     def _fail(step: str, error: str = "", pid: str = "", pgid: str = "") -> dict[str, str]:
@@ -476,7 +479,7 @@ def ensure_stack(
     if launch_cmd:
         # adopt=False: ensure_stack owns the reuse decision above; the launch itself must
         # always run (and be self-freshening) once we have decided not to adopt.
-        res = boot_app(launch_cmd, entry_url, health_path, app_cwd, root,
+        res = boot_app(launch_cmd, entry_url, health_path, launch_cwd, root,
                        identity, timeout_s, adopt=False, logger=logger, clock=clock)
         if res["boot_ok"] != "yes":
             # Report boot's *own* reason, not the step name. "the launch command did not

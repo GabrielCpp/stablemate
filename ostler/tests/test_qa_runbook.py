@@ -123,6 +123,40 @@ def test_working_directory_comes_back_absolute(repo: Path) -> None:
     assert manifest["app_cwd"] == str((repo / "app").resolve())
     assert manifest["prepare"][0]["working-directory"] == str((repo / "app").resolve())
     assert manifest["repo_root"] == str(repo.resolve())
+    assert manifest["launch_cwd"] == str((repo / "app").resolve())
+
+
+def test_the_launch_runs_in_the_service_step_s_own_directory(tmp_path: Path) -> None:
+    (tmp_path / ".git").mkdir()
+    make_runbook(tmp_path, """---
+type: runbook
+---
+
+# QA stack
+
+- driver: web
+- working-directory: `.`
+
+## Steps
+
+### load
+
+- kind: prepare
+- run: `make testdb-load`
+- working-directory: `api`
+
+### serve
+
+- kind: service
+- run: `make run`
+- working-directory: `report`
+- health: `curl -sf http://localhost:8081/health`
+""")
+    manifest = rb.load_stack(tmp_path)
+    assert manifest["app_cwd"] == str(tmp_path.resolve())
+    assert manifest["launch_cwd"] == str((tmp_path / "report").resolve())
+    assert manifest["prepare"][0]["working-directory"] == str((tmp_path / "api").resolve())
+    assert manifest["health"][0]["working-directory"] == str((tmp_path / "report").resolve())
 
 
 def test_scenario_frame_token_is_carried_as_a_marker_not_a_resolved_path(tmp_path: Path) -> None:

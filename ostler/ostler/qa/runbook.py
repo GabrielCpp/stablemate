@@ -299,6 +299,8 @@ def _from_runbook(graph: Graph, runbook: UINode) -> dict[str, Any]:
             # while the book is being repaired.
             if step and "launch" not in manifest:
                 manifest["launch"] = step["run"]
+                manifest["launch_cwd"] = step.get(
+                    "working-directory", manifest["app_cwd"])
             gate = bullet_value(node.meta, "health")
             if gate and not checks.is_check_expression(gate):
                 # Same backstop as `_step_command`'s: a check expression here is a book

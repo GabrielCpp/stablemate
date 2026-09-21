@@ -391,6 +391,23 @@ def test_ensure_stack_runs_prepare_launch_seed_health_in_order(monkeypatch) -> N
     assert order == ["prepare[0]", "launch", "seed[0]", "seed[1]", "health[0]"]
 
 
+def test_ensure_stack_boots_the_launch_in_its_own_declared_directory(monkeypatch) -> None:
+    seen: list[str] = []
+
+    def boot(_cmd, _url, _path, cwd, *_a, **_kw):
+        seen.append(cwd)
+        return {"boot_ok": "yes", "entry_url": "", "app_pid": "", "app_pgid": ""}
+
+    monkeypatch.setattr(stack, "health_probe", lambda *_a, **_kw: "nothing is serving")
+    monkeypatch.setattr(stack, "_run_step", lambda *_a, **_kw: (True, ""))
+    monkeypatch.setattr(stack, "boot_app", boot)
+
+    base = {"launch": "make run", "app_cwd": "/repo"}
+    stack.ensure_stack({**base, "launch_cwd": "/repo/report"}, logger=LOG)
+    stack.ensure_stack(base, logger=LOG)
+    assert seen == ["/repo/report", "/repo"]
+
+
 def test_ensure_stack_fails_the_step_that_failed_and_stops(monkeypatch) -> None:
     ran: list[str] = []
 
