@@ -142,9 +142,10 @@ them keeps agent context accurate too.
   node's return value, the context manifest. A state declares what it expects
   (`returns=`) and the runner validates into it; nothing downstream re-checks shapes.
 - **Fail soft for unattended runs.** New failure paths in agent handling should
-  slot into the existing retry → reframe → default ladder rather than raising, so
-  one bad node can't end a week-long run. Reserve hard raises for genuinely
-  unrecoverable, deterministic errors.
+  slot into the existing retry → compact → reframe ladder rather than raising on
+  first sight, so a week-long run rides out what it can. A spent ladder raises for
+  the calling state to catch; it never invents the node's answer. Reserve hard raises
+  for genuinely unrecoverable, deterministic errors.
 - **Comments explain *why*.** Match the existing density — the tricky invariants
   (checkpoint/fast-forward idempotency, cap-vs-transient classification) are
   documented inline; keep them that way.

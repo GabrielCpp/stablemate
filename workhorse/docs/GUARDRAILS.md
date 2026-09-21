@@ -228,7 +228,7 @@ same `run_id`, same collector, no per-node SDK init.
 node that calls `os._exit`, segfaults a C extension, or exhausts memory takes the run
 down with it — losing the checkpoint write and the telemetry flush a raised exception
 would have gone through. The blast radius is bounded by what was already true: a
-failing node ends the run (the retry → reframe → default ladder covers *agent* turns
+failing node ends the run (the retry → compact → reframe ladder covers *agent* turns
 only). What is lost is the *clean* ending.
 
 Node calls have **no timeout and no watchdog** — a wedged node hangs forever. The run

@@ -24,9 +24,10 @@ docs go, conventions — is [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md). Read tha
 ## Working rules (most load-bearing)
 
 - **Fail soft for unattended runs.** New failure paths in agent-node handling must slot
-  into the existing retry → compact → reframe → default ladder in
-  `workhorse/runner/ladder.py`, not raise. One bad node must never end the run. Reserve
-  hard raises for unrecoverable, deterministic errors.
+  into the existing retry → compact → reframe ladder in `workhorse/runner/ladder.py`,
+  not raise on first sight. A spent ladder raises `AgentTurnFailed`/`AgentTimeout` for
+  the calling state to catch or the run to stop on. It never invents the node's answer.
+  Reserve hard raises for unrecoverable, deterministic errors.
 - **Tests go in `tests/test_<area>.py`** and must be dependency-free and standalone: each
   file runs under plain `uv run python tests/test_x.py` (and is also pytest-compatible),
   injecting the CLI boundary (a fake `AgentBackend` from `tests/_fakes.py`) and the
