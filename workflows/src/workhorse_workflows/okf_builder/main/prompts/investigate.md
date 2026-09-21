@@ -153,7 +153,7 @@ missing rather than re-reading the whole tree.
     Derive ports/hosts from the config loader + compose/scripts; never invent them.
   - **`runbook`** — its `driver:` (web/mobile/http/cli/artifact/iac/none), `environment:` link,
     `cli:`/`surfaces:` links to the nodes it exposes, `code:` launch entry point, and the ordered
-    `## Steps`. Each `### <id>` step gets a `kind:` (prepare/service/seed/run/health/verify/drive), a
+    `## Steps`. Each `### <id>` step gets a `kind:` (prepare/service/seed/run/health/verify/drive/teardown), a
     real `run:` command, and — crucially — a **real readiness signal**: a `service`/`health` step's
     `health:` must be a genuine probe (an API endpoint that exercises the backend, `port-bound`,
     `log:<pattern>`, `ws:<frame>`), **never a UI shell served with the backend down**; a `run` step's
