@@ -17,6 +17,7 @@ from workhorse.pyflow.errors import (
     WorkflowFrozenError,
 )
 from workhorse.pyflow.names import NameIndex
+from workhorse.runner.backends import AgentProfile
 from workhorse.runner import worktree_guard
 
 P = ParamSpec("P")
@@ -173,6 +174,7 @@ class Workflow(BaseModel):
         cwd: str | Path | None = None,
         add_dirs: Sequence[str | Path] | None = None,
         session: str | None = None,
+        profile: AgentProfile | None = None,
     ) -> T:
         """Render `prompt`, run an agent turn, and validate the reply into `returns`."""
         engine = self._require_engine()
@@ -193,6 +195,7 @@ class Workflow(BaseModel):
                 cwd=cwd,
                 add_dirs=add_dirs,
                 session=session,
+                profile=profile,
             )
 
     def seed_session(self, key: str, session_id: str) -> None:

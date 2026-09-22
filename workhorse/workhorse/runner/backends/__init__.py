@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -14,6 +15,28 @@ if TYPE_CHECKING:
 
 
 INLINE_PROMPT_LIMIT_BYTES = 96 * 1024
+
+
+@dataclass(frozen=True, slots=True)
+class AgentProfile:
+    """A named, narrowed persona for one node's turns, as the CLI behind the port understands it.
+
+    A tool the turn never calls is not free. Most CLIs resend every enabled tool's JSON
+    schema on every step of a turn, so an unused tool is paid for once per step.
+    ``tools`` maps a CLI tool name to whether this node may call it, and a backend may
+    spend that as a removal from the request rather than a refusal at call time.
+    ``steps`` bounds the agentic iterations one turn may take before it must answer in
+    text. ``disable_mcp`` names MCP servers to leave unattached. Workhorse never authors
+    a profile. A workflow knows which tools its own prompt needs, and hands one down on
+    its node.
+    """
+
+    name: str
+    tools: dict[str, bool] = field(default_factory=dict)
+    steps: int | None = None
+    disable_mcp: tuple[str, ...] = ()
+    tool_output_max_lines: int | None = None
+    tool_output_max_bytes: int | None = None
 
 
 def prepare_argv_prompt(prompt: str, prompt_path: Path | None) -> tuple[str, Path | None]:
@@ -65,6 +88,7 @@ class AgentBackend(ABC):
         cwd: str | None = None,
         add_dirs: list[str] | None = None,
         effort: str | None = None,
+        agent: AgentProfile | None = None,
     ) -> str:
         """Run one non-interactive turn for ``prompt`` and return the final result text."""
 

@@ -60,6 +60,7 @@ class TurnUsage:
     reasoning_output_tokens: int | None = None
     total_cost_usd: float | None = None
     duration_ms: int | None = None
+    steps: int | None = None
 
     def token_counts(self) -> dict[str, int]:
         """The token fields this turn actually reported, canonical name → count."""
@@ -79,7 +80,7 @@ class TurnUsage:
     @property
     def is_empty(self) -> bool:
         """True when the turn reported neither tokens nor money, i.e."""
-        return not self.token_counts() and self.total_cost_usd is None
+        return not self.token_counts() and self.total_cost_usd is None and not self.steps
 
     def merge(self, part: TurnUsage) -> TurnUsage:
         """Fold one report into a running per-turn total, as a new value."""
@@ -105,6 +106,7 @@ class TurnUsage:
             duration_ms=(
                 self.duration_ms if part.duration_ms is None else part.duration_ms
             ),
+            steps=_add(self.steps, part.steps),
         )
 
 

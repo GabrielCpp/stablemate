@@ -16,6 +16,7 @@ from workhorse.artifacts import ArtifactWriter
 from workhorse.config_run import RunConfig
 from workhorse.context import WorkflowContext
 from workhorse.manifest import ManifestContext
+from workhorse.runner.backends import AgentProfile
 from workhorse.runner.spec import AgentNode, OutputSpec
 from workhorse.pyflow.blueprint import NodeSpec, node_spec
 from workhorse.pyflow.errors import (
@@ -241,6 +242,7 @@ class Engine:
         cwd: str | Path | None = None,
         add_dirs: Sequence[str | Path] | None = None,
         session: str | None = None,
+        profile: AgentProfile | None = None,
     ) -> Any:
         node_id = Path(prompt).stem or "agent"
         writer = self.env.writer
@@ -281,6 +283,8 @@ class Engine:
                 budget["cwd"] = str(cwd)
             if add_dirs is not None:
                 budget["add_dirs"] = [str(d) for d in add_dirs]
+            if profile is not None:
+                budget["agent"] = profile
             node = AgentNode(
                 type="agent",
                 id=node_id,

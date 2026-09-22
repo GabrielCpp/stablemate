@@ -20,6 +20,7 @@ from workhorse import control, otel, reload
 from workhorse.artifacts import write_unlinked
 from workhorse.config_run import AgentResilience, RunConfig
 from workhorse.context import WorkflowContext
+from workhorse.runner.backends import AgentProfile
 from workhorse.runner.caps import cap_delay_seconds, sleep_with_notice
 from workhorse._vendor.stablemate_core.clock import SYSTEM_CLOCK, Clock
 from workhorse.runner.extract import extract_outputs
@@ -404,6 +405,7 @@ class AgentRunner:
                 prompt_path=prompt_path,
                 budget_scale=budget_scale, base_timeout_s=base_timeout_s,
                 cwd=cwd, add_dirs=add_dirs, effort=effort,
+                agent=node.agent,
                 invoke_retries=node.invoke_retries,
             )
             try:
@@ -443,6 +445,7 @@ class AgentRunner:
         cwd: str | None = None,
         add_dirs: list[str] | None = None,
         effort: str | None = None,
+        agent: AgentProfile | None = None,
         invoke_retries: int | None = None,
     ) -> str:
         """Run one agent-CLI turn for ``prompt``, recovering from transient failures."""
@@ -485,6 +488,7 @@ class AgentRunner:
                         cwd=cwd,
                         add_dirs=add_dirs,
                         effort=effort,
+                        agent=agent,
                     )
                 otel.turn_end()
                 return result

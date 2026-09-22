@@ -1174,6 +1174,8 @@ class _Telemetry:
                 self._turn_has_duration = True
             for field, count in usage.token_counts().items():
                 turn.set_attribute(f"usage.{field}", int(count))
+            if usage.steps is not None:
+                turn.set_attribute("usage.steps", int(usage.steps))
             if usage.total_cost_usd is not None:
                 turn.set_attribute("total_cost_usd", float(usage.total_cost_usd))
 

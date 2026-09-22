@@ -11,7 +11,7 @@ from workhorse.config_run import AgentResilience
 from workhorse.runner import failure as _failure
 from workhorse.runner import process as _process
 from workhorse.runner import usage as _usage
-from workhorse.runner.backends import AgentBackend
+from workhorse.runner.backends import AgentBackend, AgentProfile
 
 
 class ClaudeBackend(AgentBackend):
@@ -34,6 +34,7 @@ class ClaudeBackend(AgentBackend):
         cwd: str | None = None,
         add_dirs: list[str] | None = None,
         effort: str | None = None,
+        agent: AgentProfile | None = None,
     ) -> str:
         """Run one Claude CLI turn and return its final result text."""
         cmd = [

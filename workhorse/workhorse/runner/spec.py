@@ -4,6 +4,7 @@ from __future__ import annotations
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator
+from workhorse.runner.backends import AgentProfile
 
 
 class OutputSpec(BaseModel):
@@ -21,6 +22,7 @@ class AgentNode(BaseModel):
     timeout: float | None = None
     retries: int | None = None
     invoke_retries: int | None = None
+    agent: AgentProfile | None = None
 
     @field_validator("timeout", mode="before")
     @classmethod

@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from workhorse.runner.backends import AgentBackend
+from workhorse.runner.backends import AgentBackend, AgentProfile
 from workhorse.runner.failure import BackendInvocationError
 
 if TYPE_CHECKING:
@@ -32,6 +32,7 @@ class NullBackend(AgentBackend):
         cwd: str | None = None,
         add_dirs: list[str] | None = None,
         effort: str | None = None,
+        agent: AgentProfile | None = None,
     ) -> str:
         raise BackendInvocationError(
             f"node {node_id!r} needs an agent CLI and this run has none — "

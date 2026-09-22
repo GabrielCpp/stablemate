@@ -7,7 +7,11 @@ from pathlib import Path
 
 from workhorse.config_run import AgentResilience
 from workhorse.runner import usage as _usage
-from workhorse.runner.backends import ensure_prompt_is_not_in_argv, prepare_argv_prompt
+from workhorse.runner.backends import (
+    AgentProfile,
+    ensure_prompt_is_not_in_argv,
+    prepare_argv_prompt,
+)
 from workhorse.runner.backends.jsonl import JsonlBackend
 from workhorse.runner.backends.turn import TurnState, finalize_turn, read_session_id
 
@@ -51,6 +55,7 @@ class CopilotBackend(JsonlBackend):
         cwd: str | None = None,
         add_dirs: list[str] | None = None,
         effort: str | None = None,
+        agent: AgentProfile | None = None,
     ) -> str:
         sid = read_session_id(session_id_path)
         argv_prompt, attachment = prepare_argv_prompt(prompt, prompt_path)

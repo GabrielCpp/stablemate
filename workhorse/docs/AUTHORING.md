@@ -222,6 +222,43 @@ review = self.agent(
 turn sees. The runner de-dupes `add_dirs` against it and turns the rest into `--add-dir`
 flags.
 
+## The tools a node's turn may call (`profile`)
+
+A tool the turn never calls is not free. Most agent CLIs resend every enabled tool's JSON
+schema on every step of a turn, so an unused tool is paid for once per step, and a turn
+that takes forty steps pays for it forty times. In one measured okf-builder corpus the
+schemas outweighed the rendered prompt more than three to one.
+
+`profile` hands the node a narrowed persona the backend spends as a removal from the
+request rather than a refusal at call time:
+
+```python
+from workhorse.runner.backends import AgentProfile
+
+REPAIR = AgentProfile(
+    name="okf-repair",
+    tools={"webfetch": False, "websearch": False, "task": False},
+    steps=20,
+    disable_mcp=("playwright",),
+    tool_output_max_lines=400,
+)
+
+self.agent("prompts/repair.md", returns=Repair, profile=REPAIR)
+```
+
+`steps` bounds the agentic iterations one turn may take before it must answer in text,
+which is a cheaper ending than a watchdog kill: the reply and the edits already on disk
+both survive. `disable_mcp` names MCP servers to leave unattached, for the browser server
+a documentation turn has never driven. The two `tool_output_*` fields clip a long
+command's output before it enters the conversation and starts being resent.
+
+**The workflow owns the profile, not the engine.** Which tools a prompt needs is a fact
+about that prompt, so workhorse forwards the profile to the backend without reading it.
+A backend that cannot express a narrowing ignores it. One name is worth knowing: opencode
+folds `write`, `edit` and `patch` onto a single permission, so denying any of them
+disarms the turn's editing entirely, and its adapter refuses such a profile rather than
+shipping a turn that cannot write.
+
 `retries` overrides the run's `AGENT_MAX_REPHRASE_ATTEMPTS` for this node alone — how many
 times a failed turn is re-asked from scratch in a fresh session before the ladder gives up.
 Pass `0` when the turn's **deliverable is a file rather than its reply** and this state can

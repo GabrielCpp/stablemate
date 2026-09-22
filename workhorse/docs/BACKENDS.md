@@ -189,8 +189,12 @@ pin it rides whatever provider the machine's `opencode.jsonc` names, and a helpe
 routed to a provider the run doesn't otherwise use fails on that provider's own
 wall (an OpenRouter credit exhaustion on the title call was classified as a cap on
 the node and slept a run for six days while its coding models were fine). Setting
-`OPENCODE_CONFIG_CONTENT` in `[harness.opencode].env` takes over the whole inline
-config: your value passes through verbatim and the automatic pin steps aside.
+`OPENCODE_CONFIG_CONTENT` in `[harness.opencode].env` does not turn the adapter
+off: your keys are the base and the adapter merges its own over them, key by key
+and into nested tables. A `small_model` you set yourself stands, because the pin
+only fills a key that is absent. Before this merge the adapter skipped itself
+entirely whenever the variable was set, so a machine with any unrelated key in
+that config silently lost the pin and the six-day sleep above was back.
 
 A second one it sets itself: `OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX=131072`.
 opencode caps every completion at 32 000 output tokens — thinking included —
