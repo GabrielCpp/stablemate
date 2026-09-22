@@ -1,4 +1,8 @@
-"""Every `self.agent("prompts/…")` in the distribution names a file that is packaged."""
+"""Every `self.agent("prompts/…")` in the distribution names a file that is packaged.
+
+A turn carrying a `label` writes its prompt in the state's own source, so there is no
+file to find. `scripts/check_inline_prompts.py` is what bounds those.
+"""
 from __future__ import annotations
 
 import ast
@@ -26,6 +30,8 @@ def _agent_prompts(source: Path) -> list[tuple[int, ast.expr]]:
         if not (isinstance(fn, ast.Attribute) and fn.attr == "agent"):
             continue
         if not (isinstance(fn.value, ast.Name) and fn.value.id == "self"):
+            continue
+        if any(kw.arg == "label" for kw in node.keywords):
             continue
         if node.args:
             found.extend(

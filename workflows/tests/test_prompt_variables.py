@@ -150,9 +150,13 @@ def _scopes(tree: ast.Module) -> dict[int, ast.AST]:
     return enclosing
 
 
-def _turns(source: Path) -> tuple[list[tuple[int, str, set[str]]], list[int]]:
-    """Every `self.agent(prompt, args=…)` in `source` as `(line, prompt, arg names)`, plus the lines of the sites whose arguments no static reading can name."""
-    found: list[tuple[int, str, set[str]]] = []
+def _turns(source: Path) -> tuple[list[tuple[int, str, set[str], str]], list[int]]:
+    """Every `self.agent(prompt, args=…)` in `source` as `(line, prompt, arg names, inline body)`, plus the lines of the sites whose arguments no static reading can name.
+
+    A turn carrying `label=` names its node by that label and holds its own text, so the
+    fourth field is that text. A turn naming a prompt file leaves it empty.
+    """
+    found: list[tuple[int, str, set[str], str]] = []
     opaque: list[int] = []
     tree = ast.parse(source.read_text(encoding="utf-8"), filename=str(source))
     enclosing = _scopes(tree)
@@ -166,11 +170,14 @@ def _turns(source: Path) -> tuple[list[tuple[int, str, set[str]]], list[int]]:
             continue
         prompt: ast.expr | None = node.args[0] if node.args else None
         args: ast.expr | None = None
+        label: str | None = None
         for kw in node.keywords:
             if kw.arg == "prompt":
                 prompt = kw.value
             elif kw.arg == "args":
                 args = kw.value
+            elif kw.arg == "label" and isinstance(kw.value, ast.Constant):
+                label = str(kw.value.value)
         if not (isinstance(prompt, ast.Constant) and isinstance(prompt.value, str)):
             continue
         keys: set[str] | None = (
@@ -179,7 +186,7 @@ def _turns(source: Path) -> tuple[list[tuple[int, str, set[str]]], list[int]]:
         if keys is None:
             opaque.append(node.lineno)
             continue
-        found.append((node.lineno, prompt.value, keys))
+        found.append((node.lineno, label or prompt.value, keys, prompt.value if label else ""))
     return found, opaque
 
 
@@ -189,7 +196,9 @@ def _prompts() -> dict[tuple[str, str], tuple[set[str], list[str]]]:
     for name in WORKFLOWS:
         for source in sorted((PACKAGE / name).rglob("*.py")):
             turns, opaque = _turns(source)
-            for lineno, prompt, args in turns:
+            for lineno, prompt, args, body in turns:
+                if body:
+                    BODIES[(name, prompt)] = body
                 vocabulary, sites = found.setdefault((name, prompt), (set(), []))
                 vocabulary |= args
                 sites.append(f"{source.relative_to(PACKAGE)}:{lineno}")
@@ -198,6 +207,8 @@ def _prompts() -> dict[tuple[str, str], tuple[set[str], list[str]]]:
 
 
 OPAQUE: list[str] = []
+
+BODIES: dict[tuple[str, str], str] = {}
 
 PROMPTS = _prompts()
 
@@ -236,7 +247,9 @@ def test_no_turn_is_unreadable() -> None:
 )
 def test_the_prompt_reads_only_names_the_workflow_can_supply(workflow: str, prompt: str) -> None:
     vocabulary, sites = PROMPTS[(workflow, prompt)]
-    body = (PACKAGE / workflow / prompt).read_text(encoding="utf-8")
+    body = BODIES.get((workflow, prompt)) or (
+        (PACKAGE / workflow / prompt).read_text(encoding="utf-8")
+    )
     missing = sorted(_referenced(body) - AMBIENT - vocabulary)
     assert not missing, (
         f"{workflow}/{prompt} reads {missing}, which no turn that renders it passes and no "

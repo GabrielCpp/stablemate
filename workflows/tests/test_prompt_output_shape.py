@@ -44,9 +44,9 @@ def _top_level_keys(body: str) -> set[str] | None:
     return keys or None
 
 
-def _turns(source: Path) -> list[tuple[int, str, ast.expr]]:
-    """Every `self.agent(...)` in `source` as `(line, prompt, returns)`."""
-    found: list[tuple[int, str, ast.expr]] = []
+def _turns(source: Path) -> list[tuple[int, str, ast.expr, bool]]:
+    """Every `self.agent(...)` in `source` as `(line, prompt, returns, inline)`."""
+    found: list[tuple[int, str, ast.expr, bool]] = []
     tree = ast.parse(source.read_text(encoding="utf-8"), filename=str(source))
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call):
@@ -58,23 +58,26 @@ def _turns(source: Path) -> list[tuple[int, str, ast.expr]]:
             continue
         prompt: ast.expr | None = node.args[0] if node.args else None
         returns: ast.expr | None = None
+        inline = False
         for kw in node.keywords:
             if kw.arg == "prompt":
                 prompt = kw.value
             elif kw.arg == "returns":
                 returns = kw.value
+            elif kw.arg == "label":
+                inline = True
         if returns is not None and isinstance(prompt, ast.Constant):
             if isinstance(prompt.value, str):
-                found.append((node.lineno, prompt.value, returns))
+                found.append((node.lineno, prompt.value, returns, inline))
     return found
 
 
-def _sites() -> list[tuple[str, Path, int, str, ast.expr]]:
-    sites: list[tuple[str, Path, int, str, ast.expr]] = []
+def _sites() -> list[tuple[str, Path, int, str, ast.expr, bool]]:
+    sites: list[tuple[str, Path, int, str, ast.expr, bool]] = []
     for name in WORKFLOWS:
         for source in sorted((PACKAGE / name).rglob("*.py")):
-            for lineno, prompt, returns in _turns(source):
-                sites.append((name, source, lineno, prompt, returns))
+            for lineno, prompt, returns, inline in _turns(source):
+                sites.append((name, source, lineno, prompt, returns, inline))
     return sites
 
 
@@ -96,28 +99,29 @@ def _model_fields(source: Path, returns: ast.expr) -> set[str]:
 def test_the_sweep_found_turns_in_every_workflow() -> None:
     """The guard against a walker that silently matches nothing."""
     by_workflow = {name: 0 for name in WORKFLOWS}
-    for name, _source, _lineno, _prompt, _returns in SITES:
+    for name, _source, _lineno, _prompt, _returns, _inline in SITES:
         by_workflow[name] += 1
     assert all(by_workflow.values()), by_workflow
 
 
 @pytest.mark.parametrize(
-    ("workflow", "source", "lineno", "prompt", "returns"),
+    ("workflow", "source", "lineno", "prompt", "returns", "inline"),
     SITES,
-    ids=[f"{name}:{source.stem}:{lineno}" for name, source, lineno, _p, _r in SITES],
+    ids=[f"{name}:{source.stem}:{lineno}" for name, source, lineno, _p, _r, _i in SITES],
 )
 def test_the_prompt_documents_the_keys_the_turn_is_asked_for(
-    workflow: str, source: Path, lineno: int, prompt: str, returns: ast.expr
+    workflow: str, source: Path, lineno: int, prompt: str, returns: ast.expr, inline: bool
 ) -> None:
     fields = _model_fields(source, returns)
     if not fields:
         return
-    body = (PACKAGE / workflow / prompt).read_text(encoding="utf-8")
+    body = prompt if inline else (PACKAGE / workflow / prompt).read_text(encoding="utf-8")
     if "{{ result_schema }}" in body:
         return
     examples = [keys for block in BLOCK.findall(body) if (keys := _top_level_keys(block))]
     assert any(keys == fields for keys in examples), (
-        f"{source}:{lineno}: no ```json block in {prompt} has exactly the top-level keys "
+        f"{source}:{lineno}: no ```json block in {'this turn' if inline else prompt} has "
+        f"exactly the top-level keys "
         f"{ast.unparse(returns)} declares.\n"
         f"  declared: {sorted(fields)}\n"
         + "".join(f"  example:  {sorted(keys)}\n" for keys in examples or [set()])
