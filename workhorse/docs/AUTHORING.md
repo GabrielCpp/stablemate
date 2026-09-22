@@ -238,9 +238,7 @@ Two things an inline turn may not do. `self.agent` refuses each one with a
 | text that is not valid Jinja | a file prompt fails this late at render time; an inline one fails at authoring time |
 
 The boundary: inline is a short fixed turn with no skill reference and nothing an
-operator would flavor. A file is everything else. A distribution that wants a harder
-line than the engine's two refusals draws it in its own guard, which is what the
-`workhorse-workflows` package does.
+operator would flavor. A file is everything else.
 
 ## Where an agent turn runs (`cwd` / `add_dirs`)
 

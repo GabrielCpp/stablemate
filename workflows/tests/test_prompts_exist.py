@@ -1,7 +1,7 @@
 """Every `self.agent("prompts/…")` in the distribution names a file that is packaged.
 
 A turn carrying a `label` writes its prompt in the state's own source, so there is no
-file to find. `scripts/check_inline_prompts.py` is what bounds those.
+file to find. `self.agent` is what checks those, at the moment it is called.
 """
 from __future__ import annotations
 

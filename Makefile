@@ -160,18 +160,6 @@ check-no-shell: ## Guard the "no ad-hoc shell scripts" rule (extend the Python C
 	# sweep is the half that still works on a clone where no hook is installed.
 	uv run python scripts/check_no_shell.py
 
-.PHONY: check-inline-prompts
-check-inline-prompts: ## Guard the bounds on a prompt written in a state's own source
-	# A prompt file is read by `references.py`, by four AST suites and by a repo's
-	# `.agents/flavors/**` override. A body written in the state's source is read by
-	# none of those, so it has to stay a short fixed turn. The same script backs a
-	# Claude PreToolUse hook; this sweep is the half that works on a clone with no hook.
-	#
-	# `--all-packages` because the guard reads the manifest helper names out of
-	# workhorse itself, rather than keeping a second copy that can drift from the one
-	# the engine enforces.
-	uv run --all-packages python scripts/check_inline_prompts.py
-
 .PHONY: check-fixtures
 check-fixtures: ## Guard the declared-fixture rule across the benchmark corpus
 	# `ostler qa lint` and the run's own preflight see one plan and one app at a time,

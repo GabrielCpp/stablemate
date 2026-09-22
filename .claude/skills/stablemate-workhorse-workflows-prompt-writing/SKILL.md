@@ -76,9 +76,9 @@ aims are still two turns. It is a size rule: inline is a short fixed turn with n
 reference and nothing an operator would flavor, a file is everything else.
 
 What a file gives up when a turn goes inline is the reason the default stands. No
-`.agents/flavors/**` override reaches it, no reference preflight resolves a manifest name
-inside it, and the guard refuses it above forty lines. A prompt carrying all four
-mechanics is past that line by the time it carries the second one.
+`.agents/flavors/**` override reaches it, and no reference preflight resolves a manifest
+name inside it, which is why `self.agent` refuses one outright. A prompt carrying all
+four mechanics is past the size line by the time it carries the second one.
 
 ## What never belongs in a prompt
 

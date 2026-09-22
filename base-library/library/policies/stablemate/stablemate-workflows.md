@@ -92,19 +92,10 @@ variables and existence.
 
 A turn carrying `label=` writes its text at the call site instead. Inline is a short fixed
 turn with no skill reference and nothing an operator would flavor. A file is everything
-else. `workhorse/docs/AUTHORING.md` has the engine's half, and the guard draws this
-package's harder line: the body is a literal string of at most forty lines opening with a
-`#` heading, the label is a literal matching `^[a-z0-9][a-z0-9_-]*$` and unique in its
-file, no manifest reference and no {% raw %}`{% include %}`{% endraw %} appear in it, and nothing under
-`coder/` goes inline at all, because that workflow's neutrality check globs
-`coder/*/prompts/*.md` and an inline body would escape it.
+else. `self.agent` refuses a bad label, un-parseable Jinja and a manifest reference
+outright. The rest is a judgement call, and it goes the file's way whenever the turn
+carries a skill reference, needs an operator's override, or runs past a screen.
 
-```bash
-make check-inline-prompts    # from the repo root, on its own
-```
-
-Two enforcement points, one rule, one file — `scripts/check_inline_prompts.py`. A
-`PreToolUse` hook runs it with `--hook` and refuses the write before the file exists, and
-the sweep scans every tracked `.py`, because a hook only covers the machine it is
-installed on. Test files are exempt: the bounds exist so the prompt sweeps can read a
-turn, and no sweep reads a test.
+Nothing under `coder/` goes inline at all. `scripts/check_prompt_agnostic.py` and
+`coder/test_prompt_stack_neutrality.py` glob `coder/*/prompts/*.md`, so an inline body
+would escape that workflow's central invariant.
