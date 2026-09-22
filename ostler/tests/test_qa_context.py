@@ -391,11 +391,16 @@ def test_six_unrelated_nodes_citing_one_symbol_still_demote(tmp_path: Path):
     assert len(shared_obligations) == 6
     assert all(not item["required"] for item in shared_obligations), shared_obligations
     other_obligation = next(item for item in packet["obligations"] if item["node"].endswith("other.md"))
-    assert other_obligation["required"]
+    assert not other_obligation["required"]
+    assert other_obligation["evidenceRequired"] == "context"
 
 
 def test_concepts_chained_by_extends_citing_one_symbol_stay_one_family(tmp_path: Path):
-    """Six `concept` nodes chained by `extends:` are one documented thing, not six owners."""
+    """Six `concept` nodes chained by `extends:` are one documented thing, not six owners.
+
+    Each owes context rather than live evidence, because a concept is a piece of thinking
+    about the user and the system and there is nothing there to measure.
+    """
     (tmp_path / "docs/features/demo").mkdir(parents=True)
     (tmp_path / "docs/features/demo/item0.md").write_text(
         "---\ntype: concept\ntitle: Item 0\n---\n# Item 0\n\n"
@@ -432,7 +437,7 @@ def test_concepts_chained_by_extends_citing_one_symbol_stay_one_family(tmp_path:
 
     shared_obligations = [item for item in packet["obligations"] if "/item" in item["node"]]
     assert len(shared_obligations) == 6
-    assert all(item["required"] for item in shared_obligations), shared_obligations
+    assert all(item["evidenceRequired"] == "context" for item in shared_obligations)
 
 
 def test_concepts_chained_by_same_as_citing_one_symbol_stay_one_family(tmp_path: Path):
@@ -487,7 +492,7 @@ def test_concepts_chained_by_same_as_citing_one_symbol_stay_one_family(tmp_path:
 
     shared_obligations = [item for item in packet["obligations"] if "/item" in item["node"]]
     assert len(shared_obligations) == 1
-    assert all(item["required"] for item in shared_obligations), shared_obligations
+    assert all(item["evidenceRequired"] == "context" for item in shared_obligations)
 
 
 def _same_as_button_screens(

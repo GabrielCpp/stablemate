@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import importlib
 import re
 from dataclasses import dataclass
 from pathlib import Path
 from types import SimpleNamespace
+from collections.abc import Callable
 from typing import Any
 
 from ostler import checks, model, registry
@@ -13,8 +15,11 @@ from ostler.model import Graph
 from ostler.qa.outcome import QaOutcome
 from ostler.qa.harness_host import load_harness_module
 
+_parser = importlib.import_module("re._parser")
+
 _harness = load_harness_module("ostler_qa")
 _VERIFIERS = _harness.VERIFIERS
+_UNSATISFIABLE = _harness.UNSATISFIABLE
 
 _OTHER = "∅ not what was claimed"
 
@@ -114,6 +119,7 @@ class Trial:
     flipped: tuple[str, ...]
     survived: tuple[str, ...]
     note: str = ""
+    unsatisfiable: bool = False
 
     @property
     def sensitive(self) -> bool:
@@ -132,9 +138,11 @@ class ClaimReport:
 
     @property
     def status(self) -> str:
-        """What the experiment showed: `sensitive`, `insensitive`, `unwitnessed`, `undeclared`."""
+        """What the experiment showed: `unsatisfiable`, `sensitive`, `insensitive`, `unwitnessed`, `undeclared`."""
         if not self.trials:
             return "undeclared"
+        if any(t.unsatisfiable for t in self.trials):
+            return "unsatisfiable"
         if any(t.sensitive for t in self.trials):
             return "sensitive"
         return "insensitive" if any(t.witnessed for t in self.trials) else "unwitnessed"
@@ -233,75 +241,132 @@ def _matching(pattern: str) -> str | None:
     return built if built is not None and re.search(pattern, built) else None
 
 
+def _avoiding(pattern: str | None, text: str | None) -> str | None:
+    """A string the pattern rejects and the forbidden text stays out of, or None when there is none."""
+    for candidate in ("a message that says nothing it may not", "", *_CLASS_POOL, "\n"):
+        if text is not None and text in candidate:
+            continue
+        if pattern is None or re.search(pattern, candidate) is None:
+            return candidate
+    return None
+
+
 _CLASS_POOL = "abcdefghijklmnopqrstuvwxyz0123456789_-"
-_ESCAPES = {"d": "5", "w": "a", "s": " ", "S": "a", "W": " ", "D": "a"}
 
 
 def _synthesize(pattern: str) -> str | None:
-    """One member of a small regular language: literals, classes, groups, counted repeats."""
+    """One member of the language, read off the parse tree the `re` module itself builds."""
+    try:
+        tree = _parser.parse(pattern)
+    except re.error:
+        return None
     out: list[str] = []
-    i = 0
-    while i < len(pattern):
-        char = pattern[i]
-        if char in "^$":
-            i += 1
+    groups: dict[int, str] = {}
+    return "".join(out) if _emit(tree, out, groups) else None
+
+
+def _emit(tree: Any, out: list[str], groups: dict[int, str]) -> bool:
+    """Append one member of *tree* to *out*, answering whether every piece could be inhabited."""
+    for op, av in tree:
+        name = op.name
+        if name == "LITERAL":
+            out.append(chr(av))
+        elif name == "NOT_LITERAL":
+            out.append(next((c for c in _CLASS_POOL if c != chr(av)), "a"))
+        elif name == "ANY":
+            out.append("a")
+        elif name == "IN":
+            char = _from_set(av)
+            if char is None:
+                return False
+            out.append(char)
+        elif name in {"MAX_REPEAT", "MIN_REPEAT", "POSSESSIVE_REPEAT"}:
+            low, _, body = av
+            for _ in range(max(low, 0)):
+                if not _emit(body, out, groups):
+                    return False
+        elif name == "SUBPATTERN":
+            group, _, _, body = av
+            mark = len(out)
+            if not _emit(body, out, groups):
+                return False
+            if isinstance(group, int):
+                groups[group] = "".join(out[mark:])
+        elif name == "ATOMIC_GROUP":
+            if not _emit(av, out, groups):
+                return False
+        elif name == "BRANCH":
+            if not _branch(av[1], out, groups):
+                return False
+        elif name == "GROUPREF":
+            out.append(groups.get(av, ""))
+        elif name == "AT":
+            if av.name == "AT_BOUNDARY" and out and out[-1][-1:].isalnum():
+                out.append(" ")
+        elif name in {"ASSERT", "ASSERT_NOT", "GROUPREF_EXISTS", "DIRECTIVE"}:
             continue
-        if char == "\\" and i + 1 < len(pattern):
-            piece, i = _ESCAPES.get(pattern[i + 1], pattern[i + 1]), i + 2
-        elif char == "[":
-            end = pattern.find("]", i + 1)
-            if end < 0:
-                return None
-            piece, i = _from_class(pattern[i + 1 : end]), end + 1
-            if piece is None:
-                return None
-        elif char == "(":
-            end = pattern.find(")", i + 1)
-            if end < 0 or "(" in pattern[i + 1 : end]:
-                return None
-            inner = _synthesize(pattern[i + 1 : end].lstrip("?:").split("|")[0])
-            if inner is None:
-                return None
-            piece, i = inner, end + 1
-        elif char in "*+?{})]":
-            return None
-        else:
-            piece, i = char, i + 1
-        repeat, i = _repeat(pattern, i)
-        out.append(piece * repeat)
-    return "".join(out)
+        else:  # pragma: no cover - a construct `re` grows later
+            return False
+    return True
 
 
-def _from_class(body: str) -> str | None:
+def _branch(arms: Any, out: list[str], groups: dict[int, str]) -> bool:
+    """The first arm of an alternation this harness can inhabit."""
+    for arm in arms:
+        piece: list[str] = []
+        if _emit(arm, piece, dict(groups)):
+            out.extend(piece)
+            return True
+    return False
+
+
+def _from_set(members: Any) -> str | None:
     """One character the class admits, ranges expanded, negation honoured."""
-    negated = body.startswith("^")
-    members, chars = set(), body.lstrip("^").replace("\\", "")
-    index = 0
-    while index < len(chars):
-        if index + 2 < len(chars) and chars[index + 1] == "-":
-            members |= {chr(c) for c in range(ord(chars[index]), ord(chars[index + 2]) + 1)}
-            index += 3
-        else:
-            members.add(chars[index])
-            index += 1
-    usable = sorted(set(_CLASS_POOL) - members) if negated else sorted(members)
+    negated = any(op.name == "NEGATE" for op, _ in members)
+    admitted: set[str] = set()
+    classes: list[str] = []
+    for op, av in members:
+        if op.name == "LITERAL":
+            admitted.add(chr(av))
+        elif op.name == "RANGE":
+            admitted |= {chr(c) for c in range(av[0], av[1] + 1)}
+        elif op.name == "CATEGORY":
+            if av.name not in _CATEGORY:
+                return None
+            admitted.add(_CATEGORY[av.name])
+            classes.append(av.name)
+        elif op.name == "NEGATE":
+            continue
+        else:  # pragma: no cover - a class construct `re` grows later
+            return None
+    if not negated:
+        usable = sorted(admitted)
+        return usable[0] if usable else None
+    excluded = admitted | {c for c in _CLASS_POOL
+                           for name in classes if _CATEGORY_HOLDS[name](c)}
+    usable = sorted(set(_CLASS_POOL) - excluded)
     return usable[0] if usable else None
 
 
-def _repeat(pattern: str, i: int) -> tuple[int, int]:
-    """How many times the piece just read repeats, and where the pattern continues."""
-    if i >= len(pattern):
-        return 1, i
-    if pattern[i] == "+":
-        return 1, i + 1
-    if pattern[i] in "*?":
-        return 0, i + 1
-    if pattern[i] == "{":
-        end = pattern.find("}", i)
-        low = pattern[i + 1 : end].split(",")[0]
-        if end > 0 and low.isdigit():
-            return int(low), end + 1
-    return 1, i
+_CATEGORY = {
+    "CATEGORY_DIGIT": "5", "CATEGORY_NOT_DIGIT": "a",
+    "CATEGORY_WORD": "a", "CATEGORY_NOT_WORD": " ",
+    "CATEGORY_SPACE": " ", "CATEGORY_NOT_SPACE": "a",
+}
+
+def _word(char: str) -> bool:
+    """Whether `\\w` admits the character."""
+    return char.isalnum() or char == "_"
+
+
+_CATEGORY_HOLDS: dict[str, Callable[[str], bool]] = {
+    "CATEGORY_DIGIT": str.isdigit,
+    "CATEGORY_NOT_DIGIT": lambda c: not c.isdigit(),
+    "CATEGORY_WORD": _word,
+    "CATEGORY_NOT_WORD": lambda c: not _word(c),
+    "CATEGORY_SPACE": str.isspace,
+    "CATEGORY_NOT_SPACE": lambda c: not c.isspace(),
+}
 
 
 def _plan(call: checks.CheckCall) -> tuple[Any, list[tuple[str, Any]], str]:
@@ -434,7 +499,9 @@ def _plan(call: checks.CheckCall) -> tuple[Any, list[tuple[str, Any]], str]:
         leak = str(args["text"]) if "text" in args else _matching(pattern or "")
         if leak is None:
             return None, [], f"no leaking value can be invented for /{args.get('matches')}/"
-        clean = "a message that says nothing it may not"
+        clean = _avoiding(pattern, str(args["text"]) if "text" in args else None)
+        if clean is None:
+            return None, [], f"every observation carries something /{pattern}/ matches"
         framed = f"… {leak} …"
         if pattern is None or re.search(pattern, framed):
             tainted = framed
@@ -460,8 +527,17 @@ def _plan(call: checks.CheckCall) -> tuple[Any, list[tuple[str, Any]], str]:
     return None, [], f"`{name}` has no witness in this harness"  # pragma: no cover - vocabulary drift
 
 
+def unsatisfiable(call: checks.CheckCall) -> str:
+    """Why no observation can satisfy this call, or empty when one can."""
+    rule = _UNSATISFIABLE.get(call.name)
+    return str(rule(call.args)) if rule is not None else ""
+
+
 def trial(call: checks.CheckCall) -> Trial:
     """Put one declared call to the experiment: green on a witness, red on a defect."""
+    refused = unsatisfiable(call)
+    if refused:
+        return Trial(call.text(), False, (), (), refused, unsatisfiable=True)
     witness, mutations, note = _plan(call)
     verifier = _VERIFIERS.get(call.name)
     if verifier is None or not mutations:
@@ -533,7 +609,9 @@ def render(rows: list[ClaimReport]) -> str:
         if not row.trials:
             lines.append("    unobserved   no `verify:` is attached to this claim")
         for trial_ in row.trials:
-            if not trial_.witnessed:
+            if trial_.unsatisfiable:
+                lines.append(f"    impossible   {trial_.call} — {trial_.note}")
+            elif not trial_.witnessed:
                 lines.append(f"    unwitnessed  {trial_.call} — {trial_.note}")
             elif not trial_.flipped:
                 lines.append(f"    always green {trial_.call} — survived: {', '.join(trial_.survived)}")
@@ -542,10 +620,12 @@ def render(rows: list[ClaimReport]) -> str:
     insensitive = [row for row in rows if row.status == "insensitive"]
     undeclared = [row for row in rows if row.status == "undeclared"]
     unwitnessed = [row for row in rows if row.status == "unwitnessed"]
-    if insensitive or undeclared or unwitnessed:
+    impossible = [row for row in rows if row.status == "unsatisfiable"]
+    if insensitive or undeclared or unwitnessed or impossible:
         verdict = (
             f"{len(rows)} claims put to the experiment, "
             f"{len(insensitive)} insensitive, {len(undeclared)} unobserved, "
+            f"{len(impossible)} impossible (no observation could satisfy the call), "
             f"{len(unwitnessed)} unwitnessed (this harness could not build a witness)"
         )
     else:
@@ -559,10 +639,11 @@ def cmd_sensitivity(root: Path, *, node: str = "") -> QaOutcome:
     rows = [row for row in report(graph) if not node or node in row.claim or node in row.path]
     insensitive = [row.claim for row in rows if row.status == "insensitive"]
     unwitnessed = [row.claim for row in rows if row.status == "unwitnessed"]
+    impossible = [row.claim for row in rows if row.status == "unsatisfiable"]
     return QaOutcome(
-        ok=not insensitive,
+        ok=not (insensitive or impossible),
         message=render(rows),
-        status="insensitive" if insensitive else "sensitive",
+        status="unsatisfiable" if impossible else ("insensitive" if insensitive else "sensitive"),
         data={
             "claims": [
                 {
@@ -577,6 +658,7 @@ def cmd_sensitivity(root: Path, *, node: str = "") -> QaOutcome:
                             "flipped": list(t.flipped),
                             "survived": list(t.survived),
                             "note": t.note,
+                            "unsatisfiable": t.unsatisfiable,
                         }
                         for t in row.trials
                     ],
@@ -585,5 +667,6 @@ def cmd_sensitivity(root: Path, *, node: str = "") -> QaOutcome:
             ],
             "insensitive": insensitive,
             "unwitnessed": unwitnessed,
+            "unsatisfiable": impossible,
         },
     )

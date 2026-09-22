@@ -210,7 +210,8 @@ def parse_known_defect(value: str) -> tuple[str, str] | None:
 
 OBLIGATION_CODES = frozenset({
     "undeclared-obligation", "unminted-claim", "compound-normative-bullet", "weak-check",
-    "insensitive-check", "unstated-precondition", "relation-without-subject",
+    "insensitive-check", "unsatisfiable-check", "unstated-precondition",
+    "relation-without-subject",
 })
 
 
@@ -2865,6 +2866,17 @@ def _check_ui(graph: Graph, f: list[Finding],
 def _check_sensitivity(graph: Graph, f: list[Finding]) -> None:
     """A claim's checks must be able to go red, not just able to run."""
     for row in sensitivity.report(graph):
+        if row.status == "unsatisfiable":
+            refused = "; ".join(f"`{t.call}` — {t.note}" for t in row.trials if t.unsatisfiable)
+            f.append(Finding(
+                "error", "unsatisfiable-check",
+                f"{row.claim}: no observation could ever satisfy this check, so it says "
+                f"nothing about the claim and can never pass — {refused}",
+                path=row.path, line=row.line, ref=row.claim, fixable=True,
+                suggestion="state the argument the observation can actually carry: the route "
+                           "without its query string, a field below the document root, a "
+                           "pattern that leaves some subject clean"))
+            continue
         if row.status == "unwitnessed":
             notes = "; ".join(f"`{t.call}` — {t.note}" for t in row.trials if not t.witnessed)
             f.append(Finding(

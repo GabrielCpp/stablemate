@@ -23,6 +23,7 @@ from ostler.model import Graph, _parse_ui_nodes, load
 from ostler import reach
 from ostler import routes as routes_mod
 from ostler.qa import captures as captures_mod
+from ostler.qa.dispatch import owes_live_evidence
 from ostler.qa import fixtures as fixtures_mod
 from ostler.qa.compile import annotate_deferred_obligations
 from ostler.qa.outcome import QaOutcome
@@ -1915,6 +1916,7 @@ def _obligations(
     nodes_by_id: dict[str, dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     """Mint one obligation per normative bullet, plus the node-level contract."""
+    required = required and owes_live_evidence(str(node.get("type", "")))
     family = (
         _same_as_component(str(node["id"]), nodes_by_id)
         if nodes_by_id is not None

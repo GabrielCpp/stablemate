@@ -168,7 +168,12 @@ def _freeze_material(root: Path) -> str:
 
 
 def _shape_material() -> str:
-    """The stored dataclasses' field-name-and-annotation digest, as an epoch input."""
+    """The stored dataclasses' field-name-and-annotation digest, as an epoch input.
+
+    `behavior_memo` is not a root. It stores dicts it builds by hand and rebuilds each
+    verdict field by field on the way out, so an entry whose keys no longer fit is a
+    miss rather than a wrong answer.
+    """
     from ostler import api, inventory, model
 
     return dataclass_shape_digest(

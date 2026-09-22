@@ -1002,6 +1002,48 @@ VERIFIERS: dict[str, Callable[[Any, Mapping[str, Any]], tuple[bool, Any, Any]]] 
 }
 
 
+def _unsatisfiable_http_status(args: Mapping[str, Any]) -> str:
+    """Why no response can satisfy this call, or empty when one can."""
+    if "path" not in args:
+        return ""
+    route = str(args["path"])
+    if urllib.parse.urlsplit(f"http://host{route}").path == route:
+        return ""
+    return (f"path={route!r} can never be the route that answered: this check reads the path "
+            "component of the request URL, which stops at the first `?` or `#`")
+
+
+def _unsatisfiable_json_path(args: Mapping[str, Any]) -> str:
+    """Why no document can satisfy this call, or empty when one can."""
+    path = str(args["path"])
+    if "absent" in args and bool(args["absent"]) and not path_steps(path):
+        return (f"path={path!r} names the whole document, and every observation has one, "
+                "so `absent=true` can never hold")
+    return ""
+
+
+def _unsatisfiable_omits(args: Mapping[str, Any]) -> str:
+    """Why no subject can satisfy this call, or empty when one can."""
+    if "matches" not in args:
+        return ""
+    pattern = str(args["matches"])
+    try:
+        compiled = re.compile(pattern)
+    except re.error as err:
+        return f"/{pattern}/ is not a pattern this check can read: {err}"
+    if compiled.search("") is None:
+        return ""
+    return (f"/{pattern}/ matches the empty subject, so it matches every subject and nothing "
+            "can be omitted from one")
+
+
+UNSATISFIABLE: dict[str, Callable[[Mapping[str, Any]], str]] = {
+    "http_status": _unsatisfiable_http_status,
+    "json_path": _unsatisfiable_json_path,
+    "omits": _unsatisfiable_omits,
+}
+
+
 class _Missing:
     """The value `qa.field` yields for something the product did not put there."""
 

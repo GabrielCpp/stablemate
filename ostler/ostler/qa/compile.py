@@ -17,6 +17,10 @@ from ostler.checks import CHECK_BY_NAME
 from ostler.checks import _rooted
 from ostler.markdown import extract_refs
 from ostler.qa import references
+from ostler.qa.dispatch import BUILT_TARGETS as _BUILT_TARGETS
+from ostler.qa.dispatch import DISPATCH_TABLE as _DISPATCH_TABLE
+from ostler.qa.dispatch import OBSERVED_TYPES as _OBSERVED_TYPES
+from ostler.qa.dispatch import OBSERVE_ROW as _OBSERVE_ROW
 from ostler.qa.harness_host import load_harness_module
 from ostler.routes import is_screen_name_shaped, literal_route, why_unreadable
 from ostler.qa.outcome import QaOutcome
@@ -237,16 +241,6 @@ def book_digest(context: dict[str, Any]) -> str:
     return hashlib.sha256("\n".join(ids).encode("utf-8")).hexdigest()
 
 
-_DISPATCH_TABLE: dict[str, dict[str, str] | str] = {
-    "interaction": {"web": "playwright", "mobile": "maestro"},
-    "endpoint": {"web": "http", "mobile": "http", "http": "http"},
-    "command": "cli",
-}
-_OBSERVED_TYPES = frozenset({"flow", "component", "screen", "field", "invocation", "method"})
-_OBSERVE_ROW: dict[str, str] = {
-    "web": "playwright", "mobile": "maestro", "http": "http", "cli": "cli",
-}
-_BUILT_TARGETS = frozenset({"playwright", "http", "cli", "maestro"})
 
 
 def _dispatch_target(node_type: str, driver: str | None) -> tuple[str | None, str, str]:
