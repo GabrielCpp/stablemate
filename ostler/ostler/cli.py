@@ -22,6 +22,7 @@ from ostler import index as index_mod
 from ostler import source_snapshots
 from ostler import stamp as stamp_mod
 from ostler import behavior_cli
+from ostler import book_reach
 from ostler.model import find_root, load
 
 _TYPES = (
@@ -569,6 +570,14 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="don't write; exit 1 if any file carries a fixable drift",
     )
+
+    gc = sub.add_parser(
+        "gc",
+        parents=[write_parent],
+        help="list the book pages no link path from their service's entries page reaches, "
+        "and delete them with --write",
+    )
+    gc.add_argument("--json", action="store_true")
 
     pa = sub.add_parser("path", help="resolve a slug to its canonical path")
     pas = pa.add_subparsers(dest="what", required=True)
@@ -1412,6 +1421,21 @@ def _cmd_autofix(graph, args) -> int:
     return 0
 
 
+def _cmd_gc(graph, args) -> int:
+    write = getattr(args, "write", False)
+    dead = book_reach.dead_pages(graph)
+    if write:
+        book_reach.delete_pages(dead)
+    if args.json:
+        _out(json.dumps({"deleted": write, "pages": [page.rel for page in dead]}, indent=2))
+        return 0
+    verb = "deleted" if write else "would delete"
+    for page in dead:
+        _out(f"{verb}: {page.rel}")
+    _out(f"\n{len(dead)} unreachable page(s) {verb}" if dead else "every page is reachable")
+    return 0
+
+
 def _cmd_edit(graph, args) -> int:
     if args.op == "relink":
         plan = edit.relink(graph, args.old_path, args.new_path)
@@ -2096,6 +2120,8 @@ def _dispatch(graph, args, store: index_mod.IndexStore) -> int:  # noqa: C901 â€
         return _cmd_autofix(graph, args)
     if c == "edit":
         return _cmd_edit(graph, args)
+    if c == "gc":
+        return _cmd_gc(graph, args)
     if c == "freeze":
         plan = freeze_mod.freeze(graph, ids_mod.resolve(graph, args.ident), by=args.by, note=args.note)
         _out(plan.render())

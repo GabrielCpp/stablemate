@@ -423,6 +423,7 @@ def _attributed_indexed(
 
 
 UI_TYPES: tuple[UINodeType, ...] = (
+    UINodeType(name="entries", kind="file", context=""),
     UINodeType(
         name="screen", kind="file", context="gui/screens",
         bullet_keys=(

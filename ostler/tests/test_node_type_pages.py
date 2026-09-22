@@ -1,4 +1,4 @@
-"""The 17 node-type documentation pages joined back to `registry.declared_keys`."""
+"""The 18 node-type documentation pages joined back to `registry.declared_keys`."""
 
 from __future__ import annotations
 

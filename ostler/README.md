@@ -185,6 +185,7 @@ accepted as input either way).
 | `list` `search` `query` `next-epic` `next-story` `path` | read the graph — what exists, what covers what, what to work on next |
 | `create` `update` `delete` `seed` `set-status` `unblock` `backlog` `milestone` `todo` | mutate it — scaffold identified intake/plans/specs, revise story graph metadata, record a seed, move the queue |
 | `edit` `freeze` `unfreeze` | repair a rename across the whole graph, or pin an approved story as ground truth |
+| `gc` | delete the book pages no link path from their service's `entries` page reaches |
 | `template` `new` `find` `set` `remove` | declare a repo's own Concept kinds and operate on their instances |
 | `graph` `reach` `locators` `coverage` `scaffold` `fmt` `vet` `audit` | the `docs/features/` node/edge book — see below |
 | `qa` `artifact` | the verification control plane — see below |

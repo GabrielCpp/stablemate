@@ -25,6 +25,7 @@ okf.list("story", epic="checkout-flow")   # [{"slug","status",…}]  (ostler lis
 okf.next_story("checkout-flow")       # {"slug": …} | None          (ostler next-story)
 okf.spec_path("01-cart")              # "docs/specs/01-cart"        (ostler path spec)
 okf.doctor()                          # QaOutcome; .data is the report (ostler doctor --json)
+okf.gc()                              # ["docs/features/acme/…"] dead pages   (ostler gc; write=True deletes)
 okf.query(
     "story-provenance",
     "TEAM-123",

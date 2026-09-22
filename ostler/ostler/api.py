@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ostler import backlog as backlog_mod
+from ostler import book_reach
 from ostler import coverage as coverage_mod
 from ostler import crud, doctor
 from ostler import fmt as fmt_mod
@@ -298,6 +299,14 @@ class Ostler:
         """Canonicalize the book's shape; the repo-relative paths that were not already so."""
         result = fmt_mod.run_fmt(self.graph, [str(p) for p in paths], check=check)
         return [str(p.relative_to(self.graph.root)) for p in result.changed]
+
+    def gc(self, *, write: bool = False) -> builtins.list[str]:
+        """The pages no link path from their service's entries page reaches, deleted when *write* (``ostler gc``)."""
+        dead = book_reach.dead_pages(self.graph)
+        if write and dead:
+            book_reach.delete_pages(dead)
+            self._graph = None
+        return [page.rel for page in dead]
 
     def coverage(self, *, inventory: str | Path, surface: str | None = None,
                  waivers: str | Path | None = None) -> QaOutcome:

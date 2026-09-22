@@ -1,0 +1,61 @@
+# `entries`
+
+The root of one service's book. It holds only links, one to the page of each entry point the
+service exposes: each `screen` a user opens first, each `cli`, each `server`. Every other page of
+the service is reached from here by following links.
+
+Not an entries page: an index that describes the service. That is a
+[`concept`](concept.md). An entries page carries no prose and no claims. Code writes it, and no
+agent edits it by hand.
+
+## Identity
+
+File type with **no context folder** (`context=""`): it lives at
+`docs/features/<service>/entries.md`, with `type: entries` in frontmatter. A service has at most
+one.
+
+## Bullet keys
+
+| key | required | what it does |
+| --- | --- | --- |
+| `code` | no | declared on every type. An entries page cites no code, so it carries none |
+
+Each entry point is a plain list item holding one link, never a keyed bullet.
+
+## Required sections
+
+None.
+
+## Relationships
+
+An entries page links to the entry-point pages of its service. Links out of it, and every link
+out of the pages it reaches, define what is reachable. Any link counts, including one inside
+concept prose, and a link into another service's pages counts too. Nothing links to an entries
+page.
+
+## Minimal example
+
+```bash
+timeout 30 ostler scaffold entries entries --service acme
+```
+
+```markdown
+---
+type: entries
+slug: entries
+title: acme
+---
+
+# acme
+
+- [acme CLI](acme.md)
+- [Dashboard](gui/screens/dashboard.md)
+- [API](http/api.md)
+```
+
+## Doctor codes it can trip
+
+Once a service has an entries page, every page of that service that no link path from it reaches
+is `unreachable-node`. `ostler gc` lists those pages, and `ostler gc --write` deletes them. A link
+out of it can trip `dangling-link` and `missing-anchor`. See
+[../doctor-codes.md](../doctor-codes.md).

@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
-from ostler import (acts, checks, dynamic_registry, freeze, inventory, links as links_mod, markdown,
+from ostler import (acts, book_reach, checks, dynamic_registry, freeze, inventory, links as links_mod, markdown,
                     model, registry, schemas, select)
 from ostler import drivers, graph as graph_mod, locators as loc_mod, reach, routes as routes_mod
 from ostler.vet import placement as placement_mod
@@ -130,6 +130,7 @@ def run(graph: Graph, epic_filter: str | None = None, check_schema: bool = True,
     _check_unspecified(graph, f, resolver)
     _check_sensitivity(graph, f)
     _check_runbook(graph, f)
+    _check_unreachable_nodes(graph, f)
     ui_data = _ui_graph(graph, resolver)
     if ui_data is not None:
         _check_reachability(ui_data, f)
@@ -1957,6 +1958,16 @@ def _ui_graph(graph: Graph, resolver: links_mod.LinkResolver) -> dict | None:
         return graph_mod.build(graph, resolver=resolver)
     except (OSError, ValueError, RuntimeError, KeyError):
         return None
+
+
+def _check_unreachable_nodes(graph: Graph, f: list[Finding]) -> None:
+    """Every page of a service with an `entries` page must be reachable from it by links."""
+    for page in book_reach.dead_pages(graph):
+        entries = ", ".join(page.entries_pages)
+        f.append(Finding("error", "unreachable-node",
+                         f"{page.rel}: no link path from {entries} reaches this page",
+                         path=page.rel, ref=page.rel,
+                         suggestion="link it from a page the entries page reaches"))
 
 
 def _check_reachability(data: dict, f: list[Finding]) -> None:

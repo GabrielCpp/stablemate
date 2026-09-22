@@ -200,6 +200,11 @@ ostler scaffold <type> <name> [--service SVC] [--in FILE] [--title T] [--json]
 #   create a node in the right place. File-level types take --service; section-level
 #   types take --in, the surface doc to insert the `### id` into.
 
+ostler gc [--write] [--json]
+#   list every page under docs/features that no link path from its service's
+#   entries page reaches; --write deletes them. A service with no entries page is
+#   left alone. The pages doctor reports as unreachable-node.
+
 ostler fmt [paths ...] [--check]
 #   canonicalize frontmatter, bullets and headings. --check writes nothing and
 #   exits 1 if any file is not already canonical — the CI form.

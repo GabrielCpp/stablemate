@@ -89,7 +89,7 @@ The pane the selected file's diff is rendered into.
 
 def test_ui_types_registered():
     assert set(registry.UI_TYPES_BY_NAME) == {
-        "screen", "component", "interaction", "cli", "command", "server", "endpoint",
+        "entries", "screen", "component", "interaction", "cli", "command", "server", "endpoint",
         "invocation", "flow", "concept", "format",
         "method", "field",
         "runbook", "environment", "step",
