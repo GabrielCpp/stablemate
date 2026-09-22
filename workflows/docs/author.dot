@@ -607,7 +607,7 @@ digraph author {
       label="story_feedback"; fontsize=12;
       style="rounded,filled"; fillcolor=lightblue; color=steelblue;
       node [style="filled", fontsize=10];
-      f9__story_feedback__0 [label="check_story_feedback\nPoll the operator's run-scoped inbox for un-consumed feedback. Never blocks, never asks.", shape=box, fillcolor=white];
+      f9__story_feedback__0 [label="check_story_feedback\nPoll the operator's run-scoped inbox for un-consumed feedback.", shape=box, fillcolor=white];
       f9__story_feedback__1 [label="record_story_audit\nRecord a passing audit against the exact story bytes it judged.", shape=box, fillcolor=white];
       f9__story_feedback__0 -> f9__story_feedback__1 [color=gray40, arrowsize=0.6];
     }

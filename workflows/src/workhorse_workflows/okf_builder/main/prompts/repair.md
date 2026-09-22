@@ -210,6 +210,13 @@ at most. Leave it empty when you changed nothing.
 `doc_status` ∈ `documented` (every finding in the item repaired) | `partial` (some left standing —
 say which and why) | `skipped` (the finding is wrong about this node; say so).
 
+This turn may take at most {{ step_budget }} tool-using steps. The limit is a cost ceiling, not a
+quality bar: every step re-sends this whole conversation, so the tenth step costs ten times the
+first. Spend the budget on the findings you can settle, and when you are two steps from it, stop
+working and answer. A `partial` answer keeps every edit you already made on disk and hands the rest
+of the findings to a later turn with a stronger model. Running out of budget mid-edit without
+answering loses this turn's reasoning, so the JSON above is the last thing you do, always.
+
 `discovered` is normally empty: a repair is not a discovery turn. Emit an item only if the repair
 revealed genuinely undocumented surface, and never emit one for a finding you chose not to fix — the
 checkpoint re-queues those itself.

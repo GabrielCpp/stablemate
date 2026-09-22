@@ -159,6 +159,40 @@ def reopen_row(
     return True
 
 
+def defer_row(
+    logger: logging.Logger,
+    existing: dict[str, Any],
+    doc_status: str,
+    note: str,
+    max_attempts: int = MAX_TARGET_ATTEMPTS,
+) -> bool:
+    """Leave a row open for another, stronger turn; True when it went back to `pending`.
+
+    A turn that ran out of step budget did real work and said so. Closing its rows would
+    hide findings that still stand, and discarding them would throw away the edits already
+    on disk. Counting an attempt is what raises the next turn's power tier, and the same
+    ceiling that blocks a row surviving three repairs blocks one surviving three deferrals.
+    """
+    attempts = int(existing.get("attempts", 0) or 0) + 1
+    existing["attempts"] = attempts
+    existing.pop("closed_digest", None)
+    if doc_status:
+        existing["doc_status"] = doc_status
+    if note:
+        existing["note"] = note
+    if attempts >= max_attempts:
+        reason = note or f"the last turn reported `{doc_status or 'unfinished'}`"
+        existing["status"] = "blocked"
+        existing["blocked_reason"] = reason
+        logger.warning(
+            "'%s' (%s) went unfinished %d time(s) — blocking it rather than re-queueing: %s",
+            existing.get("target"), existing.get("kind"), attempts, reason,
+        )
+        return False
+    existing["status"] = "pending"
+    return True
+
+
 def _repair_scope(row: dict[str, Any]) -> tuple[str, list[dict[str, Any]]] | None:
     """The one book file a repair row is about, and its findings — or None if it has none."""
     kind = str(row.get("kind", ""))
@@ -375,6 +409,7 @@ def record(
     repo_root: str = "",
     features_root: str = "",
     batch: list[dict[str, Any]] | None = None,
+    keep_open: bool = False,
 ) -> Recorded:
     """Mark the current item done, merge newly-discovered items, and count the re-tries."""
     path = Path(worklist_path)
@@ -396,12 +431,27 @@ def record(
 
     closing = [row for row in [current, *(batch or [])] if row]
     closed = {(_norm(row.get("kind")), _norm(row.get("target"))) for row in closing}
-    for row in closing:
-        logger.info(
-            "marking item '%s' (%s) done%s",
-            row.get("target", "?"), row.get("kind", "?"),
-            f" ({doc_status})" if doc_status else "",
-        )
+    if keep_open:
+        deferred = 0
+        for i in items:
+            if (_norm(i.get("kind")), _norm(i.get("target"))) not in closed:
+                continue
+            if defer_row(logger, i, doc_status, note, max_attempts):
+                deferred += 1
+        if closing:
+            logger.info(
+                "the turn did not finish %d row(s); %d go back to pending for a "
+                "stronger turn",
+                len(closing), deferred,
+            )
+        closed = set()
+    else:
+        for row in closing:
+            logger.info(
+                "marking item '%s' (%s) done%s",
+                row.get("target", "?"), row.get("kind", "?"),
+                f" ({doc_status})" if doc_status else "",
+            )
     if closed:
         for i in items:
             if (_norm(i.get("kind")), _norm(i.get("target"))) in closed:

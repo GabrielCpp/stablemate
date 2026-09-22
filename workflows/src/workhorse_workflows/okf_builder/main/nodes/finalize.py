@@ -203,6 +203,49 @@ def stamp_turn(
         logger.info("stamped %d citation target(s) this turn", stamped)
     return Stamped(stamped=stamped, skipped_nodes=sorted(skipped))
 
+@blueprint.node
+def stamp_book(
+    logger: logging.Logger,
+    repo_root: str,
+    features_root: str,
+) -> Stamped:
+    """Stamp every `@digest` target the finished book has earned, gated by node and page errors."""
+    repo = Path(repo_root).resolve()
+    with index_mod.session(repo):
+        graph = Ostler(repo).graph
+        report = doctor_mod.run(graph)
+
+        blocked_nodes: set[str] = set()
+        blocked_pages: set[str] = set()
+        for finding in report.findings:
+            if finding.severity != "error":
+                continue
+            if finding.node:
+                blocked_nodes.add(finding.node)
+            elif finding.path:
+                blocked_pages.add(finding.path)
+
+        pairs: list[tuple[str, str]] = []
+        skipped: set[str] = set()
+        for finding in report.findings:
+            if finding.code != "unstamped-citation" or not finding.node:
+                continue
+            if finding.node in blocked_nodes or finding.path in blocked_pages:
+                skipped.add(finding.node)
+                continue
+            pairs.append((finding.node, refs_mod.ref_path(finding.ref)))
+
+        if not pairs:
+            return Stamped(skipped_nodes=sorted(skipped))
+
+        results = stamp_mod.stamp_targets(graph, Path(features_root).resolve(), pairs)
+        stamped = sum(r.stamped for r in results)
+    logger.info(
+        "stamped %d citation target(s) across the book, %d blocked by errors",
+        stamped, len(skipped),
+    )
+    return Stamped(stamped=stamped, skipped_nodes=sorted(skipped))
+
 
 @blueprint.node
 def commit_book(
@@ -223,4 +266,4 @@ def commit_book(
     return Committed(committed=committed)
 
 
-__all__ = ["commit_book", "commit_turn", "stamp_turn"]
+__all__ = ["commit_book", "commit_turn", "stamp_book", "stamp_turn"]

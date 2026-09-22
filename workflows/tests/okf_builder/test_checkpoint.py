@@ -9,6 +9,7 @@ from pathlib import Path
 from workhorse_workflows.okf_builder.shared.checkpoint import (
     MAX_FINDINGS_PER_ITEM,
     _repair_items,
+    book_findings,
     checkpoint_book,
     scoped_findings,
 )
@@ -215,12 +216,17 @@ def test_an_open_repair_whose_finding_stopped_firing_is_closed_at_the_checkpoint
     assert by_target["docs/features/acme/a.md"]["status"] == "pending"
 
 
-def _standing_repair(repo: Path) -> dict:
-    """The one repair item `checkpoint_book` would queue on `dirty`, keyed as it keys it."""
+def _standing_repair(repo: Path, logger: logging.Logger) -> dict:
+    """The graph repair item `checkpoint_book` would queue on `dirty`, keyed as it keys it.
+
+    It queues one. The compiler also reports `charge.md` declaring no check for the
+    obligation its contract mints, and that page is a `concept`, which D1's dispatch
+    table owes no row and no check it declared would ever be run from.
+    """
     from ostler import Ostler
 
-    items = _repair_items(scoped_findings(Ostler(str(repo)).doctor().data, str(repo), BOOK))
-    assert len(items) == 1, items
+    items = _repair_items(book_findings(logger, Ostler(str(repo)), str(repo), BOOK))
+    assert [i["kind"] for i in items] == ["fix:missing-code-symbol"], items
     return items[0]
 
 
@@ -251,7 +257,7 @@ def test_the_drain_settles_a_stale_repair_before_it_is_picked(
     """A pending `fix:` row doctor no longer names is closed mid-drain, not at the checkpoint."""
     from workhorse_workflows.okf_builder.shared.checkpoint import settle_stale
 
-    standing = _standing_repair(dirty)
+    standing = _standing_repair(dirty, logger)
     worklist = _stale_worklist(tmp_path / "w.json", standing)
     result = settle_stale(logger, str(worklist), str(dirty), BOOK)
 
@@ -273,7 +279,7 @@ def test_the_settle_is_amortized_over_the_drain(
     """Doctor is read on first entry and then once per `every` completed items, not per pick."""
     from workhorse_workflows.okf_builder.shared.checkpoint import settle_stale
 
-    standing = _standing_repair(dirty)
+    standing = _standing_repair(dirty, logger)
     recent = _stale_worklist(tmp_path / "recent.json", standing, settled_done=10)
     skipped = settle_stale(logger, str(recent), str(dirty), BOOK, every=25)
     assert not skipped.ran and skipped.settled == 0
@@ -307,7 +313,7 @@ def test_a_watermark_above_the_done_count_is_stale(
     """Checkpoint requeues move done rows back to pending, so the done count falls."""
     from workhorse_workflows.okf_builder.shared.checkpoint import settle_stale
 
-    standing = _standing_repair(dirty)
+    standing = _standing_repair(dirty, logger)
     worklist = _stale_worklist(tmp_path / "w.json", standing, settled_done=100)
     result = settle_stale(logger, str(worklist), str(dirty), BOOK, every=25)
     assert result.ran and result.settled == 1
@@ -461,7 +467,7 @@ def test_the_drain_reopens_a_done_repair_whose_finding_still_stands(
     """The settle's doctor read reopens a standing done row now, not when the drain goes dry."""
     from workhorse_workflows.okf_builder.shared.checkpoint import settle_stale
 
-    standing = _standing_repair(dirty)
+    standing = _standing_repair(dirty, logger)
     worklist = _stale_worklist(tmp_path / "w.json", standing)
     data = json.loads(worklist.read_text())
     data["items"][0].update(status="done", doc_status="documented", note="turn said so")

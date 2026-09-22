@@ -15,12 +15,12 @@ digraph okf_builder {
       label="adjudicate"; fontsize=12;
       style="rounded,filled"; fillcolor=lightblue; color=steelblue;
       node [style="filled", fontsize=10];
-      f0__adjudicate__0 [label="blocked_rows\nThe blocked rows still waiting for a side — a row already adjudicated keeps its", shape=box, fillcolor=white];
-      f0__adjudicate__1 [label="settle_stale\nMid-drain, reconcile the repair rows against doctor: close the open rows it no longer", shape=box, fillcolor=white];
+      f0__adjudicate__0 [label="blocked_rows\nThe blocked rows still waiting for a side — a row already adjudicated keeps its verdict until the operator's answer clears it, so one finding is judged once per gate.", shape=box, fillcolor=white];
+      f0__adjudicate__1 [label="settle_stale\nMid-drain, reconcile the repair rows against doctor: close the open rows it no longer reports, and reopen the done rows it still does.", shape=box, fillcolor=white];
       f0__adjudicate__2 [label="record\nMark the current item done, merge newly-discovered items, and count the re-tries.", shape=box, fillcolor=white];
       f0__adjudicate__3 [label="gather_evidence\nRead the other side: the story the node's code was last written to, and its text.", shape=box, fillcolor=white];
       f0__adjudicate__4 [label="adjudicate.md\nadjudicate one blocked finding: which side is wrong?", shape=note, fillcolor=lightyellow];
-      f0__adjudicate__5 [label="apply_verdict\nRoute one verdict. Every branch writes the verdict and the chain on the row.", shape=box, fillcolor=white];
+      f0__adjudicate__5 [label="apply_verdict\nRoute one verdict.", shape=box, fillcolor=white];
       f0__adjudicate__0 -> f0__adjudicate__1 [color=gray40, arrowsize=0.6];
       f0__adjudicate__1 -> f0__adjudicate__2 [color=gray40, arrowsize=0.6];
       f0__adjudicate__2 -> f0__adjudicate__3 [color=gray40, arrowsize=0.6];
@@ -39,7 +39,9 @@ digraph okf_builder {
       label="commit"; fontsize=12;
       style="rounded,filled"; fillcolor=lightblue; color=steelblue;
       node [style="filled", fontsize=10];
-      f0__commit__0 [label="commit_book\nCommit only the completed service book, with optional story provenance.", shape=box, fillcolor=white];
+      f0__commit__0 [label="stamp_book\nStamp every `@digest` target the finished book has earned, gated by node and page errors.", shape=box, fillcolor=white];
+      f0__commit__1 [label="commit_book\nCommit only the completed service book, with optional story provenance.", shape=box, fillcolor=white];
+      f0__commit__0 -> f0__commit__1 [color=gray40, arrowsize=0.6];
     }
     subgraph cluster_f0__investigate {
       label="investigate"; fontsize=12;
@@ -78,7 +80,7 @@ digraph okf_builder {
       label="retry_blocked"; fontsize=12;
       style="rounded,filled"; fillcolor=lightblue; color=steelblue;
       node [style="filled", fontsize=10];
-      f0__retry_blocked__0 [label="settle_stale\nMid-drain, reconcile the repair rows against doctor: close the open rows it no longer", shape=box, fillcolor=white];
+      f0__retry_blocked__0 [label="settle_stale\nMid-drain, reconcile the repair rows against doctor: close the open rows it no longer reports, and reopen the done rows it still does.", shape=box, fillcolor=white];
       f0__retry_blocked__1 [label="record\nMark the current item done, merge newly-discovered items, and count the re-tries.", shape=box, fillcolor=white];
       f0__retry_blocked__0 -> f0__retry_blocked__1 [color=gray40, arrowsize=0.6];
     }
@@ -92,7 +94,7 @@ digraph okf_builder {
       label="select"; fontsize=12;
       style="rounded,filled"; fillcolor=lightblue; color=steelblue;
       node [style="filled", fontsize=10];
-      f0__select__0 [label="settle_stale\nMid-drain, reconcile the repair rows against doctor: close the open rows it no longer", shape=box, fillcolor=white];
+      f0__select__0 [label="settle_stale\nMid-drain, reconcile the repair rows against doctor: close the open rows it no longer reports, and reopen the done rows it still does.", shape=box, fillcolor=white];
       f0__select__1 [label="select_item\nPop the next pending item and mark it active.", shape=box, fillcolor=white];
       f0__select__2 [label="checkpoint_book\nCanonicalize the book, then read doctor, then queue the repairs it names.", shape=box, fillcolor=white];
       f0__select__0 -> f0__select__1 [color=gray40, arrowsize=0.6];
@@ -103,6 +105,8 @@ digraph okf_builder {
       style="rounded,filled"; fillcolor=lightblue; color=steelblue;
       node [style="filled", fontsize=10];
       f0__semantic_audit__0 [label="handoff → live-audit", shape=box, fillcolor=plum];
+      f0__semantic_audit__1 [label="record\nMark the current item done, merge newly-discovered items, and count the re-tries.", shape=box, fillcolor=white];
+      f0__semantic_audit__0 -> f0__semantic_audit__1 [color=gray40, arrowsize=0.6];
     }
     f0__start [label="start"];
     f0____end [label="END", shape=doublecircle, fillcolor=gold, width=0.4];
@@ -118,7 +122,7 @@ digraph okf_builder {
     f0__checkpoint__1 -> f0__retry_blocked__0 [label="re-scan cap hit, coverage still incomplete: operator gate", style=dashed, color=darkorange, ltail=cluster_f0__checkpoint, lhead=cluster_f0__retry_blocked];
     f0__checkpoint__1 -> f0__adjudicate__0 [label="blocked rows and nothing pending: read the other side", ltail=cluster_f0__checkpoint, lhead=cluster_f0__adjudicate];
     f0__checkpoint__1 -> f0__retry_blocked__0 [label="findings unchanged for the stall cap: operator gate", style=dashed, color=darkorange, ltail=cluster_f0__checkpoint, lhead=cluster_f0__retry_blocked];
-    f0__commit__0 -> f0____end [label="completed book committed", color=darkgoldenrod, ltail=cluster_f0__commit];
+    f0__commit__1 -> f0____end [label="completed book committed", color=darkgoldenrod, ltail=cluster_f0__commit];
     f0__investigate__2 -> f0__record_item__0 [label="turn finished: record what it wrote", ltail=cluster_f0__investigate, lhead=cluster_f0__record_item];
     f0__recheck__0 -> f0__seed_recheck__0 [label="recheck verdicts in", ltail=cluster_f0__recheck, lhead=cluster_f0__seed_recheck];
     f0__record_item__0 -> f0__select__0 [label="item closed, discoveries opened", ltail=cluster_f0__record_item, lhead=cluster_f0__select];
@@ -133,8 +137,9 @@ digraph okf_builder {
     f0__select__2 -> f0__investigate__0 [label="next item picked", ltail=cluster_f0__select, lhead=cluster_f0__investigate];
     f0__select__2 -> f0__refuel [label="item ceiling hit with work pending: ask for more", style=dashed, color=darkorange, ltail=cluster_f0__select];
     f0__select__2 -> f0__checkpoint__0 [label="the drain is dry: run doctor", ltail=cluster_f0__select, lhead=cluster_f0__checkpoint];
-    f0__semantic_audit__0 -> f0__commit__0 [label="live audit clear: commit the book", ltail=cluster_f0__semantic_audit, lhead=cluster_f0__commit];
-    f0__semantic_audit__0 -> f0__semantic_audit__0 [label="live audit blocked or failing: operator gate", style=dashed, color=darkorange];
+    f0__semantic_audit__1 -> f0__semantic_audit__0 [label="live audit blocked or failing with no repair left to queue: operator gate", style=dashed, color=darkorange];
+    f0__semantic_audit__1 -> f0__commit__0 [label="live audit clear: commit the book", ltail=cluster_f0__semantic_audit, lhead=cluster_f0__commit];
+    f0__semantic_audit__1 -> f0__select__0 [label="live-audit gaps are repairable book debt: drain them", ltail=cluster_f0__semantic_audit, lhead=cluster_f0__select];
     f0__start -> f0__checkpoint__0 [label="empty book: same join seeds the worklist", lhead=cluster_f0__checkpoint];
     f0__start -> f0__checkpoint__0 [label="the book exists: reconcile it to HEAD", lhead=cluster_f0__checkpoint];
   }

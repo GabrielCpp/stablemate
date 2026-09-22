@@ -12,6 +12,10 @@ from ostler.autofix import run_autofix
 from ostler.fmt import run_fmt
 from workhorse_workflows.okf_builder.shared import stubs
 from workhorse_workflows.okf_builder.shared.blueprint import blueprint
+from workhorse_workflows.okf_builder.shared.gaps import (
+    compile_gap_findings,
+    reported_gap_findings,
+)
 from workhorse_workflows.okf_builder.shared.schemas import Checkpoint, Settled
 from workhorse_workflows.okf_builder.shared.worklist import (
     doctor_row,
@@ -95,6 +99,8 @@ def _actionable_findings(findings: list[dict]) -> list[dict]:
     for finding in findings:
         if finding.get("code") in NON_ACTIONABLE_CODES or finding.get("code") in REGROUNDING_CODES:
             continue
+        if finding.get("unhostable"):
+            continue
         path = str(finding.get("path", ""))
         page_verdict = finding.get("code") == TEST_SUBJECT and finding.get("ref") == f"{path}#code"
         if path in pages and not page_verdict:
@@ -166,6 +172,53 @@ def _signature(findings: list[dict]) -> str:
     return hashlib.sha1(json.dumps(keys).encode()).hexdigest()[:16]
 
 
+def book_findings(
+    logger: logging.Logger, okf: Ostler, repo_root: str, features_root: str
+) -> list[dict]:
+    """Every standing defect on the book: doctor's graph findings plus the compiler's gaps.
+
+    Two checkers read the same book. Doctor reads the graph; the QA compiler reads the
+    graph plus a compiled obligation context. A defect the book can be repaired for is
+    found by whichever of them reads enough to see it, so the repair loop is seeded by
+    both rather than by the cheaper one.
+    """
+    findings = scoped_findings(okf.doctor().data, repo_root, features_root)
+    if not features_root:
+        return findings
+    try:
+        gaps = compile_gap_findings(repo_root, features_root)
+    except (OSError, ValueError, RuntimeError) as exc:
+        logger.warning("compile gaps unavailable, seeding repairs from doctor alone: %s", exc)
+        return findings
+    scoped = scoped_findings({"findings": gaps}, repo_root, features_root)
+    logger.info("compile reports %d gap(s) on %s", len(scoped), features_root)
+    return findings + scoped
+
+
+def audit_gap_items(
+    logger: logging.Logger,
+    repo_root: str,
+    features_root: str,
+    reported: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Repair rows for the gaps a live audit reported, keyed the way the checkpoint keys its own.
+
+    The audit runs after the drain went dry, so a gap it names is work the loop never saw.
+    Seeded as a repair row it goes back through that same drain. Left in the gate it is
+    work the operator does by hand, and the loop that exists to do it has already stopped.
+    """
+    if not features_root or not reported:
+        return []
+    try:
+        findings = reported_gap_findings(repo_root, features_root, reported)
+    except (OSError, ValueError, RuntimeError) as exc:
+        logger.warning("live-audit gaps could not be located in the book: %s", exc)
+        return []
+    items = _repair_items(scoped_findings({"findings": findings}, repo_root, features_root))
+    logger.info("%d live-audit gap(s) group into %d repair item(s)", len(reported), len(items))
+    return items
+
+
 def scoped_findings(report: dict, repo_root: str, features: str) -> list[dict]:
     """Doctor's standing findings located in the service book being built."""
     try:
@@ -212,7 +265,7 @@ def settle_stale(
     standing: list[dict[str, Any]] = []
     settled = reopened = 0
     try:
-        findings = scoped_findings(Ostler(repo_root).doctor().data, repo_root, features_root)
+        findings = book_findings(logger, Ostler(repo_root), repo_root, features_root)
         standing = _repair_items(findings)
         settled = settle_stale_rows(items, standing, where="mid-drain")
         by_key = {key: i for i in items if doctor_row(i) for key in repair_keys([i])}
@@ -270,7 +323,7 @@ def checkpoint_book(
         logger.warning("no features root given — skipping ostler fmt; doctor findings are unscoped")
 
     try:
-        findings = scoped_findings(okf.doctor().data, repo_root, features_root)
+        findings = book_findings(logger, okf, repo_root, features_root)
         out = json.dumps(findings, indent=2)
     except (OSError, ValueError, RuntimeError) as exc:
         findings = [{"severity": "error", "message": str(exc), "path": features_root}]
@@ -314,5 +367,5 @@ def checkpoint_book(
     )
 
 
-__all__ = ["GROUNDED_CODES", "MAX_FINDINGS_PER_ITEM", "SETTLE_EVERY", "checkpoint_book",
-           "scoped_findings", "settle_stale"]
+__all__ = ["GROUNDED_CODES", "MAX_FINDINGS_PER_ITEM", "SETTLE_EVERY", "audit_gap_items",
+           "book_findings", "checkpoint_book", "scoped_findings", "settle_stale"]

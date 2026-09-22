@@ -2,9 +2,12 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
+from collections import Counter
 from pathlib import Path
 from typing import Any, ClassVar
 
+from workhorse.runner.backends import AgentProfile
 from workhorse.pyflow import (
     AgentTimeout, AgentTurnFailed, Await, Continue, Done, NodeNotRunError, Workflow,
     WorkflowFailed,
@@ -21,10 +24,15 @@ from workhorse_workflows.okf_builder.main.nodes import (
     inventory_source,
     prepare,
     snapshot_book,
+    stamp_book,
     stamp_turn,
 )
 from workhorse_workflows.okf_builder.shared import paths
-from workhorse_workflows.okf_builder.shared.checkpoint import checkpoint_book, settle_stale
+from workhorse_workflows.okf_builder.shared.checkpoint import (
+    audit_gap_items,
+    checkpoint_book,
+    settle_stale,
+)
 from workhorse_workflows.okf_builder.shared.schemas import (
     Adjudication,
     Evidence,
@@ -58,20 +66,29 @@ def investigation_power(current_item: dict[str, Any]) -> str:
     return "medium" if _attempts(current_item) > 0 else "low"
 
 
+MAX_GATE_GAPS = 40
+
+
 def _live_audit_gate_message(reports: list[LiveAuditReport]) -> str:
-    """The live-audit gate body: every blocked obligation and failing scenario, by name."""
+    """The live-audit gate body: every failing scenario, and the gaps the repair loop left."""
     lines = ["okf-builder's live audit found work the operator must clear before this book can commit."]
     for report in reports:
         if report.gaps:
             blocked_ids = sorted({str(gap.get("obligation_id", "")) for gap in report.gaps})
             lines.append(
                 f"- {report.spec_dir}: {len(blocked_ids)} obligation(s) blocked "
-                "(book not yet executable) — no compiled call exists yet for:"
+                "(book not yet executable), and the repair loop queued no new row for "
+                "them, so no compiled call exists yet for:"
             )
-            for gap in report.gaps:
+            for gap in report.gaps[:MAX_GATE_GAPS]:
                 lines.append(
                     f"  - {gap.get('obligation_id')} {gap.get('kind')}: {gap.get('detail')}"
                 )
+            elided = report.gaps[MAX_GATE_GAPS:]
+            if elided:
+                tally = Counter(str(gap.get("kind", "")) for gap in elided)
+                shape = ", ".join(f"{count} {kind}" for kind, count in sorted(tally.items()))
+                lines.append(f"  - ... and {len(elided)} more not listed here: {shape}")
         if report.status == "blocked" and not report.gaps:
             lines.append(f"- {report.spec_dir}: blocked — {report.notes}")
             continue
@@ -88,6 +105,38 @@ def _live_audit_gate_message(reports: list[LiveAuditReport]) -> str:
         "live audit — only claims whose fingerprint changed are re-executed."
     )
     return "\n".join(lines)
+
+
+REPAIR_STEPS = {"low": 12, "medium": 20, "high": 28, "xhigh": 28, "max": 28}
+
+REPAIR_PROFILE = AgentProfile(
+    name="okf-repair",
+    tools={"webfetch": False, "websearch": False, "task": False, "multiedit": False},
+    disable_mcp=("playwright",),
+    tool_output_max_lines=400,
+    tool_output_max_bytes=20000,
+)
+"""A repair turn reads code, greps it, runs ostler, and edits the book.
+
+It has never fetched a URL, searched the web, spawned a subagent, or driven a browser.
+opencode resends every enabled tool's schema on every step of the turn, and a repair turn
+takes about 45 steps, so each unused schema is paid for 45 times. Naming the dead ones
+here removes them from the request instead of refusing them at call time. ``patch`` is
+absent on purpose: opencode folds it onto the same permission as ``write`` and ``edit``,
+so denying it would take the turn's editing tools with it.
+"""
+
+
+def repair_profile(power: str) -> AgentProfile:
+    """The repair persona for one turn, with the step budget its power tier earns.
+
+    The agent CLI resends the whole conversation on every step, so a turn's bill grows with
+    the square of its steps. Two twenty-step turns cost little more than half of one
+    forty-step turn and keep what each wrote, because a turn cut at its step budget still
+    answers in text. A row that comes back unfinished is picked again at a higher tier, and
+    that tier buys the steps here.
+    """
+    return replace(REPAIR_PROFILE, steps=REPAIR_STEPS.get(power, 20))
 
 
 def repair_power(
@@ -313,23 +362,26 @@ class OkfBuilder(Workflow):
             if repair or behavior_repair
             else ""
         )
+        power = (
+            "medium" if behavior_repair else repair_power(current_item, item_context, batch)
+            if repair
+            else investigation_power(current_item)
+        )
         result = self.agent(
             "main/prompts/repair-behavior.md" if behavior_repair else
             "main/prompts/repair.md" if repair else "main/prompts/investigate.md",
             returns=Investigation,
-            power=(
-                "medium" if behavior_repair else repair_power(current_item, item_context, batch)
-                if repair
-                else investigation_power(current_item)
-            ),
+            power=power,
             cwd=self.ctx.repo_root,
             add_dirs=[self.ctx.repo_root],
+            profile=repair_profile(power) if repair or behavior_repair else None,
             args={
                 "item_kind": item_kind,
                 "item_code": item_code,
                 "item_codes": item_codes,
                 "item_target": item_target,
                 "item_context": item_context,
+                "step_budget": REPAIR_STEPS.get(power, 20),
                 "result_schema": json.dumps(Investigation.model_json_schema(), indent=2),
                 "check_vocabulary": check_vocabulary(),
                 "act_vocabulary": act_vocabulary(),
@@ -397,6 +449,7 @@ class OkfBuilder(Workflow):
                 repo_root=str(self.ctx.repo_root),
                 features_root=str(self.ctx.features_root),
                 batch=batch or [],
+                keep_open=item_kind.startswith("fix:") and doc_status == "partial",
             ),
             self.select,
             rnd=rnd,
@@ -802,7 +855,11 @@ class OkfBuilder(Workflow):
         ).because("real gaps queued")
 
     def semantic_audit(self) -> Continue | Await:
-        """Run the book's QA plans for real against a live stack, then gate on the result."""
+        """Run the book's QA plans for real against a live stack, repair what it found, then gate.
+
+        A gap here is book debt in doctor's vocabulary, so the drain can fix it. It reaches
+        the operator only once the loop has no new row left to queue for it.
+        """
         result = self.handoff(LiveAudit, docs_path=self.ctx.repo_root, repo_dir=self.ctx.repo_root)
         reports = [LiveAuditReport.model_validate(r) for r in result["reports"]]
         blocked_or_failing = any(
@@ -811,18 +868,31 @@ class OkfBuilder(Workflow):
             or any(s.status != "passed" for s in report.scenarios)
             for report in reports
         )
-        if blocked_or_failing:
-            return Await(
-                paths.operator_context_path(Path(self.ctx.repo_root), self.service, self.ctx.scope_id),
-                _live_audit_gate_message(reports),
-                self.semantic_audit,
-            ).because("live audit blocked or failing: operator gate")
-        return Continue(reports, self.commit, reports).because("live audit clear: commit the book")
+        if not blocked_or_failing:
+            return Continue(reports, self.commit, reports).because("live audit clear: commit the book")
+        gaps = [dict(gap) for report in reports for gap in report.gaps]
+        rows = audit_gap_items(self.logger, self.ctx.repo_root, self.ctx.features_root, gaps)
+        if rows:
+            recorded = self.call(record, self.ctx.worklist_path, None, rows)
+            if recorded.added:
+                self.logger.info(
+                    "%d live-audit gap(s) queued %d repair row(s); draining them before the gate",
+                    len(gaps), recorded.added, extra={"activity": True},
+                )
+                return Continue(recorded, self.select).because(
+                    "live-audit gaps are repairable book debt: drain them"
+                )
+        return Await(
+            paths.operator_context_path(Path(self.ctx.repo_root), self.service, self.ctx.scope_id),
+            _live_audit_gate_message(reports),
+            self.semantic_audit,
+        ).because("live audit blocked or failing with no repair left to queue: operator gate")
 
     def commit(self, reports: list[LiveAuditReport]) -> Done:
-        """Record the completed book without touching work outside its directory."""
+        """Stamp what the finished book earned, then record it without touching work outside its directory."""
+        self.call(stamp_book, self.ctx.repo_root, self.ctx.features_root)
         self.call(commit_book, self.ctx.repo_root, self.ctx.features_root, self.story)
         return Done({"reports": [r.model_dump() for r in reports]}).because("completed book committed")
 
 
-__all__ = ["MAX_RESCAN_ROUNDS", "MAX_STALL_ROUNDS", "OkfBuilder"]
+__all__ = ["MAX_GATE_GAPS", "MAX_RESCAN_ROUNDS", "MAX_STALL_ROUNDS", "OkfBuilder"]
