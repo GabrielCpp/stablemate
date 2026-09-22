@@ -14,7 +14,7 @@ if TYPE_CHECKING:
     from workhorse.config_run import AgentResilience
 
 
-INLINE_PROMPT_LIMIT_BYTES = 96 * 1024
+ARGV_PROMPT_LIMIT_BYTES = 96 * 1024
 
 
 @dataclass(frozen=True, slots=True)
@@ -41,7 +41,7 @@ class AgentProfile:
 
 def prepare_argv_prompt(prompt: str, prompt_path: Path | None) -> tuple[str, Path | None]:
     """Return a bounded argv message and stage oversized content at ``prompt_path``."""
-    if len(prompt.encode("utf-8")) <= INLINE_PROMPT_LIMIT_BYTES:
+    if len(prompt.encode("utf-8")) <= ARGV_PROMPT_LIMIT_BYTES:
         return prompt, None
     if prompt_path is None:
         raise BackendInvocationError(
@@ -57,7 +57,7 @@ def prepare_argv_prompt(prompt: str, prompt_path: Path | None) -> tuple[str, Pat
 
 def ensure_prompt_is_not_in_argv(prompt: str, command: list[str]) -> None:
     """Enforce the transport invariant before spawning an argv-based harness."""
-    if len(prompt.encode("utf-8")) > INLINE_PROMPT_LIMIT_BYTES and any(
+    if len(prompt.encode("utf-8")) > ARGV_PROMPT_LIMIT_BYTES and any(
         prompt in argument for argument in command
     ):
         raise RuntimeError("oversized prompt remained in the subprocess argument vector")
