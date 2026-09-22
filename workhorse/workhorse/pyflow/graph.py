@@ -36,6 +36,7 @@ class Step:
     kind: str
     name: str
     summary: str = ""
+    dynamic: bool = False
 
     @property
     def file(self) -> str:
@@ -70,7 +71,11 @@ class StateNode:
     @property
     def prompts(self) -> tuple[str, ...]:
         """Literal prompt paths passed to `self.agent(...)`, in source order."""
-        return tuple(step.name for step in self.steps if step.kind == "agent")
+        return tuple(
+            step.name
+            for step in self.steps
+            if step.kind == "agent" and not step.dynamic
+        )
 
 
 @dataclass(frozen=True)
@@ -205,9 +210,13 @@ def _scan(
             if ident:
                 found.steps.append(Step("call", ident, _doc_summary(cls, node.args[0])))
         elif dotted == "self.agent":
-            prompt = _first_literal(node)
-            if prompt:
+            prompts = _prompt_literals(node)
+            for prompt in prompts:
                 found.steps.append(Step("agent", prompt, _prompt_title(prompt, workflow_dir)))
+            if not prompts and node.args:
+                found.steps.append(
+                    Step("agent", "?", _unparse(node.args[0]), dynamic=True)
+                )
         elif dotted == "self.pipeline":
             if owner:
                 found.edges.append(
@@ -315,6 +324,23 @@ def _first_literal(call: ast.Call) -> str | None:
     return None
 
 
+def _prompt_literals(call: ast.Call) -> list[str]:
+    """Every prompt path the first positional argument can be, when the source says so — a bare string is one, a ternary of strings is each of its arms."""
+    if not call.args:
+        return []
+    found: list[str] = []
+    stack: list[ast.expr] = [call.args[0]]
+    while stack:
+        expr = stack.pop(0)
+        if isinstance(expr, ast.Constant) and isinstance(expr.value, str):
+            found.append(expr.value)
+        elif isinstance(expr, ast.IfExp):
+            stack[:0] = [expr.body, expr.orelse]
+        else:
+            return []
+    return found
+
+
 def _unparse(expr: ast.expr | None) -> str:
     if expr is None:
         return "?"
@@ -379,6 +405,12 @@ def preflight(graphs: Sequence[FlowGraph], workflow_dir: Path | None = None) -> 
                     f"{where}: cannot read the source of state '{node.name}' — "
                     "its transitions, prompts and reachability are unchecked"
                 )
+            for step in node.steps:
+                if step.kind == "agent" and step.dynamic:
+                    problems.append(
+                        f"{where}: state '{node.name}' renders a prompt this read "
+                        f"cannot name ({step.summary}) — it is checked by nothing"
+                    )
             for edge in node.edges:
                 if edge.dangling:
                     problems.append(

@@ -48,10 +48,16 @@ digraph okf_builder {
       style="rounded,filled"; fillcolor=lightblue; color=steelblue;
       node [style="filled", fontsize=10];
       f0__investigate__0 [label="commit_turn\nCommit whatever changed in the book, under `subject`; never fail the run.", shape=box, fillcolor=white];
-      f0__investigate__1 [label="stamp_turn\nStamp exactly the `@digest` targets this turn earned, gated by the turn's own errors.", shape=box, fillcolor=white];
-      f0__investigate__2 [label="snapshot_book\nReplace `dest` with a copy of the book under `features_root`, as it stands now.", shape=box, fillcolor=white];
+      f0__investigate__1 [label="repair-behavior.md\nokf-builder - Repair a source-backed behavior gap", shape=note, fillcolor=lightyellow];
+      f0__investigate__2 [label="repair.md\nrepair the doctor findings on one book file", shape=note, fillcolor=lightyellow];
+      f0__investigate__3 [label="investigate.md\ninvestigate one worklist item", shape=note, fillcolor=lightyellow];
+      f0__investigate__4 [label="stamp_turn\nStamp exactly the `@digest` targets this turn earned, gated by the turn's own errors.", shape=box, fillcolor=white];
+      f0__investigate__5 [label="snapshot_book\nReplace `dest` with a copy of the book under `features_root`, as it stands now.", shape=box, fillcolor=white];
       f0__investigate__0 -> f0__investigate__1 [color=gray40, arrowsize=0.6];
       f0__investigate__1 -> f0__investigate__2 [color=gray40, arrowsize=0.6];
+      f0__investigate__2 -> f0__investigate__3 [color=gray40, arrowsize=0.6];
+      f0__investigate__3 -> f0__investigate__4 [color=gray40, arrowsize=0.6];
+      f0__investigate__4 -> f0__investigate__5 [color=gray40, arrowsize=0.6];
     }
     subgraph cluster_f0__recheck {
       label="recheck"; fontsize=12;
@@ -123,7 +129,7 @@ digraph okf_builder {
     f0__checkpoint__1 -> f0__adjudicate__0 [label="blocked rows and nothing pending: read the other side", ltail=cluster_f0__checkpoint, lhead=cluster_f0__adjudicate];
     f0__checkpoint__1 -> f0__retry_blocked__0 [label="findings unchanged for the stall cap: operator gate", style=dashed, color=darkorange, ltail=cluster_f0__checkpoint, lhead=cluster_f0__retry_blocked];
     f0__commit__1 -> f0____end [label="completed book committed", color=darkgoldenrod, ltail=cluster_f0__commit];
-    f0__investigate__2 -> f0__record_item__0 [label="turn finished: record what it wrote", ltail=cluster_f0__investigate, lhead=cluster_f0__record_item];
+    f0__investigate__5 -> f0__record_item__0 [label="turn finished: record what it wrote", ltail=cluster_f0__investigate, lhead=cluster_f0__record_item];
     f0__recheck__0 -> f0__seed_recheck__0 [label="recheck verdicts in", ltail=cluster_f0__recheck, lhead=cluster_f0__seed_recheck];
     f0__record_item__0 -> f0__select__0 [label="item closed, discoveries opened", ltail=cluster_f0__record_item, lhead=cluster_f0__select];
     f0__refuel -> f0__select__0 [label="operator granted another allowance", lhead=cluster_f0__select];

@@ -459,6 +459,7 @@ a state missing one of them draws as a bare file name or a parameter list:
 |---|---|
 | a docstring on the node, first line a sentence | that line under the node's bubble |
 | a `# <workflow> — <what this turn does>` title on the prompt | the part after the dash under the prompt's bubble |
+| `self.agent("a.md" if x else "b.md", …)` | one bubble per arm; an argument it cannot read draws as `?` and fails preflight |
 | `Continue(...).because("…")`, likewise on `Await` and `Done` | the sentence on the edge, in place of the parameter names |
 
 `.because()` is also logged by the driver on the transition line, so a run log reads the

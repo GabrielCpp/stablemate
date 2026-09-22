@@ -252,6 +252,32 @@ def test_an_agent_inside_a_pipeline_handler_is_still_a_step():
     assert _state(Drains, "start").prompts == ("prompts/fix.md",)
 
 
+class Ternary(Workflow):
+    """A state whose prompt is chosen in the call itself."""
+
+    def start(self, repair: bool = False) -> Transition:
+        self.agent(
+            "prompts/repair.md" if repair else "prompts/review.md", returns=str
+        )
+        return Done(None)
+
+    def mystery(self, which: str = "") -> Transition:
+        self.agent(which, returns=str)
+        return Done(None)
+
+
+def test_every_arm_of_a_prompt_ternary_is_a_step():
+    assert _state(Ternary, "start").prompts == ("prompts/repair.md", "prompts/review.md")
+
+
+def test_a_prompt_the_source_cannot_name_is_a_step_and_a_problem():
+    node = _state(Ternary, "mystery")
+    assert node.prompts == ()
+    assert node.steps == (Step("agent", "?", "which", dynamic=True),)
+    problems = preflight([_graph(Ternary)])
+    assert any("cannot name (which)" in p for p in problems), problems
+
+
 def test_helpers_that_call_each_other_do_not_loop_the_reader():
     assert _state(Factored, "finish").calls == ("measure",)
 

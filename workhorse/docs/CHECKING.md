@@ -86,7 +86,10 @@ things.
 First a **static pass** over the states' own source (the same reading `dot` uses):
 every prompt path a state renders must exist, every state must be reachable from the
 start state, at least one state must be able to return `Done`, and no transition may
-name something that is not a state. Then it **drives the machine for real** over a
+name something that is not a state. A prompt argument the source cannot name is itself a
+problem: a bare string is one path and a ternary of strings is each of its arms, but
+anything else (a variable, an f-string) is reported, because a path this pass cannot read
+is a path nothing checks. Then it **drives the machine for real** over a
 *substituted node index*, which covers what only running can — imports, `setup()`, and
 the transitions actually bound along one path. The static half is the one that carries
 the weight: it sees the branches this run would never take.
