@@ -155,6 +155,18 @@ def test_a_differing_identifier_is_not_a_conflict_even_where_a_flag_agrees(repo:
     assert "unspelled-alternation" not in all_codes(_run(repo))
 
 
+def test_two_outcomes_each_with_its_own_check_are_not_one_claim_twice(repo: Path):
+    """Two `verify:` bullets conflict only when they observe the same claim: `registry.attributed_checks` binds each to the normative bullet above it, and a success and a refusal are two claims."""
+    write(repo / "docs/features/groom/cli/wh.md",
+          "---\ntype: cli\nslug: wh\ntitle: WH\n---\n# WH\n\n"
+          "## Invocations\n\n### run\n- on: [wh](#wh)\n- trigger: `wh run`\n"
+          "- does:\n  - state: runs\n- code: `wh/run.py::run`\n"
+          '- status: `200 OK` on success\n- verify: http_status(200, path="/run")\n'
+          '- errors: `500` when the target is missing\n'
+          '- verify: http_status(500, path="/run")\n')
+    assert "unspelled-alternation" not in all_codes(_run(repo))
+
+
 def test_unspelled_alternation_not_tripped_by_an_extends_split(repo: Path):
     write(repo / "docs/features/groom/gui/screens/s.md",
           "---\ntype: screen\nslug: s\ntitle: S\n---\n# S\n\n"

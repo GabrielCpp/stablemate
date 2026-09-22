@@ -2480,29 +2480,33 @@ def _check_ui(graph: Graph, f: list[Finding],
                             "- fixture: the state this arm's own `when:` describes")))
                     break
 
-            verify_calls = [
-                c for c in (checks.parse_check(v)
-                            for v in _bullet_values(node.meta.get("verify", "")))
-                if isinstance(c, checks.CheckCall)
-            ]
+            contract_checks, checks_by_claim = registry.attributed_checks(
+                node.type, node.bullet_order, node.combiners)
             seen_conflicts: set[tuple[str, str]] = set()
-            for i, a in enumerate(verify_calls):
-                for b in verify_calls[i + 1:]:
-                    if not _alternation_conflict(a, b):
-                        continue
-                    first, second = sorted((a.text(), b.text()))
-                    pair = (first, second)
-                    if pair in seen_conflicts:
-                        continue
-                    seen_conflicts.add(pair)
-                    f.append(Finding(
-                        "warn", "unspelled-alternation",
-                        f"{node.id}: `verify: {a.text()}` and `verify: {b.text()}` are the "
-                        f"same check on the same subject with two different expected values — "
-                        f"one node cannot be both at once. Split into a base case and an arm "
-                        f"that `extends:` it, each keeping the `verify:` that is true of it",
-                        path=rel, line=node.line, ref=refs_mod.bullet_ref(node.id, "verify"),
-                        suggestion="- extends: [base case](#anchor)"))
+            for observed in [contract_checks, *checks_by_claim.values()]:
+                verify_calls = [
+                    c for c in (checks.parse_check(v) for v in observed)
+                    if isinstance(c, checks.CheckCall)
+                ]
+                for i, a in enumerate(verify_calls):
+                    for b in verify_calls[i + 1:]:
+                        if not _alternation_conflict(a, b):
+                            continue
+                        first, second = sorted((a.text(), b.text()))
+                        pair = (first, second)
+                        if pair in seen_conflicts:
+                            continue
+                        seen_conflicts.add(pair)
+                        f.append(Finding(
+                            "warn", "unspelled-alternation",
+                            f"{node.id}: `verify: {a.text()}` and `verify: {b.text()}` are "
+                            f"the same check on the same claim with two different expected "
+                            f"values — one claim cannot be both at once. Split into a base "
+                            f"case and an arm that `extends:` it, each keeping the `verify:` "
+                            f"that is true of it",
+                            path=rel, line=node.line,
+                            ref=refs_mod.bullet_ref(node.id, "verify"),
+                            suggestion="- extends: [base case](#anchor)"))
         for bk in uitype.bullet_keys:
             if bk.required and bk.key not in node.meta:
                 if extends_ok and bk.key in {"on", "trigger", "role", "name", "keyboard"}:
