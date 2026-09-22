@@ -263,8 +263,11 @@ class Engine:
         add_dirs: Sequence[str | Path] | None = None,
         session: str | None = None,
         profile: AgentProfile | None = None,
+        label: str | None = None,
     ) -> Any:
-        node_id = Path(prompt).stem or "agent"
+        inline = label is not None
+        node_id = label if inline else (Path(prompt).stem or "agent")
+        prompt_ref = f"inline:{label}" if inline else prompt
         writer = self.env.writer
         declared = node_id in (self.env.agent_stubs or {})
         session_path = self.env.session_id_path
@@ -277,7 +280,7 @@ class Engine:
             writer.record_node(
                 node_id,
                 "enter",
-                prompt=prompt,
+                prompt=prompt_ref,
                 repository_cwd=str(cwd) if cwd is not None else "",
                 repository_add_dirs=[str(path) for path in add_dirs or ()],
                 **({"chain": session, "resumed_session": resumed} if session else {}),
@@ -286,7 +289,9 @@ class Engine:
 
             if self.env.dry_run:
                 value = self._agent_stub(node_id, returns, args)
-                writer.write_step(node_id, f"(dry-run) {prompt}", _payload(value), {})
+                writer.write_step(
+                    node_id, f"(dry-run) {prompt_ref}", _payload(value), {}
+                )
                 self.env.log.info("[workhorse] agent  → %s (dry-run)", node_id)
                 return value
 
@@ -308,7 +313,8 @@ class Engine:
             node = AgentNode(
                 type="agent",
                 id=node_id,
-                prompt=prompt,
+                prompt="" if inline else prompt,
+                prompt_text=prompt if inline else "",
                 args={},
                 outputs=_outputs_for(returns),
                 next=None,

@@ -22,6 +22,14 @@ TAG_HELPERS = frozenset({"find_by_tags"})
 
 GUARD_HELPERS = frozenset({"isUsingInstruction", "is_using_instruction"})
 
+MANIFEST_HELPERS = (
+    SKILL_HELPERS
+    | PROMPT_HELPERS
+    | OPTIONAL_SKILL_HELPERS
+    | OPTIONAL_PROMPT_HELPERS
+    | TAG_HELPERS
+)
+
 PROMPT_GLOB = "**/prompts/**/*.md"
 
 
@@ -92,6 +100,16 @@ def _collect(node: nodes.Node, guarded: bool, found: set[tuple[str, str]]) -> No
 
     for child in node.iter_child_nodes():
         _collect(child, guarded, found)
+
+
+def helpers_called(source: str) -> set[str]:
+    """Every manifest-resolved helper `source` calls, whatever its arguments — what :func:`referenced_names` cannot report because the argument is not constant, and what a template this file's glob never reaches must not use."""
+    ast = Environment().parse(source)
+    return {
+        node.node.name
+        for node in ast.find_all(nodes.Call)
+        if isinstance(node.node, nodes.Name) and node.node.name in MANIFEST_HELPERS
+    }
 
 
 def referenced_names(source: str) -> set[tuple[str, str]]:

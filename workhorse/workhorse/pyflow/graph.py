@@ -5,10 +5,12 @@ import ast
 import inspect
 import sys
 import textwrap
-from collections import deque
+from collections import Counter, deque
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
+
+from jinja2 import Environment, TemplateSyntaxError
 
 from workhorse.pyflow.errors import WorkflowDefinitionError
 from workhorse.pyflow.registry import Registry
@@ -37,6 +39,8 @@ class Step:
     name: str
     summary: str = ""
     dynamic: bool = False
+    inline: bool = False
+    text: str = ""
 
     @property
     def file(self) -> str:
@@ -74,7 +78,7 @@ class StateNode:
         return tuple(
             step.name
             for step in self.steps
-            if step.kind == "agent" and not step.dynamic
+            if step.kind == "agent" and not step.dynamic and not step.inline
         )
 
 
@@ -210,6 +214,13 @@ def _scan(
             if ident:
                 found.steps.append(Step("call", ident, _doc_summary(cls, node.args[0])))
         elif dotted == "self.agent":
+            label = _keyword_literal(node, "label")
+            if label is not None:
+                body = _first_literal(node) or ""
+                found.steps.append(
+                    Step("agent", label, _text_title(body), inline=True, text=body)
+                )
+                continue
             prompts = _prompt_literals(node)
             for prompt in prompts:
                 found.steps.append(Step("agent", prompt, _prompt_title(prompt, workflow_dir)))
@@ -324,6 +335,25 @@ def _first_literal(call: ast.Call) -> str | None:
     return None
 
 
+def _keyword_literal(call: ast.Call, name: str) -> str | None:
+    """The string constant passed as keyword `name`, or `None` when it is absent or not a constant."""
+    for keyword in call.keywords:
+        if keyword.arg == name and isinstance(keyword.value, ast.Constant):
+            value = keyword.value.value
+            if isinstance(value, str):
+                return value
+    return None
+
+
+def _text_title(text: str) -> str:
+    """The first Markdown heading of a prompt written in the state's own source."""
+    for line in text.splitlines():
+        if line.startswith("#"):
+            title = line.lstrip("#").strip()
+            return title.split(" — ", 1)[-1] if " — " in title else title
+    return ""
+
+
 def _prompt_literals(call: ast.Call) -> list[str]:
     """Every prompt path the first positional argument can be, when the source says so — a bare string is one, a ternary of strings is each of its arms."""
     if not call.args:
@@ -421,8 +451,36 @@ def preflight(graphs: Sequence[FlowGraph], workflow_dir: Path | None = None) -> 
             problems.append(
                 f"{where}: state '{dead}' is unreachable from '{graph.start}'"
             )
+        problems.extend(_inline_problems(graph, where))
         if workflow_dir is not None:
             problems.extend(_missing_prompts(graph, where, workflow_dir))
+    return problems
+
+
+def _inline_problems(graph: FlowGraph, where: str) -> list[str]:
+    """What is wrong with the prompts a state writes in its own source: a label two turns share, and a body Jinja cannot parse."""
+    problems: list[str] = []
+    steps = [
+        (node.name, step)
+        for node in graph.states
+        for step in node.steps
+        if step.kind == "agent" and step.inline
+    ]
+    counts = Counter(step.name for _, step in steps)
+    for label, count in sorted(counts.items()):
+        if count > 1:
+            problems.append(
+                f"{where}: {count} agent turns are labelled '{label}' — a label is a "
+                "node id, so they would write the same run directory and output.json"
+            )
+    for state, step in steps:
+        try:
+            Environment().parse(step.text)
+        except TemplateSyntaxError as exc:
+            problems.append(
+                f"{where}: state '{state}' writes the prompt labelled "
+                f"'{step.name}', which is not valid Jinja: {exc}"
+            )
     return problems
 
 

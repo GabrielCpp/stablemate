@@ -8,8 +8,10 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 
 from jinja2 import (
+    BaseLoader,
     ChainableUndefined,
     ChoiceLoader,
+    DictLoader,
     Environment,
     FileSystemLoader,
     PrefixLoader,
@@ -192,7 +194,8 @@ def _flavor_override(
     node_name = template_path.name
     root = Path(repo_root) / ".agents" / "flavors" / workflow_dir.name
     owner = template_path.parent.parent
-    for flavor_dir in (root / owner, root):
+    candidates = dict.fromkeys((root / owner, root))
+    for flavor_dir in candidates:
         if (flavor_dir / node_name).is_file():
             return str(flavor_dir), node_name
     return None
@@ -219,21 +222,48 @@ def render(template_path: str | Path, context: dict[str, Any], workflow_dir: str
             search_paths = [flavor_dir, str(workflow_dir)]
             template_name = node_name
 
-    loader = FileSystemLoader(search_paths)
-    body_loader = (
-        ChoiceLoader([PrefixLoader({BODY_PREFIX: FileSystemLoader(body_dir)}), loader])
-        if body_dir
-        else loader
+    env = _environment(
+        _stack(body_dir, FileSystemLoader(search_paths)), context, workflow_dir
     )
+    return env.get_template(template_name).render(**context)
 
+
+def _stack(body_dir: str, *loaders: BaseLoader) -> BaseLoader:
+    """The loaders a prompt resolves through, `body:` first when a body directory is mounted."""
+    parts: list[BaseLoader] = list(loaders)
+    if body_dir:
+        parts.insert(0, PrefixLoader({BODY_PREFIX: FileSystemLoader(body_dir)}))
+    return parts[0] if len(parts) == 1 else ChoiceLoader(parts)
+
+
+def _environment(
+    loader: BaseLoader, context: dict[str, Any], workflow_dir: Path
+) -> Environment:
+    """The one environment every prompt renders in, whatever the text came from."""
     env = Environment(
-        loader=body_loader,
-        undefined=ResilientUndefined,
-        keep_trailing_newline=True,
+        loader=loader, undefined=ResilientUndefined, keep_trailing_newline=True
     )
     env.globals.update(_farrier_globals(context, workflow_dir))
-    tmpl = env.get_template(template_name)
-    return tmpl.render(**context)
+    return env
+
+
+def render_text(
+    label: str, text: str, context: dict[str, Any], workflow_dir: str | Path
+) -> str:
+    """Render a prompt written in the state's own source, in the same environment a prompt file gets."""
+    workflow_dir = Path(workflow_dir)
+    name = f"{label}.md"
+    inline = DictLoader({name: text})
+    files = FileSystemLoader([str(workflow_dir)])
+    override = _flavor_override(Path(name), context, workflow_dir)
+    loaders = (
+        [FileSystemLoader([override[0]]), inline, files]
+        if override is not None
+        else [inline, files]
+    )
+    body_dir = str(context.get("_body_dir") or "")
+    env = _environment(_stack(body_dir, *loaders), context, workflow_dir)
+    return env.get_template(name).render(**context)
 
 
 def render_string(

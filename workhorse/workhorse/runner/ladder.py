@@ -42,7 +42,7 @@ from workhorse.runner.waits import (
     active_recovery_wait_budget,
     recovery_wait_scope,
 )
-from workhorse.templates import render, render_string
+from workhorse.templates import render, render_string, render_text
 
 if TYPE_CHECKING:
     from workhorse.runner.backends import AgentBackend
@@ -222,7 +222,11 @@ class AgentRunner:
             "node_timeout_min": "unbounded" if unbounded else int(round(effective_timeout / 60)),
             "_node_cwd": rendered_cwd or "",
         }
-        rendered_prompt = render(node.prompt, prompt_ctx, workflow_dir)
+        rendered_prompt = (
+            render_text(node.id, node.prompt_text, prompt_ctx, workflow_dir)
+            if node.prompt_text
+            else render(node.prompt, prompt_ctx, workflow_dir)
+        )
 
         prompt_path = _write_prompt_for_inspection(node_id, rendered_prompt, run_dir)
         if prompt_path is not None and self.print_prompt:

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import inspect
+import re
 from collections.abc import Callable, Iterable, Sequence
 from contextlib import nullcontext
 from dataclasses import dataclass
@@ -9,6 +10,7 @@ from logging import Logger
 from pathlib import Path
 from typing import Any, ClassVar, Concatenate, ParamSpec, TypeVar
 
+from jinja2 import TemplateSyntaxError
 from pydantic import BaseModel, ConfigDict, PrivateAttr
 
 from workhorse.pyflow.errors import (
@@ -19,6 +21,7 @@ from workhorse.pyflow.errors import (
 from workhorse.pyflow.names import NameIndex
 from workhorse.pyflow.transitions import Await, Continue, Done, Transition
 from workhorse.runner.backends import AgentProfile
+from workhorse import references
 from workhorse.runner import worktree_guard
 from workhorse.worklist import WorkItem, WorkList
 
@@ -30,6 +33,8 @@ START_STATE = "start"
 _NAMEABLE = (inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.KEYWORD_ONLY)
 
 STATE_ATTR = "__workhorse_state__"
+
+LABEL_PATTERN = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
 
 
 @dataclass(frozen=True)
@@ -177,9 +182,17 @@ class Workflow(BaseModel):
         add_dirs: Sequence[str | Path] | None = None,
         session: str | None = None,
         profile: AgentProfile | None = None,
+        label: str | None = None,
     ) -> T:
-        """Render `prompt`, run an agent turn, and validate the reply into `returns`."""
+        """Render `prompt`, run an agent turn, and validate the reply into `returns`.
+
+        `prompt` is a template path under the workflow package. With `label`, it is the
+        turn's own text instead, and the label is the node id the run directory, the
+        span and the dry-run stand-in are all keyed by.
+        """
         engine = self._require_engine()
+        if label is not None:
+            self._check_inline(label, prompt)
         guard = (
             worktree_guard.guarding(engine.run_dir)
             if type(self).PROTECT_WORKTREE and not engine.worktree_dispatched
@@ -198,6 +211,30 @@ class Workflow(BaseModel):
                 add_dirs=add_dirs,
                 session=session,
                 profile=profile,
+                label=label,
+            )
+
+    @staticmethod
+    def _check_inline(label: str, text: str) -> None:
+        """Refuse an inline prompt the run directory, the diagram or the reference preflight could not account for."""
+        if not LABEL_PATTERN.match(label):
+            raise WorkflowDefinitionError(
+                f"agent label {label!r} is not a node id — it names a run-directory "
+                "subdirectory, a span and a stub key, so it must match "
+                f"{LABEL_PATTERN.pattern}"
+            )
+        try:
+            used = references.helpers_called(text)
+        except TemplateSyntaxError as exc:
+            raise WorkflowDefinitionError(
+                f"the inline prompt labelled {label!r} is not valid Jinja: {exc}"
+            ) from exc
+        if used:
+            raise WorkflowDefinitionError(
+                f"the inline prompt labelled {label!r} calls "
+                f"{', '.join(sorted(used))} — a manifest reference is resolved against "
+                "the manifest and checked by a sweep over prompt files, which an "
+                "inline body is not. Put this turn in a prompt file."
             )
 
     def pipeline(
