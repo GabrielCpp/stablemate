@@ -80,6 +80,7 @@ lint: ## Lint every subproject in one pass: ruff (style, imports) + ty + basedpy
 	# basedpyright ignores `[tool.basedpyright]` in pyproject.toml and silently runs
 	# at its own default mode over a tree this config deliberately narrows.
 	uv run --all-packages basedpyright -p pyproject.toml
+	uv run python scripts/check_file_length.py
 
 .PHONY: test
 test: ## Run lint and every package suite, exactly as CI does (the check-* guards are their own targets)

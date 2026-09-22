@@ -101,7 +101,19 @@ ostler = { workspace = true }
 # `extend-select` so ruff's defaults (E4/E7/E9/F) stay on.
 extend-select = [
     "TID252",   # relative-imports
+    "C901",
+    "PLR0911",
+    "PLR0912",
+    "PLR0913",
+    "PLR0915",
+    "ANN401",
 ]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 10
+
+[tool.ruff.lint.pylint]
+max-args = 5
 
 [tool.ruff.lint.flake8-tidy-imports]
 # Every import names its package from the root: `from ostler.model import Graph`,
@@ -121,6 +133,16 @@ ban-relative-imports = "all"
 # while still comparing byte-identical on disk. The glob is the package name rather than
 # three paths, so a future consumer that vendors it is covered without an edit.
 "**/stablemate_core/*.py" = ["TID252"]
+"!{workflows/src/workhorse_workflows/okf_book/**,workflows/tests/okf_book/**}" = [
+    "C901", "PLR0911", "PLR0912", "PLR0913", "PLR0915", "ANN401",
+]
+
+[tool.stablemate.strict]
+paths = [
+    "workflows/src/workhorse_workflows/okf_book",
+    "workflows/tests/okf_book",
+]
+max-lines = 400
 
 # ty runs from this root too (`make lint`), over the same tree ruff sees, so member
 # packages carry no [tool.ty] of their own either. Every rule is at its default
@@ -163,6 +185,10 @@ exclude = [
 [tool.basedpyright]
 typeCheckingMode = "standard"
 pythonVersion = "3.12"
+strict = [
+    "workflows/src/workhorse_workflows/okf_book",
+    "workflows/tests/okf_book",
+]
 # `include` is explicit rather than "the repo root", because the root also holds
 # untracked working trees a checker must not walk: a member's stray .venv, the
 # benchmark's materialized run directories. The excludes below are the same list
@@ -192,6 +218,17 @@ exclude = [
 # harness lands on a project's PYTHONPATH as a flat directory of stdlib-only modules,
 # and a paddock task module imports the `_`-prefixed helpers beside it.
 [[tool.basedpyright.executionEnvironments]]
+root = "workflows/src/workhorse_workflows/okf_book"
+reportExplicitAny = "error"
+reportAny = "error"
+
+[[tool.basedpyright.executionEnvironments]]
+root = "workflows/tests/okf_book"
+extraPaths = ["workflows/tests"]
+reportExplicitAny = "error"
+reportAny = "error"
+
+[[tool.basedpyright.executionEnvironments]]
 root = "ostler/ostler/qa/harness"
 
 [[tool.basedpyright.executionEnvironments]]
@@ -220,6 +257,7 @@ root = "saddlebag/tests"
 
 [[tool.basedpyright.executionEnvironments]]
 root = "scripts/tests"
+extraPaths = ["scripts"]
 
 [[tool.basedpyright.executionEnvironments]]
 root = "workflows/tests"
