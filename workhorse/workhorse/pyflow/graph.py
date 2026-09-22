@@ -168,7 +168,7 @@ def _read_state(cls: type[Workflow], spec: StateSpec, workflow_dir: Path | None)
         return StateNode(name=spec.name, opaque=True)
 
     found = _Found()
-    _scan(cls, tree, found, {spec.name}, workflow_dir)
+    _scan(cls, tree, found, {spec.name}, workflow_dir, owner=spec.name)
     return StateNode(
         name=spec.name,
         edges=tuple(dict.fromkeys(found.edges)),
@@ -182,6 +182,7 @@ def _scan(
     found: _Found,
     seen: set[str],
     workflow_dir: Path | None = None,
+    owner: str = "",
 ) -> None:
     """Record every seam this body reaches, following its own private helpers."""
     for node in ast.walk(tree):
@@ -207,6 +208,11 @@ def _scan(
             prompt = _first_literal(node)
             if prompt:
                 found.steps.append(Step("agent", prompt, _prompt_title(prompt, workflow_dir)))
+        elif dotted == "self.pipeline":
+            if owner:
+                found.edges.append(
+                    Edge(target=owner, kind="continue", reason="another chunk")
+                )
         elif dotted == "self.handoff":
             child = _first_ident(node)
             if child:
@@ -215,7 +221,7 @@ def _scan(
             seen.add(tail)
             helper = _source_tree(getattr(cls, tail, None))
             if helper is not None:
-                _scan(cls, helper, found, seen, workflow_dir)
+                _scan(cls, helper, found, seen, workflow_dir, owner=owner)
 
 
 def _unwrap_because(call: ast.Call) -> tuple[ast.Call | None, str]:

@@ -5,8 +5,9 @@ import json
 import os
 from collections import Counter
 from dataclasses import dataclass
+from itertools import islice
 from pathlib import Path
-from typing import Any, Iterable, Protocol, Sequence
+from typing import Any, Iterable, Iterator, Protocol, Sequence
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -78,6 +79,29 @@ def _of_kind(items: Iterable[WorkItem], kind: str | None) -> list[WorkItem]:
     return [it for it in seq if it.kind == kind]
 
 
+def _candidates(
+    items: Iterable[WorkItem],
+    *,
+    skip: Iterable[str] = (),
+    scheme: Scheme = DEFAULT_SCHEME,
+    kind: str | None = None,
+) -> Iterator[WorkItem]:
+    """Every item worth working, in working order — the ones already active first, so a run that crashed mid-item resumes on it rather than opening a second front."""
+    skipped = set(skip)
+    ordered = _ordered(_of_kind(items, kind))
+    yield from (
+        it for it in ordered if it.status in scheme.active and it.id not in skipped
+    )
+    yield from (
+        it
+        for it in ordered
+        if it.status not in scheme.active
+        and it.status not in scheme.done
+        and it.status not in scheme.blocked
+        and it.id not in skipped
+    )
+
+
 def select_next(
     items: Iterable[WorkItem],
     *,
@@ -86,18 +110,21 @@ def select_next(
     kind: str | None = None,
 ) -> WorkItem | None:
     """The first item to work, or ``None`` when the queue is drained."""
-    skipped = set(skip)
-    ordered = _ordered(_of_kind(items, kind))
-    for it in ordered:
-        if it.status in scheme.active and it.id not in skipped:
-            return it
-    for it in ordered:
-        if it.status in scheme.done or it.status in scheme.blocked:
-            continue
-        if it.id in skipped:
-            continue
-        return it
-    return None
+    return next(_candidates(items, skip=skip, scheme=scheme, kind=kind), None)
+
+
+def claim(
+    items: Iterable[WorkItem],
+    n: int,
+    *,
+    skip: Iterable[str] = (),
+    scheme: Scheme = DEFAULT_SCHEME,
+    kind: str | None = None,
+) -> list[WorkItem]:
+    """The next ``n`` items to work, or fewer when the queue is shorter than that — :func:`select_next` widened to a chunk, off the one ordering both read."""
+    if n <= 0:
+        return []
+    return list(islice(_candidates(items, skip=skip, scheme=scheme, kind=kind), n))
 
 
 def counts(
@@ -222,6 +249,41 @@ class WorkList:
         return select_next(
             self.backend.load(), skip=skip, scheme=self.scheme, kind=kind
         )
+
+    def claim(
+        self,
+        n: int,
+        *,
+        kind: str | None = None,
+        skip: Iterable[str] = (),
+        status: str = "active",
+    ) -> list[WorkItem]:
+        """Take up to ``n`` items of one ``kind``, mark them ``status``, and persist once — an empty list is how a drained queue says so, and it writes nothing."""
+        items = self.backend.load()
+        taken = claim(items, n, skip=skip, scheme=self.scheme, kind=kind)
+        if not taken:
+            return []
+        for it in taken:
+            it.status = status
+        self.backend.save(items)
+        return taken
+
+    def settle(
+        self, ids: Iterable[str], status: str, kind: str | None = None
+    ) -> int:
+        """Set the status of every item named in ``ids``, in one write, and say how many rows it set."""
+        wanted = set(ids)
+        if not wanted:
+            return 0
+        items = self.backend.load()
+        changed = 0
+        for it in items:
+            if it.id in wanted and (kind is None or it.kind == kind):
+                it.status = status
+                changed += 1
+        if changed:
+            self.backend.save(items)
+        return changed
 
     def mark(self, item_id: str, status: str, kind: str | None = None) -> bool:
         """Set one item's status."""

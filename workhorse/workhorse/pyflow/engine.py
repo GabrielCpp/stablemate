@@ -28,6 +28,7 @@ from workhorse.pyflow.errors import (
 )
 from workhorse.pyflow.names import NameIndex
 from workhorse.pyflow.registry import registry_of
+from workhorse.pyflow.transitions import Continue
 from workhorse.pyflow.workflow import Workflow
 from workhorse._vendor.stablemate_core.clock import SYSTEM_CLOCK, Clock
 from workhorse.runner.failure import BackendInvocationError
@@ -137,6 +138,25 @@ class Engine:
 
     def __init__(self, env: RunEnv) -> None:
         self.env = env
+        self._state: tuple[str, Callable[..., Any], dict[str, Any]] | None = None
+
+    def enter_state(
+        self, name: str, bound: Callable[..., Any], params: dict[str, Any]
+    ) -> None:
+        """Record the state the driver is about to run, and the arguments it was given."""
+        self._state = (name, bound, dict(params))
+
+    def revisit(self) -> Continue[...]:
+        """A `Continue` back into the state now running, carrying the parameters it was entered with — how a chunked drain takes its next bite without the author restating its own checkpoint."""
+        if self._state is None:
+            raise WorkflowFailed(
+                "self.pipeline() was called outside a running state, so there is no "
+                "state to come back to. Drive the workflow rather than calling a "
+                "state method directly.",
+                failure_class="pipeline-outside-state",
+            )
+        _, bound, params = self._state
+        return Continue(None, bound, **params)
 
 
     @property

@@ -477,6 +477,46 @@ def test_every_transition_says_why():
     assert not unlabelled, f"transitions with no reason: {unlabelled}"
 ```
 
+## Draining a worklist a chunk at a time (`self.pipeline`)
+
+A state that works through a backlog re-derives the same four things in every workflow:
+take the next few items, mark them taken, hand them to a turn, come back for more.
+`self.pipeline` is that loop, and a `WorkList` (`workhorse.worklist`) is where the items
+live.
+
+```python
+def drain(self, rnd: int = 0, stall: int = 0) -> Transition:
+    again = self.pipeline(self.ctx.work, "error-finding", 3, lambda items:
+        self.agent("main/prompts/fix.md", returns=Fixed, args={"findings": items}))
+    if again:
+        return again
+    return Continue(None, self.report, rnd=rnd).because("queue drained")
+```
+
+It claims the next three items of kind `error-finding`, marks them `active`, calls the
+handler, settles them `done`, and returns a `Continue` **back into this same state**
+carrying the parameters this state was entered with. The author never restates
+`rnd=rnd, stall=stall` on the loop edge. A falsy return is how a drained queue says so,
+and that is the branch that leaves the loop.
+
+One chunk per state visit is the point. Each chunk runs under its own checkpoint, so a
+run killed on chunk four resumes into chunk four rather than the top of the queue. The
+rows that chunk had already claimed are `active`, and `claim` takes active rows first, so
+the resume re-takes exactly them.
+
+Three things a handler can do beyond returning a value:
+
+| The handler | The drain |
+|---|---|
+| returns a `Continue`, `Done` or `Await` | takes it, instead of looping — how a drain gates partway through |
+| calls `work.mark(item.id, "blocked")` on a row | leaves that row blocked; only rows still `active` settle |
+| raises | leaves its rows `active`, so the ladder's retry re-takes the same chunk |
+
+`pipeline` returns `Transition | None`, never a fourth kind of ending. The
+diagram reads the self-loop off the `self.pipeline` call and the agent bubble off the
+`self.agent` inside the handler, so a chunked drain draws the same way a hand-written one
+does.
+
 ## Checkpoints and renaming
 
 The checkpoint is `(state, params)` plus the frozen inputs and `ctx`, tagged

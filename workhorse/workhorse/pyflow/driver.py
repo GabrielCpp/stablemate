@@ -314,7 +314,8 @@ def drive(
     """Run `wf` to a `Done`, returning its result."""
     if env.driver is None:
         env.driver = drive
-    wf._bind(Engine(env))
+    engine = Engine(env)
+    wf._bind(engine)
 
     if resume is None and resume_in_place:
         resume = _resume_in_place(wf, env)
@@ -360,6 +361,7 @@ def drive(
         spec = type(wf).resolve_state(state)
         bound = getattr(wf, spec.name)
         kwargs = coerce_params(bound, params, state=spec.name)
+        engine.enter_state(spec.name, bound, kwargs)
 
         activity.rebase({**env.labels, **_labels(wf, env.log, kwargs)})
         state_seq = env.writer.write_state_checkpoint(

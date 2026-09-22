@@ -131,6 +131,24 @@ class Factored(Workflow):
         self.call(measure, "globex")
 
 
+class Drains(Workflow):
+    """A chunked drain, the shape `self.pipeline` gives a state."""
+
+    def start(self) -> Transition:
+        again = self.pipeline(
+            self.ctx.work,
+            "finding",
+            3,
+            lambda items: self.agent("prompts/fix.md", returns=str, args={"i": items}),
+        )
+        if again:
+            return again
+        return Continue(None, self.report)
+
+    def report(self) -> Transition:
+        return Done(None)
+
+
 def _graph(cls: type[Workflow]):
     return state_graph(cls)
 
@@ -222,6 +240,16 @@ def test_a_seam_inside_a_private_helper_is_attributed_to_the_state():
     assert _state(Factored, "start").prompts == ("prompts/record.md",)
     assert {node.name for node in graph.states} == {"start", "finish"}
     assert graph.prompts() == (("start", "prompts/record.md"),)
+
+
+def test_a_pipeline_loops_the_state_back_onto_itself():
+    assert ("start", "continue") in _edges(Drains, "start")
+    reasons = {e.target: e.reason for e in _state(Drains, "start").edges}
+    assert reasons["start"] == "another chunk"
+
+
+def test_an_agent_inside_a_pipeline_handler_is_still_a_step():
+    assert _state(Drains, "start").prompts == ("prompts/fix.md",)
 
 
 def test_helpers_that_call_each_other_do_not_loop_the_reader():

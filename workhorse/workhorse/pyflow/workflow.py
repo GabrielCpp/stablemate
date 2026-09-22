@@ -17,8 +17,10 @@ from workhorse.pyflow.errors import (
     WorkflowFrozenError,
 )
 from workhorse.pyflow.names import NameIndex
+from workhorse.pyflow.transitions import Await, Continue, Done, Transition
 from workhorse.runner.backends import AgentProfile
 from workhorse.runner import worktree_guard
+from workhorse.worklist import WorkItem, WorkList
 
 P = ParamSpec("P")
 T = TypeVar("T")
@@ -197,6 +199,36 @@ class Workflow(BaseModel):
                 session=session,
                 profile=profile,
             )
+
+    def pipeline(
+        self,
+        work: WorkList,
+        kind: str,
+        n: int,
+        handler: Callable[[list[WorkItem]], Any],
+        *,
+        status: str = "done",
+    ) -> Transition | None:
+        """Hand the next `n` items of `kind` to `handler` and come back here for the next chunk, or `None` once the queue is drained.
+
+        One chunk per state visit, so every chunk is a checkpoint a resume can land on.
+        The loop carries this state's own parameters, so nothing is restated. A handler
+        that returns a transition takes it instead, which is how a drain gates partway
+        through. Claimed rows settle to `status` unless the handler already moved them,
+        so a row it marked blocked keeps that verdict.
+        """
+        engine = self._require_engine()
+        items = work.claim(n, kind=kind)
+        if not items:
+            return None
+        outcome = handler(items)
+        if isinstance(outcome, (Continue, Done, Await)):
+            return outcome
+        held = {
+            it.id for it in work.items(kind) if it.status in work.scheme.active
+        }
+        work.settle([it.id for it in items if it.id in held], status, kind)
+        return engine.revisit()
 
     def seed_session(self, key: str, session_id: str) -> None:
         """Start chain `key` on a session id another turn — or another flow — minted."""

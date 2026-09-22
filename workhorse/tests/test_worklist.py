@@ -212,6 +212,107 @@ def test_stateless_snapshot_matches_the_worklist_method():
     assert empty.progress == "0/0" and empty.remaining == 0
 
 
+class CountingBackend:
+    """A backend that remembers how many times a caller wrote it."""
+
+    def __init__(self, items):
+        self.items = items
+        self.saves = 0
+
+    def load(self):
+        return [it.model_copy(deep=True) for it in self.items]
+
+    def save(self, items):
+        self.saves += 1
+        self.items = [it.model_copy(deep=True) for it in items]
+
+
+def _list(items=None):
+    backend = CountingBackend(items if items is not None else _items())
+    return wl.WorkList(backend=backend), backend
+
+
+def test_claim_agrees_with_select_next_on_the_first_item():
+    items = _items()
+    assert [it.id for it in wl.claim(items, 2)] == ["c", "d"]
+    assert present(wl.select_next(items)).id == "c"
+
+
+def test_claim_takes_active_before_pending():
+    items = _items()
+    items[3].status = "active"
+    assert [it.id for it in wl.claim(items, 2)] == ["d", "c"]
+
+
+def test_claim_returns_fewer_than_asked_when_the_queue_is_shorter():
+    assert [it.id for it in wl.claim(_items(), 9)] == ["c", "d"]
+
+
+def test_claim_of_nothing_is_empty():
+    assert wl.claim(_items(), 0) == []
+
+
+def test_claim_honours_skip_and_kind():
+    assert [it.id for it in wl.claim(_items(), 2, skip={"c"})] == ["d"]
+    items = [
+        wl.WorkItem(id="a", status="pending", kind="fix"),
+        wl.WorkItem(id="b", status="pending", kind="audit"),
+    ]
+    assert [it.id for it in wl.claim(items, 2, kind="audit")] == ["b"]
+
+
+def test_claim_marks_active_and_writes_once():
+    work, backend = _list()
+    taken = work.claim(2)
+    assert [it.id for it in taken] == ["c", "d"]
+    assert backend.saves == 1
+    assert [it.status for it in work.items() if it.id in ("c", "d")] == [
+        "active",
+        "active",
+    ]
+
+
+def test_claim_on_a_drained_queue_writes_nothing():
+    work, backend = _list([wl.WorkItem(id="a", status="done")])
+    assert work.claim(3) == []
+    assert backend.saves == 0
+
+
+def test_a_crashed_claim_retakes_the_same_rows():
+    work, backend = _list()
+    first = [it.id for it in work.claim(2)]
+    assert [it.id for it in work.claim(2)] == first
+
+
+def test_settle_sets_every_named_row_in_one_write():
+    work, backend = _list()
+    assert work.settle(["c", "d"], "done") == 2
+    assert backend.saves == 1
+    assert {it.id for it in work.items() if it.status == "done"} == {"a", "c", "d"}
+
+
+def test_settle_is_idempotent():
+    work, backend = _list()
+    assert work.settle(["c"], "done") == 1
+    assert work.settle(["c"], "done") == 1
+
+
+def test_settle_ignores_an_unknown_id_and_an_empty_list():
+    work, backend = _list()
+    assert work.settle(["nobody"], "done") == 0
+    assert work.settle([], "done") == 0
+    assert backend.saves == 0
+
+
+def test_settle_scoped_by_kind_leaves_the_other_kind_alone():
+    work, backend = _list([
+        wl.WorkItem(id="a", status="pending", kind="fix"),
+        wl.WorkItem(id="a", status="pending", kind="audit"),
+    ])
+    assert work.settle(["a"], "done", "audit") == 1
+    assert [it.status for it in work.items("fix")] == ["pending"]
+
+
 if __name__ == "__main__":
     fns = [v for k, v in sorted(globals().items())
            if k.startswith("test_") and callable(v)]

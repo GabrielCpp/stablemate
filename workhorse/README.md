@@ -404,9 +404,15 @@ An agent prompt must output JSON matching the model its turn declared in `return
 came back empty: after transient retries and reframing, the runner defaults a turn's
 declared outputs and lets the machine advance rather than crashing the run.
 
+A state that works through a backlog gets that loop written for it. `self.pipeline(work,
+kind, n, handler)` claims the next `n` items of one kind off a `WorkList`, hands them to
+the handler, settles them, and returns a transition back into the same state carrying the
+parameters it was entered with. One chunk per visit, so each chunk is a checkpoint a
+resume lands on, and a falsy return is how a drained queue says so.
+
 The authoring reference — the package layout, the worked example end to end, the three
 tiers of state and why there is no fourth, where a turn runs (`cwd` / `add_dirs`), the
-transition table, checkpoints and the `aliases=` that survive a rename, the node index
+transition table, the chunked worklist drain, checkpoints and the `aliases=` that survive a rename, the node index
 that tests substitute through instead of patching, and the `labels()` that tell a
 collector what a run is working on — is in
 [docs/AUTHORING.md](https://github.com/GabrielCpp/stablemate/blob/main/workhorse/docs/AUTHORING.md).
