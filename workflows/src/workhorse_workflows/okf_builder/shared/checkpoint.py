@@ -84,6 +84,7 @@ NON_ACTIONABLE_CODES = frozenset({
     "needs-target-backend",
     "needs-multi-target-runtime",
     "unwitnessed-check",
+    "unreachable-node",
 })
 
 REGROUNDING_CODES = frozenset({"stale-citation"})
