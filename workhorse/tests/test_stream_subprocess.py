@@ -58,6 +58,35 @@ def test_silent_stream_still_emits_liveness_heartbeats():
     assert idles[-1] > idles[0], f"idle_s did not climb during silence: {idles}"
 
 
+def test_a_turn_that_keeps_talking_outlives_its_budget():
+    """A long turn is not a hung one: the budget bounds silence, so a process still streaming runs past it untouched."""
+    timed_out, rc, lines = _run(
+        "import sys, time\n"
+        "for _ in range(12):\n"
+        "    print('tok'); sys.stdout.flush(); time.sleep(0.1)\n",
+        timeout=0.5,
+        grace=0.3,
+    )
+
+    assert timed_out is False, "a streaming turn was killed for taking longer than its budget"
+    assert rc == 0
+    assert len(lines) == 12
+
+
+def test_a_turn_that_stops_talking_is_cut_at_its_budget():
+    """The same budget still ends a turn that says nothing, which is what a hang looks like from here."""
+    started = time.monotonic()
+    timed_out, _rc, lines = _run(
+        "import sys, time; print('tok'); sys.stdout.flush(); time.sleep(3600)",
+        timeout=1.0,
+        grace=0.5,
+    )
+
+    assert timed_out is True
+    assert [ln.strip() for ln in lines] == ["tok"]
+    assert time.monotonic() - started < 20
+
+
 def test_heartbeat_idle_resets_when_the_stream_speaks():
     """A chatty turn must keep idle_s near zero however long it runs — otherwise a healthy long turn would look identical to a hang."""
     fake = RecordingTelemetry()

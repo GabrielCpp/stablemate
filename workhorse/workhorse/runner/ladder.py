@@ -206,6 +206,11 @@ class AgentRunner:
         )
         effective_timeout = base_timeout * timeout_scale
         unbounded = effective_timeout == float("inf")
+        silence_budget = (
+            effective_timeout
+            if unbounded
+            else max(effective_timeout, resilience.silence_timeout_s * timeout_scale)
+        )
 
         rendered_cwd = render_string(node.cwd, ctx).strip() if node.cwd else None
 
@@ -266,7 +271,7 @@ class AgentRunner:
                 outputs = self._invoke_and_parse(
                     prompt, node, session_id_path, model,
                     prompt_path=prompt_path,
-                    timeout=effective_timeout,
+                    timeout=silence_budget,
                     budget_scale=timeout_scale,
                     base_timeout_s=base_timeout,
                     cwd=rendered_cwd, add_dirs=rendered_add_dirs,
@@ -507,8 +512,8 @@ class AgentRunner:
                 is_cap_hit = exc.reset_at is not None or is_cap(str(exc))
                 if exc.timed_out and not is_cap_hit:
                     print(
-                        f"[{node_id}] ⏱ previous attempt exceeded its ~{int(timeout)}s "
-                        f"budget; warning the retry to size its work to fit",
+                        f"[{node_id}] ⏱ previous attempt went silent for ~{int(timeout)}s "
+                        f"and was cut; warning the retry to keep reporting progress",
                         flush=True,
                     )
                     attempt_prompt = timeout_retry_prompt(prompt, timeout)

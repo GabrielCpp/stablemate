@@ -1036,7 +1036,7 @@ def test_opencode_cap_attaches_codex_reset_at():
             )
             assert "cap reached" in str(
                 exc
-            ) and "Timeout waiting for result" not in str(exc)
+            ) and "No output from" not in str(exc)
 
 
 def test_opencode_non_cap_does_not_probe_codex():
@@ -1117,7 +1117,7 @@ def test_opencode_cap_log_line_aborts_stream_early():
         )
         raise AssertionError("expected a cap BackendInvocationError")
     except failure.BackendInvocationError as exc:
-        assert "cap reached" in str(exc) and "Timeout waiting for result" not in str(
+        assert "cap reached" in str(exc) and "No output from" not in str(
             exc
         )
 
@@ -1172,7 +1172,7 @@ def test_opencode_provider_header_timeout_aborts_into_short_retry():
         assert exc.transient is True
         assert exc.timed_out is False, "provider timeout did not spend the node budget"
         assert "ProviderHeaderTimeoutError" in str(exc)
-        assert "Timeout waiting for result" not in str(exc)
+        assert "No output from" not in str(exc)
 
 
 def test_an_empty_turn_that_generated_nothing_stays_a_plain_transient():

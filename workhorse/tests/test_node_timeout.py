@@ -67,10 +67,18 @@ def test_default_budget_threads_to_invocation_and_prompt():
 
 
 def test_explicit_timeout_overrides_and_reaches_prompt():
-    ctx, invoke_timeout = _run_capturing(_node(timeout=300))
-    assert invoke_timeout == 300
+    ctx, _invoke_timeout = _run_capturing(_node(timeout=300))
     assert ctx["node_timeout_s"] == 300
     assert ctx["node_timeout_min"] == 5
+
+
+def test_a_short_node_budget_never_tightens_the_hang_detector():
+    """A node's budget paces the turn; the kill waits on silence, and never sooner than the engine's floor."""
+    resilience = AgentResilience()
+    ctx, invoke_timeout = _run_capturing(_node(timeout=300), resilience=resilience)
+
+    assert ctx["node_timeout_s"] == 300
+    assert invoke_timeout == resilience.silence_timeout_s
 
 
 def test_explicit_none_falls_back_to_engine_default():
@@ -122,7 +130,7 @@ def test_an_unscaled_run_is_byte_identical():
     with _scaled(None):
         ctx, invoke_timeout = _run_capturing(_node(timeout=300))
 
-    assert invoke_timeout == 300
+    assert invoke_timeout == AgentResilience().silence_timeout_s
     assert ctx["node_timeout_s"] == 300
 
 
@@ -130,7 +138,7 @@ def test_a_tier_scale_multiplies_the_node_budget_and_the_prompt():
     with _scaled(2.0):
         ctx, invoke_timeout = _run_capturing(_node(timeout=300))
 
-    assert invoke_timeout == 600
+    assert invoke_timeout == 2 * AgentResilience().silence_timeout_s
     assert ctx["node_timeout_s"] == 600
     assert ctx["node_timeout_min"] == 10
 
@@ -159,7 +167,7 @@ def test_the_tier_scale_beats_the_backend_default_scale():
     ):
         _, invoke_timeout = _run_capturing(_node(timeout=300))
 
-    assert invoke_timeout == 600
+    assert invoke_timeout == 2 * AgentResilience().silence_timeout_s
 
 
 def test_the_backend_default_scale_applies_when_the_tier_omits_one():
@@ -170,7 +178,7 @@ def test_the_backend_default_scale_applies_when_the_tier_omits_one():
     ):
         _, invoke_timeout = _run_capturing(_node(timeout=300))
 
-    assert invoke_timeout == 1500
+    assert invoke_timeout == 5 * AgentResilience().silence_timeout_s
 
 
 if __name__ == "__main__":

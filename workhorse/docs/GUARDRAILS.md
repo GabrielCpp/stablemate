@@ -113,7 +113,7 @@ The agent includes sophisticated retry logic with:
 
 ### 2. Timeout Handling
 
-- **Result timeout**: Operations that don't produce a result within `AGENT_RESULT_TIMEOUT_S` (default: 3600s) are terminated gracefully
+- **Silence timeout**: A turn that produces no output for `AGENT_SILENCE_TIMEOUT_S` (default: 900s) is terminated gracefully. A turn still streaming is left alone however long it runs
 - **Process cleanup**: Hung Claude processes are properly terminated/killed
 - **Always transient**: Timeouts are always treated as recoverable errors
 
@@ -161,7 +161,8 @@ same CLI configuration as the conversation it is compacting.
 | `AGENT_MAX_INVOKE_RETRIES` | 60 | Additional attempts for transient agent CLI failures. Sized in days, not minutes: with the backoff below the ladder spans ~27h, so a link down for a working day is slept through rather than died inside |
 | `AGENT_MAX_COMPACT_ATTEMPTS` | 2 | `/compact`-and-continue tries on context overflow before reframing (0 disables) |
 | `AGENT_MAX_REPHRASE_ATTEMPTS` | 3 | Fresh-session reframings before the run stops. A node may override it for itself with `self.agent(..., retries=N)` — notably `retries=0` for a node whose deliverable is a file its caller can read back partially, where a reframe re-asks at full price for nothing (see [AUTHORING.md](AUTHORING.md#where-an-agent-turn-runs-cwd--add_dirs)) |
-| `AGENT_RESULT_TIMEOUT_S` | 3600 | Maximum seconds to wait for a result event, for every node that does not declare a `timeout:` of its own. A turn cut at its budget reaches the calling state as `workhorse.pyflow.AgentTimeout` once the ladder is spent, so a state whose deliverable is a file can land the partial draft instead of ending the run. Whichever budget applies — this one or the node's — is then multiplied by the active power tier's `timeout_scale` (below — a config key, not an environment variable) |
+| `AGENT_RESULT_TIMEOUT_S` | 3600 | The pacing a node is told to work to, for every node that does not declare a `timeout:` of its own. It reaches the prompt as `node_timeout_min` and is advice, not a kill: nothing stops a turn for taking longer. Whichever budget applies — this one or the node's — is multiplied by the active power tier's `timeout_scale` (below — a config key, not an environment variable) |
+| `AGENT_SILENCE_TIMEOUT_S` | 900 | How long a turn may produce NO output before it is cut. This is the hang detector, and it is the only budget that kills: a turn that keeps streaming runs as long as the work takes, because a long turn and a hung one differ in whether they are still talking, not in how long they have run. The floor is never tighter than this — a node declaring a shorter `timeout:` gets the node's pacing in its prompt and this budget on its life. Scaled by `timeout_scale` like the above. A cut turn reaches the calling state as `workhorse.pyflow.AgentTimeout` once the ladder is spent, so a state whose deliverable is a file can land the partial draft instead of ending the run |
 | `AGENT_INVOKE_BACKOFF_BASE_S` | 15 | Base seconds for exponential backoff |
 | `AGENT_INVOKE_BACKOFF_CAP_S` | 1800 | Maximum backoff delay in seconds — the coarsest useful poll for "is the network back" |
 | `AGENT_RETRY_WAIT_BUDGET_S` | 97305 (~27h) | Cumulative transient-backoff sleep for one agent-node visit; shared by output retries and reframes |
@@ -177,7 +178,7 @@ same CLI configuration as the conversation it is compacting.
 | `AGENT_EXEC_RETRY_WAIT_BUDGET_S` | 23 | Cumulative spawn-time self-update backoff for one agent-node visit |
 | `AGENT_CAP_MAX_WAIT_S` | 691200 (8 days) | Upper bound on a single `resetsAt`-derived cap sleep (guards against a bogus far-future epoch) |
 | `AGENT_REFRAME_WAIT_BUDGET_S` | 60 | Cumulative pause before fresh-session reframes for one agent-node visit |
-| `AGENT_WATCHDOG_GRACE_S` | 120 | Grace beyond `AGENT_RESULT_TIMEOUT_S` after which a separate watchdog thread SIGKILLs the turn's process group. The in-loop timeout can only fire *between* stream reads, so a socket that wedges mid-line would otherwise block forever; this is the always-on backstop. |
+| `AGENT_WATCHDOG_GRACE_S` | 120 | Grace beyond the silence budget after which a separate watchdog thread SIGKILLs the turn's process group. The in-loop check can only fire *between* stream reads, so a socket that wedges mid-line would otherwise block forever; this is the always-on backstop. |
 
 ### Scaling every budget for a slower model (`timeout_scale`)
 
@@ -289,9 +290,9 @@ finished are in [TELEMETRY.md](TELEMETRY.md).
 
 ### Setting Custom Timeouts
 
-For workflows with long-running operations:
+For an agent CLI that streams sparsely, so a healthy turn is not mistaken for a hang:
 ```bash
-export AGENT_RESULT_TIMEOUT_S=1200  # 20 minutes
+export AGENT_SILENCE_TIMEOUT_S=1800  # 30 minutes of quiet before the turn is cut
 workhorse-coder run
 ```
 
@@ -328,7 +329,7 @@ uv run python tests/test_guardrails.py
 
 ## Best Practices
 
-1. **Set appropriate timeouts**: Adjust `AGENT_RESULT_TIMEOUT_S` based on your workflow's complexity
+1. **Set appropriate timeouts**: Adjust `AGENT_SILENCE_TIMEOUT_S` to how sparsely your agent CLI streams, not to how long the work takes
 2. **Monitor long runs**: Watch the run log for ✖ markers — they flag the node the run stopped on
 3. **Handle caps gracefully**: The system automatically waits for spending caps to reset
 4. **Expect long transient waits**: A backoff at its 30-minute cap is the ladder riding out an outage, not a hang — the ⏸ tick lines and the cap-wait heartbeat prove it

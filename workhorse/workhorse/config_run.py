@@ -67,6 +67,7 @@ class AgentResilience:
     max_rephrase_attempts: int = 3
     max_compact_attempts: int = 2
     result_timeout_s: float = 3600.0
+    silence_timeout_s: float = 900.0
     invoke_backoff_base_s: float = 15.0
     invoke_backoff_cap_s: float = 1800.0
     retry_wait_budget_s: float = 97305.0
@@ -94,6 +95,7 @@ class AgentResilience:
             max_rephrase_attempts=_int(e, "AGENT_MAX_REPHRASE_ATTEMPTS", 3),
             max_compact_attempts=_int(e, "AGENT_MAX_COMPACT_ATTEMPTS", 2),
             result_timeout_s=_float(e, "AGENT_RESULT_TIMEOUT_S", 3600.0),
+            silence_timeout_s=_float(e, "AGENT_SILENCE_TIMEOUT_S", 900.0),
             invoke_backoff_base_s=_nonnegative_float(e, "AGENT_INVOKE_BACKOFF_BASE_S", 15.0),
             invoke_backoff_cap_s=_nonnegative_float(e, "AGENT_INVOKE_BACKOFF_CAP_S", 1800.0),
             retry_wait_budget_s=_nonnegative_float(e, "AGENT_RETRY_WAIT_BUDGET_S", 97305.0),

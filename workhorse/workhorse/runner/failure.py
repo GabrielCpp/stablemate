@@ -222,8 +222,8 @@ def classify_turn(
 
     if timed_out:
         raise BackendInvocationError(
-            f"Timeout waiting for result from {backend_name} for node '{node_id}'"
-            f" after {int(timeout)}s{tail}",
+            f"No output from {backend_name} for node '{node_id}'"
+            f" for {int(timeout)}s{tail}",
             transient=True,
             timed_out=True,
         )

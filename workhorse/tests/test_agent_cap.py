@@ -133,7 +133,7 @@ OPENCODE_CAP_DIAG = (
 
 
 def test_cap_hang_classified_as_cap_not_timeout():
-    """A cap that makes the CLI hang (timed_out=True) is classified as a cap, not a timeout — so the run waits the window out under a truthful message instead of reporting 'Timeout waiting for result … after Ns'."""
+    """A cap that makes the CLI hang (timed_out=True) is classified as a cap, not a timeout — so the run waits the window out under a truthful message instead of reporting that the turn went silent."""
     try:
         failure.classify_turn(
             "opencode",
@@ -147,7 +147,7 @@ def test_cap_hang_classified_as_cap_not_timeout():
         raise AssertionError("expected BackendInvocationError")
     except BackendInvocationError as exc:
         assert "cap reached" in str(exc), "should be framed as a cap"
-        assert "Timeout waiting for result" not in str(exc), "must not mis-frame as a timeout"
+        assert "No output from" not in str(exc), "must not mis-frame as a timeout"
         assert failure.is_cap(str(exc)), "runner's cap detector must still catch it"
         assert exc.transient is True
         assert exc.timed_out is False
@@ -285,15 +285,15 @@ def test_structured_reset_at_drives_invoke_wait():
     assert abs(sum(clock.slept) - (reset_in + RESILIENCE.cap_wait_margin_s)) < 1
 
 
-def test_budget_timeout_warns_retry_with_time_budget():
-    """After a wall-clock timeout, the retry's prompt is prefixed with a budget warning that states the limit, so the next attempt can size its work to fit."""
+def test_a_cut_silent_turn_warns_the_retry_to_keep_reporting():
+    """After a turn is cut for going silent, the retry's prompt says so and states how long the silence may last."""
     seen_prompts = []
 
     def fake_cli(prompt, node_id, sid, model, timeout=None, **kwargs):
         seen_prompts.append(prompt)
         if len(seen_prompts) == 1:
             raise BackendInvocationError(
-                "Timeout waiting for result from Claude for node 'implement' after 1200s",
+                "No output from Claude for node 'implement' for 1200s",
                 transient=True,
                 timed_out=True,
             )
@@ -304,7 +304,7 @@ def test_budget_timeout_warns_retry_with_time_budget():
     assert out == "RESULT_OK"
     assert len(seen_prompts) == 2
     assert seen_prompts[0] == "DO THE TASK"
-    assert "TIME BUDGET" in seen_prompts[1]
+    assert "NO PROGRESS REPORTED" in seen_prompts[1]
     assert "20 min" in seen_prompts[1] and "1200s" in seen_prompts[1]
     assert seen_prompts[1].endswith("DO THE TASK")
 

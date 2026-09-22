@@ -76,37 +76,84 @@ class ActiveProcess:
             proc.wait()
 
 
+_WATCHDOG_TICK_S = 0.25
+
+
+class _Silence:
+    """How long the streamed process has said nothing, on the supervisor's own clock.
+
+    Silence is the signal a hang actually produces. A turn that is working says so
+    continuously, however long the work takes, so the stream loop and the watchdog
+    both ask this rather than how long the turn has been running.
+    """
+
+    def __init__(self, clock: Clock) -> None:
+        self._clock = clock
+        self._spoke_at = clock.monotonic()
+
+    def spoke(self) -> None:
+        """Record that the process just produced a line."""
+        self._spoke_at = self._clock.monotonic()
+
+    def elapsed(self, now: float | None = None) -> float:
+        """Seconds since the process last produced a line."""
+        return (self._clock.monotonic() if now is None else now) - self._spoke_at
+
+
+class _Watchdog:
+    """A running silence watchdog, cancellable by the stream loop that armed it."""
+
+    def __init__(self, stop: threading.Event) -> None:
+        self._stop = stop
+
+    def cancel(self) -> None:
+        """Stop watching; the thread exits at its next tick."""
+        self._stop.set()
+
+
 def _arm_watchdog(
     proc: subprocess.Popen,
     node_id: str,
     timeout: float,
     *,
     resilience: AgentResilience,
+    silence: _Silence,
     on_fire: "Callable[[], None] | None" = None,
-) -> threading.Timer | None:
-    """Arm an out-of-band timer that force-kills ``proc``'s process group after ``timeout + grace``."""
+) -> _Watchdog | None:
+    """Arm an out-of-band watchdog that force-kills ``proc``'s process group once it has gone quiet for ``timeout + grace``.
+
+    The in-loop check cannot see that case on its own: a process that wedges mid-line
+    leaves the reader blocked inside ``readline`` with no way back to the top of the
+    loop, so nothing in the loop runs again to notice.
+    """
     if timeout == float("inf"):
         return None
+    limit = timeout + resilience.watchdog_grace_s
+    stop = threading.Event()
 
-    def _fire() -> None:
-        if proc.poll() is not None:
+    def _watch() -> None:
+        while not stop.wait(_WATCHDOG_TICK_S):
+            if proc.poll() is not None:
+                return
+            quiet = silence.elapsed()
+            if quiet < limit:
+                continue
+            print(
+                f"[{node_id}] ⏱ watchdog: turn said nothing for {int(quiet)}s "
+                f"({int(timeout)}s + {int(resilience.watchdog_grace_s)}s grace) — "
+                "SIGKILLing process group",
+                flush=True,
+            )
+            otel.turn_event(
+                "watchdog_kill", error=True, node=node_id, timeout_s=int(timeout)
+            )
+            if on_fire is not None:
+                on_fire()
+            _kill_process_group(proc, signal.SIGKILL)
             return
-        print(
-            f"[{node_id}] ⏱ watchdog: turn exceeded {int(timeout)}s + "
-            f"{int(resilience.watchdog_grace_s)}s grace — SIGKILLing process group",
-            flush=True,
-        )
-        otel.turn_event(
-            "watchdog_kill", error=True, node=node_id, timeout_s=int(timeout)
-        )
-        if on_fire is not None:
-            on_fire()
-        _kill_process_group(proc, signal.SIGKILL)
 
-    timer = threading.Timer(timeout + resilience.watchdog_grace_s, _fire)
-    timer.daemon = True
-    timer.start()
-    return timer
+    threading.Thread(target=_watch, daemon=True).start()
+    return _Watchdog(stop)
 
 
 _EXEC_BUSY_ERRNOS = frozenset({errno.ETXTBSY, errno.ENOEXEC, errno.ESTALE})
@@ -196,7 +243,15 @@ class ProcessSupervisor:
         env_extra: dict[str, str] | None = None,
         secrets: Iterable[str] | None = None,
     ) -> tuple[bool, int]:
-        """Spawn ``cmd`` in its own process group, stream its merged stdout line by line to ``on_line``, and enforce ``timeout`` with BOTH an in-loop wall-clock check and an out-of-band watchdog that SIGKILLs the whole process group once a turn overruns ``timeout + grace`` — even when the reader is blocked mid-readline on a wedged stream (a stalled API response or a hung MCP server), which the in-loop check alone can never catch."""
+        """Spawn ``cmd`` in its own process group, stream its merged stdout line by line to ``on_line``, and stop it once it has been SILENT for ``timeout``.
+
+        ``timeout`` bounds how long the turn may say nothing, not how long it may work.
+        A turn that streams keeps going however long it takes, because a long turn and a
+        hung one look nothing alike from here: the hung one stops talking. Both an
+        in-loop check and an out-of-band watchdog enforce it, because a stream wedged
+        mid-line (a stalled API response, a hung MCP server) blocks the reader inside
+        ``readline`` where the in-loop check can never run again.
+        """
         redactor = SecretRedactor(secrets or ())
         tee = transcript.tee_begin(node_id)
 
@@ -229,11 +284,13 @@ class ProcessSupervisor:
         self.active.set(proc)
 
         fired = threading.Event()
+        silence = _Silence(self.clock)
         watchdog = _arm_watchdog(
             proc,
             node_id,
             timeout,
             resilience=resilience,
+            silence=silence,
             on_fire=fired.set,
         )
         timed_out = False
@@ -241,22 +298,22 @@ class ProcessSupervisor:
         assert proc.stdout is not None
         try:
             start = self.clock.monotonic()
-            last_line_at = start
             last_beat_at = start
             while True:
                 now = self.clock.monotonic()
                 elapsed = now - start
-                if elapsed > timeout:
+                quiet = silence.elapsed(now)
+                if quiet > timeout:
                     timed_out = True
                     break
                 if now - last_beat_at >= resilience.heartbeat_every_s:
-                    otel.turn_heartbeat(node_id, now - last_line_at, elapsed)
+                    otel.turn_heartbeat(node_id, quiet, elapsed)
                     last_beat_at = now
                 watched: list[Any] = [proc.stdout]
                 control_fd = control.armed().fileno()
                 if control_fd is not None:
                     watched.append(control_fd)
-                ready, _, _ = select.select(watched, [], [], min(1.0, timeout - elapsed))
+                ready, _, _ = select.select(watched, [], [], min(1.0, timeout - quiet))
                 requested = reload.cut_requested()
                 if requested is not None:
                     print(
@@ -276,7 +333,7 @@ class ProcessSupervisor:
                 raw = proc.stdout.readline()
                 if not raw:
                     break
-                last_line_at = self.clock.monotonic()
+                silence.spoke()
                 if redacted_on_line(raw):
                     timed_out = True
                     break

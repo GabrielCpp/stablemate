@@ -19,16 +19,16 @@ def retry_prompt(node: AgentNode, error: OutputParseError) -> str:
 
 
 def timeout_retry_prompt(original_prompt: str, timeout: float) -> str:
-    """Prepend a budget warning to a prompt whose previous attempt was killed for overrunning its wall-clock budget."""
+    """Prepend a silence warning to a prompt whose previous attempt was cut for going quiet."""
     minutes = max(1, int(round(timeout / 60)))
     notice = (
-        "⚠️ TIME BUDGET — your previous attempt at this task was STOPPED for "
-        f"exceeding its wall-clock budget of ~{minutes} min ({int(timeout)}s), and "
-        "all of its work was lost. You get the SAME ~"
-        f"{minutes} min for this attempt. Do NOT run any command that cannot finish "
-        "well within that budget: time long operations first, run measurements at a "
-        "reduced scale if the full run will not fit, and leave margin to write your "
-        "final result before time runs out. Then carry out the task below.\n\n"
+        "⚠️ NO PROGRESS REPORTED — your previous attempt at this task was STOPPED "
+        f"after ~{minutes} min ({int(timeout)}s) without producing a single line of "
+        "output, and all of its work was lost. There is no limit on how long the "
+        "work may take, only on how long you may go silent. Keep reporting: run one "
+        "bounded command at a time rather than a single command that blocks for "
+        "minutes, and if a command hangs with no output, stop it and try another "
+        "way. Then carry out the task below.\n\n"
     )
     return notice + original_prompt
 
