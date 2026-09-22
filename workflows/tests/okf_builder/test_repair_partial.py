@@ -15,19 +15,24 @@ from workhorse_workflows.okf_builder.main.flow import (
     repair_profile,
 )
 from workhorse_workflows.okf_builder.shared.schemas import Recorded
-from workhorse_workflows.okf_builder.shared.worklist import MAX_TARGET_ATTEMPTS, record
+from workhorse_workflows.okf_builder.shared.worklist import (
+    MAX_TARGET_ATTEMPTS,
+    MAX_TARGET_DEFERRALS,
+    record,
+)
 
 WORKFLOW_DIR = Path(workhorse_workflows.__file__).parent / "okf_builder"
 BOOK = "docs/features/acme"
 LOG = logging.getLogger("t")
 
 
-def _row(code: str, node: str, *, attempts: int = 0) -> dict:
+def _row(code: str, node: str, *, attempts: int = 0, deferrals: int = 0) -> dict:
     return {
         "kind": f"fix:{code}",
         "target": f"{BOOK}/a.md#{node}#{code}",
         "status": "pending",
         "attempts": attempts,
+        "deferrals": deferrals,
         "context": json.dumps({"code": code, "node": node, "path": f"{BOOK}/a.md"}),
     }
 
@@ -60,7 +65,7 @@ def test_a_partial_turn_leaves_its_whole_batch_pending(tmp_path: Path) -> None:
     assert recorded.done_count == 0
 
 
-def test_a_partial_turn_counts_an_attempt_so_the_next_one_is_stronger(tmp_path: Path) -> None:
+def test_a_partial_turn_buys_a_stronger_next_turn(tmp_path: Path) -> None:
     row = _row("weak-check", "refund")
     worklist = _worklist(tmp_path, row)
     assert repair_power(row, row["context"]) == "low"
@@ -68,13 +73,26 @@ def test_a_partial_turn_counts_an_attempt_so_the_next_one_is_stronger(tmp_path: 
     _record(worklist, row, [], keep_open=True)
 
     reopened = _items(worklist)[0]
-    assert reopened["attempts"] == 1
+    assert reopened["deferrals"] == 1
     assert repair_power(reopened, reopened["context"]) == "medium"
     assert REPAIR_STEPS["medium"] > REPAIR_STEPS["low"]
 
 
-def test_a_row_that_never_finishes_blocks_instead_of_looping(tmp_path: Path) -> None:
+def test_running_out_of_budget_does_not_spend_a_repair_attempt(tmp_path: Path) -> None:
+    """A row already one failure from blocking survives a budget deferral, because it never failed."""
     row = _row("weak-check", "refund", attempts=MAX_TARGET_ATTEMPTS - 1)
+    worklist = _worklist(tmp_path, row)
+
+    recorded = _record(worklist, row, [], keep_open=True)
+
+    reopened = _items(worklist)[0]
+    assert reopened["status"] == "pending"
+    assert reopened["attempts"] == MAX_TARGET_ATTEMPTS - 1
+    assert recorded.blocked_count == 0
+
+
+def test_a_row_that_never_finishes_blocks_instead_of_looping(tmp_path: Path) -> None:
+    row = _row("weak-check", "refund", deferrals=MAX_TARGET_DEFERRALS - 1)
     worklist = _worklist(tmp_path, row)
 
     recorded = _record(worklist, row, [], keep_open=True)

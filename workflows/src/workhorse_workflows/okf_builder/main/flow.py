@@ -61,6 +61,20 @@ def _attempts(current_item: dict[str, Any]) -> int:
         return 0
 
 
+def _laps(row: dict[str, Any]) -> int:
+    """How many turns this row has already cost, whether they failed or ran out of budget.
+
+    A row deferred for step budget is not a row that failed, and `defer_row` keeps the two
+    counts apart so a deferral never spends one of the three chances a repair gets. It
+    still has to buy a stronger turn, though, which is what this sum is for.
+    """
+    try:
+        deferrals = int(row.get("deferrals", 0) or 0)
+    except (TypeError, ValueError):
+        deferrals = 0
+    return _attempts(row) + deferrals
+
+
 def investigation_power(current_item: dict[str, Any]) -> str:
     """Escalate an investigation only after its first model attempt failed."""
     return "medium" if _attempts(current_item) > 0 else "low"
@@ -143,7 +157,7 @@ def repair_power(
     current_item: dict[str, Any], item_context: str, batch: list[dict[str, Any]] | None = None
 ) -> str:
     """Choose the repair turn's model tier from deterministic worklist context."""
-    attempts = max(_attempts(row) for row in [current_item, *(batch or [])])
+    attempts = max(_laps(row) for row in [current_item, *(batch or [])])
     if attempts >= 2:
         return "high"
     if attempts == 1:

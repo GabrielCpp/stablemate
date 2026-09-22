@@ -28,7 +28,10 @@ from workhorse.records import PyflowCheckpoint, parse_checkpoint
 from workhorse_workflows import okf_builder
 from workhorse_workflows.okf_builder.main.flow import investigation_power, repair_power
 from workhorse_workflows.okf_builder.shared import paths
-from workhorse_workflows.okf_builder.shared.worklist import MAX_TARGET_ATTEMPTS
+from workhorse_workflows.okf_builder.shared.worklist import (
+    MAX_TARGET_ATTEMPTS,
+    MAX_TARGET_DEFERRALS,
+)
 from workhorse_workflows.okf_builder.workflow import OkfBuilder
 
 SERVICE = "acme"
@@ -417,12 +420,12 @@ def test_a_repair_that_never_lands_blocks_the_target_and_parks_on_the_gate(
     ):
         _drive(_env(tmp_path), agent)
 
-    assert agent.counts()["repair"] == MAX_TARGET_ATTEMPTS, agent.counts()
-    assert agent.targets == [REPAIR] * MAX_TARGET_ATTEMPTS, agent.targets
+    assert agent.counts()["repair"] == MAX_TARGET_DEFERRALS, agent.counts()
+    assert agent.targets == [REPAIR] * MAX_TARGET_DEFERRALS, agent.targets
 
     rows = [i for i in _worklist(dirty) if str(i["kind"]).startswith("fix:")]
-    assert [(i["target"], i["status"], i["attempts"]) for i in rows] == [
-        (REPAIR, "blocked", MAX_TARGET_ATTEMPTS)
+    assert [(i["target"], i["status"], i["deferrals"]) for i in rows] == [
+        (REPAIR, "blocked", MAX_TARGET_DEFERRALS)
     ], rows
 
     assert REPAIR in seen[0], seen[0]
@@ -448,7 +451,7 @@ def test_answering_the_blocked_gate_returns_the_target_with_a_fresh_allowance(
     with patch.object(pyflow_driver, "wait_for_answer", answer_then_repair):
         result = _drive(_env(tmp_path), agent)
 
-    assert agent.counts()["repair"] == MAX_TARGET_ATTEMPTS + 1, agent.counts()
+    assert agent.counts()["repair"] == MAX_TARGET_DEFERRALS + 1, agent.counts()
     assert not (dirty / REFUND).exists()
     assert result["reports"] == [], result
 
@@ -733,7 +736,7 @@ def test_a_book_verdict_returns_the_row_to_the_drain_with_the_chain(
 
     assert seen == [], seen
     assert agent.counts()["adjudicate"] == 1, agent.counts()
-    assert agent.counts()["repair"] == MAX_TARGET_ATTEMPTS + 1, agent.counts()
+    assert agent.counts()["repair"] == MAX_TARGET_DEFERRALS + 1, agent.counts()
     assert not (dirty / REFUND).exists()
     assert result["reports"] == [], result
     rows = _blocked_rows(dirty)

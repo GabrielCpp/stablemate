@@ -19,6 +19,8 @@ from workhorse_workflows.okf_builder.shared.schemas import Pick, Recorded
 
 MAX_TARGET_ATTEMPTS = 3
 
+MAX_TARGET_DEFERRALS = 6
+
 
 MAX_BATCH_FINDINGS = 25
 
@@ -164,29 +166,32 @@ def defer_row(
     existing: dict[str, Any],
     doc_status: str,
     note: str,
-    max_attempts: int = MAX_TARGET_ATTEMPTS,
+    max_deferrals: int = MAX_TARGET_DEFERRALS,
 ) -> bool:
     """Leave a row open for another, stronger turn; True when it went back to `pending`.
 
     A turn that ran out of step budget did real work and said so. Closing its rows would
     hide findings that still stand, and discarding them would throw away the edits already
-    on disk. Counting an attempt is what raises the next turn's power tier, and the same
-    ceiling that blocks a row surviving three repairs blocks one surviving three deferrals.
+    on disk. A deferral is not a failure, so it is counted apart from `attempts`: it buys
+    the next turn a higher power tier without spending one of the three chances a row gets
+    to be genuinely repaired. Only a row that keeps running out of budget, far more often
+    than a row is allowed to fail, blocks on this path.
     """
-    attempts = int(existing.get("attempts", 0) or 0) + 1
-    existing["attempts"] = attempts
+    deferrals = int(existing.get("deferrals", 0) or 0) + 1
+    existing["deferrals"] = deferrals
     existing.pop("closed_digest", None)
     if doc_status:
         existing["doc_status"] = doc_status
     if note:
         existing["note"] = note
-    if attempts >= max_attempts:
+    if deferrals >= max_deferrals:
         reason = note or f"the last turn reported `{doc_status or 'unfinished'}`"
         existing["status"] = "blocked"
         existing["blocked_reason"] = reason
         logger.warning(
-            "'%s' (%s) went unfinished %d time(s) — blocking it rather than re-queueing: %s",
-            existing.get("target"), existing.get("kind"), attempts, reason,
+            "'%s' (%s) ran out of budget %d time(s) — blocking it rather than "
+            "re-queueing: %s",
+            existing.get("target"), existing.get("kind"), deferrals, reason,
         )
         return False
     existing["status"] = "pending"
@@ -426,6 +431,7 @@ def record(
             logger.info("operator granted a fresh allowance for '%s'", i.get("target"))
             i["status"] = "pending"
             i["attempts"] = 0
+            i["deferrals"] = 0
             for key in ("blocked_reason", "verdict", "chain"):
                 i.pop(key, None)
 
@@ -436,7 +442,7 @@ def record(
         for i in items:
             if (_norm(i.get("kind")), _norm(i.get("target"))) not in closed:
                 continue
-            if defer_row(logger, i, doc_status, note, max_attempts):
+            if defer_row(logger, i, doc_status, note):
                 deferred += 1
         if closing:
             logger.info(
@@ -539,6 +545,7 @@ def last_added_counts(worklist_path: Path, count: int) -> dict[str, int]:
 
 __all__ = [
     "MAX_TARGET_ATTEMPTS",
+    "MAX_TARGET_DEFERRALS",
     "book_has_docs",
     "last_added_counts",
     "load_worklist",
