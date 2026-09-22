@@ -89,7 +89,10 @@ start state, at least one state must be able to return `Done`, and no transition
 name something that is not a state. A prompt argument the source cannot name is itself a
 problem: a bare string is one path and a ternary of strings is each of its arms, but
 anything else (a variable, an f-string) is reported, because a path this pass cannot read
-is a path nothing checks. Then it **drives the machine for real** over a
+is a path nothing checks. A turn written inline is checked further than a file one is:
+its labels must be unique within the flow, since two turns sharing one would share a run
+directory, and its text must parse as Jinja, which no dry run of a file prompt ever
+proves. Then it **drives the machine for real** over a
 *substituted node index*, which covers what only running can — imports, `setup()`, and
 the transitions actually bound along one path. The static half is the one that carries
 the weight: it sees the branches this run would never take.
@@ -100,7 +103,7 @@ runs the same code path it always does — see
 [The node index is the substitution seam](https://github.com/GabrielCpp/stablemate/blob/main/workhorse/docs/AUTHORING.md#the-node-index-is-the-substitution-seam).
 A node's stand-in is whatever `@blueprint.node(stub=…)` declared, or a blank instance of
 its declared return type; an agent turn's is whatever `Registry.stub_agents({...})`
-declared for that prompt stem, or a blank reply model.
+declared for that prompt stem, or for an inline turn's label, or a blank reply model.
 
 **What a fail terminal means depends on whether the workflow declared any stand-ins.**
 Undeclared, every reply is blank, so the machine takes whichever branch a blank selects
@@ -137,6 +140,7 @@ holding one bubble per step its body runs, top to bottom in source order:
 |---|---|---|
 | white box | a node call (`self.call(node, …)`) | the node's file, then the first line of its docstring |
 | yellow note | an agent turn (`self.agent("prompts/x.md", …)`) | the prompt file, then its `#` title (a leading `<workflow> — ` is trimmed) |
+| yellow note | an inline turn (`self.agent(text, label="fix-findings", …)`) | the label, then the body's own `#` title |
 | plum box | a handoff (`self.handoff(Child, …)`) | `handoff → <child flow>` |
 
 A handoff is a bubble, never an arrow across the page: the child flow stands as its own

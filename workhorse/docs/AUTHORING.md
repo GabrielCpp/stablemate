@@ -200,6 +200,48 @@ that survives in memory but not in the checkpoint.
 `output.json` (the latest invocation, validated back into the node's declared return
 type) and raises when the node has not run.
 
+## A turn written in the state's own source (`label=`)
+
+A prompt is a file under the workflow package, and that is the default for a reason: a
+file is what a repo's flavor override, the reference preflight and the prompt sweeps all
+read. A three-line turn does not earn one, so `label=` puts the text at the call site:
+
+```python
+fixed = self.agent(
+    "# Fix the findings\n\nFix {{ findings }}, each in a sub agent.\n",
+    label="fix-findings",
+    returns=Fixed,
+    args={"findings": items},
+)
+```
+
+The first argument is the text rather than a path. A bare string with no `label` is
+still a path, so every call site written before this means what it meant.
+
+The label carries what a filename carries for a file prompt. It names the run
+directory's subdirectory, the `output.json` and `prompt.md` inside it, the span, and the
+`Registry.stub_agents` key, so it must match `^[a-z0-9][a-z0-9_-]*$` and be unique within
+the flow.
+
+The text renders in the environment a file gets: the same globals, the same `{{ }}` over
+`args`, the same `{% include %}` of a package partial, and the same
+`.agents/flavors/<workflow>/<label>.md` override, which shadows the inline body when a
+repo ships one. `events.jsonl` records `inline:<label>` rather than the body, so a prompt
+does not land on a line of the event log every turn.
+
+Two things an inline turn may not do. `self.agent` refuses each one with a
+`WorkflowDefinitionError` before the run starts:
+
+| Refused | Why |
+|---|---|
+| a manifest reference (`skill_file`, `prompt_ref`, `find_by_tags`, …) | the reference preflight globs prompt files, and an inline body is not one |
+| text that is not valid Jinja | a file prompt fails this late at render time; an inline one fails at authoring time |
+
+The boundary: inline is a short fixed turn with no skill reference and nothing an
+operator would flavor. A file is everything else. A distribution that wants a harder
+line than the engine's two refusals draws it in its own guard, which is what the
+`workhorse-workflows` package does.
+
 ## Where an agent turn runs (`cwd` / `add_dirs`)
 
 `self.agent` takes six optional keywords beyond the prompt, all defaulting to "whatever
@@ -460,6 +502,7 @@ a state missing one of them draws as a bare file name or a parameter list:
 | a docstring on the node, first line a sentence | that line under the node's bubble |
 | a `# <workflow> — <what this turn does>` title on the prompt | the part after the dash under the prompt's bubble |
 | `self.agent("a.md" if x else "b.md", …)` | one bubble per arm; an argument it cannot read draws as `?` and fails preflight |
+| `self.agent(text, label="fix-findings", …)` | a bubble named for the label, captioned with the body's own `#` title |
 | `Continue(...).because("…")`, likewise on `Await` and `Done` | the sentence on the edge, in place of the parameter names |
 
 `.because()` is also logged by the driver on the transition line, so a run log reads the
@@ -580,7 +623,7 @@ Three ways to put something else in the table:
 def measure(logger, subject: str) -> Reading: ...
 
 # 2. declared on the registry — what --dry-run returns for an agent turn,
-#    keyed by prompt stem (hyphens, hence a dict rather than **kwargs)
+#    keyed by prompt stem or inline label (hyphens, hence a dict, not **kwargs)
 workflow = Registry("acme").add_blueprints(blueprint).stub_agents(
     {"review": {"ok": True}}
 )

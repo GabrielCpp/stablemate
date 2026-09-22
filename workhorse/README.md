@@ -399,6 +399,12 @@ class Build(Workflow):
         return Continue(None, self.review, count=count + 1)
 ```
 
+A turn too small to earn a file writes its text at the call site instead:
+`self.agent("# Fix the findings\n\nFix {{ findings }}.\n", label="fix-findings",
+returns=Fixed, args={"findings": items})`. The label is the node id, and it names the run
+directory, the span and the stand-in the same way a prompt filename does. A bare string
+with no `label` is still a path.
+
 An agent prompt must output JSON matching the model its turn declared in `returns=`, and
 — because runs go unattended for days — a state must be ready for a reply whose fields
 came back empty: after transient retries and reframing, the runner defaults a turn's
@@ -411,7 +417,8 @@ parameters it was entered with. One chunk per visit, so each chunk is a checkpoi
 resume lands on, and a falsy return is how a drained queue says so.
 
 The authoring reference — the package layout, the worked example end to end, the three
-tiers of state and why there is no fourth, where a turn runs (`cwd` / `add_dirs`), the
+tiers of state and why there is no fourth, when a turn is written inline rather than in a
+file, where a turn runs (`cwd` / `add_dirs`), the
 transition table, the chunked worklist drain, checkpoints and the `aliases=` that survive a rename, the node index
 that tests substitute through instead of patching, and the `labels()` that tell a
 collector what a run is working on — is in

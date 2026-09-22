@@ -68,6 +68,18 @@ are banned:
 Shared *text* between sibling prompts is fine — extract it into a partial included by
 both files. Shared *dispatch* is not.
 
+### The turn too small for a file
+
+`self.agent(text, label="fix-findings", …)` writes the turn at the call site instead of
+in a file. That is not a way around *one prompt per aim* — the label is the aim, and two
+aims are still two turns. It is a size rule: inline is a short fixed turn with no skill
+reference and nothing an operator would flavor, a file is everything else.
+
+What a file gives up when a turn goes inline is the reason the default stands. No
+`.agents/flavors/**` override reaches it, no reference preflight resolves a manifest name
+inside it, and the guard refuses it above forty lines. A prompt carrying all four
+mechanics is past that line by the time it carries the second one.
+
 ## What never belongs in a prompt
 
 Each of these has a home that is not the prompt, and a copy in the prompt is a second
