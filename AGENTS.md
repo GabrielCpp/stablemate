@@ -30,7 +30,7 @@ Python ≥ 3.12.
 
 ---
 
-## This repo is public (load-bearing)
+## This repo is public
 
 This repository ships publicly. **No private project's name may appear in it** —
 not in prose, not in a fixture, not in a code comment, not in a path. Examples
