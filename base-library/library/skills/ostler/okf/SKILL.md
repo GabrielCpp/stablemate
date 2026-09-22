@@ -90,6 +90,7 @@ reference — the authority wherever this page and it disagree.
 
 | Role | GUI | CLI | HTTP/WS | context-free |
 |---|---|---|---|---|
+| **root** — where a service's book starts | | | | [`entries`](references/node-types/entries.md) |
 | **surface** — you interact with it | [`screen`](references/node-types/screen.md) | [`cli`](references/node-types/cli.md) | [`server`](references/node-types/server.md) | |
 | **element** — part of a surface | [`component`](references/node-types/component.md) | [`command`](references/node-types/command.md) | [`endpoint`](references/node-types/endpoint.md) | |
 | **behaviour** — one event or call | [`interaction`](references/node-types/interaction.md) | [`invocation`](references/node-types/invocation.md) | [`invocation`](references/node-types/invocation.md) | |
@@ -181,6 +182,11 @@ abstraction via a plain `refs:` link.
 index, which links its key concepts and formats in its own intro region — the part before the
 first `##`, which is what `trace` surfaces and the linter checks. Put structural pointers in the
 node's bullets, not only in prose.
+
+**A service with an `entries` page is rooted there.** Every page of that service must be reachable
+from [`entries`](references/node-types/entries.md) by following links, any link, prose included.
+`ostler doctor` reports a page nothing reaches as `unreachable-node`, and `ostler gc --write`
+deletes it. A new page is linked from a page that is already reachable.
 
 **Document flags and arguments item-by-item, not as a token dump.** `- flags: --a, --b, --c` with
 no explanation is a smell: write a nested bullet list, one child per flag or positional, each
