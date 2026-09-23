@@ -258,7 +258,7 @@ def cmd_sandbox_build(args: argparse.Namespace) -> int:
     return 0
 
 
-def _command(given: list[str]) -> list[str]:
+def _command_after_separator(given: list[str]) -> list[str]:
     command = given[1:] if given[:1] == ["--"] else given
     if not command:
         raise SandboxError("no command to run. Put it after `--`, as in `paddock sandbox run ... -- workhorse-okf-book run`")
@@ -266,7 +266,7 @@ def _command(given: list[str]) -> list[str]:
 
 
 def cmd_sandbox_run(args: argparse.Namespace) -> int:
-    command = _command(args.command)
+    command = _command_after_separator(args.command)
     args.runs_dir.mkdir(parents=True, exist_ok=True)
     box = Sandbox(
         app=args.app,

@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from paddock import sandbox
-from paddock.cli import _command
+from paddock.cli import _command_after_separator
 from paddock.sandbox import Sandbox, SandboxError
 
 
@@ -68,12 +68,12 @@ def test_a_missing_login_is_refused_before_docker_starts(tmp_path: Path) -> None
 
 
 def test_the_command_is_what_follows_the_separator() -> None:
-    assert _command(["--", "workhorse-okf-book", "run"]) == ["workhorse-okf-book", "run"]
+    assert _command_after_separator(["--", "workhorse-okf-book", "run"]) == ["workhorse-okf-book", "run"]
 
 
 def test_no_command_names_where_to_put_one() -> None:
     with pytest.raises(SandboxError, match="after `--`"):
-        _ = _command(["--"])
+        _ = _command_after_separator(["--"])
 
 
 def test_the_image_is_built_from_the_tracked_dockerfile() -> None:
