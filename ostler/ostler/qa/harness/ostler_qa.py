@@ -568,6 +568,60 @@ def _pair(observed: Any, check: str) -> tuple[Any, Any]:
     )
 
 
+type JsonValue = None | bool | int | float | str | list[JsonValue] | dict[str, JsonValue]
+
+
+class Tree(dict[str, JsonValue]):
+    """Every file under one directory, keyed by its path relative to it: parsed JSON for a `.json`, text otherwise."""
+
+    def __init__(self, root: Path) -> None:
+        super().__init__()
+        if root.is_dir():
+            for path in sorted(root.rglob("*")):
+                if path.is_file():
+                    self[path.relative_to(root).as_posix()] = _read_tree_file(path)
+
+
+def _json_value(value: object) -> JsonValue:
+    """*value* as parsed JSON, refused with `ValueError` on anything JSON cannot hold."""
+    if value is None or isinstance(value, bool | int | float | str):
+        return value
+    if isinstance(value, list):
+        return [_json_value(item) for item in value]
+    if isinstance(value, dict) and all(isinstance(key, str) for key in value):
+        return {str(key): _json_value(item) for key, item in value.items()}
+    raise ValueError(f"not a JSON value: {type(value).__name__}")
+
+
+def _read_tree_file(path: Path) -> JsonValue:
+    text = path.read_text(encoding="utf-8", errors="replace")
+    if path.suffix != ".json":
+        return text
+    try:
+        return _json_value(json.loads(text))
+    except ValueError:
+        return text
+
+
+def _named_files(before: Any, after: Any, subject: Any) -> tuple[Any, Any]:
+    """A tree pair cut down to the one file `subject` names, present or not, so `created` and `removed` judge that file and nothing else in the directory."""
+    if not isinstance(before, Tree) or not isinstance(after, Tree):
+        return before, after
+    return (
+        {path: value for path, value in before.items() if path == subject},
+        {path: value for path, value in after.items() if path == subject},
+    )
+
+
+def _named_file_or_tree(before: Any, after: Any, subject: Any) -> tuple[Any, Any]:
+    """A tree pair cut down to the file `subject` names when either side holds it, or left whole, which asserts more than any part of it."""
+    if not isinstance(before, Tree) or not isinstance(after, Tree):
+        return before, after
+    if subject in before or subject in after:
+        return before.get(subject), after.get(subject)
+    return before, after
+
+
 def _paths(value: Any, prefix: str = "") -> dict[str, Any]:
     """Every leaf of a JSON-ish value, keyed by its dotted path."""
     if isinstance(value, dict):
@@ -782,6 +836,7 @@ def _verify_json_path(observed: Any, args: Mapping[str, Any]) -> tuple[bool, Any
 
 def _verify_unchanged(observed: Any, args: Mapping[str, Any]) -> tuple[bool, Any, Any]:
     before, after = _pair(observed, "unchanged")
+    before, after = _named_file_or_tree(before, after, args.get("subject"))
     allowed = set(args.get("except_fields", []))
     before_paths, after_paths = _paths(before), _paths(after)
     changed = sorted(
@@ -797,6 +852,7 @@ def _verify_unchanged(observed: Any, args: Mapping[str, Any]) -> tuple[bool, Any
 
 def _verify_keys_unchanged(observed: Any, args: Mapping[str, Any]) -> tuple[bool, Any, Any]:
     before, after = _pair(observed, "keys_unchanged")
+    before, after = _named_file_or_tree(before, after, args.get("subject"))
     gone = sorted(_paths(before).keys() - _paths(after).keys())
     added = sorted(_paths(after).keys() - _paths(before).keys())
     return not gone and not added, {"removed": gone, "added": added}, {"removed": [], "added": []}
@@ -830,6 +886,7 @@ def _verify_absent(observed: Any, args: Mapping[str, Any]) -> tuple[bool, Any, A
 def _verify_created(observed: Any, args: Mapping[str, Any]) -> tuple[bool, Any, Any]:
     """Absent before the action, present after — both halves, or it proves nothing."""
     before, after = _pair(observed, "created")
+    before, after = _named_files(before, after, args.get("subject"))
     was_absent, is_present = _empty(before), not _empty(after)
     return (
         was_absent and is_present,
@@ -841,6 +898,7 @@ def _verify_created(observed: Any, args: Mapping[str, Any]) -> tuple[bool, Any, 
 def _verify_removed(observed: Any, args: Mapping[str, Any]) -> tuple[bool, Any, Any]:
     """Present before the action, absent after — the mirror of `created`, and for the mirror reason: absence afterwards alone passes on a subject that was never there."""
     before, after = _pair(observed, "removed")
+    before, after = _named_files(before, after, args.get("subject"))
     return (
         not _empty(before) and _empty(after),
         {"before": before, "after": after},
@@ -1158,6 +1216,16 @@ class Qa:
                 f"define it in ~/.config/stablemate/config.toml's [qa_tools.{name}]"
             )
         return Tool(self, name, command)
+
+    def tree(self, where: str | Path) -> Tree:
+        """Every file under *where* in the run's qa directory, read once, so a differential check can compare the reads either side of an action."""
+        base = self.dir.resolve()
+        root = (base / where).resolve()
+        if not root.is_relative_to(base):
+            raise ValueError(
+                f"qa.tree: {str(where)!r} must stay inside the run's qa directory ({base})"
+            )
+        return Tree(root)
 
     def fixture(self, name: str, *args: str) -> "ToolResult":
         """Put the product into a state this repo declared, and write down that it happened."""

@@ -933,3 +933,51 @@ def test_http_treats_at_and_dollar_literals_as_plain_text(tmp_path: Path) -> Non
     assert len(asserted) == 1
     assert asserted[0]["passed"] is True
     assert not [r for r in records if r["type"] == "fixture_fault"]
+
+
+def test_a_tree_reads_every_file_under_the_scenario_directory(tmp_path: Path) -> None:
+    qa = _ui_qa(tmp_path)
+    home = tmp_path / "qa" / "greeting-flows"
+    (home / "exports").mkdir(parents=True)
+    (home / "tally.json").write_text('{"entries": []}', encoding="utf-8")
+    (home / "exports" / "rows.csv").write_text("a,b\n", encoding="utf-8")
+    (home / "broken.json").write_text("{", encoding="utf-8")
+
+    assert dict(qa.tree(qa.scenario_id)) == {
+        "broken.json": "{",
+        "exports/rows.csv": "a,b\n",
+        "tally.json": {"entries": []},
+    }
+    assert dict(qa.tree("nowhere")) == {}
+    with pytest.raises(ValueError, match="qa directory"):
+        qa.tree("../escaped")
+
+
+def test_created_and_removed_judge_only_the_file_the_subject_names(tmp_path: Path) -> None:
+    harness = load_harness_module("ostler_qa")
+    before, after = tmp_path / "before", tmp_path / "after"
+    before.mkdir()
+    after.mkdir()
+    (before / "notes.txt").write_text("x", encoding="utf-8")
+    (after / "tally.json").write_text("{}", encoding="utf-8")
+    pair = (harness.Tree(before), harness.Tree(after))
+
+    assert harness.VERIFIERS["created"](pair, {"subject": "tally.json"})[0] is True
+    assert harness.VERIFIERS["created"](pair, {"subject": "the ledger"})[0] is False
+    assert harness.VERIFIERS["removed"](pair, {"subject": "notes.txt"})[0] is True
+    assert harness.VERIFIERS["removed"](pair, {"subject": "tally.json"})[0] is False
+
+
+def test_unchanged_compares_the_named_file_or_else_the_whole_tree(tmp_path: Path) -> None:
+    harness = load_harness_module("ostler_qa")
+    before, after = tmp_path / "before", tmp_path / "after"
+    before.mkdir()
+    after.mkdir()
+    (before / "tally.json").write_text('{"n": 1}', encoding="utf-8")
+    (after / "tally.json").write_text('{"n": 1}', encoding="utf-8")
+    (after / "stray.txt").write_text("new", encoding="utf-8")
+    pair = (harness.Tree(before), harness.Tree(after))
+
+    assert harness.VERIFIERS["unchanged"](pair, {"subject": "tally.json"})[0] is True
+    assert harness.VERIFIERS["unchanged"](pair, {"subject": "the working directory"})[0] is False
+    assert harness.VERIFIERS["keys_unchanged"](pair, {"subject": "tally.json"})[0] is True
