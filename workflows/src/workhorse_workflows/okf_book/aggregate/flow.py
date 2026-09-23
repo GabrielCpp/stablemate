@@ -46,7 +46,7 @@ from workhorse_workflows.okf_book.aggregate.verdict import (
     claim_texts,
     cleared_after,
     numbered_contracts,
-    standing,
+    still_cleared,
     verdict_problems,
 )
 from workhorse_workflows.okf_book.aggregate.nodes.garbage import collectable, delete_book_pages
@@ -220,7 +220,7 @@ class Aggregate(BookFlow):
         root, job = self.root, ledger.job
         judged_rels = judged_pages(root, job, ledger.before)
         digests = node_digests(root, judged_rels)
-        held = sorted(standing(ledger.cleared, digests))
+        held = sorted(still_cleared(ledger.cleared, digests))
         other_pages = pack_told(name_tokens(_book_pages_besides(root, job.service, judged_rels)), PAGES_BUDGET_TOKENS)
         fixed = prompt_tokens(VERIFY_PROMPT) + other_pages.tokens + total_text_tokens(held)
         judged = pack_read(file_tokens(root, judged_rels), (TURN_BUDGET_TOKENS - fixed) // 2)
@@ -258,7 +258,7 @@ class Aggregate(BookFlow):
         """
         record_turn(self.records_dir, metric)
         problems = verdict_problems(verdict, claims, digests, ledger.cleared)
-        ledger = ledger.judged(cleared_after(verdict, claims, digests, ledger.cleared))
+        ledger = ledger.with_cleared(cleared_after(verdict, claims, digests, ledger.cleared))
         if not problems:
             return Continue(verdict, self.stamp_job, ledger=ledger)
         return self._retry(ledger.charged(problems))

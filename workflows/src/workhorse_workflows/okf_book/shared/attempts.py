@@ -72,5 +72,5 @@ class JobLedger(BaseModel):
     def charged(self, problems: Sequence[str]) -> JobLedger:
         return self.model_copy(update={"attempts": charge_failure(self.attempts, self.job.subject, problems)})
 
-    def judged(self, cleared: tuple[Cleared, ...]) -> JobLedger:
+    def with_cleared(self, cleared: tuple[Cleared, ...]) -> JobLedger:
         return self.model_copy(update={"cleared": cleared})

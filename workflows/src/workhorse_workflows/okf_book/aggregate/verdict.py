@@ -84,7 +84,7 @@ def claim_texts(contracts: tuple[NumberedContract, ...]) -> tuple[str, ...]:
     )
 
 
-def standing(cleared: tuple[Cleared, ...], digests: Mapping[str, str]) -> dict[str, Cleared]:
+def still_cleared(cleared: tuple[Cleared, ...], digests: Mapping[str, str]) -> dict[str, Cleared]:
     """Each cleared node whose text is still the text it was cleared at."""
     return {entry.node: entry for entry in cleared if digests.get(entry.node) == entry.digest}
 
@@ -94,16 +94,16 @@ def verdict_problems(
 ) -> tuple[str, ...]:
     """The problems the verdict charges the job: each claim no node states, each finding's problem, then the rest.
 
-    A problem on a node still standing cleared is dropped, and a claim a standing node states is stated.
+    A problem on a node still cleared is dropped, and a claim such a node states is stated.
     """
-    held = standing(cleared, digests)
-    kept_stated = {claim for entry in held.values() for claim in entry.claims}
+    held = still_cleared(cleared, digests)
+    stated_by_cleared = {claim for entry in held.values() for claim in entry.claims}
     stated = {finding.claim for finding in verdict.claims if finding.node}
     unstated = tuple(
         f"Claim {number}, {text}, is stated on no page. State it on the node that owns that code, "
         "as a claim whose `verify:` goes red when the product breaks it."
         for number, text in enumerate(claims, start=1)
-        if number not in stated and text not in kept_stated
+        if number not in stated and text not in stated_by_cleared
     )
     flawed = tuple(
         f"{finding.node or f'Claim {finding.claim}'}: {finding.problem}"
@@ -117,8 +117,8 @@ def verdict_problems(
 def cleared_after(
     verdict: Verdict, claims: tuple[str, ...], digests: Mapping[str, str], cleared: tuple[Cleared, ...],
 ) -> tuple[Cleared, ...]:
-    """The nodes cleared once this verdict is in: those still standing, and each judged node it raised nothing against."""
-    held = standing(cleared, digests)
+    """The nodes cleared once this verdict is in: those still cleared, and each judged node it raised nothing against."""
+    held = still_cleared(cleared, digests)
     faulted = {finding.node for finding in verdict.claims if finding.problem} | {found.node for found in verdict.problems}
     stated_on: dict[str, set[str]] = {}
     for finding in verdict.claims:

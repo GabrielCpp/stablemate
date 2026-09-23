@@ -8,7 +8,7 @@ from workhorse_workflows.okf_book.aggregate.verdict import (
     claim_texts,
     cleared_after,
     numbered_contracts,
-    standing,
+    still_cleared,
     verdict_problems,
 )
 from workhorse_workflows.okf_book.shared.attempts import Cleared
@@ -66,7 +66,7 @@ def test_a_finding_s_problem_and_the_uncovered_problems_are_charged_after_the_un
 def test_a_cleared_node_stands_only_while_its_digest_is_unchanged() -> None:
     cleared = (Cleared(node="page.md#add", digest="a1"), Cleared(node="page.md#report", digest="r0"))
 
-    assert list(standing(cleared, DIGESTS)) == ["page.md#add"]
+    assert list(still_cleared(cleared, DIGESTS)) == ["page.md#add"]
 
 
 def test_a_problem_on_a_node_still_cleared_is_dropped_and_the_claims_it_states_count() -> None:
