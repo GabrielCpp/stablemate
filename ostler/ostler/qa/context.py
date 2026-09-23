@@ -202,8 +202,42 @@ def book_context(
         source_roots=source_roots,
         features_root=features_root,
         repositories=repositories,
-        proportional=False,
+        demote=no_demotion,
     )
+
+
+Demotion = Callable[
+    [dict[str, list[dict[str, Any]]], dict[str, dict[str, Any]]], tuple[frozenset[str], frozenset[str]]
+]
+
+
+def shared_citations(
+    direct_reasons: dict[str, list[dict[str, Any]]], nodes_by_id: dict[str, dict[str, Any]]
+) -> tuple[frozenset[str], frozenset[str]]:
+    """The files and symbols cited by many families, so a change to a shared helper does not owe live evidence for every node."""
+    file_owners: dict[str, set[str]] = {}
+    symbol_owners: dict[str, set[str]] = {}
+    for node_id, reasons in direct_reasons.items():
+        for reason in reasons:
+            if reason["kind"] == "file-owner":
+                file_owners.setdefault(reason["ref"], set()).add(node_id)
+            elif reason["kind"] == "changed-code":
+                symbol_owners.setdefault(reason["ref"], set()).add(node_id)
+
+    def families(owners: set[str]) -> int:
+        return len({_family_root(node_id, owners, nodes_by_id) for node_id in owners})
+
+    return (
+        frozenset(ref for ref, owners in file_owners.items() if families(owners) > 1),
+        frozenset(ref for ref, owners in symbol_owners.items() if families(owners) >= _CONTAINER_FANOUT),
+    )
+
+
+def no_demotion(
+    _direct_reasons: dict[str, list[dict[str, Any]]], _nodes_by_id: dict[str, dict[str, Any]]
+) -> tuple[frozenset[str], frozenset[str]]:
+    """No file or symbol, for a whole-book context that has no change to be proportional to."""
+    return frozenset(), frozenset()
 
 
 def _navigation(head_graph: Graph) -> dict[str, dict[str, Any]]:
@@ -274,13 +308,11 @@ def build_context(
     story_file: Path | None = None,
     exclude_paths: Iterable[str] = (),
     repositories: Sequence[SourceRepository] = (),
-    proportional: bool = True,
+    demote: Demotion = shared_citations,
 ) -> dict[str, Any]:
     """Map a `base..head` code diff onto the OKF graph and return the obligation packet.
 
-    *proportional* demotes the owners of a file or symbol many nodes cite to context, so a
-    change to a shared helper does not owe live evidence for every node. A whole-book audit
-    has no change to be proportional to, and passes `False` to owe every grounded claim.
+    *demote* names the files and symbols whose owners are context rather than required.
     """
     root = root.resolve()
     excluded_paths = {str(path) for path in exclude_paths}
@@ -447,25 +479,7 @@ def build_context(
                     }
                 )
 
-    file_owners: dict[str, set[str]] = {}
-    symbol_owners: dict[str, set[str]] = {}
-    for node_id, reasons in direct_reasons.items():
-        for reason in reasons:
-            if reason["kind"] == "file-owner":
-                file_owners.setdefault(reason["ref"], set()).add(node_id)
-            elif reason["kind"] == "changed-code":
-                symbol_owners.setdefault(reason["ref"], set()).add(node_id)
-    shared_files = set() if not proportional else {
-        ref
-        for ref, owners in file_owners.items()
-        if len({_family_root(node_id, owners, nodes_by_id) for node_id in owners}) > 1
-    }
-    shared_symbols = set() if not proportional else {
-        ref
-        for ref, owners in symbol_owners.items()
-        if len({_family_root(node_id, owners, nodes_by_id) for node_id in owners})
-        >= _CONTAINER_FANOUT
-    }
+    shared_files, shared_symbols = demote(direct_reasons, nodes_by_id)
 
     impacted = set(direct_reasons)
     for node_id in list(impacted):
