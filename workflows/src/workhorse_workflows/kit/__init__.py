@@ -1,4 +1,4 @@
-"""Everything a node reuses: git, GitHub, workspaces, paths, JSON, external CLIs."""
+"""Everything a node reuses: git, GitHub, workspaces, paths, JSON, external CLIs, QA stacks."""
 from __future__ import annotations
 
 import importlib

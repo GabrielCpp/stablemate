@@ -6,7 +6,7 @@ from typing import Any, Literal
 from pydantic import Field
 
 from workhorse_workflows.coder.shared.schemas._base import CoderResult, Finding
-from workhorse_workflows.qa.schemas import QaPlanRun, QaResult, QaStatus, StackStatus
+from workhorse_workflows.kit.qa.schemas import QaPlanRun, QaResult, QaStatus, StackStatus
 
 QaDisposition = Literal["confirmed", "repair_plan", "extend_plan", "repair_setup"]
 

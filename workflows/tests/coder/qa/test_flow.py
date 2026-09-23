@@ -34,8 +34,8 @@ from workhorse_workflows.coder.qa.nodes.qa import QA_SCRATCH_DIRNAME
 from workhorse_workflows.coder.shared import okf as okf_nodes
 from workhorse_workflows.coder.shared import qa_support
 from workhorse_workflows.coder.shared.dev import resolve_impl_context
-from workhorse_workflows.qa import evidence as qa_evidence_mod
-from workhorse_workflows.qa import runner as qa_runner_mod
+from workhorse_workflows.kit.qa import evidence as qa_evidence_mod
+from workhorse_workflows.kit.qa import runner as qa_runner_mod
 
 STORY = "STORY-1"
 EPIC = "EPIC-1"

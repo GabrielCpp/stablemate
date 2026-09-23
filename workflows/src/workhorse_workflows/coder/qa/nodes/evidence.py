@@ -5,7 +5,7 @@ import logging
 
 from workhorse_workflows.coder.shared.blueprint import blueprint
 from workhorse_workflows.coder.shared.schemas.qa import QaResult
-from workhorse_workflows.qa import evidence as _qa_evidence
+from workhorse_workflows.kit.qa import evidence as _qa_evidence
 
 
 @blueprint.node

@@ -7,6 +7,7 @@ from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import override
 
+from pydantic import BaseModel, ConfigDict
 from workhorse.context import WorkflowContext
 from workhorse.pyflow import Continue, Done
 from workhorse.pyflow.driver import drive
@@ -15,8 +16,9 @@ from workhorse.runner.backends.null import NullBackend
 from workhorse.runner.ladder import AgentRunner
 from workhorse.runner.spec import AgentNode
 
-from workhorse_workflows.okf_book.attempts import FailureTally
-from workhorse_workflows.okf_book.surface import EntryPoint, EntryPointListing
+from workhorse_workflows.okf_book.main.nodes.surface import EntryPoint, EntryPointListing
+from workhorse_workflows.okf_book.shared.entries import services
+from workhorse_workflows.okf_book.shared.work import DONE, FILE, ORPHAN, ids
 from workhorse_workflows.okf_book.workflow import OkfBook
 
 driver: Callable[[OkfBook, RunEnv], object] = drive
@@ -95,40 +97,54 @@ def listing_runner(*slugs: str, **replies: Reply) -> ScriptedRunner:
     return ScriptedRunner({LIST_NODE: always(payload), **{k.replace("_", "-"): v for k, v in replies.items()}})
 
 
+class WorkListView(BaseModel):
+    """What the run's work list holds when a phase under test is over."""
+
+    model_config = ConfigDict(frozen=True)
+
+    services: tuple[str, ...] = ()
+    files: tuple[str, ...] = ()
+    pruned: tuple[str, ...] = ()
+
+
+def work_list_view(flow: OkfBook, services: tuple[str, ...]) -> WorkListView:
+    return WorkListView(services=services, files=ids(flow.work, FILE), pruned=ids(flow.work, ORPHAN, DONE))
+
+
 class EnumerateOnly(OkfBook):
-    """Phase 1 alone: the run ends on the frozen work set."""
+    """Phase 1 alone: the run ends on the seeded work list."""
 
     @override
-    def document_files(self, attempts: tuple[FailureTally, ...] = ()) -> Continue[...]:
-        return Continue(self.work_set, self.stop)
+    def document(self, services: tuple[str, ...]) -> Continue[...]:
+        return Continue(None, self.stop, services=services)
 
-    def stop(self) -> Done:
+    def stop(self, services: tuple[str, ...]) -> Done:
         """The phase under test is over."""
-        return Done(self.work_set)
+        return Done(work_list_view(self, services))
 
 
 class DocumentOnly(OkfBook):
     """Phases 1 and 2's document turns: the run ends before any page is written."""
 
     @override
-    def aggregate(self) -> Continue[...]:
-        return Continue(None, self.stop)
+    def aggregate(self, services: tuple[str, ...]) -> Continue[...]:
+        return Continue(None, self.stop, services=services)
 
-    def stop(self) -> Done:
+    def stop(self, services: tuple[str, ...]) -> Done:
         """The phase under test is over."""
-        return Done(self.work_set)
+        return Done(work_list_view(self, services))
 
 
 class WriteOnly(OkfBook):
     """Phases 1 and 2: the run ends before the stack is brought up."""
 
     @override
-    def bring_up(self) -> Continue[...]:
-        return Continue(None, self.stop)
+    def exercise(self, services: tuple[str, ...]) -> Continue[...]:
+        return Continue(None, self.stop, services=services)
 
-    def stop(self) -> Done:
+    def stop(self, services: tuple[str, ...]) -> Done:
         """The phase under test is over."""
-        return Done(self.work_set)
+        return Done(work_list_view(self, services))
 
 
 class ExerciseOnly(OkfBook):
@@ -136,4 +152,4 @@ class ExerciseOnly(OkfBook):
 
     @override
     def start(self) -> Continue[...]:
-        return Continue(None, self.bring_up)
+        return Continue(None, self.exercise, services=services(self.root))

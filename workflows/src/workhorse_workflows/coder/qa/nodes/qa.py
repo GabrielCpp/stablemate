@@ -25,7 +25,7 @@ from workhorse_workflows.coder.shared.schemas.qa import (
     StackStatus,
     StackTornDown,
 )
-from workhorse_workflows.qa import runner as _qa_runner
+from workhorse_workflows.kit.qa import runner as _qa_runner
 
 TEARDOWN_STATES: dict[str, Literal["yes", "no", "skipped"]] = {
     "yes": "yes",

@@ -1,7 +1,7 @@
-"""Re-exports `workhorse_workflows.qa.support` for coder's existing call sites."""
+"""Re-exports `workhorse_workflows.kit.qa.support` for coder's existing call sites."""
 from __future__ import annotations
 
-from workhorse_workflows.qa.support import (
+from workhorse_workflows.kit.qa.support import (
     QA_PLAN_FILE,
     QA_RUN_LOG,
     assert_records,
