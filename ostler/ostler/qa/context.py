@@ -29,7 +29,6 @@ from ostler.qa.compile import annotate_deferred_obligations
 from ostler.qa.outcome import QaOutcome
 from ostler.qa.owners import (
     ChangedUnit,
-    Demotion,
     OwnerNode,
     Reason,
     ReasonKind,
@@ -151,7 +150,7 @@ def book_context(
         source_roots=source_roots,
         features_root=features_root,
         repositories=repositories,
-        demote=no_demotion,
+        whole_book=True,
     )
 
 
@@ -242,11 +241,12 @@ def build_context(
     story_file: Path | None = None,
     exclude_paths: Iterable[str] = (),
     repositories: Sequence[SourceRepository] = (),
-    demote: Demotion = shared_citations,
+    whole_book: bool = False,
 ) -> dict[str, Any]:
     """Map a `base..head` code diff onto the OKF graph and return the obligation packet.
 
-    *demote* names the files and symbols whose owners are context rather than required.
+    *whole_book* holds every node to its own claims, with no citation demoted to context,
+    because a whole book has no change to be proportional to.
     """
     root = root.resolve()
     excluded_paths = {str(path) for path in exclude_paths}
@@ -332,7 +332,11 @@ def build_context(
     mapped_changes = map_changes(changes, owner_nodes, book_root, source_roots)
     direct_reasons = mapped_changes.reasons
     health.extend(change.row() for change in mapped_changes.unmapped)
+    if whole_book:
+        for node_id in nodes_by_id:
+            direct_reasons.setdefault(node_id, []).append(Reason(ReasonKind.BOOK_CLAIM, node_id))
 
+    demote = no_demotion if whole_book else shared_citations
     shared = demote(
         citing_family_counts(
             mapped_changes.file_owners,
@@ -1391,7 +1395,8 @@ def _is_required(
         if not (reason.kind == ReasonKind.FILE_OWNER and reason.ref in shared_files)
         and not (reason.kind == ReasonKind.CHANGED_CODE and reason.ref in shared_symbols)
     }
-    return node_id in grounded and bool(kinds - _CONTEXT_ONLY_REASON_KINDS)
+    grounded_here = node_id in grounded or ReasonKind.BOOK_CLAIM in kinds
+    return grounded_here and bool(kinds - _CONTEXT_ONLY_REASON_KINDS)
 
 
 def _journey_is_required(

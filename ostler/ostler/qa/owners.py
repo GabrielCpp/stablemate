@@ -35,6 +35,7 @@ class OwnerNode:
 class ReasonKind(StrEnum):
     """Why a node is selected into the context."""
 
+    BOOK_CLAIM = "book-claim"
     CHANGED_CODE = "changed-code"
     FILE_OWNER = "file-owner"
     SURFACE_OWNER = "surface-owner"
@@ -115,7 +116,6 @@ class SharedCitations:
     symbols: frozenset[str] = frozenset()
 
 
-Demotion = Callable[[CitingFamilyCounts], SharedCitations]
 FamilyRoot = Callable[[str, set[str]], str]
 
 CONTAINER_FANOUT = 3

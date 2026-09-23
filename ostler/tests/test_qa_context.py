@@ -536,6 +536,30 @@ def test_a_whole_book_owes_the_command_but_not_the_method_it_reaches(tmp_path: P
     assert methods and not any(item["required"] for item in methods), methods
 
 
+def test_a_whole_book_owes_the_claims_of_a_page_that_cites_no_code(tmp_path: Path):
+    """A whole book has no change to select by, so a page's own claim puts it in scope. An environment that cites no code still owes its claim, and a concept still owes none."""
+    (tmp_path / "docs/features/demo/ops").mkdir(parents=True)
+    (tmp_path / "docs/features/demo/ops/checkout.md").write_text(
+        "---\ntype: environment\nslug: checkout\ntitle: Checkout\n---\n# Checkout\n\n"
+        "- local-only: true\n- consistency: the interpreter is Python 3.12 or later\n"
+        "- verify: stdout(matches=\"Python 3\")\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "docs/features/demo/ledger.md").write_text(
+        "---\ntype: concept\nslug: ledger\ntitle: Ledger\n---\n# Ledger\n\nA ledger holds a trip's expenses.\n",
+        encoding="utf-8",
+    )
+    _git(tmp_path, "init")
+
+    obligations = book_context(tmp_path)["obligations"]
+    environment = [item for item in obligations if item["nodeType"] == "environment"]
+    concepts = [item for item in obligations if item["nodeType"] == "concept"]
+
+    assert {item["kind"] for item in environment} >= {"consistency"}, environment
+    assert all(item["required"] for item in environment), environment
+    assert not any(item["required"] for item in concepts), concepts
+
+
 def test_concepts_chained_by_extends_citing_one_symbol_stay_one_family(tmp_path: Path):
     """Six `concept` nodes chained by `extends:` are one documented thing, not six owners.
 
