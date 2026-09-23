@@ -169,7 +169,7 @@ def test_a_verifier_rejection_is_retried_with_its_problems_then_blocked(app: App
 
     tries = _pages_written(runner, CONCEPT)
     assert len(tries) == MAX_ATTEMPTS
-    assert tries[-1]["problems"] == ["The page says nothing about the ledger's columns."]
+    assert tries[-1]["problems"] == ["stated#here: The page says nothing about the ledger's columns."]
     assert "docs(tally): write ledger-file" not in commits(repo)
     assert "Tally keeps a ledger." not in (repo / CONCEPT).read_text(encoding="utf-8")
     assert [b.subject for b in read_blockers(flow.run_dir) if b.subject == CONCEPT] == [CONCEPT]

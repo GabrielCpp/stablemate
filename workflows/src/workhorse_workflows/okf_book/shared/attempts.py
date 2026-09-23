@@ -40,8 +40,18 @@ def exhausted(attempts: Iterable[FailureTally], subject: str) -> bool:
     return any(a.subject == subject and a.failures >= MAX_ATTEMPTS for a in attempts)
 
 
+class Cleared(BaseModel):
+    """A node a judge raised nothing against, at the text it judged, and the claims it found stated there."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    node: str
+    digest: str
+    claims: tuple[str, ...] = ()
+
+
 class JobLedger(BaseModel):
-    """One aggregation job's attempt so far: the job, the tree and the inherited compile gaps before its first turn, and each failed turn."""
+    """One aggregation job's attempt so far: the job, the tree and the inherited compile gaps before its first turn, each failed turn, and the nodes judged sound."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -49,6 +59,7 @@ class JobLedger(BaseModel):
     before: Snapshot
     inherited_gaps: tuple[str, ...] = ()
     attempts: tuple[FailureTally, ...] = ()
+    cleared: tuple[Cleared, ...] = ()
 
     @property
     def problems(self) -> tuple[str, ...]:
@@ -60,3 +71,6 @@ class JobLedger(BaseModel):
 
     def charged(self, problems: Sequence[str]) -> JobLedger:
         return self.model_copy(update={"attempts": charge_failure(self.attempts, self.job.subject, problems)})
+
+    def judged(self, cleared: tuple[Cleared, ...]) -> JobLedger:
+        return self.model_copy(update={"cleared": cleared})

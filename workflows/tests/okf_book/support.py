@@ -55,12 +55,13 @@ def always(payload: dict[str, object]) -> Reply:
     return _reply
 
 
-def judged(*problems: str) -> Reply:
-    """A verify-page reply that finds every claim it is handed stated, and names `problems` beside them."""
+def judged(*problems: str, node: str = "stated#here") -> Reply:
+    """A verify-page reply that finds every claim it is handed stated, and names `problems` on `node` beside them."""
 
     def _reply(args: dict[str, object]) -> dict[str, object]:
         numbers = [claim.id for contract in NUMBERED.validate_python(args["contracts"]) for claim in contract.claims]
-        return {"claims": [{"claim": number, "node": "stated#here"} for number in numbers], "problems": list(problems)}
+        found = [{"node": node, "problem": problem} for problem in problems]
+        return {"claims": [{"claim": number, "node": "stated#here"} for number in numbers], "problems": found}
 
     return _reply
 

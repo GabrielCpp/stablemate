@@ -25,6 +25,16 @@ missing:
 {% endif %}
 
 {% endif %}
+{% if cleared %}
+An earlier round judged these nodes sound, and their text has not changed since. Do not name a
+problem on any of them. When a node that changed now disagrees with one of them, name the problem
+on the node that changed. A claim one of them states counts as stated.
+
+{% for node in cleared %}
+- `{{ node }}`
+{% endfor %}
+
+{% endif %}
 They were written from these contracts:
 
 {% for contract in contracts %}
@@ -51,11 +61,16 @@ node that states it and read that node's `verify:`. Reply with one finding per c
 - `problem` is what is wrong with how that node states or checks the claim, as the fix it needs.
   Leave it empty when the claim is stated and its check holds.
 
-Then read every page again, and name each problem no claim covers in `problems`, with the page
-and the node it is on. The pages pass when every claim has a node and no problem is named.
+Then read every page again, and name each problem no claim covers in `problems`:
+
+- `node` is the page and anchor of the node the problem is on, or the page alone when the problem
+  is on the page as a whole.
+- `problem` is what is wrong there, as the fix it needs.
+
+The pages pass when every claim has a node and no problem is named.
 
 Reply with only this JSON object:
 
 ```json
-{"claims": [{"claim": 1, "node": "docs/features/tally/cli/add.md#add", "problem": ""}, {"claim": 2, "node": "", "problem": ""}], "problems": ["docs/features/tally/cli/add.md#add: the example shows an exit code the page never states."]}
+{"claims": [{"claim": 1, "node": "docs/features/tally/cli/add.md#add", "problem": ""}, {"claim": 2, "node": "", "problem": ""}], "problems": [{"node": "docs/features/tally/cli/add.md#add", "problem": "the example shows an exit code the page never states."}]}
 ```

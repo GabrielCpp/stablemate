@@ -1,0 +1,28 @@
+"""Each node's text on a judged page, as a digest, so a later round can tell which nodes an edit touched."""
+from __future__ import annotations
+
+import hashlib
+from collections.abc import Iterable
+from pathlib import Path
+
+from ostler import markdown
+from ostler.model import document_anchors
+
+
+def _digest(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def node_digests(root: Path, pages: Iterable[str]) -> dict[str, str]:
+    """Each page, and each of its headed sections as `page#anchor`, keyed to a digest of its text. A section's text holds its subsections."""
+    digests: dict[str, str] = {}
+    for page in pages:
+        text = (root / page).read_text(encoding="utf-8")
+        digests[page] = _digest(text)
+        doc = markdown.split(text)
+        anchors = document_anchors(doc)
+        for section in doc.walk_sections():
+            anchor = anchors.get(section.line_start)
+            if anchor:
+                digests[f"{page}#{anchor}"] = _digest(section.text)
+    return digests

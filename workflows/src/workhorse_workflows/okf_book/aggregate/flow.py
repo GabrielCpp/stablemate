@@ -40,7 +40,15 @@ from workhorse_workflows.okf_book.shared.confine import (
     snapshot,
 )
 from workhorse_workflows.okf_book.shared.contracts import Contract
-from workhorse_workflows.okf_book.aggregate.verdict import Verdict, claim_texts, numbered_contracts, verdict_problems
+from workhorse_workflows.okf_book.aggregate.digests import node_digests
+from workhorse_workflows.okf_book.aggregate.verdict import (
+    Verdict,
+    claim_texts,
+    cleared_after,
+    numbered_contracts,
+    standing,
+    verdict_problems,
+)
 from workhorse_workflows.okf_book.aggregate.nodes.garbage import collectable, delete_book_pages
 from workhorse_workflows.okf_book.aggregate.nodes.job_inputs import job_contracts, job_stories
 from workhorse_workflows.okf_book.shared.entries import FEATURES_DIR
@@ -207,11 +215,14 @@ class Aggregate(BookFlow):
 
         The job's own pages come first, and the pages take up to half of what the prompt leaves. A first page over that goes alone,
         and the contracts get the rest. A page past the ceiling cannot be judged, and charges the job a turn.
+        The judge is told which nodes an earlier round cleared and this one may not fault.
         """
         root, job = self.root, ledger.job
         judged_rels = judged_pages(root, job, ledger.before)
+        digests = node_digests(root, judged_rels)
+        held = sorted(standing(ledger.cleared, digests))
         other_pages = pack_told(name_tokens(_book_pages_besides(root, job.service, judged_rels)), PAGES_BUDGET_TOKENS)
-        fixed = prompt_tokens(VERIFY_PROMPT) + other_pages.tokens
+        fixed = prompt_tokens(VERIFY_PROMPT) + other_pages.tokens + total_text_tokens(held)
         judged = pack_read(file_tokens(root, judged_rels), (TURN_BUDGET_TOKENS - fixed) // 2)
         if not judged.kept:
             return self._retry(ledger.charged((UNJUDGED_PROBLEM,)))
@@ -228,17 +239,26 @@ class Aggregate(BookFlow):
                 "contracts": [contract.model_dump() for contract in numbered],
                 "other_pages": list(other_pages.kept),
                 "other_pages_left_out": other_pages.left_out,
+                "cleared": held,
                 "kind": job.kind.value,
             },
             cwd=root,
         )
         metric = _turn_metric("verify-page", job.subject, fixed + judged.tokens + _contract_tokens(contracts), started)
-        return Continue(verdict, self.settle_verdict, ledger=ledger, verdict=verdict, claims=claim_texts(numbered), metric=metric)
+        return Continue(
+            verdict, self.settle_verdict, ledger=ledger, verdict=verdict, claims=claim_texts(numbered), digests=digests, metric=metric,
+        )
 
-    def settle_verdict(self, ledger: JobLedger, verdict: Verdict, claims: tuple[str, ...], metric: TurnMetric) -> Continue[...]:
-        """Record the verify turn. Pages that state every claim with no problem go on to the stamp. Anything else charges the job a turn."""
+    def settle_verdict(
+        self, ledger: JobLedger, verdict: Verdict, claims: tuple[str, ...], digests: dict[str, str], metric: TurnMetric,
+    ) -> Continue[...]:
+        """Record the verify turn and the nodes it cleared. Pages that state every claim with no problem go on to the stamp.
+
+        Anything else charges the job a turn.
+        """
         record_turn(self.records_dir, metric)
-        problems = verdict_problems(verdict, claims)
+        problems = verdict_problems(verdict, claims, digests, ledger.cleared)
+        ledger = ledger.judged(cleared_after(verdict, claims, digests, ledger.cleared))
         if not problems:
             return Continue(verdict, self.stamp_job, ledger=ledger)
         return self._retry(ledger.charged(problems))

@@ -1,11 +1,15 @@
 """The judge's verdict on a job's pages: one finding for each numbered contract claim, and the problems no claim covers.
 
 The code, not the judge, decides the pass. A claim the judge leaves unaccounted is a claim no page states.
+A node an earlier round cleared stays cleared while its text is unchanged, so a later round cannot fault it again.
 """
 from __future__ import annotations
 
+from collections.abc import Mapping
+
 from pydantic import BaseModel, ConfigDict
 
+from workhorse_workflows.okf_book.shared.attempts import Cleared
 from workhorse_workflows.okf_book.shared.contracts import Contract
 
 
@@ -39,13 +43,22 @@ class ClaimFinding(BaseModel):
     problem: str = ""
 
 
+class NodeProblem(BaseModel):
+    """A problem no claim covers, on the node it is on."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    node: str
+    problem: str
+
+
 class Verdict(BaseModel):
     """A later turn's judgement of the pages another turn wrote."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     claims: tuple[ClaimFinding, ...] = ()
-    problems: tuple[str, ...] = ()
+    problems: tuple[NodeProblem, ...] = ()
 
 
 def numbered_contracts(contracts: tuple[Contract, ...]) -> tuple[NumberedContract, ...]:
@@ -71,16 +84,52 @@ def claim_texts(contracts: tuple[NumberedContract, ...]) -> tuple[str, ...]:
     )
 
 
-def verdict_problems(verdict: Verdict, claims: tuple[str, ...]) -> tuple[str, ...]:
-    """The problems the verdict charges the job: each claim no node states, each finding's problem, then the rest."""
+def standing(cleared: tuple[Cleared, ...], digests: Mapping[str, str]) -> dict[str, Cleared]:
+    """Each cleared node whose text is still the text it was cleared at."""
+    return {entry.node: entry for entry in cleared if digests.get(entry.node) == entry.digest}
+
+
+def verdict_problems(
+    verdict: Verdict, claims: tuple[str, ...], digests: Mapping[str, str], cleared: tuple[Cleared, ...],
+) -> tuple[str, ...]:
+    """The problems the verdict charges the job: each claim no node states, each finding's problem, then the rest.
+
+    A problem on a node still standing cleared is dropped, and a claim a standing node states is stated.
+    """
+    held = standing(cleared, digests)
+    kept_stated = {claim for entry in held.values() for claim in entry.claims}
     stated = {finding.claim for finding in verdict.claims if finding.node}
     unstated = tuple(
         f"Claim {number}, {text}, is stated on no page. State it on the node that owns that code, "
         "as a claim whose `verify:` goes red when the product breaks it."
         for number, text in enumerate(claims, start=1)
-        if number not in stated
+        if number not in stated and text not in kept_stated
     )
     flawed = tuple(
-        f"{finding.node or f'Claim {finding.claim}'}: {finding.problem}" for finding in verdict.claims if finding.problem
+        f"{finding.node or f'Claim {finding.claim}'}: {finding.problem}"
+        for finding in verdict.claims
+        if finding.problem and finding.node not in held
     )
-    return (*unstated, *flawed, *verdict.problems)
+    rest = tuple(f"{found.node}: {found.problem}" for found in verdict.problems if found.node not in held)
+    return (*unstated, *flawed, *rest)
+
+
+def cleared_after(
+    verdict: Verdict, claims: tuple[str, ...], digests: Mapping[str, str], cleared: tuple[Cleared, ...],
+) -> tuple[Cleared, ...]:
+    """The nodes cleared once this verdict is in: those still standing, and each judged node it raised nothing against."""
+    held = standing(cleared, digests)
+    faulted = {finding.node for finding in verdict.claims if finding.problem} | {found.node for found in verdict.problems}
+    stated_on: dict[str, set[str]] = {}
+    for finding in verdict.claims:
+        if finding.node and not finding.problem and 1 <= finding.claim <= len(claims):
+            stated_on.setdefault(finding.node, set()).add(claims[finding.claim - 1])
+    return tuple(
+        Cleared(
+            node=node,
+            digest=digest,
+            claims=tuple(sorted(stated_on.get(node, set()) | set(held[node].claims if node in held else ()))),
+        )
+        for node, digest in digests.items()
+        if node in held or node not in faulted
+    )
