@@ -127,6 +127,16 @@ def unreached(root: Path, pages: Iterable[str]) -> tuple[DeadPage, ...]:
     return tuple(page for page in dead_book_pages(root) if page.rel in wanted)
 
 
+def charged_pages(root: Path, changed: Iterable[str], owned: Iterable[str]) -> tuple[str, ...]:
+    """The pages a job answers for: every page it changed, and each of its own the entries page reaches, changed or not.
+
+    An own page nothing reaches is collected after the job, not charged to it.
+    """
+    mine = frozenset(owned)
+    dead = frozenset(page.rel for page in unreached(root, mine))
+    return tuple(sorted({*changed, *(mine - dead)}))
+
+
 def _doctor_problems(root: Path, pages: list[str]) -> list[str]:
     if not pages:
         return []

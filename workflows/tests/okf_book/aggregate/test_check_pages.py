@@ -50,6 +50,16 @@ def test_a_page_the_turn_only_added_to_is_checked(app: App, tmp_path: Path) -> N
     assert all("does not compile" in line for line in lines)
 
 
+def test_a_page_the_job_owns_is_checked_before_the_turn_changes_it(app: App, tmp_path: Path) -> None:
+    repo = app("tally-cli")
+    check = JobCheck(root=repo, service="tally", before=snapshot(repo), owned_pages=(ROOT_PAGE,))
+
+    code, lines = check_report([str(write_job_check(tmp_path, check))])
+
+    assert code == 1
+    assert lines == page_problems(repo, "tally", [ROOT_PAGE])
+
+
 def test_the_gaps_the_job_inherits_are_not_printed(app: App, tmp_path: Path) -> None:
     repo = app("tally-cli")
     inherited = page_problems(repo, "tally", [ROOT_PAGE])

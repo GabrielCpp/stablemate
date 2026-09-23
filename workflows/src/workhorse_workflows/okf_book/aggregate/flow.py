@@ -53,7 +53,7 @@ from workhorse_workflows.okf_book.shared.jobs import (
 )
 from workhorse_workflows.okf_book.shared.metrics import TurnMetric, record_turn
 from workhorse_workflows.okf_book.shared.page_kinds import JobKind
-from workhorse_workflows.okf_book.shared.page_check import inherited_gaps, page_problems, unreached, unreached_problems
+from workhorse_workflows.okf_book.shared.page_check import charged_pages, inherited_gaps, page_problems, unreached, unreached_problems
 from workhorse_workflows.okf_book.shared.work import BLOCKED, DONE, JOB, UNQUEUED, seed
 
 PAGES_BUDGET_TOKENS = 3_000
@@ -128,7 +128,9 @@ class Aggregate(BookFlow):
         job = job_of(items[0])
         gaps = inherited_gaps(self.root, job.service, job.owned_pages)
         ledger = JobLedger(job=job, before=snapshot(self.root), inherited_gaps=gaps)
-        _ = write_job_check(self.records_dir, JobCheck(root=self.root, service=job.service, before=ledger.before, inherited_gaps=gaps))
+        _ = write_job_check(self.records_dir, JobCheck(
+            root=self.root, service=job.service, before=ledger.before, owned_pages=tuple(sorted(job.owned_pages)), inherited_gaps=gaps
+        ))
         return Continue(job, self.write_job, ledger=ledger)
 
     def _rewrite(self, ledger: JobLedger) -> Continue[...]:
@@ -199,9 +201,11 @@ class Aggregate(BookFlow):
         return Continue(dead, self.check_job, ledger=ledger, deleted=dead)
 
     def check_job(self, ledger: JobLedger, deleted: tuple[str, ...]) -> Continue[...]:
-        """Charge the turn with each page deleted as unreachable, and each doctor error and compile gap on the rest."""
-        changed = book_changes(self.root, ledger.job.service, ledger.before)
-        problems = (*unreached_problems(deleted), *page_problems(self.root, ledger.job.service, changed, ledger.inherited_gaps))
+        """Charge the turn with each page deleted as unreachable, and each doctor error and compile gap on the job's pages and the rest it changed."""
+        job = ledger.job
+        changed = book_changes(self.root, job.service, ledger.before)
+        charged = charged_pages(self.root, changed, job.owned_pages)
+        problems = (*unreached_problems(deleted), *page_problems(self.root, job.service, charged, ledger.inherited_gaps))
         if problems:
             return self._retry(ledger.charged(problems))
         return Continue(changed, self.verify_job, ledger=ledger)
