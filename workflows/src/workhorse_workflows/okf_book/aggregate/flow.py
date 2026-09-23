@@ -40,6 +40,7 @@ from workhorse_workflows.okf_book.shared.confine import (
     snapshot,
 )
 from workhorse_workflows.okf_book.shared.contracts import Contract
+from workhorse_workflows.okf_book.aggregate.verdict import Verdict, claim_texts, numbered_contracts, verdict_problems
 from workhorse_workflows.okf_book.aggregate.nodes.garbage import collectable, delete_book_pages
 from workhorse_workflows.okf_book.aggregate.nodes.job_inputs import job_contracts, job_stories
 from workhorse_workflows.okf_book.shared.entries import FEATURES_DIR
@@ -72,15 +73,6 @@ class Written(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     summary: str
-
-
-class Verdict(BaseModel):
-    """A later turn's judgement of the pages another turn wrote."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    passed: bool
-    problems: tuple[str, ...] = ()
 
 
 def _turn_metric(node: str, subject: str, tokens: int, started: float) -> TurnMetric:
@@ -226,13 +218,14 @@ class Aggregate(BookFlow):
         if judged.left_out:
             self.logger.warning("%d changed pages are past the verify turn's budget and go unjudged", judged.left_out)
         contracts = job_contracts(root, self.records_dir, job, budget=TURN_BUDGET_TOKENS - fixed - judged.tokens)
+        numbered = numbered_contracts(contracts)
         started = time.monotonic()
         verdict = self.agent(
             "aggregate/prompts/verify-page.md",
             returns=Verdict,
             args={
                 "pages": [body.template_arg() for body in page_bodies(root, judged.kept)],
-                "contracts": _contract_args(contracts),
+                "contracts": [contract.model_dump() for contract in numbered],
                 "other_pages": list(other_pages.kept),
                 "other_pages_left_out": other_pages.left_out,
                 "kind": job.kind.value,
@@ -240,14 +233,15 @@ class Aggregate(BookFlow):
             cwd=root,
         )
         metric = _turn_metric("verify-page", job.subject, fixed + judged.tokens + _contract_tokens(contracts), started)
-        return Continue(verdict, self.settle_verdict, ledger=ledger, verdict=verdict, metric=metric)
+        return Continue(verdict, self.settle_verdict, ledger=ledger, verdict=verdict, claims=claim_texts(numbered), metric=metric)
 
-    def settle_verdict(self, ledger: JobLedger, verdict: Verdict, metric: TurnMetric) -> Continue[...]:
-        """Record the verify turn. A pass goes on to the stamp, and a rejection charges the job a turn."""
+    def settle_verdict(self, ledger: JobLedger, verdict: Verdict, claims: tuple[str, ...], metric: TurnMetric) -> Continue[...]:
+        """Record the verify turn. Pages that state every claim with no problem go on to the stamp. Anything else charges the job a turn."""
         record_turn(self.records_dir, metric)
-        if verdict.passed:
+        problems = verdict_problems(verdict, claims)
+        if not problems:
             return Continue(verdict, self.stamp_job, ledger=ledger)
-        return self._retry(ledger.charged(verdict.problems or ("The verifier rejected the pages without naming a problem.",)))
+        return self._retry(ledger.charged(problems))
 
     def abandon_job(self, ledger: JobLedger) -> Continue[...]:
         """Three failed turns: put the book back as it was."""

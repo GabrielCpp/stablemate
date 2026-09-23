@@ -5,7 +5,7 @@ import re
 from collections.abc import Callable
 from pathlib import Path
 
-from okf_book.support import BRIEFS, WorkListView, Reply, ScriptedRunner, WriteOnly, always, commits, git, listing_runner, promised_contracts
+from okf_book.support import BRIEFS, WorkListView, Reply, ScriptedRunner, WriteOnly, always, judged, commits, git, listing_runner, promised_contracts
 
 from ostler.stamp import digest_file
 from pydantic import TypeAdapter
@@ -32,7 +32,7 @@ FIXTURE = f"{BOOK}/fixtures/expenses-csv.md"
 ORPHAN = f"{BOOK}/concepts/budget.md"
 UNREACHED = ("tally-checkout", "run-tally", "track-a-trip")
 STALE = "@000000000000"
-PASS = always({"passed": True, "problems": []})
+PASS = judged()
 NAMES = TypeAdapter(list[str])
 
 
@@ -161,8 +161,8 @@ def test_a_page_the_job_owns_is_charged_when_the_turn_leaves_it_alone(app: App, 
 def test_a_verifier_rejection_is_retried_with_its_problems_then_blocked(app: App, run_book: RunBook) -> None:
     def reject(args: dict[str, object]) -> dict[str, object]:
         if CONCEPT in [page["page"] for page in BRIEFS.validate_python(args["pages"])]:
-            return {"passed": False, "problems": ["The page says nothing about the ledger's columns."]}
-        return {"passed": True, "problems": []}
+            return judged("The page says nothing about the ledger's columns.")(args)
+        return PASS(args)
 
     repo = app("tally-cli")
     flow, runner = _run(repo, run_book, verify=reject)

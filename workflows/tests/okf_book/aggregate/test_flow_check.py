@@ -4,7 +4,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from pathlib import Path
 
-from okf_book.support import BRIEFS, Reply, ScriptedRunner, WorkListView, WriteOnly, always, listing_runner, promised_contracts
+from okf_book.support import BRIEFS, Reply, ScriptedRunner, WorkListView, WriteOnly, always, judged, listing_runner, promised_contracts
 
 from workhorse_workflows.okf_book.aggregate.nodes.job_check import charge, check_command, spent_tokens
 from workhorse_workflows.okf_book.main.nodes.surface import Surface, SurfaceKind
@@ -18,7 +18,7 @@ RunBook = Callable[[WriteOnly, ScriptedRunner], WorkListView]
 COMMANDS = ("init", "add", "import", "report", "export")
 TALLY = Surface(service="tally", kind=SurfaceKind.CLI, entry="tally/__main__.py")
 CONCEPT = f"{FEATURES_DIR}/tally/concepts/ledger-file.md"
-PASS = always({"passed": True, "problems": []})
+PASS = judged()
 
 
 def _append(repo: Path, rel: str, text: str) -> None:
@@ -69,8 +69,9 @@ def test_every_writing_turn_starts_with_the_whole_check_budget(app: App, run_boo
         return {"summary": "wrote"}
 
     def reject(args: dict[str, object]) -> dict[str, object]:
-        rejected = CONCEPT in [page["page"] for page in BRIEFS.validate_python(args["pages"])]
-        return {"passed": not rejected, "problems": ["The page says nothing about the ledger's columns."] if rejected else []}
+        if CONCEPT in [page["page"] for page in BRIEFS.validate_python(args["pages"])]:
+            return judged("The page says nothing about the ledger's columns.")(args)
+        return PASS(args)
 
     _ = _run(repo, run_book, verify=reject, write=write)
 

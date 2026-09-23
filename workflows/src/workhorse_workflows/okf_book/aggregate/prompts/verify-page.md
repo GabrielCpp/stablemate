@@ -32,8 +32,8 @@ They were written from these contracts:
 
 {{ contract.purpose }}
 
-{% for claim in contract.promises + contract.refusals %}
-- {{ claim.text }}{% if claim.symbol %} (`{{ contract.file }}::{{ claim.symbol }}`){% endif %}
+{% for claim in contract.claims %}
+{{ claim.id }}. {{ claim.text }}{% if claim.symbol %} (`{{ contract.file }}::{{ claim.symbol }}`){% endif %}
 
 {% endfor %}
 {% endfor %}
@@ -42,10 +42,20 @@ A page passes when every one of these holds:
 
 {% include "aggregate/prompts/_bar.md" %}
 
-Name each problem as the fix it needs, with the page and the node it is on.
+Go through the numbered claims in order, and account for every one. For each claim, find the
+node that states it and read that node's `verify:`. Reply with one finding per claim:
+
+- `claim` is the claim's number.
+- `node` is the page and anchor of the node that states it. Leave it empty when no page states
+  the claim.
+- `problem` is what is wrong with how that node states or checks the claim, as the fix it needs.
+  Leave it empty when the claim is stated and its check holds.
+
+Then read every page again, and name each problem no claim covers in `problems`, with the page
+and the node it is on. The pages pass when every claim has a node and no problem is named.
 
 Reply with only this JSON object:
 
 ```json
-{"passed": false, "problems": ["docs/features/tally/cli/add.md#add: the refusal of a non-numeric amount is missing."]}
+{"claims": [{"claim": 1, "node": "docs/features/tally/cli/add.md#add", "problem": ""}, {"claim": 2, "node": "", "problem": ""}], "problems": ["docs/features/tally/cli/add.md#add: the example shows an exit code the page never states."]}
 ```

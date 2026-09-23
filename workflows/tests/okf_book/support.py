@@ -16,6 +16,7 @@ from workhorse.runner.backends.null import NullBackend
 from workhorse.runner.ladder import AgentRunner
 from workhorse.runner.spec import AgentNode
 
+from workhorse_workflows.okf_book.aggregate.verdict import NumberedContract
 from workhorse_workflows.okf_book.main.nodes.surface import EntryPoint, EntryPointListing
 from workhorse_workflows.okf_book.shared.entries import services
 from workhorse_workflows.okf_book.shared.work import DONE, FILE, ORPHAN, ids
@@ -28,6 +29,7 @@ LIST_NODE = "list-entry-points"
 
 Reply = Callable[[dict[str, object]], dict[str, object]]
 BRIEFS = TypeAdapter(list[dict[str, object]])
+NUMBERED = TypeAdapter(list[NumberedContract])
 
 
 def git(repo: Path, *args: str) -> str:
@@ -49,6 +51,16 @@ def always(payload: dict[str, object]) -> Reply:
 
     def _reply(_args: dict[str, object]) -> dict[str, object]:
         return payload
+
+    return _reply
+
+
+def judged(*problems: str) -> Reply:
+    """A verify-page reply that finds every claim it is handed stated, and names `problems` beside them."""
+
+    def _reply(args: dict[str, object]) -> dict[str, object]:
+        numbers = [claim.id for contract in NUMBERED.validate_python(args["contracts"]) for claim in contract.claims]
+        return {"claims": [{"claim": number, "node": "stated#here"} for number in numbers], "problems": list(problems)}
 
     return _reply
 

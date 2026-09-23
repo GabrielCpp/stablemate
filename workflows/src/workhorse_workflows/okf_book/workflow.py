@@ -18,7 +18,7 @@ workflow = (
         "write-page": {"summary": "stub"},
         "write-operations": {"summary": "stub"},
         "write-flows": {"summary": "stub"},
-        "verify-page": {"passed": True, "problems": []},
+        "verify-page": {"claims": [], "problems": []},
         "pick-flows": {"ids": []},
         "judge-failure": {"side": "book", "reason": "stub"},
     })
