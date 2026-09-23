@@ -356,6 +356,47 @@ def test_cli_binaries_key_the_owning_files_binary_by_shared_path(tmp_path: Path)
     assert packet["cliBinaries"] == {"docs/features/demo/tally.md": "tally"}
 
 
+def test_an_invocation_and_a_field_carry_the_run_their_claim_is_about(tmp_path: Path):
+    (tmp_path / "docs/features/demo").mkdir(parents=True)
+    (tmp_path / "docs/features/demo/tally.md").write_text(
+        "---\ntype: cli\nslug: tally\ntitle: Tally\n---\n# Tally\n\n"
+        "- binary: tally\n- code: `app/tally.py::run`\n\n"
+        "## Commands\n\n"
+        "### init\n- does:\n  - Writes an empty ledger.\n- code: `app/tally.py::run`\n\n"
+        "## Invocations\n\n"
+        "### init-a-ledger\n- on: [init](#init)\n- trigger: the caller runs `tally init`.\n"
+        "- does:\n  - Writes an empty ledger.\n"
+        '- run: invoke(argv=["init"])\n'
+        "- verify: exit_status(code=0)\n- code: `app/tally.py::run`\n\n"
+        "## Fields\n\n"
+        "### dry-run\n- type: boolean\n- semantics: a dry run writes nothing.\n"
+        '- run: invoke(argv=["--dry-run", "init"])\n'
+        '- verify: unchanged(subject="the working directory")\n'
+        "- code: `app/tally.py::run`\n",
+        encoding="utf-8",
+    )
+    source = tmp_path / "app/tally.py"
+    source.parent.mkdir(parents=True)
+    source.write_text("def run():\n    return 'old'\n", encoding="utf-8")
+    _git(tmp_path, "init")
+    _git(tmp_path, "config", "user.email", "qa@example.com")
+    _git(tmp_path, "config", "user.name", "QA")
+    _git(tmp_path, "add", ".")
+    _git(tmp_path, "commit", "-m", "base")
+    base = _git(tmp_path, "rev-parse", "HEAD")
+    source.write_text("def run():\n    return 'new'\n", encoding="utf-8")
+
+    packet = build_context(tmp_path, base=base, source_roots={"demo": ["app"]})
+    by_id = {item["id"].rsplit("#", 1)[-1]: item for item in packet["obligations"]}
+
+    assert [row["call"] for row in by_id["init-a-ledger:does:1"]["actsDeclared"]] == [
+        'invoke(argv=["init"])'
+    ]
+    assert [row["call"] for row in by_id["dry-run:semantics:1"]["actsDeclared"]] == [
+        'invoke(argv=["--dry-run", "init"])'
+    ]
+
+
 def test_six_unrelated_nodes_citing_one_symbol_still_demote(tmp_path: Path):
     """Six genuinely unrelated nodes — no containment, no `extends:` — citing the same exact symbol is the sprawl `_CONTAINER_FANOUT` exists to catch, and family-collapsing must not blunt it: none of them share a declared edge, so each is its own family and the fan-out demotion still fires."""
     (tmp_path / "docs/features/demo").mkdir(parents=True)

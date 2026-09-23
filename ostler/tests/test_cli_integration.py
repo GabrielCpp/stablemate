@@ -92,7 +92,7 @@ def test_checks_lists_the_vocabulary_without_a_book(tmp_path: Path, capsys):
 
 def _minimal_packet() -> dict:
     return {
-        "story": "demo-story",
+        "story": {"slug": "demo-story"},
         "obligations": [
             {
                 "id": "okf:docs/features/demo/api.md#get-things:does:1",

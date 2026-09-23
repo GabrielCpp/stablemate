@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from urllib.parse import urlsplit
 
-from ostler.qa.compile import _HTTP_METHODS
+from ostler.qa.compile_http import HTTP_METHODS
 from ostler.qa.runbook import bullet_text
 
 
@@ -17,9 +17,9 @@ def _url(value: str) -> str:
 
 
 def _http_method(value: str) -> str:
-    if bullet_text(value).upper() in _HTTP_METHODS:
+    if bullet_text(value).upper() in HTTP_METHODS:
         return ""
-    return "it does not spell one of " + "/".join(_HTTP_METHODS)
+    return "it does not spell one of " + "/".join(HTTP_METHODS)
 
 
 VALUE_KINDS: dict[str, Callable[[str], str]] = {

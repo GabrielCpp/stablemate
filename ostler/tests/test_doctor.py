@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+import inspect
 import re
 import subprocess
 from pathlib import Path
@@ -10,7 +11,16 @@ import pytest
 from ostler import crud, doctor
 from ostler.cli import main
 from ostler.model import load
+from ostler.qa import book_index
 from ostler.qa import compile as compile_mod
+from ostler.qa import compile_cli
+from ostler.qa import compile_http
+from ostler.qa import compile_journey
+from ostler.qa import compile_maestro
+from ostler.qa import compile_page
+from ostler.qa import compile_playwright
+from ostler.qa import compile_support
+from ostler.qa import plan_source
 from ostler.qa.context import build_context
 
 from conftest import epic_md, screen_md, story_md, write
@@ -696,10 +706,11 @@ def test_path_outside_the_book_is_refused_rather_than_reported_clean(repo: Path,
 
 def test_every_gap_kind_has_its_own_branch_in_the_doctor_bridge():
     """`gap_findings` names every kind `compile_plan` mints — no kind reaches the catch-all."""
-    tree = ast.parse((Path(compile_mod.__file__)).read_text())
     minted = {
         node.args[1].value
-        for node in ast.walk(tree)
+        for module in (compile_mod, compile_cli, compile_http, compile_page, compile_playwright,
+                       compile_maestro, compile_journey, compile_support, book_index, plan_source)
+        for node in ast.walk(ast.parse(inspect.getsource(module)))
         if isinstance(node, ast.Call)
         and isinstance(node.func, ast.Name)
         and node.func.id == "Gap"

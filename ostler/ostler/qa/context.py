@@ -909,8 +909,7 @@ def cmd_context(
             exclude_paths=exclude_paths,
             repositories=repositories,
         )
-        story_name = str(packet.get("story", "") or "story")
-        annotate_deferred_obligations(packet, story=story_name)
+        annotate_deferred_obligations(packet)
         json_path, md_path = write_context(packet, spec_dir)
     except (OSError, RuntimeError, ValueError) as exc:
         return QaOutcome(ok=False, message=str(exc), status="invalid",

@@ -13,17 +13,8 @@ import yaml
 from ostler import checks
 from ostler.qa.compile import (
     Gap,
-    DriverSpec,
-    MAESTRO,
-    PLAYWRIGHT,
-    PYTHON,
     Plan,
     Refusal,
-    _BUILT_TARGETS,
-    _DISPATCH_TABLE,
-    _OBSERVE_ROW,
-    _dispatch_target,
-    _unobservable_gap,
     annotate_deferred_obligations as _annotate_deferred_obligations,
     book_digest,
     cmd_compile_plan as _cmd_compile_plan,
@@ -31,7 +22,12 @@ from ostler.qa.compile import (
     compile_plan_gaps as _compile_plan_gaps,
     deferred_obligations as _deferred_obligations,
 )
+from ostler.qa.compile_support import MAESTRO, PLAYWRIGHT, PYTHON, DriverSpec
+from ostler.qa.compile_support import unobservable_gap as _unobservable_gap
+from ostler.qa.dispatch import BUILT_TARGETS, DISPATCH_TABLE, OBSERVE_ROW, dispatch_target
 from ostler.qa.outcome import QaOutcome
+from ostler.qa.packet import packet_of
+from ostler.qa.plan_source import ScenarioRefusal
 
 
 _BASE_URL = "http://localhost:8000"
@@ -87,7 +83,7 @@ def _obligation(oid: str, **extra: object) -> dict:
 
 
 def _context(*obligations: dict) -> dict:
-    return {"story": "demo-story", "obligations": list(obligations), "navigation": {"": {"driver": "http"}}}
+    return {"story": {"slug": "demo-story"}, "obligations": list(obligations), "navigation": {"": {"driver": "http"}}}
 
 
 def _covers(source: str) -> set[str]:
@@ -1103,7 +1099,7 @@ def test_states_no_longer_withholds_exclusive_with_on_the_same_node() -> None:
 
 
 def test_unarranged_state_reaches_the_same_gap_on_every_driver() -> None:
-    """A check-less `states:` obligation on a `component` node dispatches to a different builder per surface driver (D1: `component` x `driver`, `_OBSERVE_ROW`) — web to the page builder, cli and http to their own."""
+    """A check-less `states:` obligation on a `component` node dispatches to a different builder per surface driver (D1: `component` x `driver`, `OBSERVE_ROW`) — web to the page builder, cli and http to their own."""
     requirement = "opens on `auto`."
 
     node = f"{_SCREEN}#coverage-type-select"
@@ -1415,9 +1411,9 @@ def test_a_bullet_value_wrapped_across_source_lines_still_compiles() -> None:
 
 def test_an_unavailable_role_set_degrades_to_a_selector_never_to_skipped_validation(monkeypatch) -> None:
     """Finding 9: when Playwright's `AriaRole` set cannot be derived (the `qa` extra missing, or a future playwright release moving the private module), `_MATCHABLE_ROLES` is `None` — and that must never be read as "validation is optional." `role: generic` must still not compile to `by_role("generic")`; it must fall through to `selector:` exactly as when the role set is known and `generic` is excluded from it."""
-    import ostler.qa.compile as compile_mod
+    import ostler.qa.compile_playwright as compile_playwright
 
-    monkeypatch.setattr(compile_mod, "_MATCHABLE_ROLES", None)
+    monkeypatch.setattr(compile_playwright, "_MATCHABLE_ROLES", None)
     screen = "docs/features/policy/gui/screens/policy-list.md"
     context = _navigation_context(
         _page_obligation("okf:policy-list:generic-role:visible:1", f"{screen}#generic-role",
@@ -1581,6 +1577,59 @@ def test_the_scaffold_click_gap_does_not_claim_does_is_unresolved() -> None:
     assert "does:" not in details[0]
 
 
+def test_a_click_trigger_is_the_click_the_scenario_performs() -> None:
+    button = f"{_SCREEN}#create-policy-button"
+    interaction = f"{_SCREEN}#submit-new-policy"
+    interaction_oid = "okf:new-policy:submit-new-policy:does:1"
+    context = _navigation_context(
+        _page_obligation("okf:new-policy:create-policy-button:visible:1", button,
+                          locators={"role": ["button"], "name": ["Create policy"]},
+                          checks=[_visible("button:Create policy")]),
+        _page_obligation(interaction_oid, interaction,
+                          locators={"on": ["[create-policy-button](#create-policy-button)"],
+                                    "trigger": ["click"],
+                                    "does": ["adds a policy and shows it"]},
+                          checks=[_located("#policy-table", f"{_SCREEN}#policy-table",
+                                           {"role": ["table"], "name": ["Policies on file"]})]),
+        navigation=_arrival_navigation(),
+    )
+    source, gaps = compile_plan_gaps(context, story="demo-story")
+    assert source is not None
+    assert [g for g in gaps if g.obligation_id == interaction_oid] == []
+    assert interaction_oid in _covers(source)
+    assert 'qa.by_role("button", name="Create policy").click()' in source
+
+
+def test_a_keyboard_claim_is_checked_on_arrival_before_anything_is_clicked() -> None:
+    button = f"{_SCREEN}#create-policy-button"
+    button_locators = {"role": ["button"], "name": ["Create policy"]}
+    interaction = f"{_SCREEN}#submit-new-policy"
+    interaction_locators = {"on": ["[create-policy-button](#create-policy-button)"],
+                            "trigger": ["click"], "keyboard": ["Enter"]}
+    keyboard_oid = "okf:new-policy:submit-new-policy:keyboard:1"
+    focusable = {"call": "it", "name": "focusable",
+                 "args": {"locator": "#create-policy-button", "activates": "Enter"},
+                 "locates": {"locator": {"node": button, "locators": button_locators}}}
+    context = _navigation_context(
+        _page_obligation("okf:new-policy:create-policy-button:visible:1", button,
+                          locators=button_locators, checks=[_visible("button:Create policy")]),
+        _page_obligation(keyboard_oid, interaction, locators=interaction_locators,
+                          checks=[focusable]),
+        _page_obligation("okf:new-policy:submit-new-policy:does:1", interaction,
+                          locators=interaction_locators,
+                          checks=[_located("#policy-table", f"{_SCREEN}#policy-table",
+                                           {"role": ["table"], "name": ["Policies on file"]})]),
+        navigation=_arrival_navigation(),
+    )
+    source, gaps = compile_plan_gaps(context, story="demo-story")
+    assert source is not None
+    assert [g for g in gaps if g.obligation_id == keyboard_oid] == []
+    (scenario,) = [s for s in source.split("@scenario(")[1:] if keyboard_oid in s]
+    assert ".click()" not in scenario
+    assert ('qa.verify("focusable", qa.by_role("button", name="Create policy"), '
+            'locator="#create-policy-button", activates="Enter"') in scenario
+
+
 def test_a_gapped_but_covered_obligation_is_not_deferred() -> None:
     """The `open-new-widget` shape: a real `covers=[...]` claim stands beside its own gap on purpose (`_ARRANGEMENT_GAPS`)."""
     button = f"{_SCREEN}#create-policy-button"
@@ -1598,7 +1647,7 @@ def test_a_gapped_but_covered_obligation_is_not_deferred() -> None:
                                            {"role": ["table"], "name": ["Policies on file"]})]),
         navigation=_arrival_navigation(),
     )
-    deferred = _deferred_obligations(context, story="demo-story")
+    deferred = _deferred_obligations(packet_of(context), story="demo-story")
     assert interaction_oid not in deferred
 
 
@@ -1615,7 +1664,7 @@ def test_a_gapped_and_uncovered_obligation_is_deferred_with_its_gap() -> None:
                                            {"role": ["table"], "name": ["Policies on file"]})]),
         navigation=_arrival_navigation(),
     )
-    deferred = _deferred_obligations(context, story="demo-story")
+    deferred = _deferred_obligations(packet_of(context), story="demo-story")
     assert interaction_oid in deferred
     assert deferred[interaction_oid].kind == "unresolved-precondition"
 
@@ -2293,27 +2342,27 @@ def test_a_page_scenario_with_no_http_claim_binds_no_window() -> None:
 def test_a_node_nobody_performs_is_observed_by_the_driver_of_its_own_surface() -> None:
     """A `flow` orders steps that are performed; a `component`, a `screen`, and a `field` are places a claim is true."""
     for node_type in ("flow", "component", "screen", "field"):
-        assert _dispatch_target(node_type, "web") == ("playwright", "", "")
-        assert _dispatch_target(node_type, "http") == ("http", "", "")
-        assert _dispatch_target(node_type, "cli") == ("cli", "", "")
-        assert _dispatch_target(node_type, "mobile") == ("maestro", "", "")
-    target, detail, kind = _dispatch_target("interaction", "http")
-    assert target is None and "names no target" in detail
-    assert kind == "uncompilable-claim"
+        assert dispatch_target(node_type, "web") == "playwright"
+        assert dispatch_target(node_type, "http") == "http"
+        assert dispatch_target(node_type, "cli") == "cli"
+        assert dispatch_target(node_type, "mobile") == "maestro"
+    refusal = dispatch_target("interaction", "http")
+    assert isinstance(refusal, ScenarioRefusal) and "names no target" in refusal.detail
+    assert refusal.kind == "uncompilable-claim"
 
 
 def test_a_concept_node_gets_its_own_gap_message_not_a_generic_no_row_for() -> None:
-    """`concept` names no row in `_OBSERVE_ROW` or `_DISPATCH_TABLE` either, exactly like an unrouted type — but it is unrouted for a different reason: a concept is a definition, not a place a claim is observed, so no row is owed and the generic "names no row for" phrasing would mislead an author into adding one."""
-    target, detail, kind = _dispatch_target("concept", "web")
-    assert target is None
-    assert kind == "uncompilable-claim"
-    assert "definition" in detail
-    assert "names no row for" not in detail
-    other_target, other_detail, other_kind = _dispatch_target("widget", "web")
-    assert other_target is None
-    assert other_kind == "uncompilable-claim"
-    assert "names no row for" in other_detail
-    assert "definition" not in other_detail
+    """`concept` names no row in `OBSERVE_ROW` or `DISPATCH_TABLE` either, exactly like an unrouted type — but it is unrouted for a different reason: a concept is a definition, not a place a claim is observed, so no row is owed and the generic "names no row for" phrasing would mislead an author into adding one."""
+    refusal = dispatch_target("concept", "web")
+    assert isinstance(refusal, ScenarioRefusal)
+    assert refusal.kind == "uncompilable-claim"
+    assert "definition" in refusal.detail
+    assert "names no row for" not in refusal.detail
+    other = dispatch_target("widget", "web")
+    assert isinstance(other, ScenarioRefusal)
+    assert other.kind == "uncompilable-claim"
+    assert "names no row for" in other.detail
+    assert "definition" not in other.detail
 
 
 def test_a_field_claim_compiles_on_the_screen_it_sits_on() -> None:
@@ -2334,7 +2383,7 @@ def test_a_field_claim_compiles_on_the_screen_it_sits_on() -> None:
 
 
 def test_a_field_claim_on_a_cli_surface_compiles_through_the_cli_builder() -> None:
-    """The same claim, on a `cli`-driven surface: `field` reaches the cli builder through `_OBSERVE_ROW` exactly as `command` reaches it through `_DISPATCH_TABLE`'s invariant row."""
+    """The same claim, on a `cli`-driven surface: `field` reaches the cli builder through `OBSERVE_ROW` exactly as `command` reaches it through `DISPATCH_TABLE`'s invariant row."""
     oid = "okf:built-target-probe:field:exit-status:1"
     context = _context(
         _obligation(
@@ -2470,6 +2519,89 @@ def test_a_journeys_claim_is_observed_where_its_last_step_left_the_world() -> No
     assert _gap_kinds(gaps, oid) == []
 
 
+_CLI = "docs/features/tally/tally.md"
+_CLI_FLOW = "docs/features/tally/flows/track-a-trip.md"
+
+
+def _cli_step_node(anchor: str, *argvs: list[str]) -> dict:
+    return {"id": f"{_CLI}#{anchor}:carrier", "node": f"{_CLI}#{anchor}", "nodeType": "command",
+            "source": _CLI, "surface": "cli", "required": False, "locators": {},
+            "checksDeclared": [],
+            "actsDeclared": [{"call": f"invoke(argv={argv!r})", "name": "invoke",
+                              "args": {"argv": argv}} for argv in argvs]}
+
+
+def _cli_journey_context(*step_nodes: dict, checks: list[dict]) -> tuple[dict, str]:
+    oid = f"okf:{_CLI_FLOW}:end-state"
+    context = _navigation_context(
+        _flow_obligation(oid, source=_CLI_FLOW, surface="cli",
+                         steps=[_step(node["node"], "command", "cli") for node in step_nodes],
+                         checks=checks),
+        *step_nodes,
+        navigation={"cli": {"start": _CLI, "surface": "cli", "driver": "cli", "counts": {},
+                            "routes": {}, "unreachable": [], "undeclared": []}},
+    )
+    context["cliBinaries"] = {_CLI: "tally"}
+    return context, oid
+
+
+def test_a_cli_journey_runs_each_step_in_one_directory_and_compares_it_either_side() -> None:
+    context, oid = _cli_journey_context(
+        _cli_step_node("init", ["init"]),
+        _cli_step_node("add", ["add", "12.50"]),
+        checks=[{"call": "it", "name": "exit_status", "args": {"code": 0}},
+                {"call": "it", "name": "created", "args": {"subject": "tally.json"}}],
+    )
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(result, Plan)
+    source = result.source
+    ast.parse(source)
+    assert oid in _covers(source)
+    assert _gap_kinds(result.gaps, oid) == []
+    before = source.index("before = qa.tree(qa.scenario_id)")
+    init = source.index('observed_1 = qa.tool("tally").run("init", cwd=qa.scenario_id)')
+    add = source.index('observed_2 = qa.tool("tally").run("add", "12.50", cwd=qa.scenario_id)')
+    after = source.index("after = qa.tree(qa.scenario_id)")
+    assert before < init < add < after
+    assert 'qa.verify("exit_status", observed_2, code=0' in source
+    assert 'qa.verify("created", (before, after), subject="tally.json"' in source
+    assert 'cli_cli = target("cli_cli", driver="python")' in source
+
+
+@pytest.mark.parametrize(
+    ("argvs", "fragment"),
+    [
+        ((), "declares no `run:`"),
+        ((["add", "1"], ["add", "2"]), "declares 2 different `run:`s"),
+    ],
+)
+def test_a_cli_journey_step_with_no_single_run_is_uncompilable(
+    argvs: tuple[list[str], ...], fragment: str,
+) -> None:
+    context, oid = _cli_journey_context(
+        _cli_step_node("init", ["init"]),
+        _cli_step_node("add", *argvs),
+        checks=[{"call": "it", "name": "exit_status", "args": {"code": 0}}],
+    )
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(result, Refusal)
+    assert _gap_kinds(result.gaps, oid) == ["uncompilable-claim"]
+    [gap] = [g for g in result.gaps if g.obligation_id == oid]
+    assert "step 2" in gap.detail and fragment in gap.detail
+
+
+def test_a_cli_journey_whose_page_names_no_binary_is_uncompilable() -> None:
+    context, oid = _cli_journey_context(
+        _cli_step_node("init", ["init"]),
+        checks=[{"call": "it", "name": "exit_status", "args": {"code": 0}}],
+    )
+    context["cliBinaries"] = {}
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(result, Refusal)
+    [gap] = [g for g in result.gaps if g.obligation_id == oid]
+    assert gap.kind == "uncompilable-claim" and "`binary:`" in gap.detail
+
+
 def test_a_journey_step_captures_a_field_its_own_verify_then_reads_back() -> None:
     """A `$.`-rooted capture on a step's node is a fact the *flow's own* `verify:` — running in this same scenario, after every step — is entitled to read back, the same way a strictly later obligation reads a `_scenario_body` capture back."""
     oid = f"okf:{_FLOW}:end-state"
@@ -2519,7 +2651,7 @@ def test_a_journeys_own_verify_referencing_nothing_captured_withdraws_it() -> No
 
 
 def test_a_journeys_own_verify_withdraws_wholesale_not_row_by_row() -> None:
-    """Two rows on the same flow obligation, only one of which references a capture nothing produced: the conjunction rule withdraws both, not just the one that referenced it — the same `whole`-obligation rule `_scenario_body` applies to a row `_operand` cannot observe, carried here to a row a reference cannot resolve."""
+    """Two rows on the same flow obligation, only one of which references a capture nothing produced: the conjunction rule withdraws both, not just the one that referenced it — the same `whole`-obligation rule `_scenario_body` applies to a row `operand_for` cannot observe, carried here to a row a reference cannot resolve."""
     oid = f"okf:{_FLOW}:end-state"
     post_node = _step_node(f"{_API}#post-things", {"route": ["POST /api/things"]})
     post_node["actsDeclared"] = [_body_act("name", "Widget A")]
@@ -3162,10 +3294,12 @@ def test_a_declared_capture_that_no_builder_accounts_for_is_refused() -> None:
         )
     )
     import ostler.qa.compile as compile_mod
+    import ostler.qa.compile_http as compile_http
 
     with pytest.raises(AssertionError, match="neither emitted nor gapped"):
         with pytest.MonkeyPatch.context() as patch:
-            patch.setattr(compile_mod, "_decline_captures", lambda *a, **k: None)
+            for module in (compile_mod, compile_http):
+                patch.setattr(module, "decline_captures", lambda *a, **k: None)
             compile_plan_gaps(context, story="demo-story")
 
 
@@ -3187,19 +3321,19 @@ def test_every_reachable_dispatch_target_is_built_or_named_as_an_exclusion() -> 
     """Completeness: nothing D1's table can dispatch to falls through the floor."""
     reachable = {
         target
-        for row in _DISPATCH_TABLE.values()
+        for row in DISPATCH_TABLE.values()
         for target in ([row] if isinstance(row, str) else row.values())
         if target
     }
-    reachable |= set(_OBSERVE_ROW.values())
-    accounted = _BUILT_TARGETS | set(_ACKNOWLEDGED_UNBUILT_TARGETS)
+    reachable |= set(OBSERVE_ROW.values())
+    accounted = BUILT_TARGETS | set(_ACKNOWLEDGED_UNBUILT_TARGETS)
     undecided = reachable - accounted
     assert not undecided, (
-        f"{sorted(undecided)} named by D1's table but neither built ({sorted(_BUILT_TARGETS)}) "
+        f"{sorted(undecided)} named by D1's table but neither built ({sorted(BUILT_TARGETS)}) "
         f"nor recorded as an acknowledged gap ({sorted(_ACKNOWLEDGED_UNBUILT_TARGETS)}) — decide "
         "one way or the other"
     )
-    assert _BUILT_TARGETS.isdisjoint(_ACKNOWLEDGED_UNBUILT_TARGETS), (
+    assert BUILT_TARGETS.isdisjoint(_ACKNOWLEDGED_UNBUILT_TARGETS), (
         "a target cannot claim both a builder and an acknowledged absence of one"
     )
 
@@ -3305,7 +3439,7 @@ def test_an_empty_argv_is_a_legal_bare_invocation() -> None:
 
 
 def test_an_invocation_on_a_cli_driven_surface_compiles_to_a_real_scenario() -> None:
-    """`invocation` is one of `_OBSERVED_TYPES` — nobody performs it, the claim is observed through whatever drives its surface — so a `cli`-driven surface routes it through `_OBSERVE_ROW` to the same `cli` target `command` reaches through `_DISPATCH_TABLE`."""
+    """`invocation` is one of `OBSERVED_TYPES` — nobody performs it, the claim is observed through whatever drives its surface — so a `cli`-driven surface routes it through `OBSERVE_ROW` to the same `cli` target `command` reaches through `DISPATCH_TABLE`."""
     oid = "okf:built-target-probe:invocation:cli:exit-status:1"
     context = _context(
         _obligation(
@@ -3332,6 +3466,41 @@ def test_an_invocation_on_a_cli_driven_surface_compiles_to_a_real_scenario() -> 
     assert "uncompilable-claim" not in {g.kind for g in gaps}
     assert oid in _covers(source)
     assert 'qa.tool("tally").run("import", cwd=qa.scenario_id)' in source
+
+
+def test_a_cli_claim_about_what_the_run_changed_compares_the_directory_either_side() -> None:
+    oid = "okf:built-target-probe:invocation:cli:created:1"
+    context = _context(
+        _obligation(
+            oid,
+            nodeType="invocation",
+            checksDeclared=[
+                {"call": "it", "name": "created", "args": {"subject": "tally.json"}},
+                {"call": "it", "name": "exit_status", "args": {"code": 0}},
+            ],
+            fixturesDeclared=[
+                {"name": "seeded-ledger", "args": [], "provides": "a ledger"},
+            ],
+            actsDeclared=[
+                {"call": 'invoke(argv=["init"])', "name": "invoke",
+                 "args": {"argv": ["init"]}},
+            ],
+        )
+    )
+    context["navigation"][""]["driver"] = "cli"
+    context["cliBinaries"] = {"docs/features/demo/api.md": "tally"}
+
+    source, gaps = compile_plan_gaps(context, story="demo-story")
+    assert source is not None
+    ast.parse(source)
+
+    assert _gap_kinds(gaps, oid) == []
+    assert oid in _covers(source)
+    before = source.index("before_1 = qa.tree(qa.scenario_id)")
+    run = source.index('observed_1 = qa.tool("tally").run("init", cwd=qa.scenario_id)')
+    after = source.index("after_1 = qa.tree(qa.scenario_id)")
+    assert before < run < after
+    assert 'qa.verify("created", (before_1, after_1), subject="tally.json"' in source
 
 
 def _built_target_probe_maestro() -> tuple[dict, str]:
@@ -3365,8 +3534,8 @@ _KNOWN_BUILT_TARGET_GAPS: dict[str, str] = {}
 
 
 def test_every_built_target_has_a_probe() -> None:
-    """The probe table direction 2 drives must cover `_BUILT_TARGETS` exactly — a target added there with no probe written is untested, not passing, and this is where that shows up."""
-    assert set(_BUILT_TARGET_PROBES) == _BUILT_TARGETS
+    """The probe table direction 2 drives must cover `BUILT_TARGETS` exactly — a target added there with no probe written is untested, not passing, and this is where that shows up."""
+    assert set(_BUILT_TARGET_PROBES) == BUILT_TARGETS
 
 
 @pytest.mark.parametrize(
@@ -3379,17 +3548,17 @@ def test_every_built_target_has_a_probe() -> None:
                 if name in _KNOWN_BUILT_TARGET_GAPS else []
             ),
         )
-        for name in sorted(_BUILT_TARGETS)
+        for name in sorted(BUILT_TARGETS)
     ],
 )
 def test_every_built_target_actually_emits_a_scenario(target: str) -> None:
-    """Direction 2, behavioural: `_BUILT_TARGETS` says this compiler emits a scenario for an obligation dispatched to *target* — so drive the compiler with one and read the plan it hands back, rather than re-asserting a second hardcoded "targets that work" list beside the one under test."""
+    """Direction 2, behavioural: `BUILT_TARGETS` says this compiler emits a scenario for an obligation dispatched to *target* — so drive the compiler with one and read the plan it hands back, rather than re-asserting a second hardcoded "targets that work" list beside the one under test."""
     context, oid = _BUILT_TARGET_PROBES[target]()
     source, gaps = compile_plan_gaps(context, story="demo-story")
     assert source is not None
     ast.parse(source)
     assert oid in _covers(source), (
-        f"{target!r} is in _BUILT_TARGETS but the compiler emitted no scenario covering "
+        f"{target!r} is in BUILT_TARGETS but the compiler emitted no scenario covering "
         f"{oid!r} — gaps recorded instead: {_gap_kinds(gaps, oid)}"
     )
     assert _gap_kinds(gaps, oid) == []
@@ -3464,6 +3633,69 @@ def test_an_obligation_off_the_launch_screen_gaps_unreachable_from_launch() -> N
     assert _gap_kinds(result.gaps, oid) == ["unreachable-from-launch"]
     (gap,) = [g for g in result.gaps if g.obligation_id == oid]
     assert other_screen in gap.detail and _SCREEN in gap.detail
+
+
+def _maestro_hop_probe(hop_locators: dict[str, list[str]]) -> tuple[dict, str, str]:
+    context, oid = _built_target_probe_maestro()
+    launch = "docs/features/policy/gui/screens/home.md"
+    hop_node = f"{launch}#open-probe"
+    policy = context["navigation"]["policy"]
+    policy["start"] = launch
+    policy["launchScreen"] = launch
+    policy["routes"] = {launch: [], _SCREEN: [{
+        "from": launch, "to": _SCREEN, "kind": "flow-step", "action": "interact",
+        "node": hop_node, "label": "open-probe",
+    }]}
+    context["obligations"].append(_page_obligation(
+        "okf:home:open-probe:visible:1", hop_node, source=launch, locators=hop_locators,
+        checks=[_visible("text=Open the probe")],
+        fixtures=[{"name": "seeded-ledger", "args": [], "provides": "a ledger"}],
+    ))
+    context["obligations"].append(_page_obligation(
+        "okf:home:probe-link:visible:1", f"{launch}#probe-link", source=launch,
+        locators={"selector": ["testID=probe-link"], "name": ["Open the probe"]},
+        checks=[_visible("text=Open the probe")],
+        fixtures=[{"name": "seeded-ledger", "args": [], "provides": "a ledger"}],
+    ))
+    return context, oid, launch
+
+
+def test_an_obligation_off_the_launch_screen_taps_its_way_there_first() -> None:
+    context, oid, _launch = _maestro_hop_probe({"on": ["[probe-link](#probe-link)"]})
+
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(result, Plan)
+    assert _gap_kinds(result.gaps, oid) == []
+    assert oid in _covers(result.source)
+    (flow_text,) = [text for text in result.files.values() if "probe-widget" in text]
+    _header, commands = yaml.safe_load_all(flow_text)
+    assert commands[0] == "launchApp"
+    assert commands[1] == {"tapOn": {"id": "probe-link"}}
+
+
+def test_a_launch_hop_with_no_addressable_control_gaps_unresolved_precondition() -> None:
+    context, oid, _launch = _maestro_hop_probe({})
+
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert _gap_kinds(result.gaps, oid) == ["unresolved-precondition"]
+    (gap,) = [g for g in result.gaps if g.obligation_id == oid]
+    assert "open-probe" in gap.detail
+
+
+def test_a_launch_hop_missing_its_node_refuses_loudly() -> None:
+    context, _oid, _launch = _maestro_hop_probe({"on": ["[probe-link](#probe-link)"]})
+    del context["navigation"]["policy"]["routes"][_SCREEN][0]["node"]
+
+    with pytest.raises(ValueError, match="without a string `node`"):
+        _compile_plan_gaps(context, story="demo-story")
+
+
+def test_a_launch_route_that_is_not_a_list_refuses_loudly() -> None:
+    context, _oid, _launch = _maestro_hop_probe({"on": ["[probe-link](#probe-link)"]})
+    context["navigation"]["policy"]["routes"][_SCREEN] = "open-probe"
+
+    with pytest.raises(ValueError, match="is not a list of hops"):
+        _compile_plan_gaps(context, story="demo-story")
 
 
 def test_a_mobile_journey_starting_on_the_launch_screen_compiles_end_to_end() -> None:
