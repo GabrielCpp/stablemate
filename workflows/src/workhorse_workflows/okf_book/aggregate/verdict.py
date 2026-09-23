@@ -84,19 +84,17 @@ def claim_texts(contracts: tuple[NumberedContract, ...]) -> tuple[str, ...]:
     )
 
 
-def still_cleared(cleared: tuple[Cleared, ...], digests: Mapping[str, str]) -> dict[str, Cleared]:
+def still_cleared(cleared: tuple[Cleared, ...], digests: Mapping[str, str]) -> tuple[Cleared, ...]:
     """Each cleared node whose text is still the text it was cleared at."""
-    return {entry.node: entry for entry in cleared if digests.get(entry.node) == entry.digest}
+    return tuple(entry for entry in cleared if digests.get(entry.node) == entry.digest)
 
 
-def verdict_problems(
-    verdict: Verdict, claims: tuple[str, ...], digests: Mapping[str, str], cleared: tuple[Cleared, ...],
-) -> tuple[str, ...]:
+def verdict_problems(verdict: Verdict, claims: tuple[str, ...], standing: tuple[Cleared, ...]) -> tuple[str, ...]:
     """The problems the verdict charges the job: each claim no node states, each finding's problem, then the rest.
 
     A problem on a node still cleared is dropped, and a claim such a node states is stated.
     """
-    held = still_cleared(cleared, digests)
+    held = {entry.node: entry for entry in standing}
     stated_by_cleared = {claim for entry in held.values() for claim in entry.claims}
     stated = {finding.claim for finding in verdict.claims if finding.node}
     unstated = tuple(
@@ -115,21 +113,22 @@ def verdict_problems(
 
 
 def cleared_after(
-    verdict: Verdict, claims: tuple[str, ...], digests: Mapping[str, str], cleared: tuple[Cleared, ...],
+    verdict: Verdict, claims: tuple[str, ...], digests: Mapping[str, str], standing: tuple[Cleared, ...],
 ) -> tuple[Cleared, ...]:
-    """The nodes cleared once this verdict is in: those still cleared, and each judged node it raised nothing against."""
-    held = still_cleared(cleared, digests)
+    """The nodes cleared once this verdict is in: those still cleared, judged or not, and each judged node it raised nothing against."""
+    held = {entry.node: entry for entry in standing}
     faulted = {finding.node for finding in verdict.claims if finding.problem} | {found.node for found in verdict.problems}
     stated_on: dict[str, set[str]] = {}
     for finding in verdict.claims:
         if finding.node and not finding.problem and 1 <= finding.claim <= len(claims):
             stated_on.setdefault(finding.node, set()).add(claims[finding.claim - 1])
-    return tuple(
-        Cleared(
+    judged = {
+        node: Cleared(
             node=node,
             digest=digest,
             claims=tuple(sorted(stated_on.get(node, set()) | set(held[node].claims if node in held else ()))),
         )
         for node, digest in digests.items()
         if node in held or node not in faulted
-    )
+    }
+    return tuple({**held, **judged}.values())

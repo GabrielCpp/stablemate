@@ -35,14 +35,14 @@ def test_a_verdict_that_states_every_claim_with_no_problem_passes() -> None:
     claims = claim_texts(numbered_contracts(CONTRACTS))
     verdict = Verdict(claims=tuple(ClaimFinding(claim=n, node=f"page.md#n{n}") for n in (1, 2, 3)))
 
-    assert verdict_problems(verdict, claims, DIGESTS, ()) == ()
+    assert verdict_problems(verdict, claims, ()) == ()
 
 
 def test_each_claim_with_no_node_is_named_with_its_code() -> None:
     claims = claim_texts(numbered_contracts(CONTRACTS))
     verdict = Verdict(claims=(ClaimFinding(claim=1, node="page.md#add"), ClaimFinding(claim=2)))
 
-    problems = verdict_problems(verdict, claims, DIGESTS, ())
+    problems = verdict_problems(verdict, claims, ())
 
     assert len(problems) == 2
     assert "Claim 2, It refuses a non-numeric amount. (`tally/add.py::add`), is stated on no page." in problems[0]
@@ -57,7 +57,7 @@ def test_a_finding_s_problem_and_the_uncovered_problems_are_charged_after_the_un
         problems=(NodeProblem(node="page.md#report", problem="the example contradicts the exit code."),),
     )
 
-    assert verdict_problems(verdict, claims, DIGESTS, ()) == (
+    assert verdict_problems(verdict, claims, ()) == (
         "page.md#add: its check passes on a violation.",
         "page.md#report: the example contradicts the exit code.",
     )
@@ -66,7 +66,7 @@ def test_a_finding_s_problem_and_the_uncovered_problems_are_charged_after_the_un
 def test_a_cleared_node_stands_only_while_its_digest_is_unchanged() -> None:
     cleared = (Cleared(node="page.md#add", digest="a1"), Cleared(node="page.md#report", digest="r0"))
 
-    assert list(still_cleared(cleared, DIGESTS)) == ["page.md#add"]
+    assert [entry.node for entry in still_cleared(cleared, DIGESTS)] == ["page.md#add"]
 
 
 def test_a_problem_on_a_node_still_cleared_is_dropped_and_the_claims_it_states_count() -> None:
@@ -78,7 +78,7 @@ def test_a_problem_on_a_node_still_cleared_is_dropped_and_the_claims_it_states_c
         problems=(NodeProblem(node="page.md#add", problem="it contradicts the report."),),
     )
 
-    assert verdict_problems(verdict, claims, DIGESTS, cleared) == ()
+    assert verdict_problems(verdict, claims, still_cleared(cleared, DIGESTS)) == ()
 
 
 def test_a_problem_on_a_cleared_node_whose_text_changed_is_charged() -> None:
@@ -89,7 +89,7 @@ def test_a_problem_on_a_cleared_node_whose_text_changed_is_charged() -> None:
         problems=(NodeProblem(node="page.md#add", problem="it contradicts the report."),),
     )
 
-    problems = verdict_problems(verdict, claims, DIGESTS, cleared)
+    problems = verdict_problems(verdict, claims, still_cleared(cleared, DIGESTS))
 
     assert len(problems) == 2
     assert "Claim 2," in problems[0]
@@ -118,7 +118,16 @@ def test_a_node_still_cleared_keeps_its_claims_whatever_this_round_says_of_it() 
         problems=(NodeProblem(node="page.md#report", problem="it contradicts the add section."),),
     )
 
-    after = {entry.node: entry for entry in cleared_after(verdict, claims, DIGESTS, cleared)}
+    after = {entry.node: entry for entry in cleared_after(verdict, claims, DIGESTS, still_cleared(cleared, DIGESTS))}
 
     assert set(after) == {"page.md", "page.md#add", "page.md#report"}
     assert after["page.md#report"] == Cleared(node="page.md#report", digest="r1", claims=(claims[2],))
+
+
+def test_a_node_still_cleared_on_a_page_this_round_did_not_judge_stays_cleared() -> None:
+    claims = claim_texts(numbered_contracts(CONTRACTS))
+    unread = Cleared(node="other.md#sum", digest="s1", claims=(claims[2],))
+    verdict = Verdict(claims=(ClaimFinding(claim=1, node="page.md#add"), ClaimFinding(claim=2, node="page.md#add"), ClaimFinding(claim=3)))
+
+    assert verdict_problems(verdict, claims, (unread,)) == ()
+    assert unread in cleared_after(verdict, claims, DIGESTS, (unread,))

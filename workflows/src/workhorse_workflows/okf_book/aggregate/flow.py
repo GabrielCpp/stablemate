@@ -40,7 +40,7 @@ from workhorse_workflows.okf_book.shared.confine import (
     snapshot,
 )
 from workhorse_workflows.okf_book.shared.contracts import Contract
-from workhorse_workflows.okf_book.aggregate.digests import node_digests
+from workhorse_workflows.okf_book.aggregate.digests import node_digests, page_digests
 from workhorse_workflows.okf_book.aggregate.verdict import (
     Verdict,
     claim_texts,
@@ -216,7 +216,8 @@ class Aggregate(BookFlow):
 
         The job's own pages come first, and the pages take up to half of what the prompt leaves. A first page over that goes alone,
         and the contracts get the rest. A page past the ceiling cannot be judged, and charges the job a turn.
-        The judge is told which nodes an earlier round cleared, as many as fit their share. The code drops a problem on any of them.
+        A node an earlier round cleared stays cleared while its text holds, on a page judged now or not, and drops out once it changes.
+        The judge is told the ones on the pages it reads, as many as fit their share. The code drops a problem on any of them.
         """
         root, job = self.root, ledger.job
         judged_rels = judged_pages(root, job, ledger.before)
@@ -226,7 +227,8 @@ class Aggregate(BookFlow):
         if not judged.kept:
             return self._retry(ledger.charged((UNJUDGED_PROBLEM,)))
         digests = node_digests(root, judged.kept)
-        held = pack_told(name_tokens(sorted(still_cleared(ledger.cleared, digests))), CLEARED_BUDGET_TOKENS)
+        ledger = ledger.with_cleared(still_cleared(ledger.cleared, page_digests(root, (entry.node for entry in ledger.cleared))))
+        cleared_told = pack_told(name_tokens(sorted(entry.node for entry in ledger.cleared if entry.node in digests)), CLEARED_BUDGET_TOKENS)
         if judged.left_out:
             self.logger.warning("%d changed pages are past the verify turn's budget and go unjudged", judged.left_out)
         contracts = job_contracts(root, self.records_dir, job, budget=TURN_BUDGET_TOKENS - fixed - judged.tokens)
@@ -240,7 +242,7 @@ class Aggregate(BookFlow):
                 "contracts": [contract.model_dump() for contract in numbered],
                 "other_pages": list(other_pages.kept),
                 "other_pages_left_out": other_pages.left_out,
-                "cleared": list(held.kept),
+                "cleared": list(cleared_told.kept),
                 "kind": job.kind.value,
             },
             cwd=root,
@@ -258,7 +260,7 @@ class Aggregate(BookFlow):
         Anything else charges the job a turn.
         """
         record_turn(self.records_dir, metric)
-        problems = verdict_problems(verdict, claims, digests, ledger.cleared)
+        problems = verdict_problems(verdict, claims, ledger.cleared)
         ledger = ledger.with_cleared(cleared_after(verdict, claims, digests, ledger.cleared))
         if not problems:
             return Continue(verdict, self.stamp_job, ledger=ledger)

@@ -26,3 +26,9 @@ def node_digests(root: Path, pages: Iterable[str]) -> dict[str, str]:
             if anchor:
                 digests[f"{page}#{anchor}"] = _digest(section.text)
     return digests
+
+
+def page_digests(root: Path, nodes: Iterable[str]) -> dict[str, str]:
+    """The digests of every page one of `nodes` sits on that still exists, judged this round or not."""
+    pages = sorted({node.partition("#")[0] for node in nodes})
+    return node_digests(root, (page for page in pages if (root / page).is_file()))
