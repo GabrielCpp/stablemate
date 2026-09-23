@@ -220,13 +220,13 @@ class Aggregate(BookFlow):
         """
         root, job = self.root, ledger.job
         judged_rels = judged_pages(root, job, ledger.before)
-        digests = node_digests(root, judged_rels)
-        held = pack_told(name_tokens(sorted(still_cleared(ledger.cleared, digests))), CLEARED_BUDGET_TOKENS)
         other_pages = pack_told(name_tokens(_book_pages_besides(root, job.service, judged_rels)), PAGES_BUDGET_TOKENS)
-        fixed = prompt_tokens(VERIFY_PROMPT) + other_pages.tokens + held.tokens
+        fixed = prompt_tokens(VERIFY_PROMPT) + other_pages.tokens + CLEARED_BUDGET_TOKENS
         judged = pack_read(file_tokens(root, judged_rels), (TURN_BUDGET_TOKENS - fixed) // 2)
         if not judged.kept:
             return self._retry(ledger.charged((UNJUDGED_PROBLEM,)))
+        digests = node_digests(root, judged.kept)
+        held = pack_told(name_tokens(sorted(still_cleared(ledger.cleared, digests))), CLEARED_BUDGET_TOKENS)
         if judged.left_out:
             self.logger.warning("%d changed pages are past the verify turn's budget and go unjudged", judged.left_out)
         contracts = job_contracts(root, self.records_dir, job, budget=TURN_BUDGET_TOKENS - fixed - judged.tokens)
