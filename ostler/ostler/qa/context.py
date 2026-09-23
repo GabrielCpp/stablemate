@@ -712,7 +712,7 @@ def build_context(
         deduped_obligations.append(obligation)
     obligations = deduped_obligations
     navigation = _navigation(head_graph)
-    cli_binaries = _cli_binaries(nodes_by_id)
+    cli_binaries = _run_binaries_by_path(nodes_by_id)
     return {
         "version": 2 if repositories else 1,
         "available": bool(nodes_by_id),
@@ -1290,6 +1290,27 @@ def _cli_binaries(nodes_by_id: dict[str, dict[str, Any]]) -> dict[str, str]:
         values = _values(node.get("bullets", {}).get("binary"))
         if values and values[0].strip():
             binaries[str(node["path"])] = values[0].strip()
+    return binaries
+
+
+def _run_binaries_by_path(nodes_by_id: dict[str, dict[str, Any]]) -> dict[str, str]:
+    """The executable a page's `run:` resolves to, keyed by the page's file `path`.
+
+    A `cli` file resolves to its own declared binary. Any other file of a surface with exactly one
+    `cli` file borrows that file's binary, so a format's field that states a `run:` names the same
+    executable the surface's commands do.
+    """
+    declared = _cli_binaries(nodes_by_id)
+    files = [node for node in nodes_by_id.values() if node.get("kind") == "file"]
+    cli_paths_by_surface: dict[str, list[str]] = {}
+    for node in files:
+        if node.get("type") == "cli":
+            cli_paths_by_surface.setdefault(str(node.get("surface") or ""), []).append(str(node["path"]))
+    binaries = dict(declared)
+    for node in files:
+        surface_cli_paths = cli_paths_by_surface.get(str(node.get("surface") or ""), [])
+        if node.get("type") != "cli" and len(surface_cli_paths) == 1 and surface_cli_paths[0] in declared:
+            binaries[str(node["path"])] = declared[surface_cli_paths[0]]
     return binaries
 
 

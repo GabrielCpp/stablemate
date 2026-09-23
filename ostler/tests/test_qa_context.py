@@ -356,6 +356,36 @@ def test_cli_binaries_key_the_owning_files_binary_by_shared_path(tmp_path: Path)
     assert packet["cliBinaries"] == {"docs/features/demo/tally.md": "tally"}
 
 
+def test_a_surface_with_one_cli_lends_its_binary_to_its_other_pages(tmp_path: Path):
+    """A format's field on a CLI surface states its `run:` against the surface's only `cli`, so it compiles to the same executable."""
+    (tmp_path / "docs/features/demo/formats").mkdir(parents=True)
+    (tmp_path / "docs/features/demo/tally.md").write_text(
+        "---\ntype: cli\nslug: tally\ntitle: Tally\n---\n# Tally\n\n"
+        "- binary: tally\n- code: `app/tally.py::run`\n\nSee [rows](formats/rows.md).\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "docs/features/demo/formats/rows.md").write_text(
+        "---\ntype: format\nslug: rows\ntitle: Rows\n---\n# Rows\n\n- code: `app/tally.py::run`\n",
+        encoding="utf-8",
+    )
+    target = tmp_path / "app/tally.py"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("def run():\n    return 'old'\n", encoding="utf-8")
+    _git(tmp_path, "init")
+    _git(tmp_path, "config", "user.email", "qa@example.com")
+    _git(tmp_path, "config", "user.name", "QA")
+    _git(tmp_path, "add", ".")
+    _git(tmp_path, "commit", "-m", "base")
+    base = _git(tmp_path, "rev-parse", "HEAD")
+
+    packet = build_context(tmp_path, base=base, source_roots={"demo": ["app"]})
+
+    assert packet["cliBinaries"] == {
+        "docs/features/demo/tally.md": "tally",
+        "docs/features/demo/formats/rows.md": "tally",
+    }
+
+
 def test_an_invocation_and_a_field_carry_the_run_their_claim_is_about(tmp_path: Path):
     (tmp_path / "docs/features/demo").mkdir(parents=True)
     (tmp_path / "docs/features/demo/tally.md").write_text(
