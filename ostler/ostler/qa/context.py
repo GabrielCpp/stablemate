@@ -223,6 +223,7 @@ class SharedCitations:
 
 
 Demotion = Callable[[CitingFamilies], SharedCitations]
+FamilyRoot = Callable[[str, set[str]], str]
 
 
 def shared_citations(citing: CitingFamilies) -> SharedCitations:
@@ -239,20 +240,12 @@ def no_demotion(_citing: CitingFamilies) -> SharedCitations:
 
 
 def _citing_families(
-    direct_reasons: dict[str, list[dict[str, str]]], nodes_by_id: dict[str, dict[str, Any]]
+    file_owners: Mapping[str, set[str]], symbol_owners: Mapping[str, set[str]], family_root: FamilyRoot
 ) -> CitingFamilies:
     """Count the declared families whose nodes own each changed file and cite each changed symbol."""
-    file_owners: dict[str, set[str]] = {}
-    symbol_owners: dict[str, set[str]] = {}
-    for node_id, reasons in direct_reasons.items():
-        for reason in reasons:
-            if reason["kind"] == "file-owner":
-                file_owners.setdefault(reason["ref"], set()).add(node_id)
-            elif reason["kind"] == "changed-code":
-                symbol_owners.setdefault(reason["ref"], set()).add(node_id)
 
     def families(owners: set[str]) -> int:
-        return len({_family_root(node_id, owners, nodes_by_id) for node_id in owners})
+        return len({family_root(node_id, owners) for node_id in owners})
 
     return CitingFamilies(
         {ref: families(owners) for ref, owners in file_owners.items()},
@@ -415,6 +408,8 @@ def build_context(
     ]
 
     direct_reasons: dict[str, list[dict[str, str]]] = {}
+    file_owners: dict[str, set[str]] = {}
+    symbol_owners: dict[str, set[str]] = {}
     changed_code: list[dict[str, Any]] = []
     for change in changes:
         change_book_root = "" if change.repository else book_root
@@ -461,18 +456,17 @@ def build_context(
                         direct_reasons.setdefault(node_id, []).append(
                             {"kind": "changed-code", "ref": ref, "key": key}
                         )
+                        symbol_owners.setdefault(ref, set()).add(node_id)
                 elif not owned_file and any(
                     _ref_owns_change(item, book_change)
                     for item in cited
                 ):
                     mapped = owned_file = True
+                    owned_ref = _source_ref(change.repository, book_path)
                     direct_reasons.setdefault(node_id, []).append(
-                        {
-                            "kind": "file-owner",
-                            "ref": _source_ref(change.repository, book_path),
-                            "key": key,
-                        }
+                        {"kind": "file-owner", "ref": owned_ref, "key": key}
                     )
+                    file_owners.setdefault(owned_ref, set()).add(node_id)
         if not mapped:
             surface = change.surface or _surface_owner(change.path, source_roots)
             surface_nodes = [
@@ -499,7 +493,11 @@ def build_context(
                     }
                 )
 
-    shared = demote(_citing_families(direct_reasons, nodes_by_id))
+    shared = demote(
+        _citing_families(
+            file_owners, symbol_owners, lambda node_id, owners: _family_root(node_id, owners, nodes_by_id)
+        )
+    )
     shared_files, shared_symbols = shared.files, shared.symbols
 
     impacted = set(direct_reasons)
