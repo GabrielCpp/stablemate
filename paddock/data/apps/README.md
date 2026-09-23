@@ -205,7 +205,7 @@ Two corollaries worth having in front of you before you author the next fixture:
   file-level citation is satisfied by the file existing, so an anachronistic bullet above it costs
   nothing and nothing goes red. That is a latent gap in those fixtures, not a property to imitate —
   the moment their grounding goes symbol-level, the same crash arrives.
-- **`okf-builder` builds books from finished code**, so any fixture derived through it inherits the
+- **A book built from finished code** inherits the
   anachronism by construction. A generated book is a post-image of the *last* story and has to be
   trimmed backwards, per story, by hand.
 
