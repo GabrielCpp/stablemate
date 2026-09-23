@@ -48,12 +48,25 @@ def _cite_entry(page: Path, entry: str) -> None:
         _ = page.write_text(intro.replace(_EMPTY_CODE, f"- code: {entry}\n", 1) + text[cut:], encoding="utf-8")
 
 
-def _has_section(page: Path, type_name: str, slug: str) -> bool:
+def _section_slugs(page: Path, type_name: str) -> tuple[str, ...]:
     uitype = registry.ui_type(type_name)
-    if uitype is None or not uitype.heading:
-        return False
+    if uitype is None or not uitype.heading or not page.is_file():
+        return ()
     section = markdown.split(page.read_text(encoding="utf-8")).find_section(uitype.heading)
-    return section is not None and any(child.title.strip() == slug for child in section.children)
+    return tuple(child.title.strip() for child in section.children) if section is not None else ()
+
+
+def _has_section(page: Path, type_name: str, slug: str) -> bool:
+    return slug in _section_slugs(page, type_name)
+
+
+def entry_slugs(root: Path, surface: Surface) -> tuple[str, ...]:
+    """The slugs the book already gives this surface's entry points: its commands or endpoints, or its screens."""
+    if surface.kind in _SURFACE_TYPE:
+        page = file_page(root, _SURFACE_TYPE[surface.kind], surface.service, surface.service)
+        return _section_slugs(page, _SECTION_TYPE[surface.kind])
+    screens = file_page(root, _SCREEN, surface.service, _SCREEN).parent
+    return tuple(sorted(page.stem for page in screens.glob("*.md"))) if screens.is_dir() else ()
 
 
 def _ensure_section(graph: Graph, type_name: str, page: Path, slug: str) -> None:

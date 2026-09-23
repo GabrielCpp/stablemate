@@ -13,7 +13,7 @@ OKF_SKILL = Path(__file__).resolve().parents[3] / "base-library/library/skills/o
 
 def _context_cost(root: Path, surface: Surface) -> int:
     whole = listing_context(root, surface, budget=10**9)
-    return whole.pages.tokens + whole.files.tokens
+    return whole.slugs.tokens + whole.files.tokens
 
 
 def test_items_are_kept_in_order_until_the_budget_is_spent() -> None:
@@ -56,20 +56,21 @@ def test_the_listing_turn_reads_the_entry_and_its_nearest_imports_first(tmp_path
     assert context.files.kept == ("main.py", "near.py")
     assert context.files.left_out == 1
     assert context.files.tokens <= 100
-    assert context.pages.kept == ()
+    assert context.slugs.kept == ()
 
 
-def test_the_prompt_and_the_page_names_are_charged_before_any_file(tmp_path: Path) -> None:
+def test_the_prompt_and_the_entry_slugs_are_charged_before_any_file(tmp_path: Path) -> None:
     pages = tmp_path / "docs" / "features" / "svc"
-    pages.mkdir(parents=True)
-    _ = (pages / "home.md").write_text("# home\n", encoding="utf-8")
+    (pages / "concepts").mkdir(parents=True)
+    _ = (pages / "svc.md").write_text("# svc\n\n## Commands\n\n### home\n", encoding="utf-8")
+    _ = (pages / "concepts" / "ledger.md").write_text("# ledger\n", encoding="utf-8")
     _ = (tmp_path / "main.py").write_text("import near\n", encoding="utf-8")
     _ = (tmp_path / "near.py").write_text("x = 1\n", encoding="utf-8")
     surface = Surface(service="svc", kind=SurfaceKind.CLI, entry="main.py")
 
     context = listing_context(tmp_path, surface, budget=prompt_tokens() + _context_cost(tmp_path, surface) - 1)
 
-    assert context.pages.kept == ("home",)
+    assert context.slugs.kept == ("home",)
     assert context.files.kept == ("main.py",)
     assert context.files.left_out == 1
 

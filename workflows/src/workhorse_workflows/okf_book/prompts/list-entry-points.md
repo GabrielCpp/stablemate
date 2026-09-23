@@ -18,15 +18,16 @@ An entry point is a place a user starts:
 - **web** and **mobile**: the home screen only, the one the app shows first. Every other
   screen is reached from it and is documented later.
 
-{% if pages %}
-The book already has these pages. When an entry point is one of them, reuse its slug:
+{% if slugs %}
+The book already documents these entry points of this surface. When an entry point is one
+of them, reuse its slug. Never give an entry point the slug of anything else the book has:
 
-{% for page in pages %}
-- `{{ page }}`
+{% for slug in slugs %}
+- `{{ slug }}`
 {% endfor %}
-{% if pages_left_out %}
+{% if slugs_left_out %}
 
-{{ pages_left_out }} more pages are past this turn's budget.
+{{ slugs_left_out }} more entry points are past this turn's budget.
 {% endif %}
 {% endif %}
 
