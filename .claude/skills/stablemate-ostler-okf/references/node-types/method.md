@@ -38,6 +38,13 @@ rather than kebabbing it into a slug.
 repeated. Plus the
 [shared normative keys](../bullet-grammar.md#keys-that-are-normative-on-every-type).
 
+**A method's claims are context, never live evidence.** A method is source a user never drives,
+so no QA run stands where it does. It takes no `run:`, and its `verify:` is never owed. What it
+explains is proven on the surface that reaches it: the [`command`](command.md) or
+[`invocation`](invocation.md) that runs it, the [`endpoint`](endpoint.md) that serves it, or the
+[`interaction`](interaction.md) that triggers it. State the observable effect there, and cite the
+same `code:`.
+
 ## Relationships
 
 Belongs to the concept or format whose file it sits in. `detail:` points at a
