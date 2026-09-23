@@ -110,22 +110,22 @@ class Sandbox:
                 )
         return tuple(found)
 
-    def argv(self, command: Sequence[str], *, uid: int, gid: int, name: str = "") -> list[str]:
+    def docker_run_argv(self, command: Sequence[str], *, uid: int, gid: int, name: str = "") -> list[str]:
         """The `docker run` line that runs *command* in the app, as *uid*, seeing nothing but the mounts."""
-        volumes = [
+        volume_flags = [
             f"--volume={mount.source.resolve()}:{mount.target}{':ro' if mount.read_only else ''}"
             for mount in self.mounts()
         ]
-        named = [f"--name={name}"] if name else []
-        library = [] if self.base_library is None else [f"--env=STABLEMATE_BASE_DIR={BASE_LIBRARY}"]
+        name_flag = [f"--name={name}"] if name else []
+        base_library_env = [] if self.base_library is None else [f"--env=STABLEMATE_BASE_DIR={BASE_LIBRARY}"]
         return [
             "docker", "run", "--rm", "--init",
             f"--user={uid}:{gid}",
             f"--workdir={self.app_dir()}",
             f"--env=STABLEMATE_CONFIG={CONFIG}",
-            *library,
-            *named,
-            *volumes,
+            *base_library_env,
+            *name_flag,
+            *volume_flags,
             self.image,
             *command,
         ]

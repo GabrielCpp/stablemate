@@ -275,7 +275,7 @@ def cmd_sandbox_run(args: argparse.Namespace) -> int:
     refused = box.refusals(_project(_data_dir(args)))
     if refused:
         raise SandboxError("the sandbox would not be isolated:\n" + "\n".join(refused))
-    argv = box.argv(command, uid=os.getuid(), gid=os.getgid(), name=args.name)
+    argv = box.docker_run_argv(command, uid=os.getuid(), gid=os.getgid(), name=args.name)
     return subprocess.run(argv, check=False).returncode
 
 

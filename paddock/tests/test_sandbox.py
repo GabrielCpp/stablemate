@@ -24,7 +24,7 @@ def _box(tmp_path: Path) -> Sandbox:
 
 def test_the_run_sees_the_four_mounts_and_nothing_else(tmp_path: Path) -> None:
     box = _box(tmp_path)
-    argv = box.argv(["workhorse-okf-book", "run"], uid=1000, gid=1000)
+    argv = box.docker_run_argv(["workhorse-okf-book", "run"], uid=1000, gid=1000)
 
     volumes = [arg.removeprefix("--volume=") for arg in argv if arg.startswith("--volume=")]
     assert volumes == [
@@ -92,14 +92,14 @@ def test_a_named_base_library_is_mounted_read_only_and_farrier_is_pointed_at_it(
     library.mkdir()
     box = replace(_box(tmp_path), base_library=library)
 
-    argv = box.argv(["farrier", "--repo", "."], uid=1000, gid=1000)
+    argv = box.docker_run_argv(["farrier", "--repo", "."], uid=1000, gid=1000)
 
     assert f"--volume={library}:{sandbox.BASE_LIBRARY}:ro" in argv
     assert f"--env=STABLEMATE_BASE_DIR={sandbox.BASE_LIBRARY}" in argv
 
 
 def test_with_no_base_library_farrier_fetches_the_published_one(tmp_path: Path) -> None:
-    argv = _box(tmp_path).argv(["farrier"], uid=1000, gid=1000)
+    argv = _box(tmp_path).docker_run_argv(["farrier"], uid=1000, gid=1000)
 
     assert not [arg for arg in argv if "STABLEMATE_BASE_DIR" in arg or sandbox.BASE_LIBRARY in arg]
 
