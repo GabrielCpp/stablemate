@@ -28,6 +28,7 @@ Section type. A `### <id>` under an `## Invocations` heading. Its id is `path#an
 | `error` | no | alias of `errors` |
 | `auth` | no | **mints an obligation** — who may cause it |
 | `authorization` | no | alias of `auth` |
+| `run` | no | a performed act (repeatable) — one concrete argument list, on a CLI surface |
 | `code` | no | link, **owns** its file |
 | `detail` | no | link — an explanatory [`concept`](concept.md) |
 | `verify` | no | a check |
@@ -39,6 +40,12 @@ Section type. A `### <id>` under an `## Invocations` heading. Its id is `path#an
 [shared set](../bullet-grammar.md#keys-that-are-normative-on-every-type), not through a flag of
 their own — one obligation per value either way. The outcome keys sit between the effect and
 its grounding so a `verify:` written under one binds to that one.
+
+`run:` is the command's `run:` again, for a claim filed under the invocation instead of the
+command it acts on: one `invoke(argv=[...])` per value, bound to the `verify:` below it by
+document order, with the executable read from the owning [`cli`](cli.md) node's `binary:`. See
+[command.md](command.md) for the whole rule. On an HTTP surface an invocation has no use for it,
+since the endpoint's route and body already say what to send.
 
 An invocation carries no `role:`/`name:`/`keyboard:`: there is no operator to announce
 anything to. If those apply, it is an interaction.

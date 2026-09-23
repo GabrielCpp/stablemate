@@ -206,6 +206,24 @@ every entry costs a harness callable that has to behave identically under every 
 it is a deliberate act, not a convenience. If no check fits, the claim is usually the thing that
 needs splitting — see [bullet-grammar.md](bullet-grammar.md).
 
+## What a CLI scenario compares
+
+`unchanged`, `keys_unchanged`, `created` and `removed` each compare a read taken before the
+action with one taken after it. On a CLI surface the compiler takes both reads itself: the whole
+working directory the scenario runs in, every file keyed by its relative path, a `.json` file
+parsed and any other file as text. The `subject` then picks what is compared:
+
+- `created` and `removed` judge only the file whose path is exactly `subject`, so
+  `created(subject="tally.json")` passes when that file is absent before and present after. A
+  subject that names no path, like `"the exported CSV file"`, matches nothing and fails at run
+  time, which is the book's cue to name the file.
+- `unchanged` and `keys_unchanged` compare the named file when `subject` is a path in either
+  read, and the whole directory otherwise. A prose subject like `"the working directory"`
+  therefore gets the strictest comparison there is, and can never pass by matching nothing.
+
+On an HTTP surface the pair stays the author's to arrange, and the compiler gaps it as
+`needs-snapshot`.
+
 ## The lifecycle pair
 
 `created` and `removed` are the two checks `doctor` reaches for by name

@@ -26,6 +26,7 @@ case rather than lowercasing it into a slug.
 | `default` | no | **mints an obligation** — the value when unset |
 | `required` | no | **mints an obligation** — whether it may be absent |
 | `semantics` | no | **mints an obligation** — what the value means |
+| `run` | no | a performed act (repeatable) — one concrete argument list, when the field is a CLI flag |
 | `code` | no | link, **owns** its file |
 | `verify` | no | a check |
 | `fixture` | no | a fixture |
@@ -35,6 +36,10 @@ case rather than lowercasing it into a slug.
 `type:` alone is not a claim — it is a restatement of the code. The obligations are the three
 below it: what happens when the field is absent, whether absence is legal, and what the value
 means to a reader who has both.
+
+A field that is a flag of a [`cli`](cli.md) states the call that exercises it with `run:`, as a
+[`command`](command.md) does: `- run: invoke(argv=["add", "3.00", "--dry-run"])` above the
+`verify:` it feeds. A field on a record has no call of its own and needs no `run:`.
 
 Plus the [shared normative keys](../bullet-grammar.md#keys-that-are-normative-on-every-type).
 `persistence:` is the common one here.

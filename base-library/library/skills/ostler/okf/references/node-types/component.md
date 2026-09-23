@@ -89,10 +89,11 @@ second check asks the question `is_addressable` will not: `placement.selector_gr
 holds a `web` surface's `selector:` to CSS and a `mobile` surface's to a `scheme=value` address
 or bare text, and `doctor`'s `conflicting-selector-driver` reports a selector that parsed fine
 but against the wrong one, e.g. a `testID=` selector on a component whose surface a browser
-drives. Neither reader above compiles a `scheme=value` selector to a live locator: the
-census has no web render to scan, and this tree has no Maestro/mobile driver yet, so a
-`verify:` against a `testID=` selector compiles to a gap (`uncompilable-claim`) instead of code —
-an honest "documented, not yet runnable" rather than a locator that silently matches nothing. A
+drives. The census has no web render to scan a `scheme=value` selector against, so it never
+reads one. The Maestro builder does: a `testID=` selector on a `mobile` surface compiles to
+Maestro's `id:` selector, and a node with no such selector falls back to its `name:` as visible
+text. A mobile node with neither compiles to a gap (`uncompilable-claim`) instead of code, an
+honest "documented, not yet runnable" rather than a locator that silently matches nothing. A
 control whose identity depends on a piece of state (`booked`, not
 merely `disabled`) belongs on `states:`, not folded into `selector:` on a second component node
 that exists only to carry it. That does not mean a raw-CSS `locator=` bypasses the census: a

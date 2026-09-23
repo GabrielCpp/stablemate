@@ -97,9 +97,10 @@ app happens to launch on — the book states which one that is with `launch-scre
 to the [`screen`](screen.md) node, resolved by `reach.surface_launch_screen` down the same
 ranking `bundle-id:`/`driver:` walk. A surface no runbook states a `launch-screen:` for gaps
 every one of its mobile obligations `undeclared-launch-screen`, no Maestro flow emitted.
-A `launch-screen:` that *is* settled does not make every mobile obligation reachable: an
-obligation whose own page is a different screen than the one named has no stated way from the
-one to the other and gaps `unreachable-from-launch` instead — this states only the cold-launch
+A `launch-screen:` that *is* settled does not make every mobile obligation reachable on its
+own. For an obligation whose page is a different screen, the compiler follows the book's
+navigation links from the launch screen and taps each hop in turn. With no such path it gaps
+`unreachable-from-launch` instead — this states only the cold-launch
 case; a warm relaunch, an auth gate, onboarding or a deep link are a flow's own `arrange:`, not
 a second `launch-screen:`. A journey is checked only at its first step, since a journey
 navigates by definition.
