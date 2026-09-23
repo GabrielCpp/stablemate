@@ -2,21 +2,19 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
 
 from workhorse_workflows.okf_book.shared.budget import CHARS_PER_TOKEN, PROBLEM_TOKENS
-from workhorse_workflows.okf_book.aggregate.nodes.check_pages import (
-    LEFT_OUT,
-    MODULE,
-    PASSED,
-    USAGE,
+from workhorse_workflows.okf_book.aggregate.nodes.check_pages import LEFT_OUT, PASSED, USAGE, check_report, report_lines
+from workhorse_workflows.okf_book.aggregate.nodes.job_check import (
+    CHECK_MODULE,
     JobCheck,
     check_command,
-    check_report,
     job_check_path,
-    report_lines,
     write_job_check,
 )
 from workhorse_workflows.okf_book.shared.confine import snapshot
@@ -111,4 +109,13 @@ def test_a_call_without_the_job_check_prints_the_usage() -> None:
 
 
 def test_the_command_names_the_module_and_the_job_check(tmp_path: Path) -> None:
-    assert check_command(tmp_path).endswith(f" -m {MODULE} {job_check_path(tmp_path)}")
+    assert check_command(tmp_path).endswith(f" -m {CHECK_MODULE} {job_check_path(tmp_path)}")
+
+
+def test_the_command_prints_only_what_the_check_says(app: App, tmp_path: Path) -> None:
+    repo = app("tally-cli")
+    path = write_job_check(tmp_path, JobCheck(root=repo, service="tally", before=snapshot(repo)))
+
+    ran = subprocess.run([sys.executable, "-m", CHECK_MODULE, str(path)], capture_output=True, text=True, check=False)
+
+    assert (ran.returncode, ran.stdout, ran.stderr) == (0, f"{PASSED}\n", "")

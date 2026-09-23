@@ -29,7 +29,7 @@ from workhorse_workflows.okf_book.shared.budget import (
     total_text_tokens,
 )
 from workhorse_workflows.okf_book.shared.attempts import JobLedger
-from workhorse_workflows.okf_book.aggregate.nodes.check_pages import CHECK_RUNS, JobCheck, check_command, write_job_check
+from workhorse_workflows.okf_book.aggregate.nodes.job_check import JobCheck, check_command, write_job_check
 from workhorse_workflows.okf_book.shared.citations import book_pages
 from workhorse_workflows.okf_book.shared.confine import (
     book_changes,
@@ -153,7 +153,7 @@ class Aggregate(BookFlow):
         pages = pack_told(name_tokens(listed_pages(root, job)), PAGES_BUDGET_TOKENS)
         problems = pack_problems(ledger.problems)
         stories = job_stories(root, job)
-        told = pages.tokens + problems.tokens + CHECK_RUNS * PROBLEMS_BUDGET_TOKENS
+        told = pages.tokens + problems.tokens + PROBLEMS_BUDGET_TOKENS
         fixed = prompt_tokens(WRITE_PROMPTS[job.kind]) + told + total_text_tokens(stories)
         contracts = job_contracts(root, self.records_dir, job, budget=TURN_BUDGET_TOKENS - fixed)
         started = time.monotonic()
@@ -171,7 +171,6 @@ class Aggregate(BookFlow):
                 "stories": list(stories),
                 "problems": list(problems.kept),
                 "check": check_command(self.records_dir),
-                "check_runs": CHECK_RUNS,
             },
             cwd=root,
         )
