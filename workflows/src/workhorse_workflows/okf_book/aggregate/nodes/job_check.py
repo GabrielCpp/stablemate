@@ -1,4 +1,4 @@
-"""What the check a writing turn runs reads: the job's repo, service, pages, starting tree and inherited gaps."""
+"""What the check a writing turn runs reads: the job's repo, service, pages, starting tree, inherited gaps and the output its runs spent."""
 from __future__ import annotations
 
 import sys
@@ -13,7 +13,7 @@ JOB_CHECK_FILE = "job-check.json"
 
 
 class JobCheck(BaseModel):
-    """What the check after a job's turns compares against: the repo, the job's service and pages, the tree before its first turn, and its inherited gaps."""
+    """What the check after a job's turns compares against, and the problem tokens this turn's runs of it have printed."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -22,6 +22,7 @@ class JobCheck(BaseModel):
     before: Snapshot
     owned_pages: tuple[str, ...] = ()
     inherited_gaps: tuple[str, ...] = ()
+    spent_tokens: int = 0
 
 
 def job_check_path(run_dir: Path) -> Path:

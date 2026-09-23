@@ -16,7 +16,7 @@ from workhorse_workflows.kit import commit_paths
 from workhorse_workflows.okf_book.shared.blockers import Blocker, Phase, Side, record_blocker
 from workhorse_workflows.okf_book.shared.book_flow import BookFlow
 from workhorse_workflows.okf_book.shared.budget import (
-    PROBLEMS_BUDGET_TOKENS,
+    CHECK_OUTPUT_BUDGET_TOKENS,
     TURN_BUDGET_TOKENS,
     estimated_tokens,
     file_tokens,
@@ -128,9 +128,6 @@ class Aggregate(BookFlow):
         job = job_of(items[0])
         gaps = inherited_gaps(self.root, job.service, job.owned_pages)
         ledger = JobLedger(job=job, before=snapshot(self.root), inherited_gaps=gaps)
-        _ = write_job_check(self.records_dir, JobCheck(
-            root=self.root, service=job.service, before=ledger.before, owned_pages=tuple(sorted(job.owned_pages)), inherited_gaps=gaps
-        ))
         return Continue(job, self.write_job, ledger=ledger)
 
     def _rewrite(self, ledger: JobLedger) -> Continue[...]:
@@ -153,9 +150,13 @@ class Aggregate(BookFlow):
         pages = pack_told(name_tokens(listed_pages(root, job)), PAGES_BUDGET_TOKENS)
         problems = pack_problems(ledger.problems)
         stories = job_stories(root, job)
-        told = pages.tokens + problems.tokens + PROBLEMS_BUDGET_TOKENS
+        told = pages.tokens + problems.tokens + CHECK_OUTPUT_BUDGET_TOKENS
         fixed = prompt_tokens(WRITE_PROMPTS[job.kind]) + told + total_text_tokens(stories)
         contracts = job_contracts(root, self.records_dir, job, budget=TURN_BUDGET_TOKENS - fixed)
+        _ = write_job_check(self.records_dir, JobCheck(
+            root=root, service=job.service, before=ledger.before, owned_pages=tuple(sorted(job.owned_pages)),
+            inherited_gaps=ledger.inherited_gaps,
+        ))
         started = time.monotonic()
         written = self.agent(
             "aggregate/prompts/write-page.md" if job.kind is JobKind.PAGE

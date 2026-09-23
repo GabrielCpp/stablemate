@@ -7,7 +7,7 @@ from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import override
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, TypeAdapter
 from workhorse.context import WorkflowContext
 from workhorse.pyflow import Continue, Done
 from workhorse.pyflow.driver import drive
@@ -27,6 +27,7 @@ APPS = Path(__file__).resolve().parents[3] / "paddock" / "data" / "apps"
 LIST_NODE = "list-entry-points"
 
 Reply = Callable[[dict[str, object]], dict[str, object]]
+BRIEFS = TypeAdapter(list[dict[str, object]])
 
 
 def git(repo: Path, *args: str) -> str:
@@ -50,6 +51,14 @@ def always(payload: dict[str, object]) -> Reply:
         return payload
 
     return _reply
+
+
+def promised_contracts(args: dict[str, object]) -> dict[str, object]:
+    """A document-files reply that promises one thing for each file it is handed."""
+    return {"contracts": [
+        {"file": brief["file"], "purpose": "It runs part of tally.", "promises": [{"text": "It works."}]}
+        for brief in BRIEFS.validate_python(args["files"])
+    ]}
 
 
 class ScriptedRunner(AgentRunner):

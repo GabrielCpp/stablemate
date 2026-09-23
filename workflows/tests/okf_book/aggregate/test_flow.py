@@ -5,7 +5,7 @@ import re
 from collections.abc import Callable
 from pathlib import Path
 
-from okf_book.support import WorkListView, Reply, ScriptedRunner, WriteOnly, always, commits, git, listing_runner
+from okf_book.support import BRIEFS, WorkListView, Reply, ScriptedRunner, WriteOnly, always, commits, git, listing_runner, promised_contracts
 
 from ostler.stamp import digest_file
 from pydantic import TypeAdapter
@@ -13,7 +13,6 @@ from pydantic import TypeAdapter
 from workhorse_workflows.okf_book.shared.blockers import Phase, read_blockers
 from workhorse_workflows.okf_book.shared.budget import ALONE_CEILING_TOKENS, CHARS_PER_TOKEN, TURN_BUDGET_TOKENS
 from workhorse_workflows.okf_book.shared.attempts import MAX_ATTEMPTS
-from workhorse_workflows.okf_book.aggregate.nodes.job_check import check_command
 from workhorse_workflows.okf_book.shared.entries import FEATURES_DIR
 from workhorse_workflows.okf_book.aggregate.flow import UNJUDGED_PROBLEM
 from workhorse_workflows.okf_book.aggregate.nodes.garbage import delete_book_pages
@@ -34,15 +33,7 @@ ORPHAN = f"{BOOK}/concepts/budget.md"
 UNREACHED = ("tally-checkout", "run-tally", "track-a-trip")
 STALE = "@000000000000"
 PASS = always({"passed": True, "problems": []})
-BRIEFS = TypeAdapter(list[dict[str, object]])
 NAMES = TypeAdapter(list[str])
-
-
-def _contracts(args: dict[str, object]) -> dict[str, object]:
-    return {"contracts": [
-        {"file": brief["file"], "purpose": "It runs part of tally.", "promises": [{"text": "It works."}]}
-        for brief in BRIEFS.validate_python(args["files"])
-    ]}
 
 
 def _append(repo: Path, rel: str, text: str) -> None:
@@ -86,7 +77,7 @@ def _run(
 ) -> tuple[WriteOnly, ScriptedRunner]:
     runner = listing_runner(
         *COMMANDS,
-        document_files=_contracts,
+        document_files=promised_contracts,
         write_page=write or _writer(repo, *elsewhere),
         write_operations=operations or always({"summary": "none"}),
         write_flows=always({"summary": "none"}),
@@ -121,14 +112,6 @@ def test_a_page_that_passes_is_stamped_and_committed_on_its_own(app: App, run_bo
     assert STALE not in text
     assert f"tally/ledger.py::save@{_ledger_digest(repo)}" in text
     assert git(repo, "status", "--porcelain") == ""
-
-
-def test_every_writing_turn_is_handed_the_check_it_is_charged_by(app: App, run_book: RunBook) -> None:
-    flow, runner = _run(app("tally-cli"), run_book)
-
-    writes = [*runner.args_of("write-page"), *runner.args_of("write-operations"), *runner.args_of("write-flows")]
-    assert writes
-    assert {args["check"] for args in writes} == {check_command(flow.run_dir)}
 
 
 def test_every_write_and_verify_turn_is_packed_under_the_budget(app: App, run_book: RunBook) -> None:

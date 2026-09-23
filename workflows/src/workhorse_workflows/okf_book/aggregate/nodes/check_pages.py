@@ -5,7 +5,7 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 
-from workhorse_workflows.okf_book.shared.budget import pack_problems
+from workhorse_workflows.okf_book.shared.budget import CHECK_OUTPUT_BUDGET_TOKENS, PROBLEMS_BUDGET_TOKENS, pack_problems
 from workhorse_workflows.okf_book.aggregate.nodes.job_check import CHECK_MODULE, JobCheck
 from workhorse_workflows.okf_book.shared.confine import book_changes, new_since_head
 from workhorse_workflows.okf_book.shared.page_check import charged_pages, page_problems, unreached
@@ -13,6 +13,10 @@ from workhorse_workflows.okf_book.shared.page_check import charged_pages, page_p
 USAGE = f"usage: python -m {CHECK_MODULE} <job-check.json>"
 PASSED = "No problems. The check after your turn passes these pages."
 LEFT_OUT = "{count} more problems are past this output's budget. Fix these and run it again."
+SPENT = (
+    "{count} problems remain. Your runs have printed all the problem text this turn allows, "
+    "so fix the problems earlier runs printed and run it again to see this count fall."
+)
 
 
 def job_problems(check: JobCheck) -> tuple[str, ...]:
@@ -26,21 +30,26 @@ def job_problems(check: JobCheck) -> tuple[str, ...]:
     )
 
 
-def report_lines(problems: Sequence[str]) -> tuple[int, tuple[str, ...]]:
-    """The exit code and the lines to print for `problems`, packed as a writing turn is told them, with a count of the rest."""
+def report_lines(problems: Sequence[str], left_tokens: int = PROBLEMS_BUDGET_TOKENS) -> tuple[int, tuple[str, ...], int]:
+    """The exit code, the lines to print for `problems` and the tokens they spend, packed into one output's budget or what the turn has left."""
     if not problems:
-        return 0, (PASSED,)
-    shown = pack_problems(problems)
+        return 0, (PASSED,), 0
+    shown = pack_problems(problems, min(left_tokens, PROBLEMS_BUDGET_TOKENS))
+    if not shown.kept:
+        return 1, (SPENT.format(count=len(problems)),), 0
     more = (LEFT_OUT.format(count=shown.left_out),)
-    return 1, (*shown.kept, *(more if shown.left_out else ()))
+    return 1, (*shown.kept, *(more if shown.left_out else ())), shown.tokens
 
 
 def check_report(argv: Sequence[str]) -> tuple[int, tuple[str, ...]]:
-    """The exit code and the lines to print for the job check file named in `argv`."""
+    """The exit code and the lines to print for the job check file named in `argv`, charging their tokens to it."""
     if len(argv) != 1:
         return 2, (USAGE,)
-    check = JobCheck.model_validate_json(Path(argv[0]).read_text(encoding="utf-8"))
-    return report_lines(job_problems(check))
+    path = Path(argv[0])
+    check = JobCheck.model_validate_json(path.read_text(encoding="utf-8"))
+    code, lines, tokens = report_lines(job_problems(check), CHECK_OUTPUT_BUDGET_TOKENS - check.spent_tokens)
+    _ = path.write_text(check.model_copy(update={"spent_tokens": check.spent_tokens + tokens}).model_dump_json(), encoding="utf-8")
+    return code, lines
 
 
 def main() -> int:

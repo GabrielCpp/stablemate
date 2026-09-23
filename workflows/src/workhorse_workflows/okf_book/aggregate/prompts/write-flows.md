@@ -64,7 +64,8 @@ change to it is put back. Run `ostler fmt` on each page you wrote. Then run `{{ 
 from any directory. It checks your pages, edited or not, and every other book page you changed or created. Run it once
 before you edit to see what your pages already owe. It prints every problem the check
 after your turn will charge you with, and each one costs you this turn. Fix them all and run it again, as often as
-you need, until it passes. Its verdict is the one that counts. `ostler doctor` also reports stale
+you need, until it passes. Your runs share one budget of problem text. Once it is spent, a run prints only how many
+problems remain. Its verdict is the one that counts. `ostler doctor` also reports stale
 citations, which the commit restamps, and unreachable pages outside your job, which are not yours.
 Neither is charged to you. Then reply. Do not commit.
 
