@@ -8,20 +8,20 @@ DISPATCH_TABLE: dict[str, dict[str, str] | str] = {
     "endpoint": {"web": "http", "mobile": "http", "http": "http"},
     "command": "cli",
 }
-OBSERVED_TYPES = frozenset({"flow", "component", "screen", "field", "invocation", "method"})
+OBSERVED_TYPES = frozenset({"flow", "component", "screen", "field", "invocation"})
 OBSERVE_ROW: dict[str, str] = {
     "web": "playwright", "mobile": "maestro", "http": "http", "cli": "cli",
 }
 BUILT_TARGETS = frozenset({"playwright", "http", "cli", "maestro"})
-CONCEPTUAL_TYPES = frozenset({"concept"})
+CONCEPTUAL_TYPES = frozenset({"concept", "method"})
 
 
 def hosts_observation(node_type: str) -> bool:
     """Whether the table can name a row for *node_type* under some driver.
 
-    A `concept` node is a definition, so no runner ever stands where it does and no
-    check declared on it could be performed. An obligation minted on one can carry
-    context, never live evidence.
+    A `concept` node is a definition and a `method` is a callable inside the source, so
+    no runner ever stands where either does and no check declared on one could be
+    performed. An obligation minted on one can carry context, never live evidence.
     """
     return node_type in OBSERVED_TYPES or node_type in DISPATCH_TABLE
 
@@ -29,9 +29,11 @@ def hosts_observation(node_type: str) -> bool:
 def owes_live_evidence(node_type: str) -> bool:
     """Whether a check declared on *node_type* could ever be performed against a system.
 
-    A `concept` page is a piece of thinking about the user and the system, so there is
-    nothing there to measure and no live evidence it could owe. A type this does not
-    recognise still owes it: an unclassified node is a missing fact, not a definition.
+    A `concept` page is a piece of thinking about the user and the system, and a `method`
+    is implementation the user never touches. Each explains the surface a user drives, so
+    neither owes live evidence of its own: the command, endpoint or interaction that
+    reaches it does. A type this does not recognise still owes it: an unclassified node is
+    a missing fact, not a definition.
     """
     return node_type not in CONCEPTUAL_TYPES
 
@@ -44,6 +46,11 @@ def dispatch_target(node_type: str, driver: str | None) -> str | ScenarioRefusal
             return ScenarioRefusal("uncompilable-claim", (
                 "the book links this step to a 'concept' node — a definition, not a place a "
                 "claim can be observed, so D1's dispatch table (§4.1) owes it no row"
+            ))
+        if node_type == "method":
+            return ScenarioRefusal("uncompilable-claim", (
+                "the book links this step to a 'method' node, which is source a user never "
+                "drives. Link the step to the command, endpoint or interaction that reaches it"
             ))
         return ScenarioRefusal("uncompilable-claim", (
             f"the book links this step to a {node_type or 'untyped'!r} node, which D1's "

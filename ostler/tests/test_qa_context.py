@@ -512,6 +512,31 @@ def test_a_whole_book_owes_every_command_citing_one_symbol(tmp_path: Path):
     assert all(item["required"] for item in whole), whole
 
 
+def test_a_whole_book_owes_the_command_but_not_the_method_it_reaches(tmp_path: Path):
+    """A method is source a user never drives. Its claims explain the command that reaches it, and that command owes the live run."""
+    (tmp_path / "docs/features/demo").mkdir(parents=True)
+    (tmp_path / "docs/features/demo/tally.md").write_text(
+        "---\ntype: cli\nslug: tally\ntitle: tally\n---\n# tally\n\n"
+        "- code: `app/parse.py::parse_rows`\n\n"
+        "## Commands\n\n### import\n- does: prints the imported row count\n"
+        "- verify: exit_status(code=0)\n- code: `app/cli.py::run`\n\n"
+        "## Methods\n\n### parse_rows\n- returns: one row per CSV line\n"
+        "- verify: count(subject=\"rows\", equals=2)\n- code: `app/parse.py::parse_rows`\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "app").mkdir()
+    (tmp_path / "app/cli.py").write_text("def run():\n    return 0\n", encoding="utf-8")
+    (tmp_path / "app/parse.py").write_text("def parse_rows():\n    return []\n", encoding="utf-8")
+    _git(tmp_path, "init")
+
+    obligations = book_context(tmp_path, source_roots={"demo": ["app"]})["obligations"]
+    commands = [item for item in obligations if item["nodeType"] == "command"]
+    methods = [item for item in obligations if item["nodeType"] == "method"]
+
+    assert commands and all(item["required"] for item in commands), commands
+    assert methods and not any(item["required"] for item in methods), methods
+
+
 def test_concepts_chained_by_extends_citing_one_symbol_stay_one_family(tmp_path: Path):
     """Six `concept` nodes chained by `extends:` are one documented thing, not six owners.
 

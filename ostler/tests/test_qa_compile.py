@@ -2368,6 +2368,10 @@ def test_a_concept_node_gets_its_own_gap_message_not_a_generic_no_row_for() -> N
     assert refusal.kind == "uncompilable-claim"
     assert "definition" in refusal.detail
     assert "names no row for" not in refusal.detail
+    method = dispatch_target("method", "cli")
+    assert isinstance(method, ScenarioRefusal)
+    assert "a user never drives" in method.detail
+    assert "names no row for" not in method.detail
     other = dispatch_target("widget", "web")
     assert isinstance(other, ScenarioRefusal)
     assert other.kind == "uncompilable-claim"
@@ -3427,7 +3431,7 @@ def test_a_run_with_no_owning_binary_is_uncompilable() -> None:
     [
         ("command", "Add `- run: invoke(argv="),
         ("invocation", "Add `- run: invoke(argv="),
-        ("method", "a method takes no `run:`"),
+        ("component", "a component takes no `run:`"),
     ],
 )
 def test_a_claim_with_no_run_names_the_edit_its_node_type_admits(node_type: str, fragment: str) -> None:
