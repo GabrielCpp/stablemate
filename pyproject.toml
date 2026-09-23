@@ -217,12 +217,13 @@ exclude = [
 # and a paddock task module imports the `_`-prefixed helpers beside it.
 [[tool.basedpyright.executionEnvironments]]
 root = "workflows/src/workhorse_workflows/okf_book"
+extraPaths = ["workflows/src", "ostler", "workhorse"]
 reportExplicitAny = "error"
 reportAny = "error"
 
 [[tool.basedpyright.executionEnvironments]]
 root = "workflows/tests/okf_book"
-extraPaths = ["workflows/tests"]
+extraPaths = ["workflows/tests", "workflows/src", "ostler", "workhorse"]
 reportExplicitAny = "error"
 reportAny = "error"
 
