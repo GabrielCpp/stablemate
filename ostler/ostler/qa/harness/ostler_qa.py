@@ -1937,6 +1937,16 @@ class ToolResult:
     def ok(self) -> bool:
         return self.exit_code == 0
 
+    def json(self) -> JsonValue:
+        """Parse stdout as JSON, naming the command and a stdout excerpt when it is not."""
+        try:
+            return _json_value(json.loads(self.stdout))
+        except json.JSONDecodeError as exc:
+            raise ValueError(
+                f"{' '.join(self.command)} exited {self.exit_code} with a stdout that is not JSON: "
+                f"{self.stdout[:200]!r}"
+            ) from exc
+
 
 class Tool:
     """One opted-in external command, resolved to an argv on this machine."""

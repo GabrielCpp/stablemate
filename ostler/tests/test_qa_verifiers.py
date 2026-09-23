@@ -130,6 +130,21 @@ def test_count_leaves_an_already_extracted_collection_alone() -> None:
     assert actual == 3
 
 
+def test_count_reads_a_commands_json_stdout_before_resolving_its_subject() -> None:
+    """A CLI's `--json` output is the document the subject walks into, as a response body is."""
+    ran = harness.ToolResult(command=["tally", "report", "--json"], stdout='{"people": [1, 2]}', stderr="", exit_code=0)
+    ok, actual, _ = harness.VERIFIERS["count"](ran, {"subject": "people", "equals": 2})
+    assert ok is True
+    assert actual == 2
+    assert ran.json() == {"people": [1, 2]}
+
+
+def test_a_command_whose_stdout_is_not_json_names_the_command() -> None:
+    silent = harness.ToolResult(command=["tally", "add"], stdout="", stderr="tally: added", exit_code=0)
+    with pytest.raises(ValueError, match="tally add exited 0 with a stdout that is not JSON"):
+        harness.VERIFIERS["count"](silent, {"subject": "entries in the ledger", "equals": 1})
+
+
 def test_json_path_equals_compares_a_json_scalar_by_type() -> None:
     """`equals=8250` is a number, not the string "8250": a product that serialises an amount as text is a different product, and `true` is not `1`."""
     verify = harness.VERIFIERS["json_path"]
