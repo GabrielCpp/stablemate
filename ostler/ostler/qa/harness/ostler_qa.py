@@ -1034,6 +1034,27 @@ def _verify_exit_status(observed: Any, args: Mapping[str, Any]) -> tuple[bool, A
     return code == args["code"], code, args["code"]
 
 
+
+def _stream_verifier(stream: str) -> Callable[[Any, Mapping[str, Any]], tuple[bool, Any, Any]]:
+    """A verifier reading one output stream of a tool result for the text or the pattern the book names."""
+
+    def verify(observed: Any, args: Mapping[str, Any]) -> tuple[bool, Any, Any]:
+        printed = getattr(observed, stream, None)
+        if not isinstance(printed, str):
+            raise TypeError(
+                f"{stream} observes a tool result (something with a text {stream}), "
+                f"got {type(observed).__name__}"
+            )
+        missing = {key: args[key] for key in ("text", "matches") if key in args}
+        if "text" in args and args["text"] in printed:
+            missing.pop("text")
+        if "matches" in args and re.search(args["matches"], printed) is not None:
+            missing.pop("matches")
+        return not missing, printed, missing
+
+    verify.__doc__ = f"The command printed on {stream} what the book says it prints."
+    return verify
+
 def _verify_conflict_on_stale(observed: Any, args: Mapping[str, Any]) -> tuple[bool, Any, Any]:
     status, _ = _observed_status(observed)
     return 400 <= status < 500, status, "a refusal (4xx)"
@@ -1056,6 +1077,8 @@ VERIFIERS: dict[str, Callable[[Any, Mapping[str, Any]], tuple[bool, Any, Any]]] 
     "emitted": _verify_emitted,
     "omits": _verify_omits,
     "exit_status": _verify_exit_status,
+    "stdout": _stream_verifier("stdout"),
+    "stderr": _stream_verifier("stderr"),
     "conflict_on_stale": _verify_conflict_on_stale,
 }
 
@@ -1095,10 +1118,24 @@ def _unsatisfiable_omits(args: Mapping[str, Any]) -> str:
             "can be omitted from one")
 
 
+
+def _unsatisfiable_stream(args: Mapping[str, Any]) -> str:
+    """Why no output can satisfy this call, or empty when one can."""
+    if "matches" not in args:
+        return ""
+    pattern = str(args["matches"])
+    try:
+        _ = re.compile(pattern)
+    except re.error as err:
+        return f"/{pattern}/ is not a pattern this check can read: {err}"
+    return ""
+
 UNSATISFIABLE: dict[str, Callable[[Mapping[str, Any]], str]] = {
     "http_status": _unsatisfiable_http_status,
     "json_path": _unsatisfiable_json_path,
     "omits": _unsatisfiable_omits,
+    "stdout": _unsatisfiable_stream,
+    "stderr": _unsatisfiable_stream,
 }
 
 

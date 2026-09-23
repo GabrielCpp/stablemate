@@ -223,6 +223,25 @@ CHECKS: tuple[CheckSpec, ...] = (
         observes="subject",
     ),
     CheckSpec(
+        name="stdout",
+        params=(CheckParam("text", "str"), CheckParam("matches", "str", pattern=True)),
+        one_of=("text", "matches"),
+        excludes="a command that exits with the right code and prints the wrong thing — the "
+                 "wrong total, the wrong row, a report the book says it writes and the process "
+                 "never did — which `exit_status` passes, because it reads how the process ended "
+                 "and not what it said",
+        observes="subject",
+    ),
+    CheckSpec(
+        name="stderr",
+        params=(CheckParam("text", "str"), CheckParam("matches", "str", pattern=True)),
+        one_of=("text", "matches"),
+        excludes="a refusal that names no reason, or the wrong one — a command that exits "
+                 "non-zero for a missing ledger and tells the user the file is malformed — which "
+                 "`exit_status` passes, because every refusal ends with the same code",
+        observes="subject",
+    ),
+    CheckSpec(
         name="conflict_on_stale",
         params=(
             CheckParam("subject", "str", required=True, identifies=True),

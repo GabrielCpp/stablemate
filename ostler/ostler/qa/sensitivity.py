@@ -7,7 +7,7 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 from types import SimpleNamespace
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from typing import Any
 
 from ostler import checks, model, registry
@@ -369,6 +369,34 @@ _CATEGORY_HOLDS: dict[str, Callable[[str], bool]] = {
 }
 
 
+def _printed(stream: str, text: str) -> Any:
+    """A finished command that printed `text` on `stream` and nothing on the other."""
+    return _harness.ToolResult(
+        command=["witness"],
+        stdout=text if stream == "stdout" else "",
+        stderr=text if stream == "stderr" else "",
+        exit_code=0,
+    )
+
+
+def _plan_stream(stream: str, args: Mapping[str, Any]) -> tuple[Any, list[tuple[str, Any]], str]:
+    """A tool result that printed what the call names on `stream`, and the results that printed it elsewhere or not at all."""
+    pattern = str(args["matches"]) if "matches" in args else None
+    expected_output = str(args.get("text", ""))
+    if pattern is not None and re.search(pattern, expected_output) is None:
+        matched = _matching(pattern)
+        if matched is None:
+            return None, [], f"no output can be invented for /{pattern}/"
+        expected_output = f"{expected_output} {matched}".strip()
+    other_output = _avoiding(pattern, str(args["text"]) if "text" in args else None)
+    if other_output is None:
+        return None, [], f"every output carries something /{pattern}/ matches"
+    other_stream = "stderr" if stream == "stdout" else "stdout"
+    return _printed(stream, expected_output), [
+        (f"the command printed something else on {stream}", _printed(stream, other_output)),
+        (f"the command printed it on {other_stream} instead", _printed(other_stream, expected_output)),
+    ], ""
+
 def _plan(call: checks.CheckCall) -> tuple[Any, list[tuple[str, Any]], str]:
     """The witness observation, the mutations to try against it, and why there are none."""
     args = call.args
@@ -521,6 +549,8 @@ def _plan(call: checks.CheckCall) -> tuple[Any, list[tuple[str, Any]], str]:
         return SimpleNamespace(exit_code=code), [
             ("the process exited differently", SimpleNamespace(exit_code=code + 1 if code == 0 else 0)),
         ], ""
+    if name in ("stdout", "stderr"):
+        return _plan_stream(name, args)
     if name == "conflict_on_stale":
         url = "http://witness/subject"
         return _Response(409, {}, url), [("the stale write was accepted", _Response(200, {}, url))], ""

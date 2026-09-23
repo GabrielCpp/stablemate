@@ -399,7 +399,7 @@ explicit attribute here, and the two that used to cost the most are the first tw
 | `qa.maestro.run(flow)`             | a Maestro flow, for a `maestro` target                                  |
 | `qa.tesseract.ocr(image)`          | OCR text from an image, via the `tesseract` CLI                         |
 | `qa.convert.resize(image, w, h)`   | resize an image via ImageMagick's `convert`; returns the output path    |
-| `qa.tool(name).run(*args, cwd=…, env=…, timeout=…)` | any other opted-in external command; returns a `ToolResult(stdout, stderr, exit_code)`. `cwd` resolves against `qa.dir` and must stay inside it; `env` overlays the inherited environment and every key must be declared with `tool_env(...)`. Hand the result to `qa.verify("exit_status", result, code=0, covers=[…])` when the book declares the exit code |
+| `qa.tool(name).run(*args, cwd=…, env=…, timeout=…)` | any other opted-in external command; returns a `ToolResult(stdout, stderr, exit_code)`. `cwd` resolves against `qa.dir` and must stay inside it; `env` overlays the inherited environment and every key must be declared with `tool_env(...)`. Hand the result to `qa.verify("exit_status", result, code=0, covers=[…])` when the book declares the exit code, and to `qa.verify("stderr", result, text=…, covers=[…])` or `"stdout"` when it declares what the command prints |
 
 ### QA tools (`qa.tool`, `qa.tesseract`, `qa.convert`)
 

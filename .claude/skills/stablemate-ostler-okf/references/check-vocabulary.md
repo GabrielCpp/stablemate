@@ -8,7 +8,7 @@ Editable path on this machine: `farrier source .claude/skills/stablemate-ostler-
 
 # The check vocabulary
 
-The sixteen named checks a `verify:` bullet may call, their signatures, and — the part that
+The nineteen named checks a `verify:` bullet may call, their signatures, and — the part that
 matters when judging whether a check earns its bullet — **the defect each one excludes**. A check
 that excludes no plausible defect is a rubber stamp, and `doctor` refuses it as `weak-check`.
 Companion to [`../SKILL.md`](../SKILL.md) and to [bullet-grammar.md](bullet-grammar.md), which
@@ -136,6 +136,17 @@ hold has no positive form.
 Excludes a command that failed, or succeeded for the wrong reason, where the plan only read its
 output — a tool result asserted by what it printed passes identically when the process printed it
 on the way to a non-zero exit.
+
+### `stdout(text=<str>, matches=<str>) — one of text, matches`
+Excludes a command that exits with the right code and prints the wrong thing: the wrong total, the
+wrong row, a report the book says it writes and the process never did. `exit_status` passes this,
+because it reads how the process ended and not what it said. `text` must appear in the output, and
+`matches` must find a match in it.
+
+### `stderr(text=<str>, matches=<str>) — one of text, matches`
+Excludes a refusal that names no reason, or the wrong one: a command that exits non-zero for a
+missing ledger and tells the user the file is malformed. `exit_status` passes this, because every
+refusal ends with the same code. A message the command prints on stdout does not satisfy it.
 
 ### `conflict_on_stale(subject*=<str>, token=<str>)`
 Excludes an unconditional overwrite standing in for compare-and-swap — a write followed by a read

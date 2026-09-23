@@ -315,6 +315,22 @@ def test_exit_status_reads_exit_code_and_refuses_other_subjects() -> None:
 
 
 
+def test_a_stream_check_reads_only_the_stream_it_names() -> None:
+    """A refusal printed on stdout is not the one the book says goes to stderr, and each argument the output lacks is named."""
+    result = harness.ToolResult(command=["tally"], stdout="no ledger at x.csv", stderr="", exit_code=2)
+    ok, actual, expected = harness.VERIFIERS["stderr"](result, {"text": "no ledger", "matches": "x[.]csv"})
+    assert (ok, actual, expected) == (False, "", {"text": "no ledger", "matches": "x[.]csv"})
+    assert harness.VERIFIERS["stdout"](result, {"text": "no ledger", "matches": "x[.]csv"}) == (True, "no ledger at x.csv", {})
+    with pytest.raises(TypeError, match="stdout"):
+        harness.VERIFIERS["stdout"](_Response(200, {}, "http://x/"), {"text": "ok"})
+
+
+def test_a_stream_check_with_a_broken_pattern_is_unsatisfiable() -> None:
+    """A pattern the verifier cannot compile would crash the scenario, so the plan refuses it first."""
+    assert "not a pattern" in harness.UNSATISFIABLE["stderr"]({"matches": "("})
+    assert harness.UNSATISFIABLE["stdout"]({"text": "("}) == ""
+
+
 def _qa(recorder: Any, driver: str = "playwright") -> Any:
     """`Qa.window` reads three attributes and nothing else, so it is exercised against them rather than around a whole scenario process — the thing under test is which drivers may answer the question, and a real run would prove the browser works instead."""
     return SimpleNamespace(

@@ -115,7 +115,7 @@ Four more references cut across every type:
 - [bullet-grammar.md](references/bullet-grammar.md) — the bullet-key flags, the four key
   families, the shared normative keys, ownership, one-provable-claim, and **document order is the
   binding** (which `verify:` and which `fixture:` attach to which claim).
-- [check-vocabulary.md](references/check-vocabulary.md) — all 14 checks with their signatures
+- [check-vocabulary.md](references/check-vocabulary.md) — all 19 checks with their signatures
   and, for each, **the defect it excludes**. `ostler checks [--json]` prints the same thing live.
 - [doctor-codes.md](references/doctor-codes.md) — every finding `ostler doctor` can raise,
   grouped, with its trigger and its remedy.

@@ -108,6 +108,8 @@ def test_every_spec_declares_what_it_observes() -> None:
         "emitted": "subject",
         "omits": "response",
         "exit_status": "subject",
+        "stdout": "subject",
+        "stderr": "subject",
     }
     assert {spec.name: spec.observes for spec in checks.CHECKS} == expected
     assert {spec.observes for spec in checks.CHECKS} == {
@@ -315,6 +317,15 @@ def test_omits_is_the_vocabularys_one_negative_observation() -> None:
     assert isinstance(call, checks.CheckCall)
     assert call.args == {"subject": "detail", "matches": "eyJ[A-Za-z0-9]+"}
     assert "credential it rejected" in checks.CHECK_BY_NAME["omits"].excludes
+
+
+def test_a_stream_check_names_what_the_command_printed() -> None:
+    """A check on what a command printed with nothing to look for passes on any output, so it refuses to parse without one."""
+    call = checks.parse_check('stderr(text="no ledger")')
+    assert isinstance(call, checks.CheckCall)
+    assert call.args == {"text": "no ledger"}
+    assert isinstance(checks.parse_check("stdout()"), checks.Refusal)
+    assert "exit_status" in checks.CHECK_BY_NAME["stderr"].excludes
 
 
 def test_exit_status_binds_the_code_a_command_ends_with() -> None:
