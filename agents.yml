@@ -132,8 +132,3 @@ localInstructions:
     paths:
       - "."
     includeReadme: false
-  - policies:
-      - stablemate-workflows
-    paths:
-      - "workflows"
-    includeReadme: false
