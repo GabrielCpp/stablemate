@@ -66,6 +66,7 @@ from workhorse_workflows.okf_book.shared.page_check import charged_pages, inheri
 from workhorse_workflows.okf_book.shared.work import BLOCKED, DONE, JOB, UNQUEUED, seed
 
 PAGES_BUDGET_TOKENS = 3_000
+CLEARED_BUDGET_TOKENS = 1_500
 VERIFY_PROMPT = "aggregate/prompts/verify-page.md"
 UNJUDGED_PROBLEM = "The changed pages are too large for any turn to judge. Split the page, or cut what it repeats."
 WRITE_PROMPTS = {
@@ -215,14 +216,14 @@ class Aggregate(BookFlow):
 
         The job's own pages come first, and the pages take up to half of what the prompt leaves. A first page over that goes alone,
         and the contracts get the rest. A page past the ceiling cannot be judged, and charges the job a turn.
-        The judge is told which nodes an earlier round cleared and this one may not fault.
+        The judge is told which nodes an earlier round cleared, as many as fit their share. The code drops a problem on any of them.
         """
         root, job = self.root, ledger.job
         judged_rels = judged_pages(root, job, ledger.before)
         digests = node_digests(root, judged_rels)
-        held = sorted(still_cleared(ledger.cleared, digests))
+        held = pack_told(name_tokens(sorted(still_cleared(ledger.cleared, digests))), CLEARED_BUDGET_TOKENS)
         other_pages = pack_told(name_tokens(_book_pages_besides(root, job.service, judged_rels)), PAGES_BUDGET_TOKENS)
-        fixed = prompt_tokens(VERIFY_PROMPT) + other_pages.tokens + total_text_tokens(held)
+        fixed = prompt_tokens(VERIFY_PROMPT) + other_pages.tokens + held.tokens
         judged = pack_read(file_tokens(root, judged_rels), (TURN_BUDGET_TOKENS - fixed) // 2)
         if not judged.kept:
             return self._retry(ledger.charged((UNJUDGED_PROBLEM,)))
@@ -239,7 +240,7 @@ class Aggregate(BookFlow):
                 "contracts": [contract.model_dump() for contract in numbered],
                 "other_pages": list(other_pages.kept),
                 "other_pages_left_out": other_pages.left_out,
-                "cleared": held,
+                "cleared": list(held.kept),
                 "kind": job.kind.value,
             },
             cwd=root,
