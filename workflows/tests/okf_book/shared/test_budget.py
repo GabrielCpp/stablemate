@@ -90,6 +90,8 @@ def test_the_skill_reservation_holds_the_whole_okf_skill() -> None:
     assert estimated_tokens(len(OKF_SKILL.read_text(encoding="utf-8"))) <= SKILL_TOKENS
 
 
-def test_a_prompt_that_loads_the_skill_is_charged_for_it() -> None:
-    template = (budget.PACKAGE_DIR / "aggregate/prompts/write-page.md").read_text(encoding="utf-8")
-    assert budget.prompt_tokens("aggregate/prompts/write-page.md") == estimated_tokens(len(template)) + SKILL_TOKENS
+def test_a_prompt_is_charged_for_the_skill_it_loads_and_the_text_it_includes() -> None:
+    bar = (budget.PACKAGE_DIR / "aggregate/prompts/_bar.md").read_text(encoding="utf-8")
+    template = (budget.PACKAGE_DIR / "aggregate/prompts/verify-page.md").read_text(encoding="utf-8")
+    expanded = template.replace('{% include "aggregate/prompts/_bar.md" %}', bar)
+    assert budget.prompt_tokens("aggregate/prompts/verify-page.md") == estimated_tokens(len(expanded)) + SKILL_TOKENS

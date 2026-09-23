@@ -10,6 +10,7 @@ skill and the turn reads it whole.
 """
 from __future__ import annotations
 
+import re
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
@@ -23,6 +24,7 @@ PROBLEM_TOKENS = 500
 CHECK_OUTPUT_BUDGET_TOKENS = 3 * PROBLEMS_BUDGET_TOKENS
 PACKAGE_DIR = Path(__file__).parents[1]
 _SKILL_LOAD = "skill_load_ref("
+_INCLUDE = re.compile(r'{%\s*include\s+"([^"]+)"\s*%}')
 _BULLET_MARKUP = "- ``\n"
 
 
@@ -91,8 +93,13 @@ def pack_problems(problems: Iterable[str], budget: int = PROBLEMS_BUDGET_TOKENS)
 
 def prompt_tokens(prompt: str) -> int:
     """What a prompt of this package costs before any argument is rendered into it, with each skill it loads."""
-    text = (PACKAGE_DIR / prompt).read_text(encoding="utf-8")
+    text = _prompt_text(prompt)
     return estimated_tokens(len(text)) + text.count(_SKILL_LOAD) * SKILL_TOKENS
+
+
+def _prompt_text(prompt: str) -> str:
+    text = (PACKAGE_DIR / prompt).read_text(encoding="utf-8")
+    return _INCLUDE.sub(lambda included: _prompt_text(included.group(1)), text)
 
 
 @dataclass(frozen=True, slots=True)

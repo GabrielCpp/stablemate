@@ -46,13 +46,20 @@ behaviour, which the contracts own:
 
 {% endif %}
 {% if problems %}
-Your last turn on these pages was refused. Fix each of these:
+Your last turn on these pages was refused. Each problem below is one place a rule of the bar
+below was broken. Fix it, then fix every other place on your pages that breaks the same
+rule, because the next judge reads the whole of every page again:
 
 {% for problem in problems %}
 - {{ problem }}
 {% endfor %}
 
 {% endif %}
+Another turn judges your pages once you reply. It refuses them unless every one of these
+holds:
+
+{% include "aggregate/prompts/_bar.md" %}
+
 Every claim you write compiles into a check run against the product, and a page with a claim
 that does not compile is refused. Give each claim a `verify:` from `ostler checks`. Under
 each claim of a `command` or an `invocation`, give a `run:` stating one literal call before

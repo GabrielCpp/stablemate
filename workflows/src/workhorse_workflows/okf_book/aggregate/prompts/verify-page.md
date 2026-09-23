@@ -40,13 +40,7 @@ They were written from these contracts:
 
 A page passes when every one of these holds:
 
-- Every promise and refusal above is stated on some page, as a claim the product can be
-  asked to demonstrate. None is missing, and the pages claim nothing the contracts do not.
-- Each node is written to the spec depth its node type asks for. A one-line stub fails.
-- Every interactive control has a role, an accessible name and a keyboard contract. Every
-  structural component has a placement.
-- A reader holding only the book understands what the product does here and why, and can
-  drive it without the source.
+{% include "aggregate/prompts/_bar.md" %}
 
 Name each problem as the fix it needs, with the page and the node it is on.
 

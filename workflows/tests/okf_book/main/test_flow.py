@@ -134,4 +134,4 @@ def test_the_dry_run_reads_every_prompt_and_every_transition() -> None:
     graphs = registry_graphs(workflow)
     prompts = {step.name for graph in graphs for node in graph.states for step in node.steps if step.kind == "agent"}
     assert preflight(graphs, workflow.directory()) == []
-    assert prompts == {p.relative_to(workflow.directory()).as_posix() for p in workflow.directory().glob("*/prompts/*.md")}
+    assert prompts == {p.relative_to(workflow.directory()).as_posix() for p in workflow.directory().glob("*/prompts/*.md") if not p.name.startswith("_")}
