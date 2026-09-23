@@ -6,7 +6,7 @@ import hashlib
 import json
 import re
 import subprocess
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
@@ -206,15 +206,42 @@ def book_context(
     )
 
 
-Demotion = Callable[
-    [dict[str, list[dict[str, str]]], dict[str, dict[str, Any]]], tuple[frozenset[str], frozenset[str]]
-]
+@dataclass(frozen=True, slots=True)
+class CitingFamilies:
+    """How many declared families cite each changed file and each changed symbol."""
+
+    files: Mapping[str, int]
+    symbols: Mapping[str, int]
 
 
-def shared_citations(
-    direct_reasons: dict[str, list[dict[str, str]]], nodes_by_id: dict[str, dict[str, Any]]
-) -> tuple[frozenset[str], frozenset[str]]:
+@dataclass(frozen=True, slots=True)
+class SharedCitations:
+    """The changed files and symbols whose owners are context rather than required."""
+
+    files: frozenset[str] = frozenset()
+    symbols: frozenset[str] = frozenset()
+
+
+Demotion = Callable[[CitingFamilies], SharedCitations]
+
+
+def shared_citations(citing: CitingFamilies) -> SharedCitations:
     """The files and symbols cited by many families, so a change to a shared helper does not owe live evidence for every node."""
+    return SharedCitations(
+        frozenset(ref for ref, count in citing.files.items() if count > 1),
+        frozenset(ref for ref, count in citing.symbols.items() if count >= _CONTAINER_FANOUT),
+    )
+
+
+def no_demotion(_citing: CitingFamilies) -> SharedCitations:
+    """No file or symbol, for a whole-book context that has no change to be proportional to."""
+    return SharedCitations()
+
+
+def _citing_families(
+    direct_reasons: dict[str, list[dict[str, str]]], nodes_by_id: dict[str, dict[str, Any]]
+) -> CitingFamilies:
+    """Count the declared families whose nodes own each changed file and cite each changed symbol."""
     file_owners: dict[str, set[str]] = {}
     symbol_owners: dict[str, set[str]] = {}
     for node_id, reasons in direct_reasons.items():
@@ -227,17 +254,10 @@ def shared_citations(
     def families(owners: set[str]) -> int:
         return len({_family_root(node_id, owners, nodes_by_id) for node_id in owners})
 
-    return (
-        frozenset(ref for ref, owners in file_owners.items() if families(owners) > 1),
-        frozenset(ref for ref, owners in symbol_owners.items() if families(owners) >= _CONTAINER_FANOUT),
+    return CitingFamilies(
+        {ref: families(owners) for ref, owners in file_owners.items()},
+        {ref: families(owners) for ref, owners in symbol_owners.items()},
     )
-
-
-def no_demotion(
-    _direct_reasons: dict[str, list[dict[str, str]]], _nodes_by_id: dict[str, dict[str, Any]]
-) -> tuple[frozenset[str], frozenset[str]]:
-    """No file or symbol, for a whole-book context that has no change to be proportional to."""
-    return frozenset(), frozenset()
 
 
 def _navigation(head_graph: Graph) -> dict[str, dict[str, Any]]:
@@ -479,7 +499,8 @@ def build_context(
                     }
                 )
 
-    shared_files, shared_symbols = demote(direct_reasons, nodes_by_id)
+    shared = demote(_citing_families(direct_reasons, nodes_by_id))
+    shared_files, shared_symbols = shared.files, shared.symbols
 
     impacted = set(direct_reasons)
     for node_id in list(impacted):
