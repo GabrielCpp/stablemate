@@ -100,7 +100,7 @@ class MappedChanges:
 
 
 @dataclass(frozen=True, slots=True)
-class CitingFamilies:
+class CitingFamilyCounts:
     """How many declared families cite each changed file and each changed symbol."""
 
     files: Mapping[str, int]
@@ -115,13 +115,13 @@ class SharedCitations:
     symbols: frozenset[str] = frozenset()
 
 
-Demotion = Callable[[CitingFamilies], SharedCitations]
+Demotion = Callable[[CitingFamilyCounts], SharedCitations]
 FamilyRoot = Callable[[str, set[str]], str]
 
 CONTAINER_FANOUT = 3
 
 
-def shared_citations(citing: CitingFamilies) -> SharedCitations:
+def shared_citations(citing: CitingFamilyCounts) -> SharedCitations:
     """The files and symbols cited by many families, so a change to a shared helper does not owe live evidence for every node."""
     return SharedCitations(
         frozenset(ref for ref, count in citing.files.items() if count > 1),
@@ -129,7 +129,7 @@ def shared_citations(citing: CitingFamilies) -> SharedCitations:
     )
 
 
-def no_demotion(_citing: CitingFamilies) -> SharedCitations:
+def no_demotion(_citing: CitingFamilyCounts) -> SharedCitations:
     """No file or symbol, for a whole-book context that has no change to be proportional to."""
     return SharedCitations()
 
@@ -194,17 +194,17 @@ def surface_owner(path: str, roots: dict[str, list[str]]) -> str:
     return max(matches)[1] if matches else ""
 
 
-def citing_families(
+def citing_family_counts(
     file_owners: Mapping[str, set[str]], symbol_owners: Mapping[str, set[str]], family_root: FamilyRoot
-) -> CitingFamilies:
+) -> CitingFamilyCounts:
     """Count the declared families whose nodes own each changed file and cite each changed symbol."""
 
-    def families(owners: set[str]) -> int:
+    def family_count(owners: set[str]) -> int:
         return len({family_root(node_id, owners) for node_id in owners})
 
-    return CitingFamilies(
-        {ref: families(owners) for ref, owners in file_owners.items()},
-        {ref: families(owners) for ref, owners in symbol_owners.items()},
+    return CitingFamilyCounts(
+        {ref: family_count(owners) for ref, owners in file_owners.items()},
+        {ref: family_count(owners) for ref, owners in symbol_owners.items()},
     )
 
 

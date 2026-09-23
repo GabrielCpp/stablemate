@@ -33,7 +33,7 @@ from ostler.qa.owners import (
     OwnerNode,
     Reason,
     ReasonKind,
-    citing_families,
+    citing_family_counts,
     map_changes,
     no_demotion,
     relation_reason_kind,
@@ -334,7 +334,7 @@ def build_context(
     health.extend(change.row() for change in mapped_changes.unmapped)
 
     shared = demote(
-        citing_families(
+        citing_family_counts(
             mapped_changes.file_owners,
             mapped_changes.symbol_owners,
             lambda node_id, family_members: _family_root(node_id, family_members, nodes_by_id),
