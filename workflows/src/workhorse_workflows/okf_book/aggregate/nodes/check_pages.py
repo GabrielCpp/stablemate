@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import sys
 from collections.abc import Sequence
+from dataclasses import dataclass
 from pathlib import Path
 
 from workhorse_workflows.okf_book.shared.budget import CHECK_OUTPUT_BUDGET_TOKENS, PROBLEMS_BUDGET_TOKENS, pack_problems
@@ -30,34 +31,49 @@ def job_problems(check: JobCheck) -> tuple[str, ...]:
     )
 
 
-def report_lines(problems: Sequence[str], left_tokens: int = PROBLEMS_BUDGET_TOKENS) -> tuple[int, tuple[str, ...], int]:
-    """The exit code, the lines to print for `problems` and the tokens they spend, packed into one output's budget or what the turn has left."""
+@dataclass(frozen=True, slots=True)
+class Report:
+    """The check's exit code, the lines it prints, and the problem tokens those lines spend."""
+
+    code: int
+    lines: tuple[str, ...]
+    tokens: int = 0
+
+
+def problem_report(problems: Sequence[str], left_tokens: int = PROBLEMS_BUDGET_TOKENS) -> Report:
+    """The report on `problems`, packed into one output's budget or what the turn has left."""
     if not problems:
-        return 0, (PASSED,), 0
+        return Report(0, (PASSED,))
     shown = pack_problems(problems, min(left_tokens, PROBLEMS_BUDGET_TOKENS))
     if not shown.kept:
-        return 1, (SPENT.format(count=len(problems)),), 0
+        return Report(1, (SPENT.format(count=len(problems)),))
     more = (LEFT_OUT.format(count=shown.left_out),)
-    return 1, (*shown.kept, *(more if shown.left_out else ())), shown.tokens
+    return Report(1, (*shown.kept, *(more if shown.left_out else ())), shown.tokens)
 
 
-def check_report(argv: Sequence[str]) -> tuple[int, tuple[str, ...]]:
-    """The exit code and the lines to print for the job check file named in `argv`, charging their tokens to it."""
+def check_report(argv: Sequence[str]) -> Report:
+    """The report on the job check file named in `argv`, within what its earlier runs left of the turn's output."""
     if len(argv) != 1:
-        return 2, (USAGE,)
-    path = Path(argv[0])
+        return Report(2, (USAGE,))
+    check = JobCheck.model_validate_json(Path(argv[0]).read_text(encoding="utf-8"))
+    return problem_report(job_problems(check), CHECK_OUTPUT_BUDGET_TOKENS - check.spent_tokens)
+
+
+def charge_check(path: Path, tokens: int) -> None:
+    """Add `tokens` to what the runs of the job check at `path` have printed."""
     check = JobCheck.model_validate_json(path.read_text(encoding="utf-8"))
-    code, lines, tokens = report_lines(job_problems(check), CHECK_OUTPUT_BUDGET_TOKENS - check.spent_tokens)
     _ = path.write_text(check.model_copy(update={"spent_tokens": check.spent_tokens + tokens}).model_dump_json(), encoding="utf-8")
-    return code, lines
 
 
 def main() -> int:
-    """Check the current job's pages."""
-    code, lines = check_report(sys.argv[1:])
-    for line in lines:
+    """Check the current job's pages, and charge what the report prints to the job check."""
+    argv = sys.argv[1:]
+    report = check_report(argv)
+    for line in report.lines:
         print(line)
-    return code
+    if report.tokens:
+        charge_check(Path(argv[0]), report.tokens)
+    return report.code
 
 
 if __name__ == "__main__":
