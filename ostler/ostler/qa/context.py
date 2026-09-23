@@ -8,6 +8,7 @@ import re
 import subprocess
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
+from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
@@ -253,29 +254,83 @@ def _citing_families(
     )
 
 
-@dataclass(frozen=True, slots=True)
-class ChangeOwners:
-    """What the changed units map to: each node's reasons, the changed code, the changes nothing owns, and the owners of each changed file and symbol."""
+class OwnerKind(StrEnum):
+    """How a node came to own a changed unit."""
 
-    reasons: dict[str, list[dict[str, str]]]
-    changed_code: list[dict[str, Any]]
-    unmapped: list[dict[str, Any]]
+    CHANGED_CODE = "changed-code"
+    FILE_OWNER = "file-owner"
+    SURFACE_OWNER = "surface-owner"
+
+
+@dataclass(frozen=True, slots=True)
+class OwnerReason:
+    """Why one node owns a changed unit: how, the reference it owns, and the bullet key that cites it."""
+
+    kind: OwnerKind
+    ref: str
+    key: str = ""
+
+    def row(self) -> dict[str, str]:
+        """The reason as the packet lists it."""
+        return {"kind": self.kind.value, "ref": self.ref, **({"key": self.key} if self.key else {})}
+
+
+@dataclass(frozen=True, slots=True)
+class UnmappedChange:
+    """A changed production unit no node owns by symbol, file or surface."""
+
+    path: str
+
+    def row(self) -> dict[str, str]:
+        """The change as the packet's health lists it."""
+        return {
+            "kind": "unmapped-change",
+            "severity": "error",
+            "path": self.path,
+            "message": "changed production unit has no exact symbol, file, or surface owner",
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class MappedChanges:
+    """Each node's reasons for owning a change, the changes nothing owns, and the owners of each changed file and symbol."""
+
+    reasons: dict[str, list[OwnerReason]]
+    unmapped: list[UnmappedChange]
     file_owners: dict[str, set[str]]
     symbol_owners: dict[str, set[str]]
 
 
-def _change_owners(
+def _changed_code_rows(changes: Sequence[ChangedUnit]) -> list[dict[str, Any]]:
+    """Each changed unit as the packet lists it."""
+    return [
+        {
+            "path": change.path,
+            "repository": change.repository,
+            "id": _source_ref(change.repository, change.path),
+            "basePath": change.base_path,
+            "headPath": change.head_path,
+            "status": change.status,
+            "baseLines": list(change.base_lines),
+            "headLines": list(change.head_lines),
+            "baseSymbols": list(change.base_symbols),
+            "headSymbols": list(change.head_symbols),
+        }
+        for change in changes
+    ]
+
+
+def _map_changes(
     changes: Sequence[ChangedUnit],
     nodes_by_id: dict[str, dict[str, Any]],
     book_root: str,
     source_roots: dict[str, list[str]],
-) -> ChangeOwners:
+) -> MappedChanges:
     """Map each changed unit to the nodes that cite its symbols, own its file, or own its surface."""
-    direct_reasons: dict[str, list[dict[str, str]]] = {}
+    reasons: dict[str, list[OwnerReason]] = {}
     file_owners: dict[str, set[str]] = {}
     symbol_owners: dict[str, set[str]] = {}
-    changed_code: list[dict[str, Any]] = []
-    unmapped: list[dict[str, Any]] = []
+    unmapped: list[UnmappedChange] = []
     for change in changes:
         change_book_root = "" if change.repository else book_root
         book_path = _book_relative(change.path, change_book_root)
@@ -294,20 +349,6 @@ def _change_owners(
             ),
         }
         book_change = replace(change, path=book_path, base_path=book_base_path, head_path=book_head_path)
-        changed_code.append(
-            {
-                "path": change.path,
-                "repository": change.repository,
-                "id": _source_ref(change.repository, change.path),
-                "basePath": change.base_path,
-                "headPath": change.head_path,
-                "status": change.status,
-                "baseLines": list(change.base_lines),
-                "headLines": list(change.head_lines),
-                "baseSymbols": list(change.base_symbols),
-                "headSymbols": list(change.head_symbols),
-            }
-        )
         mapped = change.status == "deleted"
         for node_id, node in nodes_by_id.items():
             bullets = node.get("bullets", {})
@@ -318,19 +359,12 @@ def _change_owners(
                 if exact:
                     mapped = True
                     for ref in exact:
-                        direct_reasons.setdefault(node_id, []).append(
-                            {"kind": "changed-code", "ref": ref, "key": key}
-                        )
+                        reasons.setdefault(node_id, []).append(OwnerReason(OwnerKind.CHANGED_CODE, ref, key))
                         symbol_owners.setdefault(ref, set()).add(node_id)
-                elif not owned_file and any(
-                    _ref_owns_change(item, book_change)
-                    for item in cited
-                ):
+                elif not owned_file and any(_ref_owns_change(item, book_change) for item in cited):
                     mapped = owned_file = True
                     owned_ref = _source_ref(change.repository, book_path)
-                    direct_reasons.setdefault(node_id, []).append(
-                        {"kind": "file-owner", "ref": owned_ref, "key": key}
-                    )
+                    reasons.setdefault(node_id, []).append(OwnerReason(OwnerKind.FILE_OWNER, owned_ref, key))
                     file_owners.setdefault(owned_ref, set()).add(node_id)
         if not mapped:
             surface = change.surface or _surface_owner(change.path, source_roots)
@@ -339,25 +373,12 @@ def _change_owners(
                 for node_id, node in nodes_by_id.items()
                 if surface and node.get("surface") == surface
             ]
-            if surface_nodes:
-                mapped = True
-                for node_id in surface_nodes:
-                    direct_reasons.setdefault(node_id, []).append(
-                        {
-                            "kind": "surface-owner",
-                            "ref": f"{surface}:{_source_ref(change.repository, book_path)}",
-                        }
-                    )
-            else:
-                unmapped.append(
-                    {
-                        "kind": "unmapped-change",
-                        "severity": "error",
-                        "path": _source_ref(change.repository, book_path),
-                        "message": "changed production unit has no exact symbol, file, or surface owner",
-                    }
-                )
-    return ChangeOwners(direct_reasons, changed_code, unmapped, file_owners, symbol_owners)
+            surface_ref = f"{surface}:{_source_ref(change.repository, book_path)}"
+            for node_id in surface_nodes:
+                reasons.setdefault(node_id, []).append(OwnerReason(OwnerKind.SURFACE_OWNER, surface_ref))
+            if not surface_nodes:
+                unmapped.append(UnmappedChange(_source_ref(change.repository, book_path)))
+    return MappedChanges(reasons, unmapped, file_owners, symbol_owners)
 
 
 def _navigation(head_graph: Graph) -> dict[str, dict[str, Any]]:
@@ -514,13 +535,17 @@ def build_context(
         )
     ]
 
-    owners = _change_owners(changes, nodes_by_id, book_root, source_roots)
-    direct_reasons, changed_code = owners.reasons, owners.changed_code
-    health.extend(owners.unmapped)
+    mapped_changes = _map_changes(changes, nodes_by_id, book_root, source_roots)
+    direct_reasons = {
+        node_id: [reason.row() for reason in reasons] for node_id, reasons in mapped_changes.reasons.items()
+    }
+    health.extend(change.row() for change in mapped_changes.unmapped)
 
     shared = demote(
         _citing_families(
-            owners.file_owners, owners.symbol_owners, lambda node_id, owners: _family_root(node_id, owners, nodes_by_id)
+            mapped_changes.file_owners,
+            mapped_changes.symbol_owners,
+            lambda node_id, family_members: _family_root(node_id, family_members, nodes_by_id),
         )
     )
     shared_files, shared_symbols = shared.files, shared.symbols
@@ -778,6 +803,7 @@ def build_context(
     obligations = deduped_obligations
     navigation = _navigation(head_graph)
     cli_binaries = _run_binaries_by_path(nodes_by_id)
+    changed_code = _changed_code_rows(changes)
     return {
         "version": 2 if repositories else 1,
         "available": bool(nodes_by_id),
