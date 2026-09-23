@@ -94,9 +94,14 @@ def build_parser() -> argparse.ArgumentParser:
     listing = sub.add_parser("list", help="tasks and seeds in the data directory")
     listing.set_defaults(handler=cmd_list)
 
-    sandbox_commands = sub.add_parser(
-        "sandbox", help="run a command where stablemate is installed as packages and its checkout is absent"
-    ).add_subparsers(dest="sandbox_command", required=True)
+    _add_sandbox_commands(
+        sub.add_parser("sandbox", help="run a command where stablemate is installed as packages and its checkout is absent")
+    )
+    return parser
+
+
+def _add_sandbox_commands(parser: argparse.ArgumentParser) -> None:
+    sandbox_commands = parser.add_subparsers(dest="sandbox_command", required=True)
 
     sandbox_build = sandbox_commands.add_parser("build", help="build the sandbox image from this checkout's packages")
     sandbox_build.add_argument("--tag", default=sandbox.IMAGE)
@@ -134,7 +139,6 @@ def build_parser() -> argparse.ArgumentParser:
     sandbox_run.add_argument("--name", default="", help="the container's name, to stop it with `docker stop`")
     sandbox_run.add_argument("command", nargs=argparse.REMAINDER, help="after `--`, the command to run")
     sandbox_run.set_defaults(handler=cmd_sandbox_run)
-    return parser
 
 
 def _data_dir(args: argparse.Namespace) -> Path:
