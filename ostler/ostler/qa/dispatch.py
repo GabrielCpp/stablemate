@@ -13,7 +13,7 @@ OBSERVE_ROW: dict[str, str] = {
     "web": "playwright", "mobile": "maestro", "http": "http", "cli": "cli",
 }
 BUILT_TARGETS = frozenset({"playwright", "http", "cli", "maestro"})
-CONCEPTUAL_TYPES = frozenset({"concept", "method"})
+NO_LIVE_EVIDENCE_TYPES = frozenset({"concept", "method"})
 
 
 def hosts_observation(node_type: str) -> bool:
@@ -35,7 +35,7 @@ def owes_live_evidence(node_type: str) -> bool:
     reaches it does. A type this does not recognise still owes it: an unclassified node is
     a missing fact, not a definition.
     """
-    return node_type not in CONCEPTUAL_TYPES
+    return node_type not in NO_LIVE_EVIDENCE_TYPES
 
 
 def dispatch_target(node_type: str, driver: str | None) -> str | ScenarioRefusal:
@@ -80,6 +80,6 @@ def dispatch_target(node_type: str, driver: str | None) -> str | ScenarioRefusal
 
 
 __all__ = [
-    "BUILT_TARGETS", "CONCEPTUAL_TYPES", "DISPATCH_TABLE", "OBSERVED_TYPES", "OBSERVE_ROW",
+    "BUILT_TARGETS", "DISPATCH_TABLE", "NO_LIVE_EVIDENCE_TYPES", "OBSERVED_TYPES", "OBSERVE_ROW",
     "dispatch_target", "hosts_observation", "owes_live_evidence",
 ]
