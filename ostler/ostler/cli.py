@@ -150,8 +150,7 @@ def _build_parser() -> argparse.ArgumentParser:
     st.add_argument(
         "--whole-page", action="store_true",
         help="with --path, restamp every `code:` bullet on the page, not just edited nodes' — "
-             "no okf-builder workflow calls this; it exists for catalog migration and one-off "
-             "repair",
+             "it exists for catalog migration and one-off repair",
     )
     st.add_argument(
         "--from-catalog", action="store_true",
@@ -281,8 +280,7 @@ def _build_parser() -> argparse.ArgumentParser:
     cv.add_argument("--surface", help="scope to one book (docs/features/<surface>)")
     cv.add_argument(
         "--inventory", required=True, metavar="PATH",
-        help="the source inventory to diff against (the okf-builder `inventory_source` node's "
-             "artifact; `scripts/okf_verify.py` writes one per book)",
+        help="the source inventory to diff against",
     )
     cv.add_argument(
         "--waivers", metavar="PATH",

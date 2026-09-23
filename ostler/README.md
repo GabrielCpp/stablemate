@@ -225,7 +225,7 @@ a class member without a `private`/`protected` modifier or a `#`/`_` name; PHP: 
 top-level declaration, and a member without a `private`/`protected` modifier), or a
 module-level statement, which has no name to keep private. The rest is tier 2, counted as
 `deferred_candidates` and named in the file's packet limitations; `ostler audit --tier all`
-reviews it too. The okf-builder audits tier 1: a private symbol's behavior reaches a caller
+reviews it too. A workflow's audit covers tier 1: a private symbol's behavior reaches a caller
 through some tier-1 symbol, and that is where a claim about it is checked. A claim whose
 citations all name files that exist but were not selected is counted as `out_of_scope_claims`
 and left for the audit that selects them; a citation to a file that does not exist stays a
@@ -318,7 +318,7 @@ version, the bundled schemas, the dynamic kind registry, the config files, the f
 manifest). Change any of those and every entry is invalidated at once.
 
 The verdict memo is the one product that is not ostler's own computation: it is what a model
-said, stored so the okf-builder audit never asks twice. Its key says what could have moved the
+said, stored so an audit never asks twice. Its key says what could have moved the
 answer — an edited claim drops its own verdict and every candidate's in its packet (their pool
 of claims changed), an edited source file drops everything in that file, a changed prompt or
 schema drops everything — and nothing else. A line shift hits; book evidence is stored relative

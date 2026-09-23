@@ -128,7 +128,7 @@ stdlib `ast`; Go, TypeScript/TSX, PHP and Twig go through `ostler.syntax`, which
 tree-sitter behind a four-function surface (`parse` / `walk` / `text_of` / `lines_of`).
 
 tree-sitter rather than the target language's own toolchain, deliberately: ostler runs in
-agent containers and CI against repos it never builds, and `okf-builder` reads working trees
+agent containers and CI against repos it never builds, and coder's Docs phase reads working trees
 mid-edit. A `go build`-shaped parser would need Go installed and the tree compiling, and the
 fallback that absence forces is a second grammar disagreeing with the first — the exact
 failure this module exists to end. tree-sitter is a prebuilt wheel, needs nothing from the

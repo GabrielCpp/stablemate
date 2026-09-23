@@ -8,8 +8,7 @@ a workflow ``script`` node calls :func:`ensure_stack` before QA and
 (or deliberately left up) by the workflow rather than backgrounded in an agent's
 shell where node teardown kills it mid-build.
 
-The logic here was proven in okf-builder's ``boot-app.py`` walkthrough launcher and
-is generalized so both that workflow and the coder QA flow share one implementation.
+The coder QA flow and any other workflow that boots a stack share this one implementation.
 Every function **returns** a plain dict and never calls ``sys.exit``/``print`` — the
 thin CLI wrappers (e.g. ``boot-app.py``) own the JSON-to-stdout contract.
 

@@ -85,7 +85,7 @@ title: QA stack
 A backticked value is the value and the rest of the line is commentary; unbackticked, the
 first line is all of it. `` - identity: `"status": "ok"` — the health body `` and
 `- identity: "status": "ok"` therefore mean the same thing, and a bullet may be documented
-in place. This is the same reading okf-builder's walkthrough has always applied to the
+in place. This is the same reading the reader applies to the
 `server` contract (§6); one book must not mean two things to two readers.
 
 Everything repo-relative comes back absolute from the reader. Nothing downstream resolves
@@ -194,8 +194,7 @@ Wiring that is *not* a secret — a port, a profile, a fixture path — is a ste
 
 ## 6. The `server` fallback
 
-okf-builder's walkthrough has read a thinner version of this contract off an OKF `server` node
-since it was written: `launch:`, `entry-url:`, `health-path:`, `working-directory:`,
+A thinner version of this contract lives on an OKF `server` node: `launch:`, `entry-url:`, `health-path:`, `working-directory:`,
 `identity:`, `stop:`, `boot-timeout:`. Those bullets are registered on the `server` type and
 read by the same reader, so a book with no runbook still yields a stack, and the walk and the
 QA lane share one derivation. The contract is the feature's sole `server` node, or, where a
