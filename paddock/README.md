@@ -164,6 +164,42 @@ cannot be recorded without saying so.
 that is not a repository, or one with no commit yet — degrades to the same thing, with
 `pinned: false` in the ledger rather than a failed round.
 
+### A book run sees only its app
+
+The pin keeps a round from writing into the toolchain. It does not keep an agent from
+reading it. A book is written for an app that has no stablemate checkout beside it, so an
+agent that learns the book's rules from stablemate's source writes a book no real
+author could have written. One round's writer spent most of its turn reading ostler's
+tests.
+
+`paddock sandbox` runs a command in a container that has the tools and not the tree:
+
+```bash
+paddock sandbox build
+paddock sandbox run --app DIR --runs-dir DIR --config paddock/data/configs/claude-opus.toml \
+  -- workhorse-okf-book run --profile claude --runs-dir /runs --run-id ID --params '{...}'
+```
+
+`build` makes a wheel of every workspace member and installs those wheels in the image.
+No source tree is copied in. It installs the Claude Code release this machine runs,
+unless `--claude-code-version` names another.
+
+`run` mounts four paths and nothing else:
+
+- the app, at `/work/<its directory name>`, which is also the working directory;
+- `--runs-dir`, at `/runs`;
+- `--config`, read-only, as the stablemate config;
+- the Claude Code login, so the agents can call the model.
+
+The app's skills render from the published base library, which farrier fetches on first
+use exactly as it would on a client's machine. `--base-library base-library` mounts this
+checkout's library read-only instead, so a run can try skill edits that are not pushed yet.
+Run `farrier --repo .` in the sandbox and commit the result before the book run, or the
+app's pre-commit hook refuses every commit as drift.
+
+It refuses a mount that would contain the checkout. The installed packages stay
+readable inside the container, as they would be on any machine that installs them.
+
 `workdir()` exists for tasks that fan out — one fresh tree per trial. A result zip
 carrying nine copies of a repo is a result nobody keeps, so what a step wants preserved it
 copies into `run.artifacts`, which makes that an explicit decision.
@@ -227,6 +263,8 @@ paddock seed unpack <name> --to DIR    # pointer -> verified local tree
 paddock fetch <name>                   # url -> local store, sha256-verified
 paddock run <task> [--label L] [--param K=V]   # unpack, steps, stage, (score), seal
 paddock list                           # tasks and their seeds
+paddock sandbox build                  # the image a book run is isolated in
+paddock sandbox run ... -- CMD         # CMD in the app, with no stablemate checkout in sight
 ```
 
 `--param KEY=VALUE` (repeatable) is how a task is run *smaller* than its full self — one

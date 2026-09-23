@@ -4,13 +4,16 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
+import subprocess
 import sys
 from pathlib import Path
 
-from paddock import loader, paths, seeds
+from paddock import loader, paths, sandbox, seeds
 from paddock.pointer import Pointer, PointerError, describe
 from paddock.registry import TaskError
 from paddock.runner import RunError, execute
+from paddock.sandbox import Sandbox, SandboxError
 from paddock.seeds import SeedError
 
 logger = logging.getLogger("paddock")
@@ -90,6 +93,47 @@ def build_parser() -> argparse.ArgumentParser:
 
     listing = sub.add_parser("list", help="tasks and seeds in the data directory")
     listing.set_defaults(handler=cmd_list)
+
+    sandbox_commands = sub.add_parser(
+        "sandbox", help="run a command where stablemate is installed as packages and its checkout is absent"
+    ).add_subparsers(dest="sandbox_command", required=True)
+
+    sandbox_build = sandbox_commands.add_parser("build", help="build the sandbox image from this checkout's packages")
+    sandbox_build.add_argument("--tag", default=sandbox.IMAGE)
+    sandbox_build.add_argument(
+        "--claude-code-version", default="", help="the Claude Code release to install; default: this machine's"
+    )
+    sandbox_build.set_defaults(handler=cmd_sandbox_build)
+
+    sandbox_run = sandbox_commands.add_parser(
+        "run",
+        help="run a command in the app, inside the sandbox",
+        description=(
+            f"The app is mounted at {sandbox.WORK}/<its directory name> and is the working directory, "
+            + f"--runs-dir at {sandbox.RUNS}, and --config at {sandbox.CONFIG}. Nothing else of this machine is visible."
+        ),
+    )
+    sandbox_run.add_argument("--app", type=Path, required=True, help="the repo the command works on")
+    sandbox_run.add_argument("--runs-dir", type=Path, required=True, help="where the command writes its runs")
+    sandbox_run.add_argument("--config", type=Path, required=True, help="the stablemate config the command reads")
+    sandbox_run.add_argument(
+        "--credentials",
+        type=Path,
+        default=Path.home() / ".claude" / ".credentials.json",
+        help="the Claude Code login the agents use",
+    )
+    sandbox_run.add_argument(
+        "--base-library",
+        type=Path,
+        help=(
+            f"a base library to render the app's skills from, mounted read-only at {sandbox.BASE_LIBRARY}. "
+            + "Left out, farrier fetches the published one, as it would on a client's machine"
+        ),
+    )
+    sandbox_run.add_argument("--image", default=sandbox.IMAGE)
+    sandbox_run.add_argument("--name", default="", help="the container's name, to stop it with `docker stop`")
+    sandbox_run.add_argument("command", nargs=argparse.REMAINDER, help="after `--`, the command to run")
+    sandbox_run.set_defaults(handler=cmd_sandbox_run)
     return parser
 
 
@@ -203,6 +247,38 @@ def cmd_list(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_sandbox_build(args: argparse.Namespace) -> int:
+    version = args.claude_code_version or sandbox.claude_code_version()
+    sandbox.build(_project(_data_dir(args)), claude_code=version, tag=args.tag)
+    print(f"image {args.tag}  claude-code {version}")
+    return 0
+
+
+def _command(given: list[str]) -> list[str]:
+    command = given[1:] if given[:1] == ["--"] else given
+    if not command:
+        raise SandboxError("no command to run. Put it after `--`, as in `paddock sandbox run ... -- workhorse-okf-book run`")
+    return command
+
+
+def cmd_sandbox_run(args: argparse.Namespace) -> int:
+    command = _command(args.command)
+    args.runs_dir.mkdir(parents=True, exist_ok=True)
+    box = Sandbox(
+        app=args.app,
+        runs_dir=args.runs_dir,
+        config=args.config,
+        credentials=args.credentials,
+        image=args.image,
+        base_library=args.base_library,
+    )
+    refused = box.refusals(_project(_data_dir(args)))
+    if refused:
+        raise SandboxError("the sandbox would not be isolated:\n" + "\n".join(refused))
+    argv = box.argv(command, uid=os.getuid(), gid=os.getgid(), name=args.name)
+    return subprocess.run(argv, check=False).returncode
+
+
 def main(argv: list[str] | None = None) -> None:
     args = build_parser().parse_args(argv)
     logging.basicConfig(
@@ -212,7 +288,7 @@ def main(argv: list[str] | None = None) -> None:
     )
     try:
         raise SystemExit(args.handler(args))
-    except (SeedError, PointerError, TaskError, RunError) as exc:
+    except (SeedError, PointerError, TaskError, RunError, SandboxError) as exc:
         logger.error("%s", exc)
         raise SystemExit(1) from exc
 
