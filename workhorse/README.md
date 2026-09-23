@@ -239,7 +239,7 @@ The resilience and timeout knobs are env vars, documented in
 
 The controller is **auto-resume-in-place** by default. Each `(workflow, run-id)` pair maps
 to one stable run dir (`<workflow>-<run-id>`), and when you don't pass `--run-id` the id
-defaults to a short **digest of `--params`** (e.g. `okf-builder-p1c7e4b2a`). Re-running the
+defaults to a short **digest of `--params`** (e.g. `coder-p1c7e4b2a`). Re-running the
 same params re-derives the same id, so a crash, a reboot or a plain re-run resumes the
 existing checkpoint — which is what lets an unattended run survive either. Distinct params
 get distinct dirs, so one target never silently resumes another's checkpoint and drops its

@@ -330,8 +330,7 @@ A turn that ends with **no answer at all** — an empty result from a flaky prov
 that exited non-zero — is `AgentTurnFailed`, a sibling and deliberately *not* a supertype:
 a state that confused the two would repair a file the turn never wrote. Catch it where the
 state has somewhere better to send a dead provider than the end of the run — recording the
-failure and opening an operator gate is the usual answer, and is what okf-builder's
-`behavior-audit` does. Uncaught, it stops the run at a resumable checkpoint; the ladder
+failure and opening an operator gate is the usual answer. Uncaught, it stops the run at a resumable checkpoint; the ladder
 still never answers for a node.
 
 These are **real values, not templates**: the state computes the path in Python and

@@ -266,9 +266,8 @@ ostler as `ostler.qa.stack`: `ensure_stack` brings a stack up
 from a manifest (or adopts one already serving) and `teardown_stack` reaps it or
 leaves an expensive shared stack running. It knows no workflow's schema — a workflow
 hands it a manifest dict — so any workflow that must own a long-lived stack across
-nodes uses the same lifecycle. (This is what okf-builder's walkthrough launcher and
-the coder QA flow both call; a workflow's own node function is where the manifest is
-read.) The manifest keys and the return shape are in
+nodes uses the same lifecycle. (This is what the coder QA flow calls; a workflow's own
+node function is where the manifest is read.) The manifest keys and the return shape are in
 [ostler's QA-RUN.md](../../ostler/docs/QA-RUN.md#the-durable-stack-ostlerqastack);
 what stays a workhorse concern is *where* you call it from — a `script` node, never
 inside an agent turn.

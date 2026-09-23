@@ -12,7 +12,7 @@ and [RELOAD.md](RELOAD.md) for reaching a run that is still going.
 The controller is **auto-resume-in-place** by default. Each `(workflow, run-id)`
 pair maps to one stable run dir (`<workflow>-<run-id>`). When you don't pass
 `--run-id`, the id defaults to a short **digest of `--params`** (e.g.
-`okf-builder-p1c7e4b2a`), or to `default` when the run carries no params. This keeps
+`coder-p1c7e4b2a`), or to `default` when the run carries no params. This keeps
 the resume contract while stopping distinct targets from colliding: a build for
 `{service: report}` and one for `{service: api}` get different dirs automatically, so
 the second never silently resumes the first (and drops its `--params`). Re-running
@@ -47,7 +47,7 @@ stamp is cleared by the resume that follows it.
 To interrupt a run from another terminal, use its control socket:
 
 ```bash
-workhorse-okf-builder control --run /absolute/run/dir stop
+workhorse-coder control --run /absolute/run/dir stop
 ```
 
 Every workflow command supports `stop` on Linux, macOS, and Windows through WSL.
