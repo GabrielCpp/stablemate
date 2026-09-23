@@ -19,6 +19,7 @@ from ostler.qa.context import (
     _navigation,
     _sort_key,
     _verification_refs,
+    book_context,
     build_context,
     render_context,
     render_obligations,
@@ -464,6 +465,51 @@ def test_six_unrelated_nodes_citing_one_symbol_still_demote(tmp_path: Path):
     other_obligation = next(item for item in packet["obligations"] if item["node"].endswith("other.md"))
     assert not other_obligation["required"]
     assert other_obligation["evidenceRequired"] == "context"
+
+
+def test_a_whole_book_owes_every_command_citing_one_symbol(tmp_path: Path):
+    """The fan-out demotion keeps a change to a shared helper from owing every node that cites it. A whole-book audit has no change to be proportional to, so the same three commands a diff demotes all owe live evidence there."""
+    (tmp_path / "docs/features/demo").mkdir(parents=True)
+    for name in ("one", "two", "three"):
+        (tmp_path / f"docs/features/demo/{name}.md").write_text(
+            f"---\ntype: cli\nslug: {name}\ntitle: {name}\n---\n# {name}\n\n"
+            f"## Commands\n\n### {name}-run\n- code: `app/cli.py::run`\n",
+            encoding="utf-8",
+        )
+    (tmp_path / "docs/features/demo/lone.md").write_text(
+        "---\ntype: cli\nslug: lone\ntitle: lone\n---\n# lone\n\n"
+        "## Commands\n\n### lone-run\n- code: `app/other.py::alone`\n",
+        encoding="utf-8",
+    )
+    source = tmp_path / "app/cli.py"
+    source.parent.mkdir(parents=True)
+    source.write_text("def run():\n    return 'old'\n", encoding="utf-8")
+    other = tmp_path / "app/other.py"
+    other.write_text("def alone():\n    return 'old'\n", encoding="utf-8")
+    _git(tmp_path, "init")
+    _git(tmp_path, "config", "user.email", "qa@example.com")
+    _git(tmp_path, "config", "user.name", "QA")
+    _git(tmp_path, "add", ".")
+    _git(tmp_path, "commit", "-m", "base")
+    base = _git(tmp_path, "rev-parse", "HEAD")
+    source.write_text("def run():\n    return 'new'\n", encoding="utf-8")
+    other.write_text("def alone():\n    return 'new'\n", encoding="utf-8")
+
+    diffed = [
+        item
+        for item in build_context(tmp_path, base=base, source_roots={"demo": ["app"]})["obligations"]
+        if item["nodeType"] == "command" and "/lone.md" not in item["node"]
+    ]
+    whole = [
+        item
+        for item in book_context(tmp_path, source_roots={"demo": ["app"]})["obligations"]
+        if item["nodeType"] == "command" and "/lone.md" not in item["node"]
+    ]
+
+    assert len(diffed) == 3
+    assert all(not item["required"] for item in diffed), diffed
+    assert len(whole) == 3
+    assert all(item["required"] for item in whole), whole
 
 
 def test_concepts_chained_by_extends_citing_one_symbol_stay_one_family(tmp_path: Path):

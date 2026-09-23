@@ -202,6 +202,7 @@ def book_context(
         source_roots=source_roots,
         features_root=features_root,
         repositories=repositories,
+        proportional=False,
     )
 
 
@@ -273,8 +274,14 @@ def build_context(
     story_file: Path | None = None,
     exclude_paths: Iterable[str] = (),
     repositories: Sequence[SourceRepository] = (),
+    proportional: bool = True,
 ) -> dict[str, Any]:
-    """Map a `base..head` code diff onto the OKF graph and return the obligation packet."""
+    """Map a `base..head` code diff onto the OKF graph and return the obligation packet.
+
+    *proportional* demotes the owners of a file or symbol many nodes cite to context, so a
+    change to a shared helper does not owe live evidence for every node. A whole-book audit
+    has no change to be proportional to, and passes `False` to owe every grounded claim.
+    """
     root = root.resolve()
     excluded_paths = {str(path) for path in exclude_paths}
     features_root = path_mod.resolve_features_root(features_root, root)
@@ -448,12 +455,12 @@ def build_context(
                 file_owners.setdefault(reason["ref"], set()).add(node_id)
             elif reason["kind"] == "changed-code":
                 symbol_owners.setdefault(reason["ref"], set()).add(node_id)
-    shared_files = {
+    shared_files = set() if not proportional else {
         ref
         for ref, owners in file_owners.items()
         if len({_family_root(node_id, owners, nodes_by_id) for node_id in owners}) > 1
     }
-    shared_symbols = {
+    shared_symbols = set() if not proportional else {
         ref
         for ref, owners in symbol_owners.items()
         if len({_family_root(node_id, owners, nodes_by_id) for node_id in owners})
