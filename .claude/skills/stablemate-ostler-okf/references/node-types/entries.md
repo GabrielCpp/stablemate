@@ -38,8 +38,9 @@ None.
 
 An entries page links to the entry-point pages of its service. Links out of it, and every link
 out of the pages it reaches, define what is reachable. Any link counts, including one inside
-concept prose, and a link into another service's pages counts too. Nothing links to an entries
-page.
+concept prose, and a link into another service's pages counts too. A `fixture:` bullet reaches
+the fixture page it names, so a fixture page some claim names needs no other link. Nothing links to
+an entries page.
 
 ## Minimal example
 
