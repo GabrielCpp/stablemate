@@ -98,7 +98,7 @@ parked) are separate alerts.
 ```bash
 groom recent                          # top 10, default liveness threshold = 180s
 groom recent -n 20                    # more
-groom recent --workflow okf-builder   # one workflow
+groom recent --workflow coder         # one workflow
 groom recent --alive-since-s 600      # widen "alive" for a slow node visit
 groom recent --json                   # machine-readable
 ```
@@ -123,7 +123,7 @@ Use `recent` when:
 
 - **"Where did my run go?"** — `status` says no live runs, but the run's process died an
   hour ago. `recent` says yes, here, with timestamp.
-- **"Is that other okf-builder run still going?"** — `status` shows only the current
+- **"Is that other coder run still going?"** — `status` shows only the current
   machine's runs; a run on a sibling machine heartbeating into the same database shows
   here, alive or dead.
 - **"Which runs are old enough that I should archive their evidence?"** — the `last`

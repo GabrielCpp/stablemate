@@ -24,7 +24,7 @@ empty one. `verify:` is the opposite — it is the *most* writable bullet at des
 observation that would prove a behaviour is knowable before the code producing it exists. **From
 code**, you fill `code:`/`tests:` with the real `path::symbol`, because it is there to read.
 
-> The greenfield pass is the **okf-builder** workflow's job: emit the skeleton at design time so
+> The greenfield pass emits the skeleton at design time so
 > the coder inherits a target rather than a blank page. The **author** workflow never runs either
 > playbook — it reads the book to ground its stories and is forbidden from writing to it. The
 > **coder** workflow runs the from-code pass after implementing a story, and so does dogfooding a

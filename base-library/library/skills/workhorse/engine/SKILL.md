@@ -222,7 +222,7 @@ parameter list instead. Three habits, then, on every state you touch:
   The driver logs it on the transition line, so the run log reads the way the diagram does.
 
 Hold the line with a test in the workflow's own suite: walk `state_graph(Flow).states` and
-assert no edge has an empty `reason` (okf-builder's `test_workflow.py` is the model). The
+assert no edge has an empty `reason`. The
 mechanics — what a step is, how a handoff is drawn — are in workhorse's `docs/CHECKING.md`
 and `docs/AUTHORING.md`.
 

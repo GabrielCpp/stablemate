@@ -106,5 +106,4 @@ with no `kind: service` step, or nothing proving readiness · `runbook-multi-ser
 surface an *undeclared* stack at author time, where the remedy is one node — instead of in the
 middle of a QA run, where it used to arrive as a pass against nothing.
 
-The full spec, including the manifest mapping and the `server` fallback the okf-builder
-walkthrough shares, is `ostler/docs/okf-runbook.md`.
+The full spec, including the manifest mapping and the `server` fallback, is `ostler/docs/okf-runbook.md`.
