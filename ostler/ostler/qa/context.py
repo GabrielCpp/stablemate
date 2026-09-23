@@ -207,12 +207,12 @@ def book_context(
 
 
 Demotion = Callable[
-    [dict[str, list[dict[str, Any]]], dict[str, dict[str, Any]]], tuple[frozenset[str], frozenset[str]]
+    [dict[str, list[dict[str, str]]], dict[str, dict[str, Any]]], tuple[frozenset[str], frozenset[str]]
 ]
 
 
 def shared_citations(
-    direct_reasons: dict[str, list[dict[str, Any]]], nodes_by_id: dict[str, dict[str, Any]]
+    direct_reasons: dict[str, list[dict[str, str]]], nodes_by_id: dict[str, dict[str, Any]]
 ) -> tuple[frozenset[str], frozenset[str]]:
     """The files and symbols cited by many families, so a change to a shared helper does not owe live evidence for every node."""
     file_owners: dict[str, set[str]] = {}
@@ -234,7 +234,7 @@ def shared_citations(
 
 
 def no_demotion(
-    _direct_reasons: dict[str, list[dict[str, Any]]], _nodes_by_id: dict[str, dict[str, Any]]
+    _direct_reasons: dict[str, list[dict[str, str]]], _nodes_by_id: dict[str, dict[str, Any]]
 ) -> tuple[frozenset[str], frozenset[str]]:
     """No file or symbol, for a whole-book context that has no change to be proportional to."""
     return frozenset(), frozenset()
