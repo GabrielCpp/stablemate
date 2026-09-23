@@ -13,7 +13,7 @@ from pydantic import TypeAdapter
 from workhorse_workflows.okf_book.blockers import Phase, read_blockers
 from workhorse_workflows.okf_book.budget import ALONE_CEILING_TOKENS, CHARS_PER_TOKEN, TURN_BUDGET_TOKENS
 from workhorse_workflows.okf_book.attempts import MAX_ATTEMPTS
-from workhorse_workflows.okf_book.check_pages import CHECK_RUNS, check_command, waived_path
+from workhorse_workflows.okf_book.check_pages import CHECK_RUNS, check_command
 from workhorse_workflows.okf_book.entries import FEATURES_DIR
 from workhorse_workflows.okf_book.flow_aggregate import UNJUDGED_PROBLEM
 from workhorse_workflows.okf_book.garbage import delete_book_pages
@@ -129,7 +129,7 @@ def test_every_writing_turn_is_handed_the_check_it_is_charged_by(app: App, run_b
 
     writes = [*runner.args_of("write-page"), *runner.args_of("write-operations"), *runner.args_of("write-flows")]
     assert writes
-    assert {(args["check"], args["check_runs"]) for args in writes} == {(check_command("tally", waived_path(flow.run_dir)), CHECK_RUNS)}
+    assert {(args["check"], args["check_runs"]) for args in writes} == {(check_command(flow.run_dir), CHECK_RUNS)}
 
 
 def test_every_write_and_verify_turn_is_packed_under_the_budget(app: App, run_book: RunBook) -> None:

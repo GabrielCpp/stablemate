@@ -1,54 +1,59 @@
-"""The check a writing turn runs on its own pages before it replies. It prints what the check after the turn charges."""
+"""The check a writing turn runs on its pages before it replies. It prints what the check after the turn charges."""
 from __future__ import annotations
 
 import sys
-from collections.abc import Iterable, Sequence
+from collections.abc import Sequence
 from pathlib import Path
 
-from pydantic import TypeAdapter
+from pydantic import BaseModel, ConfigDict
 
 from workhorse_workflows.okf_book.budget import pack_problems
-from workhorse_workflows.okf_book.page_check import page_problems
+from workhorse_workflows.okf_book.confine import Snapshot, book_changes, new_since_head
+from workhorse_workflows.okf_book.page_check import page_problems, unreached
 
 MODULE = "workhorse_workflows.okf_book.check_pages"
-USAGE = f"usage: python -m {MODULE} <service> <waived-gaps.json> <page>..."
+USAGE = f"usage: python -m {MODULE} <job-check.json>"
 PASSED = "No problems. The check after your turn passes these pages."
 LEFT_OUT = "{count} more problems are past this output's budget. Fix these and run it again."
-WAIVED_FILE = "waived-gaps.json"
+JOB_CHECK_FILE = "job-check.json"
 CHECK_RUNS = 3
-_WAIVED = TypeAdapter(tuple[str, ...])
 
 
-def waived_path(run_dir: Path) -> Path:
-    """Where the current job's waived gaps are."""
-    return run_dir / WAIVED_FILE
+class JobCheck(BaseModel):
+    """What the check after a job's turns compares against: the job's service, the tree before its first turn, and its inherited gaps."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    service: str
+    before: Snapshot
+    inherited_gaps: tuple[str, ...] = ()
 
 
-def write_waived(run_dir: Path, gaps: Iterable[str]) -> Path:
-    """Write the gaps the check after this job's turns does not charge, and return where they are."""
-    path = waived_path(run_dir)
-    _ = path.write_bytes(_WAIVED.dump_json(tuple(gaps)))
+def job_check_path(run_dir: Path) -> Path:
+    """Where the current job's check inputs are."""
+    return run_dir / JOB_CHECK_FILE
+
+
+def write_job_check(run_dir: Path, check: JobCheck) -> Path:
+    """Write the current job's check inputs, and return where they are."""
+    path = job_check_path(run_dir)
+    _ = path.write_text(check.model_dump_json(), encoding="utf-8")
     return path
 
 
-def check_command(service: str, waived: Path) -> str:
-    """The command a writing turn runs from the repo root, with the pages it wrote after it."""
-    return f"{sys.executable} -m {MODULE} {service} {waived}"
+def check_command(run_dir: Path) -> str:
+    """The command a writing turn runs from the repo root."""
+    return f"{sys.executable} -m {MODULE} {job_check_path(run_dir)}"
 
 
-def _repo_relative(root: Path, page: str) -> str:
-    path = (root / page).resolve()
-    return path.relative_to(root).as_posix() if path.is_relative_to(root) else page
-
-
-def check_report(root: Path, argv: Sequence[str]) -> tuple[int, tuple[str, ...]]:
-    """The exit code and the lines to print for the service, the waived gaps file and the pages in `argv`, checked under `root`."""
-    if len(argv) < 3:
-        return 2, (USAGE,)
-    service, waived, *pages = argv
-    resolved = root.resolve()
-    inherited = _WAIVED.validate_json(Path(waived).read_bytes())
-    return report_lines(page_problems(resolved, service, [_repo_relative(resolved, page) for page in pages], inherited))
+def job_problems(root: Path, check: JobCheck) -> tuple[str, ...]:
+    """Each new page nothing reaches, and each doctor error and compile gap on the book pages changed since the job began."""
+    changed = book_changes(root, check.service, check.before)
+    dead = (page.rel for page in unreached(root, new_since_head(root, changed)))
+    return (
+        *(f"{page} is linked from no page the entries page reaches, so the check after your turn deletes it." for page in dead),
+        *page_problems(root, check.service, changed, check.inherited_gaps),
+    )
 
 
 def report_lines(problems: Sequence[str]) -> tuple[int, tuple[str, ...]]:
@@ -60,8 +65,16 @@ def report_lines(problems: Sequence[str]) -> tuple[int, tuple[str, ...]]:
     return 1, (*shown.kept, *(more if shown.left_out else ()))
 
 
+def check_report(root: Path, argv: Sequence[str]) -> tuple[int, tuple[str, ...]]:
+    """The exit code and the lines to print for the job check file named in `argv`, checked under `root`."""
+    if len(argv) != 1:
+        return 2, (USAGE,)
+    check = JobCheck.model_validate_json(Path(argv[0]).read_text(encoding="utf-8"))
+    return report_lines(job_problems(root.resolve(), check))
+
+
 def main() -> int:
-    """Check the pages named on the command line, from the current directory."""
+    """Check the current job's pages from the current directory."""
     code, lines = check_report(Path.cwd(), sys.argv[1:])
     for line in lines:
         print(line)

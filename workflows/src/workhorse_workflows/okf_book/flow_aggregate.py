@@ -22,7 +22,7 @@ from workhorse_workflows.okf_book.budget import (
     total_text_tokens,
 )
 from workhorse_workflows.okf_book.attempts import JobLedger
-from workhorse_workflows.okf_book.check_pages import CHECK_RUNS, check_command, waived_path, write_waived
+from workhorse_workflows.okf_book.check_pages import CHECK_RUNS, JobCheck, check_command, write_job_check
 from workhorse_workflows.okf_book.citations import book_pages
 from workhorse_workflows.okf_book.confine import (
     book_changes,
@@ -97,8 +97,8 @@ class Aggregate(Retry):
         if job is None:
             return Continue(None, self.bring_up)
         gaps = inherited_gaps(self.root, job.service, job.owned_pages)
-        _ = write_waived(self.run_dir, gaps)
         ledger = JobLedger(job=job, before=snapshot(self.root), inherited_gaps=gaps)
+        _ = write_job_check(self.run_dir, JobCheck(service=job.service, before=ledger.before, inherited_gaps=gaps))
         return Continue(job, self.write_job, ledger=ledger)
 
     def _rewrite(self, ledger: JobLedger) -> Continue[...]:
@@ -133,7 +133,7 @@ class Aggregate(Retry):
                 "contracts": _contract_args(contracts),
                 "stories": list(stories),
                 "problems": list(problems.kept),
-                "check": check_command(job.service, waived_path(self.run_dir)),
+                "check": check_command(self.run_dir),
                 "check_runs": CHECK_RUNS,
             },
             cwd=root,
