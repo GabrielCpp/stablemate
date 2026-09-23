@@ -13,8 +13,10 @@ from workhorse_workflows.okf_book.aggregate.nodes.check_pages import LEFT_OUT, P
 from workhorse_workflows.okf_book.aggregate.nodes.job_check import (
     CHECK_MODULE,
     JobCheck,
+    charge,
     check_command,
     job_check_path,
+    spent_tokens,
     write_job_check,
 )
 from workhorse_workflows.okf_book.shared.confine import snapshot
@@ -109,10 +111,11 @@ def test_runs_near_the_turn_budget_print_only_the_count(app: App, tmp_path: Path
     repo = app("tally-cli")
     before = snapshot(repo)
     _append(repo, ROOT_PAGE, "\nTally keeps a ledger.\n")
-    count = Report(1, (SPENT.format(count=len(page_problems(repo, "tally", [ROOT_PAGE]))),))
-    check = JobCheck(root=repo, service="tally", before=before, spent_tokens=CHECK_OUTPUT_BUDGET_TOKENS - count.tokens)
+    count_report = Report(1, (SPENT.format(count=len(page_problems(repo, "tally", [ROOT_PAGE]))),))
+    path = write_job_check(tmp_path, JobCheck(root=repo, service="tally", before=before))
+    charge(path, CHECK_OUTPUT_BUDGET_TOKENS - count_report.tokens)
 
-    assert check_report([str(write_job_check(tmp_path, check))]) == count
+    assert check_report([str(path)]) == count_report
 
 
 def test_no_report_costs_more_than_the_turn_has_left() -> None:
@@ -132,12 +135,12 @@ def test_each_run_charges_what_it_printed(app: App, tmp_path: Path) -> None:
     runs = [subprocess.run([sys.executable, "-m", CHECK_MODULE, str(path)], capture_output=True, check=False) for _ in range(2)]
 
     assert [run.returncode for run in runs] == [1, 1]
-    assert JobCheck.model_validate_json(path.read_text(encoding="utf-8")).spent_tokens == 2 * printed
+    assert spent_tokens(path) == 2 * printed
 
 
 def _charged(path: Path) -> int:
     _ = subprocess.run([sys.executable, "-m", CHECK_MODULE, str(path)], capture_output=True, check=False)
-    return JobCheck.model_validate_json(path.read_text(encoding="utf-8")).spent_tokens
+    return spent_tokens(path)
 
 
 def test_a_passing_run_is_charged_its_line(app: App, tmp_path: Path) -> None:
@@ -149,18 +152,25 @@ def test_a_passing_run_is_charged_its_line(app: App, tmp_path: Path) -> None:
 
 def test_a_run_with_nothing_left_prints_nothing_and_still_fails(app: App, tmp_path: Path) -> None:
     repo = app("tally-cli")
-    check = JobCheck(root=repo, service="tally", before=snapshot(repo), spent_tokens=CHECK_OUTPUT_BUDGET_TOKENS)
+    path = write_job_check(tmp_path, JobCheck(root=repo, service="tally", before=snapshot(repo)))
+    charge(path, CHECK_OUTPUT_BUDGET_TOKENS)
     _append(repo, ROOT_PAGE, "\nTally keeps a ledger.\n")
-    path = write_job_check(tmp_path, check)
 
     ran = subprocess.run([sys.executable, "-m", CHECK_MODULE, str(path)], capture_output=True, text=True, check=False)
 
     assert (ran.returncode, ran.stdout) == (1, "")
-    assert JobCheck.model_validate_json(path.read_text(encoding="utf-8")).spent_tokens == CHECK_OUTPUT_BUDGET_TOKENS
+    assert spent_tokens(path) == CHECK_OUTPUT_BUDGET_TOKENS
 
 
 def test_a_call_without_the_job_check_prints_the_usage() -> None:
     assert check_report([]) == Report(2, (USAGE,))
+
+
+def test_a_new_job_check_starts_with_nothing_spent(app: App, tmp_path: Path) -> None:
+    repo = app("tally-cli")
+    charge(write_job_check(tmp_path, JobCheck(root=repo, service="tally", before=snapshot(repo))), CHECK_OUTPUT_BUDGET_TOKENS)
+
+    assert spent_tokens(write_job_check(tmp_path, JobCheck(root=repo, service="tally", before=snapshot(repo)))) == 0
 
 
 def test_the_command_names_the_module_and_the_job_check(tmp_path: Path) -> None:

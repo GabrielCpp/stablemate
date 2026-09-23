@@ -12,7 +12,7 @@ from workhorse_workflows.okf_book.shared.budget import (
     pack_problems,
     total_text_tokens,
 )
-from workhorse_workflows.okf_book.aggregate.nodes.job_check import CHECK_MODULE, JobCheck
+from workhorse_workflows.okf_book.aggregate.nodes.job_check import CHECK_MODULE, JobCheck, charge, spent_tokens
 from workhorse_workflows.okf_book.shared.confine import book_changes, new_since_head
 from workhorse_workflows.okf_book.shared.page_check import charged_pages, page_problems, unreached
 
@@ -72,24 +72,19 @@ def check_report(argv: Sequence[str]) -> Report:
     """The report on the job check file named in `argv`, within what its earlier runs left of the turn's output."""
     if len(argv) != 1:
         return Report(2, (USAGE,))
-    check = JobCheck.model_validate_json(Path(argv[0]).read_text(encoding="utf-8"))
-    return problem_report(job_problems(check), CHECK_OUTPUT_BUDGET_TOKENS - check.spent_tokens)
-
-
-def charge_check(path: Path, tokens: int) -> None:
-    """Add `tokens` to what the runs of the job check at `path` have printed."""
+    path = Path(argv[0])
     check = JobCheck.model_validate_json(path.read_text(encoding="utf-8"))
-    _ = path.write_text(check.model_copy(update={"spent_tokens": check.spent_tokens + tokens}).model_dump_json(), encoding="utf-8")
+    return problem_report(job_problems(check), CHECK_OUTPUT_BUDGET_TOKENS - spent_tokens(path))
 
 
 def main() -> int:
-    """Check the current job's pages, and charge every line the report prints to the job check."""
+    """Check the current job's pages, and charge every line the report prints to the turn."""
     argv = sys.argv[1:]
     report = check_report(argv)
     for line in report.lines:
         print(line)
     if len(argv) == 1:
-        charge_check(Path(argv[0]), report.tokens)
+        charge(Path(argv[0]), report.tokens)
     return report.code
 
 

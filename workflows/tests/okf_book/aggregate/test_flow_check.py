@@ -6,7 +6,7 @@ from pathlib import Path
 
 from okf_book.support import BRIEFS, Reply, ScriptedRunner, WorkListView, WriteOnly, always, listing_runner, promised_contracts
 
-from workhorse_workflows.okf_book.aggregate.nodes.job_check import JobCheck, check_command
+from workhorse_workflows.okf_book.aggregate.nodes.job_check import charge, check_command, spent_tokens
 from workhorse_workflows.okf_book.main.nodes.surface import Surface, SurfaceKind
 from workhorse_workflows.okf_book.shared.attempts import MAX_ATTEMPTS
 from workhorse_workflows.okf_book.shared.budget import CHECK_OUTPUT_BUDGET_TOKENS
@@ -64,9 +64,8 @@ def test_every_writing_turn_starts_with_the_whole_check_budget(app: App, run_boo
     def write(args: dict[str, object]) -> dict[str, object]:
         path = Path(str(args["check"]).split()[-1])
         _append(repo, str(args["page"]), "\nTally keeps a ledger.\n")
-        check = JobCheck.model_validate_json(path.read_text(encoding="utf-8"))
-        spent.append(check.spent_tokens)
-        _ = path.write_text(check.model_copy(update={"spent_tokens": CHECK_OUTPUT_BUDGET_TOKENS}).model_dump_json(), encoding="utf-8")
+        spent.append(spent_tokens(path))
+        charge(path, CHECK_OUTPUT_BUDGET_TOKENS)
         return {"summary": "wrote"}
 
     def reject(args: dict[str, object]) -> dict[str, object]:
