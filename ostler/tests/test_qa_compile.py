@@ -24,7 +24,7 @@ from ostler.qa.compile import (
 )
 from ostler.qa.compile_support import MAESTRO, PLAYWRIGHT, PYTHON, DriverSpec
 from ostler.qa.compile_support import unobservable_gap as _unobservable_gap
-from ostler.qa.dispatch import BUILT_TARGETS, DISPATCH_TABLE, OBSERVE_ROW, dispatch_target
+from ostler.qa.dispatch import BUILT_TARGETS, DISPATCH_TABLE, OBSERVE_ROW, OPS_TYPES, dispatch_target
 from ostler.qa.outcome import QaOutcome
 from ostler.qa.packet import packet_of
 from ostler.qa.plan_source import ScenarioRefusal
@@ -2377,6 +2377,18 @@ def test_a_concept_node_gets_its_own_gap_message_not_a_generic_no_row_for() -> N
     assert other.kind == "uncompilable-claim"
     assert "names no row for" in other.detail
     assert "definition" not in other.detail
+
+
+@pytest.mark.parametrize("node_type", sorted(OPS_TYPES))
+def test_a_claim_on_an_ops_node_is_sent_to_a_runbook_step_or_the_command_that_produces_it(node_type: str) -> None:
+    refusal = dispatch_target(node_type, "cli")
+
+    assert isinstance(refusal, ScenarioRefusal)
+    assert refusal.kind == "uncompilable-claim"
+    assert f"sits on a {node_type!r} node" in refusal.detail
+    assert "runbook step whose `run:` exits non-zero" in refusal.detail
+    assert "on the invocation, endpoint or interaction that produces it" in refusal.detail
+    assert "names no row for" not in refusal.detail
 
 
 def test_a_field_claim_compiles_on_the_screen_it_sits_on() -> None:
