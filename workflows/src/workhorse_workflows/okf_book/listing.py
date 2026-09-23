@@ -4,7 +4,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from workhorse_workflows.okf_book.budget import TURN_BUDGET_TOKENS, Packed, estimated_tokens, file_tokens, name_tokens, pack
+from workhorse_workflows.okf_book.budget import TURN_BUDGET_TOKENS, Packed, estimated_tokens, file_tokens, name_tokens, pack_read, pack_told
 from workhorse_workflows.okf_book.citations import book_pages
 from workhorse_workflows.okf_book.imports import reached_files
 from workhorse_workflows.okf_book.surface import Surface
@@ -44,6 +44,6 @@ class ListingContext:
 
 def listing_context(root: Path, surface: Surface, budget: int = TURN_BUDGET_TOKENS) -> ListingContext:
     """Charge the prompt and the page names first, then pack the files nearest the entry into what is left."""
-    pages = pack(name_tokens(page.stem for page in book_pages(root, surface.service)), PAGE_LIST_BUDGET_TOKENS)
-    files = pack(file_tokens(root, reached_files(root, [surface.entry])), max(budget - prompt_tokens() - pages.tokens, 0))
+    pages = pack_told(name_tokens(page.stem for page in book_pages(root, surface.service)), PAGE_LIST_BUDGET_TOKENS)
+    files = pack_read(file_tokens(root, reached_files(root, [surface.entry])), max(budget - prompt_tokens() - pages.tokens, 0))
     return ListingContext(surface, files, pages)

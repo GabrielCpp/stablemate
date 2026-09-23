@@ -5,27 +5,28 @@ from collections.abc import Callable
 from pathlib import Path
 
 import pytest
-from okf_book.support import ListingRunner, commits, git, listing
+from okf_book.support import EnumerateOnly, ScriptedRunner, commits, git, listing_runner
 from ostler.stamp import stamp_page
 from workhorse.pyflow import driver as pyflow_driver
+from workhorse.pyflow.graph import preflight, registry_graphs
 
 from workhorse_workflows.okf_book.budget import ALONE_CEILING_TOKENS, CHARS_PER_TOKEN
 from workhorse_workflows.okf_book.citations import book_pages
 from workhorse_workflows.okf_book.entries import FEATURES_DIR, EntryLink, read_entries, write_entries
 from workhorse_workflows.okf_book.surface import Surface, SurfaceKind
 from workhorse_workflows.okf_book.work_set import WorkSet
-from workhorse_workflows.okf_book.workflow import OkfBook
+from workhorse_workflows.okf_book.workflow import workflow
 
 App = Callable[[str], Path]
-RunBook = Callable[[OkfBook, ListingRunner], WorkSet]
+RunBook = Callable[[EnumerateOnly, ScriptedRunner], WorkSet]
 COMMANDS = ("init", "add", "import", "report", "export")
 TALLY = Surface(service="tally", kind=SurfaceKind.CLI, entry="tally/__main__.py")
 
 
-def _cold_start(app: App, run_book: RunBook) -> tuple[Path, ListingRunner, WorkSet]:
+def _cold_start(app: App, run_book: RunBook) -> tuple[Path, ScriptedRunner, WorkSet]:
     repo = app("tally-cli")
-    runner = ListingRunner(listing(*COMMANDS))
-    result = run_book(OkfBook(repo_dir=str(repo), surfaces=(TALLY,)), runner)
+    runner = listing_runner(*COMMANDS)
+    result = run_book(EnumerateOnly(repo_dir=str(repo), surfaces=(TALLY,)), runner)
     return repo, runner, result
 
 
@@ -37,7 +38,7 @@ def _stamp_book(repo: Path) -> None:
 def test_a_cold_start_links_each_command_and_walks_the_cli(app: App, run_book: RunBook) -> None:
     repo, runner, result = _cold_start(app, run_book)
 
-    assert runner.turns == 1
+    assert runner.total == 1
     assert [link.target for link in read_entries(repo, "tally")] == [f"tally.md#{c}" for c in COMMANDS]
     assert commits(repo)[0] == "docs(tally): stub the cli entry points"
     assert git(repo, "status", "--porcelain") == ""
@@ -53,7 +54,7 @@ def test_a_cold_start_commits_only_the_pages_it_stubbed(app: App, run_book: RunB
     stray.parent.mkdir(parents=True, exist_ok=True)
     _ = stray.write_text("# notes\n", encoding="utf-8")
 
-    _ = run_book(OkfBook(repo_dir=str(repo), surfaces=(TALLY,)), ListingRunner(listing(*COMMANDS)))
+    _ = run_book(EnumerateOnly(repo_dir=str(repo), surfaces=(TALLY,)), listing_runner(*COMMANDS))
 
     assert commits(repo)[0] == "docs(tally): stub the cli entry points"
     assert git(repo, "status", "--porcelain").strip() == "?? docs/features/tally/notes.md"
@@ -63,10 +64,10 @@ def test_a_merge_pass_keeps_the_file_edited_since_its_stamp(app: App, run_book: 
     repo, _runner, _first = _cold_start(app, run_book)
     _stamp_book(repo)
     report = repo / "tally" / "report.py"
-    untouched = run_book(OkfBook(repo_dir=str(repo), merge_pass=True), ListingRunner(listing("unused")))
+    untouched = run_book(EnumerateOnly(repo_dir=str(repo), merge_pass=True), listing_runner("unused"))
     _ = report.write_text(report.read_text(encoding="utf-8") + "\nEDITED = True\n", encoding="utf-8")
 
-    merged = run_book(OkfBook(repo_dir=str(repo), merge_pass=True), ListingRunner(listing("unused")))
+    merged = run_book(EnumerateOnly(repo_dir=str(repo), merge_pass=True), listing_runner("unused"))
 
     assert "tally/report.py" not in untouched.files
     assert set(merged.files) - set(untouched.files) == {"tally/report.py"}
@@ -74,11 +75,11 @@ def test_a_merge_pass_keeps_the_file_edited_since_its_stamp(app: App, run_book: 
 
 def test_a_run_with_no_surfaces_and_no_book_asks_nothing(app: App, run_book: RunBook) -> None:
     repo = app("tally-cli")
-    runner = ListingRunner(listing("unused"))
+    runner = listing_runner("unused")
 
-    result = run_book(OkfBook(repo_dir=str(repo)), runner)
+    result = run_book(EnumerateOnly(repo_dir=str(repo)), runner)
 
-    assert runner.turns == 0
+    assert runner.total == 0
     assert result == WorkSet(services=(), files=())
 
 
@@ -94,7 +95,7 @@ def test_a_run_deletes_each_orphaned_page_in_its_own_commit(app: App, run_book: 
     _ = git(repo, "commit", "-q", "-m", "drop the static site")
     screens = "docs/features/web-app/gui/screens"
 
-    result = run_book(OkfBook(repo_dir=str(repo)), ListingRunner(listing("unused")))
+    result = run_book(EnumerateOnly(repo_dir=str(repo)), listing_runner("unused"))
 
     assert sorted(result.pruned) == [f"{screens}/new-widget.md", f"{screens}/widget-list.md"]
     assert sorted(commits(repo)[:2]) == [
@@ -120,11 +121,18 @@ def test_an_entry_too_large_for_one_turn_blocks_until_the_operator_splits_it(
         _ = path.write_text("STATUS: ANSWERED\n\nSplit the entry.\n", encoding="utf-8")
 
     monkeypatch.setattr(pyflow_driver, "wait_for_answer", operator)
-    runner = ListingRunner(listing(*COMMANDS))
+    runner = listing_runner(*COMMANDS)
 
-    result = run_book(OkfBook(repo_dir=str(repo), surfaces=(TALLY,)), runner)
+    result = run_book(EnumerateOnly(repo_dir=str(repo), surfaces=(TALLY,)), runner)
 
     assert len(asked) == 1
     assert f"{TALLY.entry} is gone, or past the {ALONE_CEILING_TOKENS} tokens" in asked[0]
-    assert runner.turns == 1
+    assert runner.total == 1
     assert "tally/cli.py" in result.files
+
+
+def test_the_dry_run_reads_every_prompt_and_every_transition() -> None:
+    graphs = registry_graphs(workflow)
+    prompts = {step.name for graph in graphs for node in graph.states for step in node.steps if step.kind == "agent"}
+    assert preflight(graphs, workflow.directory()) == []
+    assert prompts == {f"prompts/{p.name}" for p in (workflow.directory() / "prompts").glob("*.md")}

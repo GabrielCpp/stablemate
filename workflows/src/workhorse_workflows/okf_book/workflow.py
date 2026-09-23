@@ -1,12 +1,11 @@
-"""The okf-book workflow: enumerate a service's book and the production files it has to describe."""
+"""The okf-book workflow: enumerate the work set, document and aggregate it into the book, then exercise the book."""
 from __future__ import annotations
 
-from pathlib import Path
-
 from workhorse.cli import console_script
-from workhorse.pyflow import Await, Continue, Done, Registry, Workflow
+from workhorse.pyflow import Await, Continue, Registry
 from workhorse_workflows.kit import commit_paths
 from workhorse_workflows.okf_book.budget import ALONE_CEILING_TOKENS
+from workhorse_workflows.okf_book.flow_document import Document
 from workhorse_workflows.okf_book.entries import (
     book_dir,
     merged_links,
@@ -21,15 +20,12 @@ from workhorse_workflows.okf_book.stubs import write_stubs
 from workhorse_workflows.okf_book.surface import EntryPointListing, Surface
 from workhorse_workflows.okf_book.work_set import WorkSet, cited_digests, freeze, unstamped_files
 
-class OkfBook(Workflow):
+
+class OkfBook(Document):
     """Phase 1: fix the work set a run documents, starting a book from its surfaces on a cold start."""
 
     surfaces: tuple[Surface, ...] = ()
     merge_pass: bool = False
-
-    @property
-    def root(self) -> Path:
-        return Path(self.repo_dir).resolve()
 
     def start(self) -> Continue[...]:
         """A cold start lists each declared surface first. Otherwise the book already has its roots."""
@@ -95,7 +91,7 @@ class OkfBook(Workflow):
             return Continue(committed, self.delete_orphan, orphans=orphans, index=index + 1)
         return Continue(committed, self.enumerate_files, pruned=orphans)
 
-    def enumerate_files(self, pruned: tuple[str, ...]) -> Done:
+    def enumerate_files(self, pruned: tuple[str, ...]) -> Continue[...]:
         """Walk every service's entry points, keep what a merge changed on a merge pass, and freeze the result."""
         root = self.root
         names = services(root)
@@ -103,13 +99,22 @@ class OkfBook(Workflow):
         if self.merge_pass:
             files = unstamped_files(root, files, cited_digests(book_citations(root, names)))
         work_set = WorkSet(services=names, files=tuple(sorted(files)), pruned=pruned)
-        return Done(freeze(self.run_dir, work_set))
+        return Continue(freeze(self.run_dir, work_set), self.document_files)
 
 
 workflow = (
     Registry("okf-book", package=__package__)
     .add_blueprints()
-    .stub_agents({"list-entry-points": {"entry_points": [{"slug": "home", "title": "Home"}]}})
+    .stub_agents({
+        "list-entry-points": {"entry_points": [{"slug": "home", "title": "Home"}]},
+        "document-files": {"contracts": []},
+        "write-page": {"summary": "stub"},
+        "write-operations": {"summary": "stub"},
+        "write-flows": {"summary": "stub"},
+        "verify-page": {"passed": True, "problems": []},
+        "pick-flows": {"ids": []},
+        "judge-failure": {"side": "book", "reason": "stub"},
+    })
 )
 
 main = console_script(workflow.entry_point(OkfBook))

@@ -1,24 +1,30 @@
-"""Paddock fixture apps, git helpers, and a scripted agent for the listing turn."""
+"""Paddock fixture apps, git helpers, a scripted agent keyed by prompt, and flows cut short at a phase."""
 from __future__ import annotations
 
 import subprocess
-from collections.abc import Callable
+from collections import Counter
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import override
 
 from workhorse.context import WorkflowContext
+from workhorse.pyflow import Continue, Done
 from workhorse.pyflow.driver import drive
 from workhorse.pyflow.engine import RunEnv
 from workhorse.runner.backends.null import NullBackend
 from workhorse.runner.ladder import AgentRunner
 from workhorse.runner.spec import AgentNode
 
+from workhorse_workflows.okf_book.attempts import FailureTally
 from workhorse_workflows.okf_book.surface import EntryPoint, EntryPointListing
 from workhorse_workflows.okf_book.workflow import OkfBook
 
 driver: Callable[[OkfBook, RunEnv], object] = drive
 
 APPS = Path(__file__).resolve().parents[3] / "paddock" / "data" / "apps"
+LIST_NODE = "list-entry-points"
+
+Reply = Callable[[dict[str, object]], dict[str, object]]
 
 
 def git(repo: Path, *args: str) -> str:
@@ -35,13 +41,30 @@ def listing(*slugs: str) -> EntryPointListing:
     return EntryPointListing(entry_points=tuple(EntryPoint(slug=s, title=s.title()) for s in slugs))
 
 
-class ListingRunner(AgentRunner):
-    """Answers every agent turn with one entry-point listing, and counts the turns."""
+def always(payload: dict[str, object]) -> Reply:
+    """A reply that ignores the turn's arguments."""
 
-    def __init__(self, reply: EntryPointListing) -> None:
+    def _reply(_args: dict[str, object]) -> dict[str, object]:
+        return payload
+
+    return _reply
+
+
+class ScriptedRunner(AgentRunner):
+    """Answers each turn with the reply scripted for its prompt, and keeps every turn's arguments."""
+
+    def __init__(self, replies: Mapping[str, Reply]) -> None:
         super().__init__(backend=NullBackend())
-        self.reply: EntryPointListing = reply
-        self.turns: int = 0
+        self.replies: dict[str, Reply] = dict(replies)
+        self.turns: Counter[str] = Counter()
+        self.calls: list[tuple[str, dict[str, object]]] = []
+
+    @property
+    def total(self) -> int:
+        return sum(self.turns.values())
+
+    def args_of(self, node: str) -> list[dict[str, object]]:
+        return [args for name, args in self.calls if name == node]
 
     @override
     def run(
@@ -56,8 +79,61 @@ class ListingRunner(AgentRunner):
         run_dir: Path | None = None,
         validate: Callable[[dict[str, object]], object] | None = None,
     ) -> tuple[str, dict[str, object]]:
-        self.turns += 1
-        reply: dict[str, object] = {"entry_points": [p.model_dump() for p in self.reply.entry_points]}
+        self.turns[node.id] += 1
+        args = context.as_dict()
+        self.calls.append((node.id, args))
+        reply = self.replies[node.id](args)
         if validate is not None:
             _ = validate(reply)
         return "scripted", reply
+
+
+def listing_runner(*slugs: str, **replies: Reply) -> ScriptedRunner:
+    """A runner whose listing turn names `slugs`, with the other prompts' replies keyed by stem."""
+    found = listing(*slugs)
+    payload: dict[str, object] = {"entry_points": [p.model_dump() for p in found.entry_points]}
+    return ScriptedRunner({LIST_NODE: always(payload), **{k.replace("_", "-"): v for k, v in replies.items()}})
+
+
+class EnumerateOnly(OkfBook):
+    """Phase 1 alone: the run ends on the frozen work set."""
+
+    @override
+    def document_files(self, attempts: tuple[FailureTally, ...] = ()) -> Continue[...]:
+        return Continue(self.work_set, self.stop)
+
+    def stop(self) -> Done:
+        """The phase under test is over."""
+        return Done(self.work_set)
+
+
+class DocumentOnly(OkfBook):
+    """Phases 1 and 2's document turns: the run ends before any page is written."""
+
+    @override
+    def aggregate(self) -> Continue[...]:
+        return Continue(None, self.stop)
+
+    def stop(self) -> Done:
+        """The phase under test is over."""
+        return Done(self.work_set)
+
+
+class WriteOnly(OkfBook):
+    """Phases 1 and 2: the run ends before the stack is brought up."""
+
+    @override
+    def bring_up(self) -> Continue[...]:
+        return Continue(None, self.stop)
+
+    def stop(self) -> Done:
+        """The phase under test is over."""
+        return Done(self.work_set)
+
+
+class ExerciseOnly(OkfBook):
+    """Phase 3 alone, over the book already in the repo."""
+
+    @override
+    def start(self) -> Continue[...]:
+        return Continue(None, self.bring_up)

@@ -3,9 +3,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from workhorse_workflows.okf_book.budget import ALONE_CEILING_TOKENS, estimated_tokens, pack
+from workhorse_workflows.okf_book import budget
+from workhorse_workflows.okf_book.budget import ALONE_CEILING_TOKENS, SKILL_TOKENS, estimated_tokens, pack_read, pack_told
 from workhorse_workflows.okf_book.listing import listing_context, prompt_tokens
 from workhorse_workflows.okf_book.surface import Surface, SurfaceKind
+
+OKF_SKILL = Path(__file__).resolve().parents[3] / "base-library/library/skills/ostler/okf/SKILL.md"
 
 
 def _context_cost(root: Path, surface: Surface) -> int:
@@ -14,20 +17,26 @@ def _context_cost(root: Path, surface: Surface) -> int:
 
 
 def test_items_are_kept_in_order_until_the_budget_is_spent() -> None:
-    packed = pack([("a", 4), ("b", 5), ("c", 2), ("d", 1)], budget=8)
+    packed = pack_read([("a", 4), ("b", 5), ("c", 2), ("d", 1)], budget=8)
     assert packed.kept == ("a", "c", "d")
     assert packed.left_out == 1
     assert packed.tokens == 7
 
 
 def test_the_first_item_goes_alone_when_it_is_over_the_budget() -> None:
-    packed = pack([("big", 50), ("small", 1)], budget=10)
+    packed = pack_read([("big", 50), ("small", 1)], budget=10)
     assert packed.kept == ("big",)
     assert packed.left_out == 1
 
 
 def test_an_item_past_the_ceiling_is_left_out_even_first() -> None:
-    packed = pack([("huge", ALONE_CEILING_TOKENS + 1), ("small", 1)], budget=10)
+    packed = pack_read([("huge", ALONE_CEILING_TOKENS + 1), ("small", 1)], budget=10)
+    assert packed.kept == ("small",)
+    assert packed.left_out == 1
+
+
+def test_told_text_over_the_budget_never_goes_alone() -> None:
+    packed = pack_told([("big", 50), ("small", 1)], budget=10)
     assert packed.kept == ("small",)
     assert packed.left_out == 1
 
@@ -74,3 +83,12 @@ def test_an_entry_past_a_spent_budget_goes_alone(tmp_path: Path) -> None:
 
     assert context.files.kept == ("main.py",)
     assert context.files.left_out == 1
+
+
+def test_the_skill_reservation_holds_the_whole_okf_skill() -> None:
+    assert estimated_tokens(len(OKF_SKILL.read_text(encoding="utf-8"))) <= SKILL_TOKENS
+
+
+def test_a_prompt_that_loads_the_skill_is_charged_for_it() -> None:
+    template = (budget.PACKAGE_DIR / "prompts/write-page.md").read_text(encoding="utf-8")
+    assert budget.prompt_tokens("prompts/write-page.md") == estimated_tokens(len(template)) + SKILL_TOKENS

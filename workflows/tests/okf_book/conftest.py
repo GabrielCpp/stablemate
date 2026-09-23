@@ -7,7 +7,7 @@ from dataclasses import replace
 from pathlib import Path
 
 import pytest
-from okf_book.support import APPS, ListingRunner, driver, git
+from okf_book.support import APPS, ScriptedRunner, driver, git
 from workhorse.artifacts import ArtifactWriter
 from workhorse.config_run import RunConfig
 from workhorse.pyflow.engine import RunEnv
@@ -43,7 +43,7 @@ def app(tmp_path: Path) -> Callable[[str], Path]:
     return _app
 
 
-def _env(tmp_path: Path, runner: ListingRunner, run_id: str) -> RunEnv:
+def _env(tmp_path: Path, runner: ScriptedRunner, run_id: str) -> RunEnv:
     writer = ArtifactWriter("okf-book", tmp_path / "runs", run_id=run_id)
     env = RunEnv(
         writer=writer,
@@ -56,16 +56,25 @@ def _env(tmp_path: Path, runner: ListingRunner, run_id: str) -> RunEnv:
 
 
 @pytest.fixture
-def run_book(tmp_path: Path) -> Callable[[OkfBook, ListingRunner], WorkSet]:
-    """Drive the workflow to its end with a scripted listing turn."""
+def drive_book(tmp_path: Path) -> Callable[[OkfBook, ScriptedRunner], object]:
+    """Drive the workflow to its end with scripted turns, and return what it ended on."""
 
     run_ids: list[str] = []
 
-    def _run(flow: OkfBook, runner: ListingRunner) -> WorkSet:
+    def _run(flow: OkfBook, runner: ScriptedRunner) -> object:
         run_ids.append(f"t{len(run_ids)}")
-        result = driver(flow, _env(tmp_path, runner, run_ids[-1]))
+        return driver(flow, _env(tmp_path, runner, run_ids[-1]))
+
+    return _run
+
+
+@pytest.fixture
+def run_book(drive_book: Callable[[OkfBook, ScriptedRunner], object]) -> Callable[[OkfBook, ScriptedRunner], WorkSet]:
+    """Drive the workflow to its end on a work set."""
+
+    def _run(flow: OkfBook, runner: ScriptedRunner) -> WorkSet:
+        result = drive_book(flow, runner)
         assert isinstance(result, WorkSet)
         return result
 
     return _run
-
