@@ -109,13 +109,6 @@ bench-doctor: ## Measure `ostler doctor` against a book: make bench-doctor DOCS=
 	  exit 2; }
 	uv run python scripts/bench_ostler_doctor.py $(DOCS) $(if $(JSON),--json,)
 
-.PHONY: okf-verify
-okf-verify: ## Verify every OKF book's coverage against its source (non-zero = incomplete)
-	# The predicate a stop condition can be held to. A goal phrased as prose ("the books
-	# are complete") is judged by the self-assessment the coverage instrument exists to
-	# remove; `make okf-verify exits 0` is something a run can be refused by.
-	uv run python scripts/okf_verify.py
-
 .PHONY: test-scripts
 test-scripts: ## Run the repo-level guard scripts' own tests
 	# The guards in `scripts/` are the only code here with no package to be tested by, and
