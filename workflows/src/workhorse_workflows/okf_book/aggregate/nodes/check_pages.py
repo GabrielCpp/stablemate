@@ -52,18 +52,18 @@ class Report:
 LEFT_OUT_TOKENS = Report(1, (LEFT_OUT.format(count=10**6),)).tokens
 
 
-def _within(report: Report, left_tokens: int) -> Report:
+def _fit_or_silence(report: Report, left_tokens: int) -> Report:
     return report if report.tokens <= left_tokens else Report(report.code, ())
 
 
 def problem_report(problems: Sequence[str], left_tokens: int = PROBLEMS_BUDGET_TOKENS) -> Report:
     """The report on `problems`, never costing more than `left_tokens`, and keeping room for one count of what remains."""
     if not problems:
-        return _within(Report(0, (PASSED,)), left_tokens)
-    spent = _within(Report(1, (SPENT.format(count=len(problems)),)), left_tokens)
-    shown = pack_problems(problems, min(left_tokens - spent.tokens, PROBLEMS_BUDGET_TOKENS) - LEFT_OUT_TOKENS)
+        return _fit_or_silence(Report(0, (PASSED,)), left_tokens)
+    count_report = _fit_or_silence(Report(1, (SPENT.format(count=len(problems)),)), left_tokens)
+    shown = pack_problems(problems, min(left_tokens - count_report.tokens, PROBLEMS_BUDGET_TOKENS) - LEFT_OUT_TOKENS)
     if not shown.kept:
-        return spent
+        return count_report
     more = (LEFT_OUT.format(count=shown.left_out),)
     return Report(1, (*shown.kept, *(more if shown.left_out else ())))
 
