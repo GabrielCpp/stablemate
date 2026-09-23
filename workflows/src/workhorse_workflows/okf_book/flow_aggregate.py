@@ -9,11 +9,12 @@ from pydantic import BaseModel, ConfigDict
 from workhorse.pyflow import Continue
 from workhorse_workflows.okf_book.blockers import Phase, read_blockers
 from workhorse_workflows.okf_book.budget import (
+    PROBLEMS_BUDGET_TOKENS,
     TURN_BUDGET_TOKENS,
-    clip,
     estimated_tokens,
     file_tokens,
     name_tokens,
+    pack_problems,
     pack_read,
     pack_told,
     page_bodies,
@@ -21,6 +22,7 @@ from workhorse_workflows.okf_book.budget import (
     total_text_tokens,
 )
 from workhorse_workflows.okf_book.attempts import JobLedger
+from workhorse_workflows.okf_book.check_pages import CHECK_RUNS, check_command, waived_path, write_waived
 from workhorse_workflows.okf_book.citations import book_pages
 from workhorse_workflows.okf_book.confine import (
     book_changes,
@@ -40,8 +42,6 @@ from workhorse_workflows.okf_book.page_check import inherited_gaps, page_problem
 from workhorse_workflows.okf_book.settled import next_job
 
 PAGES_BUDGET_TOKENS = 3_000
-PROBLEMS_BUDGET_TOKENS = 3_000
-PROBLEM_TOKENS = 500
 VERIFY_PROMPT = "prompts/verify-page.md"
 UNJUDGED_PROBLEM = "The changed pages are too large for any turn to judge. Split the page, or cut what it repeats."
 WRITE_PROMPTS = {
@@ -97,6 +97,7 @@ class Aggregate(Retry):
         if job is None:
             return Continue(None, self.bring_up)
         gaps = inherited_gaps(self.root, job.service, job.owned_pages)
+        _ = write_waived(self.run_dir, gaps)
         ledger = JobLedger(job=job, before=snapshot(self.root), inherited_gaps=gaps)
         return Continue(job, self.write_job, ledger=ledger)
 
@@ -113,9 +114,10 @@ class Aggregate(Retry):
         """
         root, job = self.root, ledger.job
         pages = pack_told(name_tokens(listed_pages(root, job)), PAGES_BUDGET_TOKENS)
-        problems = pack_told(name_tokens(clip(p, PROBLEM_TOKENS) for p in ledger.problems), PROBLEMS_BUDGET_TOKENS)
+        problems = pack_problems(ledger.problems)
         stories = job_stories(root, job)
-        fixed = prompt_tokens(WRITE_PROMPTS[job.kind]) + pages.tokens + problems.tokens + total_text_tokens(stories)
+        told = pages.tokens + problems.tokens + CHECK_RUNS * PROBLEMS_BUDGET_TOKENS
+        fixed = prompt_tokens(WRITE_PROMPTS[job.kind]) + told + total_text_tokens(stories)
         contracts = job_contracts(root, self.run_dir, job, budget=TURN_BUDGET_TOKENS - fixed)
         started = time.monotonic()
         written = self.agent(
@@ -131,6 +133,8 @@ class Aggregate(Retry):
                 "contracts": _contract_args(contracts),
                 "stories": list(stories),
                 "problems": list(problems.kept),
+                "check": check_command(job.service, waived_path(self.run_dir)),
+                "check_runs": CHECK_RUNS,
             },
             cwd=root,
         )

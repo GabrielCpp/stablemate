@@ -18,6 +18,8 @@ TURN_BUDGET_TOKENS = 30_000
 ALONE_CEILING_TOKENS = 100_000
 CHARS_PER_TOKEN = 4
 SKILL_TOKENS = 8_000
+PROBLEMS_BUDGET_TOKENS = 3_000
+PROBLEM_TOKENS = 500
 PACKAGE_DIR = Path(__file__).parent
 _SKILL_LOAD = "skill_load_ref("
 _BULLET_MARKUP = "- ``\n"
@@ -79,6 +81,11 @@ def total_text_tokens(texts: Iterable[str]) -> int:
 def clip(text: str, budget: int) -> str:
     """The text cut to what `budget` tokens hold."""
     return text[: max(budget, 0) * CHARS_PER_TOKEN]
+
+
+def pack_problems(problems: Iterable[str]) -> Packed:
+    """The problems a turn is told, each clipped to its share, kept in order while they fit the problems budget."""
+    return pack_told(name_tokens(clip(problem, PROBLEM_TOKENS) for problem in problems), PROBLEMS_BUDGET_TOKENS)
 
 
 def prompt_tokens(prompt: str) -> int:
