@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from ostler import registry
 from ostler.qa.obligation import CallRow
 from ostler.qa.obligation import FlowStep
 from ostler.qa.obligation import Obligation
@@ -28,15 +29,25 @@ def compares_the_tree(check: str | None) -> bool:
     return check_observes(check) == "subject-pair" and not out_of_band(check)
 
 
+def _no_run_remedy(node_type: str) -> str:
+    """What to change on the page when a CLI claim's node names no `run:`."""
+    if "run" in registry.performed_keys(node_type):
+        return (
+            f"this {node_type} declares no `run:` for this claim. Add "
+            '`- run: invoke(argv=["<subcommand>", "<arg>"])` to the node, before the claims it '
+            "performs. `usage:`/`flags:`/`args:` are prose the compiler cannot run"
+        )
+    return (
+        f"a {node_type} takes no `run:`, so a command-line scenario has nothing to call. "
+        "State this claim on the `invocation` whose `run:` reaches this code, "
+        "and cite the same `code:` there"
+    )
+
+
 def _gap_cli_obligations(obligations: list[Obligation], gaps: list[Gap]) -> None:
     """Command-linked obligations with no `run:` for the CLI builder to bind to."""
     for obligation in obligations:
-        gaps.append(Gap(
-            obligation.id, "uncompilable-claim",
-            "this command's node declares no `run:` for this claim — `usage:`/`flags:`/`args:` "
-            "are a prose synopsis, not a structured invocation this compiler can turn into "
-            "`qa.tool(...).run(...)`",
-        ))
+        gaps.append(Gap(obligation.id, "uncompilable-claim", _no_run_remedy(obligation.node_type)))
 
 
 def _cli_action(obligation: Obligation) -> list[str] | None:

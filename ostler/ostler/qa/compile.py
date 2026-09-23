@@ -272,7 +272,10 @@ def _book_debt(no_verify: list[Obligation], gaps: list[Gap]) -> list[Obligation]
     when_owed = [o for o in no_verify if o.kind == "when"]
     debt = [o for o in no_verify if o.kind != "when"]
     gaps.extend(
-        Gap(o.id, "no-verify-declared", "the book declares no check for this obligation to prove")
+        Gap(o.id, "no-verify-declared",
+            "the book declares no check for this obligation to prove. Add a `- verify: <check>(...)` "
+            "bullet right after the claim, naming what a run would observe. `ostler checks` prints "
+            "every check with its arguments")
         for o in debt
     )
     gaps.extend(

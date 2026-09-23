@@ -853,6 +853,16 @@ def test_the_producer_walk_still_gaps_a_reference_that_precedes_its_producer() -
     assert "unresolved-precondition" in _gap_kinds(gaps, raises["id"])
 
 
+def test_a_checkless_obligation_names_the_bullet_to_add() -> None:
+    """A writer handed only "declares no check" guesses at the fix. The gap names the bullet and where the checks are listed."""
+    oid = "okf:docs/features/demo/globex.md#post-things:does:3"
+    result = _compile_plan_gaps(_context(_obligation(oid)), story="demo-story")
+    assert isinstance(result, Refusal)
+    (gap,) = [g for g in result.gaps if g.obligation_id == oid]
+    assert "`- verify: <check>(...)`" in gap.detail
+    assert "`ostler checks`" in gap.detail
+
+
 def test_a_checkless_obligation_never_reaches_the_scenario_body() -> None:
     """The dead `TODO(undeclared)` branch removed from `_scenario_body`: a checkless obligation is book debt, filtered out before the body is ever asked to render one — no scenario is emitted for it, but it is not a silent drop either: the same code that declined to compile it is the code that gaps it, so it still lands in `{emitted, gap}` like every owed id."""
     oid = "okf:docs/features/demo/globex.md#post-things:does:2"
@@ -3410,6 +3420,37 @@ def test_a_run_with_no_owning_binary_is_uncompilable() -> None:
     (gap,) = [g for g in gaps if g.obligation_id == oid]
     assert "declares no `binary:`" in gap.detail
     assert "cannot name the executable this `run:` invokes" in gap.detail
+
+
+@pytest.mark.parametrize(
+    ("node_type", "fragment"),
+    [
+        ("command", "Add `- run: invoke(argv="),
+        ("invocation", "Add `- run: invoke(argv="),
+        ("method", "a method takes no `run:`"),
+    ],
+)
+def test_a_claim_with_no_run_names_the_edit_its_node_type_admits(node_type: str, fragment: str) -> None:
+    """A writer told to add `run:` to a method adds one, and doctor then flags it as a bullet a method does not declare. The gap names the edit the claim's own node type admits."""
+    oid = f"okf:no-run:{node_type}:1"
+    context = _context(
+        _obligation(
+            oid,
+            nodeType=node_type,
+            checksDeclared=[{"call": "it", "name": "exit_status", "args": {"code": 0}}],
+            fixturesDeclared=[
+                {"name": "seeded-ledger", "args": [], "provides": "a ledger"},
+            ],
+        )
+    )
+    context["navigation"][""]["driver"] = "cli"
+    context["cliBinaries"] = {"docs/features/demo/api.md": "tally"}
+
+    _source, gaps = compile_plan_gaps(context, story="demo-story")
+
+    assert _gap_kinds(gaps, oid) == ["uncompilable-claim"]
+    (gap,) = [g for g in gaps if g.obligation_id == oid]
+    assert fragment in gap.detail
 
 
 def test_an_empty_argv_is_a_legal_bare_invocation() -> None:
