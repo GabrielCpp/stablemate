@@ -326,7 +326,7 @@ class Section:
                 return hit
         return None
 
-    def walk(self):
+    def walk(self) -> Iterator[Section]:
         yield self
         for c in self.children:
             yield from c.walk()
@@ -362,7 +362,7 @@ class MarkdownDoc:
             self._sections = _build_sections(self.body)
         return self._sections
 
-    def walk_sections(self):
+    def walk_sections(self) -> Iterator[Section]:
         for root in self.sections:
             yield from root.walk()
 
