@@ -98,7 +98,7 @@ class Aggregate(Retry):
             return Continue(None, self.bring_up)
         gaps = inherited_gaps(self.root, job.service, job.owned_pages)
         ledger = JobLedger(job=job, before=snapshot(self.root), inherited_gaps=gaps)
-        _ = write_job_check(self.run_dir, JobCheck(service=job.service, before=ledger.before, inherited_gaps=gaps))
+        _ = write_job_check(self.run_dir, JobCheck(root=self.root, service=job.service, before=ledger.before, inherited_gaps=gaps))
         return Continue(job, self.write_job, ledger=ledger)
 
     def _rewrite(self, ledger: JobLedger) -> Continue[...]:

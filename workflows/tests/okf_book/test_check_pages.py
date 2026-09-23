@@ -4,6 +4,8 @@ from __future__ import annotations
 from collections.abc import Callable
 from pathlib import Path
 
+import pytest
+
 from workhorse_workflows.okf_book.budget import CHARS_PER_TOKEN, PROBLEM_TOKENS
 from workhorse_workflows.okf_book.check_pages import (
     LEFT_OUT,
@@ -33,15 +35,15 @@ def _append(repo: Path, rel: str, text: str) -> None:
 
 
 def _report(repo: Path, run_dir: Path, inherited: tuple[str, ...] = ()) -> tuple[int, tuple[str, ...]]:
-    return check_report(repo, [str(write_job_check(run_dir, JobCheck(service="tally", before=snapshot(repo), inherited_gaps=inherited)))])
+    return check_report([str(write_job_check(run_dir, JobCheck(root=repo, service="tally", before=snapshot(repo), inherited_gaps=inherited)))])
 
 
 def test_a_page_the_turn_only_added_to_is_checked(app: App, tmp_path: Path) -> None:
     repo = app("tally-cli")
-    check = JobCheck(service="tally", before=snapshot(repo))
+    check = JobCheck(root=repo, service="tally", before=snapshot(repo))
     _append(repo, ROOT_PAGE, "\nTally keeps a ledger.\n")
 
-    code, lines = check_report(repo, [str(write_job_check(tmp_path, check))])
+    code, lines = check_report([str(write_job_check(tmp_path, check))])
 
     assert code == 1
     assert lines == page_problems(repo, "tally", [ROOT_PAGE])
@@ -51,22 +53,32 @@ def test_a_page_the_turn_only_added_to_is_checked(app: App, tmp_path: Path) -> N
 def test_the_gaps_the_job_inherits_are_not_printed(app: App, tmp_path: Path) -> None:
     repo = app("tally-cli")
     inherited = page_problems(repo, "tally", [ROOT_PAGE])
-    check = JobCheck(service="tally", before=snapshot(repo), inherited_gaps=inherited)
+    check = JobCheck(root=repo, service="tally", before=snapshot(repo), inherited_gaps=inherited)
     _append(repo, ROOT_PAGE, "\nTally keeps a ledger.\n")
 
-    assert check_report(repo, [str(write_job_check(tmp_path, check))]) == (0, (PASSED,))
+    assert check_report([str(write_job_check(tmp_path, check))]) == (0, (PASSED,))
 
 
 def test_a_new_page_nothing_reaches_is_printed(app: App, tmp_path: Path) -> None:
     repo = app("tally-cli")
     _ = write_entries(repo, "tally", [EntryLink("Tally", "tally.md")])
-    check = JobCheck(service="tally", before=snapshot(repo))
+    check = JobCheck(root=repo, service="tally", before=snapshot(repo))
     _ = (repo / NEW_PAGE).write_text("---\ntype: concept\ntitle: Budget\n---\n# Budget\n\nA budget caps a trip.\n", encoding="utf-8")
 
-    code, lines = check_report(repo, [str(write_job_check(tmp_path, check))])
+    code, lines = check_report([str(write_job_check(tmp_path, check))])
 
     assert code == 1
     assert any(line.startswith(f"{NEW_PAGE} is linked from no page") for line in lines)
+
+
+def test_the_check_reads_the_job_repo_from_any_directory(app: App, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    repo = app("tally-cli")
+    check = JobCheck(root=repo, service="tally", before=snapshot(repo))
+    _append(repo, ROOT_PAGE, "\nTally keeps a ledger.\n")
+    path = write_job_check(tmp_path, check)
+    monkeypatch.chdir(tmp_path)
+
+    assert check_report([str(path)]) == (1, page_problems(repo, "tally", [ROOT_PAGE]))
 
 
 def test_a_job_that_changed_nothing_passes(app: App, tmp_path: Path) -> None:
@@ -84,8 +96,8 @@ def test_problems_past_the_budget_are_counted_not_printed() -> None:
     assert len(lines) < len(problems)
 
 
-def test_a_call_without_the_job_check_prints_the_usage(app: App) -> None:
-    assert check_report(app("tally-cli"), []) == (2, (USAGE,))
+def test_a_call_without_the_job_check_prints_the_usage() -> None:
+    assert check_report([]) == (2, (USAGE,))
 
 
 def test_the_command_names_the_module_and_the_job_check(tmp_path: Path) -> None:

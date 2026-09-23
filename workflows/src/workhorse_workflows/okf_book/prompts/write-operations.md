@@ -62,8 +62,8 @@ itself. Check it through the commands, fields and flows under it or linked from 
 
 Edit only files under `{{ folder }}`, its entries page aside. Anything you change elsewhere is
 put back. Yours are the operations pages and the pages you create. On any other page, only add lines, such as a link. Any other
-change to it is put back. Run `ostler fmt` on each page you wrote. Then run `{{ check }}` from the
-repo root. It checks every book page you changed or created, and prints every problem the check
+change to it is put back. Run `ostler fmt` on each page you wrote. Then run `{{ check }}` as it is,
+from any directory. It checks every book page you changed or created, and prints every problem the check
 after your turn will charge you with, and each one costs you this turn. Fix them all and run it again. Run it
 at most {{ check_runs }} times, then reply. Do not commit.
 

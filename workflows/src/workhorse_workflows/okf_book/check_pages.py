@@ -20,10 +20,11 @@ CHECK_RUNS = 3
 
 
 class JobCheck(BaseModel):
-    """What the check after a job's turns compares against: the job's service, the tree before its first turn, and its inherited gaps."""
+    """What the check after a job's turns compares against: the repo, the job's service, the tree before its first turn, and its inherited gaps."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
+    root: Path
     service: str
     before: Snapshot
     inherited_gaps: tuple[str, ...] = ()
@@ -42,12 +43,13 @@ def write_job_check(run_dir: Path, check: JobCheck) -> Path:
 
 
 def check_command(run_dir: Path) -> str:
-    """The command a writing turn runs from the repo root."""
+    """The command a writing turn runs, from any directory."""
     return f"{sys.executable} -m {MODULE} {job_check_path(run_dir)}"
 
 
-def job_problems(root: Path, check: JobCheck) -> tuple[str, ...]:
+def job_problems(check: JobCheck) -> tuple[str, ...]:
     """Each new page nothing reaches, and each doctor error and compile gap on the book pages changed since the job began."""
+    root = check.root.resolve()
     changed = book_changes(root, check.service, check.before)
     dead = (page.rel for page in unreached(root, new_since_head(root, changed)))
     return (
@@ -65,17 +67,17 @@ def report_lines(problems: Sequence[str]) -> tuple[int, tuple[str, ...]]:
     return 1, (*shown.kept, *(more if shown.left_out else ()))
 
 
-def check_report(root: Path, argv: Sequence[str]) -> tuple[int, tuple[str, ...]]:
-    """The exit code and the lines to print for the job check file named in `argv`, checked under `root`."""
+def check_report(argv: Sequence[str]) -> tuple[int, tuple[str, ...]]:
+    """The exit code and the lines to print for the job check file named in `argv`."""
     if len(argv) != 1:
         return 2, (USAGE,)
     check = JobCheck.model_validate_json(Path(argv[0]).read_text(encoding="utf-8"))
-    return report_lines(job_problems(root.resolve(), check))
+    return report_lines(job_problems(check))
 
 
 def main() -> int:
-    """Check the current job's pages from the current directory."""
-    code, lines = check_report(Path.cwd(), sys.argv[1:])
+    """Check the current job's pages."""
+    code, lines = check_report(sys.argv[1:])
     for line in lines:
         print(line)
     return code
