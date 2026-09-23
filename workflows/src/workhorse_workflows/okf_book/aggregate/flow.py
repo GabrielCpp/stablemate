@@ -209,15 +209,20 @@ class Aggregate(BookFlow):
         problems = (*unreached_problems(deleted), *page_problems(self.root, job.service, charged, ledger.inherited_gaps))
         if problems:
             return self._retry(ledger.charged(problems))
-        return Continue(changed, self.verify_job, ledger=ledger)
+        return Continue(changed, self.recheck_cleared, ledger=ledger)
+
+    def recheck_cleared(self, ledger: JobLedger) -> Continue[...]:
+        """Keep each node an earlier round cleared while its text holds, on a page judged now or not. One that changed drops out."""
+        current = node_digests_on_pages_of(self.root, (entry.node for entry in ledger.cleared))
+        ledger = ledger.with_cleared(still_cleared(ledger.cleared, current))
+        return Continue(ledger.cleared, self.verify_job, ledger=ledger)
 
     def verify_job(self, ledger: JobLedger) -> Continue[...]:
         """A turn that wrote none of the pages judges them against the contracts they were written from.
 
         The job's own pages come first, and the pages take up to half of what the prompt leaves. A first page over that goes alone,
         and the contracts get the rest. A page past the ceiling cannot be judged, and charges the job a turn.
-        A node an earlier round cleared stays cleared while its text holds, on a page judged now or not, and drops out once it changes.
-        The judge is told the ones on the pages it reads, as many as fit their share. The code drops a problem on any of them.
+        The judge is told the nodes still cleared on the pages it reads, as many as fit their share. The code drops a problem on any of them.
         """
         root, job = self.root, ledger.job
         judged_rels = judged_pages(root, job, ledger.before)
@@ -226,9 +231,10 @@ class Aggregate(BookFlow):
         judged = pack_read(file_tokens(root, judged_rels), (TURN_BUDGET_TOKENS - fixed) // 2)
         if not judged.kept:
             return self._retry(ledger.charged((UNJUDGED_PROBLEM,)))
-        digests = node_digests(root, judged.kept)
-        ledger = ledger.with_cleared(still_cleared(ledger.cleared, node_digests_on_pages_of(root, (entry.node for entry in ledger.cleared))))
-        cleared_told = pack_told(name_tokens(sorted(entry.node for entry in ledger.cleared if entry.node in digests)), CLEARED_BUDGET_TOKENS)
+        judged_node_digests = node_digests(root, judged.kept)
+        cleared_told = pack_told(
+            name_tokens(sorted(entry.node for entry in ledger.cleared if entry.node in judged_node_digests)), CLEARED_BUDGET_TOKENS,
+        )
         if judged.left_out:
             self.logger.warning("%d changed pages are past the verify turn's budget and go unjudged", judged.left_out)
         contracts = job_contracts(root, self.records_dir, job, budget=TURN_BUDGET_TOKENS - fixed - judged.tokens)
@@ -249,11 +255,12 @@ class Aggregate(BookFlow):
         )
         metric = _turn_metric("verify-page", job.subject, fixed + judged.tokens + _contract_tokens(contracts), started)
         return Continue(
-            verdict, self.settle_verdict, ledger=ledger, verdict=verdict, claims=claim_texts(numbered), digests=digests, metric=metric,
+            verdict, self.settle_verdict, ledger=ledger, verdict=verdict, claims=claim_texts(numbered),
+            judged_node_digests=judged_node_digests, metric=metric,
         )
 
     def settle_verdict(
-        self, ledger: JobLedger, verdict: Verdict, claims: tuple[str, ...], digests: dict[str, str], metric: TurnMetric,
+        self, ledger: JobLedger, verdict: Verdict, claims: tuple[str, ...], judged_node_digests: dict[str, str], metric: TurnMetric,
     ) -> Continue[...]:
         """Record the verify turn and the nodes it cleared. Pages that state every claim with no problem go on to the stamp.
 
@@ -261,7 +268,7 @@ class Aggregate(BookFlow):
         """
         record_turn(self.records_dir, metric)
         problems = verdict_problems(verdict, claims, ledger.cleared)
-        ledger = ledger.with_cleared(cleared_after(verdict, claims, digests, ledger.cleared))
+        ledger = ledger.with_cleared(cleared_after(verdict, claims, judged_node_digests, ledger.cleared))
         if not problems:
             return Continue(verdict, self.stamp_job, ledger=ledger)
         return self._retry(ledger.charged(problems))

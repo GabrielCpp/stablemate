@@ -89,12 +89,12 @@ def still_cleared(cleared: tuple[Cleared, ...], digests: Mapping[str, str]) -> t
     return tuple(entry for entry in cleared if digests.get(entry.node) == entry.digest)
 
 
-def verdict_problems(verdict: Verdict, claims: tuple[str, ...], in_force: tuple[Cleared, ...]) -> tuple[str, ...]:
-    """The problems the verdict charges the job: each claim no node states, each finding's problem, then the rest.
+def verdict_problems(verdict: Verdict, claims: tuple[str, ...], still_cleared_nodes: tuple[Cleared, ...]) -> tuple[str, ...]:
+    """The problems the verdict charges the job: each claim no node states, each finding's problem, then each problem no claim covers.
 
     A problem on a node still cleared is dropped, and a claim such a node states is stated.
     """
-    cleared_by_node = {entry.node: entry for entry in in_force}
+    cleared_by_node = {entry.node: entry for entry in still_cleared_nodes}
     stated_by_cleared = {claim for entry in cleared_by_node.values() for claim in entry.claims}
     stated = {finding.claim for finding in verdict.claims if finding.node}
     unstated = tuple(
@@ -108,15 +108,15 @@ def verdict_problems(verdict: Verdict, claims: tuple[str, ...], in_force: tuple[
         for finding in verdict.claims
         if finding.problem and finding.node not in cleared_by_node
     )
-    rest = tuple(f"{found.node}: {found.problem}" for found in verdict.problems if found.node not in cleared_by_node)
-    return (*unstated, *flawed, *rest)
+    uncovered = tuple(f"{found.node}: {found.problem}" for found in verdict.problems if found.node not in cleared_by_node)
+    return (*unstated, *flawed, *uncovered)
 
 
 def cleared_after(
-    verdict: Verdict, claims: tuple[str, ...], digests: Mapping[str, str], in_force: tuple[Cleared, ...],
+    verdict: Verdict, claims: tuple[str, ...], judged_node_digests: Mapping[str, str], still_cleared_nodes: tuple[Cleared, ...],
 ) -> tuple[Cleared, ...]:
     """The nodes cleared once this verdict is in: those still cleared, judged or not, and each judged node it raised nothing against."""
-    cleared_by_node = {entry.node: entry for entry in in_force}
+    cleared_by_node = {entry.node: entry for entry in still_cleared_nodes}
     faulted = {finding.node for finding in verdict.claims if finding.problem} | {found.node for found in verdict.problems}
     stated_on: dict[str, set[str]] = {}
     for finding in verdict.claims:
@@ -128,7 +128,7 @@ def cleared_after(
             digest=digest,
             claims=tuple(sorted(stated_on.get(node, set()) | set(cleared_by_node[node].claims if node in cleared_by_node else ()))),
         )
-        for node, digest in digests.items()
+        for node, digest in judged_node_digests.items()
         if node in cleared_by_node or node not in faulted
     }
     return tuple({**cleared_by_node, **cleared_now}.values())
