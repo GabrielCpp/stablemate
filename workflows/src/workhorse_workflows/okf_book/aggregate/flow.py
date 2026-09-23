@@ -40,7 +40,7 @@ from workhorse_workflows.okf_book.shared.confine import (
     snapshot,
 )
 from workhorse_workflows.okf_book.shared.contracts import Contract
-from workhorse_workflows.okf_book.aggregate.digests import node_digests, page_digests
+from workhorse_workflows.okf_book.aggregate.digests import node_digests, node_digests_on_pages_of
 from workhorse_workflows.okf_book.aggregate.verdict import (
     Verdict,
     claim_texts,
@@ -227,7 +227,7 @@ class Aggregate(BookFlow):
         if not judged.kept:
             return self._retry(ledger.charged((UNJUDGED_PROBLEM,)))
         digests = node_digests(root, judged.kept)
-        ledger = ledger.with_cleared(still_cleared(ledger.cleared, page_digests(root, (entry.node for entry in ledger.cleared))))
+        ledger = ledger.with_cleared(still_cleared(ledger.cleared, node_digests_on_pages_of(root, (entry.node for entry in ledger.cleared))))
         cleared_told = pack_told(name_tokens(sorted(entry.node for entry in ledger.cleared if entry.node in digests)), CLEARED_BUDGET_TOKENS)
         if judged.left_out:
             self.logger.warning("%d changed pages are past the verify turn's budget and go unjudged", judged.left_out)

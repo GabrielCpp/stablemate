@@ -28,7 +28,7 @@ def node_digests(root: Path, pages: Iterable[str]) -> dict[str, str]:
     return digests
 
 
-def page_digests(root: Path, nodes: Iterable[str]) -> dict[str, str]:
-    """The digests of every page one of `nodes` sits on that still exists, judged this round or not."""
+def node_digests_on_pages_of(root: Path, nodes: Iterable[str]) -> dict[str, str]:
+    """The digest of every node on each page one of `nodes` sits on, while that page still exists, judged this round or not."""
     pages = sorted({node.partition("#")[0] for node in nodes})
     return node_digests(root, (page for page in pages if (root / page).is_file()))

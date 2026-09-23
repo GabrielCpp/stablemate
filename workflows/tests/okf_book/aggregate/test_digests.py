@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from workhorse_workflows.okf_book.aggregate.digests import node_digests, page_digests
+from workhorse_workflows.okf_book.aggregate.digests import node_digests, node_digests_on_pages_of
 
 PAGE = "docs/features/tally/concepts/ledger-file.md"
 TEXT = "---\ntype: concept\n---\n\n# The ledger file\n\nA.\n\n## Kept\n\nIt stays.\n\n## Tail\n\nTally keeps a ledger.\n"
@@ -34,4 +34,4 @@ def test_an_edit_changes_the_digest_of_its_section_and_every_section_holding_it_
 def test_the_pages_the_nodes_sit_on_are_digested_and_a_deleted_one_is_skipped(tmp_path: Path) -> None:
     _write(tmp_path, TEXT)
 
-    assert page_digests(tmp_path, [f"{PAGE}#kept", f"{PAGE}#tail", "docs/features/tally/gone.md#x"]) == node_digests(tmp_path, [PAGE])
+    assert node_digests_on_pages_of(tmp_path, [f"{PAGE}#kept", f"{PAGE}#tail", "docs/features/tally/gone.md#x"]) == node_digests(tmp_path, [PAGE])

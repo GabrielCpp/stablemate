@@ -122,7 +122,7 @@ def cleared_after(
     for finding in verdict.claims:
         if finding.node and not finding.problem and 1 <= finding.claim <= len(claims):
             stated_on.setdefault(finding.node, set()).add(claims[finding.claim - 1])
-    judged = {
+    cleared_now = {
         node: Cleared(
             node=node,
             digest=digest,
@@ -131,4 +131,4 @@ def cleared_after(
         for node, digest in digests.items()
         if node in held or node not in faulted
     }
-    return tuple({**held, **judged}.values())
+    return tuple({**held, **cleared_now}.values())
