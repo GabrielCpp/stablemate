@@ -253,6 +253,113 @@ def _citing_families(
     )
 
 
+@dataclass(frozen=True, slots=True)
+class ChangeOwners:
+    """What the changed units map to: each node's reasons, the changed code, the changes nothing owns, and the owners of each changed file and symbol."""
+
+    reasons: dict[str, list[dict[str, str]]]
+    changed_code: list[dict[str, Any]]
+    unmapped: list[dict[str, Any]]
+    file_owners: dict[str, set[str]]
+    symbol_owners: dict[str, set[str]]
+
+
+def _change_owners(
+    changes: Sequence[ChangedUnit],
+    nodes_by_id: dict[str, dict[str, Any]],
+    book_root: str,
+    source_roots: dict[str, list[str]],
+) -> ChangeOwners:
+    """Map each changed unit to the nodes that cite its symbols, own its file, or own its surface."""
+    direct_reasons: dict[str, list[dict[str, str]]] = {}
+    file_owners: dict[str, set[str]] = {}
+    symbol_owners: dict[str, set[str]] = {}
+    changed_code: list[dict[str, Any]] = []
+    unmapped: list[dict[str, Any]] = []
+    for change in changes:
+        change_book_root = "" if change.repository else book_root
+        book_path = _book_relative(change.path, change_book_root)
+        book_base_path = _book_relative(change.base_path, change_book_root)
+        book_head_path = _book_relative(change.head_path, change_book_root)
+        refs = {
+            *(
+                _source_ref(change.repository, book_base_path, symbol)
+                for symbol in change.base_symbols
+                if change.base_path
+            ),
+            *(
+                _source_ref(change.repository, book_head_path, symbol)
+                for symbol in change.head_symbols
+                if change.head_path
+            ),
+        }
+        book_change = replace(change, path=book_path, base_path=book_base_path, head_path=book_head_path)
+        changed_code.append(
+            {
+                "path": change.path,
+                "repository": change.repository,
+                "id": _source_ref(change.repository, change.path),
+                "basePath": change.base_path,
+                "headPath": change.head_path,
+                "status": change.status,
+                "baseLines": list(change.base_lines),
+                "headLines": list(change.head_lines),
+                "baseSymbols": list(change.base_symbols),
+                "headSymbols": list(change.head_symbols),
+            }
+        )
+        mapped = change.status == "deleted"
+        for node_id, node in nodes_by_id.items():
+            bullets = node.get("bullets", {})
+            owned_file = False
+            for key in registry.owning_keys(str(node.get("type", ""))):
+                cited = refs_mod.code_refs(bullets.get(key))
+                exact = _matching_refs(refs, cited)
+                if exact:
+                    mapped = True
+                    for ref in exact:
+                        direct_reasons.setdefault(node_id, []).append(
+                            {"kind": "changed-code", "ref": ref, "key": key}
+                        )
+                        symbol_owners.setdefault(ref, set()).add(node_id)
+                elif not owned_file and any(
+                    _ref_owns_change(item, book_change)
+                    for item in cited
+                ):
+                    mapped = owned_file = True
+                    owned_ref = _source_ref(change.repository, book_path)
+                    direct_reasons.setdefault(node_id, []).append(
+                        {"kind": "file-owner", "ref": owned_ref, "key": key}
+                    )
+                    file_owners.setdefault(owned_ref, set()).add(node_id)
+        if not mapped:
+            surface = change.surface or _surface_owner(change.path, source_roots)
+            surface_nodes = [
+                node_id
+                for node_id, node in nodes_by_id.items()
+                if surface and node.get("surface") == surface
+            ]
+            if surface_nodes:
+                mapped = True
+                for node_id in surface_nodes:
+                    direct_reasons.setdefault(node_id, []).append(
+                        {
+                            "kind": "surface-owner",
+                            "ref": f"{surface}:{_source_ref(change.repository, book_path)}",
+                        }
+                    )
+            else:
+                unmapped.append(
+                    {
+                        "kind": "unmapped-change",
+                        "severity": "error",
+                        "path": _source_ref(change.repository, book_path),
+                        "message": "changed production unit has no exact symbol, file, or surface owner",
+                    }
+                )
+    return ChangeOwners(direct_reasons, changed_code, unmapped, file_owners, symbol_owners)
+
+
 def _navigation(head_graph: Graph) -> dict[str, dict[str, Any]]:
     """Every surface's derived screen reachability, keyed by surface (Option C, Amendment 1)."""
     dump = graph_mod.build(head_graph)
@@ -407,95 +514,13 @@ def build_context(
         )
     ]
 
-    direct_reasons: dict[str, list[dict[str, str]]] = {}
-    file_owners: dict[str, set[str]] = {}
-    symbol_owners: dict[str, set[str]] = {}
-    changed_code: list[dict[str, Any]] = []
-    for change in changes:
-        change_book_root = "" if change.repository else book_root
-        book_path = _book_relative(change.path, change_book_root)
-        book_base_path = _book_relative(change.base_path, change_book_root)
-        book_head_path = _book_relative(change.head_path, change_book_root)
-        refs = {
-            *(
-                _source_ref(change.repository, book_base_path, symbol)
-                for symbol in change.base_symbols
-                if change.base_path
-            ),
-            *(
-                _source_ref(change.repository, book_head_path, symbol)
-                for symbol in change.head_symbols
-                if change.head_path
-            ),
-        }
-        book_change = replace(change, path=book_path, base_path=book_base_path, head_path=book_head_path)
-        changed_code.append(
-            {
-                "path": change.path,
-                "repository": change.repository,
-                "id": _source_ref(change.repository, change.path),
-                "basePath": change.base_path,
-                "headPath": change.head_path,
-                "status": change.status,
-                "baseLines": list(change.base_lines),
-                "headLines": list(change.head_lines),
-                "baseSymbols": list(change.base_symbols),
-                "headSymbols": list(change.head_symbols),
-            }
-        )
-        mapped = change.status == "deleted"
-        for node_id, node in nodes_by_id.items():
-            bullets = node.get("bullets", {})
-            owned_file = False
-            for key in registry.owning_keys(str(node.get("type", ""))):
-                cited = refs_mod.code_refs(bullets.get(key))
-                exact = _matching_refs(refs, cited)
-                if exact:
-                    mapped = True
-                    for ref in exact:
-                        direct_reasons.setdefault(node_id, []).append(
-                            {"kind": "changed-code", "ref": ref, "key": key}
-                        )
-                        symbol_owners.setdefault(ref, set()).add(node_id)
-                elif not owned_file and any(
-                    _ref_owns_change(item, book_change)
-                    for item in cited
-                ):
-                    mapped = owned_file = True
-                    owned_ref = _source_ref(change.repository, book_path)
-                    direct_reasons.setdefault(node_id, []).append(
-                        {"kind": "file-owner", "ref": owned_ref, "key": key}
-                    )
-                    file_owners.setdefault(owned_ref, set()).add(node_id)
-        if not mapped:
-            surface = change.surface or _surface_owner(change.path, source_roots)
-            surface_nodes = [
-                node_id
-                for node_id, node in nodes_by_id.items()
-                if surface and node.get("surface") == surface
-            ]
-            if surface_nodes:
-                mapped = True
-                for node_id in surface_nodes:
-                    direct_reasons.setdefault(node_id, []).append(
-                        {
-                            "kind": "surface-owner",
-                            "ref": f"{surface}:{_source_ref(change.repository, book_path)}",
-                        }
-                    )
-            else:
-                health.append(
-                    {
-                        "kind": "unmapped-change",
-                        "severity": "error",
-                        "path": _source_ref(change.repository, book_path),
-                        "message": "changed production unit has no exact symbol, file, or surface owner",
-                    }
-                )
+    owners = _change_owners(changes, nodes_by_id, book_root, source_roots)
+    direct_reasons, changed_code = owners.reasons, owners.changed_code
+    health.extend(owners.unmapped)
 
     shared = demote(
         _citing_families(
-            file_owners, symbol_owners, lambda node_id, owners: _family_root(node_id, owners, nodes_by_id)
+            owners.file_owners, owners.symbol_owners, lambda node_id, owners: _family_root(node_id, owners, nodes_by_id)
         )
     )
     shared_files, shared_symbols = shared.files, shared.symbols
