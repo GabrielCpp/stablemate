@@ -12,7 +12,7 @@ import workhorse_workflows
 
 PACKAGE = Path(workhorse_workflows.__file__).parent
 
-WORKFLOWS = ("author", "coder", "okf_builder", "research")
+WORKFLOWS = ("author", "coder", "research")
 
 BLOCK = re.compile(r"```json\s*\n(.*?)```", re.DOTALL)
 

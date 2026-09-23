@@ -1,7 +1,7 @@
 # workhorse-workflows
 
 The stablemate agent workflows as an installable Python distribution: `loop-runner`,
-`research`, `author`, `okf-builder` and `coder`, each a checkpointed state machine.
+`research`, `author` and `coder`, each a checkpointed state machine.
 Workhorse is the engine; this is its content.
 
 Install it from [PyPI](https://pypi.org/project/workhorse-workflows/) — the engine and
@@ -35,28 +35,10 @@ shipped and is now kept only for its reasoning.
   review against the skills' engineering standards, QA of the live app against the book
   with the code not in the room. The reasoning is in the workspace README's
   [methodology section](https://github.com/GabrielCpp/stablemate#the-methodology-three-evidence-bases-none-of-them-the-implementers).
-- **`okf-builder`** — backfills an OKF book for an existing codebase, grounding every
-  claim in the file it read it from, so a brownfield repo can reach the same contract.
 - **`research`** — runs experiment gates: a protocol is designed, made runnable,
   submitted as a detached measurement job, waited on across resumes, and its artifacts
   classified deterministically — for measurements an agent turn is the wrong container
   for.
-
-Use `since` to narrow reconciliation to source changed since a revision. `story` no longer
-selects a build mode; when supplied, it is retained as provenance on the completed book's
-commit:
-
-```bash
-workhorse-okf-builder run --params '{
-  "docs_path": "/workspace/product-docs",
-  "service": "billing",
-  "story": "TEAM-123",
-  "source_path": "billing",
-  "since": "main"
-}'
-```
-
-Omit `story` for a bulk book commit with no `Story:` trailer.
 
 ## Authoring authority
 
@@ -131,7 +113,7 @@ QA's scenarios are generated from the feature book and judged on recorded eviden
 the running product, so QA sees exactly the defects the book lets it see: a promise the
 book never made, or a check that cannot tell success from failure, is invisible to it.
 Building that contract and keeping it true of the code is where the work is right now.
-Docs and `okf-builder` check grounding and repair findings, but a book that validates
+Docs checks grounding and repairs findings, but a book that validates
 and cites its sources is not thereby a complete or a correct one.
 
 Coder documents a story after implementation and review, before QA. A clean QA pass then

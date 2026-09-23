@@ -10,11 +10,10 @@ from workhorse.pyflow.dot import to_dot
 from workhorse.pyflow.graph import registry_graphs
 from workhorse.pyflow.registry import Registry
 from workhorse_workflows.author.workflow import workflow as author_workflow
-from workhorse_workflows.okf_builder.workflow import workflow as okf_builder_workflow
 
 DOCS = Path(workhorse_workflows.__file__).parent.parent.parent / "docs"
 
-REGISTRIES = (author_workflow, okf_builder_workflow)
+REGISTRIES = (author_workflow,)
 
 
 @pytest.mark.parametrize("registry", REGISTRIES, ids=[r.name for r in REGISTRIES])

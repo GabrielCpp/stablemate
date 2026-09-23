@@ -13,7 +13,7 @@ import workhorse_workflows
 
 PACKAGE = Path(workhorse_workflows.__file__).parent
 
-WORKFLOWS = ("author", "coder", "okf_builder", "research")
+WORKFLOWS = ("author", "coder", "research")
 
 AMBIENT = set(_farrier_globals({}, PACKAGE, quiet=True)) | {
     "template",

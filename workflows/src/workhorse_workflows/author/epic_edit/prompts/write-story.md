@@ -29,8 +29,8 @@ stories have still shipped with whole defects unnoticed — it just rots and mis
   criteria are judged against.
 {%- endif %}
 {%- if workhorse_var('features_dir') %}
-- **OKF book root**: `{{ workhorse_var('features_dir') }}` — the surface documentation, already built
-  by the okf-builder. **Read it; never write to it.** This is where the story's grounding comes
+- **OKF book root**: `{{ workhorse_var('features_dir') }}` — the surface documentation, already built.
+  **Read it; never write to it.** This is where the story's grounding comes
   from — see *Ground the story in the book* below. Do not inspect source code to invent product
   surfaces; cite only OKF nodes that already exist. Inspect source separately for concise Technical
   Notes about existing or legacy mechanics.

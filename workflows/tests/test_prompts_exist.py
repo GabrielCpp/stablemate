@@ -14,7 +14,7 @@ import workhorse_workflows
 
 PACKAGE = Path(workhorse_workflows.__file__).parent
 
-WORKFLOWS = ("author", "coder", "loop_runner", "okf_builder", "research")
+WORKFLOWS = ("author", "coder", "loop_runner", "research")
 
 
 def _agent_prompts(source: Path) -> list[tuple[int, ast.expr]]:
