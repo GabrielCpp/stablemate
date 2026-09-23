@@ -6,12 +6,11 @@ from pathlib import Path
 
 from ostler import registry
 from ostler.model import load
+from ostler.qa.owners import ChangedUnit, book_relative
 from ostler.qa.context import (
     CONTEXT_HEADING,
     OWED_HEADING,
-    ChangedUnit,
     _acceptance_criteria,
-    _book_relative,
     _book_root,
     _graph_at_revision,
     _is_generated_unit,
@@ -2056,9 +2055,9 @@ def test_book_root_derives_from_features_root_nesting():
 
 
 def test_book_relative_rebases_onto_the_book_root():
-    assert _book_relative("nested/app/service.py", "nested") == "app/service.py"
-    assert _book_relative("other/app/service.py", "nested") == "other/app/service.py"
-    assert _book_relative("app/service.py", "") == "app/service.py"
+    assert book_relative("nested/app/service.py", "nested") == "app/service.py"
+    assert book_relative("other/app/service.py", "nested") == "other/app/service.py"
+    assert book_relative("app/service.py", "") == "app/service.py"
 
 
 def test_nested_book_joins_its_own_root_relative_citations_to_host_relative_changes(tmp_path: Path):

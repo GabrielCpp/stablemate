@@ -6,9 +6,8 @@ import hashlib
 import json
 import re
 import subprocess
-from collections.abc import Callable, Iterable, Mapping, Sequence
-from dataclasses import dataclass, replace
-from enum import StrEnum
+from collections.abc import Callable, Iterable, Sequence
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -28,6 +27,19 @@ from ostler.qa.dispatch import owes_live_evidence
 from ostler.qa import fixtures as fixtures_mod
 from ostler.qa.compile import annotate_deferred_obligations
 from ostler.qa.outcome import QaOutcome
+from ostler.qa.owners import (
+    ChangedUnit,
+    Demotion,
+    Reason,
+    ReasonKind,
+    citing_families,
+    map_changes,
+    no_demotion,
+    relation_reason_kind,
+    shared_citations,
+    source_ref,
+    surface_owner,
+)
 from ostler.qa.source_context import SourceRepository
 from ostler.source_snapshots import source_fingerprint
 
@@ -44,8 +56,6 @@ _CITABLE_SUFFIXES = frozenset(
     ).split()
 )
 
-_CONTAINER_FANOUT = 3
-
 RELATION_KEYS = (
     "consistency",
     "consistency rule",
@@ -56,7 +66,7 @@ RELATION_KEYS = (
     "idempotency",
 )
 
-_RELATION_REASON_KINDS = frozenset(key.replace(" ", "-") for key in RELATION_KEYS)
+_RELATION_REASON_KINDS = frozenset(relation_reason_kind(key) for key in RELATION_KEYS)
 
 _EVENT_KEYS = ("emits", "consumes")
 
@@ -68,15 +78,15 @@ _RELATION_FANOUT = 6
 
 _CLOSURE_REASON_KINDS = frozenset(
     {
-        "contains-impacted-node",
-        "flow-links-contract",
-        "flow-contract-closure",
-        "graph-closure",
-        "judgment-context",
+        ReasonKind.CONTAINS_IMPACTED_NODE,
+        ReasonKind.FLOW_LINKS_CONTRACT,
+        ReasonKind.FLOW_CONTRACT_CLOSURE,
+        ReasonKind.GRAPH_CLOSURE,
+        ReasonKind.JUDGMENT_CONTEXT,
     }
 )
 
-_COBINDING_REASON_KINDS = frozenset({"event-consumer", "event-producer"}) | _RELATION_REASON_KINDS
+_COBINDING_REASON_KINDS = frozenset({ReasonKind.EVENT_CONSUMER, ReasonKind.EVENT_PRODUCER}) | _RELATION_REASON_KINDS
 
 _CONTEXT_ONLY_REASON_KINDS = _CLOSURE_REASON_KINDS | _COBINDING_REASON_KINDS
 
@@ -87,37 +97,6 @@ _LOCATOR_KEY_RENAME = {"exclusive-with": "exclusiveWith"}
 def _sort_key(obligation_id: str) -> list[tuple[int, int | str]]:
     """Order obligation ids so `…:raises:10` follows `…:raises:2`."""
     return [(1, int(part)) if part.isdigit() else (0, part) for part in obligation_id.split(":")]
-
-
-@dataclass(frozen=True)
-class ChangedUnit:
-    path: str
-    base_path: str
-    head_path: str
-    status: str
-    base_lines: tuple[int, ...]
-    head_lines: tuple[int, ...]
-    base_symbols: tuple[str, ...]
-    head_symbols: tuple[str, ...]
-    repository: str = ""
-    surface: str = ""
-    source_root: str = ""
-
-
-def _source_ref(repository: str, path: str, symbol: str = "") -> str:
-    return refs_mod.render_code_ref(refs_mod.CodeRef(repository, path, symbol))
-
-
-def _ref_owns_change(value: str, change: ChangedUnit) -> bool:
-    """Whether one owning citation names either side of a changed source file."""
-    try:
-        cited = refs_mod.parse_code_ref(value)
-    except ValueError:
-        return False
-    return (
-        cited.repository == change.repository
-        and cited.path in {change.base_path, change.head_path}
-    )
 
 
 def _book_root(root: Path, features_root: str) -> str:
@@ -153,38 +132,6 @@ def story_file_record(root: Path, story_file: Path | None) -> dict[str, str] | N
     return {"path": rel, "sha256": digest}
 
 
-def _book_relative(path: str, book_root: str) -> str:
-    """*path* (relative to `root`) rebased onto `book_root`; unchanged outside it."""
-    if not book_root or not path:
-        return path
-    prefix = f"{book_root}/"
-    return path[len(prefix):] if path.startswith(prefix) else path
-
-
-def _matching_refs(refs: set[str], cited: list[str]) -> list[str]:
-    """Citations in *cited* that name something in *refs*, tolerant of symbol spelling."""
-    parsed_refs = []
-    for value in refs:
-        try:
-            parsed_refs.append(refs_mod.parse_code_ref(value))
-        except ValueError:
-            continue
-    matches: list[str] = []
-    for value in cited:
-        try:
-            citation = refs_mod.parse_code_ref(value)
-        except ValueError:
-            continue
-        if any(
-            citation.repository == ref.repository
-            and citation.path == ref.path
-            and inventory.symbol_parts(citation.symbol) == inventory.symbol_parts(ref.symbol)
-            for ref in parsed_refs
-        ):
-            matches.append(value)
-    return sorted(dict.fromkeys(matches))
-
-
 EMPTY_TREE_SHA = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
 
 
@@ -207,107 +154,13 @@ def book_context(
     )
 
 
-@dataclass(frozen=True, slots=True)
-class CitingFamilies:
-    """How many declared families cite each changed file and each changed symbol."""
-
-    files: Mapping[str, int]
-    symbols: Mapping[str, int]
-
-
-@dataclass(frozen=True, slots=True)
-class SharedCitations:
-    """The changed files and symbols whose owners are context rather than required."""
-
-    files: frozenset[str] = frozenset()
-    symbols: frozenset[str] = frozenset()
-
-
-Demotion = Callable[[CitingFamilies], SharedCitations]
-FamilyRoot = Callable[[str, set[str]], str]
-
-
-def shared_citations(citing: CitingFamilies) -> SharedCitations:
-    """The files and symbols cited by many families, so a change to a shared helper does not owe live evidence for every node."""
-    return SharedCitations(
-        frozenset(ref for ref, count in citing.files.items() if count > 1),
-        frozenset(ref for ref, count in citing.symbols.items() if count >= _CONTAINER_FANOUT),
-    )
-
-
-def no_demotion(_citing: CitingFamilies) -> SharedCitations:
-    """No file or symbol, for a whole-book context that has no change to be proportional to."""
-    return SharedCitations()
-
-
-def _citing_families(
-    file_owners: Mapping[str, set[str]], symbol_owners: Mapping[str, set[str]], family_root: FamilyRoot
-) -> CitingFamilies:
-    """Count the declared families whose nodes own each changed file and cite each changed symbol."""
-
-    def families(owners: set[str]) -> int:
-        return len({family_root(node_id, owners) for node_id in owners})
-
-    return CitingFamilies(
-        {ref: families(owners) for ref, owners in file_owners.items()},
-        {ref: families(owners) for ref, owners in symbol_owners.items()},
-    )
-
-
-class OwnerKind(StrEnum):
-    """How a node came to own a changed unit."""
-
-    CHANGED_CODE = "changed-code"
-    FILE_OWNER = "file-owner"
-    SURFACE_OWNER = "surface-owner"
-
-
-@dataclass(frozen=True, slots=True)
-class OwnerReason:
-    """Why one node owns a changed unit: how, the reference it owns, and the bullet key that cites it."""
-
-    kind: OwnerKind
-    ref: str
-    key: str = ""
-
-    def row(self) -> dict[str, str]:
-        """The reason as the packet lists it."""
-        return {"kind": self.kind.value, "ref": self.ref, **({"key": self.key} if self.key else {})}
-
-
-@dataclass(frozen=True, slots=True)
-class UnmappedChange:
-    """A changed production unit no node owns by symbol, file or surface."""
-
-    path: str
-
-    def row(self) -> dict[str, str]:
-        """The change as the packet's health lists it."""
-        return {
-            "kind": "unmapped-change",
-            "severity": "error",
-            "path": self.path,
-            "message": "changed production unit has no exact symbol, file, or surface owner",
-        }
-
-
-@dataclass(frozen=True, slots=True)
-class MappedChanges:
-    """Each node's reasons for owning a change, the changes nothing owns, and the owners of each changed file and symbol."""
-
-    reasons: dict[str, list[OwnerReason]]
-    unmapped: list[UnmappedChange]
-    file_owners: dict[str, set[str]]
-    symbol_owners: dict[str, set[str]]
-
-
 def _changed_code_rows(changes: Sequence[ChangedUnit]) -> list[dict[str, Any]]:
     """Each changed unit as the packet lists it."""
     return [
         {
             "path": change.path,
             "repository": change.repository,
-            "id": _source_ref(change.repository, change.path),
+            "id": source_ref(change.repository, change.path),
             "basePath": change.base_path,
             "headPath": change.head_path,
             "status": change.status,
@@ -318,67 +171,6 @@ def _changed_code_rows(changes: Sequence[ChangedUnit]) -> list[dict[str, Any]]:
         }
         for change in changes
     ]
-
-
-def _map_changes(
-    changes: Sequence[ChangedUnit],
-    nodes_by_id: dict[str, dict[str, Any]],
-    book_root: str,
-    source_roots: dict[str, list[str]],
-) -> MappedChanges:
-    """Map each changed unit to the nodes that cite its symbols, own its file, or own its surface."""
-    reasons: dict[str, list[OwnerReason]] = {}
-    file_owners: dict[str, set[str]] = {}
-    symbol_owners: dict[str, set[str]] = {}
-    unmapped: list[UnmappedChange] = []
-    for change in changes:
-        change_book_root = "" if change.repository else book_root
-        book_path = _book_relative(change.path, change_book_root)
-        book_base_path = _book_relative(change.base_path, change_book_root)
-        book_head_path = _book_relative(change.head_path, change_book_root)
-        refs = {
-            *(
-                _source_ref(change.repository, book_base_path, symbol)
-                for symbol in change.base_symbols
-                if change.base_path
-            ),
-            *(
-                _source_ref(change.repository, book_head_path, symbol)
-                for symbol in change.head_symbols
-                if change.head_path
-            ),
-        }
-        book_change = replace(change, path=book_path, base_path=book_base_path, head_path=book_head_path)
-        mapped = change.status == "deleted"
-        for node_id, node in nodes_by_id.items():
-            bullets = node.get("bullets", {})
-            owned_file = False
-            for key in registry.owning_keys(str(node.get("type", ""))):
-                cited = refs_mod.code_refs(bullets.get(key))
-                exact = _matching_refs(refs, cited)
-                if exact:
-                    mapped = True
-                    for ref in exact:
-                        reasons.setdefault(node_id, []).append(OwnerReason(OwnerKind.CHANGED_CODE, ref, key))
-                        symbol_owners.setdefault(ref, set()).add(node_id)
-                elif not owned_file and any(_ref_owns_change(item, book_change) for item in cited):
-                    mapped = owned_file = True
-                    owned_ref = _source_ref(change.repository, book_path)
-                    reasons.setdefault(node_id, []).append(OwnerReason(OwnerKind.FILE_OWNER, owned_ref, key))
-                    file_owners.setdefault(owned_ref, set()).add(node_id)
-        if not mapped:
-            surface = change.surface or _surface_owner(change.path, source_roots)
-            surface_nodes = [
-                node_id
-                for node_id, node in nodes_by_id.items()
-                if surface and node.get("surface") == surface
-            ]
-            surface_ref = f"{surface}:{_source_ref(change.repository, book_path)}"
-            for node_id in surface_nodes:
-                reasons.setdefault(node_id, []).append(OwnerReason(OwnerKind.SURFACE_OWNER, surface_ref))
-            if not surface_nodes:
-                unmapped.append(UnmappedChange(_source_ref(change.repository, book_path)))
-    return MappedChanges(reasons, unmapped, file_owners, symbol_owners)
 
 
 def _navigation(head_graph: Graph) -> dict[str, dict[str, Any]]:
@@ -497,7 +289,7 @@ def build_context(
                 changes_all.append(replace(
                     change,
                     repository=repository.id,
-                    surface=_surface_owner(change.path, roots),
+                    surface=surface_owner(change.path, roots),
                     source_root=str(checkout),
                 ))
             repository_rows.append({
@@ -526,7 +318,7 @@ def build_context(
             for prefix in excluded_doc_roots
         ))
         and (
-            _source_ref(change.repository, change.path) in declared_config
+            source_ref(change.repository, change.path) in declared_config
             or (
                 not _is_non_production_path(change.path)
                 and not _is_generated_unit(Path(change.source_root) if change.source_root else root,
@@ -535,14 +327,12 @@ def build_context(
         )
     ]
 
-    mapped_changes = _map_changes(changes, nodes_by_id, book_root, source_roots)
-    direct_reasons = {
-        node_id: [reason.row() for reason in reasons] for node_id, reasons in mapped_changes.reasons.items()
-    }
+    mapped_changes = map_changes(changes, nodes_by_id, book_root, source_roots)
+    direct_reasons = mapped_changes.reasons
     health.extend(change.row() for change in mapped_changes.unmapped)
 
     shared = demote(
-        _citing_families(
+        citing_families(
             mapped_changes.file_owners,
             mapped_changes.symbol_owners,
             lambda node_id, family_members: _family_root(node_id, family_members, nodes_by_id),
@@ -555,9 +345,7 @@ def build_context(
         parent = nodes_by_id.get(node_id, {}).get("parent")
         while parent and parent in nodes_by_id:
             if parent not in impacted:
-                direct_reasons.setdefault(parent, []).append(
-                    {"kind": "contains-impacted-node", "ref": node_id}
-                )
+                direct_reasons.setdefault(parent, []).append(Reason(ReasonKind.CONTAINS_IMPACTED_NODE, node_id))
             impacted.add(parent)
             parent = nodes_by_id[parent].get("parent")
     edges = base_edges | head_edges
@@ -567,16 +355,12 @@ def build_context(
     for source, target in edges:
         if source in flows and target in impacted:
             journeys.add(source)
-            direct_reasons.setdefault(source, []).append(
-                {"kind": "flow-links-contract", "ref": target}
-            )
+            direct_reasons.setdefault(source, []).append(Reason(ReasonKind.FLOW_LINKS_CONTRACT, target))
     contracts = impacted - flows
     for source, target in edges:
         if source in journeys and target in nodes_by_id and target not in flows:
             contracts.add(target)
-            direct_reasons.setdefault(target, []).append(
-                {"kind": "flow-contract-closure", "ref": source}
-            )
+            direct_reasons.setdefault(target, []).append(Reason(ReasonKind.FLOW_CONTRACT_CLOSURE, source))
 
     relation_keys = RELATION_KEYS
     related = True
@@ -603,18 +387,18 @@ def build_context(
             if node_id in selected:
                 continue
             bullets = node.get("bullets", {})
-            reasons: list[dict[str, str]] = []
+            reasons: list[Reason] = []
             for value in _values(bullets.get("consumes")):
                 if value in emitted:
-                    reasons.append({"kind": "event-consumer", "ref": value})
+                    reasons.append(Reason(ReasonKind.EVENT_CONSUMER, value))
             for value in _values(bullets.get("emits")):
                 if value in consumed:
-                    reasons.append({"kind": "event-producer", "ref": value})
+                    reasons.append(Reason(ReasonKind.EVENT_PRODUCER, value))
             for key in relation_keys:
                 for value in _values(bullets.get(key)):
                     join = _relation_join_key(value)
                     if join in relation_values:
-                        reasons.append({"kind": key.replace(" ", "-"), "ref": join})
+                        reasons.append(Reason(relation_reason_kind(key), join))
             if reasons:
                 (journeys if node.get("type") == "flow" else contracts).add(node_id)
                 direct_reasons.setdefault(node_id, []).extend(reasons)
@@ -640,7 +424,7 @@ def build_context(
         )
         if target not in contracts and target not in journeys:
             contracts.add(target)
-            direct_reasons.setdefault(target, []).append({"kind": "judgment-context", "ref": source})
+            direct_reasons.setdefault(target, []).append(Reason(ReasonKind.JUDGMENT_CONTEXT, source))
 
     selected = contracts | journeys
     verification_index: list[dict[str, Any]] = []
@@ -728,9 +512,7 @@ def build_context(
         hopped = False
         for node_id in sorted(contracts - required_contracts):
             for subject in sorted(_named_subjects(nodes_by_id[node_id]) & required_subjects):
-                direct_reasons.setdefault(node_id, []).append(
-                    {"kind": "relation-of-required", "ref": subject}
-                )
+                direct_reasons.setdefault(node_id, []).append(Reason(ReasonKind.RELATION_OF_REQUIRED, subject))
                 hopped = True
         if hopped:
             required_contracts = {
@@ -815,7 +597,7 @@ def build_context(
         "changedCode": changed_code,
         **({"changedUnits": changed_code, "repositories": repository_rows} if repositories else {}),
         "directNodes": [
-            {"node": node_id, "reasons": direct_reasons[node_id]}
+            {"node": node_id, "reasons": [reason.row() for reason in direct_reasons[node_id]]}
             for node_id in sorted(direct_reasons)
         ],
         "contracts": sorted(contracts),
@@ -1465,18 +1247,6 @@ def _verification_refs(node: dict[str, Any]) -> list[str]:
     return list(dict.fromkeys(refs))
 
 
-def _surface_owner(path: str, roots: dict[str, list[str]]) -> str:
-    matches = [
-        (len(prefix.rstrip("/")), surface)
-        for surface, prefixes in roots.items()
-        for prefix in prefixes
-        if prefix.rstrip("/") in ("", ".")
-        or path == prefix.rstrip("/")
-        or path.startswith(prefix.rstrip("/") + "/")
-    ]
-    return max(matches)[1] if matches else ""
-
-
 def _is_non_production_path(path: str) -> bool:
     candidate = path.lower()
     parts = Path(candidate).parts
@@ -1599,24 +1369,24 @@ def _is_generated_unit(root: Path, change: ChangedUnit) -> bool:
 
 def _is_required(
     node_id: str,
-    direct_reasons: dict[str, list[dict[str, str]]],
+    direct_reasons: dict[str, list[Reason]],
     grounded: set[str],
     shared_files: frozenset[str] | set[str] = frozenset(),
     shared_symbols: frozenset[str] | set[str] = frozenset(),
 ) -> bool:
     """Whether this node's obligations are owed live evidence, or are only context."""
     kinds = {
-        reason.get("kind", "")
+        reason.kind
         for reason in direct_reasons.get(node_id, [])
-        if not (reason.get("kind") == "file-owner" and reason.get("ref") in shared_files)
-        and not (reason.get("kind") == "changed-code" and reason.get("ref") in shared_symbols)
+        if not (reason.kind == ReasonKind.FILE_OWNER and reason.ref in shared_files)
+        and not (reason.kind == ReasonKind.CHANGED_CODE and reason.ref in shared_symbols)
     }
     return node_id in grounded and bool(kinds - _CONTEXT_ONLY_REASON_KINDS)
 
 
 def _journey_is_required(
     node_id: str,
-    direct_reasons: dict[str, list[dict[str, str]]],
+    direct_reasons: dict[str, list[Reason]],
     required_contracts: set[str],
     end_edges: set[tuple[str, str]],
 ) -> bool:
@@ -1624,11 +1394,11 @@ def _journey_is_required(
     reasons = [
         reason
         for reason in direct_reasons.get(node_id, [])
-        if reason.get("kind") == "flow-links-contract"
-        and _reaches_a_required_contract(str(reason.get("ref") or ""), required_contracts)
+        if reason.kind == ReasonKind.FLOW_LINKS_CONTRACT
+        and _reaches_a_required_contract(reason.ref, required_contracts)
     ]
-    reaches_the_end = any((node_id, reason.get("ref")) in end_edges for reason in reasons)
-    walks_the_route = any((node_id, reason.get("ref")) not in end_edges for reason in reasons)
+    reaches_the_end = any((node_id, reason.ref) in end_edges for reason in reasons)
+    walks_the_route = any((node_id, reason.ref) not in end_edges for reason in reasons)
     return reaches_the_end and walks_the_route
 
 
@@ -1963,7 +1733,7 @@ def _journey_steps(
 
 
 def _family_root(node_id: str, owners: set[str], nodes_by_id: dict[str, dict[str, Any]]) -> str:
-    """The declared-family root *node_id* belongs to among *owners*, for `_CONTAINER_FANOUT`."""
+    """The declared-family root *node_id* belongs to among *owners*, for `CONTAINER_FANOUT`."""
     seen: set[str] = set()
     current = node_id
     while current not in seen:
@@ -2014,7 +1784,7 @@ def _repeat(node: dict[str, Any], scope: tuple[str, ...]) -> dict[str, Any] | No
 
 def _obligations(
     node: dict[str, Any],
-    reasons: list[dict[str, str]],
+    reasons: list[Reason],
     *,
     journey: bool,
     required: bool = True,
@@ -2047,7 +1817,7 @@ def _obligations(
         "requirement": node.get("title") or node["id"],
         "required": required,
         "evidenceRequired": "live" if required else "context",
-        "reasons": reasons or [{"kind": "graph-closure", "ref": node["id"]}],
+        "reasons": [reason.row() for reason in reasons or [Reason(ReasonKind.GRAPH_CLOSURE, str(node["id"]))]],
     }
     if nodes_by_id is not None and node.get("type") == "flow":
         end_surface = _linked_surface(node, node.get("bullets", {}).get("end"), nodes_by_id)
