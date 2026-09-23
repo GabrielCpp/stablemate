@@ -213,8 +213,8 @@ class Aggregate(BookFlow):
 
     def recheck_cleared(self, ledger: JobLedger) -> Continue[...]:
         """Keep each node an earlier round cleared while its text holds, on a page judged now or not. One that changed drops out."""
-        current = node_digests_on_pages_of(self.root, (entry.node for entry in ledger.cleared))
-        ledger = ledger.with_cleared(still_cleared(ledger.cleared, current))
+        current_node_digests = node_digests_on_pages_of(self.root, (entry.node for entry in ledger.cleared))
+        ledger = ledger.with_cleared(still_cleared(ledger.cleared, current_node_digests))
         return Continue(ledger.cleared, self.verify_job, ledger=ledger)
 
     def verify_job(self, ledger: JobLedger) -> Continue[...]:

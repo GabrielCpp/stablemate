@@ -11,7 +11,7 @@ from workhorse_workflows.okf_book.aggregate.verdict import (
     still_cleared,
     verdict_problems,
 )
-from workhorse_workflows.okf_book.shared.attempts import Cleared
+from workhorse_workflows.okf_book.shared.attempts import ClearedNode
 from workhorse_workflows.okf_book.shared.contracts import Claim, Contract
 
 CONTRACTS = (
@@ -64,14 +64,14 @@ def test_a_finding_s_problem_and_the_uncovered_problems_are_charged_after_the_un
 
 
 def test_a_cleared_node_stands_only_while_its_digest_is_unchanged() -> None:
-    cleared = (Cleared(node="page.md#add", digest="a1"), Cleared(node="page.md#report", digest="r0"))
+    cleared = (ClearedNode(node="page.md#add", digest="a1"), ClearedNode(node="page.md#report", digest="r0"))
 
     assert [entry.node for entry in still_cleared(cleared, DIGESTS)] == ["page.md#add"]
 
 
 def test_a_problem_on_a_node_still_cleared_is_dropped_and_the_claims_it_states_count() -> None:
     claims = claim_texts(numbered_contracts(CONTRACTS))
-    cleared = (Cleared(node="page.md#add", digest="a1", claims=(claims[0], claims[1])),)
+    cleared = (ClearedNode(node="page.md#add", digest="a1", claims=(claims[0], claims[1])),)
     verdict = Verdict(
         claims=(ClaimFinding(claim=1, node="page.md#add", problem="its check passes on a violation."),
                 ClaimFinding(claim=3, node="page.md#report")),
@@ -83,7 +83,7 @@ def test_a_problem_on_a_node_still_cleared_is_dropped_and_the_claims_it_states_c
 
 def test_a_problem_on_a_cleared_node_whose_text_changed_is_charged() -> None:
     claims = claim_texts(numbered_contracts(CONTRACTS))
-    cleared = (Cleared(node="page.md#add", digest="a0", claims=(claims[1],)),)
+    cleared = (ClearedNode(node="page.md#add", digest="a0", claims=(claims[1],)),)
     verdict = Verdict(
         claims=(ClaimFinding(claim=1, node="page.md#add"), ClaimFinding(claim=3, node="page.md#report")),
         problems=(NodeProblem(node="page.md#add", problem="it contradicts the report."),),
@@ -105,13 +105,13 @@ def test_every_judged_node_nothing_was_raised_against_is_cleared_with_the_claims
     )
 
     assert cleared_after(verdict, claims, DIGESTS, ()) == (
-        Cleared(node="page.md#add", digest="a1", claims=tuple(sorted(claims[:2]))),
+        ClearedNode(node="page.md#add", digest="a1", claims=tuple(sorted(claims[:2]))),
     )
 
 
 def test_a_node_still_cleared_keeps_its_claims_whatever_this_round_says_of_it() -> None:
     claims = claim_texts(numbered_contracts(CONTRACTS))
-    cleared = (Cleared(node="page.md#report", digest="r1", claims=(claims[2],)),)
+    cleared = (ClearedNode(node="page.md#report", digest="r1", claims=(claims[2],)),)
     verdict = Verdict(
         claims=(ClaimFinding(claim=1, node="page.md#add"), ClaimFinding(claim=2, node="page.md#add"),
                 ClaimFinding(claim=3)),
@@ -121,12 +121,12 @@ def test_a_node_still_cleared_keeps_its_claims_whatever_this_round_says_of_it() 
     after = {entry.node: entry for entry in cleared_after(verdict, claims, DIGESTS, still_cleared(cleared, DIGESTS))}
 
     assert set(after) == {"page.md", "page.md#add", "page.md#report"}
-    assert after["page.md#report"] == Cleared(node="page.md#report", digest="r1", claims=(claims[2],))
+    assert after["page.md#report"] == ClearedNode(node="page.md#report", digest="r1", claims=(claims[2],))
 
 
 def test_a_node_still_cleared_on_a_page_this_round_did_not_judge_stays_cleared() -> None:
     claims = claim_texts(numbered_contracts(CONTRACTS))
-    unread = Cleared(node="other.md#sum", digest="s1", claims=(claims[2],))
+    unread = ClearedNode(node="other.md#sum", digest="s1", claims=(claims[2],))
     verdict = Verdict(claims=(ClaimFinding(claim=1, node="page.md#add"), ClaimFinding(claim=2, node="page.md#add"), ClaimFinding(claim=3)))
 
     assert verdict_problems(verdict, claims, (unread,)) == ()
