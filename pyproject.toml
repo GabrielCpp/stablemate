@@ -73,8 +73,6 @@ dev = [
     # third-party libraries ty treats as opaque. Pinned here for the same reason ty is
     # — a checker that floats reports a different set of findings per machine.
     "basedpyright>=1.31",
-    # ostler vet's live path (`--cdp-url` CDP scan + per-component crops), used by the
-    # okf-builder walkthrough that runs against this workspace's .venv.
     "playwright>=1.40",
     "pillow>=10.0",
     # saddlebag's `vault` extra. Installed here so ty resolves `hvac` and actually

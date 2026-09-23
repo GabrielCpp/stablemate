@@ -48,8 +48,7 @@ One story's path through the toolchain, tool by tool:
   place and every repository's installed copy follows.
 - **coder's Docs phase**, after review and before QA, writes what was built into the
   repo's **feature book**: user journeys, surfaces, and the checks that observe them, each
-  claim grounded in the source file it was read from. **[okf-builder](workflows/)**
-  writes the same book for a codebase that was never authored this way.
+  claim grounded in the source file it was read from.
 - **coder's QA** holds the *running application* to that book, with the code not in the
   room, and a story passes on recorded evidence or parks for a human.
 - **[workhorse](workhorse/)** keeps all of it running across crashes, subscription caps
@@ -113,7 +112,7 @@ for it, and none of them is finished:
   covers, and declarations that changed behind an existing citation. A clean report is
   the floor, not the proof: structural validity, an accurate description and a check that
   can tell success from failure are three different properties, and doctor sees one.
-- **Repair that cannot excuse itself.** `okf-builder` and coder's Docs phase clear
+- **Repair that cannot excuse itself.** coder's Docs phase clears
   findings in checkpointed passes, and a finding that will not clear is adjudicated —
   book error, code defect or intent conflict — rather than retried forever or waived: a
   stalled book parks on an operator gate, and the waiver register is gone. Any QA step
@@ -164,7 +163,7 @@ packages that work alongside an agent prompt library:
 | Package | PyPI | Role |
 | --- | --- | --- |
 | [`workhorse/`](workhorse/) | [`workhorse-agent`](https://pypi.org/project/workhorse-agent/) | Fail-soft engine (a library, not a command) that drives an agent CLI — Claude, Codex, Copilot, Cline or OpenCode — through a checkpointed Python state machine, unattended for days. |
-| [`workflows/`](workflows/) | [`workhorse-workflows`](https://pypi.org/project/workhorse-workflows/) | The workflows themselves — `loop-runner`, `author`, `coder`, `okf-builder`, `research` — as Python, each declaring its own `workhorse-<name>` command. |
+| [`workflows/`](workflows/) | [`workhorse-workflows`](https://pypi.org/project/workhorse-workflows/) | The workflows themselves — `loop-runner`, `author`, `coder`, `research` — as Python, each declaring its own `workhorse-<name>` command. |
 | [`farrier/`](farrier/) | [`farrier`](https://pypi.org/project/farrier/) | Renders an agent-neutral prompt library into a repository's Codex/Claude/Copilot adapters and launcher. |
 | [`ostler/`](ostler/) | [`ostler`](https://pypi.org/project/ostler/) | Tends a repo's `docs/` knowledge graph through its CLI and the in-process facade workflows use. |
 | [`groom/`](groom/) | — (unpublished) | Local dashboard + OTLP collector for running workflows: answers operator gates from the browser and pages you when a run stalls. Optional. |
@@ -208,7 +207,7 @@ workhorse-loop-runner run --dry-run     # the install check; needs no agent CLI
 ```
 
 That last line is the whole install check — see [Your first run](#your-first-run). The
-other workflows are `author`, `coder`, `okf-builder` and `research`, and they want a
+other workflows are `author`, `coder` and `research`, and they want a
 repository and an agent CLI.
 
 `farrier` is a second `uv tool install` rather than a `--with farrier` on the first,
@@ -357,8 +356,7 @@ specific member.
 tests included, because a benchmark whose scoring is wrong is worse than none. The
 repo guards are separate targets and are not part of it, among them `make check-public`,
 which asserts that no private overlay name reached this public repo and that the base
-library still stands alone. `make okf-verify` is separate and slower: it
-checks every OKF book's coverage against its source.
+library still stands alone.
 
 Each package that ships is independently versioned and released from CI. Nothing is
 published from a laptop. See each package's README for details, and
