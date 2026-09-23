@@ -44,6 +44,18 @@ def test_a_link_in_concept_prose_makes_its_target_reachable(repo: Path):
     assert _unreachable(repo) == []
 
 
+def test_a_fixture_a_reachable_page_names_is_reachable(repo: Path):
+    features_root = _write_book(repo)
+    write(features_root / "acme/acme.md", _page(
+        "cli", "acme",
+        "See [links](concepts/link.md).\n\n## Commands\n\n### shorten\n\n- does: stores the link\n"
+        "- fixture: one-link\n"))
+    write(features_root / "acme/fixtures/one-link.md", _page("fixture", "one-link", "## Steps\n"))
+    write(features_root / "acme/fixtures/unused.md", _page("fixture", "unused", "## Steps\n"))
+    assert _unreachable(repo) == ["docs/features/acme/concepts/orphan.md",
+                                  "docs/features/acme/fixtures/unused.md"]
+
+
 def test_a_service_with_no_entries_page_is_not_checked(repo: Path):
     features_root = _write_book(repo)
     (features_root / "acme/entries.md").unlink()
