@@ -30,6 +30,7 @@ from ostler.qa.outcome import QaOutcome
 from ostler.qa.owners import (
     ChangedUnit,
     Demotion,
+    OwnerNode,
     Reason,
     ReasonKind,
     citing_families,
@@ -265,6 +266,7 @@ def build_context(
     base_nodes, base_edges, base_ends, base_scopes, base_details = _serialized_graph(base_graph)
     head_nodes, head_edges, head_ends, head_scopes, head_details = _serialized_graph(head_graph)
     nodes_by_id = _merge_snapshot_nodes(base_nodes, head_nodes)
+    owner_nodes = {node_id: _owner_node(node) for node_id, node in nodes_by_id.items()}
     node_scopes = {**base_scopes, **head_scopes}
     declared_config = {
         item
@@ -327,7 +329,7 @@ def build_context(
         )
     ]
 
-    mapped_changes = map_changes(changes, nodes_by_id, book_root, source_roots)
+    mapped_changes = map_changes(changes, owner_nodes, book_root, source_roots)
     direct_reasons = mapped_changes.reasons
     health.extend(change.row() for change in mapped_changes.unmapped)
 
@@ -1152,6 +1154,14 @@ def _relation_join_key(value: str) -> str:
     """What the fixpoint compares two relation bullets on: the subject, or the whole value."""
     subject, _ = relation_subject(value)
     return subject if subject is not None else value.strip()
+
+
+def _owner_node(node: dict[str, Any]) -> OwnerNode:
+    bullets = node.get("bullets", {})
+    return OwnerNode(
+        str(node.get("surface") or ""),
+        {key: tuple(refs_mod.code_refs(bullets.get(key))) for key in registry.owning_keys(str(node.get("type", "")))},
+    )
 
 
 def _cli_binaries(nodes_by_id: dict[str, dict[str, Any]]) -> dict[str, str]:

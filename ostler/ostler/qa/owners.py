@@ -5,9 +5,8 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from enum import StrEnum
-from typing import Any
 
-from ostler import inventory, refs as refs_mod, registry
+from ostler import inventory, refs as refs_mod
 
 
 @dataclass(frozen=True)
@@ -23,6 +22,14 @@ class ChangedUnit:
     repository: str = ""
     surface: str = ""
     source_root: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class OwnerNode:
+    """What one node can own a change by: the surface it sits on, and the code each of its owning bullets cites."""
+
+    surface: str
+    citations: Mapping[str, tuple[str, ...]]
 
 
 class ReasonKind(StrEnum):
@@ -151,7 +158,7 @@ def book_relative(path: str, book_root: str) -> str:
     return path[len(prefix):] if path.startswith(prefix) else path
 
 
-def matching_refs(refs: set[str], cited: list[str]) -> list[str]:
+def matching_refs(refs: set[str], cited: Sequence[str]) -> list[str]:
     """Citations in *cited* that name something in *refs*, tolerant of symbol spelling."""
     parsed_refs = []
     for value in refs:
@@ -210,7 +217,7 @@ def _changed_refs(change: ChangedUnit, base_path: str, head_path: str) -> set[st
 
 def map_changes(
     changes: Sequence[ChangedUnit],
-    nodes_by_id: dict[str, dict[str, Any]],
+    nodes: Mapping[str, OwnerNode],
     book_root: str,
     source_roots: dict[str, list[str]],
 ) -> MappedChanges:
@@ -230,11 +237,9 @@ def map_changes(
         refs = _changed_refs(change, book_change.base_path, book_change.head_path)
         owned_ref = source_ref(change.repository, book_change.path)
         mapped = change.status == "deleted"
-        for node_id, node in nodes_by_id.items():
-            bullets = node.get("bullets", {})
+        for node_id, node in nodes.items():
             owned_file = False
-            for key in registry.owning_keys(str(node.get("type", ""))):
-                cited = refs_mod.code_refs(bullets.get(key))
+            for key, cited in node.citations.items():
                 exact = matching_refs(refs, cited)
                 if exact:
                     mapped = True
@@ -248,7 +253,7 @@ def map_changes(
         if mapped:
             continue
         surface = change.surface or surface_owner(change.path, source_roots)
-        surface_nodes = [node_id for node_id, node in nodes_by_id.items() if surface and node.get("surface") == surface]
+        surface_nodes = [node_id for node_id, node in nodes.items() if surface and node.surface == surface]
         for node_id in surface_nodes:
             reasons.setdefault(node_id, []).append(Reason(ReasonKind.SURFACE_OWNER, f"{surface}:{owned_ref}"))
         if not surface_nodes:
