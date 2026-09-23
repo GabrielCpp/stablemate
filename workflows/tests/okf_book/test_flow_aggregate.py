@@ -178,6 +178,31 @@ def test_a_verifier_rejection_is_retried_with_its_problems_then_blocked(app: App
     assert git(repo, "status", "--porcelain") == ""
 
 
+def test_the_verifier_is_told_the_book_s_other_pages(app: App, run_book: RunBook) -> None:
+    _flow, runner = _run(app("tally-cli"), run_book)
+
+    [args] = [a for a in runner.args_of("verify-page") if CONCEPT in [p["page"] for p in BRIEFS.validate_python(a["pages"])]]
+    others = NAMES.validate_python(args["other_pages"])
+    assert {FIXTURE, ROOT_PAGE} <= set(others)
+    assert CONCEPT not in others
+
+
+def test_a_page_a_job_only_adds_a_link_to_is_not_judged_as_its_work(app: App, run_book: RunBook) -> None:
+    repo = app("tally-cli")
+    line = "\nThe checkout is [tally-checkout](ops/tally-checkout.md).\n"
+
+    def write_operations(args: dict[str, object]) -> dict[str, object]:
+        _append(repo, FIXTURE, "\nThe scenario directory holds it.\n")
+        _append(repo, ROOT_PAGE, line)
+        return {"summary": "linked"}
+
+    _flow, runner = _run(repo, run_book, operations=write_operations)
+
+    operations = [args for args in runner.args_of("verify-page") if args["kind"] == "operations"]
+    assert [page["page"] for args in operations for page in BRIEFS.validate_python(args["pages"])] == [FIXTURE]
+    assert line in (repo / ROOT_PAGE).read_text(encoding="utf-8")
+
+
 def test_a_page_too_large_to_judge_charges_the_job_without_a_verify_turn(app: App, run_book: RunBook) -> None:
     def bloat(repo: Path) -> None:
         _append(repo, CONCEPT, "Tally keeps a ledger.\n" * (ALONE_CEILING_TOKENS * CHARS_PER_TOKEN // 20))

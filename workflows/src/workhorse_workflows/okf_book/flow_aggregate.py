@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import time
+from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict
 
@@ -20,6 +21,7 @@ from workhorse_workflows.okf_book.budget import (
     total_text_tokens,
 )
 from workhorse_workflows.okf_book.attempts import JobLedger
+from workhorse_workflows.okf_book.citations import book_pages
 from workhorse_workflows.okf_book.confine import (
     book_changes,
     confine,
@@ -69,6 +71,11 @@ class Verdict(BaseModel):
 def _turn_metric(node: str, subject: str, tokens: int, started: float) -> TurnMetric:
     minutes = (time.monotonic() - started) / 60
     return TurnMetric(phase=Phase.AGGREGATE, node=node, subjects=(subject,), tokens=tokens, minutes=minutes)
+
+
+def _book_pages_besides(root: Path, service: str, judged: tuple[str, ...]) -> tuple[str, ...]:
+    rels = (page.relative_to(root).as_posix() for page in book_pages(root, service))
+    return tuple(rel for rel in rels if rel not in judged)
 
 
 def _contract_args(contracts: tuple[Contract, ...]) -> list[dict[str, object]]:
@@ -167,8 +174,10 @@ class Aggregate(Retry):
         and the contracts get the rest. A page past the ceiling cannot be judged, and charges the job a turn.
         """
         root, job = self.root, ledger.job
-        fixed = prompt_tokens(VERIFY_PROMPT)
-        judged = pack_read(file_tokens(root, judged_pages(root, job, ledger.before)), (TURN_BUDGET_TOKENS - fixed) // 2)
+        judged_rels = judged_pages(root, job, ledger.before)
+        other_pages = pack_told(name_tokens(_book_pages_besides(root, job.service, judged_rels)), PAGES_BUDGET_TOKENS)
+        fixed = prompt_tokens(VERIFY_PROMPT) + other_pages.tokens
+        judged = pack_read(file_tokens(root, judged_rels), (TURN_BUDGET_TOKENS - fixed) // 2)
         if not judged.kept:
             return self._retry(ledger.charged((UNJUDGED_PROBLEM,)))
         if judged.left_out:
@@ -181,6 +190,8 @@ class Aggregate(Retry):
             args={
                 "pages": [body.template_arg() for body in page_bodies(root, judged.kept)],
                 "contracts": _contract_args(contracts),
+                "other_pages": list(other_pages.kept),
+                "other_pages_left_out": other_pages.left_out,
                 "kind": job.kind.value,
             },
             cwd=root,

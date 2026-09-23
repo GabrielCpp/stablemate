@@ -141,9 +141,15 @@ def revert(root: Path, before: Snapshot, run_dir: Path) -> tuple[str, ...]:
 
 
 def judged_pages(root: Path, job: Job, before: Snapshot) -> tuple[str, ...]:
-    """The book pages changed since `before`, the job's own first, or the job's pages when none changed."""
+    """The job's own pages and the pages it created that changed since `before`, its own first, or its pages when none changed.
+
+    A page the job only added lines to is another job's work, and is not judged as this one's.
+    """
     changed = sorted(
-        (p for p in book_changes(root, job.service, before) if p.endswith(".md") and (root / p).is_file()),
+        (
+            p for p in book_changes(root, job.service, before)
+            if p.endswith(".md") and (root / p).is_file() and (p in job.owned_pages or not _tracked(root, p))
+        ),
         key=lambda page: (page not in job.owned_pages, page),
     )
     if changed:

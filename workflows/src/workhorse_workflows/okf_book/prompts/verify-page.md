@@ -12,6 +12,19 @@ edit any file.
 
 {% endfor %}
 
+{% if other_pages %}
+The book has these other pages too. A link or a `fixture:` that names one of them is not
+missing:
+
+{% for other in other_pages %}
+- `{{ other }}`
+{% endfor %}
+{% if other_pages_left_out %}
+
+{{ other_pages_left_out }} more pages are past this turn's budget.
+{% endif %}
+
+{% endif %}
 They were written from these contracts:
 
 {% for contract in contracts %}
