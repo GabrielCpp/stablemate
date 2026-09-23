@@ -15,7 +15,7 @@ always read-only to these prompts.
 - code: `workflows/src/workhorse_workflows/author/epic_edit/prompts/review-epic-edit-plan.md` @ecc93cad9b1a
 - code: `workflows/src/workhorse_workflows/author/epic_edit/prompts/rewrite-epic-edit.md` @031fe29f72ac
 - code: `workflows/src/workhorse_workflows/author/epic_edit/prompts/design-mockup.md` @cb597bcb1e13
-- code: `workflows/src/workhorse_workflows/author/epic_edit/prompts/write-story.md` @d5e99bf5916e
+- code: `workflows/src/workhorse_workflows/author/epic_edit/prompts/write-story.md` @d3dd071fc7b5
 - code: `workflows/src/workhorse_workflows/author/epic_edit/prompts/rework-story.md` @e2ab5af8ae5f
 - code: `workflows/src/workhorse_workflows/author/epic_edit/prompts/audit-story.md` @c0263ca2d5ac
 - code: `workflows/src/workhorse_workflows/author/epic_edit/prompts/review-coverage.md` @2f49fb13d5a1

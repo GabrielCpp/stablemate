@@ -27,7 +27,7 @@ context.
 - code: `workflows/src/workhorse_workflows/author/story_author/flow.py::StoryAuthor.audit_story` @6c2b77a93e13
 - code: `workflows/src/workhorse_workflows/author/story_author/flow.py::StoryAuthor.rework_story` @6c2b77a93e13
 - code: `workflows/src/workhorse_workflows/author/story_author/prompts/design-mockup.md` @cb597bcb1e13
-- code: `workflows/src/workhorse_workflows/author/story_author/prompts/write-story.md` @ba7223eacbd9
+- code: `workflows/src/workhorse_workflows/author/story_author/prompts/write-story.md` @88b776aac349
 - code: `workflows/src/workhorse_workflows/author/story_author/prompts/audit-story.md` @111300f5369c
 - code: `workflows/src/workhorse_workflows/author/story_author/prompts/rework-story.md` @b3bf3930c46b
 - code: `workflows/tests/author/test_prompt_authority.py::test_writer_can_define_in_scope_behavior_without_prior_okf_authority`

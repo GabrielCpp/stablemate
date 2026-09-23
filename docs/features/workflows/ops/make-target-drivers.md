@@ -83,14 +83,6 @@ status stops the target and its dependent target chain.
 - produces: the measured Ostler doctor timing for the supplied external book
 - verify: [workspace Makefile](../../../../Makefile)
 
-### verify-okf
-
-- kind: run
-- run: `make okf-verify`
-- working-directory: .
-- produces: OKF coverage verification results for every book and its source
-- verify: [workspace Makefile](../../../../Makefile)
-
 ### test-repository-scripts
 
 - kind: run

@@ -5,7 +5,7 @@ title: Workhorse CLI boilerplate commands
 ---
 # Workhorse CLI boilerplate commands
 
-Every workhorse CLI distribution (`workhorse-author`, `workhorse-coder`, `workhorse-hello-world`, `workhorse-okf-builder`, `workhorse-research`) exposes the same three commands: `run`, `dot`, and `version`. The first is flow-specific; the latter two are boilerplate registry introspection tools provided by the Workhorse CLI harness (implemented in the `workhorse` package).
+Every workhorse CLI distribution (`workhorse-author`, `workhorse-coder`, `workhorse-hello-world`, `workhorse-research`) exposes the same three commands: `run`, `dot`, and `version`. The first is flow-specific; the latter two are boilerplate registry introspection tools provided by the Workhorse CLI harness (implemented in the `workhorse` package).
 
 ## dot
 

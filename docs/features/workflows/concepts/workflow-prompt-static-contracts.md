@@ -6,7 +6,7 @@ title: Workflow prompt static contracts
 # Workflow prompt static contracts
 
 The prompt-path sweep inspects every literal `self.agent(...)` call in the `author`, `coder`,
-`hello_world`, `okf_builder`, and `research` packages. For the coder package this means recursively walking every
+`hello_world`, and `research` packages. For the coder package this means recursively walking every
 Python module under `workhorse_workflows/coder`, including the main machine, every registered
 sub-flow, nested QA nodes, and operator gates, rather than only traversing the flow reachable from
 the default entry point. A sweep must find at least one applicable turn in every workflow;
@@ -53,16 +53,6 @@ reply from entering the retry/compact/reframe ladder and then defaulting to null
 prompt described an unparsable shape. This prevents a coder reply from entering its retry ladder
 with a wrapper or missing top-level field and then taking a default branch after parsing fails.
 
-The OKF-builder package contributes four model-returning turns to this contract. `OkfBuilder`
-investigates one worklist item with `Investigation`, adjudicates one blocked finding with
-`Adjudication`, and adjudicates the computed uncovered list with `Recheck`. Its web walkthrough
-flow drives one journey or screen with `WalkTurn`. The investigation call has two literal prompt
-arms: `main/prompts/investigate.md` for discovery items and `main/prompts/repair.md` for
-`fix:<doctor-code>` items. The static sweep checks both arms, while the runtime chooses one from
-the item kind. Every turn passes a literal or statically resolvable argument dictionary, including
-service paths and turn-specific evidence; unresolved argument construction is a finding rather
-than a partial variable vocabulary.
-
 The research package contributes eleven model-returning turns from the `Research` workflow. The
 sweep includes the private recording helper as well as every public state method, because a helper
 that renders a prompt is still a packaged agent turn whose path, variables, and output shape must
@@ -70,17 +60,6 @@ remain statically checkable. The shared argument reader understands `Research._p
 and unions the program context keys with each call's turn-specific keys. The research prompts are
 all rooted at `research/prompts/`, and the output-shape check resolves each declared schema from
 the importing `workflow.py` module.
-
-The package-specific call sites are:
-
-- `workflows/src/workhorse_workflows/okf_builder/main/flow.py::OkfBuilder.investigate` → the two
-  investigation/repair prompts, `Investigation`
-- `workflows/src/workhorse_workflows/okf_builder/main/flow.py::OkfBuilder.adjudicate` →
-  `main/prompts/adjudicate.md`, `Adjudication`
-- `workflows/src/workhorse_workflows/okf_builder/main/flow.py::OkfBuilder.recheck` →
-  `main/prompts/recheck-coverage.md`, `Recheck`
-- `workflows/src/workhorse_workflows/okf_builder/walkthrough_web/flow.py::WalkthroughWeb.walk` →
-  `walkthrough_web/prompts/walkthrough-web.md`, `WalkTurn`
 
 The research call sites are:
 
@@ -121,21 +100,28 @@ model. The corresponding sweep and shape checks are:
 - `workflows/tests/test_prompt_output_shape.py::_model_fields`
 - `workflows/tests/test_prompt_output_shape.py::test_the_prompt_documents_the_keys_the_turn_is_asked_for`
 
-- code: `workflows/tests/test_prompts_exist.py::_agent_prompts` @5e4da940b0b9
-- code: `workflows/tests/test_prompts_exist.py::_branches` @5e4da940b0b9
-- code: `workflows/tests/test_prompts_exist.py::_literalize` @5e4da940b0b9
-- code: `workflows/tests/test_prompts_exist.py::_roles_by_line` @5e4da940b0b9
-- code: `workflows/tests/test_prompts_exist.py::_sites` @5e4da940b0b9
-- code: `workflows/tests/test_prompt_variables.py::_turns` @a4f87baa253a
-- code: `workflows/tests/test_prompt_variables.py::_keys_of_local` @a4f87baa253a
-- code: `workflows/tests/test_prompt_variables.py::_keys_of_helper` @a4f87baa253a
-- code: `workflows/tests/test_prompt_variables.py::_referenced` @a4f87baa253a
-- code: `workflows/tests/test_prompt_output_shape.py::_model_fields` @684ba2cb81b5
-- code: `workflows/tests/test_prompt_output_shape.py::_turns` @684ba2cb81b5
-- code: `workflows/src/workhorse_workflows/okf_builder/main/flow.py::OkfBuilder.investigate` @55c476c509d4
-- code: `workflows/src/workhorse_workflows/okf_builder/main/flow.py::OkfBuilder.adjudicate` @55c476c509d4
-- code: `workflows/src/workhorse_workflows/okf_builder/main/flow.py::OkfBuilder.recheck` @55c476c509d4
-- code: `workflows/src/workhorse_workflows/okf_builder/walkthrough_web/flow.py::WalkthroughWeb.walk` @535479bd227c
+- code: `workflows/tests/test_prompts_exist.py::_agent_prompts` @169e77a52215
+- code: `workflows/tests/test_prompts_exist.py::_branches` @169e77a52215
+- code: `workflows/tests/test_prompts_exist.py::_literalize` @169e77a52215
+- code: `workflows/tests/test_prompts_exist.py::_roles_by_line` @169e77a52215
+- code: `workflows/tests/test_prompts_exist.py::_sites` @169e77a52215
+- code: `workflows/tests/test_prompt_variables.py::_turns` @1e9c8c8fd689
+- code: `workflows/tests/test_prompt_variables.py::_keys_of_local` @1e9c8c8fd689
+- code: `workflows/tests/test_prompt_variables.py::_keys_of_helper` @1e9c8c8fd689
+- code: `workflows/tests/test_prompt_variables.py::_referenced` @1e9c8c8fd689
+- code: `workflows/tests/test_prompt_output_shape.py::_model_fields` @af9b4f3b3d0c
+- code: `workflows/tests/test_prompt_output_shape.py::_turns` @af9b4f3b3d0c
+- code: `workflows/src/workhorse_workflows/research/workflow.py::Research._record` @dd45ca19d4d4
+- code: `workflows/src/workhorse_workflows/research/workflow.py::Research.start` @dd45ca19d4d4
+- code: `workflows/src/workhorse_workflows/research/workflow.py::Research.design` @dd45ca19d4d4
+- code: `workflows/src/workhorse_workflows/research/workflow.py::Research.build` @dd45ca19d4d4
+- code: `workflows/src/workhorse_workflows/research/workflow.py::Research.triage` @dd45ca19d4d4
+- code: `workflows/src/workhorse_workflows/research/workflow.py::Research.check` @dd45ca19d4d4
+- code: `workflows/src/workhorse_workflows/research/workflow.py::Research.lead_review` @dd45ca19d4d4
+- code: `workflows/src/workhorse_workflows/research/workflow.py::Research.revive` @dd45ca19d4d4
+- code: `workflows/src/workhorse_workflows/research/workflow.py::Research.new_direction` @dd45ca19d4d4
+- code: `workflows/src/workhorse_workflows/research/workflow.py::Research.goal_review` @dd45ca19d4d4
+- code: `workflows/src/workhorse_workflows/research/workflow.py::Research.extend` @dd45ca19d4d4
 - tests: `workflows/tests/test_prompts_exist.py::test_the_prompt_file_is_there`
 - tests: `workflows/tests/test_prompt_variables.py::test_the_prompt_reads_only_names_the_workflow_can_supply`
 - tests: `workflows/tests/test_prompt_output_shape.py::test_the_prompt_documents_the_keys_the_turn_is_asked_for`
@@ -152,7 +138,7 @@ finding rather than a partial vocabulary that could produce a false missing-vari
 ### _package_defs
 
 - sig: `_package_defs() -> dict[str, list[ast.FunctionDef | ast.AsyncFunctionDef]]`
-- code: `workflows/tests/test_prompt_variables.py::_package_defs` @a4f87baa253a
+- code: `workflows/tests/test_prompt_variables.py::_package_defs` @1e9c8c8fd689
 
 Indexes module-level synchronous and asynchronous function definitions across the installed
 workflow package. Methods are excluded so same-named methods in different lanes cannot be mistaken
@@ -161,7 +147,7 @@ for importable helpers.
 ### _dict_keys
 
 - sig: `_dict_keys(node: ast.Dict, spread: str | None, scope: ast.AST, module: ast.Module) -> set[str] | None`
-- code: `workflows/tests/test_prompt_variables.py::_dict_keys` @a4f87baa253a
+- code: `workflows/tests/test_prompt_variables.py::_dict_keys` @1e9c8c8fd689
 
 Returns literal string keys from a dictionary expression, recursively resolving supported `**`
 expansions. It ignores the helper's declared `**kwargs` expansion and returns `None` when a key or
@@ -170,7 +156,7 @@ expansion cannot be named statically.
 ### _keys_of
 
 - sig: `_keys_of(node: ast.expr, scope: ast.AST, module: ast.Module) -> set[str] | None`
-- code: `workflows/tests/test_prompt_variables.py::_keys_of` @a4f87baa253a
+- code: `workflows/tests/test_prompt_variables.py::_keys_of` @1e9c8c8fd689
 
 Dispatches static argument-key resolution for dictionary literals, local dictionary names,
 instance helper calls, and imported module-level helper calls. Other expressions are unreadable.
@@ -178,7 +164,7 @@ instance helper calls, and imported module-level helper calls. Other expressions
 ### _keys_of_local
 
 - sig: `_keys_of_local(name: str, scope: ast.AST, module: ast.Module) -> set[str] | None`
-- code: `workflows/tests/test_prompt_variables.py::_keys_of_local` @a4f87baa253a
+- code: `workflows/tests/test_prompt_variables.py::_keys_of_local` @1e9c8c8fd689
 
 Collects keys assigned to a local dictionary both at initialization and through literal-key
 subscript assignments. A computed assignment key or unreadable value makes the result unreadable.
@@ -186,7 +172,7 @@ subscript assignments. A computed assignment key or unreadable value makes the r
 ### _defs
 
 - sig: `_defs(name: str, module: ast.Module) -> list[ast.FunctionDef | ast.AsyncFunctionDef]`
-- code: `workflows/tests/test_prompt_variables.py::_defs` @a4f87baa253a
+- code: `workflows/tests/test_prompt_variables.py::_defs` @1e9c8c8fd689
 
 Uses definitions in the current module when present; otherwise returns the package-wide index for
 an imported helper. This local-first rule prevents an unrelated same-named helper from determining
@@ -195,7 +181,7 @@ the call site's vocabulary.
 ### _keys_of_helper
 
 - sig: `_keys_of_helper(name: str, call: ast.Call, module: ast.Module) -> set[str] | None`
-- code: `workflows/tests/test_prompt_variables.py::_keys_of_helper` @a4f87baa253a
+- code: `workflows/tests/test_prompt_variables.py::_keys_of_helper` @1e9c8c8fd689
 
 Resolves a helper only when exactly one definition exists and every return is a dictionary literal,
 then adds the call's literal keyword names. Multiple definitions, missing returns, non-dictionary
@@ -204,7 +190,7 @@ returns, or an opaque `**` expansion are unreadable.
 ### _scopes
 
 - sig: `_scopes(tree: ast.Module) -> dict[int, ast.AST]`
-- code: `workflows/tests/test_prompt_variables.py::_scopes` @a4f87baa253a
+- code: `workflows/tests/test_prompt_variables.py::_scopes` @1e9c8c8fd689
 
 Maps every call node to its innermost enclosing function, so local dictionary analysis does not
 merge identically named locals from separate functions.
@@ -212,7 +198,7 @@ merge identically named locals from separate functions.
 ### _turns
 
 - sig: `_turns(source: Path) -> tuple[list[tuple[int, str, set[str]]], list[int]]`
-- code: `workflows/tests/test_prompt_variables.py::_turns` @a4f87baa253a
+- code: `workflows/tests/test_prompt_variables.py::_turns` @1e9c8c8fd689
 
 Finds every literal-prompt `self.agent(..., args=...)` call in one source file and records its line,
 prompt path, and statically resolved argument names. It separately records call lines whose
@@ -222,7 +208,7 @@ validation owns those findings.
 ### _prompts
 
 - sig: `_prompts() -> dict[tuple[str, str], tuple[set[str], list[str]]]`
-- code: `workflows/tests/test_prompt_variables.py::_prompts` @a4f87baa253a
+- code: `workflows/tests/test_prompt_variables.py::_prompts` @1e9c8c8fd689
 
 Walks every Python module in the four configured workflow packages, unions the argument vocabulary
 for each `(workflow, prompt)` pair, and records all rendering call sites. The union is intentional:
@@ -231,7 +217,7 @@ conditional prompt sections may be supplied by different callers.
 ### _referenced
 
 - sig: `_referenced(body: str) -> set[str]`
-- code: `workflows/tests/test_prompt_variables.py::_referenced` @a4f87baa253a
+- code: `workflows/tests/test_prompt_variables.py::_referenced` @1e9c8c8fd689
 
 Parses a prompt with Jinja, returns undeclared template names, and adds literal names passed to
 `workhorse_var`. References inside Jinja raw blocks are excluded by the parser.
@@ -239,7 +225,7 @@ Parses a prompt with Jinja, returns undeclared template names, and adds literal 
 ### test_the_sweep_checks_every_workflow
 
 - sig: `test_the_sweep_checks_every_workflow() -> None`
-- code: `workflows/tests/test_prompt_variables.py::test_the_sweep_checks_every_workflow` @a4f87baa253a
+- code: `workflows/tests/test_prompt_variables.py::test_the_sweep_checks_every_workflow` @1e9c8c8fd689
 - tests: `workflows/tests/test_prompt_variables.py::test_the_sweep_checks_every_workflow`
 
 Fails if the prompt-variable inventory has no prompt for any configured workflow, preventing a
@@ -248,7 +234,7 @@ walker that matches nothing from passing vacuously.
 ### test_no_turn_is_unreadable
 
 - sig: `test_no_turn_is_unreadable() -> None`
-- code: `workflows/tests/test_prompt_variables.py::test_no_turn_is_unreadable` @a4f87baa253a
+- code: `workflows/tests/test_prompt_variables.py::test_no_turn_is_unreadable` @1e9c8c8fd689
 - tests: `workflows/tests/test_prompt_variables.py::test_no_turn_is_unreadable`
 
 Fails when any literal prompt call builds its argument mapping in a shape the static resolver
@@ -257,7 +243,7 @@ cannot name, because that would make the subsequent missing-variable report inco
 ### test_the_prompt_reads_only_names_the_workflow_can_supply
 
 - sig: `test_the_prompt_reads_only_names_the_workflow_can_supply(workflow: str, prompt: str) -> None`
-- code: `workflows/tests/test_prompt_variables.py::test_the_prompt_reads_only_names_the_workflow_can_supply` @a4f87baa253a
+- code: `workflows/tests/test_prompt_variables.py::test_the_prompt_reads_only_names_the_workflow_can_supply` @1e9c8c8fd689
 - tests: `workflows/tests/test_prompt_variables.py::test_the_prompt_reads_only_names_the_workflow_can_supply`
 
 For every discovered workflow/prompt pair, the test fails if Jinja or `workhorse_var` references a
@@ -278,7 +264,7 @@ runtime path reaches them. A turn without a declared model is intentionally outs
 ### _top_level_keys
 
 - sig: `_top_level_keys(body: str) -> set[str] | None`
-- code: `workflows/tests/test_prompt_output_shape.py::_top_level_keys` @684ba2cb81b5
+- code: `workflows/tests/test_prompt_output_shape.py::_top_level_keys` @af9b4f3b3d0c
 
 Scans the first fenced JSON object for keys at depth one without requiring valid JSON. Pseudo-JSON
 such as a documented enum is accepted; no object or no readable key produces `None`.
@@ -293,21 +279,21 @@ missing returns, non-literal prompts, or non-`self.agent` callees are excluded b
 check owns those findings or because no model shape is available.
 
 - sig: `_turns(source: Path) -> list[tuple[int, str, ast.expr]]`
-- code: `workflows/tests/test_prompt_output_shape.py::_turns` @684ba2cb81b5
+- code: `workflows/tests/test_prompt_output_shape.py::_turns` @af9b4f3b3d0c
 
 ### _sites
 
 - sig: `_sites() -> list[tuple[str, Path, int, str, ast.expr]]`
-- code: `workflows/tests/test_prompt_output_shape.py::_sites` @684ba2cb81b5
+- code: `workflows/tests/test_prompt_output_shape.py::_sites` @af9b4f3b3d0c
 
 Enumerates Python files recursively beneath each configured workflow package and aggregates the
 literal model-returning turns with their workflow name and source location. The configured set is
-`author`, `coder`, `okf_builder`, and `research`; the sweep must find at least one turn in each.
+`author`, `coder`, and `research`; the sweep must find at least one turn in each.
 
 ### _model_fields
 
 - sig: `_model_fields(source: Path, returns: ast.expr) -> set[str]`
-- code: `workflows/tests/test_prompt_output_shape.py::_model_fields` @684ba2cb81b5
+- code: `workflows/tests/test_prompt_output_shape.py::_model_fields` @af9b4f3b3d0c
 
 Imports the module containing the turn, resolves the declared return expression in that module's
 namespace, and returns the model's top-level field names. This preserves caller-local name binding
@@ -316,7 +302,7 @@ and deliberately does not treat nested fields as envelope keys.
 ### test_the_sweep_found_turns_in_every_workflow
 
 - sig: `test_the_sweep_found_turns_in_every_workflow() -> None`
-- code: `workflows/tests/test_prompt_output_shape.py::test_the_sweep_found_turns_in_every_workflow` @684ba2cb81b5
+- code: `workflows/tests/test_prompt_output_shape.py::test_the_sweep_found_turns_in_every_workflow` @af9b4f3b3d0c
 - tests: `workflows/tests/test_prompt_output_shape.py::test_the_sweep_found_turns_in_every_workflow`
 
 Rejects a source walker that finds no applicable model-returning turn for any configured workflow,
@@ -325,7 +311,7 @@ preventing the output-shape suite from passing vacuously after a call-shape or t
 ### test_the_prompt_documents_the_keys_the_turn_is_asked_for
 
 - sig: `test_the_prompt_documents_the_keys_the_turn_is_asked_for(workflow: str, source: Path, lineno: int, prompt: str, returns: ast.expr) -> None`
-- code: `workflows/tests/test_prompt_output_shape.py::test_the_prompt_documents_the_keys_the_turn_is_asked_for` @684ba2cb81b5
+- code: `workflows/tests/test_prompt_output_shape.py::test_the_prompt_documents_the_keys_the_turn_is_asked_for` @af9b4f3b3d0c
 - tests: `workflows/tests/test_prompt_output_shape.py::test_the_prompt_documents_the_keys_the_turn_is_asked_for`
 
 For each model-returning turn, requires a fenced JSON example whose top-level keys exactly equal

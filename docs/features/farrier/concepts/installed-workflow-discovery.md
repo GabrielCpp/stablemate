@@ -49,7 +49,7 @@ are discoverable; they do not produce a traceback from the launcher path.
 ### field: workflows
 - type: `tuple[str, ...]`
 - required: true
-- verify: json_path(path="$.workflows", equals="[author, coder, okf-builder]")
+- verify: json_path(path="$.workflows", equals="[author, coder, loop-runner, research]")
 - semantics: sorted workflow suffixes exposed by the distribution
 - code: `farrier/farrier/pipx.py::Installed` @d72d259a3963
 - detail: [installed record fields](installed-record-fields.md)

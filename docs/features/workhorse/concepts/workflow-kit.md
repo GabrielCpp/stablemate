@@ -326,8 +326,7 @@ runs the real binary — the "real passthrough" contract.
 
 ## Consumers
 
-- Workflow **[node functions](../formats/workflow-format.md#node)** across `author`, `coder` and
-  `okf_builder`.
+- Workflow **[node functions](../formats/workflow-format.md#node)** across `author` and `coder`.
 - `workhorse/supervisor.py`, which calls [`checkout_workspace`](#checkout_workspace) once, in
   process, before the engine starts.
 - Not the engine. Nothing under `workhorse/workhorse/` imports this package, and nothing here

@@ -96,15 +96,6 @@ root target; it is not a separate phony target.
 - produces: timing measurements for `ostler doctor` over the book at `DOCS`, optionally as JSON
 - verify: [root Makefile](../../../../Makefile)
 
-### okf-verify
-
-- kind: run
-- run: `make okf-verify`
-- working-directory: .
-- timeout: 600
-- produces: the OKF coverage result for every documented book and source inventory
-- verify: [root Makefile](../../../../Makefile)
-
 ### test-scripts
 
 - kind: run

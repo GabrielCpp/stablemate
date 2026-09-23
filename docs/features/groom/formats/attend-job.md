@@ -36,7 +36,7 @@ One stopped run and everything an attendant needs to start on it. Holds both gat
 ### workflow
 - type: `str`
 - required: true
-- semantics: the workflow name (e.g., `"coder"`, `"okf-builder"`) of the run that stopped, supplied verbatim by the dispatcher at `attend_gate` or `attend_death` and persisted as the `workflow` column on the attendant row
+- semantics: the workflow name (e.g., `"coder"`, `"author"`) of the run that stopped, supplied verbatim by the dispatcher at `attend_gate` or `attend_death` and persisted as the `workflow` column on the attendant row
 - verify: json_path(path="$.workflow", matches="^.+$")
 - code: `groom/groom/attend.py::AttendJob.workflow`
 

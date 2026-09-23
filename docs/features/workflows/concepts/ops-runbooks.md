@@ -12,7 +12,6 @@ This page indexes the operational runbooks and environments that support the wor
 - [workhorse-author driver](../ops/workhorse-author.md) — exercises the author registry with seeded flow and roadmap inputs
 - [workhorse-coder driver](../ops/workhorse-coder.md) — exercises the coder registry with checkpointed story and epic selection
 - [workhorse-hello-world driver](../ops/workhorse-hello-world.md) — exercises the greeting example
-- [workhorse-okf-builder driver](../ops/workhorse-okf-builder.md) — exercises the backfill registry with seeded repo and builder inputs
 - [workhorse-research driver](../ops/workhorse-research.md) — exercises the research gate loop
 
 **Test harnesses** drive the workflow composition roots with real workflow nodes and agent boundaries replaced by seams:

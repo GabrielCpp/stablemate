@@ -269,42 +269,6 @@
       "reason": "declares `__getattr__` and `__dir__`, both cited in concepts/workflow-kit-export-surface.md, which documents the facade's lazy-attribute-resolution contract and every re-exported name. The bare module path adds no behaviour beyond that facade, which the citations already cover."
     },
     {
-      "code": "workflows/src/workhorse_workflows/okf_builder/__init__.py",
-      "reason": "package docstring describing the workflow's per-machine directory layout (workflow.py/main/walkthrough_web/shared); the layout it describes is documented in concepts/okf-builder-workflow-composition-root.md and each machine's own concept docs. No behaviour of its own beyond the docstring."
-    },
-    {
-      "code": "workflows/src/workhorse_workflows/okf_builder/audit/__init__.py",
-      "reason": "empty package marker with no docstring or exports; the audit machine's behaviour lives in okf_builder/shared/audit.py, documented in concepts/okf-builder-audit-module.md."
-    },
-    {
-      "code": "workflows/src/workhorse_workflows/okf_builder/main/__init__.py",
-      "reason": "package marker for the main build machine; its flow/nodes are documented individually in concepts/okf-builder-workflow-composition-root.md and the main machine's flow docs."
-    },
-    {
-      "code": "workflows/src/workhorse_workflows/okf_builder/main/nodes/__init__.py",
-      "reason": "package aggregator re-exporting the main machine's node functions (adjudicate/coverage/finalize/prepare submodules); each function is documented individually with `code:` bullets at its owning flow/concept doc. The bare module path adds no behaviour beyond the aggregation its docstring explains."
-    },
-    {
-      "code": "workflows/src/workhorse_workflows/okf_builder/shared/__init__.py",
-      "reason": "package marker for what a second okf-builder machine also reaches (blueprint, paths, schemas, stubs, worklist/checkpoint nodes); each is documented individually at its own module's concept doc."
-    },
-    {
-      "code": "workflows/src/workhorse_workflows/okf_builder/shared/blueprint.py",
-      "reason": "declares only the module-level `blueprint = Blueprint(\"okf-builder\")` registry instance, already cited via `path::blueprint` in concepts/okf-builder-workflow-composition-root.md; the bare module path carries no behaviour beyond that citation."
-    },
-    {
-      "code": "workflows/src/workhorse_workflows/okf_builder/walkthrough_web/__init__.py",
-      "reason": "package marker for the walkthrough-web sub-flow reached via `self.handoff(...)`; its flow and nodes are documented individually in the walkthrough-web flow doc."
-    },
-    {
-      "code": "workflows/src/workhorse_workflows/okf_builder/walkthrough_web/nodes/__init__.py",
-      "reason": "package aggregator re-exporting the walkthrough-web flow's node functions, each documented individually with `code:` bullets at its owning flow doc. The bare module path adds no behaviour beyond the aggregation."
-    },
-    {
-      "code": "workflows/src/workhorse_workflows/okf_builder/workflow.py",
-      "reason": "the okf-builder composition root; already cited via `path::symbol` bullets (blueprint, flow table, dry-run stubs) in concepts/okf-builder-workflow-composition-root.md and workhorse-okf-builder.md. The bare module path adds no behaviour beyond what those citations already ground."
-    },
-    {
       "code": "workflows/src/workhorse_workflows/coder/genesis/__init__.py",
       "reason": "package marker for the coder genesis sub-flow; its flow and nodes are documented individually at their owning concept/flow docs."
     },
