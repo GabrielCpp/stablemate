@@ -6,7 +6,12 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-from workhorse_workflows.okf_book.shared.budget import CHECK_OUTPUT_BUDGET_TOKENS, PROBLEMS_BUDGET_TOKENS, pack_problems
+from workhorse_workflows.okf_book.shared.budget import (
+    CHECK_OUTPUT_BUDGET_TOKENS,
+    PROBLEMS_BUDGET_TOKENS,
+    pack_problems,
+    total_text_tokens,
+)
 from workhorse_workflows.okf_book.aggregate.nodes.job_check import CHECK_MODULE, JobCheck
 from workhorse_workflows.okf_book.shared.confine import book_changes, new_since_head
 from workhorse_workflows.okf_book.shared.page_check import charged_pages, page_problems, unreached
@@ -33,22 +38,29 @@ def job_problems(check: JobCheck) -> tuple[str, ...]:
 
 @dataclass(frozen=True, slots=True)
 class Report:
-    """The check's exit code, the lines it prints, and the problem tokens those lines spend."""
+    """The check's exit code and the lines it prints."""
 
     code: int
     lines: tuple[str, ...]
-    tokens: int = 0
+
+    @property
+    def tokens(self) -> int:
+        """What printing the report's lines costs the turn."""
+        return total_text_tokens(self.lines)
+
+
+LEFT_OUT_TOKENS = Report(1, (LEFT_OUT.format(count=10**6),)).tokens
 
 
 def problem_report(problems: Sequence[str], left_tokens: int = PROBLEMS_BUDGET_TOKENS) -> Report:
-    """The report on `problems`, packed into one output's budget or what the turn has left."""
+    """The report on `problems`, packed with room for its last line into one output's budget or what the turn has left."""
     if not problems:
         return Report(0, (PASSED,))
-    shown = pack_problems(problems, min(left_tokens, PROBLEMS_BUDGET_TOKENS))
+    shown = pack_problems(problems, min(left_tokens, PROBLEMS_BUDGET_TOKENS) - LEFT_OUT_TOKENS)
     if not shown.kept:
         return Report(1, (SPENT.format(count=len(problems)),))
     more = (LEFT_OUT.format(count=shown.left_out),)
-    return Report(1, (*shown.kept, *(more if shown.left_out else ())), shown.tokens)
+    return Report(1, (*shown.kept, *(more if shown.left_out else ())))
 
 
 def check_report(argv: Sequence[str]) -> Report:
@@ -66,12 +78,12 @@ def charge_check(path: Path, tokens: int) -> None:
 
 
 def main() -> int:
-    """Check the current job's pages, and charge what the report prints to the job check."""
+    """Check the current job's pages, and charge every line the report prints to the job check."""
     argv = sys.argv[1:]
     report = check_report(argv)
     for line in report.lines:
         print(line)
-    if report.tokens:
+    if len(argv) == 1:
         charge_check(Path(argv[0]), report.tokens)
     return report.code
 

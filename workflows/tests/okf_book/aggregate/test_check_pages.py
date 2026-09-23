@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from workhorse_workflows.okf_book.shared.budget import CHARS_PER_TOKEN, CHECK_OUTPUT_BUDGET_TOKENS, PROBLEM_TOKENS
+from workhorse_workflows.okf_book.shared.budget import CHARS_PER_TOKEN, CHECK_OUTPUT_BUDGET_TOKENS, PROBLEM_TOKENS, PROBLEMS_BUDGET_TOKENS
 from workhorse_workflows.okf_book.aggregate.nodes.check_pages import LEFT_OUT, PASSED, SPENT, USAGE, Report, check_report, problem_report
 from workhorse_workflows.okf_book.aggregate.nodes.job_check import (
     CHECK_MODULE,
@@ -102,6 +102,7 @@ def test_problems_past_the_budget_are_counted_not_printed() -> None:
     assert lines[:-1] == problems[: len(lines) - 1]
     assert lines[-1] == LEFT_OUT.format(count=len(problems) - len(lines) + 1)
     assert len(lines) < len(problems)
+    assert report.tokens <= PROBLEMS_BUDGET_TOKENS
 
 
 def test_runs_past_the_turn_budget_print_only_the_count(app: App, tmp_path: Path) -> None:
@@ -124,6 +125,28 @@ def test_each_run_charges_what_it_printed(app: App, tmp_path: Path) -> None:
 
     assert [run.returncode for run in runs] == [1, 1]
     assert JobCheck.model_validate_json(path.read_text(encoding="utf-8")).spent_tokens == 2 * printed
+
+
+def _charged(path: Path) -> int:
+    _ = subprocess.run([sys.executable, "-m", CHECK_MODULE, str(path)], capture_output=True, check=False)
+    return JobCheck.model_validate_json(path.read_text(encoding="utf-8")).spent_tokens
+
+
+def test_a_passing_run_is_charged_its_line(app: App, tmp_path: Path) -> None:
+    repo = app("tally-cli")
+    path = write_job_check(tmp_path, JobCheck(root=repo, service="tally", before=snapshot(repo)))
+
+    assert _charged(path) == Report(0, (PASSED,)).tokens
+
+
+def test_a_run_past_the_turn_budget_is_charged_its_count(app: App, tmp_path: Path) -> None:
+    repo = app("tally-cli")
+    check = JobCheck(root=repo, service="tally", before=snapshot(repo), spent_tokens=CHECK_OUTPUT_BUDGET_TOKENS)
+    _append(repo, ROOT_PAGE, "\nTally keeps a ledger.\n")
+    path = write_job_check(tmp_path, check)
+    count = Report(1, (SPENT.format(count=len(page_problems(repo, "tally", [ROOT_PAGE]))),)).tokens
+
+    assert _charged(path) == CHECK_OUTPUT_BUDGET_TOKENS + count
 
 
 def test_a_call_without_the_job_check_prints_the_usage() -> None:
