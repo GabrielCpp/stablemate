@@ -12,6 +12,7 @@ from okf_book.support import (
     WriteOnly,
     always,
     commits,
+    drafted,
     judged,
     listing_runner,
     promised_contracts,
@@ -37,7 +38,7 @@ def _writer(repo: Path) -> Reply:
     def _reply(args: dict[str, object]) -> dict[str, object]:
         page = str(args["page"])
         text = (repo / page).read_text(encoding="utf-8") + "\nTally keeps a ledger.\n"
-        return {"summary": "wrote", "pages": [{"path": page, "text": text}]}
+        return drafted("wrote", (page, text))
 
     return _reply
 
@@ -98,7 +99,7 @@ def test_a_node_an_earlier_round_cleared_is_not_faulted_while_its_text_is_unchan
         page = str(args["page"])
         text = (repo / page).read_text(encoding="utf-8")
         added = "\nMore.\n" if "## Kept" in text else "\n## Kept\n\nIt stays.\n\n## Tail\n\nTally keeps a ledger.\n"
-        return {"summary": "wrote", "pages": [{"path": page, "text": text + added}]}
+        return drafted("wrote", (page, text + added))
 
     def fault(args: dict[str, object]) -> dict[str, object]:
         if not _judges_concept(args):

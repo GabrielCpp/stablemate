@@ -4,7 +4,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from pathlib import Path
 
-from okf_book.support import BRIEFS, Reply, ScriptedRunner, WorkListView, WriteOnly, always, judged, listing_runner, promised_contracts
+from okf_book.support import BRIEFS, Reply, ScriptedRunner, WorkListView, WriteOnly, always, drafted, judged, listing_runner, promised_contracts
 
 from workhorse_workflows.okf_book.aggregate.nodes.job_check import charge, check_command, spent_tokens
 from workhorse_workflows.okf_book.main.nodes.surface import Surface, SurfaceKind
@@ -30,7 +30,7 @@ def _writer(repo: Path) -> Reply:
     def _reply(args: dict[str, object]) -> dict[str, object]:
         page = str(args["page"])
         text = (repo / page).read_text(encoding="utf-8") + "\nTally keeps a ledger.\n"
-        return {"summary": "wrote", "pages": [{"path": page, "text": text}]}
+        return drafted("wrote", (page, text))
 
     return _reply
 

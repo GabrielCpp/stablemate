@@ -46,6 +46,12 @@ def listing(*slugs: str) -> EntryPointListing:
     return EntryPointListing(entry_points=tuple(EntryPoint(slug=s, title=s.title()) for s in slugs))
 
 
+def drafted(summary: str, *pages: tuple[str, str]) -> dict[str, object]:
+    """A page writer's reply: its summary, then each page's path and whole text between marker lines."""
+    blocks = "".join(f"=== page: {path} ===\n{text}=== end ===\n" for path, text in pages)
+    return {"value": f"{summary}\n{blocks}"}
+
+
 def always(payload: dict[str, object]) -> Reply:
     """A reply that ignores the turn's arguments."""
 

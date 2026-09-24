@@ -1,6 +1,7 @@
 """A page writer's reply, each page's whole text, written into the book where the job may write it."""
 from __future__ import annotations
 
+import re
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
@@ -28,6 +29,32 @@ class Drafted(BaseModel):
 
     summary: str
     pages: tuple[DraftedPage, ...]
+
+
+PAGE_OPENS = re.compile(r"^=== page: (?P<path>\S+) ===$")
+PAGE_ENDS = "=== end ==="
+
+
+def read_draft(reply: str) -> Drafted:
+    """The pages a writer's reply holds between its page and end lines, each text as written, and the prose outside them as its summary."""
+    pages: list[DraftedPage] = []
+    prose: list[str] = []
+    path: str | None = None
+    body: list[str] = []
+    for line in reply.splitlines():
+        opens = PAGE_OPENS.match(line.strip())
+        if path is None and opens:
+            path, body = opens["path"], []
+        elif path is None:
+            prose.append(line)
+        elif line.strip() == PAGE_ENDS:
+            pages.append(DraftedPage(path=path, text="".join(f"{line}\n" for line in body)))
+            path = None
+        else:
+            body.append(line)
+    if path is not None:
+        pages.append(DraftedPage(path=path, text="".join(f"{line}\n" for line in body)))
+    return Drafted(summary="\n".join(prose).strip(), pages=tuple(pages))
 
 
 @dataclass(frozen=True, slots=True)

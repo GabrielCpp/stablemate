@@ -111,7 +111,7 @@ strict:
 - A `fixture:` names a fixture page that is in the book or that you write in this reply.
 
 Give each claim a `verify:` from the checks above. Under
-each claim of a `command` or an `invocation`, give a `run:` stating one literal call before
+each claim of a `command`, an `invocation` or a `field`, give a `run:` stating one literal call before
 its `verify:`. A `verify:` reads only the call in the `run:` above it: its exit code, its
 output streams, and which files it creates, removes or leaves unchanged. None reads what a
 file holds. So a claim about what a call wrote into a file is seen through a claim below it
@@ -125,9 +125,17 @@ these holds:
 
 {% include "aggregate/prompts/_bar.md" %}
 
-Reply with only this JSON object. Each entry of `pages` is one page's repo-relative path and
-its whole text, frontmatter first:
+Reply with each page you write between two marker lines: `=== page: <repo-relative path> ===`
+above it and `=== end ===` below it. Between them goes the page's whole text as it is saved,
+frontmatter first. Escape nothing and put no code fence around a page. One line of prose
+before the first page may say what you changed:
 
-```json
-{"summary": "Wrote the add command and its three invocations.", "pages": [{"path": "{{ page }}", "text": "---\ntype: ...\n---\n..."}]}
+```text
+Wrote the add command and its three invocations.
+=== page: {{ page }} ===
+---
+type: ...
+---
+...
+=== end ===
 ```

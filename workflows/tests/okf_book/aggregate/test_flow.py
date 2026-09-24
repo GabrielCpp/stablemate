@@ -5,7 +5,7 @@ import re
 from collections.abc import Callable
 from pathlib import Path
 
-from okf_book.support import BRIEFS, WorkListView, Reply, ScriptedRunner, WriteOnly, always, judged, commits, git, listing_runner, promised_contracts
+from okf_book.support import BRIEFS, Reply, ScriptedRunner, WorkListView, WriteOnly, always, commits, drafted, git, judged, listing_runner, promised_contracts
 
 from ostler.stamp import digest_file
 from pydantic import TypeAdapter
@@ -43,7 +43,7 @@ def _append(repo: Path, rel: str, text: str) -> None:
 
 def _drafted(repo: Path, page: str) -> dict[str, object]:
     text = (repo / page).read_text(encoding="utf-8") + "\nTally keeps a ledger.\n"
-    return {"summary": "wrote", "pages": [{"path": page, "text": text}]}
+    return drafted("wrote", (page, text))
 
 
 def _writer(repo: Path, *elsewhere: str) -> Reply:
@@ -154,7 +154,7 @@ def test_a_page_whose_obligations_do_not_compile_is_put_back_and_blocked(app: Ap
 
 def test_a_page_the_job_owns_is_charged_when_the_turn_leaves_it_alone(app: App, run_book: RunBook) -> None:
     repo = app("tally-cli")
-    _flow, runner = _run(repo, run_book, write=always({"summary": "wrote nothing", "pages": []}))
+    _flow, runner = _run(repo, run_book, write=always(drafted("wrote nothing")))
 
     tries = _pages_written(runner, ROOT_PAGE)
     assert len(tries) == MAX_ATTEMPTS

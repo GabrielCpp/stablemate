@@ -4,8 +4,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from pathlib import Path
 
-from okf_book.support import BRIEFS, Reply, ScriptedRunner, WorkListView, WriteOnly, always, commits, judged, listing_runner, promised_contracts
-from pydantic import TypeAdapter
+from okf_book.support import BRIEFS, Reply, ScriptedRunner, WorkListView, WriteOnly, always, commits, drafted, judged, listing_runner, promised_contracts
 
 from workhorse_workflows.okf_book.aggregate.flow import WRITER_PROFILE
 from workhorse_workflows.okf_book.main.nodes.surface import Surface, SurfaceKind
@@ -18,12 +17,10 @@ COMMANDS = ("init", "add", "import", "report", "export")
 TALLY = Surface(service="tally", kind=SurfaceKind.CLI, entry="tally/__main__.py")
 CONCEPT = f"{FEATURES_DIR}/tally/concepts/ledger-file.md"
 FIXTURE = f"{FEATURES_DIR}/tally/fixtures/expenses-csv.md"
-NAMED = TypeAdapter(list[dict[str, str]])
 
 
-def _drafted(repo: Path, page: str) -> dict[str, object]:
-    text = (repo / page).read_text(encoding="utf-8") + "\nTally keeps a ledger.\n"
-    return {"summary": "wrote", "pages": [{"path": page, "text": text}]}
+def _written(repo: Path, page: str) -> tuple[str, str]:
+    return page, (repo / page).read_text(encoding="utf-8") + "\nTally keeps a ledger.\n"
 
 
 def _run(repo: Path, run_book: RunBook, write: Reply) -> ScriptedRunner:
@@ -42,7 +39,7 @@ def _run(repo: Path, run_book: RunBook, write: Reply) -> ScriptedRunner:
 def test_the_page_writer_runs_no_tool_and_is_shown_its_page_the_format_and_the_checks(app: App, run_book: RunBook) -> None:
     repo = app("tally-cli")
     before = (repo / CONCEPT).read_text(encoding="utf-8")
-    runner = _run(repo, run_book, lambda args: _drafted(repo, str(args["page"])))
+    runner = _run(repo, run_book, lambda args: drafted("wrote", _written(repo, str(args["page"]))))
 
     writers = [node.agent for node in runner.nodes if node.id == "write-page"]
     assert writers
@@ -58,9 +55,8 @@ def test_a_drafted_page_the_job_may_not_write_is_dropped(app: App, run_book: Run
     fixture_before = (repo / FIXTURE).read_text(encoding="utf-8")
 
     def write(args: dict[str, object]) -> dict[str, object]:
-        drafted = _drafted(repo, str(args["page"]))
-        stray = {"path": FIXTURE, "text": "---\ntype: fixture\n---\n# Overwritten\n"}
-        return {**drafted, "pages": [*NAMED.validate_python(drafted["pages"]), stray]}
+        stray = (FIXTURE, "---\ntype: fixture\n---\n# Overwritten\n")
+        return drafted("wrote", _written(repo, str(args["page"])), stray)
 
     _ = _run(repo, run_book, write)
 

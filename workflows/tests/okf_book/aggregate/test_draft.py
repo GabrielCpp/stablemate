@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from workhorse_workflows.okf_book.aggregate.nodes.draft import DraftedPage, apply_draft
+from workhorse_workflows.okf_book.aggregate.nodes.draft import Drafted, DraftedPage, apply_draft, read_draft
 from workhorse_workflows.okf_book.aggregate.nodes.format_rules import format_rules
 from workhorse_workflows.okf_book.shared.confine import draftable
 from workhorse_workflows.okf_book.shared.entries import FEATURES_DIR
@@ -77,3 +77,20 @@ def test_the_format_places_each_writable_type_and_orders_its_bullets() -> None:
     assert "### untyped" not in rules
     assert "- `code:` a code citation `path::symbol`" in rules
     assert "under `## Commands`" in rules
+
+
+def test_a_reply_is_cut_into_its_pages_with_their_text_as_written() -> None:
+    check = '- verify: stdout(matches="\\"entries\\": \\d+")'
+    reply = f"Wrote the trip.\n=== page: {TRIP} ===\n{TRIP_TEXT}{check}\n=== end ===\n=== page: {CONCEPT} ===\n# Ledger\n=== end ===\n"
+    drafted = read_draft(reply)
+    assert drafted.summary == "Wrote the trip."
+    assert drafted.pages == (DraftedPage(path=TRIP, text=f"{TRIP_TEXT}{check}\n"), DraftedPage(path=CONCEPT, text="# Ledger\n"))
+
+
+def test_a_page_the_reply_never_closes_runs_to_its_end() -> None:
+    drafted = read_draft(f"=== page: {TRIP} ===\n{TRIP_TEXT}")
+    assert drafted.pages == (DraftedPage(path=TRIP, text=TRIP_TEXT),)
+
+
+def test_a_reply_with_no_page_is_all_summary() -> None:
+    assert read_draft("Nothing to change.\n") == Drafted(summary="Nothing to change.", pages=())

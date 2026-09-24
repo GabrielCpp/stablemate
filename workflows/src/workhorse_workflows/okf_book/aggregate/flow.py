@@ -31,7 +31,7 @@ from workhorse_workflows.okf_book.shared.budget import (
     total_text_tokens,
 )
 from workhorse_workflows.okf_book.shared.attempts import JobLedger, read_cleared, record_cleared
-from workhorse_workflows.okf_book.aggregate.nodes.draft import Drafted, apply_draft, existing_pages
+from workhorse_workflows.okf_book.aggregate.nodes.draft import Drafted, apply_draft, existing_pages, read_draft
 from workhorse_workflows.okf_book.aggregate.nodes.format_rules import format_rules
 from workhorse_workflows.okf_book.aggregate.nodes.job_check import JobCheck, check_command, write_job_check
 from workhorse_workflows.okf_book.shared.citations import book_pages
@@ -216,9 +216,9 @@ class Aggregate(BookFlow):
         fixed = prompt_tokens(WRITE_PROMPTS[job.kind]) + told + total_text_tokens(stories)
         contracts = job_contracts(root, self.records_dir, job, budget=TURN_BUDGET_TOKENS - fixed)
         started = time.monotonic()
-        drafted = self.agent(
+        reply = self.agent(
             "aggregate/prompts/write-page.md",
-            returns=Drafted,
+            returns=str,
             power="high",
             args={
                 "service": job.service,
@@ -236,6 +236,7 @@ class Aggregate(BookFlow):
             profile=WRITER_PROFILE,
         )
         metric = _turn_metric(f"write-{job.kind.value}", job.subject, fixed + _contract_tokens(contracts), started)
+        drafted = read_draft(reply)
         return Continue(drafted, self.write_draft, ledger=ledger, drafted=drafted, metric=metric)
 
     def write_draft(self, ledger: JobLedger, drafted: Drafted, metric: TurnMetric) -> Continue[...]:
