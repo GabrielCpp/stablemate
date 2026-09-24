@@ -242,6 +242,7 @@ class OpenCodeBackend(JsonlBackend):
             "--format",
             "json",
             "--thinking",
+            "--auto",
         ]
         if model:
             cmd += ["-m", model]

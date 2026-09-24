@@ -860,6 +860,15 @@ def test_opencode_stream_includes_reasoning_parts():
     assert "--thinking" in captured["cmd"]
 
 
+def test_opencode_approves_what_its_config_does_not_deny():
+    """This fails when a headless turn ends on a permission prompt that nobody is there to answer."""
+    fake, captured = _fake_stream(turn.TurnState(result_text="X", session_id="s"))
+
+    _run_turn(OpenCodeBackend(fake), "P", "n", None, model="minimax/MiniMax-M3")
+
+    assert "--auto" in captured["cmd"]
+
+
 def test_opencode_on_event_text_session_and_error():
     state = turn.TurnState()
     on_event = opencode._OpenCodeEvents().on_event
