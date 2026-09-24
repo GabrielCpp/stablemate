@@ -201,6 +201,22 @@ def test_a_dirty_tree_is_refused_and_the_message_names_the_ways_out(tmp_path, ca
     assert (repo / "draft.md").exists()
 
 
+def test_a_branch_moved_past_the_start_is_refused_and_keeps_its_commits(tmp_path, capsys):
+    repo = _started_repo(tmp_path)
+    run_dir = _recorded_run(tmp_path, repo)
+    _ = _git(repo, "add", "-A")
+    _ = _git(repo, "commit", "-q", "-m", "work after the turn")
+    after = _git(repo, "rev-parse", "HEAD")
+
+    with pytest.raises(SystemExit):
+        replay.run(_args(run_dir))
+
+    err = capsys.readouterr().err
+    assert "dropping every commit after it" in err
+    assert "--discard" in err
+    assert _git(repo, "rev-parse", "HEAD") == after
+
+
 def test_run_replays_under_the_recorded_profile_and_prints_the_cost(tmp_path, capsys, monkeypatch):
     repo = _started_repo(tmp_path)
     run_dir = _recorded_run(tmp_path, repo)

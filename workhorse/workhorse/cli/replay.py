@@ -76,8 +76,9 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--discard",
         action="store_true",
-        help="Overwrite uncommitted changes in the turn's working trees. Without it, "
-        "replay refuses a tree that has any.",
+        help="Overwrite uncommitted changes in the turn's working trees and move their "
+        "branches back to the turn's start. Without it, replay refuses a tree that has "
+        "uncommitted changes or has moved past that start.",
     )
 
 
@@ -105,7 +106,7 @@ def run(args: argparse.Namespace) -> None:
     prompt = _read_prompt(visit_dir, args.prompt)
     if args.repeat < 1:
         _fail(f"--repeat {args.repeat}: a replay runs the turn at least once")
-    _refuse_dirty(record.start, discard=args.discard)
+    _refuse_unsafe(record.start, discard=args.discard)
 
     apply_config_path(args.config)
     profile = args.profile if args.profile is not None else record.profile
@@ -205,15 +206,24 @@ def _read_prompt(visit_dir: Path, override: str | None) -> str:
     return path.read_text(encoding="utf-8")
 
 
-def _refuse_dirty(starts: list[TreeStart], *, discard: bool) -> None:
+def _refuse_unsafe(starts: list[TreeStart], *, discard: bool) -> None:
     if discard:
         return
-    dirty = [s.path for s in starts if s.head and gitstate.observe(s.path).dirty]
-    if dirty:
-        _fail(
-            f"{', '.join(dirty)} has uncommitted changes, and a replay resets it to the "
-            "turn's start. Replay against a copy of the checkout, or pass --discard."
-        )
+    for start in starts:
+        if not start.head:
+            continue
+        now = gitstate.observe(start.path)
+        if now.dirty:
+            _fail(
+                f"{start.path} has uncommitted changes, and a replay resets it to the "
+                "turn's start. Replay against a copy of the checkout, or pass --discard."
+            )
+        if now.head != start.head:
+            _fail(
+                f"{start.path} is at {now.head[:12] or 'no commit'}, not the turn's start "
+                f"{start.head[:12]}, and a replay resets its branch to that start, dropping "
+                "every commit after it. Replay against a copy of the checkout, or pass --discard."
+            )
 
 
 def _next_index(into: Path) -> int:
