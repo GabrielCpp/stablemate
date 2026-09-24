@@ -9,7 +9,10 @@
 - A page's claims run as one scenario. Every fixture the page names is put in place first,
   then each claim's call runs in page order, so each check reads the state the calls above it
   left. A claim whose check reads a file or a state has a `fixture:` or a claim above it that
-  puts that file or state in place, and no check depends on another page having run.
+  puts that file or state in place, and no check depends on another page having run. A claim
+  that needs a state a claim above it changed either runs above that claim, or its call names
+  a path of its own, such as a file no claim above it wrote. A page is never split to get a
+  fresh state.
 - The pages agree with each other. A fixture, a file, an exit code or a message is described
   the same way on every page that names it.
 - Every interactive control has a role, an accessible name and a keyboard contract. Every

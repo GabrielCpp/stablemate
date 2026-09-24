@@ -72,7 +72,8 @@ after your turn will charge you with, and each one costs you this turn. Fix them
 you need, until it passes. Your runs share one budget of output. Once it is spent, a run prints how many problems
 remain, and after that nothing, so read its exit code: 0 passes. It proves your claims compile.
 It does not run them. A later phase runs each claim against the product, so a check that
-cannot see its claim fails there. It cannot read the bar above, so the judge can still refuse
+cannot see its claim fails there. The bar above and the check's output are every rule your
+pages are held to. The source of the check and of `ostler` states none beyond them. It cannot read the bar above, so the judge can still refuse
 a page it passes.
 Hold each page to that bar yourself, and once the check passes, reply. Do not run `ostler doctor`: its stale citations are restamped by the
 commit, and its unreachable pages are outside your job. Do not commit.
