@@ -80,12 +80,12 @@ cli = "opencode"
 
 [profiles.opencode.powers.high]
 model = "minimax/MiniMax-M3"
-effort = "high"
+effort = "thinking"
 timeout_scale = 3.0
 
 [profiles.opencode.powers.max]
 model = "minimax/MiniMax-M3"
-effort = "high"
+effort = "thinking"
 timeout_scale = 3.0
 
 [profiles.opencode.powers.ultra]
@@ -95,7 +95,7 @@ timeout_scale = 3.0
 
 [profiles.opencode.powers.medium]
 model = "minimax/MiniMax-M3"
-effort = "medium"
+effort = "none"
 timeout_scale = 3.0
 
 [profiles.opencode.powers.low]
