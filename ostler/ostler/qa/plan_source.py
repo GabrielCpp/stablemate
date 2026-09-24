@@ -65,8 +65,19 @@ def call_kwargs(args: Mapping[str, object]) -> str:
     return "".join(parts)
 
 
-def operand_for(check: str, observed: str) -> str | ScenarioRefusal:
+def file_refusal(check: str) -> ScenarioRefusal:
+    """Why a check naming a `file=` does not compile where no command ran in a working directory."""
+    return ScenarioRefusal(
+        "uncompilable-claim",
+        f"`{check}(file=...)` reads a file a command left in its working directory, and "
+        "this surface runs no command: drop `file=` and read what the surface shows, or "
+        "state the claim on the cli that writes the file")
+
+
+def operand_for(check: str, observed: str, args: Mapping[str, object]) -> str | ScenarioRefusal:
     """What the compiled call is handed, or the arrangement it still needs and why."""
+    if "file" in args:
+        return file_refusal(check)
     observes = check_observes(check)
     if observes == "response":
         return observed

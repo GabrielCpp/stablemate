@@ -379,25 +379,59 @@ def _printed(stream: str, text: str) -> Any:
     )
 
 
-def _plan_stream(stream: str, args: Mapping[str, Any]) -> tuple[Any, list[tuple[str, Any]], str]:
-    """A tool result that printed what the call names on `stream`, and the results that printed it elsewhere or not at all."""
+def _texts(args: Mapping[str, Any]) -> tuple[str, str] | str:
+    """A text holding what the call's `text=` and `matches=` name and one holding neither, or why no such pair exists."""
     pattern = str(args["matches"]) if "matches" in args else None
     expected_output = str(args.get("text", ""))
     if pattern is not None and re.search(pattern, expected_output) is None:
         matched = _matching(pattern)
         if matched is None:
-            return None, [], f"no output can be invented for /{pattern}/"
+            return f"no output can be invented for /{pattern}/"
         expected_output = f"{expected_output} {matched}".strip()
     other_output = _avoiding(pattern, str(args["text"]) if "text" in args else None)
     if other_output is None:
-        return None, [], f"every output carries something /{pattern}/ matches"
+        return f"every output carries something /{pattern}/ matches"
+    return expected_output, other_output
+
+
+def _plan_stream(stream: str, args: Mapping[str, Any]) -> tuple[Any, list[tuple[str, Any]], str]:
+    """A tool result that printed what the call names on `stream`, and the results that printed it elsewhere or not at all."""
+    texts = _texts(args)
+    if isinstance(texts, str):
+        return None, [], texts
+    expected_output, other_output = texts
     other_stream = "stderr" if stream == "stdout" else "stdout"
     return _printed(stream, expected_output), [
         (f"the command printed something else on {stream}", _printed(stream, other_output)),
         (f"the command printed it on {other_stream} instead", _printed(other_stream, expected_output)),
     ], ""
 
+def _plan_contents(args: Mapping[str, Any]) -> tuple[Any, list[tuple[str, Any]], str]:
+    """A working directory whose file holds what the call names, and the directories where it holds something else or is not there."""
+    texts = _texts(args)
+    if isinstance(texts, str):
+        return None, [], texts
+    expected, other = texts
+    subject = str(args["subject"])
+    return {subject: expected}, [
+        ("the file holds something else", {subject: other}),
+        ("the file is not there", {}),
+    ], ""
+
+
 def _plan(call: checks.CheckCall) -> tuple[Any, list[tuple[str, Any]], str]:
+    """The witness observation, the mutations to try against it, and why there are none: in the file a `file=` names, when the call names one."""
+    witness, mutations, note = _plan_observed(call)
+    if "file" not in call.args or witness is None:
+        return witness, mutations, note
+    name = str(call.args["file"])
+    return {name: witness}, [
+        *((label, {name: mutated}) for label, mutated in mutations),
+        ("the file is not there", {}),
+    ], note
+
+
+def _plan_observed(call: checks.CheckCall) -> tuple[Any, list[tuple[str, Any]], str]:
     """The witness observation, the mutations to try against it, and why there are none."""
     args = call.args
     name = call.name
@@ -551,6 +585,8 @@ def _plan(call: checks.CheckCall) -> tuple[Any, list[tuple[str, Any]], str]:
         ], ""
     if name in ("stdout", "stderr"):
         return _plan_stream(name, args)
+    if name == "contents":
+        return _plan_contents(args)
     if name == "conflict_on_stale":
         url = "http://witness/subject"
         return _Response(409, {}, url), [("the stale write was accepted", _Response(200, {}, url))], ""

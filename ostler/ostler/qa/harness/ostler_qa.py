@@ -15,7 +15,7 @@ import traceback
 import urllib.error
 import urllib.parse
 import urllib.request
-from collections.abc import Callable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence, Sized
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -576,10 +576,37 @@ class Tree(dict[str, JsonValue]):
 
     def __init__(self, root: Path) -> None:
         super().__init__()
+        self.texts: dict[str, str] = {}
         if root.is_dir():
             for path in sorted(root.rglob("*")):
                 if path.is_file():
-                    self[path.relative_to(root).as_posix()] = _read_tree_file(path)
+                    name = path.relative_to(root).as_posix()
+                    self.texts[name] = path.read_text(encoding="utf-8", errors="replace")
+                    self[name] = _read_tree_file(path)
+
+
+def _file_text(observed: Any, subject: str) -> str | None:
+    """The text of the file `subject` names in a working directory, as written, or `None` when no file sits there."""
+    texts = getattr(observed, "texts", None)
+    if isinstance(texts, Mapping):
+        text = texts.get(subject)
+        return text if isinstance(text, str) else None
+    if not isinstance(observed, Mapping):
+        raise TypeError(f"a file is read from a working directory, got {type(observed).__name__}")
+    if subject not in observed:
+        return None
+    value = observed[subject]
+    return value if isinstance(value, str) else json.dumps(value)
+
+
+def _read_file(observed: Any, args: Mapping[str, Any]) -> tuple[bool, Any]:
+    """What a check reads: the file its `file=` names in a working directory, or what was observed when it names none."""
+    if "file" not in args:
+        return True, observed
+    if not isinstance(observed, Mapping):
+        raise TypeError(f"`file=` reads a working directory, got {type(observed).__name__}")
+    name = args["file"]
+    return name in observed, observed.get(name)
 
 
 def _json_value(value: object) -> JsonValue:
@@ -816,7 +843,10 @@ def _matchable(value: Any) -> str:
 
 
 def _verify_json_path(observed: Any, args: Mapping[str, Any]) -> tuple[bool, Any, Any]:
-    resolved, value = _resolve_path(observed, args["path"])
+    present, document = _read_file(observed, args)
+    if not present:
+        return False, {"file": args["file"], "present": False}, {"file": "present"}
+    resolved, value = _resolve_path(document, args["path"])
     if "absent" in args:
         want_absent = bool(args["absent"])
         return resolved is not want_absent, {"present": resolved}, {"present": not want_absent}
@@ -860,7 +890,9 @@ def _verify_keys_unchanged(observed: Any, args: Mapping[str, Any]) -> tuple[bool
 
 def _verify_count(observed: Any, args: Mapping[str, Any]) -> tuple[bool, Any, Any]:
     """How many of `subject` there are — the subject resolved, not taken on trust."""
-    document: Any = observed
+    present, document = _read_file(observed, args)
+    if not present:
+        return False, {"file": args["file"], "present": False}, args["equals"]
     reader = getattr(document, "json", None)
     if callable(reader):
         document = reader()
@@ -868,7 +900,7 @@ def _verify_count(observed: Any, args: Mapping[str, Any]) -> tuple[bool, Any, An
         resolved, document = _resolve_path(document, args["subject"])
         if not resolved:
             return False, {"subject": args["subject"], "present": False}, args["equals"]
-    if isinstance(document, bool):
+    if isinstance(document, bool | str) or not isinstance(document, int | Sized):
         return False, {"subject": args["subject"], "countable": False}, args["equals"]
     found = document if isinstance(document, int) else len(document)
     return found == args["equals"], found, args["equals"]
@@ -1059,6 +1091,19 @@ def _stream_verifier(stream: str) -> Callable[[Any, Mapping[str, Any]], tuple[bo
     verify.__doc__ = f"The command printed on {stream} what the book says it prints."
     return verify
 
+def _verify_contents(observed: Any, args: Mapping[str, Any]) -> tuple[bool, Any, Any]:
+    """The file `subject` names holds the text or the pattern the book says it holds."""
+    text = _file_text(observed, args["subject"])
+    if text is None:
+        return False, {"subject": args["subject"], "present": False}, {"subject": "present"}
+    missing = {key: args[key] for key in ("text", "matches") if key in args}
+    if "text" in args and args["text"] in text:
+        missing.pop("text")
+    if "matches" in args and re.search(args["matches"], text) is not None:
+        missing.pop("matches")
+    return not missing, text, missing
+
+
 def _verify_conflict_on_stale(observed: Any, args: Mapping[str, Any]) -> tuple[bool, Any, Any]:
     status, _ = _observed_status(observed)
     return 400 <= status < 500, status, "a refusal (4xx)"
@@ -1083,6 +1128,7 @@ VERIFIERS: dict[str, Callable[[Any, Mapping[str, Any]], tuple[bool, Any, Any]]] 
     "exit_status": _verify_exit_status,
     "stdout": _stream_verifier("stdout"),
     "stderr": _stream_verifier("stderr"),
+    "contents": _verify_contents,
     "conflict_on_stale": _verify_conflict_on_stale,
 }
 
@@ -1140,6 +1186,7 @@ UNSATISFIABLE: dict[str, Callable[[Mapping[str, Any]], str]] = {
     "omits": _unsatisfiable_omits,
     "stdout": _unsatisfiable_stream,
     "stderr": _unsatisfiable_stream,
+    "contents": _unsatisfiable_stream,
 }
 
 

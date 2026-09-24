@@ -283,7 +283,7 @@ def _compiled_check(
     oid = obligation.id
     channel = check_observes(row.name)
     if channel == "subject":
-        operand = operand_for(row.name, result_name)
+        operand = operand_for(row.name, result_name, row.args)
         if isinstance(operand, ScenarioRefusal):
             gaps.append(Gap(oid, operand.kind, operand.detail))
             return None

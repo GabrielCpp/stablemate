@@ -106,6 +106,7 @@ def test_every_spec_declares_what_it_observes() -> None:
         "absent": "subject",
         "created": "subject-pair",
         "removed": "subject-pair",
+        "contents": "subject",
         "persists": "subject-pair",
         "emitted": "subject",
         "omits": "response",
@@ -489,5 +490,5 @@ def test_the_reference_page_prints_the_signatures_the_tool_prints() -> None:
 
 @pytest.mark.parametrize("spec", [s for s in checks.CHECKS if s.cli_reads], ids=lambda s: s.name)
 def test_a_check_said_to_read_a_command_is_one_the_cli_compiler_hands_an_operand(spec) -> None:
-    operand = operand_for(spec.name, "observed")
+    operand = operand_for(spec.name, "observed", {})
     assert compares_the_tree(spec.name) or not isinstance(operand, ScenarioRefusal)

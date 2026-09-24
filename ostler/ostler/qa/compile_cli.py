@@ -32,14 +32,20 @@ def compares_the_tree(check: str | None) -> bool:
     return check_observes(check) == "subject-pair" and not out_of_band(check)
 
 
-def reads_the_tree(check: str | None) -> bool:
-    """A check that reads the scenario's working directory at one moment."""
-    spec = CHECK_BY_NAME.get(check or "")
-    return spec is not None and spec.cli_reads_tree
+def reads_the_tree(row: CallRow) -> bool:
+    """A check that reads the scenario's working directory at one moment, by its nature or through the `file=` it names."""
+    spec = CHECK_BY_NAME.get(row.name)
+    return spec is not None and (spec.cli_reads_tree or "file" in row.args)
 
 
-def _operand(check: str, observed: str, before: str, after: str) -> str | ScenarioRefusal:
+def _touches_the_tree(row: CallRow) -> bool:
+    """A check that needs the working directory recorded around the run."""
+    return compares_the_tree(row.name) or reads_the_tree(row)
+
+
+def _operand(row: CallRow, observed: str, before: str, after: str) -> str | ScenarioRefusal:
     """What a verify on a command's run is handed, or why a command shows it nothing to read."""
+    check = row.name
     spec = CHECK_BY_NAME.get(check)
     if spec is not None and not spec.cli_reads and not spec.out_of_band:
         readable = ", ".join(f"`{s.name}`" for s in CHECKS if s.cli_reads)
@@ -49,23 +55,25 @@ def _operand(check: str, observed: str, before: str, after: str) -> str | Scenar
             f"verify this claim with one of {readable}, as `ostler checks` describes")
     if compares_the_tree(check):
         return f"({before}, {after})"
-    if reads_the_tree(check):
+    if reads_the_tree(row):
         return after
-    return operand_for(check, observed)
+    return operand_for(check, observed, row.args)
 
 
-def _start_operand(check: str) -> str | ScenarioRefusal:
+def _start_operand(row: CallRow) -> str | ScenarioRefusal:
     """What a verify on a flow's `start:` is handed: the working directory before the first step, since no command has run yet."""
-    if reads_the_tree(check):
+    if reads_the_tree(row):
         return "before"
+    check = row.name
     spec = CHECK_BY_NAME.get(check)
     reads = spec.cli_reads if spec is not None and spec.cli_reads else "nothing a command shows"
     readable = ", ".join(f"`{s.name}`" for s in CHECKS if s.cli_reads_tree)
+    files = ", ".join(f"`{s.name}`" for s in CHECKS if any(p.name == "file" for p in s.params))
     return ScenarioRefusal(
         "uncompilable-claim",
         f"`{check}` on a flow's `start:` reads {reads}, and no command has run before the "
         f"first step: verify the starting world with {readable} on the file it names, or "
-        "state it on `fixture:`")
+        f"{files} with `file=` naming it, or state it on `fixture:`")
 
 
 def _no_run_remedy(node_type: str) -> str:
@@ -138,7 +146,7 @@ def cli_scenario_body(
             ))
             continue
         call_args = ", ".join([*(python_literal(a) for a in argv), "cwd=qa.scenario_id"])
-        reads_tree_either_side = any(compares_the_tree(row.name) or reads_the_tree(row.name) for row in rows)
+        reads_tree_either_side = any(_touches_the_tree(row) for row in rows)
         if reads_tree_either_side:
             lines.append(f"    before_{index} = qa.tree(qa.scenario_id)")
         lines.append(f"    {name} = qa.tool({python_literal(binary)}).run({call_args})")
@@ -148,7 +156,7 @@ def cli_scenario_body(
         assertions: list[str] = []
         whole = True
         for row in rows:
-            operand = _operand(row.name, name, f"before_{index}", f"after_{index}")
+            operand = _operand(row, name, f"before_{index}", f"after_{index}")
             if isinstance(operand, ScenarioRefusal):
                 lines.append(f"    # TODO(arrange): {operand.detail}")
                 gaps.append(Gap(oid, operand.kind, operand.detail))
@@ -212,7 +220,7 @@ def cli_journey(
             gaps.extend(Gap(oid, "uncompilable-claim", call.reason) for oid in ids)
             return []
         calls.append(call)
-    reads_tree_either_side = any(compares_the_tree(row.name) or reads_the_tree(row.name)
+    reads_tree_either_side = any(_touches_the_tree(row)
                                  for obligation in obligations for row in obligation.checks)
     lines = ["    before = qa.tree(qa.scenario_id)"] if reads_tree_either_side else []
     starts = [obligation for obligation in obligations if obligation.kind == "start"]
@@ -225,13 +233,13 @@ def cli_journey(
     for obligation in obligations:
         if obligation.kind != "start":
             _append_journey_verifies(
-                obligation, lambda check: _operand(check, observed, "before", "after"),
+                obligation, lambda row: _operand(row, observed, "before", "after"),
                 lines, gaps, covered)
     return lines
 
 
 def _append_journey_verifies(
-    obligation: Obligation, operand_of: Callable[[str], str | ScenarioRefusal],
+    obligation: Obligation, operand_of: Callable[[CallRow], str | ScenarioRefusal],
     lines: list[str], gaps: list[Gap], covered: set[str],
 ) -> None:
     """Append the verify lines of one journey obligation, or the gaps that keep it from compiling whole."""
@@ -239,7 +247,7 @@ def _append_journey_verifies(
     assertions: list[str] = []
     whole = True
     for row in obligation.checks:
-        operand = operand_of(row.name)
+        operand = operand_of(row)
         if isinstance(operand, ScenarioRefusal):
             lines.append(f"    # TODO(arrange): {operand.detail}")
             gaps.append(Gap(oid, operand.kind, operand.detail))

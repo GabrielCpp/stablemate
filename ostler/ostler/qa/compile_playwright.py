@@ -27,6 +27,7 @@ from ostler.qa.plan_source import PlanSinks
 from ostler.qa.plan_source import call_kwargs
 from ostler.qa.plan_source import check_observes
 from ostler.qa.plan_source import decline_captures
+from ostler.qa.plan_source import file_refusal
 from ostler.qa.plan_source import out_of_band
 from ostler.qa.plan_source import python_literal
 from ostler.vet import placement as placement_mod
@@ -211,6 +212,11 @@ def _page_assertions(
     exchange = _observed_exchange(obligation)
     for row in obligation.checks:
         channel = check_observes(row.name)
+        if "file" in row.args:
+            refusal = file_refusal(row.name)
+            gaps.append(Gap(obligation.id, refusal.kind, refusal.detail))
+            whole = False
+            continue
         if channel in {"response", "body"} and not out_of_band(row.name):
             operand = _exchange_operand(row, obligation, exchange, channel, gaps)
             if operand is None:

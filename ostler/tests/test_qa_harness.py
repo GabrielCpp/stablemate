@@ -995,3 +995,37 @@ def test_unchanged_compares_the_named_file_or_else_the_whole_tree(tmp_path: Path
     quiet = (harness.Tree(before), harness.Tree(before))
     assert harness.VERIFIERS["unchanged"](quiet, {"subject": "no-such.json"})[0] is True
     assert harness.VERIFIERS["keys_unchanged"](quiet, {"subject": "no-such.json"})[0] is True
+
+
+def test_contents_reads_the_text_of_the_file_the_subject_names(tmp_path: Path) -> None:
+    harness = load_harness_module("ostler_qa")
+    (tmp_path / "out.csv").write_text("date,amount\n2024-01-02,12.50\n", encoding="utf-8")
+    (tmp_path / "tally.json").write_text('{"entries": []}', encoding="utf-8")
+    tree = harness.Tree(tmp_path)
+    contents = harness.VERIFIERS["contents"]
+
+    assert contents(tree, {"subject": "out.csv", "text": "2024-01-02,12.50"})[0] is True
+    assert contents(tree, {"subject": "out.csv", "matches": r"^date,amount\n2024"})[0] is True
+    assert contents(tree, {"subject": "out.csv", "text": "13.00"})[0] is False
+    assert contents(tree, {"subject": "tally.json", "text": '"entries": []'})[0] is True
+    missing = contents(tree, {"subject": "export.csv", "text": "date"})
+    assert missing[0] is False
+    assert missing[1]["present"] is False
+
+
+def test_json_path_and_count_read_the_file_named_by_file(tmp_path: Path) -> None:
+    harness = load_harness_module("ostler_qa")
+    (tmp_path / "tally.json").write_text(
+        '{"entries": [{"amount": 12.5}, {"amount": 3}]}', encoding="utf-8")
+    (tmp_path / "notes.txt").write_text("a\nb\n", encoding="utf-8")
+    tree = harness.Tree(tmp_path)
+    json_path, count = harness.VERIFIERS["json_path"], harness.VERIFIERS["count"]
+
+    assert json_path(tree, {"path": "entries[0].amount", "equals": 12.5, "file": "tally.json"})[0] is True
+    assert json_path(tree, {"path": "entries[0].amount", "equals": 3, "file": "tally.json"})[0] is False
+    assert count(tree, {"subject": "entries", "equals": 2, "file": "tally.json"})[0] is True
+    assert count(tree, {"subject": "entries", "equals": 3, "file": "tally.json"})[0] is False
+    assert count(tree, {"subject": "entries", "equals": 2, "file": "notes.txt"})[0] is False
+    absent = json_path(tree, {"path": "entries", "equals": [], "file": "ledger.json"})
+    assert absent[0] is False
+    assert absent[1] == {"file": "ledger.json", "present": False}

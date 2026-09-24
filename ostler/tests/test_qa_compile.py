@@ -2267,6 +2267,41 @@ def _http_status(code: int, path: str) -> dict[str, object]:
             "args": {"code": code, "path": path}}
 
 
+def test_an_endpoint_refuses_a_check_that_reads_a_file() -> None:
+    oid = "okf:docs/features/demo/api.md#post-things:does:1"
+    context = _context(_obligation(oid, checksDeclared=[
+        {"call": "it", "name": "json_path", "args": {"path": "status", "equals": "Draft", "file": "thing.json"}},
+    ]))
+
+    _source, gaps = compile_plan_gaps(context, story="demo-story")
+
+    assert _gap_kinds(gaps, oid) == ["uncompilable-claim"]
+    (gap,) = [g for g in gaps if g.obligation_id == oid]
+    assert "`json_path(file=...)`" in gap.detail and "runs no command" in gap.detail
+
+
+def test_a_page_refuses_a_check_that_reads_a_file() -> None:
+    interaction = f"{_SCREEN}#submit-new-policy"
+    oid = f"okf:{interaction}:does:1"
+    context = _navigation_context(
+        _page_obligation("okf:new-policy:button:role:1", f"{_SCREEN}#create-policy-button",
+                          locators={"role": ["button"], "name": ["Create policy"]},
+                          checks=[_visible("button:Create policy")]),
+        _page_obligation(oid, interaction,
+                          locators={"on": ["[create-policy-button](#create-policy-button)"],
+                                    "trigger": ["submit the form"],
+                                    "does": ["saves the policy"]},
+                          checks=[{"call": "it", "name": "count", "args": {
+                              "subject": "policies", "equals": 1, "file": "policies.json"}}]),
+        navigation=_arrival_navigation(),
+    )
+
+    _source, gaps = compile_plan_gaps(context, story="demo-story")
+
+    assert "uncompilable-claim" in _gap_kinds(gaps, oid)
+    assert any("`count(file=...)`" in g.detail for g in gaps if g.obligation_id == oid)
+
+
 def test_a_page_claim_about_the_response_its_click_provoked_compiles_whole() -> None:
     """The globex shape: submitting the form is refused, the error span appears, and the page's own POST answered 400."""
     interaction = f"{_SCREEN}#submit-new-policy"
@@ -2735,7 +2770,52 @@ def test_a_cli_journeys_start_refuses_a_check_that_reads_what_a_command_did(chec
     assert gap.kind == "uncompilable-claim"
     assert "no command has run before the first step" in gap.detail
     assert "`absent`" in gap.detail and "`fixture:`" in gap.detail
+    assert "`json_path`" in gap.detail and "`file=`" in gap.detail
     assert _gap_kinds(result.gaps, end_oid) == []
+
+
+def test_a_cli_command_reads_a_json_file_the_run_left_through_file() -> None:
+    oid = "okf:docs/features/demo/api.md#import:does:1"
+    context = _cli_command_context(oid, {"call": "it", "name": "json_path", "args": {
+        "path": "entries[0].amount", "equals": 12.5, "file": "tally.json"}})
+
+    result = _compile_plan_gaps(context, story="demo-story")
+
+    assert isinstance(result, Plan)
+    assert _gap_kinds(result.gaps, oid) == []
+    source = result.source
+    before = source.index("before_1 = qa.tree(qa.scenario_id)")
+    run = source.index('observed_1 = qa.tool("tally").run("import", cwd=qa.scenario_id)')
+    after = source.index("after_1 = qa.tree(qa.scenario_id)")
+    assert before < run < after
+    assert 'qa.verify("json_path", after_1, path="entries[0].amount", equals=12.5, file="tally.json"' in source
+
+
+def test_a_cli_command_reads_the_text_of_a_file_the_run_left() -> None:
+    oid = "okf:docs/features/demo/api.md#import:does:1"
+    context = _cli_command_context(oid, {"call": "it", "name": "contents", "args": {
+        "subject": "out.csv", "text": "date,amount"}})
+
+    result = _compile_plan_gaps(context, story="demo-story")
+
+    assert isinstance(result, Plan)
+    assert _gap_kinds(result.gaps, oid) == []
+    assert 'qa.verify("contents", after_1, subject="out.csv", text="date,amount"' in result.source
+
+
+def test_a_cli_journeys_start_reads_a_files_text_before_its_first_step() -> None:
+    context, start_oid, end_oid = _cli_start_and_end_context(
+        [{"call": "it", "name": "contents", "args": {"subject": "tally.json", "matches": "entries"}}],
+        [{"call": "it", "name": "count", "args": {"subject": "entries", "equals": 2, "file": "tally.json"}}],
+    )
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(result, Plan)
+    source = result.source
+    assert {start_oid, end_oid} <= set(_covers(source))
+    start = source.index('qa.verify("contents", before, subject="tally.json", matches="entries"')
+    init = source.index('observed_1 = qa.tool("tally").run("init", cwd=qa.scenario_id)')
+    assert start < init
+    assert 'qa.verify("count", after, subject="entries", equals=2, file="tally.json"' in source
 
 
 def test_a_journey_step_captures_a_field_its_own_verify_then_reads_back() -> None:

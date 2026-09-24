@@ -121,7 +121,7 @@ The bar, from [falsifiable-verification.md](falsifiable-verification.md):
    decorative.
 
 Repair: replace or add a check that goes red on the named defect.
-[check-vocabulary.md](check-vocabulary.md) carries all 19 checks with, for each, the defect it
+[check-vocabulary.md](check-vocabulary.md) carries all 20 checks with, for each, the defect it
 excludes — pick the one whose `excludes` names the defect this claim forbids.
 
 Doctor half: `weak-check` (error, raised per *claim*) and `unstated-precondition` (warn, the

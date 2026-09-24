@@ -1,6 +1,6 @@
 # The check vocabulary
 
-The nineteen named checks a `verify:` bullet may call, their signatures, and — the part that
+The twenty named checks a `verify:` bullet may call, their signatures, and — the part that
 matters when judging whether a check earns its bullet — **the defect each one excludes**. A check
 that excludes no plausible defect is a rubber stamp, and `doctor` refuses it as `weak-check`.
 Companion to [`../SKILL.md`](../SKILL.md) and to [bullet-grammar.md](bullet-grammar.md), which
@@ -49,7 +49,7 @@ neither argument to disambiguate anything. Declare `method=` wherever the same r
 more than once in one scenario; `compile_plan` gaps rather than guessing when it is missing
 and needed.
 
-### `json_path(path*=<str> (path), equals=<scalar>, matches=<str>, absent=<bool>) — one of equals, matches, absent`
+### `json_path(path*=<str> (path), equals=<scalar>, matches=<str>, absent=<bool>, file=<str>) — one of equals, matches, absent`
 Excludes a field asserted by presence rather than value, which passes on the default the defect
 also produces.
 
@@ -71,8 +71,14 @@ object before comparing cannot see.
 Excludes a move implemented as a copy: every object compared individually matches, and only the
 key inventory shows the old one is still there.
 
-### `count(subject*=<str>, equals*=<int>)`
+### `count(subject*=<str>, equals*=<int>, file=<str>)`
 Excludes an operation that produced the expected item *and* extras nobody counted.
+
+On a CLI surface `json_path` and `count` read the command's stdout, parsed as JSON. With `file=`,
+they read the file at that relative path in the working directory instead, parsed as JSON, after
+the run or before the first step on a flow's `start:`. That is how a claim about what a command
+saved, not what it printed, gets a value check. The HTTP and mobile drivers refuse `file=`, and
+the web driver gaps it: none of them has a working directory to read.
 
 ### `absent(subject*=<str>)`
 Excludes a delete that hid the thing from one surface and left it readable on another.
@@ -139,6 +145,14 @@ because it reads how the process ended and not what it said. `text` must appear 
 Excludes a refusal that names no reason, or the wrong one: a command that exits non-zero for a
 missing ledger and tells the user the file is malformed. `exit_status` passes this, because every
 refusal ends with the same code. A message the command prints on stdout does not satisfy it.
+
+### `contents(subject*=<str>, text=<str>, matches=<str>) — one of text, matches`
+Excludes a command that exits right and prints the right thing but writes the wrong thing to disk,
+such as the wrong row in an export or a ledger saved without the entry. `created` passes it,
+because it sees the file appear and not what it holds. `subject` is the exact relative path of
+one file in the working directory, read as text: before the first step on a flow's `start:`,
+after the run everywhere else. `text` must appear in it, and `matches` must find a match in it.
+It fails when no file sits at that path.
 
 ### `conflict_on_stale(subject*=<str>, token=<str>)`
 Excludes an unconditional overwrite standing in for compare-and-swap — a write followed by a read

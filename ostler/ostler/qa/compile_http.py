@@ -264,7 +264,7 @@ def _claim_assertions(
                         f"a verify argument references {ref!r}, not resolvable without running the plan")
                     for ref in references.find_references(json.dumps(row.args))
                     if not produced.resolves(ref))
-        operand = operand_for(row.name, observed)
+        operand = operand_for(row.name, observed, row.args)
         if isinstance(operand, ScenarioRefusal):
             todos.append(f"    # TODO(arrange): {operand.detail}")
             gaps.append(Gap(oid, operand.kind, operand.detail))
@@ -428,7 +428,7 @@ def _journey_assertion(
                         "the plan")
                     for ref in unresolved)
         return None
-    operand = operand_for(row.name, steps.observed)
+    operand = operand_for(row.name, steps.observed, row.args)
     if isinstance(operand, ScenarioRefusal):
         return operand
     return (f"    qa.verify({python_literal(row.name)}, {operand}{call_kwargs(row.args)}, "

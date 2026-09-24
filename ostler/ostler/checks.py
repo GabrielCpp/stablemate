@@ -88,12 +88,15 @@ CHECKS: tuple[CheckSpec, ...] = (
             CheckParam("equals", "scalar"),
             CheckParam("matches", "str", pattern=True),
             CheckParam("absent", "bool"),
+            CheckParam("file", "str", identifies=True),
         ),
         one_of=("equals", "matches", "absent"),
         excludes="a field asserted by presence rather than value, which passes on the "
                  "default the defect also produces",
         observes="body",
-        cli_reads="the command's stdout, parsed as JSON, with `path` a path into it",
+        cli_reads="the command's stdout, parsed as JSON, with `path` a path into it. With "
+               "`file`, it reads the file at that relative path in the working directory "
+               "after the run instead, parsed as JSON",
     ),
     CheckSpec(
         name="unchanged",
@@ -125,12 +128,14 @@ CHECKS: tuple[CheckSpec, ...] = (
         params=(
             CheckParam("subject", "str", required=True, identifies=True),
             CheckParam("equals", "int", required=True),
+            CheckParam("file", "str", identifies=True),
         ),
         excludes="an operation that produced the expected item *and* extras nobody counted",
         observes="subject",
         cli_reads="the command's stdout, parsed as JSON: the length of the list at `subject` "
-               "when stdout is an object, or of stdout itself when it is a list. It cannot "
-               "count the lines of a file or of plain text",
+               "when stdout is an object, or of stdout itself when it is a list. With "
+               "`file`, it reads the file at that relative path in the working directory "
+               "after the run instead, parsed as JSON. It cannot count the lines of plain text",
     ),
     CheckSpec(
         name="absent",
@@ -151,7 +156,8 @@ CHECKS: tuple[CheckSpec, ...] = (
                  "action is part of the observation rather than an assumption about it",
         observes="subject-pair",
         cli_reads="the working directory before and after the run, with `subject` the exact "
-               "relative path of one file. It sees that the file appeared, not what it holds",
+               "relative path of one file. It sees that the file appeared, not what it holds: "
+               "`contents` reads that",
     ),
     CheckSpec(
         name="removed",
@@ -267,6 +273,24 @@ CHECKS: tuple[CheckSpec, ...] = (
                  "`exit_status` passes, because every refusal ends with the same code",
         observes="subject",
         cli_reads="the command's stderr, as text",
+    ),
+    CheckSpec(
+        name="contents",
+        params=(
+            CheckParam("subject", "str", required=True, identifies=True),
+            CheckParam("text", "str"),
+            CheckParam("matches", "str", pattern=True),
+        ),
+        one_of=("text", "matches"),
+        excludes="a command that exits right and prints the right thing but writes the wrong "
+                 "thing to disk, such as the wrong row in an export or a ledger saved without "
+                 "the entry. `created` passes it, because it sees the file appear and not what "
+                 "it holds",
+        observes="subject",
+        cli_reads="the working directory at one moment, with `subject` the exact relative path "
+               "of one file, read as text: before the first step on a flow's `start:`, after "
+               "the run everywhere else. It fails when no file sits there",
+        cli_reads_tree=True,
     ),
     CheckSpec(
         name="conflict_on_stale",
