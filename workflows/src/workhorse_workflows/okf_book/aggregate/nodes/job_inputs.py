@@ -51,9 +51,11 @@ def owed_contracts(root: Path, job: Job, contracts: tuple[Contract, ...]) -> tup
     """The contracts whose claims the job's pages must state. A page owes all it reads.
 
     The operations job reads the whole service and owes the stack's files. The flows job reads it too and owes none.
+    A concept is free-form and proves nothing, so its page owes none either.
     A claim of a file a page cites is that page's to state.
     """
-    if job.kind is JobKind.FLOWS:
+    page = root / job.page
+    if job.kind is JobKind.FLOWS or (job.page and page.is_file() and is_concept(page.read_text(encoding="utf-8"))):
         return ()
     if job.kind is JobKind.OPERATIONS:
         stack = stack_files(root, job.service, production_files(root, job.service))

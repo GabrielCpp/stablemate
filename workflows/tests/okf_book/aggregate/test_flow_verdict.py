@@ -13,6 +13,7 @@ from okf_book.support import (
     always,
     commits,
     drafted,
+    git,
     judged,
     listing_runner,
     promised_contracts,
@@ -67,10 +68,17 @@ def _judges_concept(args: dict[str, object]) -> bool:
 
 
 def test_a_claim_the_verifier_leaves_unaccounted_is_charged_as_stated_on_no_page(app: App, run_book: RunBook) -> None:
-    def skip_claims(args: dict[str, object]) -> dict[str, object]:
-        return {"claims": [], "problems": []} if _judges_concept(args) else PASS(args)
+    repo = app("tally-cli")
+    _ = (repo / "Dockerfile").write_text("FROM python:3.12-slim\n", encoding="utf-8")
+    _ = git(repo, "add", "Dockerfile")
+    _ = git(repo, "commit", "-qm", "build the image")
 
-    problems = _last_problems(app("tally-cli"), run_book, skip_claims)
+    def skip_claims(args: dict[str, object]) -> dict[str, object]:
+        return {"claims": [], "problems": []} if args["kind"] == "operations" else PASS(args)
+
+    runner = _book_runner(repo, skip_claims, _writer(repo))
+    _ = run_book(WriteOnly(repo_dir=str(repo), surfaces=(TALLY,)), runner)
+    problems = NAMES.validate_python(runner.args_of("write-operations")[-1]["problems"])
 
     assert problems
     assert all("It works." in problem and "is stated on no page" in problem for problem in problems)
@@ -178,3 +186,15 @@ def test_the_operations_and_flows_judges_read_the_service_and_charge_no_claim_a_
         [args] = [a for a in runner.args_of("verify-page") if a["kind"] == kind]
         assert args["contracts"] == []
         assert "tally/cli.py" in [contract["file"] for contract in NUMBERS.validate_python(args["context"])]
+
+
+def test_the_concept_judge_charges_no_claim_and_a_command_judge_still_does(app: App, run_book: RunBook) -> None:
+    repo = app("tally-cli")
+    runner = _book_runner(repo, PASS, _writer(repo))
+    _ = run_book(WriteOnly(repo_dir=str(repo), surfaces=(TALLY,)), runner)
+
+    judged_pages = [(NUMBERS.validate_python(a["pages"]), a) for a in runner.args_of("verify-page") if a["kind"] == "page"]
+    [concept] = [args for pages, args in judged_pages if CONCEPT in [page["page"] for page in pages]]
+    assert concept["contracts"] == []
+    assert concept["context"]
+    assert all(args["contracts"] for pages, args in judged_pages if CONCEPT not in [page["page"] for page in pages])
