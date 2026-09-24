@@ -174,6 +174,26 @@ def test_stamp_page_stamps_both_a_backticked_and_a_bare_code_bullet(tmp_path: Pa
     assert f"src/other.py::other@{other_digest}" in text
 
 
+def test_unstamp_text_gives_back_the_page_as_it_read_before_the_stamp(tmp_path: Path):
+    feature = tmp_path / "docs/features/billing/charge.md"
+    feature.parent.mkdir(parents=True, exist_ok=True)
+    before = (
+        "---\ntype: concept\nslug: charge\ntitle: Charge\n---\n"
+        "# Charge\n\nThe ref `src/service.py` @3f9a1c07b2e4 in prose stays.\n\n"
+        "- code: `src/service.py::charge`, `src/other.py::other`\n"
+        "- code: src/other.py::other\n"
+    )
+    feature.write_text(before, encoding="utf-8")
+    _service(tmp_path)
+    (tmp_path / "src/other.py").write_text("def other():\n    pass\n", encoding="utf-8")
+    _ = stamp.stamp_page(tmp_path, tmp_path, "docs/features/billing/charge.md")
+
+    stamped = feature.read_text(encoding="utf-8")
+
+    assert stamped != before
+    assert stamp.unstamp_text(stamped) == before
+
+
 def test_stamp_page_leaves_a_ref_to_a_different_repository_unresolved(tmp_path: Path):
     (tmp_path / "repository.txt").write_text("acme\n", encoding="utf-8")
     _book(tmp_path, "`repo://globex/src/service.py::charge`")

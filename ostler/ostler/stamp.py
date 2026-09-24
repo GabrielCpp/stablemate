@@ -21,6 +21,8 @@ _SPAN = re.compile(r"`(?P<inner>[^`]*)`(?:\s*@(?P<digest>[0-9a-f]{12}))?")
 
 _BARE_DIGEST = re.compile(r"@[0-9a-f]{12}$")
 
+_STAMP = re.compile(r"(?<=`)[ \t]*@[0-9a-f]{12}|@[0-9a-f]{12}(?=[ \t]*(?:,|$))", re.MULTILINE)
+
 
 def digest_file(data: bytes) -> str:
     """The stamp for a file's contents."""
@@ -162,6 +164,25 @@ def stamp_page(root: Path, features_root: Path, page: str, *,
         path.write_text(doc.render(), encoding="utf-8")
 
     return StampResult(page=page, stamped=stamped, unresolved=unresolved, changed=changed)
+
+
+def unstamp_text(text: str) -> str:
+    """*text* with every ``code:`` bullet's stamped digests dropped, so a page reads the same stamped or not."""
+    doc = split(text)
+    body_lines = doc.body.split("\n")
+    changed = False
+    for bullet in doc.walk_bullets():
+        if bullet.label != "code":
+            continue
+        for index in range(bullet.line_start, bullet.line_end):
+            bare = _STAMP.sub("", body_lines[index])
+            if bare != body_lines[index]:
+                body_lines[index] = bare
+                changed = True
+    if not changed:
+        return text
+    doc.replace_body(body_lines)
+    return doc.render()
 
 
 def node_line_range(graph: Graph, node: UINode) -> tuple[int, int]:
