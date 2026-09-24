@@ -72,5 +72,5 @@ The pages pass when every claim has a node and no problem is named.
 Reply with only this JSON object:
 
 ```json
-{"claims": [{"claim": 1, "node": "docs/features/tally/cli/add.md#add", "problem": ""}, {"claim": 2, "node": "", "problem": ""}], "problems": [{"node": "docs/features/tally/cli/add.md#add", "problem": "the example shows an exit code the page never states."}]}
+{"claims": [{"claim": 1, "node": "docs/features/acme/cli/add.md#add", "problem": ""}, {"claim": 2, "node": "", "problem": ""}], "problems": [{"node": "docs/features/acme/cli/add.md#add", "problem": "the example shows an exit code the page never states."}]}
 ```

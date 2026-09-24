@@ -24,5 +24,5 @@ failure is about, and say what the product did instead.
 Reply with only this JSON object:
 
 ```json
-{"side": "app", "reason": "docs/features/tally/cli/add.md#add says a negative amount is refused with exit code 2. The product accepted it."}
+{"side": "app", "reason": "docs/features/acme/cli/add.md#add says a negative amount is refused with exit code 2. The product accepted it."}
 ```
