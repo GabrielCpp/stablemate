@@ -1,6 +1,15 @@
 Write the contract of each file below. A contract says what the file is for, what it
 promises its callers, and what it refuses them.
 
+A user drives the product only through these entry points:
+
+{% for entry in entry_points %}
+- {{ entry }}
+{% endfor %}
+{% if entry_points_left_out %}
+- and {{ entry_points_left_out }} more, left out of this prompt for its budget
+{% endif %}
+
 Each file's whole body is here. So are the names its direct imports declare, without their
 bodies. Read nothing else. Do not edit any file.
 
@@ -36,6 +45,10 @@ Rules for each contract:
 - Each promise and each refusal is one claim that could be demonstrated against the
   running product: an effect, a guard, an output, an error, an exit code. Write the
   behaviour, not how the code is written.
+- State each claim as what a user sees through an entry point above. A file no user calls
+  directly promises what its callers' entry points show because of it: "recording an expense
+  with an amount of 0 exits 2", not "`add_entry` raises on a zero amount". A function's
+  return value is not a claim, because no user sees it.
 - A file that declares nothing and runs nothing, such as a module holding only a docstring or a
   package manifest, promises nothing. Leave its `promises` empty, and say in `purpose` what it
   sets up.

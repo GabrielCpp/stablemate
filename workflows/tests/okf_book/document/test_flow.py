@@ -4,9 +4,11 @@ from __future__ import annotations
 from collections.abc import Callable
 from pathlib import Path
 
+import pytest
 from okf_book.support import DocumentOnly, WorkListView, ScriptedRunner, listing_runner
 from pydantic import TypeAdapter
 
+from workhorse_workflows.okf_book.document import nodes as document_nodes
 from workhorse_workflows.okf_book.shared.blockers import Phase, read_blockers
 from workhorse_workflows.okf_book.shared.budget import TURN_BUDGET_TOKENS
 from workhorse_workflows.okf_book.shared.contracts import read_contract
@@ -20,6 +22,7 @@ NODE = "document-files"
 COMMANDS = ("init", "add", "import", "report", "export")
 TALLY = Surface(service="tally", kind=SurfaceKind.CLI, entry="tally/__main__.py")
 BRIEFS = TypeAdapter(list[dict[str, object]])
+ENTRIES = TypeAdapter(list[str])
 
 
 def _files(args: dict[str, object]) -> list[str]:
@@ -87,3 +90,20 @@ def test_a_file_that_declares_and_runs_nothing_needs_no_promise(app: App, run_bo
         assert contract.promises == ()
     [blocker] = read_blockers(flow.run_dir)
     assert (blocker.subject, blocker.reason) == ("tally/cli.py", "The contract of tally/cli.py promises nothing.")
+
+
+def test_each_turn_names_the_entry_points_a_claim_is_seen_through(app: App, run_book: RunBook) -> None:
+    _, runner, _ = _run(app, run_book, lambda _f: "")
+
+    assert all(args["entry_points"] == [f"tally: {c.title()}" for c in COMMANDS] for args in runner.args_of(NODE))
+
+
+def test_entry_points_past_their_budget_are_counted_not_listed(app: App, run_book: RunBook, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(document_nodes, "ENTRY_POINTS_BUDGET_TOKENS", 10)
+
+    _, runner, _ = _run(app, run_book, lambda _f: "")
+
+    for args in runner.args_of(NODE):
+        kept = ENTRIES.validate_python(args["entry_points"])
+        assert 0 < len(kept) < len(COMMANDS)
+        assert len(kept) + int(str(args["entry_points_left_out"])) == len(COMMANDS)

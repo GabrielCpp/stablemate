@@ -8,7 +8,7 @@ from workhorse_workflows.okf_book.shared.blockers import Blocker, Phase, Side, r
 from workhorse_workflows.okf_book.shared.book_flow import BookFlow
 from workhorse_workflows.okf_book.shared.contracts import ContractReply, contract_problems, save_contract
 from workhorse_workflows.okf_book.shared.attempts import FailureTally, charge_failure, exhausted, last_problems
-from workhorse_workflows.okf_book.document.nodes import check_vocabulary, next_batch
+from workhorse_workflows.okf_book.document.nodes import check_vocabulary, entry_points, next_batch
 from workhorse_workflows.okf_book.shared.metrics import TurnMetric, record_turn
 from workhorse_workflows.okf_book.shared.work import BLOCKED, DONE, FILE
 
@@ -37,11 +37,17 @@ class Document(BookFlow):
         if batch.oversized_file:
             self._block_file(batch.oversized_file, f"{batch.oversized_file} is past what one turn can read. Split it.")
             return Continue(batch.oversized_file, self.document_files, attempts=attempts)
+        entries = entry_points(self.root)
         started = time.monotonic()
         reply = self.agent(
             "document/prompts/document-files.md",
             returns=ContractReply,
-            args={"files": [brief.template_arg() for brief in batch.briefs], "checks": list(check_vocabulary())},
+            args={
+                "files": [brief.template_arg() for brief in batch.briefs],
+                "entry_points": list(entries.kept),
+                "entry_points_left_out": entries.left_out,
+                "checks": list(check_vocabulary()),
+            },
             cwd=self.root,
         )
         metric = TurnMetric(

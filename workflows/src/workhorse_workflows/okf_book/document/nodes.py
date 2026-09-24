@@ -13,10 +13,20 @@ from pathlib import Path
 from ostler.checks import CHECKS
 from ostler.inventory import symbols
 from workhorse_workflows.okf_book.shared.attempts import FailureTally, last_problems
-from workhorse_workflows.okf_book.shared.budget import PACKAGE_DIR, ALONE_CEILING_TOKENS, TURN_BUDGET_TOKENS, estimated_tokens
+from workhorse_workflows.okf_book.shared.budget import (
+    PACKAGE_DIR,
+    ALONE_CEILING_TOKENS,
+    TURN_BUDGET_TOKENS,
+    Packed,
+    estimated_tokens,
+    name_tokens,
+    pack_told,
+)
+from workhorse_workflows.okf_book.shared.entries import read_entries, services
 from workhorse_workflows.okf_book.shared.imports import neighbours
 
 DOCUMENT_PROMPT = "document/prompts/document-files.md"
+ENTRY_POINTS_BUDGET_TOKENS = 2_000
 
 
 def check_vocabulary() -> tuple[str, ...]:
@@ -57,10 +67,17 @@ def file_brief(root: Path, file: str, problems: tuple[str, ...] = ()) -> FileBri
     return FileBrief(file, path.read_text(encoding="utf-8", errors="replace"), lines, problems)
 
 
-def fixed_tokens() -> int:
-    """What the prompt and the check vocabulary cost before any file is read."""
+def entry_points(root: Path) -> Packed:
+    """Each way a user drives the product, as its service's book lists it, kept while they fit their budget."""
+    names = (f"{service}: {link.title}" for service in services(root) for link in read_entries(root, service))
+    return pack_told(name_tokens(names), ENTRY_POINTS_BUDGET_TOKENS)
+
+
+def fixed_tokens(root: Path) -> int:
+    """What the prompt, the entry points and the check vocabulary cost before any file is read."""
     prompt = (PACKAGE_DIR / DOCUMENT_PROMPT).read_text(encoding="utf-8")
-    return estimated_tokens(len(prompt) + sum(len(line) for line in check_vocabulary()))
+    vocabulary = sum(len(line) for line in check_vocabulary())
+    return estimated_tokens(len(prompt) + vocabulary) + entry_points(root).tokens
 
 
 @dataclass(frozen=True, slots=True)
@@ -79,7 +96,7 @@ class Batch:
 def next_batch(root: Path, pending: Sequence[str], attempts: Iterable[FailureTally], budget: int = TURN_BUDGET_TOKENS) -> Batch:
     """The next pending files that fit one turn, in order. A first file past the ceiling comes back alone as too large."""
     kept_attempts = tuple(attempts)
-    fixed = fixed_tokens()
+    fixed = fixed_tokens(root)
     room = max(budget - fixed, 0)
     briefs: list[FileBrief] = []
     spent = 0
