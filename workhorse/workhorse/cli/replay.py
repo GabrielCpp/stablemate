@@ -13,7 +13,7 @@ from typing import NoReturn
 
 from pydantic import ValidationError
 
-from workhorse import gitstate, otel, turnkey
+from workhorse import gitstate, otel, sessions, turnkey
 from workhorse.cli.run import backend_for_profile
 from workhorse.config_run import RunConfig
 from workhorse.records import TreeStart
@@ -147,7 +147,7 @@ def _run_measured(
         reply = runner.turn(
             prompt,
             record.node,
-            None,
+            sessions.chain_path(directory, record.node),
             model=record.model,
             timeout=record.timeout_s if record.timeout_s is not None else math.inf,
             budget_scale=record.timeout_scale,

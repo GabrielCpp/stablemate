@@ -11,7 +11,7 @@ from typing import Any
 import pytest
 
 from _fakes import FakeBackend, FakeClock
-from workhorse import gitstate, otel
+from workhorse import gitstate, otel, sessions
 from workhorse.cli import replay
 from workhorse.config_run import AgentResilience
 from workhorse.runner import ladder
@@ -121,7 +121,8 @@ def test_each_repeat_starts_from_the_recorded_tree_with_the_recorded_settings(tm
     call = runner.calls[0]
     assert call["prompt"] == "Write the page."
     assert call["node"] == "write-page"
-    assert call["session"] is None
+    assert call["session"] == sessions.chain_path(first.directory, "write-page")
+    assert runner.calls[1]["session"] == sessions.chain_path(second.directory, "write-page")
     assert call["model"] == "some/model"
     assert call["timeout"] == 1800
     assert call["budget_scale"] == 2.0
