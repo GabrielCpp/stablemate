@@ -29,6 +29,13 @@ File type under `docs/features/<service>/flows/`, `type: flow` in frontmatter.
 walk is only worth recording if there is a state it begins in and a state it ends in that a
 scenario can assert.
 
+On a `cli`, `start:` is observed before the first step, in the working directory the walk
+begins in. No command has run at that moment, so its `verify:` is
+`absent(subject="<file>")` on the exact relative path of a file the walk goes on to create.
+A check that reads a command's output, or that compares the directory either side of a run,
+has nothing to read there, and the compiler refuses it as `uncompilable-claim`. A starting
+world that holds files is stated on `fixture:` instead.
+
 A flow's claims are about the world its steps left behind, and that world is the world they
 started in plus the walk — so the starting world is part of the claim, and the flow states it.
 `- fixture: <name> [args] — <state it leaves>` arranges it before the first step. A flow whose
