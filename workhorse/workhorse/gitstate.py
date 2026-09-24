@@ -16,7 +16,7 @@ from workhorse.records import TreeStart
 
 TIMEOUT_S = 5.0
 
-SNAPSHOT_TIMEOUT_S = 60.0
+TREE_TIMEOUT_S = 60.0
 
 DEFAULT_TTL_S = 5.0
 
@@ -78,7 +78,7 @@ def _git_on_index(path: str | Path, index: Path, *args: str) -> str | None:
             ["git", "-C", str(path), *args],
             capture_output=True,
             text=True,
-            timeout=SNAPSHOT_TIMEOUT_S,
+            timeout=TREE_TIMEOUT_S,
             check=False,
             env={**os.environ, "GIT_INDEX_FILE": str(index)},
         )
@@ -116,7 +116,7 @@ def _git_or_raise(path: str | Path, *args: str) -> None:
             ["git", "-C", str(path), *args],
             capture_output=True,
             text=True,
-            timeout=SNAPSHOT_TIMEOUT_S,
+            timeout=TREE_TIMEOUT_S,
             check=False,
         )
     except (OSError, subprocess.SubprocessError) as exc:
