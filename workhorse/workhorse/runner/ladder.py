@@ -201,6 +201,38 @@ class AgentRunner:
                 validate=validate,
             )
 
+    def _turn_record(
+        self,
+        node: AgentNode,
+        *,
+        model: str | None,
+        effort: str | None,
+        timeout_scale: float,
+        budgets: tuple[float, float] | None,
+        cwd: str | None,
+        add_dirs: list[str],
+        session_chain: str,
+        resumed: bool,
+    ) -> TurnRecord:
+        """What this turn starts from: its settings, its budgets, and the trees it may touch."""
+        return TurnRecord(
+            node=node.id,
+            backend=self.backend.name,
+            profile=self.profile.name,
+            power=node.power,
+            model=model,
+            effort=effort,
+            timeout_s=None if budgets is None else budgets[0],
+            base_timeout_s=None if budgets is None else budgets[1],
+            timeout_scale=timeout_scale,
+            cwd=cwd,
+            add_dirs=add_dirs,
+            agent=node.agent,
+            session_chain=session_chain,
+            resumed_session=resumed,
+            start=_start_trees(cwd, add_dirs),
+        )
+
     def _run(
         self,
         node: AgentNode,
@@ -274,30 +306,19 @@ class AgentRunner:
             cwd_resolved = Path(rendered_cwd).resolve()
             rendered_add_dirs = [d for d in rendered_add_dirs if Path(d).resolve() != cwd_resolved]
 
-        resumed = bool(resume_session and session_id_path and session_id_path.exists())
         if run_dir is not None:
-            _write_turn_record(
-                TurnRecord(
-                    node=node_id,
-                    backend=self.backend.name,
-                    profile=self.profile.name,
-                    power=node.power,
-                    model=model,
-                    effort=node_effort,
-                    timeout_s=None if unbounded else silence_budget,
-                    base_timeout_s=None if unbounded else base_timeout,
-                    timeout_scale=timeout_scale,
-                    cwd=rendered_cwd,
-                    add_dirs=rendered_add_dirs,
-                    agent=node.agent,
-                    session_chain=session_chain,
-                    resumed_session=resumed,
-                    start=_start_trees(rendered_cwd, rendered_add_dirs),
-                ),
-                rendered_prompt,
-                run_dir,
-                visit_dir,
+            record = self._turn_record(
+                node,
+                model=model,
+                effort=node_effort,
+                timeout_scale=timeout_scale,
+                budgets=None if unbounded else (silence_budget, base_timeout),
+                cwd=rendered_cwd,
+                add_dirs=rendered_add_dirs,
+                session_chain=session_chain,
+                resumed=bool(resume_session and session_id_path and session_id_path.exists()),
             )
+            _write_turn_record(record, rendered_prompt, run_dir, visit_dir)
 
         if not resume_session and session_id_path and session_id_path.exists():
             session_id_path.unlink()
