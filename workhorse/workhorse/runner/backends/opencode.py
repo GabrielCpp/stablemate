@@ -53,7 +53,7 @@ class _OpenCodeEvents:
             state.diagnostics.append(str(msg)[:500])
 
 
-_OPENCODE_VARIANT = {"low": "minimal", "high": "high", "xhigh": "max", "max": "max"}
+_OPENCODE_VARIANT = {"low": "minimal", "medium": "", "high": "high", "xhigh": "max", "max": "max"}
 
 _OPENCODE_OUTPUT_TOKEN_MAX_ENV = "OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX"
 _OPENCODE_OUTPUT_TOKEN_MAX = "131072"
@@ -246,8 +246,9 @@ class OpenCodeBackend(JsonlBackend):
         ]
         if model:
             cmd += ["-m", model]
-        if effort and _OPENCODE_VARIANT.get(effort):
-            cmd += ["--variant", _OPENCODE_VARIANT[effort]]
+        variant = _OPENCODE_VARIANT.get(effort, effort) if effort else ""
+        if variant:
+            cmd += ["--variant", variant]
         if sid:
             cmd += ["--session", sid]
             print(f"[{node_id}] 🔄 Resuming opencode session: {sid[:8]}...", flush=True)

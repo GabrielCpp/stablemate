@@ -381,7 +381,7 @@ model = "openrouter/xiaomi/mimo-v2.5"
 | Invocation | `cline --json` (agentic loop) | `opencode run --format json` (agentic loop) |
 | Output | NDJSON events | NDJSON events |
 | Session resume | by id (`--id`) | by id (`--session`) |
-| Reasoning effort | `--thinking` (none/low/medium/high/xhigh) | `--variant` (minimal/high/max) |
+| Reasoning effort | `--thinking` (none/low/medium/high/xhigh) | `--variant` (minimal/high/max, or any other effort verbatim, such as a model's own `none`) |
 | Usage reported | tokens, cache split, cost and duration, in one terminal event | tokens and cost, summed across per-step events |
 
 **Pin the upstream endpoint — it is the largest cost lever, not a tuning detail.**

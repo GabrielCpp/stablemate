@@ -773,6 +773,16 @@ def test_opencode_effort_variant_mapping_and_omit():
     assert "--variant" not in captured["cmd"]
 
 
+def test_opencode_effort_outside_the_levels_names_the_variant():
+    sidp = Path(tempfile.mkdtemp()) / ".s"
+    for effort in ("none", "thinking"):
+        fake, captured = _fake_stream(
+            turn.TurnState(result_text="X", session_id="s")
+        )
+        _run_turn(OpenCodeBackend(fake), "P", "n", sidp, model="m", effort=effort)
+        assert captured["cmd"][captured["cmd"].index("--variant") + 1] == effort
+
+
 def test_opencode_pins_small_model_to_turn_model():
     """A turn with a model pins opencode's title/summary helper (`small_model`) to it via OPENCODE_CONFIG_CONTENT — the helper has no CLI flag, and without the pin it inherits whatever provider the machine's opencode config drifts to (an OpenRouter credit wall on the title call once slept a run for 6 days)."""
     with _config(""):
