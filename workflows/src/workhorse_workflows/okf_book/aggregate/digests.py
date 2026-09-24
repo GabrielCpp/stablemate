@@ -7,6 +7,7 @@ from pathlib import Path
 
 from ostler import markdown
 from ostler.model import document_anchors
+from ostler.stamp import unstamp_text
 
 
 def _digest(text: str) -> str:
@@ -14,10 +15,13 @@ def _digest(text: str) -> str:
 
 
 def node_digests(root: Path, pages: Iterable[str]) -> dict[str, str]:
-    """Each page, and each of its headed sections as `page#anchor`, keyed to a digest of its text. A section's text holds its subsections."""
+    """Each page, and each of its headed sections as `page#anchor`, keyed to a digest of its text. A section's text holds its subsections.
+
+    A `code:` bullet's stamp is not text a judge weighs, so a stamp leaves every digest as it was.
+    """
     digests: dict[str, str] = {}
     for page in pages:
-        text = (root / page).read_text(encoding="utf-8")
+        text = unstamp_text((root / page).read_text(encoding="utf-8"))
         digests[page] = _digest(text)
         doc = markdown.split(text)
         anchors = document_anchors(doc)
