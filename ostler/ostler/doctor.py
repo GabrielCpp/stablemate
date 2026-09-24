@@ -22,7 +22,7 @@ from ostler.model import Graph, Epic, Story, UINode, read_doc, required_section_
 from ostler.path import features_root as features_root_of, specs_root_in
 from ostler.provenance import checkout_for
 from ostler.qa import (captures as captures_mod, fixtures as fixtures_mod, references,
-                       runbook as runbook_mod, sensitivity)
+                       runbook as runbook_mod, sensitivity, stack as stack_mod)
 from ostler.qa.compile import Gap
 from ostler.qa.context import RELATION_KEYS, relation_subject
 from ostler.qa.outcome import QaOutcome
@@ -803,6 +803,7 @@ def _check_fixture_grammar(graph: Graph, f: list[Finding]) -> None:
                     f"{step.id}: no `run:` bullet — this step would run nothing",
                     path=rel, line=step.line))
             _check_step_command_bullets(step, rel, f)
+            _check_step_command_syntax(step, rel, f)
 
     _check_fixture_needs_cycles(graph, fixtures, f)
     _check_needs_binding_args(graph, by_name, f)
@@ -2104,6 +2105,7 @@ def _check_runbook(graph: Graph, f: list[Finding]) -> None:
             if kind == "service":
                 services.append(step)
             _check_step_command_bullets(step, rel, f)
+            _check_step_command_syntax(step, rel, f)
             _check_step_not_scenario_frame(step, rel, f)
 
         if node.id not in stacks:
@@ -2164,6 +2166,25 @@ def _check_step_command_bullets(step: UINode, rel: str, f: list[Finding]) -> Non
             f"error instead of running; write a shell command that exits non-zero on "
             f"failure (e.g. `curl -fsS <url>`), or move this check onto the `verify:` of "
             f"the claim it actually observes",
+            path=rel, line=step.line, ref=refs_mod.bullet_ref(step.id, key),
+            suggestion=f"- {key}: curl -fsS <url>"))
+
+
+def _check_step_command_syntax(step: UINode, rel: str, f: list[Finding]) -> None:
+    """A `run:`/`health:` bullet is handed to the shell verbatim, so it must parse as shell."""
+    for key in _STEP_COMMAND_KEYS:
+        value = runbook_mod.bullet_value(step.meta, key)
+        if not value or checks.is_check_expression(value):
+            continue
+        refused = stack_mod.shell_syntax_error(value)
+        if not refused:
+            continue
+        f.append(Finding(
+            "error", "unparsable-command",
+            f"{step.id}: `{key}:` ({value}) is not a shell command the shell can parse ({refused}). "
+            f"`{key}:` is run with `bash -c` exactly as written, so it holds one command and no prose. "
+            f"Describe what the command proves in the step's body, and write here a command "
+            f"that exits non-zero on failure",
             path=rel, line=step.line, ref=refs_mod.bullet_ref(step.id, key),
             suggestion=f"- {key}: curl -fsS <url>"))
 

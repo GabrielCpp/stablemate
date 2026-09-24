@@ -798,6 +798,27 @@ def test_doctor_stays_quiet_on_a_real_command(tmp_path: Path) -> None:
                  "- kind: service\n- run: ./serve.sh\n"
                  "- health: curl -fsS http://localhost:1/healthz\n")
     assert "check-expression-as-command" not in codes(tmp_path)
+    assert "unparsable-command" not in codes(tmp_path)
+
+
+def test_doctor_reports_prose_the_shell_cannot_parse_on_a_health_bullet(tmp_path: Path) -> None:
+    (tmp_path / ".git").mkdir()
+    make_runbook(tmp_path, "---\ntype: runbook\n---\n\n# QA\n\n- driver: web\n"
+                 "- entry-url: http://localhost:1\n\n## Steps\n\n### serve\n\n"
+                 "- kind: service\n- run: ./serve.sh\n"
+                 "- health: exits 0 and prints the usage [parser](../cli.py)\n")
+    found = codes(tmp_path)
+    assert "unparsable-command" in found
+    assert "check-expression-as-command" not in found
+
+
+def test_doctor_leaves_a_check_expression_to_its_own_finding(tmp_path: Path) -> None:
+    (tmp_path / ".git").mkdir()
+    make_runbook(tmp_path, "---\ntype: runbook\n---\n\n# QA\n\n- driver: web\n"
+                 "- entry-url: http://localhost:1\n\n## Steps\n\n### serve\n\n"
+                 "- kind: service\n- run: ./serve.sh\n"
+                 '- health: http_status(200, path="/healthz")\n')
+    assert "unparsable-command" not in codes(tmp_path)
 
 
 def test_bring_up_stacks_stops_at_the_first_failure(tmp_path: Path, monkeypatch) -> None:

@@ -80,6 +80,18 @@ def _shell_argv(cmd: str) -> list[str]:
     return [_SHELL, "-c", cmd]
 
 
+def shell_syntax_error(cmd: str) -> str:
+    """Why the shell that runs *cmd* refuses to parse it, or empty when it parses or the shell cannot be asked."""
+    try:
+        done = subprocess.run([_SHELL, "-n", "-c", cmd], capture_output=True, text=True, timeout=10)
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    if done.returncode == 0:
+        return ""
+    first_line = next(iter(done.stderr.strip().splitlines()), "")
+    return first_line or f"exit {done.returncode}"
+
+
 BOOT_TIMEOUT_S = 30.0     # a foreground dev server; overridable via a manifest `boot_timeout`
 POLL_INTERVAL_S = 0.5
 TERM_GRACE_S = 5.0
