@@ -342,6 +342,7 @@ class Engine:
                     resume_session=bool(session),
                     session_chain=session or "",
                     run_dir=writer.run_dir,
+                    visit_dir=writer.visit_dir(node_id),
                     validate=(
                         returns.model_validate
                         if isinstance(returns, type) and issubclass(returns, BaseModel)

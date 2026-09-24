@@ -92,6 +92,14 @@ class LaunchRecord(BaseModel):
     container: bool = False
 
 
+class TreeStart(BaseModel):
+    """One directory's working tree as a turn found it, untracked files included."""
+
+    path: str = ""
+    head: str = ""
+    tree: str = ""
+
+
 def parse_launch_record(text: str) -> LaunchRecord:
     """Parse a `launch.json` body."""
     return LaunchRecord.model_validate_json(text)
@@ -120,6 +128,7 @@ __all__ = [
     "NodePhase",
     "PyflowCheckpoint",
     "RunRecord",
+    "TreeStart",
     "parse_checkpoint",
     "parse_run_record",
 ]

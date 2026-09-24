@@ -125,6 +125,7 @@ runs/
     │                             # <gen>-<seq>-<node>__<session-id>.{jsonl,d,tee.jsonl,meta.json}
     └── <step-id>/                # the LATEST visit of this step
         ├── prompt.md             # rendered prompt, written before agent invocation
+        ├── turn.json             # what the turn started with: model, effort, budgets, dirs, trees
         ├── output.json           # extracted JSON outputs
         └── context_after.json    # context state after this step
 ```
@@ -136,6 +137,13 @@ prompt above 96 KiB also uses this artifact for delivery: OpenCode and Copilot a
 it natively, Cline receives a short instruction to read it, and stdin-native Claude
 and Codex continue receiving the complete prompt on stdin. This keeps large prompt
 content out of the subprocess argument vector and below operating-system argv limits.
+Beside it, `turn.json` records what the turn was started with: the backend, profile,
+power, model and effort, the budgets, the working directory and extra dirs, the agent
+profile, and each of those directories as a git tree. That tree holds the working
+copy as the turn found it, uncommitted edits and untracked files included, written
+through a scratch index so the repository's own index is untouched and no ref is
+created. The visit's `turns/` directory gets `turn.json` and `prompt.md` before the
+turn runs, so a turn that failed can be started again from them on its own.
 A `<step-id>/` directory is overwritten on every visit, so a node in a loop leaves only
 its last prompt there; `turns/` keeps the earlier ones, which are what a node that
 re-decided the same thing five times has to be diagnosed from. The

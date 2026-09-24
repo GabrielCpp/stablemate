@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -16,10 +16,11 @@ from workhorse._vendor.stablemate_core.config import (
     resolve_power,
     select_profile,
 )
-from workhorse import control, otel, reload
+from workhorse import control, gitstate, otel, reload
 from workhorse.artifacts import write_unlinked
 from workhorse.config_run import AgentResilience, RunConfig
 from workhorse.context import WorkflowContext
+from workhorse.records import TreeStart
 from workhorse.runner.backends import AgentProfile
 from workhorse.runner.caps import cap_delay_seconds, sleep_with_notice
 from workhorse._vendor.stablemate_core.clock import SYSTEM_CLOCK, Clock
@@ -37,6 +38,7 @@ from workhorse.runner.reframe import (
     timeout_retry_prompt,
 )
 from workhorse.runner.spec import AgentNode
+from workhorse.runner.turn_record import TurnRecord
 from workhorse.runner.waits import (
     RecoveryWaitBudget,
     active_recovery_wait_budget,
@@ -56,6 +58,26 @@ def _write_prompt_for_inspection(node_id: str, prompt: str, run_dir: Path | None
     prompt_path.parent.mkdir(parents=True, exist_ok=True)
     write_unlinked(prompt_path, prompt)
     return prompt_path
+
+
+def _write_turn_record(
+    record: TurnRecord, prompt: str, run_dir: Path | None, visit_dir: Path | None
+) -> None:
+    """Persist what this turn starts from, so it can be started again on its own."""
+    if run_dir is None:
+        return
+    text = record.model_dump_json(indent=2)
+    write_unlinked(run_dir / record.node / "turn.json", text)
+    if visit_dir is None:
+        return
+    visit_dir.mkdir(parents=True, exist_ok=True)
+    write_unlinked(visit_dir / "turn.json", text)
+    write_unlinked(visit_dir / "prompt.md", prompt)
+
+
+def _start_trees(cwd: str | None, add_dirs: Sequence[str]) -> list[TreeStart]:
+    """The working trees this turn may touch, as it finds them."""
+    return [gitstate.snapshot_tree(path) for path in (cwd or ".", *add_dirs)]
 
 
 def _print_prompt_path(node_id: str, prompt_path: Path) -> None:
@@ -161,6 +183,7 @@ class AgentRunner:
         resume_session: bool = False,
         session_chain: str = "",
         run_dir: Path | None = None,
+        visit_dir: Path | None = None,
         validate: Callable[[dict[str, Any]], object] | None = None,
     ) -> tuple[str, dict[str, Any]]:
         """Run one node with cumulative recovery waits that nested retries cannot renew."""
@@ -174,6 +197,7 @@ class AgentRunner:
                 resume_session=resume_session,
                 session_chain=session_chain,
                 run_dir=run_dir,
+                visit_dir=visit_dir,
                 validate=validate,
             )
 
@@ -187,6 +211,7 @@ class AgentRunner:
         resume_session: bool = False,
         session_chain: str = "",
         run_dir: Path | None = None,
+        visit_dir: Path | None = None,
         validate: Callable[[dict[str, Any]], object] | None = None,
     ) -> tuple[str, dict[str, Any]]:
         """Render the prompt, invoke the agent, and parse its declared outputs — resiliently."""
@@ -248,6 +273,31 @@ class AgentRunner:
         if rendered_cwd and rendered_add_dirs:
             cwd_resolved = Path(rendered_cwd).resolve()
             rendered_add_dirs = [d for d in rendered_add_dirs if Path(d).resolve() != cwd_resolved]
+
+        resumed = bool(resume_session and session_id_path and session_id_path.exists())
+        if run_dir is not None:
+            _write_turn_record(
+                TurnRecord(
+                    node=node_id,
+                    backend=self.backend.name,
+                    profile=self.profile.name,
+                    power=node.power,
+                    model=model,
+                    effort=node_effort,
+                    timeout_s=None if unbounded else silence_budget,
+                    base_timeout_s=None if unbounded else base_timeout,
+                    timeout_scale=timeout_scale,
+                    cwd=rendered_cwd,
+                    add_dirs=rendered_add_dirs,
+                    agent=node.agent,
+                    session_chain=session_chain,
+                    resumed_session=resumed,
+                    start=_start_trees(rendered_cwd, rendered_add_dirs),
+                ),
+                rendered_prompt,
+                run_dir,
+                visit_dir,
+            )
 
         if not resume_session and session_id_path and session_id_path.exists():
             session_id_path.unlink()

@@ -101,6 +101,7 @@ class ScriptedRunner(AgentRunner):
         resume_session: bool = False,
         session_chain: str = "",
         run_dir: Path | None = None,
+        visit_dir: Path | None = None,
         validate: Callable[[dict[str, object]], object] | None = None,
     ) -> tuple[str, dict[str, object]]:
         self.turns[node.id] += 1

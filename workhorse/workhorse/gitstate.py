@@ -3,13 +3,20 @@
 from __future__ import annotations
 
 import json
+import os
+import shutil
 import subprocess
+import tempfile
 import time
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
+from workhorse.records import TreeStart
+
 TIMEOUT_S = 5.0
+
+SNAPSHOT_TIMEOUT_S = 60.0
 
 DEFAULT_TTL_S = 5.0
 
@@ -62,6 +69,40 @@ def _git(path: str | Path, *args: str) -> str:
     if done.returncode != 0:
         return ""
     return done.stdout.strip()
+
+
+def _git_on_index(path: str | Path, index: Path, *args: str) -> str | None:
+    """One git command in ``path`` against the index file ``index``, or None when it fails."""
+    try:
+        done = subprocess.run(
+            ["git", "-C", str(path), *args],
+            capture_output=True,
+            text=True,
+            timeout=SNAPSHOT_TIMEOUT_S,
+            check=False,
+            env={**os.environ, "GIT_INDEX_FILE": str(index)},
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if done.returncode != 0:
+        return None
+    return done.stdout.strip()
+
+
+def snapshot_tree(path: str | Path) -> TreeStart:
+    """``path``'s working tree as a git tree, untracked files included, the real index untouched."""
+    head = _git(path, "rev-parse", "HEAD")
+    if not head:
+        return TreeStart(path=str(path))
+    index = _git(path, "rev-parse", "--git-path", "index")
+    with tempfile.TemporaryDirectory() as scratch:
+        copy = Path(scratch) / "index"
+        if (Path(path) / index).is_file():
+            _ = shutil.copyfile(Path(path) / index, copy)
+        if _git_on_index(path, copy, "add", "--all") is None:
+            return TreeStart(path=str(path), head=head)
+        tree = _git_on_index(path, copy, "write-tree") or ""
+    return TreeStart(path=str(path), head=head, tree=tree)
 
 
 def _identity(path: str | Path) -> tuple[str, str, str]:
