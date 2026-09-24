@@ -6,6 +6,9 @@
   of that claim. A check that also passes on a violation fails. A pattern that matches a
   fragment of a message is such a check when the claim says the message names a path or a
   value. The `run:` above it names that path or value, so the pattern quotes it.
+- A step's `verify:` is the exception. It is a link to the output that shows the step ran, not
+  a check, and it states no claim about the product. A claim that output shows goes on the node
+  that makes it, under that node's own `verify:`.
 - A page's claims run as one scenario. Every fixture the page names is put in place first,
   then each claim's call runs in page order, so each check reads the state the calls above it
   left. A claim whose check reads a file or a state has a `fixture:` or a claim above it that
