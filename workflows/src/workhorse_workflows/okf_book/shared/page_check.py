@@ -152,12 +152,17 @@ def _gap_line(gap: Gap) -> str:
     return f"{gap.obligation_id} does not compile: {gap.kind}: {gap.detail}"
 
 
-def _gap_problems(root: Path, service: str, pages: list[str]) -> list[str]:
+def _gap_problems(root: Path, service: str, pages: list[str], known: frozenset[str]) -> list[str]:
     wanted = frozenset(pages)
+    by_fix: dict[tuple[str, str], list[str]] = {}
+    for gap in book_gaps(root, (service,)):
+        if gap_page(gap) in wanted and gap_side(gap) is Side.BOOK and _gap_line(gap) not in known:
+            by_fix.setdefault((gap.kind, gap.detail), []).append(gap.obligation_id)
     return [
-        _gap_line(gap)
-        for gap in book_gaps(root, (service,))
-        if gap_page(gap) in wanted and gap_side(gap) is Side.BOOK
+        f"{ids[0]} does not compile: {kind}: {detail}"
+        if len(ids) == 1
+        else f"each of {len(ids)} claims does not compile: {kind}: {detail} The claims: {', '.join(ids)}"
+        for (kind, detail), ids in by_fix.items()
     ]
 
 
@@ -183,6 +188,4 @@ def page_problems(
     Reach is left out: a new page nothing reaches is deleted and charged on its own, and a committed one is garbage collection's.
     """
     pages = sorted(p for p in frozenset(changed) if p.endswith(".md") and (root / p).is_file())
-    known = frozenset(inherited_gaps)
-    gaps = (line for line in _gap_problems(root, service, pages) if line not in known)
-    return (*_doctor_problems(root, pages), *gaps)
+    return (*_doctor_problems(root, pages), *_gap_problems(root, service, pages, frozenset(inherited_gaps)))

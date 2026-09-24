@@ -21,7 +21,7 @@ from workhorse_workflows.okf_book.aggregate.nodes.job_check import (
 )
 from workhorse_workflows.okf_book.shared.confine import snapshot
 from workhorse_workflows.okf_book.shared.entries import FEATURES_DIR, EntryLink, write_entries
-from workhorse_workflows.okf_book.shared.page_check import page_problems
+from workhorse_workflows.okf_book.shared.page_check import inherited_gaps, page_problems
 
 App = Callable[[str], Path]
 BOOK = f"{FEATURES_DIR}/tally"
@@ -50,6 +50,17 @@ def test_a_page_the_turn_only_added_to_is_checked(app: App, tmp_path: Path) -> N
     assert all("does not compile" in line for line in report.lines)
 
 
+def test_gaps_that_share_a_fix_are_printed_once_with_every_claim_they_hold(app: App) -> None:
+    repo = app("tally-cli")
+    single = [line.split(" does not compile: ") for line in inherited_gaps(repo, "tally", frozenset()) if line.startswith(f"okf:{ROOT_PAGE}#")]
+
+    grouped = [line for line in page_problems(repo, "tally", [ROOT_PAGE]) if "does not compile" in line]
+
+    assert len(grouped) == len({fix for _, fix in single}) < len(single)
+    claims = [claim for line in grouped for claim in line.split(" The claims: ")[1].split(", ")]
+    assert sorted(claims) == sorted(claim for claim, _ in single)
+
+
 def test_a_page_the_job_owns_is_checked_before_the_turn_changes_it(app: App, tmp_path: Path) -> None:
     repo = app("tally-cli")
     check = JobCheck(root=repo, service="tally", before=snapshot(repo), owned_pages=(ROOT_PAGE,))
@@ -61,7 +72,7 @@ def test_a_page_the_job_owns_is_checked_before_the_turn_changes_it(app: App, tmp
 
 def test_the_gaps_the_job_inherits_are_not_printed(app: App, tmp_path: Path) -> None:
     repo = app("tally-cli")
-    inherited = page_problems(repo, "tally", [ROOT_PAGE])
+    inherited = inherited_gaps(repo, "tally", frozenset())
     check = JobCheck(root=repo, service="tally", before=snapshot(repo), inherited_gaps=inherited)
     _append(repo, ROOT_PAGE, "\nTally keeps a ledger.\n")
 
