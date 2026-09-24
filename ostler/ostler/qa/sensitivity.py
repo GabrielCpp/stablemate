@@ -379,27 +379,42 @@ def _printed(stream: str, text: str) -> Any:
     )
 
 
-def _texts(args: Mapping[str, Any]) -> tuple[str, str] | str:
+@dataclass(frozen=True)
+class _WitnessTexts:
+    """A text holding what a call names, and a text holding none of it."""
+
+    matching: str
+    other: str
+
+
+@dataclass(frozen=True)
+class _NoWitness:
+    """Why no pair of texts can tell a call's pass from its failure."""
+
+    reason: str
+
+
+def _witness_texts(args: Mapping[str, Any]) -> _WitnessTexts | _NoWitness:
     """A text holding what the call's `text=` and `matches=` name and one holding neither, or why no such pair exists."""
     pattern = str(args["matches"]) if "matches" in args else None
     expected_output = str(args.get("text", ""))
     if pattern is not None and re.search(pattern, expected_output) is None:
         matched = _matching(pattern)
         if matched is None:
-            return f"no output can be invented for /{pattern}/"
+            return _NoWitness(f"no output can be invented for /{pattern}/")
         expected_output = f"{expected_output} {matched}".strip()
     other_output = _avoiding(pattern, str(args["text"]) if "text" in args else None)
     if other_output is None:
-        return f"every output carries something /{pattern}/ matches"
-    return expected_output, other_output
+        return _NoWitness(f"every output carries something /{pattern}/ matches")
+    return _WitnessTexts(matching=expected_output, other=other_output)
 
 
 def _plan_stream(stream: str, args: Mapping[str, Any]) -> tuple[Any, list[tuple[str, Any]], str]:
     """A tool result that printed what the call names on `stream`, and the results that printed it elsewhere or not at all."""
-    texts = _texts(args)
-    if isinstance(texts, str):
-        return None, [], texts
-    expected_output, other_output = texts
+    texts = _witness_texts(args)
+    if isinstance(texts, _NoWitness):
+        return None, [], texts.reason
+    expected_output, other_output = texts.matching, texts.other
     other_stream = "stderr" if stream == "stdout" else "stdout"
     return _printed(stream, expected_output), [
         (f"the command printed something else on {stream}", _printed(stream, other_output)),
@@ -408,10 +423,10 @@ def _plan_stream(stream: str, args: Mapping[str, Any]) -> tuple[Any, list[tuple[
 
 def _plan_contents(args: Mapping[str, Any]) -> tuple[Any, list[tuple[str, Any]], str]:
     """A working directory whose file holds what the call names, and the directories where it holds something else or is not there."""
-    texts = _texts(args)
-    if isinstance(texts, str):
-        return None, [], texts
-    expected, other = texts
+    texts = _witness_texts(args)
+    if isinstance(texts, _NoWitness):
+        return None, [], texts.reason
+    expected, other = texts.matching, texts.other
     subject = str(args["subject"])
     return {subject: expected}, [
         ("the file holds something else", {subject: other}),

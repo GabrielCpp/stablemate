@@ -599,7 +599,7 @@ def _file_text(observed: Any, subject: str) -> str | None:
     return value if isinstance(value, str) else json.dumps(value)
 
 
-def _read_file(observed: Any, args: Mapping[str, Any]) -> tuple[bool, Any]:
+def _document_named_by_file(observed: Any, args: Mapping[str, Any]) -> tuple[bool, Any]:
     """What a check reads: the file its `file=` names in a working directory, or what was observed when it names none."""
     if "file" not in args:
         return True, observed
@@ -843,7 +843,7 @@ def _matchable(value: Any) -> str:
 
 
 def _verify_json_path(observed: Any, args: Mapping[str, Any]) -> tuple[bool, Any, Any]:
-    present, document = _read_file(observed, args)
+    present, document = _document_named_by_file(observed, args)
     if not present:
         return False, {"file": args["file"], "present": False}, {"file": "present"}
     resolved, value = _resolve_path(document, args["path"])
@@ -890,7 +890,7 @@ def _verify_keys_unchanged(observed: Any, args: Mapping[str, Any]) -> tuple[bool
 
 def _verify_count(observed: Any, args: Mapping[str, Any]) -> tuple[bool, Any, Any]:
     """How many of `subject` there are — the subject resolved, not taken on trust."""
-    present, document = _read_file(observed, args)
+    present, document = _document_named_by_file(observed, args)
     if not present:
         return False, {"file": args["file"], "present": False}, args["equals"]
     reader = getattr(document, "json", None)
