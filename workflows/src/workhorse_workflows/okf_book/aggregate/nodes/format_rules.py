@@ -36,14 +36,23 @@ def _place(node_type: UINodeType, folder: str) -> str:
     return f"a `### <id>` section under `## {node_type.heading}`{named}"
 
 
+def _binds_to_claim(bullet: BulletKey) -> bool:
+    return bool(bullet.check or bullet.performs or bullet.arrange)
+
+
 def _type_rules(node_type: UINodeType, folder: str) -> str:
     lines = [f"### {node_type.name}", "", f"Written as {_place(node_type, folder)}."]
     if node_type.required_sections:
         headings = ", ".join(f"`## {spec.heading}`" for spec in node_type.required_sections)
         lines.append(f"It must hold {headings}.")
+    claims = any(bullet.normative or bullet.refusal for bullet in node_type.bullet_keys)
+    bound = [bullet for bullet in node_type.bullet_keys if claims and _binds_to_claim(bullet)]
     if node_type.bullet_keys:
         lines.extend(("Its bullets, in this order:", ""))
-        lines.extend(_bullet_line(bullet) for bullet in node_type.bullet_keys)
+        lines.extend(_bullet_line(bullet) for bullet in node_type.bullet_keys if bullet not in bound)
+    if bound:
+        lines.extend(("", "Each claim is followed by its own bullets, in this order:", ""))
+        lines.extend(_bullet_line(bullet) for bullet in bound)
     return "\n".join(lines)
 
 
