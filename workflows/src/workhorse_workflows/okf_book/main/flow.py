@@ -58,6 +58,7 @@ class OkfBook(BookFlow):
         listing = self.agent(
             "main/prompts/list-entry-points.md",
             returns=EntryPointListing,
+            power="medium",
             args=context.template_args(),
         )
         return Continue(listing, self.stub_surface, index=index, listing=listing)

@@ -180,6 +180,7 @@ class Aggregate(BookFlow):
             else "aggregate/prompts/write-operations.md" if job.kind is JobKind.OPERATIONS
             else "aggregate/prompts/write-flows.md",
             returns=Written,
+            power="high",
             args={
                 "service": job.service,
                 "folder": service_folder(job.service),
@@ -256,6 +257,7 @@ class Aggregate(BookFlow):
         verdict = self.agent(
             "aggregate/prompts/verify-page.md",
             returns=Verdict,
+            power="medium",
             args={
                 "pages": [body.template_arg() for body in page_bodies(root, judged.kept)],
                 "contracts": [contract.model_dump() for contract in numbered],

@@ -83,6 +83,7 @@ class Exercise(BookFlow):
         pick = self.agent(
             "exercise/prompts/pick-flows.md",
             returns=FlowPick,
+            power="medium",
             args={"scenarios": [s.model_dump() for s in split.read], "written": list(written.kept)},
         )
         known = {s.id for s in split.read}
@@ -137,6 +138,7 @@ class Exercise(BookFlow):
         judgement = self.agent(
             "exercise/prompts/judge-failure.md",
             returns=Judgement,
+            power="medium",
             args={
                 "scenario": scenario,
                 "covers": list(covers.kept),

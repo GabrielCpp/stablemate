@@ -42,6 +42,7 @@ class Document(BookFlow):
         reply = self.agent(
             "document/prompts/document-files.md",
             returns=ContractReply,
+            power="medium",
             args={
                 "files": [brief.template_arg() for brief in batch.briefs],
                 "entry_points": list(entries.kept),
