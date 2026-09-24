@@ -152,7 +152,7 @@ class Aggregate(BookFlow):
             return Continue(ledger.attempts, self.stamp_job, ledger=ledger)
         return self._rewrite(ledger)
 
-    def _settle(self, ledger: JobLedger) -> None:
+    def _mark_done_or_blocked(self, ledger: JobLedger) -> None:
         subject = ledger.job.subject
         if not ledger.exhausted:
             _ = self.work.mark(subject, DONE, JOB)
@@ -296,7 +296,7 @@ class Aggregate(BookFlow):
 
     def block_job(self, ledger: JobLedger) -> Continue[...]:
         """Hand the abandoned job to the operator, and settle it as blocked so no later turn reopens it."""
-        self._settle(ledger)
+        self._mark_done_or_blocked(ledger)
         return self._next_job(ledger.job.subject)
 
     def stamp_job(self, ledger: JobLedger) -> Continue[...]:
@@ -316,7 +316,7 @@ class Aggregate(BookFlow):
         for path in changed:
             verb = "write" if (root / path).exists() else "delete"
             _ = commit_paths(root, f"docs({job.service}): {verb} {Path(path).stem}", path)
-        self._settle(ledger)
+        self._mark_done_or_blocked(ledger)
         return Continue(changed, self.pick_garbage, job=job, created=created)
 
     def pick_garbage(self, job: Job, created: tuple[str, ...]) -> Continue[...]:

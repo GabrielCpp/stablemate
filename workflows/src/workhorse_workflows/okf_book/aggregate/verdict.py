@@ -135,7 +135,7 @@ def cleared_after(
     stated_on = _claims_stated_on(verdict, claims)
     cleared_now: dict[str, ClearedNode] = {}
     for node in _judged_nodes_cleared(verdict, judged_node_digests, cleared_by_node):
-        kept = cleared_by_node[node].claims if node in cleared_by_node else ()
-        stated = tuple(sorted(stated_on.get(node, set()) | set(kept)))
+        claims_cleared_before = cleared_by_node[node].claims if node in cleared_by_node else ()
+        stated = tuple(sorted(stated_on.get(node, set()) | set(claims_cleared_before)))
         cleared_now[node] = ClearedNode(node=node, digest=judged_node_digests[node], claims=stated)
     return tuple({**cleared_by_node, **cleared_now}.values())
