@@ -59,7 +59,11 @@ holds:
 Every claim you write compiles into a check run against the product, and a page with a claim
 that does not compile is refused. Give each claim a `verify:` from `ostler checks`. Under
 each claim of a `command` or an `invocation`, give a `run:` stating one literal call before
-its `verify:`. Give each flow a `fixture:`, or `fixture: none, because ...`. A `cli`, a `server`, a
+its `verify:`. A `verify:` reads only the call in the `run:` above it: its exit code, its
+output streams, and which files it creates, removes or leaves unchanged. None reads what a
+file holds. So a claim about what a call wrote into a file is seen through a claim below it
+whose `run:` prints that file, or reports what it holds, and whose `verify:` reads that
+output. Give each flow a `fixture:`, or `fixture: none, because ...`. A `cli`, a `server`, a
 `concept` or a `format` states no check of its own, so put no `verify:` on the node
 itself. Check it through the commands, fields and flows under it or linked from it.
 
