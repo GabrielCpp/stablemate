@@ -50,9 +50,9 @@ class RenderedTurn:
     model: str | None
     effort: str | None
     timeout_scale: float
-    base_timeout: float
+    base_timeout_s: float
     silence_budget: float
-    unbounded: bool
+    timeout_unbounded: bool
 
 
 def record_turn_start(
@@ -74,8 +74,8 @@ def record_turn_start(
         power=node.power,
         model=turn.model,
         effort=turn.effort,
-        timeout_s=None if turn.unbounded else turn.silence_budget,
-        base_timeout_s=None if turn.unbounded else turn.base_timeout,
+        timeout_s=None if turn.timeout_unbounded else turn.silence_budget,
+        base_timeout_s=None if turn.timeout_unbounded else turn.base_timeout_s,
         timeout_scale=turn.timeout_scale,
         cwd=turn.cwd,
         add_dirs=list(turn.add_dirs),

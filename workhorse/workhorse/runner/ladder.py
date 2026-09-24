@@ -241,9 +241,9 @@ class AgentRunner:
             model=model,
             effort=node_effort,
             timeout_scale=timeout_scale,
-            base_timeout=base_timeout,
+            base_timeout_s=base_timeout,
             silence_budget=silence_budget,
-            unbounded=unbounded,
+            timeout_unbounded=unbounded,
         )
 
     def _run(
@@ -310,7 +310,7 @@ class AgentRunner:
                     prompt_path=prompt_path,
                     timeout=turn.silence_budget,
                     budget_scale=turn.timeout_scale,
-                    base_timeout_s=turn.base_timeout,
+                    base_timeout_s=turn.base_timeout_s,
                     cwd=turn.cwd, add_dirs=list(turn.add_dirs),
                     effort=turn.effort,
                     validate=validate,
