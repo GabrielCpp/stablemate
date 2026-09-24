@@ -167,3 +167,14 @@ def test_a_node_an_earlier_job_cleared_is_not_faulted_by_a_later_job_while_its_t
     assert FIXTURE in faults
     writes = [*runner.args_of("write-page"), *runner.args_of("write-operations"), *runner.args_of("write-flows")]
     assert not [problem for args in writes for problem in NAMES.validate_python(args["problems"]) if FIXTURE in problem]
+
+
+def test_the_operations_and_flows_judges_read_the_service_and_charge_no_claim_a_page_owes(app: App, run_book: RunBook) -> None:
+    repo = app("tally-cli")
+    runner = _book_runner(repo, PASS, _writer(repo))
+    _ = run_book(WriteOnly(repo_dir=str(repo), surfaces=(TALLY,)), runner)
+
+    for kind in ("operations", "flows"):
+        [args] = [a for a in runner.args_of("verify-page") if a["kind"] == kind]
+        assert args["contracts"] == []
+        assert "tally/cli.py" in [contract["file"] for contract in NUMBERS.validate_python(args["context"])]

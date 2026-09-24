@@ -47,6 +47,20 @@ def job_contracts(root: Path, run_dir: Path, job: Job, budget: int = TURN_BUDGET
     return tuple(kept)
 
 
+def owed_contracts(root: Path, job: Job, contracts: tuple[Contract, ...]) -> tuple[Contract, ...]:
+    """The contracts whose claims the job's pages must state. A page owes all it reads.
+
+    The operations job reads the whole service and owes the stack's files. The flows job reads it too and owes none.
+    A claim of a file a page cites is that page's to state.
+    """
+    if job.kind is JobKind.FLOWS:
+        return ()
+    if job.kind is JobKind.OPERATIONS:
+        stack = stack_files(root, job.service, production_files(root, job.service))
+        return tuple(contract for contract in contracts if contract.file in stack)
+    return contracts
+
+
 def _links_to(story: Path, page: Path) -> bool:
     return any(
         (story.parent / href.strip().split("#", 1)[0]).resolve() == page

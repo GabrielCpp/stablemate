@@ -35,7 +35,26 @@ on the node that changed. A claim one of them states counts as stated.
 {% endfor %}
 
 {% endif %}
-They were written from these contracts:
+{% if context %}
+These contracts say what the rest of the product does. Other pages state their claims, so these
+pages owe none of them. Read them to judge what these pages say about the product:
+
+{% for contract in context %}
+### `{{ contract.file }}`
+
+{{ contract.purpose }}
+
+{% for claim in contract.promises %}
+- {{ claim.text }}
+{% endfor %}
+{% for claim in contract.refusals %}
+- {{ claim.text }}
+{% endfor %}
+{% endfor %}
+
+{% endif %}
+{% if contracts %}
+They were written from these contracts, and they owe each numbered claim:
 
 {% for contract in contracts %}
 ### `{{ contract.file }}`
@@ -48,6 +67,7 @@ They were written from these contracts:
 {% endfor %}
 {% endfor %}
 
+{% endif %}
 The checks a `verify:` may call, each with its arguments and the defect it excludes:
 
 {{ checks }}
@@ -56,6 +76,7 @@ A page passes when every one of these holds:
 
 {% include "aggregate/prompts/_bar.md" %}
 
+{% if contracts %}
 Go through the numbered claims in order, and account for every one. For each claim, find the
 node that states it and read that node's `verify:`. Reply with one finding per claim:
 
@@ -70,12 +91,16 @@ node that states it and read that node's `verify:`. Reply with one finding per c
   form anyway.
 
 Then read every page again, and name each problem no claim covers in `problems`:
+{% else %}
+These pages owe no numbered claim. Leave `claims` empty. Read every page, and name each problem
+on it in `problems`:
+{% endif %}
 
 - `node` is the page and anchor of the node the problem is on, or the page alone when the problem
   is on the page as a whole.
 - `problem` is what is wrong there, as the fix it needs.
-- `expected` is the `verify:` the node needs, in the same form as above, when the problem is about
-  a check. Leave it empty otherwise.
+- `expected` is the `verify:` the node needs, written as `name(arg=value)` with no `verify:`
+  before it, when the problem is about a check. Leave it empty otherwise.
 
 The pages pass when every claim has a node and no problem is named.
 

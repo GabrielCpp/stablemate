@@ -56,7 +56,7 @@ from workhorse_workflows.okf_book.aggregate.verdict import (
     verdict_problems,
 )
 from workhorse_workflows.okf_book.aggregate.nodes.garbage import collectable, delete_book_pages
-from workhorse_workflows.okf_book.aggregate.nodes.job_inputs import job_contracts, job_stories
+from workhorse_workflows.okf_book.aggregate.nodes.job_inputs import job_contracts, job_stories, owed_contracts
 from workhorse_workflows.okf_book.shared.entries import FEATURES_DIR
 from workhorse_workflows.okf_book.shared.jobs import (
     Job,
@@ -301,7 +301,8 @@ class Aggregate(BookFlow):
         if judged.left_out:
             self.logger.warning("%d changed pages are past the verify turn's budget and go unjudged", judged.left_out)
         contracts = job_contracts(root, self.records_dir, job, budget=TURN_BUDGET_TOKENS - fixed - judged.tokens)
-        numbered = numbered_contracts(contracts)
+        owed = owed_contracts(root, job, contracts)
+        numbered = numbered_contracts(owed)
         started = time.monotonic()
         verdict = self.agent(
             "aggregate/prompts/verify-page.md",
@@ -310,6 +311,7 @@ class Aggregate(BookFlow):
             args={
                 "pages": [body.template_arg() for body in page_bodies(root, judged.kept)],
                 "contracts": [contract.model_dump() for contract in numbered],
+                "context": [contract.model_dump() for contract in contracts if contract not in owed],
                 "other_pages": list(other_pages.kept),
                 "other_pages_left_out": other_pages.left_out,
                 "cleared": _cleared_nodes_told(ledger, judged_node_digests),
