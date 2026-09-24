@@ -16,11 +16,11 @@ from workhorse_workflows.okf_book.shared.blockers import Blocker, read_blockers
 from workhorse_workflows.okf_book.shared.contracts import read_contracts
 from workhorse_workflows.okf_book.shared.entries import entries_path
 from workhorse_workflows.okf_book.shared.scenarios import RunSummary, read_run
-from workhorse_workflows.okf_book.shared.jobs import pages_by_depth
+from workhorse_workflows.okf_book.shared.jobs import job_of, pages_by_depth
 from workhorse_workflows.okf_book.shared.metrics import TurnMetric, read_metrics
 from workhorse_workflows.okf_book.shared.page_check import dead_book_pages
 from workhorse_workflows.okf_book.shared.production import entry_pages
-from workhorse_workflows.okf_book.shared.work import DONE, FILE, ORPHAN, UNQUEUED, ids
+from workhorse_workflows.okf_book.shared.work import DONE, FILE, JOB, ORPHAN, UNQUEUED, ids
 
 REPORT_NAME = "report.json"
 REPORT_PAGE = "report.md"
@@ -97,9 +97,13 @@ def unqueued_pages(root: Path, work: WorkList, services: tuple[str, ...]) -> tup
     return tuple(page for page in reachable if page in unqueued)
 
 
-def orphan_pages(root: Path, services: tuple[str, ...]) -> tuple[str, ...]:
-    """Each page of the services that nothing reaches, which the run did not delete."""
-    return tuple(sorted(page.rel for page in dead_book_pages(root) if page.service in services))
+def orphan_pages(root: Path, work: WorkList, services: tuple[str, ...]) -> tuple[str, ...]:
+    """Each page of the services that nothing reaches and no job owned, which the run did not delete.
+
+    A dead page a job owned is that job's to answer for, and its blocker names it.
+    """
+    owned = frozenset(page for item in work.items(JOB) for page in job_of(item).owned_pages)
+    return tuple(sorted(page.rel for page in dead_book_pages(root) if page.service in services and page.rel not in owned))
 
 
 def build_report(root: Path, records_dir: Path, work: WorkList, services: tuple[str, ...]) -> BookReport:
@@ -111,7 +115,7 @@ def build_report(root: Path, records_dir: Path, work: WorkList, services: tuple[
         pruned_count=len(ids(work, ORPHAN, DONE)),
         contract_count=len(read_contracts(records_dir, files)),
         unqueued=unqueued_pages(root, work, services),
-        orphans=orphan_pages(root, services),
+        orphans=orphan_pages(root, work, services),
         tokens=sum(m.tokens for m in metrics),
         minutes=round(sum(m.minutes for m in metrics), 2),
         costs=file_costs(metrics),

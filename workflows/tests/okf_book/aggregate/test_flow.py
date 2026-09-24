@@ -265,7 +265,7 @@ def test_a_page_linked_after_the_queue_froze_is_reported_and_not_written(app: Ap
 
     assert _pages_written(runner, ORPHAN) == []
     assert unqueued_pages(repo, flow.work, ("tally",)) == (ORPHAN,)
-    assert orphan_pages(repo, ("tally",)) == ()
+    assert orphan_pages(repo, flow.work, ("tally",)) == ()
 
 
 def test_a_page_nothing_reached_before_the_run_and_no_job_owns_is_kept_and_reported(app: App, run_book: RunBook) -> None:
@@ -276,8 +276,23 @@ def test_a_page_nothing_reached_before_the_run_and_no_job_owns_is_kept_and_repor
 
     assert (repo / ORPHAN).is_file()
     assert "docs(tally): delete budget, nothing reaches it" not in commits(repo)
-    assert orphan_pages(repo, ("tally",)) == (ORPHAN,)
+    assert orphan_pages(repo, flow.work, ("tally",)) == (ORPHAN,)
     assert unqueued_pages(repo, flow.work, ("tally",)) == ()
+
+
+def test_a_page_nothing_reaches_that_a_blocked_job_owned_is_left_to_its_blocker(app: App, run_book: RunBook) -> None:
+    repo = app("tally-cli")
+
+
+    def write_operations(_args: dict[str, object]) -> dict[str, object]:
+        _append(repo, FIXTURE, "\nSee [gone](gone.md).\n")
+        return {"summary": "linked"}
+
+    flow, _runner = _run(repo, run_book, operations=write_operations)
+
+    assert "tally:operations" in ids(flow.work, JOB, BLOCKED)
+    assert (repo / f"{BOOK}/ops/run-tally.md").is_file()
+    assert [p for p in orphan_pages(repo, flow.work, ("tally",)) if "/ops/" in p] == []
 
 
 def test_a_page_an_earlier_job_wrote_is_kept_when_a_later_job_unlinks_it(app: App, run_book: RunBook) -> None:
@@ -300,13 +315,13 @@ def test_a_page_an_earlier_job_wrote_is_kept_when_a_later_job_unlinks_it(app: Ap
             _append(repo, trip, "\nA trip has one budget.\n")
         return {"summary": "wrote"}
 
-    _ = _run(repo, run_book, write=write)
+    flow, _runner = _run(repo, run_book, write=write)
 
     assert "docs(tally): write trip" in commits(repo)
     assert link not in (repo / ORPHAN).read_text(encoding="utf-8")
     assert "A trip has one budget." in (repo / trip).read_text(encoding="utf-8")
     assert "docs(tally): delete trip, nothing reaches it" not in commits(repo)
-    assert orphan_pages(repo, ("tally",)) == (trip,)
+    assert orphan_pages(repo, flow.work, ("tally",)) == (trip,)
 
 
 def test_a_queued_page_an_earlier_job_unlinks_is_written_by_its_own_job_then_collected(app: App, run_book: RunBook) -> None:
@@ -332,11 +347,11 @@ def test_a_committed_orphan_a_turn_adds_to_is_kept_and_the_turn_not_charged(app:
     repo = app("tally-cli")
     _commit_orphan(repo)
 
-    _flow, runner = _run(repo, run_book, write=_on_concept(repo, lambda r: _append(r, ORPHAN, "\nA trip has one budget.\n")))
+    flow, runner = _run(repo, run_book, write=_on_concept(repo, lambda r: _append(r, ORPHAN, "\nA trip has one budget.\n")))
 
     assert len(_pages_written(runner, CONCEPT)) == 1
     assert "A trip has one budget." in (repo / ORPHAN).read_text(encoding="utf-8")
-    assert orphan_pages(repo, ("tally",)) == (ORPHAN,)
+    assert orphan_pages(repo, flow.work, ("tally",)) == (ORPHAN,)
 
 
 def test_a_turn_adding_to_a_page_that_already_does_not_compile_is_not_charged_for_it(
