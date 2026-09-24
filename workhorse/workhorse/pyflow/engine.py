@@ -459,7 +459,9 @@ def _flow_id(wf: Callable[..., Any]) -> str:
 
 
 def _outputs_for(returns: type) -> list[OutputSpec]:
-    """The keys the agent is asked for, taken from the model it must return."""
+    """The keys the agent is asked for, taken from the model it must return. A `str` is the reply's whole text."""
+    if returns is str:
+        return [OutputSpec(key=SCALAR_KEY, verbatim=True)]
     fields = getattr(returns, "model_fields", None)
     if not fields:
         return [OutputSpec(key=SCALAR_KEY)]

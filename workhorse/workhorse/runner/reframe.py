@@ -9,6 +9,11 @@ from workhorse.runner.spec import AgentNode
 def retry_prompt(node: AgentNode, error: OutputParseError) -> str:
     """Corrective follow-up asking the agent to re-emit only the required outputs."""
     keys = [o.key for o in node.outputs]
+    if any(o.verbatim for o in node.outputs):
+        return (
+            "Your previous response was empty.\n\n"
+            "Do not redo any work. Reply again with the whole answer the task asked for."
+        )
     return (
         "Your previous response could not be parsed into this node's required "
         f"outputs.\nError: {error}\n\n"

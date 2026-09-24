@@ -211,6 +211,33 @@ def test_the_answer_is_found_by_the_required_keys_alone():
     assert got == {"status": "done", "files": []}
 
 
+def _verbatim():
+    return nodes.AgentNode(
+        type="agent",
+        id="n",
+        prompt="p.md",
+        outputs=[nodes.OutputSpec(key="value", verbatim=True)],
+    )
+
+
+def test_a_verbatim_output_is_the_reply_text_with_its_escapes_untouched():
+    text = 'Here it is.\n- verify: stdout(matches="\\"entries\\": \\d+")\n{"not": "parsed"}\n'
+    assert m.extract_outputs(text, _verbatim()) == {"value": text}
+
+
+def test_an_empty_reply_to_a_verbatim_output_goes_back_on_the_retry_ladder():
+    with pytest.raises(failure.OutputParseError, match="empty"):
+        m.extract_outputs("  \n", _verbatim())
+    assert "JSON" not in importlib.import_module("workhorse.runner.reframe").retry_prompt(
+        _verbatim(), failure.OutputParseError("empty")
+    )
+
+
+def test_a_turn_that_returns_str_asks_for_the_reply_text():
+    engine = importlib.import_module("workhorse.pyflow.engine")
+    assert engine._outputs_for(str) == [nodes.OutputSpec(key="value", verbatim=True)]
+
+
 
 def test_select_object_from_list_prefers_wanted():
     objs = [{"x": 1}, {"status": "ok"}]

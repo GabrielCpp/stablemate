@@ -10,6 +10,7 @@ from workhorse.runner.backends import AgentProfile
 class OutputSpec(BaseModel):
     key: str
     required: bool = True
+    verbatim: bool = False
 
 
 class AgentNode(BaseModel):

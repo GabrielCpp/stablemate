@@ -130,6 +130,12 @@ only the presence check is relaxed. Make a field required (no default) when its 
 really is a failed turn; the extra turn spent being told a field does not apply costs the
 same as any other.
 
+A turn declared `returns=str` gets the reply's whole text instead, parsed by nothing. Use
+it when the answer is itself a document whose quotes and backslashes must arrive as
+written, and parse it in the workflow. Carried inside a JSON string, such a document needs
+a second layer of escapes, and a model drops or doubles one often enough to break it. An
+empty reply goes back on the retry ladder.
+
 ## Unattended resilience (waiting, then a clean stop)
 
 Runs are meant to survive a week without supervision, so the runner absorbs what it can:

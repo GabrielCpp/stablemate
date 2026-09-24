@@ -14,6 +14,11 @@ from json_repair import repair_json
 def extract_outputs(text: str, node: AgentNode) -> dict[str, Any]:
     if not node.outputs:
         return {}
+    verbatim = [o.key for o in node.outputs if o.verbatim]
+    if verbatim:
+        if not text.strip():
+            raise OutputParseError(f"Node '{node.id}' expects the reply's text, and the reply was empty")
+        return {key: text for key in verbatim}
 
     declared = [o.key for o in node.outputs]
     wanted = [o.key for o in node.outputs if o.required] or declared
