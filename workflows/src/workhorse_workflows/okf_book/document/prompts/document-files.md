@@ -48,7 +48,9 @@ Rules for each contract:
 - One `verify` observes the whole claim. A claim that names two commands, two outputs or
   "any" command is several claims, so write each one: "adding an expense with `--dry-run`
   leaves the ledger unchanged" and "importing with `--dry-run` leaves the ledger unchanged",
-  not both in one.
+  not both in one. An output that holds several facts is one claim per fact: "the summary
+  prints the entry count" and "the summary prints the total", each with a check that reads
+  its own fact, not one claim whose check matches the first line.
 - State each claim as what a user sees through an entry point above. A file no user calls
   directly promises what its callers' entry points show because of it: "recording an expense
   with an amount of 0 exits 2", not "`add_entry` raises on a zero amount". A function's
