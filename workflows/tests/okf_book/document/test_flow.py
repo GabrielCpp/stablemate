@@ -98,6 +98,14 @@ def test_each_turn_names_the_entry_points_a_claim_is_seen_through(app: App, run_
     assert all(args["entry_points"] == [f"tally: {c.title()}" for c in COMMANDS] for args in runner.args_of(NODE))
 
 
+def test_each_turn_says_what_each_check_reads_on_a_cli(app: App, run_book: RunBook) -> None:
+    _, runner, _ = _run(app, run_book, lambda _f: "")
+
+    checks = ENTRIES.validate_python(runner.args_of(NODE)[0]["checks"])
+    assert any(line.startswith("`count(") and "the command's stdout" in line for line in checks)
+    assert any(line.startswith("`absent(") and line.endswith("reads nothing a command shows.") for line in checks)
+
+
 def test_entry_points_past_their_budget_are_counted_not_listed(app: App, run_book: RunBook, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(document_nodes, "ENTRY_POINTS_BUDGET_TOKENS", 10)
 

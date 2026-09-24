@@ -59,13 +59,17 @@ Rules for each contract:
 - `symbol` names the function, class, method or constant in this file that carries the
   claim. It must be declared in this file. A re-export is not a declaration. Leave it
   empty only when no symbol carries the claim.
+- A check sees only what its line below says it reads. On a cli, that is the exit code, the
+  output streams, and which files appear, vanish or change. A claim about what a file holds
+  is seen through a command that prints it. When no check reads the claim, leave `verify`
+  empty rather than pick a check that reads something else.
 - `verify` is the check that would observe the claim, as `name(arg=value)`, or empty when
   none fits. Every argument is a literal, and a string is quoted:
   `created(subject="ledger.txt")`. A check marked "one of" takes exactly one of the arguments
   it names. Use only these checks, with these signatures:
 
 {% for check in checks %}
-  - `{{ check }}`
+  - {{ check }}
 {% endfor %}
 
 Reply with only this JSON object, one contract per file above:
@@ -77,7 +81,7 @@ Reply with only this JSON object, one contract per file above:
       "file": "src/ledger.py",
       "purpose": "Keeps the ledger file a user adds entries to.",
       "promises": [
-        {"text": "Adding an entry appends one line to the ledger.", "symbol": "add_entry", "verify": "count(subject=\"ledger lines\", equals=1)"}
+        {"text": "Adding the first entry creates the ledger file.", "symbol": "add_entry", "verify": "created(subject=\"ledger.txt\")"}
       ],
       "refusals": [
         {"text": "An amount that is not a number is refused with exit code 2.", "symbol": "parse_amount", "verify": "exit_status(code=2)"}

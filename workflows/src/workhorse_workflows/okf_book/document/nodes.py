@@ -10,7 +10,7 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-from ostler.checks import CHECKS
+from ostler.checks import CHECKS, CheckSpec
 from ostler.inventory import symbols
 from workhorse_workflows.okf_book.shared.attempts import FailureTally, last_problems
 from workhorse_workflows.okf_book.shared.budget import (
@@ -30,8 +30,16 @@ ENTRY_POINTS_BUDGET_TOKENS = 2_000
 
 
 def check_vocabulary() -> tuple[str, ...]:
-    """Every check's signature, as the turn reads it."""
-    return tuple(spec.signature() for spec in CHECKS)
+    """Every check's signature and what it reads on a cli, as the turn reads it."""
+    return tuple(_described(spec) for spec in CHECKS)
+
+
+def _described(spec: CheckSpec) -> str:
+    if spec.on_cli:
+        return f"`{spec.signature()}`. On a cli, reads {spec.on_cli}."
+    if spec.out_of_band:
+        return f"`{spec.signature()}`"
+    return f"`{spec.signature()}`. On a cli, reads nothing a command shows."
 
 
 @dataclass(frozen=True, slots=True)
