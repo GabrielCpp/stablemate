@@ -19,6 +19,7 @@ from okf_book.support import (
 )
 from pydantic import TypeAdapter
 
+from workhorse_workflows.okf_book.aggregate.verdict import GRAMMAR_GAPS_NAME, GrammarGap
 from workhorse_workflows.okf_book.main.nodes.surface import Surface, SurfaceKind
 from workhorse_workflows.okf_book.shared.entries import FEATURES_DIR
 
@@ -89,6 +90,34 @@ def test_a_claim_the_verifier_finds_badly_checked_hands_the_writer_its_node_and_
     problems = _last_problems(app("tally-cli"), run_book, flag_first)
 
     assert problems == [f"{node}: {fix}"]
+
+
+def test_the_judge_is_told_the_checks_and_a_check_it_expected_reaches_the_writer_or_the_gap_record(
+    app: App, run_book: RunBook,
+) -> None:
+    repo = app("tally-cli")
+    node = f"{CONCEPT}#ledger-file"
+    expected = ['contents(subject="tally.json", text="entries")', 'sorted(subject="entries")']
+
+    def expect_checks(args: dict[str, object]) -> dict[str, object]:
+        verdict = PASS(args)
+        if not _judges_concept(args) or not expected:
+            return verdict
+        wanted = expected.pop(0)
+        claims = [{"claim": 1, "node": node, "problem": "it reads stdout.", "expected": wanted},
+                  *NUMBERS.validate_python(verdict["claims"])[1:]]
+        return {**verdict, "claims": claims}
+
+    runner = _book_runner(repo, expect_checks, _writer(repo))
+    flow = WriteOnly(repo_dir=str(repo), surfaces=(TALLY,))
+    _ = run_book(flow, runner)
+
+    assert all("contents(" in str(args["checks"]) for args in runner.args_of("verify-page"))
+    tries = [NAMES.validate_python(args["problems"]) for args in runner.args_of("write-page") if args["page"] == CONCEPT]
+    assert tries[1] == [f'{node}: it reads stdout. The check that reads it: `verify: contents(subject="tally.json", text="entries")`.']
+    assert tries[2] == [f"{node}: it reads stdout."]
+    lines = (flow.run_dir / GRAMMAR_GAPS_NAME).read_text(encoding="utf-8").splitlines()
+    assert [(gap.node, gap.expected) for gap in map(GrammarGap.model_validate_json, lines)] == [(node, 'sorted(subject="entries")')]
 
 
 def test_a_node_an_earlier_round_cleared_is_not_faulted_while_its_text_is_unchanged(app: App, run_book: RunBook) -> None:

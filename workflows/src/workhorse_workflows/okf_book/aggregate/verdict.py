@@ -6,7 +6,9 @@ A node an earlier round cleared stays cleared while its text is unchanged, so a 
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
+from pathlib import Path
 
+from ostler.checks import Refusal, parse_check
 from pydantic import BaseModel, ConfigDict
 
 from workhorse_workflows.okf_book.shared.attempts import ClearedNode
@@ -41,6 +43,7 @@ class ClaimFinding(BaseModel):
     claim: int
     node: str = ""
     problem: str = ""
+    expected: str = ""
 
 
 class NodeProblem(BaseModel):
@@ -50,6 +53,21 @@ class NodeProblem(BaseModel):
 
     node: str
     problem: str
+    expected: str = ""
+
+
+class GrammarGap(BaseModel):
+    """A check the judge expected that the check grammar cannot state."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    node: str
+    problem: str
+    expected: str
+    refusal: str
+
+
+GRAMMAR_GAPS_NAME = "grammar-gaps.jsonl"
 
 
 class Verdict(BaseModel):
@@ -104,12 +122,47 @@ def verdict_problems(verdict: Verdict, claims: tuple[str, ...], still_cleared_no
         if number not in stated and text not in stated_by_cleared
     )
     flawed = tuple(
-        f"{finding.node or f'Claim {finding.claim}'}: {finding.problem}"
+        f"{finding.node or f'Claim {finding.claim}'}: {finding.problem}{_expected_hint(finding.expected)}"
         for finding in verdict.claims
         if finding.problem and finding.node not in cleared_by_node
     )
-    uncovered = tuple(f"{found.node}: {found.problem}" for found in verdict.problems if found.node not in cleared_by_node)
+    uncovered = tuple(
+        f"{found.node}: {found.problem}{_expected_hint(found.expected)}"
+        for found in verdict.problems
+        if found.node not in cleared_by_node
+    )
     return (*unstated, *flawed, *uncovered)
+
+
+def _expected_hint(expected: str) -> str:
+    """The check the judge expected, as the writer is told it, when the check grammar can state it."""
+    parsed = parse_check(expected) if expected else None
+    if parsed is None or isinstance(parsed, Refusal):
+        return ""
+    return f" The check that reads it: `verify: {parsed.text()}`."
+
+
+def grammar_gaps(verdict: Verdict) -> tuple[GrammarGap, ...]:
+    """Each check the judge expected on a problem that the check grammar refuses, with the refusal."""
+    found = [
+        *((finding.node or f"Claim {finding.claim}", finding.problem, finding.expected) for finding in verdict.claims if finding.problem),
+        *((problem.node, problem.problem, problem.expected) for problem in verdict.problems),
+    ]
+    gaps: list[GrammarGap] = []
+    for node, problem, expected in found:
+        parsed = parse_check(expected) if expected else None
+        if isinstance(parsed, Refusal):
+            gaps.append(GrammarGap(node=node, problem=problem, expected=expected, refusal=parsed.message))
+    return tuple(gaps)
+
+
+def record_grammar_gaps(run_dir: Path, gaps: tuple[GrammarGap, ...]) -> None:
+    """Append each gap to the run's grammar-gap record."""
+    if not gaps:
+        return
+    run_dir.mkdir(parents=True, exist_ok=True)
+    with (run_dir / GRAMMAR_GAPS_NAME).open("a", encoding="utf-8") as out:
+        _ = out.write("".join(gap.model_dump_json() + "\n" for gap in gaps))
 
 
 def _claims_stated_on(verdict: Verdict, claims: tuple[str, ...]) -> dict[str, set[str]]:

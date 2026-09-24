@@ -48,6 +48,10 @@ They were written from these contracts:
 {% endfor %}
 {% endfor %}
 
+The checks a `verify:` may call, each with its arguments and the defect it excludes:
+
+{{ checks }}
+
 A page passes when every one of these holds:
 
 {% include "aggregate/prompts/_bar.md" %}
@@ -60,17 +64,23 @@ node that states it and read that node's `verify:`. Reply with one finding per c
   the claim.
 - `problem` is what is wrong with how that node states or checks the claim, as the fix it needs.
   Leave it empty when the claim is stated and its check holds.
+- `expected` is the `verify:` that reads the claim, written as `name(arg=value)` with no
+  `verify:` before it. Give it when `problem` is about the claim's check, and leave it empty
+  otherwise. When no check above reads the claim, write the check you would need in the same
+  form anyway.
 
 Then read every page again, and name each problem no claim covers in `problems`:
 
 - `node` is the page and anchor of the node the problem is on, or the page alone when the problem
   is on the page as a whole.
 - `problem` is what is wrong there, as the fix it needs.
+- `expected` is the `verify:` the node needs, in the same form as above, when the problem is about
+  a check. Leave it empty otherwise.
 
 The pages pass when every claim has a node and no problem is named.
 
 Reply with only this JSON object:
 
 ```json
-{"claims": [{"claim": 1, "node": "docs/features/acme/cli/add.md#add", "problem": ""}, {"claim": 2, "node": "", "problem": ""}], "problems": [{"node": "docs/features/acme/cli/add.md#add", "problem": "the example shows an exit code the page never states."}]}
+{"claims": [{"claim": 1, "node": "docs/features/acme/cli/add.md#add", "problem": "", "expected": ""}, {"claim": 2, "node": "docs/features/acme/cli/add.md#add", "problem": "the check reads stdout, and the claim is about the file the command writes.", "expected": "json_path(path=\"items[0].name\", equals=\"milk\", file=\"list.json\")"}, {"claim": 3, "node": "", "problem": "", "expected": ""}], "problems": [{"node": "docs/features/acme/cli/add.md#add", "problem": "the example shows an exit code the page never states.", "expected": ""}]}
 ```

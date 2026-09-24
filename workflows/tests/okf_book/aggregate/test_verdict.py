@@ -1,13 +1,19 @@
 """The judge accounts for each numbered claim, and the code decides the pass from what it accounts and what it cleared before."""
 from __future__ import annotations
 
+from pathlib import Path
+
 from workhorse_workflows.okf_book.aggregate.verdict import (
+    GRAMMAR_GAPS_NAME,
     ClaimFinding,
+    GrammarGap,
     NodeProblem,
     Verdict,
     claim_texts,
     cleared_after,
+    grammar_gaps,
     numbered_contracts,
+    record_grammar_gaps,
     still_cleared,
     verdict_problems,
 )
@@ -131,3 +137,45 @@ def test_a_node_still_cleared_on_a_page_this_round_did_not_judge_stays_cleared()
 
     assert verdict_problems(verdict, claims, (unread,)) == ()
     assert unread in cleared_after(verdict, claims, DIGESTS, (unread,))
+
+
+def test_a_problem_carries_the_check_the_judge_expected_in_its_canonical_spelling() -> None:
+    claims = claim_texts(numbered_contracts(CONTRACTS))
+    verdict = Verdict(
+        claims=(ClaimFinding(claim=1, node="page.md#add", problem="its check reads stdout.",
+                             expected='json_path(file="tally.json", path="rows[0]", equals=1)'),
+                ClaimFinding(claim=2, node="page.md#add"), ClaimFinding(claim=3, node="page.md#report")),
+        problems=(NodeProblem(node="page.md#report", problem="it checks no exit code.", expected="exit_status(1)"),),
+    )
+
+    assert verdict_problems(verdict, claims, ()) == (
+        'page.md#add: its check reads stdout. The check that reads it: '
+        '`verify: json_path(path="rows[0]", equals=1, file="tally.json")`.',
+        "page.md#report: it checks no exit code. The check that reads it: `verify: exit_status(code=1)`.",
+    )
+    assert grammar_gaps(verdict) == ()
+
+
+def test_a_check_the_grammar_refuses_is_left_out_of_the_problem_and_recorded_as_a_gap(tmp_path: Path) -> None:
+    claims = claim_texts(numbered_contracts(CONTRACTS))
+    verdict = Verdict(
+        claims=(ClaimFinding(claim=1, node="page.md#add", problem="no check reads the sort order.",
+                             expected='sorted(subject="rows")'),
+                ClaimFinding(claim=2, node="page.md#add"), ClaimFinding(claim=3, node="page.md#report")),
+    )
+
+    assert verdict_problems(verdict, claims, ()) == ("page.md#add: no check reads the sort order.",)
+    [gap] = grammar_gaps(verdict)
+    assert (gap.node, gap.expected) == ("page.md#add", 'sorted(subject="rows")')
+    assert "sorted" in gap.refusal
+
+    record_grammar_gaps(tmp_path, (gap,))
+    record_grammar_gaps(tmp_path, (gap,))
+    lines = (tmp_path / GRAMMAR_GAPS_NAME).read_text(encoding="utf-8").splitlines()
+    assert [GrammarGap.model_validate_json(line) for line in lines] == [gap, gap]
+
+
+def test_no_gap_is_recorded_when_the_judge_expected_no_check(tmp_path: Path) -> None:
+    record_grammar_gaps(tmp_path, grammar_gaps(Verdict(problems=(NodeProblem(node="page.md", problem="a typo."),))))
+
+    assert not (tmp_path / GRAMMAR_GAPS_NAME).exists()

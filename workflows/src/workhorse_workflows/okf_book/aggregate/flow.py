@@ -49,7 +49,9 @@ from workhorse_workflows.okf_book.aggregate.verdict import (
     Verdict,
     claim_texts,
     cleared_after,
+    grammar_gaps,
     numbered_contracts,
+    record_grammar_gaps,
     still_cleared,
     verdict_problems,
 )
@@ -98,10 +100,6 @@ def _turn_metric(node: str, subject: str, tokens: int, started: float) -> TurnMe
 def _book_pages_besides(root: Path, service: str, judged: tuple[str, ...]) -> tuple[str, ...]:
     rels = (page.relative_to(root).as_posix() for page in book_pages(root, service))
     return tuple(rel for rel in rels if rel not in judged)
-
-
-def _contract_args(contracts: tuple[Contract, ...]) -> list[dict[str, object]]:
-    return [contract.model_dump() for contract in contracts]
 
 
 def _service_of(page: str) -> str:
@@ -194,7 +192,7 @@ class Aggregate(BookFlow):
                 "folder": service_folder(job.service),
                 "page": job.page,
                 "pages": list(pages.kept),
-                "contracts": _contract_args(contracts),
+                "contracts": [contract.model_dump() for contract in contracts],
                 "stories": list(stories),
                 "problems": list(problems.kept),
                 "check": check_command(self.records_dir),
@@ -226,7 +224,7 @@ class Aggregate(BookFlow):
                 "page": job.page,
                 "pages": list(pages.kept),
                 "bodies": [body.template_arg() for body in page_bodies(root, shown.kept)],
-                "contracts": _contract_args(contracts),
+                "contracts": [contract.model_dump() for contract in contracts],
                 "stories": list(stories),
                 "problems": list(problems.kept),
                 "rules": rules,
@@ -294,7 +292,8 @@ class Aggregate(BookFlow):
         root, job = self.root, ledger.job
         judged_rels = judged_pages(root, job, ledger.before)
         other_pages = pack_told(name_tokens(_book_pages_besides(root, job.service, judged_rels)), PAGES_BUDGET_TOKENS)
-        fixed = prompt_tokens(VERIFY_PROMPT) + other_pages.tokens + CLEARED_BUDGET_TOKENS
+        checks = describe_checks()
+        fixed = prompt_tokens(VERIFY_PROMPT) + other_pages.tokens + CLEARED_BUDGET_TOKENS + estimated_tokens(len(checks))
         judged = pack_read(file_tokens(root, judged_rels), (TURN_BUDGET_TOKENS - fixed) // 2)
         if not judged.kept:
             return self._retry_or_keep(ledger.charged((UNJUDGED_PROBLEM,)))
@@ -314,6 +313,7 @@ class Aggregate(BookFlow):
                 "other_pages": list(other_pages.kept),
                 "other_pages_left_out": other_pages.left_out,
                 "cleared": _cleared_nodes_told(ledger, judged_node_digests),
+                "checks": checks,
                 "kind": job.kind.value,
             },
             cwd=root,
@@ -338,6 +338,7 @@ class Aggregate(BookFlow):
         Anything else charges the job a turn.
         """
         record_turn(self.records_dir, metric)
+        record_grammar_gaps(self.records_dir, grammar_gaps(verdict))
         problems = verdict_problems(verdict, claims, ledger.cleared)
         if not problems:
             return Continue(verdict, self.stamp_job, ledger=ledger)
