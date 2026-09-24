@@ -1864,10 +1864,7 @@ def _cmd_checks(args: argparse.Namespace) -> int:
             for s in specs
         ], indent=2))
         return 0
-    _out("\n\n".join(
-        f"{s.signature()}\n    excludes {s.excludes}\n"
-        f"    on a cli, reads {s.cli_reads or 'nothing, so it does not compile there'}"
-        for s in specs))
+    _out(checks_mod.describe(tuple(specs)))
     return 0
 
 

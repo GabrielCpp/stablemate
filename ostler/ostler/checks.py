@@ -283,6 +283,15 @@ CHECKS: tuple[CheckSpec, ...] = (
 CHECK_BY_NAME: dict[str, CheckSpec] = {c.name: c for c in CHECKS}
 
 
+def describe(specs: tuple[CheckSpec, ...] = CHECKS) -> str:
+    """Each check's signature, the defect it excludes and what it reads on a cli, as text."""
+    return "\n\n".join(
+        f"{s.signature()}\n    excludes {s.excludes}\n"
+        f"    on a cli, reads {s.cli_reads or 'nothing, so it does not compile there'}"
+        for s in specs
+    )
+
+
 @dataclass(frozen=True)
 class CheckCall:
     """One parsed `verify:` value: a name from `CHECKS` and its bound arguments."""
