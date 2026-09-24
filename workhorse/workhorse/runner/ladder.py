@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Callable, Sequence
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -16,11 +16,10 @@ from workhorse._vendor.stablemate_core.config import (
     resolve_power,
     select_profile,
 )
-from workhorse import control, gitstate, otel, reload
+from workhorse import control, otel, reload
 from workhorse.artifacts import write_unlinked
 from workhorse.config_run import AgentResilience, RunConfig
 from workhorse.context import WorkflowContext
-from workhorse.records import TreeStart
 from workhorse.runner.backends import AgentProfile
 from workhorse.runner.caps import cap_delay_seconds, sleep_with_notice
 from workhorse._vendor.stablemate_core.clock import SYSTEM_CLOCK, Clock
@@ -38,7 +37,7 @@ from workhorse.runner.reframe import (
     timeout_retry_prompt,
 )
 from workhorse.runner.spec import AgentNode
-from workhorse.runner.turn_record import TurnRecord
+from workhorse.runner.turn_record import RenderedTurn, record_turn_start
 from workhorse.runner.waits import (
     RecoveryWaitBudget,
     active_recovery_wait_budget,
@@ -58,26 +57,6 @@ def _write_prompt_for_inspection(node_id: str, prompt: str, run_dir: Path | None
     prompt_path.parent.mkdir(parents=True, exist_ok=True)
     write_unlinked(prompt_path, prompt)
     return prompt_path
-
-
-def _write_turn_record(
-    record: TurnRecord, prompt: str, run_dir: Path | None, visit_dir: Path | None
-) -> None:
-    """Persist what this turn starts from, so it can be started again on its own."""
-    if run_dir is None:
-        return
-    text = record.model_dump_json(indent=2)
-    write_unlinked(run_dir / record.node / "turn.json", text)
-    if visit_dir is None:
-        return
-    visit_dir.mkdir(parents=True, exist_ok=True)
-    write_unlinked(visit_dir / "turn.json", text)
-    write_unlinked(visit_dir / "prompt.md", prompt)
-
-
-def _start_trees(cwd: str | None, add_dirs: Sequence[str]) -> list[TreeStart]:
-    """The working trees this turn may touch, as it finds them."""
-    return [gitstate.snapshot_tree(path) for path in (cwd or ".", *add_dirs)]
 
 
 def _print_prompt_path(node_id: str, prompt_path: Path) -> None:
@@ -150,21 +129,6 @@ def _resolve_power_settings(
     return model, mapped.effort or fallback.effort, scale
 
 
-@dataclass(frozen=True, slots=True)
-class _RenderedTurn:
-    """One node's turn as it will be sent: its prompt, its trees, its settings and budgets."""
-
-    prompt: str
-    cwd: str | None
-    add_dirs: tuple[str, ...]
-    model: str | None
-    effort: str | None
-    timeout_scale: float
-    base_timeout: float
-    silence_budget: float
-    unbounded: bool
-
-
 @dataclass(frozen=True)
 class AgentRunner:
     """The fail-soft recovery ladder, for one run."""
@@ -216,7 +180,7 @@ class AgentRunner:
                 validate=validate,
             )
 
-    def _render(self, node: AgentNode, ctx: dict[str, Any], workflow_dir: Path) -> _RenderedTurn:
+    def _render(self, node: AgentNode, ctx: dict[str, Any], workflow_dir: Path) -> RenderedTurn:
         """Resolve the node's settings and budgets, and render its prompt and working trees."""
         resilience = self.resilience
         model, node_effort, timeout_scale = _resolve_power_settings(
@@ -270,7 +234,7 @@ class AgentRunner:
             cwd_resolved = Path(rendered_cwd).resolve()
             rendered_add_dirs = [d for d in rendered_add_dirs if Path(d).resolve() != cwd_resolved]
 
-        return _RenderedTurn(
+        return RenderedTurn(
             prompt=rendered_prompt,
             cwd=rendered_cwd,
             add_dirs=tuple(rendered_add_dirs),
@@ -281,36 +245,6 @@ class AgentRunner:
             silence_budget=silence_budget,
             unbounded=unbounded,
         )
-
-    def _record_start(
-        self,
-        node: AgentNode,
-        turn: _RenderedTurn,
-        *,
-        run_dir: Path,
-        visit_dir: Path | None,
-        session_chain: str,
-        resumed: bool,
-    ) -> None:
-        """Snapshot the trees this turn may touch and write what it starts from beside its prompt."""
-        record = TurnRecord(
-            node=node.id,
-            backend=self.backend.name,
-            profile=self.profile.name,
-            power=node.power,
-            model=turn.model,
-            effort=turn.effort,
-            timeout_s=None if turn.unbounded else turn.silence_budget,
-            base_timeout_s=None if turn.unbounded else turn.base_timeout,
-            timeout_scale=turn.timeout_scale,
-            cwd=turn.cwd,
-            add_dirs=list(turn.add_dirs),
-            agent=node.agent,
-            session_chain=session_chain,
-            resumed_session=resumed,
-            start=_start_trees(turn.cwd, turn.add_dirs),
-        )
-        _write_turn_record(record, turn.prompt, run_dir, visit_dir)
 
     def _run(
         self,
@@ -337,9 +271,11 @@ class AgentRunner:
             _print_prompt_path(node_id, prompt_path)
 
         if run_dir is not None:
-            self._record_start(
+            record_turn_start(
                 node,
                 turn,
+                backend=self.backend.name,
+                profile=self.profile.name,
                 run_dir=run_dir,
                 visit_dir=visit_dir,
                 session_chain=session_chain,

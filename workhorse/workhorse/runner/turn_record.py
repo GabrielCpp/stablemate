@@ -2,10 +2,17 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+from dataclasses import dataclass
+from pathlib import Path
+
 from pydantic import BaseModel, Field
 
+from workhorse import gitstate
+from workhorse.artifacts import write_unlinked
 from workhorse.records import TreeStart
 from workhorse.runner.backends import AgentProfile
+from workhorse.runner.spec import AgentNode
 
 
 class TurnRecord(BaseModel):
@@ -31,3 +38,66 @@ class TurnRecord(BaseModel):
 def parse_turn_record(text: str) -> TurnRecord:
     """Parse a `turn.json` body."""
     return TurnRecord.model_validate_json(text)
+
+
+@dataclass(frozen=True, slots=True)
+class RenderedTurn:
+    """One node's turn as it will be sent: its prompt, its trees, its settings and budgets."""
+
+    prompt: str
+    cwd: str | None
+    add_dirs: tuple[str, ...]
+    model: str | None
+    effort: str | None
+    timeout_scale: float
+    base_timeout: float
+    silence_budget: float
+    unbounded: bool
+
+
+def record_turn_start(
+    node: AgentNode,
+    turn: RenderedTurn,
+    *,
+    backend: str,
+    profile: str,
+    run_dir: Path,
+    visit_dir: Path | None,
+    session_chain: str,
+    resumed: bool,
+) -> None:
+    """Snapshot the trees this turn may touch and write what it starts from beside its prompt."""
+    record = TurnRecord(
+        node=node.id,
+        backend=backend,
+        profile=profile,
+        power=node.power,
+        model=turn.model,
+        effort=turn.effort,
+        timeout_s=None if turn.unbounded else turn.silence_budget,
+        base_timeout_s=None if turn.unbounded else turn.base_timeout,
+        timeout_scale=turn.timeout_scale,
+        cwd=turn.cwd,
+        add_dirs=list(turn.add_dirs),
+        agent=node.agent,
+        session_chain=session_chain,
+        resumed_session=resumed,
+        start=_start_trees(turn.cwd, turn.add_dirs),
+    )
+    write_turn_record(record, turn.prompt, run_dir, visit_dir)
+
+
+def write_turn_record(record: TurnRecord, prompt: str, run_dir: Path, visit_dir: Path | None) -> None:
+    """Persist what this turn starts from, so it can be started again on its own."""
+    text = record.model_dump_json(indent=2)
+    write_unlinked(run_dir / record.node / "turn.json", text)
+    if visit_dir is None:
+        return
+    visit_dir.mkdir(parents=True, exist_ok=True)
+    write_unlinked(visit_dir / "turn.json", text)
+    write_unlinked(visit_dir / "prompt.md", prompt)
+
+
+def _start_trees(cwd: str | None, add_dirs: Sequence[str]) -> list[TreeStart]:
+    """The working trees this turn may touch, as it finds them."""
+    return [gitstate.snapshot_tree(path) for path in (cwd or ".", *add_dirs)]
