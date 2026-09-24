@@ -5,7 +5,8 @@ from __future__ import annotations
 import shutil
 import subprocess
 import tempfile
-from collections.abc import Sequence
+import tomllib
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -14,7 +15,10 @@ HOME = "/tmp/sandbox-home"
 WORK = "/work"
 RUNS = "/runs"
 CONFIG = "/etc/stablemate/config.toml"
-CREDENTIALS = f"{HOME}/.claude/.credentials.json"
+LOGINS = {
+    "claude": f"{HOME}/.claude/.credentials.json",
+    "opencode": f"{HOME}/.local/share/opencode/auth.json",
+}
 BASE_LIBRARY = "/opt/stablemate/base-library"
 DOCKERFILE = Path("paddock") / "docker" / "Dockerfile"
 
@@ -29,16 +33,29 @@ def _run_or_raise(argv: Sequence[str], *, cwd: Path) -> None:
         raise SandboxError(f"`{' '.join(argv[:2])}` exited {proc.returncode}. Its output above names the cause")
 
 
-def claude_code_version() -> str:
-    """The Claude Code release this machine runs, so the container's agents behave as the host's do."""
+def installed_version(cli: str, flag: str) -> str:
+    """The release of *cli* this machine runs, so the container's agents behave as the host's do."""
     try:
-        proc = subprocess.run(["claude", "--version"], capture_output=True, text=True, check=False)
+        proc = subprocess.run([cli, "--version"], capture_output=True, text=True, check=False)
     except FileNotFoundError as exc:
-        raise SandboxError("no `claude` on this machine. Pass --claude-code-version to pick the release") from exc
+        raise SandboxError(f"no `{cli}` on this machine. Pass {flag} to pick the release") from exc
     version = proc.stdout.split(" ", 1)[0].strip()
     if proc.returncode != 0 or not version:
-        raise SandboxError("`claude --version` printed no version. Pass --claude-code-version to pick the release")
+        raise SandboxError(f"`{cli} --version` printed no version. Pass {flag} to pick the release")
     return version
+
+
+def config_clis(config: Path) -> frozenset[str]:
+    """The agent CLIs the stablemate config at *config* runs, whose logins the container needs."""
+    try:
+        data = tomllib.loads(config.read_text())
+    except OSError as exc:
+        raise SandboxError(f"{config} cannot be read ({exc.strerror}). Name a stablemate config with --config") from exc
+    except tomllib.TOMLDecodeError as exc:
+        raise SandboxError(f"{config} is not TOML ({exc}). Name a stablemate config with --config") from exc
+    profiles = data.get("profiles", {})
+    named = {data.get("default_cli", "")} | {profile.get("cli", "") for profile in profiles.values()}
+    return frozenset(cli for cli in named if cli)
 
 
 def build_context(root: Path, dest: Path) -> Path:
@@ -48,12 +65,17 @@ def build_context(root: Path, dest: Path) -> Path:
     return dest
 
 
-def build(root: Path, *, claude_code: str, tag: str = IMAGE) -> None:
+def build(root: Path, *, claude_code: str, opencode: str, tag: str = IMAGE) -> None:
     """Build the sandbox image from the packages of the checkout at *root*."""
     with tempfile.TemporaryDirectory(prefix="paddock-sandbox-") as scratch:
         context = build_context(root, Path(scratch))
         _run_or_raise(
-            ["docker", "build", "--build-arg", f"CLAUDE_CODE_VERSION={claude_code}", "--tag", tag, str(context)],
+            [
+                "docker", "build",
+                "--build-arg", f"CLAUDE_CODE_VERSION={claude_code}",
+                "--build-arg", f"OPENCODE_VERSION={opencode}",
+                "--tag", tag, str(context),
+            ],
             cwd=context,
         )
 
@@ -73,12 +95,12 @@ class Mount:
 
 @dataclass(frozen=True)
 class Sandbox:
-    """The paths a run sees: the app it works on, where its runs go, its model config, the agent login and, when named, the base library its skills render from."""
+    """The paths a run sees: the app it works on, where its runs go, its model config, the login of each agent CLI it runs and, when named, the base library its skills render from."""
 
     app: Path
     runs_dir: Path
     config: Path
-    credentials: Path
+    logins: Mapping[str, Path]
     image: str = IMAGE
     base_library: Path | None = None
 
@@ -93,7 +115,7 @@ class Sandbox:
             Mount(self.app, self.app_dir(), read_only=False),
             Mount(self.runs_dir, RUNS, read_only=False),
             Mount(self.config, CONFIG, read_only=True),
-            Mount(self.credentials, CREDENTIALS, read_only=False),
+            *(Mount(path, LOGINS[cli], read_only=False) for cli, path in sorted(self.logins.items())),
             *library,
         )
 

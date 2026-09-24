@@ -5,7 +5,9 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 ARG CLAUDE_CODE_VERSION
-RUN npm install -g "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" && npm cache clean --force
+ARG OPENCODE_VERSION
+RUN npm install -g "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" "opencode-ai@${OPENCODE_VERSION}" \
+    && npm cache clean --force
 
 COPY wheels /tmp/wheels
 RUN python3 -m pip install --no-cache-dir \
@@ -19,6 +21,6 @@ RUN git config --system user.name "paddock sandbox" \
 
 ENV HOME=/tmp/sandbox-home
 ENV PYTHONDONTWRITEBYTECODE=1
-RUN mkdir -p /tmp/sandbox-home/.claude && chmod -R 0777 /tmp/sandbox-home
+RUN mkdir -p /tmp/sandbox-home/.claude /tmp/sandbox-home/.local/share/opencode && chmod -R 0777 /tmp/sandbox-home
 
 WORKDIR /work

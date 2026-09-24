@@ -108,6 +108,9 @@ def _add_sandbox_commands(parser: argparse.ArgumentParser) -> None:
     sandbox_build.add_argument(
         "--claude-code-version", default="", help="the Claude Code release to install; default: this machine's"
     )
+    sandbox_build.add_argument(
+        "--opencode-version", default="", help="the opencode release to install; default: this machine's"
+    )
     sandbox_build.set_defaults(handler=cmd_sandbox_build)
 
     sandbox_run = sandbox_commands.add_parser(
@@ -125,7 +128,13 @@ def _add_sandbox_commands(parser: argparse.ArgumentParser) -> None:
         "--credentials",
         type=Path,
         default=Path.home() / ".claude" / ".credentials.json",
-        help="the Claude Code login the agents use",
+        help="the Claude Code login, mounted when the config runs claude",
+    )
+    sandbox_run.add_argument(
+        "--opencode-auth",
+        type=Path,
+        default=Path.home() / ".local" / "share" / "opencode" / "auth.json",
+        help="the opencode login, mounted when the config runs opencode",
     )
     sandbox_run.add_argument(
         "--base-library",
@@ -252,10 +261,23 @@ def cmd_list(args: argparse.Namespace) -> int:
 
 
 def cmd_sandbox_build(args: argparse.Namespace) -> int:
-    version = args.claude_code_version or sandbox.claude_code_version()
-    sandbox.build(_project(_data_dir(args)), claude_code=version, tag=args.tag)
-    print(f"image {args.tag}  claude-code {version}")
+    claude_code = args.claude_code_version or sandbox.installed_version("claude", "--claude-code-version")
+    opencode = args.opencode_version or sandbox.installed_version("opencode", "--opencode-version")
+    sandbox.build(_project(_data_dir(args)), claude_code=claude_code, opencode=opencode, tag=args.tag)
+    print(f"image {args.tag}  claude-code {claude_code}  opencode {opencode}")
     return 0
+
+
+def _logins(args: argparse.Namespace) -> dict[str, Path]:
+    given = {"claude": args.credentials, "opencode": args.opencode_auth}
+    clis = sandbox.config_clis(args.config)
+    unknown = sorted(clis - given.keys())
+    if unknown:
+        raise SandboxError(
+            f"{args.config} runs {', '.join(unknown)}, which the sandbox has no login for. "
+            + f"Point the config's profiles at one of {', '.join(sorted(given))}"
+        )
+    return {cli: given[cli] for cli in clis}
 
 
 def _command_after_separator(given: list[str]) -> list[str]:
@@ -272,7 +294,7 @@ def cmd_sandbox_run(args: argparse.Namespace) -> int:
         app=args.app,
         runs_dir=args.runs_dir,
         config=args.config,
-        credentials=args.credentials,
+        logins=_logins(args),
         image=args.image,
         base_library=args.base_library,
     )

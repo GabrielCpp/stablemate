@@ -181,15 +181,19 @@ paddock sandbox run --app DIR --runs-dir DIR --config paddock/data/configs/claud
 ```
 
 `build` makes a wheel of every workspace member and installs those wheels in the image.
-No source tree is copied in. It installs the Claude Code release this machine runs,
-unless `--claude-code-version` names another.
+No source tree is copied in. It installs the Claude Code and opencode releases this
+machine runs, unless `--claude-code-version` or `--opencode-version` names another.
 
-`run` mounts four paths and nothing else:
+`run` mounts these paths and nothing else:
 
 - the app, at `/work/<its directory name>`, which is also the working directory;
 - `--runs-dir`, at `/runs`;
 - `--config`, read-only, as the stablemate config;
-- the Claude Code login, so the agents can call the model.
+- the login of each agent CLI the config runs, so the agents can call the model:
+  `--credentials` for claude, `--opencode-auth` for opencode.
+
+A MiniMax run passes `--config paddock/data/configs/minimax-direct.toml` and
+`--profile opencode`, and the sandbox mounts only the opencode login.
 
 The app's skills render from the published base library, which farrier fetches on first
 use exactly as it would on a client's machine. `--base-library base-library` mounts this
