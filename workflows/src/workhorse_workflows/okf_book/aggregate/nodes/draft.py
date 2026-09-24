@@ -6,7 +6,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, TypeAdapter, ValidationError
 
 from ostler.api import Ostler
 from workhorse_workflows.okf_book.shared.confine import draftable
@@ -33,10 +33,28 @@ class Drafted(BaseModel):
 
 PAGE_OPENS = re.compile(r"^=== page: (?P<path>\S+) ===$")
 PAGE_ENDS = "=== end ==="
+_JSON_STRING = TypeAdapter(str)
+
+
+def _decoded(text: str) -> str:
+    """The page a writer encoded as one JSON string body, every quote and backslash escaped, decoded; any other text unchanged.
+
+    A page as written holds a bare quote wherever it holds an escaped one, since an escape only occurs inside a quoted check argument.
+    """
+    if '\\"' not in text:
+        return text
+    escaped_lines = text.replace("\n", "\\n")
+    try:
+        return _JSON_STRING.validate_json(f'"{escaped_lines}"')
+    except ValidationError:
+        return text
 
 
 def read_draft(reply: str) -> Drafted:
-    """The pages a writer's reply holds between its page and end lines, each text as written, and the prose outside them as its summary."""
+    """The pages a writer's reply holds between its page and end lines, each text as written, and the prose outside them as its summary.
+
+    A page the writer JSON-escaped whole is read as the text it encodes.
+    """
     pages: list[DraftedPage] = []
     prose: list[str] = []
     path: str | None = None
@@ -48,12 +66,12 @@ def read_draft(reply: str) -> Drafted:
         elif path is None:
             prose.append(line)
         elif line.strip() == PAGE_ENDS:
-            pages.append(DraftedPage(path=path, text="".join(f"{line}\n" for line in body)))
+            pages.append(DraftedPage(path=path, text=_decoded("".join(f"{line}\n" for line in body))))
             path = None
         else:
             body.append(line)
     if path is not None:
-        pages.append(DraftedPage(path=path, text="".join(f"{line}\n" for line in body)))
+        pages.append(DraftedPage(path=path, text=_decoded("".join(f"{line}\n" for line in body))))
     return Drafted(summary="\n".join(prose).strip(), pages=tuple(pages))
 
 

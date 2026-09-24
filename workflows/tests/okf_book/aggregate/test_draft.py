@@ -97,6 +97,13 @@ def test_a_reply_is_cut_into_its_pages_with_their_text_as_written() -> None:
     assert drafted.pages == (DraftedPage(path=TRIP, text=f"{TRIP_TEXT}{check}\n"), DraftedPage(path=CONCEPT, text="# Ledger\n"))
 
 
+def test_a_page_the_writer_json_escaped_whole_is_read_as_the_text_it_encodes() -> None:
+    page = f'{TRIP_TEXT}- verify: created(subject="trip.json")\n- verify: stdout(matches="\\d+ trips")\n'
+    escaped = page.replace("\\", "\\\\").replace('"', '\\"')
+    drafted = read_draft(f"=== page: {TRIP} ===\n{escaped}=== end ===\n")
+    assert drafted.pages == (DraftedPage(path=TRIP, text=page),)
+
+
 def test_a_page_the_reply_never_closes_runs_to_its_end() -> None:
     drafted = read_draft(f"=== page: {TRIP} ===\n{TRIP_TEXT}")
     assert drafted.pages == (DraftedPage(path=TRIP, text=TRIP_TEXT),)
