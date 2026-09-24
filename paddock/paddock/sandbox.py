@@ -10,6 +10,8 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
+from pydantic import BaseModel, ConfigDict, ValidationError
+
 IMAGE = "paddock-sandbox"
 HOME = "/tmp/sandbox-home"
 WORK = "/work"
@@ -25,6 +27,21 @@ DOCKERFILE = Path("paddock") / "docker" / "Dockerfile"
 
 class SandboxError(RuntimeError):
     """A sandbox that cannot be built or started."""
+
+
+class _Profile(BaseModel):
+    model_config = ConfigDict(extra="ignore", frozen=True)
+
+    cli: str = ""
+
+
+class _AgentConfig(BaseModel):
+    """The part of a stablemate config that says which agent CLIs a run starts."""
+
+    model_config = ConfigDict(extra="ignore", frozen=True)
+
+    default_cli: str = ""
+    profiles: dict[str, _Profile] = {}
 
 
 def _run_or_raise(argv: Sequence[str], *, cwd: Path) -> None:
@@ -48,13 +65,14 @@ def installed_version(cli: str, flag: str) -> str:
 def config_clis(config: Path) -> frozenset[str]:
     """The agent CLIs the stablemate config at *config* runs, whose logins the container needs."""
     try:
-        data = tomllib.loads(config.read_text())
+        parsed = _AgentConfig.model_validate(tomllib.loads(config.read_text()))
     except OSError as exc:
         raise SandboxError(f"{config} cannot be read ({exc.strerror}). Name a stablemate config with --config") from exc
     except tomllib.TOMLDecodeError as exc:
         raise SandboxError(f"{config} is not TOML ({exc}). Name a stablemate config with --config") from exc
-    profiles = data.get("profiles", {})
-    named = {data.get("default_cli", "")} | {profile.get("cli", "") for profile in profiles.values()}
+    except ValidationError as exc:
+        raise SandboxError(f"{config} names its agent CLIs wrongly ({exc}). Give default_cli and each profile's cli as a string") from exc
+    named = {parsed.default_cli} | {profile.cli for profile in parsed.profiles.values()}
     return frozenset(cli for cli in named if cli)
 
 

@@ -91,6 +91,14 @@ def test_a_missing_config_names_the_flag_that_fixes_it(tmp_path: Path) -> None:
         _ = sandbox.config_clis(tmp_path / "absent.toml")
 
 
+def test_a_profile_whose_cli_is_not_a_string_names_the_fix(tmp_path: Path) -> None:
+    config = tmp_path / "config.toml"
+    config.write_text("[profiles.fast]\ncli = 3\n")
+
+    with pytest.raises(SandboxError, match="each profile's cli as a string"):
+        _ = sandbox.config_clis(config)
+
+
 def test_a_config_running_a_cli_with_no_login_is_refused(tmp_path: Path) -> None:
     box = _box(tmp_path)
     box.config.write_text('default_cli = "codex"\n')
