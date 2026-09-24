@@ -44,6 +44,11 @@ boot step at all; put it under the `verify:` of the claim (a `screen`'s `visible
 `http`'s `http_status(...)`) that the check actually observes. The doctor's
 `check-expression-as-command` catches the mistake before bring-up ever runs.
 
+The same holds for prose. "exits 0 and prints the usage banner" is a description of a check,
+not a command, and bash refuses it or runs its first word as a program. Describe what the
+step proves in the step's body, and keep the bullet to the command itself. The doctor's
+`unparsable-command` refuses a `run:`/`health:` value bash cannot parse.
+
 **`working-directory: scenario:` is a fixture-only frame, not a path.** A `fixture` step
 runs inside a scenario, so the token stands for that scenario's own directory — the same
 directory `qa.tool(...).run(..., cwd=qa.scenario_id)` runs a compiled CLI call in, so a
@@ -77,14 +82,15 @@ timeout 30 ostler scaffold step serve --in docs/features/acme/ops/links-local.md
 - working-directory: services/links
 - env:
   - PORT: 8080
-- health: GET /healthz returns 200 with "links-api" in the body
+- health: curl -fsS http://localhost:8080/healthz | grep -q links-api
 - timeout: 120
 ```
 
 ## Doctor codes it can trip
 
 `missing-required-bullet` on `kind:`, `runbook-bad-kind`, `check-expression-as-command` (a
-`run:`/`health:` value that parses as a check call), `runbook-scenario-frame` (a
+`run:`/`health:` value that parses as a check call), `unparsable-command` (a `run:`/`health:`
+value bash cannot parse), `runbook-scenario-frame` (a
 **runbook** step's `working-directory:` states the fixture-only `scenario:` token), and —
 raised against the enclosing runbook — `runbook-incomplete` (no `kind: service` step) and
 `runbook-multi-service` (more

@@ -159,7 +159,7 @@ type: runbook
 
 - kind: service
 - run: make serve
-- health: GET /healthz returns 200 with "links-api" in the body
+- health: curl -fsS http://localhost:8080/healthz | grep -q links-api
 ```
 
 ## Doctor codes it can trip
