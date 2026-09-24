@@ -28,6 +28,8 @@ HELP = "Run one recorded agent turn again from the tree it started on, and repor
 
 TURNS_DIR = "turns"
 REPLAYS_DIR = "replays"
+RECORDED_PROMPT = "prompt.md"
+VARIANT_GROWTH = 2
 
 
 def add_arguments(parser: argparse.ArgumentParser) -> None:
@@ -53,6 +55,14 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
         default=None,
         metavar="FILE",
         help="Send this prompt instead of the recorded prompt.md, to compare a variant.",
+    )
+    parser.add_argument(
+        "--max-prompt-chars",
+        type=int,
+        default=None,
+        metavar="N",
+        help="The largest --prompt variant to send, in characters "
+        f"(default: {VARIANT_GROWTH} times the recorded prompt.md).",
     )
     parser.add_argument(
         "--repeat",
@@ -102,7 +112,7 @@ def run(args: argparse.Namespace) -> None:
         _fail(f"no run dir for {args.run!r} under {runs_dir}; pass the run's directory path")
     visit_dir = run_dir / TURNS_DIR / args.turn
     record = _read_record(visit_dir)
-    prompt = _read_prompt(visit_dir, args.prompt)
+    prompt = _read_prompt(visit_dir, args.prompt, args.max_prompt_chars)
     if args.repeat < 1:
         _fail(f"--repeat {args.repeat}: a replay runs the turn at least once")
     _refuse_unsafe(record.start, discard=args.discard)
@@ -197,11 +207,33 @@ def _read_record(visit_dir: Path) -> TurnRecord:
         _fail(f"{path} is not a turn record: {exc}")
 
 
-def _read_prompt(visit_dir: Path, override: str | None) -> str:
-    path = Path(override) if override else visit_dir / "prompt.md"
+def _read_prompt(visit_dir: Path, override: str | None, max_chars: int | None) -> str:
+    recorded = visit_dir / RECORDED_PROMPT
+    path = Path(override) if override else recorded
     if not path.is_file():
         _fail(f"{path} does not exist; pass --prompt with the prompt file to send")
-    return path.read_text(encoding="utf-8")
+    prompt = path.read_text(encoding="utf-8")
+    if override:
+        _check_budget(path, len(prompt), _variant_budget(recorded, max_chars))
+    return prompt
+
+
+def _variant_budget(recorded: Path, max_chars: int | None) -> tuple[int, str]:
+    if max_chars is not None:
+        return max_chars, "--max-prompt-chars"
+    if not recorded.is_file():
+        _fail(f"{recorded} does not exist to size a variant against; pass --max-prompt-chars")
+    size = len(recorded.read_text(encoding="utf-8"))
+    return VARIANT_GROWTH * size, f"{VARIANT_GROWTH} times the recorded {size}-character prompt"
+
+
+def _check_budget(path: Path, size: int, budget: tuple[int, str]) -> None:
+    limit, source = budget
+    if size > limit:
+        _fail(
+            f"{path} is {size} characters, over the {limit} allowed ({source}). "
+            "Trim the variant, or raise the limit with --max-prompt-chars."
+        )
 
 
 def _refuse_unsafe(starts: list[TreeStart], *, discard: bool) -> None:

@@ -191,7 +191,9 @@ workhorse-<name> replay 000-00023-write-page --run <run-id> --prompt variant.md
 - `TURN` is a directory name under the run's `turns/`.
 - `--run` names the run by its id, its directory name or a path. `--runs-dir`
   defaults to `./.agents/runs`, as for `run`.
-- `--prompt FILE` sends that file instead of the recorded `prompt.md`.
+- `--prompt FILE` sends that file instead of the recorded `prompt.md`. Replay
+  refuses a variant longer than twice the recorded prompt, and names both sizes.
+  `--max-prompt-chars N` sets a different limit.
 - `--repeat N` runs the turn N times, each from the recorded start.
 - `--profile` and `--config` pick the profile, defaulting to the one the turn
   recorded.

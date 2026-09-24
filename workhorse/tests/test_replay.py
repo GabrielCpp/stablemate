@@ -178,6 +178,7 @@ def _args(run_dir: Path, **overrides: Any) -> argparse.Namespace:
         "run": str(run_dir),
         "runs_dir": None,
         "prompt": None,
+        "max_prompt_chars": None,
         "repeat": 1,
         "profile": None,
         "config": None,
@@ -240,6 +241,32 @@ def test_run_replays_under_the_recorded_profile_and_prints_the_cost(tmp_path, ca
     assert [c["prompt"] for c in runner.calls] == ["Write it shorter.", "Write it shorter."]
     assert [line.split(":")[0] for line in out] == ["replay 1", "replay 2"]
     assert (run_dir / "replays" / "000-00023-write-page" / "2" / "usage.json").is_file()
+
+
+def test_a_variant_over_twice_the_recorded_prompt_is_refused_with_its_size(tmp_path, capsys):
+    repo = _started_repo(tmp_path)
+    run_dir = _recorded_run(tmp_path, repo)
+    variant = tmp_path / "variant.md"
+    _ = variant.write_text("x" * 31, encoding="utf-8")
+
+    with pytest.raises(SystemExit):
+        replay.run(_args(run_dir, discard=True, prompt=str(variant)))
+
+    err = capsys.readouterr().err
+    assert "31 characters, over the 30 allowed" in err
+    assert "--max-prompt-chars" in err
+
+
+def test_a_stated_limit_replaces_the_recorded_prompt_budget(tmp_path, capsys):
+    repo = _started_repo(tmp_path)
+    run_dir = _recorded_run(tmp_path, repo)
+    variant = tmp_path / "variant.md"
+    _ = variant.write_text("Write the page.", encoding="utf-8")
+
+    with pytest.raises(SystemExit):
+        replay.run(_args(run_dir, discard=True, prompt=str(variant), max_prompt_chars=10))
+
+    assert "15 characters, over the 10 allowed (--max-prompt-chars)" in capsys.readouterr().err
 
 
 def test_a_missing_turn_says_where_turns_live(tmp_path, capsys):
