@@ -150,6 +150,21 @@ def _resolve_power_settings(
     return model, mapped.effort or fallback.effort, scale
 
 
+@dataclass(frozen=True, slots=True)
+class _RenderedTurn:
+    """One node's turn as it will be sent: its prompt, its trees, its settings and budgets."""
+
+    prompt: str
+    cwd: str | None
+    add_dirs: tuple[str, ...]
+    model: str | None
+    effort: str | None
+    timeout_scale: float
+    base_timeout: float
+    silence_budget: float
+    unbounded: bool
+
+
 @dataclass(frozen=True)
 class AgentRunner:
     """The fail-soft recovery ladder, for one run."""
@@ -201,56 +216,9 @@ class AgentRunner:
                 validate=validate,
             )
 
-    def _turn_record(
-        self,
-        node: AgentNode,
-        *,
-        model: str | None,
-        effort: str | None,
-        timeout_scale: float,
-        budgets: tuple[float, float] | None,
-        cwd: str | None,
-        add_dirs: list[str],
-        session_chain: str,
-        resumed: bool,
-    ) -> TurnRecord:
-        """What this turn starts from: its settings, its budgets, and the trees it may touch."""
-        return TurnRecord(
-            node=node.id,
-            backend=self.backend.name,
-            profile=self.profile.name,
-            power=node.power,
-            model=model,
-            effort=effort,
-            timeout_s=None if budgets is None else budgets[0],
-            base_timeout_s=None if budgets is None else budgets[1],
-            timeout_scale=timeout_scale,
-            cwd=cwd,
-            add_dirs=add_dirs,
-            agent=node.agent,
-            session_chain=session_chain,
-            resumed_session=resumed,
-            start=_start_trees(cwd, add_dirs),
-        )
-
-    def _run(
-        self,
-        node: AgentNode,
-        context: WorkflowContext,
-        workflow_dir: Path,
-        session_id_path: Path | None = None,
-        *,
-        resume_session: bool = False,
-        session_chain: str = "",
-        run_dir: Path | None = None,
-        visit_dir: Path | None = None,
-        validate: Callable[[dict[str, Any]], object] | None = None,
-    ) -> tuple[str, dict[str, Any]]:
-        """Render the prompt, invoke the agent, and parse its declared outputs — resiliently."""
-        node_id = node.id
+    def _render(self, node: AgentNode, ctx: dict[str, Any], workflow_dir: Path) -> _RenderedTurn:
+        """Resolve the node's settings and budgets, and render its prompt and working trees."""
         resilience = self.resilience
-        ctx = context.as_dict()
-
         model, node_effort, timeout_scale = _resolve_power_settings(
             node.power, self.backend.name, self.model_override, self.profile.name
         )
@@ -285,10 +253,6 @@ class AgentRunner:
             else render(node.prompt, prompt_ctx, workflow_dir)
         )
 
-        prompt_path = _write_prompt_for_inspection(node_id, rendered_prompt, run_dir)
-        if prompt_path is not None and self.print_prompt:
-            _print_prompt_path(node_id, prompt_path)
-
         if isinstance(node.add_dirs, str):
             bare = re.fullmatch(r"\{\{\s*(\w+)\s*\}\}", node.add_dirs.strip())
             if bare:
@@ -306,19 +270,81 @@ class AgentRunner:
             cwd_resolved = Path(rendered_cwd).resolve()
             rendered_add_dirs = [d for d in rendered_add_dirs if Path(d).resolve() != cwd_resolved]
 
+        return _RenderedTurn(
+            prompt=rendered_prompt,
+            cwd=rendered_cwd,
+            add_dirs=tuple(rendered_add_dirs),
+            model=model,
+            effort=node_effort,
+            timeout_scale=timeout_scale,
+            base_timeout=base_timeout,
+            silence_budget=silence_budget,
+            unbounded=unbounded,
+        )
+
+    def _record_start(
+        self,
+        node: AgentNode,
+        turn: _RenderedTurn,
+        *,
+        run_dir: Path,
+        visit_dir: Path | None,
+        session_chain: str,
+        resumed: bool,
+    ) -> None:
+        """Snapshot the trees this turn may touch and write what it starts from beside its prompt."""
+        record = TurnRecord(
+            node=node.id,
+            backend=self.backend.name,
+            profile=self.profile.name,
+            power=node.power,
+            model=turn.model,
+            effort=turn.effort,
+            timeout_s=None if turn.unbounded else turn.silence_budget,
+            base_timeout_s=None if turn.unbounded else turn.base_timeout,
+            timeout_scale=turn.timeout_scale,
+            cwd=turn.cwd,
+            add_dirs=list(turn.add_dirs),
+            agent=node.agent,
+            session_chain=session_chain,
+            resumed_session=resumed,
+            start=_start_trees(turn.cwd, turn.add_dirs),
+        )
+        _write_turn_record(record, turn.prompt, run_dir, visit_dir)
+
+    def _run(
+        self,
+        node: AgentNode,
+        context: WorkflowContext,
+        workflow_dir: Path,
+        session_id_path: Path | None = None,
+        *,
+        resume_session: bool = False,
+        session_chain: str = "",
+        run_dir: Path | None = None,
+        visit_dir: Path | None = None,
+        validate: Callable[[dict[str, Any]], object] | None = None,
+    ) -> tuple[str, dict[str, Any]]:
+        """Render the prompt, invoke the agent, and parse its declared outputs — resiliently."""
+        node_id = node.id
+        resilience = self.resilience
+        turn = self._render(node, context.as_dict(), workflow_dir)
+        rendered_prompt = turn.prompt
+        model = turn.model
+
+        prompt_path = _write_prompt_for_inspection(node_id, rendered_prompt, run_dir)
+        if prompt_path is not None and self.print_prompt:
+            _print_prompt_path(node_id, prompt_path)
+
         if run_dir is not None:
-            record = self._turn_record(
+            self._record_start(
                 node,
-                model=model,
-                effort=node_effort,
-                timeout_scale=timeout_scale,
-                budgets=None if unbounded else (silence_budget, base_timeout),
-                cwd=rendered_cwd,
-                add_dirs=rendered_add_dirs,
+                turn,
+                run_dir=run_dir,
+                visit_dir=visit_dir,
                 session_chain=session_chain,
                 resumed=bool(resume_session and session_id_path and session_id_path.exists()),
             )
-            _write_turn_record(record, rendered_prompt, run_dir, visit_dir)
 
         if not resume_session and session_id_path and session_id_path.exists():
             session_id_path.unlink()
@@ -346,11 +372,11 @@ class AgentRunner:
                 outputs = self._invoke_and_parse(
                     prompt, node, session_id_path, model,
                     prompt_path=prompt_path,
-                    timeout=silence_budget,
-                    budget_scale=timeout_scale,
-                    base_timeout_s=base_timeout,
-                    cwd=rendered_cwd, add_dirs=rendered_add_dirs,
-                    effort=node_effort,
+                    timeout=turn.silence_budget,
+                    budget_scale=turn.timeout_scale,
+                    base_timeout_s=turn.base_timeout,
+                    cwd=turn.cwd, add_dirs=list(turn.add_dirs),
+                    effort=turn.effort,
                     validate=validate,
                 )
                 return rendered_prompt, outputs
