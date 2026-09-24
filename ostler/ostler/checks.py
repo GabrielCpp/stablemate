@@ -104,7 +104,9 @@ CHECKS: tuple[CheckSpec, ...] = (
                  "masks the whole object before comparing cannot see",
         observes="subject-pair",
         on_cli="the working directory before and after the run, with `subject` naming a file "
-               "in it by its relative path, or the whole directory when it names no file",
+               "in it by its relative path. A file that appears or vanishes counts as changed. "
+               "A `subject` that exists neither before nor after reads the whole directory "
+               "instead, so the check passes only when the run changed no file in it",
     ),
     CheckSpec(
         name="keys_unchanged",
@@ -113,7 +115,9 @@ CHECKS: tuple[CheckSpec, ...] = (
                  "and only the key inventory shows the old one is still there",
         observes="subject-pair",
         on_cli="the working directory before and after the run, with `subject` naming a file "
-               "in it by its relative path, or the whole directory when it names no file",
+               "in it by its relative path. A `subject` that exists neither before nor after "
+               "reads the whole directory instead, so the check passes only when the run "
+               "added or removed no file and no key in one",
     ),
     CheckSpec(
         name="count",

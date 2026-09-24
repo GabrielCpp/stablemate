@@ -980,4 +980,9 @@ def test_unchanged_compares_the_named_file_or_else_the_whole_tree(tmp_path: Path
 
     assert harness.VERIFIERS["unchanged"](pair, {"subject": "tally.json"})[0] is True
     assert harness.VERIFIERS["unchanged"](pair, {"subject": "the working directory"})[0] is False
+    assert harness.VERIFIERS["unchanged"](pair, {"subject": "stray.txt"})[0] is False
     assert harness.VERIFIERS["keys_unchanged"](pair, {"subject": "tally.json"})[0] is True
+    assert harness.VERIFIERS["keys_unchanged"](pair, {"subject": "no-such.json"})[0] is False
+    quiet = (harness.Tree(before), harness.Tree(before))
+    assert harness.VERIFIERS["unchanged"](quiet, {"subject": "no-such.json"})[0] is True
+    assert harness.VERIFIERS["keys_unchanged"](quiet, {"subject": "no-such.json"})[0] is True
