@@ -121,12 +121,24 @@ def run(args: argparse.Namespace) -> None:
 
 def replay_turn(runner: AgentRunner, record: TurnRecord, prompt: str, into: Path) -> Replay:
     """Restore the turn's start, run it once more, and keep what it wrote under ``into``."""
-    for start in record.start:
-        if start.head:
-            gitstate.restore_tree(start)
+    _restore_start(record.start)
     index = _next_index(into)
     directory = into / str(index)
     directory.mkdir(parents=True)
+    reply, wall_s, usage = _run_measured(runner, record, prompt, directory)
+    _write_result(directory, reply, wall_s, usage)
+    return Replay(index=index, directory=directory, wall_s=wall_s, usage=usage)
+
+
+def _restore_start(starts: list[TreeStart]) -> None:
+    for start in starts:
+        if start.head:
+            gitstate.restore_tree(start)
+
+
+def _run_measured(
+    runner: AgentRunner, record: TurnRecord, prompt: str, directory: Path
+) -> tuple[str, float, TurnUsage]:
     recorder = otel.UsageRecorder()
     previous = otel.install(otel.TelemetryHost(active=recorder))
     transcript.bind(directory)
@@ -154,12 +166,15 @@ def replay_turn(runner: AgentRunner, record: TurnRecord, prompt: str, into: Path
     usage = TurnUsage()
     for part in recorder.usages:
         usage = usage.merge(part)
+    return reply, wall_s, usage
+
+
+def _write_result(directory: Path, reply: str, wall_s: float, usage: TurnUsage) -> None:
     _ = (directory / "reply.md").write_text(reply, encoding="utf-8")
     _ = (directory / "usage.json").write_text(
         json.dumps({"wall_s": round(wall_s, 1), **asdict(usage)}, indent=2) + "\n",
         encoding="utf-8",
     )
-    return Replay(index=index, directory=directory, wall_s=wall_s, usage=usage)
 
 
 def _summary(replay: Replay) -> str:
