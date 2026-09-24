@@ -34,6 +34,7 @@ from workhorse.pyflow.run import RunInvocation, run_pyflow
 from workhorse.records import parse_run_record
 from workhorse.rundir import find_latest_resumable as _find_latest_resumable
 from workhorse.rundir import resolve_run_dir
+from workhorse.runner.backends import AgentBackend
 from workhorse.runner.backends.registry import backend_names, get_backend
 
 NAME = "run"
@@ -184,7 +185,7 @@ def invocation(args: argparse.Namespace) -> RunInvocation:
         sys.exit(1)
     flow = args.flow
 
-    _apply_config_path(getattr(args, "config", None))
+    apply_config_path(getattr(args, "config", None))
 
     os.environ.setdefault("AGENT_REPO_DIR", str(Path.cwd().resolve()))
 
@@ -206,30 +207,7 @@ def invocation(args: argparse.Namespace) -> RunInvocation:
     if not profile_name and not args.cli and resume_run_dir is not None:
         profile_name = _recorded_profile(resume_run_dir)
     cfg = load_config()
-    try:
-        if profile_name:
-            profile = select_profile(cfg, profile_name)
-            resolved_cli = _profile_cli_or_raise(profile, profile_name)
-        else:
-            active_cli = _resolve_active_cli(args, cfg)
-            profile = select_active_profile(cfg, active_cli=active_cli)
-            resolved_cli = active_cli
-    except UnknownProfileError as exc:
-        print(f"error: {exc}", file=sys.stderr)
-        sys.exit(1)
-    except ConfigError as exc:
-        print(f"error: {exc}", file=sys.stderr)
-        sys.exit(1)
-
-    os.environ["AGENT_CLI"] = resolved_cli
-
-    try:
-        backend = get_backend()
-    except ValueError as e:
-        print(f"error: {e}", file=sys.stderr)
-        sys.exit(1)
-
-    _check_profile_resolves(profile_name, profile, backend.name)
+    backend = select_backend(cfg, profile_name, args.cli)
 
     params = load_params(args.params, args.params_file)
     params.setdefault("repo_dir", os.environ.get("AGENT_REPO_DIR") or str(Path.cwd().resolve()))
@@ -268,10 +246,39 @@ def library_dirs(cfg: dict[str, Any]) -> list[str]:
     return roots
 
 
-def _resolve_active_cli(args: argparse.Namespace, cfg: dict[str, Any]) -> str:
+def select_backend(cfg: dict[str, Any], profile_name: str, cli: str | None) -> AgentBackend:
+    """The backend a named profile, or else a bare CLI, selects; a bad pick exits with its fix."""
+    try:
+        if profile_name:
+            profile = select_profile(cfg, profile_name)
+            resolved_cli = _profile_cli_or_raise(profile, profile_name)
+        else:
+            active_cli = _resolve_active_cli(cli, cfg)
+            profile = select_active_profile(cfg, active_cli=active_cli)
+            resolved_cli = active_cli
+    except UnknownProfileError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        sys.exit(1)
+    except ConfigError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        sys.exit(1)
+
+    os.environ["AGENT_CLI"] = resolved_cli
+
+    try:
+        backend = get_backend()
+    except ValueError as e:
+        print(f"error: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    _check_profile_resolves(profile_name, profile, backend.name)
+    return backend
+
+
+def _resolve_active_cli(cli: str | None, cfg: dict[str, Any]) -> str:
     """Resolve the active CLI for a non-`--profile` run: --cli → $AGENT_CLI → config."""
     return (
-        args.cli
+        cli
         or os.environ.get("AGENT_CLI")
         or resolve_default_cli(cfg)
     ).strip().lower()
@@ -312,7 +319,7 @@ def _check_profile_resolves(name: str, profile: dict[str, Any], backend: str) ->
         sys.exit(1)
 
 
-def _apply_config_path(raw: str | None) -> None:
+def apply_config_path(raw: str | None) -> None:
     """Point the whole process at the config `--config` named, or leave discovery alone."""
     if not raw:
         return

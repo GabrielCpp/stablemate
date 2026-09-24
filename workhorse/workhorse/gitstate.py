@@ -105,6 +105,44 @@ def snapshot_tree(path: str | Path) -> TreeStart:
     return TreeStart(path=str(path), head=head, tree=tree)
 
 
+class RestoreError(RuntimeError):
+    """A working tree could not be put back to a recorded start."""
+
+
+def _git_or_raise(path: str | Path, *args: str) -> None:
+    """One git command in ``path`` that must succeed."""
+    try:
+        done = subprocess.run(
+            ["git", "-C", str(path), *args],
+            capture_output=True,
+            text=True,
+            timeout=SNAPSHOT_TIMEOUT_S,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise RestoreError(f"git {' '.join(args)} in {path}: {exc}") from exc
+    if done.returncode != 0:
+        raise RestoreError(f"git {' '.join(args)} in {path}: {done.stderr.strip()}")
+
+
+def restore_tree(start: TreeStart) -> None:
+    """Put ``start.path`` back to the commit and working tree ``start`` recorded, ignored files left alone."""
+    if not start.head:
+        raise RestoreError(f"{start.path} recorded no commit, so there is nothing to restore it to")
+    _git_or_raise(start.path, "reset", "-q", "--hard", start.head)
+    _git_or_raise(start.path, "clean", "-fdq")
+    if not start.tree:
+        return
+    _git_or_raise(start.path, "read-tree", "-u", "--reset", start.tree)
+    _git_or_raise(start.path, "reset", "-q")
+    restored = snapshot_tree(start.path).tree
+    if restored != start.tree:
+        raise RestoreError(
+            f"{start.path} holds tree {restored or 'none'} after the restore, not the recorded "
+            f"{start.tree}; check that the checkout still has that commit's objects"
+        )
+
+
 def _identity(path: str | Path) -> tuple[str, str, str]:
     """Repository root, full HEAD, and branch in one git process; empties when absent."""
     lines = _git(path, "rev-parse", "--show-toplevel", "HEAD", "--abbrev-ref", "HEAD").splitlines()

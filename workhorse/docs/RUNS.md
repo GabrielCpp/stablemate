@@ -123,6 +123,8 @@ runs/
     │                             # holding that visit's own copy of the files below
     ├── transcripts/              # one capture per agent turn, same key + the session id:
     │                             # <gen>-<seq>-<node>__<session-id>.{jsonl,d,tee.jsonl,meta.json}
+    ├── replays/                  # `replay` runs of a visit: replays/<visit>/<n>/ holds
+    │                             # reply.md, usage.json and transcripts/
     └── <step-id>/                # the LATEST visit of this step
         ├── prompt.md             # rendered prompt, written before agent invocation
         ├── turn.json             # what the turn started with: model, effort, budgets, dirs, trees
@@ -172,3 +174,35 @@ tee to the full export. Every capture's `.meta.json` records its source, bytes, 
 at the time, and whether the per-turn cap truncated it.
 Bounds are `WORKHORSE_CAPTURE_TRANSCRIPTS` (default on) and
 `WORKHORSE_TRANSCRIPT_MAX_BYTES` (default 32 MiB per turn).
+
+## Replaying one turn
+
+`replay` runs one recorded agent turn again, alone, so a prompt or a model can be
+compared on the same work without running the workflow up to it. It reads the
+visit's `turn.json` and `prompt.md`, puts each recorded working tree back to the
+tree the turn started on, and runs the turn in a fresh session with the recorded
+model, effort, budgets, directories and agent profile.
+
+```bash
+workhorse-<name> replay 000-00023-write-page --run <run-id> --repeat 3
+workhorse-<name> replay 000-00023-write-page --run <run-id> --prompt variant.md
+```
+
+- `TURN` is a directory name under the run's `turns/`.
+- `--run` names the run by its id, its directory name or a path. `--runs-dir`
+  defaults to `./.agents/runs`, as for `run`.
+- `--prompt FILE` sends that file instead of the recorded `prompt.md`.
+- `--repeat N` runs the turn N times, each from the recorded start.
+- `--profile` and `--config` pick the profile, defaulting to the one the turn
+  recorded.
+- `--discard` lets the restore overwrite uncommitted changes. Without it, replay
+  refuses a recorded directory that has any. The restore resets the commit and
+  removes untracked files, so replay against a copy of the checkout when the
+  original is still in use.
+
+Each repeat writes `replays/<visit>/<n>/` in the run dir: the reply as `reply.md`,
+the turn's summed usage and wall-clock seconds as `usage.json`, and the transcript
+under `transcripts/`. It prints one line per repeat with minutes, cost, input and
+cache-read tokens, generated tokens and steps. The restore needs the recorded
+commit's objects in the checkout. A tree that comes back different from the
+recorded one stops the replay with both tree ids.

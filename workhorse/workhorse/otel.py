@@ -299,6 +299,16 @@ class _NullTelemetry:
 _NULL: Telemetry = _NullTelemetry()
 
 
+class UsageRecorder(_NullTelemetry):
+    """Telemetry that exports nothing and keeps each turn's usage for the caller to read."""
+
+    def __init__(self) -> None:
+        self.usages: list[TurnUsage] = []
+
+    def turn_result(self, usage: TurnUsage) -> None:
+        self.usages.append(usage)
+
+
 def _collector_reachable(endpoint: str, timeout_s: float) -> bool:
     """True when something accepts a TCP connection at ``endpoint``."""
     try:
