@@ -97,7 +97,7 @@ def _record(repo: Path) -> TurnRecord:
         profile="opencode",
         model="some/model",
         effort="high",
-        timeout_s=1800,
+        silence_budget_s=1800,
         base_timeout_s=900,
         timeout_scale=2.0,
         cwd=str(repo),

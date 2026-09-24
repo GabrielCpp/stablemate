@@ -159,7 +159,7 @@ def _run_measured(
             record.node,
             sessions.chain_path(directory, record.node),
             model=record.model,
-            timeout=record.timeout_s if record.timeout_s is not None else math.inf,
+            timeout=record.silence_budget_s if record.silence_budget_s is not None else math.inf,
             budget_scale=record.timeout_scale,
             base_timeout_s=record.base_timeout_s,
             cwd=record.cwd,

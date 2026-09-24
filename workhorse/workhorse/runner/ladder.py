@@ -242,7 +242,7 @@ class AgentRunner:
             effort=node_effort,
             timeout_scale=timeout_scale,
             base_timeout_s=base_timeout,
-            silence_budget=silence_budget,
+            silence_budget_s=silence_budget,
             timeout_unbounded=unbounded,
         )
 
@@ -308,7 +308,7 @@ class AgentRunner:
                 outputs = self._invoke_and_parse(
                     prompt, node, session_id_path, model,
                     prompt_path=prompt_path,
-                    timeout=turn.silence_budget,
+                    timeout=turn.silence_budget_s,
                     budget_scale=turn.timeout_scale,
                     base_timeout_s=turn.base_timeout_s,
                     cwd=turn.cwd, add_dirs=list(turn.add_dirs),

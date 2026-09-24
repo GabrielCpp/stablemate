@@ -24,7 +24,7 @@ class TurnRecord(BaseModel):
     power: str | None = None
     model: str | None = None
     effort: str | None = None
-    timeout_s: float | None = None
+    silence_budget_s: float | None = None
     base_timeout_s: float | None = None
     timeout_scale: float = 1.0
     cwd: str | None = None
@@ -51,7 +51,7 @@ class RenderedTurn:
     effort: str | None
     timeout_scale: float
     base_timeout_s: float
-    silence_budget: float
+    silence_budget_s: float
     timeout_unbounded: bool
 
 
@@ -74,7 +74,7 @@ def record_turn_start(
         power=node.power,
         model=turn.model,
         effort=turn.effort,
-        timeout_s=None if turn.timeout_unbounded else turn.silence_budget,
+        silence_budget_s=None if turn.timeout_unbounded else turn.silence_budget_s,
         base_timeout_s=None if turn.timeout_unbounded else turn.base_timeout_s,
         timeout_scale=turn.timeout_scale,
         cwd=turn.cwd,
