@@ -6,8 +6,10 @@
   of that claim. A check that also passes on a violation fails. A pattern that matches a
   fragment of a message is such a check when the claim says the message names a path or a
   value.
-- A claim whose check reads a file or a state has a `fixture:` above it that puts that file
-  or state in place. The check never depends on another scenario having run first.
+- A page's claims run as one scenario. Every fixture the page names is put in place first,
+  then each claim's call runs in page order, so each check reads the state the calls above it
+  left. A claim whose check reads a file or a state has a `fixture:` or a claim above it that
+  puts that file or state in place, and no check depends on another page having run.
 - The pages agree with each other. A fixture, a file, an exit code or a message is described
   the same way on every page that names it.
 - Every interactive control has a role, an accessible name and a keyboard contract. Every
