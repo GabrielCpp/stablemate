@@ -102,7 +102,7 @@ def _service_of(page: str) -> str:
     return Path(page).relative_to(FEATURES_DIR).parts[0]
 
 
-def _cleared_on(ledger: JobLedger, judged_node_digests: dict[str, str]) -> list[str]:
+def _cleared_nodes_told(ledger: JobLedger, judged_node_digests: dict[str, str]) -> list[str]:
     nodes = sorted(entry.node for entry in ledger.cleared if entry.node in judged_node_digests)
     return list(pack_told(name_tokens(nodes), CLEARED_BUDGET_TOKENS).kept)
 
@@ -152,11 +152,8 @@ class Aggregate(BookFlow):
             return Continue(ledger.attempts, self.stamp_job, ledger=ledger)
         return self._rewrite(ledger)
 
-    def _mark_done_or_blocked(self, ledger: JobLedger) -> None:
+    def _block(self, ledger: JobLedger) -> None:
         subject = ledger.job.subject
-        if not ledger.exhausted:
-            _ = self.work.mark(subject, DONE, JOB)
-            return
         reason = " ".join(ledger.problems)
         _ = record_blocker(self.records_dir, Blocker(subject=subject, phase=Phase.AGGREGATE, side=Side.BOOK, reason=reason))
         _ = self.work.mark(subject, BLOCKED, JOB)
@@ -264,7 +261,7 @@ class Aggregate(BookFlow):
                 "contracts": [contract.model_dump() for contract in numbered],
                 "other_pages": list(other_pages.kept),
                 "other_pages_left_out": other_pages.left_out,
-                "cleared": _cleared_on(ledger, judged_node_digests),
+                "cleared": _cleared_nodes_told(ledger, judged_node_digests),
                 "kind": job.kind.value,
             },
             cwd=root,
@@ -296,8 +293,13 @@ class Aggregate(BookFlow):
 
     def block_job(self, ledger: JobLedger) -> Continue[...]:
         """Hand the abandoned job to the operator, and settle it as blocked so no later turn reopens it."""
-        self._mark_done_or_blocked(ledger)
+        self._block(ledger)
         return self._next_job(ledger.job.subject)
+
+    def block_kept_job(self, ledger: JobLedger, created: tuple[str, ...]) -> Continue[...]:
+        """Hand the job whose pages were kept to the operator, and settle it as blocked so no later turn reopens it."""
+        self._block(ledger)
+        return Continue(ledger.job.subject, self.pick_garbage, job=ledger.job, created=created)
 
     def stamp_job(self, ledger: JobLedger) -> Continue[...]:
         """Stamp each written page with its cited files' digests, and note the pages the job created."""
@@ -310,13 +312,15 @@ class Aggregate(BookFlow):
         return Continue(changed, self.commit_job, ledger=ledger, created=created)
 
     def commit_job(self, ledger: JobLedger, created: tuple[str, ...]) -> Continue[...]:
-        """Commit each file the job changed on its own, and settle the job: done, or blocked when it ran out of turns with its pages kept."""
+        """Commit each file the job changed on its own. A job that ran out of turns goes on to be blocked. Any other is done."""
         root, job = self.root, ledger.job
         changed = book_changes(root, job.service, ledger.before)
         for path in changed:
             verb = "write" if (root / path).exists() else "delete"
             _ = commit_paths(root, f"docs({job.service}): {verb} {Path(path).stem}", path)
-        self._mark_done_or_blocked(ledger)
+        if ledger.exhausted:
+            return Continue(changed, self.block_kept_job, ledger=ledger, created=created)
+        _ = self.work.mark(job.subject, DONE, JOB)
         return Continue(changed, self.pick_garbage, job=job, created=created)
 
     def pick_garbage(self, job: Job, created: tuple[str, ...]) -> Continue[...]:
