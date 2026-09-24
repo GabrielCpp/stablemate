@@ -74,8 +74,9 @@ from any directory. It checks your pages, edited or not, and every other book pa
 before you edit to see what your pages already owe. It prints every problem the check
 after your turn will charge you with, and each one costs you this turn. Fix them all and run it again, as often as
 you need, until it passes. Your runs share one budget of output. Once it is spent, a run prints how many problems
-remain, and after that nothing, so read its exit code: 0 passes. Its verdict is the one that counts.
-Once it passes, reply. Do not run `ostler doctor`: its stale citations are restamped by the
+remain, and after that nothing, so read its exit code: 0 passes. It proves your claims compile
+and run. It cannot read the bar above, so a page it passes can still be refused by the judge.
+Hold each page to that bar yourself, and once the check passes, reply. Do not run `ostler doctor`: its stale citations are restamped by the
 commit, and its unreachable pages are outside your job. Do not commit.
 
 Reply with only this JSON object:
