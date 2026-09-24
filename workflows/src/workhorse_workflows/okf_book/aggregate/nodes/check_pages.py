@@ -17,7 +17,10 @@ from workhorse_workflows.okf_book.shared.confine import book_changes, new_since_
 from workhorse_workflows.okf_book.shared.page_check import charged_pages, page_problems, unreached
 
 USAGE = f"usage: python -m {CHECK_MODULE} <job-check.json>"
-PASSED = "No problems. The check after your turn passes these pages."
+PASSED = (
+    "No problems. The check after your turn passes these pages. Reply now. "
+    "Nothing else is charged to this turn, and `ostler doctor` is not."
+)
 LEFT_OUT = "{count} more problems are past this output's budget. Fix these and run it again."
 SPENT = (
     "{count} problems remain. Your runs have printed all the problem text this turn allows, "
