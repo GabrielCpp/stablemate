@@ -62,9 +62,10 @@ Rules for each contract:
   claim. It must be declared in this file. A re-export is not a declaration. Leave it
   empty only when no symbol carries the claim.
 - A check sees only what its line below says it reads. On a cli, that is the exit code, the
-  output streams, and which files appear, vanish or change. A claim about what a file holds
-  is seen through a command that prints it. When no check reads the claim, leave `verify`
-  empty rather than pick a check that reads something else.
+  output streams, which files appear, vanish or change, and what a file it left holds. A claim
+  about what a file holds is read by `contents`, or by `json_path` or `count` with `file=`
+  naming that file. When no check reads the claim, leave `verify` empty rather than pick a
+  check that reads something else.
 - `verify` is the check that would observe the claim, as `name(arg=value)`, or empty when
   none fits. Every argument is a literal, and a string is quoted:
   `created(subject="ledger.txt")`. A check marked "one of" takes exactly one of the arguments
