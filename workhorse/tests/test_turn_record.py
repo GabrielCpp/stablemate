@@ -93,5 +93,33 @@ def test_a_turn_writes_its_settings_and_start_beside_its_prompt(tmp_path):
     assert record.base_timeout_s == 120
     assert record.cwd == str(repo)
     assert record.agent == AgentProfile(name="reviewer", tools={"bash": False}, steps=12)
-    assert [s.path for s in record.start] == [str(repo)]
-    assert _git(repo, "show", f"{record.start[0].tree}:new.txt") == "untracked"
+    assert [s.path for s in record.start_trees] == [str(repo)]
+    assert _git(repo, "show", f"{record.start_trees[0].tree}:new.txt") == "untracked"
+
+
+def test_a_turn_whose_start_cannot_be_recorded_still_runs(tmp_path, capsys):
+    repo = _dirty_repo(tmp_path)
+    run_dir = tmp_path / "run"
+    (run_dir / "review" / "turn.json").mkdir(parents=True)
+    node = AgentNode(
+        type="agent",
+        id="review",
+        prompt="Review.",
+        outputs=[OutputSpec(key="decision")],
+        cwd=str(repo),
+        next=None,
+    )
+    runner = _ScriptedRunner(
+        backend=FakeBackend(), resilience=AgentResilience(), clock=FakeClock()
+    )
+
+    with patch.object(ladder, "render", lambda tmpl, ctx, wdir: "Rendered prompt"):
+        _, outputs = runner.run(
+            node, WorkflowContext(initial={}), Path("."), None,
+            run_dir=run_dir, visit_dir=run_dir / "turns" / "000-00001-review",
+        )
+
+    assert outputs["decision"] == "approve"
+    out = capsys.readouterr().out
+    assert "could not record this turn's start" in out
+    assert "cannot be replayed" in out

@@ -32,7 +32,7 @@ class TurnRecord(BaseModel):
     agent: AgentProfile | None = None
     session_chain: str = ""
     resumed_session: bool = False
-    start: list[TreeStart] = Field(default_factory=list)
+    start_trees: list[TreeStart] = Field(default_factory=list)
 
 
 def parse_turn_record(text: str) -> TurnRecord:
@@ -66,7 +66,32 @@ def record_turn_start(
     session_chain: str,
     resumed: bool,
 ) -> None:
-    """Snapshot the trees this turn may touch and write what it starts from beside its prompt."""
+    """Snapshot the trees this turn may touch and write what it starts from beside its prompt.
+
+    A failure is reported and swallowed: the record serves a later replay, never this turn.
+    """
+    try:
+        _record(node, turn, backend=backend, profile=profile, run_dir=run_dir,
+                visit_dir=visit_dir, session_chain=session_chain, resumed=resumed)
+    except OSError as exc:
+        print(
+            f"[{node.id}] WARNING: could not record this turn's start under {run_dir}: {exc}. "
+            "The turn runs, but it cannot be replayed until the run dir is writable.",
+            flush=True,
+        )
+
+
+def _record(
+    node: AgentNode,
+    turn: RenderedTurn,
+    *,
+    backend: str,
+    profile: str,
+    run_dir: Path,
+    visit_dir: Path | None,
+    session_chain: str,
+    resumed: bool,
+) -> None:
     record = TurnRecord(
         node=node.id,
         backend=backend,
@@ -82,7 +107,7 @@ def record_turn_start(
         agent=node.agent,
         session_chain=session_chain,
         resumed_session=resumed,
-        start=_start_trees(turn.cwd, turn.add_dirs),
+        start_trees=_start_trees(turn.cwd, turn.add_dirs),
     )
     write_turn_record(record, turn.prompt, run_dir, visit_dir)
 

@@ -115,7 +115,7 @@ def run(args: argparse.Namespace) -> None:
     prompt = _read_prompt(visit_dir, args.prompt, args.max_prompt_chars)
     if args.repeat < 1:
         _fail(f"--repeat {args.repeat}: a replay runs the turn at least once")
-    _refuse_unsafe(record.start, discard=args.discard)
+    _refuse_unsafe(record.start_trees, discard=args.discard)
 
     profile = args.profile if args.profile is not None else record.profile
     backend = backend_for_profile(args.config, profile.strip(), record.backend or None)
@@ -130,7 +130,7 @@ def run(args: argparse.Namespace) -> None:
 
 def replay_turn(runner: AgentRunner, record: TurnRecord, prompt: str, into: Path) -> Replay:
     """Restore the turn's start, run it once more, and keep what it wrote under ``into``."""
-    _restore_start(record.start)
+    _restore_start(record.start_trees)
     index = _next_index(into)
     directory = into / str(index)
     directory.mkdir(parents=True)

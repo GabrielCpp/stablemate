@@ -103,7 +103,7 @@ def _record(repo: Path) -> TurnRecord:
         cwd=str(repo),
         add_dirs=[str(repo / "docs")],
         agent=AgentProfile(name="writer", steps=40),
-        start=[gitstate.snapshot_tree(repo)],
+        start_trees=[gitstate.snapshot_tree(repo)],
     )
 
 
