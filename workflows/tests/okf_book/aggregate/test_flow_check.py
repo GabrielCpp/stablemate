@@ -1,4 +1,4 @@
-"""Every writing turn runs the page check it is charged by, and starts with the whole of a turn's check output."""
+"""Every writing turn that runs tools runs the page check it is charged by, and starts with the whole of a turn's check output."""
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -17,7 +17,7 @@ RunBook = Callable[[WriteOnly, ScriptedRunner], WorkListView]
 
 COMMANDS = ("init", "add", "import", "report", "export")
 TALLY = Surface(service="tally", kind=SurfaceKind.CLI, entry="tally/__main__.py")
-CONCEPT = f"{FEATURES_DIR}/tally/concepts/ledger-file.md"
+FIXTURE = f"{FEATURES_DIR}/tally/fixtures/expenses-csv.md"
 PASS = judged()
 
 
@@ -28,18 +28,21 @@ def _append(repo: Path, rel: str, text: str) -> None:
 
 def _writer(repo: Path) -> Reply:
     def _reply(args: dict[str, object]) -> dict[str, object]:
-        _append(repo, str(args["page"]), "\nTally keeps a ledger.\n")
-        return {"summary": "wrote"}
+        page = str(args["page"])
+        text = (repo / page).read_text(encoding="utf-8") + "\nTally keeps a ledger.\n"
+        return {"summary": "wrote", "pages": [{"path": page, "text": text}]}
 
     return _reply
 
 
-def _run(repo: Path, run_book: RunBook, write: Reply, verify: Reply = PASS) -> tuple[WriteOnly, ScriptedRunner]:
+def _run(
+    repo: Path, run_book: RunBook, operations: Reply = always({"summary": "none"}), verify: Reply = PASS,
+) -> tuple[WriteOnly, ScriptedRunner]:
     runner = listing_runner(
         *COMMANDS,
         document_files=promised_contracts,
-        write_page=write,
-        write_operations=always({"summary": "none"}),
+        write_page=_writer(repo),
+        write_operations=operations,
         write_flows=always({"summary": "none"}),
         verify_page=verify,
     )
@@ -48,13 +51,14 @@ def _run(repo: Path, run_book: RunBook, write: Reply, verify: Reply = PASS) -> t
     return flow, runner
 
 
-def test_every_writing_turn_is_handed_the_check_it_is_charged_by(app: App, run_book: RunBook) -> None:
+def test_every_tool_using_writing_turn_is_handed_the_check_it_is_charged_by(app: App, run_book: RunBook) -> None:
     repo = app("tally-cli")
-    flow, runner = _run(repo, run_book, write=_writer(repo))
+    flow, runner = _run(repo, run_book)
 
-    writes = [*runner.args_of("write-page"), *runner.args_of("write-operations"), *runner.args_of("write-flows")]
+    writes = [*runner.args_of("write-operations"), *runner.args_of("write-flows")]
     assert writes
     assert {args["check"] for args in writes} == {check_command(flow.run_dir)}
+    assert all("check" not in args for args in runner.args_of("write-page"))
 
 
 def test_every_writing_turn_starts_with_the_whole_check_budget(app: App, run_book: RunBook) -> None:
@@ -63,17 +67,17 @@ def test_every_writing_turn_starts_with_the_whole_check_budget(app: App, run_boo
 
     def write(args: dict[str, object]) -> dict[str, object]:
         path = Path(str(args["check"]).split()[-1])
-        _append(repo, str(args["page"]), "\nTally keeps a ledger.\n")
+        _append(repo, FIXTURE, "\nThe scenario directory holds it.\n")
         spent.append(spent_tokens(path))
         charge(path, CHECK_OUTPUT_BUDGET_TOKENS)
         return {"summary": "wrote"}
 
     def reject(args: dict[str, object]) -> dict[str, object]:
-        if CONCEPT in [page["page"] for page in BRIEFS.validate_python(args["pages"])]:
-            return judged("The page says nothing about the ledger's columns.")(args)
+        if FIXTURE in [page["page"] for page in BRIEFS.validate_python(args["pages"])]:
+            return judged("The page says nothing about the fixture's rows.")(args)
         return PASS(args)
 
-    _ = _run(repo, run_book, verify=reject, write=write)
+    _ = _run(repo, run_book, operations=write, verify=reject)
 
-    assert len(spent) > MAX_ATTEMPTS
+    assert len(spent) == MAX_ATTEMPTS
     assert set(spent) == {0}

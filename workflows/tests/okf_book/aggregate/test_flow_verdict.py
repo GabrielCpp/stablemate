@@ -35,9 +35,9 @@ NUMBERS = TypeAdapter(list[dict[str, object]])
 
 def _writer(repo: Path) -> Reply:
     def _reply(args: dict[str, object]) -> dict[str, object]:
-        path = repo / str(args["page"])
-        _ = path.write_text(path.read_text(encoding="utf-8") + "\nTally keeps a ledger.\n", encoding="utf-8")
-        return {"summary": "wrote"}
+        page = str(args["page"])
+        text = (repo / page).read_text(encoding="utf-8") + "\nTally keeps a ledger.\n"
+        return {"summary": "wrote", "pages": [{"path": page, "text": text}]}
 
     return _reply
 
@@ -95,11 +95,10 @@ def test_a_node_an_earlier_round_cleared_is_not_faulted_while_its_text_is_unchan
     faulted: list[str] = []
 
     def write(args: dict[str, object]) -> dict[str, object]:
-        path = repo / str(args["page"])
-        text = path.read_text(encoding="utf-8")
+        page = str(args["page"])
+        text = (repo / page).read_text(encoding="utf-8")
         added = "\nMore.\n" if "## Kept" in text else "\n## Kept\n\nIt stays.\n\n## Tail\n\nTally keeps a ledger.\n"
-        _ = path.write_text(text + added, encoding="utf-8")
-        return {"summary": "wrote"}
+        return {"summary": "wrote", "pages": [{"path": page, "text": text + added}]}
 
     def fault(args: dict[str, object]) -> dict[str, object]:
         if not _judges_concept(args):

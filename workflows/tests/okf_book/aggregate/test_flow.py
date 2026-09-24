@@ -41,22 +41,25 @@ def _append(repo: Path, rel: str, text: str) -> None:
     _ = path.write_text(path.read_text(encoding="utf-8") + text, encoding="utf-8")
 
 
+def _drafted(repo: Path, page: str) -> dict[str, object]:
+    text = (repo / page).read_text(encoding="utf-8") + "\nTally keeps a ledger.\n"
+    return {"summary": "wrote", "pages": [{"path": page, "text": text}]}
+
+
 def _writer(repo: Path, *elsewhere: str) -> Reply:
     def _reply(args: dict[str, object]) -> dict[str, object]:
-        _append(repo, str(args["page"]), "\nTally keeps a ledger.\n")
         for rel in elsewhere:
             _append(repo, rel, "\nstray = 1\n")
-        return {"summary": "wrote"}
+        return _drafted(repo, str(args["page"]))
 
     return _reply
 
 
 def _on_concept(repo: Path, edit: Callable[[Path], None]) -> Reply:
     def _reply(args: dict[str, object]) -> dict[str, object]:
-        _append(repo, str(args["page"]), "\nTally keeps a ledger.\n")
         if args["page"] == CONCEPT:
             edit(repo)
-        return {"summary": "wrote"}
+        return _drafted(repo, str(args["page"]))
 
     return _reply
 
@@ -151,7 +154,7 @@ def test_a_page_whose_obligations_do_not_compile_is_put_back_and_blocked(app: Ap
 
 def test_a_page_the_job_owns_is_charged_when_the_turn_leaves_it_alone(app: App, run_book: RunBook) -> None:
     repo = app("tally-cli")
-    _flow, runner = _run(repo, run_book, write=always({"summary": "wrote nothing"}))
+    _flow, runner = _run(repo, run_book, write=always({"summary": "wrote nothing", "pages": []}))
 
     tries = _pages_written(runner, ROOT_PAGE)
     assert len(tries) == MAX_ATTEMPTS
@@ -305,7 +308,6 @@ def test_a_page_an_earlier_job_wrote_is_kept_when_a_later_job_unlinks_it(app: Ap
 
     def write(args: dict[str, object]) -> dict[str, object]:
         page = str(args["page"])
-        _append(repo, page, "\nTally keeps a ledger.\n")
         if page == CONCEPT:
             _ = (repo / trip).write_text("---\ntype: concept\ntitle: Trip\n---\n# Trip\n\nA trip groups expenses.\n", encoding="utf-8")
             _append(repo, ORPHAN, link)
@@ -313,7 +315,7 @@ def test_a_page_an_earlier_job_wrote_is_kept_when_a_later_job_unlinks_it(app: Ap
             path = repo / ORPHAN
             _ = path.write_text(path.read_text(encoding="utf-8").replace(link, ""), encoding="utf-8")
             _append(repo, trip, "\nA trip has one budget.\n")
-        return {"summary": "wrote"}
+        return _drafted(repo, page)
 
     flow, _runner = _run(repo, run_book, write=write)
 
@@ -375,13 +377,12 @@ def test_an_operations_page_written_after_the_queue_froze_is_not_the_operations_
     late_text = (repo / f"{BOOK}/fixtures/second-ledger.md").read_text(encoding="utf-8").replace("Second ledger", "Trips CSV")
 
     def write_page(args: dict[str, object]) -> dict[str, object]:
-        _append(repo, str(args["page"]), "\nTally keeps a ledger.\n")
         if args["page"] == ROOT_PAGE and not (repo / late).is_file():
             _ = (repo / late).write_text(late_text, encoding="utf-8")
             _append(repo, CONCEPT, "\nTrips come from [trips](../fixtures/trips-csv.md).\n")
             _ = git(repo, "add", late, CONCEPT)
             _ = git(repo, "commit", "-q", "-m", "late fixture")
-        return {"summary": "wrote"}
+        return _drafted(repo, str(args["page"]))
 
     def write_operations(args: dict[str, object]) -> dict[str, object]:
         for rel in (FIXTURE, late):
@@ -394,3 +395,4 @@ def test_an_operations_page_written_after_the_queue_froze_is_not_the_operations_
     assert late not in NAMES.validate_python(runner.args_of("write-operations")[0]["pages"])
     assert "The scenario directory" in (repo / FIXTURE).read_text(encoding="utf-8")
     assert (repo / late).read_text(encoding="utf-8") == late_text
+

@@ -13,7 +13,7 @@ import hashlib
 import subprocess
 from collections.abc import Iterable
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from pydantic import BaseModel, ConfigDict
 
@@ -80,6 +80,20 @@ def writable_in_book(service: str, path: str) -> bool:
     """True for a path in the service's book other than its entries page, which no turn writes."""
     folder = (FEATURES_DIR / service).as_posix()
     return path.startswith(f"{folder}/") and path != f"{folder}/{ENTRIES_NAME}"
+
+
+def draftable(root: Path, job: Job, path: str) -> bool:
+    """True for a job's own page, or a markdown page HEAD does not track in the service's book.
+
+    A writer that reads no file rewrites only what it was shown or is creating.
+    """
+    pure = PurePosixPath(path)
+    if pure.is_absolute() or ".." in pure.parts or pure.suffix != ".md":
+        return False
+    rel = pure.as_posix()
+    if not writable_in_book(job.service, rel):
+        return False
+    return rel in job.owned_pages or not _tracked(root, rel)
 
 
 def _is_under(root: Path, path: str, folder: Path) -> bool:

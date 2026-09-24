@@ -82,6 +82,7 @@ class ScriptedRunner(AgentRunner):
         self.replies: dict[str, Reply] = dict(replies)
         self.turns: Counter[str] = Counter()
         self.calls: list[tuple[str, dict[str, object]]] = []
+        self.nodes: list[AgentNode] = []
 
     @property
     def total(self) -> int:
@@ -107,6 +108,7 @@ class ScriptedRunner(AgentRunner):
         self.turns[node.id] += 1
         args = context.as_dict()
         self.calls.append((node.id, args))
+        self.nodes.append(node)
         reply = self.replies[node.id](args)
         if validate is not None:
             _ = validate(reply)

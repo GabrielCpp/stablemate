@@ -1,15 +1,33 @@
 Write the page `{{ page }}` of the service `{{ service }}`'s book, under `{{ folder }}`.
 
-Load the skill and follow it: {{ skill_load_ref("ostler-okf", skill_dir() + "/ostler-okf/SKILL.md") }}
+You have no tools. Everything you need is below, and you reply with the whole text of each
+page you write. The workflow writes your pages into the book, canonicalizes their shape and
+checks them.
 
 The page describes what the product does, from the contracts of the files that reach it.
 Merge them into the page so it reads as the complete, current spec. Keep its frontmatter
-`type` and `slug`. Scaffold every child node the contracts call for with `ostler
-scaffold`, link each one from this page, and write each to the spec depth its node type
-asks for. A new page nothing reachable links to is deleted and costs you this turn.
+`type` and `slug`. Write each child node the contracts call for to the spec depth its node
+type asks for. A child node that needs a page of its own goes on a new page under
+`{{ folder }}`, with frontmatter `type`, `slug` and `title`, and `{{ page }}` links to it. A new
+page nothing reachable links to is deleted and costs you this turn.
 
+You may write `{{ page }}` and new pages. The book's other pages are not yours, and a page of
+theirs in your reply is dropped.
+
+{% if bodies %}
+The page as it stands:
+
+{% for body in bodies %}
+`{{ body.page }}`:
+
+````markdown
+{{ body.body }}
+````
+
+{% endfor %}
+{% endif %}
 {% if pages %}
-The book's pages of this kind, nearest the root first:
+The book's pages of this kind, nearest the root first. Link to them by relative path:
 
 {% for other in pages %}
 - `{{ other }}`
@@ -37,27 +55,35 @@ The stories that link to this page. Take the business meaning from them, not the
 behaviour, which the contracts own:
 
 {% for story in stories %}
-- `{{ story }}`
-{% endfor %}
+````markdown
+{{ story }}
+````
 
+{% endfor %}
 {% endif %}
 {% if problems %}
-Your last turn on this page was refused. Each problem below is one place a rule of the bar
-below was broken. Fix it, then fix every other place on your pages that breaks the same
-rule, because the next judge reads the whole of every page again:
+Your last turn on this page was refused. Each problem below is one place a rule was
+broken. Fix it, then fix every other place on your pages that breaks the same rule,
+because the next check and the next judge read the whole of every page again:
 
 {% for problem in problems %}
 - {{ problem }}
 {% endfor %}
 
 {% endif %}
-Another turn judges your pages once you reply. It refuses them unless every one of these
-holds:
+The format. Each node type below is written where it says, with its bullets in the order
+listed. A `code:` or `tests:` citation is `` `path::symbol` ``, with a symbol the file
+declares:
 
-{% include "aggregate/prompts/_bar.md" %}
+{{ rules }}
+
+The checks a `verify:` may call, each with its arguments and the defect it excludes. Call
+one with the arguments its signature names, as `name(arg=value)`, and nothing else:
+
+{{ checks }}
 
 Every claim you write compiles into a check run against the product, and a page with a claim
-that does not compile is refused. Give each claim a `verify:` from `ostler checks`. Under
+that does not compile is refused. Give each claim a `verify:` from the checks above. Under
 each claim of a `command` or an `invocation`, give a `run:` stating one literal call before
 its `verify:`. A `verify:` reads only the call in the `run:` above it: its exit code, its
 output streams, and which files it creates, removes or leaves unchanged. None reads what a
@@ -67,23 +93,14 @@ output. Give each flow a `fixture:`, or `fixture: none, because ...`. A `cli`, a
 `concept` or a `format` states no check of its own, so put no `verify:` on the node
 itself. Check it through the commands, fields and flows under it or linked from it.
 
-Edit only files under `{{ folder }}`, its entries page aside. Anything you change elsewhere is
-put back. Yours are `{{ page }}` and the pages you create. On any other page, only add lines, such as a link. Any other
-change to it is put back. Run `ostler fmt` on each page you wrote. Then run `{{ check }}` as it is,
-from any directory. It checks your pages, edited or not, and every other book page you changed or created. Run it once
-before you edit to see what your pages already owe. It prints every problem the check
-after your turn will charge you with, and each one costs you this turn. Fix them all and run it again, as often as
-you need, until it passes. Your runs share one budget of output. Once it is spent, a run prints how many problems
-remain, and after that nothing, so read its exit code: 0 passes. It proves your claims compile.
-It does not run them. A later phase runs each claim against the product, so a check that
-cannot see its claim fails there. The bar above and the check's output are every rule your
-pages are held to. The source of the check and of `ostler` states none beyond them. It cannot read the bar above, so the judge can still refuse
-a page it passes.
-Hold each page to that bar yourself, and once the check passes, reply. Do not run `ostler doctor`: its stale citations are restamped by the
-commit, and its unreachable pages are outside your job. Do not commit.
+Another turn judges your pages once they pass the check. It refuses them unless every one of
+these holds:
 
-Reply with only this JSON object:
+{% include "aggregate/prompts/_bar.md" %}
+
+Reply with only this JSON object. Each entry of `pages` is one page's repo-relative path and
+its whole text, frontmatter first:
 
 ```json
-{"summary": "Wrote the add command and its three invocations."}
+{"summary": "Wrote the add command and its three invocations.", "pages": [{"path": "{{ page }}", "text": "---\ntype: ...\n---\n..."}]}
 ```

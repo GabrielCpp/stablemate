@@ -9,8 +9,10 @@ from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict
 
+from ostler.checks import describe as describe_checks
 from ostler.stamp import stamp_page
 from workhorse.pyflow import Continue, Done, Transition
+from workhorse.runner.backends import AgentProfile
 from workhorse.worklist import WorkItem
 from workhorse_workflows.kit import commit_paths
 from workhorse_workflows.okf_book.shared.blockers import Blocker, Phase, Side, record_blocker
@@ -29,6 +31,8 @@ from workhorse_workflows.okf_book.shared.budget import (
     total_text_tokens,
 )
 from workhorse_workflows.okf_book.shared.attempts import JobLedger, read_cleared, record_cleared
+from workhorse_workflows.okf_book.aggregate.nodes.draft import Drafted, apply_draft, existing_pages
+from workhorse_workflows.okf_book.aggregate.nodes.format_rules import format_rules
 from workhorse_workflows.okf_book.aggregate.nodes.job_check import JobCheck, check_command, write_job_check
 from workhorse_workflows.okf_book.shared.citations import book_pages
 from workhorse_workflows.okf_book.shared.confine import (
@@ -66,6 +70,8 @@ from workhorse_workflows.okf_book.shared.page_check import charged_pages, inheri
 from workhorse_workflows.okf_book.shared.work import BLOCKED, DONE, JOB, UNQUEUED, seed
 
 PAGES_BUDGET_TOKENS = 3_000
+SHOWN_PAGES_BUDGET_TOKENS = 8_000
+WRITER_PROFILE = AgentProfile(name="okf-writer", tools={"*": False})
 CLEARED_BUDGET_TOKENS = 1_500
 VERIFY_PROMPT = "aggregate/prompts/verify-page.md"
 UNJUDGED_PROBLEM = "The changed pages are too large for any turn to judge. Split the page, or cut what it repeats."
@@ -162,7 +168,10 @@ class Aggregate(BookFlow):
         """One turn writes the job's pages from the contracts that reach them, and the last check's problems.
 
         The prompt, the pages list, the problems and the stories are sized first. The contracts get what is left.
+        A page job's writer runs no tool, so it is shown its page, the format and the check vocabulary instead.
         """
+        if ledger.job.kind is JobKind.PAGE:
+            return self._draft_page(ledger)
         root, job = self.root, ledger.job
         pages = pack_told(name_tokens(listed_pages(root, job)), PAGES_BUDGET_TOKENS)
         problems = pack_problems(ledger.problems)
@@ -176,8 +185,7 @@ class Aggregate(BookFlow):
         ))
         started = time.monotonic()
         written = self.agent(
-            "aggregate/prompts/write-page.md" if job.kind is JobKind.PAGE
-            else "aggregate/prompts/write-operations.md" if job.kind is JobKind.OPERATIONS
+            "aggregate/prompts/write-operations.md" if job.kind is JobKind.OPERATIONS
             else "aggregate/prompts/write-flows.md",
             returns=Written,
             power="high",
@@ -195,6 +203,47 @@ class Aggregate(BookFlow):
         )
         metric = _turn_metric(f"write-{job.kind.value}", job.subject, fixed + _contract_tokens(contracts), started)
         return Continue(written, self.record_write, ledger=ledger, metric=metric)
+
+    def _draft_page(self, ledger: JobLedger) -> Continue[...]:
+        root, job = self.root, ledger.job
+        folder = service_folder(job.service)
+        pages = pack_told(name_tokens(listed_pages(root, job)), PAGES_BUDGET_TOKENS)
+        problems = pack_problems(ledger.problems)
+        stories = job_stories(root, job)
+        rules, checks = format_rules(folder), describe_checks()
+        shown = pack_read(file_tokens(root, existing_pages(root, job.owned_pages)), SHOWN_PAGES_BUDGET_TOKENS)
+        told = pages.tokens + problems.tokens + shown.tokens + estimated_tokens(len(rules) + len(checks))
+        fixed = prompt_tokens(WRITE_PROMPTS[job.kind]) + told + total_text_tokens(stories)
+        contracts = job_contracts(root, self.records_dir, job, budget=TURN_BUDGET_TOKENS - fixed)
+        started = time.monotonic()
+        drafted = self.agent(
+            "aggregate/prompts/write-page.md",
+            returns=Drafted,
+            power="high",
+            args={
+                "service": job.service,
+                "folder": folder,
+                "page": job.page,
+                "pages": list(pages.kept),
+                "bodies": [body.template_arg() for body in page_bodies(root, shown.kept)],
+                "contracts": _contract_args(contracts),
+                "stories": list(stories),
+                "problems": list(problems.kept),
+                "rules": rules,
+                "checks": checks,
+            },
+            cwd=root,
+            profile=WRITER_PROFILE,
+        )
+        metric = _turn_metric(f"write-{job.kind.value}", job.subject, fixed + _contract_tokens(contracts), started)
+        return Continue(drafted, self.write_draft, ledger=ledger, drafted=drafted, metric=metric)
+
+    def write_draft(self, ledger: JobLedger, drafted: Drafted, metric: TurnMetric) -> Continue[...]:
+        """Write each page the writer drafted into the book, where the job may write it, and canonicalize its shape."""
+        applied = apply_draft(self.root, ledger.job, drafted.pages)
+        if applied.dropped:
+            self.logger.warning("dropped %d drafted paths the job may not write: %s", len(applied.dropped), applied.dropped)
+        return Continue(applied.written, self.record_write, ledger=ledger, metric=metric)
 
     def record_write(self, ledger: JobLedger, metric: TurnMetric) -> Continue[...]:
         """Record the writing turn before anything it changed is put back."""
