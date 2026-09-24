@@ -5,7 +5,7 @@ A node an earlier round cleared stays cleared while its text is unchanged, so a 
 """
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 
 from pydantic import BaseModel, ConfigDict
 
@@ -112,23 +112,30 @@ def verdict_problems(verdict: Verdict, claims: tuple[str, ...], still_cleared_no
     return (*unstated, *flawed, *uncovered)
 
 
+def _claims_stated_on(verdict: Verdict, claims: tuple[str, ...]) -> dict[str, set[str]]:
+    """Each node the verdict found stating a claim with no problem, and the claims it states."""
+    stated_on: dict[str, set[str]] = {}
+    for finding in verdict.claims:
+        if finding.node and not finding.problem and 1 <= finding.claim <= len(claims):
+            stated_on.setdefault(finding.node, set()).add(claims[finding.claim - 1])
+    return stated_on
+
+
+def _judged_nodes_cleared(verdict: Verdict, judged: Iterable[str], cleared_by_node: Mapping[str, ClearedNode]) -> tuple[str, ...]:
+    """Each judged node still cleared, and each the verdict raised nothing against."""
+    faulted = {finding.node for finding in verdict.claims if finding.problem} | {found.node for found in verdict.problems}
+    return tuple(node for node in judged if node in cleared_by_node or node not in faulted)
+
+
 def cleared_after(
     verdict: Verdict, claims: tuple[str, ...], judged_node_digests: Mapping[str, str], still_cleared_nodes: tuple[ClearedNode, ...],
 ) -> tuple[ClearedNode, ...]:
     """The nodes cleared once this verdict is in: those still cleared, judged or not, and each judged node it raised nothing against."""
     cleared_by_node = {entry.node: entry for entry in still_cleared_nodes}
-    faulted = {finding.node for finding in verdict.claims if finding.problem} | {found.node for found in verdict.problems}
-    stated_on: dict[str, set[str]] = {}
-    for finding in verdict.claims:
-        if finding.node and not finding.problem and 1 <= finding.claim <= len(claims):
-            stated_on.setdefault(finding.node, set()).add(claims[finding.claim - 1])
-    cleared_now = {
-        node: ClearedNode(
-            node=node,
-            digest=digest,
-            claims=tuple(sorted(stated_on.get(node, set()) | set(cleared_by_node[node].claims if node in cleared_by_node else ()))),
-        )
-        for node, digest in judged_node_digests.items()
-        if node in cleared_by_node or node not in faulted
-    }
+    stated_on = _claims_stated_on(verdict, claims)
+    cleared_now: dict[str, ClearedNode] = {}
+    for node in _judged_nodes_cleared(verdict, judged_node_digests, cleared_by_node):
+        kept = cleared_by_node[node].claims if node in cleared_by_node else ()
+        stated = tuple(sorted(stated_on.get(node, set()) | set(kept)))
+        cleared_now[node] = ClearedNode(node=node, digest=judged_node_digests[node], claims=stated)
     return tuple({**cleared_by_node, **cleared_now}.values())
