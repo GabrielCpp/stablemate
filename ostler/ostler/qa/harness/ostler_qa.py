@@ -1179,8 +1179,8 @@ def _unsatisfiable_omits(args: Mapping[str, Any]) -> str:
 
 
 
-def _unsatisfiable_stream(args: Mapping[str, Any]) -> str:
-    """Why no output can satisfy this call, or empty when one can."""
+def _unsatisfiable_text_pattern(args: Mapping[str, Any]) -> str:
+    """Why no text can satisfy this call's `matches=`, or empty when one can."""
     if "matches" not in args:
         return ""
     pattern = str(args["matches"])
@@ -1194,9 +1194,9 @@ UNSATISFIABLE: dict[str, Callable[[Mapping[str, Any]], str]] = {
     "http_status": _unsatisfiable_http_status,
     "json_path": _unsatisfiable_json_path,
     "omits": _unsatisfiable_omits,
-    "stdout": _unsatisfiable_stream,
-    "stderr": _unsatisfiable_stream,
-    "contents": _unsatisfiable_stream,
+    "stdout": _unsatisfiable_text_pattern,
+    "stderr": _unsatisfiable_text_pattern,
+    "contents": _unsatisfiable_text_pattern,
 }
 
 
