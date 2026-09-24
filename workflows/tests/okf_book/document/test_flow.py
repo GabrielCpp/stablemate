@@ -103,7 +103,8 @@ def test_each_turn_says_what_each_check_reads_on_a_cli(app: App, run_book: RunBo
 
     checks = ENTRIES.validate_python(runner.args_of(NODE)[0]["checks"])
     assert any(line.startswith("`count(") and "the command's stdout" in line for line in checks)
-    assert any(line.startswith("`absent(") and line.endswith("reads nothing a command shows.") for line in checks)
+    assert any(line.startswith("`absent(") and "before the first step on a flow's `start:`" in line for line in checks)
+    assert any(line.startswith("`visible(") and line.endswith("reads nothing a command shows.") for line in checks)
 
 
 def test_entry_points_past_their_budget_are_counted_not_listed(app: App, run_book: RunBook, monkeypatch: pytest.MonkeyPatch) -> None:
