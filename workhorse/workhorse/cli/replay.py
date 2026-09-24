@@ -14,8 +14,7 @@ from typing import NoReturn
 from pydantic import ValidationError
 
 from workhorse import gitstate, otel, turnkey
-from workhorse._vendor.stablemate_core.config import load_config
-from workhorse.cli.run import apply_config_path, select_backend
+from workhorse.cli.run import backend_for_profile
 from workhorse.config_run import RunConfig
 from workhorse.records import TreeStart
 from workhorse.rundir import resolve_run_dir
@@ -108,9 +107,8 @@ def run(args: argparse.Namespace) -> None:
         _fail(f"--repeat {args.repeat}: a replay runs the turn at least once")
     _refuse_unsafe(record.start, discard=args.discard)
 
-    apply_config_path(args.config)
     profile = args.profile if args.profile is not None else record.profile
-    backend = select_backend(load_config(), profile.strip(), record.backend or None)
+    backend = backend_for_profile(args.config, profile.strip(), record.backend or None)
     runner = AgentRunner.from_config(
         replace(RunConfig.from_env(os.environ), backend=backend, profile=profile.strip())
     )

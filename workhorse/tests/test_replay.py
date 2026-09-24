@@ -225,12 +225,11 @@ def test_run_replays_under_the_recorded_profile_and_prints_the_cost(tmp_path, ca
     runner = _runner(repo)
     picked: list[str] = []
 
-    def _select(cfg, profile, cli):
+    def _select(config_path, profile, cli):
         picked.append(profile)
         return FakeBackend()
 
-    monkeypatch.setattr(replay, "load_config", dict)
-    monkeypatch.setattr(replay, "select_backend", _select)
+    monkeypatch.setattr(replay, "backend_for_profile", _select)
     monkeypatch.setattr(replay.AgentRunner, "from_config", lambda config: runner)
 
     replay.run(_args(run_dir, discard=True, repeat=2, prompt=str(variant)))

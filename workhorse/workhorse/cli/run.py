@@ -207,7 +207,7 @@ def invocation(args: argparse.Namespace) -> RunInvocation:
     if not profile_name and not args.cli and resume_run_dir is not None:
         profile_name = _recorded_profile(resume_run_dir)
     cfg = load_config()
-    backend = select_backend(cfg, profile_name, args.cli)
+    backend = _select_backend(cfg, profile_name, args.cli)
 
     params = load_params(args.params, args.params_file)
     params.setdefault("repo_dir", os.environ.get("AGENT_REPO_DIR") or str(Path.cwd().resolve()))
@@ -246,7 +246,13 @@ def library_dirs(cfg: dict[str, Any]) -> list[str]:
     return roots
 
 
-def select_backend(cfg: dict[str, Any], profile_name: str, cli: str | None) -> AgentBackend:
+def backend_for_profile(config_path: str | None, profile_name: str, cli: str | None) -> AgentBackend:
+    """The backend ``profile_name`` selects in the config at ``config_path``, read here and nowhere else."""
+    apply_config_path(config_path)
+    return _select_backend(load_config(), profile_name, cli)
+
+
+def _select_backend(cfg: dict[str, Any], profile_name: str, cli: str | None) -> AgentBackend:
     """The backend a named profile, or else a bare CLI, selects; a bad pick exits with its fix."""
     try:
         if profile_name:
