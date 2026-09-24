@@ -18,8 +18,8 @@ from review_verdict import Reviewer, ReviewError, Verdict
 
 REPO = Path(__file__).resolve().parents[1]
 RUBRIC_PATH = Path(__file__).resolve().with_name("review_gate_prompt.md")
-PRIMARY_MODEL = "claude-opus-5-5"
-TIEBREAK_MODEL = "claude-fable-5-1"
+PRIMARY_MODEL = "claude-sonnet-5"
+TIEBREAK_MODEL = "claude-opus-5-5"
 ROUNDS_BEFORE_TIEBREAK = 2
 PROMPT_BUDGET_TOKENS = 60_000
 MAX_BATCHES = 4
