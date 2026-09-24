@@ -28,7 +28,7 @@ from workhorse_workflows.okf_book.shared.budget import (
     prompt_tokens,
     total_text_tokens,
 )
-from workhorse_workflows.okf_book.shared.attempts import JobLedger
+from workhorse_workflows.okf_book.shared.attempts import JobLedger, read_cleared, record_cleared
 from workhorse_workflows.okf_book.aggregate.nodes.job_check import JobCheck, check_command, write_job_check
 from workhorse_workflows.okf_book.shared.citations import book_pages
 from workhorse_workflows.okf_book.shared.confine import (
@@ -133,7 +133,7 @@ class Aggregate(BookFlow):
     def _begin_job(self, items: list[WorkItem]) -> Continue[...]:
         job = job_of(items[0])
         gaps = inherited_gaps(self.root, job.service, job.owned_pages)
-        ledger = JobLedger(job=job, before=snapshot(self.root), inherited_gaps=gaps)
+        ledger = JobLedger(job=job, before=snapshot(self.root), inherited_gaps=gaps, cleared=read_cleared(self.records_dir))
         return Continue(job, self.write_job, ledger=ledger)
 
     def _rewrite(self, ledger: JobLedger) -> Continue[...]:
@@ -229,7 +229,7 @@ class Aggregate(BookFlow):
         return Continue(changed, self.recheck_cleared, ledger=ledger)
 
     def recheck_cleared(self, ledger: JobLedger) -> Continue[...]:
-        """Keep each node an earlier round cleared while its text holds, on a page judged now or not. One that changed drops out."""
+        """Keep each node an earlier round or job cleared while its text holds, on a page judged now or not. One that changed drops out."""
         current_node_digests = node_digests_on_pages_of(self.root, (entry.node for entry in ledger.cleared))
         ledger = ledger.with_cleared(still_cleared(ledger.cleared, current_node_digests))
         return Continue(ledger.cleared, self.verify_job, ledger=ledger)
@@ -277,13 +277,14 @@ class Aggregate(BookFlow):
     def settle_verdict(
         self, ledger: JobLedger, verdict: Verdict, claims: tuple[str, ...], judged_node_digests: dict[str, str], metric: TurnMetric,
     ) -> Continue[...]:
-        """Record the verify turn and the nodes it cleared. Pages that state every claim with no problem go on to the stamp.
+        """Record the verify turn and the nodes it cleared, for this job and the jobs after it. Pages that state every claim with no problem go on to the stamp.
 
         Anything else charges the job a turn.
         """
         record_turn(self.records_dir, metric)
         problems = verdict_problems(verdict, claims, ledger.cleared)
         ledger = ledger.with_cleared(cleared_after(verdict, claims, judged_node_digests, ledger.cleared))
+        record_cleared(self.records_dir, ledger.cleared)
         if not problems:
             return Continue(verdict, self.stamp_job, ledger=ledger)
         return self._retry_or_keep(ledger.charged(problems))

@@ -27,6 +27,7 @@ RunBook = Callable[[WriteOnly, ScriptedRunner], WorkListView]
 COMMANDS = ("init", "add", "import", "report", "export")
 TALLY = Surface(service="tally", kind=SurfaceKind.CLI, entry="tally/__main__.py")
 CONCEPT = f"{FEATURES_DIR}/tally/concepts/ledger-file.md"
+FIXTURE = f"{FEATURES_DIR}/tally/fixtures/expenses-csv.md"
 PASS = judged()
 NAMES = TypeAdapter(list[str])
 NUMBERS = TypeAdapter(list[dict[str, object]])
@@ -113,3 +114,27 @@ def test_a_node_an_earlier_round_cleared_is_not_faulted_while_its_text_is_unchan
     assert "docs(tally): write ledger-file" in commits(repo)
     [second] = [args for args in runner.args_of("verify-page") if _judges_concept(args)][1:]
     assert f"{CONCEPT}#kept" in NAMES.validate_python(second["cleared"])
+
+
+
+def test_a_node_an_earlier_job_cleared_is_not_faulted_by_a_later_job_while_its_text_is_unchanged(
+    app: App, run_book: RunBook,
+) -> None:
+    repo = app("tally-cli")
+    faults: list[str] = []
+
+    def fault_after_cleared(args: dict[str, object]) -> dict[str, object]:
+        if FIXTURE in [page["page"] for page in BRIEFS.validate_python(args["pages"])]:
+            faults.append("")
+            return PASS(args)
+        if not faults:
+            return PASS(args)
+        faults.append(FIXTURE)
+        return judged("it contradicts the ledger page.", node=FIXTURE)(args)
+
+    runner = _book_runner(repo, fault_after_cleared, _writer(repo))
+    _ = run_book(WriteOnly(repo_dir=str(repo), surfaces=(TALLY,)), runner)
+
+    assert FIXTURE in faults
+    writes = [*runner.args_of("write-page"), *runner.args_of("write-operations"), *runner.args_of("write-flows")]
+    assert not [problem for args in writes for problem in NAMES.validate_python(args["problems"]) if FIXTURE in problem]
