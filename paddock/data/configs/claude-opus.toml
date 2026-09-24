@@ -54,3 +54,7 @@ model = "claude-opus-5"
 [qa_tools.jq]
 command = "jq"
 description = "the jq CLI, for reading a durable store file as evidence that a write persisted"
+
+[qa_tools.python3]
+command = "python3"
+description = "the python interpreter, for driving a Python CLI over a process boundary"

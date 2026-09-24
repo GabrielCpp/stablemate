@@ -122,12 +122,12 @@ def test_the_task_points_at_the_app_and_names_the_trial_dir() -> None:
     assert {row["story"] for row in defects()} <= set(STORIES)
 
 
-def test_the_qa_lane_opts_into_the_interpreter_and_nothing_else() -> None:
+@pytest.mark.parametrize("config", sorted((DATA / "configs").glob("*.toml")), ids=lambda path: path.name)
+def test_the_qa_lane_opts_into_the_interpreter_and_every_config_resolves_it(config: Path) -> None:
     """The whole transport, declared in one place."""
     agents = yaml.safe_load((APP / "agents.yml").read_text(encoding="utf-8"))
     assert agents.get("qa", {}).get("tools") == ["python3"], agents.get("qa")
-    config = (DATA / "configs" / "opencode.toml").read_text(encoding="utf-8")
-    assert "[qa_tools.python3]" in config, "the task config must resolve the opted-in tool"
+    assert "[qa_tools.python3]" in config.read_text(encoding="utf-8"), f"add a [qa_tools.python3] table to {config.name}"
 
 
 
