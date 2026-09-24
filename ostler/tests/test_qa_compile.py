@@ -2628,6 +2628,47 @@ def test_a_cli_journey_whose_page_names_no_binary_is_uncompilable() -> None:
     assert gap.kind == "uncompilable-claim" and "`binary:`" in gap.detail
 
 
+@pytest.mark.parametrize("check,args", [
+    ("absent", {"subject": "tally.json"}),
+    ("http_status", {"code": 200}),
+    ("visible", {"locator": "a total"}),
+])
+def test_a_cli_journey_refuses_a_check_that_reads_nothing_a_command_shows(check: str, args: dict) -> None:
+    context, oid = _cli_journey_context(
+        _cli_step_node("init", ["init"]),
+        checks=[{"call": "it", "name": check, "args": args}],
+    )
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(result, Refusal)
+    [gap] = [g for g in result.gaps if g.obligation_id == oid]
+    assert gap.kind == "uncompilable-claim"
+    assert f"`{check}` reads nothing a command shows" in gap.detail
+    assert "`exit_status`" in gap.detail and "`ostler checks`" in gap.detail
+
+
+def test_a_cli_command_refuses_a_check_that_reads_nothing_a_command_shows() -> None:
+    oid = "okf:docs/features/demo/api.md#import:does:1"
+    context = _context(
+        _obligation(
+            oid,
+            nodeType="command",
+            checksDeclared=[{"call": "it", "name": "absent", "args": {"subject": "tally.json"}}],
+            actsDeclared=[
+                {"call": 'invoke(argv=["import"])', "name": "invoke",
+                 "args": {"argv": ["import"]}},
+            ],
+        )
+    )
+    context["navigation"][""]["driver"] = "cli"
+    context["cliBinaries"] = {"docs/features/demo/api.md": "tally"}
+
+    _source, gaps = compile_plan_gaps(context, story="demo-story")
+
+    assert _gap_kinds(gaps, oid) == ["uncompilable-claim"]
+    (gap,) = [g for g in gaps if g.obligation_id == oid]
+    assert "`absent` reads nothing a command shows" in gap.detail
+
+
 def test_a_journey_step_captures_a_field_its_own_verify_then_reads_back() -> None:
     """A `$.`-rooted capture on a step's node is a fact the *flow's own* `verify:` — running in this same scenario, after every step — is entitled to read back, the same way a strictly later obligation reads a `_scenario_body` capture back."""
     oid = f"okf:{_FLOW}:end-state"

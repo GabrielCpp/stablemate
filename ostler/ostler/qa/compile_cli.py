@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from ostler import registry
+from ostler.checks import CHECK_BY_NAME
+from ostler.checks import CHECKS
 from ostler.qa.obligation import CallRow
 from ostler.qa.obligation import FlowStep
 from ostler.qa.obligation import Obligation
@@ -27,6 +29,20 @@ class StepRefusal:
 def compares_the_tree(check: str | None) -> bool:
     """A check that compares the scenario's working directory before and after the tool ran."""
     return check_observes(check) == "subject-pair" and not out_of_band(check)
+
+
+def _operand(check: str, observed: str, pair: str) -> str | ScenarioRefusal:
+    """What a verify on a command's run is handed, or why a command shows it nothing to read."""
+    spec = CHECK_BY_NAME.get(check)
+    if spec is not None and not spec.on_cli and not spec.out_of_band:
+        readable = ", ".join(f"`{s.name}`" for s in CHECKS if s.on_cli)
+        return ScenarioRefusal(
+            "uncompilable-claim",
+            f"`{check}` reads nothing a command shows, so it does not compile on a cli: "
+            f"verify this claim with one of {readable}, as `ostler checks` describes")
+    if compares_the_tree(check):
+        return pair
+    return operand_for(check, observed)
 
 
 def _no_run_remedy(node_type: str) -> str:
@@ -109,10 +125,7 @@ def cli_scenario_body(
         assertions: list[str] = []
         whole = True
         for row in rows:
-            if compares_the_tree(row.name):
-                assertions.append(_verify_line(row, f"(before_{index}, after_{index})", oid))
-                continue
-            operand = operand_for(row.name, name)
+            operand = _operand(row.name, name, f"(before_{index}, after_{index})")
             if isinstance(operand, ScenarioRefusal):
                 lines.append(f"    # TODO(arrange): {operand.detail}")
                 gaps.append(Gap(oid, operand.kind, operand.detail))
@@ -188,8 +201,7 @@ def cli_journey(
         assertions: list[str] = []
         whole = True
         for row in obligation.checks:
-            operand = ("(before, after)" if compares_the_tree(row.name)
-                       else operand_for(row.name, observed))
+            operand = _operand(row.name, observed, "(before, after)")
             if isinstance(operand, ScenarioRefusal):
                 lines.append(f"    # TODO(arrange): {operand.detail}")
                 gaps.append(Gap(oid, operand.kind, operand.detail))

@@ -1859,11 +1859,15 @@ def _cmd_checks(args: argparse.Namespace) -> int:
                             "path": p.path, "locator": p.locator}
                            for p in s.params],
                 "excludes": s.excludes,
+                "on_cli": s.on_cli,
             }
             for s in specs
         ], indent=2))
         return 0
-    _out("\n\n".join(f"{s.signature()}\n    excludes {s.excludes}" for s in specs))
+    _out("\n\n".join(
+        f"{s.signature()}\n    excludes {s.excludes}\n"
+        f"    on a cli, reads {s.on_cli or 'nothing, so it does not compile there'}"
+        for s in specs))
     return 0
 
 

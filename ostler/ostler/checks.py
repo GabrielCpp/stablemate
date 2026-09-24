@@ -47,6 +47,7 @@ class CheckSpec:
     params: tuple[CheckParam, ...]
     excludes: str
     observes: Observation
+    on_cli: str = ""
     out_of_band: bool = False
     one_of: tuple[str, ...] = ()
 
@@ -91,6 +92,7 @@ CHECKS: tuple[CheckSpec, ...] = (
         excludes="a field asserted by presence rather than value, which passes on the "
                  "default the defect also produces",
         observes="body",
+        on_cli="the command's stdout, parsed as JSON, with `path` a path into it",
     ),
     CheckSpec(
         name="unchanged",
@@ -101,6 +103,8 @@ CHECKS: tuple[CheckSpec, ...] = (
         excludes="collateral damage outside the field under test — the defect a diff that "
                  "masks the whole object before comparing cannot see",
         observes="subject-pair",
+        on_cli="the working directory before and after the run, with `subject` naming a file "
+               "in it by its relative path, or the whole directory when it names no file",
     ),
     CheckSpec(
         name="keys_unchanged",
@@ -108,6 +112,8 @@ CHECKS: tuple[CheckSpec, ...] = (
         excludes="a move implemented as a copy: every object compared individually matches, "
                  "and only the key inventory shows the old one is still there",
         observes="subject-pair",
+        on_cli="the working directory before and after the run, with `subject` naming a file "
+               "in it by its relative path, or the whole directory when it names no file",
     ),
     CheckSpec(
         name="count",
@@ -117,6 +123,9 @@ CHECKS: tuple[CheckSpec, ...] = (
         ),
         excludes="an operation that produced the expected item *and* extras nobody counted",
         observes="subject",
+        on_cli="the command's stdout, parsed as JSON: the length of the list at `subject` "
+               "when stdout is an object, or of stdout itself when it is a list. It cannot "
+               "count the lines of a file or of plain text",
     ),
     CheckSpec(
         name="absent",
@@ -132,6 +141,8 @@ CHECKS: tuple[CheckSpec, ...] = (
                  "only afterwards passes identically on a no-op, so the absence before the "
                  "action is part of the observation rather than an assumption about it",
         observes="subject-pair",
+        on_cli="the working directory before and after the run, with `subject` the exact "
+               "relative path of one file. It sees that the file appeared, not what it holds",
     ),
     CheckSpec(
         name="removed",
@@ -140,6 +151,8 @@ CHECKS: tuple[CheckSpec, ...] = (
                  "the subject was never there — the presence before the action is what makes "
                  "the disappearance attributable to it",
         observes="subject-pair",
+        on_cli="the working directory before and after the run, with `subject` the exact "
+               "relative path of one file",
     ),
     CheckSpec(
         name="visible",
@@ -213,6 +226,8 @@ CHECKS: tuple[CheckSpec, ...] = (
                  "the subject does hold and a book's clause about what it may *not* hold has "
                  "no positive form",
         observes="response",
+        on_cli="the command's stdout: the value at `subject` when stdout is a JSON object, "
+               "and the whole stdout otherwise. It never reads stderr",
     ),
     CheckSpec(
         name="exit_status",
@@ -221,6 +236,7 @@ CHECKS: tuple[CheckSpec, ...] = (
                  "read its output — a tool result asserted by what it printed passes identically "
                  "when the process printed it on the way to a non-zero exit",
         observes="subject",
+        on_cli="the command's exit code",
     ),
     CheckSpec(
         name="stdout",
@@ -231,6 +247,7 @@ CHECKS: tuple[CheckSpec, ...] = (
                  "never did — which `exit_status` passes, because it reads how the process ended "
                  "and not what it said",
         observes="subject",
+        on_cli="the command's stdout, as text",
     ),
     CheckSpec(
         name="stderr",
@@ -240,6 +257,7 @@ CHECKS: tuple[CheckSpec, ...] = (
                  "non-zero for a missing ledger and tells the user the file is malformed — which "
                  "`exit_status` passes, because every refusal ends with the same code",
         observes="subject",
+        on_cli="the command's stderr, as text",
     ),
     CheckSpec(
         name="conflict_on_stale",
