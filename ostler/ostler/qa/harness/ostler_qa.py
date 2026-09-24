@@ -599,14 +599,22 @@ def _file_text(observed: Any, subject: str) -> str | None:
     return value if isinstance(value, str) else json.dumps(value)
 
 
-def _document_named_by_file(observed: Any, args: Mapping[str, Any]) -> tuple[bool, Any]:
+@dataclass(frozen=True)
+class _CheckedDocument:
+    """What a check reads, and whether the file its `file=` names was there to read."""
+
+    present: bool
+    document: Any
+
+
+def _checked_document(observed: Any, args: Mapping[str, Any]) -> _CheckedDocument:
     """What a check reads: the file its `file=` names in a working directory, or what was observed when it names none."""
     if "file" not in args:
-        return True, observed
+        return _CheckedDocument(present=True, document=observed)
     if not isinstance(observed, Mapping):
         raise TypeError(f"`file=` reads a working directory, got {type(observed).__name__}")
     name = args["file"]
-    return name in observed, observed.get(name)
+    return _CheckedDocument(present=name in observed, document=observed.get(name))
 
 
 def _json_value(value: object) -> JsonValue:
@@ -843,9 +851,10 @@ def _matchable(value: Any) -> str:
 
 
 def _verify_json_path(observed: Any, args: Mapping[str, Any]) -> tuple[bool, Any, Any]:
-    present, document = _document_named_by_file(observed, args)
-    if not present:
+    checked = _checked_document(observed, args)
+    if not checked.present:
         return False, {"file": args["file"], "present": False}, {"file": "present"}
+    document = checked.document
     resolved, value = _resolve_path(document, args["path"])
     if "absent" in args:
         want_absent = bool(args["absent"])
@@ -890,9 +899,10 @@ def _verify_keys_unchanged(observed: Any, args: Mapping[str, Any]) -> tuple[bool
 
 def _verify_count(observed: Any, args: Mapping[str, Any]) -> tuple[bool, Any, Any]:
     """How many of `subject` there are — the subject resolved, not taken on trust."""
-    present, document = _document_named_by_file(observed, args)
-    if not present:
+    checked = _checked_document(observed, args)
+    if not checked.present:
         return False, {"file": args["file"], "present": False}, args["equals"]
+    document = checked.document
     reader = getattr(document, "json", None)
     if callable(reader):
         document = reader()
