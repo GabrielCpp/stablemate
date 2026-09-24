@@ -157,12 +157,15 @@ def grammar_gaps(verdict: Verdict) -> tuple[GrammarGap, ...]:
 
 
 def record_grammar_gaps(run_dir: Path, gaps: tuple[GrammarGap, ...]) -> None:
-    """Append each gap to the run's grammar-gap record."""
-    if not gaps:
+    """Append each gap to the run's grammar-gap record that it does not hold yet, so a retried append adds nothing."""
+    record = run_dir / GRAMMAR_GAPS_NAME
+    held = set(record.read_text(encoding="utf-8").splitlines()) if record.is_file() else set[str]()
+    lines = list(dict.fromkeys(line for line in (gap.model_dump_json() for gap in gaps) if line not in held))
+    if not lines:
         return
     run_dir.mkdir(parents=True, exist_ok=True)
-    with (run_dir / GRAMMAR_GAPS_NAME).open("a", encoding="utf-8") as out:
-        _ = out.write("".join(gap.model_dump_json() + "\n" for gap in gaps))
+    with record.open("a", encoding="utf-8") as out:
+        _ = out.write("".join(line + "\n" for line in lines))
 
 
 def _claims_stated_on(verdict: Verdict, claims: tuple[str, ...]) -> dict[str, set[str]]:

@@ -172,7 +172,7 @@ def test_a_check_the_grammar_refuses_is_left_out_of_the_problem_and_recorded_as_
     record_grammar_gaps(tmp_path, (gap,))
     record_grammar_gaps(tmp_path, (gap,))
     lines = (tmp_path / GRAMMAR_GAPS_NAME).read_text(encoding="utf-8").splitlines()
-    assert [GrammarGap.model_validate_json(line) for line in lines] == [gap, gap]
+    assert [GrammarGap.model_validate_json(line) for line in lines] == [gap]
 
 
 def test_no_gap_is_recorded_when_the_judge_expected_no_check(tmp_path: Path) -> None:

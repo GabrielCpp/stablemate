@@ -329,9 +329,10 @@ class Aggregate(BookFlow):
     def keep_cleared(
         self, ledger: JobLedger, verdict: Verdict, claims: tuple[str, ...], judged_node_digests: dict[str, str], metric: TurnMetric,
     ) -> Continue[...]:
-        """Record the nodes the verify turn cleared, for this job and the jobs after it."""
+        """Record what the verify turn found: the nodes it cleared, for this job and the jobs after it, and each check it expected that the grammar cannot state."""
         ledger = ledger.with_cleared(cleared_after(verdict, claims, judged_node_digests, ledger.cleared))
         record_cleared(self.records_dir, ledger.cleared)
+        record_grammar_gaps(self.records_dir, grammar_gaps(verdict))
         return Continue(verdict, self.settle_verdict, ledger=ledger, verdict=verdict, claims=claims, metric=metric)
 
     def settle_verdict(self, ledger: JobLedger, verdict: Verdict, claims: tuple[str, ...], metric: TurnMetric) -> Continue[...]:
@@ -340,7 +341,6 @@ class Aggregate(BookFlow):
         Anything else charges the job a turn.
         """
         record_turn(self.records_dir, metric)
-        record_grammar_gaps(self.records_dir, grammar_gaps(verdict))
         problems = verdict_problems(verdict, claims, ledger.cleared)
         if not problems:
             return Continue(verdict, self.stamp_job, ledger=ledger)
