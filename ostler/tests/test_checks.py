@@ -487,7 +487,7 @@ def test_the_reference_page_prints_the_signatures_the_tool_prints() -> None:
     assert headings == [spec.signature() for spec in checks.CHECKS]
 
 
-@pytest.mark.parametrize("spec", [s for s in checks.CHECKS if s.on_cli], ids=lambda s: s.name)
+@pytest.mark.parametrize("spec", [s for s in checks.CHECKS if s.cli_reads], ids=lambda s: s.name)
 def test_a_check_said_to_read_a_command_is_one_the_cli_compiler_hands_an_operand(spec) -> None:
     operand = operand_for(spec.name, "observed")
     assert compares_the_tree(spec.name) or not isinstance(operand, ScenarioRefusal)

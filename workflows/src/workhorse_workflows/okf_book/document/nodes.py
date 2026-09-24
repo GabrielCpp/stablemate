@@ -35,8 +35,8 @@ def check_vocabulary() -> tuple[str, ...]:
 
 
 def _described(spec: CheckSpec) -> str:
-    if spec.on_cli:
-        return f"`{spec.signature()}`. On a cli, reads {spec.on_cli}."
+    if spec.cli_reads:
+        return f"`{spec.signature()}`. On a cli, reads {spec.cli_reads}."
     if spec.out_of_band:
         return f"`{spec.signature()}`"
     return f"`{spec.signature()}`. On a cli, reads nothing a command shows."

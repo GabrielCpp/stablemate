@@ -86,7 +86,7 @@ def test_checks_lists_the_vocabulary_without_a_book(tmp_path: Path, capsys):
         {"name": "subject", "type": "str", "required": True, "path": False, "locator": False}
     ]
     assert spec[0]["excludes"]
-    assert spec[0]["on_cli"] == ""
+    assert spec[0]["cli_reads"] == ""
 
     assert run(tmp_path, "checks", "exit_status") == 0
     assert "on a cli, reads the command's exit code" in capsys.readouterr().out

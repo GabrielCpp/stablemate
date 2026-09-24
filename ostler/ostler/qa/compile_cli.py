@@ -34,8 +34,8 @@ def compares_the_tree(check: str | None) -> bool:
 def _operand(check: str, observed: str, pair: str) -> str | ScenarioRefusal:
     """What a verify on a command's run is handed, or why a command shows it nothing to read."""
     spec = CHECK_BY_NAME.get(check)
-    if spec is not None and not spec.on_cli and not spec.out_of_band:
-        readable = ", ".join(f"`{s.name}`" for s in CHECKS if s.on_cli)
+    if spec is not None and not spec.cli_reads and not spec.out_of_band:
+        readable = ", ".join(f"`{s.name}`" for s in CHECKS if s.cli_reads)
         return ScenarioRefusal(
             "uncompilable-claim",
             f"`{check}` reads nothing a command shows, so it does not compile on a cli: "
