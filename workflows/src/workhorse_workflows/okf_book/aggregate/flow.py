@@ -102,6 +102,11 @@ def _service_of(page: str) -> str:
     return Path(page).relative_to(FEATURES_DIR).parts[0]
 
 
+def _cleared_on(ledger: JobLedger, judged_node_digests: dict[str, str]) -> list[str]:
+    nodes = sorted(entry.node for entry in ledger.cleared if entry.node in judged_node_digests)
+    return list(pack_told(name_tokens(nodes), CLEARED_BUDGET_TOKENS).kept)
+
+
 def _contract_tokens(contracts: tuple[Contract, ...]) -> int:
     return estimated_tokens(sum(len(c.model_dump_json()) for c in contracts))
 
@@ -246,9 +251,6 @@ class Aggregate(BookFlow):
         if not judged.kept:
             return self._retry_or_keep(ledger.charged((UNJUDGED_PROBLEM,)))
         judged_node_digests = node_digests(root, judged.kept)
-        cleared_told = pack_told(
-            name_tokens(sorted(entry.node for entry in ledger.cleared if entry.node in judged_node_digests)), CLEARED_BUDGET_TOKENS,
-        )
         if judged.left_out:
             self.logger.warning("%d changed pages are past the verify turn's budget and go unjudged", judged.left_out)
         contracts = job_contracts(root, self.records_dir, job, budget=TURN_BUDGET_TOKENS - fixed - judged.tokens)
@@ -262,7 +264,7 @@ class Aggregate(BookFlow):
                 "contracts": [contract.model_dump() for contract in numbered],
                 "other_pages": list(other_pages.kept),
                 "other_pages_left_out": other_pages.left_out,
-                "cleared": list(cleared_told.kept),
+                "cleared": _cleared_on(ledger, judged_node_digests),
                 "kind": job.kind.value,
             },
             cwd=root,
