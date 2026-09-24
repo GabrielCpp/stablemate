@@ -1,6 +1,6 @@
 """Phase 2's second half: write each page from the contracts that reach it, check it, have it judged, and commit it.
 
-A job that fails three turns has the book put back and goes to the operator.
+A job that fails three turns goes to the operator. When its last turn passed the code's check, its pages are committed. Otherwise the book is put back.
 """
 from __future__ import annotations
 
@@ -137,10 +137,24 @@ class Aggregate(BookFlow):
     def _next_job(self, result: object) -> Continue[...]:
         return Continue(result, self.aggregate)
 
-    def _retry(self, ledger: JobLedger) -> Continue[...]:
+    def _retry_or_revert(self, ledger: JobLedger) -> Continue[...]:
         if ledger.exhausted:
             return Continue(ledger.attempts, self.abandon_job, ledger=ledger)
         return self._rewrite(ledger)
+
+    def _retry_or_keep(self, ledger: JobLedger) -> Continue[...]:
+        if ledger.exhausted:
+            return Continue(ledger.attempts, self.stamp_job, ledger=ledger)
+        return self._rewrite(ledger)
+
+    def _settle(self, ledger: JobLedger) -> None:
+        subject = ledger.job.subject
+        if not ledger.exhausted:
+            _ = self.work.mark(subject, DONE, JOB)
+            return
+        reason = " ".join(ledger.problems)
+        _ = record_blocker(self.records_dir, Blocker(subject=subject, phase=Phase.AGGREGATE, side=Side.BOOK, reason=reason))
+        _ = self.work.mark(subject, BLOCKED, JOB)
 
     def write_job(self, ledger: JobLedger) -> Continue[...]:
         """One turn writes the job's pages from the contracts that reach them, and the last check's problems.
@@ -208,7 +222,7 @@ class Aggregate(BookFlow):
         charged = charged_pages(self.root, changed, job.owned_pages)
         problems = (*unreached_problems(deleted), *page_problems(self.root, job.service, charged, ledger.inherited_gaps))
         if problems:
-            return self._retry(ledger.charged(problems))
+            return self._retry_or_revert(ledger.charged(problems))
         return Continue(changed, self.recheck_cleared, ledger=ledger)
 
     def recheck_cleared(self, ledger: JobLedger) -> Continue[...]:
@@ -230,7 +244,7 @@ class Aggregate(BookFlow):
         fixed = prompt_tokens(VERIFY_PROMPT) + other_pages.tokens + CLEARED_BUDGET_TOKENS
         judged = pack_read(file_tokens(root, judged_rels), (TURN_BUDGET_TOKENS - fixed) // 2)
         if not judged.kept:
-            return self._retry(ledger.charged((UNJUDGED_PROBLEM,)))
+            return self._retry_or_keep(ledger.charged((UNJUDGED_PROBLEM,)))
         judged_node_digests = node_digests(root, judged.kept)
         cleared_told = pack_told(
             name_tokens(sorted(entry.node for entry in ledger.cleared if entry.node in judged_node_digests)), CLEARED_BUDGET_TOKENS,
@@ -271,18 +285,16 @@ class Aggregate(BookFlow):
         ledger = ledger.with_cleared(cleared_after(verdict, claims, judged_node_digests, ledger.cleared))
         if not problems:
             return Continue(verdict, self.stamp_job, ledger=ledger)
-        return self._retry(ledger.charged(problems))
+        return self._retry_or_keep(ledger.charged(problems))
 
     def abandon_job(self, ledger: JobLedger) -> Continue[...]:
-        """Three failed turns: put the book back as it was."""
+        """Three failed turns, the last failing the code's check: put the book back as it was."""
         reverted = revert(self.root, ledger.before, self.records_dir)
         return Continue(reverted, self.block_job, ledger=ledger)
 
     def block_job(self, ledger: JobLedger) -> Continue[...]:
         """Hand the abandoned job to the operator, and settle it as blocked so no later turn reopens it."""
-        reason = " ".join(ledger.problems)
-        _ = record_blocker(self.records_dir, Blocker(subject=ledger.job.subject, phase=Phase.AGGREGATE, side=Side.BOOK, reason=reason))
-        _ = self.work.mark(ledger.job.subject, BLOCKED, JOB)
+        self._settle(ledger)
         return self._next_job(ledger.job.subject)
 
     def stamp_job(self, ledger: JobLedger) -> Continue[...]:
@@ -296,13 +308,13 @@ class Aggregate(BookFlow):
         return Continue(changed, self.commit_job, ledger=ledger, created=created)
 
     def commit_job(self, ledger: JobLedger, created: tuple[str, ...]) -> Continue[...]:
-        """Commit each file the job changed on its own, and settle the job as done."""
+        """Commit each file the job changed on its own, and settle the job: done, or blocked when it ran out of turns with its pages kept."""
         root, job = self.root, ledger.job
         changed = book_changes(root, job.service, ledger.before)
         for path in changed:
             verb = "write" if (root / path).exists() else "delete"
             _ = commit_paths(root, f"docs({job.service}): {verb} {Path(path).stem}", path)
-        _ = self.work.mark(job.subject, DONE, JOB)
+        self._settle(ledger)
         return Continue(changed, self.pick_garbage, job=job, created=created)
 
     def pick_garbage(self, job: Job, created: tuple[str, ...]) -> Continue[...]:

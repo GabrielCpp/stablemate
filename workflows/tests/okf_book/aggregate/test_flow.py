@@ -158,7 +158,7 @@ def test_a_page_the_job_owns_is_charged_when_the_turn_leaves_it_alone(app: App, 
     assert "does not compile" in str(tries[-1]["problems"])
 
 
-def test_a_verifier_rejection_is_retried_with_its_problems_then_blocked(app: App, run_book: RunBook) -> None:
+def test_a_verifier_rejection_is_retried_with_its_problems_then_committed_and_blocked(app: App, run_book: RunBook) -> None:
     def reject(args: dict[str, object]) -> dict[str, object]:
         if CONCEPT in [page["page"] for page in BRIEFS.validate_python(args["pages"])]:
             return judged("The page says nothing about the ledger's columns.")(args)
@@ -170,10 +170,12 @@ def test_a_verifier_rejection_is_retried_with_its_problems_then_blocked(app: App
     tries = _pages_written(runner, CONCEPT)
     assert len(tries) == MAX_ATTEMPTS
     assert tries[-1]["problems"] == ["stated#here: The page says nothing about the ledger's columns."]
-    assert "docs(tally): write ledger-file" not in commits(repo)
-    assert "Tally keeps a ledger." not in (repo / CONCEPT).read_text(encoding="utf-8")
-    assert [b.subject for b in read_blockers(flow.run_dir) if b.subject == CONCEPT] == [CONCEPT]
+    assert "docs(tally): write ledger-file" in commits(repo)
+    assert "Tally keeps a ledger." in (repo / CONCEPT).read_text(encoding="utf-8")
+    [blocker] = [b for b in read_blockers(flow.run_dir) if b.subject == CONCEPT]
+    assert "the ledger's columns" in blocker.reason
     assert CONCEPT in ids(flow.work, JOB, BLOCKED)
+    assert CONCEPT not in ids(flow.work, JOB, DONE)
     assert git(repo, "status", "--porcelain") == ""
 
 
