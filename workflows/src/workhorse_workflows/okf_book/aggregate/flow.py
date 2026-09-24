@@ -270,21 +270,25 @@ class Aggregate(BookFlow):
         )
         metric = _turn_metric("verify-page", job.subject, fixed + judged.tokens + _contract_tokens(contracts), started)
         return Continue(
-            verdict, self.settle_verdict, ledger=ledger, verdict=verdict, claims=claim_texts(numbered),
+            verdict, self.keep_cleared, ledger=ledger, verdict=verdict, claims=claim_texts(numbered),
             judged_node_digests=judged_node_digests, metric=metric,
         )
 
-    def settle_verdict(
+    def keep_cleared(
         self, ledger: JobLedger, verdict: Verdict, claims: tuple[str, ...], judged_node_digests: dict[str, str], metric: TurnMetric,
     ) -> Continue[...]:
-        """Record the verify turn and the nodes it cleared, for this job and the jobs after it. Pages that state every claim with no problem go on to the stamp.
+        """Record the nodes the verify turn cleared, for this job and the jobs after it."""
+        ledger = ledger.with_cleared(cleared_after(verdict, claims, judged_node_digests, ledger.cleared))
+        record_cleared(self.records_dir, ledger.cleared)
+        return Continue(verdict, self.settle_verdict, ledger=ledger, verdict=verdict, claims=claims, metric=metric)
+
+    def settle_verdict(self, ledger: JobLedger, verdict: Verdict, claims: tuple[str, ...], metric: TurnMetric) -> Continue[...]:
+        """Record the verify turn. Pages that state every claim with no problem go on to the stamp.
 
         Anything else charges the job a turn.
         """
         record_turn(self.records_dir, metric)
         problems = verdict_problems(verdict, claims, ledger.cleared)
-        ledger = ledger.with_cleared(cleared_after(verdict, claims, judged_node_digests, ledger.cleared))
-        record_cleared(self.records_dir, ledger.cleared)
         if not problems:
             return Continue(verdict, self.stamp_job, ledger=ledger)
         return self._retry_or_keep(ledger.charged(problems))
