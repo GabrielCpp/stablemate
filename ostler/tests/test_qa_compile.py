@@ -2629,7 +2629,6 @@ def test_a_cli_journey_whose_page_names_no_binary_is_uncompilable() -> None:
 
 
 @pytest.mark.parametrize("check,args", [
-    ("absent", {"subject": "tally.json"}),
     ("http_status", {"code": 200}),
     ("visible", {"locator": "a total"}),
 ])
@@ -2646,13 +2645,12 @@ def test_a_cli_journey_refuses_a_check_that_reads_nothing_a_command_shows(check:
     assert "`exit_status`" in gap.detail and "`ostler checks`" in gap.detail
 
 
-def test_a_cli_command_refuses_a_check_that_reads_nothing_a_command_shows() -> None:
-    oid = "okf:docs/features/demo/api.md#import:does:1"
+def _cli_command_context(oid: str, check: dict) -> dict:
     context = _context(
         _obligation(
             oid,
             nodeType="command",
-            checksDeclared=[{"call": "it", "name": "absent", "args": {"subject": "tally.json"}}],
+            checksDeclared=[check],
             actsDeclared=[
                 {"call": 'invoke(argv=["import"])', "name": "invoke",
                  "args": {"argv": ["import"]}},
@@ -2661,12 +2659,83 @@ def test_a_cli_command_refuses_a_check_that_reads_nothing_a_command_shows() -> N
     )
     context["navigation"][""]["driver"] = "cli"
     context["cliBinaries"] = {"docs/features/demo/api.md": "tally"}
+    return context
+
+
+def test_a_cli_command_refuses_a_check_that_reads_nothing_a_command_shows() -> None:
+    oid = "okf:docs/features/demo/api.md#import:does:1"
+    context = _cli_command_context(oid, {"call": "it", "name": "visible", "args": {"locator": "a total"}})
 
     _source, gaps = compile_plan_gaps(context, story="demo-story")
 
     assert _gap_kinds(gaps, oid) == ["uncompilable-claim"]
     (gap,) = [g for g in gaps if g.obligation_id == oid]
-    assert "`absent` reads nothing a command shows" in gap.detail
+    assert "`visible` reads nothing a command shows" in gap.detail
+
+
+def test_a_cli_command_asserts_absent_on_the_working_directory_the_run_left() -> None:
+    oid = "okf:docs/features/demo/api.md#import:does:1"
+    context = _cli_command_context(oid, {"call": "it", "name": "absent", "args": {"subject": "tally.json"}})
+
+    result = _compile_plan_gaps(context, story="demo-story")
+
+    assert isinstance(result, Plan)
+    assert _gap_kinds(result.gaps, oid) == []
+    source = result.source
+    run = source.index('observed_1 = qa.tool("tally").run("import", cwd=qa.scenario_id)')
+    assert run < source.index("after_1 = qa.tree(qa.scenario_id)")
+    assert 'qa.verify("absent", after_1, subject="tally.json"' in source
+
+
+def _cli_start_and_end_context(start: list[dict], end: list[dict]) -> tuple[dict, str, str]:
+    steps = [_step(f"{_CLI}#init", "command", "cli")]
+    start_oid = f"okf:{_CLI_FLOW}:start:1"
+    end_oid = f"okf:{_CLI_FLOW}:end:1"
+    context = _navigation_context(
+        {**_flow_obligation(start_oid, source=_CLI_FLOW, surface="cli", steps=steps, checks=start),
+         "kind": "start"},
+        {**_flow_obligation(end_oid, source=_CLI_FLOW, surface="cli", steps=steps, checks=end),
+         "kind": "end"},
+        _cli_step_node("init", ["init"]),
+        navigation={"cli": {"start": _CLI, "surface": "cli", "driver": "cli", "counts": {},
+                            "routes": {}, "unreachable": [], "undeclared": []}},
+    )
+    context["cliBinaries"] = {_CLI: "tally"}
+    return context, start_oid, end_oid
+
+
+def test_a_cli_journeys_start_is_observed_on_the_directory_before_its_first_step() -> None:
+    context, start_oid, end_oid = _cli_start_and_end_context(
+        [{"call": "it", "name": "absent", "args": {"subject": "tally.json"}}],
+        [{"call": "it", "name": "created", "args": {"subject": "tally.json"}}],
+    )
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(result, Plan)
+    source = result.source
+    ast.parse(source)
+    assert {start_oid, end_oid} <= set(_covers(source))
+    before = source.index("before = qa.tree(qa.scenario_id)")
+    start = source.index('qa.verify("absent", before, subject="tally.json"')
+    init = source.index('observed_1 = qa.tool("tally").run("init", cwd=qa.scenario_id)')
+    assert before < start < init
+    assert 'qa.verify("created", (before, after), subject="tally.json"' in source
+
+
+@pytest.mark.parametrize("check,args", [
+    ("exit_status", {"code": 0}),
+    ("created", {"subject": "tally.json"}),
+])
+def test_a_cli_journeys_start_refuses_a_check_that_reads_what_a_command_did(check: str, args: dict) -> None:
+    context, start_oid, end_oid = _cli_start_and_end_context(
+        [{"call": "it", "name": check, "args": args}],
+        [{"call": "it", "name": "exit_status", "args": {"code": 0}}],
+    )
+    result = _compile_plan_gaps(context, story="demo-story")
+    [gap] = [g for g in result.gaps if g.obligation_id == start_oid]
+    assert gap.kind == "uncompilable-claim"
+    assert "no command has run before the first step" in gap.detail
+    assert "`absent`" in gap.detail and "`fixture:`" in gap.detail
+    assert _gap_kinds(result.gaps, end_oid) == []
 
 
 def test_a_journey_step_captures_a_field_its_own_verify_then_reads_back() -> None:

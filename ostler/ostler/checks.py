@@ -48,6 +48,7 @@ class CheckSpec:
     excludes: str
     observes: Observation
     cli_reads: str = ""
+    cli_reads_tree: bool = False
     out_of_band: bool = False
     one_of: tuple[str, ...] = ()
 
@@ -137,6 +138,10 @@ CHECKS: tuple[CheckSpec, ...] = (
         excludes="a delete that hid the thing from one surface and left it readable on "
                  "another",
         observes="subject",
+        cli_reads="the working directory at one moment, with `subject` the exact relative path "
+               "of one file: before the first step on a flow's `start:`, after the run "
+               "everywhere else. It passes when no file sits there",
+        cli_reads_tree=True,
     ),
     CheckSpec(
         name="created",

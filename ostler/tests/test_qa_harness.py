@@ -968,6 +968,15 @@ def test_created_and_removed_judge_only_the_file_the_subject_names(tmp_path: Pat
     assert harness.VERIFIERS["removed"](pair, {"subject": "tally.json"})[0] is False
 
 
+def test_absent_on_a_directory_judges_only_the_file_the_subject_names(tmp_path: Path) -> None:
+    harness = load_harness_module("ostler_qa")
+    (tmp_path / "notes.txt").write_text("x", encoding="utf-8")
+    tree = harness.Tree(tmp_path)
+
+    assert harness.VERIFIERS["absent"](tree, {"subject": "tally.json"})[0] is True
+    assert harness.VERIFIERS["absent"](tree, {"subject": "notes.txt"})[0] is False
+
+
 def test_unchanged_compares_the_named_file_or_else_the_whole_tree(tmp_path: Path) -> None:
     harness = load_harness_module("ostler_qa")
     before, after = tmp_path / "before", tmp_path / "after"

@@ -880,6 +880,10 @@ def _empty(value: Any) -> bool:
 
 
 def _verify_absent(observed: Any, args: Mapping[str, Any]) -> tuple[bool, Any, Any]:
+    """Nothing there. On a working directory, no file at the path `subject` names."""
+    if isinstance(observed, Tree):
+        subject = args.get("subject")
+        return subject not in observed, {path: value for path, value in observed.items() if path == subject}, "absent"
     return _empty(observed), observed, "absent"
 
 
