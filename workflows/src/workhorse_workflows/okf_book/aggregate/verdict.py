@@ -102,7 +102,7 @@ def claim_texts(contracts: tuple[NumberedContract, ...]) -> tuple[str, ...]:
     )
 
 
-def names_judged_pages(verdict: Verdict, pages: Iterable[str]) -> None:
+def refuse_unread_nodes(verdict: Verdict, pages: Iterable[str]) -> None:
     """Refuse a verdict that names a node on no page the judge read, so the judge answers again rather than charging the writer for it."""
     read = set(pages)
     named = [*(finding.node for finding in verdict.claims if finding.node), *(found.node for found in verdict.problems)]

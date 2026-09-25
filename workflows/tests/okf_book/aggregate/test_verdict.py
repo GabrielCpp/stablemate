@@ -14,7 +14,7 @@ from workhorse_workflows.okf_book.aggregate.verdict import (
     claim_texts,
     cleared_after,
     grammar_gaps,
-    names_judged_pages,
+    refuse_unread_nodes,
     numbered_contracts,
     record_grammar_gaps,
     still_cleared,
@@ -190,14 +190,14 @@ def test_a_verdict_naming_only_nodes_on_pages_the_judge_read_is_accepted() -> No
         problems=(NodeProblem(node="page.md", problem="the page states no exit code."),),
     )
 
-    names_judged_pages(verdict, ("page.md",))
+    refuse_unread_nodes(verdict, ("page.md",))
 
 
 def test_a_placeholder_node_sends_the_verdict_back_naming_the_pages_it_may_name() -> None:
     verdict = Verdict(problems=(NodeProblem(node="...", problem="...", expected="..."),))
 
     with pytest.raises(ValueError, match="no page you read: '...'") as refused:
-        names_judged_pages(verdict, ("page.md", "other.md"))
+        refuse_unread_nodes(verdict, ("page.md", "other.md"))
 
     assert "one of other.md, page.md" in str(refused.value)
 
@@ -206,4 +206,4 @@ def test_a_claim_stated_on_a_page_the_judge_did_not_read_sends_the_verdict_back(
     verdict = Verdict(claims=(ClaimFinding(claim=1, node="elsewhere.md#add"),))
 
     with pytest.raises(ValueError, match="'elsewhere.md#add'"):
-        names_judged_pages(verdict, ("page.md",))
+        refuse_unread_nodes(verdict, ("page.md",))

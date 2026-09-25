@@ -50,7 +50,7 @@ from workhorse_workflows.okf_book.aggregate.verdict import (
     claim_texts,
     cleared_after,
     grammar_gaps,
-    names_judged_pages,
+    refuse_unread_nodes,
     numbered_contracts,
     record_grammar_gaps,
     still_cleared,
@@ -318,7 +318,7 @@ class Aggregate(BookFlow):
                 "kind": job.kind.value,
             },
             cwd=root,
-            accept=lambda found: names_judged_pages(found, judged.kept),
+            accept=lambda found: refuse_unread_nodes(found, judged.kept),
         )
         metric = _turn_metric("verify-page", job.subject, fixed + judged.tokens + _contract_tokens(contracts), started)
         return Continue(
