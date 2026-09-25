@@ -124,6 +124,26 @@ class FailedCheck:
 
 
 @dataclass
+class _Tally:
+    """What grading one scenario's records has counted so far."""
+
+    action: int = 0
+    assertions: int = 0
+    failures: int = 0
+    failed_checks: list[FailedCheck] = field(default_factory=list)
+
+    def next_action(self) -> int:
+        """Count one more assertion and return the action number it is recorded under."""
+        self.action += 1
+        self.assertions += 1
+        return self.action
+
+    def failed(self, check: FailedCheck) -> None:
+        self.failures += 1
+        self.failed_checks.append(check)
+
+
+@dataclass
 class ScenarioResult:
     status: str
     assertions: int = 0
@@ -325,11 +345,9 @@ class PythonDriver(QaDriver):
         *,
         timed_out: bool,
     ) -> ScenarioResult:
-        assertions = failures = 0
-        action = 0
+        tally = _Tally()
         terminal: dict[str, Any] | None = None
         problems: list[str] = []
-        failed_checks: list[FailedCheck] = []
         open_steps: list[tuple[str, str]] = []
         step_started: dict[str, int] = {}
         painted = self._scenario_painted(records)
@@ -337,30 +355,7 @@ class PythonDriver(QaDriver):
             kind = record.get("type")
             step = open_steps[-1] if open_steps else None
             if kind == "assert":
-                action += 1
-                assertions += 1
-                passed, _ = self.session.run_assert(
-                    str(record.get("id") or f"{scenario_id}-{action}"),
-                    str(record.get("label", "")),
-                    "scenario_check",
-                    {
-                        "passed": bool(record.get("passed")),
-                        "actual": record.get("actual"),
-                        "expected": record.get("expected"),
-                    },
-                    root=self.root,
-                    scenario=scenario_id,
-                    driver="python",
-                    action=action,
-                    covers=list(record.get("covers") or []),
-                    declared=_declared(record),
-                    step=step,
-                )
-                if not passed:
-                    failures += 1
-                    failed_checks.append(FailedCheck.of(
-                        str(record.get("label", "")), record.get("expected"), record.get("actual"),
-                        CommandEnding.read(record)))
+                self._grade_assert(tally, scenario_id, record, step)
             elif kind == "step_start":
                 step_id = str(record.get("id", ""))
                 open_steps.append((step_id, str(record.get("label", ""))))
@@ -394,34 +389,7 @@ class PythonDriver(QaDriver):
             elif kind == "artifact":
                 problems.extend(self._register(scenario_id, record, step=step, painted=painted))
             elif kind == "vet":
-                try:
-                    verdicts, trouble = self._vet(scenario_id, record, step=step)
-                except ValueError as exc:
-                    verdicts, trouble = [], [f"scenario '{scenario_id}' vet failed: {exc}"]
-                problems.extend(trouble)
-                for verdict in verdicts:
-                    action += 1
-                    assertions += 1
-                    passed, _ = self.session.run_assert(
-                        f"{scenario_id}-{action}",
-                        verdict.sentence(),
-                        "scenario_check",
-                        {
-                            "passed": verdict.ok,
-                            "actual": verdict.observed(),
-                            "expected": verdict.expected,
-                        },
-                        root=self.root,
-                        scenario=scenario_id,
-                        driver="python",
-                        action=action,
-                        covers=_covers_in(covers, verdict.node_id, self.obligation_documents),
-                        step=step,
-                    )
-                    if not passed:
-                        failures += 1
-                        failed_checks.append(
-                            FailedCheck.of(verdict.sentence(), verdict.expected, verdict.observed()))
+                problems.extend(self._grade_vet(tally, scenario_id, covers, record, step))
             elif kind == "scenario":
                 terminal = record
 
@@ -454,11 +422,10 @@ class PythonDriver(QaDriver):
             or terminal is None
             or problems
             or terminal_status == "errored"
-            or (terminal_status != "passed" and not failures)
+            or (terminal_status != "passed" and not tally.failures)
         )
         if aborted and covers:
-            action += 1
-            assertions += 1
+            action = tally.next_action()
             self.session.run_assert(
                 f"{scenario_id}-completed",
                 "the scenario runs to completion, so what it claims is what it observed",
@@ -475,19 +442,82 @@ class PythonDriver(QaDriver):
                 covers=covers,
                 sentinel=True,
             )
-            failures += 1
+            tally.failures += 1
         status = "passed"
+        failures = tally.failures
         if aborted or failures:
             status = "failed"
             failures = max(failures, 1)
         return ScenarioResult(
             status=status,
-            assertions=assertions,
+            assertions=tally.assertions,
             failures=failures,
             message=message,
             aborted=aborted,
-            failed_checks=failed_checks,
+            failed_checks=tally.failed_checks,
         )
+
+    def _grade_assert(
+        self, tally: _Tally, scenario_id: str, record: dict[str, Any], step: tuple[str, str] | None,
+    ) -> None:
+        """Record one harness `assert` in the session, and count it failed with how its command ended when it did not hold."""
+        action = tally.next_action()
+        passed, _ = self.session.run_assert(
+            str(record.get("id") or f"{scenario_id}-{action}"),
+            str(record.get("label", "")),
+            "scenario_check",
+            {
+                "passed": bool(record.get("passed")),
+                "actual": record.get("actual"),
+                "expected": record.get("expected"),
+            },
+            root=self.root,
+            scenario=scenario_id,
+            driver="python",
+            action=action,
+            covers=list(record.get("covers") or []),
+            declared=_declared(record),
+            step=step,
+        )
+        if not passed:
+            tally.failed(FailedCheck.of(
+                str(record.get("label", "")), record.get("expected"), record.get("actual"),
+                CommandEnding.read(record)))
+
+    def _grade_vet(
+        self,
+        tally: _Tally,
+        scenario_id: str,
+        covers: list[str],
+        record: dict[str, Any],
+        step: tuple[str, str] | None,
+    ) -> list[str]:
+        """Record each verdict of one harness `vet` in the session, and return what kept the screen from being vetted."""
+        try:
+            verdicts, trouble = self._vet(scenario_id, record, step=step)
+        except ValueError as exc:
+            verdicts, trouble = [], [f"scenario '{scenario_id}' vet failed: {exc}"]
+        for verdict in verdicts:
+            action = tally.next_action()
+            passed, _ = self.session.run_assert(
+                f"{scenario_id}-{action}",
+                verdict.sentence(),
+                "scenario_check",
+                {
+                    "passed": verdict.ok,
+                    "actual": verdict.observed(),
+                    "expected": verdict.expected,
+                },
+                root=self.root,
+                scenario=scenario_id,
+                driver="python",
+                action=action,
+                covers=_covers_in(covers, verdict.node_id, self.obligation_documents),
+                step=step,
+            )
+            if not passed:
+                tally.failed(FailedCheck.of(verdict.sentence(), verdict.expected, verdict.observed()))
+        return trouble
 
     def _step_record(
         self,
