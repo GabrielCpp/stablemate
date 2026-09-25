@@ -130,7 +130,7 @@ class Exercise(BookFlow):
         scenario = failed[index]
         summary = read_run(self.records_dir)
         outcome = summary.scenarios.get(scenario) if summary else None
-        message = clip(outcome.said() if outcome else "", MESSAGE_BUDGET_TOKENS)
+        message = clip(outcome.failure_report() if outcome else "", MESSAGE_BUDGET_TOKENS)
         covers = pack_told(name_tokens(covers_of(root, self.records_dir, scenario)), COVERS_BUDGET_TOKENS)
         fixed = prompt_tokens(JUDGE_PROMPT) + estimated_tokens(len(message)) + covers.tokens
         pages = covered_pages(root, covers.kept, TURN_BUDGET_TOKENS - fixed)

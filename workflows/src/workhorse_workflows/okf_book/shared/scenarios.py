@@ -38,7 +38,7 @@ class FailedCheck(BaseModel):
     actual: str = ""
     command_ending: str = ""
 
-    def said(self) -> str:
+    def failure_line(self) -> str:
         observed = f"{self.label}: expected {self.expected}, observed {self.actual}"
         return f"{observed} (the command it observed ended with {self.command_ending})" if self.command_ending else observed
 
@@ -54,9 +54,9 @@ class ScenarioOutcome(BaseModel):
     message: str = ""
     failed_checks: tuple[FailedCheck, ...] = ()
 
-    def said(self) -> str:
+    def failure_report(self) -> str:
         """Every failed check, one per line, then the run's own message."""
-        return "\n".join([*(check.said() for check in self.failed_checks), *([self.message] if self.message else [])])
+        return "\n".join([*(check.failure_line() for check in self.failed_checks), *([self.message] if self.message else [])])
 
 
 class RunSummary(BaseModel):
