@@ -87,9 +87,11 @@ First a **static pass** over the states' own source (the same reading `dot` uses
 every prompt path a state renders must exist, every state must be reachable from the
 start state, at least one state must be able to return `Done`, and no transition may
 name something that is not a state. A prompt argument the source cannot name is itself a
-problem: a bare string is one path and a ternary of strings is each of its arms, but
-anything else (a variable, an f-string) is reported, because a path this pass cannot read
-is a path nothing checks. A turn written inline is checked further than a file one is:
+problem: a bare string is one path and a ternary of strings is each of its arms. A
+module constant is its value. A subscript of a module mapping of strings is the value a
+constant key names, or every value when the key is computed. That last form lets a state
+dispatch the same table entry it sized the turn from. Anything else (a local variable, an
+f-string) is reported, because a path this pass cannot read is a path nothing checks. A turn written inline is checked further than a file one is:
 its labels must be unique within the flow, since two turns sharing one would share a run
 directory, and its text must parse as Jinja, which no dry run of a file prompt ever
 proves. Then it **drives the machine for real** over a

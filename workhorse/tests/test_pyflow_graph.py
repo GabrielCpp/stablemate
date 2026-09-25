@@ -266,6 +266,38 @@ class Ternary(Workflow):
         return Done(None)
 
 
+REVIEW_PROMPT = "prompts/review.md"
+PROMPTS_BY_MODE = {"repair": "prompts/repair.md", "review": REVIEW_PROMPT}
+
+
+class Named(Workflow):
+    """A state whose prompt is a module constant, or picked from a module mapping."""
+
+    def start(self) -> Transition:
+        self.agent(REVIEW_PROMPT, returns=str)
+        return Done(None)
+
+    def pick(self, mode: str = "review") -> Transition:
+        self.agent(PROMPTS_BY_MODE[mode], returns=str)
+        return Done(None)
+
+    def fixed(self) -> Transition:
+        self.agent(PROMPTS_BY_MODE["repair"], returns=str)
+        return Done(None)
+
+
+def test_a_prompt_named_by_a_module_constant_is_its_value():
+    assert _state(Named, "start").prompts == ("prompts/review.md",)
+
+
+def test_a_prompt_picked_from_a_module_mapping_is_each_of_its_values():
+    assert _state(Named, "pick").prompts == ("prompts/repair.md", "prompts/review.md")
+
+
+def test_a_prompt_picked_by_a_constant_key_is_that_key_s_value():
+    assert _state(Named, "fixed").prompts == ("prompts/repair.md",)
+
+
 def test_every_arm_of_a_prompt_ternary_is_a_step():
     assert _state(Ternary, "start").prompts == ("prompts/repair.md", "prompts/review.md")
 

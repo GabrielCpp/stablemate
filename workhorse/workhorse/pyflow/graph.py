@@ -9,6 +9,7 @@ from collections import Counter, deque
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import cast
 
 from jinja2 import Environment, TemplateSyntaxError
 
@@ -221,7 +222,7 @@ def _scan(
                     Step("agent", label, _text_title(body), inline=True, text=body)
                 )
                 continue
-            prompts = _prompt_literals(node)
+            prompts = _prompt_literals(cls, node)
             for prompt in prompts:
                 found.steps.append(Step("agent", prompt, _prompt_title(prompt, workflow_dir)))
             if not prompts and node.args:
@@ -354,8 +355,12 @@ def _text_title(text: str) -> str:
     return ""
 
 
-def _prompt_literals(call: ast.Call) -> list[str]:
-    """Every prompt path the first positional argument can be, when the source says so — a bare string is one, a ternary of strings is each of its arms."""
+def _prompt_literals(cls: type[Workflow], call: ast.Call) -> list[str]:
+    """Every prompt path the first positional argument can be, when the source says so.
+
+    A bare string is one, a ternary of strings is each of its arms, a module constant is its value,
+    and a subscript of a module mapping of strings is the value its key names, or each value when the key is not a constant.
+    """
     if not call.args:
         return []
     found: list[str] = []
@@ -366,9 +371,41 @@ def _prompt_literals(call: ast.Call) -> list[str]:
             found.append(expr.value)
         elif isinstance(expr, ast.IfExp):
             stack[:0] = [expr.body, expr.orelse]
+        elif isinstance(expr, ast.Name) and isinstance(value := _module_constant(cls, expr.id), str):
+            found.append(value)
+        elif isinstance(expr, ast.Subscript) and isinstance(expr.value, ast.Name):
+            named = _module_constant(cls, expr.value.id)
+            if not isinstance(named, dict) or not named:
+                return []
+            mapping = cast("dict[object, object]", named)
+            values = {key: value for key, value in mapping.items() if isinstance(value, str)}
+            if len(values) != len(mapping):
+                return []
+            key = _module_value(cls, expr.slice)
+            found.extend([values[key]] if key in values else dict.fromkeys(values.values()))
         else:
             return []
     return found
+
+
+def _module_constant(cls: type[Workflow], name: str) -> object:
+    """The value `name` is bound to at the top of the module that defines `cls`, else None."""
+    module = sys.modules.get(cls.__module__)
+    return getattr(module, name, None) if module is not None else None
+
+
+def _module_value(cls: type[Workflow], expr: ast.expr) -> object:
+    """The value a literal or a dotted module name stands for in the module that defines `cls`, else None."""
+    if isinstance(expr, ast.Constant):
+        return expr.value
+    dotted = _dotted(expr)
+    if not dotted:
+        return None
+    head, *rest = dotted.split(".")
+    target = _module_constant(cls, head)
+    for attr in rest:
+        target = getattr(target, attr, None)
+    return target
 
 
 def _unparse(expr: ast.expr | None) -> str:
