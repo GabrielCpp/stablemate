@@ -3,14 +3,17 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from pathlib import Path
+from typing import cast
 
 from okf_book.support import BRIEFS, Reply, ScriptedRunner, WorkListView, WriteOnly, always, drafted, judged, listing_runner, promised_contracts
 
+from workhorse_workflows.okf_book.aggregate.flow import WRITE_PROMPTS
 from workhorse_workflows.okf_book.aggregate.nodes.job_check import charge, check_command, spent_tokens
 from workhorse_workflows.okf_book.main.nodes.surface import Surface, SurfaceKind
 from workhorse_workflows.okf_book.shared.attempts import MAX_ATTEMPTS
 from workhorse_workflows.okf_book.shared.budget import CHECK_OUTPUT_BUDGET_TOKENS
 from workhorse_workflows.okf_book.shared.entries import FEATURES_DIR
+from workhorse_workflows.okf_book.shared.page_kinds import JobKind, page_kind
 
 App = Callable[[str], Path]
 RunBook = Callable[[WriteOnly, ScriptedRunner], WorkListView]
@@ -91,3 +94,29 @@ def test_every_writing_turn_starts_with_the_whole_check_budget(app: App, run_boo
 
     assert len(spent) == MAX_ATTEMPTS
     assert set(spent) == {0}
+
+
+
+def test_every_writing_turn_is_sent_the_prompt_its_budget_was_sized_from(app: App, run_book: RunBook) -> None:
+    repo = app("tally-cli")
+    sent: dict[str, set[JobKind]] = {}
+
+    def seen(name: str, reply: Reply) -> Reply:
+        def _reply(args: dict[str, object]) -> dict[str, object]:
+            pages = cast("list[str]", args["pages"])
+            sent.setdefault(name, set()).update(page_kind((repo / page).read_text(encoding="utf-8")) for page in pages)
+            return reply(args)
+
+        return _reply
+
+    runner = listing_runner(
+        *COMMANDS,
+        document_files=promised_contracts,
+        write_page=seen("write-page", _writer(repo)),
+        write_operations=seen("write-operations", always({"summary": "none"})),
+        write_flows=seen("write-flows", always({"summary": "none"})),
+        verify_page=PASS,
+    )
+    _ = run_book(WriteOnly(repo_dir=str(repo), surfaces=(TALLY,)), runner)
+
+    assert sent == {Path(prompt).stem: {kind} for kind, prompt in WRITE_PROMPTS.items()}
