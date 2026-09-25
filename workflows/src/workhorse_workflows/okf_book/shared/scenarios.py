@@ -5,7 +5,6 @@ run directory, so the book's repo only ever changes through a committed page.
 """
 from __future__ import annotations
 
-import json
 from collections.abc import Iterable
 from pathlib import Path
 
@@ -35,11 +34,11 @@ class FailedCheck(BaseModel):
     model_config = ConfigDict(frozen=True, extra="ignore")
 
     label: str
-    expected: object = None
-    actual: object = None
+    expected: str = ""
+    actual: str = ""
 
     def said(self) -> str:
-        return f"{self.label}: expected {json.dumps(self.expected)}, observed {json.dumps(self.actual)}"
+        return f"{self.label}: expected {self.expected}, observed {self.actual}"
 
 
 class ScenarioOutcome(BaseModel):

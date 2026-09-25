@@ -157,7 +157,7 @@ def test_each_failed_scenario_is_charged_to_the_side_its_judge_names(
 def test_the_judge_reads_each_failed_check_before_the_runs_own_message(
     app: App, drive_book: DriveBook, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    check = FailedCheck(label='created(subject="trip.csv")', expected=True, actual=False)
+    check = FailedCheck(label='created(subject="trip.csv")', expected="true", actual="false")
     outcome = ScenarioOutcome(status="failed", assertions=2, failures=1, message="exit 2", failed_checks=(check,))
     Stack(outcomes={"add-an-expense": outcome}).install(monkeypatch)
     _ = _operator(monkeypatch)
