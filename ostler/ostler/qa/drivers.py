@@ -108,7 +108,7 @@ class FailedCheck:
     label: str
     expected: str
     actual: str
-    command_ending: str = ""
+    command_ending_text: str = ""
 
     @classmethod
     def of(

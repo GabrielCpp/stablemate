@@ -173,7 +173,7 @@ def test_the_judge_reads_how_the_command_a_failed_check_observed_ended(
     app: App, drive_book: DriveBook, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     check = FailedCheck(label="exit_status(code=0)", expected="0", actual="1",
-                        command_ending="exit 1, stderr: No module named tally")
+                        command_ending_text="exit 1, stderr: No module named tally")
     outcome = ScenarioOutcome(status="failed", assertions=1, failures=1, failed_checks=(check,))
     Stack(outcomes={"add-an-expense": outcome}).install(monkeypatch)
     _ = _operator(monkeypatch)

@@ -36,11 +36,11 @@ class FailedCheck(BaseModel):
     label: str
     expected: str = ""
     actual: str = ""
-    command_ending: str = ""
+    command_ending_text: str = ""
 
     def failure_line(self) -> str:
         observed = f"{self.label}: expected {self.expected}, observed {self.actual}"
-        return f"{observed} (the command it observed ended with {self.command_ending})" if self.command_ending else observed
+        return f"{observed} (the command it observed ended with {self.command_ending_text})" if self.command_ending_text else observed
 
 
 class ScenarioOutcome(BaseModel):
