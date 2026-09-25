@@ -593,7 +593,8 @@ def _check_unbacked_precondition(node: UINode, rel: str, key: str, value: str,
                    f"`<key> — <what it means>`"))
 
 
-_FIXTURE_STEP_KINDS: frozenset[str] = frozenset({"seed", "run", "verify"})
+_FIXTURE_STEP_KINDS: frozenset[str] = frozenset(
+    registry.UI_TYPES_BY_NAME["fixture"].step_bullet_by_key["kind"].values)
 
 
 def _check_entry_properties(graph: Graph, f: list[Finding]) -> None:
@@ -813,6 +814,7 @@ def _check_fixture_grammar(graph: Graph, f: list[Finding]) -> None:
 
 def _check_provided_facts(graph: Graph, fixtures: dict[str, UINode], f: list[Finding]) -> None:
     """Each `provides:` entry says where its fact comes from: observed, or asserted."""
+    one_of = registry.UI_TYPES_BY_NAME["fixture"].bullet_by_key["provides"].one_of
     for node in fixtures.values():
         rel = _rel_path(graph, node)
         for entry in node.entries.get("provides", []):
@@ -820,11 +822,10 @@ def _check_provided_facts(graph: Graph, fixtures: dict[str, UINode], f: list[Fin
             if not head:
                 continue
             key = head[0]
-            observed = bool(entry.property_text("from"))
-            asserted = bool(entry.property_text("is"))
-            if observed != asserted:
+            held = sum(1 for name in one_of if entry.property_text(name))
+            if held == 1:
                 continue
-            both = observed and asserted
+            both = held > 1
             f.append(Finding(
                 "error", "undetermined-provided-fact",
                 f"{node.id}: `provides:` {key} declares "
@@ -2209,9 +2210,9 @@ def _check_fixture_step_directory(graph: Graph, step: UINode, rel: str, f: list[
         "error", "fixture-step-directory",
         f"{step.id}: `working-directory: {value}` names no directory in the checkout, so the step "
         f"cannot run there. A path is read from the checkout root; for the scenario's own "
-        f"directory, write the token `{runbook_mod.SCENARIO_FRAME_TOKEN}` with its colon",
+        f"directory, write the token `{registry.SCENARIO_FRAME_TOKEN}` with its colon",
         path=rel, line=step.line, ref=refs_mod.bullet_ref(step.id, "working-directory"),
-        suggestion=f"- working-directory: {runbook_mod.SCENARIO_FRAME_TOKEN}"))
+        suggestion=f"- working-directory: {registry.SCENARIO_FRAME_TOKEN}"))
 
 
 def _check_step_not_scenario_frame(step: UINode, rel: str, f: list[Finding]) -> None:
@@ -2221,7 +2222,7 @@ def _check_step_not_scenario_frame(step: UINode, rel: str, f: list[Finding]) -> 
         return
     f.append(Finding(
         "error", "runbook-scenario-frame",
-        f"{step.id}: `working-directory: {runbook_mod.SCENARIO_FRAME_TOKEN}` names a "
+        f"{step.id}: `working-directory: {registry.SCENARIO_FRAME_TOKEN}` names a "
         f"scenario's own directory, but this step runs at bring-up, before any scenario "
         f"exists to name — state a path, or drop the bullet to run at the checkout root",
         path=rel, line=step.line, ref=refs_mod.bullet_ref(step.id, "working-directory"),

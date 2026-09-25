@@ -284,3 +284,27 @@ def test_a_malformed_selector_still_trips_unaddressable_selector(repo: Path) -> 
     write(repo / WEB_SCREEN_PATH, _component_screen_book('[data-state="booked"]'))
     found = [f for f in _findings(repo, "unaddressable-selector") if "#selector:" in f.ref]
     assert len(found) == 1
+
+
+def _step_runbook(directory: str) -> str:
+    return ("---\ntype: runbook\ntitle: QA stack\n---\n\n# QA stack\n\n- driver: cli\n\n"
+            f"## Steps\n\n### build\n\n- kind: prepare\n- run: make build\n- working-directory: {directory}\n")
+
+
+def test_an_absolute_step_directory_is_reported(repo: Path) -> None:
+    write(repo / WEB_RUNBOOK_PATH, _step_runbook("/srv/app"))
+    found = [f for f in _findings(repo, "unparsable-bullet-value") if "#working-directory:" in f.ref]
+    assert len(found) == 1
+    assert "checkout-path" in found[0].message
+
+
+def test_a_step_directory_that_climbs_out_of_the_checkout_is_reported(repo: Path) -> None:
+    write(repo / WEB_RUNBOOK_PATH, _step_runbook("app/../../elsewhere"))
+    found = [f for f in _findings(repo, "unparsable-bullet-value") if "#working-directory:" in f.ref]
+    assert len(found) == 1
+    assert "`..`" in found[0].message
+
+
+def test_a_relative_step_directory_is_clean(repo: Path) -> None:
+    write(repo / WEB_RUNBOOK_PATH, _step_runbook("app/web"))
+    assert [f for f in _findings(repo, "unparsable-bullet-value") if "#working-directory:" in f.ref] == []

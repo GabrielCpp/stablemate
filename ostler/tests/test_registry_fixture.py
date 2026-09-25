@@ -88,3 +88,20 @@ def test_attributed_captures_mirrors_attributed_fixtures_via_the_shared_engine(
 def test_a_fixture_nodes_own_steps_do_not_carry_capture() -> None:
     step_type = registry.UI_TYPES_BY_NAME["step"]
     assert "capture" not in {b.key for b in step_type.bullet_keys}
+
+
+def test_a_fixture_step_admits_a_subset_of_the_step_kinds() -> None:
+    step_kinds = registry.UI_TYPES_BY_NAME["step"].bullet_by_key["kind"].values
+    fixture_kinds = registry.UI_TYPES_BY_NAME["fixture"].step_bullet_by_key["kind"].values
+    assert set(fixture_kinds) < set(step_kinds)
+
+
+def test_a_fixture_step_directory_admits_the_scenario_frame() -> None:
+    directory = registry.UI_TYPES_BY_NAME["fixture"].step_bullet_by_key["working-directory"]
+    assert directory.values == (registry.SCENARIO_FRAME_TOKEN,)
+    assert directory.value_kind == registry.UI_TYPES_BY_NAME["step"].bullet_by_key["working-directory"].value_kind
+
+
+def test_a_provided_fact_is_observed_or_asserted() -> None:
+    provides = registry.UI_TYPES_BY_NAME["fixture"].bullet_by_key["provides"]
+    assert set(provides.one_of) <= set(provides.properties)

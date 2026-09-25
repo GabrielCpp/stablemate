@@ -153,6 +153,8 @@ class BulletKey:
     condition: bool = False
     address: bool = False
     properties: tuple[str, ...] = ()
+    one_of: tuple[str, ...] = ()
+    values: tuple[str, ...] = ()
     value_kind: str = ""
 
 
@@ -168,11 +170,19 @@ class UINodeType:
     bullet_keys: tuple[BulletKey, ...] = ()
     body_template: str = ""
     literal_id: bool = False
+    step_bullets: tuple[BulletKey, ...] = ()
 
     @property
     def bullet_by_key(self) -> dict[str, BulletKey]:
         return {b.key: b for b in self.bullet_keys}
 
+    @property
+    def step_bullet_by_key(self) -> dict[str, BulletKey]:
+        return {b.key: b for b in self.step_bullets}
+
+
+SCENARIO_FRAME_TOKEN = "scenario:"
+STEP_KIND_VALUES = ("prepare", "service", "seed", "health", "run", "verify", "drive", "teardown")
 
 CODE_GROUNDING_KEYS = frozenset({"code"})
 RELATION_KEYS = ("on", "parent", "extends", "same-as", "steps", "presents", "detail",
@@ -708,9 +718,9 @@ UI_TYPES: tuple[UINodeType, ...] = (
     UINodeType(
         name="step", kind="section", heading="Steps",
         bullet_keys=(
-            BulletKey("kind", required=True),
+            BulletKey("kind", required=True, values=STEP_KIND_VALUES),
             BulletKey("run"),
-            BulletKey("working-directory"),
+            BulletKey("working-directory", value_kind="checkout-path"),
             BulletKey("timeout"),
             BulletKey("env", nested=True),
             BulletKey("health"),
@@ -723,10 +733,15 @@ UI_TYPES: tuple[UINodeType, ...] = (
     UINodeType(
         name="fixture", kind="file", context="fixtures",
         required_sections=(SectionSpec("Steps", filled=True),),
+        step_bullets=(
+            BulletKey("kind", required=True, values=("run", "seed", "verify")),
+            BulletKey("working-directory", values=(SCENARIO_FRAME_TOKEN,),
+                      value_kind="checkout-path"),
+        ),
         bullet_keys=(
             BulletKey("args"),
             BulletKey("provides", nested=True, entries=True,
-                      properties=("from", "read", "is")),
+                      properties=("from", "read", "is"), one_of=("from", "is")),
             BulletKey("needs", nested=True, link=True),
             BulletKey("secrets", nested=True),
         ),

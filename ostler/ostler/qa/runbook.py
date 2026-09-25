@@ -17,6 +17,7 @@ from ostler import path as path_mod
 from ostler.model import Graph, UINode
 from ostler.qa import stack as stack_mod
 from ostler.qa.outcome import QaOutcome
+from ostler.registry import SCENARIO_FRAME_TOKEN, STEP_KIND_VALUES
 
 STEP_PHASES: dict[str, str] = {
     "prepare": "prepare",
@@ -24,7 +25,7 @@ STEP_PHASES: dict[str, str] = {
     "seed": "seed",
     "health": "health",
 }
-STEP_KINDS: frozenset[str] = frozenset(STEP_PHASES) | {"run", "verify", "drive", "teardown"}
+STEP_KINDS: frozenset[str] = frozenset(STEP_KIND_VALUES)
 REUSE_POLICIES: frozenset[str] = frozenset({"if-fresh", "always", "never"})
 
 _SCALARS: dict[str, str] = {
@@ -81,9 +82,6 @@ def steps_of(graph: Graph, runbook: UINode) -> list[UINode]:
         return False
 
     return [n for n in graph.ui_nodes if n.type == "step" and owned(n)]
-
-
-SCENARIO_FRAME_TOKEN = "scenario:"
 
 
 def is_scenario_frame(value: str) -> bool:
