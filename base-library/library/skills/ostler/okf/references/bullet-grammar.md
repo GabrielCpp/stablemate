@@ -174,7 +174,22 @@ it onto whichever claim ends up last:
 - a `fixture:` above every claim is ambient — state reached once is the state every later claim
   is read in — so it fans out to **all** the node's obligations. (This is the one asymmetry: an
   observation is specific by nature, an arrangement is ambient by nature.)
-- a `capture:` binds like a check — it records what observing *that* claim pulled back out.
+- a `capture:` binds like a check — it records what observing *that* claim pulled back out;
+- a `verify:`, `fixture:`, `run:` or `capture:` indented **under one child** of a claim list
+  binds to that child alone, whatever the list's combiner. Nothing fans it out to the siblings.
+
+```markdown
+- does:
+  - Records one expense in the ledger.
+    - fixture: existing-ledger
+    - verify: count(subject="$.entries", equals=1, file="tally.json")
+  - Reports the amount on stderr.
+    - verify: stderr(matches="added")
+- verify: exit_status(code=0)
+```
+
+Here the first child gets the `count` check and the fixture. The second child gets the `stderr`
+check. Both get `exit_status`, because it sits beside the list and fans out.
 
 ## A nested claim list says how its children combine
 
@@ -199,7 +214,7 @@ So the parent states the combiner in its own value, which is otherwise empty:
 | Value | Children are | Fan-out |
 | --- | --- | --- |
 | `all` | parts of one effect, all true together | a check binds to every child |
-| `branches` | mutually exclusive outcomes, one per run | a check binds to **no** child; each branch carries its own `verify:` |
+| `branches` | mutually exclusive outcomes, one per run | a check binds to **no** child; each branch carries its own `verify:`, indented under it |
 
 The label before the colon on a child (`success:`, `failure:`, `navigation:`) stays free prose —
 it is for the reader, and nothing derives the combiner from it. Deriving it would fail *open*: a
