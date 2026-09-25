@@ -428,6 +428,42 @@ def declares_at(path: str | Path, symbol: str) -> bool:
     return _grounds(declared_names_at(path), symbol)
 
 
+def import_origin(path: str | Path, symbol: str, root: str | Path) -> tuple[Path, str] | None:
+    """The file that declares *symbol* and the name it declares it under, when the Python module at *path* only imports it — an absolute module resolved from each folder between *path* and *root*, a relative one beside *path*."""
+    source = Path(path)
+    if source.suffix != ".py":
+        return None
+    module = parse_python(source.read_text(encoding="utf-8"))
+    if module is None:
+        return None
+    head, _, rest = symbol.partition(".")
+    for node in module.body:
+        if not isinstance(node, ast.ImportFrom) or node.module is None:
+            continue
+        names = [alias.name for alias in node.names if (alias.asname or alias.name) == head]
+        if not names:
+            continue
+        original = f"{names[0]}.{rest}" if rest else names[0]
+        for base in _import_bases(source, node.level, Path(root)):
+            stem = base.joinpath(*node.module.split("."))
+            for candidate in (stem.with_suffix(".py"), stem / "__init__.py"):
+                if candidate.is_file() and declares_at(candidate, original):
+                    return candidate, original
+    return None
+
+
+def _import_bases(source: Path, level: int, root: Path) -> list[Path]:
+    """The folders an import in *source* may resolve from: its package for a relative one, else every folder up to *root*."""
+    if level:
+        return [source.parents[level - 1]] if level <= len(source.parents) else []
+    bases: list[Path] = []
+    for folder in source.parents:
+        bases.append(folder)
+        if folder == root:
+            break
+    return bases
+
+
 def extents(path: str | Path, text: str,
             *, language: str | None = None) -> list[tuple[int, int, str]]:
     """Each declaration as `(first line, last line, qualified name)`, 1-based and inclusive."""

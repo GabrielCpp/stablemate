@@ -237,6 +237,34 @@ def test_code_ref_to_a_missing_symbol_is_an_error(repo: Path):
     assert "missing-code-symbol" in codes(report)
 
 
+def _missing_symbol_suggestion(report) -> str:
+    return next(f.suggestion for f in report.findings if f.code == "missing-code-symbol")
+
+
+def test_a_symbol_the_cited_module_imports_points_at_its_declaring_module(repo: Path):
+    write(repo / "groom/groom/diff.py", "class Diff:\n    pass\n")
+    write(repo / "groom/groom/__main__.py", "from groom.diff import Diff\n")
+    report = _concept_report(repo, "groom/groom/__main__.py::Diff")
+    assert _missing_symbol_suggestion(report) == (
+        "cite 'groom/groom/diff.py::Diff', the module 'groom/groom/__main__.py' imports it from")
+
+
+def test_a_relative_aliased_import_points_at_the_name_it_is_declared_under(repo: Path):
+    write(repo / "groom/groom/diff.py", "class Diff:\n    def render(self):\n        pass\n")
+    write(repo / "groom/groom/__main__.py", "from .diff import Diff as Patch\n")
+    report = _concept_report(repo, "groom/groom/__main__.py::Patch.render")
+    assert _missing_symbol_suggestion(report) == (
+        "cite 'groom/groom/diff.py::Diff.render', the module 'groom/groom/__main__.py' "
+        "imports it from")
+
+
+def test_a_symbol_neither_declared_nor_imported_gets_no_suggestion(repo: Path):
+    write(repo / "groom/groom/diff.py", "class Other:\n    pass\n")
+    write(repo / "groom/groom/__main__.py", "from groom.diff import Other\n")
+    report = _concept_report(repo, "groom/groom/__main__.py::Diff")
+    assert _missing_symbol_suggestion(report) == ""
+
+
 def test_a_grounded_code_ref_is_green(repo: Path):
     write(repo / "groom/groom/diff.py", "class Diff:\n    pass\n")
     report = _concept_report(repo, "groom/groom/diff.py::Diff")

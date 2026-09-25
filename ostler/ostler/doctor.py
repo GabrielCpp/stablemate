@@ -1572,7 +1572,20 @@ def _check_code_grounding(graph: Graph, f: list[Finding],
                 f.append(Finding(
                     "error", "missing-code-symbol",
                     f"{node.id}: `code:` target '{ref}' — '{target_path}' does not declare "
-                    f"'{symbol}'", path=rel, line=node.line, ref=ref))
+                    f"'{symbol}'", path=rel, line=node.line, ref=ref,
+                    suggestion=_origin_suggestion(source_root, target, target_path, symbol)))
+
+
+def _origin_suggestion(source_root: Path, target: Path, target_path: str, symbol: str) -> str:
+    """Where to cite a symbol *target* imports instead of declaring, or nothing when it does not."""
+    origin = inventory.import_origin(target, symbol, source_root)
+    if origin is None:
+        return ""
+    declaring, name = origin
+    if not declaring.is_relative_to(source_root):
+        return ""
+    return (f"cite '{declaring.relative_to(source_root).as_posix()}::{name}', the module "
+            f"'{target_path}' imports it from")
 
 
 def _resolved_targets(node, key: str, resolver: links_mod.LinkResolver) -> set[str]:
