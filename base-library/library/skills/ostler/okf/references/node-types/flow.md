@@ -70,6 +70,11 @@ None. The `steps:` chain is the body.
 Each child of `steps:` links to the node that performs it — an interaction, an invocation, an
 endpoint. `ostler graph` is the structural authority for what a flow reaches.
 
+On a `cli`, a step performs one command line, so the node it links states exactly one distinct
+`run:` in its own bullets. That node is usually an invocation. The compiler refuses a step whose
+node states no `run:`, or several different ones, because it cannot tell which run the step
+means.
+
 **A journey whose steps cross targets is legal, and today it compiles to nothing.** A step's
 target is its node type paired with the `driver:` of the surface it lives on, so a flow that
 walks a mobile app and then a web app — or drives an api and then a browser — names two. One
