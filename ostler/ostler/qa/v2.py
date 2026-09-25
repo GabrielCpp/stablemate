@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import shutil
+from dataclasses import asdict
 from pathlib import Path
 from collections.abc import Mapping
 from typing import Any
@@ -195,6 +196,8 @@ def run_plan(
                     "failures": result.failures,
                     **({"aborted": True} if result.aborted else {}),
                     **({"message": result.message} if result.message else {}),
+                    **({"failed_checks": [asdict(check) for check in result.failed_checks]}
+                       if result.failed_checks else {}),
                 }
                 for name, result in results.items()
             },

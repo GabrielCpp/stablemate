@@ -73,6 +73,15 @@ def _covers_in(
 DEFAULT_VIEWPORT = {"width": 1440, "height": 900}
 
 
+@dataclass(frozen=True)
+class FailedCheck:
+    """One assertion that did not hold: what it asserted, what it expected, and what it observed."""
+
+    label: str
+    expected: object
+    actual: object
+
+
 @dataclass
 class ScenarioResult:
     status: str
@@ -81,6 +90,7 @@ class ScenarioResult:
     aborted: bool = False
     artifacts: list[str] = field(default_factory=list)
     message: str = ""
+    failed_checks: list[FailedCheck] = field(default_factory=list)
 
 
 class DriverBlocked(RuntimeError):
@@ -278,6 +288,7 @@ class PythonDriver(QaDriver):
         action = 0
         terminal: dict[str, Any] | None = None
         problems: list[str] = []
+        failed_checks: list[FailedCheck] = []
         open_steps: list[tuple[str, str]] = []
         step_started: dict[str, int] = {}
         painted = self._scenario_painted(records)
@@ -306,6 +317,8 @@ class PythonDriver(QaDriver):
                 )
                 if not passed:
                     failures += 1
+                    failed_checks.append(FailedCheck(
+                        str(record.get("label", "")), record.get("expected"), record.get("actual")))
             elif kind == "step_start":
                 step_id = str(record.get("id", ""))
                 open_steps.append((step_id, str(record.get("label", ""))))
@@ -365,6 +378,8 @@ class PythonDriver(QaDriver):
                     )
                     if not passed:
                         failures += 1
+                        failed_checks.append(
+                            FailedCheck(verdict.sentence(), verdict.expected, verdict.observed()))
             elif kind == "scenario":
                 terminal = record
 
@@ -429,6 +444,7 @@ class PythonDriver(QaDriver):
             failures=failures,
             message=message,
             aborted=aborted,
+            failed_checks=failed_checks,
         )
 
     def _step_record(
