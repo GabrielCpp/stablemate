@@ -30,7 +30,7 @@ def test_a_failed_assert_is_named_on_the_result_with_what_it_expected_and_observ
 
     result = _driver(repo)._grade("s-1", ["ac:1"], records, "", 0, timed_out=False)
 
-    assert result.failed_checks == [FailedCheck('created(subject="trip.csv")', True, False)]
+    assert result.failed_checks == [FailedCheck('created(subject="trip.csv")', "true", "false")]
 
 
 def test_a_scenario_whose_checks_all_hold_names_none(repo: Path) -> None:

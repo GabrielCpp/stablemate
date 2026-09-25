@@ -78,8 +78,13 @@ class FailedCheck:
     """One assertion that did not hold: what it asserted, what it expected, and what it observed."""
 
     label: str
-    expected: object
-    actual: object
+    expected: str
+    actual: str
+
+    @classmethod
+    def of(cls, label: str, expected: object, actual: object) -> FailedCheck:
+        """A failed check whose expected and observed values are rendered as JSON text."""
+        return cls(label, json.dumps(expected, default=str), json.dumps(actual, default=str))
 
 
 @dataclass
@@ -317,7 +322,7 @@ class PythonDriver(QaDriver):
                 )
                 if not passed:
                     failures += 1
-                    failed_checks.append(FailedCheck(
+                    failed_checks.append(FailedCheck.of(
                         str(record.get("label", "")), record.get("expected"), record.get("actual")))
             elif kind == "step_start":
                 step_id = str(record.get("id", ""))
@@ -379,7 +384,7 @@ class PythonDriver(QaDriver):
                     if not passed:
                         failures += 1
                         failed_checks.append(
-                            FailedCheck(verdict.sentence(), verdict.expected, verdict.observed()))
+                            FailedCheck.of(verdict.sentence(), verdict.expected, verdict.observed()))
             elif kind == "scenario":
                 terminal = record
 
