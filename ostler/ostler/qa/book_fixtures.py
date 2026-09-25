@@ -22,7 +22,7 @@ def _bullet_values(value: object) -> list[str]:
 
 
 def _declared_args(node: UINode) -> list[str]:
-    return fixtures_mod.declared_args(_bullet_values(node.meta.get("args")))
+    return fixtures_mod.declared_names(_bullet_values(node.meta.get("args")))
 
 
 def _provides_from_step(raw: str) -> str:
@@ -62,7 +62,7 @@ def _declared_provides(node: UINode) -> list[dict[str, str]]:
 
 
 def _declared_secrets(node: UINode) -> list[str]:
-    return [v.strip() for v in _bullet_values(node.meta.get("secrets")) if v.strip()]
+    return fixtures_mod.declared_names(_bullet_values(node.meta.get("secrets")))
 
 
 def _needs_of(graph: Graph, node: UINode, by_name: dict[str, UINode]) -> list[dict[str, Any]]:

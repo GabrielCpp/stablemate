@@ -66,14 +66,19 @@ class NoArrangement:
     reason: str
 
 
-def declared_args(values: list[str]) -> list[str]:
-    """The parameter names a fixture's `args:` values declare. A value stating its absence, `none` alone or `none, because ...`, declares none."""
+def states_absence(text: str) -> bool:
+    """Whether a bullet value says there is nothing here: `none` alone, `none.`, or `none, because ...`."""
+    stripped = text.strip()
+    return registry.self_declared_empty(stripped) or stripped.rstrip(".").lower() in {"none", "nothing"}
+
+
+def declared_names(values: list[str]) -> list[str]:
+    """The names a fixture's `args:` or `secrets:` values declare. A value stating its absence declares none."""
     names: list[str] = []
     for value in values:
-        text = value.strip()
-        if registry.self_declared_empty(text) or text.rstrip(".").lower() in {"none", "nothing"}:
+        if states_absence(value):
             continue
-        names.extend(text.split())
+        names.extend(value.split())
     return names
 
 

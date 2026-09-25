@@ -853,7 +853,7 @@ def _check_fixture_secret_names(graph: Graph, fixtures: dict[str, UINode], f: li
         rel = _rel_path(graph, node)
         for value in _bullet_values(node.meta.get("secrets", "")):
             name = value.strip()
-            if name and not _ENV_NAME.match(name):
+            if name and not fixtures_mod.states_absence(name) and not _ENV_NAME.match(name):
                 f.append(Finding(
                     "error", "fixture-secret-name",
                     f"{node.id}: `secrets:` child {name!r} is not a valid environment "
@@ -895,7 +895,7 @@ def _check_fixture_needs_cycles(graph: Graph, fixtures: dict[str, UINode], f: li
 
 def _fixture_declared_args(node: UINode) -> set[str]:
     """The parameter names a fixture node's own `args:` bullet declares."""
-    return set(fixtures_mod.declared_args(_bullet_values(node.meta.get("args", ""))))
+    return set(fixtures_mod.declared_names(_bullet_values(node.meta.get("args", ""))))
 
 
 def _fixture_declared_provides(node: UINode) -> set[str]:

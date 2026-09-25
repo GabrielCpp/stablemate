@@ -8,6 +8,7 @@ import pytest
 
 from ostler import doctor
 from ostler.model import load
+from ostler.qa import book_fixtures
 
 from conftest import write
 
@@ -302,6 +303,15 @@ def test_fixture_secret_name_is_clean_for_a_valid_env_var_name(repo: Path) -> No
     write(repo / "docs/features/acme/fixtures/seeded-acme.md",
           _fixture_book(provides="id — the seeded account's id", secrets="API_TOKEN"))
     assert _findings(repo, "fixture-secret-name") == []
+
+
+@pytest.mark.parametrize("secrets", ["none.", "none, because the fixture reads no credential"])
+def test_secrets_stating_there_are_none_declare_no_secret(repo: Path, secrets: str) -> None:
+    _stack(repo)
+    write(repo / "docs/features/acme/fixtures/seeded-acme.md",
+          _fixture_book(provides="id — the seeded account's id", secrets=secrets))
+    assert _findings(repo, "fixture-secret-name") == []
+    assert book_fixtures.resolved(load(repo))["seeded-acme"]["secrets"] == []
 
 
 def test_fixture_step_no_run_when_a_step_has_no_run_bullet(repo: Path) -> None:
