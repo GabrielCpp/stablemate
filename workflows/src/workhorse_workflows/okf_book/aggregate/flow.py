@@ -68,7 +68,7 @@ from workhorse_workflows.okf_book.shared.jobs import (
 )
 from workhorse_workflows.okf_book.shared.metrics import TurnMetric, record_turn
 from workhorse_workflows.okf_book.shared.page_kinds import JobKind
-from workhorse_workflows.okf_book.shared.page_check import charged_pages, inherited_gaps, page_problems, unreached, unreached_problems
+from workhorse_workflows.okf_book.shared.page_check import charged_pages, inherited_gaps, page_problems, unlinked_own_pages, unreached, unreached_problems
 from workhorse_workflows.okf_book.shared.work import BLOCKED, DONE, JOB, UNQUEUED, seed
 
 PAGES_BUDGET_TOKENS = 3_000
@@ -336,12 +336,12 @@ class Aggregate(BookFlow):
         return Continue(verdict, self.settle_verdict, ledger=ledger, verdict=verdict, claims=claims, metric=metric)
 
     def settle_verdict(self, ledger: JobLedger, verdict: Verdict, claims: tuple[str, ...], metric: TurnMetric) -> Continue[...]:
-        """Record the verify turn. Pages that state every claim with no problem go on to the stamp.
+        """Record the verify turn. Pages that state every claim with no problem, the job's own reached, go on to the stamp.
 
         Anything else charges the job a turn.
         """
         record_turn(self.records_dir, metric)
-        problems = verdict_problems(verdict, claims, ledger.cleared)
+        problems = (*verdict_problems(verdict, claims, ledger.cleared), *unlinked_own_pages(self.root, ledger.job.owned_pages))
         if not problems:
             return Continue(verdict, self.stamp_job, ledger=ledger)
         return self._retry_or_keep(ledger.charged(problems))

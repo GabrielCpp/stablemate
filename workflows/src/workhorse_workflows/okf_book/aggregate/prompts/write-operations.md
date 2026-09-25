@@ -9,8 +9,9 @@ A reader holding only the book must bring the stack up from the runbook alone. A
 user runs directly, with no server to start, still gets a runbook: how to install it and
 run it. Scaffold each page with `ostler scaffold`, and link each one from a page
 `{{ folder }}/entries.md` already reaches, such as an entry point's page. Code writes the
-entries page, and your edits to it are put back. A new page nothing reachable links to is
-deleted and costs you this turn.
+entries page, and your edits to it are put back. A page of yours nothing reachable links to
+costs you this turn. A new one is deleted at once, and one the book already had is deleted
+after your job.
 
 {% if pages %}
 The book's pages already written:

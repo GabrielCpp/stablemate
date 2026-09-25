@@ -21,6 +21,7 @@ from okf_book.support import (
 from pydantic import TypeAdapter
 
 from workhorse_workflows.okf_book.aggregate.verdict import GRAMMAR_GAPS_NAME, GrammarGap
+from workhorse_workflows.okf_book.shared.attempts import MAX_ATTEMPTS
 from workhorse_workflows.okf_book.main.nodes.surface import Surface, SurfaceKind
 from workhorse_workflows.okf_book.shared.entries import FEATURES_DIR
 
@@ -80,8 +81,9 @@ def test_a_claim_the_verifier_leaves_unaccounted_is_charged_as_stated_on_no_page
     _ = run_book(WriteOnly(repo_dir=str(repo), surfaces=(TALLY,)), runner)
     problems = NAMES.validate_python(runner.args_of("write-operations")[-1]["problems"])
 
-    assert problems
-    assert all("It works." in problem and "is stated on no page" in problem for problem in problems)
+    unstated = [problem for problem in problems if "is stated on no page" in problem]
+    assert unstated
+    assert all("It works." in problem for problem in unstated)
 
 
 def test_a_claim_the_verifier_finds_badly_checked_hands_the_writer_its_node_and_fix(app: App, run_book: RunBook) -> None:
@@ -183,7 +185,7 @@ def test_the_operations_and_flows_judges_read_the_service_and_charge_no_claim_a_
     _ = run_book(WriteOnly(repo_dir=str(repo), surfaces=(TALLY,)), runner)
 
     for kind in ("operations", "flows"):
-        [args] = [a for a in runner.args_of("verify-page") if a["kind"] == kind]
+        args = next(a for a in runner.args_of("verify-page") if a["kind"] == kind)
         assert args["contracts"] == []
         assert "tally/cli.py" in [contract["file"] for contract in NUMBERS.validate_python(args["context"])]
 
@@ -198,3 +200,15 @@ def test_the_concept_judge_charges_no_claim_and_a_command_judge_still_does(app: 
     assert concept["contracts"] == []
     assert concept["context"]
     assert all(args["contracts"] for pages, args in judged_pages if CONCEPT not in [page["page"] for page in pages])
+
+
+def test_an_operations_job_is_charged_for_each_of_its_pages_it_leaves_unlinked(app: App, run_book: RunBook) -> None:
+    repo = app("tally-cli")
+    runner = _book_runner(repo, PASS, _writer(repo))
+    _ = run_book(WriteOnly(repo_dir=str(repo), surfaces=(TALLY,)), runner)
+
+    tries = runner.args_of("write-operations")
+    assert len(tries) == MAX_ATTEMPTS
+    problems = " ".join(NAMES.validate_python(tries[-1]["problems"]))
+    for page in ("ops/run-tally.md", "ops/tally-checkout.md"):
+        assert f"{page} is linked from no page the entries page reaches, so it is deleted after this job." in problems

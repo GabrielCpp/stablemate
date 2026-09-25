@@ -7,8 +7,9 @@ sits on at least one flow, and every flow can be run end to end. Write the flows
 each entry point on a journey, from the contracts of the files that reach them, each step
 linking the node it drives. Scaffold each flow with `ostler scaffold`, and link each one
 from a page `{{ folder }}/entries.md` already reaches, such as an entry point's page. Code
-writes the entries page, and your edits to it are put back. A new page nothing reachable
-links to is deleted and costs you this turn.
+writes the entries page, and your edits to it are put back. A page of yours nothing reachable
+links to costs you this turn. A new one is deleted at once, and one the book already had is
+deleted after your job.
 
 {% if pages %}
 The book's flows already written:

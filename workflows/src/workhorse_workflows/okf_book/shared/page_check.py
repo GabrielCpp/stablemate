@@ -130,7 +130,7 @@ def unreached(root: Path, pages: Iterable[str]) -> tuple[DeadPage, ...]:
 def charged_pages(root: Path, changed: Iterable[str], owned: Iterable[str]) -> tuple[str, ...]:
     """The pages a job answers for: every page it changed, and each of its own the entries page reaches, changed or not.
 
-    An own page nothing reaches is collected after the job, not charged to it.
+    An own page nothing reaches is charged for its reach alone, since it is collected after the job.
     """
     mine = frozenset(owned)
     dead = frozenset(page.rel for page in unreached(root, mine))
@@ -178,6 +178,15 @@ def inherited_gaps(root: Path, service: str, owned: frozenset[str]) -> tuple[str
 def unreached_problems(pages: Iterable[str]) -> tuple[str, ...]:
     """What the turn is charged for each page it wrote that nothing reachable links to."""
     return tuple(f"{page} is linked from no page the entries page reaches, so it was deleted." for page in pages)
+
+
+def unlinked_own_pages(root: Path, owned: Iterable[str]) -> tuple[str, ...]:
+    """What the job is charged for each page of its own that nothing reachable links to. Garbage collection deletes it after the job."""
+    return tuple(
+        f"{page.rel} is linked from no page the entries page reaches, so it is deleted after this job. "
+        "Link it from a page the entries page reaches, or delete it."
+        for page in unreached(root, owned)
+    )
 
 
 def page_problems(

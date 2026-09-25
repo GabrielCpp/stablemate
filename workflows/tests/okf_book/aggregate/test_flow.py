@@ -203,7 +203,7 @@ def test_a_page_a_job_only_adds_a_link_to_is_not_judged_as_its_work(app: App, ru
     _flow, runner = _run(repo, run_book, operations=write_operations)
 
     operations = [args for args in runner.args_of("verify-page") if args["kind"] == "operations"]
-    assert [page["page"] for args in operations for page in BRIEFS.validate_python(args["pages"])] == [FIXTURE]
+    assert {page["page"] for args in operations for page in BRIEFS.validate_python(args["pages"])} == {FIXTURE}
     assert line in (repo / ROOT_PAGE).read_text(encoding="utf-8")
 
 
@@ -326,7 +326,7 @@ def test_a_page_an_earlier_job_wrote_is_kept_when_a_later_job_unlinks_it(app: Ap
     assert orphan_pages(repo, flow.work, ("tally",)) == (trip,)
 
 
-def test_a_queued_page_an_earlier_job_unlinks_is_written_by_its_own_job_then_collected(app: App, run_book: RunBook) -> None:
+def test_a_queued_page_an_earlier_job_unlinks_is_charged_to_its_own_job_then_collected(app: App, run_book: RunBook) -> None:
     repo = app("tally-cli")
     _commit_orphan(repo)
     link = "\nSee [budget](budget.md).\n"
@@ -340,7 +340,9 @@ def test_a_queued_page_an_earlier_job_unlinks_is_written_by_its_own_job_then_col
     _flow, runner = _run(repo, run_book, write=_on_concept(repo, unlink))
 
     subjects = commits(repo)
-    assert len(_pages_written(runner, ORPHAN)) == 1
+    tries = _pages_written(runner, ORPHAN)
+    assert len(tries) == MAX_ATTEMPTS
+    assert any("budget.md is linked from no page the entries page reaches, so it is deleted after this job." in problem for problem in NAMES.validate_python(tries[-1]["problems"]))
     assert subjects.index("docs(tally): delete budget, nothing reaches it") < subjects.index("docs(tally): write budget")
     assert not (repo / ORPHAN).exists()
 
