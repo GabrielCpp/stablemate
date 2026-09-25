@@ -728,7 +728,6 @@ UI_TYPES: tuple[UINodeType, ...] = (
             BulletKey("provides", nested=True, entries=True,
                       properties=("from", "read", "is")),
             BulletKey("needs", nested=True, link=True),
-            BulletKey("verify", check=True),
             BulletKey("secrets", nested=True),
         ),
     ),
