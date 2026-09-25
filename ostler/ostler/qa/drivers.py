@@ -387,7 +387,7 @@ class PythonDriver(QaDriver):
             elif kind == "artifact":
                 problems.extend(self._register(scenario_id, record, step=step, painted=painted))
             elif kind == "vet":
-                problems.extend(self._grade_vet(tally, scenario_id, covers, record, step))
+                problems.extend(self._grade_vet_and_list_problems(tally, scenario_id, covers, record, step))
             elif kind == "scenario":
                 terminal = record
 
@@ -482,7 +482,7 @@ class PythonDriver(QaDriver):
                 str(record.get("label", "")), record.get("expected"), record.get("actual"),
                 CommandEnding.read(record)))
 
-    def _grade_vet(
+    def _grade_vet_and_list_problems(
         self,
         tally: _Tally,
         scenario_id: str,
