@@ -35,6 +35,9 @@ Done when the sentence carries a target number and a workload size.
 ## 2. Freeze the yardstick
 
 Pick the benchmark: a small fixed set of inputs that covers the kinds the workload holds.
+A generated benchmark needs a census first: sample real instances of the workload, sort
+them by the shape the generator makes, and count. A shape that is 4% of real work caps
+any method on it at 4% of the purpose, however well it scores on the benchmark.
 Run the current system on it and record the baseline row. Pin what defines the yardstick:
 the input set, the commit, the seeds, and the judge or scorer. The judge stays frozen for
 the whole study. The cheapest way to look faster is to make the judge pass sooner, so a

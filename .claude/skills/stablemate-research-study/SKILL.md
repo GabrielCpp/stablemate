@@ -39,6 +39,9 @@ Done when the sentence carries a target number and a workload size.
 ## 2. Freeze the yardstick
 
 Pick the benchmark: a small fixed set of inputs that covers the kinds the workload holds.
+A generated benchmark needs a census first: sample real instances of the workload, sort
+them by the shape the generator makes, and count. A shape that is 4% of real work caps
+any method on it at 4% of the purpose, however well it scores on the benchmark.
 Run the current system on it and record the baseline row. Pin what defines the yardstick:
 the input set, the commit, the seeds, and the judge or scorer. The judge stays frozen for
 the whole study. The cheapest way to look faster is to make the judge pass sooner, so a
@@ -65,8 +68,9 @@ check proves unneeded, parallelism, a different instrument.
 The field always holds the **no-method control**: the simplest mechanism that uses none of
 the idea under test, such as brute-force search, a fixed rule, or the unchanged system
 given the same extra compute. Measure it early. When it matches the method, the yardstick
-cannot credit the method, and that is a finding about the yardstick. For each candidate
-write:
+cannot credit the method, and that is a finding about the yardstick. Give the control
+every move the fault can need. A search that swaps names cannot fail on faults in operators
+or literals and then count as the control for them. For each candidate write:
 
 - the expected gain, tied to a line of the profile,
 - the cost to test it,
@@ -86,6 +90,13 @@ part: a model call, a full rerun, a human judge. Compute the best result the run
 show from its inputs alone, with the expensive part assumed to go the candidate's way
 wherever it is uncertain. A ceiling under the bar kills the run before it costs anything.
 It takes minutes where the run takes days, and it reads the same inputs the run would.
+
+**Read the consumer's ceiling too.** A method's output often reaches the purpose through
+another system: a model that acts on advice, a person who reads a report, a tool with its
+own input rules. Hand that system the perfect output before building the method's run. If
+the oracle does not clear the bar, no method can, and the gap is in how the output is
+delivered. Hand it the same format filled in by the no-method control as well, so the
+format cannot take the method's credit.
 
 **Order by cost before launching anything.** List the next decisive checks with their
 estimates, and run the cheapest first. A long job in the background is not free: a
