@@ -8,7 +8,8 @@ Editable path on this machine: `farrier source .claude/skills/stablemate-researc
 
 # The study ledger
 
-One JSON object per line, appended to `ledger.jsonl` in the study's folder. Append the row
+One JSON object per line, appended to `ledger.jsonl` in the loop's working directory,
+`.study/<question-slug>/`. Append the row
 when the step starts, with `end`, `actual_min` and `outcome` null. Rewrite that last line
 when the step ends. Never delete a row.
 

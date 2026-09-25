@@ -8,11 +8,13 @@ Editable path on this machine: `farrier source .claude/skills/stablemate-researc
 
 # The study report
 
-Write `REPORT.md` in the study's folder when the study stops. It answers four questions, in
-this order, for a reader who was not there.
+Write `reports/<date>-<study-slug>.md` in the loop's working directory when a study ends.
+It answers four questions, in this order, for a reader who was not there.
 
-1. **Where does the purpose stand?** The verdict: reached, banked or negative. Then the best result on the yardstick, projected to the
-   full workload, next to the target and the baseline.
+1. **Where does the purpose stand?** The verdict: reached, banked or negative. Then the
+   best result on the yardstick, projected to the full workload, next to the target and
+   the baseline. Then one sentence on what the result means for the question in
+   `QUESTION.md`.
 2. **What worked and what did not?** One line per probe from the ledger, failures included,
    each with its cost and what it settled. Untried candidates from the field follow, each
    with the reason it was not reached.
@@ -23,5 +25,6 @@ this order, for a reader who was not there.
    at all, read off the ledger: a step far past its estimate with no reflection after it, a
    stretch of apparatus with no decisive step it served.
 
-The last section says what the operator has to decide, one decision, with a
+The last section names the next candidate the loop takes from the field, and why. When the
+loop stops instead, it says what the operator has to decide, one decision, with a
 recommendation.
