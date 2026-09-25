@@ -44,6 +44,15 @@ A check that reads a command's output, or that compares the directory either sid
 has nothing to read there, and the compiler refuses it as `uncompilable-claim`. A starting
 world that holds files is stated on `fixture:` instead.
 
+`end:` spans the whole walk. A check on it that compares the directory either side, such as
+`unchanged`, `created` or `removed`, reads the directory before the first step and again after
+the last. So `end: unchanged(subject="<file>")` claims the walk as a whole left that file as
+it found it. On a walk whose `start:` says the file is absent and whose first step creates
+it, that claim is false for a correct app. A claim about one step, such as a preview that
+writes nothing, is not the flow's claim. It goes on the command or invocation that step links
+to, with a `fixture:` that puts the file in place and `verify: unchanged(subject="<file>")`.
+The flow's `end:` then states what the whole walk leaves behind.
+
 A flow's claims are about the world its steps left behind, and that world is the world they
 started in plus the walk — so the starting world is part of the claim, and the flow states it.
 `- fixture: <name> [args] — <state it leaves>` arranges it before the first step. A flow whose
