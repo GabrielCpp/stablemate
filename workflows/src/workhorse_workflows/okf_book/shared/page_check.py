@@ -180,7 +180,7 @@ def unreached_problems(pages: Iterable[str]) -> tuple[str, ...]:
     return tuple(f"{page} is linked from no page the entries page reaches, so it was deleted." for page in pages)
 
 
-def unlinked_own_pages(root: Path, owned: Iterable[str]) -> tuple[str, ...]:
+def unlinked_own_page_problems(root: Path, owned: Iterable[str]) -> tuple[str, ...]:
     """What the job is charged for each page of its own that nothing reachable links to. Garbage collection deletes it after the job."""
     return tuple(
         f"{page.rel} is linked from no page the entries page reaches, so it is deleted after this job. "

@@ -14,7 +14,7 @@ from workhorse_workflows.okf_book.shared.budget import (
 )
 from workhorse_workflows.okf_book.aggregate.nodes.job_check import CHECK_MODULE, JobCheck, charge, spent_tokens
 from workhorse_workflows.okf_book.shared.confine import book_changes, new_since_head
-from workhorse_workflows.okf_book.shared.page_check import charged_pages, page_problems, unlinked_own_pages, unreached
+from workhorse_workflows.okf_book.shared.page_check import charged_pages, page_problems, unlinked_own_page_problems, unreached
 
 USAGE = f"usage: python -m {CHECK_MODULE} <job-check.json>"
 PASSED = (
@@ -35,7 +35,7 @@ def job_problems(check: JobCheck) -> tuple[str, ...]:
     dead = (page.rel for page in unreached(root, new_since_head(root, changed)))
     return (
         *(f"{page} is linked from no page the entries page reaches, so the check after your turn deletes it." for page in dead),
-        *unlinked_own_pages(root, check.owned_pages),
+        *unlinked_own_page_problems(root, check.owned_pages),
         *page_problems(root, check.service, charged_pages(root, changed, check.owned_pages), check.inherited_gaps),
     )
 

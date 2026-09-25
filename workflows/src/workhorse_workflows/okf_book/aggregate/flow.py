@@ -68,7 +68,7 @@ from workhorse_workflows.okf_book.shared.jobs import (
 )
 from workhorse_workflows.okf_book.shared.metrics import TurnMetric, record_turn
 from workhorse_workflows.okf_book.shared.page_kinds import JobKind
-from workhorse_workflows.okf_book.shared.page_check import charged_pages, inherited_gaps, page_problems, unlinked_own_pages, unreached, unreached_problems
+from workhorse_workflows.okf_book.shared.page_check import charged_pages, inherited_gaps, page_problems, unlinked_own_page_problems, unreached, unreached_problems
 from workhorse_workflows.okf_book.shared.work import BLOCKED, DONE, JOB, UNQUEUED, seed
 
 PAGES_BUDGET_TOKENS = 3_000
@@ -341,7 +341,7 @@ class Aggregate(BookFlow):
         Anything else charges the job a turn.
         """
         record_turn(self.records_dir, metric)
-        problems = (*verdict_problems(verdict, claims, ledger.cleared), *unlinked_own_pages(self.root, ledger.job.owned_pages))
+        problems = (*verdict_problems(verdict, claims, ledger.cleared), *unlinked_own_page_problems(self.root, ledger.job.owned_pages))
         if not problems:
             return Continue(verdict, self.stamp_job, ledger=ledger)
         return self._retry_or_keep(ledger.charged(problems))
