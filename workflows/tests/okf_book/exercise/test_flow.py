@@ -15,7 +15,7 @@ from workhorse_workflows.okf_book.exercise import flow as exercise_flow
 from workhorse_workflows.okf_book.exercise import nodes as exercise_nodes
 from workhorse_workflows.okf_book.shared.blockers import Blocker, Phase, Side
 from workhorse_workflows.okf_book.shared.page_check import BookCompilation
-from workhorse_workflows.okf_book.shared.scenarios import RunSummary, Scenario, ScenarioOutcome
+from workhorse_workflows.okf_book.shared.scenarios import FailedCheck, RunSummary, Scenario, ScenarioOutcome
 from workhorse_workflows.okf_book.main.nodes.report import BookReport
 from workhorse_workflows.okf_book.workflow import OkfBook
 from workhorse_workflows.kit.qa.schemas import StackStatus
@@ -152,6 +152,21 @@ def test_each_failed_scenario_is_charged_to_the_side_its_judge_names(
     assert (first["covers"], first["message"]) == (["okf:tally.md#add"], "exit 2, want 0")
     assert "report_path" not in first
     assert len(asked) == 1
+
+
+def test_the_judge_reads_each_failed_check_before_the_runs_own_message(
+    app: App, drive_book: DriveBook, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    check = FailedCheck(label='created(subject="trip.csv")', expected=True, actual=False)
+    outcome = ScenarioOutcome(status="failed", assertions=2, failures=1, message="exit 2", failed_checks=(check,))
+    Stack(outcomes={"add-an-expense": outcome}).install(monkeypatch)
+    _ = _operator(monkeypatch)
+    runner = _runner(judge=always({"side": "book", "reason": "The export writes out.csv."}))
+
+    _ = _exercise(app, drive_book, runner)
+
+    [args] = runner.args_of("judge-failure")
+    assert args["message"] == 'created(subject="trip.csv"): expected true, observed false\nexit 2'
 
 
 def test_an_obligation_that_does_not_compile_is_charged_to_the_side_that_can_fix_it(

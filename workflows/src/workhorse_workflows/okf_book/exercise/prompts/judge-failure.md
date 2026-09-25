@@ -4,7 +4,15 @@ book.
 - Scenario: `{{ scenario }}`
 - It covers: {% for obligation in covers %}`{{ obligation }}`{% if not loop.last %}, {% endif %}{% endfor %}
 
-- The run said: {{ message or "nothing" }}
+{% if message %}
+The run said, one failed check per line before its own message:
+
+```text
+{{ message }}
+```
+{% else %}
+The run said nothing.
+{% endif %}
 
 The pages the scenario covers are here, each whole. Read only these pages and what the run
 said. Do not read the source or the run's report, and do not edit any file.

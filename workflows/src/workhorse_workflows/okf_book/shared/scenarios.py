@@ -5,6 +5,7 @@ run directory, so the book's repo only ever changes through a committed page.
 """
 from __future__ import annotations
 
+import json
 from collections.abc import Iterable
 from pathlib import Path
 
@@ -28,6 +29,19 @@ class Scenario(BaseModel):
     covers: tuple[str, ...] = ()
 
 
+class FailedCheck(BaseModel):
+    """One check that did not hold: what it asserted, what it expected, and what it observed."""
+
+    model_config = ConfigDict(frozen=True, extra="ignore")
+
+    label: str
+    expected: object = None
+    actual: object = None
+
+    def said(self) -> str:
+        return f"{self.label}: expected {json.dumps(self.expected)}, observed {json.dumps(self.actual)}"
+
+
 class ScenarioOutcome(BaseModel):
     """How one scenario ended, as the run reports it."""
 
@@ -37,6 +51,11 @@ class ScenarioOutcome(BaseModel):
     assertions: int = 0
     failures: int = 0
     message: str = ""
+    failed_checks: tuple[FailedCheck, ...] = ()
+
+    def said(self) -> str:
+        """Every failed check, one per line, then the run's own message."""
+        return "\n".join([*(check.said() for check in self.failed_checks), *([self.message] if self.message else [])])
 
 
 class RunSummary(BaseModel):
