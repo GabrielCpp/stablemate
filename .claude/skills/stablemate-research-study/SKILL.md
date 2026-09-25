@@ -34,7 +34,19 @@ Write one sentence: what must improve, the target, and the full workload it appl
 "1,000 pages in 8 hours" is a purpose. It also gives the per-unit bar: 28 seconds a page.
 Every later projection is held against this sentence.
 
-Done when the sentence carries a target number and a workload size.
+When the purpose is a margin over a control, state the target as a **share of the
+control's shortfall**, not as a fixed number of points. "+10 points" is a fifth of the
+shortfall when the control scores 50%, and out of reach when it scores 95%, and nobody
+knows which until the control runs. Name the reference the shortfall is measured to:
+100%, an oracle, or a stronger system the method must approach. "The small model with the
+method closes 30% of its gap to the large model" is a purpose. Fix the share now, before
+any number is read, so it cannot drift toward what the data allows.
+
+Add the **resolution floor**: the smallest shortfall, in cases per seed, that can resolve
+the share. One lucky case meets any share of a shortfall of three.
+
+Done when the sentence carries a target, its reference, a resolution floor if it is a
+share, and a workload size.
 
 ## 2. Freeze the yardstick
 
@@ -42,7 +54,12 @@ Pick the benchmark: a small fixed set of inputs that covers the kinds the worklo
 A generated benchmark needs a census first: sample real instances of the workload, sort
 them by the shape the generator makes, and count. A shape that is 4% of real work caps
 any method on it at 4% of the purpose, however well it scores on the benchmark.
-Run the current system on it and record the baseline row. Pin what defines the yardstick:
+Run the current system on it and record the baseline row. For a share, run the control and
+the reference too, and write the shortfall per seed as a count of cases. A shortfall under
+the resolution floor means the benchmark cannot read the purpose. Grow it or change it
+before any method runs. That is a fact about the benchmark, not a result about the method.
+Convert the share into the count of cases the method must win per seed, and write it into
+the baseline row. Pin what defines the yardstick:
 the input set, the commit, the seeds, and the judge or scorer. The judge stays frozen for
 the whole study. The cheapest way to look faster is to make the judge pass sooner, so a
 change to the judge is its own probe, reported as one.
