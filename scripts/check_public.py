@@ -29,6 +29,7 @@ BASE_SKILL_FAMILIES = {
     "root-cause",
     "vet-proposal",
     "vertical-slicing",
+    "research-study",
 }
 RESOLVER = REPO / "scripts" / "private_names.py"
 HOOK_NAME = "hooks/pre-commit"
