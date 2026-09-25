@@ -1292,6 +1292,7 @@ class Qa:
         self._tool_env_allowed = frozenset(tool_env)
         self._recorder = recorder
         self._captures: dict[str, str] = {}
+        self._world: Path | None = None
         self.http = Http(target.base_url, on_unexpected_status=self._status_mismatch)
         self._index = 0
         self.assertions = 0
@@ -1435,10 +1436,25 @@ class Qa:
 
     @property
     def scenario_dir(self) -> Path:
-        """This scenario's own directory under `self.dir`, created on demand."""
-        resolved = (self.dir.resolve() / self.scenario_id).resolve()
-        resolved.mkdir(parents=True, exist_ok=True)
-        return resolved
+        """This scenario's own directory under `self.dir`: a fresh copy of the checkout as the runbook left it, made on first use, so a command finds the code it runs and its files land apart from every other scenario's."""
+        if self._world is None:
+            resolved = (self.dir.resolve() / self.scenario_id).resolve()
+            shutil.rmtree(resolved, ignore_errors=True)
+            self._copy_checkout(resolved)
+            self._world = resolved
+        return self._world
+
+    def _copy_checkout(self, into: Path) -> None:
+        root = self.root.resolve()
+        qa_dir = self.dir.resolve()
+
+        def skipped(where: str, names: list[str]) -> set[str]:
+            here = Path(where)
+            return {name for name in names if name == ".git" or (here / name).resolve() == qa_dir}
+
+        if root.is_dir():
+            shutil.copytree(root, into, symlinks=True, ignore=skipped)
+        into.mkdir(parents=True, exist_ok=True)
 
     def _run_book_step(
         self, fixture: str, index: int, step: Mapping[str, Any], env: Mapping[str, str],

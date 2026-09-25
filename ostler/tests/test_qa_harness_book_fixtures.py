@@ -479,14 +479,14 @@ def test_node_provides_and_dollar_captures_are_namespaced_apart(tmp_path: Path) 
 SCENARIO_FRAME_SCENARIO = '''\
 @scenario(target=api, mechanism="live", covers=["ac:1"])
 def the_fixture_frame_and_the_tool_call_land_in_one_place(qa: Qa) -> None:
-    """`working-directory: scenario:` and `qa.tool(...).run(..., cwd=qa.scenario_id)` must
+    """`working-directory: scenario:` and `qa.tool(...).run(..., cwd=qa.scenario_dir)` must
     resolve to the exact same directory, not merely two directories under `qa.dir`."""
     qa.fixture("seeded-acme")
     fixture_cwd = qa.resolve("@seeded-acme.fixture_cwd")
     tool = qa.tool("sh")
-    done = tool.run("-c", "pwd", cwd=qa.scenario_id)
+    done = tool.run("-c", "pwd", cwd=qa.scenario_dir)
     qa.check(
-        "fixture cwd-frame and qa.tool cwd=qa.scenario_id are the same directory",
+        "fixture cwd-frame and qa.tool cwd=qa.scenario_dir are the same directory",
         fixture_cwd == done.stdout.strip(),
         actual=(fixture_cwd, done.stdout.strip()),
     )
@@ -520,3 +520,32 @@ def test_the_scenario_frame_and_a_tool_run_land_in_the_same_directory(tmp_path: 
     checks = [r for r in records if r.get("type") == "assert"]
     assert code == 0, (stdout, records)
     assert checks and all(c["passed"] for c in checks), (stdout, checks)
+
+
+CHECKOUT_SCENARIO = '''\
+@scenario(target=api, mechanism="live", covers=["ac:1"])
+def a_command_runs_in_its_own_copy_of_the_checkout(qa: Qa) -> None:
+    """A command reaches the checkout's files, and what it writes lands in this scenario alone."""
+    done = qa.tool("sh").run("-c", "test ! -e out.txt && test ! -e qa && cat app.txt && echo made > out.txt", cwd=qa.scenario_dir)
+    qa.check("the command read the checkout from a world of its own", done.stdout == "the app\\n", actual=done.stdout)
+'''
+
+
+def test_each_run_of_a_scenario_starts_from_a_fresh_copy_of_the_checkout(tmp_path: Path) -> None:
+    (tmp_path / "app.txt").write_text("the app\n", encoding="utf-8")
+    module = _write(tmp_path, CHECKOUT_SCENARIO)
+    context = json.dumps(
+        {"root": str(tmp_path), "spec_dir": str(tmp_path), "qa_dir": str(tmp_path / "qa"), "tools": {"sh": "sh"}}
+    )
+
+    for _ in range(2):
+        code, stdout, records = _harness(
+            "run", str(module), "a-command-runs-in-its-own-copy-of-the-checkout", context,
+            env={"PATH": "/usr/bin:/bin"}, records_to=tmp_path / "records.jsonl",
+        )
+        checks = [r for r in records if r.get("type") == "assert"]
+        assert code == 0, (stdout, records)
+        assert checks and all(c["passed"] for c in checks), (stdout, checks)
+
+    assert not (tmp_path / "out.txt").exists()
+    assert (tmp_path / "qa" / "a-command-runs-in-its-own-copy-of-the-checkout" / "out.txt").is_file()
