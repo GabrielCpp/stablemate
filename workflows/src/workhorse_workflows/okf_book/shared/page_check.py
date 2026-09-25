@@ -8,7 +8,8 @@ of a changed page that does not compile is charged, unless the gap is one ostler
 yet, which is ostler's to fix and not the page's. Two gaps are no defect at all: a precondition
 the arrangement already discharges, and the placeholder obligation every node mints for itself,
 which owes a check only through the claims under it. A gap already on a page the job does not
-own when the job starts is inherited, and not charged.
+own when the job starts is inherited, and not charged. The same check tallies the pages' defects and the
+book's claims, so a job can tell a repair that left fewer defects from one that made none.
 """
 from __future__ import annotations
 
@@ -70,6 +71,7 @@ class BookCompilation:
 
     plan: Plan | None
     gaps: tuple[Gap, ...]
+    obligations: tuple[str, ...] = ()
 
     @property
     def planned(self) -> bool:
@@ -94,7 +96,8 @@ class _ServicesContext(BaseModel):
     def compile(self) -> BookCompilation:
         compiled = compile_plan_gaps(self.model_dump(mode="json"), story=BOOK_STORY)
         gaps = tuple(gap for gap in compiled.gaps if is_defect(gap))
-        return BookCompilation(plan=compiled if isinstance(compiled, Plan) else None, gaps=gaps)
+        obligations = tuple(str(obligation.get("id", "")) for obligation in self.obligations)
+        return BookCompilation(plan=compiled if isinstance(compiled, Plan) else None, gaps=gaps, obligations=obligations)
 
 
 def compile_services(root: Path, services: Iterable[str], spec: Path | None = None) -> BookCompilation:
@@ -154,12 +157,15 @@ def _gap_line(gap: Gap) -> str:
     return f"{gap.obligation_id} does not compile: {gap.kind}: {gap.detail}"
 
 
-def _gap_problems(root: Path, service: str, pages: list[str], known: frozenset[str]) -> list[str]:
+def _charged_gaps(gaps: Iterable[Gap], pages: list[str], known: frozenset[str]) -> list[Gap]:
     wanted = frozenset(pages)
+    return [gap for gap in gaps if gap_page(gap) in wanted and gap_side(gap) is Side.BOOK and _gap_line(gap) not in known]
+
+
+def _gap_problems(gaps: Iterable[Gap]) -> list[str]:
     by_fix: dict[tuple[str, str], list[str]] = {}
-    for gap in book_gaps(root, (service,)):
-        if gap_page(gap) in wanted and gap_side(gap) is Side.BOOK and _gap_line(gap) not in known:
-            by_fix.setdefault((gap.kind, gap.detail), []).append(gap.obligation_id)
+    for gap in gaps:
+        by_fix.setdefault((gap.kind, gap.detail), []).append(gap.obligation_id)
     return [
         f"{ids[0]} does not compile: {kind}: {detail}"
         if len(ids) == 1
@@ -191,12 +197,47 @@ def unlinked_own_page_problems(root: Path, owned: Iterable[str]) -> tuple[str, .
     )
 
 
-def page_problems(
+class Tally(BaseModel):
+    """How many defects the checked pages carry, each doctor finding and each claim that does not compile counted once, and how many claims the book states."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    defects: int = 0
+    obligations: int = 0
+
+    def improves_on(self, before: Tally) -> bool:
+        """Fewer defects than `before`, with no claim fewer to have them on."""
+        return self.defects < before.defects and self.obligations >= before.obligations
+
+    def plus_defects(self, count: int) -> Tally:
+        return self.model_copy(update={"defects": self.defects + count})
+
+
+@dataclass(frozen=True, slots=True)
+class PageReport:
+    """The problems the check charges on some pages, and the tally they come from."""
+
+    problems: tuple[str, ...]
+    tally: Tally
+
+
+def page_report(
     root: Path, service: str, changed: Iterable[str], inherited_gaps: Iterable[str] = ()
-) -> tuple[str, ...]:
+) -> PageReport:
     """The doctor errors and the book's compile gaps on the changed pages still in the book, the inherited gaps left out.
 
     Reach is left out: a new page nothing reaches is deleted and charged on its own, and a committed one is garbage collection's.
     """
     pages = sorted(p for p in frozenset(changed) if p.endswith(".md") and (root / p).is_file())
-    return (*_doctor_problems(root, pages), *_gap_problems(root, service, pages, frozenset(inherited_gaps)))
+    compiled = compile_services(root, (service,))
+    doctor_lines = _doctor_problems(root, pages)
+    gaps = _charged_gaps(compiled.gaps, pages, frozenset(inherited_gaps))
+    tally = Tally(defects=len(doctor_lines) + len(gaps), obligations=len(compiled.obligations))
+    return PageReport(problems=(*doctor_lines, *_gap_problems(gaps)), tally=tally)
+
+
+def page_problems(
+    root: Path, service: str, changed: Iterable[str], inherited_gaps: Iterable[str] = ()
+) -> tuple[str, ...]:
+    """The problems `page_report` charges on the changed pages."""
+    return page_report(root, service, changed, inherited_gaps).problems

@@ -1,6 +1,6 @@
 """Phase 2's second half: write each page from the contracts that reach it, check it, have it judged, and commit it.
 
-A job that fails three turns goes to the operator. When its last turn passed the code's check, its pages are committed. Otherwise the book is put back.
+A job that fails three turns goes to the operator. Its pages are committed when its last turn passed the code's check, or left fewer defects than the job found with no claim fewer. Otherwise the book is put back.
 """
 from __future__ import annotations
 
@@ -68,7 +68,7 @@ from workhorse_workflows.okf_book.shared.jobs import (
 )
 from workhorse_workflows.okf_book.shared.metrics import TurnMetric, record_turn
 from workhorse_workflows.okf_book.shared.page_kinds import JobKind
-from workhorse_workflows.okf_book.shared.page_check import charged_pages, inherited_gaps, page_problems, unlinked_own_page_problems, unreached, unreached_problems
+from workhorse_workflows.okf_book.shared.page_check import charged_pages, inherited_gaps, page_report, unlinked_own_page_problems, unreached, unreached_problems
 from workhorse_workflows.okf_book.shared.work import BLOCKED, DONE, JOB, UNQUEUED, seed
 
 PAGES_BUDGET_TOKENS = 3_000
@@ -137,7 +137,8 @@ class Aggregate(BookFlow):
     def _begin_job(self, items: list[WorkItem]) -> Continue[...]:
         job = job_of(items[0])
         gaps = inherited_gaps(self.root, job.service, job.owned_pages)
-        ledger = JobLedger(job=job, before=snapshot(self.root), inherited_gaps=gaps, cleared=read_cleared(self.records_dir))
+        baseline = page_report(self.root, job.service, charged_pages(self.root, (), job.owned_pages), gaps).tally
+        ledger = JobLedger(job=job, before=snapshot(self.root), inherited_gaps=gaps, baseline=baseline, cleared=read_cleared(self.records_dir))
         return Continue(job, self.write_job, ledger=ledger)
 
     def _rewrite(self, ledger: JobLedger) -> Continue[...]:
@@ -146,15 +147,12 @@ class Aggregate(BookFlow):
     def _next_job(self, result: object) -> Continue[...]:
         return Continue(result, self.aggregate)
 
-    def _retry_or_revert(self, ledger: JobLedger) -> Continue[...]:
-        if ledger.exhausted:
-            return Continue(ledger.attempts, self.abandon_job, ledger=ledger)
-        return self._rewrite(ledger)
-
-    def _retry_or_keep(self, ledger: JobLedger) -> Continue[...]:
-        if ledger.exhausted:
+    def _retry_or_settle(self, ledger: JobLedger, keep: bool) -> Continue[...]:
+        if not ledger.exhausted:
+            return self._rewrite(ledger)
+        if keep:
             return Continue(ledger.attempts, self.stamp_job, ledger=ledger)
-        return self._rewrite(ledger)
+        return Continue(ledger.attempts, self.abandon_job, ledger=ledger)
 
     def _block(self, ledger: JobLedger) -> None:
         subject = ledger.job.subject
@@ -270,10 +268,10 @@ class Aggregate(BookFlow):
         """Charge the turn with each page deleted as unreachable, and each doctor error and compile gap on the job's pages and the rest it changed."""
         job = ledger.job
         changed = book_changes(self.root, job.service, ledger.before)
-        charged = charged_pages(self.root, changed, job.owned_pages)
-        problems = (*unreached_problems(deleted), *page_problems(self.root, job.service, charged, ledger.inherited_gaps))
+        report = page_report(self.root, job.service, charged_pages(self.root, changed, job.owned_pages), ledger.inherited_gaps)
+        problems = (*unreached_problems(deleted), *report.problems)
         if problems:
-            return self._retry_or_revert(ledger.charged(problems))
+            return self._retry_or_settle(ledger.charged(problems), keep=report.tally.plus_defects(len(deleted)).improves_on(ledger.baseline))
         return Continue(changed, self.recheck_cleared, ledger=ledger)
 
     def recheck_cleared(self, ledger: JobLedger) -> Continue[...]:
@@ -296,7 +294,7 @@ class Aggregate(BookFlow):
         fixed = prompt_tokens(VERIFY_PROMPT) + other_pages.tokens + CLEARED_BUDGET_TOKENS + estimated_tokens(len(checks))
         judged = pack_read(file_tokens(root, judged_rels), (TURN_BUDGET_TOKENS - fixed) // 2)
         if not judged.kept:
-            return self._retry_or_keep(ledger.charged((UNJUDGED_PROBLEM,)))
+            return self._retry_or_settle(ledger.charged((UNJUDGED_PROBLEM,)), keep=True)
         judged_node_digests = node_digests(root, judged.kept)
         if judged.left_out:
             self.logger.warning("%d changed pages are past the verify turn's budget and go unjudged", judged.left_out)
@@ -344,10 +342,10 @@ class Aggregate(BookFlow):
         problems = (*verdict_problems(verdict, claims, ledger.cleared), *unlinked_own_page_problems(self.root, ledger.job.owned_pages))
         if not problems:
             return Continue(verdict, self.stamp_job, ledger=ledger)
-        return self._retry_or_keep(ledger.charged(problems))
+        return self._retry_or_settle(ledger.charged(problems), keep=True)
 
     def abandon_job(self, ledger: JobLedger) -> Continue[...]:
-        """Three failed turns, the last failing the code's check: put the book back as it was."""
+        """Three failed turns, the last failing the code's check with no fewer defects than the job found: put the book back as it was."""
         reverted = revert(self.root, ledger.before, self.records_dir)
         return Continue(reverted, self.block_job, ledger=ledger)
 

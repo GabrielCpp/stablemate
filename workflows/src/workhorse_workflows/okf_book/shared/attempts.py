@@ -1,7 +1,7 @@
 """The retry ledger: how many turns each file or page has failed, and why the last one failed.
 
 A subject that fails `MAX_ATTEMPTS` turns is exhausted, and the phase that owns it blocks it.
-An aggregation job carries its own ledger, with the tree as it stood before its first turn.
+An aggregation job carries its own ledger, with the tree as it stood before its first turn, and the defects and claims the check tallied then.
 The nodes a judge cleared outlive the job, so a later job's judge rereads only text that changed since.
 """
 from __future__ import annotations
@@ -13,6 +13,7 @@ from pydantic import BaseModel, ConfigDict
 
 from workhorse_workflows.okf_book.shared.confine import Snapshot
 from workhorse_workflows.okf_book.shared.jobs import Job
+from workhorse_workflows.okf_book.shared.page_check import Tally
 
 MAX_ATTEMPTS = 3
 CLEARED_NAME = "cleared.json"
@@ -76,13 +77,14 @@ def record_cleared(run_dir: Path, cleared: tuple[ClearedNode, ...]) -> None:
 
 
 class JobLedger(BaseModel):
-    """One aggregation job's attempt so far: the job, the tree and the inherited compile gaps before its first turn, each failed turn, and the nodes judged sound."""
+    """One aggregation job's attempt so far: the job, the tree, the inherited compile gaps and the check's tally before its first turn, each failed turn, and the nodes judged sound."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     job: Job
     before: Snapshot
     inherited_gaps: tuple[str, ...] = ()
+    baseline: Tally = Tally()
     attempts: tuple[FailureTally, ...] = ()
     cleared: tuple[ClearedNode, ...] = ()
 

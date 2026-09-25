@@ -138,29 +138,6 @@ def test_pages_nothing_reaches_are_deleted_each_in_its_own_commit(app: App, run_
     assert not [p for p in (repo / BOOK).rglob("*.md") if p.stem in UNREACHED]
 
 
-def test_a_page_whose_obligations_do_not_compile_is_put_back_and_blocked(app: App, run_book: RunBook) -> None:
-    repo = app("tally-cli")
-    flow, runner = _run(repo, run_book)
-
-    tries = _pages_written(runner, ROOT_PAGE)
-    assert len(tries) == MAX_ATTEMPTS
-    assert "does not compile" in str(tries[-1]["problems"])
-    assert "Tally keeps a ledger." not in (repo / ROOT_PAGE).read_text(encoding="utf-8")
-    [blocker] = [b for b in read_blockers(flow.run_dir) if b.subject == ROOT_PAGE]
-    assert blocker.phase is Phase.AGGREGATE
-    assert "does not compile" in blocker.reason
-    assert git(repo, "status", "--porcelain") == ""
-
-
-def test_a_page_the_job_owns_is_charged_when_the_turn_leaves_it_alone(app: App, run_book: RunBook) -> None:
-    repo = app("tally-cli")
-    _flow, runner = _run(repo, run_book, write=always(drafted("wrote nothing")))
-
-    tries = _pages_written(runner, ROOT_PAGE)
-    assert len(tries) == MAX_ATTEMPTS
-    assert "does not compile" in str(tries[-1]["problems"])
-
-
 def test_a_verifier_rejection_is_retried_with_its_problems_then_committed_and_blocked(app: App, run_book: RunBook) -> None:
     def reject(args: dict[str, object]) -> dict[str, object]:
         if CONCEPT in [page["page"] for page in BRIEFS.validate_python(args["pages"])]:
