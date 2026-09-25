@@ -5,6 +5,13 @@ Load the skill and follow it: {{ skill_load_ref("ostler-okf", skill_dir() + "/os
 Each page's whole text is here. Judge them from what is here, and read nothing else. Do not
 edit any file.
 
+Every page here passes `ostler doctor`. So each bullet's value has a form the grammar admits,
+each `verify:` parses against its check's signature, and each `working-directory:` names a
+directory the step can run in. `scenario:` with its colon is such a value: it names the
+scenario's own directory. Never name a problem on how a value is spelled. Name one on what a
+bullet claims, on a key used for a job the grammar gives another key, or on a check that does
+not read its claim.
+
 {% for page in pages %}
 <page path="{{ page.page }}">
 {{ page.body }}
