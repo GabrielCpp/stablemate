@@ -42,3 +42,16 @@ def test_a_scenario_whose_checks_all_hold_names_none(repo: Path) -> None:
     result = _driver(repo)._grade("s-1", ["ac:1"], records, "", 0, timed_out=False)
 
     assert (result.status, result.failed_checks) == ("passed", [])
+
+
+def test_a_failed_check_on_a_command_says_how_the_command_ended(repo: Path) -> None:
+    ran = {"exit_code": 1, "stderr": "No module named tally"}
+    records = [
+        {**_assert("exit_status(code=0)", passed=False, expected=0, actual=1), "ran": ran},
+        {"type": "scenario", "id": "s-1", "status": "failed", "assertions": 1, "failures": 1},
+    ]
+
+    result = _driver(repo)._grade("s-1", ["ac:1"], records, "", 0, timed_out=False)
+
+    assert result.failed_checks == [
+        FailedCheck("exit_status(code=0)", "0", "1", "exit 1, stderr: No module named tally")]

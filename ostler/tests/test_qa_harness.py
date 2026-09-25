@@ -1029,3 +1029,21 @@ def test_json_path_and_count_read_the_file_named_by_file(tmp_path: Path) -> None
     absent = json_path(tree, {"path": "entries", "equals": [], "file": "ledger.json"})
     assert absent[0] is False
     assert absent[1] == {"file": "ledger.json", "present": False}
+
+
+def test_a_failed_check_on_a_command_records_how_the_command_ended(tmp_path: Path) -> None:
+    harness = load_harness_module("ostler_qa")
+    emitted: list[dict[str, Any]] = []
+    recorder = harness._Recorder(fd=-1)
+    recorder.emit = emitted.append
+    qa = harness.Qa(
+        scenario_id="tally-add", target=harness.Target("cli", driver="cli"), root=tmp_path,
+        spec_dir=tmp_path, qa_dir=tmp_path / "qa", covers=["ac:1"], recorder=recorder,
+    )
+    crashed = harness.ToolResult(command=["python", "-m", "tally"], stdout="", stderr="No module named tally\n", exit_code=1)
+    ran = harness.ToolResult(command=["python", "-m", "tally"], stdout="", stderr="warning\n", exit_code=0)
+
+    qa.verify("exit_status", crashed, code=0)
+    qa.verify("exit_status", ran, code=0)
+
+    assert [record.get("ran") for record in emitted] == [{"exit_code": 1, "stderr": "No module named tally"}, None]
