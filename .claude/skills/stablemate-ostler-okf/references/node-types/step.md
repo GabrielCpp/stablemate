@@ -100,7 +100,7 @@ timeout 30 ostler scaffold step serve --in docs/features/acme/ops/links-local.md
 `run:`/`health:` value that parses as a check call), `unparsable-command` (a `run:`/`health:`
 value bash cannot parse), `runbook-scenario-frame` (a
 **runbook** step's `working-directory:` states the fixture-only `scenario:` token), and —
-raised against the enclosing runbook — `runbook-incomplete` (no `kind: service` step) and
+raised against the enclosing runbook — `runbook-incomplete` (a runbook that brings a stack up with no `kind: service` step) and
 `runbook-multi-service` (more
 than one). See [../doctor-codes.md](../doctor-codes.md).
 

@@ -54,8 +54,17 @@ Plus the [shared normative keys](../bullet-grammar.md#keys-that-are-normative-on
 
 ## Required sections
 
-`## Steps` — required and required to be non-empty, and exactly one step must be
-`kind: service`. A runbook brings up one stack; everything else is `kind: prepare`.
+`## Steps` — required and required to be non-empty.
+
+A runbook that brings a stack up has exactly one `kind: service` step, and every other step
+is `kind: prepare`. It brings a stack up when it states an `entry-url:` or carries a
+`kind: service` step. That step, or the `entry-url:`, is the readiness gate that proves the
+stack is up.
+
+A runbook that only runs a procedure has no `kind: service` step. A CLI run from a checkout is
+the usual case: nothing stays up, so there is nothing to launch and nothing to probe. Every
+step is `kind: prepare`. Do not invent a service step for a process that exits once it
+answers.
 
 ## Relationships
 
