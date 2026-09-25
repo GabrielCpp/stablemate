@@ -36,9 +36,11 @@ class FailedCheck(BaseModel):
     label: str
     expected: str = ""
     actual: str = ""
+    ran: str = ""
 
     def said(self) -> str:
-        return f"{self.label}: expected {self.expected}, observed {self.actual}"
+        observed = f"{self.label}: expected {self.expected}, observed {self.actual}"
+        return f"{observed} (the command it observed ended with {self.ran})" if self.ran else observed
 
 
 class ScenarioOutcome(BaseModel):

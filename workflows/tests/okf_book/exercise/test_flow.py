@@ -169,6 +169,25 @@ def test_the_judge_reads_each_failed_check_before_the_runs_own_message(
     assert args["message"] == 'created(subject="trip.csv"): expected true, observed false\nexit 2'
 
 
+def test_the_judge_reads_how_the_command_a_failed_check_observed_ended(
+    app: App, drive_book: DriveBook, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    check = FailedCheck(label="exit_status(code=0)", expected="0", actual="1",
+                        ran="exit 1, stderr: No module named tally")
+    outcome = ScenarioOutcome(status="failed", assertions=1, failures=1, failed_checks=(check,))
+    Stack(outcomes={"add-an-expense": outcome}).install(monkeypatch)
+    _ = _operator(monkeypatch)
+    runner = _runner(judge=always({"side": "book", "reason": "The command cannot find its module."}))
+
+    _ = _exercise(app, drive_book, runner)
+
+    [args] = runner.args_of("judge-failure")
+    assert args["message"] == (
+        "exit_status(code=0): expected 0, observed 1 "
+        "(the command it observed ended with exit 1, stderr: No module named tally)"
+    )
+
+
 def test_an_obligation_that_does_not_compile_is_charged_to_the_side_that_can_fix_it(
     app: App, drive_book: DriveBook, monkeypatch: pytest.MonkeyPatch
 ) -> None:
