@@ -357,14 +357,26 @@ def claim_groups(
     return groups
 
 
+def listed_checks(
+    node_type: str, bullet_order: Iterable[Sequence[Any]]
+) -> dict[tuple[str, int], list[str]]:
+    """The checks each claim gets from a bullet beside its list, leaving out the checks nested under one child."""
+    rows = list(bullet_order)
+    normative = set(normative_keys(node_type))
+    listed = {int(row[2]) for row in rows if str(row[0]) in normative}
+    beside = [row for row in rows if str(row[0]) in normative or int(row[2]) not in listed]
+    return _attributed(node_type, beside, {}, check_keys(node_type))[1]
+
+
 def undetermined_claims(
     node_type: str,
     bullet_order: Iterable[Sequence[Any]],
     combiners: Mapping[int, str],
 ) -> dict[int, list[tuple[str, int]]]:
     """The nested claim lists whose children a check observes and whose combiner is unstated."""
-    groups = claim_groups(node_type, bullet_order)
-    _, fanned = _attributed(node_type, bullet_order, {}, check_keys(node_type))
+    rows = list(bullet_order)
+    groups = claim_groups(node_type, rows)
+    fanned = listed_checks(node_type, rows)
     return {
         position: group
         for position, group in groups.items()
@@ -380,7 +392,10 @@ def _attributed(
     combiners: Mapping[int, str],
     keys: Sequence[str],
 ) -> tuple[list[str], dict[tuple[str, int], list[str]]]:
-    """Bind each bullet in *keys* to the nearest normative bullet above it, in document order."""
+    """Bind each bullet in *keys* to the nearest normative bullet above it, in document order.
+
+    A bullet nested under one child of a claim list binds to that child alone, whatever the list's combiner.
+    """
     contract, per_bullet = _attributed_indexed(node_type, bullet_order, combiners, keys)
     return (
         [value for _, value in contract],
@@ -415,6 +430,9 @@ def _attributed_indexed(
             index = observed_counts[key]
             if not owner:
                 contract.append((index, value))
+            if bullet == authored:
+                per_bullet.setdefault(owner[-1], []).append((index, value))
+                continue
             if combiners.get(authored) == "branches":
                 continue
             for target in owner:

@@ -421,6 +421,45 @@ def _nested_values(key: str, bullet: markdown.Bullet, uitype: "registry.UINodeTy
     return [item.text.strip() for child in bullet.children for item in child.walk()]
 
 
+def _bound_keys(key: str, uitype: "registry.UINodeType | None") -> frozenset[str]:
+    """The keys a descendant of a `key:` bullet states for itself: the attached keys, under a normative key."""
+    if uitype is None or key not in registry.normative_keys(uitype.name):
+        return frozenset()
+    spec = uitype.bullet_by_key.get(key)
+    if spec is None or spec.entries:
+        return frozenset()
+    return frozenset(registry.attached_keys(uitype.name))
+
+
+def _descendant_pairs(key: str, item: markdown.Bullet, bound: frozenset[str],
+                      pairs: list[tuple[str, str]]) -> None:
+    """Append one descendant and everything under it as ``(key, value)``, in document order."""
+    if item.label in bound:
+        nested = (below.text.strip() for child in item.children for below in child.walk())
+        pairs.extend((item.label, text) for text in (item.value, *nested) if text)
+        return
+    if text := item.text.strip():
+        pairs.append((key, text))
+    for child in item.children:
+        _descendant_pairs(key, child, bound, pairs)
+
+
+def _nested_pairs(key: str, bullet: markdown.Bullet,
+                  uitype: "registry.UINodeType | None") -> list[tuple[str, str]]:
+    """A bullet's nested values as ``(key, value)``, in document order.
+
+    Under a normative key, a descendant labelled with an attached key states that key, and not
+    another claim, so document order binds it to the claim above it.
+    """
+    bound = _bound_keys(key, uitype)
+    if not bound:
+        return [(key, value) for value in _nested_values(key, bullet, uitype)]
+    pairs: list[tuple[str, str]] = []
+    for child in bullet.children:
+        _descendant_pairs(key, child, bound, pairs)
+    return pairs
+
+
 def _bullet_pairs(section: markdown.Section,
                   uitype: "registry.UINodeType | None" = None) -> list[tuple[str, str, int]]:
     """Every `- key: value` of a section as ``(key, value, bullet)`` in document order."""
@@ -432,10 +471,9 @@ def _bullet_pairs(section: markdown.Section,
             continue
         key, value = text[:idx], text[idx + 1:]
         key = key.strip().lower()
-        nested = _nested_values(key, bullet, uitype)
         own = "" if _combiner(bullet) else value.strip()
-        pairs.extend((key, item, position)
-                     for item in (own, *nested) if item)
+        pairs.extend((stated, item, position)
+                     for stated, item in ((key, own), *_nested_pairs(key, bullet, uitype)) if item)
     return pairs
 
 
@@ -451,17 +489,24 @@ def _meta_from_bullets(section: markdown.Section,
         key, value = text[:idx], text[idx + 1:]
         key = key.strip().lower()
         value = "" if _combiner(bullet) else value.strip()
-        nested = _nested_values(key, bullet, uitype)
-        values = [item for item in (value, *nested) if item]
-        parsed: str | list[str] = "" if not values else values[0] if len(values) == 1 else values
-        previous = meta.get(key)
-        if previous is None:
-            meta[key] = parsed
-        elif isinstance(previous, list):
-            previous.extend(values)
-        else:
-            meta[key] = [previous, *values]
+        pairs = _nested_pairs(key, bullet, uitype)
+        _merge_meta(meta, key, [item for item in (value, *(v for k, v in pairs if k == key)) if item])
+        for stated, item in pairs:
+            if stated != key:
+                _merge_meta(meta, stated, [item])
     return meta
+
+
+def _merge_meta(meta: dict[str, str | list[str]], key: str, values: list[str]) -> None:
+    """Add one bullet's values for `key` to `meta`: a string for one value, a list past it."""
+    parsed: str | list[str] = "" if not values else values[0] if len(values) == 1 else values
+    previous = meta.get(key)
+    if previous is None:
+        meta[key] = parsed
+    elif isinstance(previous, list):
+        previous.extend(values)
+    else:
+        meta[key] = [previous, *values]
 
 
 def _meta_scalar(meta: dict[str, str | list[str]], key: str, default: str = "") -> str:

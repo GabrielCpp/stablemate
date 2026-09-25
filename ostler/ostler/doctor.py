@@ -2768,7 +2768,7 @@ def _check_ui(graph: Graph, f: list[Finding],
                 path=rel, line=node.bullet_lines.get(position, node.line),
                 ref=refs_mod.bullet_ref(node.id, key, index),
                 suggestion=f"- {key}: all   # or: branches"))
-        _, fanned = registry.attributed_checks(node.type, node.bullet_order, {})
+        fanned = registry.listed_checks(node.type, node.bullet_order)
         for position, group in registry.claim_groups(node.type, node.bullet_order).items():
             if node.combiners.get(position, "") != "branches" or len(group) < 2:
                 continue
