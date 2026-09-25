@@ -233,6 +233,21 @@ def test_an_empty_reply_to_a_verbatim_output_goes_back_on_the_retry_ladder():
     )
 
 
+def test_a_reframe_of_a_reply_text_node_asks_for_no_json():
+    reframe = importlib.import_module("workhorse.runner.reframe")
+    for attempt in (1, 2, 3):
+        assert "JSON" not in reframe.rephrase_prompt("Write the page.", _verbatim(), attempt)
+
+
+def test_every_reframe_carries_the_whole_task():
+    reframe = importlib.import_module("workhorse.runner.reframe")
+    task = "Write the page. " * 400 + "The last rule."
+    keyed = nodes.AgentNode(type="agent", id="n", prompt="p.md", outputs=[nodes.OutputSpec(key="decision")])
+    for node in (keyed, _verbatim()):
+        for attempt in (1, 2, 3):
+            assert task in reframe.rephrase_prompt(task, node, attempt)
+
+
 def test_a_turn_that_returns_str_asks_for_the_reply_text():
     engine = importlib.import_module("workhorse.pyflow.engine")
     assert engine._outputs_for(str) == [nodes.OutputSpec(key="value", verbatim=True)]

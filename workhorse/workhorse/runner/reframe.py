@@ -39,7 +39,17 @@ def timeout_retry_prompt(original_prompt: str, timeout: float) -> str:
 
 
 def rephrase_prompt(original_prompt: str, node: AgentNode, attempt: int) -> str:
-    """Reframe the node's prompt from scratch for a fresh-session retry."""
+    """Reframe the node's prompt from scratch for a fresh-session retry.
+
+    Each attempt states the reply more plainly, and each carries the whole task, since an answer
+    to part of a task is not the node's answer. A node whose answer is its reply text is never
+    asked for JSON.
+    """
+    if any(o.verbatim for o in node.outputs):
+        return (
+            f"Please complete the following task carefully:\n\n{original_prompt}\n\n"
+            "IMPORTANT: reply with the whole answer the task asked for, in the form it asked for."
+        )
     output_keys = [o.key for o in node.outputs]
     strategies = [
         lambda p: (
@@ -48,7 +58,7 @@ def rephrase_prompt(original_prompt: str, node: AgentNode, attempt: int) -> str:
             f"{output_keys}."
         ),
         lambda p: (
-            f"Task: {p[:1000]}\n\n"
+            f"Task: {p}\n\n"
             "Reply with ONLY this JSON object, filling in the values:\n"
             "```json\n{\n"
             + "\n".join(f'  "{key}": <value>,' for key in output_keys)
@@ -56,7 +66,7 @@ def rephrase_prompt(original_prompt: str, node: AgentNode, attempt: int) -> str:
         ),
         lambda p: (
             "Complete this task as best you can; if unsure, provide reasonable "
-            f"values.\n\nTask summary: {p[:500]}\n\n"
+            f"values.\n\nTask: {p}\n\n"
             f"You MUST reply with ONLY a JSON object with keys: {output_keys}."
         ),
     ]

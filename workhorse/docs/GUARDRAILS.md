@@ -79,8 +79,10 @@ through three layers before it can ever crash the run (see
    overflows, it falls through to the reframe below.
 3. **Reframe the prompt** — if invocation or output parsing still fails, the
    prompt is rephrased from scratch in a *fresh session* and the node is retried,
-   up to `AGENT_MAX_REPHRASE_ATTEMPTS` times. Each attempt simplifies the ask
-   further (`reframe.rephrase_prompt`).
+   up to `AGENT_MAX_REPHRASE_ATTEMPTS` times. Each attempt states the reply more
+   plainly and carries the whole task, since an answer to part of a task is not the
+   node's answer. A node whose answer is its reply text is never asked for JSON
+   (`reframe.rephrase_prompt`).
 
 The attempt counters above are not the elapsed-time boundary. One mutable ledger spans the
 entire agent-node visit, including output retries, compaction, and reframes, so nested recovery
@@ -126,7 +128,7 @@ Errors are now classified as:
 
 ### 4. Prompt Reframing, Then a Clean Stop
 
-- **Reframe**: A node Claude can't answer as-phrased is re-asked from scratch in a fresh session, simplifying each time.
+- **Reframe**: A node Claude can't answer as-phrased is re-asked from scratch in a fresh session, with the whole task and a plainer reply instruction each time.
 - **Then stop**: After reframing is exhausted the run ends at its checkpoint. Nothing invents the node's answer.
 
 ### 5. Enhanced Logging
