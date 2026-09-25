@@ -84,9 +84,11 @@ def steps_of(graph: Graph, runbook: UINode) -> list[UINode]:
     return [n for n in graph.ui_nodes if n.type == "step" and owned(n)]
 
 
-def is_scenario_frame(value: str) -> bool:
-    """Whether a `working-directory:` bullet states the scenario-frame token."""
-    return value.strip() == SCENARIO_FRAME_TOKEN
+def is_scenario_frame(value: str, root: Path) -> bool:
+    """Whether a `working-directory:` bullet states the scenario-frame token, or the bare word when the checkout holds no directory by that name."""
+    text = value.strip()
+    bare = SCENARIO_FRAME_TOKEN.rstrip(":")
+    return text == SCENARIO_FRAME_TOKEN or (text == bare and not (root / bare).is_dir())
 
 
 def _step_command(node: UINode, root: Path, default_cwd: str) -> dict[str, str] | None:
@@ -101,7 +103,7 @@ def _step_command(node: UINode, root: Path, default_cwd: str) -> dict[str, str] 
         command = f"{exports} {command}"
     cwd = bullet_value(node.meta, "working-directory")
     step: dict[str, str] = {"run": command}
-    if is_scenario_frame(cwd):
+    if is_scenario_frame(cwd, root):
         step["cwd-frame"] = "scenario"
     else:
         step["working-directory"] = str((root / (cwd or default_cwd or ".")).resolve())

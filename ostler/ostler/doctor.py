@@ -2132,7 +2132,7 @@ def _check_runbook(graph: Graph, f: list[Finding]) -> None:
                 services.append(step)
             _check_step_command_bullets(step, rel, f)
             _check_step_command_syntax(step, rel, f)
-            _check_step_not_scenario_frame(step, rel, f)
+            _check_step_not_scenario_frame(graph, step, rel, f)
 
         if node.id not in stacks:
             _check_runbook_environment(graph, node, rel, f)
@@ -2218,7 +2218,7 @@ def _check_step_command_syntax(step: UINode, rel: str, f: list[Finding]) -> None
 def _check_fixture_step_directory(graph: Graph, step: UINode, rel: str, f: list[Finding]) -> None:
     """A fixture step's `working-directory:` path names a directory the checkout holds."""
     value = runbook_mod.bullet_value(step.meta, "working-directory")
-    if not value or runbook_mod.is_scenario_frame(value) or (graph.root / value).is_dir():
+    if not value or runbook_mod.is_scenario_frame(value, graph.root) or (graph.root / value).is_dir():
         return
     f.append(Finding(
         "error", "fixture-step-directory",
@@ -2229,10 +2229,10 @@ def _check_fixture_step_directory(graph: Graph, step: UINode, rel: str, f: list[
         suggestion=f"- working-directory: {registry.SCENARIO_FRAME_TOKEN}"))
 
 
-def _check_step_not_scenario_frame(step: UINode, rel: str, f: list[Finding]) -> None:
+def _check_step_not_scenario_frame(graph: Graph, step: UINode, rel: str, f: list[Finding]) -> None:
     """A runbook step's `working-directory: scenario:` names a frame that does not exist yet."""
     value = runbook_mod.bullet_value(step.meta, "working-directory")
-    if not runbook_mod.is_scenario_frame(value):
+    if not runbook_mod.is_scenario_frame(value, graph.root):
         return
     f.append(Finding(
         "error", "runbook-scenario-frame",

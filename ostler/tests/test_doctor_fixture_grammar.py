@@ -484,9 +484,25 @@ def _fixture_in(directory: str) -> str:
 
 def test_fixture_step_directory_refuses_a_path_the_checkout_lacks_and_names_the_scenario_token(repo: Path) -> None:
     _stack(repo)
-    write(repo / "docs/features/acme/fixtures/seeded-acme.md", _fixture_in("scenario"))
+    write(repo / "docs/features/acme/fixtures/seeded-acme.md", _fixture_in("services/missing"))
     found = _findings(repo, "fixture-step-directory")
     assert [(f.severity, f.suggestion) for f in found] == [("error", "- working-directory: scenario:")]
+
+
+def test_a_bare_scenario_names_the_scenario_frame_when_the_checkout_has_no_such_directory(repo: Path) -> None:
+    _stack(repo)
+    write(repo / "docs/features/acme/fixtures/seeded-acme.md", _fixture_in("scenario"))
+    assert _findings(repo, "fixture-step-directory") == []
+    [step] = book_fixtures.resolved(load(repo))["seeded-acme"]["steps"]
+    assert step["cwd-frame"] == "scenario"
+
+
+def test_a_bare_scenario_is_a_path_when_the_checkout_holds_that_directory(repo: Path) -> None:
+    _stack(repo)
+    (repo / "scenario").mkdir()
+    write(repo / "docs/features/acme/fixtures/seeded-acme.md", _fixture_in("scenario"))
+    [step] = book_fixtures.resolved(load(repo))["seeded-acme"]["steps"]
+    assert "cwd-frame" not in step and step["cwd"] == str((repo / "scenario").resolve())
 
 
 def test_fixture_step_directory_is_clean_for_the_scenario_token_and_a_real_directory(repo: Path) -> None:
