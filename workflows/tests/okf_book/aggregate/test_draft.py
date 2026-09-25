@@ -89,6 +89,15 @@ def test_the_format_puts_a_run_and_a_verify_under_each_claim_not_after_them_all(
     assert "- `run:` one literal call\n- `verify:` a check call" in bound
 
 
+def test_the_format_spells_the_values_a_fixture_step_admits() -> None:
+    rules = format_rules(BOOK)
+    fixture = rules[rules.index("### fixture") :]
+
+    assert "- `kind:` required, one of `run`, `seed`, `verify`" in fixture
+    assert "- `working-directory:` `scenario:` or a relative path from the checkout root" in fixture
+    assert "each entry holds exactly one of `from:`, `is:`" in fixture
+
+
 def test_a_reply_is_cut_into_its_pages_with_their_text_as_written() -> None:
     check = '- verify: stdout(matches="\\"entries\\": \\d+")'
     reply = f"Wrote the trip.\n=== page: {TRIP} ===\n{TRIP_TEXT}{check}\n=== end ===\n=== page: {CONCEPT} ===\n# Ledger\n=== end ===\n"

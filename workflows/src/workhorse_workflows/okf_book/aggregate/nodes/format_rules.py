@@ -16,6 +16,30 @@ _FLAG_WORDS = (
     ("arrange", "a fixture"),
     ("alias", "an alias of the key above"),
 )
+_KIND_WORDS = {"checkout-path": "a relative path from the checkout root"}
+
+
+def _spelled(names: tuple[str, ...]) -> str:
+    return ", ".join(f"`{name}`" for name in names)
+
+
+def _kind_words(kind: str) -> str:
+    return _KIND_WORDS.get(kind, f"a {kind}")
+
+
+def _value_words(bullet: BulletKey) -> list[str]:
+    words: list[str] = []
+    if bullet.values and bullet.value_kind:
+        words.append(f"{_spelled(bullet.values)} or {_kind_words(bullet.value_kind)}")
+    elif bullet.values:
+        words.append(f"one of {_spelled(bullet.values)}")
+    elif bullet.value_kind:
+        words.append(_kind_words(bullet.value_kind))
+    if bullet.properties:
+        words.append(f"each entry's bullets: {_spelled(tuple(f'{name}:' for name in bullet.properties))}")
+    if bullet.one_of:
+        words.append(f"each entry holds exactly one of {_spelled(tuple(f'{name}:' for name in bullet.one_of))}")
+    return words
 
 
 def _bullet_line(bullet: BulletKey) -> str:
@@ -23,8 +47,7 @@ def _bullet_line(bullet: BulletKey) -> str:
     words = [word for flag, word in _FLAG_WORDS if getattr(bullet, flag) and not (cites and flag == "link")]
     if cites:
         words.append("a code citation `path::symbol`")
-    if bullet.value_kind:
-        words.append(f"a {bullet.value_kind}")
+    words.extend(_value_words(bullet))
     return f"- `{bullet.key}:` {', '.join(words)}" if words else f"- `{bullet.key}:`"
 
 
@@ -53,6 +76,9 @@ def _type_rules(node_type: UINodeType, folder: str) -> str:
     if bound:
         lines.extend(("", "Each claim is followed by its own bullets, in this order:", ""))
         lines.extend(_bullet_line(bullet) for bullet in bound)
+    if node_type.step_bullets:
+        lines.extend(("", "Each of its steps narrows these `step` bullets:", ""))
+        lines.extend(_bullet_line(bullet) for bullet in node_type.step_bullets)
     return "\n".join(lines)
 
 
