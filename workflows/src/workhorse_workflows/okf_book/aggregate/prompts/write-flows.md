@@ -59,8 +59,9 @@ holds:
 
 {% include "aggregate/prompts/_bar.md" %}
 
-Every claim you write compiles into a check run against the product, and a page with a claim
-that does not compile is refused. Give each claim a `verify:` from `ostler checks`. Under
+{% include "aggregate/prompts/_format.md" %}
+
+Give each claim a `verify:` from the checks above. Under
 each claim of a `command` or an `invocation`, give a `run:` stating one literal call before
 its `verify:`. Give each flow a `fixture:`, or `fixture: none, because ...`. A `cli`, a `server`, a
 `concept` or a `format` states no check of its own, so put no `verify:` on the node

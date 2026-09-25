@@ -61,6 +61,16 @@ def test_every_tool_using_writing_turn_is_handed_the_check_it_is_charged_by(app:
     assert all("check" not in args for args in runner.args_of("write-page"))
 
 
+def test_every_writing_turn_is_handed_the_format_and_the_checks_it_is_compiled_against(app: App, run_book: RunBook) -> None:
+    repo = app("tally-cli")
+    _, runner = _run(repo, run_book)
+
+    writes = [*runner.args_of("write-page"), *runner.args_of("write-operations"), *runner.args_of("write-flows")]
+    assert runner.args_of("write-operations")
+    assert runner.args_of("write-flows")
+    assert all("### flow" in str(args["rules"]) and "exit_status" in str(args["checks"]) for args in writes)
+
+
 def test_every_writing_turn_starts_with_the_whole_check_budget(app: App, run_book: RunBook) -> None:
     repo = app("tally-cli")
     spent: list[int] = []

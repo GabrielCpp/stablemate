@@ -35,14 +35,7 @@ from workhorse_workflows.okf_book.aggregate.nodes.draft import Drafted, apply_dr
 from workhorse_workflows.okf_book.aggregate.nodes.format_rules import format_rules
 from workhorse_workflows.okf_book.aggregate.nodes.job_check import JobCheck, check_command, write_job_check
 from workhorse_workflows.okf_book.shared.citations import book_pages
-from workhorse_workflows.okf_book.shared.confine import (
-    book_changes,
-    confine,
-    judged_pages,
-    new_since_head,
-    revert,
-    snapshot,
-)
+from workhorse_workflows.okf_book.shared.confine import book_changes, confine, judged_pages, new_since_head, revert, snapshot
 from workhorse_workflows.okf_book.shared.contracts import Contract
 from workhorse_workflows.okf_book.aggregate.digests import node_digests, node_digests_on_pages_of
 from workhorse_workflows.okf_book.aggregate.verdict import (
@@ -165,7 +158,7 @@ class Aggregate(BookFlow):
         """One turn writes the job's pages from the contracts that reach them, and the last check's problems.
 
         The prompt, the pages list, the problems and the stories are sized first. The contracts get what is left.
-        A page job's writer runs no tool, so it is shown its page, the format and the check vocabulary instead.
+        Every writer is shown the format and the check vocabulary. A page job's writer runs no tool, so it is also shown its page.
         """
         if ledger.job.kind is JobKind.PAGE:
             return self._draft_page(ledger)
@@ -173,7 +166,9 @@ class Aggregate(BookFlow):
         pages = pack_told(name_tokens(listed_pages(root, job)), PAGES_BUDGET_TOKENS)
         problems = pack_problems(ledger.problems)
         stories = job_stories(root, job)
-        told = pages.tokens + problems.tokens + CHECK_OUTPUT_BUDGET_TOKENS
+        folder = service_folder(job.service)
+        rules, checks = format_rules(folder), describe_checks()
+        told = pages.tokens + problems.tokens + CHECK_OUTPUT_BUDGET_TOKENS + estimated_tokens(len(rules) + len(checks))
         fixed = prompt_tokens(WRITE_PROMPTS[job.kind]) + told + total_text_tokens(stories)
         contracts = job_contracts(root, self.records_dir, job, budget=TURN_BUDGET_TOKENS - fixed)
         _ = write_job_check(self.records_dir, JobCheck(
@@ -182,18 +177,19 @@ class Aggregate(BookFlow):
         ))
         started = time.monotonic()
         written = self.agent(
-            "aggregate/prompts/write-operations.md" if job.kind is JobKind.OPERATIONS
-            else "aggregate/prompts/write-flows.md",
+            "aggregate/prompts/write-operations.md" if job.kind is JobKind.OPERATIONS else "aggregate/prompts/write-flows.md",
             returns=Written,
             power="high",
             args={
                 "service": job.service,
-                "folder": service_folder(job.service),
+                "folder": folder,
                 "page": job.page,
                 "pages": list(pages.kept),
                 "contracts": [contract.model_dump() for contract in contracts],
                 "stories": list(stories),
                 "problems": list(problems.kept),
+                "rules": rules,
+                "checks": checks,
                 "check": check_command(self.records_dir),
             },
             cwd=root,
