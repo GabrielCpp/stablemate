@@ -73,6 +73,34 @@ def _covers_in(
 DEFAULT_VIEWPORT = {"width": 1440, "height": 900}
 
 
+type JsonValue = None | bool | int | float | str | list[JsonValue] | dict[str, JsonValue]
+
+
+@dataclass(frozen=True)
+class CommandEnding:
+    """How the command a failed check observed ended, as the harness record states it."""
+
+    exit_code: int
+    stderr: str
+
+    @classmethod
+    def read(cls, record: Mapping[str, Any]) -> CommandEnding | None:
+        """The record's `command_ending`, or None when the check observed no command."""
+        ending = record.get("command_ending")
+        if ending is None:
+            return None
+        if not isinstance(ending, Mapping):
+            raise DriverBlocked(f"a harness record's command_ending is not an object: {ending!r}")
+        code, stderr = ending.get("exit_code"), ending.get("stderr", "")
+        if isinstance(code, bool) or not isinstance(code, int) or not isinstance(stderr, str):
+            raise DriverBlocked(
+                f"a harness record's command_ending needs an integer exit_code and a text stderr: {ending!r}")
+        return cls(code, stderr)
+
+    def text(self) -> str:
+        return f"exit {self.exit_code}, stderr: {self.stderr}" if self.stderr else f"exit {self.exit_code}, stderr empty"
+
+
 @dataclass(frozen=True)
 class FailedCheck:
     """One assertion that did not hold: what it asserted, what it expected, and what it observed."""
@@ -83,16 +111,16 @@ class FailedCheck:
     command_ending: str = ""
 
     @classmethod
-    def of(cls, label: str, expected: object, actual: object, command_ending: object = None) -> FailedCheck:
+    def of(
+        cls, label: str, expected: JsonValue, actual: JsonValue, command_ending: CommandEnding | None = None,
+    ) -> FailedCheck:
         """A failed check whose expected and observed values are rendered as JSON text, with how the command it observed ended."""
-        return cls(label, json.dumps(expected, default=str), json.dumps(actual, default=str), _command_ending_text(command_ending))
-
-
-def _command_ending_text(ending: object) -> str:
-    if not isinstance(ending, Mapping):
-        return ""
-    stderr = str(ending.get("stderr") or "")
-    return f"exit {ending.get("exit_code")}, stderr: {stderr}" if stderr else f"exit {ending.get("exit_code")}, stderr empty"
+        return cls(
+            label,
+            json.dumps(expected, default=str),
+            json.dumps(actual, default=str),
+            command_ending.text() if command_ending is not None else "",
+        )
 
 
 @dataclass
@@ -332,7 +360,7 @@ class PythonDriver(QaDriver):
                     failures += 1
                     failed_checks.append(FailedCheck.of(
                         str(record.get("label", "")), record.get("expected"), record.get("actual"),
-                        record.get("command_ending")))
+                        CommandEnding.read(record)))
             elif kind == "step_start":
                 step_id = str(record.get("id", ""))
                 open_steps.append((step_id, str(record.get("label", ""))))

@@ -5,7 +5,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from ostler.qa.drivers import FailedCheck, PythonDriver
+import pytest
+
+from ostler.qa.drivers import CommandEnding, DriverBlocked, FailedCheck, PythonDriver
 from ostler.qa.session import QaSession
 
 
@@ -55,3 +57,10 @@ def test_a_failed_check_on_a_command_says_how_the_command_ended(repo: Path) -> N
 
     assert result.failed_checks == [
         FailedCheck("exit_status(code=0)", "0", "1", "exit 1, stderr: No module named tally")]
+
+
+def test_a_command_ending_the_harness_did_not_shape_as_it_writes_one_is_refused() -> None:
+    """The harness writes an integer exit code and a text stderr; anything else is a harness defect, not a failure to report."""
+    with pytest.raises(DriverBlocked, match="integer exit_code"):
+        CommandEnding.read({"command_ending": {"exit_code": "1", "stderr": ""}})
+    assert CommandEnding.read({}) is None
