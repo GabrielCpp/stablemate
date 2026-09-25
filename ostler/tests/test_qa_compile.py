@@ -3750,6 +3750,41 @@ def test_a_cli_claim_about_what_the_run_changed_compares_the_directory_either_si
     assert 'qa.verify("created", (before_1, after_1), subject="tally.json"' in source
 
 
+def test_a_cli_claim_runs_every_run_in_order_and_observes_the_last() -> None:
+    """A claim whose `run:`s set up the world first is observed on its last run, not its first."""
+    oid = "okf:built-target-probe:invocation:cli:created:1"
+    context = _context(
+        _obligation(
+            oid,
+            nodeType="invocation",
+            checksDeclared=[
+                {"call": "it", "name": "created", "args": {"subject": "tally.json"}},
+            ],
+            fixturesDeclared=[
+                {"name": "seeded-ledger", "args": [], "provides": "a ledger"},
+            ],
+            actsDeclared=[
+                {"call": 'invoke(argv=["init"])', "name": "invoke",
+                 "args": {"argv": ["init"]}},
+                {"call": 'invoke(argv=["add", "350"])', "name": "invoke",
+                 "args": {"argv": ["add", "350"]}},
+            ],
+        )
+    )
+    context["navigation"][""]["driver"] = "cli"
+    context["cliBinaries"] = {"docs/features/demo/api.md": "tally"}
+
+    source, gaps = compile_plan_gaps(context, story="demo-story")
+    assert source is not None
+    ast.parse(source)
+
+    assert _gap_kinds(gaps, oid) == []
+    setup = source.index('_ = qa.tool("tally").run("init", cwd=qa.scenario_dir)')
+    before = source.index("before_1 = qa.tree(qa.scenario_dir)")
+    run = source.index('observed_1 = qa.tool("tally").run("add", "350", cwd=qa.scenario_dir)')
+    assert setup < before < run
+
+
 def _built_target_probe_maestro() -> tuple[dict, str]:
     """The smallest obligation D1 dispatches to `maestro`: an `interaction` on a `mobile`-driven surface, its own node carrying a `testID=` selector so the check resolves a locator, and its screen's `route:` shaped as a navigator screen name so `qa.vet` has a document to compare against — nothing about this obligation is missing except a builder that reads it."""
     oid = "okf:built-target-probe:maestro:visible:1"

@@ -97,12 +97,9 @@ def _gap_cli_obligations(obligations: list[Obligation], gaps: list[Gap]) -> None
         gaps.append(Gap(obligation.id, "uncompilable-claim", _no_run_remedy(obligation.node_type)))
 
 
-def _cli_action(obligation: Obligation) -> list[str] | None:
-    """The argument list this obligation's `run:` names, or `None` if it named none."""
-    for row in obligation.acts:
-        if row.name == "invoke":
-            return row.list_arg("argv")
-    return None
+def _cli_actions(obligation: Obligation) -> list[list[str]]:
+    """The argument lists this obligation's `run:`s name, in document order; the last is the one observed."""
+    return [row.list_arg("argv") for row in obligation.acts if row.name == "invoke"]
 
 
 def _verify_line(row: CallRow, operand: str, oid: str) -> str:
@@ -126,8 +123,8 @@ def cli_scenario_body(
         lines.append(f"    # {requirement}")
         index += 1
         name = f"observed_{index}"
-        argv = _cli_action(obligation)
-        if argv is None:
+        runs = _cli_actions(obligation)
+        if not runs:
             lines.append(
                 "    # TODO(arrange): this command declares no `run:` — `usage:`/`flags:`/"
                 "`args:` are prose, not a concrete invocation")
@@ -145,11 +142,13 @@ def cli_scenario_body(
                 "the executable this `run:` invokes",
             ))
             continue
-        call_args = ", ".join([*(python_literal(a) for a in argv), "cwd=qa.scenario_dir"])
+        tool = f"qa.tool({python_literal(binary)})"
+        *setup, observed_args = [", ".join([*(python_literal(a) for a in run), "cwd=qa.scenario_dir"]) for run in runs]
+        lines.extend(f"    _ = {tool}.run({call_args})" for call_args in setup)
         reads_tree_either_side = any(_touches_the_tree(row) for row in rows)
         if reads_tree_either_side:
             lines.append(f"    before_{index} = qa.tree(qa.scenario_dir)")
-        lines.append(f"    {name} = qa.tool({python_literal(binary)}).run({call_args})")
+        lines.append(f"    {name} = {tool}.run({observed_args})")
         if reads_tree_either_side:
             lines.append(f"    after_{index} = qa.tree(qa.scenario_dir)")
 
