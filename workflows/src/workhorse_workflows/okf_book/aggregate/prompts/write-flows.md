@@ -1,5 +1,9 @@
 Write the flows of the service `{{ service }}`'s book, under `{{ folder }}`.
 
+Paths in this prompt are relative to the repository root `{{ root }}`. You run from its `docs/`
+directory, and you can read and write only under it. Your shell runs `ostler` and the check
+command below, and nothing else.
+
 Load the skill and follow it: {{ skill_load_ref("ostler-okf", skill_dir() + "/ostler-okf/SKILL.md") }}
 
 A flow is an ordered journey a user takes through the product. Every entry point of the book

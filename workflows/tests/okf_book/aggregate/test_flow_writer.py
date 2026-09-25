@@ -62,3 +62,16 @@ def test_a_drafted_page_the_job_may_not_write_is_dropped(app: App, run_book: Run
 
     assert "docs(tally): write ledger-file" in commits(repo)
     assert (repo / FIXTURE).read_text(encoding="utf-8") == fixture_before
+
+
+def test_the_operations_and_flows_writers_reach_only_the_docs_and_run_only_ostler_and_the_check(app: App, run_book: RunBook) -> None:
+    repo = app("tally-cli")
+    runner = _run(repo, run_book, lambda args: drafted("wrote", _written(repo, str(args["page"]))))
+
+    for name in ("write-operations", "write-flows"):
+        agents = [node.agent for node in runner.nodes if node.id == name]
+        [args, *_] = runner.args_of(name)
+        assert agents
+        assert all(agent is not None and agent.confined for agent in agents)
+        assert all(agent is not None and agent.commands == ("ostler", args["check"]) for agent in agents)
+        assert args["root"] == str(repo)

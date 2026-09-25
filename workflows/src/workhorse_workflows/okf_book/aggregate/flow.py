@@ -175,6 +175,8 @@ class Aggregate(BookFlow):
             root=root, service=job.service, before=ledger.before, owned_pages=tuple(sorted(job.owned_pages)),
             inherited_gaps=ledger.inherited_gaps,
         ))
+        check = check_command(self.records_dir)
+        (root / "docs").mkdir(exist_ok=True)
         started = time.monotonic()
         written = self.agent(
             WRITE_PROMPTS[job.kind],
@@ -190,9 +192,11 @@ class Aggregate(BookFlow):
                 "problems": list(problems.kept),
                 "rules": rules,
                 "checks": checks,
-                "check": check_command(self.records_dir),
+                "check": check,
+                "root": str(root),
             },
-            cwd=root,
+            cwd=root / "docs",
+            profile=AgentProfile(name="okf-tool-writer", tools={"*": False}, confined=True, commands=("ostler", check)),
         )
         metric = _turn_metric(f"write-{job.kind.value}", job.subject, fixed + _contract_tokens(contracts), started)
         return Continue(written, self.record_write, ledger=ledger, metric=metric)
