@@ -19,6 +19,7 @@ from workhorse.runner import failure, ladder, process
 from workhorse.runner.usage import TurnUsage
 from workhorse.runner.backends import (
     AgentBackend,
+    AgentProfile,
     claude,
     cline,
     codex,
@@ -310,6 +311,25 @@ def test_claude_disallows_the_agent_tool():
     """A node's turn is one bounded, reaped CLI session; the Agent tool can dispatch work that outlives it (`run_in_background`), which the ladder cannot recover when the session is torn down."""
     cmd = _capture_claude_cmd(model="opus")
     assert cmd[cmd.index("--disallowedTools") + 1] == "Agent"
+
+
+def test_claude_turns_every_tool_off_for_a_profile_that_allows_none():
+    """A profile that switches `*` off asked for a turn with no tools, and the claude CLI ran it with all of them until the backend read the profile."""
+    cmd = _capture_claude_cmd(model="opus", agent=AgentProfile(name="writer", tools={"*": False}))
+    assert cmd[cmd.index("--tools") + 1] == ""
+    assert "--strict-mcp-config" in cmd
+
+
+def test_claude_keeps_the_tools_a_profile_names_when_the_rest_are_off():
+    cmd = _capture_claude_cmd(model="opus", agent=AgentProfile(name="reader", tools={"*": False, "Read": True}))
+    assert cmd[cmd.index("--tools") + 1] == "Read"
+
+
+def test_claude_denies_the_tools_a_profile_switches_off():
+    cmd = _capture_claude_cmd(model="opus", agent=AgentProfile(name="no-shell", tools={"Bash": False}))
+    assert "--tools" not in cmd and "--strict-mcp-config" not in cmd
+    assert cmd.count("--disallowedTools") == 2
+    assert cmd[cmd.index("--disallowedTools", cmd.index("--disallowedTools") + 1) + 1] == "Bash"
 
 
 def test_claude_keeps_a_large_prompt_on_stdin():

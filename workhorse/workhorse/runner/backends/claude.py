@@ -43,6 +43,7 @@ class ClaudeBackend(AgentBackend):
             "--output-format", "stream-json",
             "--verbose",
             "--disallowedTools", "Agent",
+            *_tool_flags(agent),
         ]
         if model:
             cmd.extend(["--model", model])
@@ -159,6 +160,16 @@ class ClaudeBackend(AgentBackend):
             print(f"[{node_id}] ⚠ compaction failed: {st['compact_error']}", flush=True)
             return False
         return st["saw_compacting"]
+
+
+def _tool_flags(agent: AgentProfile | None) -> list[str]:
+    """The flags that narrow a turn to its profile's tools: `--tools` and no MCP server when `*` is off, else a deny list."""
+    tools = agent.tools if agent else {}
+    named = {name: on for name, on in tools.items() if name != "*"}
+    if tools.get("*") is False:
+        return ["--tools", ",".join(name for name, on in named.items() if on), "--strict-mcp-config"]
+    denied = [name for name, on in named.items() if not on]
+    return ["--disallowedTools", *denied] if denied else []
 
 
 @dataclass(slots=True)
