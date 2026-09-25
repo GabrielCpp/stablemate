@@ -67,7 +67,7 @@ def owes_a_promise(path: Path) -> bool:
 def _claim_problems(root: Path, file: str, claim: Claim) -> list[str]:
     problems: list[str] = []
     if claim.symbol and not declares_at(root / file, claim.symbol):
-        problems.append(f"`{claim.symbol}` is not declared in {file}. Cite a symbol the file itself declares.")
+        problems.append(f"`{claim.symbol}` is not declared in {file}. Cite a symbol the file itself declares, or leave `symbol` empty when it declares none that carries the claim.")
     if claim.verify:
         parsed = parse_check(claim.verify)
         if isinstance(parsed, Refusal):
@@ -81,7 +81,7 @@ def contract_problems(root: Path, contract: Contract) -> tuple[str, ...]:
     if not contract.purpose.strip():
         problems.append(f"The contract of {contract.file} does not say what the file is for.")
     if not contract.promises and owes_a_promise(root / contract.file):
-        problems.append(f"The contract of {contract.file} promises nothing.")
+        problems.append(f"The contract of {contract.file} promises nothing, but the file runs code. State what a user sees because it runs, and leave `symbol` empty when the file declares none that carries it.")
     for claim in contract.claims:
         problems.extend(_claim_problems(root, contract.file, claim))
     return tuple(problems)

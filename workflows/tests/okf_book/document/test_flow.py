@@ -89,7 +89,7 @@ def test_a_file_that_declares_and_runs_nothing_needs_no_promise(app: App, run_bo
         assert contract is not None
         assert contract.promises == ()
     [blocker] = read_blockers(flow.run_dir)
-    assert (blocker.subject, blocker.reason) == ("tally/cli.py", "The contract of tally/cli.py promises nothing.")
+    assert (blocker.subject, blocker.reason) == ("tally/cli.py", "The contract of tally/cli.py promises nothing, but the file runs code. State what a user sees because it runs, and leave `symbol` empty when the file declares none that carries it.")
 
 
 def test_each_turn_names_the_entry_points_a_claim_is_seen_through(app: App, run_book: RunBook) -> None:
