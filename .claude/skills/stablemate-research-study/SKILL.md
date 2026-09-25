@@ -45,8 +45,11 @@ any number is read, so it cannot drift toward what the data allows.
 Add the **resolution floor**: the smallest shortfall, in cases per seed, that can resolve
 the share. One lucky case meets any share of a shortfall of three.
 
+Add a date. After it, an unmet purpose ends the study as banked or negative. The date is
+never extended.
+
 Done when the sentence carries a target, its reference, a resolution floor if it is a
-share, and a workload size.
+share, a workload size and a date.
 
 ## 2. Freeze the yardstick
 
@@ -71,6 +74,11 @@ Run the control on every seed before any method runs. When its spread across see
 large as the margin the share asks for, one lucky seed can meet the share. Add seeds or
 cases until the margin clears the spread.
 
+Run one unit twice on the same seed and compare the outputs. When they differ, the arms
+cannot be compared until the source of the difference is pinned, such as a thread count
+or an unseeded shuffle. A later apparatus change, such as batching or a faster runtime,
+must reproduce that output too. When it does not, it starts a new baseline.
+
 Done when the baseline row is in the ledger with the commit and input set it ran on.
 
 ## 3. Profile before any hypothesis
@@ -79,6 +87,11 @@ Break the baseline cost down by stage, by turn, by test, or by call. Take the br
 from what the system records, or add the recording first. A total says something is slow.
 A breakdown says one fixture runs 400 times, or one turn reads the whole corpus. The
 hypotheses come from the breakdown.
+
+Before tuning a stage, compute its roof: the fastest the hardware allows for the work it
+does. Model decode on a CPU streams every weight once per token, so its roof is memory
+bandwidth divided by weight bytes, however many threads run. A stage already near its roof
+needs less work, not more tuning.
 
 Done when the top cost items are named with their share of the total.
 
