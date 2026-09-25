@@ -319,6 +319,30 @@ def test_unresolved_relation(repo: Path):
     assert "unresolved-relation" in codes(report)
 
 
+def test_unresolved_relation_names_where_it_landed_and_the_page_it_meant(repo: Path):
+    write(repo / "docs/features/tally/concepts/ledger-file.md",
+          "---\ntype: concept\nslug: ledger-file\ntitle: Ledger file\n---\n# Ledger file\n")
+    write(repo / "docs/features/tally/formats/csv-file.md",
+          "---\ntype: format\nslug: csv-file\ntitle: CSV file\n---\n# CSV file\n\n"
+          "- detail: [The ledger file](concepts/ledger-file.md)\n")
+    report = _run(repo)
+    finding = next(f for f in report.findings if f.code == "unresolved-relation")
+    assert "docs/features/tally/formats/concepts/ledger-file.md" in finding.message
+    assert "'../concepts/ledger-file.md'" in finding.message
+
+
+def test_dangling_link_names_where_it_landed_and_the_page_it_meant(repo: Path):
+    write(repo / "docs/features/tally/concepts/ledger-file.md",
+          "---\ntype: concept\nslug: ledger-file\ntitle: Ledger file\n---\n# Ledger file\n")
+    write(repo / "docs/features/tally/formats/csv-file.md",
+          "---\ntype: format\nslug: csv-file\ntitle: CSV file\n---\n# CSV file\n\n"
+          "Rows land in [the ledger](ledger-file.md).\n")
+    report = _run(repo)
+    finding = next(f for f in report.findings if f.code == "dangling-link")
+    assert "docs/features/tally/formats/ledger-file.md" in finding.message
+    assert "'../concepts/ledger-file.md'" in finding.message
+
+
 def test_nested_flow_steps_are_checked_as_relation_values(repo: Path):
     write(
         repo / "docs/features/workhorse/concepts/target.md",
@@ -1439,7 +1463,7 @@ LINKED_REPORT_JSON = """\
       "epic": "",
       "fixable": true,
       "line": 12,
-      "message": "docs/features/groom/gui/screens/changes-view.md: link './gone.md' target file does not exist",
+      "message": "docs/features/groom/gui/screens/changes-view.md: link './gone.md' target file does not exist; it resolves against the linking page's folder, to docs/features/groom/gui/screens/gone.md",
       "node": "",
       "path": "docs/features/groom/gui/screens/changes-view.md",
       "ref": "docs/features/groom/gui/screens/changes-view.md:12:./gone.md",

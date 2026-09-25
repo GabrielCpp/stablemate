@@ -1840,6 +1840,20 @@ def _prose(value: str) -> str:
     return markdown.prose_text(value)
 
 
+def _landing_hint(root: Path, source: Path, target_path: Path, pages: dict[str, list[Path]]) -> str:
+    """Where a broken link landed, and the relative href to the existing page of the same file name."""
+    try:
+        landed = target_path.resolve().relative_to(root.resolve()).as_posix()
+    except ValueError:
+        landed = target_path.as_posix()
+    hint = f"; it resolves against the linking page's folder, to {landed}"
+    candidates = [c for c in pages.get(target_path.name, []) if c.resolve() != target_path.resolve()]
+    if len(candidates) == 1:
+        href = os.path.relpath(candidates[0], source.parent).replace(os.sep, "/")
+        hint += f"; the page with that name is {candidates[0].relative_to(root).as_posix()}, linked from here as '{href}'"
+    return hint
+
+
 def _bullet_values(value) -> list[str]:
     """A bullet's raw values — a repeated key parses to a list, a single one to a string."""
     if isinstance(value, list):
@@ -2888,8 +2902,12 @@ def _check_ui(graph: Graph, f: list[Finding],
                     relation_hrefs[(str(node.path), href)] = key
 
     if froot is not None and froot.is_dir():
-        for path in sorted(froot.rglob("*.md")):
-            if not path.is_file() or path.name in registry.RESERVED_FILES:
+        book_pages = [p for p in sorted(froot.rglob("*.md")) if p.is_file()]
+        pages_by_name: dict[str, list[Path]] = {}
+        for page in book_pages:
+            pages_by_name.setdefault(page.name, []).append(page)
+        for path in book_pages:
+            if path.name in registry.RESERVED_FILES:
                 continue
             rel = path.relative_to(graph.root).as_posix()
             try:
@@ -2908,11 +2926,13 @@ def _check_ui(graph: Graph, f: list[Finding],
                 rkey = relation_hrefs.get((str(path), href))
                 if rkey:
                     f.append(Finding("error", "unresolved-relation",
-                                     f"{rel}: `{rkey}:` target '{href}' does not resolve",
+                                     f"{rel}: `{rkey}:` target '{href}' does not resolve"
+                                     f"{_landing_hint(graph.root, path, target.path, pages_by_name) if not target.file_exists else ''}",
                                      path=rel, line=line, ref=ref, fixable=True))
                 elif not target.file_exists:
                     f.append(Finding("error", "dangling-link",
-                                     f"{rel}: link '{href}' target file does not exist",
+                                     f"{rel}: link '{href}' target file does not exist"
+                                     f"{_landing_hint(graph.root, path, target.path, pages_by_name)}",
                                      path=rel, line=line, ref=ref, fixable=True))
                 else:
                     f.append(Finding("error", "missing-anchor",
