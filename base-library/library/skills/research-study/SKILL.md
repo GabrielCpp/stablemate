@@ -53,9 +53,16 @@ Done when the top cost items are named with their share of the total.
 
 ## 4. Map the field
 
-Load [[brainstorm]] and generate candidates that differ in **mechanism**: less input per
+When the project already keeps a field of candidates, read it first and extend it. Then
+load [[brainstorm]] and generate candidates that differ in **mechanism**: less input per
 step, fewer steps, a cheaper model per stage, different work order, skipping work a cheap
-check proves unneeded, parallelism, a different instrument. For each one write:
+check proves unneeded, parallelism, a different instrument.
+
+The field always holds the **no-method control**: the simplest mechanism that uses none of
+the idea under test, such as brute-force search, a fixed rule, or the unchanged system
+given the same extra compute. Measure it early. When it matches the method, the yardstick
+cannot credit the method, and that is a finding about the yardstick. For each candidate
+write:
 
 - the expected gain, tied to a line of the profile,
 - the cost to test it,
