@@ -127,18 +127,16 @@ class FailedCheck:
 class _Tally:
     """What grading one scenario's records has counted so far."""
 
-    action: int = 0
     assertions: int = 0
     failures: int = 0
     failed_checks: list[FailedCheck] = field(default_factory=list)
 
-    def next_action(self) -> int:
-        """Count one more assertion and return the action number it is recorded under."""
-        self.action += 1
+    def count_assertion(self) -> int:
+        """Count one more assertion and return its number, which is the action it is recorded under."""
         self.assertions += 1
-        return self.action
+        return self.assertions
 
-    def failed(self, check: FailedCheck) -> None:
+    def count_failure(self, check: FailedCheck) -> None:
         self.failures += 1
         self.failed_checks.append(check)
 
@@ -425,7 +423,7 @@ class PythonDriver(QaDriver):
             or (terminal_status != "passed" and not tally.failures)
         )
         if aborted and covers:
-            action = tally.next_action()
+            action = tally.count_assertion()
             self.session.run_assert(
                 f"{scenario_id}-completed",
                 "the scenario runs to completion, so what it claims is what it observed",
@@ -461,7 +459,7 @@ class PythonDriver(QaDriver):
         self, tally: _Tally, scenario_id: str, record: dict[str, Any], step: tuple[str, str] | None,
     ) -> None:
         """Record one harness `assert` in the session, and count it failed with how its command ended when it did not hold."""
-        action = tally.next_action()
+        action = tally.count_assertion()
         passed, _ = self.session.run_assert(
             str(record.get("id") or f"{scenario_id}-{action}"),
             str(record.get("label", "")),
@@ -480,7 +478,7 @@ class PythonDriver(QaDriver):
             step=step,
         )
         if not passed:
-            tally.failed(FailedCheck.of(
+            tally.count_failure(FailedCheck.of(
                 str(record.get("label", "")), record.get("expected"), record.get("actual"),
                 CommandEnding.read(record)))
 
@@ -498,7 +496,7 @@ class PythonDriver(QaDriver):
         except ValueError as exc:
             verdicts, trouble = [], [f"scenario '{scenario_id}' vet failed: {exc}"]
         for verdict in verdicts:
-            action = tally.next_action()
+            action = tally.count_assertion()
             passed, _ = self.session.run_assert(
                 f"{scenario_id}-{action}",
                 verdict.sentence(),
@@ -516,7 +514,7 @@ class PythonDriver(QaDriver):
                 step=step,
             )
             if not passed:
-                tally.failed(FailedCheck.of(verdict.sentence(), verdict.expected, verdict.observed()))
+                tally.count_failure(FailedCheck.of(verdict.sentence(), verdict.expected, verdict.observed()))
         return trouble
 
     def _step_record(
