@@ -36,6 +36,6 @@ strict:
 - Each direct child of `flags:` or `provides:` is one value, and its own children are that
   value's properties. None of them is a claim, and none takes a `verify:`.
 - A `fixture:` names a fixture page that is in the book or that you write.
-- Each child of a flow's `steps:` links the one node that step performs, a node stating
-  exactly one `run:`, such as an invocation. A link to a command whose invocations state
-  several `run:`s does not compile.
+- Each child of a flow's `steps:` links the one node that step performs, a node whose own
+  bullets state exactly one distinct `run:`, usually an invocation. A step whose node states
+  no `run:`, or several different ones, does not compile.
