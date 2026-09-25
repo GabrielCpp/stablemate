@@ -80,19 +80,19 @@ class FailedCheck:
     label: str
     expected: str
     actual: str
-    ran: str = ""
+    command_ending: str = ""
 
     @classmethod
-    def of(cls, label: str, expected: object, actual: object, ran: object = None) -> FailedCheck:
+    def of(cls, label: str, expected: object, actual: object, command_ending: object = None) -> FailedCheck:
         """A failed check whose expected and observed values are rendered as JSON text, with how the command it observed ended."""
-        return cls(label, json.dumps(expected, default=str), json.dumps(actual, default=str), _ran_text(ran))
+        return cls(label, json.dumps(expected, default=str), json.dumps(actual, default=str), _command_ending_text(command_ending))
 
 
-def _ran_text(ran: object) -> str:
-    if not isinstance(ran, Mapping):
+def _command_ending_text(ending: object) -> str:
+    if not isinstance(ending, Mapping):
         return ""
-    stderr = str(ran.get("stderr") or "")
-    return f"exit {ran.get('exit_code')}, stderr: {stderr}" if stderr else f"exit {ran.get('exit_code')}, stderr empty"
+    stderr = str(ending.get("stderr") or "")
+    return f"exit {ending.get("exit_code")}, stderr: {stderr}" if stderr else f"exit {ending.get("exit_code")}, stderr empty"
 
 
 @dataclass
@@ -332,7 +332,7 @@ class PythonDriver(QaDriver):
                     failures += 1
                     failed_checks.append(FailedCheck.of(
                         str(record.get("label", "")), record.get("expected"), record.get("actual"),
-                        record.get("ran")))
+                        record.get("command_ending")))
             elif kind == "step_start":
                 step_id = str(record.get("id", ""))
                 open_steps.append((step_id, str(record.get("label", ""))))

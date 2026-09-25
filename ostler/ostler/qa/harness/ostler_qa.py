@@ -1744,8 +1744,8 @@ class Qa:
             )
         passed, actual, expected = verifier(observed, args)
         rendered = ", ".join(f"{key}={value!r}" for key, value in args.items())
-        ran = (
-            {"ran": {"exit_code": observed.exit_code, "stderr": observed.stderr.strip()[-500:]}}
+        ending = (
+            {"command_ending": {"exit_code": observed.exit_code, "stderr": observed.stderr.strip()[-500:]}}
             if not passed and isinstance(observed, ToolResult) else {}
         )
         return self._record(
@@ -1754,7 +1754,7 @@ class Qa:
             actual,
             expected,
             covers,
-            extra={"check": check, "check_args": args, **ran},
+            extra={"check": check, "check_args": args, **ending},
         )
 
     def _poll(

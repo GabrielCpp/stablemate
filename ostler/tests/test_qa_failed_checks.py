@@ -45,9 +45,9 @@ def test_a_scenario_whose_checks_all_hold_names_none(repo: Path) -> None:
 
 
 def test_a_failed_check_on_a_command_says_how_the_command_ended(repo: Path) -> None:
-    ran = {"exit_code": 1, "stderr": "No module named tally"}
+    ending = {"exit_code": 1, "stderr": "No module named tally"}
     records = [
-        {**_assert("exit_status(code=0)", passed=False, expected=0, actual=1), "ran": ran},
+        {**_assert("exit_status(code=0)", passed=False, expected=0, actual=1), "command_ending": ending},
         {"type": "scenario", "id": "s-1", "status": "failed", "assertions": 1, "failures": 1},
     ]
 
