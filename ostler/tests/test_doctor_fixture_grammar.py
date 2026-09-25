@@ -330,11 +330,11 @@ def test_fixture_step_scenario_frame_token_is_not_a_doctor_finding(repo: Path) -
     assert _findings(repo, "runbook-scenario-frame") == []
 
 
-def test_fixture_checks_are_skipped_with_no_stack_runbook(repo: Path) -> None:
-    """No runbook claims a stack — nothing a fixture arranges state in front of, so the fixture-grammar checks stay silent even over an otherwise-broken fixture book."""
+def test_fixture_checks_hold_with_no_stack_runbook(repo: Path) -> None:
+    """A CLI book brings no stack up, yet its fixtures arrange each scenario's directory, so their grammar is held all the same."""
     write(repo / "docs/features/acme/fixtures/seeded-acme.md",
           _fixture_book(args="id", provides="id — the seeded account's id", step_kind="prepare"))
-    assert _findings(repo, "fixture-step-kind") == []
+    assert [f.severity for f in _findings(repo, "fixture-step-kind")] == ["error"]
 
 
 def test_unbacked_precondition_when_the_target_declares_no_provides(repo: Path) -> None:
@@ -454,3 +454,23 @@ def test_a_fact_asserted_by_construction_is_clean(repo: Path) -> None:
     write(repo / "docs/features/acme/fixtures/seeded-acme.md",
           _fixture_book(provides="id — the seeded account's id|is: 7"))
     assert _findings(repo, "undetermined-provided-fact") == []
+
+
+def _fixture_in(directory: str) -> str:
+    return _fixture_book(provides="id — the seeded account's id").replace(
+        "- run: ./scripts/seed-acme.sh", f"- run: ./scripts/seed-acme.sh\n- working-directory: {directory}")
+
+
+def test_fixture_step_directory_refuses_a_path_the_checkout_lacks_and_names_the_scenario_token(repo: Path) -> None:
+    _stack(repo)
+    write(repo / "docs/features/acme/fixtures/seeded-acme.md", _fixture_in("scenario"))
+    found = _findings(repo, "fixture-step-directory")
+    assert [(f.severity, f.suggestion) for f in found] == [("error", "- working-directory: scenario:")]
+
+
+def test_fixture_step_directory_is_clean_for_the_scenario_token_and_a_real_directory(repo: Path) -> None:
+    _stack(repo)
+    (repo / "services/acme").mkdir(parents=True)
+    write(repo / "docs/features/acme/fixtures/seeded-acme.md", _fixture_in("scenario:"))
+    write(repo / "docs/features/acme/fixtures/other-acme.md", _fixture_in("services/acme"))
+    assert _findings(repo, "fixture-step-directory") == []

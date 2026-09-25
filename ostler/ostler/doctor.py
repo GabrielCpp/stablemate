@@ -781,9 +781,6 @@ def _check_bullet_value_kinds(graph: Graph, ui_data: dict | None, f: list[Findin
 
 def _check_fixture_grammar(graph: Graph, f: list[Finding]) -> None:
     """The fixture-node grammar (`docs/okf-runbook.md`'s fixture tier), held to its own rules."""
-    if not runbook_mod.stack_runbooks(graph):
-        return
-
     fixtures = {n.id: n for n in graph.ui_nodes_of_type("fixture")}
     by_name = {Path(n.id).stem: n for n in fixtures.values()}
 
@@ -804,6 +801,7 @@ def _check_fixture_grammar(graph: Graph, f: list[Finding]) -> None:
                     path=rel, line=step.line))
             _check_step_command_bullets(step, rel, f)
             _check_step_command_syntax(step, rel, f)
+            _check_fixture_step_directory(graph, step, rel, f)
 
     _check_fixture_needs_cycles(graph, fixtures, f)
     _check_needs_binding_args(graph, by_name, f)
@@ -2200,6 +2198,20 @@ def _check_step_command_syntax(step: UINode, rel: str, f: list[Finding]) -> None
             f"that exits non-zero on failure",
             path=rel, line=step.line, ref=refs_mod.bullet_ref(step.id, key),
             suggestion=f"- {key}: curl -fsS <url>"))
+
+
+def _check_fixture_step_directory(graph: Graph, step: UINode, rel: str, f: list[Finding]) -> None:
+    """A fixture step's `working-directory:` path names a directory the checkout holds."""
+    value = runbook_mod.bullet_value(step.meta, "working-directory")
+    if not value or runbook_mod.is_scenario_frame(value) or (graph.root / value).is_dir():
+        return
+    f.append(Finding(
+        "error", "fixture-step-directory",
+        f"{step.id}: `working-directory: {value}` names no directory in the checkout, so the step "
+        f"cannot run there. A path is read from the checkout root; for the scenario's own "
+        f"directory, write the token `{runbook_mod.SCENARIO_FRAME_TOKEN}` with its colon",
+        path=rel, line=step.line, ref=refs_mod.bullet_ref(step.id, "working-directory"),
+        suggestion=f"- working-directory: {runbook_mod.SCENARIO_FRAME_TOKEN}"))
 
 
 def _check_step_not_scenario_frame(step: UINode, rel: str, f: list[Finding]) -> None:
