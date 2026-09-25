@@ -895,7 +895,7 @@ def _check_fixture_needs_cycles(graph: Graph, fixtures: dict[str, UINode], f: li
 
 def _fixture_declared_args(node: UINode) -> set[str]:
     """The parameter names a fixture node's own `args:` bullet declares."""
-    return {name for value in _bullet_values(node.meta.get("args", "")) for name in value.split()}
+    return set(fixtures_mod.declared_args(_bullet_values(node.meta.get("args", ""))))
 
 
 def _fixture_declared_provides(node: UINode) -> set[str]:

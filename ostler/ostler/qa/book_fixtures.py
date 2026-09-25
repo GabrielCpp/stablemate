@@ -22,10 +22,7 @@ def _bullet_values(value: object) -> list[str]:
 
 
 def _declared_args(node: UINode) -> list[str]:
-    names: list[str] = []
-    for value in _bullet_values(node.meta.get("args")):
-        names.extend(value.split())
-    return names
+    return fixtures_mod.declared_args(_bullet_values(node.meta.get("args")))
 
 
 def _provides_from_step(raw: str) -> str:

@@ -66,6 +66,17 @@ class NoArrangement:
     reason: str
 
 
+def declared_args(values: list[str]) -> list[str]:
+    """The parameter names a fixture's `args:` values declare. A value stating its absence, `none` alone or `none, because ...`, declares none."""
+    names: list[str] = []
+    for value in values:
+        text = value.strip()
+        if registry.self_declared_empty(text) or text.rstrip(".").lower() in {"none", "nothing"}:
+            continue
+        names.extend(text.split())
+    return names
+
+
 def parse_bullet(value: str) -> FixtureRef | NoArrangement | str:
     """Parse one `fixture:` bullet, or return the sentence explaining why it is not one."""
     text = " ".join(value.split())

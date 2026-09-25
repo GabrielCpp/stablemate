@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from ostler import doctor
 from ostler.model import load
 
@@ -138,6 +140,15 @@ def test_fixture_arg_mismatch_is_clean_when_every_arg_is_declared(repo: Path) ->
     write(repo / "docs/features/acme/fixtures/seeded-acme.md",
           _fixture_book(args="id", provides="id — the seeded account's id"))
     write(repo / ENDPOINT_PATH, _endpoint_book("seeded-acme id=globex — an account exists"))
+    assert _findings(repo, "fixture-arg-mismatch") == []
+
+
+@pytest.mark.parametrize("args", ["none", "none, because every account is seeded the same way"])
+def test_fixture_arg_mismatch_is_clean_when_args_states_there_are_none(repo: Path, args: str) -> None:
+    _stack(repo)
+    write(repo / "docs/features/acme/fixtures/seeded-acme.md",
+          _fixture_book(args=args, provides="id — the seeded account's id"))
+    write(repo / ENDPOINT_PATH, _endpoint_book("seeded-acme — an account exists"))
     assert _findings(repo, "fixture-arg-mismatch") == []
 
 
