@@ -1,0 +1,19 @@
+# The study report
+
+Write `REPORT.md` in the study's folder when the study stops. It answers four questions, in
+this order, for a reader who was not there.
+
+1. **Where does the purpose stand?** The best result on the yardstick, projected to the
+   full workload, next to the target and the baseline.
+2. **What worked and what did not?** One line per probe from the ledger, failures included,
+   each with its cost and what it settled. Untried candidates from the field follow, each
+   with the reason it was not reached.
+3. **What did the study cost?** Wall hours in total, the share per `kind`, and decisive
+   results per hour. When a baseline process exists, put its numbers beside these and name
+   the confounds.
+4. **Where did the study itself go wrong?** Every point where a step-back came late or not
+   at all, read off the ledger: a step far past its estimate with no reflection after it, a
+   stretch of apparatus with no decisive step it served.
+
+The last section says what the operator has to decide, one decision, with a
+recommendation.

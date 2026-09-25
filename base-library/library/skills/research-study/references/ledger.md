@@ -1,0 +1,39 @@
+# The study ledger
+
+One JSON object per line, appended to `ledger.jsonl` in the study's folder. Append the row
+when the step starts, with `end`, `actual_min` and `outcome` null. Rewrite that last line
+when the step ends. Never delete a row.
+
+```json
+{"start": "2026-09-25T14:02:11-04:00", "end": "2026-09-25T14:31:40-04:00",
+ "step": "write the 5 benchmark pages with the import bodies left out of the turn", "kind": "decisive",
+ "settles": "under 60 s a page says turn context is the dominant cost",
+ "estimate_min": 10, "actual_min": 29.5,
+ "outcome": "5.9 min a page, down from 30; 1,000 pages is 98 hours against 8: still 12x off",
+ "commit": "a1b2c3d"}
+```
+
+| field | holds |
+| --- | --- |
+| `start`, `end` | `date -Iseconds` output, taken when the step starts and ends |
+| `step` | what was done, in one line |
+| `kind` | `decisive`, `exploration`, `apparatus` or `reflection` |
+| `settles` | the "this changes the answer" sentence, or null for exploration |
+| `serves` | for `apparatus` only: the decisive step it makes runnable |
+| `estimate_min` | wall minutes expected, written before the step starts |
+| `actual_min` | wall minutes taken |
+| `outcome` | the result, projected against the purpose |
+| `commit` | the commit the step ran on, when it ran code |
+
+A `reflection` row puts its three answers in `outcome`: where the time went, what is
+settled, and whether the current path is still the cheapest.
+
+## Reading it back
+
+The ledger answers the efficiency questions without a model call:
+
+- decisive results per wall hour,
+- the share of wall time per `kind`,
+- every step whose `actual_min` exceeded 3× its `estimate_min`.
+
+Compute them with a one-off `jq` or Python expression when writing the report.
