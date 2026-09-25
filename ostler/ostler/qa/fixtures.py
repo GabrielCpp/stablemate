@@ -39,6 +39,15 @@ class FixtureSpec:
 _PROVIDES_SEP = "\u2014"
 
 _NAME_RE = re.compile(r"^[a-z0-9][a-z0-9._-]*$")
+_LINK_RE = re.compile(r"^\[[^\]]*\]\(([^)\s]+)\)")
+
+
+def _head_tokens(head: str) -> list[str]:
+    """The fixture's name then its args, where a leading link to a fixture page names it by stem."""
+    link = _LINK_RE.match(head)
+    if link is None:
+        return shlex.split(head)
+    return [Path(link.group(1).partition("#")[0]).stem, *shlex.split(head[link.end() :])]
 
 
 @dataclass(frozen=True)
@@ -66,7 +75,7 @@ def parse_bullet(value: str) -> FixtureRef | NoArrangement | str:
         return NoArrangement(reason=text)
     head, _, provides = text.partition(_PROVIDES_SEP)
     try:
-        tokens = shlex.split(head.strip())
+        tokens = _head_tokens(head.strip())
     except ValueError as exc:
         return f"unbalanced quoting: {exc}"
     if not tokens:
@@ -74,8 +83,8 @@ def parse_bullet(value: str) -> FixtureRef | NoArrangement | str:
     name, *args = tokens
     if not _NAME_RE.match(name):
         return (
-            f"`{name}` is not a fixture name — it must match the key `agents.yml` declares it "
-            f"under (lowercase, digits, `.`, `_`, `-`)"
+            f"`{name}` is not a fixture name — link the fixture page, write its file stem, or write "
+            f"the key `agents.yml` declares it under (lowercase, digits, `.`, `_`, `-`)"
         )
     return FixtureRef(name=name, args=tuple(args), provides=provides.strip())
 

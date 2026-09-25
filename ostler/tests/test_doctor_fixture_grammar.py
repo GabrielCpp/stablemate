@@ -91,6 +91,15 @@ def test_a_book_fixture_bullet_naming_a_fixture_node_is_clean(repo: Path) -> Non
     assert _findings(repo, "unknown-book-fixture") == []
 
 
+def test_a_book_fixture_bullet_linking_a_fixture_page_names_it_by_stem(repo: Path) -> None:
+    _stack(repo)
+    write(repo / "docs/features/acme/fixtures/seeded-acme.md",
+          _fixture_book(args="id", provides="id — the seeded account's id"))
+    write(repo / ENDPOINT_PATH, _endpoint_book("[Seeded acme](fixtures/seeded-acme.md) id=7 — an account exists"))
+    findings = doctor.run(load(repo)).findings
+    assert [f for f in findings if f.code in {"unknown-book-fixture", "qa-fixture-bullet", "dangling-link"}] == []
+
+
 def test_a_book_fixture_bullet_naming_no_fixture_node_is_unknown_book_fixture(repo: Path) -> None:
     _stack(repo)
     write(repo / ENDPOINT_PATH, _endpoint_book("no-such-fixture — nobody declared this"))

@@ -109,6 +109,13 @@ def test_a_quoted_argument_stays_one_argument() -> None:
     assert ref.args == ("policy of record",)
 
 
+def test_a_link_to_a_fixture_page_names_the_fixture_by_the_page_stem() -> None:
+    """A book fixture is a page, and a page is cited by a link everywhere else in the book, so a link here names the same fixture its stem does."""
+    ref = fixtures.parse_bullet("[Seeded ledger](../fixtures/seeded-ledger.md#steps) 3 \"policy of record\" — one policy")
+    assert isinstance(ref, fixtures.FixtureRef)
+    assert (ref.name, ref.args, ref.provides) == ("seeded-ledger", ("3", "policy of record"), "one policy")
+
+
 def test_a_value_naming_its_own_emptiness_parses_as_a_decision_not_a_defect() -> None:
     """`none, because ...` is the one spelling in this repo for "there is nothing here, and here is why" (`registry.self_declared_empty`)."""
     parsed = fixtures.parse_bullet("none, because the journey reads a store it finds empty")

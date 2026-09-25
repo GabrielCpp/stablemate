@@ -93,7 +93,10 @@ fixture's `provides:` is the equivalent idea for what the arrangement itself lea
 
 ## Relationships
 
-- Referenced by `fixture:` bullets on the seven node types above, by file stem.
+- Referenced by `fixture:` bullets on the seven node types above, by file stem. The bullet
+  writes the stem (`- fixture: seeded-acme id=7 — an account exists`) or links the page
+  (`- fixture: [Seeded acme](../fixtures/seeded-acme.md) id=7 — an account exists`). Both name
+  the same fixture.
 - `needs:` links to another `fixture` node's file.
 - `@<fixture>.<key>` and `$<captured-name>` are the two reference forms a route path template,
   a request-body value, a `fixture:` bullet's args, or a `verify:` call may use — parsed by
