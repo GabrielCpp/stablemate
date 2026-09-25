@@ -38,6 +38,16 @@ def test_a_soft_wrapped_bullet_parses_as_markdown_renders_it() -> None:
     assert refused.form == checks.CHECK_BY_NAME["persists"].signature()
 
 
+def test_a_line_break_at_a_strings_edge_is_refused_rather_than_folded_to_a_space() -> None:
+    """A break just inside a quote folds to a stray space nobody wrote, where the author meant a `\\n`."""
+    refused = checks.parse_check('stderr(text="tally: added 350\n")')
+    assert isinstance(refused, checks.Refusal)
+    assert refused.kind == "bad-arguments"
+    assert "write `\\n` for a newline" in refused.message
+    assert isinstance(checks.parse_check('stderr(text="\n  added 350")'), checks.Refusal)
+    assert isinstance(checks.parse_check('stderr(text="added 350 ")'), checks.CheckCall)
+
+
 def test_is_check_expression_is_the_one_test_for_a_check_shaped_value() -> None:
     """The single predicate `doctor` and `runbook` both call to tell a check call apart from a shell command — see `check-expression-as-command`."""
     assert checks.is_check_expression('http_status(200, path="/healthz")') is True

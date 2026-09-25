@@ -456,6 +456,11 @@ def parse_check(value: str) -> CheckCall | Refusal:
 
     if isinstance(parsed, Malformed):
         return wrong(f"`{parsed.name}`: {parsed.problem}")
+    frayed = _frayed_string(value, parsed)
+    if frayed is not None:
+        return wrong(
+            f"`{parsed.name}`: a line break opens or closes the string {frayed!r}, and markdown "
+            f"folds it to a space; write `\\n` for a newline, or keep the string on one line")
     name = parsed.name
     args: dict[str, CheckValue] = {}
     if len(parsed.positional) > len(spec.params):
@@ -479,9 +484,22 @@ def is_check_expression(value: str) -> bool:
     return isinstance(parse_check(value), CheckCall)
 
 
-def _unwrap(value: str) -> str:
+def _unwrap(value: str, fold: str = " ") -> str:
     """The bullet's value as markdown reads it: soft line breaks folded, a code span opened."""
-    return _CODE_SPAN.sub(r"\2", _SOFT_BREAK.sub(" ", value).strip()).strip()
+    return _CODE_SPAN.sub(r"\2", _SOFT_BREAK.sub(fold, value).strip()).strip()
+
+
+def _frayed_string(value: str, narrow: Call) -> str | None:
+    """The string argument a soft line break opens or closes, as markdown folds it, or `None` if there is none."""
+    wide = parse_call(_unwrap(value, fold="  "))
+    if not isinstance(wide, Call):
+        return None
+    folded = [*narrow.positional, *narrow.keywords.values()]
+    widened = [*wide.positional, *wide.keywords.values()]
+    return next((
+        text for text, other in zip(folded, widened, strict=False)
+        if isinstance(text, str) and text != other and text != text.strip()
+    ), None)
 
 
 _SOFT_BREAK = re.compile(r"[ \t]*\n[ \t]*")
