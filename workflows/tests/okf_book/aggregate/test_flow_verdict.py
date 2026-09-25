@@ -156,25 +156,20 @@ def test_a_node_an_earlier_round_cleared_is_not_faulted_while_its_text_is_unchan
 
 
 
-def test_a_node_an_earlier_job_cleared_is_not_faulted_by_a_later_job_while_its_text_is_unchanged(
+def test_a_judge_that_faults_a_page_it_did_not_read_is_asked_again_and_no_writer_hears_of_it(
     app: App, run_book: RunBook,
 ) -> None:
     repo = app("tally-cli")
-    faults: list[str] = []
 
-    def fault_after_cleared(args: dict[str, object]) -> dict[str, object]:
-        if FIXTURE in [page["page"] for page in BRIEFS.validate_python(args["pages"])]:
-            faults.append("")
+    def fault_unread(args: dict[str, object]) -> dict[str, object]:
+        if "refused" in args or FIXTURE in [page["page"] for page in BRIEFS.validate_python(args["pages"])]:
             return PASS(args)
-        if not faults:
-            return PASS(args)
-        faults.append(FIXTURE)
         return judged("it contradicts the ledger page.", node=FIXTURE)(args)
 
-    runner = _book_runner(repo, fault_after_cleared, _writer(repo))
+    runner = _book_runner(repo, fault_unread, _writer(repo))
     _ = run_book(WriteOnly(repo_dir=str(repo), surfaces=(TALLY,)), runner)
 
-    assert FIXTURE in faults
+    assert [reason for node, reason in runner.refused if node == "verify-page" and FIXTURE in reason]
     writes = [*runner.args_of("write-page"), *runner.args_of("write-operations"), *runner.args_of("write-flows")]
     assert not [problem for args in writes for problem in NAMES.validate_python(args["problems"]) if FIXTURE in problem]
 

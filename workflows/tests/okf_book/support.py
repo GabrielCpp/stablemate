@@ -61,13 +61,14 @@ def always(payload: dict[str, object]) -> Reply:
     return _reply
 
 
-def judged(*problems: str, node: str = "stated#here") -> Reply:
-    """A verify-page reply that finds every claim it is handed stated, and names `problems` on `node` beside them."""
+def judged(*problems: str, node: str = "") -> Reply:
+    """A verify-page reply that finds every claim it is handed stated at `#here` on the first page it reads, and names `problems` on `node` beside them, or on that same anchor."""
 
     def _reply(args: dict[str, object]) -> dict[str, object]:
         numbers = [claim.id for contract in NUMBERED.validate_python(args["contracts"]) for claim in contract.claims]
-        found = [{"node": node, "problem": problem} for problem in problems]
-        return {"claims": [{"claim": number, "node": "stated#here"} for number in numbers], "problems": found}
+        stated = f"{BRIEFS.validate_python(args['pages'])[0]['page']}#here"
+        found = [{"node": node or stated, "problem": problem} for problem in problems]
+        return {"claims": [{"claim": number, "node": stated} for number in numbers], "problems": found}
 
     return _reply
 
@@ -81,7 +82,10 @@ def promised_contracts(args: dict[str, object]) -> dict[str, object]:
 
 
 class ScriptedRunner(AgentRunner):
-    """Answers each turn with the reply scripted for its prompt, and keeps every turn's arguments."""
+    """Answers each turn with the reply scripted for its prompt, and keeps every turn's arguments.
+
+    A reply the turn's validator refuses is asked for once more, with the refusal under `refused` in its arguments, as the ladder asks again.
+    """
 
     def __init__(self, replies: Mapping[str, Reply]) -> None:
         super().__init__(backend=NullBackend())
@@ -89,6 +93,7 @@ class ScriptedRunner(AgentRunner):
         self.turns: Counter[str] = Counter()
         self.calls: list[tuple[str, dict[str, object]]] = []
         self.nodes: list[AgentNode] = []
+        self.refused: list[tuple[str, str]] = []
 
     @property
     def total(self) -> int:
@@ -116,7 +121,13 @@ class ScriptedRunner(AgentRunner):
         self.calls.append((node.id, args))
         self.nodes.append(node)
         reply = self.replies[node.id](args)
-        if validate is not None:
+        if validate is None:
+            return "scripted", reply
+        try:
+            _ = validate(reply)
+        except ValueError as refusal:
+            self.refused.append((node.id, str(refusal)))
+            reply = self.replies[node.id]({**args, "refused": str(refusal)})
             _ = validate(reply)
         return "scripted", reply
 

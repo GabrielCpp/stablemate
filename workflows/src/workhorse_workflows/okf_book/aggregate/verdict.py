@@ -102,6 +102,19 @@ def claim_texts(contracts: tuple[NumberedContract, ...]) -> tuple[str, ...]:
     )
 
 
+def names_judged_pages(verdict: Verdict, pages: Iterable[str]) -> None:
+    """Refuse a verdict that names a node on no page the judge read, so the judge answers again rather than charging the writer for it."""
+    read = set(pages)
+    named = [*(finding.node for finding in verdict.claims if finding.node), *(found.node for found in verdict.problems)]
+    stray = sorted({node for node in named if node.partition("#")[0] not in read})
+    if stray:
+        raise ValueError(
+            f"these nodes are on no page you read: {', '.join(repr(node) for node in stray)}. "
+            f"Name each node as the path of the page it is on, one of {', '.join(sorted(read))}, "
+            "then '#' and its anchor, and state each problem in words."
+        )
+
+
 def still_cleared(cleared: tuple[ClearedNode, ...], digests: Mapping[str, str]) -> tuple[ClearedNode, ...]:
     """Each cleared node whose text is still the text it was cleared at."""
     return tuple(entry for entry in cleared if digests.get(entry.node) == entry.digest)

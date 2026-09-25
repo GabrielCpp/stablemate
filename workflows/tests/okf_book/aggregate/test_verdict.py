@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from workhorse_workflows.okf_book.aggregate.verdict import (
     GRAMMAR_GAPS_NAME,
     ClaimFinding,
@@ -12,6 +14,7 @@ from workhorse_workflows.okf_book.aggregate.verdict import (
     claim_texts,
     cleared_after,
     grammar_gaps,
+    names_judged_pages,
     numbered_contracts,
     record_grammar_gaps,
     still_cleared,
@@ -179,3 +182,28 @@ def test_no_gap_is_recorded_when_the_judge_expected_no_check(tmp_path: Path) -> 
     record_grammar_gaps(tmp_path, grammar_gaps(Verdict(problems=(NodeProblem(node="page.md", problem="a typo."),))))
 
     assert not (tmp_path / GRAMMAR_GAPS_NAME).exists()
+
+
+def test_a_verdict_naming_only_nodes_on_pages_the_judge_read_is_accepted() -> None:
+    verdict = Verdict(
+        claims=(ClaimFinding(claim=1, node="page.md#add"), ClaimFinding(claim=2)),
+        problems=(NodeProblem(node="page.md", problem="the page states no exit code."),),
+    )
+
+    names_judged_pages(verdict, ("page.md",))
+
+
+def test_a_placeholder_node_sends_the_verdict_back_naming_the_pages_it_may_name() -> None:
+    verdict = Verdict(problems=(NodeProblem(node="...", problem="...", expected="..."),))
+
+    with pytest.raises(ValueError, match="no page you read: '...'") as refused:
+        names_judged_pages(verdict, ("page.md", "other.md"))
+
+    assert "one of other.md, page.md" in str(refused.value)
+
+
+def test_a_claim_stated_on_a_page_the_judge_did_not_read_sends_the_verdict_back() -> None:
+    verdict = Verdict(claims=(ClaimFinding(claim=1, node="elsewhere.md#add"),))
+
+    with pytest.raises(ValueError, match="'elsewhere.md#add'"):
+        names_judged_pages(verdict, ("page.md",))
