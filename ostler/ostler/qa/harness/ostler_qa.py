@@ -905,7 +905,10 @@ def _verify_count(observed: Any, args: Mapping[str, Any]) -> tuple[bool, Any, An
     document = checked.document
     reader = getattr(document, "json", None)
     if callable(reader):
-        document = reader()
+        try:
+            document = reader()
+        except ValueError as exc:
+            return False, {"subject": args["subject"], "countable": False, "reason": str(exc)}, args["equals"]
     if isinstance(document, Mapping):
         resolved, document = _resolve_path(document, args["subject"])
         if not resolved:

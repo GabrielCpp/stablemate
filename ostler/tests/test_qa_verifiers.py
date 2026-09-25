@@ -139,10 +139,14 @@ def test_count_reads_a_commands_json_stdout_before_resolving_its_subject() -> No
     assert ran.json() == {"people": [1, 2]}
 
 
-def test_a_command_whose_stdout_is_not_json_names_the_command() -> None:
+def test_a_count_on_a_command_whose_stdout_is_not_json_is_red_and_names_the_command() -> None:
+    """The product printed something, and what it printed is the observation: the scenario grades it and runs on."""
     silent = harness.ToolResult(command=["tally", "add"], stdout="", stderr="tally: added", exit_code=0)
-    with pytest.raises(ValueError, match="tally add exited 0 with a stdout that is not JSON"):
-        harness.VERIFIERS["count"](silent, {"subject": "entries in the ledger", "equals": 1})
+    ok, actual, expected = harness.VERIFIERS["count"](silent, {"subject": "entries in the ledger", "equals": 1})
+    assert ok is False
+    assert expected == 1
+    assert actual["countable"] is False
+    assert "tally add exited 0 with a stdout that is not JSON" in actual["reason"]
 
 
 def test_json_path_equals_compares_a_json_scalar_by_type() -> None:
