@@ -74,6 +74,17 @@ with its kill result.
 
 ## 5. Probe
 
+**Read the ceiling before running the instrument.** Most instruments have an expensive
+part: a model call, a full rerun, a human judge. Compute the best result the run could
+show from its inputs alone, with the expensive part assumed to go the candidate's way
+wherever it is uncertain. A ceiling under the bar kills the run before it costs anything.
+It takes minutes where the run takes days, and it reads the same inputs the run would.
+
+**Order by cost before launching anything.** List the next decisive checks with their
+estimates, and run the cheapest first. A long job in the background is not free: a
+three-minute check can make its answer moot, and then the long job is apparatus for
+nothing.
+
 Change one variable per probe, on the frozen yardstick. Before each probe, write two
 things into its ledger row:
 
