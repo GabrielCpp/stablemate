@@ -66,7 +66,9 @@ that does not compile is refused. Give each claim a `verify:` from `ostler check
 each claim of a `command` or an `invocation`, give a `run:` stating one literal call before
 its `verify:`. Give each flow a `fixture:`, or `fixture: none, because ...`. A `cli`, a `server`, a
 `concept` or a `format` states no check of its own, so put no `verify:` on the node
-itself. Check it through the commands, fields and flows under it or linked from it.
+itself. Check it through the commands, fields and flows under it or linked from it. A fixture
+carries no `verify:` either. It confirms it took with a `## Steps` step of `kind: verify` whose
+`run:` exits non-zero when the arrangement is missing.
 
 Edit only files under `{{ folder }}`, its entries page aside. Anything you change elsewhere is
 put back. Yours are the operations pages and the pages you create. On any other page, only add lines, such as a link. Any other
