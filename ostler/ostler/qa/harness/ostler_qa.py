@@ -1295,7 +1295,7 @@ class Qa:
         self._tool_env_allowed = frozenset(tool_env)
         self._recorder = recorder
         self._captures: dict[str, str] = {}
-        self._world: Path | None = None
+        self.scenario_dir = (qa_dir.resolve() / scenario_id).resolve()
         self.http = Http(target.base_url, on_unexpected_status=self._status_mismatch)
         self._index = 0
         self.assertions = 0
@@ -1437,17 +1437,10 @@ class Qa:
         )
         self._recorder.emit({"type": "fixture_fault", **asdict(fault)})
 
-    @property
-    def scenario_dir(self) -> Path:
-        """This scenario's own directory under `self.dir`: a fresh copy of the checkout as the runbook left it, made on first use, so a command finds the code it runs and its files land apart from every other scenario's."""
-        if self._world is None:
-            resolved = (self.dir.resolve() / self.scenario_id).resolve()
-            shutil.rmtree(resolved, ignore_errors=True)
-            self._copy_checkout(resolved)
-            self._world = resolved
-        return self._world
-
-    def _copy_checkout(self, into: Path) -> None:
+    def copy_checkout(self) -> None:
+        """Replace `scenario_dir` with a fresh copy of the checkout as the runbook left it, so a command finds the code it runs and its files land apart from every other scenario's."""
+        into = self.scenario_dir
+        shutil.rmtree(into, ignore_errors=True)
         root = self.root.resolve()
         qa_dir = self.dir.resolve()
 
@@ -2562,6 +2555,7 @@ def _run(module_path: Path, scenario_id: str, context: dict[str, Any]) -> int:
     browser = None
     status, error = "passed", None
     try:
+        qa.copy_checkout()
         if target_decl.driver == "playwright":
             browser = _open_browser(qa)
         declared.func(qa)
