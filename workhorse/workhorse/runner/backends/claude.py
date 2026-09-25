@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -11,7 +12,7 @@ from workhorse.config_run import AgentResilience
 from workhorse.runner import failure as _failure
 from workhorse.runner import process as _process
 from workhorse.runner import usage as _usage
-from workhorse.runner.backends import AgentBackend, AgentProfile
+from workhorse.runner.backends import AgentBackend, AgentProfile, git_worktree
 
 
 class ClaudeBackend(AgentBackend):
@@ -39,7 +40,7 @@ class ClaudeBackend(AgentBackend):
         """Run one Claude CLI turn and return its final result text."""
         cmd = [
             "claude",
-            "--dangerously-skip-permissions",
+            *_permission_flags(agent),
             "--output-format", "stream-json",
             "--verbose",
             "--disallowedTools", "Agent",
@@ -49,7 +50,7 @@ class ClaudeBackend(AgentBackend):
             cmd.extend(["--model", model])
         if effort:
             cmd.extend(["--effort", effort])
-        for directory in add_dirs or []:
+        for directory in [*(add_dirs or []), *_skill_dirs(agent, cwd)]:
             cmd.extend(["--add-dir", directory])
         cmd.append("-p")
 
@@ -162,10 +163,42 @@ class ClaudeBackend(AgentBackend):
         return st["saw_compacting"]
 
 
+_CONFINED_TOOLS = ("Skill", "Read", "Edit", "Write", "Glob", "Grep")
+_SKILL_DIR = ".claude/skills"
+
+
+def _permission_flags(agent: AgentProfile | None) -> list[str]:
+    """Skip every permission prompt, or for a confined profile refuse whatever its rules do not allow.
+
+    Under `dontAsk` the CLI allows reads inside the cwd and the added directories and
+    denies every other call no rule allows. Only the project's settings are loaded, so
+    an operator's own allow rules cannot widen the turn.
+    """
+    if agent is None or not agent.confined:
+        return ["--dangerously-skip-permissions"]
+    return ["--permission-mode", "dontAsk", "--setting-sources", "project"]
+
+
+def _skill_dirs(agent: AgentProfile | None, cwd: str | None) -> list[str]:
+    """The project skill directory a confined turn may read, since the skills it loads are files it opens."""
+    if agent is None or not agent.confined:
+        return []
+    worktree = git_worktree(Path(cwd or os.getcwd()).resolve())
+    if worktree is None:
+        return []
+    skills = worktree / _SKILL_DIR
+    return [str(skills)] if skills.is_dir() else []
+
+
 def _tool_flags(agent: AgentProfile | None) -> list[str]:
     """The flags that narrow a turn to its profile's tools: `--tools` and no MCP server when `*` is off, else a deny list."""
     tools = agent.tools if agent else {}
     named = {name: on for name, on in tools.items() if name != "*"}
+    if agent is not None and agent.confined:
+        shell = ["Bash"] if agent.commands else []
+        enabled = dict.fromkeys([*_CONFINED_TOOLS, *shell, *(name for name, on in named.items() if on)])
+        allowed = ["Edit(./**)", *(rule for command in agent.commands for rule in (f"Bash({command})", f"Bash({command} *)"))]
+        return ["--tools", ",".join(enabled), "--strict-mcp-config", "--allowedTools", *allowed]
     if tools.get("*") is False:
         return ["--tools", ",".join(name for name, on in named.items() if on), "--strict-mcp-config"]
     denied = [name for name, on in named.items() if not on]

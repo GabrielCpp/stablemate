@@ -58,7 +58,14 @@ def _fake_stream(canned):
     return fake, captured
 
 
-def _turn(profile, *, operator_config: str = "", model: str | None = "minimax/MiniMax-M3"):
+def _turn(
+    profile,
+    *,
+    operator_config: str = "",
+    model: str | None = "minimax/MiniMax-M3",
+    cwd: str | None = None,
+    add_dirs: list[str] | None = None,
+):
     """Run one canned turn under ``profile`` and return its argv and injected config."""
     cfg = (
         "[harness.opencode]\n"
@@ -70,7 +77,7 @@ def _turn(profile, *, operator_config: str = "", model: str | None = "minimax/Mi
         fake, captured = _fake_stream(turn.TurnState(result_text="X", session_id="s"))
         OpenCodeBackend(fake).run_turn(
             "P", "n", None, model, timeout=RESILIENCE.result_timeout_s,
-            resilience=RESILIENCE, agent=profile,
+            resilience=RESILIENCE, agent=profile, cwd=cwd, add_dirs=add_dirs,
         )
     raw = captured["env_extra"].get("OPENCODE_CONFIG_CONTENT")
     return captured["cmd"], json.loads(raw) if raw else {}
@@ -132,6 +139,85 @@ def test_a_turn_with_no_profile_is_unchanged():
     cmd, cfg = _turn(None)
     assert "--agent" not in cmd
     assert cfg == {"small_model": "minimax/MiniMax-M3"}
+
+
+CONFINED = AgentProfile(name="docs-writer", tools={"*": False}, confined=True, commands=("ostler", "python -m check /runs/job.json"))
+
+
+def _confined_turn(**kwargs):
+    """Run one confined turn from ``docs/`` of a throwaway worktree that also holds ``skills/``."""
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        (root / ".git").mkdir()
+        (root / "docs").mkdir()
+        (root / "skills").mkdir()
+        _, cfg = _turn(CONFINED, cwd=str(root / "docs"), add_dirs=[str(root / "skills")], **kwargs)
+    return cfg["agent"]["docs-writer"]
+
+
+def test_a_confined_turn_reads_its_cwd_and_added_dirs_and_writes_only_its_cwd():
+    """opencode matches these rules relative to the worktree, and an absolute pattern matches nothing."""
+    permission = _confined_turn()["permission"]
+    assert permission["read"] == {
+        "*": "deny",
+        "docs/**": "allow",
+        "skills/**": "allow",
+        ".opencode/skills/**": "allow",
+        ".claude/skills/**": "allow",
+        ".agents/skills/**": "allow",
+    }
+    assert permission["edit"] == {"*": "deny", "docs/**": "allow"}
+    assert permission["external_directory"] == "deny"
+
+
+def test_a_confined_turn_runs_only_its_named_commands():
+    assert _confined_turn()["permission"]["bash"] == {
+        "*": "deny",
+        "ostler": "allow",
+        "ostler *": "allow",
+        "python -m check /runs/job.json": "allow",
+        "python -m check /runs/job.json *": "allow",
+    }
+
+
+def test_a_confined_turn_drops_the_search_tools_that_answer_outside_its_rules():
+    """opencode's grep returned a file outside the allowed paths, so a confined turn cannot keep it."""
+    tools = _confined_turn()["tools"]
+    assert tools["*"] is False
+    assert tools["read"] and tools["edit"] and tools["write"] and tools["bash"]
+    assert not (tools["grep"] or tools["glob"] or tools["list"])
+
+
+def test_a_confined_turn_with_no_commands_has_no_shell():
+    with tempfile.TemporaryDirectory() as tmp:
+        (Path(tmp) / ".git").mkdir()
+        _, cfg = _turn(AgentProfile(name="quiet", confined=True), cwd=tmp)
+    entry = cfg["agent"]["quiet"]
+    assert entry["tools"]["bash"] is False
+    assert entry["permission"]["bash"] == {"*": "deny"}
+    assert entry["permission"]["edit"] == {"*": "deny", "**": "allow"}
+
+
+def test_a_confined_turn_refuses_a_directory_outside_its_worktree():
+    """A path outside the worktree falls under ``external_directory``, which the turn denies, so the added directory would be silently unreadable."""
+    with tempfile.TemporaryDirectory() as tmp, tempfile.TemporaryDirectory() as elsewhere:
+        (Path(tmp) / ".git").mkdir()
+        try:
+            _turn(CONFINED, cwd=tmp, add_dirs=[elsewhere])
+        except ValueError as exc:
+            assert "outside" in str(exc)
+        else:
+            raise AssertionError("a directory outside the worktree should have been refused")
+
+
+def test_naming_commands_without_confinement_is_refused():
+    """Commands on an unconfined profile would read as a limit that nothing enforces."""
+    try:
+        AgentProfile(name="loose", commands=("ostler",))
+    except ValueError as exc:
+        assert "not confined" in str(exc)
+    else:
+        raise AssertionError("commands without confinement should have been refused")
 
 
 if __name__ == "__main__":

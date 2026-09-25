@@ -316,6 +316,33 @@ folds `write`, `edit` and `patch` onto a single permission, so denying any of th
 disarms the turn's editing entirely, and its adapter refuses such a profile rather than
 shipping a turn that cannot write.
 
+### Confining a turn to its directory (`confined`, `commands`)
+
+A tool list says what a turn may call, not where it may reach. A turn that writes pages
+under `docs/` can still read the whole checkout with the same tool. `confined=True` holds
+the turn to its `cwd`: it reads only there and in its `add_dirs`, and it writes only
+there. `commands` names the only shell commands it may run, each with any arguments, and
+with none named the turn has no shell.
+
+```python
+WRITER = AgentProfile(
+    name="docs-writer",
+    tools={"*": False},
+    confined=True,
+    commands=("ostler", check_command),
+)
+
+self.agent("prompts/write.md", profile=WRITER, cwd=root / "docs")
+```
+
+A confined turn can also read the project skill directories its CLI loads skills from,
+since a skill is files the turn opens. Each backend enables the file tools it can hold to those paths, so the profile names no
+CLI's tools. The claude backend runs the turn under `--permission-mode dontAsk` with
+project settings only, where a call no rule allows is refused. The opencode backend writes
+permission rules relative to the git worktree, and it drops grep, glob and list, because
+opencode answers them outside its path rules. It refuses a confined turn outside a git
+worktree, or one whose `add_dirs` leave it.
+
 `retries` overrides the run's `AGENT_MAX_REPHRASE_ATTEMPTS` for this node alone — how many
 times a failed turn is re-asked from scratch in a fresh session before the ladder gives up.
 Pass `0` when the turn's **deliverable is a file rather than its reply** and this state can

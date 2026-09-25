@@ -29,6 +29,13 @@ class AgentProfile:
     text. ``disable_mcp`` names MCP servers to leave unattached. Workhorse never authors
     a profile. A workflow knows which tools its own prompt needs, and hands one down on
     its node.
+
+    ``confined`` holds the turn to its working directory. It reads only there and in
+    the turn's added directories, and it writes only there. The backend enables the
+    file tools it can hold to those paths and drops the ones it cannot. ``commands``
+    names the only shell commands a confined turn may run, each with any arguments.
+    With none named, the turn has no shell. A confined turn can also read the project
+    skills its CLI loads, since a skill is files the turn opens.
     """
 
     name: str
@@ -37,6 +44,22 @@ class AgentProfile:
     disable_mcp: tuple[str, ...] = ()
     tool_output_max_lines: int | None = None
     tool_output_max_bytes: int | None = None
+    confined: bool = False
+    commands: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        if self.commands and not self.confined:
+            raise ValueError(
+                f"agent '{self.name}' names commands but is not confined, so nothing would hold it to them"
+            )
+
+
+def git_worktree(directory: Path) -> Path | None:
+    """The nearest ancestor of ``directory`` holding ``.git``, or None when it lies in no worktree."""
+    for candidate in (directory, *directory.parents):
+        if (candidate / ".git").exists():
+            return candidate
+    return None
 
 
 def prepare_argv_prompt(prompt: str, prompt_path: Path | None) -> tuple[str, Path | None]:

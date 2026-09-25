@@ -332,6 +332,45 @@ def test_claude_denies_the_tools_a_profile_switches_off():
     assert cmd[cmd.index("--disallowedTools", cmd.index("--disallowedTools") + 1) + 1] == "Bash"
 
 
+def test_claude_runs_a_confined_profile_under_its_rules_instead_of_skipping_them():
+    """Skipping permissions lets every call through, so a confined turn refuses whatever its rules do not allow."""
+    cmd = _capture_claude_cmd(model="opus", agent=AgentProfile(name="docs", tools={"*": False}, confined=True))
+    assert "--dangerously-skip-permissions" not in cmd
+    assert cmd[cmd.index("--permission-mode") + 1] == "dontAsk"
+    assert cmd[cmd.index("--setting-sources") + 1] == "project"
+    assert cmd[cmd.index("--tools") + 1] == "Skill,Read,Edit,Write,Glob,Grep"
+    assert cmd[cmd.index("--allowedTools") + 1] == "Edit(./**)"
+    assert "--strict-mcp-config" in cmd
+
+
+def test_claude_allows_a_confined_profile_only_its_named_commands():
+    agent = AgentProfile(name="docs", tools={"*": False}, confined=True, commands=("ostler", "python -m check job.json"))
+    cmd = _capture_claude_cmd(model="opus", agent=agent)
+    assert cmd[cmd.index("--tools") + 1].endswith(",Bash")
+    start = cmd.index("--allowedTools") + 1
+    assert cmd[start:start + 5] == [
+        "Edit(./**)",
+        "Bash(ostler)",
+        "Bash(ostler *)",
+        "Bash(python -m check job.json)",
+        "Bash(python -m check job.json *)",
+    ]
+
+
+def test_claude_lets_a_confined_turn_read_the_project_skills_above_its_cwd():
+    """A turn run from docs/ loads a project skill but is refused its reference files, unless the skill directory is added."""
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp).resolve()
+        (root / ".git").mkdir()
+        (root / "docs").mkdir()
+        (root / ".claude" / "skills").mkdir(parents=True)
+        agent = AgentProfile(name="docs", tools={"*": False}, confined=True)
+        confined = _capture_claude_cmd(agent=agent, cwd=str(root / "docs"))
+        free = _capture_claude_cmd(cwd=str(root / "docs"))
+    assert confined[confined.index("--add-dir") + 1] == str(root / ".claude" / "skills")
+    assert "--add-dir" not in free
+
+
 def test_claude_keeps_a_large_prompt_on_stdin():
     prompt = "large prompt\n" * 12_000
     captured = {}

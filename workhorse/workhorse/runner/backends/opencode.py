@@ -16,6 +16,7 @@ from workhorse.runner import usage as _usage
 from workhorse.runner.backends import (
     AgentProfile,
     ensure_prompt_is_not_in_argv,
+    git_worktree,
     prepare_argv_prompt,
 )
 from workhorse.runner.backends.jsonl import JsonlBackend
@@ -75,7 +76,68 @@ def _merge(base: dict[str, Any], overlay: dict[str, Any]) -> dict[str, Any]:
     return merged
 
 
-def _agent_config(agent: AgentProfile) -> dict[str, Any]:
+_SKILL_DIRS = (".opencode/skills", ".claude/skills", ".agents/skills")
+
+
+def _worktree(cwd: Path) -> Path:
+    """The git worktree opencode resolves its path rules against."""
+    worktree = git_worktree(cwd)
+    if worktree is None:
+        raise ValueError(f"a confined opencode turn needs a git worktree, and {cwd} is in none")
+    return worktree
+
+
+def _under(worktree: Path, directory: Path) -> str:
+    """The path rule matching everything under ``directory``, relative to ``worktree`` as opencode reads it."""
+    if not directory.is_relative_to(worktree):
+        raise ValueError(
+            f"a confined opencode turn reaches only inside its worktree {worktree}, and {directory} is outside it"
+        )
+    relative = directory.relative_to(worktree).as_posix()
+    return "**" if relative == "." else f"{relative}/**"
+
+
+def _confinement(agent: AgentProfile, cwd: str | None, add_dirs: list[str] | None) -> dict[str, Any]:
+    """The tools and permission rules that hold a confined turn to its cwd and its named commands.
+
+    opencode matches a read or edit rule against the path relative to the git worktree,
+    so an absolute pattern matches nothing. Its grep, glob and list tools answer outside
+    those rules, so a confined turn does without them. The directories opencode loads
+    project skills from stay readable.
+    """
+    here = Path(cwd or os.getcwd()).resolve()
+    worktree = _worktree(here)
+    readable = [here, *(Path(directory).resolve() for directory in add_dirs or [])]
+    tools = {
+        **{name: on for name, on in agent.tools.items() if on},
+        "*": False,
+        "read": True,
+        "edit": True,
+        "write": True,
+        "bash": bool(agent.commands),
+        "grep": False,
+        "glob": False,
+        "list": False,
+    }
+    permission = {
+        "external_directory": "deny",
+        "read": {
+            "*": "deny",
+            **{_under(worktree, directory): "allow" for directory in readable},
+            **{f"{skills}/**": "allow" for skills in _SKILL_DIRS},
+        },
+        "edit": {"*": "deny", _under(worktree, here): "allow"},
+        "bash": {
+            "*": "deny",
+            **{rule: "allow" for command in agent.commands for rule in (command, f"{command} *")},
+        },
+    }
+    return {"tools": tools, "permission": permission}
+
+
+def _agent_config(
+    agent: AgentProfile, cwd: str | None = None, add_dirs: list[str] | None = None
+) -> dict[str, Any]:
     """``agent`` as the slice of opencode config that defines it.
 
     opencode folds an agent's ``tools`` map into its permission ruleset as a
@@ -99,6 +161,8 @@ def _agent_config(agent: AgentProfile) -> dict[str, Any]:
     entry: dict[str, Any] = {}
     if agent.tools:
         entry["tools"] = dict(agent.tools)
+    if agent.confined:
+        entry.update(_confinement(agent, cwd, add_dirs))
     if agent.steps is not None:
         entry["steps"] = agent.steps
     config: dict[str, Any] = {"agent": {agent.name: entry}}
@@ -118,7 +182,11 @@ def _agent_config(agent: AgentProfile) -> dict[str, Any]:
 
 
 def _config_content(
-    operator: str | None, model: str | None, agent: AgentProfile | None
+    operator: str | None,
+    model: str | None,
+    agent: AgentProfile | None,
+    cwd: str | None = None,
+    add_dirs: list[str] | None = None,
 ) -> str | None:
     """The ``OPENCODE_CONFIG_CONTENT`` for this turn, merged over whatever the operator configured.
 
@@ -138,7 +206,7 @@ def _config_content(
     if model and "small_model" not in base:
         overlay["small_model"] = model
     if agent is not None:
-        overlay = _merge(overlay, _agent_config(agent))
+        overlay = _merge(overlay, _agent_config(agent, cwd, add_dirs))
     if not overlay:
         return operator
     return json.dumps(_merge(base, overlay))
@@ -259,7 +327,9 @@ class OpenCodeBackend(JsonlBackend):
         cmd += ["--", argv_prompt]
         ensure_prompt_is_not_in_argv(prompt, cmd)
         env_extra = self.harness_env()
-        config = _config_content(env_extra.get(_OPENCODE_CONFIG_ENV), model, agent)
+        config = _config_content(
+            env_extra.get(_OPENCODE_CONFIG_ENV), model, agent, cwd, add_dirs
+        )
         if config is not None:
             env_extra = {**env_extra, _OPENCODE_CONFIG_ENV: config}
         if _OPENCODE_OUTPUT_TOKEN_MAX_ENV not in env_extra:
