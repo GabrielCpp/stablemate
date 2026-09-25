@@ -911,7 +911,8 @@ def _verify_count(observed: Any, args: Mapping[str, Any]) -> tuple[bool, Any, An
             return False, {"subject": args["subject"], "countable": False, "reason": str(exc)}, args["equals"]
     if isinstance(document, Mapping):
         resolved, document = _resolve_path(document, args["subject"])
-        if not resolved:
+        selected_nothing = _is_projection(args["subject"]) and document == []
+        if not resolved and not selected_nothing:
             return False, {"subject": args["subject"], "present": False}, args["equals"]
     if isinstance(document, bool | str) or not isinstance(document, int | Sized):
         return False, {"subject": args["subject"], "countable": False}, args["equals"]

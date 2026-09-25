@@ -207,6 +207,15 @@ def test_count_counts_what_a_wildcard_or_filter_selects() -> None:
     assert ok is True and actual == 2
 
 
+def test_count_is_zero_when_a_wildcard_or_filter_selects_nothing() -> None:
+    """An empty selection is a count, so an empty ledger is not reported as a missing one."""
+    count = harness.VERIFIERS["count"]
+    assert count({"entries": []}, {"subject": "$.entries[*]", "equals": 0}) == (True, 0, 0)
+    assert count(LEDGER, {"subject": "people[?(@.who=='zed')]", "equals": 0}) == (True, 0, 0)
+    ok, actual, _ = count({"policies": []}, {"subject": "claims[*]", "equals": 0})
+    assert ok is False and actual == {"subject": "claims[*]", "present": False}
+
+
 def test_json_path_without_a_comparison_is_red_not_green() -> None:
     """`ostler.checks` refuses this call where it is declared."""
     ok, actual, expected = harness.VERIFIERS["json_path"](
