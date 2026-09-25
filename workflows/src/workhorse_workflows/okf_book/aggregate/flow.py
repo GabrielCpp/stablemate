@@ -177,7 +177,7 @@ class Aggregate(BookFlow):
         ))
         started = time.monotonic()
         written = self.agent(
-            "aggregate/prompts/write-operations.md" if job.kind is JobKind.OPERATIONS else "aggregate/prompts/write-flows.md",
+            WRITE_PROMPTS[job.kind],
             returns=Written,
             power="high",
             args={
@@ -206,11 +206,11 @@ class Aggregate(BookFlow):
         rules, checks = format_rules(folder), describe_checks()
         shown = pack_read(file_tokens(root, existing_pages(root, job.owned_pages)), SHOWN_PAGES_BUDGET_TOKENS)
         told = pages.tokens + problems.tokens + shown.tokens + estimated_tokens(len(rules) + len(checks))
-        fixed = prompt_tokens(WRITE_PROMPTS[job.kind]) + told + total_text_tokens(stories)
+        fixed = prompt_tokens(WRITE_PROMPTS[JobKind.PAGE]) + told + total_text_tokens(stories)
         contracts = job_contracts(root, self.records_dir, job, budget=TURN_BUDGET_TOKENS - fixed)
         started = time.monotonic()
         reply = self.agent(
-            "aggregate/prompts/write-page.md",
+            WRITE_PROMPTS[JobKind.PAGE],
             returns=str,
             power="high",
             args={
@@ -300,7 +300,7 @@ class Aggregate(BookFlow):
         numbered = numbered_contracts(owed)
         started = time.monotonic()
         verdict = self.agent(
-            "aggregate/prompts/verify-page.md",
+            VERIFY_PROMPT,
             returns=Verdict,
             power="medium",
             args={
