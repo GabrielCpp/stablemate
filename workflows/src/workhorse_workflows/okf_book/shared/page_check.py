@@ -2,7 +2,8 @@
 
 Nothing here changes a page. A page nothing reachable links to is
 charged to the turn. Every doctor error on a changed page is charged, except a stale citation,
-which the commit restamps. Every obligation
+which the commit restamps. So is a bullet the page's type does not declare, which doctor only warns
+about because a hand-kept book may carry one, but which on a written page is a claim nothing runs. Every obligation
 of a changed page that does not compile is charged, unless the gap is one ostler cannot run
 yet, which is ostler's to fix and not the page's. Two gaps are no defect at all: a precondition
 the arrangement already discharges, and the placeholder obligation every node mints for itself,
@@ -33,6 +34,7 @@ BOOK_STORY = "book"
 OSTLER_GAPS = HARNESS_LIMIT_GAPS | frozenset({"needs-snapshot", "needs-out-of-band-observation"})
 RESTAMPED_CODES = frozenset({"stale-citation"})
 REACH_CODES = frozenset({"unreachable-node"})
+CHARGED_WARNINGS = frozenset({"unknown-bullet"})
 DISCHARGED_GAPS = frozenset({"precondition-discharged-by-arrangement"})
 NODE_OBLIGATION_SUFFIXES = (":contract", ":end-state")
 UNDECLARED_GAP = "no-verify-declared"
@@ -144,7 +146,7 @@ def _doctor_problems(root: Path, pages: list[str]) -> list[str]:
     return [
         f"{f.path}:{f.line}: {f.code}: {f.message}" + (f" {f.suggestion}" if f.suggestion else "")
         for f in report.findings
-        if f.severity == "error" and f.code not in RESTAMPED_CODES | REACH_CODES
+        if (f.severity == "error" or f.code in CHARGED_WARNINGS) and f.code not in RESTAMPED_CODES | REACH_CODES
     ]
 
 

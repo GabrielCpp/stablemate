@@ -195,3 +195,12 @@ def test_the_command_prints_only_what_the_check_says(app: App, tmp_path: Path) -
     ran = subprocess.run([sys.executable, "-m", CHECK_MODULE, str(path)], capture_output=True, text=True, check=False)
 
     assert (ran.returncode, ran.stdout, ran.stderr) == (0, f"{PASSED}\n", "")
+
+
+def test_a_bullet_the_type_does_not_declare_is_printed(app: App) -> None:
+    repo = app("tally-cli")
+    _append(repo, ROOT_PAGE, "\n## concept: the ledger\n\n- run: invoke(argv=[\"-m\", \"tally\", \"init\"])\n\nThe ledger is one file.\n")
+
+    problems = page_problems(repo, "tally", [ROOT_PAGE])
+
+    assert any("unknown-bullet" in line and "`run:`" in line for line in problems)
