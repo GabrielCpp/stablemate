@@ -136,6 +136,17 @@ written, and parse it in the workflow. Carried inside a JSON string, such a docu
 a second layer of escapes, and a model drops or doubles one often enough to break it. An
 empty reply goes back on the retry ladder.
 
+A reply can parse and still be unusable: a verdict naming a page the turn was never shown,
+say, or a placeholder where a value belongs. Pass `accept=` a callable that takes the parsed
+reply and raises when the workflow cannot use it. The ladder treats the raise exactly as a
+reply that did not parse. It asks again with the exception's message, and it stops the turn
+when the retries run out. Say in the message what a usable reply looks like, since the
+agent reads nothing else.
+
+```python
+verdict = self.agent("prompts/verify.md", returns=Verdict, accept=lambda found: names_shown_pages(found, shown))
+```
+
 ## Unattended resilience (waiting, then a clean stop)
 
 Runs are meant to survive a week without supervision, so the runner absorbs what it can:

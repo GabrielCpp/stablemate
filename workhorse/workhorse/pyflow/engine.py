@@ -264,6 +264,7 @@ class Engine:
         session: str | None = None,
         profile: AgentProfile | None = None,
         label: str | None = None,
+        accept: Callable[[Any], object] | None = None,
     ) -> Any:
         inline = label is not None
         node_id = label if inline else (Path(prompt).stem or "agent")
@@ -343,11 +344,7 @@ class Engine:
                     session_chain=session or "",
                     run_dir=writer.run_dir,
                     visit_dir=writer.visit_dir(node_id),
-                    validate=(
-                        returns.model_validate
-                        if isinstance(returns, type) and issubclass(returns, BaseModel)
-                        else None
-                    ),
+                    validate=_validator(returns, accept),
                 )
             except BackendInvocationError as exc:
                 if exc.timed_out:
@@ -469,6 +466,20 @@ def _outputs_for(returns: type) -> list[OutputSpec]:
         OutputSpec(key=name, required=bool(getattr(info, "is_required", lambda: True)()))
         for name, info in fields.items()
     ]
+
+
+def _validator(returns: type, accept: Callable[[Any], object] | None) -> Callable[[dict[str, Any]], object] | None:
+    """What a reply must pass before its turn ends: the model it parses into, then the caller's own acceptance of that value."""
+    if accept is None and not (isinstance(returns, type) and issubclass(returns, BaseModel)):
+        return None
+
+    def validate(raw: dict[str, Any]) -> object:
+        value = _revive(raw, returns)
+        if accept is not None:
+            _ = accept(value)
+        return value
+
+    return validate
 
 
 def _coerce(raw: dict[str, Any], returns: type, node_id: str) -> Any:

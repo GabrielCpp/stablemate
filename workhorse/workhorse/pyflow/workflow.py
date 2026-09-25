@@ -183,12 +183,16 @@ class Workflow(BaseModel):
         session: str | None = None,
         profile: AgentProfile | None = None,
         label: str | None = None,
+        accept: Callable[[T], object] | None = None,
     ) -> T:
         """Render `prompt`, run an agent turn, and validate the reply into `returns`.
 
         `prompt` is a template path under the workflow package. With `label`, it is the
         turn's own text instead, and the label is the node id the run directory, the
         span and the dry-run stand-in are all keyed by.
+
+        `accept` is handed the validated reply before the turn ends. When it raises, the
+        agent is asked again with the exception's message, as for a reply that did not parse.
         """
         engine = self._require_engine()
         if label is not None:
@@ -212,6 +216,7 @@ class Workflow(BaseModel):
                 session=session,
                 profile=profile,
                 label=label,
+                accept=accept,
             )
 
     @staticmethod

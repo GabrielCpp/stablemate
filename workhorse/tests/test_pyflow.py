@@ -1156,6 +1156,33 @@ def test_agent_hands_the_result_model_to_the_ladder_as_its_validator():
         assert "count" in str(exc)
 
 
+def test_a_reply_the_caller_does_not_accept_fails_the_ladders_validator_with_the_callers_reason():
+    """A reply can parse into its model and still say nothing the caller can use, and the ladder re-asks only what its validator refuses."""
+    with tempfile.TemporaryDirectory() as tmp:
+        seen: list[Any] = []
+
+        def fake_run_agent(node: Any, ctx: Any, *args: Any, **kwargs: Any) -> Any:
+            seen.append(kwargs.get("validate"))
+            return "rendered", {"kind": "ok", "count": 1}
+
+        env = _env(tmp, agent_runner=ScriptedRunner(fake_run_agent))
+
+        def at_least_two(reply: Payload) -> None:
+            if reply.count < 2:
+                raise ValueError(f"count {reply.count} is under two")
+
+        class Asks(Workflow):
+            def start(self) -> Transition:
+                return Done(self.agent("prompts/review.md", returns=Payload, accept=at_least_two).count)
+
+        assert drive(Asks(), env) == 1
+
+        validate = seen[0]
+        validate({"kind": "ok", "count": 2})
+        exc = _raises(Exception, lambda: validate({"kind": "ok", "count": 1}))
+        assert "count 1 is under two" in str(exc)
+
+
 def test_agent_carries_cwd_and_add_dirs_onto_the_node():
     """`cwd` decides whose CLAUDE.md, skills and git context a turn sees, so a workflow that runs against a checkout it computed must be able to say where."""
     with tempfile.TemporaryDirectory() as tmp:
