@@ -3,7 +3,7 @@
 Write `REPORT.md` in the study's folder when the study stops. It answers four questions, in
 this order, for a reader who was not there.
 
-1. **Where does the purpose stand?** The best result on the yardstick, projected to the
+1. **Where does the purpose stand?** The verdict: reached, banked or negative. Then the best result on the yardstick, projected to the
    full workload, next to the target and the baseline.
 2. **What worked and what did not?** One line per probe from the ledger, failures included,
    each with its cost and what it settled. Untried candidates from the field follow, each

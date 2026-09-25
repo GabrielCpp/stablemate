@@ -64,6 +64,13 @@ the input set, the commit, the seeds, and the judge or scorer. The judge stays f
 the whole study. The cheapest way to look faster is to make the judge pass sooner, so a
 change to the judge is its own probe, reported as one.
 
+When the method learns, hold part of the yardstick out of its training and score only on
+that part. A method that scores on the cases it trained on has shown memory.
+
+Run the control on every seed before any method runs. When its spread across seeds is as
+large as the margin the share asks for, one lucky seed can meet the share. Add seeds or
+cases until the margin clears the spread.
+
 Done when the baseline row is in the ledger with the commit and input set it ran on.
 
 ## 3. Profile before any hypothesis
@@ -87,7 +94,12 @@ the idea under test, such as brute-force search, a fixed rule, or the unchanged 
 given the same extra compute. Measure it early. When it matches the method, the yardstick
 cannot credit the method, and that is a finding about the yardstick. Give the control
 every move the fault can need. A search that swaps names cannot fail on faults in operators
-or literals and then count as the control for them. For each candidate write:
+or literals and then count as the control for them.
+
+The field also holds the **broken-link control**: the method's own output, attached to
+the wrong case or the wrong site. A method that beats the no-method control and ties the
+broken-link control wins on what it adds, such as more text or more compute, and not on
+the link it claims. For each candidate write:
 
 - the expected gain, tied to a line of the profile,
 - the cost to test it,
@@ -114,6 +126,14 @@ own input rules. Hand that system the perfect output before building the method'
 the oracle does not clear the bar, no method can, and the gap is in how the output is
 delivered. Hand it the same format filled in by the no-method control as well, so the
 format cannot take the method's credit.
+
+**Check for leaks before a decisive run.** List every route by which the answer could
+reach the measured path without the method: an oracle value, a name that spells the
+answer, a template, a check that tells the agent more than the method would. Test each
+route with a script over the generated inputs, because reading the generator misses what
+the inputs hold. Then remove the method's learned part, such as zeroed weights or a
+shuffled table, and confirm the result falls to the control. A result that survives its
+own removal came from somewhere else.
 
 **Order by cost before launching anything.** List the next decisive checks with their
 estimates, and run the cheapest first. A long job in the background is not free: a
@@ -161,6 +181,13 @@ A result that means the instrument cannot resolve the target is the most valuabl
 a study produces. "Every arm scores zero" says the full run can only compare zero with
 zero. Stop that path before spending on it.
 
+**Have a decisive result checked before it counts.** A second agent that did not write the
+probe re-runs the scorer on the recorded outputs. It reads the row's `settles` sentence,
+the command and the bar, and nothing of the study's reasoning. It recomputes the number,
+holds it against the bar, and repeats the leak check. Its number goes into the row's
+`checked` field. When the two numbers differ, the row records both and the result stays
+open until the difference is explained.
+
 ## 8. Step back
 
 Write a `reflection` row when any of these fires:
@@ -175,6 +202,13 @@ the current path still the cheapest route to the purpose. If it is not, name the
 route and take it. Continuing is a decision the reflection has to argue for.
 
 ## 9. Stop and report
+
+The study ends on one of three verdicts, and the report states it first:
+
+- **reached**: the purpose is met on the yardstick.
+- **banked**: a claim the study can defend that is not the purpose, stated with its gap
+  to the purpose in numbers. Banking records a real result without moving the bar.
+- **negative**: a kill result fired, or the field is exhausted.
 
 The study stops when:
 
