@@ -87,8 +87,10 @@ own probe.
 
 ## 6. Record, including the failures
 
-One ledger row per step, appended before the step starts and completed when it ends. Take
-timestamps from `date -Iseconds`, not from memory. Each row carries its `kind`:
+One ledger row per step, appended before the step starts and completed when it ends. The
+command that appends the row takes the start time from `date -Iseconds`, so the row exists
+before the work does. A row written after the step began says its start is reconstructed.
+Each row carries its `kind`:
 
 | kind | what it is |
 | --- | --- |

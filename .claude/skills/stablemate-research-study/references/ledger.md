@@ -27,9 +27,9 @@ when the step ends. Never delete a row.
 | `step` | what was done, in one line |
 | `kind` | `decisive`, `exploration`, `apparatus` or `reflection` |
 | `settles` | the "this changes the answer" sentence, or null for exploration |
-| `serves` | for `apparatus` only: the decisive step it makes runnable |
+| `serves` | for `apparatus` only: the decisive step it makes runnable, or `the study` for setup every step needs, such as a snapshot commit |
 | `estimate_min` | wall minutes expected, written before the step starts |
-| `actual_min` | wall minutes taken |
+| `actual_min` | `end` minus `start` in minutes, computed from the two timestamps and never written by hand |
 | `outcome` | the result, projected against the purpose |
 | `commit` | the commit the step ran on, when it ran code |
 
