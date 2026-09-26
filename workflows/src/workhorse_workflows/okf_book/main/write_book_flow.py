@@ -16,7 +16,7 @@ from workhorse_workflows.okf_book.shared.book_commits import book_commit_subject
 from workhorse_workflows.okf_book.shared.book_flow import BookFlow
 from workhorse_workflows.okf_book.shared.confine import Snapshot, book_changes, put_back_outside, snapshot
 from workhorse_workflows.okf_book.shared.entries import FEATURES_DIR
-from workhorse_workflows.okf_book.shared.metrics import TurnMetric, record_turn
+from workhorse_workflows.okf_book.shared.metrics import TurnMetric, record_turn, turn_metric
 
 WRITE_PROMPT = "main/prompts/write-book.md"
 
@@ -75,11 +75,9 @@ class WriteBook(BookFlow):
             )
         except (AgentTurnFailed, AgentTimeout) as failed:
             failure = f"the writer's turn ended without a reply: {failed}"
-        metric = TurnMetric(
-            phase=Phase.WRITE,
-            node=Path(WRITE_PROMPT).stem,
-            subjects=(surface.service,),
-            minutes=(time.monotonic() - started) / 60,
+        node = Path(WRITE_PROMPT).stem
+        metric = turn_metric(
+            Phase.WRITE, node, (surface.service,), (time.monotonic() - started) / 60, self.turn_usage(node)
         )
         return Continue(reply, self.record_writer_turn, before=before, metric=metric, failure=failure).because(
             "record the writer's turn"

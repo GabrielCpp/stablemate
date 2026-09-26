@@ -5,6 +5,7 @@ It also names each page of the run's books that nothing reaches, which the run d
 from __future__ import annotations
 
 from collections import defaultdict
+from collections.abc import Iterable
 from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict
@@ -22,13 +23,16 @@ _CONCEPTS = "concepts"
 
 
 class BookCost(BaseModel):
-    """What one book cost: its share of every turn that wrote it."""
+    """What one book cost: its share of every turn that wrote it. Its dollars are unknown when no turn reported any."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     subject: str
     minutes: float
     turns: int
+    tokens_read: int = 0
+    tokens_generated: int = 0
+    dollars: float | None = None
 
 
 class BookReport(BaseModel):
@@ -39,22 +43,35 @@ class BookReport(BaseModel):
     services: tuple[str, ...]
     orphans: tuple[str, ...]
     minutes: float
+    dollars: float | None = None
     costs: tuple[BookCost, ...]
     blockers: tuple[Blocker, ...]
     run: RunSummary | None
     reading: tuple[str, ...]
 
 
+def _dollars(shares: Iterable[tuple[TurnMetric, int]]) -> float | None:
+    reported = [m.dollars / share for m, share in shares if m.dollars is not None]
+    return round(sum(reported), 2) if reported else None
+
+
 def book_costs(metrics: tuple[TurnMetric, ...]) -> tuple[BookCost, ...]:
     """Each book's even share of the turns that named it, dearest first."""
-    minutes: defaultdict[str, float] = defaultdict(float)
-    turns: defaultdict[str, int] = defaultdict(int)
+    by_subject: defaultdict[str, list[tuple[TurnMetric, int]]] = defaultdict(list)
     for metric in metrics:
-        share = max(len(metric.subjects), 1)
         for subject in metric.subjects:
-            minutes[subject] += metric.minutes / share
-            turns[subject] += 1
-    costs = (BookCost(subject=s, minutes=round(minutes[s], 2), turns=turns[s]) for s in turns)
+            by_subject[subject].append((metric, len(metric.subjects)))
+    costs = (
+        BookCost(
+            subject=subject,
+            minutes=round(sum(m.minutes / share for m, share in shares), 2),
+            turns=len(shares),
+            tokens_read=sum(m.tokens_read // share for m, share in shares),
+            tokens_generated=sum(m.tokens_generated // share for m, share in shares),
+            dollars=_dollars(shares),
+        )
+        for subject, shares in by_subject.items()
+    )
     return tuple(sorted(costs, key=lambda c: (-c.minutes, c.subject)))
 
 
@@ -92,6 +109,7 @@ def build_report(root: Path, records_dir: Path, services: tuple[str, ...]) -> Bo
         services=services,
         orphans=orphan_pages(root, services),
         minutes=round(sum(m.minutes for m in metrics), 2),
+        dollars=_dollars((m, 1) for m in metrics),
         costs=book_costs(metrics),
         blockers=read_blockers(records_dir),
         run=read_run(records_dir),
@@ -114,13 +132,17 @@ def _run_lines(report: BookReport) -> list[str]:
     return lines
 
 
+def _money(dollars: float | None) -> str:
+    return "dollars not reported" if dollars is None else f"${dollars:.2f}"
+
+
 def render_report(report: BookReport) -> str:
     """The report as a page an operator reads top to bottom."""
     lines = [
         "# okf book run",
         "",
         f"Services: {', '.join(report.services)}.",
-        f"{report.minutes} minutes of writing.",
+        f"{report.minutes} minutes of writing, {_money(report.dollars)}.",
         "",
         "## Pages nothing reaches",
         "",
@@ -140,7 +162,11 @@ def render_report(report: BookReport) -> str:
         "",
         "## Cost per book",
         "",
-        *(f"- `{c.subject}`: {c.minutes} min, {c.turns} turns" for c in report.costs),
+        *(
+            f"- `{c.subject}`: {c.minutes} min, {c.turns} turns, {c.tokens_read} tokens read, "
+            + f"{c.tokens_generated} generated, {_money(c.dollars)}"
+            for c in report.costs
+        ),
     ]
     return "\n".join(lines) + "\n"
 

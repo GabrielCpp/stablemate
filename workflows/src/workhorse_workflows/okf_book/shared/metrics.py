@@ -1,9 +1,10 @@
-"""What each turn cost, appended as it finishes, so a run's minutes are read per book afterwards."""
+"""What each turn cost, appended as it finishes, so a run's minutes, tokens and dollars are read per book afterwards."""
 from __future__ import annotations
 
 from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict
+from workhorse.runner.usage import TurnUsage
 
 from workhorse_workflows.okf_book.shared.blockers import Phase
 
@@ -11,7 +12,7 @@ METRICS_NAME = "metrics.jsonl"
 
 
 class TurnMetric(BaseModel):
-    """One turn: its phase and prompt, the books it wrote, and its minutes."""
+    """One turn: its phase and prompt, the books it wrote, its minutes, the tokens it read and generated, and its dollars when the backend reported them."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -19,6 +20,23 @@ class TurnMetric(BaseModel):
     node: str
     subjects: tuple[str, ...]
     minutes: float
+    tokens_read: int = 0
+    tokens_generated: int = 0
+    dollars: float | None = None
+
+
+def turn_metric(phase: Phase, node: str, subjects: tuple[str, ...], minutes: float, usage: TurnUsage) -> TurnMetric:
+    """The turn's metric, with the tokens and dollars its backend reported."""
+    read = (usage.input_tokens or 0) + (usage.cache_read_input_tokens or 0) + (usage.cache_creation_input_tokens or 0)
+    return TurnMetric(
+        phase=phase,
+        node=node,
+        subjects=subjects,
+        minutes=minutes,
+        tokens_read=read,
+        tokens_generated=usage.generated_tokens or 0,
+        dollars=usage.total_cost_usd,
+    )
 
 
 def record_turn(run_dir: Path, metric: TurnMetric) -> None:
