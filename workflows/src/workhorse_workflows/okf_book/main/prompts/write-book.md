@@ -41,6 +41,14 @@ commands keep working. Read files with the Read, Glob and Grep tools, never the 
 {% endif %}
   and every rule the app applies must be stated as a claim with a `verify:` that would fail
   if the app stopped doing it.
+- Every {% if kind == "cli" %}command{% elif kind == "http" %}endpoint{% else %}screen{% endif %} sits on a journey a user takes. Write each journey as a `flow` page under
+  `flows/`, as the skill's flow reference says, with its `start:`, its `steps:`, its `end:` and
+  its `fixture:`, and link it from a page the entries page reaches. The check names every
+  {% if kind == "cli" %}command{% elif kind == "http" %}endpoint{% else %}screen{% endif %} no flow's steps link.
+{% if kind == "cli" %}
+  A step performs one command line, so the node it links states exactly one `run:`, and
+  `start:` checks with `absent(subject="<file>")` that a file the walk creates is not there yet.
+{% endif %}
 {% if kind != "cli" %}
 - The run brings the app up from the book alone. Write the stack `runbook` that starts it
   from a clean checkout, with the port, the health check and every service it needs, as the

@@ -4,7 +4,7 @@ Nothing here changes a page. It reports a missing entries page, every page nothi
 page reaches, and every doctor error on the book, except a stale citation, which the commit
 restamps. So is a bullet the page's type does not declare, which doctor only warns about because
 a hand-kept book may carry one, but which on a written page is a claim nothing runs. It reports
-every obligation that does not compile, unless the gap is one ostler cannot run yet, which is
+every command, endpoint and screen no flow walks, and every obligation that does not compile, unless the gap is one ostler cannot run yet, which is
 ostler's to fix and not the book's. Two gaps are no defect at all: a precondition the arrangement
 already discharges, and the placeholder obligation every node mints for itself, which owes a
 check only through the claims under it.
@@ -17,9 +17,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, JsonValue
+from pydantic import BaseModel, ConfigDict, JsonValue, TypeAdapter
 
 from ostler import doctor
+from ostler import graph as graph_mod
 from ostler.book_reach import DeadPage, dead_pages
 from ostler.model import load
 from ostler.qa.compile import HARNESS_LIMIT_GAPS, Plan, compile_plan_gaps
@@ -34,6 +35,8 @@ OSTLER_GAPS = HARNESS_LIMIT_GAPS | frozenset({"needs-snapshot", "needs-out-of-ba
 RESTAMPED_CODES = frozenset({"stale-citation"})
 REACH_CODES = frozenset({"unreachable-node"})
 CHARGED_WARNINGS = frozenset({"unknown-bullet"})
+JOURNEY_TYPES = frozenset({"command", "endpoint", "screen"})
+WALK_BULLETS = frozenset({"start", "steps", "end"})
 DISCHARGED_GAPS = frozenset({"precondition-discharged-by-arrangement"})
 NODE_OBLIGATION_SUFFIXES = (":contract", ":end-state")
 UNDECLARED_GAP = "no-verify-declared"
@@ -156,8 +159,51 @@ def _entries_problems(root: Path, service: str) -> list[str]:
     ]
 
 
+class _Edge(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    via: str
+    to: str | None
+
+
+class _Node(BaseModel):
+    """A node of the book's graph, with only the fields the journey check reads."""
+
+    model_config = ConfigDict(frozen=True)
+
+    id: str
+    type: str
+    surface: str | None
+    parent: str | None
+    edges: tuple[_Edge, ...]
+
+
+_NODES = TypeAdapter(tuple[_Node, ...])
+
+
+def off_journey_nodes(root: Path, service: str) -> tuple[str, ...]:
+    """Every command, endpoint and screen of the service that no flow's walk links, itself or through a part of it."""
+    nodes = [node for node in _NODES.validate_python(graph_mod.build(load(root))["nodes"]) if node.surface == service]
+    parents = {node.id: node.parent for node in nodes}
+    walked: set[str] = set()
+    for flow in (node for node in nodes if node.type == "flow"):
+        for edge in flow.edges:
+            target = edge.to if edge.via in WALK_BULLETS else None
+            while target and target not in walked:
+                walked.add(target)
+                target = parents.get(target)
+    return tuple(node.id for node in nodes if node.type in JOURNEY_TYPES and node.id not in walked)
+
+
+def _off_journey_problems(root: Path, service: str) -> list[str]:
+    return [
+        f"{node} is on no flow. Write a flow under flows/ whose steps link it, or link it from a step of a flow you have."
+        for node in off_journey_nodes(root, service)
+    ]
+
+
 def book_problems(root: Path, service: str) -> tuple[str, ...]:
-    """Every problem on the service's book: a missing entries page, a page nothing reaches, a doctor error, and a claim that does not compile."""
+    """Every problem on the service's book: a missing entries page, a page nothing reaches, a doctor error, a command, endpoint or screen no flow walks, and a claim that does not compile."""
     pages = _book_page_paths(root, service)
     dead = [
         f"{page.rel} is linked from no page the entries page reaches. Link it, or delete it."
@@ -166,4 +212,10 @@ def book_problems(root: Path, service: str) -> tuple[str, ...]:
     ]
     wanted = frozenset(pages)
     gaps = [gap for gap in compile_services(root, (service,)).gaps if gap_page(gap) in wanted and gap_side(gap) is Side.BOOK]
-    return (*_entries_problems(root, service), *dead, *_doctor_problems(root, pages), *_gap_problems(gaps))
+    return (
+        *_entries_problems(root, service),
+        *dead,
+        *_doctor_problems(root, pages),
+        *_off_journey_problems(root, service),
+        *_gap_problems(gaps),
+    )
