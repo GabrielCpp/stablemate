@@ -215,6 +215,32 @@ def _changed_refs(change: ChangedUnit, base_path: str, head_path: str) -> set[st
     }
 
 
+def _citing_nodes(nodes: Mapping[str, OwnerNode]) -> dict[tuple[str, str], set[str]]:
+    """The nodes citing each (repository, path), so a change is compared only with the nodes that name its file."""
+    citing: dict[tuple[str, str], set[str]] = {}
+    for node_id, node in nodes.items():
+        for cited in node.citations.values():
+            for value in cited:
+                try:
+                    ref = refs_mod.parse_code_ref(value)
+                except ValueError:
+                    continue
+                citing.setdefault((ref.repository, ref.path), set()).add(node_id)
+    return citing
+
+
+def _candidate_nodes(
+    change: ChangedUnit, order: Mapping[str, int], citing: Mapping[tuple[str, str], set[str]]
+) -> list[str]:
+    paths = {change.base_path, change.head_path}
+    candidates = set().union(*(
+        citing.get((change.repository, spelling), set())
+        for path in paths
+        for spelling in {path, path.replace("\\", "/")}
+    ))
+    return sorted(candidates, key=order.__getitem__)
+
+
 def map_changes(
     changes: Sequence[ChangedUnit],
     nodes: Mapping[str, OwnerNode],
@@ -226,6 +252,8 @@ def map_changes(
     file_owners: dict[str, set[str]] = {}
     symbol_owners: dict[str, set[str]] = {}
     unmapped: list[UnmappedChange] = []
+    citing = _citing_nodes(nodes)
+    order = {node_id: index for index, node_id in enumerate(nodes)}
     for change in changes:
         change_book_root = "" if change.repository else book_root
         book_change = replace(
@@ -237,9 +265,9 @@ def map_changes(
         refs = _changed_refs(change, book_change.base_path, book_change.head_path)
         owned_ref = source_ref(change.repository, book_change.path)
         mapped = change.status == "deleted"
-        for node_id, node in nodes.items():
+        for node_id in _candidate_nodes(book_change, order, citing):
             owned_file = False
-            for key, cited in node.citations.items():
+            for key, cited in nodes[node_id].citations.items():
                 exact = matching_refs(refs, cited)
                 if exact:
                     mapped = True

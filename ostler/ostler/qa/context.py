@@ -511,13 +511,14 @@ def build_context(
                 }
             )
     reached_by_the_diff = set(required_contracts)
+    subjects_by_node = {node_id: _named_subjects(node) for node_id, node in nodes_by_id.items()}
     required_subjects = {
-        subject for node_id in required_contracts for subject in _named_subjects(nodes_by_id[node_id])
+        subject for node_id in required_contracts for subject in subjects_by_node[node_id]
     }
     if required_subjects:
         hopped = False
         for node_id in sorted(contracts - required_contracts):
-            for subject in sorted(_named_subjects(nodes_by_id[node_id]) & required_subjects):
+            for subject in sorted(subjects_by_node[node_id] & required_subjects):
                 direct_reasons.setdefault(node_id, []).append(Reason(ReasonKind.RELATION_OF_REQUIRED, subject))
                 hopped = True
         if hopped:
@@ -526,10 +527,12 @@ def build_context(
                 for node_id in contracts
                 if _is_required(node_id, direct_reasons, grounded, shared_files, demoted_symbols)
             }
+        owners_by_subject: dict[str, list[str]] = {}
+        for node_id, subjects in subjects_by_node.items():
+            for subject in subjects & required_subjects:
+                owners_by_subject.setdefault(subject, []).append(node_id)
         for subject in sorted(required_subjects):
-            owners = sorted(
-                node_id for node_id, node in nodes_by_id.items() if subject in _named_subjects(node)
-            )
+            owners = sorted(owners_by_subject.get(subject, []))
             if len(owners) > _RELATION_FANOUT:
                 health.append(
                     {
