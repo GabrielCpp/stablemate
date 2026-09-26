@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import re
+from typing import Any
 from pathlib import Path
 
 from ostler import markdown, path as path_mod
@@ -104,7 +105,7 @@ def _paths(node_id: str, by_id: dict) -> tuple[list, list]:
 
 
 def build(graph: Graph, *, etype: str | None = None, surface: str | None = None,
-          resolver: LinkResolver | None = None) -> dict:
+          resolver: LinkResolver | None = None) -> dict[str, Any]:
     """Assemble the graph: every node (with bullets + out-edges) and a flat edge list."""
     if resolver is None:
         resolver = LinkResolver(graph)
