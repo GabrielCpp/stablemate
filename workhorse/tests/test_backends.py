@@ -334,22 +334,32 @@ def test_claude_denies_the_tools_a_profile_switches_off():
 
 def test_claude_runs_a_confined_profile_under_its_rules_instead_of_skipping_them():
     """Skipping permissions lets every call through, so a confined turn refuses whatever its rules do not allow."""
-    cmd = _capture_claude_cmd(model="opus", agent=AgentProfile(name="docs", tools={"*": False}, confined=True))
+    cmd = _capture_claude_cmd(
+        model="opus", agent=AgentProfile(name="docs", tools={"*": False}, confined=True), cwd="/work/app/docs"
+    )
     assert "--dangerously-skip-permissions" not in cmd
     assert cmd[cmd.index("--permission-mode") + 1] == "dontAsk"
     assert cmd[cmd.index("--setting-sources") + 1] == "project"
     assert cmd[cmd.index("--tools") + 1] == "Skill,Read,Edit,Write,Glob,Grep"
-    assert cmd[cmd.index("--allowedTools") + 1] == "Edit(./**)"
+    assert cmd[cmd.index("--allowedTools") + 1] == "Edit(//work/app/docs/**)"
     assert "--strict-mcp-config" in cmd
+
+
+def test_claude_anchors_a_confined_turn_writes_to_its_cwd_not_to_where_its_shell_moves():
+    """A relative rule follows the shell, so a turn that ran `cd` elsewhere is refused its own folder and granted the new one."""
+    agent = AgentProfile(name="docs", tools={"*": False}, confined=True)
+    cmd = _capture_claude_cmd(agent=agent, cwd="/work/app/docs/../docs")
+    rule = cmd[cmd.index("--allowedTools") + 1]
+    assert rule == "Edit(//work/app/docs/**)"
 
 
 def test_claude_allows_a_confined_profile_only_its_named_commands():
     agent = AgentProfile(name="docs", tools={"*": False}, confined=True, commands=("ostler", "python -m check job.json"))
-    cmd = _capture_claude_cmd(model="opus", agent=agent)
+    cmd = _capture_claude_cmd(model="opus", agent=agent, cwd="/work/app/docs")
     assert cmd[cmd.index("--tools") + 1].endswith(",Bash")
     start = cmd.index("--allowedTools") + 1
     assert cmd[start:start + 5] == [
-        "Edit(./**)",
+        "Edit(//work/app/docs/**)",
         "Bash(ostler)",
         "Bash(ostler *)",
         "Bash(python -m check job.json)",

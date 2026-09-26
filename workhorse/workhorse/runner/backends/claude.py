@@ -44,7 +44,7 @@ class ClaudeBackend(AgentBackend):
             "--output-format", "stream-json",
             "--verbose",
             "--disallowedTools", "Agent",
-            *_tool_flags(agent),
+            *_tool_flags(agent, cwd),
         ]
         if model:
             cmd.extend(["--model", model])
@@ -190,14 +190,15 @@ def _skill_dirs(agent: AgentProfile | None, cwd: str | None) -> list[str]:
     return [str(skills)] if skills.is_dir() else []
 
 
-def _tool_flags(agent: AgentProfile | None) -> list[str]:
+def _tool_flags(agent: AgentProfile | None, cwd: str | None) -> list[str]:
     """The flags that narrow a turn to its profile's tools: `--tools` and no MCP server when `*` is off, else a deny list."""
     tools = agent.tools if agent else {}
     named = {name: on for name, on in tools.items() if name != "*"}
     if agent is not None and agent.confined:
         shell = ["Bash"] if agent.commands else []
         enabled = dict.fromkeys([*_CONFINED_TOOLS, *shell, *(name for name, on in named.items() if on)])
-        allowed = ["Edit(./**)", *(rule for command in agent.commands for rule in (f"Bash({command})", f"Bash({command} *)"))]
+        here = Path(cwd or os.getcwd()).resolve()
+        allowed = [f"Edit(/{here}/**)", *(rule for command in agent.commands for rule in (f"Bash({command})", f"Bash({command} *)"))]
         return ["--tools", ",".join(enabled), "--strict-mcp-config", "--allowedTools", *allowed]
     if tools.get("*") is False:
         return ["--tools", ",".join(name for name, on in named.items() if on), "--strict-mcp-config"]
