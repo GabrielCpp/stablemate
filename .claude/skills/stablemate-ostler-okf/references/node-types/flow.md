@@ -83,6 +83,13 @@ On a `cli`, a step performs one command line, so the node it links states exactl
 node states no `run:`, or several different ones, because it cannot tell which run the step
 means.
 
+On an `http` surface, a step whose endpoint's `route:` carries a path variable, such as
+`GET /{key}`, requests the value the walk already holds for that name. An earlier step's
+endpoint supplies it with `capture: key from $.key`, so the request goes to the link the walk
+just made. Without such a capture, the flow's `fixture:` supplies it when exactly one fixture
+`provides:` a key of that name. A name neither supplies stays a template, and the compiler
+files it as `unresolved-precondition` on the step.
+
 **A journey whose steps cross targets is legal, and today it compiles to nothing.** A step's
 target is its node type paired with the `driver:` of the surface it lives on, so a flow that
 walks a mobile app and then a web app — or drives an api and then a browser — names two. One
