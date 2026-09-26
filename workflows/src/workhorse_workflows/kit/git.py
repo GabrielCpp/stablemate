@@ -156,6 +156,14 @@ def head_sha(path: str | Path, ref: str = "HEAD") -> str:
         return ""
 
 
+def last_commit_subject(path: str | Path, *pathspecs: str) -> str:
+    """The subject of the last commit that touched ``pathspecs``, or "" when none did."""
+    try:
+        return open_repo(path).git.log("-1", "--format=%s", "--", *pathspecs).strip()
+    except GitError:
+        return ""
+
+
 def short_sha(path: str | Path, ref: str = "HEAD") -> str:
     """The abbreviated commit sha for ``ref`` (``git rev-parse --short``), or "" when it can't be resolved."""
     try:

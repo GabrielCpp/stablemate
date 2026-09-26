@@ -8,7 +8,7 @@ import pytest
 from git.exc import GitError
 
 from workhorse.testing import make_git_repo
-from workhorse_workflows.kit.git import commit_all, commit_paths
+from workhorse_workflows.kit.git import commit_all, commit_paths, last_commit_subject
 
 
 def _tracked(root: Path, ref: str = "HEAD") -> set[str]:
@@ -62,6 +62,17 @@ def test_commit_paths_is_false_when_the_scope_did_not_change(tmp_path: Path) -> 
 
     assert commit_paths(root, "author: nothing to say", "docs") is False
     assert _head_subject(root) == "init"
+
+
+def test_last_subject_names_the_last_commit_that_touched_the_path(tmp_path: Path) -> None:
+    root = make_git_repo(tmp_path / "acme")
+    _write(root, "docs/a.md")
+    assert commit_paths(root, "docs: write a", "docs") is True
+    _write(root, "src/b.py")
+    assert commit_paths(root, "feat: add b", "src") is True
+
+    assert last_commit_subject(root, "docs") == "docs: write a"
+    assert last_commit_subject(root, "missing") == ""
 
 
 def _reject_commits(root: Path) -> None:
