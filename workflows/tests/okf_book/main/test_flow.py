@@ -104,6 +104,21 @@ def test_the_writer_runs_in_its_book_and_reads_only_the_surface_source(app: App,
 
 
 @pytest.mark.usefixtures("passing")
+def test_the_writer_is_told_the_qa_tools_its_scenarios_may_run(
+    app: App, drive_book: DriveBook, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    repo = app("tally-cli")
+    config = tmp_path / "config.toml"
+    _ = config.write_text('[qa_tools.python3]\ncommand = "python3"\ndescription = "the interpreter"\n', encoding="utf-8")
+    monkeypatch.setenv("STABLEMATE_CONFIG", str(config))
+    runner = _writer(repo)
+
+    _ = drive_book(OkfBook(repo_dir=str(repo), surfaces=(TALLY,)), runner)
+
+    assert runner.args_of("write-book")[0]["qa_tools"] == [{"name": "python3", "description": "the interpreter"}]
+
+
+@pytest.mark.usefixtures("passing")
 def test_a_clean_book_is_committed_and_ends_the_run(app: App, drive_book: DriveBook) -> None:
     repo = app("tally-cli")
 

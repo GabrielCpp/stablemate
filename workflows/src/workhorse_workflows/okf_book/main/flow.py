@@ -105,7 +105,6 @@ class OkfBook(BookFlow):
                 surface=surface,
                 book_folder=_book_folder(surface.service),
                 source_folder=source,
-                source_view=source_view_folder(self.root, source).as_posix(),
             )
         )
         return Continue(written, self.settle_write, index=index, written=written).because("settle the writer's turn")

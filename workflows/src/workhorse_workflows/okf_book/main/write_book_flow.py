@@ -36,7 +36,6 @@ class WriteBook(BookFlow):
     surface: Surface | None = None
     book_folder: str = ""
     source_folder: str = ""
-    source_view: str = ""
 
     @property
     def surface_to_write(self) -> Surface:
@@ -58,7 +57,7 @@ class WriteBook(BookFlow):
     def write_book(self, before: Snapshot) -> Continue[...]:
         """One turn, confined to its book folder and to ostler and the two checks, writes the whole book until both pass."""
         surface = self.surface_to_write
-        request = writer_request(self.run_dir, surface, self.book_folder, self.source_folder, Path(self.source_view))
+        request = writer_request(self.run_dir, self.root, surface, self.book_folder, self.source_folder)
         started = time.monotonic()
         reply = ""
         failure: str | None = None

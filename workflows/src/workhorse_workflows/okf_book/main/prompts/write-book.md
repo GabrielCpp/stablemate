@@ -46,6 +46,15 @@ commands keep working. Read files with the Read, Glob and Grep tools, never the 
   from a clean checkout, with the port, the health check and every service it needs, as the
   skill's runbook reference says.
 {% endif %}
+{% if kind == "cli" %}
+- A scenario runs the app only through a QA tool this repo offers. The page's `binary:` names
+  one of these tools, and each `invoke(argv=[...])` carries the rest of the command line after it:
+{% for tool in qa_tools %}
+  - `{{ tool.name }}`{% if tool.description %}: {{ tool.description }}{% endif %}
+{% else %}
+  - none. Say so in your reply, because no scenario can run the app.
+{% endfor %}
+{% endif %}
 - Every claim runs against the real app. This command compiles the book into scenarios and
   runs them, and prints each check that failed with what it expected and what it got:
 
