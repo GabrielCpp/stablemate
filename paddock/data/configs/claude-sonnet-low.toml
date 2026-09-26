@@ -1,0 +1,37 @@
+config_version = 2
+default_cli = "claude"
+
+[profiles.claude]
+cli = "claude"
+
+[profiles.claude.powers.low]
+model = "claude-sonnet-5"
+effort = "low"
+
+[profiles.claude.powers.medium]
+model = "claude-sonnet-5"
+effort = "low"
+
+[profiles.claude.powers.high]
+model = "claude-sonnet-5"
+effort = "low"
+
+[profiles.claude.powers.max]
+model = "claude-sonnet-5"
+effort = "low"
+
+[profiles.claude.powers.ultra]
+model = "claude-sonnet-5"
+effort = "low"
+
+[profiles.claude.default]
+model = "claude-sonnet-5"
+effort = "low"
+
+[qa_tools.jq]
+command = "jq"
+description = "the jq CLI, for reading a durable store file as evidence that a write persisted"
+
+[qa_tools.python3]
+command = "python3"
+description = "the python interpreter, for driving a Python CLI over a process boundary"
