@@ -22,7 +22,7 @@ from pydantic import BaseModel, ConfigDict, JsonValue, TypeAdapter
 from ostler import doctor
 from ostler import graph as graph_mod
 from ostler.book_reach import DeadPage, dead_pages
-from ostler.model import load
+from ostler.model import Graph, load
 from ostler.qa.compile import HARNESS_LIMIT_GAPS, Plan, compile_plan_gaps
 from ostler.qa.context import book_context, validate_context, write_context
 from ostler.qa.plan_source import Gap
@@ -122,10 +122,10 @@ def dead_book_pages(root: Path) -> tuple[DeadPage, ...]:
     return tuple(dead_pages(load(root)))
 
 
-def _doctor_problems(root: Path, pages: list[str]) -> list[str]:
+def _doctor_problems(book: Graph, pages: list[str]) -> list[str]:
     if not pages:
         return []
-    report = doctor.scope_to_paths(doctor.run(load(root)), pages)
+    report = doctor.scope_to_paths(doctor.run(book), pages)
     return [
         f"{f.path}:{f.line}: {f.code}: {f.message}" + (f" {f.suggestion}" if f.suggestion else "")
         for f in report.findings
@@ -183,7 +183,11 @@ _NODES = TypeAdapter(tuple[_Node, ...])
 
 def off_journey_nodes(root: Path, service: str) -> tuple[str, ...]:
     """Every command, endpoint and screen of the service that no flow's walk links, itself or through a part of it."""
-    nodes = [node for node in _NODES.validate_python(graph_mod.build(load(root))["nodes"]) if node.surface == service]
+    return _off_journey(load(root), service)
+
+
+def _off_journey(book: Graph, service: str) -> tuple[str, ...]:
+    nodes = [node for node in _NODES.validate_python(graph_mod.build(book)["nodes"]) if node.surface == service]
     parents = {node.id: node.parent for node in nodes}
     walked: set[str] = set()
     for flow in (node for node in nodes if node.type == "flow"):
@@ -195,19 +199,20 @@ def off_journey_nodes(root: Path, service: str) -> tuple[str, ...]:
     return tuple(node.id for node in nodes if node.type in JOURNEY_TYPES and node.id not in walked)
 
 
-def _off_journey_problems(root: Path, service: str) -> list[str]:
+def _off_journey_problems(book: Graph, service: str) -> list[str]:
     return [
         f"{node} is on no flow. Write a flow under flows/ whose steps link it, or link it from a step of a flow you have."
-        for node in off_journey_nodes(root, service)
+        for node in _off_journey(book, service)
     ]
 
 
 def book_problems(root: Path, service: str) -> tuple[str, ...]:
     """Every problem on the service's book: a missing entries page, a page nothing reaches, a doctor error, a command, endpoint or screen no flow walks, and a claim that does not compile."""
     pages = _book_page_paths(root, service)
+    book = load(root)
     dead = [
         f"{page.rel} is linked from no page the entries page reaches. Link it, or delete it."
-        for page in dead_book_pages(root)
+        for page in dead_pages(book)
         if page.service == service
     ]
     wanted = frozenset(pages)
@@ -215,7 +220,7 @@ def book_problems(root: Path, service: str) -> tuple[str, ...]:
     return (
         *_entries_problems(root, service),
         *dead,
-        *_doctor_problems(root, pages),
-        *_off_journey_problems(root, service),
+        *_doctor_problems(book, pages),
+        *_off_journey_problems(book, service),
         *_gap_problems(gaps),
     )
