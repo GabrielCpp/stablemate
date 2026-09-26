@@ -52,7 +52,12 @@ commands keep working. Read files with the Read, Glob and Grep tools, never the 
 {% if kind != "cli" %}
 - The run brings the app up from the book alone. Write the stack `runbook` that starts it
   from a clean checkout, with the port, the health check and every service it needs, as the
-  skill's runbook reference says.
+  skill's runbook reference says. Assume the machine it runs on has a shell,
+  git, curl and python3, and nothing else: no other language toolchain, no cloud CLI, no
+  emulator, no database. The runbook fetches and starts every other tool and service the app
+  needs.
+  The command below reports the step where bring-up failed, and it is the only way to probe
+  that machine.
 {% endif %}
 {% if kind == "cli" %}
 - A scenario runs the app only through a QA tool this repo offers. The page's `binary:` names
