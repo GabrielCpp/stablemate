@@ -102,8 +102,10 @@ class ContextManifest(BaseModel):
         target_skill_dir = BACKEND_SKILL_DIR.get(backend, self.skill_dir)
         instructions = self.instructions
         if self.skill_dir and target_skill_dir and target_skill_dir != self.skill_dir:
+            if not (repo_root / target_skill_dir).is_dir():
+                target_skill_dir = self.skill_dir
             instructions = {
-                k: v.replace(self.skill_dir, target_skill_dir, 1)
+                k: _rendered_for(v, self.skill_dir, target_skill_dir, repo_root)
                 for k, v in instructions.items()
             }
         values = {
@@ -125,6 +127,12 @@ class ContextManifest(BaseModel):
             skill_dir=target_skill_dir or self.skill_dir,
             repo_root=str(repo_root.resolve()),
         )
+
+
+def _rendered_for(path: str, rendered_dir: str, target_dir: str, repo_root: Path) -> str:
+    """*path* moved into the backend's skill dir, or left where farrier rendered it when that copy is absent."""
+    moved = path.replace(rendered_dir, target_dir, 1)
+    return moved if (repo_root / moved).exists() else path
 
 
 @dataclass(frozen=True, slots=True)

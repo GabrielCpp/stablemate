@@ -101,17 +101,39 @@ def test_touched_layers_gates_per_story():
     assert "GO" in fallback and "WEB" in fallback
 
 
-def test_codex_backend_rewrites_skill_paths():
-    mc = wm.build_manifest_context(MANIFEST, backend="codex")
+def _render_skills(root, skill_dir, *names):
+    for name in names:
+        skill = root / skill_dir / name / "SKILL.md"
+        skill.parent.mkdir(parents=True)
+        skill.write_text("# skill\n")
+
+
+def test_codex_backend_rewrites_skill_paths(tmp_path):
+    _render_skills(tmp_path, ".agents/skills", "demo-go", "demo-react-router")
+    mc = wm.build_manifest_context(MANIFEST, backend="codex", repo_root=str(tmp_path))
     assert mc.instructions["go"] == ".agents/skills/demo-go/SKILL.md"
     assert mc.instructions["react-router"] == ".agents/skills/demo-react-router/SKILL.md"
     assert mc.skill_dir == ".agents/skills"
 
 
-def test_copilot_backend_rewrites_skill_paths():
-    mc = wm.build_manifest_context(MANIFEST, backend="copilot")
+def test_copilot_backend_rewrites_skill_paths(tmp_path):
+    _render_skills(tmp_path, ".github/skills", "demo-go")
+    mc = wm.build_manifest_context(MANIFEST, backend="copilot", repo_root=str(tmp_path))
     assert mc.instructions["go"] == ".github/skills/demo-go/SKILL.md"
     assert mc.skill_dir == ".github/skills"
+
+
+def test_codex_backend_keeps_the_rendered_path_when_its_dir_has_no_skills(tmp_path):
+    mc = wm.build_manifest_context(MANIFEST, backend="codex", repo_root=str(tmp_path))
+    assert mc.instructions["go"] == ".claude/skills/demo-go/SKILL.md"
+    assert mc.skill_dir == ".claude/skills"
+
+
+def test_codex_backend_keeps_the_rendered_path_of_a_skill_its_dir_lacks(tmp_path):
+    _render_skills(tmp_path, ".agents/skills", "demo-go")
+    mc = wm.build_manifest_context(MANIFEST, backend="codex", repo_root=str(tmp_path))
+    assert mc.instructions["go"] == ".agents/skills/demo-go/SKILL.md"
+    assert mc.instructions["react-router"] == ".claude/skills/demo-react-router/SKILL.md"
 
 
 def test_same_backend_no_rewrite():
