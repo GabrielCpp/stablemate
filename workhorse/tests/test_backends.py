@@ -307,6 +307,14 @@ def test_claude_no_effort_omits_flag():
     assert "--effort" not in cmd
 
 
+def test_claude_caps_a_turn_at_its_profile_steps():
+    """A profile's `steps` bounded opencode turns and nothing on claude, so a claude turn could lap its checks without end."""
+    capped = _capture_claude_cmd(model="opus", agent=AgentProfile(name="writer", steps=12))
+    free = _capture_claude_cmd(model="opus", agent=AgentProfile(name="writer"))
+    assert capped[capped.index("--max-turns") + 1] == "12"
+    assert "--max-turns" not in free
+
+
 def test_claude_disallows_the_agent_tool():
     """A node's turn is one bounded, reaped CLI session; the Agent tool can dispatch work that outlives it (`run_in_background`), which the ladder cannot recover when the session is torn down."""
     cmd = _capture_claude_cmd(model="opus")

@@ -50,6 +50,8 @@ class ClaudeBackend(AgentBackend):
             cmd.extend(["--model", model])
         if effort:
             cmd.extend(["--effort", effort])
+        if agent is not None and agent.steps is not None:
+            cmd.extend(["--max-turns", str(agent.steps)])
         for directory in [*(add_dirs or []), *_skill_dirs(agent, cwd)]:
             cmd.extend(["--add-dir", directory])
         cmd.append("-p")
