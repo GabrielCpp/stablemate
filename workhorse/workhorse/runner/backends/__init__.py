@@ -36,6 +36,11 @@ class AgentProfile:
     names the only shell commands a confined turn may run, each with any arguments.
     With none named, the turn has no shell. A confined turn can also read the project
     skills its CLI loads, since a skill is files the turn opens.
+
+    ``command_timeout_s`` is the longest one shell command may run before the CLI stops
+    waiting on it. A CLI that moves a slow command to the background hands the turn an
+    empty result, and the turn goes on without the output it ran the command for. Keep
+    it below the silence budget, since a command that runs quietly is silence.
     """
 
     name: str
@@ -46,6 +51,7 @@ class AgentProfile:
     tool_output_max_bytes: int | None = None
     confined: bool = False
     commands: tuple[str, ...] = ()
+    command_timeout_s: int | None = None
 
     def __post_init__(self) -> None:
         if self.commands and not self.confined:

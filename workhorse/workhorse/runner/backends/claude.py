@@ -69,7 +69,7 @@ class ClaudeBackend(AgentBackend):
             resilience=resilience,
             stdin_data=prompt,
             cwd=cwd or None,
-            env_extra=self.harness_env(),
+            env_extra={**self.harness_env(), **_command_timeout_env(agent)},
         )
 
         return _failure.classify_turn(
@@ -179,6 +179,14 @@ def _permission_flags(agent: AgentProfile | None) -> list[str]:
     if agent is None or not agent.confined:
         return ["--dangerously-skip-permissions"]
     return ["--permission-mode", "dontAsk", "--setting-sources", "project"]
+
+
+def _command_timeout_env(agent: AgentProfile | None) -> dict[str, str]:
+    """The environment that lets one shell command run for the profile's limit, where the CLI would move it to the background after two minutes."""
+    if agent is None or agent.command_timeout_s is None:
+        return {}
+    limit = str(agent.command_timeout_s * 1000)
+    return {"BASH_DEFAULT_TIMEOUT_MS": limit, "BASH_MAX_TIMEOUT_MS": limit}
 
 
 def _skill_dirs(agent: AgentProfile | None, cwd: str | None) -> list[str]:

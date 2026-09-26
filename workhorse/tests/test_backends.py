@@ -407,6 +407,29 @@ def test_claude_keeps_a_large_prompt_on_stdin():
     assert captured["stdin"] == prompt
 
 
+def _capture_claude_env(agent):
+    captured = {}
+
+    def fake_stream(cmd, node_id, timeout, on_line, **kwargs):
+        captured["env"] = kwargs["env_extra"]
+        on_line(json.dumps({"type": "result", "result": "OK", "subtype": "success"}))
+        return False, 0
+
+    with patch.object(claude._process, "stream_subprocess", fake_stream):
+        _ = _run_turn(ClaudeBackend(), "P", "n", None, agent=agent)
+    return captured["env"]
+
+
+def test_claude_waits_on_a_slow_command_for_its_profile_limit():
+    """The CLI moved a command past two minutes to the background, so the turn read an empty result and never saw what it ran."""
+    limited = _capture_claude_env(AgentProfile(name="writer", command_timeout_s=600))
+    default = _capture_claude_env(AgentProfile(name="writer"))
+    assert limited["BASH_DEFAULT_TIMEOUT_MS"] == "600000"
+    assert limited["BASH_MAX_TIMEOUT_MS"] == "600000"
+    assert "BASH_DEFAULT_TIMEOUT_MS" not in default
+    assert "BASH_MAX_TIMEOUT_MS" not in default
+
+
 def test_copilot_effort_maps_to_native_flag():
     """Copilot has a native `--effort <level>` flag; the prompt is passed verbatim."""
     sidp = Path(tempfile.mkdtemp()) / ".session_id"

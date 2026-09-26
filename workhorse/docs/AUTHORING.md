@@ -343,6 +343,12 @@ permission rules relative to the git worktree, and it drops grep, glob and list,
 opencode answers them outside its path rules. It refuses a confined turn outside a git
 worktree, or one whose `add_dirs` leave it.
 
+`command_timeout_s` is how long one shell command may run before the CLI stops waiting
+on it. The claude CLI moves a command past two minutes to the background, and the turn
+reads an empty result and goes on without the output it ran the command for. A turn
+whose command brings a stack up or runs a test suite names a longer limit. Keep it below
+`AGENT_SILENCE_TIMEOUT_S`, since a command that runs quietly is silence to the watchdog.
+
 `retries` overrides the run's `AGENT_MAX_REPHRASE_ATTEMPTS` for this node alone — how many
 times a failed turn is re-asked from scratch in a fresh session before the ladder gives up.
 Pass `0` when the turn's **deliverable is a file rather than its reply** and this state can
