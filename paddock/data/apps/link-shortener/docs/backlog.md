@@ -34,6 +34,12 @@ environment fact a decomposition carries into every story and every QA plan. 180
 allocation (seat-booking holds 18083, policy-desk 18084); 18080 was the single-port text
 this file outgrew.
 
+The api serves `GET /healthz`, which answers 200 once the api can serve requests. QA brings
+the api up and waits on that route before it runs anything. Every other route answers 2xx
+only for data that already exists, so without one no probe can tell a ready api from a
+missing one. The route is part of the api like its port is, and a story that builds the api
+builds it too.
+
 ## Shortening and following links
 
 The api is the only surface a bullet may be satisfied on. This is a product decision, not
