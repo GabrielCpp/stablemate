@@ -1,4 +1,4 @@
-"""What a run could not finish, collected across its phases and handed to the operator once, after the last."""
+"""What a run could not finish, collected across its books and handed to the operator once, after the last."""
 from __future__ import annotations
 
 import hashlib
@@ -13,9 +13,7 @@ BLOCKERS_DIR = "blockers"
 class Phase(StrEnum):
     """The phase a blocker was found in."""
 
-    ENUMERATE = "enumerate"
-    DOCUMENT = "document"
-    AGGREGATE = "aggregate"
+    WRITE = "write"
     EXERCISE = "exercise"
 
 

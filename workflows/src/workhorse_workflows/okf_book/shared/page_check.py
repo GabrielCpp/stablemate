@@ -1,15 +1,13 @@
-"""The code checks an aggregation turn's pages pass before a later turn judges them.
+"""The check the writer runs on its whole book, and the run repeats after it.
 
-Nothing here changes a page. A page nothing reachable links to is
-charged to the turn. Every doctor error on a changed page is charged, except a stale citation,
-which the commit restamps. So is a bullet the page's type does not declare, which doctor only warns
-about because a hand-kept book may carry one, but which on a written page is a claim nothing runs. Every obligation
-of a changed page that does not compile is charged, unless the gap is one ostler cannot run
-yet, which is ostler's to fix and not the page's. Two gaps are no defect at all: a precondition
-the arrangement already discharges, and the placeholder obligation every node mints for itself,
-which owes a check only through the claims under it. A gap already on a page the job does not
-own when the job starts is inherited, and not charged. The same check tallies the pages' defects and the
-book's claims, so a job can tell a repair that left fewer defects from one that made none.
+Nothing here changes a page. It reports a missing entries page, every page nothing the entries
+page reaches, and every doctor error on the book, except a stale citation, which the commit
+restamps. So is a bullet the page's type does not declare, which doctor only warns about because
+a hand-kept book may carry one, but which on a written page is a claim nothing runs. It reports
+every obligation that does not compile, unless the gap is one ostler cannot run yet, which is
+ostler's to fix and not the book's. Two gaps are no defect at all: a precondition the arrangement
+already discharges, and the placeholder obligation every node mints for itself, which owes a
+check only through the claims under it.
 """
 from __future__ import annotations
 
@@ -17,7 +15,6 @@ import re
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
-
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, JsonValue
@@ -29,6 +26,7 @@ from ostler.qa.compile import HARNESS_LIMIT_GAPS, Plan, compile_plan_gaps
 from ostler.qa.context import book_context, validate_context, write_context
 from ostler.qa.plan_source import Gap
 from workhorse_workflows.okf_book.shared.blockers import Side
+from workhorse_workflows.okf_book.shared.entries import book_dir, entries_path
 from workhorse_workflows.okf_book.shared.production import production_files
 
 BOOK_STORY = "book"
@@ -116,30 +114,9 @@ def compile_services(root: Path, services: Iterable[str], spec: Path | None = No
     return context.compile()
 
 
-def book_gaps(root: Path, services: Iterable[str]) -> tuple[Gap, ...]:
-    """Every defect among the obligations the named services' books state and ostler does not compile."""
-    return compile_services(root, services).gaps
-
-
 def dead_book_pages(root: Path) -> tuple[DeadPage, ...]:
     """Every page no link path from its service's entries page reaches."""
     return tuple(dead_pages(load(root)))
-
-
-def unreached(root: Path, pages: Iterable[str]) -> tuple[DeadPage, ...]:
-    """The named pages no link path from an entries page reaches."""
-    wanted = frozenset(pages)
-    return tuple(page for page in dead_book_pages(root) if page.rel in wanted)
-
-
-def charged_pages(root: Path, changed: Iterable[str], owned: Iterable[str]) -> tuple[str, ...]:
-    """The pages a job answers for: every page it changed, and each of its own the entries page reaches, changed or not.
-
-    An own page nothing reaches is charged for its reach alone, since it is collected after the job.
-    """
-    mine = frozenset(owned)
-    dead = frozenset(page.rel for page in unreached(root, mine))
-    return tuple(sorted({*changed, *(mine - dead)}))
 
 
 def _doctor_problems(root: Path, pages: list[str]) -> list[str]:
@@ -151,15 +128,6 @@ def _doctor_problems(root: Path, pages: list[str]) -> list[str]:
         for f in report.findings
         if (f.severity == "error" or f.code in CHARGED_WARNINGS) and f.code not in RESTAMPED_CODES | REACH_CODES
     ]
-
-
-def _gap_line(gap: Gap) -> str:
-    return f"{gap.obligation_id} does not compile: {gap.kind}: {gap.detail}"
-
-
-def _charged_gaps(gaps: Iterable[Gap], pages: list[str], known: frozenset[str]) -> list[Gap]:
-    wanted = frozenset(pages)
-    return [gap for gap in gaps if gap_page(gap) in wanted and gap_side(gap) is Side.BOOK and _gap_line(gap) not in known]
 
 
 def _gap_problems(gaps: Iterable[Gap]) -> list[str]:
@@ -174,70 +142,28 @@ def _gap_problems(gaps: Iterable[Gap]) -> list[str]:
     ]
 
 
-def inherited_gaps(root: Path, service: str, owned: frozenset[str]) -> tuple[str, ...]:
-    """The book's compile gaps already on pages a job does not own. The job may only add to those pages, so it is not charged for them."""
-    return tuple(
-        _gap_line(gap)
-        for gap in book_gaps(root, (service,))
-        if gap_side(gap) is Side.BOOK and gap_page(gap) not in owned
-    )
+def _book_page_paths(root: Path, service: str) -> list[str]:
+    folder = book_dir(root, service)
+    return sorted(path.relative_to(root).as_posix() for path in folder.rglob("*.md")) if folder.is_dir() else []
 
 
-def unreached_problems(pages: Iterable[str]) -> tuple[str, ...]:
-    """What the turn is charged for each page it wrote that nothing reachable links to."""
-    return tuple(f"{page} is linked from no page the entries page reaches, so it was deleted." for page in pages)
+def _entries_problems(root: Path, service: str) -> list[str]:
+    if entries_path(root, service).is_file():
+        return []
+    return [
+        f"{entries_path(root, service).relative_to(root).as_posix()} is missing. "
+        "Write it with `type: entries` and one `- [title](page.md)` link per entry page."
+    ]
 
 
-def unlinked_own_page_problems(root: Path, owned: Iterable[str]) -> tuple[str, ...]:
-    """What the job is charged for each page of its own that nothing reachable links to. Garbage collection deletes it after the job."""
-    return tuple(
-        f"{page.rel} is linked from no page the entries page reaches, so it is deleted after this job. "
-        "Link it from a page the entries page reaches, or delete it."
-        for page in unreached(root, owned)
-    )
-
-
-class Tally(BaseModel):
-    """How many defects the checked pages carry, each doctor finding and each claim that does not compile counted once, and how many claims the book states."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    defects: int = 0
-    obligations: int = 0
-
-    def improves_on(self, before: Tally) -> bool:
-        """Fewer defects than `before`, with no claim fewer to have them on."""
-        return self.defects < before.defects and self.obligations >= before.obligations
-
-    def plus_defects(self, count: int) -> Tally:
-        return self.model_copy(update={"defects": self.defects + count})
-
-
-@dataclass(frozen=True, slots=True)
-class PageReport:
-    """The problems the check charges on some pages, and the tally they come from."""
-
-    problems: tuple[str, ...]
-    tally: Tally
-
-
-def page_report(
-    root: Path, service: str, changed: Iterable[str], inherited_gaps: Iterable[str] = ()
-) -> PageReport:
-    """The doctor errors and the book's compile gaps on the changed pages still in the book, the inherited gaps left out.
-
-    Reach is left out: a new page nothing reaches is deleted and charged on its own, and a committed one is garbage collection's.
-    """
-    pages = sorted(p for p in frozenset(changed) if p.endswith(".md") and (root / p).is_file())
-    compiled = compile_services(root, (service,))
-    doctor_lines = _doctor_problems(root, pages)
-    gaps = _charged_gaps(compiled.gaps, pages, frozenset(inherited_gaps))
-    tally = Tally(defects=len(doctor_lines) + len(gaps), obligations=len(compiled.obligations))
-    return PageReport(problems=(*doctor_lines, *_gap_problems(gaps)), tally=tally)
-
-
-def page_problems(
-    root: Path, service: str, changed: Iterable[str], inherited_gaps: Iterable[str] = ()
-) -> tuple[str, ...]:
-    """The problems `page_report` charges on the changed pages."""
-    return page_report(root, service, changed, inherited_gaps).problems
+def book_problems(root: Path, service: str) -> tuple[str, ...]:
+    """Every problem on the service's book: a missing entries page, a page nothing reaches, a doctor error, and a claim that does not compile."""
+    pages = _book_page_paths(root, service)
+    dead = [
+        f"{page.rel} is linked from no page the entries page reaches. Link it, or delete it."
+        for page in dead_book_pages(root)
+        if page.service == service
+    ]
+    wanted = frozenset(pages)
+    gaps = [gap for gap in compile_services(root, (service,)).gaps if gap_page(gap) in wanted and gap_side(gap) is Side.BOOK]
+    return (*_entries_problems(root, service), *dead, *_doctor_problems(root, pages), *_gap_problems(gaps))

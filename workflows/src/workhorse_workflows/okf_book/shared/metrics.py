@@ -1,4 +1,4 @@
-"""What each turn cost, appended as it finishes, so a run's tokens and minutes are read per file afterwards."""
+"""What each turn cost, appended as it finishes, so a run's minutes are read per book afterwards."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -11,14 +11,13 @@ METRICS_NAME = "metrics.jsonl"
 
 
 class TurnMetric(BaseModel):
-    """One turn: its phase and prompt, the files or pages it worked on, the tokens packed into it, and its minutes."""
+    """One turn: its phase and prompt, the books it wrote, and its minutes."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     phase: Phase
     node: str
     subjects: tuple[str, ...]
-    tokens: int
     minutes: float
 
 

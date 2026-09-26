@@ -26,19 +26,3 @@ class Surface(BaseModel):
     kind: SurfaceKind
     entry: str = Field(min_length=1)
 
-
-class EntryPoint(BaseModel):
-    """One place a user starts: a command, an endpoint, or a home screen."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    slug: str = Field(pattern=SLUG_PATTERN)
-    title: str = Field(min_length=1)
-
-
-class EntryPointListing(BaseModel):
-    """The reply of the turn that lists a surface's entry points."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    entry_points: tuple[EntryPoint, ...] = Field(min_length=1)

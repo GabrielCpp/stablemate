@@ -1,152 +1,166 @@
-"""The okf-book run: fix the work list, hand it to the document, aggregate and exercise flows, then publish the report."""
+"""The okf-book run: one confined writer per surface writes its whole book, then the run checks it, runs it and reports."""
 from __future__ import annotations
 
-from typing import cast
+from pathlib import Path
 
-from workhorse.pyflow import Await, Continue, Done, Transition
-from workhorse.worklist import WorkItem
-from workhorse_workflows.kit import commit_paths
-from workhorse_workflows.okf_book.aggregate import Aggregate
-from workhorse_workflows.okf_book.document import Document
-from workhorse_workflows.okf_book.exercise import Exercise
-from workhorse_workflows.okf_book.main.nodes.listing import listing_context
-from workhorse_workflows.okf_book.main.nodes.prune import commit_removal, orphaned_pages, remove_page
+from workhorse.pyflow import Await, Continue, Done, WorkflowFailed
+from workhorse_workflows.kit import last_commit_subject
+from workhorse_workflows.okf_book.main.exercise_book_flow import ExerciseBook
 from workhorse_workflows.okf_book.main.nodes.report import build_report, read_report, write_report
-from workhorse_workflows.okf_book.main.nodes.stub_pages import write_stubs
-from workhorse_workflows.okf_book.main.nodes.surface import EntryPointListing, Surface
-from workhorse_workflows.okf_book.main.nodes.unstamped import cited_digests, unstamped_files
-from workhorse_workflows.okf_book.shared.blockers import read_blockers
-from workhorse_workflows.okf_book.shared.book_flow import BookFlow
-from workhorse_workflows.okf_book.shared.budget import ALONE_CEILING_TOKENS
-from workhorse_workflows.okf_book.shared.entries import (
-    book_dir,
-    merged_links,
-    read_entries,
-    services,
-    write_entries,
+from workhorse_workflows.okf_book.main.nodes.source_view import build_source_view, source_view_folder
+from workhorse_workflows.okf_book.main.nodes.surface import Surface
+from workhorse_workflows.okf_book.main.nodes.turn_budget import (
+    ceiling_blocker_reason,
+    folder_tokens,
+    source_and_book_tokens,
 )
-from workhorse_workflows.okf_book.shared.production import book_citations, production_files
-from workhorse_workflows.okf_book.shared.work import DONE, FILE, ORPHAN, seed
+from workhorse_workflows.okf_book.main.write_book_flow import WriteBook, WriteOutcome
+from workhorse_workflows.okf_book.shared.blockers import Blocker, Phase, Side, read_blockers, record_blocker
+from workhorse_workflows.okf_book.shared.book_commits import book_commit_subject
+from workhorse_workflows.okf_book.shared.book_flow import BookFlow
+from workhorse_workflows.okf_book.shared.book_run import ExerciseResult
+from workhorse_workflows.okf_book.shared.entries import FEATURES_DIR
+from workhorse_workflows.okf_book.shared.page_check import book_problems
+from workhorse_workflows.okf_book.shared.scenarios import write_run
 
 OPERATOR_NAME = "operator.md"
 
 
+def _book_folder(service: str) -> str:
+    return (FEATURES_DIR / service).as_posix()
+
+
+def _source_folder(root: Path, surface: Surface) -> str:
+    entry = Path(surface.entry)
+    return (entry if (root / entry).is_dir() else entry.parent).as_posix()
+
+
 class OkfBook(BookFlow):
-    """The run: stub a cold start's surfaces, prune the orphans, fix the files, then document, aggregate and exercise them."""
+    """The run: each surface's book is written by one confined turn, committed, checked and run against the app."""
 
     surfaces: tuple[Surface, ...] = ()
-    merge_pass: bool = False
+
+    @property
+    def services(self) -> tuple[str, ...]:
+        return tuple(dict.fromkeys(surface.service for surface in self.surfaces))
 
     def start(self) -> Continue[...]:
-        """A cold start lists each declared surface first. Otherwise the book already has its roots."""
-        if self.surfaces:
-            return Continue(None, self.list_entry_points, index=0)
-        return Continue(None, self.prune_pages)
+        """A run with no surface has no book to write."""
+        if not self.surfaces:
+            raise WorkflowFailed("the run names no surface: pass each one under `surfaces`")
+        return Continue(None, self.route_book, index=0).because("route the first surface's book")
 
-    def list_entry_points(self, index: int) -> Continue[...] | Await[...]:
-        """One turn reads the surface's entry file and its nearest imports, and names its entry points."""
-        surface = self.surfaces[index]
-        context = listing_context(self.root, surface)
-        if not context.entry_fits():
-            return Await(
-                self.run_dir / f"{surface.service}-entry.md",
-                f"{surface.entry} is gone, or past the {ALONE_CEILING_TOKENS} tokens one turn can read. "
-                + "Restore or split it, then answer here to list its entry points again.",
-                self.list_entry_points,
-                index=index,
-            )
-        listing = self.agent(
-            "main/prompts/list-entry-points.md",
-            returns=EntryPointListing,
-            power="medium",
-            args=context.template_args(),
-        )
-        return Continue(listing, self.stub_surface, index=index, listing=listing)
-
-    def stub_surface(self, index: int, listing: EntryPointListing) -> Continue[...]:
-        """Scaffold a page per entry point and link each from entries.md. A retry keeps what exists."""
-        surface = self.surfaces[index]
-        root = self.root
-        links = write_stubs(root, surface, listing.entry_points)
-        entries = write_entries(root, surface.service, merged_links(read_entries(root, surface.service), links))
-        pages = {book_dir(root, surface.service) / link.target.partition("#")[0] for link in links}
-        paths = tuple(sorted(path.relative_to(root).as_posix() for path in {*pages, entries}))
-        return Continue(links, self.commit_stubs, index=index, paths=paths)
-
-    def commit_stubs(self, index: int, paths: tuple[str, ...]) -> Continue[...]:
-        """Commit the stub pages and the entries page. A retry after the commit landed finds nothing to commit."""
-        surface = self.surfaces[index]
-        message = f"docs({surface.service}): stub the {surface.kind.value} entry points"
-        committed = commit_paths(self.root, message, *paths)
+    def _next_surface(self, result: object, index: int) -> Continue[...]:
         if index + 1 < len(self.surfaces):
-            return Continue(committed, self.list_entry_points, index=index + 1)
-        return Continue(committed, self.prune_pages)
+            return Continue(result, self.route_book, index=index + 1).because("this surface is settled: next one")
+        return Continue(result, self.report).because("every surface is settled")
 
-    def prune_pages(self) -> Continue[...]:
-        """Seed every page whose source is gone, before any is deleted."""
-        root = self.root
-        orphans = (page for service in services(root) for page in orphaned_pages(root, service))
-        seed(self.work, ORPHAN, (WorkItem(id=page, kind=ORPHAN, order=order) for order, page in enumerate(orphans)))
-        return Continue(None, self.delete_orphans)
+    def _block_surface_and_move_on(self, index: int, reason: str) -> Continue[...]:
+        blocker = Blocker(subject=self.surfaces[index].service, phase=Phase.WRITE, side=Side.WORKFLOW, reason=reason)
+        _ = record_blocker(self.records_dir, blocker)
+        return self._next_surface(reason, index)
 
-    def delete_orphans(self) -> Transition:
-        """Take the next orphaned page off the list. A drained list moves on to the files."""
-        items = self.work.claim(1, kind=ORPHAN)
-        if not items:
-            return Continue(None, self.enumerate_files)
-        return self._delete_orphan(items)
+    def route_book(self, index: int) -> Continue[...]:
+        """A book this workflow last committed is checked and run, never rewritten. Any other book with no problem goes on to its run. A missing or failing one goes to the writer."""
+        service = self.surfaces[index].service
+        book = _book_folder(service)
+        if not (self.root / book).is_dir():
+            return Continue(None, self.copy_source, index=index).because("no book yet: write it")
+        if last_commit_subject(self.root, book) == book_commit_subject(service):
+            return Continue(book, self.check_book, index=index).because("this workflow wrote the book: check it")
+        problems = book_problems(self.root, service)
+        if problems:
+            return Continue(problems, self.copy_source, index=index).because("the existing book has problems")
+        return Continue(problems, self.run_book, index=index, written_by_workflow=False).because(
+            "the existing book checks clean"
+        )
 
-    def _delete_orphan(self, items: list[WorkItem]) -> Continue[...]:
-        """Delete one orphaned page and its entries links. Its commit is the next state, so a failed commit retries alone."""
-        page = items[0].id
-        return Continue(page, self.commit_deletion, page=page, paths=remove_page(self.root, page))
+    def copy_source(self, index: int) -> Continue[...]:
+        """Copy the surface's product source for its writer. A surface whose source is no folder is a blocker."""
+        surface = self.surfaces[index]
+        source = _source_folder(self.root, surface)
+        if not (self.root / source).is_dir():
+            return self._block_surface_and_move_on(index, f"the entry {surface.entry} is in no source folder")
+        view = build_source_view(self.root, source)
+        return Continue(view.as_posix(), self.measure_source, index=index).because("measure the writer's source")
 
-    def commit_deletion(self, page: str, paths: tuple[str, ...]) -> Continue[...]:
-        """Commit one deleted page on its own and settle its row, then take the next orphan."""
-        committed = commit_removal(self.root, page, paths)
-        _ = self.work.settle([page], DONE, ORPHAN)
-        return Continue(committed, self.delete_orphans)
+    def measure_source(self, index: int) -> Continue[...]:
+        """A surface whose source and book are over the ceiling one writer reads is a blocker."""
+        surface = self.surfaces[index]
+        view = source_view_folder(self.root, _source_folder(self.root, surface))
+        tokens = source_and_book_tokens(folder_tokens(view), folder_tokens(self.root / _book_folder(surface.service)))
+        reason = ceiling_blocker_reason(tokens)
+        if reason is not None:
+            return self._block_surface_and_move_on(index, reason)
+        return Continue(tokens, self.write_book, index=index).because("the source fits one writer")
 
-    def enumerate_files(self) -> Continue[...]:
-        """Walk every service's entry points, keep what a merge changed on a merge pass, and seed the files."""
-        root = self.root
-        names = services(root)
-        files = frozenset(path for service in names for path in production_files(root, service))
-        if self.merge_pass:
-            files = unstamped_files(root, files, cited_digests(book_citations(root, names)))
-        seed(self.work, FILE, (WorkItem(id=file, kind=FILE, order=order) for order, file in enumerate(sorted(files))))
-        return Continue(len(files), self.document, services=names)
+    def write_book(self, index: int) -> Continue[...]:
+        """Hand the surface to its writer."""
+        surface = self.surfaces[index]
+        source = _source_folder(self.root, surface)
+        written = WriteOutcome.model_validate(
+            self.handoff(
+                WriteBook,
+                parent_records_dir=str(self.records_dir),
+                surface=surface,
+                book_folder=_book_folder(surface.service),
+                source_folder=source,
+                source_view=source_view_folder(self.root, source).as_posix(),
+            )
+        )
+        return Continue(written, self.settle_write, index=index, written=written).because("settle the writer's turn")
 
-    def document(self, services: tuple[str, ...]) -> Continue[...]:
-        """Every file on the list gets a contract."""
-        documented = cast(object, self.handoff(Document, parent_records_dir=str(self.records_dir)))
-        return Continue(documented, self.aggregate, services=services)
+    def settle_write(self, index: int, written: WriteOutcome) -> Continue[...]:
+        """A turn that ended without a reply is a blocker on the surface. A committed book goes to its check."""
+        if not written.committed:
+            return self._block_surface_and_move_on(index, written.failure)
+        return Continue(written, self.check_book, index=index).because("check the committed book")
 
-    def aggregate(self, services: tuple[str, ...]) -> Continue[...]:
-        """The contracts are aggregated into the book, one job at a time."""
-        aggregated = cast(object, self.handoff(Aggregate, parent_records_dir=str(self.records_dir), services=services))
-        return Continue(aggregated, self.exercise, services=services)
+    def check_book(self, index: int) -> Continue[...]:
+        """Repeat the writer's own page check. Each problem it finds is a blocker."""
+        service = self.surfaces[index].service
+        problems = book_problems(self.root, service)
+        for problem in problems:
+            _ = record_blocker(self.records_dir, Blocker(subject=f"{service}: {problem}", phase=Phase.WRITE, side=Side.BOOK, reason=problem))
+        return Continue(problems, self.run_book, index=index, written_by_workflow=True).because("run the book against the app")
 
-    def exercise(self, services: tuple[str, ...]) -> Continue[...]:
-        """The book brings the stack up, and its flows run."""
-        exercised = cast(object, self.handoff(Exercise, parent_records_dir=str(self.records_dir), services=services))
-        return Continue(exercised, self.report, services=services)
+    def run_book(self, index: int, written_by_workflow: bool) -> Continue[...]:
+        """Run the book against the app, by handing off to the run flow."""
+        service = self.surfaces[index].service
+        exercised = ExerciseResult.model_validate(self.handoff(ExerciseBook, parent_records_dir=str(self.records_dir), service=service))
+        return Continue(
+            exercised, self.settle_run, index=index, written_by_workflow=written_by_workflow, exercised=exercised
+        ).because("settle the run")
 
-    def report(self, services: tuple[str, ...]) -> Await[...] | Done:
-        """Publish the report. Any blocker from any phase stops the run at the operator, once."""
-        report = build_report(self.root, self.records_dir, self.work, services)
+    def settle_run(self, index: int, written_by_workflow: bool, exercised: ExerciseResult) -> Continue[...]:
+        """A passing book is done. A stack that cannot come up is the app's blocker, and the book stays. A failing book goes to the writer once. A failing book a writer of this workflow wrote is a blocker."""
+        service = self.surfaces[index].service
+        if exercised.summary is not None:
+            _ = write_run(self.records_dir, exercised.summary)
+        if exercised.passed:
+            return self._next_surface(exercised.passed, index)
+        if not exercised.stack_down and not written_by_workflow:
+            return Continue(exercised.passed, self.copy_source, index=index).because("the existing book fails its run")
+        side = Side.APP if exercised.stack_down else Side.BOOK
+        reason = "\n".join(exercised.lines)
+        _ = record_blocker(self.records_dir, Blocker(subject=service, phase=Phase.EXERCISE, side=side, reason=reason))
+        return self._next_surface(exercised.passed, index)
+
+    def report(self) -> Await[...] | Done:
+        """Publish the report. Any blocker stops the run at the operator, once."""
+        report = build_report(self.root, self.records_dir, self.services)
         page = write_report(self.records_dir, report)
         blockers = read_blockers(self.records_dir)
         if not blockers:
-            return Done(report)
+            return Done(report).because("no blocker: the books are done")
         return Await(
             self.run_dir / OPERATOR_NAME,
             f"The run stopped on {len(blockers)} blockers, each listed in {page}. "
             + "Fix the book, ostler, the app or the workflow each one names, then restart the run. "
             + "Answer here to close this run.",
             self.finish,
-        )
+        ).because("blockers wait for the operator")
 
     def finish(self) -> Done:
         """The operator has read the report."""
-        return Done(read_report(self.records_dir))
+        return Done(read_report(self.records_dir)).because("the operator read the report")

@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -54,24 +53,3 @@ def read_entries(root: Path, service: str) -> tuple[EntryLink, ...]:
         if match:
             found.append(EntryLink(match.group("title"), match.group("target")))
     return tuple(found)
-
-
-def merged_links(existing: Iterable[EntryLink], added: Iterable[EntryLink]) -> tuple[EntryLink, ...]:
-    """`existing` in its order, then each link of `added` whose target it does not hold yet."""
-    out = list(existing)
-    targets = {link.target for link in out}
-    for link in added:
-        if link.target not in targets:
-            targets.add(link.target)
-            out.append(link)
-    return tuple(out)
-
-
-def write_entries(root: Path, service: str, links: Iterable[EntryLink]) -> Path:
-    """Write the entries page holding exactly `links`."""
-    path = entries_path(root, service)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    head = f"---\ntype: entries\nslug: entries\ntitle: {service}\n---\n# {service}\n"
-    items = "".join(f"{link.render()}\n" for link in links)
-    path.write_text(f"{head}\n{items}" if items else head, encoding="utf-8")
-    return path

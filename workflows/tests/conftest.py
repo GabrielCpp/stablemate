@@ -5,9 +5,7 @@ from __future__ import annotations
 import pytest
 from ostler import testsupport
 
-UNKNOWN_BULLET_ALLOWED_TESTS: frozenset[str] = frozenset({
-    "tests/okf_book/aggregate/test_check_pages.py::test_a_bullet_the_type_does_not_declare_is_printed",
-})
+UNKNOWN_BULLET_ALLOWED_TESTS: frozenset[str] = frozenset()
 
 
 @pytest.fixture(autouse=True)

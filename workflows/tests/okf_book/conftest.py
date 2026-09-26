@@ -7,7 +7,7 @@ from dataclasses import replace
 from pathlib import Path
 
 import pytest
-from okf_book.support import APPS, WorkListView, ScriptedRunner, driver, git
+from okf_book.support import APPS, ScriptedRunner, driver, git
 from workhorse.artifacts import ArtifactWriter
 from workhorse.config_run import RunConfig
 from workhorse.pyflow.engine import RunEnv
@@ -66,14 +66,3 @@ def drive_book(tmp_path: Path) -> Callable[[OkfBook, ScriptedRunner], object]:
 
     return _run
 
-
-@pytest.fixture
-def run_book(drive_book: Callable[[OkfBook, ScriptedRunner], object]) -> Callable[[OkfBook, ScriptedRunner], WorkListView]:
-    """Drive the workflow to its end on what its work list holds."""
-
-    def _run(flow: OkfBook, runner: ScriptedRunner) -> WorkListView:
-        result = drive_book(flow, runner)
-        assert isinstance(result, WorkListView)
-        return result
-
-    return _run
