@@ -10,6 +10,7 @@ from pathlib import Path
 
 import pytest
 
+from workhorse.config_run import AgentResilience
 from workhorse.testing import make_git_repo
 
 from workhorse_workflows.okf_book.main.nodes import check_pages
@@ -30,6 +31,8 @@ from workhorse_workflows.okf_book.main.nodes.turn_budget import (
     source_and_book_tokens,
 )
 from workhorse_workflows.okf_book.main.nodes.source_view import build_source_view, source_view_folder
+from workhorse_workflows.okf_book.main.nodes.surface import Surface, SurfaceKind
+from workhorse_workflows.okf_book.main.nodes.writer_request import WriterRequest
 from workhorse_workflows.okf_book.main.nodes.writer_commands import (
     CHECK_MODULE,
     CHECK_AND_SCENARIO_RUN_CAP,
@@ -66,6 +69,24 @@ def test_each_command_runs_this_interpreter_on_the_command_state(tmp_path: Path)
     assert check_command(tmp_path) == f"{sys.executable} -m {CHECK_MODULE} {path}"
     assert exercise_command(tmp_path).split()[-1] == path
     assert ostler_command(tmp_path) == f"{sys.executable} -m {OSTLER_MODULE} {path}"
+
+
+def test_the_writer_waits_on_an_exercise_past_the_cli_default_and_inside_the_silence_budget(tmp_path: Path) -> None:
+    request = WriterRequest(
+        surface=Surface(service="tally", kind=SurfaceKind.CLI, entry="tally"),
+        book_folder="docs",
+        source_folder="src",
+        source_view=tmp_path,
+        ostler_command_line=ostler_command(tmp_path),
+        check_command_line=check_command(tmp_path),
+        exercise_command_line=exercise_command(tmp_path),
+        qa_tools=(),
+    )
+
+    limit = request.profile.command_timeout_s
+
+    assert limit is not None
+    assert 120 < limit < AgentResilience().silence_timeout_s
 
 
 def test_each_command_names_its_usage_without_one_command_state() -> None:

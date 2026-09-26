@@ -18,6 +18,7 @@ from workhorse_workflows.okf_book.main.nodes.writer_commands import (
 )
 
 WRITER_PROFILE_NAME = "okf-book-writer"
+WRITER_COMMAND_TIMEOUT_S = 600
 
 
 @dataclass(frozen=True, slots=True)
@@ -73,6 +74,7 @@ class WriterRequest:
             steps=WRITER_STEPS,
             confined=True,
             commands=(self.ostler_command_line, self.check_command_line, self.exercise_command_line),
+            command_timeout_s=WRITER_COMMAND_TIMEOUT_S,
         )
 
 
