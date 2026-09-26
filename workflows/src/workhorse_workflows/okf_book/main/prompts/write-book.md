@@ -56,6 +56,9 @@ commands keep working. Read files with the Read, Glob and Grep tools, never the 
   git, curl and python3, and nothing else: no other language toolchain, no cloud CLI, no
   emulator, no database. The runbook fetches and starts every other tool and service the app
   needs.
+  The health check is a route the app's source serves to say it is ready. Name that route,
+  and never invent one. If the source serves none, name `/healthz` and say in your reply that
+  the app must implement it. That run fails bring-up, and the report sends the gap to the app.
   The command below reports the step where bring-up failed, and it is the only way to probe
   that machine.
 {% endif %}

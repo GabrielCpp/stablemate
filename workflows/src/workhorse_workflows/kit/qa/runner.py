@@ -7,7 +7,7 @@ from pathlib import Path
 
 from ostler import Ostler, graph as graph_mod, model, path as path_mod
 from ostler.model import Graph, UINode
-from ostler.qa import runbook
+from ostler.qa import runbook, stack
 
 from workhorse_workflows.kit.qa.schemas import QaPlanRun, QaStatus, StackStatus
 from workhorse_workflows.kit import find_docs_root
@@ -120,18 +120,28 @@ def ensure_stack(
         "entry_url": last.get("entry_url", ""),
         "failed_step": last.get("failed_step", ""),
     }
-    step = last.get("failed_step", "unknown")
-    error = (last.get("error") or "").strip()
     manifest = last.get("manifest") or {}
     return StackStatus(
         ready="no",
-        notes=(
-            f"Stack bring-up failed at step '{step}'"
-            + (f": {error}" if error else "")
-            + f". Repair the runbook at `{manifest.get('source', '')}` or its seed recipe "
-            "(never background the stack in the agent shell)."
-        ),
+        notes=bring_up_failure(
+            last.get("failed_step", "unknown"), (last.get("error") or "").strip(),
+            manifest.get("source", "")),
         **common,
+    )
+
+
+def bring_up_failure(step: str, error: str, source: str) -> str:
+    """Why bring-up failed, and which side repairs it: the runbook, or the app when it serves no health route."""
+    failed = f"Stack bring-up failed at step '{step}'" + (f": {error}" if error else "")
+    if stack.ROUTE_MISSING in error:
+        return (
+            f"{failed} Point `health-path` in the runbook at `{source}` at the health route "
+            "the app serves. If the app serves none, the app is what is missing a feature: "
+            "it must implement a health route before its book can run."
+        )
+    return (
+        f"{failed}. Repair the runbook at `{source}` or its seed recipe "
+        "(never background the stack in the agent shell)."
     )
 
 
