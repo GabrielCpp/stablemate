@@ -2846,6 +2846,62 @@ def test_a_journey_step_captures_a_field_its_own_verify_then_reads_back() -> Non
     assert _gap_kinds(gaps, oid) == []
 
 
+def _follow_journey(oid: str, *, captures: list[dict], fixtures: list[dict] | None = None) -> dict:
+    post_node = _step_node(f"{_API}#post-things", {"route": ["POST /api/things"]})
+    post_node["actsDeclared"] = [_body_act("name", "Widget A")]
+    post_node["capturesDeclared"] = captures
+    get_node = _step_node(f"{_API}#get-thing", {"route": ["GET /api/things/{thing_id}"]})
+    return _navigation_context(
+        _flow_obligation(
+            oid, source=_FLOW, surface="api",
+            steps=[_step(f"{_API}#post-things", "endpoint", "api"),
+                   _step(f"{_API}#get-thing", "endpoint", "api")],
+            checks=[{"call": "it", "name": "http_status",
+                    "args": {"status": 200, "path": "/api/things/{thing_id}"}}],
+            fixtures=fixtures,
+        ),
+        post_node,
+        get_node,
+        navigation=_api_navigation(),
+    )
+
+
+def test_a_journey_step_path_binds_what_an_earlier_step_captured() -> None:
+    """A later step's `{thing_id}` is the `thing_id` an earlier step captured, so the request goes to the thing the walk made."""
+    oid = f"okf:{_FLOW}:end-state"
+    context = _follow_journey(oid, captures=[{"name": "thing_id", "from": "$.thing.id"}])
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(result, Plan)
+    ast.parse(result.source)
+    assert 'observed_2 = qa.http.get(qa.resolve("/api/things/$thing_id"))' in result.source
+    assert oid in _covers(result.source)
+    assert _gap_kinds(result.gaps, oid) == []
+
+
+def test_a_journey_step_path_binds_the_key_its_fixture_provides() -> None:
+    """A step's `{thing_id}` no step captured is the `thing_id` the flow's one fixture provides."""
+    oid = f"okf:{_FLOW}:end-state"
+    context = _follow_journey(oid, captures=[], fixtures=[
+        {"name": "seeded-thing", "args": [], "provides": "a thing",
+         "providesKeys": ["seeded-thing.thing_id"]},
+    ])
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(result, Plan)
+    ast.parse(result.source)
+    assert 'observed_2 = qa.http.get(qa.resolve("/api/things/@seeded-thing.thing_id"))' in result.source
+    assert _gap_kinds(result.gaps, oid) == []
+
+
+def test_a_journey_step_path_nothing_binds_still_files_its_gap() -> None:
+    """A step's `{thing_id}` that no step captured and no fixture provides stays a template, and the journey says so."""
+    oid = f"okf:{_FLOW}:end-state"
+    context = _follow_journey(oid, captures=[])
+    result = _compile_plan_gaps(context, story="demo-story")
+    gaps = result.gaps
+    assert "unresolved-precondition" in _gap_kinds(gaps, oid)
+    assert any("template variable" in g.detail for g in gaps if g.obligation_id == oid)
+
+
 def test_a_journeys_own_verify_referencing_nothing_captured_withdraws_it() -> None:
     """`$name` names a fact a `capture:` bullet must actually have produced in this same walk — a flow's own `verify:` that names one nothing captured is `unresolved-precondition`, the same as any other reference a `_scenario_body` obligation cannot resolve, and — because a `verify:` set is a conjunction — the whole obligation withdraws rather than emitting the rows that happened to resolve on their own."""
     oid = f"okf:{_FLOW}:end-state"

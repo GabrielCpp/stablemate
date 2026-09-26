@@ -383,11 +383,40 @@ class _HttpSteps:
     produced: set[str]
 
 
+_PATH_VARIABLE = re.compile(r"\{([a-zA-Z0-9][a-zA-Z0-9_-]*)\}(?![\w-])")
+
+
+def _fixture_owners(obligations: list[Obligation]) -> dict[str, set[str]]:
+    """Each key the journey's fixtures provide, and the fixtures that provide it."""
+    owners: dict[str, set[str]] = {}
+    for obligation in obligations:
+        for fixture_row in obligation.fixtures:
+            for qualified in fixture_row.provides_keys:
+                owner, sep, key = qualified.rpartition(".")
+                if sep:
+                    owners.setdefault(key, set()).add(owner)
+    return owners
+
+
+def _bound_path(path: str, produced: set[str], owners: dict[str, set[str]]) -> str:
+    """*path* with each `{name}` an earlier step captured or one fixture provides spelled as that reference."""
+    def bind(match: re.Match[str]) -> str:
+        name = match.group(1)
+        if name in produced:
+            return f"${name}"
+        provided = owners.get(name, set())
+        if len(provided) == 1:
+            return f"@{next(iter(provided))}.{name}"
+        return match.group(0)
+    return _PATH_VARIABLE.sub(bind, path)
+
+
 def _http_steps(walk: JourneyWalk, sinks: PlanSinks) -> _HttpSteps | None:
     """Perform each `endpoint` step as a request, or `None` once one step builds no request."""
     book, gaps = walk.book, sinks.gaps
     lines: list[str] = []
     produced: set[str] = set()
+    owners = _fixture_owners(walk.obligations)
     observed = last_path = ""
     for index, step in enumerate(walk.steps, start=1):
         request = _http_request(index, step, book, walk.ids, gaps)
@@ -396,9 +425,11 @@ def _http_steps(walk: JourneyWalk, sinks: PlanSinks) -> _HttpSteps | None:
                                      gaps, sinks.captured, because=request.because)
             return None
         observed, last_path = f"observed_{index}", request.path
-        lines.append(f"    {observed} = qa.http.{request.method.lower()}"
-                     f"({python_literal(request.path)}{request.body_kw})")
-        if "{" in request.path:
+        bound = _bound_path(request.path, produced, owners)
+        target = (f"qa.resolve({python_literal(bound)})" if references.find_references(bound)
+                  else python_literal(bound))
+        lines.append(f"    {observed} = qa.http.{request.method.lower()}({target}{request.body_kw})")
+        if "{" in bound:
             lines.append("    # TODO(arrange): the path above still carries a template variable")
             gaps.extend(Gap(oid, "unresolved-precondition",
                             f"step {index}'s path still carries a template variable")
