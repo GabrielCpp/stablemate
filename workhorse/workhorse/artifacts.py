@@ -21,6 +21,7 @@ from workhorse.records import (
     parse_checkpoint,
     parse_run_record,
 )
+from workhorse.runner.usage import TurnUsage, as_record, from_record
 
 
 def _observe_repo() -> RepoObservation | None:
@@ -236,6 +237,23 @@ class ArtifactWriter:
         except json.JSONDecodeError:
             return None
         return data if isinstance(data, dict) else {"value": data}
+
+    def write_usage(self, node_id: str, usage: TurnUsage) -> None:
+        """Record what an agent node's last turn used, beside its output."""
+        step_dir = self.run_dir / node_id
+        step_dir.mkdir(exist_ok=True)
+        self._write_unlinked(step_dir / "usage.json", json.dumps(as_record(usage), indent=2))
+
+    def read_usage(self, node_id: str) -> TurnUsage:
+        """What an agent node's last turn used, or an empty usage when none is recorded."""
+        path = self.run_dir / node_id / "usage.json"
+        if not path.exists():
+            return TurnUsage()
+        try:
+            data = json.loads(path.read_text())
+        except json.JSONDecodeError:
+            return TurnUsage()
+        return from_record(data) if isinstance(data, dict) else TurnUsage()
 
     def _append_event(self, node_id: str, phase: NodePhase, **fields: Any) -> None:
         """Append one timestamped line to the per-node event log."""

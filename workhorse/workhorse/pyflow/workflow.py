@@ -21,6 +21,7 @@ from workhorse.pyflow.errors import (
 from workhorse.pyflow.names import NameIndex
 from workhorse.pyflow.transitions import Await, Continue, Done, Transition
 from workhorse.runner.backends import AgentProfile
+from workhorse.runner.usage import TurnUsage
 from workhorse import references
 from workhorse.runner import worktree_guard
 from workhorse.worklist import WorkItem, WorkList
@@ -271,6 +272,10 @@ class Workflow(BaseModel):
         }
         work.settle([it.id for it in items if it.id in held], status, kind)
         return engine.revisit()
+
+    def turn_usage(self, node: str) -> TurnUsage:
+        """What the last turn of agent node `node` used, as its backend reported it. Empty when it reported nothing or has not run."""
+        return self._require_engine().turn_usage(node)
 
     def seed_session(self, key: str, session_id: str) -> None:
         """Start chain `key` on a session id another turn — or another flow — minted."""

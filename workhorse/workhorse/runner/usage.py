@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from collections.abc import Iterable
+from dataclasses import asdict, dataclass
 from typing import Any
 
 _ALIASES: dict[str, tuple[str, ...]] = {
@@ -186,4 +187,31 @@ def normalize(event: dict[str, Any]) -> TurnUsage:
         **_find_tokens(event),
         total_cost_usd=_find_cost(event),
         duration_ms=_as_int(event.get("duration_ms") or event.get("durationMs")),
+    )
+
+
+def total(parts: Iterable[TurnUsage]) -> TurnUsage:
+    """Every report one turn made, folded into the turn's total."""
+    usage = TurnUsage()
+    for part in parts:
+        usage = usage.merge(part)
+    return usage
+
+
+def as_record(usage: TurnUsage) -> dict[str, Any]:
+    """The usage as the JSON object a run directory keeps."""
+    return asdict(usage)
+
+
+def from_record(record: dict[str, Any]) -> TurnUsage:
+    """A usage read back from its JSON object. A key the record lacks, or holds no usable number under, is not reported."""
+    return TurnUsage(
+        input_tokens=_as_int(record.get("input_tokens")),
+        output_tokens=_as_int(record.get("output_tokens")),
+        cache_read_input_tokens=_as_int(record.get("cache_read_input_tokens")),
+        cache_creation_input_tokens=_as_int(record.get("cache_creation_input_tokens")),
+        reasoning_output_tokens=_as_int(record.get("reasoning_output_tokens")),
+        total_cost_usd=_as_float(record.get("total_cost_usd")),
+        duration_ms=_as_int(record.get("duration_ms")),
+        steps=_as_int(record.get("steps")),
     )

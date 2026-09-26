@@ -33,6 +33,7 @@ from workhorse.pyflow.workflow import Workflow
 from workhorse._vendor.stablemate_core.clock import SYSTEM_CLOCK, Clock
 from workhorse.runner.failure import BackendInvocationError
 from workhorse.runner.ladder import AgentRunner
+from workhorse.runner.usage import TurnUsage, total as usage_total
 
 logger = logging.getLogger("workhorse.engine")
 
@@ -333,25 +334,32 @@ class Engine:
             if runner is None:  # pragma: no cover - see above; the field is always resolved
                 raise WorkflowFailed("this run was built without an agent runner")
             try:
-                rendered, raw = runner.run(
-                    node,
-                    WorkflowContext(
-                        {**self.env.manifest.as_context(), **jsonable(args)}
-                    ),
-                    self.env.workflow_dir,
-                    session_path,
-                    resume_session=bool(session),
-                    session_chain=session or "",
-                    run_dir=writer.run_dir,
-                    visit_dir=writer.visit_dir(node_id),
-                    validate=_validator(returns, accept),
-                )
+                with otel.tapping_usage() as usages:
+                    try:
+                        rendered, raw = runner.run(
+                            node,
+                            WorkflowContext(
+                                {**self.env.manifest.as_context(), **jsonable(args)}
+                            ),
+                            self.env.workflow_dir,
+                            session_path,
+                            resume_session=bool(session),
+                            session_chain=session or "",
+                            run_dir=writer.run_dir,
+                            visit_dir=writer.visit_dir(node_id),
+                            validate=_validator(returns, accept),
+                        )
+                    finally:
+                        writer.write_usage(node_id, usage_total(usages))
             except BackendInvocationError as exc:
                 if exc.timed_out:
                     raise AgentTimeout(str(exc), transient=exc.transient) from exc
                 raise AgentTurnFailed(str(exc), transient=exc.transient, overflow=exc.overflow) from exc
             writer.write_step(node_id, rendered, raw, {}, next_node=None)
             return _coerce(raw, returns, node_id)
+
+    def turn_usage(self, node_id: str) -> TurnUsage:
+        return self.env.writer.read_usage(node_id)
 
     def session_id(self, key: str) -> str:
         """The session id chain ``key`` is on, or ``""`` before its first turn."""

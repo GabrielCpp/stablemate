@@ -459,6 +459,7 @@ class TelemetryHost:
     build: TelemetryFactory = _build
     under_test: Callable[[], bool] = _under_test
     active: Telemetry = _NULL
+    usage_taps: list[list[TurnUsage]] = field(default_factory=list)
 
     def start_run(self, workflow: str, run_id: str, run_dir: str | None = None) -> None:
         """Configure the SDK and open the run's root span."""
@@ -601,8 +602,22 @@ def turn_end(error: str | None = None, error_class: str = "", error_kind: str = 
 
 
 def turn_result(usage: TurnUsage) -> None:
-    """Attach a turn's duration + token usage to the open agent-turn span."""
+    """Attach a turn's duration + token usage to the open agent-turn span, and hand it to every open usage tap."""
+    for tap in _host.usage_taps:
+        tap.append(usage)
     _host.active.turn_result(usage)
+
+
+@contextmanager
+def tapping_usage() -> Iterator[list[TurnUsage]]:
+    """Collect every usage report made inside the block, whether or not telemetry exports it."""
+    host = _host
+    usages: list[TurnUsage] = []
+    host.usage_taps.append(usages)
+    try:
+        yield usages
+    finally:
+        host.usage_taps[:] = [tap for tap in host.usage_taps if tap is not usages]
 
 
 def set_labels(labels: dict[str, str]) -> None:
