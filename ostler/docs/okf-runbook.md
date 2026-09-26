@@ -70,7 +70,7 @@ title: QA stack
 | `environment` | link to the `environment` node this boots (default: the local one) |
 | `cli` / `surfaces` / `code` | links: the dev CLI it drives with, the nodes it exposes, its launch entry point |
 | `entry-url` | base of the HTTP readiness probe, and the URL QA opens |
-| `health-path` | joined onto `entry-url` (default `/`) |
+| `health-path` | joined onto `entry-url` (default `/`). It names a route the app serves that answers 2xx or 3xx once it is ready. A 404 or 405 there fails bring-up at once rather than at `boot-timeout`: the app serves no such route, and the app must implement one |
 | `identity` | a substring of the health *body* proving the thing answering is ours, not a stale server on the same port |
 | `reuse` | `if-fresh` (default) \| `always` \| `never` — whether an already-serving stack may be adopted |
 | `fresh` | a command exiting 0 iff a serving stack reflects current code; consulted under `if-fresh` |

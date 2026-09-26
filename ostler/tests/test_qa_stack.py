@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
+from email.message import Message
 
 import pytest
 
@@ -58,6 +59,54 @@ def test_health_requires_documented_identity(monkeypatch) -> None:
     assert "<title>Acme</title>" in why       # names the marker that did not match
     assert "answered HTTP 200" in why         # ...and says the stack answered anyway
     assert "<title>groom</title>" in why      # quotes what the body really said
+
+
+def _answers(status: int):
+    def urlopen(url, *_args, **_kwargs):
+        raise stack.urllib.error.HTTPError(url, status, "Not Found", Message(), None)
+    return urlopen
+
+
+def test_health_names_a_route_the_app_does_not_serve(monkeypatch) -> None:
+    monkeypatch.setattr(stack.urllib.request, "urlopen", _answers(404))
+
+    why = stack.health_probe("http://127.0.0.1:18081/healthz")
+
+    assert "answered HTTP 404" in why
+    assert f"{stack.ROUTE_MISSING} /healthz" in why
+    assert "is not answering" not in why
+
+
+def test_health_reports_a_server_error_as_an_answer(monkeypatch) -> None:
+    monkeypatch.setattr(stack.urllib.request, "urlopen", _answers(503))
+
+    why = stack.health_probe("http://127.0.0.1:18081/healthz")
+
+    assert why == "http://127.0.0.1:18081/healthz answered HTTP 503"
+
+
+def test_boot_stops_waiting_once_the_health_route_is_missing(monkeypatch) -> None:
+    class Serving:
+        pid = 4242
+        returncode = None
+
+        def poll(self) -> None:
+            return None
+
+    monkeypatch.setattr(stack.urllib.request, "urlopen", _answers(404))
+    monkeypatch.setattr(stack.subprocess, "Popen", lambda *_a, **_kw: Serving())
+    monkeypatch.setattr(stack.os, "getpgid", lambda _pid: 4242)
+    monkeypatch.setattr(stack, "_killpg", lambda *_a, **_kw: None)
+    clock = FakeClock()
+
+    out = stack.boot_app(
+        "./run-api", "http://127.0.0.1:18081", "/healthz", ".", ".", "", 900,
+        logger=LOG, clock=clock,
+    )
+
+    assert out["boot_ok"] == "no"
+    assert stack.ROUTE_MISSING in out["reason"]
+    assert clock.monotonic() == 0
 
 
 def test_boot_timeout_falls_back_when_undocumented_or_junk() -> None:

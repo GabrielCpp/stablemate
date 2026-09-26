@@ -52,6 +52,7 @@ import re
 import shutil
 import signal
 import subprocess
+import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
@@ -99,6 +100,8 @@ STOP_TIMEOUT_S = 300.0    # ceiling on a documented `stop` recipe
 STEP_TIMEOUT_S = 600.0    # ceiling on one `prepare`/`seed`/`health` step
 HEALTH_WINDOW_S = 120.0   # window for the `health` gates to converge; via `health_timeout`
 HEALTH_RETRY_S = 5.0      # pause between re-attempts of a gate that is not satisfied yet
+ROUTE_MISSING = "serves no route at"
+_MISSING_ROUTE_STATUSES = frozenset({404, 405})
 
 
 def boot_timeout(raw: str, default: float = BOOT_TIMEOUT_S) -> float:
@@ -152,6 +155,15 @@ def health_probe(url: str, identity: str = "") -> str:
                 f"body*, not a host:port or a URL; drop it, or set it to something the "
                 f"body really says (body began {body[:80]!r})."
             )
+    except urllib.error.HTTPError as exc:
+        if exc.code in _MISSING_ROUTE_STATUSES:
+            path = urllib.parse.urlsplit(url).path or "/"
+            return (
+                f"{url} answered HTTP {exc.code}: the app is up and {ROUTE_MISSING} {path}. "
+                f"The app must serve a health route that answers 2xx once it is ready, and "
+                f"the runbook's `health-path` must name that route."
+            )
+        return f"{url} answered HTTP {exc.code}"
     except Exception as exc:  # noqa: BLE001 — any failure to reach it is "not healthy"
         return f"{url} is not answering ({type(exc).__name__}: {exc})"
 
@@ -259,6 +271,8 @@ def boot_app(
             logger.info("app is healthy at %s (pid %d, pgid %d)", health_url, proc.pid, pgid)
             return {"boot_ok": "yes", "entry_url": entry_url, "reason": "",
                     "app_pid": str(proc.pid), "app_pgid": str(pgid)}
+        if ROUTE_MISSING in why:
+            break
         if not detached and proc.poll() is not None:
             if proc.returncode != 0:
                 logger.warning("app exited with code %s during startup", proc.returncode)
