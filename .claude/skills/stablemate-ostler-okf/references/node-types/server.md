@@ -29,7 +29,7 @@ File type under `docs/features/<service>/http/`, `type: server` in frontmatter.
 | `verify` | no | a check — what observing this server's claims looks like |
 | `launch` | no | the bring-up command |
 | `entry-url` | no | base URL the app serves on — also what a compiled QA plan's `target(...)` reads for its `base_url`. An absolute `http(s)://` URL with a host: it is a base other paths are joined onto, and a bare `localhost:8080` has no scheme to join under (`unparsable-bullet-value`) |
-| `health-path` | no | readiness path under `entry-url` (default `/`) |
+| `health-path` | no | readiness path under `entry-url` (default `/`). It names a route the app serves that answers 2xx or 3xx once it is ready. A 404 or 405 there fails bring-up at once, and the app must implement the route |
 | `working-directory` | no | cwd for `launch`, relative to the repo root |
 | `identity` | no | substring of the health body proving the stack is ours |
 | `stop` | no | teardown recipe |

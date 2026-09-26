@@ -30,7 +30,7 @@ File type under `docs/features/<service>/ops/`, `type: runbook` in frontmatter.
 | `code` | no | link, **owns** its file — the launch entry point |
 | `verify` | no | a check — what observing this runbook's claims looks like |
 | `entry-url` | no | base of the HTTP readiness probe; its path names the surface's root [`screen`](screen.md) — falls back for `surfaces:`' `base_url` in a compiled QA plan when that surface's own `server` states none |
-| `health-path` | no | joined onto `entry-url` (default `/`) |
+| `health-path` | no | joined onto `entry-url` (default `/`). It names a route the app serves that answers 2xx or 3xx once it is ready. A 404 or 405 there fails bring-up at once: the app serves no such route, and the app must implement one |
 | `identity` | no | substring of the health **body** proving the stack is ours |
 | `bundle-id` | no | the mobile package/bundle id a Maestro flow addresses — resolved across the runbooks naming the surface the same ranked way `driver` is |
 | `launch-screen` | no | link — the screen a cold `- launchApp` opens on; resolves the same ranked way `bundle-id`/`driver` do |
