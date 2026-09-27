@@ -23,7 +23,7 @@ from okf_book.support import ScriptedRunner, git
 
 from workhorse_workflows.okf_book.main import repair_book_flow
 from workhorse_workflows.okf_book.main.nodes.journey import JourneyPages
-from workhorse_workflows.okf_book.main.nodes.repair_batches import PackedRepairs, PageRepair, pack_repairs
+from workhorse_workflows.okf_book.main.nodes.repair_batches import PackedRepairs, PageRepair, RepairBatch, pack_repairs
 from workhorse_workflows.okf_book.main.nodes.report import BookReport
 from workhorse_workflows.okf_book.shared.page_check import PageProblem
 from workhorse_workflows.okf_book.workflow import OkfBook
@@ -176,3 +176,19 @@ def test_a_page_a_batch_closed_that_another_page_breaks_is_left_for_the_book_che
     assert isinstance(result, BookReport)
     assert _sent_pages(runner) == [FLOW_PAGE, PAGE]
     assert BREAK.strip() in (repo / PAGE).read_text(encoding="utf-8")
+
+
+def _batch_of(page: str, journey: JourneyPages | None) -> RepairBatch:
+    return RepairBatch(pages=(PageRepair(page=page, problems=("p",)),), tokens=1, journey=journey)
+
+
+def test_an_entry_page_closes_only_after_the_last_batch_of_the_round_that_may_add_links_to_it() -> None:
+    journey = JourneyPages(pages=(PAGE, FLOW_PAGE), flow_folder=Path(FLOW_PAGE).parent.as_posix())
+    batches = (_batch_of(PAGE, journey), _batch_of(FLOW_PAGE, journey), _batch_of(OTHER_PAGE, None))
+    this_round = repair_book_flow.RepairRound(uncommitted_at_start=(), planned_pages=(), journey=journey, number=1, batches=batches)
+
+    after_first = this_round.with_clean_pages_closed(0, ())
+    after_last_journey_batch = after_first.with_clean_pages_closed(1, ())
+
+    assert after_first.closed_pages == ()
+    assert after_last_journey_batch.closed_pages == (PAGE, FLOW_PAGE)

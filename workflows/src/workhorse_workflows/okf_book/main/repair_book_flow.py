@@ -5,9 +5,9 @@ run's failures are the first round's problems on the pages they cover.
 
 The first round fixes the pages the repair works on. A later round repairs what is left on those
 pages, and a problem found on any other page is left for the book check to report. A page the check
-found clean after its batch is closed. Code puts it back when a later turn changes it, but an entry
-page, which a turn may still add link lines to, and a problem it has later is left for the book
-check too, so no turn repairs it twice. A page too large for one writer is sent to no turn and
+found clean after its batch is closed: code puts it back when a later turn changes it, and a problem
+it has later is left for the book check, so no turn repairs it twice. An entry page closes only
+after the round's last batch that may add link lines to it. A page too large for one writer is sent to no turn and
 reported.
 
 Each batch owns the pages it is sent. A batch with a page no other page reaches, or with an endpoint
@@ -82,15 +82,20 @@ class RepairRound(BaseModel):
     closed_pages: tuple[str, ...] = ()
     batches: tuple[RepairBatch, ...] = ()
 
-    def with_clean_pages_closed(self, batch: RepairBatch, problems: Iterable[PageProblem]) -> RepairRound:
-        """This round with each page of the batch the check finds no problem on added to its closed pages."""
-        open_pages = {problem.page for problem in problems}
-        closed = (page for page in batch.page_paths if page not in open_pages and page not in self.closed_pages)
-        return self.model_copy(update={"closed_pages": (*self.closed_pages, *closed)})
+    def with_clean_pages_closed(self, index: int, problems: Iterable[PageProblem]) -> RepairRound:
+        """This round with each page of its batch at `index` the check finds no problem on added to its closed pages.
 
-    def closed_to_turns(self, path: str) -> bool:
-        """Whether no turn may change the path: a page a batch closed, but an entry page."""
-        return path in self.closed_pages and path not in self.journey.entry_pages
+        An entry page stays open while a later batch of the round owns the journey, since that batch
+        may add link lines to it. After the last such batch, the clean entry pages of every earlier
+        batch close too.
+        """
+        open_pages = {problem.page for problem in problems}
+        entry_pages = set(self.journey.entry_pages)
+        journey_ahead = any(batch.journey is not None for batch in self.batches[index + 1 :])
+        earlier = () if journey_ahead else (page for batch in self.batches[:index] for page in batch.page_paths if page in entry_pages)
+        this = (page for page in self.batches[index].page_paths if not (journey_ahead and page in entry_pages))
+        closed = (page for page in dict.fromkeys((*earlier, *this)) if page not in open_pages and page not in self.closed_pages)
+        return self.model_copy(update={"closed_pages": (*self.closed_pages, *closed)})
 
     def outcome(self, rounds: int, by_page: dict[str, tuple[str, ...]]) -> RepairOutcome:
         left = sum(len(problems) for problems in by_page.values())
@@ -245,7 +250,7 @@ class RepairBook(BookFlow):
         unowned = [
             path
             for path in changed
-            if path == entries or path in before.digests or this_round.closed_to_turns(path) or not batch.owns(path, created)
+            if path == entries or path in before.digests or path in this_round.closed_pages or not batch.owns(path, created)
         ]
         unrestorable_uncommitted = restore(root, unowned, before)
         for path in sorted(set(unowned) - set(unrestorable_uncommitted) - {entries}):
@@ -304,7 +309,7 @@ class RepairBook(BookFlow):
     def close_batch(self, this_round: RepairRound, index: int) -> Continue[...]:
         """Check the book, close each page of the batch the check finds clean, and move to the next batch, or plan the next round after the last."""
         problems = page_problems(self.root, self.service)
-        this_round = this_round.with_clean_pages_closed(this_round.batches[index], problems)
+        this_round = this_round.with_clean_pages_closed(index, problems)
         if index + 1 < len(this_round.batches):
             return Continue(
                 this_round.closed_pages,
