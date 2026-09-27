@@ -94,8 +94,8 @@ class ToolCall:
             raise ValueError("the call is not an object")
         tool = data.get("tool_name")
         tool_input = data.get("tool_input")
-        given = tool_input.get("command") if isinstance(tool_input, dict) else None
-        return cls(tool=tool if isinstance(tool, str) else "", input_text=given if isinstance(given, str) else None)
+        command_text = tool_input.get("command") if isinstance(tool_input, dict) else None
+        return cls(tool=tool if isinstance(tool, str) else "", input_text=command_text if isinstance(command_text, str) else None)
 
 
 def _within(path: Path, roots: Sequence[Path]) -> bool:

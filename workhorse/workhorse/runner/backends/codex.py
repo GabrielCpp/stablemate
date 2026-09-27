@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 import os
 import tempfile
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
 from workhorse.config_run import AgentResilience
@@ -45,6 +47,21 @@ def guard_flags(policy_path: Path) -> list[str]:
     command = json.dumps(hook_command(policy_path))
     hooks = f'hooks.PreToolUse=[{{matcher=".*",hooks=[{{type="command",command={command}}}]}}]'
     return ["--dangerously-bypass-hook-trust", "-c", hooks]
+
+
+@contextmanager
+def guarded_flags(policy: Policy | None) -> Iterator[list[str]]:
+    """The guard's flags for a turn held to `policy`, with the policy in a file that lasts as long as the turn. No flags when there is no policy."""
+    if policy is None:
+        yield []
+        return
+    with tempfile.NamedTemporaryFile("w", suffix=".json", prefix="codex-guard-", delete=False, encoding="utf-8") as file:
+        _ = file.write(policy.to_json())
+    policy_path = Path(file.name)
+    try:
+        yield guard_flags(policy_path)
+    finally:
+        policy_path.unlink(missing_ok=True)
 
 
 NON_FAILURE_MARKERS = ("codex_core::tools::router", "blocked by PreToolUse hook", "`--dangerously-bypass-hook-trust` is enabled")
@@ -108,27 +125,17 @@ class CodexBackend(JsonlBackend):
         if effort:
             codex_effort = "high" if effort in ("xhigh", "max") else effort
             flags += ["-c", f'model_reasoning_effort="{codex_effort}"']
-        policy = guard_policy(agent, cwd, add_dirs)
-        policy_path: Path | None = None
-        if policy is not None:
-            with tempfile.NamedTemporaryFile("w", suffix=".json", prefix="codex-guard-", delete=False, encoding="utf-8") as file:
-                _ = file.write(policy.to_json())
-            policy_path = Path(file.name)
-            flags += guard_flags(policy_path)
-        if sid:
-            cmd = [*head, "exec", "resume", *flags, sid, "-"]
-            print(f"[{node_id}] 🔄 Resuming codex session: {sid[:8]}...", flush=True)
-        else:
-            cmd = [*head, "exec", *flags, "-"]
-        try:
+        with guarded_flags(guard_policy(agent, cwd, add_dirs)) as guard:
+            if sid:
+                cmd = [*head, "exec", "resume", *flags, *guard, sid, "-"]
+                print(f"[{node_id}] 🔄 Resuming codex session: {sid[:8]}...", flush=True)
+            else:
+                cmd = [*head, "exec", *flags, *guard, "-"]
             state = self.stream(
                 cmd, node_id, timeout, prompt, _on_event,
                 resilience=resilience, cwd=cwd,
                 env_extra=self.harness_env(), non_failure_markers=NON_FAILURE_MARKERS,
             )
-        finally:
-            if policy_path is not None:
-                policy_path.unlink(missing_ok=True)
         return finalize_turn("codex", node_id, state, session_id_path, timeout)
 
     def compact(
