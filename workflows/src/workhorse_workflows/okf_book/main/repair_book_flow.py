@@ -5,8 +5,9 @@ run's failures are the first round's problems on the pages they cover.
 
 The first round fixes the pages the repair works on. A later round repairs what is left on those
 pages, and a problem found on any other page is left for the book check to report. A page the check
-found clean after its batch is closed: a problem another batch's edit gives it later is left for the
-book check too, so no turn repairs it twice. A page too large for one writer is sent to no turn and
+found clean after its batch is closed. Code puts it back when a later turn changes it, but an entry
+page, which a turn may still add link lines to, and a problem it has later is left for the book
+check too, so no turn repairs it twice. A page too large for one writer is sent to no turn and
 reported.
 
 Each batch owns the pages it is sent. A batch with a page no other page reaches, or with an endpoint
@@ -86,6 +87,10 @@ class RepairRound(BaseModel):
         open_pages = {problem.page for problem in problems}
         closed = (page for page in batch.page_paths if page not in open_pages and page not in self.closed_pages)
         return self.model_copy(update={"closed_pages": (*self.closed_pages, *closed)})
+
+    def closed_to_turns(self, path: str) -> bool:
+        """Whether no turn may change the path: a page a batch closed, but an entry page."""
+        return path in self.closed_pages and path not in self.journey.entry_pages
 
     def outcome(self, rounds: int, by_page: dict[str, tuple[str, ...]]) -> RepairOutcome:
         left = sum(len(problems) for problems in by_page.values())
@@ -224,7 +229,7 @@ class RepairBook(BookFlow):
         return Continue(failure, self.put_back, this_round=this_round, index=index, before=before).because("put back what the turn may not keep")
 
     def put_back(self, this_round: RepairRound, index: int, before: Snapshot) -> Continue[...] | Await[...]:
-        """Put back each path the turn changed but may not keep: one outside the book, the entries page, a page its batch does not own, and an entry page it changed beyond adding link lines.
+        """Put back each path the turn changed but may not keep: one outside the book, the entries page, a page its batch does not own, a page an earlier batch closed, and an entry page it changed beyond adding link lines.
 
         A page someone left uncommitted has no committed copy of their edit to go back to, so a turn
         that changed one waits for the operator.
@@ -237,7 +242,11 @@ class RepairBook(BookFlow):
         entries = entries_path(root, self.service).relative_to(root).as_posix()
         changed = book_changes(root, self.service, before)
         created = untracked(root, changed)
-        unowned = [path for path in changed if path == entries or path in before.digests or not batch.owns(path, created)]
+        unowned = [
+            path
+            for path in changed
+            if path == entries or path in before.digests or this_round.closed_to_turns(path) or not batch.owns(path, created)
+        ]
         unrestorable_uncommitted = restore(root, unowned, before)
         for path in sorted(set(unowned) - set(unrestorable_uncommitted) - {entries}):
             self.logger.warning("put back %s, which the repair turn changed outside the pages its batch owns", path)

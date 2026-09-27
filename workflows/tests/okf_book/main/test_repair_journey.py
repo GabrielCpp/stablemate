@@ -1,4 +1,4 @@
-"""A repair batch whose fix goes on a journey owns the journey pages, adds only link lines to an entry page, and leaves a page another batch closed for the book check."""
+"""A repair batch whose fix goes on a journey owns the journey pages, adds only link lines to an entry page, and may not change a page another batch closed, whose later problems are left for the book check."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -117,7 +117,8 @@ BREAK = "\na flow step that walks no endpoint\n"
 
 def _flow_and_page_until_noted(root: Path, service: str) -> tuple[PageProblem, ...]:
     flow_text = (root / FLOW_PAGE).read_text(encoding="utf-8")
-    flow_open = NOTE.strip() not in flow_text or BREAK.strip() in flow_text
+    broken = BREAK.strip() in flow_text or BREAK.strip() in (root / PAGE).read_text(encoding="utf-8")
+    flow_open = NOTE.strip() not in flow_text or broken
     flow_problems = (PageProblem(FLOW_PAGE, "track-a-trip.md needs a note", needs_journey=True),) if flow_open else ()
     return (*flow_problems, *off_journey_until_noted(root, service))
 
@@ -130,10 +131,10 @@ def _one_page_per_batch(
     return packed.model_copy(update={"batches": batches})
 
 
-def _notes_its_page_and_breaks_the_flow_from_the_entry_page(repo: Path) -> ScriptedRunner:
+def _notes_its_page_and_breaks_the_flow(repo: Path, broken_page: str) -> ScriptedRunner:
     def _reply(args: dict[str, object]) -> dict[str, object]:
         [repair] = TypeAdapter(tuple[PageRepair, ...]).validate_python(args["pages"])
-        edits = ((FLOW_PAGE, NOTE),) if repair.page == FLOW_PAGE else ((PAGE, NOTE), (FLOW_PAGE, BREAK))
+        edits = ((FLOW_PAGE, NOTE),) if repair.page == FLOW_PAGE else ((PAGE, NOTE), (broken_page, BREAK))
         for page, text in edits:
             _ = (repo / page).write_text((repo / page).read_text(encoding="utf-8") + text, encoding="utf-8")
         return {"value": f"repaired {repair.page}"}
@@ -141,18 +142,37 @@ def _notes_its_page_and_breaks_the_flow_from_the_entry_page(repo: Path) -> Scrip
     return ScriptedRunner({"repair-pages": _reply})
 
 
-@pytest.mark.usefixtures("over_the_ceiling")
-def test_a_page_a_batch_closed_that_a_later_batch_breaks_is_left_for_the_book_check(
-    app: App, drive_book: DriveBook, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    repo = app("tally-cli")
+def _sent_pages(runner: ScriptedRunner) -> list[str]:
+    return [TypeAdapter(tuple[PageRepair, ...]).validate_python(args["pages"])[0].page for args in runner.args_of("repair-pages")]
+
+
+@pytest.fixture
+def one_page_per_batch(monkeypatch: pytest.MonkeyPatch) -> None:
+    repair_over_the_ceiling(monkeypatch)
     monkeypatch.setattr(repair_book_flow, "page_problems", _flow_and_page_until_noted)
     monkeypatch.setattr(repair_book_flow, "pack_repairs", _one_page_per_batch)
-    runner = _notes_its_page_and_breaks_the_flow_from_the_entry_page(repo)
+
+
+@pytest.mark.usefixtures("one_page_per_batch")
+def test_a_later_batch_cannot_change_a_flow_page_an_earlier_batch_closed(app: App, drive_book: DriveBook) -> None:
+    repo = app("tally-cli")
+    runner = _notes_its_page_and_breaks_the_flow(repo, FLOW_PAGE)
 
     result = drive_book(OkfBook(repo_dir=str(repo), surfaces=(TALLY,)), runner)
 
     assert isinstance(result, BookReport)
-    sent = [TypeAdapter(tuple[PageRepair, ...]).validate_python(args["pages"])[0].page for args in runner.args_of("repair-pages")]
-    assert sent == [FLOW_PAGE, PAGE]
-    assert BREAK.strip() in (repo / FLOW_PAGE).read_text(encoding="utf-8")
+    assert _sent_pages(runner) == [FLOW_PAGE, PAGE]
+    assert BREAK.strip() not in (repo / FLOW_PAGE).read_text(encoding="utf-8")
+    assert git(repo, "status", "--porcelain").strip() == ""
+
+
+@pytest.mark.usefixtures("one_page_per_batch")
+def test_a_page_a_batch_closed_that_another_page_breaks_is_left_for_the_book_check(app: App, drive_book: DriveBook) -> None:
+    repo = app("tally-cli")
+    runner = _notes_its_page_and_breaks_the_flow(repo, PAGE)
+
+    result = drive_book(OkfBook(repo_dir=str(repo), surfaces=(TALLY,)), runner)
+
+    assert isinstance(result, BookReport)
+    assert _sent_pages(runner) == [FLOW_PAGE, PAGE]
+    assert BREAK.strip() in (repo / PAGE).read_text(encoding="utf-8")
