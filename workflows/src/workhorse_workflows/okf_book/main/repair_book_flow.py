@@ -55,13 +55,13 @@ class RepairRound(BaseModel):
     held: tuple[str, ...]
     planned: tuple[str, ...]
     number: int
-    failed: tuple[str, ...] = ()
+    failed_turns: tuple[str, ...] = ()
     too_large: tuple[TooLarge, ...] = ()
     batches: tuple[RepairBatch, ...] = ()
 
     def outcome(self, rounds: int, by_page: dict[str, tuple[str, ...]]) -> RepairOutcome:
         left = sum(len(problems) for problems in by_page.values())
-        return RepairOutcome(rounds=rounds, failed_turns=self.failed, too_large=self.too_large, problems_left=left)
+        return RepairOutcome(rounds=rounds, failed_turns=self.failed_turns, too_large=self.too_large, problems_left=left)
 
 
 class RepairBook(BookFlow):
@@ -162,7 +162,7 @@ class RepairBook(BookFlow):
         record_turn(self.records_dir, metric)
         if failure:
             self.logger.warning("%s", failure)
-            repair = repair.model_copy(update={"failed": (*repair.failed, failure)})
+            repair = repair.model_copy(update={"failed_turns": (*repair.failed_turns, failure)})
         return Continue(failure, self.put_back_and_stamp, repair=repair, index=index, before=before).because("put back its strays and stamp its pages")
 
     def put_back_and_stamp(self, repair: RepairRound, index: int, before: Snapshot) -> Continue[...]:
