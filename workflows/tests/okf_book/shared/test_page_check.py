@@ -57,3 +57,16 @@ def test_a_compile_states_only_the_named_books_obligations(app: Callable[[str], 
 
     assert compiled.obligations
     assert {obligation_page(obligation).split("/")[2] for obligation in compiled.obligations} == {"api-service"}
+
+
+def test_a_claim_no_run_observes_is_the_books_to_restate(app: Callable[[str], Path]) -> None:
+    repo = app("tally-cli")
+    page = repo / COMMANDS
+    text = page.read_text(encoding="utf-8")
+    totalled = '- verify: json_path(path="$.total_cents", equals="7450")\n'
+    _ = page.write_text(text.replace(totalled, totalled + '- verify: emitted(event="the ledger was read", count=1)\n', 1), encoding="utf-8")
+
+    problems = [problem for problem in book_problems(repo, "tally") if "needs-out-of-band-observation" in problem]
+
+    assert len(problems) == 1
+    assert "State what a caller of the surface sees instead" in problems[0]

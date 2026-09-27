@@ -5,7 +5,8 @@ page reaches, and every doctor error on the book, except a stale citation, which
 restamps. So is a bullet the page's type does not declare, which doctor only warns about because
 a hand-kept book may carry one, but which on a written page is a claim nothing runs. It reports
 every command, endpoint and screen no flow walks, and every obligation that does not compile, unless the gap is one ostler cannot run yet, which is
-ostler's to fix and not the book's. Two gaps are no defect at all: a precondition the arrangement
+ostler's to fix and not the book's. A claim observed out of band is the book's: no run observes it, so the writer
+restates it as what a caller sees, or drops it. Two gaps are no defect at all: a precondition the arrangement
 already discharges, and the placeholder obligation every node mints for itself, which owes a
 check only through the claims under it.
 """
@@ -31,7 +32,7 @@ from workhorse_workflows.okf_book.shared.entries import FEATURES_DIR, book_dir, 
 from workhorse_workflows.okf_book.shared.production import production_files
 
 BOOK_STORY = "book"
-OSTLER_GAPS = HARNESS_LIMIT_GAPS | frozenset({"needs-snapshot", "needs-out-of-band-observation"})
+OSTLER_GAPS = HARNESS_LIMIT_GAPS | frozenset({"needs-snapshot"})
 RESTAMPED_CODES = frozenset({"stale-citation"})
 REACH_CODES = frozenset({"unreachable-node"})
 CHARGED_WARNINGS = frozenset({"unknown-bullet"})
@@ -40,6 +41,13 @@ WALK_BULLETS = frozenset({"start", "steps", "end"})
 DISCHARGED_GAPS = frozenset({"precondition-discharged-by-arrangement"})
 NODE_OBLIGATION_SUFFIXES = (":contract", ":end-state")
 UNDECLARED_GAP = "no-verify-declared"
+WRITER_FIXES = {
+    "needs-out-of-band-observation": (
+        "No run observes this. State what a caller of the surface sees instead: a status, a body "
+        "field, a response header, or a later read that returns what was stored. Delete the claim "
+        "when nothing outside the app shows it."
+    ),
+}
 _OBLIGATION_PAGE = re.compile(r"^okf:(?P<page>[^#:]+\.md)")
 
 
@@ -151,7 +159,8 @@ def _doctor_problems(book: Graph, pages: list[str]) -> list[PageProblem]:
 def _gap_problems(gaps: Iterable[Gap]) -> list[PageProblem]:
     by_fix: dict[tuple[str, str, str], list[str]] = {}
     for gap in gaps:
-        by_fix.setdefault((gap_page(gap), gap.kind, gap.detail), []).append(gap.obligation_id)
+        detail = WRITER_FIXES.get(gap.kind, gap.detail)
+        by_fix.setdefault((gap_page(gap), gap.kind, detail), []).append(gap.obligation_id)
     return [
         PageProblem(page, f"{ids[0]} does not compile: {kind}: {detail}")
         if len(ids) == 1
