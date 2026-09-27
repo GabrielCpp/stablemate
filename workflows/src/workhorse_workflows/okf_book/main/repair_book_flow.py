@@ -105,7 +105,7 @@ class RepairBook(BookFlow):
         """Plan the pages the repair works on: each page the check or the failed run finds a problem on, but a held one."""
         run_problems = [PageProblem(page, text) for page, texts in self.run_failures.items() for text in texts]
         by_page = problems_by_page((*page_problems(self.root, self.service), *run_problems), frozenset(held))
-        return self._packed(RepairRound(held=held, planned=tuple(by_page), number=1), by_page)
+        return self._first_batch_or_done(RepairRound(held=held, planned=tuple(by_page), number=1), by_page)
 
     def plan_round(self, last: RepairRound) -> Continue[...] | Done:
         """Check the book again and pack the planned pages that still have problems. A spent repair ends with what is left."""
@@ -116,9 +116,9 @@ class RepairBook(BookFlow):
             self.logger.info("%d pages outside this repair have problems, left for the book check: %s", len(outside), ", ".join(outside))
         if last.number >= REPAIR_ROUNDS:
             return Done(last.outcome(last.number, by_page)).because("the repair rounds are spent")
-        return self._packed(last.model_copy(update={"number": last.number + 1, "batches": ()}), by_page)
+        return self._first_batch_or_done(last.model_copy(update={"number": last.number + 1, "batches": ()}), by_page)
 
-    def _packed(self, repair: RepairRound, by_page: dict[str, tuple[str, ...]]) -> Continue[...] | Done:
+    def _first_batch_or_done(self, repair: RepairRound, by_page: dict[str, tuple[str, ...]]) -> Continue[...] | Done:
         packed = repair_batches(self.root, by_page)
         known = {page.page for page in repair.too_large}
         too_large = (*repair.too_large, *(page for page in packed.too_large if page.page not in known))
