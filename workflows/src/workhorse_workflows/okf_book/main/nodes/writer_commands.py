@@ -11,7 +11,6 @@ from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict
 
-from workhorse_workflows.okf_book.shared.confine import Snapshot
 
 CHECK_MODULE = f"{__package__}.check_pages"
 EXERCISE_MODULE = f"{__package__}.exercise"
@@ -52,7 +51,6 @@ class WriterCommandState(BaseModel):
     root: Path
     service: str
     pages: tuple[str, ...] = ()
-    before: Snapshot | None = None
     problems_at_turn_start: tuple[str, ...] = ()
     check_and_scenario_runs: int = 0
     ostler_runs: int = 0

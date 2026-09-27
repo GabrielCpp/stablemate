@@ -33,7 +33,6 @@ from workhorse_workflows.okf_book.main.nodes.turn_budget import (
 from workhorse_workflows.okf_book.main.nodes.source_view import build_source_view, source_view_folder
 from workhorse_workflows.okf_book.main.nodes.surface import Surface, SurfaceKind
 from workhorse_workflows.okf_book.main.nodes.writer_request import WriterRequest
-from workhorse_workflows.okf_book.shared.confine import snapshot
 from workhorse_workflows.okf_book.shared.page_check import PageProblem
 from workhorse_workflows.okf_book.main.nodes.writer_commands import (
     CHECK_MODULE,
@@ -208,7 +207,6 @@ def test_a_check_scoped_to_pages_prints_their_problems_and_those_the_turn_made_b
     repo = make_git_repo(tmp_path / "repo")
     book = repo / "docs/features/ledger"
     book.mkdir(parents=True)
-    before = snapshot(repo)
     _ = (book / "touched.md").write_text("changed\n", encoding="utf-8")
     pages = (
         "docs/features/ledger/mine.md",
@@ -218,7 +216,7 @@ def test_a_check_scoped_to_pages_prints_their_problems_and_those_the_turn_made_b
     )
     monkeypatch.setattr(check_pages, "page_problems", _problems_on(*pages))
     problems_at_turn_start = (f"{pages[0]} is broken", f"{pages[1]} is broken", f"{pages[2]} is broken")
-    state = WriterCommandState(root=repo, service="ledger", pages=(pages[0],), before=before, problems_at_turn_start=problems_at_turn_start)
+    state = WriterCommandState(root=repo, service="ledger", pages=(pages[0],), problems_at_turn_start=problems_at_turn_start)
 
     printed = scoped_problems(state)
 

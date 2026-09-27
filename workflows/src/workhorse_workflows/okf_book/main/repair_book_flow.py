@@ -160,7 +160,6 @@ class RepairBook(BookFlow):
             root=self.root,
             service=self.service,
             pages=batch.page_paths,
-            before=before,
             problems_at_turn_start=problems_at_turn_start,
         )
         _ = write_command_state(self.run_dir, state)
