@@ -82,7 +82,7 @@ class RepairRound(BaseModel):
     closed_pages: tuple[str, ...] = ()
     batches: tuple[RepairBatch, ...] = ()
 
-    def closing(self, batch: RepairBatch, problems: Iterable[PageProblem]) -> RepairRound:
+    def with_clean_pages_closed(self, batch: RepairBatch, problems: Iterable[PageProblem]) -> RepairRound:
         """This round with each page of the batch the check finds no problem on added to its closed pages."""
         open_pages = {problem.page for problem in problems}
         closed = (page for page in batch.page_paths if page not in open_pages and page not in self.closed_pages)
@@ -304,7 +304,7 @@ class RepairBook(BookFlow):
     def close_batch(self, this_round: RepairRound, index: int) -> Continue[...]:
         """Check the book, close each page of the batch the check finds clean, and move to the next batch, or plan the next round after the last."""
         problems = page_problems(self.root, self.service)
-        this_round = this_round.closing(this_round.batches[index], problems)
+        this_round = this_round.with_clean_pages_closed(this_round.batches[index], problems)
         if index + 1 < len(this_round.batches):
             return Continue(
                 this_round.closed_pages,
