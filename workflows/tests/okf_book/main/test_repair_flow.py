@@ -143,21 +143,16 @@ def _no_pages(_root: Path, _service: str) -> tuple[PageProblem, ...]:
     return ()
 
 
-def test_a_book_this_workflow_wrote_that_fails_its_run_is_repaired_once_on_the_pages_that_failed(
-    app: App, drive_book: DriveBook, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    repo = app("tally-cli")
-    _ = (repo / PAGE).write_text((repo / PAGE).read_text(encoding="utf-8") + NOTE, encoding="utf-8")
-    _ = git(repo, "commit", "-qam", "docs(tally): write the tally book")
-    runner = _repairer(repo)
+@pytest.fixture
+def failing_add(monkeypatch: pytest.MonkeyPatch) -> None:
     stub_the_run_to(monkeypatch, FAILED_ADD)
     monkeypatch.setattr(flow, "book_problems", no_problems)
     monkeypatch.setattr(flow, "plan_scenarios", _planned)
     monkeypatch.setattr(repair_book_flow, "page_problems", _no_pages)
     monkeypatch.setattr(pyflow_driver, "wait_for_answer", answer([]))
 
-    result = drive_book(OkfBook(repo_dir=str(repo), surfaces=(TALLY,)), runner)
 
+def _repaired_once_on_the_failed_page(runner: ScriptedRunner, result: object) -> None:
     assert runner.total == 1
     sent = TypeAdapter(tuple[PageRepair, ...]).validate_python(runner.args_of("repair-pages")[0]["pages"])
     ran = "the run of scenario tally-add failed: adds an expense: expected 0, observed 1"
@@ -165,3 +160,28 @@ def test_a_book_this_workflow_wrote_that_fails_its_run_is_repaired_once_on_the_p
     assert runner.args_of("repair-pages")[0]["exercise"]
     assert isinstance(result, BookReport)
     assert [b.phase for b in result.blockers] == [Phase.EXERCISE]
+
+
+@pytest.mark.usefixtures("failing_add")
+def test_an_existing_book_over_the_ceiling_that_fails_its_run_is_repaired_once_on_the_pages_that_failed(
+    app: App, drive_book: DriveBook, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = app("tally-cli")
+    runner = _repairer(repo)
+    monkeypatch.setattr(turn_budget, "SOURCE_AND_BOOK_CEILING_TOKENS", 10)
+
+    result = drive_book(OkfBook(repo_dir=str(repo), surfaces=(TALLY,)), runner)
+
+    _repaired_once_on_the_failed_page(runner, result)
+
+
+@pytest.mark.usefixtures("failing_add")
+def test_a_book_this_workflow_wrote_that_fails_its_run_is_repaired_once_on_the_pages_that_failed(app: App, drive_book: DriveBook) -> None:
+    repo = app("tally-cli")
+    _ = (repo / PAGE).write_text((repo / PAGE).read_text(encoding="utf-8") + NOTE, encoding="utf-8")
+    _ = git(repo, "commit", "-qam", "docs(tally): write the tally book")
+    runner = _repairer(repo)
+
+    result = drive_book(OkfBook(repo_dir=str(repo), surfaces=(TALLY,)), runner)
+
+    _repaired_once_on_the_failed_page(runner, result)

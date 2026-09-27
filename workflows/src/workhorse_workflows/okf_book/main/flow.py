@@ -77,17 +77,19 @@ class OkfBook(BookFlow):
             "the existing book checks clean"
         )
 
-    def copy_source(self, index: int) -> Continue[...]:
+    def copy_source(self, index: int, run_failures: dict[str, tuple[str, ...]] | None = None) -> Continue[...]:
         """Copy the surface's product source for its writer. A surface whose source is no folder is a blocker."""
         surface = self.surfaces[index]
         source = _source_folder(self.root, surface)
         if not (self.root / source).is_dir():
             return self._block_surface_and_move_on(index, f"the entry {surface.entry} is in no source folder")
         view = build_source_view(self.root, source)
-        return Continue(view.as_posix(), self.measure_source, index=index).because("measure the writer's source")
+        return Continue(view.as_posix(), self.measure_source, index=index, run_failures=run_failures).because(
+            "measure the writer's source"
+        )
 
-    def measure_source(self, index: int) -> Continue[...]:
-        """A book over the ceiling one writer reads is repaired a batch of pages at a time. A surface with no book over it is a blocker."""
+    def measure_source(self, index: int, run_failures: dict[str, tuple[str, ...]] | None = None) -> Continue[...]:
+        """A book over the ceiling one writer reads is repaired a batch of pages at a time, with the failures of the run it failed. A surface with no book over it is a blocker."""
         surface = self.surfaces[index]
         view = source_view_folder(self.root, _source_folder(self.root, surface))
         tokens = source_and_book_tokens(folder_tokens(view), folder_tokens(self.root / _book_folder(surface.service)))
@@ -95,7 +97,9 @@ class OkfBook(BookFlow):
         if reason is None:
             return Continue(tokens, self.write_book, index=index).because("the source fits one writer")
         if book_pages(self.root, surface.service):
-            return Continue(tokens, self.repair_book, index=index).because("the book is over one writer: repair it in batches")
+            return Continue(tokens, self.repair_book, index=index, run_failures=run_failures).because(
+                "the book is over one writer: repair it in batches"
+            )
         return self._block_surface_and_move_on(index, reason)
 
     def repair_book(self, index: int, run_failures: dict[str, tuple[str, ...]] | None = None) -> Continue[...]:
@@ -163,15 +167,17 @@ class OkfBook(BookFlow):
         ).because("settle the run")
 
     def settle_run(self, index: int, written_by_workflow: bool, exercised: ExerciseResult, after_run: bool = False) -> Continue[...]:
-        """A passing book is done. A stack that cannot come up is the app's blocker, and the book stays. A failing book goes to the writer once, and a book this workflow wrote goes to its repair once, with the failures on the pages they cover. A book that fails again is a blocker."""
+        """A passing book is done. A stack that cannot come up is the app's blocker, and the book stays. A failing book goes to the writer once, and a repair of it takes the failures on the pages they cover. A book that fails again is a blocker."""
         service = self.surfaces[index].service
         if exercised.summary is not None:
             _ = write_run(self.records_dir, exercised.summary)
         if exercised.passed:
             return self._next_surface(exercised.passed, index)
-        if not exercised.stack_down and not written_by_workflow:
-            return Continue(exercised.passed, self.copy_source, index=index).because("the existing book fails its run")
         failures = self._run_failures(service, exercised) if not exercised.stack_down and not after_run else {}
+        if not exercised.stack_down and not written_by_workflow:
+            return Continue(exercised.passed, self.copy_source, index=index, run_failures=failures).because(
+                "the existing book fails its run"
+            )
         if failures:
             view = build_source_view(self.root, _source_folder(self.root, self.surfaces[index]))
             return Continue(view.as_posix(), self.repair_book, index=index, run_failures=failures).because(
