@@ -23,7 +23,7 @@ NO_PROBLEMS_LINE = "No problems"
 _LOCATION = re.compile(r"^([^:\s]+):\d+: ")
 
 
-def _unlocated(text: str) -> str:
+def _without_line_number(text: str) -> str:
     return _LOCATION.sub(r"\1: ", text)
 
 
@@ -48,11 +48,11 @@ def scoped_problems(state: WriterCommandState) -> tuple[str, ...]:
     problems = page_problems(root, state.service)
     if not state.pages:
         return tuple(problem.text for problem in problems)
-    problems_at_turn_start = frozenset(_unlocated(text) for text in state.problems_at_turn_start)
+    problems_at_turn_start = frozenset(_without_line_number(text) for text in state.problems_at_turn_start)
     return tuple(
         problem.text
         for problem in problems
-        if _in_scope(state, root, problem) or _unlocated(problem.text) not in problems_at_turn_start
+        if _in_scope(state, root, problem) or _without_line_number(problem.text) not in problems_at_turn_start
     )
 
 
