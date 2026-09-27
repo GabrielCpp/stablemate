@@ -136,13 +136,10 @@ class RepairBook(BookFlow):
         by_page = problems_by_page(problems, frozenset(uncommitted_at_start))
         journey = journey_pages(self.root, self.service, frozenset(uncommitted_at_start))
         this_round = RepairRound(uncommitted_at_start=uncommitted_at_start, planned_pages=tuple(by_page), journey=journey, number=1)
-        return self._first_batch_or_done(this_round, by_page, pages_needing_journey(problems))
+        return self._first_batch_or_done(this_round, by_page, problems)
 
-    def plan_round(self, last: RepairRound) -> Continue[...] | Done:
-        """Check the book again and pack the planned pages still open that have problems. A spent repair ends with what is left."""
-        problems = page_problems(self.root, self.service)
-        if last.batches:
-            last = last.closing(last.batches[-1], problems)
+    def plan_round(self, last: RepairRound, problems: tuple[PageProblem, ...]) -> Continue[...] | Done:
+        """Pack the planned pages still open that have problems now. A spent repair ends with what is left."""
         found = problems_by_page(problems, frozenset(last.uncommitted_at_start))
         by_page = {page: texts for page, texts in found.items() if page in last.planned_pages and page not in last.closed_pages}
         outside = sorted(set(found) - set(last.planned_pages))
@@ -162,12 +159,12 @@ class RepairBook(BookFlow):
                 ", ".join(unplanned_flow_pages),
             )
         this_round = last.model_copy(update={"number": last.number + 1, "batches": ()})
-        return self._first_batch_or_done(this_round, by_page, pages_needing_journey(problems))
+        return self._first_batch_or_done(this_round, by_page, problems)
 
     def _first_batch_or_done(
-        self, this_round: RepairRound, by_page: dict[str, tuple[str, ...]], needs_journey: frozenset[str]
+        self, this_round: RepairRound, by_page: dict[str, tuple[str, ...]], problems: tuple[PageProblem, ...]
     ) -> Continue[...] | Done:
-        packed = pack_repairs(self.root, by_page, this_round.journey, needs_journey)
+        packed = pack_repairs(self.root, by_page, this_round.journey, pages_needing_journey(problems))
         reported = {page.subject for page in this_round.oversized_pages}
         oversized_pages = (*this_round.oversized_pages, *(page for page in packed.oversized_pages if page.subject not in reported))
         this_round = this_round.model_copy(update={"oversized_pages": oversized_pages, "batches": packed.batches})
@@ -175,16 +172,14 @@ class RepairBook(BookFlow):
             return Done(this_round.outcome(this_round.number - 1, by_page)).because("no planned page is left for a turn")
         pages = sum(len(batch.pages) for batch in packed.batches)
         self.logger.info("round %d repairs %d pages in %d turns", this_round.number, pages, len(packed.batches))
-        return Continue(len(packed.batches), self.prepare_batch_turn, this_round=this_round, index=0).because("prepare the first batch")
+        return Continue(
+            len(packed.batches), self.prepare_batch_turn, this_round=this_round, index=0, problems_at_turn_start=_texts(problems)
+        ).because("prepare the first batch")
 
-    def prepare_batch_turn(self, this_round: RepairRound, index: int) -> Continue[...]:
-        """Snapshot the tree, close the pages of the last batch the check finds clean, and write the command state that scopes the turn's check to its batch and to the problems the book has now."""
+    def prepare_batch_turn(self, this_round: RepairRound, index: int, problems_at_turn_start: tuple[str, ...]) -> Continue[...]:
+        """Snapshot the tree and write the command state that scopes the turn's check to its batch and to the problems the book has now."""
         batch = this_round.batches[index]
         before = snapshot(self.root)
-        problems = page_problems(self.root, self.service)
-        if index > 0:
-            this_round = this_round.closing(this_round.batches[index - 1], problems)
-        problems_at_turn_start = tuple(problem.text for problem in problems)
         state = WriterCommandState(
             root=self.root,
             service=self.service,
@@ -291,10 +286,26 @@ class RepairBook(BookFlow):
         return Continue(pages, self.commit_pages, this_round=this_round, index=index, pages=pages).because("commit the repaired pages")
 
     def commit_pages(self, this_round: RepairRound, index: int, pages: tuple[str, ...]) -> Continue[...] | Await[...]:
-        """Commit the batch's pages and move to the next batch. A refused commit waits for the operator."""
+        """Commit the batch's pages. A refused commit waits for the operator."""
         refusal = commit_returning_refusal(self.root, repaired_book_commit_subject(self.service), *pages)
         if refusal:
             return self._commit_refused(refusal, self.commit_pages, this_round=this_round, index=index, pages=pages)
+        return Continue(pages, self.close_batch, this_round=this_round, index=index).because("close the pages the batch left clean")
+
+    def close_batch(self, this_round: RepairRound, index: int) -> Continue[...]:
+        """Check the book, close each page of the batch the check finds clean, and move to the next batch, or plan the next round after the last."""
+        problems = page_problems(self.root, self.service)
+        this_round = this_round.closing(this_round.batches[index], problems)
         if index + 1 < len(this_round.batches):
-            return Continue(pages, self.prepare_batch_turn, this_round=this_round, index=index + 1).because("prepare the next batch")
-        return Continue(pages, self.plan_round, last=this_round).because("check the book again")
+            return Continue(
+                this_round.closed_pages,
+                self.prepare_batch_turn,
+                this_round=this_round,
+                index=index + 1,
+                problems_at_turn_start=_texts(problems),
+            ).because("prepare the next batch")
+        return Continue(this_round.closed_pages, self.plan_round, last=this_round, problems=problems).because("plan the next round")
+
+
+def _texts(problems: Iterable[PageProblem]) -> tuple[str, ...]:
+    return tuple(problem.text for problem in problems)
