@@ -10,3 +10,13 @@ def book_commit_subject(service: str) -> str:
 def unfinished_book_commit_subject(service: str) -> str:
     """The subject of the pages a failed writer turn left, so a rerun sends a writer to finish them."""
     return f"docs({service}): keep the unfinished {service} book"
+
+
+def rooted_book_commit_subject(service: str) -> str:
+    """The subject of the entries page code wrote for a book that had none."""
+    return f"docs({service}): root the {service} book"
+
+
+def repaired_book_commit_subject(service: str) -> str:
+    """The subject of the pages one repair turn changed. A rerun checks such a book again rather than taking it as finished."""
+    return f"docs({service}): repair pages of the {service} book"

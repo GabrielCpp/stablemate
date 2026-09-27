@@ -122,26 +122,34 @@ def dead_book_pages(root: Path) -> tuple[DeadPage, ...]:
     return tuple(dead_pages(load(root)))
 
 
-def _doctor_problems(book: Graph, pages: list[str]) -> list[str]:
+@dataclass(frozen=True, slots=True)
+class PageProblem:
+    """One problem the check reports, and the repo-relative page it sits on."""
+
+    page: str
+    text: str
+
+
+def _doctor_problems(book: Graph, pages: list[str]) -> list[PageProblem]:
     if not pages:
         return []
     report = doctor.scope_to_paths(doctor.run(book), pages)
     return [
-        f"{f.path}:{f.line}: {f.code}: {f.message}" + (f" {f.suggestion}" if f.suggestion else "")
+        PageProblem(f.path, f"{f.path}:{f.line}: {f.code}: {f.message}" + (f" {f.suggestion}" if f.suggestion else ""))
         for f in report.findings
         if (f.severity == "error" or f.code in CHARGED_WARNINGS) and f.code not in RESTAMPED_CODES | REACH_CODES
     ]
 
 
-def _gap_problems(gaps: Iterable[Gap]) -> list[str]:
-    by_fix: dict[tuple[str, str], list[str]] = {}
+def _gap_problems(gaps: Iterable[Gap]) -> list[PageProblem]:
+    by_fix: dict[tuple[str, str, str], list[str]] = {}
     for gap in gaps:
-        by_fix.setdefault((gap.kind, gap.detail), []).append(gap.obligation_id)
+        by_fix.setdefault((gap_page(gap), gap.kind, gap.detail), []).append(gap.obligation_id)
     return [
-        f"{ids[0]} does not compile: {kind}: {detail}"
+        PageProblem(page, f"{ids[0]} does not compile: {kind}: {detail}")
         if len(ids) == 1
-        else f"each of {len(ids)} claims does not compile: {kind}: {detail} The claims: {', '.join(ids)}"
-        for (kind, detail), ids in by_fix.items()
+        else PageProblem(page, f"each of {len(ids)} claims on {page} does not compile: {kind}: {detail} The claims: {', '.join(ids)}")
+        for (page, kind, detail), ids in by_fix.items()
     ]
 
 
@@ -150,12 +158,12 @@ def _book_page_paths(root: Path, service: str) -> list[str]:
     return sorted(path.relative_to(root).as_posix() for path in folder.rglob("*.md")) if folder.is_dir() else []
 
 
-def _entries_problems(root: Path, service: str) -> list[str]:
+def _entries_problems(root: Path, service: str) -> list[PageProblem]:
     if entries_path(root, service).is_file():
         return []
+    page = entries_path(root, service).relative_to(root).as_posix()
     return [
-        f"{entries_path(root, service).relative_to(root).as_posix()} is missing. "
-        "Write it with `type: entries` and one `- [title](page.md)` link per entry page."
+        PageProblem(page, f"{page} is missing. Write it with `type: entries` and one `- [title](page.md)` link per entry page.")
     ]
 
 
@@ -199,19 +207,22 @@ def _off_journey(book: Graph, service: str) -> tuple[str, ...]:
     return tuple(node.id for node in nodes if node.type in JOURNEY_TYPES and node.id not in walked)
 
 
-def _off_journey_problems(book: Graph, service: str) -> list[str]:
+def _off_journey_problems(book: Graph, service: str) -> list[PageProblem]:
     return [
-        f"{node} is on no flow. Write a flow under flows/ whose steps link it, or link it from a step of a flow you have."
+        PageProblem(
+            node.partition("#")[0],
+            f"{node} is on no flow. Write a flow under flows/ whose steps link it, or link it from a step of a flow you have.",
+        )
         for node in _off_journey(book, service)
     ]
 
 
-def book_problems(root: Path, service: str) -> tuple[str, ...]:
-    """Every problem on the service's book: a missing entries page, a page nothing reaches, a doctor error, a command, endpoint or screen no flow walks, and a claim that does not compile."""
+def page_problems(root: Path, service: str) -> tuple[PageProblem, ...]:
+    """Every problem on the service's book, each with its page: a missing entries page, a page nothing reaches, a doctor error, a command, endpoint or screen no flow walks, and a claim that does not compile."""
     pages = _book_page_paths(root, service)
     book = load(root)
     dead = [
-        f"{page.rel} is linked from no page the entries page reaches. Link it, or delete it."
+        PageProblem(page.rel, f"{page.rel} is linked from no page the entries page reaches. Link it, or delete it.")
         for page in dead_pages(book)
         if page.service == service
     ]
@@ -224,3 +235,8 @@ def book_problems(root: Path, service: str) -> tuple[str, ...]:
         *_off_journey_problems(book, service),
         *_gap_problems(gaps),
     )
+
+
+def book_problems(root: Path, service: str) -> tuple[str, ...]:
+    """Every problem on the service's book, as the check prints it."""
+    return tuple(problem.text for problem in page_problems(root, service))

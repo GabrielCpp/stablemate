@@ -14,7 +14,7 @@ from workhorse.config_run import AgentResilience
 from workhorse.testing import make_git_repo
 
 from workhorse_workflows.okf_book.main.nodes import check_pages
-from workhorse_workflows.okf_book.main.nodes.check_pages import NO_PROBLEMS_LINE, run_check
+from workhorse_workflows.okf_book.main.nodes.check_pages import NO_PROBLEMS_LINE, run_check, scoped_problems
 from workhorse_workflows.okf_book.main.nodes.check_pages import USAGE as CHECK_USAGE
 from workhorse_workflows.okf_book.main.nodes.exercise import USAGE as EXERCISE_USAGE
 from workhorse_workflows.okf_book.main.nodes.exercise import run_exercise
@@ -33,6 +33,8 @@ from workhorse_workflows.okf_book.main.nodes.turn_budget import (
 from workhorse_workflows.okf_book.main.nodes.source_view import build_source_view, source_view_folder
 from workhorse_workflows.okf_book.main.nodes.surface import Surface, SurfaceKind
 from workhorse_workflows.okf_book.main.nodes.writer_request import WriterRequest
+from workhorse_workflows.okf_book.shared.confine import snapshot
+from workhorse_workflows.okf_book.shared.page_check import PageProblem
 from workhorse_workflows.okf_book.main.nodes.writer_commands import (
     CHECK_MODULE,
     CHECK_AND_SCENARIO_RUN_CAP,
@@ -172,24 +174,48 @@ def test_the_source_and_the_book_are_each_counted_twice() -> None:
 
 
 
-def _noisy_problems(root: Path, service: str) -> tuple[str, ...]:
+def _noisy_problems(root: Path, service: str) -> tuple[PageProblem, ...]:
     print(f"stdout from {root.name}")
     logging.getLogger("noisy").warning("a warning")
     _ = os.write(2, b"a raw write\n")
     _ = subprocess.run([sys.executable, "-c", "print('a child process')"], check=True)
-    return (f"problem in {service}",)
+    return (PageProblem("docs/features/ledger/ledger.md", f"problem in {service}"),)
 
 
 def test_a_check_prints_only_its_own_lines(
     monkeypatch: pytest.MonkeyPatch, capfd: pytest.CaptureFixture[str], tmp_path: Path
 ) -> None:
-    monkeypatch.setattr(check_pages, "book_problems", _noisy_problems)
+    monkeypatch.setattr(check_pages, "page_problems", _noisy_problems)
     path = write_command_state(tmp_path / "run", WriterCommandState(root=tmp_path / "repo", service="ledger"))
 
     output = run_check([str(path)])
 
     assert output == CommandOutput(1, ("problem in ledger",))
     assert capfd.readouterr() == ("", "")
+
+
+def _problems_on(*pages: str) -> Callable[[Path, str], tuple[PageProblem, ...]]:
+    def _problems(_root: Path, _service: str) -> tuple[PageProblem, ...]:
+        return tuple(PageProblem(page, f"{page} is broken") for page in pages)
+
+    return _problems
+
+
+def test_a_check_scoped_to_pages_prints_only_their_problems_and_those_of_pages_the_turn_changed(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    repo = make_git_repo(tmp_path / "repo")
+    book = repo / "docs/features/ledger"
+    book.mkdir(parents=True)
+    before = snapshot(repo)
+    _ = (book / "touched.md").write_text("changed\n", encoding="utf-8")
+    pages = ("docs/features/ledger/mine.md", "docs/features/ledger/touched.md", "docs/features/ledger/other.md")
+    monkeypatch.setattr(check_pages, "page_problems", _problems_on(*pages))
+    state = WriterCommandState(root=repo, service="ledger", pages=(pages[0],), before=before)
+
+    printed = scoped_problems(state)
+
+    assert printed == (f"{pages[0]} is broken", f"{pages[1]} is broken")
 
 def test_a_command_prints_its_first_lines_and_counts_the_rest() -> None:
     lines = [f"problem {n}" for n in range(MAX_PRINTED_LINES + 5)]

@@ -6,6 +6,7 @@ from pathlib import Path
 
 from ostler.qa.tools import catalog
 from workhorse.runner.backends import AgentProfile
+from workhorse_workflows.okf_book.main.nodes.repair_batches import RepairBatch
 from workhorse_workflows.okf_book.main.nodes.source_view import source_view_folder
 from workhorse_workflows.okf_book.main.nodes.surface import Surface
 from workhorse_workflows.okf_book.main.nodes.turn_budget import WRITER_STEPS
@@ -18,6 +19,7 @@ from workhorse_workflows.okf_book.main.nodes.writer_commands import (
 )
 
 WRITER_PROFILE_NAME = "okf-book-writer"
+REPAIR_PROFILE_NAME = "okf-book-repairer"
 WRITER_COMMAND_TIMEOUT_S = 600
 
 
@@ -64,6 +66,33 @@ class WriterRequest:
             "check_and_scenario_run_cap": CHECK_AND_SCENARIO_RUN_CAP,
             "qa_tools": [{"name": tool.name, "description": tool.description} for tool in self.qa_tools],
         }
+
+    def repair_template_args(self, batch: RepairBatch) -> dict[str, object]:
+        """The repair-pages prompt's arguments for one batch."""
+        return {
+            "service": self.surface.service,
+            "kind": self.surface.kind.value,
+            "source_view": self.source_view.as_posix(),
+            "source_folder": self.source_folder,
+            "book_folder": self.book_folder,
+            "ostler": self.ostler_command_line,
+            "ostler_run_cap": OSTLER_RUN_CAP,
+            "check": self.check_command_line,
+            "check_run_cap": CHECK_AND_SCENARIO_RUN_CAP,
+            "pages": [repair.model_dump() for repair in batch.pages],
+        }
+
+    @property
+    def repair_profile(self) -> AgentProfile:
+        """The profile that denies every tool and allows only ostler and the check."""
+        return AgentProfile(
+            name=REPAIR_PROFILE_NAME,
+            tools={"*": False},
+            steps=WRITER_STEPS,
+            confined=True,
+            commands=(self.ostler_command_line, self.check_command_line),
+            command_timeout_s=WRITER_COMMAND_TIMEOUT_S,
+        )
 
     @property
     def profile(self) -> AgentProfile:

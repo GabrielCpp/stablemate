@@ -6,6 +6,7 @@ from pathlib import Path
 from workhorse.pyflow import Await, Continue, Done, WorkflowFailed
 from workhorse_workflows.kit import last_commit_subject
 from workhorse_workflows.okf_book.main.exercise_book_flow import ExerciseBook
+from workhorse_workflows.okf_book.main.repair_book_flow import RepairBook, RepairOutcome
 from workhorse_workflows.okf_book.main.nodes.report import build_report, read_report, write_report
 from workhorse_workflows.okf_book.main.nodes.source_view import build_source_view, source_view_folder
 from workhorse_workflows.okf_book.main.nodes.surface import Surface
@@ -19,6 +20,7 @@ from workhorse_workflows.okf_book.shared.blockers import Blocker, Phase, Side, r
 from workhorse_workflows.okf_book.shared.book_commits import book_commit_subject
 from workhorse_workflows.okf_book.shared.book_flow import BookFlow
 from workhorse_workflows.okf_book.shared.book_run import ExerciseResult
+from workhorse_workflows.okf_book.shared.citations import book_pages
 from workhorse_workflows.okf_book.shared.entries import FEATURES_DIR
 from workhorse_workflows.okf_book.shared.page_check import book_problems
 from workhorse_workflows.okf_book.shared.scenarios import write_run
@@ -85,14 +87,38 @@ class OkfBook(BookFlow):
         return Continue(view.as_posix(), self.measure_source, index=index).because("measure the writer's source")
 
     def measure_source(self, index: int) -> Continue[...]:
-        """A surface whose source and book are over the ceiling one writer reads is a blocker."""
+        """A book over the ceiling one writer reads is repaired a batch of pages at a time. A surface with no book over it is a blocker."""
         surface = self.surfaces[index]
         view = source_view_folder(self.root, _source_folder(self.root, surface))
         tokens = source_and_book_tokens(folder_tokens(view), folder_tokens(self.root / _book_folder(surface.service)))
         reason = ceiling_blocker_reason(tokens)
-        if reason is not None:
-            return self._block_surface_and_move_on(index, reason)
-        return Continue(tokens, self.write_book, index=index).because("the source fits one writer")
+        if reason is None:
+            return Continue(tokens, self.write_book, index=index).because("the source fits one writer")
+        if book_pages(self.root, surface.service):
+            return Continue(tokens, self.repair_book, index=index).because("the book is over one writer: repair it in batches")
+        return self._block_surface_and_move_on(index, reason)
+
+    def repair_book(self, index: int) -> Continue[...]:
+        """Hand the book to its repair."""
+        surface = self.surfaces[index]
+        repaired = RepairOutcome.model_validate(
+            self.handoff(
+                RepairBook,
+                parent_records_dir=str(self.records_dir),
+                surface=surface,
+                book_folder=_book_folder(surface.service),
+                source_folder=_source_folder(self.root, surface),
+            )
+        )
+        return Continue(repaired, self.settle_repair, index=index, repaired=repaired).because("settle the repair")
+
+    def settle_repair(self, index: int, repaired: RepairOutcome) -> Continue[...]:
+        """The repair turns that ended without a reply are one blocker on the workflow. The repaired book goes to its check."""
+        service = self.surfaces[index].service
+        if repaired.failed_turns:
+            reason = "\n".join(repaired.failed_turns)
+            _ = record_blocker(self.records_dir, Blocker(subject=service, phase=Phase.WRITE, side=Side.WORKFLOW, reason=reason))
+        return Continue(repaired, self.check_book, index=index).because("check the repaired book")
 
     def write_book(self, index: int) -> Continue[...]:
         """Hand the surface to its writer."""

@@ -11,6 +11,8 @@ from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict
 
+from workhorse_workflows.okf_book.shared.confine import Snapshot
+
 CHECK_MODULE = f"{__package__}.check_pages"
 EXERCISE_MODULE = f"{__package__}.exercise"
 OSTLER_MODULE = f"{__package__}.writer_ostler"
@@ -39,22 +41,28 @@ class CommandOutput:
 
 
 class WriterCommandState(BaseModel):
-    """The book the writer's commands work on, and how many runs of the checks and of ostler the turn has spent."""
+    """The book the writer's commands work on, the pages its check is scoped to, and how many runs of the checks and of ostler the turn has spent.
+
+    With no pages named, the check covers the whole book. With pages named, it covers those pages and
+    every page of the book the turn has changed since `before`.
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     root: Path
     service: str
+    pages: tuple[str, ...] = ()
+    before: Snapshot | None = None
     check_and_scenario_runs: int = 0
     ostler_runs: int = 0
 
     def with_check_or_scenario_run_spent(self) -> WriterCommandState:
         """This state with one more check or scenario run spent."""
-        return WriterCommandState(root=self.root, service=self.service, check_and_scenario_runs=self.check_and_scenario_runs + 1, ostler_runs=self.ostler_runs)
+        return self.model_copy(update={"check_and_scenario_runs": self.check_and_scenario_runs + 1})
 
     def with_ostler_run_spent(self) -> WriterCommandState:
         """This state with one more ostler run spent."""
-        return WriterCommandState(root=self.root, service=self.service, check_and_scenario_runs=self.check_and_scenario_runs, ostler_runs=self.ostler_runs + 1)
+        return self.model_copy(update={"ostler_runs": self.ostler_runs + 1})
 
 
 def command_state_path(run_dir: Path) -> Path:
