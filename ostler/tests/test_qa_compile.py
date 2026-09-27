@@ -2819,6 +2819,24 @@ def test_an_endpoint_on_a_cli_page_keeps_the_surface_driver() -> None:
     assert source is not None and "/api/things" in source
 
 
+def test_a_page_with_an_endpoint_and_a_command_names_each_scenario_apart() -> None:
+    command = "okf:docs/features/demo/api.md#import:does:1"
+    endpoint = "okf:docs/features/demo/api.md#things:does:1"
+    context = _cli_command_context(command, {"call": "exit_status(code=0)", "name": "exit_status", "args": {"code": 0}})
+    context["navigation"][""]["driver"] = "http"
+    context["obligations"][0]["pageType"] = "cli"
+    context["obligations"].append(_obligation(endpoint, pageType="cli", checksDeclared=[
+        {"call": "http_status(code=200)", "name": "http_status", "args": {"code": 200}},
+    ]))
+
+    source, gaps = compile_plan_gaps(context, story="demo-story")
+
+    assert _gap_kinds(gaps, command) == [] and _gap_kinds(gaps, endpoint) == []
+    assert source is not None
+    names = [node.name for node in ast.walk(ast.parse(source)) if isinstance(node, ast.FunctionDef)]
+    assert len(names) == 2 and len(set(names)) == 2
+
+
 def test_a_cli_command_refuses_a_check_that_reads_nothing_a_command_shows() -> None:
     oid = "okf:docs/features/demo/api.md#import:does:1"
     context = _cli_command_context(oid, {"call": "it", "name": "visible", "args": {"locator": "a total"}})

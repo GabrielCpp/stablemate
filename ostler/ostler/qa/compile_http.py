@@ -112,7 +112,7 @@ def api_scenarios(
         lines.extend(target_lines(target_var, PYTHON.name, base_url, emitted))
         lines.extend(scenario_lines(SourceScenario(
             source, target_var, [o.id for o in declared if o.id in covered],
-            arrangement.rows, body)))
+            arrangement.rows, body), emitted))
     return lines
 
 

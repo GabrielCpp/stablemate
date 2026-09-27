@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import re
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from ostler.checks import CHECK_BY_NAME
 from ostler.qa import references
@@ -167,9 +167,10 @@ class PlanSinks:
 
 @dataclass(frozen=True)
 class EmittedScenarios:
-    """What the plan has emitted so far: the target variables it declared and the obligations it covered."""
+    """What the plan has emitted so far: the target variables it declared, the obligations it covered and the scenario functions it named."""
     targets: set[str]
     covered: set[str]
+    functions: set[str] = field(default_factory=set)
 
 
 def by_source(obligations: list[Obligation]) -> dict[str, list[Obligation]]:
@@ -198,8 +199,18 @@ class SourceScenario:
     body: list[str]
 
 
-def scenario_lines(scenario: SourceScenario) -> list[str]:
-    """The rendered `@scenario` source holding every obligation one book page owes live evidence for."""
+def scenario_function(scenario: SourceScenario, emitted: EmittedScenarios) -> str:
+    """The function name *scenario* gets: its page's, or its page's and its target's when another target on that page took the page's already."""
+    page = python_identifier(scenario.source)
+    name = f"{page}_from_the_book"
+    if name in emitted.functions:
+        name = f"{page}_on_{scenario.target_var}_from_the_book"
+    emitted.functions.add(name)
+    return name
+
+
+def scenario_lines(scenario: SourceScenario, emitted: EmittedScenarios) -> list[str]:
+    """The rendered `@scenario` source holding every obligation one book page owes live evidence for on one target."""
     arranged = scenario.arranged
     preconditions = [
         "    preconditions=[",
@@ -223,7 +234,7 @@ def scenario_lines(scenario: SourceScenario) -> list[str]:
         "    checkpoints=[],  # TODO(arrange): what an observer should see it prove",
         "    forbid=[],  # TODO: the weaker observations this scenario must not settle for",
         ")",
-        f"def {python_identifier(scenario.source)}_from_the_book(qa: Qa) -> None:",
+        f"def {scenario_function(scenario, emitted)}(qa: Qa) -> None:",
         f'    """Obligations {scenario.source} owes live evidence for."""',
         *fixtures,
         *scenario.body,
