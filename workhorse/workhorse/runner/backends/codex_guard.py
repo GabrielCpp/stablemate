@@ -172,7 +172,7 @@ def _names_patterns(argument: str) -> bool:
     return argument.startswith("-") and bool(set(argument[1:]) & {"e", "f"})
 
 
-def _search_arguments(arguments: Sequence[str]) -> list[str]:
+def _search_path_arguments(arguments: Sequence[str]) -> list[str]:
     """A search's arguments without the patterns it matches, which name no file it reads."""
     kept: list[str] = []
     pattern_left = not any(_names_patterns(argument) for argument in arguments)
@@ -191,7 +191,7 @@ def _search_arguments(arguments: Sequence[str]) -> list[str]:
     return kept
 
 
-def _unbounded(stage: Sequence[str]) -> Sequence[str]:
+def _without_timeout(stage: Sequence[str]) -> Sequence[str]:
     """The stage without a leading `timeout DURATION`, which only bounds the command it runs."""
     if len(stage) > 2 and stage[0] == TIMEOUT and DURATION.fullmatch(stage[1]):
         return stage[2:]
@@ -199,7 +199,7 @@ def _unbounded(stage: Sequence[str]) -> Sequence[str]:
 
 
 def _stage_denial(stage: Sequence[str], policy: Policy) -> str | None:
-    stage = _unbounded(stage)
+    stage = _without_timeout(stage)
     if not stage:
         return "a pipe has an empty side"
     for command in policy.commands:
@@ -216,7 +216,7 @@ def _stage_denial(stage: Sequence[str], policy: Policy) -> str | None:
         denial = _sed_denial(arguments)
         if denial is not None:
             return denial
-    return _path_denial(_search_arguments(arguments) if program in ("rg", "grep") else arguments, policy)
+    return _path_denial(_search_path_arguments(arguments) if program in ("rg", "grep") else arguments, policy)
 
 
 def shell_denial(command: str, policy: Policy) -> str | None:
@@ -267,7 +267,7 @@ def decide(call: ToolCall, policy: Policy) -> str | None:
     return None if denial is None else _explained(denial, policy)
 
 
-def deny(reason: str) -> str:
+def denial_output(reason: str) -> str:
     """The hook output that refuses the call."""
     output = {"hookEventName": "PreToolUse", "permissionDecision": "deny", "permissionDecisionReason": reason}
     return json.dumps({"hookSpecificOutput": output})
@@ -285,11 +285,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         policy = Policy.from_json(Path(args[0]).read_text(encoding="utf-8"))
         call = ToolCall.from_json(sys.stdin.read())
     except (IndexError, OSError, ValueError, KeyError) as error:
-        print(deny(f"Refused: the guard could not read the call or its policy: {error}"))
+        print(denial_output(f"Refused: the guard could not read the call or its policy: {error}"))
         return 0
     reason = decide(call, policy)
     if reason is not None:
-        print(deny(reason))
+        print(denial_output(reason))
     return 0
 
 

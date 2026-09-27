@@ -1263,7 +1263,7 @@ def test_codex_hook_notices_neither_fail_nor_end_the_turn():
         return any(on_line(raw) for raw in lines), 0
 
     with patch.object(process, "stream_subprocess", fake_stream):
-        state = jsonl.stream_jsonl(["codex"], "n", 3600, None, codex._on_event, resilience=RESILIENCE, notices=codex.NOTICES)
+        state = jsonl.stream_jsonl(["codex"], "n", 3600, None, codex._on_event, resilience=RESILIENCE, non_failure_markers=codex.NON_FAILURE_MARKERS)
     assert state.diagnostics == []
     assert not state.timed_out
     assert state.result_text == "DONE"

@@ -47,7 +47,7 @@ def guard_flags(policy_path: Path) -> list[str]:
     return ["--dangerously-bypass-hook-trust", "-c", hooks]
 
 
-NOTICES = ("codex_core::tools::router", "blocked by PreToolUse hook", "`--dangerously-bypass-hook-trust` is enabled")
+NON_FAILURE_MARKERS = ("codex_core::tools::router", "blocked by PreToolUse hook", "`--dangerously-bypass-hook-trust` is enabled")
 
 
 def _on_event(event, state: TurnState, node_id):
@@ -65,7 +65,7 @@ def _on_event(event, state: TurnState, node_id):
                 state.result_text = text
                 print(f"[{node_id}] {text.strip()[:500]}", flush=True)
         elif item.get("type") == "error" or item.get("error"):
-            if not any(notice in str(item.get("message") or "") for notice in NOTICES):
+            if not any(marker in str(item.get("message") or "") for marker in NON_FAILURE_MARKERS):
                 state.diagnostics.append(str(item)[:500])
     elif "error" in etype or "fail" in etype:
         state.diagnostics.append(json.dumps(event)[:500])
@@ -124,7 +124,7 @@ class CodexBackend(JsonlBackend):
             state = self.stream(
                 cmd, node_id, timeout, prompt, _on_event,
                 resilience=resilience, cwd=cwd,
-                env_extra=self.harness_env(), notices=NOTICES,
+                env_extra=self.harness_env(), non_failure_markers=NON_FAILURE_MARKERS,
             )
         finally:
             if policy_path is not None:
