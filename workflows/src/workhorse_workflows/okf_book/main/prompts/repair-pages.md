@@ -59,7 +59,8 @@ gives relative to the repository starts there.
   documents nothing the app does.
 - Do not edit `entries.md`. Code writes it.
 - Edit other pages only where a fix needs it. The check below covers your pages and every page
-  you change, so a page you touch is yours to leave clean.
+  you change, so a page you touch is yours to leave clean. It also reports every problem your
+  edits cause on a page you did not touch, such as an endpoint a flow you edited no longer walks.
 
 {% if exercise %}
 - This command compiles the whole book into scenarios, runs them against the real app, and

@@ -22,14 +22,15 @@ NO_PROBLEMS_LINE = "No problems"
 
 
 def scoped_problems(state: WriterCommandState) -> tuple[str, ...]:
-    """Every problem on the book, or on the state's pages and the book pages the turn changed when it names pages."""
+    """Every problem on the book, or, when the state names pages, on those pages and the book pages the turn changed, and every problem the turn made elsewhere."""
     root = state.root.resolve()
     problems = page_problems(root, state.service)
     if not state.pages:
         return tuple(problem.text for problem in problems)
     changed = book_changes(root, state.service, state.before) if state.before is not None else ()
     scope = frozenset((*state.pages, *changed))
-    return tuple(problem.text for problem in problems if problem.page in scope)
+    known = frozenset(state.known)
+    return tuple(problem.text for problem in problems if problem.page in scope or problem.text not in known)
 
 
 def run_check(argv: Sequence[str]) -> CommandOutput:

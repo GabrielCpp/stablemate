@@ -43,8 +43,9 @@ class CommandOutput:
 class WriterCommandState(BaseModel):
     """The book the writer's commands work on, the pages its check is scoped to, and how many runs of the checks and of ostler the turn has spent.
 
-    With no pages named, the check covers the whole book. With pages named, it covers those pages and
-    every page of the book the turn has changed since `before`.
+    With no pages named, the check covers the whole book. With pages named, it covers those pages,
+    every page of the book the turn has changed since `before`, and every problem not in `known`,
+    the problems the book had when the turn started.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -53,6 +54,7 @@ class WriterCommandState(BaseModel):
     service: str
     pages: tuple[str, ...] = ()
     before: Snapshot | None = None
+    known: tuple[str, ...] = ()
     check_and_scenario_runs: int = 0
     ostler_runs: int = 0
 

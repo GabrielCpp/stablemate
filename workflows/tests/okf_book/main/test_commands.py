@@ -202,7 +202,7 @@ def _problems_on(*pages: str) -> Callable[[Path, str], tuple[PageProblem, ...]]:
     return _problems
 
 
-def test_a_check_scoped_to_pages_prints_only_their_problems_and_those_of_pages_the_turn_changed(
+def test_a_check_scoped_to_pages_prints_their_problems_those_of_pages_the_turn_changed_and_those_it_made(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     repo = make_git_repo(tmp_path / "repo")
@@ -210,13 +210,20 @@ def test_a_check_scoped_to_pages_prints_only_their_problems_and_those_of_pages_t
     book.mkdir(parents=True)
     before = snapshot(repo)
     _ = (book / "touched.md").write_text("changed\n", encoding="utf-8")
-    pages = ("docs/features/ledger/mine.md", "docs/features/ledger/touched.md", "docs/features/ledger/other.md")
+    pages = (
+        "docs/features/ledger/mine.md",
+        "docs/features/ledger/touched.md",
+        "docs/features/ledger/other.md",
+        "docs/features/ledger/orphaned.md",
+    )
     monkeypatch.setattr(check_pages, "page_problems", _problems_on(*pages))
-    state = WriterCommandState(root=repo, service="ledger", pages=(pages[0],), before=before)
+    known = (f"{pages[0]} is broken", f"{pages[2]} is broken")
+    state = WriterCommandState(root=repo, service="ledger", pages=(pages[0],), before=before, known=known)
 
     printed = scoped_problems(state)
 
-    assert printed == (f"{pages[0]} is broken", f"{pages[1]} is broken")
+    assert printed == (f"{pages[0]} is broken", f"{pages[1]} is broken", f"{pages[3]} is broken")
+
 
 def test_a_command_prints_its_first_lines_and_counts_the_rest() -> None:
     lines = [f"problem {n}" for n in range(MAX_PRINTED_LINES + 5)]

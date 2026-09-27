@@ -109,7 +109,8 @@ class RepairBook(BookFlow):
         """One turn, confined to the book folder and to ostler, the scoped check and the scenario run, repairs one batch of pages."""
         batch = repair.batches[index]
         before = snapshot(self.root)
-        state = WriterCommandState(root=self.root, service=self.service, pages=batch.page_paths, before=before)
+        known = tuple(problem.text for problem in page_problems(self.root, self.service))
+        state = WriterCommandState(root=self.root, service=self.service, pages=batch.page_paths, before=before, known=known)
         _ = write_command_state(self.run_dir, state)
         request = writer_request(self.run_dir, self.root, self.surface_to_repair, self.book_folder, self.source_folder)
         started = time.monotonic()
