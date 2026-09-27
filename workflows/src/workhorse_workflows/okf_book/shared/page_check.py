@@ -23,6 +23,7 @@ from pydantic import BaseModel, ConfigDict, JsonValue, TypeAdapter
 
 from ostler import doctor
 from ostler import graph as graph_mod
+from ostler import index
 from ostler.book_reach import DeadPage, dead_pages
 from ostler.model import Graph, load
 from ostler.qa.compile import HARNESS_LIMIT_GAPS, Plan, compile_plan_gaps
@@ -262,24 +263,25 @@ def _uninvokable_problems(root: Path, nodes: list[_Node]) -> list[PageProblem]:
 
 def page_problems(root: Path, service: str) -> tuple[PageProblem, ...]:
     """Every problem on the service's book, each with its page: a missing entries page, a page nothing reaches, a doctor error, a command, endpoint or screen no flow walks, a command no run can invoke, and a claim that does not compile."""
-    pages = _book_page_paths(root, service)
-    book = load(root)
-    nodes = _service_nodes(book, service)
-    dead = [
-        PageProblem(page.rel, f"{page.rel} is linked from no page the entries page reaches. Link it, or delete it.")
-        for page in dead_pages(book)
-        if page.service == service
-    ]
-    wanted = frozenset(pages)
-    gaps = [gap for gap in compile_services(root, (service,)).gaps if gap_page(gap) in wanted and gap_side(gap) is Side.BOOK]
-    return (
-        *_entries_problems(root, service),
-        *dead,
-        *_doctor_problems(book, pages),
-        *_off_journey_problems(nodes),
-        *_uninvokable_problems(root, nodes),
-        *_gap_problems(gaps),
-    )
+    with index.session(root):
+        pages = _book_page_paths(root, service)
+        book = load(root)
+        nodes = _service_nodes(book, service)
+        dead = [
+            PageProblem(page.rel, f"{page.rel} is linked from no page the entries page reaches. Link it, or delete it.")
+            for page in dead_pages(book)
+            if page.service == service
+        ]
+        wanted = frozenset(pages)
+        gaps = [gap for gap in compile_services(root, (service,)).gaps if gap_page(gap) in wanted and gap_side(gap) is Side.BOOK]
+        return (
+            *_entries_problems(root, service),
+            *dead,
+            *_doctor_problems(book, pages),
+            *_off_journey_problems(nodes),
+            *_uninvokable_problems(root, nodes),
+            *_gap_problems(gaps),
+        )
 
 
 def book_problems(root: Path, service: str) -> tuple[str, ...]:
