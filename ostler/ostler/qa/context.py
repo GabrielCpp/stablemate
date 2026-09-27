@@ -445,49 +445,13 @@ def build_context(
         for item in verification_index
         if item["impacted"]
     ]
-    grounded: set[str] = set()
-    ref_resolves: dict[str, bool] = {}
-    for node_id in sorted(selected):
-        node = nodes_by_id[node_id]
-        for normalized in refs_mod.code_refs(node.get("bullets", {}).get("code")):
-            if normalized not in ref_resolves:
-                ref_resolves[normalized] = _grounding_for_ref(
-                    root, base, head, normalized, repositories_by_id, book_root
-                )
-            if not ref_resolves[normalized]:
-                health.append(
-                    {
-                        "kind": "dangling-grounding",
-                        "severity": "error",
-                        "node": node_id,
-                        "ref": normalized,
-                        "message": "code grounding resolves in neither base nor head",
-                    }
-                )
-            else:
-                grounded.add(node_id)
-        node_type = str(node.get("type", ""))
-        node_bullets = node.get("bullets", {})
-        combiners = {int(pos): str(word) for pos, word in (node.get("combiners") or {}).items()}
-        _, checks_per_bullet = registry.attributed_checks(
-            node_type, node.get("bulletOrder") or [], combiners
-        )
-        if registry.check_keys(node_type):
-            for key in registry.normative_keys(node_type):
-                for index in range(1, len(_values(node_bullets.get(key))) + 1):
-                    if not checks_per_bullet.get((key, index)):
-                        health.append(
-                            {
-                                "kind": "missing-declared-check",
-                                "severity": "warning",
-                                "node": node_id,
-                                "key": key,
-                                "message": (
-                                    f"impacted contract's `{key}:` claim declares no "
-                                    "`verify:` check to fulfil it"
-                                ),
-                            }
-                        )
+    selected_nodes = {node_id: nodes_by_id[node_id] for node_id in sorted(selected)}
+    grounded, dangling = _grounded_nodes(
+        selected_nodes, lambda ref: _grounding_for_ref(root, base, head, ref, repositories_by_id, book_root)
+    )
+    health.extend(dangling)
+    for node_id, node in selected_nodes.items():
+        health.extend(_missing_declared_checks(node_id, node))
     demoted_symbols: frozenset[str] | set[str] = shared_symbols
     required_contracts = {
         node_id
@@ -531,25 +495,7 @@ def build_context(
                 for node_id in contracts
                 if _is_required(node_id, direct_reasons, grounded, shared_files, demoted_symbols)
             }
-        owners_by_subject: dict[str, list[str]] = {}
-        for node_id, subjects in subjects_by_node.items():
-            for subject in subjects & required_subjects:
-                owners_by_subject.setdefault(subject, []).append(node_id)
-        for subject in sorted(required_subjects):
-            owners = sorted(owners_by_subject.get(subject, []))
-            if len(owners) > _RELATION_FANOUT:
-                health.append(
-                    {
-                        "kind": "relation-fanout",
-                        "severity": "warning",
-                        "ref": subject,
-                        "message": (
-                            f"relation subject `{subject}` binds {len(owners)} nodes; a change"
-                            " reaching any of them owes live evidence for all of them, which"
-                            " usually means the subject is named more broadly than the record"
-                        ),
-                    }
-                )
+        health.extend(_relation_fanout(subjects_by_node, required_subjects))
     fixture_provides = _fixture_provides_index(nodes_by_id)
     fixture_undetermined = _fixture_undetermined_index(nodes_by_id)
     obligations = [
@@ -1225,6 +1171,76 @@ def _named_subjects(node: dict[str, Any]) -> set[str]:
     return {subject for subject in subjects if subject}
 
 
+def _grounded_nodes(
+    nodes: dict[str, dict[str, Any]], resolves: Callable[[str], bool]
+) -> tuple[set[str], list[dict[str, Any]]]:
+    """The nodes with a code citation that resolves, and a health row per citation that resolves nowhere. Each distinct citation is resolved once."""
+    grounded: set[str] = set()
+    dangling: list[dict[str, Any]] = []
+    ref_resolves: dict[str, bool] = {}
+    for node_id, node in nodes.items():
+        for normalized in refs_mod.code_refs(node.get("bullets", {}).get("code")):
+            if normalized not in ref_resolves:
+                ref_resolves[normalized] = resolves(normalized)
+            if ref_resolves[normalized]:
+                grounded.add(node_id)
+            else:
+                dangling.append(
+                    {
+                        "kind": "dangling-grounding",
+                        "severity": "error",
+                        "node": node_id,
+                        "ref": normalized,
+                        "message": "code grounding resolves in neither base nor head",
+                    }
+                )
+    return grounded, dangling
+
+
+def _missing_declared_checks(node_id: str, node: dict[str, Any]) -> list[dict[str, Any]]:
+    """A health row per normative claim of a checked node type that declares no check to fulfil it."""
+    node_type = str(node.get("type", ""))
+    if not registry.check_keys(node_type):
+        return []
+    node_bullets = node.get("bullets", {})
+    combiners = {int(pos): str(word) for pos, word in (node.get("combiners") or {}).items()}
+    _, checks_per_bullet = registry.attributed_checks(node_type, node.get("bulletOrder") or [], combiners)
+    return [
+        {
+            "kind": "missing-declared-check",
+            "severity": "warning",
+            "node": node_id,
+            "key": key,
+            "message": f"impacted contract's `{key}:` claim declares no `verify:` check to fulfil it",
+        }
+        for key in registry.normative_keys(node_type)
+        for index in range(1, len(_values(node_bullets.get(key))) + 1)
+        if not checks_per_bullet.get((key, index))
+    ]
+
+
+def _relation_fanout(subjects_by_node: dict[str, set[str]], required_subjects: set[str]) -> list[dict[str, Any]]:
+    """A health row per required relation subject that more nodes name than a change can owe evidence for."""
+    owners_by_subject: dict[str, list[str]] = {}
+    for node_id, subjects in subjects_by_node.items():
+        for subject in subjects & required_subjects:
+            owners_by_subject.setdefault(subject, []).append(node_id)
+    return [
+        {
+            "kind": "relation-fanout",
+            "severity": "warning",
+            "ref": subject,
+            "message": (
+                f"relation subject `{subject}` binds {len(owners_by_subject[subject])} nodes; a change"
+                " reaching any of them owes live evidence for all of them, which"
+                " usually means the subject is named more broadly than the record"
+            ),
+        }
+        for subject in sorted(required_subjects)
+        if len(owners_by_subject.get(subject, [])) > _RELATION_FANOUT
+    ]
+
+
 def _merge_snapshot_nodes(
     base: dict[str, dict[str, Any]],
     head: dict[str, dict[str, Any]],
@@ -1823,6 +1839,37 @@ def _repeat(node: dict[str, Any], scope: tuple[str, ...]) -> dict[str, Any] | No
     return repeat
 
 
+def _where_to_reach(
+    node: dict[str, Any], scope: tuple[str, ...], nodes_by_id: dict[str, dict[str, Any]] | None
+) -> dict[str, Any]:
+    """The fields that tell a verifier where a node's obligations are reached: its surface and steps, page type, locators and repeat."""
+    fields: dict[str, Any] = {}
+    if nodes_by_id is not None and node.get("type") == "flow":
+        end_surface = _linked_surface(node, node.get("bullets", {}).get("end"), nodes_by_id)
+        if end_surface:
+            fields["surface"] = end_surface
+        walk = _journey_steps(node, nodes_by_id)
+        if walk:
+            fields["steps"] = walk
+    if _page_type(node) == "cli":
+        fields["pageType"] = "cli"
+    locators = _locators(node)
+    if nodes_by_id is not None and node.get("type") in ("interaction", "invocation"):
+        extends_target, extends_malformed = _extends_target(node, nodes_by_id)
+        if extends_target is not None:
+            locators = {**_locators(extends_target), **locators}
+        elif extends_malformed:
+            fields["extendsUnresolved"] = True
+    if nodes_by_id is not None and node.get("type") == "invocation":
+        locators = {**_endpoint_address(node, nodes_by_id), **locators}
+    if locators:
+        fields["locators"] = locators
+    repeat = _repeat(node, scope)
+    if repeat:
+        fields["repeat"] = repeat
+    return fields
+
+
 def _obligations(
     node: dict[str, Any],
     reasons: list[Reason],
@@ -1860,29 +1907,7 @@ def _obligations(
         "evidenceRequired": "live" if required else "context",
         "reasons": [reason.row() for reason in reasons or [Reason(ReasonKind.GRAPH_CLOSURE, str(node["id"]))]],
     }
-    if nodes_by_id is not None and node.get("type") == "flow":
-        end_surface = _linked_surface(node, node.get("bullets", {}).get("end"), nodes_by_id)
-        if end_surface:
-            base["surface"] = end_surface
-        walk = _journey_steps(node, nodes_by_id)
-        if walk:
-            base["steps"] = walk
-    if _page_type(node) == "cli":
-        base["pageType"] = "cli"
-    locators = _locators(node)
-    if nodes_by_id is not None and node.get("type") in ("interaction", "invocation"):
-        extends_target, extends_malformed = _extends_target(node, nodes_by_id)
-        if extends_target is not None:
-            locators = {**_locators(extends_target), **locators}
-        elif extends_malformed:
-            base["extendsUnresolved"] = True
-    if nodes_by_id is not None and node.get("type") == "invocation":
-        locators = {**_endpoint_address(node, nodes_by_id), **locators}
-    if locators:
-        base["locators"] = locators
-    repeat = _repeat(node, scope)
-    if repeat:
-        base["repeat"] = repeat
+    base.update(_where_to_reach(node, scope, nodes_by_id))
     combiners = {int(pos): str(word) for pos, word in (node.get("combiners") or {}).items()}
     contract, per_bullet = registry.attributed_checks(
         str(node.get("type", "")), node.get("bulletOrder") or [], combiners
