@@ -36,6 +36,8 @@ SED_OPTIONS = ("-n", "-E", "-r", "-u", "--quiet", "--silent")
 SED_PRINT = re.compile(r"(?:\d+|\$)(?:,(?:\d+|\$))?p(?:;(?:\d+|\$)(?:,(?:\d+|\$))?p)*")
 PATCH_PATH = re.compile(r"^\*\*\* (?:Add File|Update File|Delete File|Move to): (.+)$", re.MULTILINE)
 HARMLESS_REDIRECT = re.compile(r"(?<=\s)2>(?:&1|/dev/null)(?=\s|\||$)")
+TIMEOUT = "timeout"
+DURATION = re.compile(r"\d+(?:\.\d+)?[smhd]?")
 PIPE = "|"
 PUNCTUATION = frozenset("();<>|&")
 
@@ -158,7 +160,15 @@ def _search_arguments(arguments: Sequence[str]) -> list[str]:
     return kept
 
 
+def _unbounded(stage: Sequence[str]) -> Sequence[str]:
+    """The stage without a leading `timeout DURATION`, which only bounds the command it runs."""
+    if len(stage) > 2 and stage[0] == TIMEOUT and DURATION.fullmatch(stage[1]):
+        return stage[2:]
+    return stage
+
+
 def _stage_denial(stage: Sequence[str], policy: Policy) -> str | None:
+    stage = _unbounded(stage)
     if not stage:
         return "a pipe has an empty side"
     for command in policy.commands:

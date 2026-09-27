@@ -36,6 +36,14 @@ def test_read_only_commands_run_on_the_turn_s_own_paths():
     assert _allowed("ls")
 
 
+def test_a_timeout_bounds_a_command_without_changing_what_it_may_do():
+    assert _allowed("timeout 60 cat overview.md")
+    assert _allowed(f"timeout 5m {CHECK}")
+    assert not _allowed("timeout 60 rm overview.md")
+    assert not _allowed("timeout 60 cat /etc/passwd")
+    assert not _allowed("timeout --signal=KILL 60 cat overview.md")
+
+
 def test_a_path_outside_the_turn_s_roots_is_refused():
     assert not _allowed("cat /etc/passwd")
     assert not _allowed("cat ../../secrets.env")
