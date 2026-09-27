@@ -10,8 +10,8 @@ from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict
 from ostler.stamp import stamp_page
-from workhorse.pyflow import AgentTimeout, AgentTurnFailed, Continue, Done, WorkflowFailed
-from workhorse_workflows.kit import commit_paths
+from workhorse.pyflow import AgentTimeout, AgentTurnFailed, Await, Continue, Done, WorkflowFailed
+from workhorse_workflows.kit import commit_refusal
 from workhorse_workflows.okf_book.main.nodes.repair_batches import RepairBatch, problems_by_page, repair_batches
 from workhorse_workflows.okf_book.main.nodes.root_entries import write_root_entries
 from workhorse_workflows.okf_book.main.nodes.surface import Surface
@@ -77,7 +77,13 @@ class RepairBook(BookFlow):
         if entries_path(self.root, self.service).is_file():
             return Continue(None, self.plan_round, held=held, round_number=1, failed=()).because("the book has its root")
         page = write_root_entries(self.root, self.service)
-        _ = commit_paths(self.root, rooted_book_commit_subject(self.service), page)
+        return Continue(page, self.commit_root, held=held, page=page).because("commit the entries page")
+
+    def commit_root(self, held: tuple[str, ...], page: str) -> Continue[...] | Await[...]:
+        """Commit the entries page. A refused commit waits for the operator."""
+        refusal = commit_refusal(self.root, rooted_book_commit_subject(self.service), page)
+        if refusal:
+            return self._commit_refused(refusal, self.commit_root, held=held, page=page)
         return Continue(page, self.plan_round, held=held, round_number=1, failed=()).because("the book is rooted")
 
     def plan_round(self, held: tuple[str, ...], round_number: int, failed: tuple[str, ...]) -> Continue[...] | Done:
@@ -125,7 +131,7 @@ class RepairBook(BookFlow):
         return Continue(failure, self.commit_batch, repair=repair, index=index, before=before).because("commit what the turn changed")
 
     def commit_batch(self, repair: RepairRound, index: int, before: Snapshot) -> Continue[...]:
-        """Put back what the turn changed outside the book and on the entries page, stamp and commit the rest, and move to the next batch."""
+        """Put back what the turn changed outside the book and on the entries page, and stamp the rest."""
         root = self.root
         stray = put_back_outside(root, self.service, before, self.run_dir)
         for path in stray:
@@ -137,7 +143,13 @@ class RepairBook(BookFlow):
         for page in pages:
             if page.endswith(".md") and (root / page).is_file():
                 _ = stamp_page(root, root / FEATURES_DIR, page)
-        _ = commit_paths(root, repaired_book_commit_subject(self.service), *pages)
+        return Continue(pages, self.commit_pages, repair=repair, index=index, pages=pages).because("commit the repaired pages")
+
+    def commit_pages(self, repair: RepairRound, index: int, pages: tuple[str, ...]) -> Continue[...] | Await[...]:
+        """Commit the batch's pages and move to the next batch. A refused commit waits for the operator."""
+        refusal = commit_refusal(self.root, repaired_book_commit_subject(self.service), *pages)
+        if refusal:
+            return self._commit_refused(refusal, self.commit_pages, repair=repair, index=index, pages=pages)
         if index + 1 < len(repair.batches):
             return Continue(pages, self.repair_batch, repair=repair, index=index + 1).because("repair the next batch")
         return Continue(pages, self.plan_round, held=repair.held, round_number=repair.number + 1, failed=repair.failed).because(

@@ -5,7 +5,21 @@ import logging
 from pathlib import Path
 
 import pytest
-from okf_book.main.tally import App, DriveBook, FAILED, NOTE, PAGE, PASSED, TALLY, answer, no_problems, stub_the_run_to, until_noted
+from okf_book.main.tally import (
+    App,
+    DriveBook,
+    FAILED,
+    NOTE,
+    PAGE,
+    PASSED,
+    REFUSAL,
+    TALLY,
+    answer,
+    no_problems,
+    refuse_commits_until_answered,
+    stub_the_run_to,
+    until_noted,
+)
 from okf_book.support import ScriptedRunner, commits, git
 from workhorse.pyflow import WorkflowFailed
 from workhorse.pyflow import driver as pyflow_driver
@@ -95,6 +109,23 @@ def test_a_write_outside_the_book_is_put_back_before_the_commit(app: App, drive_
 
     assert git(repo, "status", "--porcelain").strip() == ""
     assert "broken" not in (repo / "tally" / "cli.py").read_text(encoding="utf-8")
+    assert git(repo, "show", "--name-only", "--format=", "HEAD").split() == [PAGE]
+
+
+@pytest.mark.usefixtures("passing")
+def test_a_book_commit_the_repo_refuses_waits_for_the_operator_and_is_tried_again(
+    app: App, drive_book: DriveBook, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = app("tally-cli")
+    asked: list[str] = []
+    monkeypatch.setattr(pyflow_driver, "wait_for_answer", refuse_commits_until_answered(repo, asked))
+
+    result = drive_book(OkfBook(repo_dir=str(repo), surfaces=(TALLY,)), _writer(repo))
+
+    assert isinstance(result, BookReport)
+    assert result.blockers == ()
+    assert len(asked) == 1
+    assert REFUSAL in asked[0]
     assert git(repo, "show", "--name-only", "--format=", "HEAD").split() == [PAGE]
 
 

@@ -5,7 +5,19 @@ from pathlib import Path
 
 import pytest
 from pydantic import TypeAdapter
-from okf_book.main.tally import App, DriveBook, NOTE, PAGE, PASSED, TALLY, answer, stub_the_run_to, until_noted
+from okf_book.main.tally import (
+    App,
+    DriveBook,
+    NOTE,
+    PAGE,
+    PASSED,
+    REFUSAL,
+    TALLY,
+    answer,
+    refuse_commits_until_answered,
+    stub_the_run_to,
+    until_noted,
+)
 from okf_book.support import ScriptedRunner, commits, git
 from workhorse.pyflow import driver as pyflow_driver
 from workhorse.runner.failure import BackendInvocationError
@@ -63,6 +75,22 @@ def test_an_existing_book_over_the_ceiling_is_rooted_repaired_page_by_page_and_r
     assert git(repo, "show", "--name-only", "--format=", "HEAD").split() == [PAGE]
     assert "](tally.md)" in (repo / "docs/features/tally/entries.md").read_text(encoding="utf-8")
     assert git(repo, "status", "--porcelain").strip() == ""
+
+
+@pytest.mark.usefixtures("over_the_ceiling")
+def test_a_commit_the_repo_refuses_waits_for_the_operator_and_is_tried_again(
+    app: App, drive_book: DriveBook, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = app("tally-cli")
+    asked: list[str] = []
+    monkeypatch.setattr(pyflow_driver, "wait_for_answer", refuse_commits_until_answered(repo, asked))
+
+    result = drive_book(OkfBook(repo_dir=str(repo), surfaces=(TALLY,)), _repairer(repo))
+
+    assert isinstance(result, BookReport)
+    assert len(asked) == 1
+    assert REFUSAL in asked[0]
+    assert commits(repo)[:2] == ["docs(tally): repair pages of the tally book", "docs(tally): root the tally book"]
 
 
 @pytest.mark.usefixtures("over_the_ceiling")

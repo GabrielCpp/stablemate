@@ -132,6 +132,15 @@ def commit_paths(path: str | Path, message: str, *pathspecs: str, verify: bool =
     return True
 
 
+def commit_refusal(path: str | Path, message: str, *pathspecs: str) -> str:
+    """Commit exactly ``pathspecs`` as `commit_paths` does, and return what git said when it refused. Empty when nothing refused."""
+    try:
+        _ = commit_paths(path, message, *pathspecs)
+    except GitCommandError as refused:
+        return str(refused.stderr).strip() or str(refused)
+    return ""
+
+
 def commit_all(path: str | Path, message: str) -> bool:
     """Stage EVERY change in the working tree (``git add -A``) and commit it."""
     try:
