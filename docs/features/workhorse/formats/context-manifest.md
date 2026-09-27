@@ -156,8 +156,8 @@ Jinja helper, falling back to the workflow's own directory when empty.
 
 `load_context_manifest` parses the file (see [Resolution](#resolution)) into a `ContextManifest` —
 tolerantly, so an unknown key is ignored and a wrong-typed one falls back to its default rather
-than ending the run. `build_manifest_context` then projects it onto a `ManifestContext`, applying
-the per-backend rewrite below and adding `repo_root`: the resolved absolute `$AGENT_REPO_DIR` (or
+than ending the run. `build_manifest_context` then projects it onto a `ManifestContext`, keeping
+the instruction paths as rendered and adding `repo_root`: the resolved absolute `$AGENT_REPO_DIR` (or
 `cwd`), used by the prompt-flavor-override lookup and not stored in the manifest itself.
 `ManifestContext.as_context()` is what turns that value into the context keys above; nothing else
 in the tree spells a reserved key.
@@ -170,22 +170,18 @@ the arguments its state passed. (The retired YAML engine instead seeded the same
 starting context; that is the only difference the removal made, and it is why the loader was never
 part of either front end.)
 
-**Per-backend instruction rewrite.** When the active `$AGENT_CLI` differs from the backend the
-manifest's own `skill_dir` was generated for, every path in [`instructions`](#field-instructions) is
-rewritten by substituting the manifest's `skill_dir` prefix for the active backend's own skills
-directory — all backends share the `{skill_dir}/{prefix}-{name}/SKILL.md` layout, so a prefix swap
-is sufficient. The active backend's directory comes from a fixed map: `claude` →
-`.claude/skills`, `codex` → `.agents/skills`, `copilot` → `.github/skills`; a backend outside this
-map (`cline`, `opencode`) keeps the manifest's own paths unrewritten. This is what lets one
-manifest, generated for one backend, still resolve correctly when a run is launched with
-`--cli codex` against a repo installed for Claude.
+**Instruction paths are used as rendered.** Every path in [`instructions`](#field-instructions)
+reaches the run exactly as farrier wrote it. farrier writes one manifest per backend it renders,
+`.agents/agents-context.<backend>.json`, and the loader picks the one for the active `$AGENT_CLI`
+when no `--context-file` names another. A run on a backend farrier did not render reads the skills
+of the backend it did render, because those are the only copies on disk.
 
 ## Methods
 
 ### method: ContextManifest.project
-- sig: `ContextManifest.project(*, backend: str, repo_root: Path) -> ManifestContext`
-- does: rewrite instruction paths from the manifest's skill directory to the active backend directory when they differ
-- does: carry template, repo, vars, prompts, tags, selected skills, target skill directory, and absolute repo root into the runtime context
+- sig: `ContextManifest.project(*, repo_root: Path) -> ManifestContext`
+- does: keep every instruction path and the skill directory as farrier rendered them
+- does: carry template, repo, vars, prompts, tags, selected skills, rendered skill directory, and absolute repo root into the runtime context
 - returns: a `ManifestContext` marked present
 - verify: json_path(path="$.skill_dir", matches=".+")
 - code: `workhorse/workhorse/manifest.py::ContextManifest.project` @1cf8292d5112
