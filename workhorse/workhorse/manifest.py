@@ -14,12 +14,6 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from workhorse._vendor.stablemate_core.config import resolve_default_cli
 
-BACKEND_SKILL_DIR: dict[str, str] = {
-    "claude": ".claude/skills",
-    "codex": ".agents/skills",
-    "copilot": ".github/skills",
-}
-
 _INSTRUCTIONS = "_instructions"
 _INSTRUCTION_TAGS = "_instruction_tags"
 _PROMPTS = "_prompts"
@@ -97,17 +91,8 @@ class ContextManifest(BaseModel):
     def _tolerate_text(cls, value: Any) -> str:
         return _text(value)
 
-    def project(self, *, backend: str, repo_root: Path) -> ManifestContext:
-        """Project the file onto the render context for one backend and repo."""
-        target_skill_dir = BACKEND_SKILL_DIR.get(backend, self.skill_dir)
-        instructions = self.instructions
-        if self.skill_dir and target_skill_dir and target_skill_dir != self.skill_dir:
-            if not (repo_root / target_skill_dir).is_dir():
-                target_skill_dir = self.skill_dir
-            instructions = {
-                k: _rendered_for(v, self.skill_dir, target_skill_dir, repo_root)
-                for k, v in instructions.items()
-            }
+    def project(self, *, repo_root: Path) -> ManifestContext:
+        """Project the file onto the render context for one repo, every path where farrier rendered it."""
         values = {
             key: value
             for key, value in (
@@ -120,19 +105,13 @@ class ContextManifest(BaseModel):
         return ManifestContext(
             present=True,
             values=values,
-            instructions=instructions,
+            instructions=dict(self.instructions),
             instruction_tags={k: list(v) for k, v in self.instruction_tags.items()},
             prompts=dict(self.prompts),
             used_skills=tuple(self.used_skills),
-            skill_dir=target_skill_dir or self.skill_dir,
+            skill_dir=self.skill_dir,
             repo_root=str(repo_root.resolve()),
         )
-
-
-def _rendered_for(path: str, rendered_dir: str, target_dir: str, repo_root: Path) -> str:
-    """*path* moved into the backend's skill dir, or left where farrier rendered it when that copy is absent."""
-    moved = path.replace(rendered_dir, target_dir, 1)
-    return moved if (repo_root / moved).exists() else path
 
 
 @dataclass(frozen=True, slots=True)
@@ -176,17 +155,11 @@ class ManifestContext:
         )
 
 
-def build_manifest_context(
-    raw: dict[str, Any], *, backend: str | None = None, repo_root: str | None = None
-) -> ManifestContext:
+def build_manifest_context(raw: dict[str, Any], *, repo_root: str | None = None) -> ManifestContext:
     """Parse a farrier context manifest and project it onto the render context."""
-    if backend is None:
-        backend = os.environ.get("AGENT_CLI") or resolve_default_cli()
     if repo_root is None:
         repo_root = os.environ.get("AGENT_REPO_DIR") or "."
-    return ContextManifest.model_validate(raw).project(
-        backend=backend, repo_root=Path(repo_root)
-    )
+    return ContextManifest.model_validate(raw).project(repo_root=Path(repo_root))
 
 
 def load_context_manifest(context_file: str | None) -> ManifestContext:
@@ -220,7 +193,6 @@ def load_context_manifest(context_file: str | None) -> ManifestContext:
 
 
 __all__ = [
-    "BACKEND_SKILL_DIR",
     "ContextManifest",
     "ManifestContext",
     "build_manifest_context",

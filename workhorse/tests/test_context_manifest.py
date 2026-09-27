@@ -58,10 +58,9 @@ def test_a_wrong_typed_field_degrades_instead_of_raising():
     """farrier's file is another tool's output: an unknown key is ignored and a wrong-typed one falls back to its default."""
     mc = wm.build_manifest_context(
         {**MANIFEST, "used_skills": "go", "skill_dir": 7, "future_key": {"a": 1}},
-        backend="claude",
     )
     assert mc.used_skills == ()
-    assert mc.skill_dir == ".claude/skills"
+    assert mc.skill_dir == ""
     assert mc.instructions["go"] == ".claude/skills/demo-go/SKILL.md"
 
 
@@ -101,56 +100,12 @@ def test_touched_layers_gates_per_story():
     assert "GO" in fallback and "WEB" in fallback
 
 
-def _render_skills(root, skill_dir, *names):
-    for name in names:
-        skill = root / skill_dir / name / "SKILL.md"
-        skill.parent.mkdir(parents=True)
-        skill.write_text("# skill\n")
-
-
-def test_codex_backend_rewrites_skill_paths(tmp_path):
-    _render_skills(tmp_path, ".agents/skills", "demo-go", "demo-react-router")
-    mc = wm.build_manifest_context(MANIFEST, backend="codex", repo_root=str(tmp_path))
-    assert mc.instructions["go"] == ".agents/skills/demo-go/SKILL.md"
-    assert mc.instructions["react-router"] == ".agents/skills/demo-react-router/SKILL.md"
-    assert mc.skill_dir == ".agents/skills"
-
-
-def test_copilot_backend_rewrites_skill_paths(tmp_path):
-    _render_skills(tmp_path, ".github/skills", "demo-go")
-    mc = wm.build_manifest_context(MANIFEST, backend="copilot", repo_root=str(tmp_path))
-    assert mc.instructions["go"] == ".github/skills/demo-go/SKILL.md"
-    assert mc.skill_dir == ".github/skills"
-
-
-def test_codex_backend_keeps_the_rendered_path_when_its_dir_has_no_skills(tmp_path):
-    mc = wm.build_manifest_context(MANIFEST, backend="codex", repo_root=str(tmp_path))
+def test_skill_paths_stay_where_farrier_rendered_them(tmp_path):
+    """A backend reads the skills farrier rendered, even when another backend's skill dir exists on disk."""
+    (tmp_path / ".agents" / "skills" / "demo-go").mkdir(parents=True)
+    mc = wm.build_manifest_context(MANIFEST, repo_root=str(tmp_path))
     assert mc.instructions["go"] == ".claude/skills/demo-go/SKILL.md"
-    assert mc.skill_dir == ".claude/skills"
-
-
-def test_codex_backend_keeps_the_rendered_path_of_a_skill_its_dir_lacks(tmp_path):
-    _render_skills(tmp_path, ".agents/skills", "demo-go")
-    mc = wm.build_manifest_context(MANIFEST, backend="codex", repo_root=str(tmp_path))
-    assert mc.instructions["go"] == ".agents/skills/demo-go/SKILL.md"
     assert mc.instructions["react-router"] == ".claude/skills/demo-react-router/SKILL.md"
-
-
-def test_same_backend_no_rewrite():
-    mc = wm.build_manifest_context(MANIFEST, backend="claude")
-    assert mc.instructions["go"] == ".claude/skills/demo-go/SKILL.md"
-    assert mc.skill_dir == ".claude/skills"
-
-
-def test_old_manifest_no_skill_dir_no_rewrite():
-    old_manifest = {k: v for k, v in MANIFEST.items() if k != "skill_dir"}
-    mc = wm.build_manifest_context(old_manifest, backend="codex")
-    assert mc.instructions["go"] == ".claude/skills/demo-go/SKILL.md"
-
-
-def test_unknown_backend_falls_back_to_manifest_dir():
-    mc = wm.build_manifest_context(MANIFEST, backend="future-cli")
-    assert mc.instructions["go"] == ".claude/skills/demo-go/SKILL.md"
     assert mc.skill_dir == ".claude/skills"
 
 
