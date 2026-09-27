@@ -1368,7 +1368,7 @@ class Qa:
         self._tool_env_allowed = frozenset(tool_env)
         self._recorder = recorder
         self._captures: dict[str, str] = {}
-        self._world: Path | None = None
+        self._scenario_copy: Path | None = None
         self.http = Http(target.base_url, on_unexpected_status=self._status_mismatch)
         self._index = 0
         self.assertions = 0
@@ -1517,7 +1517,7 @@ class Qa:
         A command finds the code it runs there, and its files land apart from every other
         scenario's. A scenario that runs no command never pays for a copy of the checkout.
         """
-        if self._world is None:
+        if self._scenario_copy is None:
             into = (self.dir.resolve() / self.scenario_id).resolve()
             try:
                 self._copy_checkout(into)
@@ -1525,8 +1525,8 @@ class Qa:
                 detail = f"could not copy the checkout into {into}: {exc}"
                 self._fault(self.scenario_id, -1, "checkout", "environment", detail)
                 raise RuntimeError(f"qa {self.scenario_id!r}: {detail}") from exc
-            self._world = into
-        return self._world
+            self._scenario_copy = into
+        return self._scenario_copy
 
     def _copy_checkout(self, into: Path) -> None:
         """Copy what git keeps and link what it ignores, or copy the whole tree outside a git checkout.

@@ -390,18 +390,19 @@ def _spelled(ref: references.Reference) -> str:
     return f"@{ref.node}.{ref.key}" if isinstance(ref, references.NodeRef) else f"${ref.name}"
 
 
-def _record_unprovided_references(
-    index: int, request: _HttpRequest, known: _Produced, ids: list[str], gaps: list[Gap],
-) -> bool:
-    """Gap every reference step *index* sends that no journey fixture or earlier step provides; whether any did."""
-    unresolved = [ref for ref in request.named if not known.resolves(ref)]
-    gaps.extend(Gap(oid, "unresolved-precondition",
-                    f"step {index} sends `{_spelled(ref)}`, and neither a fixture the flow's "
-                    "`fixture:` names nor an earlier step provides it — name the fixture that "
-                    "provides it on the flow, or arrange the step from a fact the flow's "
-                    "fixture provides")
-                for ref in unresolved for oid in ids)
-    return bool(unresolved)
+def _unprovided_references(request: _HttpRequest, known: _Produced) -> list[references.Reference]:
+    """Every reference *request* sends that no journey fixture or earlier step provides."""
+    return [ref for ref in request.named if not known.resolves(ref)]
+
+
+def _unprovided_reference_gaps(index: int, unprovided: list[references.Reference], ids: list[str]) -> list[Gap]:
+    """One gap per obligation for each reference step *index* sends that nothing provides."""
+    return [Gap(oid, "unresolved-precondition",
+                f"step {index} sends `{_spelled(ref)}`, and neither a fixture the flow's "
+                "`fixture:` names nor an earlier step provides it — name the fixture that "
+                "provides it on the flow, or arrange the step from a fact the flow's "
+                "fixture provides")
+            for ref in unprovided for oid in ids]
 
 
 def _step_captures(
@@ -486,7 +487,9 @@ def _http_steps(walk: JourneyWalk, sinks: PlanSinks) -> _HttpSteps | None:
     refused = _refused_status(walk.obligations)
     for index, step in enumerate(walk.steps, start=1):
         request = _http_request(index, step, book, walk.ids, gaps)
-        if not isinstance(request, _UnbuiltStep) and _record_unprovided_references(index, request, known, walk.ids, gaps):
+        unprovided = [] if isinstance(request, _UnbuiltStep) else _unprovided_references(request, known)
+        if unprovided:
+            gaps.extend(_unprovided_reference_gaps(index, unprovided, walk.ids))
             request = _UnbuiltStep("this journey sends a fact at this step that nothing it runs "
                                    "provides, so it holds no response to capture the field from")
         if isinstance(request, _UnbuiltStep):
