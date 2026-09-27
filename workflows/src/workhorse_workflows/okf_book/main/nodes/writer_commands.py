@@ -9,7 +9,7 @@ from contextlib import redirect_stderr, redirect_stdout
 from dataclasses import dataclass
 from pathlib import Path
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
 
 CHECK_MODULE = f"{__package__}.check_pages"
@@ -44,7 +44,8 @@ class WriterCommandState(BaseModel):
 
     With no pages named, the check covers the whole book. With pages named, it covers those pages
     and every problem not in `problems_at_turn_start`, the problems the book had when the turn started.
-    A page in `sections` is covered only in the `###` sections named for it.
+    A page in `sections_by_page` is covered only in the `###` sections named for it. The field also
+    reads its earlier key, `sections`.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -52,7 +53,7 @@ class WriterCommandState(BaseModel):
     root: Path
     service: str
     pages: tuple[str, ...] = ()
-    sections: dict[str, tuple[str, ...]] = {}
+    sections_by_page: dict[str, tuple[str, ...]] = Field(default={}, validation_alias=AliasChoices("sections_by_page", "sections"))
     problems_at_turn_start: tuple[str, ...] = ()
     check_and_scenario_runs: int = 0
     ostler_runs: int = 0

@@ -213,13 +213,13 @@ def _batch(journey_costs: list[_PageCost], current: list[_PageCost], journey: Jo
 
 
 @dataclass(frozen=True, slots=True)
-class _Units:
+class _PageSplit:
     units: list[_PageCost]
     too_large: list[TooLarge]
 
 
 @dataclass(frozen=True, slots=True)
-class _Budget:
+class _PageSplitter:
     files: CitedFiles
     journey_costs: list[_PageCost]
     ceiling: int
@@ -231,7 +231,7 @@ class _Budget:
     def _too_large(self, page: str, tokens: int, section: str | None = None) -> TooLarge:
         return TooLarge(page=page, tokens=tokens, ceiling=self.ceiling, with_journey=self.with_journey, section=section)
 
-    def _section_units(self, page: str, text: str, problems: tuple[str, ...]) -> _Units:
+    def _section_units(self, page: str, text: str, problems: tuple[str, ...]) -> _PageSplit:
         parts = page_sections(text)
         by_section: dict[str, list[str]] = {}
         for problem in problems:
@@ -245,31 +245,31 @@ class _Budget:
                 too_large.append(self._too_large(page, tokens_alone, section.id))
             else:
                 units.append(unit)
-        return _Units(units, too_large)
+        return _PageSplit(units, too_large)
 
-    def page_units(self, page: str, problems: tuple[str, ...]) -> _Units:
+    def page_units(self, page: str, problems: tuple[str, ...]) -> _PageSplit:
         """The page whole when it fits, else each of its sections with a problem that fits, and what does not."""
         path = self.files.root / page
         text = path.read_text(encoding="utf-8") if path.is_file() else ""
         whole = _text_cost(self.files, page, text, problems)
         tokens_alone = self._tokens_alone(whole)
         if tokens_alone <= self.ceiling:
-            return _Units([whole], [])
+            return _PageSplit([whole], [])
         if len(page_sections(text).sections) > 1:
             return self._section_units(page, text, problems)
-        return _Units([], [self._too_large(page, tokens_alone)])
+        return _PageSplit([], [self._too_large(page, tokens_alone)])
 
 
 def _pack(
     files: CitedFiles, by_page: dict[str, tuple[str, ...]], ceiling: int, journey: JourneyPages | None
 ) -> PackedRepairs:
     journey_costs = [_journey_cost(files.root, page) for page in journey.flow_pages] if journey else []
-    budget = _Budget(files, journey_costs, ceiling, journey is not None)
+    splitter = _PageSplitter(files, journey_costs, ceiling, journey is not None)
     batches: list[RepairBatch] = []
     too_large: list[TooLarge] = []
     current: list[_PageCost] = []
     for page, problems in by_page.items():
-        units = budget.page_units(page, problems)
+        units = splitter.page_units(page, problems)
         too_large.extend(units.too_large)
         for unit in units.units:
             if current and _cost([*journey_costs, *current, unit]) > ceiling:

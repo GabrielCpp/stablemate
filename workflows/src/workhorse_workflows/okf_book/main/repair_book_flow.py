@@ -161,7 +161,7 @@ class RepairBook(BookFlow):
             root=self.root,
             service=self.service,
             pages=batch.page_paths,
-            sections={page.page: page.sections for page in batch.pages if page.sections},
+            sections_by_page={page.page: page.sections for page in batch.pages if page.sections},
             problems_at_turn_start=problems_at_turn_start,
         )
         _ = write_command_state(self.run_dir, state)

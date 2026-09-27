@@ -248,7 +248,7 @@ def test_a_check_scoped_to_sections_prints_their_problems_and_not_one_an_edit_ab
         f"{page}:8: step-no-verify: a claim has no verify",
     )
     state = WriterCommandState(
-        root=tmp_path, service="ledger", pages=(page,), sections={page: ("list-rows",)}, problems_at_turn_start=problems_at_turn_start
+        root=tmp_path, service="ledger", pages=(page,), sections_by_page={page: ("list-rows",)}, problems_at_turn_start=problems_at_turn_start
     )
 
     printed = scoped_problems(state)

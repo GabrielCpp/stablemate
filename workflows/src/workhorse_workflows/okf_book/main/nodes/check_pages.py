@@ -30,7 +30,7 @@ def _unlocated(text: str) -> str:
 def _in_scope(state: WriterCommandState, root: Path, problem: PageProblem) -> bool:
     if problem.page not in state.pages:
         return False
-    sections = state.sections.get(problem.page)
+    sections = state.sections_by_page.get(problem.page)
     if sections is None:
         return True
     path = root / problem.page
