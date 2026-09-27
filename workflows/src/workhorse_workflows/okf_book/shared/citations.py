@@ -1,4 +1,4 @@
-"""The source files a book's pages cite on their `code:` bullets, with the digest each cites."""
+"""The source files a book's pages cite on their `code:` bullets, with the symbol and the digest each cites."""
 from __future__ import annotations
 
 import re
@@ -14,10 +14,11 @@ _FENCE = "```"
 
 @dataclass(frozen=True, slots=True)
 class Citation:
-    """One cited file, repo-relative, and the digest stamped beside it, if any."""
+    """One cited file, repo-relative, the digest stamped beside it, if any, and the symbol it names, if any."""
 
     path: str
     digest: str | None
+    symbol: str = ""
 
 
 def _bullet_citations(value: str) -> list[Citation]:
@@ -28,7 +29,7 @@ def _bullet_citations(value: str) -> list[Citation]:
         except ValueError:
             continue
         if not ref.repository:
-            found.append(Citation(ref.path, ref.digest))
+            found.append(Citation(ref.path, ref.digest, ref.symbol))
     return found
 
 

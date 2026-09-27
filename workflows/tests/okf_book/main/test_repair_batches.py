@@ -111,3 +111,16 @@ def test_a_page_over_the_ceiling_with_the_journey_pages_is_reported_with_them(tm
 
     assert packed.batches == ()
     assert packed.too_large[0].reason.endswith("split the page or the flow pages")
+
+
+def test_a_page_that_cites_one_declaration_costs_that_declaration_not_the_file(tmp_path: Path) -> None:
+    declaration = "def main():\n    return 0\n"
+    source = tmp_path / SOURCE
+    source.parent.mkdir(parents=True, exist_ok=True)
+    _ = source.write_text(declaration + "#" * SOURCE_TOKENS * CHARS_PER_TOKEN + "\n", encoding="utf-8")
+    page = _page(tmp_path, "a.md", cites=True)
+
+    batch = repair_batches(tmp_path, {page: ("p",)}).batches[0]
+
+    assert batch.sources == (f"{SOURCE}:1-2",)
+    assert batch.tokens == BOOK_HOLDS * PAGE_TOKENS + 1 + SOURCE_READS * -(-len(declaration) // CHARS_PER_TOKEN)

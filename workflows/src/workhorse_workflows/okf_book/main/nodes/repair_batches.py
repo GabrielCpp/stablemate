@@ -1,9 +1,11 @@
 """The batches a book too large for one writer is repaired in: its problem pages, in path order, each batch under the ceiling one writer reads.
 
 A page costs twice its own tokens, since the writer holds it as it edits it and again as it reads it
-back, and twice each source file it cites, since the writer reads the file once and again as it
-checks the page's claims against it. A file two pages of one batch cite is counted once. A page
-alone over the ceiling goes to no batch: it is reported, with its cost, for the operator to split.
+back, and twice the part of each source file it cites, since the writer reads that part once and
+again as it checks the page's claims against it. The part is the declaration or yaml key the
+citation names, or the whole file when it names none. A part two pages of one batch cite is counted
+once. A page alone over the ceiling goes to no batch: it is reported, with its cost, for the
+operator to split.
 """
 from __future__ import annotations
 
@@ -13,6 +15,7 @@ from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict
 
+from workhorse_workflows.okf_book.main.nodes.cited_lines import CitedFiles
 from workhorse_workflows.okf_book.main.nodes.turn_budget import BOOK_HOLDS, CHARS_PER_TOKEN, SOURCE_AND_BOOK_CEILING_TOKENS, SOURCE_READS
 from workhorse_workflows.okf_book.shared.citations import page_citations
 from workhorse_workflows.okf_book.shared.entries import book_dir, read_entries
@@ -105,10 +108,10 @@ def _file_tokens(path: Path) -> int:
     return -(-path.stat().st_size // CHARS_PER_TOKEN) if path.is_file() else 0
 
 
-def _page_cost(root: Path, page: str, problems: tuple[str, ...]) -> _PageCost:
-    path = root / page
-    cited = tuple(dict.fromkeys(citation.path for citation in page_citations(path))) if path.is_file() else ()
-    sources = {source: _file_tokens(root / source) for source in cited if (root / source).is_file()}
+def _page_cost(files: CitedFiles, page: str, problems: tuple[str, ...]) -> _PageCost:
+    path = files.root / page
+    cited = (files.cited(citation) for citation in page_citations(path)) if path.is_file() else ()
+    sources = {part.label: part.tokens for part in cited if part is not None}
     problem_tokens = -(-sum(len(problem) for problem in problems) // CHARS_PER_TOKEN)
     return _PageCost(
         PageRepair(page=page, problems=problems, sources=tuple(sources)),
@@ -159,14 +162,14 @@ def _batch(journey_costs: list[_PageCost], current: list[_PageCost], journey: Jo
 
 
 def _pack(
-    root: Path, by_page: dict[str, tuple[str, ...]], ceiling: int, journey: JourneyPages | None
+    files: CitedFiles, by_page: dict[str, tuple[str, ...]], ceiling: int, journey: JourneyPages | None
 ) -> PackedRepairs:
-    journey_costs = [_journey_cost(root, page) for page in journey.pages] if journey else []
+    journey_costs = [_journey_cost(files.root, page) for page in journey.pages] if journey else []
     batches: list[RepairBatch] = []
     too_large: list[TooLarge] = []
     current: list[_PageCost] = []
     for page, problems in by_page.items():
-        unit = _page_cost(root, page, problems)
+        unit = _page_cost(files, page, problems)
         alone = _cost([*journey_costs, unit])
         if alone > ceiling:
             too_large.append(TooLarge(page=page, tokens=alone, ceiling=ceiling, with_journey=journey is not None))
@@ -194,6 +197,7 @@ def repair_batches(
     """
     on_journey = {page: problems for page, problems in by_page.items() if journey and page in needs_journey}
     rest = {page: problems for page, problems in by_page.items() if page not in on_journey}
-    first = _pack(root, on_journey, ceiling, journey)
-    then = _pack(root, rest, ceiling, None)
+    files = CitedFiles(root)
+    first = _pack(files, on_journey, ceiling, journey)
+    then = _pack(files, rest, ceiling, None)
     return PackedRepairs(batches=(*first.batches, *then.batches), too_large=(*first.too_large, *then.too_large))

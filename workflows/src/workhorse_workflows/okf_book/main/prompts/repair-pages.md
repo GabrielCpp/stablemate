@@ -44,6 +44,8 @@ gives relative to the repository starts there.
 {% endif %}
 {% endfor %}
 
+- A cited `path:first-last` is the lines of the declaration or yaml key a citation names. Read
+  those lines, and the rest of the file only where a claim needs more of it.
 - Fix each problem at its cause. Read the source a claim describes before you change the claim.
 {% if exercise %}
   A check the run failed is fixed in the book, never by weakening it. Where the app refused a
