@@ -67,6 +67,25 @@ class Policy:
         )
 
 
+@dataclass(frozen=True, slots=True)
+class ToolCall:
+    """The part of one hook payload the guard judges: the tool codex calls, and the command it passes."""
+
+    tool: str
+    command: str | None
+
+    @classmethod
+    def from_json(cls, text: str) -> ToolCall:
+        """The call codex sends the hook, refusing a payload that is not an object."""
+        data: object = json.loads(text)
+        if not isinstance(data, dict):
+            raise ValueError("the call is not an object")
+        tool = data.get("tool_name")
+        tool_input = data.get("tool_input")
+        command = tool_input.get("command") if isinstance(tool_input, dict) else None
+        return cls(tool=tool if isinstance(tool, str) else "", command=command if isinstance(command, str) else None)
+
+
 def _within(path: Path, roots: Sequence[Path]) -> bool:
     return any(path == root or root in path.parents for root in roots)
 
@@ -226,16 +245,13 @@ def _explained(denial: str, policy: Policy) -> str:
     )
 
 
-def decide(payload: dict[str, object], policy: Policy) -> str | None:
+def decide(call: ToolCall, policy: Policy) -> str | None:
     """The reason to refuse the tool call, or None to let it run."""
-    tool = payload.get("tool_name")
-    tool_input = payload.get("tool_input")
-    text = tool_input.get("command") if isinstance(tool_input, dict) else None
-    if tool not in ("Bash", "apply_patch"):
+    if call.tool not in ("Bash", "apply_patch"):
         return None
-    if not isinstance(text, str):
+    if call.command is None:
         return _explained("the call carries no command", policy)
-    denial = shell_denial(text, policy) if tool == "Bash" else patch_denial(text, policy)
+    denial = shell_denial(call.command, policy) if call.tool == "Bash" else patch_denial(call.command, policy)
     return None if denial is None else _explained(denial, policy)
 
 
@@ -255,11 +271,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = list(sys.argv[1:] if argv is None else argv)
     try:
         policy = Policy.from_json(Path(args[0]).read_text(encoding="utf-8"))
-        payload = json.loads(sys.stdin.read())
+        call = ToolCall.from_json(sys.stdin.read())
     except (IndexError, OSError, ValueError, KeyError) as error:
         print(deny(f"Refused: the guard could not read the call or its policy: {error}"))
         return 0
-    reason = decide(payload, policy) if isinstance(payload, dict) else "Refused: the call is not an object"
+    reason = decide(call, policy)
     if reason is not None:
         print(deny(reason))
     return 0

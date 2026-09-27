@@ -9,7 +9,7 @@ from contextlib import redirect_stdout
 from pathlib import Path
 from unittest.mock import patch
 
-from workhorse.runner.backends.codex_guard import Policy, decide, main, patch_denial, shell_denial
+from workhorse.runner.backends.codex_guard import Policy, ToolCall, decide, main, patch_denial, shell_denial
 
 BOOK = Path("/work/app/docs/book")
 SOURCE = Path("/runs/r1/source")
@@ -100,12 +100,17 @@ def test_a_patch_writes_only_under_the_cwd():
     assert patch_denial(moved, POLICY) is not None
 
 
+def _call(payload: object) -> ToolCall:
+    return ToolCall.from_json(json.dumps(payload))
+
+
 def test_decide_checks_only_shell_calls_and_patches():
-    assert decide({"tool_name": "update_plan", "tool_input": {"plan": []}}, POLICY) is None
-    assert decide({"tool_name": "Bash", "tool_input": {"command": "cat overview.md"}}, POLICY) is None
-    refusal = decide({"tool_name": "Bash", "tool_input": {"command": "rm overview.md"}}, POLICY)
+    assert decide(_call({"tool_name": "update_plan", "tool_input": {"plan": []}}), POLICY) is None
+    assert decide(_call({"tool_name": "Bash", "tool_input": {"command": "cat overview.md"}}), POLICY) is None
+    refusal = decide(_call({"tool_name": "Bash", "tool_input": {"command": "rm overview.md"}}), POLICY)
     assert refusal is not None and refusal.startswith("Refused: `rm`")
-    assert decide({"tool_name": "Bash", "tool_input": {}}, POLICY) is not None
+    assert decide(_call({"tool_name": "Bash", "tool_input": {}}), POLICY) is not None
+    assert decide(_call({"tool_name": "Bash", "tool_input": {"command": ["rm", "x"]}}), POLICY) is not None
 
 
 def _hook_output(argv: list[str], payload: str) -> str:
@@ -127,6 +132,14 @@ def test_the_hook_prints_a_refusal_only_for_a_forbidden_call():
 
 def test_the_hook_refuses_when_it_cannot_read_its_policy():
     refused = _hook_output(["/nonexistent/policy.json"], json.dumps({"tool_name": "Bash", "tool_input": {"command": "ls"}}))
+    assert json.loads(refused)["hookSpecificOutput"]["permissionDecision"] == "deny"
+
+
+def test_the_hook_refuses_a_call_that_is_not_an_object():
+    with tempfile.TemporaryDirectory() as tmp:
+        policy_path = Path(tmp) / "policy.json"
+        _ = policy_path.write_text(POLICY.to_json(), encoding="utf-8")
+        refused = _hook_output([str(policy_path)], json.dumps(["Bash", "rm x"]))
     assert json.loads(refused)["hookSpecificOutput"]["permissionDecision"] == "deny"
 
 
