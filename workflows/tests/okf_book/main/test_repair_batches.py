@@ -68,8 +68,8 @@ def test_a_page_alone_over_the_ceiling_goes_to_no_batch_and_is_reported_with_its
     packed = pack_repairs(tmp_path, {large: ("p",), small: ("p",)}, ceiling=one)
 
     assert [batch.page_paths for batch in packed.batches] == [(small,)]
-    assert [(page.page, page.tokens) for page in packed.too_large] == [(large, one + SOURCE_READS * SOURCE_TOKENS)]
-    assert packed.too_large[0].reason.startswith(f"{large} and the files it cites cost")
+    assert [(page.page, page.tokens) for page in packed.oversized_pages] == [(large, one + SOURCE_READS * SOURCE_TOKENS)]
+    assert packed.oversized_pages[0].reason.startswith(f"{large} and the files it cites cost")
 
 
 def test_pages_whose_fix_goes_on_a_journey_are_packed_first_with_the_journey_pages_cost(tmp_path: Path) -> None:
@@ -98,7 +98,7 @@ def test_a_page_over_the_ceiling_with_the_journey_pages_is_reported_with_them(tm
     packed = pack_repairs(tmp_path, {page: ("p",)}, journey, frozenset({page}), ceiling=BOOK_HOLDS * PAGE_TOKENS + 1)
 
     assert packed.batches == ()
-    assert packed.too_large[0].reason.endswith("split the page or the flow pages")
+    assert packed.oversized_pages[0].reason.endswith("split the page or the flow pages")
 
 
 def test_a_page_that_cites_one_declaration_costs_that_declaration_not_the_file(tmp_path: Path) -> None:
@@ -141,7 +141,7 @@ def test_a_page_over_the_ceiling_is_sent_only_the_sections_its_problems_sit_in(t
 
     packed = pack_repairs(tmp_path, {page: problems}, ceiling=BOOK_HOLDS * 5 * PAGE_TOKENS // 2)
 
-    assert packed.too_large == ()
+    assert packed.oversized_pages == ()
     assert [(repair.sections, repair.problems) for batch in packed.batches for repair in batch.pages] == [
         (("drop-row", "add-row"), problems)
     ]
@@ -154,5 +154,5 @@ def test_a_section_alone_over_the_ceiling_is_reported_by_its_heading(tmp_path: P
     packed = pack_repairs(tmp_path, {page: problems}, ceiling=BOOK_HOLDS * 2 * PAGE_TOKENS)
 
     assert [repair.sections for batch in packed.batches for repair in batch.pages] == [("list-rows",)]
-    assert [large.subject for large in packed.too_large] == [f"{page}, ### drop-row"]
-    assert packed.too_large[0].reason.endswith("split the section")
+    assert [large.subject for large in packed.oversized_pages] == [f"{page}, ### drop-row"]
+    assert packed.oversized_pages[0].reason.endswith("split the section")

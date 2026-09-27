@@ -71,7 +71,7 @@ class RepairBatch(BaseModel):
         return tuple(dict.fromkeys(source for repair in self.pages for source in repair.sources))
 
 
-class TooLarge(BaseModel):
+class OversizedPage(BaseModel):
     """A problem page no turn is sent, since it, the files it cites and the flow pages its fix goes on cost more than one writer reads."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -106,7 +106,7 @@ class PackedRepairs(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     batches: tuple[RepairBatch, ...]
-    too_large: tuple[TooLarge, ...] = ()
+    oversized_pages: tuple[OversizedPage, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -169,7 +169,7 @@ def _batch(journey_costs: list[_PageCost], current: list[_PageCost], journey: Jo
 @dataclass(frozen=True, slots=True)
 class _PageSplit:
     units: list[_PageCost]
-    too_large: list[TooLarge]
+    oversized_pages: list[OversizedPage]
 
 
 @dataclass(frozen=True, slots=True)
@@ -182,8 +182,8 @@ class _PageSplitter:
     def _tokens_alone(self, unit: _PageCost) -> int:
         return _cost([*self.journey_costs, unit])
 
-    def _too_large(self, page: str, tokens: int, section: str | None = None) -> TooLarge:
-        return TooLarge(page=page, tokens=tokens, ceiling=self.ceiling, with_journey=self.with_journey, section=section)
+    def _oversized(self, page: str, tokens: int, section: str | None = None) -> OversizedPage:
+        return OversizedPage(page=page, tokens=tokens, ceiling=self.ceiling, with_journey=self.with_journey, section=section)
 
     def _section_units(self, page: str, text: str, problems: tuple[str, ...]) -> _PageSplit:
         parts = page_sections(text)
@@ -191,15 +191,15 @@ class _PageSplitter:
         for problem in problems:
             by_section.setdefault(parts.section_id_of_problem(page, problem), []).append(problem)
         units: list[_PageCost] = []
-        too_large: list[TooLarge] = []
+        oversized_pages: list[OversizedPage] = []
         for section in (section for section in parts.sections if section.id in by_section):
             unit = _text_cost(self.files, page, parts.section_text(section), tuple(by_section[section.id]), (section.id,))
             tokens_alone = self._tokens_alone(unit)
             if tokens_alone > self.ceiling:
-                too_large.append(self._too_large(page, tokens_alone, section.id))
+                oversized_pages.append(self._oversized(page, tokens_alone, section.id))
             else:
                 units.append(unit)
-        return _PageSplit(units, too_large)
+        return _PageSplit(units, oversized_pages)
 
     def split_page(self, page: str, problems: tuple[str, ...]) -> _PageSplit:
         """The page whole when it fits, else each of its sections with a problem that fits, and what does not."""
@@ -211,7 +211,7 @@ class _PageSplitter:
             return _PageSplit([whole], [])
         if len(page_sections(text).sections) > 1:
             return self._section_units(page, text, problems)
-        return _PageSplit([], [self._too_large(page, tokens_alone)])
+        return _PageSplit([], [self._oversized(page, tokens_alone)])
 
 
 def _pack(
@@ -220,11 +220,11 @@ def _pack(
     journey_costs = [_journey_cost(files.root, page) for page in journey.flow_pages] if journey else []
     splitter = _PageSplitter(files, journey_costs, ceiling, journey is not None)
     batches: list[RepairBatch] = []
-    too_large: list[TooLarge] = []
+    oversized_pages: list[OversizedPage] = []
     current: list[_PageCost] = []
     for page, problems in by_page.items():
         split = splitter.split_page(page, problems)
-        too_large.extend(split.too_large)
+        oversized_pages.extend(split.oversized_pages)
         for unit in split.units:
             if current and _cost([*journey_costs, *current, unit]) > ceiling:
                 batches.append(_batch(journey_costs, current, journey))
@@ -232,7 +232,7 @@ def _pack(
             current.append(unit)
     if current:
         batches.append(_batch(journey_costs, current, journey))
-    return PackedRepairs(batches=tuple(batches), too_large=tuple(too_large))
+    return PackedRepairs(batches=tuple(batches), oversized_pages=tuple(oversized_pages))
 
 
 def pack_repairs(
@@ -254,5 +254,5 @@ def pack_repairs(
     rest_packed = _pack(files, rest, ceiling, None)
     return PackedRepairs(
         batches=(*journey_packed.batches, *rest_packed.batches),
-        too_large=(*journey_packed.too_large, *rest_packed.too_large),
+        oversized_pages=(*journey_packed.oversized_pages, *rest_packed.oversized_pages),
     )

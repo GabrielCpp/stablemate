@@ -164,9 +164,9 @@ def test_a_page_too_large_for_one_writer_is_sent_no_turn_and_is_a_blocker_on_the
 
     assert isinstance(result, BookReport)
     assert runner.total == 0
-    too_large = [b for b in result.blockers if b.side is Side.WORKFLOW]
-    assert [(b.phase, b.subject) for b in too_large] == [(Phase.WRITE, f"tally: {PAGE}, the lines under no ### heading")]
-    assert too_large[0].reason.endswith("split the section")
+    oversized_pages = [b for b in result.blockers if b.side is Side.WORKFLOW]
+    assert [(b.phase, b.subject) for b in oversized_pages] == [(Phase.WRITE, f"tally: {PAGE}, the lines under no ### heading")]
+    assert oversized_pages[0].reason.endswith("split the section")
 
 
 ADD = Scenario(id="tally-add", covers=(f"okf:{PAGE}#add:does:1",))

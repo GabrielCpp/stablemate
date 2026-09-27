@@ -25,7 +25,7 @@ from ostler.stamp import stamp_page
 from workhorse.pyflow import AgentTimeout, AgentTurnFailed, Await, Continue, Done, WorkflowFailed
 from workhorse_workflows.kit import commit_returning_refusal
 from workhorse_workflows.okf_book.main.nodes.journey import JourneyPages, journey_pages, pages_needing_journey
-from workhorse_workflows.okf_book.main.nodes.repair_batches import RepairBatch, TooLarge, pack_repairs, problems_by_page
+from workhorse_workflows.okf_book.main.nodes.repair_batches import OversizedPage, RepairBatch, pack_repairs, problems_by_page
 from workhorse_workflows.okf_book.main.nodes.root_entries import write_root_entries
 from workhorse_workflows.okf_book.main.nodes.surface import Surface
 from workhorse_workflows.okf_book.main.nodes.writer_commands import WriterCommandState, write_command_state
@@ -50,7 +50,7 @@ class RepairOutcome(BaseModel):
 
     rounds: int
     failed_turns: tuple[str, ...] = ()
-    too_large: tuple[TooLarge, ...] = ()
+    oversized_pages: tuple[OversizedPage, ...] = ()
     problems_left: int = 0
 
 
@@ -64,12 +64,12 @@ class RepairRound(BaseModel):
     journey: JourneyPages
     number: int
     failed_turns: tuple[str, ...] = ()
-    too_large: tuple[TooLarge, ...] = ()
+    oversized_pages: tuple[OversizedPage, ...] = ()
     batches: tuple[RepairBatch, ...] = ()
 
     def outcome(self, rounds: int, by_page: dict[str, tuple[str, ...]]) -> RepairOutcome:
         left = sum(len(problems) for problems in by_page.values())
-        return RepairOutcome(rounds=rounds, failed_turns=self.failed_turns, too_large=self.too_large, problems_left=left)
+        return RepairOutcome(rounds=rounds, failed_turns=self.failed_turns, oversized_pages=self.oversized_pages, problems_left=left)
 
 
 class RepairBook(BookFlow):
@@ -143,9 +143,9 @@ class RepairBook(BookFlow):
         self, this_round: RepairRound, by_page: dict[str, tuple[str, ...]], needs_journey: frozenset[str]
     ) -> Continue[...] | Done:
         packed = pack_repairs(self.root, by_page, this_round.journey, needs_journey)
-        reported = {page.subject for page in this_round.too_large}
-        too_large = (*this_round.too_large, *(page for page in packed.too_large if page.subject not in reported))
-        this_round = this_round.model_copy(update={"too_large": too_large, "batches": packed.batches})
+        reported = {page.subject for page in this_round.oversized_pages}
+        oversized_pages = (*this_round.oversized_pages, *(page for page in packed.oversized_pages if page.subject not in reported))
+        this_round = this_round.model_copy(update={"oversized_pages": oversized_pages, "batches": packed.batches})
         if not packed.batches:
             return Done(this_round.outcome(this_round.number - 1, by_page)).because("no planned page is left for a turn")
         pages = sum(len(batch.pages) for batch in packed.batches)
