@@ -341,7 +341,13 @@ CLI's tools. The claude backend runs the turn under `--permission-mode dontAsk` 
 project settings only, where a call no rule allows is refused. The opencode backend writes
 permission rules relative to the git worktree, and it drops grep, glob and list, because
 opencode answers them outside its path rules. It refuses a confined turn outside a git
-worktree, or one whose `add_dirs` leave it.
+worktree, or one whose `add_dirs` leave it. The codex backend runs outside its sandbox,
+because the profile's commands need docker and the network. A `PreToolUse` hook checks
+every call instead. A patch writes only under `cwd`. A shell call runs a profile command
+or a read-only command (`cat`, `head`, `sed -n`, `rg`, `grep`, `ls`, `find` and a few
+more), joined by `|` at most, with no path outside the turn's directories. The hook cannot
+see the directory a shell call runs in, so it refuses a relative path that climbs with
+`..` or starts at `~`.
 
 `command_timeout_s` is how long one shell command may run before the CLI stops waiting
 on it. The claude CLI moves a command past two minutes to the background, and the turn

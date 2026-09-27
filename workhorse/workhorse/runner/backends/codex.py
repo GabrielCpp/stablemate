@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import json
 import os
+import tempfile
 from pathlib import Path
 
 from workhorse.config_run import AgentResilience
 from workhorse.runner import usage as _usage
-from workhorse.runner.backends import AgentProfile
+from workhorse.runner.backends import AgentProfile, git_worktree
+from workhorse.runner.backends.codex_guard import Policy, hook_command
 from workhorse.runner.backends.jsonl import JsonlBackend
 from workhorse.runner.backends.turn import TurnState, finalize_turn, read_session_id
 
@@ -22,6 +24,27 @@ def _parse_codex_model(model: str | None) -> tuple[str | None, str | None]:
         prof, _, slug = raw.partition("@")
         return (prof.strip() or None), (slug.strip() or None)
     return raw, None
+
+
+SKILL_DIRS = (".claude/skills", ".agents/skills")
+
+
+def confinement(agent: AgentProfile | None, cwd: str | None, add_dirs: list[str] | None) -> Policy | None:
+    """What the guard holds a confined turn to: its cwd, the dirs it reads and its commands. None for a turn that is not confined."""
+    if agent is None or not agent.confined:
+        return None
+    here = Path(cwd or os.getcwd()).resolve()
+    worktree = git_worktree(here)
+    skills = [worktree / name for name in SKILL_DIRS if (worktree / name).is_dir()] if worktree else []
+    roots = (here, *(Path(directory).resolve() for directory in add_dirs or []), *skills)
+    return Policy(cwd=here, read_roots=tuple(dict.fromkeys(roots)), commands=tuple(agent.commands))
+
+
+def guard_flags(policy_path: Path) -> list[str]:
+    """The flags that run the guard before every tool call of the turn."""
+    command = json.dumps(hook_command(policy_path))
+    hooks = f'hooks.PreToolUse=[{{matcher=".*",hooks=[{{type="command",command={command}}}]}}]'
+    return ["--dangerously-bypass-hook-trust", "-c", hooks]
 
 
 def _on_event(event, state: TurnState, node_id):
@@ -81,16 +104,27 @@ class CodexBackend(JsonlBackend):
         if effort:
             codex_effort = "high" if effort in ("xhigh", "max") else effort
             flags += ["-c", f'model_reasoning_effort="{codex_effort}"']
+        policy = confinement(agent, cwd, add_dirs)
+        policy_path: Path | None = None
+        if policy is not None:
+            with tempfile.NamedTemporaryFile("w", suffix=".json", prefix="codex-guard-", delete=False, encoding="utf-8") as file:
+                _ = file.write(policy.to_json())
+            policy_path = Path(file.name)
+            flags += guard_flags(policy_path)
         if sid:
             cmd = [*head, "exec", "resume", *flags, sid, "-"]
             print(f"[{node_id}] 🔄 Resuming codex session: {sid[:8]}...", flush=True)
         else:
             cmd = [*head, "exec", *flags, "-"]
-        state = self.stream(
-            cmd, node_id, timeout, prompt, _on_event,
-            resilience=resilience, cwd=cwd,
-            env_extra=self.harness_env(),
-        )
+        try:
+            state = self.stream(
+                cmd, node_id, timeout, prompt, _on_event,
+                resilience=resilience, cwd=cwd,
+                env_extra=self.harness_env(),
+            )
+        finally:
+            if policy_path is not None:
+                policy_path.unlink(missing_ok=True)
         return finalize_turn("codex", node_id, state, session_id_path, timeout)
 
     def compact(

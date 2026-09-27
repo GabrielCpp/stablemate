@@ -275,6 +275,51 @@ def test_codex_no_effort_omits_override():
     assert "model_reasoning_effort" not in " ".join(captured["cmd"])
 
 
+def test_codex_runs_a_confined_turn_behind_the_guard_hook_and_removes_its_policy_after():
+    """A confined codex turn runs outside the sandbox, so every tool call passes the guard, which reads the turn's policy."""
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp).resolve()
+        (root / ".git").mkdir()
+        (root / "docs").mkdir()
+        (root / ".claude" / "skills").mkdir(parents=True)
+        agent = AgentProfile(name="docs", tools={"*": False}, confined=True, commands=("ostler",))
+        seen = {}
+
+        def fake(cmd, node_id, timeout, stdin_data, on_event, **kwargs):
+            hooks = cmd[cmd.index("--dangerously-bypass-hook-trust") + 2]
+            policy_path = Path(hooks.split(" ")[-1].rstrip('"}]'))
+            seen["cmd"] = cmd
+            seen["policy_path"] = policy_path
+            seen["policy"] = json.loads(policy_path.read_text(encoding="utf-8"))
+            return turn.TurnState(result_text="OK", session_id="t")
+
+        prior = os.environ.pop("CODEX_PROFILE", None)
+        try:
+            _run_turn(CodexBackend(fake), "P", "n", root / ".sid", cwd=str(root / "docs"), add_dirs=[str(root / "src")], agent=agent)
+        finally:
+            if prior is not None:
+                os.environ["CODEX_PROFILE"] = prior
+    assert "codex_guard" in seen["cmd"][seen["cmd"].index("--dangerously-bypass-hook-trust") + 2]
+    assert seen["policy"] == {
+        "cwd": str(root / "docs"),
+        "read_roots": [str(root / "docs"), str(root / "src"), str(root / ".claude" / "skills")],
+        "commands": ["ostler"],
+    }
+    assert not seen["policy_path"].exists()
+
+
+def test_codex_runs_an_unconfined_turn_without_the_guard():
+    sidp = Path(tempfile.mkdtemp()) / ".session_id"
+    fake, captured = _fake_stream(turn.TurnState(result_text="OK", session_id="t"))
+    prior = os.environ.pop("CODEX_PROFILE", None)
+    try:
+        _run_turn(CodexBackend(fake), "P", "n", sidp, agent=AgentProfile(name="free"))
+    finally:
+        if prior is not None:
+            os.environ["CODEX_PROFILE"] = prior
+    assert "--dangerously-bypass-hook-trust" not in captured["cmd"]
+
+
 def _capture_claude_cmd(**run_turn_kwargs):
     """Run ClaudeBackend.run_turn with subprocess.Popen stubbed to capture the argv and short-circuit (the cmd is assembled before Popen is called)."""
     captured = {}
