@@ -52,13 +52,21 @@ WRITER_FIXES = {
         "when nothing outside the app shows it."
     ),
 }
-_OBLIGATION_PAGE = re.compile(r"^okf:(?P<page>[^#:]+\.md)")
+_OBLIGATION_PAGE = re.compile(r"^okf:(?P<page>[^#:]+\.md)(?:#(?P<anchor>[^:]+))?")
 
 
 def obligation_page(obligation_id: str) -> str:
     """The repo-relative page an obligation id names, empty when the id names none."""
     match = _OBLIGATION_PAGE.match(obligation_id)
     return match.group("page") if match else ""
+
+
+def obligation_node(obligation_id: str) -> str:
+    """The page and anchor of the node an obligation id names, `page#anchor`, or the page alone when it names no anchor."""
+    match = _OBLIGATION_PAGE.match(obligation_id)
+    if not match:
+        return ""
+    return f"{match.group('page')}#{match.group('anchor')}" if match.group("anchor") else match.group("page")
 
 
 def gap_page(gap: Gap) -> str:
@@ -161,16 +169,19 @@ def _doctor_problems(book: Graph, pages: list[str]) -> list[PageProblem]:
     ]
 
 
-def _gap_problems(gaps: Iterable[Gap]) -> list[PageProblem]:
+def gap_problems(gaps: Iterable[Gap]) -> list[PageProblem]:
+    """One problem per node, kind and fix of the gaps, so a problem names the claims of one node that one fix mends."""
     by_fix: dict[tuple[str, str, str], list[str]] = {}
     for gap in gaps:
         detail = WRITER_FIXES.get(gap.kind, gap.detail)
-        by_fix.setdefault((gap_page(gap), gap.kind, detail), []).append(gap.obligation_id)
+        by_fix.setdefault((obligation_node(gap.obligation_id), gap.kind, detail), []).append(gap.obligation_id)
     return [
-        PageProblem(page, f"{ids[0]} does not compile: {kind}: {detail}")
+        PageProblem(node.partition("#")[0], f"{ids[0]} does not compile: {kind}: {detail}")
         if len(ids) == 1
-        else PageProblem(page, f"each of {len(ids)} claims on {page} does not compile: {kind}: {detail} The claims: {', '.join(ids)}")
-        for (page, kind, detail), ids in by_fix.items()
+        else PageProblem(
+            node.partition("#")[0], f"each of {len(ids)} claims on {node} does not compile: {kind}: {detail} The claims: {', '.join(ids)}"
+        )
+        for (node, kind, detail), ids in by_fix.items()
     ]
 
 
@@ -291,7 +302,7 @@ def page_problems(root: Path, service: str) -> tuple[PageProblem, ...]:
             *_doctor_problems(book, pages),
             *_off_journey_problems(nodes),
             *_uninvokable_problems(root, nodes),
-            *_gap_problems(gaps),
+            *gap_problems(gaps),
         )
 
 

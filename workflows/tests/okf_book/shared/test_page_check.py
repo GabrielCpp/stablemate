@@ -4,7 +4,15 @@ from __future__ import annotations
 from collections.abc import Callable
 from pathlib import Path
 
-from workhorse_workflows.okf_book.shared.page_check import book_problems, compile_services, obligation_page, off_journey_nodes
+from ostler.qa.plan_source import Gap
+from workhorse_workflows.okf_book.shared.page_check import (
+    PageProblem,
+    book_problems,
+    compile_services,
+    gap_problems,
+    obligation_page,
+    off_journey_nodes,
+)
 
 FLOW = Path("docs/features/tally/flows/track-a-trip.md")
 COMMANDS = Path("docs/features/tally/tally.md")
@@ -95,4 +103,22 @@ def test_a_cli_page_that_names_no_binary_cannot_be_invoked(app: Callable[[str], 
 
     assert [problem for problem in book_problems(repo, "tally") if "no run can invoke" in problem] == [
         f"{COMMANDS.as_posix()}: no run can invoke it, because it names no `binary:`. " + UNINVOKABLE_FIX
+    ]
+
+
+def test_gaps_are_grouped_per_node_so_each_problem_names_the_claims_of_one_node() -> None:
+    page = COMMANDS.as_posix()
+    gaps = [
+        Gap(f"okf:{page}#add:does:1", "unparsed-check", "no check"),
+        Gap(f"okf:{page}#add:does:2", "unparsed-check", "no check"),
+        Gap(f"okf:{page}#export:does:1", "unparsed-check", "no check"),
+    ]
+
+    assert gap_problems(gaps) == [
+        PageProblem(
+            page,
+            f"each of 2 claims on {page}#add does not compile: unparsed-check: no check "
+            + f"The claims: okf:{page}#add:does:1, okf:{page}#add:does:2",
+        ),
+        PageProblem(page, f"okf:{page}#export:does:1 does not compile: unparsed-check: no check"),
     ]
