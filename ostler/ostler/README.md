@@ -49,6 +49,7 @@ says how to use it. This page says where each concern lives.
 - `routes.py`: what a screen's `route:` bullet says about the address a browser would show.
 - `scaffold.py`: `ostler scaffold`, hierarchy-respecting creation of UI-profile nodes.
 - `schemas.py`: loading the bundled JSON Schemas and validating documents against them.
+- `section_hosts.py`: doctor's check that a section which lives on one page type appears on no other.
 - `select.py`: `ostler next-epic` and `next-story`, selection over the markdown graph.
 - `source_snapshots.py`: the compact source catalogs that ground code citations.
 - `stamp.py`: `ostler stamp`, the per-citation content digests on `code:` bullets.
