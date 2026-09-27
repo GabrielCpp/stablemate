@@ -20,6 +20,8 @@ def _trial(text: str) -> sensitivity.Trial:
 _WITNESSED_CALLS = [
     'http_status(code=200, path="/policies")',
     'http_status(code=401, title="Unauthorized")',
+    'response_header(name="Content-Type", equals="application/pdf")',
+    'response_header(name="Content-Disposition", matches="^attachment")',
     'json_path(path="claim.amount_cents", equals="125000")',
     'json_path(path="claim.amount_cents", equals=125000)',
     'json_path(path="claim.paid", equals=true)',

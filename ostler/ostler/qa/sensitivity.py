@@ -30,11 +30,13 @@ def matches_admits_other(pattern: str) -> bool:
 
 
 class _Response:
-    """The little of a response a verifier reads: a status, a body, the route that answered."""
+    """The little of a response a verifier reads: a status, a body, its headers, the route that answered."""
 
-    def __init__(self, status: int, body: Any, url: str) -> None:
+    def __init__(self, status: int, body: Any, url: str,
+                 headers: dict[str, str] | None = None) -> None:
         self.status_code = status
         self.url = url
+        self.headers = headers or {}
         self.text = str(body)
         self._body = body
 
@@ -462,6 +464,21 @@ def _plan_observed(call: checks.CheckCall) -> tuple[Any, list[tuple[str, Any]], 
             mutations.append(("a different request answered", _Response(code, body, "http://witness/elsewhere")))
         if "title" in args:
             mutations.append(("the refusal names something else", _Response(code, {"title": _OTHER}, f"http://witness{route}")))
+        return witness, mutations, ""
+    if name == "response_header":
+        header = str(args["name"])
+        if "equals" in args:
+            value = str(args["equals"])
+        else:
+            found = _matching(str(args["matches"]))
+            if found is None:
+                return None, [], f"no witness value can be invented for /{args['matches']}/"
+            value = found
+        witness = _Response(200, {}, "http://witness/", {header: value})
+        mutations = [("the response does not carry the header", _Response(200, {}, "http://witness/"))]
+        if "matches" not in args or not matches_admits_other(str(args["matches"])):
+            mutations.append(("the header carries another value",
+                              _Response(200, {}, "http://witness/", {header: _OTHER})))
         return witness, mutations, ""
     if name == "json_path":
         path = str(args["path"])

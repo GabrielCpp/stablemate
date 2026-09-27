@@ -57,6 +57,22 @@ neither argument to disambiguate anything. Declare `method=` wherever the same r
 more than once in one scenario; `compile_plan` gaps rather than guessing when it is missing
 and needed.
 
+### `response_header(name*=<str>, equals=<str>, matches=<str>) — one of equals, matches`
+Excludes a route that answers the right status with the wrong content type or disposition,
+which a client then misreads or saves under the wrong name.
+
+The check finds the header by `name` whatever case the server sent it in. A route that
+streams a file is the case it exists for: `http_status(code=200)` passes on an HTML error
+page served with a 200, and only the header says the bytes are a PDF.
+
+```
+verify: http_status(code=200)
+verify: response_header(name="Content-Type", matches="^application/pdf")
+```
+
+Prefer `matches=` for `Content-Type`. A server may append `; charset=...` to it, and `equals=`
+then fails on a response that is right.
+
 ### `json_path(path*=<str> (path), equals=<scalar>, matches=<str>, absent=<bool>, file=<str>) — one of equals, matches, absent`
 Excludes a field asserted by presence rather than value, which passes on the default the defect
 also produces.

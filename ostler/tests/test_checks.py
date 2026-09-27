@@ -104,6 +104,7 @@ def test_every_spec_declares_what_it_observes() -> None:
     """`observes` is what a compiler dispatches on to pick an operand and to know whether a given driver (HTTP, Playwright) can serve the check at all — every check names one, and the six values are the whole vocabulary a compiler needs to handle."""
     expected = {
         "http_status": "response",
+        "response_header": "response",
         "conflict_on_stale": "response",
         "json_path": "body",
         "visible": "page",

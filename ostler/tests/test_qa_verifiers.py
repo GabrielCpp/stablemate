@@ -94,6 +94,44 @@ def test_http_status_refuses_a_bare_status_when_a_path_was_declared() -> None:
     assert "which request answered" in str(raised.value)
 
 
+@pytest.mark.parametrize(
+    ("args", "passes"),
+    [
+        ({"name": "Content-Type", "equals": "application/pdf"}, True),
+        ({"name": "content-type", "matches": "^application/pdf"}, True),
+        ({"name": "Content-Type", "equals": "text/html"}, False),
+        ({"name": "Content-Disposition", "matches": "attachment"}, False),
+    ],
+)
+def test_response_header_reads_a_header_by_its_case_blind_name(
+    args: dict[str, str], passes: bool
+) -> None:
+    """HTTP header names carry no case, so the check finds the header whatever case the server sent it in."""
+    served = SimpleNamespace(headers={"content-type": "application/pdf"})
+    ok, actual, _ = harness.VERIFIERS["response_header"](served, args)
+    assert ok is passes
+    assert list(actual) == [args["name"]]
+
+
+def test_response_header_reads_headers_a_driver_exposes_as_a_method() -> None:
+    """A browser response hands its headers out through a call, not an attribute."""
+    served = SimpleNamespace(all_headers=None, headers=lambda: {"Content-Type": "application/pdf"})
+    ok, _, _ = harness.VERIFIERS["response_header"](served, {"name": "content-type", "equals": "application/pdf"})
+    assert ok is True
+
+
+def test_response_header_refuses_an_observation_that_carries_no_headers() -> None:
+    """A bare status has no headers to read, which is a scenario defect told at the call."""
+    with pytest.raises(TypeError) as raised:
+        harness.VERIFIERS["response_header"](200, {"name": "Content-Type", "equals": "application/pdf"})
+    assert "headers a response carried" in str(raised.value)
+
+
+def test_a_response_header_with_a_broken_pattern_is_unsatisfiable() -> None:
+    """A pattern the verifier cannot compile would crash the scenario, so the plan refuses it first."""
+    assert "not a pattern" in harness.UNSATISFIABLE["response_header"]({"name": "X", "matches": "("})
+
+
 def test_count_walks_its_subject_into_the_document_it_was_given() -> None:
     """`{"claims": [a, b]}` has one key and two claims."""
     ok, actual, _ = harness.VERIFIERS["count"](

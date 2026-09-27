@@ -82,6 +82,18 @@ CHECKS: tuple[CheckSpec, ...] = (
         observes="response",
     ),
     CheckSpec(
+        name="response_header",
+        params=(
+            CheckParam("name", "str", required=True, identifies=True),
+            CheckParam("equals", "str"),
+            CheckParam("matches", "str", pattern=True),
+        ),
+        one_of=("equals", "matches"),
+        excludes="a route that answers the right status with the wrong content type or "
+                 "disposition, which a client then misreads or saves under the wrong name",
+        observes="response",
+    ),
+    CheckSpec(
         name="json_path",
         params=(
             CheckParam("path", "str", required=True, path=True, identifies=True),

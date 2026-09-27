@@ -832,6 +832,26 @@ def _verify_http_status(observed: Any, args: Mapping[str, Any]) -> tuple[bool, A
     return passed, actual, expected
 
 
+def _verify_response_header(observed: Any, args: Mapping[str, Any]) -> tuple[bool, Any, Any]:
+    headers = getattr(observed, "headers", None)
+    if callable(headers):
+        headers = headers()
+    if not isinstance(headers, Mapping):
+        raise TypeError(
+            "response_header observes the headers a response carried — pass the object "
+            f"qa.http returned, not {type(observed).__name__}"
+        )
+    wanted = str(args["name"]).lower()
+    value = next((str(v) for k, v in headers.items() if str(k).lower() == wanted), None)
+    actual = {args["name"]: value}
+    if value is None:
+        return False, actual, {args["name"]: "present"}
+    if "equals" in args:
+        return value == args["equals"], actual, {args["name"]: args["equals"]}
+    return (re.search(args["matches"], value) is not None, actual,
+            {args["name"]: f"~ {args['matches']}"})
+
+
 def _scalar_equal(observed: Any, expected: Any) -> bool:
     """`json_path(equals=)` against what the document holds, typed the way JSON types it."""
     if isinstance(expected, bool) or isinstance(observed, bool):
@@ -1125,6 +1145,7 @@ def _verify_conflict_on_stale(observed: Any, args: Mapping[str, Any]) -> tuple[b
 
 VERIFIERS: dict[str, Callable[[Any, Mapping[str, Any]], tuple[bool, Any, Any]]] = {
     "http_status": _verify_http_status,
+    "response_header": _verify_response_header,
     "json_path": _verify_json_path,
     "unchanged": _verify_unchanged,
     "keys_unchanged": _verify_keys_unchanged,
@@ -1196,6 +1217,7 @@ def _unsatisfiable_text_pattern(args: Mapping[str, Any]) -> str:
 
 UNSATISFIABLE: dict[str, Callable[[Mapping[str, Any]], str]] = {
     "http_status": _unsatisfiable_http_status,
+    "response_header": _unsatisfiable_text_pattern,
     "json_path": _unsatisfiable_json_path,
     "omits": _unsatisfiable_omits,
     "stdout": _unsatisfiable_text_pattern,
