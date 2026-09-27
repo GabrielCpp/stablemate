@@ -1303,7 +1303,7 @@ def _outermost(names: list[str]) -> list[str]:
     return kept
 
 
-def _skipping(qa_dir: Path) -> Callable[[str, list[str]], set[str]]:
+def _ignore_git_and_qa_dir(qa_dir: Path) -> Callable[[str, list[str]], set[str]]:
     """A copytree filter that leaves out `.git` and the QA dir."""
 
     def skipped(where: str, names: list[str]) -> set[str]:
@@ -1319,7 +1319,7 @@ def _copy_entry(source: Path, target: Path, qa_dir: Path) -> None:
     if source.is_symlink():
         target.symlink_to(os.readlink(source))
     elif source.is_dir():
-        shutil.copytree(source, target, symlinks=True, ignore=_skipping(qa_dir), dirs_exist_ok=True)
+        shutil.copytree(source, target, symlinks=True, ignore=_ignore_git_and_qa_dir(qa_dir), dirs_exist_ok=True)
     else:
         shutil.copy2(source, target)
 
@@ -1540,7 +1540,7 @@ class Qa:
         listed = _git_entries(root) if root.is_dir() else None
         if listed is None:
             if root.is_dir():
-                shutil.copytree(root, into, symlinks=True, ignore=_skipping(qa_dir))
+                shutil.copytree(root, into, symlinks=True, ignore=_ignore_git_and_qa_dir(qa_dir))
             into.mkdir(parents=True, exist_ok=True)
             return
         kept, ignored = listed
