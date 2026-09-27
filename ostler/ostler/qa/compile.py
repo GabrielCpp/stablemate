@@ -24,6 +24,7 @@ from ostler.qa.compile_playwright import web_walk
 from ostler.qa.compile_support import PYTHON
 from ostler.qa.compile_support import unarranged_scenario_gap
 from ostler.qa.compile_support import unarranged_state_gap
+from ostler.qa.dispatch import OBSERVED_TYPES
 from ostler.qa.dispatch import dispatch_target
 from ostler.qa.navigation import SurfaceNavigation
 from ostler.qa.navigation import entry_url_refusal
@@ -258,7 +259,10 @@ def _dispatch(
         if obligation.node_type == "flow":
             lanes.flow.append(obligation)
             continue
-        driver = surface_row(navigation, obligation.surface).driver
+        driver = (
+            "cli" if obligation.page_type == "cli" and obligation.node_type in OBSERVED_TYPES
+            else surface_row(navigation, obligation.surface).driver
+        )
         target = dispatch_target(obligation.node_type, driver)
         if isinstance(target, ScenarioRefusal):
             gaps.append(Gap(obligation.id, target.kind, target.detail))

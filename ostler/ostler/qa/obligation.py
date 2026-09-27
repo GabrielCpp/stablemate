@@ -110,6 +110,7 @@ class Obligation:
     kind: str
     node: str
     node_type: str
+    page_type: str
     source: str
     surface: str
     requirement: str
@@ -259,6 +260,7 @@ def obligation_of(raw: Mapping[str, Any]) -> Obligation:
         kind=_text(row, "kind"),
         node=_text(row, "node"),
         node_type=_text(row, "nodeType"),
+        page_type=_text(row, "pageType"),
         source=_text(row, "source"),
         surface=_text(row, "surface"),
         requirement=_text(row, "requirement"),

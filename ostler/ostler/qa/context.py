@@ -1862,6 +1862,8 @@ def _obligations(
         walk = _journey_steps(node, nodes_by_id)
         if walk:
             base["steps"] = walk
+    if _page_type(node) == "cli":
+        base["pageType"] = "cli"
     locators = _locators(node)
     if nodes_by_id is not None and node.get("type") in ("interaction", "invocation"):
         extends_target, extends_malformed = _extends_target(node, nodes_by_id)
