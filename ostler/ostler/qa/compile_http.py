@@ -446,6 +446,12 @@ def _bound_path(path: str, produced: set[str], owners: dict[str, set[str]]) -> s
     return _PATH_VARIABLE.sub(bind, path)
 
 
+def _refused_status(obligations: list[Obligation]) -> int | None:
+    """The error status a flow's own `http_status` check expects its last step to answer with, when it expects one."""
+    status = _expect_status(tuple(row for obligation in obligations for row in obligation.checks))
+    return status if status is not None and status >= 400 else None
+
+
 def _http_steps(walk: JourneyWalk, sinks: PlanSinks) -> _HttpSteps | None:
     """Perform each `endpoint` step as a request, or `None` once one step builds no request."""
     book, gaps = walk.book, sinks.gaps
@@ -453,6 +459,7 @@ def _http_steps(walk: JourneyWalk, sinks: PlanSinks) -> _HttpSteps | None:
     produced: set[str] = set()
     owners = _fixture_owners(walk.obligations)
     observed = last_path = ""
+    refused = _refused_status(walk.obligations)
     for index, step in enumerate(walk.steps, start=1):
         request = _http_request(index, step, book, walk.ids, gaps)
         if isinstance(request, _UnbuiltStep):
@@ -463,7 +470,8 @@ def _http_steps(walk: JourneyWalk, sinks: PlanSinks) -> _HttpSteps | None:
         bound = _bound_path(request.path, produced, owners)
         target = (f"qa.resolve({python_literal(bound)})" if references.find_references(bound)
                   else python_literal(bound))
-        lines.append(f"    {observed} = qa.http.{request.method.lower()}({target}{request.sent})")
+        expect = f", expect_status={refused}" if refused is not None and index == len(walk.steps) else ""
+        lines.append(f"    {observed} = qa.http.{request.method.lower()}({target}{expect}{request.sent})")
         if "{" in bound:
             lines.append("    # TODO(arrange): the path above still carries a template variable")
             gaps.extend(Gap(oid, "unresolved-precondition",

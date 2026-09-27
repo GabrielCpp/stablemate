@@ -3267,6 +3267,28 @@ def test_a_check_naming_another_steps_path_is_not_about_this_journeys_end() -> N
     assert "/healthz" in gap.detail and "its last step left" in gap.detail
 
 
+def test_a_journey_whose_claim_expects_a_refusal_lets_only_its_last_step_answer_with_it() -> None:
+    """A journey that ends on a refusal expects that status from its last request, so the refusal reaches its check instead of raising, and every earlier step still has to succeed."""
+    oid = f"okf:{_FLOW}:end-state"
+    context = _navigation_context(
+        _flow_obligation(
+            oid, source=_FLOW, surface="api",
+            steps=[_step(f"{_API}#get-health", "endpoint", "api"),
+                   _step(f"{_API}#delete-things", "endpoint", "api")],
+            checks=[{"call": "it", "name": "http_status", "args": {"code": 403, "path": "/api/things"}}],
+        ),
+        _step_node(f"{_API}#get-health", {"route": ["GET /healthz"]}),
+        _step_node(f"{_API}#delete-things", {"route": ["DELETE /api/things"]}),
+        navigation=_api_navigation(),
+    )
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(result, Plan)
+    ast.parse(result.source)
+    assert oid in _covers(result.source)
+    assert 'observed_1 = qa.http.get("/healthz")' in result.source
+    assert 'observed_2 = qa.http.delete("/api/things", expect_status=403)' in result.source
+
+
 def test_a_journeys_json_path_check_is_not_about_a_route_at_all() -> None:
     """`json_path.path` is an identifier into the response *document*, not a route — unlike `http_status.path`, which the guard above this one withholds a journey's own `verify:` for."""
     oid = f"okf:{_FLOW}:end-state"
