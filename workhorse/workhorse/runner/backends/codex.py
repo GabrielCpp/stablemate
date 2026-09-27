@@ -47,6 +47,9 @@ def guard_flags(policy_path: Path) -> list[str]:
     return ["--dangerously-bypass-hook-trust", "-c", hooks]
 
 
+NOTICES = ("blocked by PreToolUse hook", "`--dangerously-bypass-hook-trust` is enabled")
+
+
 def _on_event(event, state: TurnState, node_id):
     """Codex `exec --json`: thread.started → resume id; item.completed agent_message → answer text (last wins); turn.completed → token usage; error/failed → diagnostics."""
     etype = event.get("type") or ""
@@ -62,7 +65,8 @@ def _on_event(event, state: TurnState, node_id):
                 state.result_text = text
                 print(f"[{node_id}] {text.strip()[:500]}", flush=True)
         elif item.get("type") == "error" or item.get("error"):
-            state.diagnostics.append(str(item)[:500])
+            if not any(notice in str(item.get("message") or "") for notice in NOTICES):
+                state.diagnostics.append(str(item)[:500])
     elif "error" in etype or "fail" in etype:
         state.diagnostics.append(json.dumps(event)[:500])
 
@@ -120,7 +124,7 @@ class CodexBackend(JsonlBackend):
             state = self.stream(
                 cmd, node_id, timeout, prompt, _on_event,
                 resilience=resilience, cwd=cwd,
-                env_extra=self.harness_env(),
+                env_extra=self.harness_env(), notices=NOTICES,
             )
         finally:
             if policy_path is not None:

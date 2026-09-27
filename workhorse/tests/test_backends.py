@@ -1250,6 +1250,24 @@ def test_a_line_that_parses_but_is_not_an_object_is_text():
     assert state.diagnostics[-4:] == ["42", '"loading"', "[1, 2]", "null"]
 
 
+def test_codex_hook_notices_neither_fail_nor_end_the_turn():
+    """A refused command and the hook-trust warning are events of a guarded turn, not failures, even when the refused command names a timeout."""
+    lines = [
+        json.dumps({"type": "item.completed", "item": {"id": "item_0", "type": "error", "message": "`--dangerously-bypass-hook-trust` is enabled. Hooks may run."}}),
+        "2026-01-01T00:00:00Z ERROR codex_core::tools::router: error=Command blocked by PreToolUse hook: Refused. Command: timeout 60 cat x",
+        json.dumps({"type": "item.completed", "item": {"type": "agent_message", "text": "DONE"}}),
+    ]
+
+    def fake_stream(cmd, node_id, timeout, on_line, **kwargs):
+        return any(on_line(raw) for raw in lines), 0
+
+    with patch.object(process, "stream_subprocess", fake_stream):
+        state = jsonl.stream_jsonl(["codex"], "n", 3600, None, codex._on_event, resilience=RESILIENCE, notices=codex.NOTICES)
+    assert state.diagnostics == []
+    assert not state.timed_out
+    assert state.result_text == "DONE"
+
+
 def test_opencode_cap_log_line_aborts_stream_early():
     """A cap surfaced as a raw --print-logs ERROR line aborts the stream immediately (timed_out flagged so the runner waits the window out) instead of waiting ~3600s for the watchdog while opencode retries internally."""
     consumed = {"n": 0}

@@ -32,6 +32,7 @@ class JsonlStream(Protocol):
         resilience: AgentResilience,
         cwd: str | None = None,
         env_extra: dict[str, str] | None = None,
+        notices: tuple[str, ...] = (),
     ) -> TurnState: ...
 
 
@@ -45,8 +46,12 @@ def stream_jsonl(
     resilience: AgentResilience,
     cwd: str | None = None,
     env_extra: dict[str, str] | None = None,
+    notices: tuple[str, ...] = (),
 ) -> TurnState:
-    """Run ``cmd``, feed ``stdin_data`` (or nothing), and stream its JSONL stdout, invoking ``on_event(event, state, node_id)`` per parsed object."""
+    """Run ``cmd``, feed ``stdin_data`` (or nothing), and stream its JSONL stdout, invoking ``on_event(event, state, node_id)`` per parsed object.
+
+    A text line carrying one of ``notices`` is printed but is no diagnostic, so a CLI's report of an ordinary event never reads as a failure.
+    """
     state = TurnState()
     early_abort = [""]
 
@@ -63,7 +68,8 @@ def stream_jsonl(
             on_event(event, state, node_id)
         else:
             print(f"[{node_id}] {line}", flush=True)
-            state.diagnostics.append(line)
+            if not any(notice in line for notice in notices):
+                state.diagnostics.append(line)
         new_diag = "\n".join(state.diagnostics[before:])
         if not early_abort[0] and new_diag and _failure.is_cap(new_diag):
             early_abort[0] = "cap"
