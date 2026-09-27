@@ -125,12 +125,12 @@ class CodexBackend(JsonlBackend):
         if effort:
             codex_effort = "high" if effort in ("xhigh", "max") else effort
             flags += ["-c", f'model_reasoning_effort="{codex_effort}"']
-        with flags_with_policy_file(guard_policy(agent, cwd, add_dirs)) as guard:
+        with flags_with_policy_file(guard_policy(agent, cwd, add_dirs)) as hook_flags:
             if sid:
-                cmd = [*head, "exec", "resume", *flags, *guard, sid, "-"]
+                cmd = [*head, "exec", "resume", *flags, *hook_flags, sid, "-"]
                 print(f"[{node_id}] 🔄 Resuming codex session: {sid[:8]}...", flush=True)
             else:
-                cmd = [*head, "exec", *flags, *guard, "-"]
+                cmd = [*head, "exec", *flags, *hook_flags, "-"]
             state = self.stream(
                 cmd, node_id, timeout, prompt, _on_event,
                 resilience=resilience, cwd=cwd,
