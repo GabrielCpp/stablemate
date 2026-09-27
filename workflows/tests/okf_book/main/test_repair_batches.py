@@ -42,7 +42,7 @@ def test_pages_that_cite_one_file_share_its_cost_in_one_batch(tmp_path: Path) ->
     pages = [_page(tmp_path, f"{name}.md", cites=True) for name in ("a", "b")]
     alone = BOOK_HOLDS * PAGE_TOKENS + 1 + SOURCE_READS * SOURCE_TOKENS
 
-    batches = repair_batches(tmp_path, {page: ("p",) for page in pages}, ceiling=alone + BOOK_HOLDS * PAGE_TOKENS + 1)
+    batches = repair_batches(tmp_path, {page: ("p",) for page in pages}, ceiling=alone + BOOK_HOLDS * PAGE_TOKENS + 1).batches
 
     assert [batch.page_paths for batch in batches] == [tuple(pages)]
     assert batches[0].sources == (SOURCE,)
@@ -52,15 +52,20 @@ def test_a_page_that_would_cross_the_ceiling_starts_the_next_batch(tmp_path: Pat
     pages = [_page(tmp_path, f"{name}.md", cites=False) for name in ("a", "b", "c")]
     one = BOOK_HOLDS * PAGE_TOKENS + 1
 
-    batches = repair_batches(tmp_path, {page: ("p",) for page in pages}, ceiling=2 * one)
+    batches = repair_batches(tmp_path, {page: ("p",) for page in pages}, ceiling=2 * one).batches
 
     assert [batch.page_paths for batch in batches] == [tuple(pages[:2]), (pages[2],)]
     assert [batch.tokens for batch in batches] == [2 * one, one]
 
 
-def test_a_page_alone_over_the_ceiling_is_a_batch_of_its_own(tmp_path: Path) -> None:
-    pages = [_page(tmp_path, f"{name}.md", cites=False) for name in ("a", "b")]
+def test_a_page_alone_over_the_ceiling_goes_to_no_batch_and_is_reported_with_its_cost(tmp_path: Path) -> None:
+    _source(tmp_path)
+    large = _page(tmp_path, "a.md", cites=True)
+    small = _page(tmp_path, "b.md", cites=False)
+    one = BOOK_HOLDS * PAGE_TOKENS + 1
 
-    batches = repair_batches(tmp_path, {page: ("p",) for page in pages}, ceiling=1)
+    packed = repair_batches(tmp_path, {large: ("p",), small: ("p",)}, ceiling=one)
 
-    assert [batch.page_paths for batch in batches] == [(pages[0],), (pages[1],)]
+    assert [batch.page_paths for batch in packed.batches] == [(small,)]
+    assert [(page.page, page.tokens) for page in packed.too_large] == [(large, one + SOURCE_READS * SOURCE_TOKENS)]
+    assert packed.too_large[0].reason.startswith(f"{large} and the files it cites cost")

@@ -1,6 +1,7 @@
 """A book over the ceiling one writer reads is repaired a batch of problem pages at a time, and a book this workflow wrote that fails its run is a blocker."""
 from __future__ import annotations
 
+from functools import partial
 from pathlib import Path
 
 import pytest
@@ -26,7 +27,7 @@ from workhorse.runner.failure import BackendInvocationError
 
 from workhorse_workflows.okf_book.main import flow, repair_book_flow
 from workhorse_workflows.okf_book.main.nodes import turn_budget
-from workhorse_workflows.okf_book.main.nodes.repair_batches import PageRepair
+from workhorse_workflows.okf_book.main.nodes.repair_batches import PageRepair, repair_batches
 from workhorse_workflows.okf_book.main.nodes.report import BookReport
 from workhorse_workflows.okf_book.main.nodes.writer_commands import CHECK_MODULE, EXERCISE_MODULE, OSTLER_MODULE
 from workhorse_workflows.okf_book.main.repair_book_flow import REPAIR_ROUNDS
@@ -126,6 +127,46 @@ def test_a_repair_turn_that_ends_without_a_reply_is_a_blocker_and_the_rounds_sti
     assert runner.total == REPAIR_ROUNDS
     assert [b.phase for b in failed] == [Phase.WRITE]
     assert failed[0].reason.count("no result event") == REPAIR_ROUNDS
+
+
+OTHER_PAGE = "docs/features/tally/concepts/ledger-file.md"
+
+
+def _another_page_once_noted(root: Path, service: str) -> tuple[PageProblem, ...]:
+    return _pages_until_noted(root, service) or (PageProblem(OTHER_PAGE, "ledger-file.md needs a note"),)
+
+
+@pytest.mark.usefixtures("over_the_ceiling")
+def test_a_problem_a_later_round_finds_on_a_page_outside_the_first_round_is_not_repaired(
+    app: App, drive_book: DriveBook, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = app("tally-cli")
+    runner = _repairer(repo)
+    monkeypatch.setattr(repair_book_flow, "page_problems", _another_page_once_noted)
+
+    result = drive_book(OkfBook(repo_dir=str(repo), surfaces=(TALLY,)), runner)
+
+    assert isinstance(result, BookReport)
+    assert runner.total == 1
+    sent = TypeAdapter(tuple[PageRepair, ...]).validate_python(runner.args_of("repair-pages")[0]["pages"])
+    assert [repair.page for repair in sent] == [PAGE]
+
+
+@pytest.mark.usefixtures("over_the_ceiling")
+def test_a_page_too_large_for_one_writer_is_sent_no_turn_and_is_a_blocker_on_the_workflow(
+    app: App, drive_book: DriveBook, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = app("tally-cli")
+    runner = _repairer(repo)
+    monkeypatch.setattr(repair_book_flow, "repair_batches", partial(repair_batches, ceiling=1))
+
+    result = drive_book(OkfBook(repo_dir=str(repo), surfaces=(TALLY,)), runner)
+
+    assert isinstance(result, BookReport)
+    assert runner.total == 0
+    too_large = [b for b in result.blockers if b.side is Side.WORKFLOW]
+    assert [(b.phase, b.subject) for b in too_large] == [(Phase.WRITE, f"tally: {PAGE}")]
+    assert too_large[0].reason.endswith("split the page")
 
 
 ADD = Scenario(id="tally-add", covers=(f"okf:{PAGE}#add:does:1",))

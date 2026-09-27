@@ -3,7 +3,7 @@
 A page costs twice its own tokens, since the writer holds it as it edits it and again as it reads it
 back, and twice each source file it cites, since the writer reads the file once and again as it
 checks the page's claims against it. A file two pages of one batch cite is counted once. A page
-alone over the ceiling is a batch of its own.
+alone over the ceiling goes to no batch: it is reported, with its cost, for the operator to split.
 """
 from __future__ import annotations
 
@@ -43,6 +43,32 @@ class RepairBatch(BaseModel):
     @property
     def sources(self) -> tuple[str, ...]:
         return tuple(dict.fromkeys(source for repair in self.pages for source in repair.sources))
+
+
+class TooLarge(BaseModel):
+    """A problem page no turn is sent, since it and the files it cites cost more than one writer reads."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    page: str
+    tokens: int
+    ceiling: int
+
+    @property
+    def reason(self) -> str:
+        return (
+            f"{self.page} and the files it cites cost {self.tokens} tokens, over the {self.ceiling} one writer reads, "
+            + "so no repair turn was sent it: split the page"
+        )
+
+
+class PackedRepairs(BaseModel):
+    """The batches the repair turns are sent, and the pages too large for any of them."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    batches: tuple[RepairBatch, ...]
+    too_large: tuple[TooLarge, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -86,16 +112,21 @@ def problems_by_page(problems: Iterable[PageProblem], skipped: frozenset[str] = 
 
 def repair_batches(
     root: Path, by_page: dict[str, tuple[str, ...]], ceiling: int = SOURCE_AND_BOOK_CEILING_TOKENS
-) -> tuple[RepairBatch, ...]:
-    """Pack the pages, in the order given, into batches each under `ceiling`."""
+) -> PackedRepairs:
+    """Pack the pages, in the order given, into batches each under `ceiling`, and set aside each page alone over it."""
     batches: list[RepairBatch] = []
+    too_large: list[TooLarge] = []
     current: list[_Unit] = []
     for page, problems in by_page.items():
         unit = _unit(root, page, problems)
+        alone = _cost([unit])
+        if alone > ceiling:
+            too_large.append(TooLarge(page=page, tokens=alone, ceiling=ceiling))
+            continue
         if current and _cost([*current, unit]) > ceiling:
             batches.append(RepairBatch(pages=tuple(u.repair for u in current), tokens=_cost(current)))
             current = []
         current.append(unit)
     if current:
         batches.append(RepairBatch(pages=tuple(u.repair for u in current), tokens=_cost(current)))
-    return tuple(batches)
+    return PackedRepairs(batches=tuple(batches), too_large=tuple(too_large))

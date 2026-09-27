@@ -120,11 +120,14 @@ class OkfBook(BookFlow):
         return Continue(repaired, self.settle_repair, index=index, repaired=repaired).because("settle the repair")
 
     def settle_repair(self, index: int, repaired: RepairOutcome) -> Continue[...]:
-        """The repair turns that ended without a reply are one blocker on the workflow. The repaired book goes to its check."""
+        """The repair turns that ended without a reply are one blocker on the workflow, and each page too large for one writer is another. The repaired book goes to its check."""
         service = self.surfaces[index].service
         if repaired.failed_turns:
             reason = "\n".join(repaired.failed_turns)
             _ = record_blocker(self.records_dir, Blocker(subject=service, phase=Phase.WRITE, side=Side.WORKFLOW, reason=reason))
+        for page in repaired.too_large:
+            blocker = Blocker(subject=f"{service}: {page.page}", phase=Phase.WRITE, side=Side.WORKFLOW, reason=page.reason)
+            _ = record_blocker(self.records_dir, blocker)
         return Continue(repaired, self.check_book, index=index).because("check the repaired book")
 
     def write_book(self, index: int) -> Continue[...]:

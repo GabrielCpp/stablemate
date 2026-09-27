@@ -1,7 +1,11 @@
 """The repair of a book: code roots it, then one confined turn per batch of problem pages fixes them, round after round.
 
-A book goes to its repair when it is too large for one writer, or when a book this workflow wrote
-failed its run. The run's failures are the first round's problems on the pages they cover.
+A book goes to its repair when it is too large for one writer. When the book failed its run, the
+run's failures are the first round's problems on the pages they cover.
+
+The first round fixes the pages the repair works on. A later round repairs what is left on those
+pages, and a problem found on any other page is left for the book check to report. A page too large
+for one writer is sent to no turn and reported.
 
 A page someone left uncommitted when the repair started is never sent to a turn and never committed,
 so their edits stay theirs.
@@ -15,7 +19,7 @@ from pydantic import BaseModel, ConfigDict
 from ostler.stamp import stamp_page
 from workhorse.pyflow import AgentTimeout, AgentTurnFailed, Await, Continue, Done, WorkflowFailed
 from workhorse_workflows.kit import commit_or_refusal
-from workhorse_workflows.okf_book.main.nodes.repair_batches import RepairBatch, problems_by_page, repair_batches
+from workhorse_workflows.okf_book.main.nodes.repair_batches import RepairBatch, TooLarge, problems_by_page, repair_batches
 from workhorse_workflows.okf_book.main.nodes.root_entries import write_root_entries
 from workhorse_workflows.okf_book.main.nodes.surface import Surface
 from workhorse_workflows.okf_book.main.nodes.writer_commands import WriterCommandState, write_command_state
@@ -33,24 +37,31 @@ REPAIR_ROUNDS = 3
 
 
 class RepairOutcome(BaseModel):
-    """What the repair left: the rounds it ran, the turns that ended without a reply, and how many problems remain."""
+    """What the repair left: the rounds it ran, the turns that ended without a reply, the pages too large for one writer, and how many problems remain on the pages it repaired."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     rounds: int
     failed_turns: tuple[str, ...] = ()
+    too_large: tuple[TooLarge, ...] = ()
     problems_left: int = 0
 
 
 class RepairRound(BaseModel):
-    """One round of the repair: the pages no turn may touch, its number, the turns that failed so far, and its batches."""
+    """One round of the repair: the pages no turn may touch, the pages the first round planned, its number, the turns that failed so far, the pages too large for one writer, and its batches."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     held: tuple[str, ...]
+    planned: tuple[str, ...]
     number: int
-    failed: tuple[str, ...]
-    batches: tuple[RepairBatch, ...]
+    failed: tuple[str, ...] = ()
+    too_large: tuple[TooLarge, ...] = ()
+    batches: tuple[RepairBatch, ...] = ()
+
+    def outcome(self, rounds: int, by_page: dict[str, tuple[str, ...]]) -> RepairOutcome:
+        left = sum(len(problems) for problems in by_page.values())
+        return RepairOutcome(rounds=rounds, failed_turns=self.failed, too_large=self.too_large, problems_left=left)
 
 
 class RepairBook(BookFlow):
@@ -79,7 +90,7 @@ class RepairBook(BookFlow):
     def root_book(self, held: tuple[str, ...]) -> Continue[...]:
         """Write and commit the entries page of a book that has none, so every check can tell what it reaches."""
         if entries_path(self.root, self.service).is_file():
-            return Continue(None, self.plan_round, held=held, round_number=1, failed=()).because("the book has its root")
+            return Continue(None, self.plan_first_round, held=held).because("the book has its root")
         page = write_root_entries(self.root, self.service)
         return Continue(page, self.commit_root, held=held, page=page).because("commit the entries page")
 
@@ -88,22 +99,35 @@ class RepairBook(BookFlow):
         refusal = commit_or_refusal(self.root, rooted_book_commit_subject(self.service), page)
         if refusal:
             return self._commit_refused(refusal, self.commit_root, held=held, page=page)
-        return Continue(page, self.plan_round, held=held, round_number=1, failed=()).because("the book is rooted")
+        return Continue(page, self.plan_first_round, held=held).because("the book is rooted")
 
-    def plan_round(self, held: tuple[str, ...], round_number: int, failed: tuple[str, ...]) -> Continue[...] | Done:
-        """Check the book and pack its problem pages into batches. A clean book, or one the rounds are spent on, ends the repair."""
-        run_problems = [PageProblem(page, text) for page, texts in self.run_failures.items() for text in texts] if round_number == 1 else []
+    def plan_first_round(self, held: tuple[str, ...]) -> Continue[...] | Done:
+        """Plan the pages the repair works on: each page the check or the failed run finds a problem on, but a held one."""
+        run_problems = [PageProblem(page, text) for page, texts in self.run_failures.items() for text in texts]
         by_page = problems_by_page((*page_problems(self.root, self.service), *run_problems), frozenset(held))
-        left = sum(len(problems) for problems in by_page.values())
-        outcome = RepairOutcome(rounds=round_number - 1, failed_turns=failed, problems_left=left)
-        if not by_page:
-            return Done(outcome).because("the book is clean")
-        if round_number > REPAIR_ROUNDS:
-            return Done(outcome).because("the repair rounds are spent")
-        batches = repair_batches(self.root, by_page)
-        self.logger.info("round %d repairs %d pages with %d problems in %d turns", round_number, len(by_page), left, len(batches))
-        repair = RepairRound(held=held, number=round_number, failed=failed, batches=batches)
-        return Continue(len(batches), self.repair_batch, repair=repair, index=0).because("repair the first batch")
+        return self._packed(RepairRound(held=held, planned=tuple(by_page), number=1), by_page)
+
+    def plan_round(self, last: RepairRound) -> Continue[...] | Done:
+        """Check the book again and pack the planned pages that still have problems. A spent repair ends with what is left."""
+        found = problems_by_page(page_problems(self.root, self.service), frozenset(last.held))
+        by_page = {page: problems for page, problems in found.items() if page in last.planned}
+        outside = sorted(set(found) - set(by_page))
+        if outside:
+            self.logger.info("%d pages outside this repair have problems, left for the book check: %s", len(outside), ", ".join(outside))
+        if last.number >= REPAIR_ROUNDS:
+            return Done(last.outcome(last.number, by_page)).because("the repair rounds are spent")
+        return self._packed(last.model_copy(update={"number": last.number + 1, "batches": ()}), by_page)
+
+    def _packed(self, repair: RepairRound, by_page: dict[str, tuple[str, ...]]) -> Continue[...] | Done:
+        packed = repair_batches(self.root, by_page)
+        known = {page.page for page in repair.too_large}
+        too_large = (*repair.too_large, *(page for page in packed.too_large if page.page not in known))
+        repair = repair.model_copy(update={"too_large": too_large, "batches": packed.batches})
+        if not packed.batches:
+            return Done(repair.outcome(repair.number - 1, by_page)).because("no planned page is left for a turn")
+        pages = sum(len(batch.pages) for batch in packed.batches)
+        self.logger.info("round %d repairs %d pages in %d turns", repair.number, pages, len(packed.batches))
+        return Continue(len(packed.batches), self.repair_batch, repair=repair, index=0).because("repair the first batch")
 
     def repair_batch(self, repair: RepairRound, index: int) -> Continue[...]:
         """One turn, confined to the book folder and to ostler, the scoped check and the scenario run, repairs one batch of pages."""
@@ -158,6 +182,4 @@ class RepairBook(BookFlow):
             return self._commit_refused(refusal, self.commit_pages, repair=repair, index=index, pages=pages)
         if index + 1 < len(repair.batches):
             return Continue(pages, self.repair_batch, repair=repair, index=index + 1).because("repair the next batch")
-        return Continue(pages, self.plan_round, held=repair.held, round_number=repair.number + 1, failed=repair.failed).because(
-            "check the book again"
-        )
+        return Continue(pages, self.plan_round, last=repair).because("check the book again")
