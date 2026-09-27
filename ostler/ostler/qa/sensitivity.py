@@ -453,11 +453,8 @@ def _plan(call: checks.CheckCall) -> _WitnessPlan:
 
 
 def _plan_observed(call: checks.CheckCall) -> _WitnessPlan:
-    """The witness observation, the mutations to try against it, and why there are none."""
-    planner = _PLANNERS.get(call.name)
-    if planner is None:  # pragma: no cover - vocabulary drift
-        return None, [], f"`{call.name}` has no witness in this harness"
-    return planner(call.args)
+    """The witness observation, the mutations to try against it, and why there are none. Every check in the vocabulary has a planner."""
+    return _PLANNERS[call.name](call.args)
 
 
 def _plan_http_status(args: Mapping[str, Any]) -> _WitnessPlan:
