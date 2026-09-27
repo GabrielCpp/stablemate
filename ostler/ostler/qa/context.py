@@ -1677,6 +1677,18 @@ def _page_type(node: dict[str, Any]) -> str:
     return str(type_path[0])
 
 
+def _endpoint_address(
+    node: dict[str, Any], nodes_by_id: dict[str, dict[str, Any]]
+) -> dict[str, list[str]]:
+    """The address of the endpoint an invocation's `on:` names, which the invocation calls."""
+    for edge in node.get("edges") or []:
+        target = nodes_by_id.get(str(edge.get("to"))) if edge.get("via") == "on" else None
+        if target is not None and target.get("type") == "endpoint":
+            located = _locators(target)
+            return {key: located[key] for key in registry.address_keys("endpoint") if key in located}
+    return {}
+
+
 def _same_as_targets(
     node: dict[str, Any], nodes_by_id: dict[str, dict[str, Any]]
 ) -> list[dict[str, Any]]:
@@ -1857,6 +1869,8 @@ def _obligations(
             locators = {**_locators(extends_target), **locators}
         elif extends_malformed:
             base["extendsUnresolved"] = True
+    if nodes_by_id is not None and node.get("type") == "invocation":
+        locators = {**_endpoint_address(node, nodes_by_id), **locators}
     if locators:
         base["locators"] = locators
     repeat = _repeat(node, scope)

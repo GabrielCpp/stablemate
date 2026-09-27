@@ -586,6 +586,25 @@ def test_a_node_on_a_definition_page_owes_context_not_a_live_run(tmp_path: Path)
     assert {item["evidenceRequired"] for item in obligations} == {"context"}, obligations
 
 
+def test_an_invocation_carries_the_address_of_the_endpoint_it_calls(tmp_path: Path):
+    """An invocation says which endpoint it calls with `on:`, so it is sent to that endpoint's method and path."""
+    (tmp_path / "docs/features/demo/http").mkdir(parents=True)
+    (tmp_path / "docs/features/demo/http/api.md").write_text(
+        "---\ntype: server\nslug: api\ntitle: API\n---\n# API\n\n"
+        "## Endpoints\n\n### rows\n- method: GET\n- path: /api/rows\n\n"
+        "## Invocations\n\n### list-rows\n- on: [rows](#rows)\n- trigger: GET\n"
+        "- does:\n  - returns the rows\n- verify: http_status(code=200)\n",
+        encoding="utf-8",
+    )
+    _git(tmp_path, "init")
+
+    invocations = [item for item in book_context(tmp_path)["obligations"] if item["nodeType"] == "invocation"]
+
+    assert invocations, invocations
+    assert all(item["locators"].get("method") == ["GET"] for item in invocations), invocations
+    assert all(item["locators"].get("path") == ["/api/rows"] for item in invocations), invocations
+
+
 def test_concepts_chained_by_extends_citing_one_symbol_stay_one_family(tmp_path: Path):
     """Six `concept` nodes chained by `extends:` are one documented thing, not six owners.
 
