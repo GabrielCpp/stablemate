@@ -19,7 +19,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, JsonValue, TypeAdapter, model_validator
+from pydantic import AliasPath, BaseModel, ConfigDict, Field, JsonValue, TypeAdapter, field_validator, model_validator
 
 from ostler import doctor
 from ostler import graph as graph_mod
@@ -232,11 +232,11 @@ class _Node(BaseModel):
     surface: str | None
     parent: str | None
     edges: tuple[_Edge, ...]
-    bullets: dict[str, JsonValue] = {}
+    binary: str = Field(default="", validation_alias=AliasPath("bullets", "binary"))
 
-    @property
-    def binary(self) -> str:
-        value = self.bullets.get("binary")
+    @field_validator("binary", mode="before")
+    @classmethod
+    def _first_binary(cls, value: JsonValue) -> str:
         first = value[0] if isinstance(value, list) and value else value
         return bullet_text(first) if isinstance(first, str) else ""
 
