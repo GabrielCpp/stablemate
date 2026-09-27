@@ -69,8 +69,8 @@ class WriterRequest:
             "qa_tools": [{"name": tool.name, "description": tool.description} for tool in self.qa_tools],
         }
 
-    def repair_template_args(self, batch: RepairBatch) -> dict[str, object]:
-        """The repair-pages prompt's arguments for one batch."""
+    def repair_template_args(self, batch: RepairBatch, *, ran: bool) -> dict[str, object]:
+        """The repair-pages prompt's arguments for one batch, and whether the book failed its run."""
         return {
             "service": self.surface.service,
             "kind": self.surface.kind.value,
@@ -82,18 +82,19 @@ class WriterRequest:
             "ostler_run_cap": OSTLER_RUN_CAP,
             "check": self.check_command_line,
             "check_run_cap": CHECK_AND_SCENARIO_RUN_CAP,
+            "exercise": self.exercise_command_line if ran else "",
             "pages": [repair.model_dump() for repair in batch.pages],
         }
 
     @property
     def repair_profile(self) -> AgentProfile:
-        """The profile that denies every tool and allows only ostler and the check."""
+        """The profile that denies every tool and allows only ostler, the check and the scenario run."""
         return AgentProfile(
             name=REPAIR_PROFILE_NAME,
             tools={"*": False},
             steps=WRITER_STEPS,
             confined=True,
-            commands=(self.ostler_command_line, self.check_command_line),
+            commands=(self.ostler_command_line, self.check_command_line, self.exercise_command_line),
             command_timeout_s=WRITER_COMMAND_TIMEOUT_S,
         )
 

@@ -4,9 +4,9 @@ You run from the book's folder, `{{ book_folder }}/` in this repository, and you
 under it. You can read the app's source, without its tests, test doubles and fixtures, in a
 copy under `{{ source_view }}/`. Each file there is the repository's file at the same path under
 `{{ source_folder }}/`, and a `code:` bullet cites that repository path. Your shell runs the
-two commands below, and nothing else. Start each shell call with one of them, spelled in
+{% if exercise %}three{% else %}two{% endif %} commands below, and nothing else. Start each shell call with one of them, spelled in
 full exactly as written here, never through a variable, an alias or a `cd`. The shell refuses
-any other spelling, and a refused call means only that its spelling was wrong: the two
+any other spelling, and a refused call means only that its spelling was wrong: the
 commands keep working. Read files with your file tools. Where you have none, read them in
 the shell with `cat`, `head`, `tail`, `sed -n`, `rg`, `grep`, `ls` or `find`, joined by `|` at most,
 with no redirection, `;` or `&&`. Give such a read an absolute path, in the book, the source copy
@@ -24,9 +24,15 @@ gives relative to the repository starts there.
 
 - The format is the `ostler-okf` skill. Load it first and hold every page you touch to its bar:
   {{ skill_load_ref("ostler-okf", skill_dir() + "/ostler-okf/SKILL.md") }}
+{% if exercise %}
+- The book failed its run against the real app. Each turn repairs a few of its pages. These are
+  yours, each path relative to the repository root, with every check of the run that failed on
+  it, every problem the check reports on it, and the source files it cites:
+{% else %}
 - The book is too large for one turn, so each turn repairs a few of its pages. These are
   yours, each path relative to the repository root, with every problem the check reports on
   it and the source files it cites:
+{% endif %}
 {% for repair in pages %}
 
   `{{ repair.page }}`
@@ -39,6 +45,10 @@ gives relative to the repository starts there.
 {% endfor %}
 
 - Fix each problem at its cause. Read the source a claim describes before you change the claim.
+{% if exercise %}
+  A check the run failed is fixed in the book, never by weakening it. Where the app refused a
+  request, read the source for what it requires, and arrange that with a `fixture:`.
+{% endif %}
   A claim the source contradicts is corrected to what the source does. A claim with no `verify:`
   gets one that would fail if the app stopped doing it. A claim that arranges nothing gets a
   `fixture:` naming the arrangement, or `fixture: none, because …`.
@@ -51,8 +61,21 @@ gives relative to the repository starts there.
 - Edit other pages only where a fix needs it. The check below covers your pages and every page
   you change, so a page you touch is yours to leave clean.
 
+{% if exercise %}
+- This command compiles the whole book into scenarios, runs them against the real app, and
+  prints each check that failed with what it expected and what it got:
+
+  ```
+  {{ exercise }}
+  ```
+
+You are done when the check below prints "No problems", and the command above no longer
+prints a failure on your pages. The two commands share {{ check_run_cap }} runs in all, so fix
+every problem a run prints before you run either again.
+{% else %}
 You are done when the check below prints "No problems". It runs {{ check_run_cap }} times in all,
 so fix every problem a run prints before you run it again.
+{% endif %}
 
 ```
 {{ check }}

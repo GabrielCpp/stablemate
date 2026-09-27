@@ -1,4 +1,7 @@
-"""The repair of a book too large for one writer: code roots it, then one confined turn per batch of problem pages fixes them, round after round.
+"""The repair of a book: code roots it, then one confined turn per batch of problem pages fixes them, round after round.
+
+A book goes to its repair when it is too large for one writer, or when a book this workflow wrote
+failed its run. The run's failures are the first round's problems on the pages they cover.
 
 A page someone left uncommitted when the repair started is never sent to a turn and never committed,
 so their edits stay theirs.
@@ -23,7 +26,7 @@ from workhorse_workflows.okf_book.shared.book_flow import BookFlow
 from workhorse_workflows.okf_book.shared.confine import Snapshot, book_changes, in_book, put_back_outside, restore, snapshot
 from workhorse_workflows.okf_book.shared.entries import FEATURES_DIR, entries_path
 from workhorse_workflows.okf_book.shared.metrics import record_turn, turn_metric
-from workhorse_workflows.okf_book.shared.page_check import page_problems
+from workhorse_workflows.okf_book.shared.page_check import PageProblem, page_problems
 
 REPAIR_PROMPT = "main/prompts/repair-pages.md"
 REPAIR_ROUNDS = 3
@@ -56,6 +59,7 @@ class RepairBook(BookFlow):
     surface: Surface | None = None
     book_folder: str = ""
     source_folder: str = ""
+    run_failures: dict[str, tuple[str, ...]] = {}
 
     @property
     def surface_to_repair(self) -> Surface:
@@ -88,7 +92,8 @@ class RepairBook(BookFlow):
 
     def plan_round(self, held: tuple[str, ...], round_number: int, failed: tuple[str, ...]) -> Continue[...] | Done:
         """Check the book and pack its problem pages into batches. A clean book, or one the rounds are spent on, ends the repair."""
-        by_page = problems_by_page(page_problems(self.root, self.service), frozenset(held))
+        ran = [PageProblem(page, text) for page, texts in self.run_failures.items() for text in texts] if round_number == 1 else []
+        by_page = problems_by_page((*page_problems(self.root, self.service), *ran), frozenset(held))
         left = sum(len(problems) for problems in by_page.values())
         outcome = RepairOutcome(rounds=round_number - 1, failed_turns=failed, problems_left=left)
         if not by_page:
@@ -101,7 +106,7 @@ class RepairBook(BookFlow):
         return Continue(len(batches), self.repair_batch, repair=repair, index=0).because("repair the first batch")
 
     def repair_batch(self, repair: RepairRound, index: int) -> Continue[...]:
-        """One turn, confined to the book folder and to ostler and the scoped check, repairs one batch of pages."""
+        """One turn, confined to the book folder and to ostler, the scoped check and the scenario run, repairs one batch of pages."""
         batch = repair.batches[index]
         before = snapshot(self.root)
         state = WriterCommandState(root=self.root, service=self.service, pages=batch.page_paths, before=before)
@@ -115,7 +120,7 @@ class RepairBook(BookFlow):
                 returns=str,
                 power="medium",
                 timeout=float("inf"),
-                args=request.repair_template_args(batch),
+                args=request.repair_template_args(batch, ran=bool(self.run_failures)),
                 cwd=self.root / self.book_folder,
                 add_dirs=[request.source_view],
                 profile=request.repair_profile,

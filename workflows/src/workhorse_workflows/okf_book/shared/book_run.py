@@ -31,9 +31,7 @@ def _failure_lines(summary: RunSummary) -> list[str]:
     for name in summary.failed_scenarios:
         outcome = summary.scenarios[name]
         lines.append(f"scenario {name}: {outcome.status}, {outcome.failures} of {outcome.assertions} checks failed")
-        lines.extend(f"  {check.failure_line()}" for check in outcome.failed_checks)
-        if outcome.message.strip():
-            lines.append(f"  {outcome.message.strip().splitlines()[-1]}")
+        lines.extend(f"  {line}" for line in outcome.failure_lines())
     lines.extend(f"problem: {problem}" for problem in (*summary.problems, *summary.runner_errors))
     return lines
 

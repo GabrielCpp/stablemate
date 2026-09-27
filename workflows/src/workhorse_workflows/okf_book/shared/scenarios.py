@@ -5,6 +5,7 @@ run directory, so the book's repo only ever changes through a committed page.
 """
 from __future__ import annotations
 
+import re
 from collections.abc import Iterable
 from pathlib import Path
 
@@ -17,6 +18,7 @@ from workhorse_workflows.okf_book.shared.page_check import BookCompilation, comp
 SPEC_DIR = "spec"
 PLAN_NAME = "qa_plan.py"
 RUN_NAME = "run-summary.json"
+OBLIGATION_PAGE = re.compile(r"^okf:(?P<page>[^#]+?\.md)(?:[#:]|$)")
 
 
 class Scenario(BaseModel):
@@ -26,6 +28,11 @@ class Scenario(BaseModel):
 
     id: str
     covers: tuple[str, ...] = ()
+
+    @property
+    def pages(self) -> tuple[str, ...]:
+        """The repo-relative book pages that state the obligations this scenario covers."""
+        return tuple(dict.fromkeys(match["page"] for obligation in self.covers if (match := OBLIGATION_PAGE.match(obligation))))
 
 
 class FailedCheck(BaseModel):
@@ -54,9 +61,10 @@ class ScenarioOutcome(BaseModel):
     message: str = ""
     failed_checks: tuple[FailedCheck, ...] = ()
 
-    def failure_report(self) -> str:
-        """Every failed check, one per line, then the run's own message."""
-        return "\n".join([*(check.failure_line() for check in self.failed_checks), *([self.message] if self.message else [])])
+    def failure_lines(self) -> tuple[str, ...]:
+        """Every failed check, then the last line of the run's own message."""
+        last = self.message.strip().splitlines()[-1:]
+        return (*(check.failure_line() for check in self.failed_checks), *last)
 
 
 class RunSummary(BaseModel):
@@ -73,6 +81,16 @@ class RunSummary(BaseModel):
     @property
     def failed_scenarios(self) -> tuple[str, ...]:
         return tuple(sorted(name for name, outcome in self.scenarios.items() if outcome.status != "passed"))
+
+    def failures_by_page(self, scenarios: Iterable[Scenario]) -> dict[str, tuple[str, ...]]:
+        """Each book page whose obligations a failed scenario covers, and what that scenario reported, pages in path order."""
+        pages = {scenario.id: scenario.pages for scenario in scenarios}
+        grouped: dict[str, list[str]] = {}
+        for name in self.failed_scenarios:
+            lines = self.scenarios[name].failure_lines() or (self.scenarios[name].status,)
+            for page in pages.get(name, ()):
+                grouped.setdefault(page, []).extend(f"the run of scenario {name} failed: {line}" for line in lines)
+        return {page: tuple(grouped[page]) for page in sorted(grouped)}
 
 
 _SCENARIOS = TypeAdapter(tuple[Scenario, ...])
