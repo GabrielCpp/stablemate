@@ -237,42 +237,69 @@ def test_a_book_this_workflow_wrote_that_fails_its_run_is_a_blocker_and_no_repai
 
 
 OUTSIDE_EDIT = "\nan edit outside the batch\n"
+FLOW_PAGE = "docs/features/tally/flows/track-a-trip.md"
+NEW_FLOW = "docs/features/tally/flows/split-a-bill.md"
 
 
-def _repairer_also_editing(repo: Path, page: str) -> ScriptedRunner:
+def _repairer_also_editing(repo: Path, *pages: str) -> ScriptedRunner:
     def _reply(_args: dict[str, object]) -> dict[str, object]:
-        for path in (PAGE, page):
-            _ = (repo / path).write_text((repo / path).read_text(encoding="utf-8") + (NOTE if path == PAGE else OUTSIDE_EDIT), encoding="utf-8")
-        return {"value": f"repaired {PAGE} and {page}"}
+        _ = (repo / PAGE).write_text((repo / PAGE).read_text(encoding="utf-8") + NOTE, encoding="utf-8")
+        for page in pages:
+            text = (repo / page).read_text(encoding="utf-8") if (repo / page).is_file() else ""
+            _ = (repo / page).write_text(text + OUTSIDE_EDIT, encoding="utf-8")
+        return {"value": f"repaired {PAGE}"}
 
     return ScriptedRunner({"repair-pages": _reply})
 
 
-def _outside_edit_is_a_problem(root: Path, service: str) -> tuple[PageProblem, ...]:
-    broken = OUTSIDE_EDIT.strip() in (root / OTHER_PAGE).read_text(encoding="utf-8")
-    return (*_pages_until_noted(root, service), *((PageProblem(OTHER_PAGE, "ledger-file.md is broken"),) if broken else ()))
+def _off_journey_until_noted(root: Path, service: str) -> tuple[PageProblem, ...]:
+    return tuple(PageProblem(p.page, p.text, needs_journey=True) for p in _pages_until_noted(root, service))
 
 
 @pytest.mark.usefixtures("over_the_ceiling")
-def test_a_clean_page_the_turn_changed_outside_its_batch_is_committed_with_it(app: App, drive_book: DriveBook) -> None:
+def test_a_page_the_turn_changed_outside_its_batch_is_put_back(app: App, drive_book: DriveBook) -> None:
     repo = app("tally-cli")
+    runner = _repairer_also_editing(repo, OTHER_PAGE, FLOW_PAGE)
 
-    result = drive_book(OkfBook(repo_dir=str(repo), surfaces=(TALLY,)), _repairer_also_editing(repo, OTHER_PAGE))
+    result = drive_book(OkfBook(repo_dir=str(repo), surfaces=(TALLY,)), runner)
 
     assert isinstance(result, BookReport)
-    assert sorted(git(repo, "show", "--name-only", "--format=", "HEAD").split()) == sorted([PAGE, OTHER_PAGE])
-
-
-@pytest.mark.usefixtures("over_the_ceiling")
-def test_a_page_the_turn_left_with_a_problem_outside_its_batch_is_put_back(
-    app: App, drive_book: DriveBook, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    repo = app("tally-cli")
-    monkeypatch.setattr(repair_book_flow, "page_problems", _outside_edit_is_a_problem)
-
-    result = drive_book(OkfBook(repo_dir=str(repo), surfaces=(TALLY,)), _repairer_also_editing(repo, OTHER_PAGE))
-
-    assert isinstance(result, BookReport)
+    assert runner.args_of("repair-pages")[0]["journey_pages"] == []
     assert git(repo, "show", "--name-only", "--format=", "HEAD").split() == [PAGE]
     assert OUTSIDE_EDIT.strip() not in (repo / OTHER_PAGE).read_text(encoding="utf-8")
     assert git(repo, "status", "--porcelain").strip() == ""
+
+
+@pytest.mark.usefixtures("over_the_ceiling")
+def test_a_batch_with_a_page_off_the_journey_owns_the_entry_and_flow_pages_and_a_new_flow(
+    app: App, drive_book: DriveBook, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = app("tally-cli")
+    monkeypatch.setattr(repair_book_flow, "page_problems", _off_journey_until_noted)
+    runner = _repairer_also_editing(repo, OTHER_PAGE, FLOW_PAGE, NEW_FLOW)
+
+    result = drive_book(OkfBook(repo_dir=str(repo), surfaces=(TALLY,)), runner)
+
+    assert isinstance(result, BookReport)
+    assert runner.args_of("repair-pages")[0]["journey_pages"] == [PAGE, FLOW_PAGE]
+    assert sorted(git(repo, "show", "--name-only", "--format=", "HEAD").split()) == sorted([PAGE, FLOW_PAGE, NEW_FLOW])
+    assert OUTSIDE_EDIT.strip() not in (repo / OTHER_PAGE).read_text(encoding="utf-8")
+    assert git(repo, "status", "--porcelain").strip() == ""
+
+
+@pytest.mark.usefixtures("over_the_ceiling")
+def test_a_turn_that_changed_a_page_someone_left_uncommitted_waits_for_the_operator(
+    app: App, drive_book: DriveBook, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = app("tally-cli")
+    asked: list[str] = []
+    monkeypatch.setattr(pyflow_driver, "wait_for_answer", answer(asked))
+    _ = (repo / OTHER_PAGE).write_text((repo / OTHER_PAGE).read_text(encoding="utf-8") + "their edit\n", encoding="utf-8")
+
+    result = drive_book(OkfBook(repo_dir=str(repo), surfaces=(TALLY,)), _repairer_also_editing(repo, OTHER_PAGE))
+
+    assert isinstance(result, BookReport)
+    assert len(asked) == 1
+    assert OTHER_PAGE in asked[0]
+    assert git(repo, "show", "--name-only", "--format=", "HEAD").split() == [PAGE]
+    assert git(repo, "status", "--porcelain").split() == ["M", OTHER_PAGE]

@@ -84,6 +84,8 @@ class WriterRequest:
             "check_run_cap": CHECK_AND_SCENARIO_RUN_CAP,
             "exercise": self.exercise_command_line if failed_run else "",
             "pages": [repair.model_dump() for repair in batch.pages],
+            "journey_pages": list(batch.journey.pages) if batch.journey else [],
+            "flow_folder": batch.journey.flow_folder if batch.journey else "",
         }
 
     @property

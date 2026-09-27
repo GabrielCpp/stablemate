@@ -52,15 +52,21 @@ gives relative to the repository starts there.
   A claim the source contradicts is corrected to what the source does. A claim with no `verify:`
   gets one that would fail if the app stopped doing it. A claim that arranges nothing gets a
   `fixture:` naming the arrangement, or `fixture: none, because …`.
+{% if flow_folder %}
 - A {% if kind == "cli" %}command{% elif kind == "http" %}endpoint{% else %}screen{% endif %} on no flow goes onto a journey a user takes. Link it from a step of a flow that
-  already walks near it, or write a new `flow` page under `flows/`, as the skill's flow reference
-  says, and link that flow from a page the entries page reaches.
+  already walks near it, or write a new `flow` page in `{{ flow_folder }}/`, as the skill's flow
+  reference says, and link that flow from a page the entries page links.
 - A page nothing reaches is linked from the page a reader would come from, or deleted when it
   documents nothing the app does.
+- Besides your pages, you may change these, and add a new page in `{{ flow_folder }}/`:
+{% for page in journey_pages %}
+  - `{{ page }}`
+{% endfor %}
+{% endif %}
 - Do not edit `entries.md`. Code writes it.
-- Edit other pages only where a fix needs it. The check below covers your pages and every page
-  you change, so a page you touch is yours to leave clean. It also reports every problem your
-  edits cause on a page you did not touch, such as an endpoint a flow you edited no longer walks.
+- Change no page but {% if flow_folder %}those above{% else %}yours{% endif %}. Code puts back every other change when the turn ends, so
+  a fix made there is lost. The check below covers your pages and reports every problem your edits
+  cause on a page you did not touch, such as an endpoint a flow you edited no longer walks.
 
 {% if exercise %}
 - This command compiles the whole book into scenarios, runs them against the real app, and

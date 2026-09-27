@@ -143,10 +143,11 @@ def dead_book_pages(root: Path) -> tuple[DeadPage, ...]:
 
 @dataclass(frozen=True, slots=True)
 class PageProblem:
-    """One problem the check reports, and the repo-relative page it sits on."""
+    """One problem the check reports, the repo-relative page it sits on, and whether its fix goes on a flow or an entry page."""
 
     page: str
     text: str
+    needs_journey: bool = False
 
 
 def _doctor_problems(book: Graph, pages: list[str]) -> list[PageProblem]:
@@ -242,6 +243,7 @@ def _off_journey_problems(nodes: list[_Node]) -> list[PageProblem]:
         PageProblem(
             node.partition("#")[0],
             f"{node} is on no flow. Write a flow under flows/ whose steps link it, or link it from a step of a flow you have.",
+            needs_journey=True,
         )
         for node in _off_journey(nodes)
     ]
@@ -273,7 +275,11 @@ def page_problems(root: Path, service: str) -> tuple[PageProblem, ...]:
         book = load(root)
         nodes = _service_nodes(book, service)
         dead = [
-            PageProblem(page.rel, f"{page.rel} is linked from no page the entries page reaches. Link it, or delete it.")
+            PageProblem(
+                page.rel,
+                f"{page.rel} is linked from no page the entries page reaches. Link it, or delete it.",
+                needs_journey=True,
+            )
             for page in dead_pages(book)
             if page.service == service
         ]
