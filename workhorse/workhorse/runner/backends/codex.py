@@ -29,7 +29,7 @@ def _parse_codex_model(model: str | None) -> tuple[str | None, str | None]:
 SKILL_DIRS = (".claude/skills", ".agents/skills")
 
 
-def confinement(agent: AgentProfile | None, cwd: str | None, add_dirs: list[str] | None) -> Policy | None:
+def guard_policy(agent: AgentProfile | None, cwd: str | None, add_dirs: list[str] | None) -> Policy | None:
     """What the guard holds a confined turn to: its cwd, the dirs it reads and its commands. None for a turn that is not confined."""
     if agent is None or not agent.confined:
         return None
@@ -108,7 +108,7 @@ class CodexBackend(JsonlBackend):
         if effort:
             codex_effort = "high" if effort in ("xhigh", "max") else effort
             flags += ["-c", f'model_reasoning_effort="{codex_effort}"']
-        policy = confinement(agent, cwd, add_dirs)
+        policy = guard_policy(agent, cwd, add_dirs)
         policy_path: Path | None = None
         if policy is not None:
             with tempfile.NamedTemporaryFile("w", suffix=".json", prefix="codex-guard-", delete=False, encoding="utf-8") as file:

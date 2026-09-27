@@ -9,7 +9,7 @@ from contextlib import redirect_stdout
 from pathlib import Path
 from unittest.mock import patch
 
-from workhorse.runner.backends.codex_guard import Policy, ToolCall, decide, main, patch_denial, shell_denial
+from workhorse.runner.backends.codex_guard import Policy, ToolCall, call_refusal, main, patch_denial, shell_denial
 
 BOOK = Path("/work/app/docs/book")
 SOURCE = Path("/runs/r1/source")
@@ -104,13 +104,13 @@ def _call(payload: object) -> ToolCall:
     return ToolCall.from_json(json.dumps(payload))
 
 
-def test_decide_checks_only_shell_calls_and_patches():
-    assert decide(_call({"tool_name": "update_plan", "tool_input": {"plan": []}}), POLICY) is None
-    assert decide(_call({"tool_name": "Bash", "tool_input": {"command": "cat overview.md"}}), POLICY) is None
-    refusal = decide(_call({"tool_name": "Bash", "tool_input": {"command": "rm overview.md"}}), POLICY)
+def test_the_call_refusal_checks_only_shell_calls_and_patches():
+    assert call_refusal(_call({"tool_name": "update_plan", "tool_input": {"plan": []}}), POLICY) is None
+    assert call_refusal(_call({"tool_name": "Bash", "tool_input": {"command": "cat overview.md"}}), POLICY) is None
+    refusal = call_refusal(_call({"tool_name": "Bash", "tool_input": {"command": "rm overview.md"}}), POLICY)
     assert refusal is not None and refusal.startswith("Refused: `rm`")
-    assert decide(_call({"tool_name": "Bash", "tool_input": {}}), POLICY) is not None
-    assert decide(_call({"tool_name": "Bash", "tool_input": {"command": ["rm", "x"]}}), POLICY) is not None
+    assert call_refusal(_call({"tool_name": "Bash", "tool_input": {}}), POLICY) is not None
+    assert call_refusal(_call({"tool_name": "Bash", "tool_input": {"command": ["rm", "x"]}}), POLICY) is not None
 
 
 def _hook_output(argv: list[str], payload: str) -> str:

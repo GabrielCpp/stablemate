@@ -229,9 +229,9 @@ def shell_denial(command: str, policy: Policy) -> str | None:
         tokens = _tokens(command)
     except ValueError as error:
         return f"the command does not parse: {error}"
-    joined = [token for token in tokens if token != PIPE and set(token) <= PUNCTUATION]
-    if joined:
-        return f"the command joins or redirects with `{joined[0]}`"
+    chaining_tokens = [token for token in tokens if token != PIPE and set(token) <= PUNCTUATION]
+    if chaining_tokens:
+        return f"the command joins or redirects with `{chaining_tokens[0]}`"
     for stage in _stages(tokens):
         denial = _stage_denial(stage, policy)
         if denial is not None:
@@ -248,7 +248,7 @@ def patch_denial(patch: str, policy: Policy) -> str | None:
     return None
 
 
-def _explained(denial: str, policy: Policy) -> str:
+def _refusal_message(denial: str, policy: Policy) -> str:
     roots = ", ".join(str(root) for root in policy.read_roots)
     return (
         f"Refused: {denial}. This turn runs its own commands and the read-only commands "
@@ -257,14 +257,14 @@ def _explained(denial: str, policy: Policy) -> str:
     )
 
 
-def decide(call: ToolCall, policy: Policy) -> str | None:
+def call_refusal(call: ToolCall, policy: Policy) -> str | None:
     """The reason to refuse the tool call, or None to let it run."""
     if call.tool not in ("Bash", "apply_patch"):
         return None
     if call.command is None:
-        return _explained("the call carries no command", policy)
+        return _refusal_message("the call carries no command", policy)
     denial = shell_denial(call.command, policy) if call.tool == "Bash" else patch_denial(call.command, policy)
-    return None if denial is None else _explained(denial, policy)
+    return None if denial is None else _refusal_message(denial, policy)
 
 
 def denial_output(reason: str) -> str:
@@ -287,7 +287,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     except (IndexError, OSError, ValueError, KeyError) as error:
         print(denial_output(f"Refused: the guard could not read the call or its policy: {error}"))
         return 0
-    reason = decide(call, policy)
+    reason = call_refusal(call, policy)
     if reason is not None:
         print(denial_output(reason))
     return 0
