@@ -50,7 +50,7 @@ def guard_flags(policy_path: Path) -> list[str]:
 
 
 @contextmanager
-def guarded_flags(policy: Policy | None) -> Iterator[list[str]]:
+def flags_with_policy_file(policy: Policy | None) -> Iterator[list[str]]:
     """The guard's flags for a turn held to `policy`, with the policy in a file that lasts as long as the turn. No flags when there is no policy."""
     if policy is None:
         yield []
@@ -125,7 +125,7 @@ class CodexBackend(JsonlBackend):
         if effort:
             codex_effort = "high" if effort in ("xhigh", "max") else effort
             flags += ["-c", f'model_reasoning_effort="{codex_effort}"']
-        with guarded_flags(guard_policy(agent, cwd, add_dirs)) as guard:
+        with flags_with_policy_file(guard_policy(agent, cwd, add_dirs)) as guard:
             if sid:
                 cmd = [*head, "exec", "resume", *flags, *guard, sid, "-"]
                 print(f"[{node_id}] 🔄 Resuming codex session: {sid[:8]}...", flush=True)

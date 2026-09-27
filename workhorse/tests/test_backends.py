@@ -7,6 +7,7 @@ import json
 import os
 import tempfile
 from contextlib import contextmanager, redirect_stdout
+from dataclasses import dataclass
 from pathlib import Path
 from unittest.mock import patch
 
@@ -275,6 +276,13 @@ def test_codex_no_effort_omits_override():
     assert "model_reasoning_effort" not in " ".join(captured["cmd"])
 
 
+@dataclass(frozen=True)
+class _GuardedCall:
+    hooks: str
+    policy_path: Path
+    policy: dict[str, object]
+
+
 def test_codex_runs_a_confined_turn_behind_the_guard_hook_and_removes_its_policy_after():
     """A confined codex turn runs outside the sandbox, so every tool call passes the guard, which reads the turn's policy."""
     with tempfile.TemporaryDirectory() as tmp:
@@ -283,14 +291,12 @@ def test_codex_runs_a_confined_turn_behind_the_guard_hook_and_removes_its_policy
         (root / "docs").mkdir()
         (root / ".claude" / "skills").mkdir(parents=True)
         agent = AgentProfile(name="docs", tools={"*": False}, confined=True, commands=("ostler",))
-        seen = {}
+        calls: list[_GuardedCall] = []
 
         def fake(cmd, node_id, timeout, stdin_data, on_event, **kwargs):
             hooks = cmd[cmd.index("--dangerously-bypass-hook-trust") + 2]
             policy_path = Path(hooks.split(" ")[-1].rstrip('"}]'))
-            seen["cmd"] = cmd
-            seen["policy_path"] = policy_path
-            seen["policy"] = json.loads(policy_path.read_text(encoding="utf-8"))
+            calls.append(_GuardedCall(hooks, policy_path, json.loads(policy_path.read_text(encoding="utf-8"))))
             return turn.TurnState(result_text="OK", session_id="t")
 
         prior = os.environ.pop("CODEX_PROFILE", None)
@@ -299,13 +305,14 @@ def test_codex_runs_a_confined_turn_behind_the_guard_hook_and_removes_its_policy
         finally:
             if prior is not None:
                 os.environ["CODEX_PROFILE"] = prior
-    assert "codex_guard" in seen["cmd"][seen["cmd"].index("--dangerously-bypass-hook-trust") + 2]
-    assert seen["policy"] == {
+    (call,) = calls
+    assert "codex_guard" in call.hooks
+    assert call.policy == {
         "cwd": str(root / "docs"),
         "read_roots": [str(root / "docs"), str(root / "src"), str(root / ".claude" / "skills")],
         "commands": ["ostler"],
     }
-    assert not seen["policy_path"].exists()
+    assert not call.policy_path.exists()
 
 
 def test_codex_runs_an_unconfined_turn_without_the_guard():
