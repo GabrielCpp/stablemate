@@ -7,9 +7,12 @@ import inspect
 import sys
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
+from types import ModuleType
 from typing import Any
 
-from ostler import doctor
+from ostler import doctor, step_commands
+
+DOCTOR_MODULES: tuple[ModuleType, ...] = (doctor, step_commands)
 
 _BRIDGE = "gap_findings has no product caller; gaps surface via qa compile-plan only"
 
@@ -82,8 +85,16 @@ def merge(censuses: Iterable[Census]) -> Census:
     )
 
 
-def code_sites(module: Any = doctor) -> dict[str, frozenset[str]]:
-    """Every `Finding(severity, code, ...)` site in *module*, by the function enclosing it."""
+def code_sites(*modules: ModuleType) -> dict[str, frozenset[str]]:
+    """Every `Finding(severity, code, ...)` site in *modules*, doctor's own when none is named, by the function enclosing it."""
+    sites: dict[str, set[str]] = {}
+    for module in modules or DOCTOR_MODULES:
+        for code, where in _module_sites(module).items():
+            sites.setdefault(code, set()).update(where)
+    return {code: frozenset(where) for code, where in sites.items()}
+
+
+def _module_sites(module: ModuleType) -> dict[str, set[str]]:
     tree = ast.parse(inspect.getsource(module))
 
     funcs: list[tuple[ast.FunctionDef | ast.AsyncFunctionDef, str]] = []
@@ -118,16 +129,16 @@ def code_sites(module: Any = doctor) -> dict[str, frozenset[str]]:
         code = node.args[1]
         if isinstance(code, ast.Constant) and isinstance(code.value, str):
             sites.setdefault(code.value, set()).add(enclosing(node.lineno))
-    return {code: frozenset(where) for code, where in sites.items()}
+    return sites
 
 
-def take_census(run: Callable[[], object], module: Any = doctor) -> Census:
-    """Run *run* with *module*'s function entries traced, and classify every code in it."""
-    filename = inspect.getsourcefile(module)
+def take_census(run: Callable[[], object], *modules: ModuleType) -> Census:
+    """Run *run* with the function entries of *modules*, doctor's own when none is named, traced, and classify every code in them."""
+    filenames = {inspect.getsourcefile(module) for module in modules or DOCTOR_MODULES}
     entered: set[str] = set()
 
     def tracer(frame: Any, event: str, _arg: Any) -> None:
-        if event == "call" and frame.f_code.co_filename == filename:
+        if event == "call" and frame.f_code.co_filename in filenames:
             entered.add(frame.f_code.co_qualname)
         return None
 
@@ -138,7 +149,7 @@ def take_census(run: Callable[[], object], module: Any = doctor) -> Census:
     finally:
         sys.settrace(previous)
 
-    sites = code_sites(module)
+    sites = code_sites(*modules)
     fired = {finding.code for finding in getattr(report, "findings", [])}
     clean, unreachable = set(), set()
     for code, where in sites.items():

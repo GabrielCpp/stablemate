@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from ostler import crud, doctor
+from ostler import crud, doctor, step_commands
 from ostler.cli import main
 from ostler.model import load
 from ostler.qa import book_index
@@ -901,10 +901,10 @@ def test_an_unparsed_capture_gap_keeps_the_code_doctor_already_raises_for_that_b
 
 
 def _emitted_codes() -> dict[str, str]:
-    """Every `(code, severity)` pair `doctor.py` can construct, read out of its source."""
-    tree = ast.parse(Path(doctor.__file__).read_text())
+    """Every `(code, severity)` pair doctor's modules can construct, read out of their source."""
+    trees = [ast.parse(inspect.getsource(module)) for module in (doctor, step_commands)]
     calls = [
-        node for node in ast.walk(tree)
+        node for tree in trees for node in ast.walk(tree)
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
         and node.func.id == "Finding"
     ]

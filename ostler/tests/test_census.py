@@ -93,6 +93,11 @@ def test_the_real_registry_only_names_codes_doctor_actually_defines():
     assert not census.DORMANT_UNREACHABLE.keys() - defined
 
 
+def test_the_real_registry_counts_the_codes_doctor_checks_outside_its_own_module():
+    """A check moved out of `doctor.py` still fires in every doctor run, so the census must still see it."""
+    assert {"unparsable-command", "checkout-absolute-path"} <= census.code_sites().keys()
+
+
 def _colliding_module() -> tuple[types.ModuleType, str]:
     """Two checkers, each with a nested helper of the same name — `doctor` has three."""
     source = '''

@@ -28,6 +28,7 @@ says how to use it. This page says where each concern lives.
 - `drivers.py`: the `driver:` vocabulary of the runbook, as a value code can be held to.
 - `dynamic_registry.py`: the hierarchies a repo declares in `.agents/templates.yml`.
 - `edit.py`: `ostler edit`, format-preserving structured edits across JSON and Markdown.
+- `finding.py`: the one problem `ostler doctor` reports, shared by every module that checks a book.
 - `fmt.py`: `ostler fmt`, the canonicalizing formatter for UI-profile docs.
 - `freeze.py`: `ostler freeze` and `unfreeze`, which pin an approved entity as ground truth.
 - `graph.py`: `ostler graph`, the whole graph dumped as JSON to filter on.
@@ -51,6 +52,7 @@ says how to use it. This page says where each concern lives.
 - `select.py`: `ostler next-epic` and `next-story`, selection over the markdown graph.
 - `source_snapshots.py`: the compact source catalogs that ground code citations.
 - `stamp.py`: `ostler stamp`, the per-citation content digests on `code:` bullets.
+- `step_commands.py`: doctor's checks on a flow step's `run:`, `health:` and `working-directory:` bullets.
 - `syntax.py`: the one parser every language front end reads source through.
 - `templates.py`: `ostler template`, create, edit, find, delete and apply over `.agents/templates.yml`.
 - `testsupport.py`: the plumbing for a test suite that gates its own inline book fixtures.
