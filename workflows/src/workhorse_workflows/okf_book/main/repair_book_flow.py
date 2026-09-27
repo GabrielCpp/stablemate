@@ -92,9 +92,9 @@ class RepairRound(BaseModel):
         open_pages = {problem.page for problem in problems}
         entry_pages = set(self.journey.entry_pages)
         journey_ahead = any(batch.journey is not None for batch in self.batches[index + 1 :])
-        earlier = () if journey_ahead else (page for batch in self.batches[:index] for page in batch.page_paths if page in entry_pages)
-        this = (page for page in self.batches[index].page_paths if not (journey_ahead and page in entry_pages))
-        closed = (page for page in dict.fromkeys((*earlier, *this)) if page not in open_pages and page not in self.closed_pages)
+        earlier_entry_pages = () if journey_ahead else (page for batch in self.batches[:index] for page in batch.page_paths if page in entry_pages)
+        closable_batch_pages = (page for page in self.batches[index].page_paths if not (journey_ahead and page in entry_pages))
+        closed = (page for page in dict.fromkeys((*earlier_entry_pages, *closable_batch_pages)) if page not in open_pages and page not in self.closed_pages)
         return self.model_copy(update={"closed_pages": (*self.closed_pages, *closed)})
 
     def outcome(self, rounds: int, by_page: dict[str, tuple[str, ...]]) -> RepairOutcome:
