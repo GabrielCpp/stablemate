@@ -170,9 +170,9 @@ def test_a_page_too_large_for_one_writer_is_sent_no_turn_and_is_a_blocker_on_the
 
 
 ADD = Scenario(id="tally-add", covers=(f"okf:{PAGE}#add:does:1",))
-REFUSED = FailedCheck(label="adds an expense", expected="0", actual="1")
+FAILED_ADD_CHECK = FailedCheck(label="adds an expense", expected="0", actual="1")
 FAILED_ADD = FAILED.model_copy(
-    update={"summary": RunSummary(status="failed", scenarios={ADD.id: ScenarioOutcome(status="failed", failed_checks=(REFUSED,))})}
+    update={"summary": RunSummary(status="failed", scenarios={ADD.id: ScenarioOutcome(status="failed", failed_checks=(FAILED_ADD_CHECK,))})}
 )
 
 
@@ -180,7 +180,7 @@ def _planned(_root: Path, _spec: Path) -> tuple[tuple[Scenario, ...], tuple[str,
     return (ADD,), ()
 
 
-def _no_pages(_root: Path, _service: str) -> tuple[PageProblem, ...]:
+def _no_page_problems(_root: Path, _service: str) -> tuple[PageProblem, ...]:
     return ()
 
 
@@ -189,15 +189,15 @@ def failing_add(monkeypatch: pytest.MonkeyPatch) -> None:
     stub_the_run_to(monkeypatch, FAILED_ADD)
     monkeypatch.setattr(flow, "book_problems", no_problems)
     monkeypatch.setattr(flow, "plan_scenarios", _planned)
-    monkeypatch.setattr(repair_book_flow, "page_problems", _no_pages)
+    monkeypatch.setattr(repair_book_flow, "page_problems", _no_page_problems)
     monkeypatch.setattr(pyflow_driver, "wait_for_answer", answer([]))
 
 
 def _repaired_once_on_the_failed_page(runner: ScriptedRunner, result: object) -> None:
     assert runner.total == 1
     sent = TypeAdapter(tuple[PageRepair, ...]).validate_python(runner.args_of("repair-pages")[0]["pages"])
-    ran = "the run of scenario tally-add failed: adds an expense: expected 0, observed 1"
-    assert [(repair.page, repair.problems) for repair in sent] == [(PAGE, (ran,))]
+    run_failure = "the run of scenario tally-add failed: adds an expense: expected 0, observed 1"
+    assert [(repair.page, repair.problems) for repair in sent] == [(PAGE, (run_failure,))]
     assert runner.args_of("repair-pages")[0]["exercise"]
     assert isinstance(result, BookReport)
     assert [b.phase for b in result.blockers] == [Phase.EXERCISE]
