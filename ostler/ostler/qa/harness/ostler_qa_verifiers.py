@@ -29,7 +29,7 @@ def _observed_status(observed: Any) -> tuple[int, Any]:
     if callable(reader):
         try:
             body = reader()
-        except Exception:  # noqa: BLE001 — a non-JSON body is not a scenario defect
+        except ValueError:
             body = None
     return status, body
 
@@ -544,7 +544,7 @@ def _verify_omits(observed: Any, args: Mapping[str, Any]) -> tuple[bool, Any, An
     if callable(reader):
         try:
             document = reader()
-        except Exception:  # noqa: BLE001 — a non-JSON body is still searchable as text
+        except ValueError:
             document = getattr(observed, "text", observed)
     if isinstance(document, Mapping):
         resolved, value = _resolve_path(document, args["subject"])
