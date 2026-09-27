@@ -50,7 +50,8 @@ gives relative to the repository starts there.
   nothing outside them. The check reports only the problems in them, and any your edits cause.
 {% endif %}
 - A cited `path:first-last` is the lines of the declaration or yaml key a citation names. Read
-  those lines, and the rest of the file only where a claim needs more of it.
+  those lines only, never the rest of the file. Where a claim rests on code outside them, leave
+  the claim as it is, and name it in your reply with the declaration it needs.
 - Fix each problem at its cause. Read the source a claim describes before you change the claim.
 {% if exercise %}
   A check the run failed is fixed in the book, never by weakening it. Where the app refused a
