@@ -160,8 +160,8 @@ def _repairs_joined_by_page(units: list[_PageCost]) -> tuple[PageRepair, ...]:
     return tuple(by_page.values())
 
 
-def _batch(journey_costs: list[_PageCost], current: list[_PageCost], journey: JourneyPages | None) -> RepairBatch:
-    return RepairBatch(pages=_repairs_joined_by_page(current), tokens=_cost([*journey_costs, *current]), journey=journey)
+def _batch(journey_costs: list[_PageCost], filling_batch_units: list[_PageCost], journey: JourneyPages | None) -> RepairBatch:
+    return RepairBatch(pages=_repairs_joined_by_page(filling_batch_units), tokens=_cost([*journey_costs, *filling_batch_units]), journey=journey)
 
 
 @dataclass(frozen=True, slots=True)
@@ -219,17 +219,17 @@ def _pack(
     splitter = _PageSplitter(files, journey_costs, ceiling, journey is not None)
     batches: list[RepairBatch] = []
     oversized_pages: list[OversizedPage] = []
-    current: list[_PageCost] = []
+    filling_batch_units: list[_PageCost] = []
     for page, problems in by_page.items():
         split = splitter.split_page(page, problems)
         oversized_pages.extend(split.oversized_pages)
         for unit in split.units:
-            if current and _cost([*journey_costs, *current, unit]) > ceiling:
-                batches.append(_batch(journey_costs, current, journey))
-                current = []
-            current.append(unit)
-    if current:
-        batches.append(_batch(journey_costs, current, journey))
+            if filling_batch_units and _cost([*journey_costs, *filling_batch_units, unit]) > ceiling:
+                batches.append(_batch(journey_costs, filling_batch_units, journey))
+                filling_batch_units = []
+            filling_batch_units.append(unit)
+    if filling_batch_units:
+        batches.append(_batch(journey_costs, filling_batch_units, journey))
     return PackedRepairs(batches=tuple(batches), oversized_pages=tuple(oversized_pages))
 
 
