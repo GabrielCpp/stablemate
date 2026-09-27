@@ -1,9 +1,10 @@
-"""A repair batch whose fix goes on a journey owns the journey pages and adds only link lines to an entry page."""
+"""A repair batch whose fix goes on a journey owns the journey pages, adds only link lines to an entry page, and leaves a page another batch closed for the book check."""
 from __future__ import annotations
 
 from pathlib import Path
 
 import pytest
+from pydantic import TypeAdapter
 from okf_book.main.tally import (
     FLOW_PAGE,
     NEW_FLOW,
@@ -21,6 +22,8 @@ from okf_book.main.tally import (
 from okf_book.support import ScriptedRunner, git
 
 from workhorse_workflows.okf_book.main import repair_book_flow
+from workhorse_workflows.okf_book.main.nodes.journey import JourneyPages
+from workhorse_workflows.okf_book.main.nodes.repair_batches import PackedRepairs, PageRepair, pack_repairs
 from workhorse_workflows.okf_book.main.nodes.report import BookReport
 from workhorse_workflows.okf_book.shared.page_check import PageProblem
 from workhorse_workflows.okf_book.workflow import OkfBook
@@ -107,3 +110,49 @@ def test_a_turn_keeps_an_entry_page_it_only_added_link_lines_to(
     assert (LINK_LINE.strip() in (repo / PAGE).read_text(encoding="utf-8")) is kept
     assert kept or (repo / PAGE).read_text(encoding="utf-8") == committed
     assert git(repo, "status", "--porcelain").strip() == ""
+
+
+BREAK = "\na flow step that walks no endpoint\n"
+
+
+def _flow_and_page_until_noted(root: Path, service: str) -> tuple[PageProblem, ...]:
+    flow_text = (root / FLOW_PAGE).read_text(encoding="utf-8")
+    flow_open = NOTE.strip() not in flow_text or BREAK.strip() in flow_text
+    flow_problems = (PageProblem(FLOW_PAGE, "track-a-trip.md needs a note", needs_journey=True),) if flow_open else ()
+    return (*flow_problems, *off_journey_until_noted(root, service))
+
+
+def _one_page_per_batch(
+    root: Path, by_page: dict[str, tuple[str, ...]], journey: JourneyPages | None = None, needs_journey: frozenset[str] = frozenset()
+) -> PackedRepairs:
+    packed = pack_repairs(root, by_page, journey, needs_journey)
+    batches = tuple(batch.model_copy(update={"pages": (page,)}) for batch in packed.batches for page in batch.pages)
+    return packed.model_copy(update={"batches": batches})
+
+
+def _notes_its_page_and_breaks_the_flow_from_the_entry_page(repo: Path) -> ScriptedRunner:
+    def _reply(args: dict[str, object]) -> dict[str, object]:
+        [repair] = TypeAdapter(tuple[PageRepair, ...]).validate_python(args["pages"])
+        edits = ((FLOW_PAGE, NOTE),) if repair.page == FLOW_PAGE else ((PAGE, NOTE), (FLOW_PAGE, BREAK))
+        for page, text in edits:
+            _ = (repo / page).write_text((repo / page).read_text(encoding="utf-8") + text, encoding="utf-8")
+        return {"value": f"repaired {repair.page}"}
+
+    return ScriptedRunner({"repair-pages": _reply})
+
+
+@pytest.mark.usefixtures("over_the_ceiling")
+def test_a_page_a_batch_closed_that_a_later_batch_breaks_is_left_for_the_book_check(
+    app: App, drive_book: DriveBook, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = app("tally-cli")
+    monkeypatch.setattr(repair_book_flow, "page_problems", _flow_and_page_until_noted)
+    monkeypatch.setattr(repair_book_flow, "pack_repairs", _one_page_per_batch)
+    runner = _notes_its_page_and_breaks_the_flow_from_the_entry_page(repo)
+
+    result = drive_book(OkfBook(repo_dir=str(repo), surfaces=(TALLY,)), runner)
+
+    assert isinstance(result, BookReport)
+    sent = [TypeAdapter(tuple[PageRepair, ...]).validate_python(args["pages"])[0].page for args in runner.args_of("repair-pages")]
+    assert sent == [FLOW_PAGE, PAGE]
+    assert BREAK.strip() in (repo / FLOW_PAGE).read_text(encoding="utf-8")

@@ -4,8 +4,10 @@ A book goes to its repair when it is too large for one writer. When the book fai
 run's failures are the first round's problems on the pages they cover.
 
 The first round fixes the pages the repair works on. A later round repairs what is left on those
-pages, and a problem found on any other page is left for the book check to report. A page too large
-for one writer is sent to no turn and reported.
+pages, and a problem found on any other page is left for the book check to report. A page the check
+found clean after its batch is closed: a problem another batch's edit gives it later is left for the
+book check too, so no turn repairs it twice. A page too large for one writer is sent to no turn and
+reported.
 
 Each batch owns the pages it is sent. A batch with a page no other page reaches, or with an endpoint
 on no flow, also owns the journey pages the repair planned: the pages the entries page links, the flow pages, and
@@ -19,6 +21,7 @@ so their edits stay theirs. A turn that changed one waits for the operator.
 from __future__ import annotations
 
 import time
+from collections.abc import Iterable
 from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict
@@ -65,7 +68,7 @@ class RepairOutcome(BaseModel):
 
 
 class RepairRound(BaseModel):
-    """One round of the repair: the book pages someone left uncommitted when it started, which no turn may touch, the pages the first round planned and the journey pages it planned, its number, the turns that failed so far, the pages too large for one writer, and its batches."""
+    """One round of the repair: the book pages someone left uncommitted when it started, which no turn may touch, the pages the first round planned and the journey pages it planned, its number, the turns that failed so far, the pages too large for one writer, the pages a batch closed, and its batches."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -75,7 +78,14 @@ class RepairRound(BaseModel):
     number: int
     failed_turns: tuple[str, ...] = ()
     oversized_pages: tuple[OversizedPage, ...] = ()
+    closed_pages: tuple[str, ...] = ()
     batches: tuple[RepairBatch, ...] = ()
+
+    def closing(self, batch: RepairBatch, problems: Iterable[PageProblem]) -> RepairRound:
+        """This round with each page of the batch the check finds no problem on added to its closed pages."""
+        open_pages = {problem.page for problem in problems}
+        closed = (page for page in batch.page_paths if page not in open_pages and page not in self.closed_pages)
+        return self.model_copy(update={"closed_pages": (*self.closed_pages, *closed)})
 
     def outcome(self, rounds: int, by_page: dict[str, tuple[str, ...]]) -> RepairOutcome:
         left = sum(len(problems) for problems in by_page.values())
@@ -129,13 +139,18 @@ class RepairBook(BookFlow):
         return self._first_batch_or_done(this_round, by_page, pages_needing_journey(problems))
 
     def plan_round(self, last: RepairRound) -> Continue[...] | Done:
-        """Check the book again and pack the planned pages that still have problems. A spent repair ends with what is left."""
+        """Check the book again and pack the planned pages still open that have problems. A spent repair ends with what is left."""
         problems = page_problems(self.root, self.service)
+        if last.batches:
+            last = last.closing(last.batches[-1], problems)
         found = problems_by_page(problems, frozenset(last.uncommitted_at_start))
-        by_page = {page: texts for page, texts in found.items() if page in last.planned_pages}
-        outside = sorted(set(found) - set(by_page))
+        by_page = {page: texts for page, texts in found.items() if page in last.planned_pages and page not in last.closed_pages}
+        outside = sorted(set(found) - set(last.planned_pages))
         if outside:
             self.logger.info("%d pages outside this repair have problems, left for the book check: %s", len(outside), ", ".join(outside))
+        reopened = sorted(set(found) & set(last.closed_pages))
+        if reopened:
+            self.logger.info("%d pages a batch closed have problems again, left for the book check: %s", len(reopened), ", ".join(reopened))
         if last.number >= REPAIR_ROUNDS:
             return Done(last.outcome(last.number, by_page)).because("the repair rounds are spent")
         current_journey = journey_pages(self.root, self.service, frozenset(last.uncommitted_at_start))
@@ -163,10 +178,13 @@ class RepairBook(BookFlow):
         return Continue(len(packed.batches), self.prepare_batch_turn, this_round=this_round, index=0).because("prepare the first batch")
 
     def prepare_batch_turn(self, this_round: RepairRound, index: int) -> Continue[...]:
-        """Snapshot the tree, and write the command state that scopes the turn's check to its batch and to the problems the book has now."""
+        """Snapshot the tree, close the pages of the last batch the check finds clean, and write the command state that scopes the turn's check to its batch and to the problems the book has now."""
         batch = this_round.batches[index]
         before = snapshot(self.root)
-        problems_at_turn_start = tuple(problem.text for problem in page_problems(self.root, self.service))
+        problems = page_problems(self.root, self.service)
+        if index > 0:
+            this_round = this_round.closing(this_round.batches[index - 1], problems)
+        problems_at_turn_start = tuple(problem.text for problem in problems)
         state = WriterCommandState(
             root=self.root,
             service=self.service,
