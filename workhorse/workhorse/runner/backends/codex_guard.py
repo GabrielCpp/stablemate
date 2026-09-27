@@ -63,14 +63,14 @@ class Policy:
         if not isinstance(data, dict):
             raise ValueError("the policy is not an object")
         cwd = data.get("cwd")
-        read_roots = _strings(data.get("read_roots"))
-        commands = _strings(data.get("commands"))
+        read_roots = _string_list_or_none(data.get("read_roots"))
+        commands = _string_list_or_none(data.get("commands"))
         if not isinstance(cwd, str) or read_roots is None or commands is None:
             raise ValueError("the policy needs a string cwd and string lists for read_roots and commands")
         return cls(cwd=Path(cwd), read_roots=tuple(Path(root) for root in read_roots), commands=commands)
 
 
-def _strings(value: object) -> tuple[str, ...] | None:
+def _string_list_or_none(value: object) -> tuple[str, ...] | None:
     """The list's strings, or None when it is no list of strings."""
     if not isinstance(value, list):
         return None
