@@ -390,7 +390,7 @@ def _spelled(ref: references.Reference) -> str:
     return f"@{ref.node}.{ref.key}" if isinstance(ref, references.NodeRef) else f"${ref.name}"
 
 
-def _unsent_references(
+def _record_unsent_references(
     index: int, request: _HttpRequest, known: _Produced, ids: list[str], gaps: list[Gap],
 ) -> bool:
     """Gap every reference step *index* sends that no journey fixture or earlier step provides; whether any did."""
@@ -486,7 +486,7 @@ def _http_steps(walk: JourneyWalk, sinks: PlanSinks) -> _HttpSteps | None:
     refused = _refused_status(walk.obligations)
     for index, step in enumerate(walk.steps, start=1):
         request = _http_request(index, step, book, walk.ids, gaps)
-        if not isinstance(request, _UnbuiltStep) and _unsent_references(index, request, known, walk.ids, gaps):
+        if not isinstance(request, _UnbuiltStep) and _record_unsent_references(index, request, known, walk.ids, gaps):
             request = _UnbuiltStep("this journey sends a fact at this step that nothing it runs "
                                    "provides, so it holds no response to capture the field from")
         if isinstance(request, _UnbuiltStep):
