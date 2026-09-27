@@ -40,7 +40,7 @@ from workhorse_workflows.okf_book.main.nodes.writer_request import writer_reques
 from workhorse_workflows.okf_book.shared.blockers import Phase
 from workhorse_workflows.okf_book.shared.book_commits import repaired_book_commit_subject, rooted_book_commit_subject
 from workhorse_workflows.okf_book.shared.book_flow import BookFlow
-from workhorse_workflows.okf_book.shared.confine import Snapshot, book_changes, in_book, put_back_outside, restore, snapshot
+from workhorse_workflows.okf_book.shared.confine import Snapshot, book_changes, in_book, put_back_outside, restore, snapshot, untracked
 from workhorse_workflows.okf_book.shared.entries import FEATURES_DIR, entries_path
 from workhorse_workflows.okf_book.shared.metrics import record_turn, turn_metric
 from workhorse_workflows.okf_book.shared.page_check import PageProblem, page_problems
@@ -135,7 +135,8 @@ class RepairBook(BookFlow):
             self.logger.info("%d pages outside this repair have problems, left for the book check: %s", len(outside), ", ".join(outside))
         if last.number >= REPAIR_ROUNDS:
             return Done(last.outcome(last.number, by_page)).because("the repair rounds are spent")
-        repair = last.model_copy(update={"number": last.number + 1, "batches": ()})
+        journey = journey_pages(self.root, self.service, frozenset(last.uncommitted_at_start))
+        repair = last.model_copy(update={"number": last.number + 1, "batches": (), "journey": journey})
         return self._first_batch_or_done(repair, by_page, journey_needed(problems))
 
     def _first_batch_or_done(
@@ -206,7 +207,8 @@ class RepairBook(BookFlow):
         batch = repair.batches[index]
         entries = entries_path(root, self.service).relative_to(root).as_posix()
         changed = book_changes(root, self.service, before)
-        unowned = [path for path in changed if path == entries or path in before.digests or not batch.owns(path)]
+        created = untracked(root, changed)
+        unowned = [path for path in changed if path == entries or path in before.digests or not batch.owns(path, created)]
         unrestorable_uncommitted = restore(root, unowned, before)
         for path in sorted(set(unowned) - set(unrestorable_uncommitted) - {entries}):
             self.logger.warning("put back %s, which the repair turn changed outside the pages its batch owns", path)
@@ -229,7 +231,8 @@ class RepairBook(BookFlow):
         batch = repair.batches[index]
         entries = entries_path(root, self.service).relative_to(root).as_posix()
         changed = book_changes(root, self.service, before)
-        pages = tuple(path for path in changed if path != entries and path not in before.digests and batch.owns(path))
+        created = untracked(root, changed)
+        pages = tuple(path for path in changed if path != entries and path not in before.digests and batch.owns(path, created))
         journey = sorted(set(pages) - set(batch.page_paths))
         if journey:
             self.logger.info("the repair turn also changed %d journey pages: %s", len(journey), ", ".join(journey))

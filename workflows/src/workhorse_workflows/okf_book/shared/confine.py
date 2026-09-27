@@ -52,6 +52,11 @@ def _tracked(root: Path, path: str) -> bool:
     return bool(_git(root, "ls-tree", "--name-only", "HEAD", "--", path).strip())
 
 
+def untracked(root: Path, paths: Iterable[str]) -> frozenset[str]:
+    """The paths HEAD does not hold, such as a page a turn created."""
+    return frozenset(path for path in paths if not _tracked(root, path))
+
+
 def restore(root: Path, paths: Iterable[str], before: Snapshot) -> tuple[str, ...]:
     """Put each path back as HEAD has it. A path that was already dirty before the turn is left, and returned."""
     left: list[str] = []

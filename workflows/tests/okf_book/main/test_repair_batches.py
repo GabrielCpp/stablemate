@@ -71,7 +71,7 @@ def test_a_page_alone_over_the_ceiling_goes_to_no_batch_and_is_reported_with_its
     assert packed.too_large[0].reason.startswith(f"{large} and the files it cites cost")
 
 
-def test_the_journey_pages_are_the_pages_the_entries_page_links_and_the_flow_pages_without_the_ones_left_uncommitted(tmp_path: Path) -> None:
+def test_the_journey_pages_are_the_linked_and_flow_pages_left_committed_and_a_flow_the_turn_creates(tmp_path: Path) -> None:
     root_page = _page(tmp_path, "ledger.md", cites=False)
     flows = [_page(tmp_path, f"flows/{name}.md", cites=False) for name in ("add", "split")]
     _ = _page(tmp_path, "concepts/entry.md", cites=False)
@@ -80,7 +80,9 @@ def test_the_journey_pages_are_the_pages_the_entries_page_links_and_the_flow_pag
     journey = journey_pages(tmp_path, "ledger", frozenset({flows[1]}))
 
     assert journey == JourneyPages(pages=(root_page, flows[0]), flow_folder=f"{BOOK}/flows")
-    assert journey.owns(f"{BOOK}/flows/new.md")
+    assert journey.owns(f"{BOOK}/flows/new.md", frozenset({f"{BOOK}/flows/new.md"}))
+    assert not journey.owns(f"{BOOK}/flows/new.md")
+    assert not journey.owns(flows[1], frozenset({f"{BOOK}/flows/new.md"}))
     assert not journey.owns(f"{BOOK}/concepts/entry.md")
 
 
@@ -98,7 +100,7 @@ def test_pages_whose_fix_goes_on_a_journey_are_packed_first_with_the_journey_pag
         ((pages[0],), None),
     ]
     assert batches[0].tokens == one + BOOK_HOLDS * PAGE_TOKENS
-    assert batches[0].owns(f"{BOOK}/flows/new.md")
+    assert batches[0].owns(f"{BOOK}/flows/new.md", frozenset({f"{BOOK}/flows/new.md"}))
     assert not batches[2].owns(flow)
 
 

@@ -56,7 +56,9 @@ class JourneyPages(BaseModel):
     """The pages a fix that puts a page on a journey may change: the entry pages, the flow pages, and a new page in the flow folder.
 
     Only the flow pages count against a batch. The writer reads a flow whole to extend it, but adds
-    no more than a link to an entry page, which it finds without reading the rest of it.
+    no more than a link to an entry page, which it finds without reading the rest of it. A flow page
+    written after the pages were listed is not one of them, since no batch counted it. The next
+    round lists it.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -64,8 +66,9 @@ class JourneyPages(BaseModel):
     pages: tuple[str, ...]
     flow_folder: str
 
-    def owns(self, path: str) -> bool:
-        return path in self.pages or self.is_flow(path)
+    def owns(self, path: str, created: frozenset[str] = frozenset()) -> bool:
+        """Whether a turn may change the path: one of the pages, or a flow page in `created`, the paths the turn wrote new."""
+        return path in self.pages or (self.is_flow(path) and path in created)
 
     def is_flow(self, path: str) -> bool:
         return path.startswith(f"{self.flow_folder}/")
@@ -88,9 +91,9 @@ class RepairBatch(BaseModel):
     def page_paths(self) -> tuple[str, ...]:
         return tuple(repair.page for repair in self.pages)
 
-    def owns(self, path: str) -> bool:
+    def owns(self, path: str, created: frozenset[str] = frozenset()) -> bool:
         """Whether the turn may change the path: one of its pages, or a journey page when it has one."""
-        return path in self.page_paths or (self.journey is not None and self.journey.owns(path))
+        return path in self.page_paths or (self.journey is not None and self.journey.owns(path, created))
 
     @property
     def sources(self) -> tuple[str, ...]:
