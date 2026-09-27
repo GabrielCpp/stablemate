@@ -33,11 +33,11 @@ def guard_policy(agent: AgentProfile | None, cwd: str | None, add_dirs: list[str
     """What the guard holds a confined turn to: its cwd, the dirs it reads and its commands. None for a turn that is not confined."""
     if agent is None or not agent.confined:
         return None
-    here = Path(cwd or os.getcwd()).resolve()
-    worktree = git_worktree(here)
+    turn_cwd = Path(cwd or os.getcwd()).resolve()
+    worktree = git_worktree(turn_cwd)
     skills = [worktree / name for name in SKILL_DIRS if (worktree / name).is_dir()] if worktree else []
-    roots = (here, *(Path(directory).resolve() for directory in add_dirs or []), *skills)
-    return Policy(cwd=here, read_roots=tuple(dict.fromkeys(roots)), commands=tuple(agent.commands))
+    roots = (turn_cwd, *(Path(directory).resolve() for directory in add_dirs or []), *skills)
+    return Policy(cwd=turn_cwd, read_roots=tuple(dict.fromkeys(roots)), commands=tuple(agent.commands))
 
 
 def guard_flags(policy_path: Path) -> list[str]:

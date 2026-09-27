@@ -176,14 +176,14 @@ def _search_path_arguments(arguments: Sequence[str]) -> list[str]:
     """A search's arguments without the patterns it matches, which name no file it reads."""
     kept: list[str] = []
     pattern_left = not any(_names_patterns(argument) for argument in arguments)
-    pending = ""
+    option_awaiting_value = ""
     for argument in arguments:
-        if pending:
-            if pending not in SEARCH_PATTERN_OPTIONS:
+        if option_awaiting_value:
+            if option_awaiting_value not in SEARCH_PATTERN_OPTIONS:
                 kept.append(argument)
-            pending = ""
+            option_awaiting_value = ""
         elif argument in SEARCH_VALUE_OPTIONS:
-            pending = argument
+            option_awaiting_value = argument
         elif pattern_left and not argument.startswith("-"):
             pattern_left = False
         else:
