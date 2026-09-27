@@ -30,7 +30,7 @@ from ostler.stamp import stamp_page
 from workhorse.pyflow import AgentTimeout, AgentTurnFailed, Await, Continue, Done, WorkflowFailed
 from workhorse_workflows.kit import commit_returning_refusal
 from workhorse_workflows.okf_book.main.nodes.journey import JourneyPages, adds_only_links, journey_pages, pages_needing_journey
-from workhorse_workflows.okf_book.main.nodes.repair_batches import OversizedPage, RepairBatch, pack_repairs, problems_by_page
+from workhorse_workflows.okf_book.main.nodes.repair_batches import OversizedPart, RepairBatch, pack_repairs, problems_by_page
 from workhorse_workflows.okf_book.main.nodes.root_entries import write_root_entries
 from workhorse_workflows.okf_book.main.nodes.surface import Surface
 from workhorse_workflows.okf_book.main.nodes.writer_commands import WriterCommandState, write_command_state
@@ -58,18 +58,18 @@ UNCOMMITTED_PAGE_GATE = "uncommitted-page-changed.md"
 
 
 class RepairOutcome(BaseModel):
-    """What the repair left: the rounds it ran, the turns that ended without a reply, the pages too large for one writer, and how many problems remain on the pages it repaired."""
+    """What the repair left: the rounds it ran, the turns that ended without a reply, the pages and sections too large for one writer, and how many problems remain on the pages it repaired."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     rounds: int
     failed_turns: tuple[str, ...] = ()
-    oversized_pages: tuple[OversizedPage, ...] = ()
+    oversized_parts: tuple[OversizedPart, ...] = ()
     problems_left: int = 0
 
 
 class RepairRound(BaseModel):
-    """One round of the repair: the book pages someone left uncommitted when it started, which no turn may touch, the pages the first round planned and the journey pages it planned, its number, the turns that failed so far, the pages too large for one writer, the pages a batch closed, and its batches."""
+    """One round of the repair: the book pages someone left uncommitted when it started, which no turn may touch, the pages the first round planned and the journey pages it planned, its number, the turns that failed so far, the pages and sections too large for one writer, the pages a batch closed, and its batches."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -78,7 +78,7 @@ class RepairRound(BaseModel):
     journey: JourneyPages
     number: int
     failed_turns: tuple[str, ...] = ()
-    oversized_pages: tuple[OversizedPage, ...] = ()
+    oversized_parts: tuple[OversizedPart, ...] = ()
     closed_pages: tuple[str, ...] = ()
     batches: tuple[RepairBatch, ...] = ()
 
@@ -99,7 +99,7 @@ class RepairRound(BaseModel):
 
     def outcome(self, rounds: int, by_page: dict[str, tuple[str, ...]]) -> RepairOutcome:
         left = sum(len(problems) for problems in by_page.values())
-        return RepairOutcome(rounds=rounds, failed_turns=self.failed_turns, oversized_pages=self.oversized_pages, problems_left=left)
+        return RepairOutcome(rounds=rounds, failed_turns=self.failed_turns, oversized_parts=self.oversized_parts, problems_left=left)
 
 
 class RepairBook(BookFlow):
@@ -175,9 +175,9 @@ class RepairBook(BookFlow):
         self, this_round: RepairRound, by_page: dict[str, tuple[str, ...]], problems: tuple[PageProblem, ...]
     ) -> Continue[...] | Done:
         packed = pack_repairs(self.root, by_page, this_round.journey, pages_needing_journey(problems))
-        reported = {page.subject for page in this_round.oversized_pages}
-        oversized_pages = (*this_round.oversized_pages, *(page for page in packed.oversized_pages if page.subject not in reported))
-        this_round = this_round.model_copy(update={"oversized_pages": oversized_pages, "batches": packed.batches})
+        reported = {part.subject for part in this_round.oversized_parts}
+        oversized_parts = (*this_round.oversized_parts, *(part for part in packed.oversized_parts if part.subject not in reported))
+        this_round = this_round.model_copy(update={"oversized_parts": oversized_parts, "batches": packed.batches})
         if not packed.batches:
             return Done(this_round.outcome(this_round.number - 1, by_page)).because("no planned page is left for a turn")
         pages = sum(len(batch.pages) for batch in packed.batches)
