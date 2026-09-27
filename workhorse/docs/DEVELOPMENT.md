@@ -123,8 +123,8 @@ carries the artifact assertions (`assert_file`, `assert_file_contains`,
   `DEVELOPMENT.md` (this file), `DOCKER.md` (the harness). Add new reference and design
   docs here, not at the root, and leave a one- or two-sentence summary in the README
   beside the link.
-- **`CLAUDE.md`** (root) is the agent entry point and stays at the root so Claude
-  Code auto-loads it. It is a standing instruction file loaded on every turn in this
+- **`AGENTS.md`** (root) is the agent entry point and stays at the root so every agent
+  CLI, Claude Code included, auto-loads it. It is a standing instruction file loaded on every turn in this
   subtree, so it carries rules an agent would get wrong by default and nothing else; it
   `@`-imports only `docs/GUARDRAILS.md` and *links* the rest.
 - **Per-workflow docs** → inside that workflow's own package directory (under
@@ -132,7 +132,7 @@ carries the artifact assertions (`assert_file`, `assert_file_contains`,
   workflow-specific knowledge with the workflow.
 
 Keep these docs current when you change behavior — they are the contract for
-operators running week-long jobs, and `CLAUDE.md` imports one of them, so updating
+operators running week-long jobs, and `AGENTS.md` imports one of them, so updating
 them keeps agent context accurate too.
 
 ## Conventions

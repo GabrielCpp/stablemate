@@ -170,7 +170,7 @@ code. *We do not know* is a classification; silence is not.
 - **Not a scheduler.** One command, one directory, no queue, no dependencies.
 - **Not workflow-aware.** It knows `command`, `memory_mb`, `estimate_s` — verbs, not nouns
   from one workflow's schema. The litmus test in
-  [CLAUDE.md](https://github.com/GabrielCpp/stablemate/blob/main/workhorse/CLAUDE.md) applies: a
+  [AGENTS.md](https://github.com/GabrielCpp/stablemate/blob/main/workhorse/AGENTS.md) applies: a
   different workflow wants this unchanged.
 - **Not a stack manager.** A long-lived *service* a later node talks to — a dev server, an
   emulator — is `ostler.qa.stack`'s job: it health-gates and adopts, which a measurement
