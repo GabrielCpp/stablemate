@@ -99,6 +99,14 @@ class BookCompilation:
         return self.plan is not None
 
 
+class _Obligation(BaseModel):
+    """One obligation of a QA context, named by the page and node it checks. Ostler's other fields ride along as extras."""
+
+    model_config = ConfigDict(frozen=True, extra="allow")
+
+    id: str
+
+
 class _ServicesContext(BaseModel):
     """The QA context of some services' books, which is written for the run and compiled into a plan.
 
@@ -109,11 +117,11 @@ class _ServicesContext(BaseModel):
 
     version: Literal[1, 2]
     available: bool
-    obligations: tuple[dict[str, JsonValue], ...]
+    obligations: tuple[_Obligation, ...]
 
     def scoped_to(self, services: Iterable[str]) -> _ServicesContext:
         books = tuple(f"{(FEATURES_DIR / service).as_posix()}/" for service in services)
-        kept = tuple(o for o in self.obligations if obligation_page(str(o.get("id", ""))).startswith(books))
+        kept = tuple(obligation for obligation in self.obligations if obligation_page(obligation.id).startswith(books))
         return self.model_copy(update={"obligations": kept})
 
     def write(self, spec: Path) -> None:
@@ -122,7 +130,7 @@ class _ServicesContext(BaseModel):
     def compile(self) -> BookCompilation:
         compiled = compile_plan_gaps(self.model_dump(mode="json"), story=BOOK_STORY)
         gaps = tuple(gap for gap in compiled.gaps if is_defect(gap))
-        obligations = tuple(str(obligation.get("id", "")) for obligation in self.obligations)
+        obligations = tuple(obligation.id for obligation in self.obligations)
         return BookCompilation(plan=compiled if isinstance(compiled, Plan) else None, gaps=gaps, obligations=obligations)
 
 
