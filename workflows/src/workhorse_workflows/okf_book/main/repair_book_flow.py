@@ -207,14 +207,14 @@ class RepairBook(BookFlow):
         entries = entries_path(root, self.service).relative_to(root).as_posix()
         changed = book_changes(root, self.service, before)
         unowned = [path for path in changed if path == entries or path in before.digests or not batch.owns(path)]
-        left = restore(root, unowned, before)
-        for path in sorted(set(unowned) - set(left) - {entries}):
+        unrestorable_uncommitted = restore(root, unowned, before)
+        for path in sorted(set(unowned) - set(unrestorable_uncommitted) - {entries}):
             self.logger.warning("put back %s, which the repair turn changed outside the pages its batch owns", path)
-        if left:
+        if unrestorable_uncommitted:
             return Await(
                 self.run_dir / UNCOMMITTED_PAGE_GATE,
                 "The repair turn changed pages someone left uncommitted, and code has no copy of their edits to put back:\n\n"
-                + "\n".join(f"- {path}" for path in left)
+                + "\n".join(f"- {path}" for path in unrestorable_uncommitted)
                 + "\n\nSort each page out in the repo, then answer here. No commit takes these pages.",
                 self.stamp_pages,
                 repair=repair,

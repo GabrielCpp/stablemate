@@ -223,7 +223,7 @@ def test_a_check_scoped_to_pages_prints_their_problems_and_those_the_turn_made_b
     assert printed == (f"{pages[0]} is broken", f"{pages[3]} is broken")
 
 
-def _these(problems: tuple[PageProblem, ...]) -> Callable[[Path, str], tuple[PageProblem, ...]]:
+def _page_problems_returning(problems: tuple[PageProblem, ...]) -> Callable[[Path, str], tuple[PageProblem, ...]]:
     def _problems(_root: Path, _service: str) -> tuple[PageProblem, ...]:
         return problems
 
@@ -242,7 +242,7 @@ def test_a_check_scoped_to_sections_prints_their_problems_and_not_one_an_edit_ab
         PageProblem(page, f"{page}:9: step-no-verify: a claim has no verify"),
         PageProblem(page, f"{page}:1: title-stale: the title is stale"),
     )
-    monkeypatch.setattr(check_pages, "page_problems", _these(now))
+    monkeypatch.setattr(check_pages, "page_problems", _page_problems_returning(now))
     problems_at_turn_start = (
         f"{page}:4: step-no-verify: a claim has no verify",
         f"{page}:8: step-no-verify: a claim has no verify",
