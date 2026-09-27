@@ -9,7 +9,8 @@ from contextlib import redirect_stdout
 from pathlib import Path
 from unittest.mock import patch
 
-from workhorse.runner.backends.codex_guard import Policy, ToolCall, call_refusal, main, patch_denial, shell_denial
+from workhorse.runner.backends.codex_guard import Policy, ToolCall, call_refusal, main, patch_denial
+from workhorse.runner.backends.codex_shell import shell_denial
 
 BOOK = Path("/work/app/docs/book")
 SOURCE = Path("/runs/r1/source")
