@@ -70,10 +70,10 @@ class ScenarioOutcome(BaseModel):
 
     def failed_claim(self, plan: str) -> str:
         """The obligation whose compiled lines in *plan* the run's traceback stopped in, or nothing when it stopped in none."""
-        frames = [int(frame.group(1)) for frame in PLAN_FRAME.finditer(self.message)]
-        if not frames:
+        stopped_at_lines = [int(frame.group(1)) for frame in PLAN_FRAME.finditer(self.message)]
+        if not stopped_at_lines:
             return ""
-        above = reversed(plan.splitlines()[: frames[-1]])
+        above = reversed(plan.splitlines()[: stopped_at_lines[-1]])
         return next((mark["claim"] for line in above if (mark := CLAIM_MARK.match(line))), "")
 
 
