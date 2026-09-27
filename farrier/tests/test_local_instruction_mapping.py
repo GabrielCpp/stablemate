@@ -89,15 +89,59 @@ def test_mapping_with_no_source_is_rejected(tmp_path):
     assert "at least one source" in str(exc.value)
 
 
-def test_claude_only_repo_still_writes_agents_md_plus_a_pointer(tmp_path):
+def test_claude_repo_writes_only_agents_md_by_default(tmp_path):
     repo, outputs = _render(
         tmp_path,
         '  - skill: demo-stablemate-ostler\n    paths: ["."]\n    includeReadme: false\n',
     )
     assert "Ostler rules." in outputs[repo / "AGENTS.md"]
+    assert repo / "CLAUDE.md" not in outputs
+
+
+def test_claude_md_flag_writes_the_agents_md_pointer(tmp_path):
+    repo, outputs = _render(
+        tmp_path,
+        '  - skill: demo-stablemate-ostler\n    paths: ["."]\n'
+        "    includeReadme: false\n    claudeMd: true\n",
+    )
+    assert "Ostler rules." in outputs[repo / "AGENTS.md"]
     pointer = outputs[repo / "CLAUDE.md"]
     assert "@AGENTS.md" in pointer
     assert "Ostler rules." not in pointer
+
+
+def test_non_boolean_claude_md_is_rejected(tmp_path):
+    with pytest.raises(SystemExit) as exc:
+        _render(
+            tmp_path,
+            '  - skill: demo-stablemate-ostler\n    paths: ["."]\n    claudeMd: yes-please\n',
+        )
+    assert "claudeMd" in str(exc.value)
+
+
+def test_install_removes_a_pointer_the_flag_no_longer_asks_for(tmp_path):
+    root = _library(tmp_path)
+    repo = _repo(
+        tmp_path,
+        '  - skill: demo-stablemate-ostler\n    paths: ["."]\n    claudeMd: true\n',
+    )
+    assert main(["install", "--repo", str(repo), "--library", str(root)]) == 0
+    assert (repo / "CLAUDE.md").is_file()
+
+    _repo(tmp_path, '  - skill: demo-stablemate-ostler\n    paths: ["."]\n')
+    check = ["install", "--repo", str(repo), "--library", str(root), "--check"]
+    assert main(check) == 1
+    assert main(["install", "--repo", str(repo), "--library", str(root)]) == 0
+    assert not (repo / "CLAUDE.md").exists()
+    assert main(check) == 0
+
+
+def test_install_keeps_a_hand_written_claude_md(tmp_path):
+    root = _library(tmp_path)
+    repo = _repo(tmp_path, '  - skill: demo-stablemate-ostler\n    paths: ["."]\n')
+    (repo / "CLAUDE.md").write_text("Mine.\n", encoding="utf-8")
+    assert main(["install", "--repo", str(repo), "--library", str(root)]) == 0
+    assert (repo / "CLAUDE.md").read_text(encoding="utf-8") == "Mine.\n"
 
 
 def test_codex_only_repo_gets_no_claude_pointer(tmp_path):
@@ -128,16 +172,28 @@ def _with_readme(tmp_path: Path) -> None:
 def test_readme_is_imported_when_claude_is_the_only_adapter(tmp_path):
     _with_readme(tmp_path)
     repo, outputs = _render(
-        tmp_path, '  - skill: demo-stablemate-ostler\n    paths: ["."]\n', codex=False
+        tmp_path,
+        '  - skill: demo-stablemate-ostler\n    paths: ["."]\n    claudeMd: true\n',
+        codex=False,
     )
     assert "@README.md" in outputs[repo / "CLAUDE.md"]
     assert "Local readme." not in outputs[repo / "AGENTS.md"]
 
 
+def test_readme_is_copied_when_no_pointer_is_written(tmp_path):
+    _with_readme(tmp_path)
+    repo, outputs = _render(
+        tmp_path, '  - skill: demo-stablemate-ostler\n    paths: ["."]\n', codex=False
+    )
+    assert "Local readme." in outputs[repo / "AGENTS.md"]
+
+
 def test_readme_is_copied_when_another_adapter_reads_the_file(tmp_path):
     _with_readme(tmp_path)
     repo, outputs = _render(
-        tmp_path, '  - skill: demo-stablemate-ostler\n    paths: ["."]\n', codex=True
+        tmp_path,
+        '  - skill: demo-stablemate-ostler\n    paths: ["."]\n    claudeMd: true\n',
+        codex=True,
     )
     assert "Local readme." in outputs[repo / "AGENTS.md"]
     assert "@README.md" not in outputs[repo / "CLAUDE.md"]

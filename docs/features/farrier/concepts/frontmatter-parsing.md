@@ -66,7 +66,7 @@ instruction files (`AGENTS.md` and `CLAUDE.md`) that source lookup recognizes.
 - returns: stringified selected skill names, or an empty list when neither key selects a skill
 - verify: count(subject="skills selected by a localInstructions mapping", equals=1)
 - code: `farrier/farrier/frontmatter.py::mapping_skill_names` @525c0e8d7c4b
-- tests: `farrier/tests/test_local_instruction_mapping.py::test_claude_only_repo_still_writes_agents_md_plus_a_pointer`
+- tests: `farrier/tests/test_local_instruction_mapping.py::test_claude_repo_writes_only_agents_md_by_default`
 
 ### mapping_policy_names
 - sig: `mapping_policy_names(mapping: dict[str, Any]) -> list[str]`

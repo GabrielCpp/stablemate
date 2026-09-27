@@ -172,7 +172,8 @@ the pruned starting point, and the two are kept consistent by hand.
     target directories' `AGENTS.md` as part of the full `{output path: content}` map
     (`render_expected`) that `--check` or install acts on
   - verify: created(subject="localInstructions AGENTS.md output")
-  - run: render a `CLAUDE.md` pointer for each local-instructions target when `claude` is enabled
+  - run: render a `CLAUDE.md` pointer for each local-instructions target whose entry sets
+    `claudeMd: true`
   - verify: created(subject="localInstructions CLAUDE.md pointer")
   - run: raise `SystemExit` pointing at `farrier scaffold` when a local-instructions target
     directory does not already exist

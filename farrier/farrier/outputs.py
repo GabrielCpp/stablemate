@@ -1,7 +1,7 @@
 """Full-render orchestration and the repo mutations that install it."""
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from fnmatch import fnmatch
 from pathlib import Path
 from typing import Any
@@ -9,6 +9,7 @@ from typing import Any
 from farrier.drift import Drifted, report
 from farrier.frontmatter import (
     frontmatter_mapping,
+    mapping_claude_md,
     mapping_include_readme,
     mapping_policy_names,
     mapping_prompt_names,
@@ -96,6 +97,16 @@ USER_MANAGED = Managed(
     (".claude/skills", ".claude/commands", ".codex/skills", ".copilot/skills"),
     repo_scaffolding=False,
 )
+
+
+def repo_managed(config: dict[str, Any]) -> Managed:
+    """REPO_MANAGED plus the CLAUDE.md in every localInstructions directory."""
+    pointers = tuple(
+        (Path(rel) / "CLAUDE.md").as_posix()
+        for mapping in config.get("localInstructions", []) or []
+        for rel in mapping.get("paths", []) or []
+    )
+    return replace(REPO_MANAGED, files=REPO_MANAGED.files + pointers)
 
 
 def expected_text(content: str) -> str:
@@ -269,9 +280,11 @@ def render_expected(config: dict[str, Any], repo: Path) -> dict[Path, str]:
                 "(`policy`/`policies`, `skill`/`skills` and/or `prompt`/`prompts`)"
             )
         include_readme = mapping_include_readme(mapping)
+        claude_md = mapping_claude_md(mapping)
         claude_only = bool(agents.get("claude")) and not (
             agents.get("codex") or agents.get("copilot")
         )
+        readme_import = include_readme and claude_only and claude_md
         target = "claude" if claude_only else "codex"
         for rel in mapping.get("paths", []) or []:
             directory = repo / rel
@@ -285,17 +298,17 @@ def render_expected(config: dict[str, Any], repo: Path) -> dict[Path, str]:
                 skill_names,
                 target,
                 agents_path,
-                include_readme and not claude_only,
+                include_readme and not readme_import,
                 prompt_names,
                 policy_names,
             )
-            if agents.get("claude"):
+            if claude_md:
                 claude_path = directory / "CLAUDE.md"
                 outputs[claude_path] = renderer.render_claude_pointer(
                     skill_names,
                     claude_path,
                     prompt_names,
-                    include_readme and claude_only,
+                    readme_import,
                     policy_names,
                 )
 

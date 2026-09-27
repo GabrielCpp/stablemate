@@ -76,7 +76,7 @@ Each enabled name turns on a distinct output set in `Renderer.render`:
   `.github/copilot-instructions.md` and `.github/agents/copilot-instructions.md`.
 
 [`localInstructions`](#localinstructions) writes `AGENTS.md` for any enabled adapter, plus a
-`CLAUDE.md` pointer when `claude` is on.
+`CLAUDE.md` pointer for an entry that sets `claudeMd: true`.
 
 ### packs
 - type: `list` of `string` (pack ids, `.yml` omitted) — required: no — default: `[]`
@@ -153,8 +153,9 @@ a Jinja `| default(...)` filter.
 
 Each entry aggregates one or more already-selected skills' (and prompts') bodies into a local
 `AGENTS.md` written under one or more repo directories, so the assistant auto-loads those rules
-from any ancestor directory without an explicit skill invocation. When `claude` is enabled a
-`CLAUDE.md` is written beside it carrying the provenance banner and `@AGENTS.md` — the body
+from any ancestor directory without an explicit skill invocation. Claude reads `AGENTS.md`
+natively, so `AGENTS.md` is the only file written by default. An entry that sets `claudeMd: true`
+also gets a `CLAUDE.md` beside it carrying the provenance banner and `@AGENTS.md`. The body
 itself is never written twice. `AGENTS.md` carries **no** banner: Claude strips block-level HTML
 comments before loading, but the harnesses that read `AGENTS.md` natively do not, and a
 "generated — do not edit" line inside an always-loaded rules file reads to an agent as a rule
@@ -174,16 +175,20 @@ about the repo. `farrier source AGENTS.md` resolves the provenance instead.
   same, for already-selected *prompts*, aggregated after the skills. A prompt's standalone
   `$ARGUMENTS` line is dropped on the way in — nothing substitutes it outside a slash-command
   invocation. An entry must select at least one skill or prompt, or `SystemExit`.
+- `claudeMd` — type: `bool` — required: no — default: `false`. Whether a `CLAUDE.md` holding the
+  provenance banner and `@AGENTS.md` is written beside each `AGENTS.md`. A non-boolean value raises
+  `SystemExit`. Turning it off removes a `CLAUDE.md` farrier generated on the next install, and
+  `--check` reports that file as extra until then. A hand-written `CLAUDE.md` is never touched.
 - `includeReadme` — type: `bool` — required: no — default: `true`. Whether a sibling `README.md`
   (in the same directory) is folded in when present. The mechanism follows the files being
-  written, not the config: with `claude` as the only enabled adapter the `CLAUDE.md` pointer
-  emits `@README.md` (no duplicated content); with any other adapter enabled the rendered body is
+  written, not the config: with `claudeMd: true` and `claude` as the only enabled adapter the
+  `CLAUDE.md` pointer emits `@README.md` (no duplicated content). Otherwise the rendered body is
   copied into `AGENTS.md` under a `## Local README` heading, and the pointer does not import it a
   second time. The legacy `inline`/`import`/`none` spellings still parse, as `true`/`true`/`false`;
   any other string raises `SystemExit`.
 
-For each `paths` entry, `AGENTS.md` is always written, and `CLAUDE.md` additionally when `claude`
-is enabled. Template helpers inside the aggregated bodies resolve against the shared `.agents/`
+For each `paths` entry, `AGENTS.md` is always written, and `CLAUDE.md` additionally when the
+entry sets `claudeMd: true`. Template helpers inside the aggregated bodies resolve against the shared `.agents/`
 layout unless `claude` is the only enabled adapter, since a link into `.claude/skills/` inside a
 file codex also reads points at a copy codex was never given.
 

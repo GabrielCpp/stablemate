@@ -107,6 +107,16 @@ def mapping_include_readme(mapping: dict[str, Any]) -> bool:
     return _README_ALIASES[key]
 
 
+def mapping_claude_md(mapping: dict[str, Any]) -> bool:
+    """Whether a localInstructions mapping also writes the `@AGENTS.md` CLAUDE.md."""
+    value = mapping.get("claudeMd", False)
+    if not isinstance(value, bool):
+        raise SystemExit(
+            f"localInstructions.claudeMd must be true or false (got {value!r})"
+        )
+    return value
+
+
 def _as_text(value: Any) -> str:
     """A header value as the single string the renderer templates and re-quotes."""
     if value is None:

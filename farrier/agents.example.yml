@@ -108,9 +108,11 @@ exclude:
 
 
 # ---------------------------------------------------------------------------
-# localInstructions — render selected (already-installed) skills as local
-# CLAUDE.md / AGENTS.md / CODEX.md files in chosen directories, so the assistant
-# auto-loads those rules contextually from any ancestor dir.
+# localInstructions — render selected (already-installed) skills as a local
+# AGENTS.md in chosen directories, so the assistant auto-loads those rules
+# contextually from any ancestor dir. Claude, Codex and Copilot all read
+# AGENTS.md. Set `claudeMd: true` on an entry to also write a CLAUDE.md beside
+# it that imports the AGENTS.md with `@AGENTS.md`.
 #
 # Provide EITHER `skill` (one) or `skills` (many, concatenated in order); add
 # `prompt`/`prompts` for installed prompts, and `policy`/`policies` for library
@@ -123,10 +125,11 @@ exclude:
 localInstructions:
   - skills: [myrepo, myrepo-developer]
     paths: ["."]              # repo root
-    includeReadme: inline     # inline (default) | import | none  (true=inline, false=none)
+    includeReadme: false
   - skill: myrepo-go
     paths: ["api"]            # write under api/
-    includeReadme: import     # Claude `@README.md` directive; others fall back to inline
+    includeReadme: true       # true (default) | false
+    claudeMd: true            # also write api/CLAUDE.md holding `@AGENTS.md` (default false)
 
 
 # ---------------------------------------------------------------------------
