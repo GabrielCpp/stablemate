@@ -7,7 +7,11 @@ copy under `{{ source_view }}/`. Each file there is the repository's file at the
 three commands below, and nothing else. Start each shell call with one of them, spelled in
 full exactly as written here, never through a variable, an alias or a `cd`. The shell refuses
 any other spelling, and a refused call means only that its spelling was wrong: the three
-commands keep working. Read files with the Read, Glob and Grep tools, never the shell.
+commands keep working. Read files with your file tools. Where you have none, read them in
+the shell with `cat`, `head`, `tail`, `sed -n`, `rg`, `grep`, `ls` or `find`, joined by `|` at most,
+with no redirection, `;` or `&&`. Give such a read an absolute path, in the book, the source copy
+or the skill. The repository's root is `{{ repo_root }}`, and a path the skill or this prompt
+gives relative to the repository starts there.
 
 - `ostler scaffold` and `ostler fmt` run through this command, with the same arguments after
   it, `{{ ostler }} scaffold …` or `{{ ostler }} fmt …`. It runs {{ ostler_run_cap }} times in all

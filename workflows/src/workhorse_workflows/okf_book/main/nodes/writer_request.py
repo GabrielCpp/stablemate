@@ -42,6 +42,7 @@ class WriterRequest:
     """One writer turn: the surface it writes, where its book and source are, and the three commands it may run."""
 
     surface: Surface
+    repo_root: Path
     book_folder: str
     source_folder: str
     source_view: Path
@@ -55,6 +56,7 @@ class WriterRequest:
         return {
             "service": self.surface.service,
             "kind": self.surface.kind.value,
+            "repo_root": self.repo_root.as_posix(),
             "entry": self.surface.entry,
             "source_view": self.source_view.as_posix(),
             "source_folder": self.source_folder,
@@ -72,6 +74,7 @@ class WriterRequest:
         return {
             "service": self.surface.service,
             "kind": self.surface.kind.value,
+            "repo_root": self.repo_root.as_posix(),
             "source_view": self.source_view.as_posix(),
             "source_folder": self.source_folder,
             "book_folder": self.book_folder,
@@ -111,6 +114,7 @@ def writer_request(run_dir: Path, root: Path, surface: Surface, book_folder: str
     """The turn that writes the surface's book with the QA tools its scenarios may run, and may run only the three commands on the run's command state."""
     return WriterRequest(
         surface=surface,
+        repo_root=root,
         book_folder=book_folder,
         source_folder=source_folder,
         source_view=source_view_folder(root, source_folder),

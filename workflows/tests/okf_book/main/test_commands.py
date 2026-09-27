@@ -76,6 +76,7 @@ def test_each_command_runs_this_interpreter_on_the_command_state(tmp_path: Path)
 def test_the_writer_waits_on_an_exercise_past_the_cli_default_and_inside_the_silence_budget(tmp_path: Path) -> None:
     request = WriterRequest(
         surface=Surface(service="tally", kind=SurfaceKind.CLI, entry="tally"),
+        repo_root=tmp_path,
         book_folder="docs",
         source_folder="src",
         source_view=tmp_path,
