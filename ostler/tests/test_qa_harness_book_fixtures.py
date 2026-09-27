@@ -551,6 +551,47 @@ def test_each_run_of_a_scenario_starts_from_a_fresh_copy_of_the_checkout(tmp_pat
     assert (tmp_path / "qa" / "a-command-runs-in-its-own-copy-of-the-checkout" / "out.txt").is_file()
 
 
+IGNORED_SCENARIO = '''\
+@scenario(target=api, mechanism="live", covers=["ac:1"])
+def a_command_reads_what_the_checkout_ignores(qa: Qa) -> None:
+    """A command reaches the checkout's ignored build output, and what it writes lands in this scenario alone."""
+    done = qa.tool("sh").run("-c", "cat app.txt deps/lib.txt && echo made > out.txt", cwd=qa.scenario_dir)
+    qa.check("the command read the app and its ignored deps", done.stdout == "the app\\nthe lib\\n", actual=done.stdout)
+'''
+
+
+def test_a_copy_links_what_the_checkout_ignores_instead_of_copying_it(tmp_path: Path) -> None:
+    root = tmp_path / "checkout"
+    (root / "deps").mkdir(parents=True)
+    (root / "app.txt").write_text("the app\n", encoding="utf-8")
+    (root / "deps" / "lib.txt").write_text("the lib\n", encoding="utf-8")
+    (root / "dump.sql").write_text("rows\n", encoding="utf-8")
+    (root / ".gitignore").write_text("deps/\ndump.sql\n", encoding="utf-8")
+    (root / "tool" / "node_modules").mkdir(parents=True)
+    (root / "tool" / "node_modules" / "mod.js").write_text("mod\n", encoding="utf-8")
+    (root / "tool" / ".gitignore").write_text("node_modules\n.gitignore\n", encoding="utf-8")
+    subprocess.run(["git", "init", "-q", str(root)], check=True)
+    subprocess.run(["git", "-C", str(root), "add", "app.txt", ".gitignore"], check=True)
+    module = _write(tmp_path, IGNORED_SCENARIO)
+    context = json.dumps(
+        {"root": str(root), "spec_dir": str(tmp_path), "qa_dir": str(tmp_path / "qa"), "tools": {"sh": "sh"}}
+    )
+
+    code, stdout, records = _harness(
+        "run", str(module), "a-command-reads-what-the-checkout-ignores", context,
+        env={"PATH": "/usr/bin:/bin"}, records_to=tmp_path / "records.jsonl",
+    )
+
+    world = tmp_path / "qa" / "a-command-reads-what-the-checkout-ignores"
+    checks = [r for r in records if r.get("type") == "assert"]
+    assert code == 0, (stdout, records)
+    assert checks and all(c["passed"] for c in checks), (stdout, checks)
+    assert (world / "app.txt").is_file() and not (world / "app.txt").is_symlink()
+    assert (world / "deps").is_symlink() and (world / "dump.sql").is_symlink()
+    assert (world / "tool").is_symlink() and (world / "tool" / "node_modules" / "mod.js").is_file()
+    assert (world / "out.txt").is_file() and not (root / "out.txt").exists()
+
+
 NO_COMMAND_SCENARIO = '''\
 @scenario(target=api, mechanism="live", covers=["ac:1"])
 def a_scenario_that_runs_no_command(qa: Qa) -> None:
