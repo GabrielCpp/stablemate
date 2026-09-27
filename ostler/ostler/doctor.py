@@ -1400,6 +1400,26 @@ def _check_container_siblings(doc: markdown.MarkdownDoc, rel: str, f: list[Findi
     check(None, doc.sections)
 
 
+def _check_section_hosts(doc: markdown.MarkdownDoc, rel: str, page_type: str,
+                         f: list[Finding]) -> None:
+    """A section type that lives on one page type only (an endpoint on a server) appears on no other page."""
+    for section in doc.walk_sections():
+        title = section.title.strip()
+        stype = registry.UI_TYPES_BY_NAME.get(registry.UI_HEADING_TO_TYPE.get(title, ""))
+        if stype is None or not stype.hosts or page_type in stype.hosts or not section.children:
+            continue
+        host = " or ".join(stype.hosts)
+        f.append(Finding(
+            "error", "misplaced-section",
+            f"{rel}: a {page_type} page holds `{'#' * section.level} {title}`, but a "
+            f"{stype.name} lives only on a {host} page. A copy here drifts from the one the "
+            f"{host} page describes, and a flow step that walks it drives the copy. Move each "
+            f"one's claims onto the "
+            f"matching {stype.name} of the {host} page, delete this section, and link that "
+            f"{stype.name} from here instead",
+            path=rel, line=doc.body_offset + section.line_start + 1, ref=title))
+
+
 def _check_ui_file(graph: Graph, path, f: list[Finding]) -> None:
     rel = _rel_posix(path, graph.root)
     try:
@@ -1429,6 +1449,7 @@ def _check_ui_file(graph: Graph, path, f: list[Finding]) -> None:
 
     ftype = registry.ui_type(declared)
     if ftype is not None and ftype.kind == "file":
+        _check_section_hosts(doc, rel, ftype.name, f)
         for spec, problem in required_section_problems(doc, ftype.required_sections):
             if problem == "missing":
                 f.append(Finding("error", "missing-required-section",

@@ -154,6 +154,7 @@ Three scoping rules explain findings that otherwise read as false positives or a
 | `schema` | warn | A per-type frontmatter schema violation (also raised against `ids.json`). |
 | `bad-heading-type` | error | A case or spelling variant of a known UI heading, whose `### id` children would otherwise go unrecognized. `ostler fmt` canonicalizes it. |
 | `duplicate-container-heading` | error | Two `## <Title>` sections in one file — the second block's nodes belong to whatever heading precedes them. |
+| `misplaced-section` | error | An `## Endpoints` section outside a `server` page, or a `## Commands` section outside a `cli` page. Move each copy's claims onto the matching node of the host page, delete the section, and link that node instead. |
 | `missing-required-section` | error | A file type is missing a required `## <Heading>`. `ostler scaffold` stubs it. |
 | `empty-required-section` | error | A file type leaves a required `## <Heading>` empty. |
 | `missing-required-bullet` | error | A node is missing a `required` bullet. State it, even as `none`. `ostler scaffold` stubs it. An `interaction`/`invocation` arm's `on:`/`trigger:`/`role:`/`name:`/`keyboard:` is exempt when it states a valid same-type `extends:` (D51) — it inherits the base case's control identity instead of restating it. |

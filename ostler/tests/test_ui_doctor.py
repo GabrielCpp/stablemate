@@ -69,6 +69,31 @@ def test_empty_required_section(repo: Path):
     assert "Endpoints" in hits[0].message
 
 
+def test_an_endpoint_on_a_concept_page_is_misplaced(repo: Path):
+    """A concept page that copies an endpoint drives a request its server page does not describe."""
+    write(repo / "docs/features/api/concepts/orders.md",
+          "---\ntype: concept\nslug: orders\ntitle: Orders\n---\n# Orders\n\n"
+          "## Endpoints\n\n### list-orders\n\n- method: GET\n- path: /orders\n")
+    hits = [f for f in _run(repo).findings if f.code == "misplaced-section"]
+    assert len(hits) == 1
+    assert hits[0].severity == "error" and hits[0].line == 8
+    assert "server page" in hits[0].message
+
+
+def test_an_endpoint_on_its_server_page_is_in_place(repo: Path):
+    write(repo / "docs/features/api/api.md",
+          "---\ntype: server\nslug: api\ntitle: API\n---\n# API\n\n"
+          "## Endpoints\n\n### list-orders\n\n- method: GET\n- path: /orders\n")
+    assert "misplaced-section" not in codes(_run(repo))
+
+
+def test_a_command_on_a_flow_page_is_misplaced(repo: Path):
+    write(repo / "docs/features/wh/flows/ship.md",
+          "---\ntype: flow\nslug: ship\ntitle: Ship\n---\n# Ship\n\n"
+          "## Commands\n\n### ship\n\n- usage: `wh ship`\n")
+    assert "misplaced-section" in codes(_run(repo))
+
+
 def test_filled_required_section_not_flagged(repo: Path):
     """The same book, but `## Endpoints` says something — no finding at all."""
     write(repo / "docs/features/api/api.md",
