@@ -274,7 +274,7 @@ promised a later step would be silently unbound at run time instead.
 Two reference forms read those values elsewhere in the book: `@<fixture-id>.<key>` names a value a
 fixture `provides:`, and `$<captured-name>` names a value some earlier `capture:` produced. Both
 are recognized wherever a `fixture:` bullet's args, a `needs:` binding, a route path template, a
-request-body value, or a `verify:` call can appear — parsed by one shared parser
+request-body value, a request-header value, or a `verify:` call can appear — parsed by one shared parser
 (`ostler.qa.references`) rather than reimplemented per call site, and resolved statically (no
 execution) by `compile_plan`. An `@<fixture>.<key>` naming a key the fixture never declares in
 `provides:` is `fixture-undeclared-provides`; naming a key it declares but has not arranged yet in
@@ -284,8 +284,9 @@ first is a fact about the book, the second is a fact about the order a scenario 
 [doctor-codes.md](../doctor-codes.md#fixtures).
 
 `compile_plan` is the only writer of these substitutions into a plan: it wraps the one literal a
-reference was actually found in — the route path, a verify argument — in `qa.resolve(...)`, the
-harness's single explicit substitution entry point, and leaves every other literal untouched.
+reference was actually found in — the route path, a body member, a header value, a verify
+argument — in `qa.resolve(...)`, the harness's single explicit substitution entry point, and
+leaves every other literal untouched.
 `Http` (`path`/`json_body`/`headers`), the locator helpers (`by_role`/`by_label`/`by_test_id`/
 `by_text`/`by_css`), and `goto` never resolve a string on their own — a literal such as
 `user@acme.dev` or `Pay $total` would otherwise be misread as a reference it is not. A

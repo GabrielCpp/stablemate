@@ -262,6 +262,7 @@ call grammar as a check and refused against its own names:
 | `press(locator*, key*)` | a real keypress has reached a control (focus order, a key-handled shortcut) | web, mobile |
 | `select(locator*, option*)` | a chooser holds a stated option | web |
 | `body(field*, value*)` | a member of the request this step sends carries a stated value | http |
+| `header(name*, value*)` | the request this step sends carries a stated header, such as the token a sign-in fixture minted | http |
 
 **An act's argument type is a property of that act's parameter, not of acts in general.**
 `fill`/`click`/`press`/`select` are all-`str` because their driver is a person: what a browser

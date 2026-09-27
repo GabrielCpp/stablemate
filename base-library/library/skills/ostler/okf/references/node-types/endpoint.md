@@ -164,6 +164,26 @@ using the `body(field*, value*)` act (see
 method needs a body and arranges none compiles nothing for it — `unarranged-request-body`
 (see [../doctor-codes.md](../doctor-codes.md)).
 
+A body member may name a fact a fixture provides, as `value="@seeded-acme.id"`. The run sends
+the value the fixture left, not the characters of the reference.
+
+## Sending a credential
+
+A route that refuses an anonymous caller answers 401 to every claim the book makes about it.
+The caller's credential rides on the request, so it is arranged with the `header(name*, value*)`
+act. The value names the fact the sign-in fixture provides, and the run substitutes it before
+sending:
+
+```markdown
+- status: 200
+- arrange: header(name="Authorization", value="Bearer @signed-in-editor.token")
+```
+
+The fixture has to mint the credential for real, against the app's own sign-in or its auth
+emulator, and provide it under the key the header names. A fixture that only writes a file
+naming a caller leaves the route anonymous. A header that names a fact no fixture in the
+scenario provides is `unresolved-precondition`.
+
 ## Minimal example
 
 ```bash
