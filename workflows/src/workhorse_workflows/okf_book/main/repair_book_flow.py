@@ -67,7 +67,7 @@ class RepairRound(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     uncommitted_at_start: tuple[str, ...]
-    planned: tuple[str, ...]
+    planned_pages: tuple[str, ...]
     journey: JourneyPages
     number: int
     failed_turns: tuple[str, ...] = ()
@@ -122,14 +122,14 @@ class RepairBook(BookFlow):
         problems = (*page_problems(self.root, self.service), *run_problems)
         by_page = problems_by_page(problems, frozenset(uncommitted_at_start))
         journey = journey_pages(self.root, self.service, frozenset(uncommitted_at_start))
-        this_round = RepairRound(uncommitted_at_start=uncommitted_at_start, planned=tuple(by_page), journey=journey, number=1)
+        this_round = RepairRound(uncommitted_at_start=uncommitted_at_start, planned_pages=tuple(by_page), journey=journey, number=1)
         return self._first_batch_or_done(this_round, by_page, journey_needed(problems))
 
     def plan_round(self, last: RepairRound) -> Continue[...] | Done:
         """Check the book again and pack the planned pages that still have problems. A spent repair ends with what is left."""
         problems = page_problems(self.root, self.service)
         found = problems_by_page(problems, frozenset(last.uncommitted_at_start))
-        by_page = {page: texts for page, texts in found.items() if page in last.planned}
+        by_page = {page: texts for page, texts in found.items() if page in last.planned_pages}
         outside = sorted(set(found) - set(by_page))
         if outside:
             self.logger.info("%d pages outside this repair have problems, left for the book check: %s", len(outside), ", ".join(outside))
