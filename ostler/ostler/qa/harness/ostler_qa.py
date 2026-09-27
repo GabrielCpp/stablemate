@@ -1274,7 +1274,7 @@ class _Missing:
 MISSING = _Missing()
 
 
-def _git_entries(root: Path) -> tuple[list[str], list[str]] | None:
+def _kept_and_ignored_paths(root: Path) -> tuple[list[str], list[str]] | None:
     """The paths git keeps under `root` and the ignored ones, or None when `root` is no git checkout."""
     git = shutil.which("git")
     if git is None:
@@ -1537,7 +1537,7 @@ class Qa:
         shutil.rmtree(into, ignore_errors=True)
         root = self.root.resolve()
         qa_dir = self.dir.resolve()
-        listed = _git_entries(root) if root.is_dir() else None
+        listed = _kept_and_ignored_paths(root) if root.is_dir() else None
         if listed is None:
             if root.is_dir():
                 shutil.copytree(root, into, symlinks=True, ignore=_ignore_git_and_qa_dir(qa_dir))

@@ -387,7 +387,7 @@ def _http_request(
     return _HttpRequest(method, path, arranged.kwargs_source(with_body=True), sent_references)
 
 
-def _spelled(ref: references.Reference) -> str:
+def _book_spelling(ref: references.Reference) -> str:
     """*ref* as the book spells it: `@node.key` or `$name`."""
     return f"@{ref.node}.{ref.key}" if isinstance(ref, references.NodeRef) else f"${ref.name}"
 
@@ -400,7 +400,7 @@ def _unprovided_references(request: _HttpRequest, known: _Produced) -> list[refe
 def _unprovided_reference_gaps(index: int, unprovided: list[references.Reference], ids: list[str]) -> list[Gap]:
     """One gap per obligation for each reference step *index* sends that nothing provides."""
     return [Gap(oid, "unresolved-precondition",
-                f"step {index} sends `{_spelled(ref)}`, and neither a fixture the flow's "
+                f"step {index} sends `{_book_spelling(ref)}`, and neither a fixture the flow's "
                 "`fixture:` names nor an earlier step provides it — name the fixture that "
                 "provides it on the flow, or arrange the step from a fact the flow's "
                 "fixture provides")
