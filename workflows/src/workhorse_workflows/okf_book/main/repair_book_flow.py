@@ -42,7 +42,7 @@ from workhorse_workflows.okf_book.shared.book_commits import repaired_book_commi
 from workhorse_workflows.okf_book.shared.book_flow import BookFlow
 from workhorse_workflows.okf_book.shared.confine import Snapshot, book_changes, in_book, put_back_outside, restore, snapshot, untracked
 from workhorse_workflows.okf_book.shared.entries import FEATURES_DIR, entries_path
-from workhorse_workflows.okf_book.shared.metrics import record_turn, turn_metric
+from workhorse_workflows.okf_book.shared.metrics import TurnMetric, record_turn, turn_metric
 from workhorse_workflows.okf_book.shared.page_check import PageProblem, page_problems
 
 REPAIR_PROMPT = "main/prompts/repair-pages.md"
@@ -191,6 +191,12 @@ class RepairBook(BookFlow):
             failure = f"the repair turn on {', '.join(batch.page_paths)} ended without a reply: {ended}"
         node = Path(REPAIR_PROMPT).stem
         metric = turn_metric(Phase.WRITE, node, (self.service,), (time.monotonic() - started) / 60, self.turn_usage(node))
+        return Continue(
+            failure, self.record_repair_turn, this_round=this_round, index=index, before=before, metric=metric, failure=failure
+        ).because("record what the turn cost")
+
+    def record_repair_turn(self, this_round: RepairRound, index: int, before: Snapshot, metric: TurnMetric, failure: str) -> Continue[...]:
+        """Record what the repair turn cost, and the turn among the failed ones when it ended without a reply."""
         record_turn(self.records_dir, metric)
         if failure:
             self.logger.warning("%s", failure)
