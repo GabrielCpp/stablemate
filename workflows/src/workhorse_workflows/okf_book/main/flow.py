@@ -23,7 +23,7 @@ from workhorse_workflows.okf_book.shared.book_run import ExerciseResult
 from workhorse_workflows.okf_book.shared.citations import book_pages
 from workhorse_workflows.okf_book.shared.entries import FEATURES_DIR
 from workhorse_workflows.okf_book.shared.page_check import book_problems
-from workhorse_workflows.okf_book.shared.scenarios import plan_scenarios, spec_dir, write_run
+from workhorse_workflows.okf_book.shared.scenarios import PLAN_NAME, plan_scenarios, spec_dir, write_run
 
 OPERATOR_NAME = "operator.md"
 RUN_REPAIRS = 3
@@ -216,8 +216,10 @@ class OkfBook(BookFlow):
     def _run_failures(self, service: str, exercised: ExerciseResult) -> RunFailures:
         if exercised.summary is None:
             return {}
-        scenarios, _problems = plan_scenarios(self.root, spec_dir(self.records_dir) / service)
-        return exercised.summary.failures_by_page(scenarios)
+        spec = spec_dir(self.records_dir) / service
+        scenarios, _problems = plan_scenarios(self.root, spec)
+        plan = spec / PLAN_NAME
+        return exercised.summary.failures_by_page(scenarios, plan.read_text(encoding="utf-8") if plan.is_file() else "")
 
     def report(self) -> Await[...] | Done:
         """Publish the report. Any blocker stops the run at the operator, once."""

@@ -19,6 +19,8 @@ SPEC_DIR = "spec"
 PLAN_NAME = "qa_plan.py"
 RUN_NAME = "run-summary.json"
 OBLIGATION_PAGE = re.compile(r"^okf:(?P<page>[^#]+?\.md)(?:[#:]|$)")
+PLAN_FRAME = re.compile(rf'File "[^"]*{re.escape(PLAN_NAME)}", line (?P<line>\d+)')
+CLAIM_MARK = re.compile(r"^\s*# (?P<claim>okf:\S+)")
 
 
 class Scenario(BaseModel):
@@ -66,6 +68,14 @@ class ScenarioOutcome(BaseModel):
         last = self.message.strip().splitlines()[-1:]
         return (*(check.failure_line() for check in self.failed_checks), *last)
 
+    def failed_claim(self, plan: str) -> str:
+        """The obligation whose compiled lines in *plan* the run's traceback stopped in, or nothing when it stopped in none."""
+        frames = [int(frame.group(1)) for frame in PLAN_FRAME.finditer(self.message)]
+        if not frames:
+            return ""
+        above = reversed(plan.splitlines()[: frames[-1]])
+        return next((mark["claim"] for line in above if (mark := CLAIM_MARK.match(line))), "")
+
 
 class RunSummary(BaseModel):
     """What running the plan did: its status, each scenario's outcome, and what stopped it."""
@@ -82,14 +92,20 @@ class RunSummary(BaseModel):
     def failed_scenarios(self) -> tuple[str, ...]:
         return tuple(sorted(name for name, outcome in self.scenarios.items() if outcome.status != "passed"))
 
-    def failures_by_page(self, scenarios: Iterable[Scenario]) -> dict[str, tuple[str, ...]]:
-        """Each book page whose obligations a failed scenario covers, and what that scenario reported, pages in path order."""
+    def failures_by_page(self, scenarios: Iterable[Scenario], plan: str = "") -> dict[str, tuple[str, ...]]:
+        """Each book page whose obligations a failed scenario covers, and what that scenario reported, pages in path order.
+
+        A scenario stopped inside the compiled *plan* is reported at the obligation it stopped in.
+        """
         pages = {scenario.id: scenario.pages for scenario in scenarios}
         grouped: dict[str, list[str]] = {}
         for name in self.failed_scenarios:
-            lines = self.scenarios[name].failure_lines() or (self.scenarios[name].status,)
+            outcome = self.scenarios[name]
+            lines = outcome.failure_lines() or (outcome.status,)
+            claim = outcome.failed_claim(plan)
+            where = f"the run of scenario {name} failed at {claim}" if claim else f"the run of scenario {name} failed"
             for page in pages.get(name, ()):
-                grouped.setdefault(page, []).extend(f"the run of scenario {name} failed: {line}" for line in lines)
+                grouped.setdefault(page, []).extend(f"{where}: {line}" for line in lines)
         return {page: tuple(grouped[page]) for page in sorted(grouped)}
 
 
