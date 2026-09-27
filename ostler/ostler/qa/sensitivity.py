@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import functools
 import importlib
 import re
 from dataclasses import dataclass
@@ -396,6 +397,9 @@ class _NoWitness:
     reason: str
 
 
+_WitnessPlan = tuple[Any, list[tuple[str, Any]], str]
+
+
 def _witness_texts(args: Mapping[str, Any]) -> _WitnessTexts | _NoWitness:
     """A text holding what the call's `text=` and `matches=` name and one holding neither, or why no such pair exists."""
     pattern = str(args["matches"]) if "matches" in args else None
@@ -411,7 +415,7 @@ def _witness_texts(args: Mapping[str, Any]) -> _WitnessTexts | _NoWitness:
     return _WitnessTexts(matching=expected_output, other=other_output)
 
 
-def _plan_stream(stream: str, args: Mapping[str, Any]) -> tuple[Any, list[tuple[str, Any]], str]:
+def _plan_stream(stream: str, args: Mapping[str, Any]) -> _WitnessPlan:
     """A tool result that printed what the call names on `stream`, and the results that printed it elsewhere or not at all."""
     texts = _witness_texts(args)
     if isinstance(texts, _NoWitness):
@@ -423,7 +427,7 @@ def _plan_stream(stream: str, args: Mapping[str, Any]) -> tuple[Any, list[tuple[
         (f"the command printed it on {other_stream} instead", _printed(other_stream, expected_output)),
     ], ""
 
-def _plan_contents(args: Mapping[str, Any]) -> tuple[Any, list[tuple[str, Any]], str]:
+def _plan_contents(args: Mapping[str, Any]) -> _WitnessPlan:
     """A working directory whose file holds what the call names, and the directories where it holds something else or is not there."""
     texts = _witness_texts(args)
     if isinstance(texts, _NoWitness):
@@ -436,7 +440,7 @@ def _plan_contents(args: Mapping[str, Any]) -> tuple[Any, list[tuple[str, Any]],
     ], ""
 
 
-def _plan(call: checks.CheckCall) -> tuple[Any, list[tuple[str, Any]], str]:
+def _plan(call: checks.CheckCall) -> _WitnessPlan:
     """The witness observation, the mutations to try against it, and why there are none: in the file a `file=` names, when the call names one."""
     witness, mutations, note = _plan_observed(call)
     if "file" not in call.args or witness is None:
@@ -448,181 +452,239 @@ def _plan(call: checks.CheckCall) -> tuple[Any, list[tuple[str, Any]], str]:
     ], note
 
 
-def _plan_observed(call: checks.CheckCall) -> tuple[Any, list[tuple[str, Any]], str]:
+def _plan_observed(call: checks.CheckCall) -> _WitnessPlan:
     """The witness observation, the mutations to try against it, and why there are none."""
-    args = call.args
-    name = call.name
-    if name == "http_status":
-        code = _int(args["code"])
-        route = str(args.get("path", "/witness"))
-        body = {"title": args["title"]} if "title" in args else {}
-        witness = _Response(code, body, f"http://witness{route}")
-        mutations: list[tuple[str, Any]] = [
-            ("the route answered a different status", _Response(500 if code != 500 else 400, body, f"http://witness{route}")),
-        ]
-        if "path" in args:
-            mutations.append(("a different request answered", _Response(code, body, "http://witness/elsewhere")))
-        if "title" in args:
-            mutations.append(("the refusal names something else", _Response(code, {"title": _OTHER}, f"http://witness{route}")))
-        return witness, mutations, ""
-    if name == "response_header":
-        header = str(args["name"])
-        if "equals" in args:
-            value = str(args["equals"])
-        else:
-            found = _matching(str(args["matches"]))
-            if found is None:
-                return None, [], f"no witness value can be invented for /{args['matches']}/"
-            value = found
-        witness = _Response(200, {}, "http://witness/", {header: value})
-        mutations = [("the response does not carry the header", _Response(200, {}, "http://witness/"))]
-        if "matches" not in args or not matches_admits_other(str(args["matches"])):
-            mutations.append(("the header carries another value",
-                              _Response(200, {}, "http://witness/", {header: _OTHER})))
-        return witness, mutations, ""
-    if name == "json_path":
-        path = str(args["path"])
-        if "absent" in args:
-            if args["absent"]:
-                return {}, [("the field the claim forbids is there", _set_path({}, path, "x"))], ""
-            return _set_path({}, path, "x"), [("the field the claim requires is missing", {})], ""
-        if "equals" in args:
-            value: Any = args["equals"]
-        elif "matches" in args:
-            found = _matching(str(args["matches"]))
-            if found is None:
-                return None, [], f"no witness value can be invented for /{args['matches']}/"
-            value = found
-        else:
-            value = "x"
-        witness = _set_path({}, path, value)
-        mutations = []
-        if "matches" not in args or not matches_admits_other(str(args["matches"])):
-            mutations.append(("the field holds something else", _set_path({}, path, _OTHER)))
-        if "matches" not in args or _matching(str(args.get("matches", ""))) is not None:
-            mutations.append(("the field is not there at all", _drop_path(_set_path({}, path, value), path)))
-        return witness, mutations, ""
-    if name == "unchanged":
-        declared = args.get("except_fields", [])
-        allowed = [str(field) for field in declared] if isinstance(declared, list) else []
-        before = {"claimed": 1, "also_claimed": 2, **{field: 1 for field in allowed}}
+    planner = _PLANNERS.get(call.name)
+    if planner is None:  # pragma: no cover - vocabulary drift
+        return None, [], f"`{call.name}` has no witness in this harness"
+    return planner(call.args)
+
+
+def _plan_http_status(args: Mapping[str, Any]) -> _WitnessPlan:
+    code = _int(args["code"])
+    route = str(args.get("path", "/witness"))
+    body = {"title": args["title"]} if "title" in args else {}
+    witness = _Response(code, body, f"http://witness{route}")
+    mutations: list[tuple[str, Any]] = [
+        ("the route answered a different status", _Response(500 if code != 500 else 400, body, f"http://witness{route}")),
+    ]
+    if "path" in args:
+        mutations.append(("a different request answered", _Response(code, body, "http://witness/elsewhere")))
+    if "title" in args:
+        mutations.append(("the refusal names something else", _Response(code, {"title": _OTHER}, f"http://witness{route}")))
+    return witness, mutations, ""
+
+
+def _plan_response_header(args: Mapping[str, Any]) -> _WitnessPlan:
+    header = str(args["name"])
+    if "equals" in args:
+        value = str(args["equals"])
+    else:
+        found = _matching(str(args["matches"]))
+        if found is None:
+            return None, [], f"no witness value can be invented for /{args['matches']}/"
+        value = found
+    witness = _Response(200, {}, "http://witness/", {header: value})
+    mutations: list[tuple[str, Any]] = [("the response does not carry the header", _Response(200, {}, "http://witness/"))]
+    if "matches" not in args or not matches_admits_other(str(args["matches"])):
+        mutations.append(("the header carries another value",
+                          _Response(200, {}, "http://witness/", {header: _OTHER})))
+    return witness, mutations, ""
+
+
+def _plan_json_path(args: Mapping[str, Any]) -> _WitnessPlan:
+    path = str(args["path"])
+    if "absent" in args:
+        if args["absent"]:
+            return {}, [("the field the claim forbids is there", _set_path({}, path, "x"))], ""
+        return _set_path({}, path, "x"), [("the field the claim requires is missing", {})], ""
+    if "equals" in args:
+        value: Any = args["equals"]
+    elif "matches" in args:
+        found = _matching(str(args["matches"]))
+        if found is None:
+            return None, [], f"no witness value can be invented for /{args['matches']}/"
+        value = found
+    else:
+        value = "x"
+    witness = _set_path({}, path, value)
+    mutations: list[tuple[str, Any]] = []
+    if "matches" not in args or not matches_admits_other(str(args["matches"])):
+        mutations.append(("the field holds something else", _set_path({}, path, _OTHER)))
+    if "matches" not in args or _matching(str(args.get("matches", ""))) is not None:
+        mutations.append(("the field is not there at all", _drop_path(_set_path({}, path, value), path)))
+    return witness, mutations, ""
+
+
+def _plan_unchanged(args: Mapping[str, Any]) -> _WitnessPlan:
+    declared = args.get("except_fields", [])
+    allowed = [str(field) for field in declared] if isinstance(declared, list) else []
+    before = {"claimed": 1, "also_claimed": 2, **{field: 1 for field in allowed}}
+    return (
+        (before, dict(before)),
+        [("a field the claim protects changed", (before, {**before, "claimed": 9}))],
+        "",
+    )
+
+
+def _plan_keys_unchanged(_args: Mapping[str, Any]) -> _WitnessPlan:
+    before = {"a": 1, "b": 2}
+    return (
+        (before, dict(before)),
+        [
+            ("an entry left the ledger", (before, {"a": 1})),
+            ("an entry appeared in the ledger", (before, {**before, "c": 3})),
+        ],
+        "",
+    )
+
+
+def _plan_count(args: Mapping[str, Any]) -> _WitnessPlan:
+    want = _int(args["equals"])
+    subject = str(args["subject"])
+    if _PATHLIKE.match(subject):
         return (
-            (before, dict(before)),
-            [("a field the claim protects changed", (before, {**before, "claimed": 9}))],
-            "",
-        )
-    if name == "keys_unchanged":
-        before = {"a": 1, "b": 2}
-        return (
-            (before, dict(before)),
+            _collection(subject, want),
             [
-                ("an entry left the ledger", (before, {"a": 1})),
-                ("an entry appeared in the ledger", (before, {**before, "c": 3})),
+                ("the collection holds one more", _collection(subject, want + 1)),
+                ("the collection is not in the answer", {}),
             ],
             "",
         )
-    if name == "count":
-        want = _int(args["equals"])
-        subject = str(args["subject"])
-        if _PATHLIKE.match(subject):
-            return (
-                _collection(subject, want),
-                [
-                    ("the collection holds one more", _collection(subject, want + 1)),
-                    ("the collection is not in the answer", {}),
-                ],
-                "",
-            )
-        return [{"i": i} for i in range(want)], [("the collection holds one more", [{"i": i} for i in range(want + 1)])], ""
-    if name == "absent":
-        return None, [("the subject is there after all", ["something"])], ""
-    if name == "created":
-        return (None, {"id": "x"}), [
-            ("it was already there before the action", ({"id": "x"}, {"id": "x"})),
-            ("nothing was created", (None, None)),
+    return [{"i": i} for i in range(want)], [("the collection holds one more", [{"i": i} for i in range(want + 1)])], ""
+
+
+def _plan_absent(_args: Mapping[str, Any]) -> _WitnessPlan:
+    return None, [("the subject is there after all", ["something"])], ""
+
+
+def _plan_created(_args: Mapping[str, Any]) -> _WitnessPlan:
+    return (None, {"id": "x"}), [
+        ("it was already there before the action", ({"id": "x"}, {"id": "x"})),
+        ("nothing was created", (None, None)),
+    ], ""
+
+
+def _plan_removed(_args: Mapping[str, Any]) -> _WitnessPlan:
+    return ({"id": "x"}, None), [
+        ("it was never there to remove", (None, None)),
+        ("it is still there afterwards", ({"id": "x"}, {"id": "x"})),
+    ], ""
+
+
+def _plan_visible(args: Mapping[str, Any]) -> _WitnessPlan:
+    text = str(args.get("text", "witness"))
+    witness = _Locator(visible=True, text=text)
+    mutations: list[tuple[str, Any]] = [("the element is not on the page", _Locator(visible=False, text=text))]
+    if "text" in args:
+        mutations.append(("the element reads something else", _Locator(visible=True, text=_OTHER)))
+    return witness, mutations, ""
+
+
+def _plan_actionable(_args: Mapping[str, Any]) -> _WitnessPlan:
+    return _Locator(visible=True, text="witness", enabled=True), [
+        ("the control is disabled", _Locator(visible=True, text="witness", enabled=False)),
+    ], ""
+
+
+def _plan_focusable(args: Mapping[str, Any]) -> _WitnessPlan:
+    key = str(args["activates"]) if "activates" in args else None
+    witness = _Focusable(takes_focus=True, fires_on=key)
+    mutations: list[tuple[str, Any]] = [
+        ("the control cannot be reached by the keyboard", _Focusable(takes_focus=False, fires_on=key)),
+    ]
+    if key is not None:
+        mutations.append(
+            ("the control takes focus but the key does nothing", _Focusable(takes_focus=True, fires_on=None)),
+        )
+    return witness, mutations, ""
+
+
+def _plan_inert(_args: Mapping[str, Any]) -> _WitnessPlan:
+    return _Locator(visible=True, text="witness", enabled=False), [
+        ("the control still accepts the action",
+         _Locator(visible=True, text="witness", enabled=True)),
+    ], ""
+
+
+def _plan_persists(_args: Mapping[str, Any]) -> _WitnessPlan:
+    return ("written", "written"), [
+        ("nothing was re-read after the restart", ("written", None)),
+        ("what came back is not what was written", ("written", _OTHER)),
+    ], ""
+
+
+def _plan_emitted(args: Mapping[str, Any]) -> _WitnessPlan:
+    want = _int(args["count"]) if "count" in args else 1
+    witness = [{"event": i} for i in range(want)]
+    mutations: list[tuple[str, Any]] = []
+    if want != 0:
+        mutations.append(("nothing was emitted", []))
+    if "count" in args:
+        mutations.append(("one more was emitted", [{"event": i} for i in range(want + 1)]))
+    return witness, mutations, ""
+
+
+def _plan_omits(args: Mapping[str, Any]) -> _WitnessPlan:
+    subject = str(args["subject"])
+    pattern = str(args["matches"]) if "matches" in args else None
+    leak = str(args["text"]) if "text" in args else _matching(pattern or "")
+    if leak is None:
+        return None, [], f"no leaking value can be invented for /{args.get('matches')}/"
+    clean = _avoiding(pattern, str(args["text"]) if "text" in args else None)
+    if clean is None:
+        return None, [], f"every observation carries something /{pattern}/ matches"
+    framed = f"… {leak} …"
+    if pattern is None or re.search(pattern, framed):
+        tainted = framed
+    elif re.search(pattern, leak):
+        tainted = leak
+    else:
+        tainted = None
+    if tainted is None:
+        return None, [], f"no perturbation of /{pattern}/ would itself violate the claim"
+    if _PATHLIKE.match(subject):
+        return _set_path({}, subject, clean), [
+            ("the subject carries what it may not", _set_path({}, subject, tainted)),
         ], ""
-    if name == "removed":
-        return ({"id": "x"}, None), [
-            ("it was never there to remove", (None, None)),
-            ("it is still there afterwards", ({"id": "x"}, {"id": "x"})),
-        ], ""
-    if name == "visible":
-        text = str(args.get("text", "witness"))
-        witness = _Locator(visible=True, text=text)
-        mutations = [("the element is not on the page", _Locator(visible=False, text=text))]
-        if "text" in args:
-            mutations.append(("the element reads something else", _Locator(visible=True, text=_OTHER)))
-        return witness, mutations, ""
-    if name == "actionable":
-        return _Locator(visible=True, text="witness", enabled=True), [
-            ("the control is disabled", _Locator(visible=True, text="witness", enabled=False)),
-        ], ""
-    if name == "focusable":
-        key = str(args["activates"]) if "activates" in args else None
-        witness = _Focusable(takes_focus=True, fires_on=key)
-        mutations = [
-            ("the control cannot be reached by the keyboard", _Focusable(takes_focus=False, fires_on=key)),
-        ]
-        if key is not None:
-            mutations.append(
-                ("the control takes focus but the key does nothing", _Focusable(takes_focus=True, fires_on=None)),
-            )
-        return witness, mutations, ""
-    if name == "inert":
-        return _Locator(visible=True, text="witness", enabled=False), [
-            ("the control still accepts the action",
-             _Locator(visible=True, text="witness", enabled=True)),
-        ], ""
-    if name == "persists":
-        return ("written", "written"), [
-            ("nothing was re-read after the restart", ("written", None)),
-            ("what came back is not what was written", ("written", _OTHER)),
-        ], ""
-    if name == "emitted":
-        want = _int(args["count"]) if "count" in args else 1
-        witness = [{"event": i} for i in range(want)]
-        mutations = []
-        if want != 0:
-            mutations.append(("nothing was emitted", []))
-        if "count" in args:
-            mutations.append(("one more was emitted", [{"event": i} for i in range(want + 1)]))
-        return witness, mutations, ""
-    if name == "omits":
-        subject = str(args["subject"])
-        pattern = str(args["matches"]) if "matches" in args else None
-        leak = str(args["text"]) if "text" in args else _matching(pattern or "")
-        if leak is None:
-            return None, [], f"no leaking value can be invented for /{args.get('matches')}/"
-        clean = _avoiding(pattern, str(args["text"]) if "text" in args else None)
-        if clean is None:
-            return None, [], f"every observation carries something /{pattern}/ matches"
-        framed = f"… {leak} …"
-        if pattern is None or re.search(pattern, framed):
-            tainted = framed
-        elif re.search(pattern, leak):
-            tainted = leak
-        else:
-            tainted = None
-        if tainted is None:
-            return None, [], f"no perturbation of /{pattern}/ would itself violate the claim"
-        if _PATHLIKE.match(subject):
-            return _set_path({}, subject, clean), [
-                ("the subject carries what it may not", _set_path({}, subject, tainted)),
-            ], ""
-        return clean, [("the observation carries what it may not", tainted)], ""
-    if name == "exit_status":
-        code = _int(args["code"])
-        return SimpleNamespace(exit_code=code), [
-            ("the process exited differently", SimpleNamespace(exit_code=code + 1 if code == 0 else 0)),
-        ], ""
-    if name in ("stdout", "stderr"):
-        return _plan_stream(name, args)
-    if name == "contents":
-        return _plan_contents(args)
-    if name == "conflict_on_stale":
-        url = "http://witness/subject"
-        return _Response(409, {}, url), [("the stale write was accepted", _Response(200, {}, url))], ""
-    return None, [], f"`{name}` has no witness in this harness"  # pragma: no cover - vocabulary drift
+    return clean, [("the observation carries what it may not", tainted)], ""
+
+
+def _plan_exit_status(args: Mapping[str, Any]) -> _WitnessPlan:
+    code = _int(args["code"])
+    return SimpleNamespace(exit_code=code), [
+        ("the process exited differently", SimpleNamespace(exit_code=code + 1 if code == 0 else 0)),
+    ], ""
+
+
+def _plan_conflict_on_stale(_args: Mapping[str, Any]) -> _WitnessPlan:
+    url = "http://witness/subject"
+    return _Response(409, {}, url), [("the stale write was accepted", _Response(200, {}, url))], ""
+
+
+_PLANNERS: dict[str, Callable[[Mapping[str, Any]], _WitnessPlan]] = {
+    "http_status": _plan_http_status,
+    "response_header": _plan_response_header,
+    "json_path": _plan_json_path,
+    "unchanged": _plan_unchanged,
+    "keys_unchanged": _plan_keys_unchanged,
+    "count": _plan_count,
+    "absent": _plan_absent,
+    "created": _plan_created,
+    "removed": _plan_removed,
+    "visible": _plan_visible,
+    "actionable": _plan_actionable,
+    "focusable": _plan_focusable,
+    "inert": _plan_inert,
+    "persists": _plan_persists,
+    "emitted": _plan_emitted,
+    "omits": _plan_omits,
+    "exit_status": _plan_exit_status,
+    "stdout": functools.partial(_plan_stream, "stdout"),
+    "stderr": functools.partial(_plan_stream, "stderr"),
+    "contents": _plan_contents,
+    "conflict_on_stale": _plan_conflict_on_stale,
+}
 
 
 def unsatisfiable(call: checks.CheckCall) -> str:
