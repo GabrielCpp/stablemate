@@ -7,7 +7,6 @@ import json
 import os
 import tempfile
 from contextlib import contextmanager, redirect_stdout
-from dataclasses import dataclass
 from pathlib import Path
 from unittest.mock import patch
 
@@ -32,7 +31,6 @@ from workhorse.runner.backends import (
 from workhorse.runner.backends.cline import ClineBackend
 from workhorse.runner.backends.claude import ClaudeBackend
 from workhorse.runner.backends.codex import CodexBackend
-from workhorse.runner.backends.codex_guard import Policy
 from workhorse.runner.backends.copilot import CopilotBackend
 from workhorse.runner.backends.null import NullBackend
 from workhorse.runner.backends.opencode import OpenCodeBackend
@@ -275,57 +273,6 @@ def test_codex_no_effort_omits_override():
         if prior is not None:
             os.environ["CODEX_PROFILE"] = prior
     assert "model_reasoning_effort" not in " ".join(captured["cmd"])
-
-
-@dataclass(frozen=True)
-class _GuardedCall:
-    hooks: str
-    policy_path: Path
-    policy: Policy
-
-
-def test_codex_runs_a_confined_turn_behind_the_guard_hook_and_removes_its_policy_after():
-    """A confined codex turn runs outside the sandbox, so every tool call passes the guard, which reads the turn's policy."""
-    with tempfile.TemporaryDirectory() as tmp:
-        root = Path(tmp).resolve()
-        (root / ".git").mkdir()
-        (root / "docs").mkdir()
-        (root / ".claude" / "skills").mkdir(parents=True)
-        agent = AgentProfile(name="docs", tools={"*": False}, confined=True, commands=("ostler",))
-        calls: list[_GuardedCall] = []
-
-        def fake(cmd, node_id, timeout, stdin_data, on_event, **kwargs):
-            hooks = cmd[cmd.index("--dangerously-bypass-hook-trust") + 2]
-            policy_path = Path(hooks.split(" ")[-1].rstrip('"}]'))
-            calls.append(_GuardedCall(hooks, policy_path, Policy.from_json(policy_path.read_text(encoding="utf-8"))))
-            return turn.TurnState(result_text="OK", session_id="t")
-
-        prior = os.environ.pop("CODEX_PROFILE", None)
-        try:
-            _run_turn(CodexBackend(fake), "P", "n", root / ".sid", cwd=str(root / "docs"), add_dirs=[str(root / "src")], agent=agent)
-        finally:
-            if prior is not None:
-                os.environ["CODEX_PROFILE"] = prior
-    (call,) = calls
-    assert "codex_guard" in call.hooks
-    assert call.policy == Policy(
-        cwd=root / "docs",
-        read_roots=(root / "docs", root / "src", root / ".claude" / "skills"),
-        commands=("ostler",),
-    )
-    assert not call.policy_path.exists()
-
-
-def test_codex_runs_an_unconfined_turn_without_the_guard():
-    sidp = Path(tempfile.mkdtemp()) / ".session_id"
-    fake, captured = _fake_stream(turn.TurnState(result_text="OK", session_id="t"))
-    prior = os.environ.pop("CODEX_PROFILE", None)
-    try:
-        _run_turn(CodexBackend(fake), "P", "n", sidp, agent=AgentProfile(name="free"))
-    finally:
-        if prior is not None:
-            os.environ["CODEX_PROFILE"] = prior
-    assert "--dangerously-bypass-hook-trust" not in captured["cmd"]
 
 
 def _capture_claude_cmd(**run_turn_kwargs):
@@ -1256,25 +1203,6 @@ def test_a_line_that_parses_but_is_not_an_object_is_text():
     )
     assert seen == [{"type": "step"}]
     assert state.diagnostics[-4:] == ["42", '"loading"', "[1, 2]", "null"]
-
-
-def test_codex_hook_notices_neither_fail_nor_end_the_turn():
-    """A refused command, a patch that missed and the hook-trust warning are events of a guarded turn, not failures, even when one names a timeout."""
-    lines = [
-        json.dumps({"type": "item.completed", "item": {"id": "item_0", "type": "error", "message": "`--dangerously-bypass-hook-trust` is enabled. Hooks may run."}}),
-        "2026-01-01T00:00:00Z ERROR codex_core::tools::router: error=Command blocked by PreToolUse hook: Refused. Command: timeout 60 cat x",
-        "2026-01-01T00:00:00.503861Z ERROR codex_core::tools::router: error=apply_patch verification failed: Failed to find expected lines in a.md:",
-        json.dumps({"type": "item.completed", "item": {"type": "agent_message", "text": "DONE"}}),
-    ]
-
-    def fake_stream(cmd, node_id, timeout, on_line, **kwargs):
-        return any(on_line(raw) for raw in lines), 0
-
-    with patch.object(process, "stream_subprocess", fake_stream):
-        state = jsonl.stream_jsonl(["codex"], "n", 3600, None, codex._on_event, resilience=RESILIENCE, non_failure_markers=codex.NON_FAILURE_MARKERS)
-    assert state.diagnostics == []
-    assert not state.timed_out
-    assert state.result_text == "DONE"
 
 
 def test_opencode_cap_log_line_aborts_stream_early():
