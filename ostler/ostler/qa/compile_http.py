@@ -131,7 +131,7 @@ class _HttpArrangement:
         return [ref for value in values if isinstance(value, str)
                 for ref in references.find_references(value)]
 
-    def kwargs(self, *, with_body: bool) -> str:
+    def kwargs_source(self, *, with_body: bool) -> str:
         """The `json_body=`/`headers=` keywords of the call that sends this arrangement."""
         body = f", json_body={_lit_fields(self.body)}" if with_body else ""
         headers = f", headers={_lit_fields(self.headers)}" if self.headers else ""
@@ -236,8 +236,8 @@ def _claim_request(
     path_expr = f"qa.resolve({python_literal(path)})" if path_refs else python_literal(path)
     status = _expect_status(rows)
     expect = f", expect_status={status}" if status is not None else ""
-    sent = arranged.kwargs(with_body=wants_body) if arranged is not None else ""
-    return _ClaimRequest(f"    {observed} = qa.http.{method.lower()}({path_expr}{expect}{sent})", "{" in path)
+    kwargs_source = arranged.kwargs_source(with_body=wants_body) if arranged is not None else ""
+    return _ClaimRequest(f"    {observed} = qa.http.{method.lower()}({path_expr}{expect}{kwargs_source})", "{" in path)
 
 
 def _request_lines(
@@ -338,8 +338,8 @@ class _HttpRequest:
     """One journey step's request: the verb, the path, and the `json_body=`/`headers=` it sends."""
     method: str
     path: str
-    sent: str
-    named: tuple[references.Reference, ...] = ()
+    kwargs_source: str
+    sent_references: tuple[references.Reference, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -373,16 +373,16 @@ def _http_request(
     node_rows = book.acts_by_node.get(ref, [])
     arranged = (None if (ref in book.acts_refused or not node_rows)
                 else _http_arrangement(tuple(node_rows)))
-    named = tuple(arranged.named_references()) if arranged else ()
+    sent_references = tuple(arranged.named_references()) if arranged else ()
     if method in _BODILESS_METHODS:
-        return _HttpRequest(method, path, arranged.kwargs(with_body=False) if arranged else "", named)
+        return _HttpRequest(method, path, arranged.kwargs_source(with_body=False) if arranged else "", sent_references)
     if arranged is None or not arranged.body:
         gaps.extend(Gap(oid, "unarranged-request-body",
                         f"step {index} is a {method} and the book carries no request body")
                     for oid in ids)
         return _UnbuiltStep("this journey could not build this step's request body, so it "
                             "holds no response to capture the field from")
-    return _HttpRequest(method, path, arranged.kwargs(with_body=True), named)
+    return _HttpRequest(method, path, arranged.kwargs_source(with_body=True), sent_references)
 
 
 def _spelled(ref: references.Reference) -> str:
@@ -392,7 +392,7 @@ def _spelled(ref: references.Reference) -> str:
 
 def _unprovided_references(request: _HttpRequest, known: _Produced) -> list[references.Reference]:
     """Every reference *request* sends that no journey fixture or earlier step provides."""
-    return [ref for ref in request.named if not known.resolves(ref)]
+    return [ref for ref in request.sent_references if not known.resolves(ref)]
 
 
 def _unprovided_reference_gaps(index: int, unprovided: list[references.Reference], ids: list[str]) -> list[Gap]:
@@ -501,7 +501,7 @@ def _http_steps(walk: JourneyWalk, sinks: PlanSinks) -> _HttpSteps | None:
         target = (f"qa.resolve({python_literal(bound)})" if references.find_references(bound)
                   else python_literal(bound))
         expect = f", expect_status={refused}" if refused is not None and index == len(walk.steps) else ""
-        lines.append(f"    {observed} = qa.http.{request.method.lower()}({target}{expect}{request.sent})")
+        lines.append(f"    {observed} = qa.http.{request.method.lower()}({target}{expect}{request.kwargs_source})")
         if "{" in bound:
             lines.append("    # TODO(arrange): the path above still carries a template variable")
             gaps.extend(Gap(oid, "unresolved-precondition",
