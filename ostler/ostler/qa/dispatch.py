@@ -14,6 +14,7 @@ OBSERVE_ROW: dict[str, str] = {
 }
 BUILT_TARGETS = frozenset({"playwright", "http", "cli", "maestro"})
 NO_LIVE_EVIDENCE_TYPES = frozenset({"concept", "method"})
+NO_LIVE_EVIDENCE_PAGES = frozenset({"concept", "format"})
 
 OPS_TYPES = frozenset({"environment", "runbook", "step", "fixture"})
 NO_ROW_REASON = (
@@ -48,16 +49,18 @@ def hosts_observation(node_type: str) -> bool:
     return node_type in OBSERVED_TYPES or node_type in DISPATCH_TABLE
 
 
-def owes_live_evidence(node_type: str) -> bool:
-    """Whether a check declared on *node_type* could ever be performed against a system.
+def owes_live_evidence(node_type: str, page_type: str = "") -> bool:
+    """Whether a check declared on *node_type*, on a *page_type* page, could ever be performed against a system.
 
     A `concept` page is a piece of thinking about the user and the system, and a `method`
     is implementation the user never touches. Each explains the surface a user drives, so
     neither owes live evidence of its own: the command, endpoint or interaction that
-    reaches it does. A type this does not recognise still owes it: an unclassified node is
-    a missing fact, not a definition.
+    reaches it does. The same holds for every node a `concept` or `format` page holds: a
+    field of a definition or of a data shape is observed through the surface that reads
+    or writes it, never where it is defined. A type this does not recognise still owes
+    it: an unclassified node is a missing fact, not a definition.
     """
-    return node_type not in NO_LIVE_EVIDENCE_TYPES
+    return node_type not in NO_LIVE_EVIDENCE_TYPES and page_type not in NO_LIVE_EVIDENCE_PAGES
 
 
 def dispatch_target(node_type: str, driver: str | None) -> str | ScenarioRefusal:
@@ -91,7 +94,7 @@ def dispatch_target(node_type: str, driver: str | None) -> str | ScenarioRefusal
 
 
 __all__ = [
-    "BUILT_TARGETS", "DISPATCH_TABLE", "NO_LIVE_EVIDENCE_TYPES", "NO_ROW_REASONS", "OBSERVED_TYPES",
+    "BUILT_TARGETS", "DISPATCH_TABLE", "NO_LIVE_EVIDENCE_PAGES", "NO_LIVE_EVIDENCE_TYPES", "NO_ROW_REASONS", "OBSERVED_TYPES",
     "OBSERVE_ROW", "OPS_TYPES",
     "dispatch_target", "hosts_observation", "owes_live_evidence",
 ]

@@ -560,6 +560,32 @@ def test_a_whole_book_owes_the_claims_of_a_page_that_cites_no_code(tmp_path: Pat
     assert not any(item["required"] for item in concepts), concepts
 
 
+def test_a_node_on_a_definition_page_owes_context_not_a_live_run(tmp_path: Path):
+    """A concept or format page defines what a surface reads or writes. Its nodes are observed through that surface, so none owes a live run of its own."""
+    (tmp_path / "docs/features/demo/concepts").mkdir(parents=True)
+    (tmp_path / "docs/features/demo/formats").mkdir(parents=True)
+    (tmp_path / "docs/features/demo/concepts/ledger.md").write_text(
+        "---\ntype: concept\nslug: ledger\ntitle: Ledger\n---\n# Ledger\n\nA ledger holds a trip's expenses.\n\n"
+        "## Endpoints\n\n### ledger-rows\n- method: GET\n- path: /api/rows\n"
+        "- does:\n  - returns the rows\n- verify: http_status(code=200)\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "docs/features/demo/formats/rows.md").write_text(
+        "---\ntype: format\nslug: rows\ntitle: Rows\n---\n# Rows\n\n"
+        "## Fields\n\n### amount\n- type: integer\n- verify: json_path(path=\"$.amount\", equals=\"1\")\n",
+        encoding="utf-8",
+    )
+    _git(tmp_path, "init")
+
+    obligations = [
+        item for item in book_context(tmp_path)["obligations"] if item["nodeType"] in ("endpoint", "field")
+    ]
+
+    assert {item["nodeType"] for item in obligations} == {"endpoint", "field"}, obligations
+    assert not any(item["required"] for item in obligations), obligations
+    assert {item["evidenceRequired"] for item in obligations} == {"context"}, obligations
+
+
 def test_concepts_chained_by_extends_citing_one_symbol_stay_one_family(tmp_path: Path):
     """Six `concept` nodes chained by `extends:` are one documented thing, not six owners.
 

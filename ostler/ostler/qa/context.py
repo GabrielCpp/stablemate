@@ -1671,6 +1671,12 @@ def _extends_target(
     return target, False
 
 
+def _page_type(node: dict[str, Any]) -> str:
+    """The type of the page *node* sits on: its own type for a page, its page's for a section."""
+    type_path = node.get("type_path") or [node.get("type", "")]
+    return str(type_path[0])
+
+
 def _same_as_targets(
     node: dict[str, Any], nodes_by_id: dict[str, dict[str, Any]]
 ) -> list[dict[str, Any]]:
@@ -1815,7 +1821,7 @@ def _obligations(
     nodes_by_id: dict[str, dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     """Mint one obligation per normative bullet, plus the node-level contract."""
-    required = required and owes_live_evidence(str(node.get("type", "")))
+    required = required and owes_live_evidence(str(node.get("type", "")), _page_type(node))
     family = (
         _same_as_component(str(node["id"]), nodes_by_id)
         if nodes_by_id is not None
