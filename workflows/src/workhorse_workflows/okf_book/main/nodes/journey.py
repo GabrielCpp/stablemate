@@ -1,7 +1,9 @@
 """The journey pages of a book: the pages its entries page links and its flow pages, which a fix that puts a page on a journey may change."""
 from __future__ import annotations
 
+import re
 from collections.abc import Iterable
+from difflib import SequenceMatcher
 from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict
@@ -10,15 +12,16 @@ from workhorse_workflows.okf_book.shared.entries import book_dir, read_entries
 from workhorse_workflows.okf_book.shared.page_check import PageProblem
 
 FLOWS_FOLDER = "flows"
+_LINK = re.compile(r"\]\([^)\s]+\)")
 
 
 class JourneyPages(BaseModel):
     """The pages a fix that puts a page on a journey may change: the entry pages, the flow pages, and a new page in the flow folder.
 
-    Only the flow pages count against a batch. The writer reads a flow whole to extend it, but adds
-    no more than a link to an entry page, which it finds without reading the rest of it. A flow page
-    written after the pages were listed is not one of them, since no batch counted it. A later round
-    reports it and leaves it for the book check.
+    A batch counts each flow page whole, since the writer reads a flow whole to extend it. It counts
+    only the outline of an entry page, since the writer reads the headings to place a link and adds
+    no more than link lines there. A flow page written after the pages were listed is not one of
+    them, since no batch counted it. A later round reports it and leaves it for the book check.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -36,6 +39,30 @@ class JourneyPages(BaseModel):
     @property
     def flow_pages(self) -> tuple[str, ...]:
         return tuple(page for page in self.pages if self.is_flow(page))
+
+    @property
+    def entry_pages(self) -> tuple[str, ...]:
+        return tuple(page for page in self.pages if not self.is_flow(page))
+
+    def read_by_writer(self, page: str, text: str) -> str:
+        """What the writer reads of the page: a flow page whole, the heading lines of an entry page."""
+        return text if self.is_flow(page) else outline(text)
+
+
+def outline(text: str) -> str:
+    """The heading lines of a page, which a writer reads to place a link on it."""
+    return "\n".join(line for line in text.splitlines() if line.startswith("#"))
+
+
+def adds_only_links(before: str, after: str) -> bool:
+    """Whether `after` is `before` with lines added and none changed, each added line blank or holding a markdown link."""
+    old, new = before.splitlines(), after.splitlines()
+    for tag, _, _, start, end in SequenceMatcher(a=old, b=new, autojunk=False).get_opcodes():
+        if tag == "equal":
+            continue
+        if tag != "insert" or not all(not line.strip() or _LINK.search(line) for line in new[start:end]):
+            return False
+    return True
 
 
 def journey_pages(root: Path, service: str, uncommitted_at_start: frozenset[str] = frozenset()) -> JourneyPages:

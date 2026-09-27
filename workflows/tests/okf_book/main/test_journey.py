@@ -3,7 +3,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from workhorse_workflows.okf_book.main.nodes.journey import JourneyPages, journey_pages
+import pytest
+
+from workhorse_workflows.okf_book.main.nodes.journey import JourneyPages, adds_only_links, journey_pages
 
 BOOK = "docs/features/ledger"
 
@@ -29,3 +31,27 @@ def test_the_journey_pages_are_the_linked_and_flow_pages_left_committed_and_a_fl
     assert not journey.owns(f"{BOOK}/flows/new.md")
     assert not journey.owns(flows[1], frozenset({f"{BOOK}/flows/new.md"}))
     assert not journey.owns(f"{BOOK}/concepts/entry.md")
+
+
+@pytest.mark.parametrize(
+    ("after", "only_links"),
+    [
+        ("# Ledger\n\n- [Add](flows/add.md)\n\nprose\n", True),
+        ("# Ledger\n\nprose\n\n- [Add](flows/add.md)\n- [Split](flows/split.md)\n", True),
+        ("# Ledger\n\nprose, see [Add](flows/add.md)\n", False),
+        ("# Ledger\n\nprose\nmore prose\n", False),
+        ("# Ledger\n", False),
+    ],
+)
+def test_an_entry_page_change_is_only_links_when_every_added_line_holds_a_link_and_no_line_changed(
+    after: str, only_links: bool
+) -> None:
+    assert adds_only_links("# Ledger\n\nprose\n", after) is only_links
+
+
+def test_a_writer_reads_a_flow_page_whole_and_only_the_headings_of_an_entry_page() -> None:
+    journey = JourneyPages(pages=(f"{BOOK}/ledger.md", f"{BOOK}/flows/add.md"), flow_folder=f"{BOOK}/flows")
+    text = "---\ntitle: x\n---\n# Ledger\n\nprose\n## Add\nmore\n"
+
+    assert journey.read_by_writer(f"{BOOK}/flows/add.md", text) == text
+    assert journey.read_by_writer(f"{BOOK}/ledger.md", text) == "# Ledger\n## Add"

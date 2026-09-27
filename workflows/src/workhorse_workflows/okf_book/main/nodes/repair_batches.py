@@ -72,7 +72,7 @@ class RepairBatch(BaseModel):
 
 
 class OversizedPage(BaseModel):
-    """A problem page no turn is sent, since it, the files it cites and the flow pages its fix goes on cost more than one writer reads."""
+    """A problem page no turn is sent, since it, the files it cites and what the writer reads of the journey pages its fix goes on cost more than one writer reads."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -91,7 +91,7 @@ class OversizedPage(BaseModel):
 
     @property
     def reason(self) -> str:
-        counted = ", the files it cites and the flow pages its fix goes on" if self.with_journey else " and the files it cites"
+        counted = ", the files it cites and the journey pages its fix goes on" if self.with_journey else " and the files it cites"
         part = "page" if self.section is None else "section"
         split = f"split the {part} or the flow pages" if self.with_journey else f"split the {part}"
         return (
@@ -114,10 +114,6 @@ class _PageCost:
     repair: PageRepair
     own_tokens: int
     source_tokens: dict[str, int]
-
-
-def _file_tokens(path: Path) -> int:
-    return -(-path.stat().st_size // CHARS_PER_TOKEN) if path.is_file() else 0
 
 
 def _tokens(chars: int) -> int:
@@ -150,8 +146,10 @@ def problems_by_page(problems: Iterable[PageProblem], skipped: frozenset[str] = 
     return {page: tuple(grouped[page]) for page in sorted(grouped)}
 
 
-def _journey_cost(root: Path, page: str) -> _PageCost:
-    return _PageCost(PageRepair(page=page, problems=()), BOOK_HOLDS * _file_tokens(root / page), {})
+def _journey_cost(root: Path, journey: JourneyPages, page: str) -> _PageCost:
+    path = root / page
+    text = path.read_text(encoding="utf-8") if path.is_file() else ""
+    return _PageCost(PageRepair(page=page, problems=()), BOOK_HOLDS * _tokens(len(journey.read_by_writer(page, text))), {})
 
 
 def _repairs_joined_by_page(units: list[_PageCost]) -> tuple[PageRepair, ...]:
@@ -217,7 +215,7 @@ class _PageSplitter:
 def _pack(
     files: CitedFiles, by_page: dict[str, tuple[str, ...]], ceiling: int, journey: JourneyPages | None
 ) -> PackedRepairs:
-    journey_costs = [_journey_cost(files.root, page) for page in journey.flow_pages] if journey else []
+    journey_costs = [_journey_cost(files.root, journey, page) for page in journey.pages] if journey else []
     splitter = _PageSplitter(files, journey_costs, ceiling, journey is not None)
     batches: list[RepairBatch] = []
     oversized_pages: list[OversizedPage] = []
@@ -245,7 +243,7 @@ def pack_repairs(
     """Pack the pages, in the order given, into batches each under `ceiling`, and set aside each page alone over it.
 
     The pages in `needs_journey` go first, into batches that also hold the journey pages and count
-    the flow pages' cost, since their fix goes on a flow or an entry page.
+    what the writer reads of them, since their fix goes on a flow or an entry page.
     """
     on_journey = {page: problems for page, problems in by_page.items() if journey and page in needs_journey}
     rest = {page: problems for page, problems in by_page.items() if page not in on_journey}

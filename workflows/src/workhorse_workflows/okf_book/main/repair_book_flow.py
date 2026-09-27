@@ -9,8 +9,9 @@ for one writer is sent to no turn and reported.
 
 Each batch owns the pages it is sent. A batch with a page no other page reaches, or with an endpoint
 on no flow, also owns the journey pages the repair planned: the pages the entries page links, the flow pages, and
-a new page in the flow folder, since the fix for either goes there. Code puts back every other page
-the turn changed, and the entries page, which only code writes.
+a new page in the flow folder, since the fix for either goes there. On a page the entries page links
+it may only add link lines. Code puts back every other page the turn changed, an entry page it
+changed beyond adding link lines, and the entries page, which only code writes.
 
 A page someone left uncommitted when the repair started is never sent to a turn and never committed,
 so their edits stay theirs. A turn that changed one waits for the operator.
@@ -24,7 +25,7 @@ from pydantic import BaseModel, ConfigDict
 from ostler.stamp import stamp_page
 from workhorse.pyflow import AgentTimeout, AgentTurnFailed, Await, Continue, Done, WorkflowFailed
 from workhorse_workflows.kit import commit_returning_refusal
-from workhorse_workflows.okf_book.main.nodes.journey import JourneyPages, journey_pages, pages_needing_journey
+from workhorse_workflows.okf_book.main.nodes.journey import JourneyPages, adds_only_links, journey_pages, pages_needing_journey
 from workhorse_workflows.okf_book.main.nodes.repair_batches import OversizedPage, RepairBatch, pack_repairs, problems_by_page
 from workhorse_workflows.okf_book.main.nodes.root_entries import write_root_entries
 from workhorse_workflows.okf_book.main.nodes.surface import Surface
@@ -33,7 +34,16 @@ from workhorse_workflows.okf_book.main.nodes.writer_request import writer_reques
 from workhorse_workflows.okf_book.shared.blockers import Phase
 from workhorse_workflows.okf_book.shared.book_commits import repaired_book_commit_subject, rooted_book_commit_subject
 from workhorse_workflows.okf_book.shared.book_flow import BookFlow
-from workhorse_workflows.okf_book.shared.confine import Snapshot, book_changes, in_book, put_back_outside, restore, snapshot, untracked
+from workhorse_workflows.okf_book.shared.confine import (
+    Snapshot,
+    book_changes,
+    committed_text,
+    in_book,
+    put_back_outside,
+    restore,
+    snapshot,
+    untracked,
+)
 from workhorse_workflows.okf_book.shared.entries import FEATURES_DIR, entries_path
 from workhorse_workflows.okf_book.shared.metrics import TurnMetric, record_turn, turn_metric
 from workhorse_workflows.okf_book.shared.page_check import PageProblem, page_problems
@@ -201,7 +211,7 @@ class RepairBook(BookFlow):
         return Continue(failure, self.put_back, this_round=this_round, index=index, before=before).because("put back what the turn may not keep")
 
     def put_back(self, this_round: RepairRound, index: int, before: Snapshot) -> Continue[...] | Await[...]:
-        """Put back each path the turn changed but may not keep: one outside the book, the entries page, and a page its batch does not own.
+        """Put back each path the turn changed but may not keep: one outside the book, the entries page, a page its batch does not own, and an entry page it changed beyond adding link lines.
 
         A page someone left uncommitted has no committed copy of their edit to go back to, so a turn
         that changed one waits for the operator.
@@ -218,6 +228,10 @@ class RepairBook(BookFlow):
         unrestorable_uncommitted = restore(root, unowned, before)
         for path in sorted(set(unowned) - set(unrestorable_uncommitted) - {entries}):
             self.logger.warning("put back %s, which the repair turn changed outside the pages its batch owns", path)
+        overreach = self._entry_pages_changed_beyond_links(batch, [path for path in changed if path not in unowned])
+        _ = restore(root, overreach, before)
+        for path in overreach:
+            self.logger.warning("put back %s, an entry page the repair turn changed beyond adding link lines", path)
         if unrestorable_uncommitted:
             return Await(
                 self.run_dir / UNCOMMITTED_PAGE_GATE,
@@ -230,6 +244,17 @@ class RepairBook(BookFlow):
                 before=before,
             ).because("the repair turn changed a page someone left uncommitted")
         return Continue(stray, self.stamp_pages, this_round=this_round, index=index, before=before).because("stamp the repaired pages")
+
+    def _entry_pages_changed_beyond_links(self, batch: RepairBatch, kept: list[str]) -> list[str]:
+        if batch.journey is None:
+            return []
+        entry_pages = set(batch.journey.entry_pages) - set(batch.page_paths)
+        return [path for path in kept if path in entry_pages and not self._adds_only_links(path)]
+
+    def _adds_only_links(self, path: str) -> bool:
+        current = self.root / path
+        after = current.read_text(encoding="utf-8") if current.is_file() else ""
+        return adds_only_links(committed_text(self.root, path), after)
 
     def stamp_pages(self, this_round: RepairRound, index: int, before: Snapshot) -> Continue[...]:
         """Stamp each page the turn changed that its batch owns, but the entries page and the pages someone left uncommitted."""

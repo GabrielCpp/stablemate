@@ -114,7 +114,7 @@ def test_a_page_that_cites_one_declaration_costs_that_declaration_not_the_file(t
     assert batch.tokens == BOOK_HOLDS * PAGE_TOKENS + 1 + SOURCE_READS * -(-len(declaration) // CHARS_PER_TOKEN)
 
 
-def test_a_journey_batch_counts_the_flow_pages_and_not_the_entry_pages_it_may_link_from(tmp_path: Path) -> None:
+def test_a_journey_batch_counts_the_flow_pages_whole_and_the_headings_of_the_entry_pages(tmp_path: Path) -> None:
     flow = _page(tmp_path, "flows/add.md", cites=False)
     entry = _page(tmp_path, "ledger.md", cites=False)
     page = _page(tmp_path, "a.md", cites=False)
@@ -122,7 +122,8 @@ def test_a_journey_batch_counts_the_flow_pages_and_not_the_entry_pages_it_may_li
 
     batch = pack_repairs(tmp_path, {page: ("p",)}, journey, frozenset({page})).batches[0]
 
-    assert batch.tokens == BOOK_HOLDS * PAGE_TOKENS + 1 + BOOK_HOLDS * PAGE_TOKENS
+    heading_tokens = -(-len("# ledger.md") // CHARS_PER_TOKEN)
+    assert batch.tokens == BOOK_HOLDS * PAGE_TOKENS + 1 + BOOK_HOLDS * PAGE_TOKENS + BOOK_HOLDS * heading_tokens
     assert batch.owns(entry)
 
 
