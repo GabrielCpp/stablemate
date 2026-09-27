@@ -42,7 +42,7 @@ class PageSections:
     def by_id(self, section_id: str) -> Section | None:
         return next((section for section in self.sections if section.id == section_id), None)
 
-    def of_problem(self, page: str, problem: str) -> str:
+    def section_id_of_problem(self, page: str, problem: str) -> str:
         """The id of the section a problem on `page` sits in: the node its text names, else the line it names, else the head."""
         anchors = {_anchor(section.id): section.id for section in self.sections if section.id != HEAD}
         for match in re.finditer(re.escape(page) + r"#(?P<anchor>[^\s:,)]+)", problem):

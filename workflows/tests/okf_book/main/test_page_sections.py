@@ -42,7 +42,7 @@ def test_a_page_splits_at_each_node_and_every_other_line_is_its_head() -> None:
 def test_a_problem_falls_in_the_node_it_names_else_the_line_it_names_else_the_head() -> None:
     parts = page_sections(TEXT)
 
-    assert parts.of_problem(PAGE, f"each of 2 claims on {PAGE}#drop-row does not compile") == "drop-row"
-    assert parts.of_problem(PAGE, f"{PAGE}:11: step-no-verify: a claim has no verify") == "list-rows"
-    assert parts.of_problem(PAGE, f"{PAGE}:27: note-stale: the note is stale") == HEAD
-    assert parts.of_problem(PAGE, "the entries page links no flow") == HEAD
+    assert parts.section_id_of_problem(PAGE, f"each of 2 claims on {PAGE}#drop-row does not compile") == "drop-row"
+    assert parts.section_id_of_problem(PAGE, f"{PAGE}:11: step-no-verify: a claim has no verify") == "list-rows"
+    assert parts.section_id_of_problem(PAGE, f"{PAGE}:27: note-stale: the note is stale") == HEAD
+    assert parts.section_id_of_problem(PAGE, "the entries page links no flow") == HEAD

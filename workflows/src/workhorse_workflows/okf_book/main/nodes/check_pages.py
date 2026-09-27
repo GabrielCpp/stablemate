@@ -35,7 +35,7 @@ def _in_scope(state: WriterCommandState, root: Path, problem: PageProblem) -> bo
         return True
     path = root / problem.page
     text = path.read_text(encoding="utf-8") if path.is_file() else ""
-    return page_sections(text).of_problem(problem.page, problem.text) in sections
+    return page_sections(text).section_id_of_problem(problem.page, problem.text) in sections
 
 
 def scoped_problems(state: WriterCommandState) -> tuple[str, ...]:

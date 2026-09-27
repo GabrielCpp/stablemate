@@ -117,11 +117,11 @@ class TooLarge(BaseModel):
 
     @property
     def reason(self) -> str:
-        cost = ", the files it cites and the flow pages its fix goes on" if self.with_journey else " and the files it cites"
+        counted = ", the files it cites and the flow pages its fix goes on" if self.with_journey else " and the files it cites"
         part = "page" if self.section is None else "section"
         split = f"split the {part} or the flow pages" if self.with_journey else f"split the {part}"
         return (
-            f"{self.subject}{cost} cost {self.tokens} tokens, over the {self.ceiling} one writer reads, "
+            f"{self.subject}{counted} cost {self.tokens} tokens, over the {self.ceiling} one writer reads, "
             + f"so no repair turn was sent it: {split}"
         )
 
@@ -222,7 +222,7 @@ class _Budget:
     ceiling: int
     with_journey: bool
 
-    def _alone(self, unit: _PageCost) -> int:
+    def _tokens_alone(self, unit: _PageCost) -> int:
         return _cost([*self.journey_costs, unit])
 
     def _too_large(self, page: str, tokens: int, section: str | None = None) -> TooLarge:
@@ -232,14 +232,14 @@ class _Budget:
         parts = page_sections(text)
         by_section: dict[str, list[str]] = {}
         for problem in problems:
-            by_section.setdefault(parts.of_problem(page, problem), []).append(problem)
+            by_section.setdefault(parts.section_id_of_problem(page, problem), []).append(problem)
         units: list[_PageCost] = []
         too_large: list[TooLarge] = []
         for section in (section for section in parts.sections if section.id in by_section):
             unit = _text_cost(self.files, page, parts.section_text(section), tuple(by_section[section.id]), (section.id,))
-            alone = self._alone(unit)
-            if alone > self.ceiling:
-                too_large.append(self._too_large(page, alone, section.id))
+            tokens_alone = self._tokens_alone(unit)
+            if tokens_alone > self.ceiling:
+                too_large.append(self._too_large(page, tokens_alone, section.id))
             else:
                 units.append(unit)
         return _Units(units, too_large)
@@ -249,12 +249,12 @@ class _Budget:
         path = self.files.root / page
         text = path.read_text(encoding="utf-8") if path.is_file() else ""
         whole = _text_cost(self.files, page, text, problems)
-        alone = self._alone(whole)
-        if alone <= self.ceiling:
+        tokens_alone = self._tokens_alone(whole)
+        if tokens_alone <= self.ceiling:
             return _Units([whole], [])
         if len(page_sections(text).sections) > 1:
             return self._section_units(page, text, problems)
-        return _Units([], [self._too_large(page, alone)])
+        return _Units([], [self._too_large(page, tokens_alone)])
 
 
 def _pack(
@@ -293,6 +293,9 @@ def repair_batches(
     on_journey = {page: problems for page, problems in by_page.items() if journey and page in needs_journey}
     rest = {page: problems for page, problems in by_page.items() if page not in on_journey}
     files = CitedFiles(root)
-    first = _pack(files, on_journey, ceiling, journey)
-    then = _pack(files, rest, ceiling, None)
-    return PackedRepairs(batches=(*first.batches, *then.batches), too_large=(*first.too_large, *then.too_large))
+    journey_packed = _pack(files, on_journey, ceiling, journey)
+    rest_packed = _pack(files, rest, ceiling, None)
+    return PackedRepairs(
+        batches=(*journey_packed.batches, *rest_packed.batches),
+        too_large=(*journey_packed.too_large, *rest_packed.too_large),
+    )
