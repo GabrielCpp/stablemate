@@ -802,6 +802,7 @@ def _check_fixture_grammar(graph: Graph, f: list[Finding]) -> None:
                     path=rel, line=step.line))
             _check_step_command_bullets(step, rel, f)
             _check_step_command_syntax(step, rel, f)
+            _check_step_command_checkout_path(graph, step, rel, f)
             _check_fixture_step_directory(graph, step, rel, f)
 
     _check_fixture_needs_cycles(graph, fixtures, f)
@@ -2132,6 +2133,7 @@ def _check_runbook(graph: Graph, f: list[Finding]) -> None:
                 services.append(step)
             _check_step_command_bullets(step, rel, f)
             _check_step_command_syntax(step, rel, f)
+            _check_step_command_checkout_path(graph, step, rel, f)
             _check_step_not_scenario_frame(graph, step, rel, f)
 
         if node.id not in stacks:
@@ -2213,6 +2215,22 @@ def _check_step_command_syntax(step: UINode, rel: str, f: list[Finding]) -> None
             f"that exits non-zero on failure",
             path=rel, line=step.line, ref=refs_mod.bullet_ref(step.id, key),
             suggestion=f"- {key}: curl -fsS <url>"))
+
+
+def _check_step_command_checkout_path(graph: Graph, step: UINode, rel: str, f: list[Finding]) -> None:
+    """A `run:`/`health:` bullet names no path by this checkout's absolute location, which no other checkout shares."""
+    root = str(graph.root.resolve())
+    for key in _STEP_COMMAND_KEYS:
+        value = runbook_mod.bullet_value(step.meta, key)
+        if not value or root not in value:
+            continue
+        f.append(Finding(
+            "error", "checkout-absolute-path",
+            f"{step.id}: `{key}:` names {root}, where this checkout happens to sit, so the step runs on "
+            f"no other machine. Write the path from the folder the step runs in, and name that folder "
+            f"with `working-directory:`, read from the checkout root",
+            path=rel, line=step.line, ref=refs_mod.bullet_ref(step.id, key),
+            suggestion="- working-directory: <folder from the checkout root>"))
 
 
 def _check_fixture_step_directory(graph: Graph, step: UINode, rel: str, f: list[Finding]) -> None:

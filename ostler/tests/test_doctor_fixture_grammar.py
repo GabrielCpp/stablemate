@@ -511,3 +511,13 @@ def test_fixture_step_directory_is_clean_for_the_scenario_token_and_a_real_direc
     write(repo / "docs/features/acme/fixtures/seeded-acme.md", _fixture_in("scenario:"))
     write(repo / "docs/features/acme/fixtures/other-acme.md", _fixture_in("services/acme"))
     assert _findings(repo, "fixture-step-directory") == []
+
+
+def test_a_step_that_names_the_checkout_by_its_absolute_path_is_refused_and_a_relative_one_is_clean(repo: Path) -> None:
+    _stack(repo)
+    absolute = _fixture_book(provides="id — the seeded account's id").replace(
+        "- run: ./scripts/seed-acme.sh", f"- run: python3 {repo.resolve()}/scripts/seed_acme.py")
+    write(repo / "docs/features/acme/fixtures/seeded-acme.md", absolute)
+    write(repo / "docs/features/acme/fixtures/other-acme.md", _fixture_in("scripts"))
+    found = _findings(repo, "checkout-absolute-path")
+    assert [(f.path, f.severity) for f in found] == [("docs/features/acme/fixtures/seeded-acme.md", "error")]
