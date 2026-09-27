@@ -26,7 +26,6 @@ from workhorse_workflows.okf_book.shared.page_check import book_problems
 from workhorse_workflows.okf_book.shared.scenarios import PLAN_NAME, plan_scenarios, spec_dir, write_run
 
 OPERATOR_NAME = "operator.md"
-RUN_REPAIRS = 3
 
 RunFailures = dict[str, tuple[str, ...]]
 
@@ -105,7 +104,7 @@ class OkfBook(BookFlow):
             )
         return self._block_surface_and_move_on(index, reason)
 
-    def repair_book(self, index: int, run_failures: RunFailures | None = None, run_repairs: int = 0) -> Continue[...]:
+    def repair_book(self, index: int, run_failures: RunFailures | None = None) -> Continue[...]:
         """Hand the book to its repair, with the failures of the run it failed when it failed one."""
         surface = self.surfaces[index]
         repaired = RepairOutcome.model_validate(
@@ -118,21 +117,15 @@ class OkfBook(BookFlow):
                 run_failures=run_failures or {},
             )
         )
-        return Continue(
-            repaired, self.settle_repair, index=index, repaired=repaired, repaired_failures=run_failures or {}, run_repairs=run_repairs + bool(run_failures)
-        ).because("settle the repair")
+        return Continue(repaired, self.settle_repair, index=index, repaired=repaired).because("settle the repair")
 
-    def settle_repair(
-        self, index: int, repaired: RepairOutcome, repaired_failures: RunFailures | None = None, run_repairs: int = 0
-    ) -> Continue[...]:
+    def settle_repair(self, index: int, repaired: RepairOutcome) -> Continue[...]:
         """The repair turns that ended without a reply are one blocker on the workflow. The repaired book goes to its check."""
         service = self.surfaces[index].service
         if repaired.failed_turns:
             reason = "\n".join(repaired.failed_turns)
             _ = record_blocker(self.records_dir, Blocker(subject=service, phase=Phase.WRITE, side=Side.WORKFLOW, reason=reason))
-        return Continue(repaired, self.check_book, index=index, repaired_failures=repaired_failures, run_repairs=run_repairs).because(
-            "check the repaired book"
-        )
+        return Continue(repaired, self.check_book, index=index).because("check the repaired book")
 
     def write_book(self, index: int) -> Continue[...]:
         """Hand the surface to its writer."""
@@ -155,20 +148,16 @@ class OkfBook(BookFlow):
             return self._block_surface_and_move_on(index, written.failure)
         return Continue(written, self.check_book, index=index).because("check the committed book")
 
-    def check_book(self, index: int, repaired_failures: RunFailures | None = None, run_repairs: int = 0) -> Continue[...]:
+    def check_book(self, index: int) -> Continue[...]:
         """Repeat the writer's own page check. Each problem it finds is a blocker, and one an earlier check found that this one does not is no longer."""
         service = self.surfaces[index].service
         problems = book_problems(self.root, service)
         forget_blockers(self.records_dir, Phase.WRITE, Side.BOOK, f"{service}: ")
         for problem in problems:
             _ = record_blocker(self.records_dir, Blocker(subject=f"{service}: {problem}", phase=Phase.WRITE, side=Side.BOOK, reason=problem))
-        return Continue(
-            problems, self.run_book, index=index, written_by_workflow=True, repaired_failures=repaired_failures, run_repairs=run_repairs
-        ).because("run the book against the app")
+        return Continue(problems, self.run_book, index=index, written_by_workflow=True).because("run the book against the app")
 
-    def run_book(
-        self, index: int, written_by_workflow: bool, repaired_failures: RunFailures | None = None, run_repairs: int = 0
-    ) -> Continue[...]:
+    def run_book(self, index: int, written_by_workflow: bool) -> Continue[...]:
         """Run the book against the app, by handing off to the run flow."""
         service = self.surfaces[index].service
         exercised = ExerciseResult.model_validate(self.handoff(ExerciseBook, parent_records_dir=str(self.records_dir), service=service))
@@ -178,35 +167,19 @@ class OkfBook(BookFlow):
             index=index,
             written_by_workflow=written_by_workflow,
             exercised=exercised,
-            repaired_failures=repaired_failures,
-            run_repairs=run_repairs,
         ).because("settle the run")
 
-    def settle_run(
-        self,
-        index: int,
-        written_by_workflow: bool,
-        exercised: ExerciseResult,
-        repaired_failures: RunFailures | None = None,
-        run_repairs: int = 0,
-    ) -> Continue[...]:
-        """A passing book is done. A stack that cannot come up is the app's blocker, and the book stays. A failing book goes to the writer, and a repair of it takes the failures on the pages they cover. A book that fails the way its last repair already saw, or past its repairs, is a blocker."""
+    def settle_run(self, index: int, written_by_workflow: bool, exercised: ExerciseResult) -> Continue[...]:
+        """A passing book is done. A failing book this workflow did not write goes to the writer, with the failures of its run on the pages they cover. A book this workflow wrote that fails its run is a blocker, and so is a stack that cannot come up. Either way the book stays."""
         service = self.surfaces[index].service
         if exercised.summary is not None:
             _ = write_run(self.records_dir, exercised.summary)
         if exercised.passed:
             return self._next_surface(exercised.passed, index)
-        failures = self._run_failures(service, exercised) if not exercised.stack_down and run_repairs < RUN_REPAIRS else {}
-        if failures == (repaired_failures or {}):
-            failures = {}
         if not exercised.stack_down and not written_by_workflow:
+            failures = self._run_failures(service, exercised)
             return Continue(exercised.passed, self.copy_source, index=index, run_failures=failures).because(
                 "the existing book fails its run"
-            )
-        if failures:
-            view = build_source_view(self.root, _source_folder(self.root, self.surfaces[index]))
-            return Continue(view.as_posix(), self.repair_book, index=index, run_failures=failures, run_repairs=run_repairs).because(
-                "the book this workflow wrote fails its run: repair the pages that failed"
             )
         side = Side.APP if exercised.stack_down else Side.BOOK
         reason = "\n".join(exercised.lines)
