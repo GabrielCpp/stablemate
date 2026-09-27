@@ -36,7 +36,7 @@ SED_OPTIONS = ("-n", "-E", "-r", "-u", "--quiet", "--silent")
 SED_PRINT = re.compile(r"(?:\d+|\$)(?:,(?:\d+|\$))?p(?:;(?:\d+|\$)(?:,(?:\d+|\$))?p)*")
 PATCH_PATH = re.compile(r"^\*\*\* (?:Add File|Update File|Delete File|Move to): (.+)$", re.MULTILINE)
 HARMLESS_REDIRECT = re.compile(r"(?<=\s)2>(?:&1|/dev/null)(?=\s|\||$)")
-TIMEOUT = "timeout"
+TIMEOUT_PROGRAM = "timeout"
 DURATION = re.compile(r"\d+(?:\.\d+)?[smhd]?")
 PIPE = "|"
 PUNCTUATION = frozenset("();<>|&")
@@ -81,10 +81,10 @@ def _strings(value: object) -> tuple[str, ...] | None:
 
 @dataclass(frozen=True, slots=True)
 class ToolCall:
-    """The part of one hook payload the guard judges: the tool codex calls, and the command it passes."""
+    """The part of one hook payload the guard judges: the tool codex calls, and the text it passes, a shell command or a patch."""
 
     tool: str
-    command: str | None
+    input_text: str | None
 
     @classmethod
     def from_json(cls, text: str) -> ToolCall:
@@ -94,8 +94,8 @@ class ToolCall:
             raise ValueError("the call is not an object")
         tool = data.get("tool_name")
         tool_input = data.get("tool_input")
-        command = tool_input.get("command") if isinstance(tool_input, dict) else None
-        return cls(tool=tool if isinstance(tool, str) else "", command=command if isinstance(command, str) else None)
+        given = tool_input.get("command") if isinstance(tool_input, dict) else None
+        return cls(tool=tool if isinstance(tool, str) else "", input_text=given if isinstance(given, str) else None)
 
 
 def _within(path: Path, roots: Sequence[Path]) -> bool:
@@ -193,7 +193,7 @@ def _search_path_arguments(arguments: Sequence[str]) -> list[str]:
 
 def _without_timeout(stage: Sequence[str]) -> Sequence[str]:
     """The stage without a leading `timeout DURATION`, which only bounds the command it runs."""
-    if len(stage) > 2 and stage[0] == TIMEOUT and DURATION.fullmatch(stage[1]):
+    if len(stage) > 2 and stage[0] == TIMEOUT_PROGRAM and DURATION.fullmatch(stage[1]):
         return stage[2:]
     return stage
 
@@ -261,9 +261,9 @@ def call_refusal(call: ToolCall, policy: Policy) -> str | None:
     """The reason to refuse the tool call, or None to let it run."""
     if call.tool not in ("Bash", "apply_patch"):
         return None
-    if call.command is None:
+    if call.input_text is None:
         return _refusal_message("the call carries no command", policy)
-    denial = shell_denial(call.command, policy) if call.tool == "Bash" else patch_denial(call.command, policy)
+    denial = shell_denial(call.input_text, policy) if call.tool == "Bash" else patch_denial(call.input_text, policy)
     return None if denial is None else _refusal_message(denial, policy)
 
 
