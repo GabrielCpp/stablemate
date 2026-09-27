@@ -1,0 +1,66 @@
+# ostler package
+
+The source of the `ostler` CLI and its library. The member README one level up
+says how to use it. This page says where each concern lives.
+
+## Map
+
+- `acts.py`: the performances an `arrange:` bullet may declare, as named acts with typed arguments.
+- `api.py`: the in-process entry point to a repository's OKF graph.
+- `autofix.py`: `ostler autofix`, the deterministic repair of format drift a shape check can detect.
+- `backfill.py`: `ostler backfill plan`, what in the book no longer matches the code.
+- `backlog.py`: `ostler backlog`, the intake list kept as managed markdown.
+- `behavior.py`: the public API for preparing two-way behavior reviews and checking their receipts.
+- `behavior_cli.py`: the read-only CLI adapter for behavior review preparation.
+- `behavior_go.py`: Go behavior candidates read lexically, with no type resolution or toolchain.
+- `behavior_memo.py`: the item-level verdict memo, so work already judged is not judged again.
+- `behavior_models.py`: the wire contracts for a source and book review.
+- `behavior_python.py`: Python behavior candidates read lexically, with no execution or resolution.
+- `behavior_tree.py`: tree-sitter behavior candidates for languages a table can describe.
+- `book_reach.py`: which book pages a service's `entries` page reaches, and which it leaves dead.
+- `census.py`: which of doctor's codes can fire at all, told apart from which happen not to.
+- `checks.py`: the observations a `verify:` bullet may declare, as named checks with typed arguments.
+- `cli.py`: the `ostler` command-line entry point.
+- `coverage.py`: `ostler coverage`, which joins a book's `code:` citations against a source inventory.
+- `crud.py`: the mutations on epics, stories and features, their seeds and their status.
+- `crud_generic.py`: create and delete for instances of the kinds a repo's templates declare.
+- `doctor.py`: `ostler doctor`, the deterministic integrity checks over the organization graph.
+- `drivers.py`: the `driver:` vocabulary of the runbook, as a value code can be held to.
+- `dynamic_registry.py`: the hierarchies a repo declares in `.agents/templates.yml`.
+- `edit.py`: `ostler edit`, format-preserving structured edits across JSON and Markdown.
+- `fmt.py`: `ostler fmt`, the canonicalizing formatter for UI-profile docs.
+- `freeze.py`: `ostler freeze` and `unfreeze`, which pin an approved entity as ground truth.
+- `graph.py`: `ostler graph`, the whole graph dumped as JSON to filter on.
+- `ids.py`: id allocation over `.agents/ids.json`.
+- `index.py`: the persistent, content-addressed parse index store.
+- `inventory.py`: the source symbol front end, one grammar for the join and the grounding check.
+- `links.py`: path-link resolution for the UI profile.
+- `locators.py`: the Playwright locators the book yields, and where that mapping breaks.
+- `markdown.py`: Markdown and YAML frontmatter parsing.
+- `model.py`: the organization model, the typed knowledge graph loaded from markdown.
+- `path.py`: `ostler path`, which resolves slugs to canonical filesystem paths.
+- `provenance.py`: the joins between git story trailers and story-scoped context packets.
+- `query.py`: `ostler list`, `search` and `query`, retrieval over the knowledge graph.
+- `reach.py`: `ostler reach`, how to navigate to a screen, derived from the book alone.
+- `refs.py`: the ref grammars this package mints and reads.
+- `registry.py`: the machine-readable type registry, the source of truth for the knowledge format.
+- `result.py`: the value every ostler writer returns.
+- `routes.py`: what a screen's `route:` bullet says about the address a browser would show.
+- `scaffold.py`: `ostler scaffold`, hierarchy-respecting creation of UI-profile nodes.
+- `schemas.py`: loading the bundled JSON Schemas and validating documents against them.
+- `select.py`: `ostler next-epic` and `next-story`, selection over the markdown graph.
+- `source_snapshots.py`: the compact source catalogs that ground code citations.
+- `stamp.py`: `ostler stamp`, the per-citation content digests on `code:` bullets.
+- `syntax.py`: the one parser every language front end reads source through.
+- `templates.py`: `ostler template`, create, edit, find, delete and apply over `.agents/templates.yml`.
+- `testsupport.py`: the plumbing for a test suite that gates its own inline book fixtures.
+- `todo.py`: `ostler todo`, the epics queue as markdown.
+- `trace.py`: `ostler trace`, a walk of the organization graph from any node.
+- `untyped.py`: narrowing helpers for data that came off disk untyped.
+- `util.py`: small runtime compatibility helpers.
+- `values.py`: one parser for each value kind a bullet key declares.
+- `artifact/`: `ostler artifact`, schema-checked workflow artifacts.
+- `qa/`: `ostler qa`, the bookkeeping of a deterministic QA run.
+- `scripts/`: one-off migrations of an existing book.
+- `vet/`: the geometry and captures behind vetting a screen's regions.
+- `_vendor/`: third-party and shared code copied in, not depended on.
