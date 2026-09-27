@@ -188,6 +188,11 @@ def test_a_book_this_workflow_wrote_that_fails_its_run_is_repaired_once_on_the_p
     _repaired_once_on_the_failed_page(runner, result)
 
 
+def _failing_add_observing(actual: str) -> ExerciseResult:
+    refused = FailedCheck(label="adds an expense", expected="0", actual=actual)
+    outcome = ScenarioOutcome(status="failed", failed_checks=(refused,))
+    return FAILED.model_copy(update={"summary": RunSummary(status="failed", scenarios={ADD.id: outcome})})
+
 
 def _runs_in_turn(monkeypatch: pytest.MonkeyPatch, *results: ExerciseResult) -> None:
     runs = iter(results)
@@ -203,6 +208,36 @@ def _a_book_this_workflow_wrote(app: App) -> Path:
     _ = (repo / PAGE).write_text((repo / PAGE).read_text(encoding="utf-8") + NOTE, encoding="utf-8")
     _ = git(repo, "commit", "-qam", "docs(tally): write the tally book")
     return repo
+
+
+@pytest.mark.usefixtures("failing_add")
+def test_a_run_that_fails_differently_after_a_repair_is_repaired_again(
+    app: App, drive_book: DriveBook, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = _a_book_this_workflow_wrote(app)
+    runner = _repairer(repo)
+    _runs_in_turn(monkeypatch, _failing_add_observing("1"), _failing_add_observing("2"), PASSED)
+
+    result = drive_book(OkfBook(repo_dir=str(repo), surfaces=(TALLY,)), runner)
+
+    assert runner.total == 2
+    assert isinstance(result, BookReport)
+    assert result.blockers == ()
+
+
+@pytest.mark.usefixtures("failing_add")
+def test_a_run_that_keeps_failing_differently_is_a_blocker_once_its_repairs_run_out(
+    app: App, drive_book: DriveBook, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = _a_book_this_workflow_wrote(app)
+    runner = _repairer(repo)
+    _runs_in_turn(monkeypatch, *(_failing_add_observing(str(n)) for n in range(flow.RUN_REPAIRS + 1)))
+
+    result = drive_book(OkfBook(repo_dir=str(repo), surfaces=(TALLY,)), runner)
+
+    assert runner.total == flow.RUN_REPAIRS
+    assert isinstance(result, BookReport)
+    assert [b.phase for b in result.blockers] == [Phase.EXERCISE]
 
 
 @pytest.mark.usefixtures("failing_add")
