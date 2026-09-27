@@ -132,7 +132,7 @@ def commit_paths(path: str | Path, message: str, *pathspecs: str, verify: bool =
     return True
 
 
-def commit_or_refusal(path: str | Path, message: str, *pathspecs: str) -> str:
+def commit_returning_refusal(path: str | Path, message: str, *pathspecs: str) -> str:
     """Commit exactly ``pathspecs`` as `commit_paths` does, and return what git said when it refused. Empty when nothing refused."""
     try:
         _ = commit_paths(path, message, *pathspecs)

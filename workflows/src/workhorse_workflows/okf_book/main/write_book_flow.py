@@ -7,7 +7,7 @@ from pathlib import Path
 from pydantic import BaseModel, ConfigDict
 from ostler.stamp import stamp_page
 from workhorse.pyflow import AgentTimeout, AgentTurnFailed, Await, Continue, Done, WorkflowFailed
-from workhorse_workflows.kit import commit_or_refusal
+from workhorse_workflows.kit import commit_returning_refusal
 from workhorse_workflows.okf_book.main.nodes.surface import Surface
 from workhorse_workflows.okf_book.main.nodes.writer_commands import WriterCommandState, write_command_state
 from workhorse_workflows.okf_book.main.nodes.writer_request import writer_request
@@ -105,7 +105,7 @@ class WriteBook(BookFlow):
         """
         service = self.surface_to_write.service
         pages = book_changes(self.root, service, before)
-        refusal = commit_or_refusal(self.root, unfinished_book_commit_subject(service), *pages)
+        refusal = commit_returning_refusal(self.root, unfinished_book_commit_subject(service), *pages)
         if refusal:
             return self._commit_refused(refusal, self.commit_unfinished, before=before, failure=failure)
         return Done(WriteOutcome(committed=False, failure=failure)).because("the writer's turn failed")
@@ -128,7 +128,7 @@ class WriteBook(BookFlow):
 
     def commit_book(self, pages: tuple[str, ...]) -> Done | Await[...]:
         """Commit the book's changed pages. A retry after the commit landed finds nothing to commit. A refused commit waits for the operator."""
-        refusal = commit_or_refusal(self.root, book_commit_subject(self.surface_to_write.service), *pages)
+        refusal = commit_returning_refusal(self.root, book_commit_subject(self.surface_to_write.service), *pages)
         if refusal:
             return self._commit_refused(refusal, self.commit_book, pages=pages)
         return Done(WriteOutcome(committed=True)).because("the book is committed")

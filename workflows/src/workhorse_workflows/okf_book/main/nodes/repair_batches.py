@@ -72,7 +72,7 @@ class PackedRepairs(BaseModel):
 
 
 @dataclass(frozen=True, slots=True)
-class _Unit:
+class _PageCost:
     repair: PageRepair
     own_tokens: int
     source_tokens: dict[str, int]
@@ -82,19 +82,19 @@ def _file_tokens(path: Path) -> int:
     return -(-path.stat().st_size // CHARS_PER_TOKEN) if path.is_file() else 0
 
 
-def _unit(root: Path, page: str, problems: tuple[str, ...]) -> _Unit:
+def _page_cost(root: Path, page: str, problems: tuple[str, ...]) -> _PageCost:
     path = root / page
     cited = tuple(dict.fromkeys(citation.path for citation in page_citations(path))) if path.is_file() else ()
     sources = {source: _file_tokens(root / source) for source in cited if (root / source).is_file()}
     problem_tokens = -(-sum(len(problem) for problem in problems) // CHARS_PER_TOKEN)
-    return _Unit(
+    return _PageCost(
         PageRepair(page=page, problems=problems, sources=tuple(sources)),
         BOOK_HOLDS * _file_tokens(path) + problem_tokens,
         sources,
     )
 
 
-def _cost(units: list[_Unit]) -> int:
+def _cost(units: list[_PageCost]) -> int:
     sources: dict[str, int] = {}
     for unit in units:
         sources.update(unit.source_tokens)
@@ -116,9 +116,9 @@ def repair_batches(
     """Pack the pages, in the order given, into batches each under `ceiling`, and set aside each page alone over it."""
     batches: list[RepairBatch] = []
     too_large: list[TooLarge] = []
-    current: list[_Unit] = []
+    current: list[_PageCost] = []
     for page, problems in by_page.items():
-        unit = _unit(root, page, problems)
+        unit = _page_cost(root, page, problems)
         alone = _cost([unit])
         if alone > ceiling:
             too_large.append(TooLarge(page=page, tokens=alone, ceiling=ceiling))

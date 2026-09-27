@@ -18,7 +18,7 @@ from pathlib import Path
 from pydantic import BaseModel, ConfigDict
 from ostler.stamp import stamp_page
 from workhorse.pyflow import AgentTimeout, AgentTurnFailed, Await, Continue, Done, WorkflowFailed
-from workhorse_workflows.kit import commit_or_refusal
+from workhorse_workflows.kit import commit_returning_refusal
 from workhorse_workflows.okf_book.main.nodes.repair_batches import RepairBatch, TooLarge, problems_by_page, repair_batches
 from workhorse_workflows.okf_book.main.nodes.root_entries import write_root_entries
 from workhorse_workflows.okf_book.main.nodes.surface import Surface
@@ -96,7 +96,7 @@ class RepairBook(BookFlow):
 
     def commit_root(self, held: tuple[str, ...], page: str) -> Continue[...] | Await[...]:
         """Commit the entries page. A refused commit waits for the operator."""
-        refusal = commit_or_refusal(self.root, rooted_book_commit_subject(self.service), page)
+        refusal = commit_returning_refusal(self.root, rooted_book_commit_subject(self.service), page)
         if refusal:
             return self._commit_refused(refusal, self.commit_root, held=held, page=page)
         return Continue(page, self.plan_first_round, held=held).because("the book is rooted")
@@ -177,7 +177,7 @@ class RepairBook(BookFlow):
 
     def commit_pages(self, repair: RepairRound, index: int, pages: tuple[str, ...]) -> Continue[...] | Await[...]:
         """Commit the batch's pages and move to the next batch. A refused commit waits for the operator."""
-        refusal = commit_or_refusal(self.root, repaired_book_commit_subject(self.service), *pages)
+        refusal = commit_returning_refusal(self.root, repaired_book_commit_subject(self.service), *pages)
         if refusal:
             return self._commit_refused(refusal, self.commit_pages, repair=repair, index=index, pages=pages)
         if index + 1 < len(repair.batches):
