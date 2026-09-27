@@ -16,7 +16,7 @@ from workhorse_workflows.okf_book.main.nodes.turn_budget import (
     source_and_book_tokens,
 )
 from workhorse_workflows.okf_book.main.write_book_flow import WriteBook, WriteOutcome
-from workhorse_workflows.okf_book.shared.blockers import Blocker, Phase, Side, read_blockers, record_blocker
+from workhorse_workflows.okf_book.shared.blockers import Blocker, Phase, Side, forget_blockers, read_blockers, record_blocker
 from workhorse_workflows.okf_book.shared.book_commits import book_commit_subject
 from workhorse_workflows.okf_book.shared.book_flow import BookFlow
 from workhorse_workflows.okf_book.shared.book_run import ExerciseResult
@@ -149,9 +149,10 @@ class OkfBook(BookFlow):
         return Continue(written, self.check_book, index=index).because("check the committed book")
 
     def check_book(self, index: int, after_run: bool = False) -> Continue[...]:
-        """Repeat the writer's own page check. Each problem it finds is a blocker."""
+        """Repeat the writer's own page check. Each problem it finds is a blocker, and one an earlier check found that this one does not is no longer."""
         service = self.surfaces[index].service
         problems = book_problems(self.root, service)
+        forget_blockers(self.records_dir, Phase.WRITE, Side.BOOK, f"{service}: ")
         for problem in problems:
             _ = record_blocker(self.records_dir, Blocker(subject=f"{service}: {problem}", phase=Phase.WRITE, side=Side.BOOK, reason=problem))
         return Continue(problems, self.run_book, index=index, written_by_workflow=True, after_run=after_run).because(

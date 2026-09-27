@@ -49,6 +49,13 @@ def record_blocker(run_dir: Path, blocker: Blocker) -> Blocker:
     return blocker
 
 
+def forget_blockers(run_dir: Path, phase: Phase, side: Side, subject_prefix: str) -> None:
+    """Drop the blockers of *phase* and *side* whose subject starts with *subject_prefix*, so a later check that no longer finds them clears them."""
+    for blocker in read_blockers(run_dir):
+        if blocker.phase is phase and blocker.side is side and blocker.subject.startswith(subject_prefix):
+            (run_dir / BLOCKERS_DIR / f"{blocker.key}.json").unlink()
+
+
 def read_blockers(run_dir: Path) -> tuple[Blocker, ...]:
     """Every blocker recorded so far, by phase then subject."""
     folder = run_dir / BLOCKERS_DIR

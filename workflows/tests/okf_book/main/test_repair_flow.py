@@ -24,13 +24,14 @@ from okf_book.support import ScriptedRunner, commits, git
 from workhorse.pyflow import driver as pyflow_driver
 from workhorse.runner.failure import BackendInvocationError
 
-from workhorse_workflows.okf_book.main import flow, repair_book_flow
+from workhorse_workflows.okf_book.main import exercise_book_flow, flow, repair_book_flow
 from workhorse_workflows.okf_book.main.nodes import turn_budget
 from workhorse_workflows.okf_book.main.nodes.repair_batches import PageRepair
 from workhorse_workflows.okf_book.main.nodes.report import BookReport
 from workhorse_workflows.okf_book.main.nodes.writer_commands import CHECK_MODULE, EXERCISE_MODULE, OSTLER_MODULE
 from workhorse_workflows.okf_book.main.repair_book_flow import REPAIR_ROUNDS
 from workhorse_workflows.okf_book.shared.blockers import Phase, Side
+from workhorse_workflows.okf_book.shared.book_run import ExerciseResult
 from workhorse_workflows.okf_book.shared.page_check import PageProblem
 from workhorse_workflows.okf_book.shared.scenarios import FailedCheck, RunSummary, Scenario, ScenarioOutcome
 from workhorse_workflows.okf_book.workflow import OkfBook
@@ -185,3 +186,39 @@ def test_a_book_this_workflow_wrote_that_fails_its_run_is_repaired_once_on_the_p
     result = drive_book(OkfBook(repo_dir=str(repo), surfaces=(TALLY,)), runner)
 
     _repaired_once_on_the_failed_page(runner, result)
+
+
+
+def _runs_in_turn(monkeypatch: pytest.MonkeyPatch, *results: ExerciseResult) -> None:
+    runs = iter(results)
+
+    def _run(_root: Path, _spec: Path, _gaps: tuple[str, ...], _serving: bool) -> ExerciseResult:
+        return next(runs)
+
+    monkeypatch.setattr(exercise_book_flow, "run_plan", _run)
+
+
+def _a_book_this_workflow_wrote(app: App) -> Path:
+    repo = app("tally-cli")
+    _ = (repo / PAGE).write_text((repo / PAGE).read_text(encoding="utf-8") + NOTE, encoding="utf-8")
+    _ = git(repo, "commit", "-qam", "docs(tally): write the tally book")
+    return repo
+
+
+@pytest.mark.usefixtures("failing_add")
+def test_a_check_problem_the_repaired_book_no_longer_has_is_no_blocker(
+    app: App, drive_book: DriveBook, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = _a_book_this_workflow_wrote(app)
+    checks = iter((("a.md is linked from no page",), ()))
+
+    def _problems(_root: Path, _service: str) -> tuple[str, ...]:
+        return next(checks)
+
+    monkeypatch.setattr(flow, "book_problems", _problems)
+    _runs_in_turn(monkeypatch, FAILED_ADD, PASSED)
+
+    result = drive_book(OkfBook(repo_dir=str(repo), surfaces=(TALLY,)), _repairer(repo))
+
+    assert isinstance(result, BookReport)
+    assert result.blockers == ()
