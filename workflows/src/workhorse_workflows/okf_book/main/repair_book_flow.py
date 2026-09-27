@@ -127,15 +127,20 @@ class RepairBook(BookFlow):
             return Done(repair.outcome(repair.number - 1, by_page)).because("no planned page is left for a turn")
         pages = sum(len(batch.pages) for batch in packed.batches)
         self.logger.info("round %d repairs %d pages in %d turns", repair.number, pages, len(packed.batches))
-        return Continue(len(packed.batches), self.repair_batch, repair=repair, index=0).because("repair the first batch")
+        return Continue(len(packed.batches), self.prepare_batch_turn, repair=repair, index=0).because("prepare the first batch")
 
-    def repair_batch(self, repair: RepairRound, index: int) -> Continue[...]:
-        """One turn, confined to the book folder and to ostler, the scoped check and the scenario run, repairs one batch of pages."""
+    def prepare_batch_turn(self, repair: RepairRound, index: int) -> Continue[...]:
+        """Snapshot the tree, and write the command state that scopes the turn's check to its batch and to the problems the book has now."""
         batch = repair.batches[index]
         before = snapshot(self.root)
         known = tuple(problem.text for problem in page_problems(self.root, self.service))
         state = WriterCommandState(root=self.root, service=self.service, pages=batch.page_paths, before=before, known=known)
         _ = write_command_state(self.run_dir, state)
+        return Continue(batch.page_paths, self.repair_batch, repair=repair, index=index, before=before).because("repair the batch")
+
+    def repair_batch(self, repair: RepairRound, index: int, before: Snapshot) -> Continue[...]:
+        """One turn, confined to the book folder and to ostler, the scoped check and the scenario run, repairs one batch of pages."""
+        batch = repair.batches[index]
         request = writer_request(self.run_dir, self.root, self.surface_to_repair, self.book_folder, self.source_folder)
         started = time.monotonic()
         failure = ""
@@ -188,5 +193,5 @@ class RepairBook(BookFlow):
         if refusal:
             return self._commit_refused(refusal, self.commit_pages, repair=repair, index=index, pages=pages)
         if index + 1 < len(repair.batches):
-            return Continue(pages, self.repair_batch, repair=repair, index=index + 1).because("repair the next batch")
+            return Continue(pages, self.prepare_batch_turn, repair=repair, index=index + 1).because("prepare the next batch")
         return Continue(pages, self.plan_round, last=repair).because("check the book again")
