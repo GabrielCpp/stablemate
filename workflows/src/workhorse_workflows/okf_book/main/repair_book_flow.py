@@ -25,7 +25,7 @@ from ostler.stamp import stamp_page
 from workhorse.pyflow import AgentTimeout, AgentTurnFailed, Await, Continue, Done, WorkflowFailed
 from workhorse_workflows.kit import commit_returning_refusal
 from workhorse_workflows.okf_book.main.nodes.journey import JourneyPages, journey_pages, pages_needing_journey
-from workhorse_workflows.okf_book.main.nodes.repair_batches import RepairBatch, TooLarge, problems_by_page, repair_batches
+from workhorse_workflows.okf_book.main.nodes.repair_batches import RepairBatch, TooLarge, pack_repairs, problems_by_page
 from workhorse_workflows.okf_book.main.nodes.root_entries import write_root_entries
 from workhorse_workflows.okf_book.main.nodes.surface import Surface
 from workhorse_workflows.okf_book.main.nodes.writer_commands import WriterCommandState, write_command_state
@@ -128,17 +128,21 @@ class RepairBook(BookFlow):
             self.logger.info("%d pages outside this repair have problems, left for the book check: %s", len(outside), ", ".join(outside))
         if last.number >= REPAIR_ROUNDS:
             return Done(last.outcome(last.number, by_page)).because("the repair rounds are spent")
-        listed = journey_pages(self.root, self.service, frozenset(last.uncommitted_at_start))
-        later = sorted(set(listed.flow_pages) - set(last.journey.pages))
-        if later:
-            self.logger.info("%d flow pages written after the repair planned its journey, left for the book check: %s", len(later), ", ".join(later))
+        current_journey = journey_pages(self.root, self.service, frozenset(last.uncommitted_at_start))
+        unplanned_flow_pages = sorted(set(current_journey.flow_pages) - set(last.journey.pages))
+        if unplanned_flow_pages:
+            self.logger.info(
+                "%d flow pages written after the repair planned its journey, left for the book check: %s",
+                len(unplanned_flow_pages),
+                ", ".join(unplanned_flow_pages),
+            )
         this_round = last.model_copy(update={"number": last.number + 1, "batches": ()})
         return self._first_batch_or_done(this_round, by_page, pages_needing_journey(problems))
 
     def _first_batch_or_done(
         self, this_round: RepairRound, by_page: dict[str, tuple[str, ...]], needs_journey: frozenset[str]
     ) -> Continue[...] | Done:
-        packed = repair_batches(self.root, by_page, this_round.journey, needs_journey)
+        packed = pack_repairs(self.root, by_page, this_round.journey, needs_journey)
         reported = {page.subject for page in this_round.too_large}
         too_large = (*this_round.too_large, *(page for page in packed.too_large if page.subject not in reported))
         this_round = this_round.model_copy(update={"too_large": too_large, "batches": packed.batches})

@@ -27,7 +27,7 @@ from workhorse.runner.failure import BackendInvocationError
 
 from workhorse_workflows.okf_book.main import flow, repair_book_flow
 from workhorse_workflows.okf_book.main.nodes import turn_budget
-from workhorse_workflows.okf_book.main.nodes.repair_batches import PageRepair, repair_batches
+from workhorse_workflows.okf_book.main.nodes.repair_batches import PageRepair, pack_repairs
 from workhorse_workflows.okf_book.main.nodes.report import BookReport
 from workhorse_workflows.okf_book.main.nodes.writer_commands import CHECK_MODULE, EXERCISE_MODULE, OSTLER_MODULE
 from workhorse_workflows.okf_book.main.repair_book_flow import REPAIR_ROUNDS
@@ -158,7 +158,7 @@ def test_a_page_too_large_for_one_writer_is_sent_no_turn_and_is_a_blocker_on_the
 ) -> None:
     repo = app("tally-cli")
     runner = _repairer(repo)
-    monkeypatch.setattr(repair_book_flow, "repair_batches", partial(repair_batches, ceiling=1))
+    monkeypatch.setattr(repair_book_flow, "pack_repairs", partial(pack_repairs, ceiling=1))
 
     result = drive_book(OkfBook(repo_dir=str(repo), surfaces=(TALLY,)), runner)
 

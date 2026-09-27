@@ -235,7 +235,7 @@ def _pack(
     return PackedRepairs(batches=tuple(batches), too_large=tuple(too_large))
 
 
-def repair_batches(
+def pack_repairs(
     root: Path,
     by_page: dict[str, tuple[str, ...]],
     journey: JourneyPages | None = None,
