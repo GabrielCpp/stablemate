@@ -21,7 +21,7 @@ class Section:
     """One `###` node of a page, or the page's head, and the 1-based line numbers it holds."""
 
     id: str
-    lines: tuple[int, ...]
+    line_numbers: tuple[int, ...]
 
 
 def _anchor(heading: str) -> str:
@@ -37,7 +37,7 @@ class PageSections:
 
     def section_text(self, section: Section) -> str:
         lines = self.text.splitlines()
-        return "".join(lines[number - 1] + "\n" for number in section.lines)
+        return "".join(lines[number - 1] + "\n" for number in section.line_numbers)
 
     def by_id(self, section_id: str) -> Section | None:
         return next((section for section in self.sections if section.id == section_id), None)
@@ -51,7 +51,7 @@ class PageSections:
         located = _LINE.match(problem)
         if located and located.group("page") == page:
             line = int(located.group("line"))
-            return next((section.id for section in self.sections if line in section.lines), HEAD)
+            return next((section.id for section in self.sections if line in section.line_numbers), HEAD)
         return HEAD
 
 
@@ -72,4 +72,4 @@ def page_sections(text: str) -> PageSections:
         Section(section_id, tuple(number for number, holder in enumerate(owner, start=1) if holder == section_id))
         for section_id in ids
     )
-    return PageSections(text, tuple(section for section in sections if section.lines or section.id == HEAD))
+    return PageSections(text, tuple(section for section in sections if section.line_numbers or section.id == HEAD))

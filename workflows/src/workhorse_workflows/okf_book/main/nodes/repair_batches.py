@@ -200,7 +200,7 @@ def _journey_cost(root: Path, page: str) -> _PageCost:
     return _PageCost(PageRepair(page=page, problems=()), BOOK_HOLDS * _file_tokens(root / page), {})
 
 
-def _joined(units: list[_PageCost]) -> tuple[PageRepair, ...]:
+def _repairs_joined_by_page(units: list[_PageCost]) -> tuple[PageRepair, ...]:
     by_page: dict[str, PageRepair] = {}
     for unit in units:
         prior = by_page.get(unit.repair.page)
@@ -209,7 +209,7 @@ def _joined(units: list[_PageCost]) -> tuple[PageRepair, ...]:
 
 
 def _batch(journey_costs: list[_PageCost], current: list[_PageCost], journey: JourneyPages | None) -> RepairBatch:
-    return RepairBatch(pages=_joined(current), tokens=_cost([*journey_costs, *current]), journey=journey)
+    return RepairBatch(pages=_repairs_joined_by_page(current), tokens=_cost([*journey_costs, *current]), journey=journey)
 
 
 @dataclass(frozen=True, slots=True)
@@ -247,7 +247,7 @@ class _PageSplitter:
                 units.append(unit)
         return _PageSplit(units, too_large)
 
-    def page_units(self, page: str, problems: tuple[str, ...]) -> _PageSplit:
+    def split_page(self, page: str, problems: tuple[str, ...]) -> _PageSplit:
         """The page whole when it fits, else each of its sections with a problem that fits, and what does not."""
         path = self.files.root / page
         text = path.read_text(encoding="utf-8") if path.is_file() else ""
@@ -269,9 +269,9 @@ def _pack(
     too_large: list[TooLarge] = []
     current: list[_PageCost] = []
     for page, problems in by_page.items():
-        units = splitter.page_units(page, problems)
-        too_large.extend(units.too_large)
-        for unit in units.units:
+        split = splitter.split_page(page, problems)
+        too_large.extend(split.too_large)
+        for unit in split.units:
             if current and _cost([*journey_costs, *current, unit]) > ceiling:
                 batches.append(_batch(journey_costs, current, journey))
                 current = []

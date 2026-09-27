@@ -19,15 +19,15 @@ YAML_SUFFIXES = frozenset({".yaml", ".yml"})
 
 @dataclass(frozen=True, slots=True)
 class CitedLines:
-    """The part of one file a citation names, repo-relative, and its tokens. `lines` is `(first, last)`, 1-based and inclusive, or None for the whole file."""
+    """The part of one file a citation names, repo-relative, and its tokens. `span` is `(first, last)`, 1-based and inclusive, or None for the whole file."""
 
     path: str
-    lines: tuple[int, int] | None
+    span: tuple[int, int] | None
     tokens: int
 
     @property
     def label(self) -> str:
-        return self.path if self.lines is None else f"{self.path}:{self.lines[0]}-{self.lines[1]}"
+        return self.path if self.span is None else f"{self.path}:{self.span[0]}-{self.span[1]}"
 
 
 def _indent(line: str) -> int:
@@ -114,9 +114,9 @@ class CitedFiles:
         if not path.is_file():
             return None
         text = self._text(citation.path)
-        lines = _symbol_lines(path, text, citation.symbol) if citation.symbol else None
-        if lines is None:
+        span = _symbol_lines(path, text, citation.symbol) if citation.symbol else None
+        if span is None:
             return CitedLines(citation.path, None, _tokens(path.stat().st_size))
-        first, last = lines
+        first, last = span
         chars = sum(len(line) + 1 for line in text.splitlines()[first - 1 : last])
-        return CitedLines(citation.path, lines, _tokens(chars))
+        return CitedLines(citation.path, span, _tokens(chars))
