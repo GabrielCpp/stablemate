@@ -193,7 +193,7 @@ def failing_add(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(pyflow_driver, "wait_for_answer", answer([]))
 
 
-def _repaired_once_on_the_failed_page(runner: ScriptedRunner, result: object) -> None:
+def _assert_repaired_once_on_the_failed_page(runner: ScriptedRunner, result: object) -> None:
     assert runner.total == 1
     sent = TypeAdapter(tuple[PageRepair, ...]).validate_python(runner.args_of("repair-pages")[0]["pages"])
     run_failure = "the run of scenario tally-add failed: adds an expense: expected 0, observed 1"
@@ -213,7 +213,7 @@ def test_an_existing_book_over_the_ceiling_that_fails_its_run_is_repaired_once_o
 
     result = drive_book(OkfBook(repo_dir=str(repo), surfaces=(TALLY,)), runner)
 
-    _repaired_once_on_the_failed_page(runner, result)
+    _assert_repaired_once_on_the_failed_page(runner, result)
 
 
 def _a_book_this_workflow_wrote(app: App) -> Path:
