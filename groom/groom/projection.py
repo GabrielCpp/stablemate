@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import time
 from datetime import datetime
+from pathlib import PurePath
 from typing import Any
 
 from groom import attend, gates, state, store
@@ -64,7 +65,9 @@ def matches(wf: WorkflowContainer, query: str) -> bool:
 
 
 def repo_label(wf: WorkflowContainer) -> str:
-    return f"{wf.repo_name}@{wf.repo_branch}" if wf.repo_branch else (wf.repo_name or "—")
+    """The repo a row names: the one its run declares, or for a run on this host the directory it runs in."""
+    name = wf.repo_name or (PurePath(wf.workspace_volume).name if wf.native and wf.workspace_volume else "")
+    return f"{name}@{wf.repo_branch}" if name and wf.repo_branch else (name or "—")
 
 
 def row_id(wf: WorkflowContainer) -> str:

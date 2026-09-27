@@ -377,3 +377,13 @@ if __name__ == "__main__":
     total = len([n for n in globals() if n.startswith("test_")])
     print(f"\n{total - failed}/{total} passed")
     raise SystemExit(1 if failed else 0)
+
+
+def test_a_host_run_names_the_directory_it_runs_in_as_its_repo():
+    host = _wf("okf-book-r1", native=True, run_id="okf-book-r1", workspace_volume="/work/acme")
+    declared = _wf("okf-book-r2", native=True, repo_name="globex", repo_branch="main", workspace_volume="/work/acme")
+    container = _wf("abc123", workspace_volume="workspace-vol")
+
+    assert projection.repo_label(host) == "acme"
+    assert projection.repo_label(declared) == "globex@main"
+    assert projection.repo_label(container) == "—"
