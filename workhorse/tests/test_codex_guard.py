@@ -143,6 +143,21 @@ def test_the_hook_refuses_a_call_that_is_not_an_object():
     assert json.loads(refused)["hookSpecificOutput"]["permissionDecision"] == "deny"
 
 
+def test_the_hook_refuses_when_its_policy_is_not_the_strings_it_writes():
+    malformed = (
+        ["not", "an", "object"],
+        {"cwd": "/work", "read_roots": ["/work"], "commands": "make test"},
+        {"cwd": "/work", "read_roots": [7], "commands": []},
+        {"read_roots": [], "commands": []},
+    )
+    with tempfile.TemporaryDirectory() as tmp:
+        policy_path = Path(tmp) / "policy.json"
+        for policy in malformed:
+            _ = policy_path.write_text(json.dumps(policy), encoding="utf-8")
+            refused = _hook_output([str(policy_path)], json.dumps({"tool_name": "Bash", "tool_input": {"command": "ls"}}))
+            assert json.loads(refused)["hookSpecificOutput"]["permissionDecision"] == "deny"
+
+
 def test_the_policy_survives_its_round_trip():
     assert Policy.from_json(POLICY.to_json()) == POLICY
 
@@ -154,7 +169,7 @@ if __name__ == "__main__":
         try:
             fn()
             print(f"PASS  {fn.__name__}")
-        except Exception as e:  # noqa: BLE001
+        except AssertionError as e:
             failed += 1
             print(f"FAIL  {fn.__name__}: {type(e).__name__}: {e}")
     print(f"\n{len(fns) - failed}/{len(fns)} passed")

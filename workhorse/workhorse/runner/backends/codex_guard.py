@@ -58,13 +58,25 @@ class Policy:
 
     @classmethod
     def from_json(cls, text: str) -> Policy:
-        """The policy written by `to_json`."""
-        data = json.loads(text)
-        return cls(
-            cwd=Path(data["cwd"]),
-            read_roots=tuple(Path(root) for root in data["read_roots"]),
-            commands=tuple(data["commands"]),
-        )
+        """The policy written by `to_json`, refusing one whose fields are not the strings it writes."""
+        data: object = json.loads(text)
+        if not isinstance(data, dict):
+            raise ValueError("the policy is not an object")
+        cwd = data.get("cwd")
+        read_roots = _strings(data.get("read_roots"))
+        commands = _strings(data.get("commands"))
+        if not isinstance(cwd, str) or read_roots is None or commands is None:
+            raise ValueError("the policy needs a string cwd and string lists for read_roots and commands")
+        return cls(cwd=Path(cwd), read_roots=tuple(Path(root) for root in read_roots), commands=commands)
+
+
+def _strings(value: object) -> tuple[str, ...] | None:
+    """The list's strings, or None when it is no list of strings."""
+    if not isinstance(value, list):
+        return None
+    items: list[object] = list(value)
+    strings = tuple(item for item in items if isinstance(item, str))
+    return strings if len(strings) == len(items) else None
 
 
 @dataclass(frozen=True, slots=True)
