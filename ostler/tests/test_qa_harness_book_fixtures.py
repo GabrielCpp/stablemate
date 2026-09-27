@@ -549,3 +549,25 @@ def test_each_run_of_a_scenario_starts_from_a_fresh_copy_of_the_checkout(tmp_pat
 
     assert not (tmp_path / "out.txt").exists()
     assert (tmp_path / "qa" / "a-command-runs-in-its-own-copy-of-the-checkout" / "out.txt").is_file()
+
+
+NO_COMMAND_SCENARIO = '''\
+@scenario(target=api, mechanism="live", covers=["ac:1"])
+def a_scenario_that_runs_no_command(qa: Qa) -> None:
+    """A scenario that never reads its directory leaves the checkout uncopied."""
+    qa.check("the scenario ran", True)
+'''
+
+
+def test_a_scenario_that_runs_no_command_copies_no_checkout(tmp_path: Path) -> None:
+    (tmp_path / "app.txt").write_text("the app\n", encoding="utf-8")
+    module = _write(tmp_path, NO_COMMAND_SCENARIO)
+    context = json.dumps({"root": str(tmp_path), "spec_dir": str(tmp_path), "qa_dir": str(tmp_path / "qa")})
+
+    code, stdout, records = _harness(
+        "run", str(module), "a-scenario-that-runs-no-command", context,
+        env={"PATH": "/usr/bin:/bin"}, records_to=tmp_path / "records.jsonl",
+    )
+
+    assert code == 0, (stdout, records)
+    assert not (tmp_path / "qa" / "a-scenario-that-runs-no-command").exists()

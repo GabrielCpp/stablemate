@@ -1296,7 +1296,7 @@ class Qa:
         self._tool_env_allowed = frozenset(tool_env)
         self._recorder = recorder
         self._captures: dict[str, str] = {}
-        self.scenario_dir = (qa_dir.resolve() / scenario_id).resolve()
+        self._world: Path | None = None
         self.http = Http(target.base_url, on_unexpected_status=self._status_mismatch)
         self._index = 0
         self.assertions = 0
@@ -1438,9 +1438,25 @@ class Qa:
         )
         self._recorder.emit({"type": "fixture_fault", **asdict(fault)})
 
-    def copy_checkout(self) -> None:
-        """Replace `scenario_dir` with a fresh copy of the checkout as the runbook left it, so a command finds the code it runs and its files land apart from every other scenario's."""
-        into = self.scenario_dir
+    @property
+    def scenario_dir(self) -> Path:
+        """This scenario's own directory under `self.dir`: a fresh copy of the checkout as the runbook left it, made on first use.
+
+        A command finds the code it runs there, and its files land apart from every other
+        scenario's. A scenario that runs no command never pays for a copy of the checkout.
+        """
+        if self._world is None:
+            into = (self.dir.resolve() / self.scenario_id).resolve()
+            try:
+                self._copy_checkout(into)
+            except OSError as exc:
+                detail = f"could not copy the checkout into {into}: {exc}"
+                self._fault(self.scenario_id, -1, "checkout", "environment", detail)
+                raise RuntimeError(f"qa {self.scenario_id!r}: {detail}") from exc
+            self._world = into
+        return self._world
+
+    def _copy_checkout(self, into: Path) -> None:
         shutil.rmtree(into, ignore_errors=True)
         root = self.root.resolve()
         qa_dir = self.dir.resolve()
@@ -2556,7 +2572,6 @@ def _run(module_path: Path, scenario_id: str, context: dict[str, Any]) -> int:
     browser = None
     status, error = "passed", None
     try:
-        qa.copy_checkout()
         if target_decl.driver == "playwright":
             browser = _open_browser(qa)
         declared.func(qa)
