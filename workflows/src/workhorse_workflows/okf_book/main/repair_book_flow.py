@@ -24,15 +24,8 @@ from pydantic import BaseModel, ConfigDict
 from ostler.stamp import stamp_page
 from workhorse.pyflow import AgentTimeout, AgentTurnFailed, Await, Continue, Done, WorkflowFailed
 from workhorse_workflows.kit import commit_returning_refusal
-from workhorse_workflows.okf_book.main.nodes.repair_batches import (
-    JourneyPages,
-    RepairBatch,
-    TooLarge,
-    journey_needed,
-    journey_pages,
-    problems_by_page,
-    repair_batches,
-)
+from workhorse_workflows.okf_book.main.nodes.journey import JourneyPages, journey_pages, pages_needing_journey
+from workhorse_workflows.okf_book.main.nodes.repair_batches import RepairBatch, TooLarge, problems_by_page, repair_batches
 from workhorse_workflows.okf_book.main.nodes.root_entries import write_root_entries
 from workhorse_workflows.okf_book.main.nodes.surface import Surface
 from workhorse_workflows.okf_book.main.nodes.writer_commands import WriterCommandState, write_command_state
@@ -123,7 +116,7 @@ class RepairBook(BookFlow):
         by_page = problems_by_page(problems, frozenset(uncommitted_at_start))
         journey = journey_pages(self.root, self.service, frozenset(uncommitted_at_start))
         this_round = RepairRound(uncommitted_at_start=uncommitted_at_start, planned_pages=tuple(by_page), journey=journey, number=1)
-        return self._first_batch_or_done(this_round, by_page, journey_needed(problems))
+        return self._first_batch_or_done(this_round, by_page, pages_needing_journey(problems))
 
     def plan_round(self, last: RepairRound) -> Continue[...] | Done:
         """Check the book again and pack the planned pages that still have problems. A spent repair ends with what is left."""
@@ -140,7 +133,7 @@ class RepairBook(BookFlow):
         if later:
             self.logger.info("%d flow pages written after the repair planned its journey, left for the book check: %s", len(later), ", ".join(later))
         this_round = last.model_copy(update={"number": last.number + 1, "batches": ()})
-        return self._first_batch_or_done(this_round, by_page, journey_needed(problems))
+        return self._first_batch_or_done(this_round, by_page, pages_needing_journey(problems))
 
     def _first_batch_or_done(
         self, this_round: RepairRound, by_page: dict[str, tuple[str, ...]], needs_journey: frozenset[str]
