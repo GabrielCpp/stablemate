@@ -4,7 +4,8 @@ Nothing here changes a page. It reports a missing entries page, every page nothi
 page reaches, and every doctor error on the book, except a stale citation, which the commit
 restamps. So is a bullet the page's type does not declare, which doctor only warns about because
 a hand-kept book may carry one, but which on a written page is a claim nothing runs. It reports
-every command, endpoint and screen no flow walks, and every obligation that does not compile, unless the gap is one ostler cannot run yet, which is
+every command, endpoint and screen no flow walks, every cli page whose binary the repository opts
+into no QA tool, and every obligation that does not compile, unless the gap is one ostler cannot run yet, which is
 ostler's to fix and not the book's. A claim observed out of band is the book's: no run observes it, so the writer
 restates it as what a caller sees, or drops it. Two gaps are no defect at all: a precondition the arrangement
 already discharges, and the placeholder obligation every node mints for itself, which owes a
@@ -27,6 +28,8 @@ from ostler.model import Graph, load
 from ostler.qa.compile import HARNESS_LIMIT_GAPS, Plan, compile_plan_gaps
 from ostler.qa.context import book_context, validate_context, write_context
 from ostler.qa.plan_source import Gap
+from ostler.qa.runbook import bullet_text
+from ostler.qa.tools import opted_in_tools
 from workhorse_workflows.okf_book.shared.blockers import Side
 from workhorse_workflows.okf_book.shared.entries import FEATURES_DIR, book_dir, entries_path
 from workhorse_workflows.okf_book.shared.production import production_files
@@ -200,18 +203,28 @@ class _Node(BaseModel):
     surface: str | None
     parent: str | None
     edges: tuple[_Edge, ...]
+    bullets: dict[str, JsonValue] = {}
+
+    @property
+    def binary(self) -> str:
+        value = self.bullets.get("binary")
+        first = value[0] if isinstance(value, list) and value else value
+        return bullet_text(first) if isinstance(first, str) else ""
 
 
 _NODES = TypeAdapter(tuple[_Node, ...])
 
 
+def _service_nodes(book: Graph, service: str) -> list[_Node]:
+    return [node for node in _NODES.validate_python(graph_mod.build(book)["nodes"]) if node.surface == service]
+
+
 def off_journey_nodes(root: Path, service: str) -> tuple[str, ...]:
     """Every command, endpoint and screen of the service that no flow's walk links, itself or through a part of it."""
-    return _off_journey(load(root), service)
+    return _off_journey(_service_nodes(load(root), service))
 
 
-def _off_journey(book: Graph, service: str) -> tuple[str, ...]:
-    nodes = [node for node in _NODES.validate_python(graph_mod.build(book)["nodes"]) if node.surface == service]
+def _off_journey(nodes: list[_Node]) -> tuple[str, ...]:
     parents = {node.id: node.parent for node in nodes}
     walked: set[str] = set()
     for flow in (node for node in nodes if node.type == "flow"):
@@ -223,20 +236,35 @@ def _off_journey(book: Graph, service: str) -> tuple[str, ...]:
     return tuple(node.id for node in nodes if node.type in JOURNEY_TYPES and node.id not in walked)
 
 
-def _off_journey_problems(book: Graph, service: str) -> list[PageProblem]:
+def _off_journey_problems(nodes: list[_Node]) -> list[PageProblem]:
     return [
         PageProblem(
             node.partition("#")[0],
             f"{node} is on no flow. Write a flow under flows/ whose steps link it, or link it from a step of a flow you have.",
         )
-        for node in _off_journey(book, service)
+        for node in _off_journey(nodes)
+    ]
+
+
+def _uninvokable_problems(root: Path, nodes: list[_Node]) -> list[PageProblem]:
+    tools = opted_in_tools(root)
+    return [
+        PageProblem(
+            node.id,
+            f"{node.id}: no run can invoke `{node.binary}`, because this repository opts no QA tool of that name in. "
+            + "When the app itself runs it, delete the page, and state what running it changes on the page of what calls it, "
+            + "whose claims prove it. When a user runs it, the operator opts it in.",
+        )
+        for node in nodes
+        if node.type == "cli" and node.binary and node.binary not in tools
     ]
 
 
 def page_problems(root: Path, service: str) -> tuple[PageProblem, ...]:
-    """Every problem on the service's book, each with its page: a missing entries page, a page nothing reaches, a doctor error, a command, endpoint or screen no flow walks, and a claim that does not compile."""
+    """Every problem on the service's book, each with its page: a missing entries page, a page nothing reaches, a doctor error, a command, endpoint or screen no flow walks, a command no run can invoke, and a claim that does not compile."""
     pages = _book_page_paths(root, service)
     book = load(root)
+    nodes = _service_nodes(book, service)
     dead = [
         PageProblem(page.rel, f"{page.rel} is linked from no page the entries page reaches. Link it, or delete it.")
         for page in dead_pages(book)
@@ -248,7 +276,8 @@ def page_problems(root: Path, service: str) -> tuple[PageProblem, ...]:
         *_entries_problems(root, service),
         *dead,
         *_doctor_problems(book, pages),
-        *_off_journey_problems(book, service),
+        *_off_journey_problems(nodes),
+        *_uninvokable_problems(root, nodes),
         *_gap_problems(gaps),
     )
 

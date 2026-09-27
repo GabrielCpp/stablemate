@@ -70,3 +70,16 @@ def test_a_claim_no_run_observes_is_the_books_to_restate(app: Callable[[str], Pa
 
     assert len(problems) == 1
     assert "State what a caller of the surface sees instead" in problems[0]
+
+
+def test_a_cli_page_whose_binary_the_repo_opts_into_no_qa_tool_cannot_be_invoked(app: Callable[[str], Path]) -> None:
+    repo = app("tally-cli")
+    opted_in = [problem for problem in book_problems(repo, "tally") if "no run can invoke" in problem]
+    _drop_lines(repo / "agents.yml", "- python3")
+
+    assert opted_in == []
+    assert [problem for problem in book_problems(repo, "tally") if "no run can invoke" in problem] == [
+        f"{COMMANDS.as_posix()}: no run can invoke `python3`, because this repository opts no QA tool of that name in. "
+        + "When the app itself runs it, delete the page, and state what running it changes on the page of what calls it, "
+        + "whose claims prove it. When a user runs it, the operator opts it in."
+    ]
