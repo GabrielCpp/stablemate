@@ -77,6 +77,29 @@ def test_an_existing_book_over_the_ceiling_is_rooted_repaired_page_by_page_and_r
     assert git(repo, "status", "--porcelain").strip() == ""
 
 
+def test_a_retried_root_still_commits_the_entries_page_an_earlier_try_wrote(app: App) -> None:
+    """No later state commits the entries page, so a try stopped between its write and its commit must not read as rooted."""
+    repo = app("tally-cli")
+    book = repair_book_flow.RepairBook(repo_dir=str(repo), surface=TALLY)
+
+    first = book.root_book(uncommitted_at_start=())
+    written = (repo / "docs/features/tally/entries.md").read_text(encoding="utf-8")
+    retried = book.root_book(uncommitted_at_start=())
+
+    assert (first.state, retried.state) == ("commit_root", "commit_root")
+    assert retried.params == first.params
+    assert (repo / "docs/features/tally/entries.md").read_text(encoding="utf-8") == written
+
+
+def test_an_entries_page_someone_left_uncommitted_roots_the_book_as_it_is(app: App) -> None:
+    repo = app("tally-cli")
+    page = "docs/features/tally/entries.md"
+    _ = (repo / page).write_text("---\ntype: entries\n---\n", encoding="utf-8")
+    book = repair_book_flow.RepairBook(repo_dir=str(repo), surface=TALLY)
+
+    assert book.root_book(uncommitted_at_start=(page,)).state == "plan_first_round"
+
+
 @pytest.mark.usefixtures("over_the_ceiling")
 def test_a_commit_the_repo_refuses_waits_for_the_operator_and_is_tried_again(
     app: App, drive_book: DriveBook, monkeypatch: pytest.MonkeyPatch

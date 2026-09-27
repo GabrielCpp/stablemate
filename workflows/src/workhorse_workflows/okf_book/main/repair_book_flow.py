@@ -126,10 +126,16 @@ class RepairBook(BookFlow):
         return Continue(uncommitted_at_start, self.root_book, uncommitted_at_start=uncommitted_at_start).because("root the book")
 
     def root_book(self, uncommitted_at_start: tuple[str, ...]) -> Continue[...]:
-        """Write and commit the entries page of a book that has none, so every check can tell what it reaches."""
-        if entries_path(self.root, self.service).is_file():
+        """Write and commit the entries page of a book HEAD holds none for, so every check can tell what it reaches.
+
+        A page someone left uncommitted roots the book as it is. One an earlier try of this state wrote is still committed here, since no later state commits it.
+        """
+        path = entries_path(self.root, self.service)
+        page = path.relative_to(self.root).as_posix()
+        if page not in untracked(self.root, (page,)) or page in uncommitted_at_start:
             return Continue(None, self.plan_first_round, uncommitted_at_start=uncommitted_at_start).because("the book has its root")
-        page = write_root_entries(self.root, self.service)
+        if not path.is_file():
+            page = write_root_entries(self.root, self.service)
         return Continue(page, self.commit_root, uncommitted_at_start=uncommitted_at_start, page=page).because("commit the entries page")
 
     def commit_root(self, uncommitted_at_start: tuple[str, ...], page: str) -> Continue[...] | Await[...]:
