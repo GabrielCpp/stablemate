@@ -32,6 +32,7 @@ from workhorse.runner.backends import (
 from workhorse.runner.backends.cline import ClineBackend
 from workhorse.runner.backends.claude import ClaudeBackend
 from workhorse.runner.backends.codex import CodexBackend
+from workhorse.runner.backends.codex_guard import Policy
 from workhorse.runner.backends.copilot import CopilotBackend
 from workhorse.runner.backends.null import NullBackend
 from workhorse.runner.backends.opencode import OpenCodeBackend
@@ -280,7 +281,7 @@ def test_codex_no_effort_omits_override():
 class _GuardedCall:
     hooks: str
     policy_path: Path
-    policy: dict[str, object]
+    policy: Policy
 
 
 def test_codex_runs_a_confined_turn_behind_the_guard_hook_and_removes_its_policy_after():
@@ -296,7 +297,7 @@ def test_codex_runs_a_confined_turn_behind_the_guard_hook_and_removes_its_policy
         def fake(cmd, node_id, timeout, stdin_data, on_event, **kwargs):
             hooks = cmd[cmd.index("--dangerously-bypass-hook-trust") + 2]
             policy_path = Path(hooks.split(" ")[-1].rstrip('"}]'))
-            calls.append(_GuardedCall(hooks, policy_path, json.loads(policy_path.read_text(encoding="utf-8"))))
+            calls.append(_GuardedCall(hooks, policy_path, Policy.from_json(policy_path.read_text(encoding="utf-8"))))
             return turn.TurnState(result_text="OK", session_id="t")
 
         prior = os.environ.pop("CODEX_PROFILE", None)
@@ -307,11 +308,11 @@ def test_codex_runs_a_confined_turn_behind_the_guard_hook_and_removes_its_policy
                 os.environ["CODEX_PROFILE"] = prior
     (call,) = calls
     assert "codex_guard" in call.hooks
-    assert call.policy == {
-        "cwd": str(root / "docs"),
-        "read_roots": [str(root / "docs"), str(root / "src"), str(root / ".claude" / "skills")],
-        "commands": ["ostler"],
-    }
+    assert call.policy == Policy(
+        cwd=root / "docs",
+        read_roots=(root / "docs", root / "src", root / ".claude" / "skills"),
+        commands=("ostler",),
+    )
     assert not call.policy_path.exists()
 
 
