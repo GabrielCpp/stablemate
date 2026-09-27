@@ -35,7 +35,11 @@ class PageRepair(BaseModel):
 
 
 class JourneyPages(BaseModel):
-    """The pages a fix that puts a page on a journey may change: the entry pages, the flow pages, and a new page in the flow folder."""
+    """The pages a fix that puts a page on a journey may change: the entry pages, the flow pages, and a new page in the flow folder.
+
+    Only the flow pages count against a batch. The writer reads a flow whole to extend it, but adds
+    no more than a link to an entry page, which it finds without reading the rest of it.
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -43,7 +47,14 @@ class JourneyPages(BaseModel):
     flow_folder: str
 
     def owns(self, path: str) -> bool:
-        return path in self.pages or path.startswith(f"{self.flow_folder}/")
+        return path in self.pages or self.is_flow(path)
+
+    def is_flow(self, path: str) -> bool:
+        return path.startswith(f"{self.flow_folder}/")
+
+    @property
+    def flow_pages(self) -> tuple[str, ...]:
+        return tuple(page for page in self.pages if self.is_flow(page))
 
 
 class RepairBatch(BaseModel):
@@ -69,7 +80,7 @@ class RepairBatch(BaseModel):
 
 
 class TooLarge(BaseModel):
-    """A problem page no turn is sent, since it, the files it cites and the journey pages its fix goes on cost more than one writer reads."""
+    """A problem page no turn is sent, since it, the files it cites and the flow pages its fix goes on cost more than one writer reads."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -80,7 +91,7 @@ class TooLarge(BaseModel):
 
     @property
     def reason(self) -> str:
-        cost = ", the files it cites and the journey pages its fix goes on" if self.with_journey else " and the files it cites"
+        cost = ", the files it cites and the flow pages its fix goes on" if self.with_journey else " and the files it cites"
         split = "split the page or the flow pages" if self.with_journey else "split the page"
         return (
             f"{self.page}{cost} cost {self.tokens} tokens, over the {self.ceiling} one writer reads, "
@@ -164,7 +175,7 @@ def _batch(journey_costs: list[_PageCost], current: list[_PageCost], journey: Jo
 def _pack(
     files: CitedFiles, by_page: dict[str, tuple[str, ...]], ceiling: int, journey: JourneyPages | None
 ) -> PackedRepairs:
-    journey_costs = [_journey_cost(files.root, page) for page in journey.pages] if journey else []
+    journey_costs = [_journey_cost(files.root, page) for page in journey.flow_pages] if journey else []
     batches: list[RepairBatch] = []
     too_large: list[TooLarge] = []
     current: list[_PageCost] = []
@@ -193,7 +204,7 @@ def repair_batches(
     """Pack the pages, in the order given, into batches each under `ceiling`, and set aside each page alone over it.
 
     The pages in `needs_journey` go first, into batches that also hold the journey pages and count
-    their cost, since their fix goes on a flow or an entry page.
+    the flow pages' cost, since their fix goes on a flow or an entry page.
     """
     on_journey = {page: problems for page, problems in by_page.items() if journey and page in needs_journey}
     rest = {page: problems for page, problems in by_page.items() if page not in on_journey}

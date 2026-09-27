@@ -64,6 +64,9 @@ gives relative to the repository starts there.
 {% for page in journey_pages %}
   - `{{ page }}`
 {% endfor %}
+
+  Read a flow page whole before you extend it. On any other of these, find the line you link
+  from with `rg -n`, and read only the lines around it.
 {% endif %}
 - Do not edit `entries.md`. Code writes it.
 - Change no page but {% if flow_folder %}those above{% else %}yours{% endif %}. Code puts back every other change when the turn ends, so
