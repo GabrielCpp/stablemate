@@ -14,7 +14,7 @@ from pathlib import Path
 from pydantic import BaseModel, ConfigDict
 from ostler.stamp import stamp_page
 from workhorse.pyflow import AgentTimeout, AgentTurnFailed, Await, Continue, Done, WorkflowFailed
-from workhorse_workflows.kit import commit_refusal
+from workhorse_workflows.kit import commit_or_refusal
 from workhorse_workflows.okf_book.main.nodes.repair_batches import RepairBatch, problems_by_page, repair_batches
 from workhorse_workflows.okf_book.main.nodes.root_entries import write_root_entries
 from workhorse_workflows.okf_book.main.nodes.surface import Surface
@@ -85,15 +85,15 @@ class RepairBook(BookFlow):
 
     def commit_root(self, held: tuple[str, ...], page: str) -> Continue[...] | Await[...]:
         """Commit the entries page. A refused commit waits for the operator."""
-        refusal = commit_refusal(self.root, rooted_book_commit_subject(self.service), page)
+        refusal = commit_or_refusal(self.root, rooted_book_commit_subject(self.service), page)
         if refusal:
             return self._commit_refused(refusal, self.commit_root, held=held, page=page)
         return Continue(page, self.plan_round, held=held, round_number=1, failed=()).because("the book is rooted")
 
     def plan_round(self, held: tuple[str, ...], round_number: int, failed: tuple[str, ...]) -> Continue[...] | Done:
         """Check the book and pack its problem pages into batches. A clean book, or one the rounds are spent on, ends the repair."""
-        ran = [PageProblem(page, text) for page, texts in self.run_failures.items() for text in texts] if round_number == 1 else []
-        by_page = problems_by_page((*page_problems(self.root, self.service), *ran), frozenset(held))
+        run_problems = [PageProblem(page, text) for page, texts in self.run_failures.items() for text in texts] if round_number == 1 else []
+        by_page = problems_by_page((*page_problems(self.root, self.service), *run_problems), frozenset(held))
         left = sum(len(problems) for problems in by_page.values())
         outcome = RepairOutcome(rounds=round_number - 1, failed_turns=failed, problems_left=left)
         if not by_page:
@@ -121,7 +121,7 @@ class RepairBook(BookFlow):
                 returns=str,
                 power="medium",
                 timeout=float("inf"),
-                args=request.repair_template_args(batch, ran=bool(self.run_failures)),
+                args=request.repair_template_args(batch, failed_run=bool(self.run_failures)),
                 cwd=self.root / self.book_folder,
                 add_dirs=[request.source_view],
                 profile=request.repair_profile,
@@ -153,7 +153,7 @@ class RepairBook(BookFlow):
 
     def commit_pages(self, repair: RepairRound, index: int, pages: tuple[str, ...]) -> Continue[...] | Await[...]:
         """Commit the batch's pages and move to the next batch. A refused commit waits for the operator."""
-        refusal = commit_refusal(self.root, repaired_book_commit_subject(self.service), *pages)
+        refusal = commit_or_refusal(self.root, repaired_book_commit_subject(self.service), *pages)
         if refusal:
             return self._commit_refused(refusal, self.commit_pages, repair=repair, index=index, pages=pages)
         if index + 1 < len(repair.batches):

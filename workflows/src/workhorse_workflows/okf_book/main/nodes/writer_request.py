@@ -69,7 +69,7 @@ class WriterRequest:
             "qa_tools": [{"name": tool.name, "description": tool.description} for tool in self.qa_tools],
         }
 
-    def repair_template_args(self, batch: RepairBatch, *, ran: bool) -> dict[str, object]:
+    def repair_template_args(self, batch: RepairBatch, *, failed_run: bool) -> dict[str, object]:
         """The repair-pages prompt's arguments for one batch, and whether the book failed its run."""
         return {
             "service": self.surface.service,
@@ -82,7 +82,7 @@ class WriterRequest:
             "ostler_run_cap": OSTLER_RUN_CAP,
             "check": self.check_command_line,
             "check_run_cap": CHECK_AND_SCENARIO_RUN_CAP,
-            "exercise": self.exercise_command_line if ran else "",
+            "exercise": self.exercise_command_line if failed_run else "",
             "pages": [repair.model_dump() for repair in batch.pages],
         }
 
