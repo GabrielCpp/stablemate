@@ -4,8 +4,8 @@ Nothing here changes a page. It reports a missing entries page, every page nothi
 page reaches, and every doctor error on the book, except a stale citation, which the commit
 restamps. So is a bullet the page's type does not declare, which doctor only warns about because
 a hand-kept book may carry one, but which on a written page is a claim nothing runs. It reports
-every command, endpoint and screen no flow walks, every cli page whose binary the repository opts
-into no QA tool, and every obligation that does not compile, unless the gap is one ostler cannot run yet, which is
+every command, endpoint and screen no flow walks, every cli page that names no binary or one the
+repository opts into no QA tool, and every obligation that does not compile, unless the gap is one ostler cannot run yet, which is
 ostler's to fix and not the book's. A claim observed out of band is the book's: no run observes it, so the writer
 restates it as what a caller sees, or drops it. Two gaps are no defect at all: a precondition the arrangement
 already discharges, and the placeholder obligation every node mints for itself, which owes a
@@ -252,12 +252,17 @@ def _uninvokable_problems(root: Path, nodes: list[_Node]) -> list[PageProblem]:
     return [
         PageProblem(
             node.id,
-            f"{node.id}: no run can invoke `{node.binary}`, because this repository opts no QA tool of that name in. "
-            + "When the app itself runs it, delete the page, and state what running it changes on the page of what calls it, "
-            + "whose claims prove it. When a user runs it, the operator opts it in.",
+            (
+                f"{node.id}: no run can invoke `{node.binary}`, because this repository opts no QA tool of that name in. "
+                if node.binary
+                else f"{node.id}: no run can invoke it, because it names no `binary:`. "
+            )
+            + "When the app itself runs it, delete the page and every page under it, point each link to them at the page "
+            + "of what calls it, and state there what running it changes, with claims that prove it. Do not scaffold it "
+            + "again. When a user runs it, `binary:` names the program, and the operator opts that tool in.",
         )
         for node in nodes
-        if node.type == "cli" and node.binary and node.binary not in tools
+        if node.type == "cli" and node.binary not in tools
     ]
 
 

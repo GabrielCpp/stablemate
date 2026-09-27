@@ -8,6 +8,11 @@ from workhorse_workflows.okf_book.shared.page_check import book_problems, compil
 
 FLOW = Path("docs/features/tally/flows/track-a-trip.md")
 COMMANDS = Path("docs/features/tally/tally.md")
+UNINVOKABLE_FIX = (
+    "When the app itself runs it, delete the page and every page under it, point each link to them at the page "
+    + "of what calls it, and state there what running it changes, with claims that prove it. Do not scaffold it "
+    + "again. When a user runs it, `binary:` names the program, and the operator opts that tool in."
+)
 
 
 def _drop_lines(path: Path, *needles: str) -> None:
@@ -80,6 +85,14 @@ def test_a_cli_page_whose_binary_the_repo_opts_into_no_qa_tool_cannot_be_invoked
     assert opted_in == []
     assert [problem for problem in book_problems(repo, "tally") if "no run can invoke" in problem] == [
         f"{COMMANDS.as_posix()}: no run can invoke `python3`, because this repository opts no QA tool of that name in. "
-        + "When the app itself runs it, delete the page, and state what running it changes on the page of what calls it, "
-        + "whose claims prove it. When a user runs it, the operator opts it in."
+        + UNINVOKABLE_FIX
+    ]
+
+
+def test_a_cli_page_that_names_no_binary_cannot_be_invoked(app: Callable[[str], Path]) -> None:
+    repo = app("tally-cli")
+    _drop_lines(repo / COMMANDS, "- binary:")
+
+    assert [problem for problem in book_problems(repo, "tally") if "no run can invoke" in problem] == [
+        f"{COMMANDS.as_posix()}: no run can invoke it, because it names no `binary:`. " + UNINVOKABLE_FIX
     ]
