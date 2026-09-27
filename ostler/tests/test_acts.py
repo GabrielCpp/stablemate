@@ -40,7 +40,7 @@ def test_an_unknown_name_gets_the_act_vocabulary_not_the_check_vocabulary() -> N
     refused = acts.parse_act('visible(locator="#x")')
     assert isinstance(refused, checks.Refusal)
     assert refused.kind == "unknown-act"
-    assert "body, click, fill, invoke, press, select" in refused.message
+    assert "body, click, fill, header, invoke, press, select" in refused.message
     assert refused.form == acts.vocabulary()
 
 
@@ -115,6 +115,16 @@ def test_body_refuses_a_value_no_json_scalar_can_be() -> None:
     refused = acts.bind("body", {"field": "tags", "value": ["a", "b"]})
     assert isinstance(refused, checks.Refusal)
     assert "is scalar, got list" in refused.message
+
+
+def test_header_names_a_request_header_its_http_performer_sends() -> None:
+    """A credential a fixture minted reaches a guarded route only on the request, so `header` is an HTTP act that names no control."""
+    call = acts.parse_act('header(name="Authorization", value="Bearer @signed-in-editor.token")')
+    assert isinstance(call, acts.ActCall)
+    assert call.args == {"name": "Authorization", "value": "Bearer @signed-in-editor.token"}
+    spec = acts.ACT_BY_NAME["header"]
+    assert spec.drivers == (acts.HTTP,)
+    assert not any(p.locator for p in spec.params)
 
 
 def test_fill_still_refuses_a_non_string_value_per_its_own_parameter() -> None:

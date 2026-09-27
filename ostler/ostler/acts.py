@@ -95,6 +95,15 @@ ACTS: tuple[ActSpec, ...] = (
         drivers=(HTTP,),
     ),
     ActSpec(
+        name="header",
+        params=(ActParam("name", "str", required=True),
+                ActParam("value", "str", required=True)),
+        establishes="the request this step sends carries a stated header — the only way a "
+                    "credential a fixture minted, named by `@fixture.key`, reaches a route "
+                    "that refuses an anonymous caller",
+        drivers=(HTTP,),
+    ),
+    ActSpec(
         name="invoke",
         params=(ActParam("argv", "str[]", required=True),),
         establishes="the process this command's binary — named by the owning `cli` node's "

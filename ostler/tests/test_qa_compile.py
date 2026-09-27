@@ -470,6 +470,83 @@ def test_an_arranged_request_body_compiles_to_json_body() -> None:
     assert 'json_body={"name": "Widget A", "quantity": 3}' in source
 
 
+def _header_act(name: str, value: str) -> dict:
+    return {"call": f"header(name={name!r}, value={value!r})", "name": "header",
+            "args": {"name": name, "value": value}}
+
+
+def test_an_arranged_header_is_sent_with_its_fixture_reference_resolved() -> None:
+    """A guarded route answers 401 to an anonymous caller, so the token a fixture minted has to ride on the request itself, resolved at run time rather than sent as the literal text the book wrote."""
+    oid = "okf:docs/features/demo/globex.md#get-things:does:1"
+    context = _context(
+        _obligation(
+            oid,
+            locators={"route": ["GET /api/things"]},
+            checksDeclared=[{"call": "ok", "name": "http_status", "args": {"code": 200}}],
+            fixturesDeclared=[{"name": "signed-in-editor", "args": [], "provides": "a signed-in editor",
+                               "providesKeys": ["signed-in-editor.token"]}],
+            actsDeclared=[_header_act("Authorization", "Bearer @signed-in-editor.token")],
+        )
+    )
+    source, gaps = compile_plan_gaps(context, story="demo-story")
+    assert source is not None
+    assert _gap_kinds(gaps, oid) == []
+    assert ('qa.http.get("/api/things", expect_status=200, '
+            'headers={"Authorization": qa.resolve("Bearer @signed-in-editor.token")})') in source
+
+
+def test_a_header_naming_a_fact_no_fixture_provides_is_an_unresolved_precondition() -> None:
+    oid = "okf:docs/features/demo/globex.md#get-things:does:1"
+    context = _context(
+        _obligation(
+            oid,
+            locators={"route": ["GET /api/things"]},
+            checksDeclared=[{"call": "ok", "name": "http_status", "args": {"code": 200}}],
+            fixturesDeclared=[{"name": "seeded-ledger", "args": [], "provides": "a ledger"}],
+            actsDeclared=[_header_act("Authorization", "Bearer @signed-in-editor.token")],
+        )
+    )
+    _source, gaps = compile_plan_gaps(context, story="demo-story")
+    assert _gap_kinds(gaps, oid) == ["unresolved-precondition"]
+
+
+def test_a_body_member_naming_a_fixture_fact_is_resolved_at_run_time() -> None:
+    """A body member that names `@node.key` means the value the fixture left, not the characters of the reference."""
+    oid = "okf:docs/features/demo/globex.md#post-things:does:1"
+    context = _context(
+        _obligation(
+            oid,
+            locators={"route": ["POST /api/things"]},
+            checksDeclared=[_check()],
+            fixturesDeclared=[{"name": "seeded-acme", "args": [], "provides": "an account exists",
+                               "providesKeys": ["seeded-acme.id"]}],
+            actsDeclared=[_body_act("owner", "@seeded-acme.id"), _body_act("quantity", 3),
+                          _header_act("X-Tenant", "acme")],
+        )
+    )
+    source, gaps = compile_plan_gaps(context, story="demo-story")
+    assert source is not None
+    assert _gap_kinds(gaps, oid) == []
+    assert ('json_body={"owner": qa.resolve("@seeded-acme.id"), "quantity": 3}, '
+            'headers={"X-Tenant": "acme"}') in source
+
+
+def test_a_post_that_arranges_only_a_header_still_has_no_body() -> None:
+    oid = "okf:docs/features/demo/globex.md#post-things:does:1"
+    context = _context(
+        _obligation(
+            oid,
+            locators={"route": ["POST /api/things"]},
+            checksDeclared=[_check()],
+            fixturesDeclared=[{"name": "seeded-ledger", "args": [], "provides": "a ledger"}],
+            actsDeclared=[_header_act("X-Tenant", "acme")],
+        )
+    )
+    result = _compile_plan_gaps(context, story="demo-story", base_url=_BASE_URL)
+    assert isinstance(result, Refusal)
+    assert _gap_kinds(result.gaps, oid) == ["unarranged-request-body"]
+
+
 def test_a_half_arranged_request_body_is_still_withheld() -> None:
     """One act the HTTP driver cannot perform poisons the whole body, the same all-or-nothing rule `_performed_lines` already applies to `fill`/`click` — a request half the book declared is neither the body it wrote nor no body."""
     oid = "okf:docs/features/demo/globex.md#post-things:does:1"
@@ -3013,6 +3090,27 @@ def test_a_journey_step_sends_the_body_its_node_arranges() -> None:
     assert oid in _covers(source)
     assert _gap_kinds(gaps, oid) == []
     assert 'json_body={"name": "Widget A", "quantity": 3}' in source
+
+
+def test_a_journey_get_step_sends_the_header_its_node_arranges() -> None:
+    oid = f"okf:{_FLOW}:end-state"
+    get_node = _step_node(f"{_API}#get-things", {"route": ["GET /api/things"]})
+    get_node["actsDeclared"] = [_header_act("X-Tenant", "acme")]
+    context = _navigation_context(
+        _flow_obligation(
+            oid, source=_FLOW, surface="api",
+            steps=[_step(f"{_API}#get-things", "endpoint", "api")],
+            checks=[{"call": "it", "name": "http_status", "args": {"status": 200,
+                                                                   "path": "/api/things"}}],
+        ),
+        get_node,
+        navigation=_api_navigation(),
+    )
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(result, Plan)
+    ast.parse(result.source)
+    assert _gap_kinds(result.gaps, oid) == []
+    assert 'observed_1 = qa.http.get("/api/things", headers={"X-Tenant": "acme"})' in result.source
 
 
 def test_a_journey_step_with_a_contradictory_body_is_unarranged() -> None:

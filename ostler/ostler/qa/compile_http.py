@@ -119,23 +119,53 @@ def api_scenarios(
 _BODILESS_METHODS = frozenset({"GET", "DELETE", "HEAD", "OPTIONS"})
 
 
-def _http_body(rows: tuple[CallRow, ...]) -> dict[str, CheckValue] | None:
-    """The request body *rows* arrange, or `None` if any one of them cannot be sent over HTTP."""
-    body: dict[str, CheckValue] = {}
+@dataclass(frozen=True)
+class _HttpArrangement:
+    """What a step's acts put on the wire: the members of its body and the headers it sends."""
+    body: dict[str, CheckValue]
+    headers: dict[str, CheckValue]
+
+    def named_references(self) -> list[references.Reference]:
+        """Every `@node.key`/`$name` a body member or a header value names."""
+        values = [*self.body.values(), *self.headers.values()]
+        return [ref for value in values if isinstance(value, str)
+                for ref in references.find_references(value)]
+
+    def kwargs(self, *, with_body: bool) -> str:
+        """The `json_body=`/`headers=` keywords of the call that sends this arrangement."""
+        body = f", json_body={_lit_fields(self.body)}" if with_body else ""
+        headers = f", headers={_lit_fields(self.headers)}" if self.headers else ""
+        return body + headers
+
+
+def _http_arrangement(rows: tuple[CallRow, ...]) -> _HttpArrangement | None:
+    """The body and headers *rows* arrange, or `None` if any one of them cannot be sent over HTTP."""
+    arranged = _HttpArrangement({}, {})
     for row in rows:
         spec = acts_mod.ACT_BY_NAME.get(row.name)
         if spec is None or acts_mod.HTTP not in spec.drivers:
             return None
-        key, value = row.text_arg("field"), row.args.get("value", "")
-        if key in body and body[key] != value:
+        if spec.name == "header":
+            sink, key, value = arranged.headers, row.text_arg("name"), row.text_arg("value")
+        else:
+            sink, key, value = arranged.body, row.text_arg("field"), row.args.get("value", "")
+        if key in sink and sink[key] != value:
             return None
-        body[key] = value
-    return body
+        sink[key] = value
+    return arranged
 
 
-def _lit_body(fields: dict[str, CheckValue]) -> str:
-    """A `json_body=` dict literal, spelled the way `python_literal` spells every value inside it."""
-    return "{" + ", ".join(f"{json.dumps(k)}: {python_literal(v)}" for k, v in fields.items()) + "}"
+def _lit_value(value: CheckValue) -> str:
+    """One value as `python_literal` spells it, wrapped in `qa.resolve` when it names a reference."""
+    literal = python_literal(value)
+    if isinstance(value, str) and references.find_references(value):
+        return f"qa.resolve({literal})"
+    return literal
+
+
+def _lit_fields(fields: dict[str, CheckValue]) -> str:
+    """A `json_body=`/`headers=` dict literal, every value spelled by `_lit_value`."""
+    return "{" + ", ".join(f"{json.dumps(k)}: {_lit_value(v)}" for k, v in fields.items()) + "}"
 
 
 @dataclass(frozen=True)
@@ -195,15 +225,19 @@ def _claim_request(
                 for ref in path_refs if not produced.resolves(ref))
     wants_body = method not in _BODILESS_METHODS
     act_rows = obligation.acts
-    body = None if (not act_rows or obligation.acts_unparsed) else _http_body(act_rows)
-    if wants_body and body is None:
+    arranged = None if (not act_rows or obligation.acts_unparsed) else _http_arrangement(act_rows)
+    if wants_body and (arranged is None or not arranged.body):
         why = "the book carries no request body"
         return _UnbuiltClaimRequest(why, ScenarioRefusal("unarranged-request-body", why))
+    if arranged is not None:
+        gaps.extend(Gap(obligation.id, "unresolved-precondition",
+                        f"the request references {ref!r}, not resolvable without running the plan")
+                    for ref in arranged.named_references() if not produced.resolves(ref))
     path_expr = f"qa.resolve({python_literal(path)})" if path_refs else python_literal(path)
     status = _expect_status(rows)
     expect = f", expect_status={status}" if status is not None else ""
-    body_kw = f", json_body={_lit_body(body)}" if wants_body and body is not None else ""
-    return _ClaimRequest(f"    {observed} = qa.http.{method.lower()}({path_expr}{expect}{body_kw})", "{" in path)
+    sent = arranged.kwargs(with_body=wants_body) if arranged is not None else ""
+    return _ClaimRequest(f"    {observed} = qa.http.{method.lower()}({path_expr}{expect}{sent})", "{" in path)
 
 
 def _request_lines(
@@ -301,10 +335,10 @@ def _scenario_body(obligations: list[Obligation], gaps: list[Gap], covered: set[
 
 @dataclass(frozen=True)
 class _HttpRequest:
-    """One journey step's request: the verb, the path, and the `json_body=` it sends."""
+    """One journey step's request: the verb, the path, and the `json_body=`/`headers=` it sends."""
     method: str
     path: str
-    body_kw: str
+    sent: str
 
 
 @dataclass(frozen=True)
@@ -335,17 +369,18 @@ def _http_request(
         return _UnbuiltStep("this journey could not compile the node this step names, so it "
                             "holds no response to capture the field from")
     method, path = route
-    if method in _BODILESS_METHODS:
-        return _HttpRequest(method, path, "")
     node_rows = book.acts_by_node.get(ref, [])
-    fields = None if (ref in book.acts_refused or not node_rows) else _http_body(tuple(node_rows))
-    if fields is None:
+    arranged = (None if (ref in book.acts_refused or not node_rows)
+                else _http_arrangement(tuple(node_rows)))
+    if method in _BODILESS_METHODS:
+        return _HttpRequest(method, path, arranged.kwargs(with_body=False) if arranged else "")
+    if arranged is None or not arranged.body:
         gaps.extend(Gap(oid, "unarranged-request-body",
                         f"step {index} is a {method} and the book carries no request body")
                     for oid in ids)
         return _UnbuiltStep("this journey could not build this step's request body, so it "
                             "holds no response to capture the field from")
-    return _HttpRequest(method, path, f", json_body={_lit_body(fields)}")
+    return _HttpRequest(method, path, arranged.kwargs(with_body=True))
 
 
 def _step_captures(
@@ -428,7 +463,7 @@ def _http_steps(walk: JourneyWalk, sinks: PlanSinks) -> _HttpSteps | None:
         bound = _bound_path(request.path, produced, owners)
         target = (f"qa.resolve({python_literal(bound)})" if references.find_references(bound)
                   else python_literal(bound))
-        lines.append(f"    {observed} = qa.http.{request.method.lower()}({target}{request.body_kw})")
+        lines.append(f"    {observed} = qa.http.{request.method.lower()}({target}{request.sent})")
         if "{" in bound:
             lines.append("    # TODO(arrange): the path above still carries a template variable")
             gaps.extend(Gap(oid, "unresolved-precondition",
