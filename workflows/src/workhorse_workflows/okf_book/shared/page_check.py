@@ -19,7 +19,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, JsonValue, TypeAdapter
+from pydantic import BaseModel, ConfigDict, JsonValue, TypeAdapter, model_validator
 
 from ostler import doctor
 from ostler import graph as graph_mod
@@ -99,12 +99,20 @@ class BookCompilation:
         return self.plan is not None
 
 
+_JSON_FIELDS = TypeAdapter(dict[str, JsonValue])
+
+
 class _Obligation(BaseModel):
     """One obligation of a QA context, named by the page and node it checks. Ostler's other fields ride along as extras."""
 
     model_config = ConfigDict(frozen=True, extra="allow")
 
     id: str
+
+    @model_validator(mode="after")
+    def _extras_are_json(self) -> _Obligation:
+        _ = _JSON_FIELDS.validate_python(self.model_extra or {})
+        return self
 
 
 class _ServicesContext(BaseModel):
