@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import time
 from pathlib import Path
 from typing import Any
@@ -33,11 +34,6 @@ _TRANSIENT_MARKERS = (
     "temporarily unavailable",
     "service unavailable",
     "internal server error",
-    "429",
-    "500",
-    "502",
-    "503",
-    "504",
     "timeout",
     "timed out",
     "connection reset",
@@ -56,6 +52,7 @@ _TRANSIENT_MARKERS = (
     "failed to execute statement",
     "failed query:",
 )
+_TRANSIENT_STATUS = re.compile(r"(?<![\d.])(?:429|50[0234])(?!\d)")
 
 _CONTEXT_OVERFLOW_MARKERS = (
     "prompt is too long",
@@ -122,8 +119,12 @@ def error_kind(exc: BaseException) -> str:
 
 
 def is_transient(diagnostics: str) -> bool:
+    """A failure that clears on its own: a rate limit, an overload, a dropped link, or an HTTP status that names one.
+
+    A status code counts only as a whole number, so a timestamp's fraction of a second never reads as an outage.
+    """
     low = diagnostics.lower()
-    return any(marker in low for marker in _TRANSIENT_MARKERS)
+    return any(marker in low for marker in _TRANSIENT_MARKERS) or bool(_TRANSIENT_STATUS.search(low))
 
 
 def is_cap(diagnostics: str) -> bool:

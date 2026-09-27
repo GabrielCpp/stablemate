@@ -51,6 +51,14 @@ def test_transient_error_detection():
     print("✓ Transient error detection tests passed!\n")
 
 
+def test_a_status_code_is_transient_only_as_a_whole_number():
+    """A timestamp's fraction of a second carries digits like 503 without naming an outage."""
+    assert is_transient("HTTP 429 Too Many Requests")
+    assert is_transient("upstream returned status=502")
+    assert not is_transient("2026-09-27T01:58:20.503861Z ERROR apply_patch verification failed")
+    assert not is_transient("wrote 15029 bytes")
+
+
 def test_cap_detection():
     """Test spending/usage cap detection."""
     print("Testing cap detection...")
@@ -185,6 +193,7 @@ def main():
     
     try:
         test_transient_error_detection()
+        test_a_status_code_is_transient_only_as_a_whole_number()
         test_cap_detection()
         test_reset_time_parsing()
         test_error_recovery()
