@@ -120,8 +120,8 @@ class RepairBook(BookFlow):
 
     def _first_batch_or_done(self, repair: RepairRound, by_page: dict[str, tuple[str, ...]]) -> Continue[...] | Done:
         packed = repair_batches(self.root, by_page)
-        known = {page.page for page in repair.too_large}
-        too_large = (*repair.too_large, *(page for page in packed.too_large if page.page not in known))
+        reported = {page.page for page in repair.too_large}
+        too_large = (*repair.too_large, *(page for page in packed.too_large if page.page not in reported))
         repair = repair.model_copy(update={"too_large": too_large, "batches": packed.batches})
         if not packed.batches:
             return Done(repair.outcome(repair.number - 1, by_page)).because("no planned page is left for a turn")
@@ -133,8 +133,14 @@ class RepairBook(BookFlow):
         """Snapshot the tree, and write the command state that scopes the turn's check to its batch and to the problems the book has now."""
         batch = repair.batches[index]
         before = snapshot(self.root)
-        known = tuple(problem.text for problem in page_problems(self.root, self.service))
-        state = WriterCommandState(root=self.root, service=self.service, pages=batch.page_paths, before=before, known=known)
+        problems_at_turn_start = tuple(problem.text for problem in page_problems(self.root, self.service))
+        state = WriterCommandState(
+            root=self.root,
+            service=self.service,
+            pages=batch.page_paths,
+            before=before,
+            problems_at_turn_start=problems_at_turn_start,
+        )
         _ = write_command_state(self.run_dir, state)
         return Continue(batch.page_paths, self.repair_batch, repair=repair, index=index, before=before).because("repair the batch")
 

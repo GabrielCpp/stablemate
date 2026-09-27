@@ -27,8 +27,8 @@ def scoped_problems(state: WriterCommandState) -> tuple[str, ...]:
     if not state.pages:
         return tuple(problem.text for problem in problems)
     scope = frozenset(state.pages)
-    known = frozenset(state.known)
-    return tuple(problem.text for problem in problems if problem.page in scope or problem.text not in known)
+    problems_at_turn_start = frozenset(state.problems_at_turn_start)
+    return tuple(problem.text for problem in problems if problem.page in scope or problem.text not in problems_at_turn_start)
 
 
 def run_check(argv: Sequence[str]) -> CommandOutput:

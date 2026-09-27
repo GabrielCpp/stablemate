@@ -217,8 +217,8 @@ def test_a_check_scoped_to_pages_prints_their_problems_and_those_the_turn_made_b
         "docs/features/ledger/orphaned.md",
     )
     monkeypatch.setattr(check_pages, "page_problems", _problems_on(*pages))
-    known = (f"{pages[0]} is broken", f"{pages[1]} is broken", f"{pages[2]} is broken")
-    state = WriterCommandState(root=repo, service="ledger", pages=(pages[0],), before=before, known=known)
+    problems_at_turn_start = (f"{pages[0]} is broken", f"{pages[1]} is broken", f"{pages[2]} is broken")
+    state = WriterCommandState(root=repo, service="ledger", pages=(pages[0],), before=before, problems_at_turn_start=problems_at_turn_start)
 
     printed = scoped_problems(state)
 
