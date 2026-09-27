@@ -124,9 +124,9 @@ def _flow_and_page_until_noted(root: Path, service: str) -> tuple[PageProblem, .
 
 
 def _one_page_per_batch(
-    root: Path, by_page: dict[str, tuple[str, ...]], journey: JourneyPages | None = None, needs_journey: frozenset[str] = frozenset()
+    root: Path, by_page: dict[str, tuple[str, ...]], journey: JourneyPages | None = None, pages_needing_journey: frozenset[str] = frozenset()
 ) -> PackedRepairs:
-    packed = pack_repairs(root, by_page, journey, needs_journey)
+    packed = pack_repairs(root, by_page, journey, pages_needing_journey)
     batches = tuple(batch.model_copy(update={"pages": (page,)}) for batch in packed.batches for page in batch.pages)
     return packed.model_copy(update={"batches": batches})
 

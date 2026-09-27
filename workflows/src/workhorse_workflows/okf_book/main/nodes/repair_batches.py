@@ -237,15 +237,15 @@ def pack_repairs(
     root: Path,
     by_page: dict[str, tuple[str, ...]],
     journey: JourneyPages | None = None,
-    needs_journey: frozenset[str] = frozenset(),
+    pages_needing_journey: frozenset[str] = frozenset(),
     ceiling: int = SOURCE_AND_BOOK_CEILING_TOKENS,
 ) -> PackedRepairs:
     """Pack the pages, in the order given, into batches each under `ceiling`, and set aside each page alone over it.
 
-    The pages in `needs_journey` go first, into batches that also hold the journey pages and count
+    The pages in `pages_needing_journey` go first, into batches that also hold the journey pages and count
     what the writer reads of them, since their fix goes on a flow or an entry page.
     """
-    on_journey = {page: problems for page, problems in by_page.items() if journey and page in needs_journey}
+    on_journey = {page: problems for page, problems in by_page.items() if journey and page in pages_needing_journey}
     rest = {page: problems for page, problems in by_page.items() if page not in on_journey}
     files = CitedFiles(root)
     journey_packed = _pack(files, on_journey, ceiling, journey)
