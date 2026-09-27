@@ -3152,6 +3152,42 @@ def test_a_journey_get_step_sends_the_header_its_node_arranges() -> None:
     assert 'observed_1 = qa.http.get("/api/things", headers={"X-Tenant": "acme"})' in result.source
 
 
+def _journey_sending_a_reader_token(fixture: str) -> tuple[str, dict]:
+    oid = f"okf:{_FLOW}:end-state"
+    get_node = _step_node(f"{_API}#get-things", {"route": ["GET /api/things"]})
+    get_node["actsDeclared"] = [_header_act("Authorization", "@reader.token")]
+    context = _navigation_context(
+        _flow_obligation(
+            oid, source=_FLOW, surface="api",
+            steps=[_step(f"{_API}#get-things", "endpoint", "api")],
+            checks=[{"call": "it", "name": "http_status", "args": {"status": 200,
+                                                                   "path": "/api/things"}}],
+            fixtures=[{"name": fixture, "args": [], "provides": "a signed-in reader",
+                       "providesKeys": [f"{fixture}.token"]}],
+        ),
+        get_node,
+        navigation=_api_navigation(),
+    )
+    return oid, context
+
+
+def test_a_journey_step_sends_the_fact_its_flows_fixture_provides() -> None:
+    oid, context = _journey_sending_a_reader_token("reader")
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(result, Plan)
+    assert _gap_kinds(result.gaps, oid) == []
+    assert 'headers={"Authorization": qa.resolve("@reader.token")}' in result.source
+
+
+def test_a_journey_step_sending_a_fact_no_journey_fixture_provides_is_a_gap() -> None:
+    """The step's node arranges from a fixture the flow does not run, so the fact is unset when the journey sends it."""
+    oid, context = _journey_sending_a_reader_token("other-reader")
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(result, Refusal)
+    assert _gap_kinds(result.gaps, oid) == ["unresolved-precondition"]
+    assert any("`@reader.token`" in g.detail for g in result.gaps if g.obligation_id == oid)
+
+
 def test_a_journey_step_with_a_contradictory_body_is_unarranged() -> None:
     """Phase 1's limitation, named explicitly: two arms of the same node stating different values for the same field merge to a contradiction, not a body any request could carry, so the step withholds the whole request exactly as a half-performable one already does."""
     oid = f"okf:{_FLOW}:end-state"

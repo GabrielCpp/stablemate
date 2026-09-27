@@ -339,6 +339,7 @@ class _HttpRequest:
     method: str
     path: str
     sent: str
+    named: tuple[references.Reference, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -372,15 +373,35 @@ def _http_request(
     node_rows = book.acts_by_node.get(ref, [])
     arranged = (None if (ref in book.acts_refused or not node_rows)
                 else _http_arrangement(tuple(node_rows)))
+    named = tuple(arranged.named_references()) if arranged else ()
     if method in _BODILESS_METHODS:
-        return _HttpRequest(method, path, arranged.kwargs(with_body=False) if arranged else "")
+        return _HttpRequest(method, path, arranged.kwargs(with_body=False) if arranged else "", named)
     if arranged is None or not arranged.body:
         gaps.extend(Gap(oid, "unarranged-request-body",
                         f"step {index} is a {method} and the book carries no request body")
                     for oid in ids)
         return _UnbuiltStep("this journey could not build this step's request body, so it "
                             "holds no response to capture the field from")
-    return _HttpRequest(method, path, arranged.kwargs(with_body=True))
+    return _HttpRequest(method, path, arranged.kwargs(with_body=True), named)
+
+
+def _spelled(ref: references.Reference) -> str:
+    """*ref* as the book spells it: `@node.key` or `$name`."""
+    return f"@{ref.node}.{ref.key}" if isinstance(ref, references.NodeRef) else f"${ref.name}"
+
+
+def _unsent_references(
+    index: int, request: _HttpRequest, known: _Produced, ids: list[str], gaps: list[Gap],
+) -> bool:
+    """Gap every reference step *index* sends that no journey fixture or earlier step provides; whether any did."""
+    unresolved = [ref for ref in request.named if not known.resolves(ref)]
+    gaps.extend(Gap(oid, "unresolved-precondition",
+                    f"step {index} sends `{_spelled(ref)}`, and neither a fixture the flow's "
+                    "`fixture:` names nor an earlier step provides it — name the fixture that "
+                    "provides it on the flow, or arrange the step from a fact the flow's "
+                    "fixture provides")
+                for ref in unresolved for oid in ids)
+    return bool(unresolved)
 
 
 def _step_captures(
@@ -457,11 +478,17 @@ def _http_steps(walk: JourneyWalk, sinks: PlanSinks) -> _HttpSteps | None:
     book, gaps = walk.book, sinks.gaps
     lines: list[str] = []
     produced: set[str] = set()
+    known = _Produced(captures=produced)
+    for obligation in walk.obligations:
+        known.record_fixtures(obligation)
     owners = _fixture_owners(walk.obligations)
     observed = last_path = ""
     refused = _refused_status(walk.obligations)
     for index, step in enumerate(walk.steps, start=1):
         request = _http_request(index, step, book, walk.ids, gaps)
+        if not isinstance(request, _UnbuiltStep) and _unsent_references(index, request, known, walk.ids, gaps):
+            request = _UnbuiltStep("this journey sends a fact at this step that nothing it runs "
+                                   "provides, so it holds no response to capture the field from")
         if isinstance(request, _UnbuiltStep):
             decline_captures_by_node([s.ref for s in walk.steps[index - 1:]], book.captures_by_node,
                                      gaps, sinks.captured, because=request.because)
