@@ -287,6 +287,33 @@ def test_a_batch_with_a_page_off_the_journey_owns_the_entry_and_flow_pages_and_a
     assert git(repo, "status", "--porcelain").strip() == ""
 
 
+def _writes_a_flow_then_notes(repo: Path) -> ScriptedRunner:
+    def _reply(_args: dict[str, object]) -> dict[str, object]:
+        if (repo / NEW_FLOW).is_file():
+            _ = (repo / PAGE).write_text((repo / PAGE).read_text(encoding="utf-8") + NOTE, encoding="utf-8")
+        else:
+            _ = (repo / NEW_FLOW).write_text(OUTSIDE_EDIT, encoding="utf-8")
+        return {"value": f"repaired {PAGE}"}
+
+    return ScriptedRunner({"repair-pages": _reply})
+
+
+@pytest.mark.usefixtures("over_the_ceiling")
+def test_a_later_round_keeps_the_journey_pages_the_first_round_planned(
+    app: App, drive_book: DriveBook, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = app("tally-cli")
+    monkeypatch.setattr(repair_book_flow, "page_problems", _off_journey_until_noted)
+    runner = _writes_a_flow_then_notes(repo)
+
+    result = drive_book(OkfBook(repo_dir=str(repo), surfaces=(TALLY,)), runner)
+
+    assert isinstance(result, BookReport)
+    assert runner.total == 2
+    assert [args["journey_pages"] for args in runner.args_of("repair-pages")] == [[PAGE, FLOW_PAGE], [PAGE, FLOW_PAGE]]
+    assert (repo / NEW_FLOW).is_file()
+
+
 @pytest.mark.usefixtures("over_the_ceiling")
 def test_a_turn_that_changed_a_page_someone_left_uncommitted_waits_for_the_operator(
     app: App, drive_book: DriveBook, monkeypatch: pytest.MonkeyPatch

@@ -135,8 +135,11 @@ class RepairBook(BookFlow):
             self.logger.info("%d pages outside this repair have problems, left for the book check: %s", len(outside), ", ".join(outside))
         if last.number >= REPAIR_ROUNDS:
             return Done(last.outcome(last.number, by_page)).because("the repair rounds are spent")
-        journey = journey_pages(self.root, self.service, frozenset(last.uncommitted_at_start))
-        this_round = last.model_copy(update={"number": last.number + 1, "batches": (), "journey": journey})
+        listed = journey_pages(self.root, self.service, frozenset(last.uncommitted_at_start))
+        later = sorted(set(listed.flow_pages) - set(last.journey.pages))
+        if later:
+            self.logger.info("%d flow pages written after the repair planned its journey, left for the book check: %s", len(later), ", ".join(later))
+        this_round = last.model_copy(update={"number": last.number + 1, "batches": ()})
         return self._first_batch_or_done(this_round, by_page, journey_needed(problems))
 
     def _first_batch_or_done(

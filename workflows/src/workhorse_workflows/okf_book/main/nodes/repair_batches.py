@@ -57,8 +57,8 @@ class JourneyPages(BaseModel):
 
     Only the flow pages count against a batch. The writer reads a flow whole to extend it, but adds
     no more than a link to an entry page, which it finds without reading the rest of it. A flow page
-    written after the pages were listed is not one of them, since no batch counted it. The next
-    round lists it.
+    written after the pages were listed is not one of them, since no batch counted it. A later round
+    reports it and leaves it for the book check.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
