@@ -446,12 +446,15 @@ def build_context(
         if item["impacted"]
     ]
     grounded: set[str] = set()
+    grounds: dict[str, bool] = {}
     for node_id in sorted(selected):
         node = nodes_by_id[node_id]
         for normalized in refs_mod.code_refs(node.get("bullets", {}).get("code")):
-            if not _grounding_for_ref(
-                root, base, head, normalized, repositories_by_id, book_root
-            ):
+            if normalized not in grounds:
+                grounds[normalized] = _grounding_for_ref(
+                    root, base, head, normalized, repositories_by_id, book_root
+                )
+            if not grounds[normalized]:
                 health.append(
                     {
                         "kind": "dangling-grounding",
@@ -1049,7 +1052,7 @@ def _symbols_for_lines(text: str, lines: set[int], path: str = "") -> list[str]:
 
 def _revision_text(root: Path, revision: str, path: str) -> str:
     """The blob's text at `revision`, or "" — the same answer `_working_text` gives for a file it cannot decode, so the two sides of a diff agree about what "unreadable" means."""
-    if not path or path == "/dev/null":
+    if not path or path == "/dev/null" or revision == EMPTY_TREE_SHA:
         return ""
     try:
         blob = _git_bytes(root, "show", _revision_path_arg(revision, path))
@@ -1072,7 +1075,7 @@ def _working_text(root: Path, path: str) -> str:
 
 def _revision_holds(root: Path, revision: str, path: str) -> bool:
     """Whether `revision` has a blob at `path` — asked of the bytes, never of their decoding."""
-    if not path or path == "/dev/null":
+    if not path or path == "/dev/null" or revision == EMPTY_TREE_SHA:
         return False
     try:
         _git_bytes(root, "cat-file", "-e", _revision_path_arg(revision, path))

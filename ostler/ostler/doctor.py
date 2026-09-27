@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import difflib
+import functools
 import json
 import os
 import re
@@ -183,7 +184,7 @@ def _check_story_identity(graph: Graph, findings: list[Finding]) -> None:
             for alias in story.aliases:
                 owners.setdefault(alias, []).append((epic, story))
             if story.eid and story.file_eid and story.eid != story.file_eid:
-                path = (story.story_md.relative_to(graph.root).as_posix()
+                path = (_rel_posix(story.story_md, graph.root)
                         if story.story_md else "")
                 findings.append(Finding(
                     "error", "story-id-mismatch",
@@ -220,7 +221,7 @@ def _apply_surface_declarations(graph: Graph, findings: list[Finding]) -> None:
     """Apply ``exercised: false`` from each surface's ``index.md`` frontmatter."""
     froot = graph.doc_roots["features"]
     try:
-        features_rel = froot.relative_to(graph.root).as_posix()
+        features_rel = _rel_posix(froot, graph.root)
     except ValueError:
         return
     dropped: list[str] = []
@@ -264,7 +265,7 @@ def _apply_known_defects(graph: Graph, findings: list[Finding]) -> None:
     suppressed: set[int] = set()
     stale: list[Finding] = []
     for node in graph.ui_nodes:
-        rel = node.path.relative_to(graph.root).as_posix()
+        rel = _rel_posix(node.path, graph.root)
         for index, value in enumerate(_bullet_values(node.meta.get("known-defect", "")), 1):
             parsed = parse_known_defect(value)
             if parsed is None:
@@ -395,14 +396,14 @@ def _check_epic(graph: Graph, epic: Epic, all_slugs: set[str], f: list[Finding])
                              epic.name, story.slug))
         else:
             if story.body_status and story.status.strip() != story.body_status.strip():
-                rel = story.story_md.relative_to(graph.root).as_posix()
+                rel = _rel_posix(story.story_md, graph.root)
                 f.append(Finding(
                     "error", "story-status-mismatch",
                     f"story '{story.slug}' frontmatter status '{story.status}' differs from "
                     f"its `## Implementation Status` value '{story.body_status}'",
                     epic.name, story.slug, path=rel, line=1))
             if story.conflict:
-                rel = story.story_md.relative_to(graph.root).as_posix()
+                rel = _rel_posix(story.story_md, graph.root)
                 f.append(Finding(
                     "error", "story-conflict",
                     f"story '{story.slug}' has acceptance criteria in conflict — "
@@ -411,13 +412,13 @@ def _check_epic(graph: Graph, epic: Epic, all_slugs: set[str], f: list[Finding])
                     suggestion="rewrite the criteria so one intent holds, then "
                                f"`ostler conflict {story.slug} --clear`"))
             if story.unwritten_sections:
-                rel = story.story_md.relative_to(graph.root).as_posix()
+                rel = _rel_posix(story.story_md, graph.root)
                 f.append(Finding("error", "unwritten-story",
                                  f"story '{story.slug}' is still a bare scaffold — "
                                  f"{', '.join(story.unwritten_detail)}",
                                  epic.name, story.slug, path=rel, line=1))
             if story.misordered_sections:
-                rel = story.story_md.relative_to(graph.root).as_posix()
+                rel = _rel_posix(story.story_md, graph.root)
                 f.append(Finding("error", "story-section-order",
                                  f"story '{story.slug}' orders its required sections against "
                                  f"the contract — {'; '.join(story.misordered_sections)}",
@@ -463,7 +464,7 @@ def _check_fixtures(graph: Graph, f: list[Finding]) -> None:
         for story in epic.stories:
             if story.story_md is None:
                 continue
-            rel = story.story_md.relative_to(graph.root).as_posix()
+            rel = _rel_posix(story.story_md, graph.root)
             for stray in story.fixture_strays:
                 f.append(Finding(
                     "error", "story-fixture-stray",
@@ -473,7 +474,7 @@ def _check_fixtures(graph: Graph, f: list[Finding]) -> None:
                     f"`{registry.STORY_FIXTURES_NONE}` when the story arranges nothing",
                     epic.name, story.slug, path=rel, line=1))
             plan = spec_root / story.slug / "qa_plan.py"
-            plan_rel = plan.relative_to(graph.root).as_posix()
+            plan_rel = _rel_posix(plan, graph.root)
             names = fixtures_mod.referenced(plan) if plan.is_file() else None
             stated = set(story.fixtures)
 
@@ -547,7 +548,7 @@ def _check_book_fixtures(graph: Graph, known: set[str], f: list[Finding]) -> Non
         arrange = registry.fixture_keys(node.type)
         if not arrange:
             continue
-        rel = node.path.relative_to(graph.root).as_posix()
+        rel = _rel_posix(node.path, graph.root)
         for key, value, _bullet in node.bullet_order:
             if key not in arrange:
                 continue
@@ -1212,7 +1213,7 @@ def _check_milestones(graph: Graph, f: list[Finding]) -> None:
     known_milestones = {m.name for m in graph.milestones} | {m.eid for m in graph.milestones}
 
     for milestone in graph.milestones:
-        rel = milestone.path.relative_to(graph.root).as_posix()
+        rel = _rel_posix(milestone.path, graph.root)
         for dep in milestone.depends_on:
             if dep not in known_milestones:
                 f.append(Finding(
@@ -1264,7 +1265,7 @@ def _check_conformance(graph: Graph, f: list[Finding]) -> None:
             if not path.is_file() or path.name in registry.RESERVED_FILES or path in seen:
                 continue
             seen.add(path)
-            rel = path.relative_to(graph.root).as_posix()
+            rel = _rel_posix(path, graph.root)
             try:
                 fm = dict(read_doc(path).frontmatter or {})
             except OSError as exc:
@@ -1400,7 +1401,7 @@ def _check_container_siblings(doc: markdown.MarkdownDoc, rel: str, f: list[Findi
 
 
 def _check_ui_file(graph: Graph, path, f: list[Finding]) -> None:
-    rel = path.relative_to(graph.root).as_posix()
+    rel = _rel_posix(path, graph.root)
     try:
         doc = read_doc(path)
     except OSError:
@@ -1477,7 +1478,7 @@ def _check_code_grounding(graph: Graph, f: list[Finding],
     checkout_map = checkouts or {}
     own_repository = book_repository(features_root_of(graph))
     for node in graph.ui_nodes:
-        rel = node.path.relative_to(graph.root).as_posix()
+        rel = _rel_posix(node.path, graph.root)
         _check_test_subject(node, rel, f)
         for ref in refs_mod.code_refs(node.meta.get("code")):
             try:
@@ -1628,7 +1629,7 @@ def _check_self_relation(graph: Graph, f: list[Finding],
                         continue
                     if target.node_id != node.id:
                         continue
-                    rel = node.path.relative_to(graph.root).as_posix()
+                    rel = _rel_posix(node.path, graph.root)
                     f.append(Finding(
                         "error", "self-relation",
                         f"{node.id}: `{key}: {href}` resolves to this same node — a relation "
@@ -1646,7 +1647,7 @@ def _check_judgment(graph: Graph, f: list[Finding],
             continue
         if node.meta.get("prefers") or node.meta.get("rule"):
             continue
-        rel = node.path.relative_to(graph.root).as_posix()
+        rel = _rel_posix(node.path, graph.root)
         f.append(Finding(
             "warn", "deprecation-without-successor",
             f"{node.id}: `deprecates:` names a node but no `prefers:` or `rule:` says "
@@ -1675,8 +1676,8 @@ def _check_same_as_symmetry(graph: Graph, f: list[Finding],
                 back = _resolved_targets(target_node, "same-as", resolver)
                 if node.id in back:
                     continue
-                rel = node.path.relative_to(graph.root).as_posix()
-                target_rel = target_node.path.relative_to(graph.root).as_posix()
+                rel = _rel_posix(node.path, graph.root)
+                target_rel = _rel_posix(target_node.path, graph.root)
                 back_href = os.path.relpath(node.path, start=target_node.path.parent)
                 f.append(Finding(
                     "error", "one-way-same-as",
@@ -1725,7 +1726,7 @@ def _check_same_as_disagreement(graph: Graph, f: list[Finding],
             keys.update(registry.normative_keys(member.type))
 
         root = by_id[min(component)]
-        rel = root.path.relative_to(graph.root).as_posix()
+        rel = _rel_posix(root.path, graph.root)
 
         for key in sorted(keys):
             declared: list[tuple[UINode, tuple[str, ...]]] = []
@@ -1760,7 +1761,7 @@ def _check_unspecified(graph: Graph, f: list[Finding],
             )
             if grounded:
                 continue
-            rel = node.path.relative_to(graph.root).as_posix()
+            rel = _rel_posix(node.path, graph.root)
             what = ("its citation does not resolve" if links
                     else "it cites no record at all")
             f.append(Finding(
@@ -2313,7 +2314,7 @@ def _check_availability_states(graph: Graph, f: list[Finding]) -> None:
     for node in graph.ui_nodes:
         if node.id in observed:
             continue
-        rel = node.path.relative_to(graph.root).as_posix()
+        rel = _rel_posix(node.path, graph.root)
         for index, value in enumerate(_bullet_values(node.meta.get("states", "")), 1):
             words = set(re.split(r"[^a-z-]+", value.lower()))
             if not words & _UNAVAILABLE_WORDS:
@@ -2336,10 +2337,20 @@ def _bullet_value(meta: dict, key: str) -> str:
 
 
 def _rel_path(graph: Graph, node) -> str:
+    return _rel_to_root(node.path, graph.root)
+
+
+@functools.lru_cache(maxsize=65536)
+def _rel_posix(path: Path, root: Path) -> str:
+    return path.relative_to(root).as_posix()
+
+
+@functools.lru_cache(maxsize=65536)
+def _rel_to_root(path: Path, root: Path) -> str:
     try:
-        return node.path.resolve().relative_to(graph.root.resolve()).as_posix()
+        return path.resolve().relative_to(root.resolve()).as_posix()
     except (ValueError, OSError):
-        return node.path.as_posix()
+        return path.as_posix()
 
 
 def _check_locators(data: dict, f: list[Finding]) -> None:
@@ -2534,7 +2545,7 @@ def _check_ui(graph: Graph, f: list[Finding],
         uitype = registry.ui_type(node.type)
         if uitype is None:
             continue
-        rel = node.path.relative_to(graph.root).as_posix()
+        rel = _rel_posix(node.path, graph.root)
         extends_ok = False
         if node.type in ("interaction", "invocation"):
             targets = _resolved_targets(node, "extends", resolver)
@@ -2927,7 +2938,7 @@ def _check_ui(graph: Graph, f: list[Finding],
         for path in book_pages:
             if path.name in registry.RESERVED_FILES:
                 continue
-            rel = path.relative_to(graph.root).as_posix()
+            rel = _rel_posix(path, graph.root)
             try:
                 links = model.read_links(path)
             except OSError:

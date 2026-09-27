@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+import functools
 import re
 import warnings
 from collections.abc import Mapping
@@ -451,6 +452,7 @@ def _unknown_check(name: str) -> Refusal:
                    _vocabulary())
 
 
+@functools.lru_cache(maxsize=65536)
 def parse_check(value: str) -> CheckCall | Refusal:
     """Parse one `verify:` value, or return the `Refusal` saying what was written instead."""
     text = _unwrap(value)
