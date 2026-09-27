@@ -28,7 +28,7 @@ def _no_gaps(_root: Path, _service: str, _spec: Path) -> CompileOutcome:
     return CompileOutcome(gaps=(), planned=True)
 
 
-def _serving(_logger: logging.Logger, _root: Path) -> StackReadiness:
+def _serving(_logger: logging.Logger, _root: Path, _service: str) -> StackReadiness:
     return StackReadiness(up=True, serving=True, notes="")
 
 

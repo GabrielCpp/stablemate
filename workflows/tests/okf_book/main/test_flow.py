@@ -258,7 +258,7 @@ def test_a_stack_that_cannot_come_up_is_the_apps_blocker_and_sends_no_writer(
     repo = app("tally-cli")
     runner = _writer(repo)
 
-    def _down(_logger: logging.Logger, _root: Path) -> StackReadiness:
+    def _down(_logger: logging.Logger, _root: Path, _service: str) -> StackReadiness:
         return StackReadiness(up=False, serving=False, notes="port 8080 is taken")
 
     stub_the_run_to(monkeypatch, PASSED)

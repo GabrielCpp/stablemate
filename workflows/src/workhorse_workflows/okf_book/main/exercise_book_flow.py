@@ -22,7 +22,7 @@ class ExerciseBook(BookFlow):
 
     def bring_up_stack(self, gaps: tuple[str, ...]) -> Continue[...] | Done:
         """Bring the app's stack up, or adopt one serving. A stack that cannot come up ends the run."""
-        stack = bring_up(self.logger, self.root)
+        stack = bring_up(self.logger, self.root, self.service)
         if not stack.up:
             return Done(stack_down_result(gaps, stack.notes)).because("the app's stack cannot come up")
         return Continue(stack, self.run_scenarios, gaps=gaps, serving=stack.serving).because("run the scenarios")

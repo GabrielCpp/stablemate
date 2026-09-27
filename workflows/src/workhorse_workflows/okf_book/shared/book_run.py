@@ -9,6 +9,7 @@ from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict
 from workhorse_workflows.kit.qa.runner import ensure_stack
+from workhorse_workflows.okf_book.shared.entries import book_dir
 from workhorse_workflows.okf_book.shared.scenarios import RunSummary, compile_book, run_scenarios
 
 COPY_IGNORED = shutil.ignore_patterns(".git", "__pycache__", ".venv", "node_modules", "*.pyc")
@@ -78,9 +79,9 @@ def compile_scenarios(root: Path, service: str, spec: Path) -> CompileOutcome:
     return CompileOutcome(gaps=gaps, planned=compiled.planned)
 
 
-def bring_up(logger: logging.Logger, root: Path) -> StackReadiness:
-    """Bring the app's stack up, or adopt one serving."""
-    stack = ensure_stack(logger, repo_dir=str(root))
+def bring_up(logger: logging.Logger, root: Path, service: str) -> StackReadiness:
+    """Bring up the stack the service's book declares, or adopt one serving."""
+    stack = ensure_stack(logger, repo_dir=str(root), near=str(book_dir(root, service)))
     return StackReadiness(up=stack.ready not in ("no", "none"), serving=stack.ready == "yes", notes=stack.notes)
 
 

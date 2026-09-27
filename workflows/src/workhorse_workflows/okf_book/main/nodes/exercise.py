@@ -25,7 +25,7 @@ def exercise_book(logger: logging.Logger, root: Path, service: str, spec: Path) 
     outcome = compile_scenarios(root, service, spec)
     if not outcome.planned:
         return failed_run(outcome.gaps, "the book compiles to no plan")
-    stack = bring_up(logger, root)
+    stack = bring_up(logger, root, service)
     if not stack.up:
         return stack_down_result(outcome.gaps, stack.notes)
     return run_plan(root, spec, outcome.gaps, stack.serving)
