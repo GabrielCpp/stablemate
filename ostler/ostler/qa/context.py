@@ -1858,11 +1858,11 @@ def _repeat(node: dict[str, Any], scope: tuple[str, ...]) -> dict[str, Any] | No
 
 @dataclass(frozen=True, slots=True)
 class _ObligationFrame:
-    """What every obligation of one node shares: the surface it is reached on, the steps of a flow, the page type, the locators, whether an `extends:` arm failed to resolve, and the repeat contract."""
+    """What every obligation of one node shares: the surface it is reached on, the steps of a flow, whether it sits on a cli page, the locators, whether an `extends:` arm failed to resolve, and the repeat contract."""
 
     surface: str
     steps: list[dict[str, str]]
-    page_type: str
+    on_cli_page: bool
     locators: dict[str, list[str]]
     extends_unresolved: bool
     repeat: dict[str, Any] | None
@@ -1874,8 +1874,8 @@ class _ObligationFrame:
             fields["surface"] = self.surface
         if self.steps:
             fields["steps"] = self.steps
-        if self.page_type:
-            fields["pageType"] = self.page_type
+        if self.on_cli_page:
+            fields["pageType"] = "cli"
         if self.extends_unresolved:
             fields["extendsUnresolved"] = True
         if self.locators:
@@ -1906,7 +1906,7 @@ def _obligation_frame(
     return _ObligationFrame(
         surface=surface,
         steps=steps,
-        page_type="cli" if _page_type(node) == "cli" else "",
+        on_cli_page=_page_type(node) == "cli",
         locators=locators,
         extends_unresolved=extends_unresolved,
         repeat=_repeat(node, scope),
