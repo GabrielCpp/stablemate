@@ -158,9 +158,9 @@ class RepairBook(BookFlow):
         if failure:
             self.logger.warning("%s", failure)
             repair = repair.model_copy(update={"failed": (*repair.failed, failure)})
-        return Continue(failure, self.commit_batch, repair=repair, index=index, before=before).because("commit what the turn changed")
+        return Continue(failure, self.put_back_and_stamp, repair=repair, index=index, before=before).because("put back its strays and stamp its pages")
 
-    def commit_batch(self, repair: RepairRound, index: int, before: Snapshot) -> Continue[...]:
+    def put_back_and_stamp(self, repair: RepairRound, index: int, before: Snapshot) -> Continue[...]:
         """Put back what the turn changed outside the book and on the entries page, and stamp the rest."""
         root = self.root
         stray = put_back_outside(root, self.service, before, self.run_dir)
