@@ -1368,7 +1368,7 @@ class Qa:
         self._tool_env_allowed = frozenset(tool_env)
         self._recorder = recorder
         self._captures: dict[str, str] = {}
-        self._scenario_copy: Path | None = None
+        self._checkout_copy: Path | None = None
         self.http = Http(target.base_url, on_unexpected_status=self._status_mismatch)
         self._index = 0
         self.assertions = 0
@@ -1510,14 +1510,13 @@ class Qa:
         )
         self._recorder.emit({"type": "fixture_fault", **asdict(fault)})
 
-    @property
-    def scenario_dir(self) -> Path:
-        """This scenario's own directory under `self.dir`: a fresh copy of the checkout as the runbook left it, made on first use.
+    def scenario_checkout_copy(self) -> Path:
+        """This scenario's own directory under `self.dir`: a fresh copy of the checkout as the runbook left it, made on the first call.
 
         A command finds the code it runs there, and its files land apart from every other
         scenario's. A scenario that runs no command never pays for a copy of the checkout.
         """
-        if self._scenario_copy is None:
+        if self._checkout_copy is None:
             into = (self.dir.resolve() / self.scenario_id).resolve()
             try:
                 self._copy_checkout(into)
@@ -1525,8 +1524,8 @@ class Qa:
                 detail = f"could not copy the checkout into {into}: {exc}"
                 self._fault(self.scenario_id, -1, "checkout", "environment", detail)
                 raise RuntimeError(f"qa {self.scenario_id!r}: {detail}") from exc
-            self._scenario_copy = into
-        return self._scenario_copy
+            self._checkout_copy = into
+        return self._checkout_copy
 
     def _copy_checkout(self, into: Path) -> None:
         """Copy what git keeps and link what it ignores, or copy the whole tree outside a git checkout.
@@ -1561,7 +1560,7 @@ class Qa:
     ) -> "ToolResult":
         kind = str(step.get("kind", ""))
         command = str(step.get("command", ""))
-        cwd = str(self.scenario_dir) if step.get("cwd-frame") == "scenario" else str(step.get("cwd") or self.root)
+        cwd = str(self.scenario_checkout_copy()) if step.get("cwd-frame") == "scenario" else str(step.get("cwd") or self.root)
         timeout = float(step["timeout"])
         if not Path(cwd).is_dir():
             self._fault(fixture, index, kind, "environment", f"cwd {cwd!r} does not exist")

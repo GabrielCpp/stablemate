@@ -199,8 +199,8 @@ class SourceScenario:
     body: list[str]
 
 
-def scenario_function(scenario: SourceScenario, emitted: EmittedScenarios) -> str:
-    """The function name *scenario* gets: its page's, or its page's and its target's when another target on that page took the page's already."""
+def claim_scenario_function_name(scenario: SourceScenario, emitted: EmittedScenarios) -> str:
+    """Reserve the function name *scenario* gets, and return it: its page's, or its page's and its target's when another target on that page took the page's already."""
     page = python_identifier(scenario.source)
     name = f"{page}_from_the_book"
     if name in emitted.functions:
@@ -234,7 +234,7 @@ def scenario_lines(scenario: SourceScenario, emitted: EmittedScenarios) -> list[
         "    checkpoints=[],  # TODO(arrange): what an observer should see it prove",
         "    forbid=[],  # TODO: the weaker observations this scenario must not settle for",
         ")",
-        f"def {scenario_function(scenario, emitted)}(qa: Qa) -> None:",
+        f"def {claim_scenario_function_name(scenario, emitted)}(qa: Qa) -> None:",
         f'    """Obligations {scenario.source} owes live evidence for."""',
         *fixtures,
         *scenario.body,

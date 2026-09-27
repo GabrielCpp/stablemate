@@ -446,15 +446,15 @@ def build_context(
         if item["impacted"]
     ]
     grounded: set[str] = set()
-    grounds: dict[str, bool] = {}
+    ref_resolves: dict[str, bool] = {}
     for node_id in sorted(selected):
         node = nodes_by_id[node_id]
         for normalized in refs_mod.code_refs(node.get("bullets", {}).get("code")):
-            if normalized not in grounds:
-                grounds[normalized] = _grounding_for_ref(
+            if normalized not in ref_resolves:
+                ref_resolves[normalized] = _grounding_for_ref(
                     root, base, head, normalized, repositories_by_id, book_root
                 )
-            if not grounds[normalized]:
+            if not ref_resolves[normalized]:
                 health.append(
                     {
                         "kind": "dangling-grounding",

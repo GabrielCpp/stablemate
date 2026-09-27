@@ -143,14 +143,14 @@ def cli_scenario_body(
             ))
             continue
         tool = f"qa.tool({python_literal(binary)})"
-        *setup, observed_args = [", ".join([*(python_literal(a) for a in run), "cwd=qa.scenario_dir"]) for run in runs]
+        *setup, observed_args = [", ".join([*(python_literal(a) for a in run), "cwd=qa.scenario_checkout_copy()"]) for run in runs]
         lines.extend(f"    _ = {tool}.run({call_args})" for call_args in setup)
         reads_tree_either_side = any(_touches_the_tree(row) for row in rows)
         if reads_tree_either_side:
-            lines.append(f"    before_{index} = qa.tree(qa.scenario_dir)")
+            lines.append(f"    before_{index} = qa.tree(qa.scenario_checkout_copy())")
         lines.append(f"    {name} = {tool}.run({observed_args})")
         if reads_tree_either_side:
-            lines.append(f"    after_{index} = qa.tree(qa.scenario_dir)")
+            lines.append(f"    after_{index} = qa.tree(qa.scenario_checkout_copy())")
 
         assertions: list[str] = []
         whole = True
@@ -193,7 +193,7 @@ def _step_call(
             f"{where} links a node whose owning `cli` node declares no `binary:`, so "
             "the compiler cannot name the executable its `run:` invokes")
     argv = next(iter(argvs.values()))
-    return f"qa.tool({python_literal(binary)}).run({', '.join([*map(python_literal, argv), 'cwd=qa.scenario_dir'])})"
+    return f"qa.tool({python_literal(binary)}).run({', '.join([*map(python_literal, argv), 'cwd=qa.scenario_checkout_copy()'])})"
 
 
 def cli_journey(
@@ -221,13 +221,13 @@ def cli_journey(
         calls.append(call)
     reads_tree_either_side = any(_touches_the_tree(row)
                                  for obligation in obligations for row in obligation.checks)
-    lines = ["    before = qa.tree(qa.scenario_dir)"] if reads_tree_either_side else []
+    lines = ["    before = qa.tree(qa.scenario_checkout_copy())"] if reads_tree_either_side else []
     starts = [obligation for obligation in obligations if obligation.kind == "start"]
     for obligation in starts:
         _append_journey_verifies(obligation, _start_operand, lines, gaps, covered)
     lines.extend(f"    observed_{index} = {call}" for index, call in enumerate(calls, start=1))
     if reads_tree_either_side:
-        lines.append("    after = qa.tree(qa.scenario_dir)")
+        lines.append("    after = qa.tree(qa.scenario_checkout_copy())")
     observed = f"observed_{len(calls)}"
     for obligation in obligations:
         if obligation.kind != "start":

@@ -484,7 +484,7 @@ def _http_steps(walk: JourneyWalk, sinks: PlanSinks) -> _HttpSteps | None:
         known.record_fixtures(obligation)
     owners = _fixture_owners(walk.obligations)
     observed = last_path = ""
-    refused = _refused_status(walk.obligations)
+    refused_status = _refused_status(walk.obligations)
     for index, step in enumerate(walk.steps, start=1):
         request = _http_request(index, step, book, walk.ids, gaps)
         unprovided = [] if isinstance(request, _UnbuiltStep) else _unprovided_references(request, known)
@@ -500,7 +500,7 @@ def _http_steps(walk: JourneyWalk, sinks: PlanSinks) -> _HttpSteps | None:
         bound = _bound_path(request.path, produced, owners)
         target = (f"qa.resolve({python_literal(bound)})" if references.find_references(bound)
                   else python_literal(bound))
-        expect = f", expect_status={refused}" if refused is not None and index == len(walk.steps) else ""
+        expect = f", expect_status={refused_status}" if refused_status is not None and index == len(walk.steps) else ""
         lines.append(f"    {observed} = qa.http.{request.method.lower()}({target}{expect}{request.kwargs_source})")
         if "{" in bound:
             lines.append("    # TODO(arrange): the path above still carries a template variable")

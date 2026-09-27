@@ -59,7 +59,7 @@ step proves in the step's body, and keep the bullet to the command itself. The d
 
 **`working-directory: scenario:` is a fixture-only frame, not a path.** A `fixture` step
 runs inside a scenario, so the token stands for that scenario's own directory — the same
-directory `qa.tool(...).run(..., cwd=qa.scenario_dir)` runs a compiled CLI call in, so a
+directory `qa.tool(...).run(..., cwd=qa.scenario_checkout_copy())` runs a compiled CLI call in, so a
 fixture and the command it arranges for land in one place instead of racing over the
 checkout root. That directory starts as a fresh copy of the checkout as the runbook left
 it. A command that only works from the checkout finds its code there, and the files it

@@ -479,14 +479,14 @@ def test_node_provides_and_dollar_captures_are_namespaced_apart(tmp_path: Path) 
 SCENARIO_FRAME_SCENARIO = '''\
 @scenario(target=api, mechanism="live", covers=["ac:1"])
 def the_fixture_frame_and_the_tool_call_land_in_one_place(qa: Qa) -> None:
-    """`working-directory: scenario:` and `qa.tool(...).run(..., cwd=qa.scenario_dir)` must
+    """`working-directory: scenario:` and `qa.tool(...).run(..., cwd=qa.scenario_checkout_copy())` must
     resolve to the exact same directory, not merely two directories under `qa.dir`."""
     qa.fixture("seeded-acme")
     fixture_cwd = qa.resolve("@seeded-acme.fixture_cwd")
     tool = qa.tool("sh")
-    done = tool.run("-c", "pwd", cwd=qa.scenario_dir)
+    done = tool.run("-c", "pwd", cwd=qa.scenario_checkout_copy())
     qa.check(
-        "fixture cwd-frame and qa.tool cwd=qa.scenario_dir are the same directory",
+        "fixture cwd-frame and qa.tool cwd=qa.scenario_checkout_copy() are the same directory",
         fixture_cwd == done.stdout.strip(),
         actual=(fixture_cwd, done.stdout.strip()),
     )
@@ -526,7 +526,7 @@ CHECKOUT_SCENARIO = '''\
 @scenario(target=api, mechanism="live", covers=["ac:1"])
 def a_command_runs_in_its_own_copy_of_the_checkout(qa: Qa) -> None:
     """A command reaches the checkout's files, and what it writes lands in this scenario alone."""
-    done = qa.tool("sh").run("-c", "test ! -e out.txt && test ! -e qa && cat app.txt && echo made > out.txt", cwd=qa.scenario_dir)
+    done = qa.tool("sh").run("-c", "test ! -e out.txt && test ! -e qa && cat app.txt && echo made > out.txt", cwd=qa.scenario_checkout_copy())
     qa.check("the command read the checkout from a world of its own", done.stdout == "the app\\n", actual=done.stdout)
 '''
 
@@ -555,7 +555,7 @@ IGNORED_SCENARIO = '''\
 @scenario(target=api, mechanism="live", covers=["ac:1"])
 def a_command_reads_what_the_checkout_ignores(qa: Qa) -> None:
     """A command reaches the checkout's ignored build output, and what it writes lands in this scenario alone."""
-    done = qa.tool("sh").run("-c", "cat app.txt deps/lib.txt && echo made > out.txt", cwd=qa.scenario_dir)
+    done = qa.tool("sh").run("-c", "cat app.txt deps/lib.txt && echo made > out.txt", cwd=qa.scenario_checkout_copy())
     qa.check("the command read the app and its ignored deps", done.stdout == "the app\\nthe lib\\n", actual=done.stdout)
 '''
 
