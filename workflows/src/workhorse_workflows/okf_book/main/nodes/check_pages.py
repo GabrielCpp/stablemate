@@ -14,7 +14,6 @@ from workhorse_workflows.okf_book.main.nodes.writer_commands import (
     WriterCommandState,
     spend_check_or_scenario_run,
 )
-from workhorse_workflows.okf_book.shared.confine import book_changes
 from workhorse_workflows.okf_book.shared.page_check import page_problems
 
 USAGE = f"usage: python -m {CHECK_MODULE} <writer-commands.json>"
@@ -22,13 +21,12 @@ NO_PROBLEMS_LINE = "No problems"
 
 
 def scoped_problems(state: WriterCommandState) -> tuple[str, ...]:
-    """Every problem on the book, or, when the state names pages, on those pages and the book pages the turn changed, and every problem the turn made elsewhere."""
+    """Every problem on the book, or, when the state names pages, every problem on those pages and every problem the turn made elsewhere."""
     root = state.root.resolve()
     problems = page_problems(root, state.service)
     if not state.pages:
         return tuple(problem.text for problem in problems)
-    changed = book_changes(root, state.service, state.before) if state.before is not None else ()
-    scope = frozenset((*state.pages, *changed))
+    scope = frozenset(state.pages)
     known = frozenset(state.known)
     return tuple(problem.text for problem in problems if problem.page in scope or problem.text not in known)
 

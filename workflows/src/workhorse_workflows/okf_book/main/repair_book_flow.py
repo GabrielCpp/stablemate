@@ -161,7 +161,11 @@ class RepairBook(BookFlow):
         return Continue(failure, self.put_back_and_stamp, repair=repair, index=index, before=before).because("put back its strays and stamp its pages")
 
     def put_back_and_stamp(self, repair: RepairRound, index: int, before: Snapshot) -> Continue[...]:
-        """Put back what the turn changed outside the book and on the entries page, and stamp the rest."""
+        """Put back what the turn changed outside the book and on the entries page, and stamp the rest.
+
+        A page outside the batch that the turn changed stays changed and is reported, because a page
+        no other page reaches is fixed by a link on another page. It joins no later round.
+        """
         root = self.root
         stray = put_back_outside(root, self.service, before, self.run_dir)
         for path in stray:
@@ -170,6 +174,9 @@ class RepairBook(BookFlow):
         changed = book_changes(root, self.service, before)
         _ = restore(root, [path for path in changed if path == entries], before)
         pages = tuple(path for path in changed if path != entries and path not in repair.held and path not in before.digests)
+        outside = sorted(set(pages) - set(repair.batches[index].page_paths))
+        if outside:
+            self.logger.info("the repair turn also changed %d pages outside its batch: %s", len(outside), ", ".join(outside))
         for page in pages:
             if page.endswith(".md") and (root / page).is_file():
                 _ = stamp_page(root, root / FEATURES_DIR, page)
