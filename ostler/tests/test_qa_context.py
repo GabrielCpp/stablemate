@@ -356,6 +356,31 @@ def test_cli_binaries_key_the_owning_files_binary_by_shared_path(tmp_path: Path)
     assert packet["cliBinaries"] == {"docs/features/demo/tally.md": "tally"}
 
 
+def test_a_binary_explained_after_its_name_is_read_as_its_name(tmp_path: Path):
+    (tmp_path / "docs/features/demo").mkdir(parents=True)
+    (tmp_path / "docs/features/demo/tally.md").write_text(
+        "---\ntype: cli\nslug: tally\ntitle: Tally\n---\n# Tally\n\n"
+        "- binary: `tally` — a wrapper the image installs at\n  `/usr/local/bin/tally`\n"
+        "- code: `app/tally.py::run`\n\n"
+        "## Commands\n\n"
+        "### init\n- code: `app/tally.py::run`\n",
+        encoding="utf-8",
+    )
+    target = tmp_path / "app/tally.py"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("def run():\n    return 'old'\n", encoding="utf-8")
+    _git(tmp_path, "init")
+    _git(tmp_path, "config", "user.email", "qa@example.com")
+    _git(tmp_path, "config", "user.name", "QA")
+    _git(tmp_path, "add", ".")
+    _git(tmp_path, "commit", "-m", "base")
+    base = _git(tmp_path, "rev-parse", "HEAD")
+
+    packet = build_context(tmp_path, base=base, source_roots={"demo": ["app"]})
+
+    assert packet["cliBinaries"] == {"docs/features/demo/tally.md": "tally"}
+
+
 def test_a_surface_with_one_cli_lends_its_binary_to_its_other_pages(tmp_path: Path):
     """A format's field on a CLI surface states its `run:` against the surface's only `cli`, so it compiles to the same executable."""
     (tmp_path / "docs/features/demo/formats").mkdir(parents=True)

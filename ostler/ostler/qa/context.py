@@ -27,6 +27,7 @@ from ostler.qa.dispatch import owes_live_evidence
 from ostler.qa import fixtures as fixtures_mod
 from ostler.qa.compile import annotate_deferred_obligations
 from ostler.qa.outcome import QaOutcome
+from ostler.qa.runbook import bullet_text
 from ostler.qa.owners import (
     ChangedUnit,
     OwnerNode,
@@ -1178,8 +1179,9 @@ def _cli_binaries(nodes_by_id: dict[str, dict[str, Any]]) -> dict[str, str]:
         if node.get("type") != "cli" or node.get("kind") != "file":
             continue
         values = _values(node.get("bullets", {}).get("binary"))
-        if values and values[0].strip():
-            binaries[str(node["path"])] = values[0].strip()
+        binary = bullet_text(values[0]) if values else ""
+        if binary:
+            binaries[str(node["path"])] = binary
     return binaries
 
 
