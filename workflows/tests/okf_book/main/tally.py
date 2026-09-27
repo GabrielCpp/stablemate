@@ -8,10 +8,13 @@ from pathlib import Path
 
 import pytest
 from okf_book.support import ScriptedRunner, git
+from workhorse.pyflow import driver as pyflow_driver
 
-from workhorse_workflows.okf_book.main import exercise_book_flow
+from workhorse_workflows.okf_book.main import exercise_book_flow, flow, repair_book_flow
+from workhorse_workflows.okf_book.main.nodes import turn_budget
 from workhorse_workflows.okf_book.main.nodes.surface import Surface, SurfaceKind
 from workhorse_workflows.okf_book.shared.book_run import CompileOutcome, ExerciseResult, StackReadiness
+from workhorse_workflows.okf_book.shared.page_check import PageProblem
 from workhorse_workflows.okf_book.workflow import OkfBook
 
 App = Callable[[str], Path]
@@ -72,3 +75,37 @@ def refuse_commits_until_answered(repo: Path, asked: list[str]) -> Callable[...,
         _ = path.write_text("STATUS: ANSWERED\n\nRemoved the hook.\n", encoding="utf-8")
 
     return _operator
+
+
+OTHER_PAGE = "docs/features/tally/concepts/ledger-file.md"
+OUTSIDE_EDIT = "\nan edit outside the batch\n"
+FLOW_PAGE = "docs/features/tally/flows/track-a-trip.md"
+NEW_FLOW = "docs/features/tally/flows/split-a-bill.md"
+
+
+def repairer_also_editing(repo: Path, *pages: str) -> ScriptedRunner:
+    def _reply(_args: dict[str, object]) -> dict[str, object]:
+        _ = (repo / PAGE).write_text((repo / PAGE).read_text(encoding="utf-8") + NOTE, encoding="utf-8")
+        for page in pages:
+            text = (repo / page).read_text(encoding="utf-8") if (repo / page).is_file() else ""
+            _ = (repo / page).write_text(text + OUTSIDE_EDIT, encoding="utf-8")
+        return {"value": f"repaired {PAGE}"}
+
+    return ScriptedRunner({"repair-pages": _reply})
+
+
+def off_journey_until_noted(root: Path, service: str) -> tuple[PageProblem, ...]:
+    return tuple(PageProblem(p.page, p.text, needs_journey=True) for p in pages_until_noted(root, service))
+
+
+def pages_until_noted(root: Path, _service: str) -> tuple[PageProblem, ...]:
+    return () if NOTE.strip() in (root / PAGE).read_text(encoding="utf-8") else (PageProblem(PAGE, "tally.md needs a note"),)
+
+
+def repair_over_the_ceiling(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Send an existing book that passes its run to the repair, with the page check clean once tally.md is noted."""
+    stub_the_run_to(monkeypatch, PASSED)
+    monkeypatch.setattr(flow, "book_problems", until_noted)
+    monkeypatch.setattr(turn_budget, "SOURCE_AND_BOOK_CEILING_TOKENS", 10)
+    monkeypatch.setattr(repair_book_flow, "page_problems", pages_until_noted)
+    monkeypatch.setattr(pyflow_driver, "wait_for_answer", answer([]))
