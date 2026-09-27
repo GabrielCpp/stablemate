@@ -32,6 +32,7 @@ from ostler.qa.plan_source import ScenarioRefusal
 from ostler.qa.plan_source import SourceScenario
 from ostler.qa.plan_source import arrangement_of
 from ostler.qa.plan_source import by_source
+from ostler.qa.plan_source import claim_scenario_function_name
 from ostler.qa.plan_source import call_kwargs
 from ostler.qa.plan_source import check_observes
 from ostler.qa.plan_source import decline_captures
@@ -110,9 +111,10 @@ def api_scenarios(
         target_var = target_variable(surface, "api")
         base_url = f", base_url={python_literal(book.resolved_api_base_urls.get(surface))}"
         lines.extend(target_lines(target_var, PYTHON.name, base_url, emitted))
-        lines.extend(scenario_lines(SourceScenario(
+        scenario = SourceScenario(
             source, target_var, [o.id for o in declared if o.id in covered],
-            arrangement.rows, body), emitted))
+            arrangement.rows, body)
+        lines.extend(scenario_lines(scenario, claim_scenario_function_name(scenario, emitted)))
     return lines
 
 

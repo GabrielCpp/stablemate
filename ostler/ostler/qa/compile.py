@@ -41,6 +41,7 @@ from ostler.qa.plan_source import ScenarioRefusal
 from ostler.qa.plan_source import SourceScenario
 from ostler.qa.plan_source import arrangement_of
 from ostler.qa.plan_source import by_source
+from ostler.qa.plan_source import claim_scenario_function_name
 from ostler.qa.plan_source import decline_captures
 from ostler.qa.plan_source import python_literal
 from ostler.qa.plan_source import scenario_lines
@@ -330,9 +331,10 @@ def _cli_scenarios(
         emitted.covered.update(covered)
         target_var = target_variable(obligations[0].surface, "cli")
         lines.extend(target_lines(target_var, PYTHON.name, "", emitted))
-        lines.extend(scenario_lines(SourceScenario(
+        scenario = SourceScenario(
             source, target_var, [o.id for o in obligations if o.id in covered],
-            arrangement.rows, body), emitted))
+            arrangement.rows, body)
+        lines.extend(scenario_lines(scenario, claim_scenario_function_name(scenario, emitted)))
     return lines
 
 

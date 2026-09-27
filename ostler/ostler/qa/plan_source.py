@@ -209,8 +209,8 @@ def claim_scenario_function_name(scenario: SourceScenario, emitted: EmittedScena
     return name
 
 
-def scenario_lines(scenario: SourceScenario, emitted: EmittedScenarios) -> list[str]:
-    """The rendered `@scenario` source holding every obligation one book page owes live evidence for on one target."""
+def scenario_lines(scenario: SourceScenario, function_name: str) -> list[str]:
+    """The rendered `@scenario` source, named `function_name`, holding every obligation one book page owes live evidence for on one target."""
     arranged = scenario.arranged
     preconditions = [
         "    preconditions=[",
@@ -234,7 +234,7 @@ def scenario_lines(scenario: SourceScenario, emitted: EmittedScenarios) -> list[
         "    checkpoints=[],  # TODO(arrange): what an observer should see it prove",
         "    forbid=[],  # TODO: the weaker observations this scenario must not settle for",
         ")",
-        f"def {claim_scenario_function_name(scenario, emitted)}(qa: Qa) -> None:",
+        f"def {function_name}(qa: Qa) -> None:",
         f'    """Obligations {scenario.source} owes live evidence for."""',
         *fixtures,
         *scenario.body,
