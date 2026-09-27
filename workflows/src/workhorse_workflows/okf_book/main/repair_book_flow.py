@@ -163,13 +163,13 @@ class RepairBook(BookFlow):
         if failure:
             self.logger.warning("%s", failure)
             repair = repair.model_copy(update={"failed_turns": (*repair.failed_turns, failure)})
-        return Continue(failure, self.put_back_and_stamp, repair=repair, index=index, before=before).because("put back its strays and stamp its pages")
+        return Continue(failure, self.put_back, repair=repair, index=index, before=before).because("put back what the turn may not keep")
 
-    def put_back_and_stamp(self, repair: RepairRound, index: int, before: Snapshot) -> Continue[...]:
-        """Put back what the turn changed outside the book and on the entries page, and stamp the rest.
+    def put_back(self, repair: RepairRound, index: int, before: Snapshot) -> Continue[...]:
+        """Put back what the turn changed outside the book, on the entries page, and on each page outside its batch the check finds a problem on.
 
-        A page outside the batch that the turn changed stays changed and is reported, because a page
-        no other page reaches is fixed by a link on another page. It joins no later round.
+        A page outside the batch that the check finds clean stays changed, because a page no other
+        page reaches is fixed by a link on another page, and an endpoint on no flow by a flow page.
         """
         root = self.root
         stray = put_back_outside(root, self.service, before, self.run_dir)
@@ -177,11 +177,22 @@ class RepairBook(BookFlow):
             self.logger.warning("put back %s, which the repair turn changed outside its book", path)
         entries = entries_path(root, self.service).relative_to(root).as_posix()
         changed = book_changes(root, self.service, before)
-        _ = restore(root, [path for path in changed if path == entries], before)
+        outside = set(changed) - set(repair.batches[index].page_paths) - {entries}
+        unclean = outside & {problem.page for problem in page_problems(root, self.service)}
+        _ = restore(root, [path for path in changed if path == entries or path in unclean], before)
+        for path in sorted(unclean):
+            self.logger.warning("put back %s, which the repair turn changed outside its batch and left with a problem", path)
+        return Continue(stray, self.stamp_pages, repair=repair, index=index, before=before).because("stamp the repaired pages")
+
+    def stamp_pages(self, repair: RepairRound, index: int, before: Snapshot) -> Continue[...]:
+        """Stamp each book page the turn changed, but the entries page and the pages someone left uncommitted."""
+        root = self.root
+        entries = entries_path(root, self.service).relative_to(root).as_posix()
+        changed = book_changes(root, self.service, before)
         pages = tuple(path for path in changed if path != entries and path not in repair.held and path not in before.digests)
         outside = sorted(set(pages) - set(repair.batches[index].page_paths))
         if outside:
-            self.logger.info("the repair turn also changed %d pages outside its batch: %s", len(outside), ", ".join(outside))
+            self.logger.info("the repair turn also changed %d clean pages outside its batch: %s", len(outside), ", ".join(outside))
         for page in pages:
             if page.endswith(".md") and (root / page).is_file():
                 _ = stamp_page(root, root / FEATURES_DIR, page)

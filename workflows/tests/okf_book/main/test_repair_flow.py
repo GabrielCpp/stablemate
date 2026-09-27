@@ -234,3 +234,45 @@ def test_a_book_this_workflow_wrote_that_fails_its_run_is_a_blocker_and_no_repai
     assert isinstance(result, BookReport)
     assert [(b.phase, b.side) for b in result.blockers] == [(Phase.EXERCISE, Side.BOOK)]
     assert commits(repo)[0] == "docs(tally): write the tally book"
+
+
+OUTSIDE_EDIT = "\nan edit outside the batch\n"
+
+
+def _repairer_also_editing(repo: Path, page: str) -> ScriptedRunner:
+    def _reply(_args: dict[str, object]) -> dict[str, object]:
+        for path in (PAGE, page):
+            _ = (repo / path).write_text((repo / path).read_text(encoding="utf-8") + (NOTE if path == PAGE else OUTSIDE_EDIT), encoding="utf-8")
+        return {"value": f"repaired {PAGE} and {page}"}
+
+    return ScriptedRunner({"repair-pages": _reply})
+
+
+def _outside_edit_is_a_problem(root: Path, service: str) -> tuple[PageProblem, ...]:
+    broken = OUTSIDE_EDIT.strip() in (root / OTHER_PAGE).read_text(encoding="utf-8")
+    return (*_pages_until_noted(root, service), *((PageProblem(OTHER_PAGE, "ledger-file.md is broken"),) if broken else ()))
+
+
+@pytest.mark.usefixtures("over_the_ceiling")
+def test_a_clean_page_the_turn_changed_outside_its_batch_is_committed_with_it(app: App, drive_book: DriveBook) -> None:
+    repo = app("tally-cli")
+
+    result = drive_book(OkfBook(repo_dir=str(repo), surfaces=(TALLY,)), _repairer_also_editing(repo, OTHER_PAGE))
+
+    assert isinstance(result, BookReport)
+    assert sorted(git(repo, "show", "--name-only", "--format=", "HEAD").split()) == sorted([PAGE, OTHER_PAGE])
+
+
+@pytest.mark.usefixtures("over_the_ceiling")
+def test_a_page_the_turn_left_with_a_problem_outside_its_batch_is_put_back(
+    app: App, drive_book: DriveBook, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = app("tally-cli")
+    monkeypatch.setattr(repair_book_flow, "page_problems", _outside_edit_is_a_problem)
+
+    result = drive_book(OkfBook(repo_dir=str(repo), surfaces=(TALLY,)), _repairer_also_editing(repo, OTHER_PAGE))
+
+    assert isinstance(result, BookReport)
+    assert git(repo, "show", "--name-only", "--format=", "HEAD").split() == [PAGE]
+    assert OUTSIDE_EDIT.strip() not in (repo / OTHER_PAGE).read_text(encoding="utf-8")
+    assert git(repo, "status", "--porcelain").strip() == ""
