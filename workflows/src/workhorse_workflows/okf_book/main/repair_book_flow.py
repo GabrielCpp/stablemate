@@ -142,8 +142,8 @@ class RepairBook(BookFlow):
         self, repair: RepairRound, by_page: dict[str, tuple[str, ...]], needs_journey: frozenset[str]
     ) -> Continue[...] | Done:
         packed = repair_batches(self.root, by_page, repair.journey, needs_journey)
-        reported = {page.page for page in repair.too_large}
-        too_large = (*repair.too_large, *(page for page in packed.too_large if page.page not in reported))
+        reported = {page.subject for page in repair.too_large}
+        too_large = (*repair.too_large, *(page for page in packed.too_large if page.subject not in reported))
         repair = repair.model_copy(update={"too_large": too_large, "batches": packed.batches})
         if not packed.batches:
             return Done(repair.outcome(repair.number - 1, by_page)).because("no planned page is left for a turn")
@@ -160,6 +160,7 @@ class RepairBook(BookFlow):
             root=self.root,
             service=self.service,
             pages=batch.page_paths,
+            sections={page.page: page.sections for page in batch.pages if page.sections},
             problems_at_turn_start=problems_at_turn_start,
         )
         _ = write_command_state(self.run_dir, state)

@@ -35,7 +35,7 @@ gives relative to the repository starts there.
 {% endif %}
 {% for repair in pages %}
 
-  `{{ repair.page }}`
+  `{{ repair.page }}`{% if repair.sections %}, only {% for section in repair.sections %}{% if section %}`### {{ section }}`{% else %}the lines under no `###` heading{% endif %}{% if not loop.last %}, {% endif %}{% endfor %}{% endif %}
 {% for problem in repair.problems %}
   - {{ problem }}
 {% endfor %}
@@ -44,6 +44,11 @@ gives relative to the repository starts there.
 {% endif %}
 {% endfor %}
 
+{% if pages | selectattr("sections") | list %}
+- A page followed by sections is too large to read whole. Repair those sections only. Find each
+  with `rg -n '^### <id>$' <page>`, and read it with `sed -n` up to the next heading. Change
+  nothing outside them. The check reports only the problems in them, and any your edits cause.
+{% endif %}
 - A cited `path:first-last` is the lines of the declaration or yaml key a citation names. Read
   those lines, and the rest of the file only where a claim needs more of it.
 - Fix each problem at its cause. Read the source a claim describes before you change the claim.

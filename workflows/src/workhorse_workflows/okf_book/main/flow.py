@@ -126,7 +126,7 @@ class OkfBook(BookFlow):
             reason = "\n".join(repaired.failed_turns)
             _ = record_blocker(self.records_dir, Blocker(subject=service, phase=Phase.WRITE, side=Side.WORKFLOW, reason=reason))
         for page in repaired.too_large:
-            blocker = Blocker(subject=f"{service}: {page.page}", phase=Phase.WRITE, side=Side.WORKFLOW, reason=page.reason)
+            blocker = Blocker(subject=f"{service}: {page.subject}", phase=Phase.WRITE, side=Side.WORKFLOW, reason=page.reason)
             _ = record_blocker(self.records_dir, blocker)
         return Continue(repaired, self.check_book, index=index).because("check the repaired book")
 

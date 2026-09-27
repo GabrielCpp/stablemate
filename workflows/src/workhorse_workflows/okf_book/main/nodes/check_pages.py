@@ -1,10 +1,12 @@
 """The check the writer runs on its book, or on the pages its turn repairs. It prints each problem, or "No problems"."""
 from __future__ import annotations
 
+import re
 import sys
 from collections.abc import Sequence
 from pathlib import Path
 
+from workhorse_workflows.okf_book.main.nodes.page_sections import page_sections
 from workhorse_workflows.okf_book.main.nodes.writer_commands import (
     CHECK_MODULE,
     CHECK_AND_SCENARIO_RUNS_SPENT_MESSAGE,
@@ -14,21 +16,44 @@ from workhorse_workflows.okf_book.main.nodes.writer_commands import (
     WriterCommandState,
     spend_check_or_scenario_run,
 )
-from workhorse_workflows.okf_book.shared.page_check import page_problems
+from workhorse_workflows.okf_book.shared.page_check import PageProblem, page_problems
 
 USAGE = f"usage: python -m {CHECK_MODULE} <writer-commands.json>"
 NO_PROBLEMS_LINE = "No problems"
+_LOCATION = re.compile(r"^([^:\s]+):\d+: ")
+
+
+def _unlocated(text: str) -> str:
+    return _LOCATION.sub(r"\1: ", text)
+
+
+def _in_scope(state: WriterCommandState, root: Path, problem: PageProblem) -> bool:
+    if problem.page not in state.pages:
+        return False
+    sections = state.sections.get(problem.page)
+    if sections is None:
+        return True
+    path = root / problem.page
+    text = path.read_text(encoding="utf-8") if path.is_file() else ""
+    return page_sections(text).of_problem(problem.page, problem.text) in sections
 
 
 def scoped_problems(state: WriterCommandState) -> tuple[str, ...]:
-    """Every problem on the book, or, when the state names pages, every problem on those pages and every problem the turn made elsewhere."""
+    """Every problem on the book, or, when the state names pages, every problem on those pages, or their named sections, and every problem the turn made elsewhere.
+
+    A problem counts as one the book had when the turn started when its text matches but for its
+    line number, since an edit above it moves it.
+    """
     root = state.root.resolve()
     problems = page_problems(root, state.service)
     if not state.pages:
         return tuple(problem.text for problem in problems)
-    scope = frozenset(state.pages)
-    problems_at_turn_start = frozenset(state.problems_at_turn_start)
-    return tuple(problem.text for problem in problems if problem.page in scope or problem.text not in problems_at_turn_start)
+    problems_at_turn_start = frozenset(_unlocated(text) for text in state.problems_at_turn_start)
+    return tuple(
+        problem.text
+        for problem in problems
+        if _in_scope(state, root, problem) or _unlocated(problem.text) not in problems_at_turn_start
+    )
 
 
 def run_check(argv: Sequence[str]) -> CommandOutput:

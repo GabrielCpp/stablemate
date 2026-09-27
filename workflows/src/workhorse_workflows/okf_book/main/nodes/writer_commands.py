@@ -44,6 +44,7 @@ class WriterCommandState(BaseModel):
 
     With no pages named, the check covers the whole book. With pages named, it covers those pages
     and every problem not in `problems_at_turn_start`, the problems the book had when the turn started.
+    A page in `sections` is covered only in the `###` sections named for it.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -51,6 +52,7 @@ class WriterCommandState(BaseModel):
     root: Path
     service: str
     pages: tuple[str, ...] = ()
+    sections: dict[str, tuple[str, ...]] = {}
     problems_at_turn_start: tuple[str, ...] = ()
     check_and_scenario_runs: int = 0
     ostler_runs: int = 0

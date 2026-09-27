@@ -223,6 +223,39 @@ def test_a_check_scoped_to_pages_prints_their_problems_and_those_the_turn_made_b
     assert printed == (f"{pages[0]} is broken", f"{pages[3]} is broken")
 
 
+def _these(problems: tuple[PageProblem, ...]) -> Callable[[Path, str], tuple[PageProblem, ...]]:
+    def _problems(_root: Path, _service: str) -> tuple[PageProblem, ...]:
+        return problems
+
+    return _problems
+
+
+def test_a_check_scoped_to_sections_prints_their_problems_and_not_one_an_edit_above_only_moved(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    page = "docs/features/ledger/http/ledger-api.md"
+    path = tmp_path / page
+    path.parent.mkdir(parents=True)
+    _ = path.write_text("# Ledger API\n\n### list-rows\n\n- does: lists\n\n### drop-row\n\n- does: drops\n", encoding="utf-8")
+    now = (
+        PageProblem(page, f"{page}:5: step-no-verify: a claim has no verify"),
+        PageProblem(page, f"{page}:9: step-no-verify: a claim has no verify"),
+        PageProblem(page, f"{page}:1: title-stale: the title is stale"),
+    )
+    monkeypatch.setattr(check_pages, "page_problems", _these(now))
+    problems_at_turn_start = (
+        f"{page}:4: step-no-verify: a claim has no verify",
+        f"{page}:8: step-no-verify: a claim has no verify",
+    )
+    state = WriterCommandState(
+        root=tmp_path, service="ledger", pages=(page,), sections={page: ("list-rows",)}, problems_at_turn_start=problems_at_turn_start
+    )
+
+    printed = scoped_problems(state)
+
+    assert printed == (now[0].text, now[2].text)
+
+
 def test_a_command_prints_its_first_lines_and_counts_the_rest() -> None:
     lines = [f"problem {n}" for n in range(MAX_PRINTED_LINES + 5)]
 

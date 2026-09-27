@@ -136,3 +136,35 @@ def test_a_journey_batch_counts_the_flow_pages_and_not_the_entry_pages_it_may_li
 
     assert batch.tokens == BOOK_HOLDS * PAGE_TOKENS + 1 + BOOK_HOLDS * PAGE_TOKENS
     assert batch.owns(entry)
+
+
+def _server_page(root: Path, nodes: dict[str, int]) -> str:
+    page = f"{BOOK}/http/ledger-api.md"
+    path = root / page
+    path.parent.mkdir(parents=True, exist_ok=True)
+    body = "".join(f"### {node}\n\n{'x' * tokens * CHARS_PER_TOKEN}\n\n" for node, tokens in nodes.items())
+    _ = path.write_text(f"# Ledger API\n\n## Endpoints\n\n{body}", encoding="utf-8")
+    return page
+
+
+def test_a_page_over_the_ceiling_is_sent_only_the_sections_its_problems_sit_in(tmp_path: Path) -> None:
+    page = _server_page(tmp_path, {"list-rows": PAGE_TOKENS, "drop-row": PAGE_TOKENS, "add-row": PAGE_TOKENS})
+    problems = (f"each of 2 claims on {page}#drop-row does not compile", f"each of 3 claims on {page}#add-row does not compile")
+
+    packed = repair_batches(tmp_path, {page: problems}, ceiling=BOOK_HOLDS * 5 * PAGE_TOKENS // 2)
+
+    assert packed.too_large == ()
+    assert [(repair.sections, repair.problems) for batch in packed.batches for repair in batch.pages] == [
+        (("drop-row", "add-row"), problems)
+    ]
+
+
+def test_a_section_alone_over_the_ceiling_is_reported_by_its_heading(tmp_path: Path) -> None:
+    page = _server_page(tmp_path, {"list-rows": PAGE_TOKENS, "drop-row": 4 * PAGE_TOKENS})
+    problems = (f"{page}#list-rows is broken", f"{page}#drop-row is broken")
+
+    packed = repair_batches(tmp_path, {page: problems}, ceiling=BOOK_HOLDS * 2 * PAGE_TOKENS)
+
+    assert [repair.sections for batch in packed.batches for repair in batch.pages] == [("list-rows",)]
+    assert [large.subject for large in packed.too_large] == [f"{page}, ### drop-row"]
+    assert packed.too_large[0].reason.endswith("split the section")
