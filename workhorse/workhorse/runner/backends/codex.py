@@ -47,7 +47,7 @@ def guard_flags(policy_path: Path) -> list[str]:
     return ["--dangerously-bypass-hook-trust", "-c", hooks]
 
 
-NOTICES = ("blocked by PreToolUse hook", "`--dangerously-bypass-hook-trust` is enabled")
+NOTICES = ("codex_core::tools::router", "blocked by PreToolUse hook", "`--dangerously-bypass-hook-trust` is enabled")
 
 
 def _on_event(event, state: TurnState, node_id):

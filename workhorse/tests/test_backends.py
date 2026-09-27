@@ -1251,10 +1251,11 @@ def test_a_line_that_parses_but_is_not_an_object_is_text():
 
 
 def test_codex_hook_notices_neither_fail_nor_end_the_turn():
-    """A refused command and the hook-trust warning are events of a guarded turn, not failures, even when the refused command names a timeout."""
+    """A refused command, a patch that missed and the hook-trust warning are events of a guarded turn, not failures, even when one names a timeout."""
     lines = [
         json.dumps({"type": "item.completed", "item": {"id": "item_0", "type": "error", "message": "`--dangerously-bypass-hook-trust` is enabled. Hooks may run."}}),
         "2026-01-01T00:00:00Z ERROR codex_core::tools::router: error=Command blocked by PreToolUse hook: Refused. Command: timeout 60 cat x",
+        "2026-01-01T00:00:00.503861Z ERROR codex_core::tools::router: error=apply_patch verification failed: Failed to find expected lines in a.md:",
         json.dumps({"type": "item.completed", "item": {"type": "agent_message", "text": "DONE"}}),
     ]
 
