@@ -27,7 +27,7 @@ from ostler.qa.compile import HARNESS_LIMIT_GAPS, Plan, compile_plan_gaps
 from ostler.qa.context import book_context, validate_context, write_context
 from ostler.qa.plan_source import Gap
 from workhorse_workflows.okf_book.shared.blockers import Side
-from workhorse_workflows.okf_book.shared.entries import book_dir, entries_path
+from workhorse_workflows.okf_book.shared.entries import FEATURES_DIR, book_dir, entries_path
 from workhorse_workflows.okf_book.shared.production import production_files
 
 BOOK_STORY = "book"
@@ -91,6 +91,11 @@ class _ServicesContext(BaseModel):
     available: bool
     obligations: tuple[dict[str, JsonValue], ...]
 
+    def scoped_to(self, services: Iterable[str]) -> _ServicesContext:
+        books = tuple(f"{(FEATURES_DIR / service).as_posix()}/" for service in services)
+        kept = tuple(o for o in self.obligations if obligation_page(str(o.get("id", ""))).startswith(books))
+        return self.model_copy(update={"obligations": kept})
+
     def write(self, spec: Path) -> None:
         _ = write_context(self.model_dump(mode="json"), spec)
 
@@ -104,14 +109,16 @@ class _ServicesContext(BaseModel):
 def compile_services(root: Path, services: Iterable[str], spec: Path | None = None) -> BookCompilation:
     """Compile the named services' books, each with its production files as its source.
 
-    The QA context is written into `spec` first, when one is given.
+    Only the obligations those books' pages state are compiled. Another book's pages still inform
+    the context, but its scenarios are not this run's. The QA context is written into `spec` first,
+    when one is given.
     """
     sources = {service: sorted(production_files(root, service)) for service in services}
     packet = book_context(root, source_roots=sources)
     problems = validate_context(packet)
     if problems:
         raise ValueError(f"the books' QA context is malformed: {'; '.join(problems)}")
-    context = _ServicesContext.model_validate(packet)
+    context = _ServicesContext.model_validate(packet).scoped_to(sources)
     if spec is not None:
         context.write(spec)
     return context.compile()
