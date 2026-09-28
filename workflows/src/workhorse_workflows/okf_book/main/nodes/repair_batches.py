@@ -168,24 +168,24 @@ def _repairs_joined_by_page(units: list[_PageCost]) -> tuple[PageRepair, ...]:
     return tuple(by_page.values())
 
 
-def _new_flow_page(root: Path, journey: JourneyPages, page: str, taken: set[str]) -> str:
+def _new_flow_page(root: Path, journey: JourneyPages, page: str, claimed_flow_pages: set[str]) -> str:
     """A path in the flow folder named for the page, that no page on disk and no other batch holds."""
     stem = Path(page).stem
-    candidates = (f"{journey.flow_folder}/{stem}{'' if n == 1 else f'-{n}'}.md" for n in range(1, len(taken) + 2))
-    path = next(path for path in candidates if path not in taken and not (root / path).exists())
-    taken.add(path)
+    candidates = (f"{journey.flow_folder}/{stem}{'' if n == 1 else f'-{n}'}.md" for n in range(1, len(claimed_flow_pages) + 2))
+    path = next(path for path in candidates if path not in claimed_flow_pages and not (root / path).exists())
+    claimed_flow_pages.add(path)
     return path
 
 
 def _batch(
-    root: Path, journey_costs: list[_PageCost], filling_batch_units: list[_PageCost], journey: JourneyPages | None, taken: set[str]
+    root: Path, journey_costs: list[_PageCost], filling_batch_units: list[_PageCost], journey: JourneyPages | None, claimed_flow_pages: set[str]
 ) -> RepairBatch:
     pages = _repairs_joined_by_page(filling_batch_units)
     return RepairBatch(
         pages=pages,
         tokens=_batch_tokens([*journey_costs, *filling_batch_units]),
         journey=journey,
-        new_flow_page=_new_flow_page(root, journey, pages[0].page, taken) if journey else "",
+        new_flow_page=_new_flow_page(root, journey, pages[0].page, claimed_flow_pages) if journey else "",
     )
 
 
@@ -245,17 +245,17 @@ def _pack(
     batches: list[RepairBatch] = []
     oversized_parts: list[OversizedPart] = []
     filling_batch_units: list[_PageCost] = []
-    taken: set[str] = set(journey.pages) if journey else set()
+    claimed_flow_pages: set[str] = set(journey.pages) if journey else set()
     for page, problems in by_page.items():
         split = splitter.split_page(page, problems)
         oversized_parts.extend(split.oversized_parts)
         for unit in split.units:
             if filling_batch_units and _batch_tokens([*journey_costs, *filling_batch_units, unit]) > ceiling:
-                batches.append(_batch(files.root, journey_costs, filling_batch_units, journey, taken))
+                batches.append(_batch(files.root, journey_costs, filling_batch_units, journey, claimed_flow_pages))
                 filling_batch_units = []
             filling_batch_units.append(unit)
     if filling_batch_units:
-        batches.append(_batch(files.root, journey_costs, filling_batch_units, journey, taken))
+        batches.append(_batch(files.root, journey_costs, filling_batch_units, journey, claimed_flow_pages))
     return PackedRepairs(batches=tuple(batches), oversized_parts=tuple(oversized_parts))
 
 
