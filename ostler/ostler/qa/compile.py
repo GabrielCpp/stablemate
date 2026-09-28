@@ -9,6 +9,7 @@ from dataclasses import field
 from pathlib import Path
 from typing import Any
 
+from ostler import registry
 from ostler.qa import book_index as book_index_mod
 from ostler.qa.book_index import BookIndex
 from ostler.qa.compile_cli import cli_scenario_body
@@ -272,17 +273,28 @@ def _dispatch(
     return lanes
 
 
+def _no_verify_detail(obligation: Obligation) -> str:
+    """Why this obligation has no check, and the edit that gives it one."""
+    if obligation.node_type == "untyped":
+        headings = ", ".join(f"`## {heading}`" for heading in registry.UI_HEADING_TO_TYPE)
+        return (
+            f"`{obligation.node}` sits under a heading that gives its sections no type, so no "
+            "`verify:` bullet in it binds to a claim, however many it has. Move the section under "
+            f"the page's heading for its type ({headings}); an invented heading such as "
+            "`## Additional endpoint notes` types nothing"
+        )
+    return (
+        "the book declares no check for this obligation to prove. Add a `- verify: <check>(...)` "
+        "bullet right after the claim, naming what a run would observe. `ostler checks` prints "
+        "every check with its arguments"
+    )
+
+
 def _book_debt(no_verify: list[Obligation], gaps: list[Gap]) -> list[Obligation]:
     """Gap every obligation that declares no check, and return the ones that are book debt."""
     when_owed = [o for o in no_verify if o.kind == "when"]
     debt = [o for o in no_verify if o.kind != "when"]
-    gaps.extend(
-        Gap(o.id, "no-verify-declared",
-            "the book declares no check for this obligation to prove. Add a `- verify: <check>(...)` "
-            "bullet right after the claim, naming what a run would observe. `ostler checks` prints "
-            "every check with its arguments")
-        for o in debt
-    )
+    gaps.extend(Gap(o.id, "no-verify-declared", _no_verify_detail(o)) for o in debt)
     gaps.extend(
         Gap(o.id, "precondition-discharged-by-arrangement",
             "this `when:` states a condition under which the node's claims hold, not an "

@@ -961,6 +961,18 @@ def test_a_checkless_obligation_names_the_bullet_to_add() -> None:
     assert "`ostler checks`" in gap.detail
 
 
+def test_an_untyped_section_s_claim_is_sent_to_a_typing_heading_not_to_add_a_verify() -> None:
+    oid = "okf:docs/features/demo/api.md#list-things:emits:1"
+    context = _context(_obligation(oid, nodeType="untyped", node="docs/features/demo/api.md#list-things"))
+
+    gap = next(gap for gap in _compile_plan_gaps(context, story="demo-story").gaps if gap.obligation_id == oid)
+
+    assert gap.kind == "no-verify-declared"
+    assert "`docs/features/demo/api.md#list-things` sits under a heading that gives its sections no type" in gap.detail
+    assert "`## Endpoints`" in gap.detail
+    assert "Add a `- verify:" not in gap.detail
+
+
 def test_a_checkless_obligation_never_reaches_the_scenario_body() -> None:
     """The dead `TODO(undeclared)` branch removed from `_scenario_body`: a checkless obligation is book debt, filtered out before the body is ever asked to render one — no scenario is emitted for it, but it is not a silent drop either: the same code that declined to compile it is the code that gaps it, so it still lands in `{emitted, gap}` like every owed id."""
     oid = "okf:docs/features/demo/globex.md#post-things:does:2"
