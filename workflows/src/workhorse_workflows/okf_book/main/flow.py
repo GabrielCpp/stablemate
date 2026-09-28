@@ -67,20 +67,19 @@ class OkfBook(BookFlow):
         return self._next_surface(reason, index)
 
     def route_book(self, index: int) -> Continue[...]:
-        """A book this workflow's writer last committed is checked and run, never rewritten. Any other book with no problem goes on to its run, as this workflow's own when its repair committed it last. A missing or failing one goes to the writer."""
+        """A book this workflow's writer or repair last committed is checked and run, never rewritten. Any other book with no problem goes on to its run. A missing or failing one goes to the writer."""
         service = self.surfaces[index].service
         book = _book_folder(service)
         if not (self.root / book).is_dir():
             return Continue(None, self.copy_source, index=index).because("no book yet: write it")
-        subject = last_commit_subject(self.root, book)
-        if subject == book_commit_subject(service):
+        if last_commit_subject(self.root, book) in (book_commit_subject(service), repaired_book_commit_subject(service)):
             return Continue(book, self.check_book, index=index).because("this workflow wrote the book: check it")
         problems = book_problems(self.root, service)
         if problems:
             return Continue(problems, self.copy_source, index=index).because("the existing book has problems")
-        return Continue(
-            problems, self.run_book, index=index, written_by_workflow=subject == repaired_book_commit_subject(service)
-        ).because("the existing book checks clean")
+        return Continue(problems, self.run_book, index=index, written_by_workflow=False).because(
+            "the existing book checks clean"
+        )
 
     def copy_source(self, index: int, run_failures: RunFailures | None = None) -> Continue[...]:
         """Copy the surface's product source for its writer. A surface whose source is no folder is a blocker."""

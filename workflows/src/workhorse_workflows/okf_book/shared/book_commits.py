@@ -18,5 +18,5 @@ def rooted_book_commit_subject(service: str) -> str:
 
 
 def repaired_book_commit_subject(service: str) -> str:
-    """The subject of the pages one repair turn changed. A rerun repairs such a book again while it has problems, and a failing run of a clean one is a blocker."""
+    """The subject of the pages one repair turn changed. A rerun checks and runs such a book as this workflow's own, and never repairs it again."""
     return f"docs({service}): repair pages of the {service} book"
