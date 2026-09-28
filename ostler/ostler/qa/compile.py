@@ -261,7 +261,7 @@ def _dispatch(
             lanes.flow.append(obligation)
             continue
         driver = (
-            "cli" if obligation.page_type == "cli" and obligation.node_type in OBSERVED_TYPES
+            "cli" if obligation.on_cli_page and obligation.node_type in OBSERVED_TYPES
             else surface_row(navigation, obligation.surface).driver
         )
         target = dispatch_target(obligation.node_type, driver)

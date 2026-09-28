@@ -1875,7 +1875,7 @@ class _ObligationFrame:
         if self.steps:
             fields["steps"] = self.steps
         if self.on_cli_page:
-            fields["pageType"] = "cli"
+            fields["onCliPage"] = True
         if self.extends_unresolved:
             fields["extendsUnresolved"] = True
         if self.locators:

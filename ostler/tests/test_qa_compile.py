@@ -2799,7 +2799,7 @@ def test_a_command_on_a_cli_page_runs_through_the_cli_lane_on_an_http_surface() 
     oid = "okf:docs/features/demo/api.md#import:does:1"
     context = _cli_command_context(oid, {"call": "exit_status(code=0)", "name": "exit_status", "args": {"code": 0}})
     context["navigation"][""]["driver"] = "http"
-    context["obligations"][0]["pageType"] = "cli"
+    context["obligations"][0]["onCliPage"] = True
 
     result = _compile_plan_gaps(context, story="demo-story")
 
@@ -2811,7 +2811,7 @@ def test_a_command_on_a_cli_page_runs_through_the_cli_lane_on_an_http_surface() 
 def test_an_endpoint_on_a_cli_page_keeps_the_surface_driver() -> None:
     oid = "okf:docs/features/demo/api.md#things:does:1"
     check = {"call": "http_status(code=200)", "name": "http_status", "args": {"code": 200}}
-    context = _context(_obligation(oid, pageType="cli", checksDeclared=[check]))
+    context = _context(_obligation(oid, onCliPage=True, checksDeclared=[check]))
 
     source, gaps = compile_plan_gaps(context, story="demo-story")
 
@@ -2824,8 +2824,8 @@ def test_a_page_with_an_endpoint_and_a_command_names_each_scenario_apart() -> No
     endpoint = "okf:docs/features/demo/api.md#things:does:1"
     context = _cli_command_context(command, {"call": "exit_status(code=0)", "name": "exit_status", "args": {"code": 0}})
     context["navigation"][""]["driver"] = "http"
-    context["obligations"][0]["pageType"] = "cli"
-    context["obligations"].append(_obligation(endpoint, pageType="cli", checksDeclared=[
+    context["obligations"][0]["onCliPage"] = True
+    context["obligations"].append(_obligation(endpoint, onCliPage=True, checksDeclared=[
         {"call": "http_status(code=200)", "name": "http_status", "args": {"code": 200}},
     ]))
 
