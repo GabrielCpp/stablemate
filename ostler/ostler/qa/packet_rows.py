@@ -122,6 +122,21 @@ class RepeatTemplate:
     iterates: str
     segments: tuple[Segment, ...]
 
+    @classmethod
+    def parse(cls, raw: Mapping[str, object]) -> RepeatTemplate | None:
+        """The template a repeat contract row carries, None when it carries none, refusing any other shape."""
+        if raw.get("template") is None:
+            return None
+        template, iterates, segments = raw.get("template"), raw.get("iterates"), raw.get("segments")
+        if not isinstance(template, str) or not isinstance(iterates, str) or not isinstance(segments, list):
+            raise ValueError(f"a repeat template has an unknown shape: {raw!r}")
+        parsed: list[Segment] = []
+        for segment in segments:
+            if not isinstance(segment, Mapping):
+                raise ValueError(f"a template segment is not a mapping: {segment!r}")
+            parsed.append(Segment.parse({str(key): value for key, value in segment.items()}))
+        return cls(template=template, iterates=iterates, segments=tuple(parsed))
+
 
 @dataclass(frozen=True, slots=True)
 class Variants:
@@ -132,13 +147,15 @@ class Variants:
 
     @classmethod
     def parse(cls, raw: object) -> Variants | None:
-        """The variant axis an obligation row carries, or None when the row states none."""
+        """The variant axis an obligation row carries, None when the row states none, refusing any other shape."""
+        if raw is None:
+            return None
         if not isinstance(raw, Mapping):
-            return None
+            raise ValueError(f"a variant axis is not a mapping: {raw!r}")
         path, values = raw.get("path"), raw.get("values")
-        if not isinstance(path, str):
-            return None
-        return cls(path=path, values=tuple(str(value) for value in values) if isinstance(values, list) else ())
+        if not isinstance(path, str) or not isinstance(values, list) or not all(isinstance(v, str) for v in values):
+            raise ValueError(f"a variant axis has an unknown shape: {raw!r}")
+        return cls(path=path, values=tuple(str(value) for value in values))
 
     def row(self) -> dict[str, Any]:
         """The axis as the obligation row carries it."""
@@ -154,6 +171,25 @@ class RepeatContract:
     template: RepeatTemplate | None
     unique_by: str
     variants: Variants | None
+
+    @classmethod
+    def parse(cls, raw: Mapping[str, object]) -> RepeatContract:
+        """The contract an obligation row carries, refusing a shape `row` does not write."""
+        one_per, binds, unique_by = raw.get("onePer"), raw.get("binds", []), raw.get("uniqueBy", "")
+        if (
+            not isinstance(one_per, str)
+            or not isinstance(binds, list)
+            or not all(isinstance(bind, str) for bind in binds)
+            or not isinstance(unique_by, str)
+        ):
+            raise ValueError(f"a repeat contract has an unknown shape: {raw!r}")
+        return cls(
+            one_per=one_per,
+            binds=tuple(str(bind) for bind in binds),
+            template=RepeatTemplate.parse(raw),
+            unique_by=unique_by,
+            variants=Variants.parse(raw.get("variants")),
+        )
 
     def row(self) -> dict[str, Any]:
         """The contract as the obligation row carries it, leaving out what the node does not state."""

@@ -20,7 +20,7 @@ from ostler import path as path_mod
 from ostler.model import load as load_graph
 from ostler.qa.compile import book_digest
 from ostler.qa.context import book_files, story_file_record
-from ostler.qa.packet_rows import Variants
+from ostler.qa.packet_rows import RepeatContract
 from ostler.qa.harness_host import default_interpreter, describe, load_harness_module
 from ostler.untyped import is_mapping
 from ostler.vet import placement
@@ -536,11 +536,14 @@ def _validate_python_scenarios(
 
 def _validate_instances(document: PlanDocument) -> list[str]:
     """Hold every scenario covering a repeated obligation to concrete, named instances."""
-    repeats: dict[str, dict[str, Any]] = {}
+    repeats: dict[str, RepeatContract] = {}
+    problems: list[str] = []
     for obligation in document.context.get("obligations", []):
         if is_mapping(obligation) and obligation.get("id") and is_mapping(obligation.get("repeat")):
-            repeats[str(obligation["id"])] = dict(obligation["repeat"])
-    problems: list[str] = []
+            try:
+                repeats[str(obligation["id"])] = RepeatContract.parse(obligation["repeat"])
+            except ValueError as error:
+                problems.append(f"obligation '{obligation['id']}' carries an unreadable repeat contract: {error}")
     scenarios = document.data.get("scenarios")
     if not repeats or not isinstance(scenarios, list):
         return problems
@@ -584,10 +587,9 @@ def _validate_instances(document: PlanDocument) -> list[str]:
                     "strings; a computed mapping declares nothing validation can check"
                 )
                 continue
-            binds = [bind for bind in repeat.get("binds") or [] if isinstance(bind, str)]
-            variants = Variants.parse(repeat.get("variants"))
-            allowed = set(binds) | ({variants.path} if variants else set())
-            for key in sorted(set(binds) - set(bindings)):
+            variants = repeat.variants
+            allowed = set(repeat.binds) | ({variants.path} if variants else set())
+            for key in sorted(set(repeat.binds) - set(bindings)):
                 problems.append(
                     f"scenario '{scenario_id}' instance for '{obligation_id}' does not bind "
                     f"'{key}' — the template interpolates it, so a concrete instance must say "
@@ -610,9 +612,8 @@ def _validate_instances(document: PlanDocument) -> list[str]:
             repeat = repeats.get(obligation_id)
             if repeat is None:
                 continue
-            binds = repeat.get("binds") or []
-            variants = Variants.parse(repeat.get("variants"))
-            if not binds and not variants:
+            variants = repeat.variants
+            if not repeat.binds and not variants:
                 continue
             instances = by_obligation.get(obligation_id, [])
             if not instances:

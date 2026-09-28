@@ -1237,6 +1237,16 @@ def test_an_uncovered_variant_is_surfaced_not_sampled_around(tmp_path: Path) -> 
     assert any("no instance samples variant `stage.kind = active`" in item for item in reported)
 
 
+def test_a_variant_axis_without_a_value_list_is_refused_not_read_as_empty(tmp_path: Path) -> None:
+    reported = _repeat_problems(
+        tmp_path,
+        _repeat_spec(tmp_path, variants={"path": "stage.kind", "values": "draft"}),
+        'qa.instance(OB, {"stage.name": "Fondations", "stage.kind": "draft"})\n'
+        'qa.check("the row is shown", True, covers=[OB])',
+    )
+    assert any("carries an unreadable repeat contract" in item for item in reported)
+
+
 def test_a_computed_binding_or_mapping_declares_nothing(tmp_path: Path) -> None:
     reported = _repeat_problems(
         tmp_path,
