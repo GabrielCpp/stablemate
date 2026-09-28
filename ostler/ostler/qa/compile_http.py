@@ -135,8 +135,8 @@ class _HttpArrangement:
 
     def kwargs_source(self, *, with_body: bool) -> str:
         """The `json_body=`/`headers=` keywords of the call that sends this arrangement."""
-        body = f", json_body={_lit_fields(self.body)}" if with_body else ""
-        headers = f", headers={_lit_fields(self.headers)}" if self.headers else ""
+        body = f", json_body={_resolved_dict_literal(self.body)}" if with_body else ""
+        headers = f", headers={_resolved_dict_literal(self.headers)}" if self.headers else ""
         return body + headers
 
 
@@ -157,7 +157,7 @@ def _http_arrangement(rows: tuple[CallRow, ...]) -> _HttpArrangement | None:
     return arranged
 
 
-def _lit_value(value: CheckValue) -> str:
+def _resolved_literal(value: CheckValue) -> str:
     """One value as `python_literal` spells it, wrapped in `qa.resolve` when it names a reference."""
     literal = python_literal(value)
     if isinstance(value, str) and references.find_references(value):
@@ -165,9 +165,9 @@ def _lit_value(value: CheckValue) -> str:
     return literal
 
 
-def _lit_fields(fields: dict[str, CheckValue]) -> str:
-    """A `json_body=`/`headers=` dict literal, every value spelled by `_lit_value`."""
-    return "{" + ", ".join(f"{json.dumps(k)}: {_lit_value(v)}" for k, v in fields.items()) + "}"
+def _resolved_dict_literal(fields: dict[str, CheckValue]) -> str:
+    """A `json_body=`/`headers=` dict literal, every value spelled by `_resolved_literal`."""
+    return "{" + ", ".join(f"{json.dumps(k)}: {_resolved_literal(v)}" for k, v in fields.items()) + "}"
 
 
 @dataclass(frozen=True)
