@@ -38,15 +38,15 @@ def _run_git(root: Path, args: tuple[str, ...]) -> subprocess.CompletedProcess[s
 
 def _git(root: Path, *args: str) -> str:
     """Run git in *root*. A command that finds the index locked by another git process waits and tries again."""
-    done = _run_git(root, args)
+    attempt = _run_git(root, args)
     for wait in _LOCK_WAITS:
-        if done.returncode == 0 or _INDEX_LOCK not in done.stderr:
+        if attempt.returncode == 0 or _INDEX_LOCK not in attempt.stderr:
             break
         time.sleep(wait)
-        done = _run_git(root, args)
-    if done.returncode != 0:
-        raise GitFailed(f"git {' '.join(args)} failed in {root}: {done.stderr.strip()}")
-    return done.stdout
+        attempt = _run_git(root, args)
+    if attempt.returncode != 0:
+        raise GitFailed(f"git {' '.join(args)} failed in {root}: {attempt.stderr.strip()}")
+    return attempt.stdout
 
 
 def _digest(path: Path) -> str:
