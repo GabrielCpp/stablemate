@@ -13,6 +13,9 @@ from pathlib import Path
 from types import ModuleType
 
 import pytest
+from ostler.model import load
+from ostler.qa.context import _obligations, _serialized_graph
+from ostler.qa.obligation_frame import book_nodes
 from paddock.registry import REGISTRY
 import yaml
 
@@ -215,9 +218,6 @@ def defect_ids() -> list[str]:
 
 def obligation_ids() -> set[str]:
     """Every obligation id this book can mint, independent of any diff."""
-    from ostler.model import load  # noqa: PLC0415 - a heavy import only these tests need
-    from ostler.qa.context import _obligations, _serialized_graph, book_nodes  # noqa: PLC0415
-
     nodes, _edges, _ends, _scopes, _details = _serialized_graph(load(APP))
     book = book_nodes(nodes)
     return {
