@@ -128,8 +128,8 @@ localInstructions:
     includeReadme: false
   - skill: myrepo-go
     paths: ["api"]            # write under api/
-    includeReadme: true       # true (default) | false
-    claudeMd: true            # also write api/CLAUDE.md holding `@AGENTS.md` (default false)
+    includeReadme: true
+    claudeMd: true
 
 
 # ---------------------------------------------------------------------------
