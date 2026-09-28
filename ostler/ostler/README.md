@@ -36,6 +36,7 @@ says how to use it. This page says where each concern lives.
 - `index.py`: the persistent, content-addressed parse index store.
 - `inventory.py`: the source symbol front end, one grammar for the join and the grounding check.
 - `links.py`: path-link resolution for the UI profile.
+- `locator_findings.py`: each way the book's mapping from node to Playwright locator breaks.
 - `locators.py`: the Playwright locators the book yields, and where that mapping breaks.
 - `markdown.py`: Markdown and YAML frontmatter parsing.
 - `model.py`: the organization model, the typed knowledge graph loaded from markdown.
