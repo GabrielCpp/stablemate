@@ -385,37 +385,36 @@ def build_context(
         emitted = {
             value
             for node_id in selected
-            for value in bullet_values(nodes_by_id[node_id].get("bullets", {}).get("emits"))
+            for value in book[node_id].bullets.get("emits", ())
         }
         consumed = {
             value
             for node_id in selected
-            for value in bullet_values(nodes_by_id[node_id].get("bullets", {}).get("consumes"))
+            for value in book[node_id].bullets.get("consumes", ())
         }
         relation_values = {
             _relation_join_key(value)
             for node_id in selected
             for key in relation_keys
-            for value in bullet_values(nodes_by_id[node_id].get("bullets", {}).get(key))
+            for value in book[node_id].bullets.get(key, ())
         }
-        for node_id, node in nodes_by_id.items():
+        for node_id, node in book.items():
             if node_id in selected:
                 continue
-            bullets = node.get("bullets", {})
             reasons: list[Reason] = []
-            for value in bullet_values(bullets.get("consumes")):
+            for value in node.bullets.get("consumes", ()):
                 if value in emitted:
                     reasons.append(Reason(ReasonKind.EVENT_CONSUMER, value))
-            for value in bullet_values(bullets.get("emits")):
+            for value in node.bullets.get("emits", ()):
                 if value in consumed:
                     reasons.append(Reason(ReasonKind.EVENT_PRODUCER, value))
             for key in relation_keys:
-                for value in bullet_values(bullets.get(key)):
+                for value in node.bullets.get(key, ()):
                     join = _relation_join_key(value)
                     if join in relation_values:
                         reasons.append(Reason(relation_reason_kind(key), join))
             if reasons:
-                (journeys if node.get("type") == "flow" else contracts).add(node_id)
+                (journeys if node.type == "flow" else contracts).add(node_id)
                 direct_reasons.setdefault(node_id, []).extend(reasons)
                 related = True
 
@@ -424,17 +423,16 @@ def build_context(
     for source, target in sorted(detail_edges):
         if source not in contracts and source not in journeys:
             continue
-        concept = nodes_by_id.get(target)
-        if not concept or concept.get("type") != "concept":
+        concept = book.get(target)
+        if concept is None or concept.type != "concept":
             continue
-        bullets = concept.get("bullets", {})
         judgment_by_node.setdefault(source, []).append(
             {
                 "concept": target,
-                "title": concept.get("title") or target,
-                "rules": bullet_values(bullets.get("rule")),
-                "prefers": bullet_values(bullets.get("prefers")),
-                "deprecates": bullet_values(bullets.get("deprecates")),
+                "title": concept.title or target,
+                "rules": list(concept.bullets.get("rule", ())),
+                "prefers": list(concept.bullets.get("prefers", ())),
+                "deprecates": list(concept.bullets.get("deprecates", ())),
             }
         )
         if target not in contracts and target not in journeys:
@@ -453,14 +451,14 @@ def build_context(
         for item in verification_index
         if item["impacted"]
     ]
-    selected_nodes = {node_id: nodes_by_id[node_id] for node_id in sorted(selected)}
+    selected_nodes = {node_id: book[node_id] for node_id in sorted(selected)}
     grounded, dangling = resolve_groundings(
-        {node_id: tuple(refs_mod.code_refs(node.get("bullets", {}).get("code"))) for node_id, node in selected_nodes.items()},
+        {node_id: tuple(refs_mod.code_refs(list(node.bullets.get("code", ())))) for node_id, node in selected_nodes.items()},
         lambda ref: _grounding_for_ref(root, base, head, ref, repositories_by_id, book_root)
     )
     health.extend(row.row() for row in dangling)
-    for node_id in selected_nodes:
-        health.extend(row.row() for row in _missing_declared_checks(book[node_id]))
+    for node in selected_nodes.values():
+        health.extend(row.row() for row in _missing_declared_checks(node))
     demoted_symbols: frozenset[str] | set[str] = shared_symbols
     required_contracts = {
         node_id
@@ -488,7 +486,7 @@ def build_context(
                 }
             )
     reached_by_the_diff = set(required_contracts)
-    subjects_by_node = {node_id: _named_subjects(node) for node_id, node in nodes_by_id.items()}
+    subjects_by_node = {node_id: _named_subjects(node) for node_id, node in book.items()}
     required_subjects = {
         subject for node_id in required_contracts for subject in subjects_by_node[node_id]
     }
@@ -1159,17 +1157,16 @@ def _run_binaries_by_path(nodes_by_id: dict[str, dict[str, Any]]) -> dict[str, s
     return binaries
 
 
-def _named_subjects(node: dict[str, Any]) -> set[str]:
+def _named_subjects(node: BookNode) -> set[str]:
     """Every subject this node names, pooled across the relation and event bullets."""
-    bullets = node.get("bullets", {})
     subjects = {
         subject
         for key in RELATION_KEYS
-        for value in bullet_values(bullets.get(key))
+        for value in node.bullets.get(key, ())
         if (subject := relation_subject(value)[0]) is not None
     }
     for key in _EVENT_KEYS:
-        for value in bullet_values(bullets.get(key)):
+        for value in node.bullets.get(key, ()):
             subject, _ = relation_subject(value)
             subjects.add(subject if subject is not None else value.strip())
     return {subject for subject in subjects if subject}
