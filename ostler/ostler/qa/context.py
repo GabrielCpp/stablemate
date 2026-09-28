@@ -28,6 +28,7 @@ from ostler.qa import fixtures as fixtures_mod
 from ostler.qa.compile import annotate_deferred_obligations
 from ostler.qa.obligation_frame import (
     BookNode,
+    RepeatContract,
     book_nodes,
     bullet_values,
     declared_locators,
@@ -36,12 +37,7 @@ from ostler.qa.obligation_frame import (
     obligation_frame,
 )
 from ostler.qa.outcome import QaOutcome
-from ostler.qa.packet_rows import (
-    HealthRow,
-    RepeatContract,
-    relation_fanout_warnings,
-    resolve_groundings,
-)
+from ostler.qa.grounding_health import HealthRow, relation_fanout_warnings, resolve_groundings
 from ostler.qa.runbook import bullet_text
 from ostler.qa.owners import (
     ChangedUnit,

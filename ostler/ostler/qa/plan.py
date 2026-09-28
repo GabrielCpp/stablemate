@@ -20,7 +20,7 @@ from ostler import path as path_mod
 from ostler.model import load as load_graph
 from ostler.qa.compile import book_digest
 from ostler.qa.context import book_files, story_file_record
-from ostler.qa.packet_rows import RepeatContract
+from ostler.qa.obligation_frame import RepeatContract
 from ostler.qa.harness_host import default_interpreter, describe, load_harness_module
 from ostler.untyped import is_mapping
 from ostler.vet import placement

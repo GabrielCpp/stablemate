@@ -6,7 +6,7 @@ from pathlib import Path
 
 from ostler import doctor, graph, locators
 from ostler.model import load
-from ostler.qa.packet_rows import Variants
+from ostler.qa.obligation_frame import Variants
 
 from conftest import write
 

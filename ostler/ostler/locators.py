@@ -8,8 +8,7 @@ from pathlib import Path
 
 from ostler import graph as graph_mod
 from ostler.model import Graph, UINode
-from ostler.qa.obligation_frame import BookNode
-from ostler.qa.packet_rows import RepeatContract, RepeatTemplate, Segment, Variants
+from ostler.qa.obligation_frame import BookNode, RepeatContract, RepeatTemplate, Segment, Variants
 from ostler.reach import NONE_TOKENS, _screen_of
 from ostler.vet import placement as placement_mod
 

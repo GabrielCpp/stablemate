@@ -4,12 +4,171 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
+from typing import Any
 
 from ostler import markdown, registry
-from ostler.qa.packet_rows import JourneyStep, ObligationFrame, RepeatContract
 
 _LOCATOR_KEYS = tuple(sorted(registry.LOCATOR_KEYS))
 _LOCATOR_KEY_RENAME = {"exclusive-with": "exclusiveWith"}
+
+
+@dataclass(frozen=True, slots=True)
+class JourneyStep:
+    """One node a flow's `steps:` names: its id, the link the book wrote, its type and its surface."""
+
+    ref: str
+    href: str
+    node_type: str
+    surface: str
+
+    def row(self) -> dict[str, str]:
+        """The step as the obligation row carries it."""
+        return {"ref": self.ref, "href": self.href, "nodeType": self.node_type, "surface": self.surface}
+
+
+_SEGMENT_FIELDS = {"literal": "text", "bind": "path", "opaque": "expr"}
+
+
+@dataclass(frozen=True, slots=True)
+class Segment:
+    """One compiled piece of a name template: literal text, a bound scope path, or an opaque expression."""
+
+    kind: str
+    value: str
+
+    @classmethod
+    def parse(cls, raw: Mapping[str, object]) -> Segment:
+        """The segment a compiled locator carries, refusing a kind the compiler does not emit."""
+        kind = str(raw.get("kind", ""))
+        field = _SEGMENT_FIELDS.get(kind)
+        value = raw.get(field) if field is not None else None
+        if not isinstance(value, str):
+            raise ValueError(f"a template segment has an unknown shape: {raw!r}")
+        return cls(kind=kind, value=value)
+
+    def row(self) -> dict[str, str]:
+        """The segment as the obligation row carries it."""
+        return {"kind": self.kind, _SEGMENT_FIELDS[self.kind]: self.value}
+
+
+@dataclass(frozen=True, slots=True)
+class RepeatTemplate:
+    """The name template a repeated node's locator compiles to: its text, the scope it iterates, and its compiled segments."""
+
+    template: str
+    iterates: str
+    segments: tuple[Segment, ...]
+
+    @classmethod
+    def parse(cls, raw: Mapping[str, object]) -> RepeatTemplate | None:
+        """The template a repeat contract row carries, None when it carries none, refusing any other shape."""
+        if raw.get("template") is None:
+            return None
+        template, iterates, segments = raw.get("template"), raw.get("iterates"), raw.get("segments")
+        if not isinstance(template, str) or not isinstance(iterates, str) or not isinstance(segments, list):
+            raise ValueError(f"a repeat template has an unknown shape: {raw!r}")
+        parsed: list[Segment] = []
+        for segment in segments:
+            if not isinstance(segment, Mapping):
+                raise ValueError(f"a template segment is not a mapping: {segment!r}")
+            parsed.append(Segment.parse({str(key): value for key, value in segment.items()}))
+        return cls(template=template, iterates=iterates, segments=tuple(parsed))
+
+
+@dataclass(frozen=True, slots=True)
+class Variants:
+    """The enumerable variant axis of a repeated node: the dot-path it varies on and each value."""
+
+    path: str
+    values: tuple[str, ...]
+
+    @classmethod
+    def parse(cls, raw: object) -> Variants | None:
+        """The variant axis an obligation row carries, None when the row states none, refusing any other shape."""
+        if raw is None:
+            return None
+        if not isinstance(raw, Mapping):
+            raise ValueError(f"a variant axis is not a mapping: {raw!r}")
+        path, values = raw.get("path"), raw.get("values")
+        if not isinstance(path, str) or not isinstance(values, list) or not all(isinstance(v, str) for v in values):
+            raise ValueError(f"a variant axis has an unknown shape: {raw!r}")
+        return cls(path=path, values=tuple(str(value) for value in values))
+
+    def row(self) -> dict[str, Any]:
+        """The axis as the obligation row carries it."""
+        return {"path": self.path, "values": list(self.values)}
+
+
+@dataclass(frozen=True, slots=True)
+class RepeatContract:
+    """The contract of a node in a `one-per:` scope: what it repeats over, what its name binds, its template, what makes it distinct, and its variants."""
+
+    one_per: str
+    binds: tuple[str, ...]
+    template: RepeatTemplate | None
+    unique_by: str
+    variants: Variants | None
+
+    @classmethod
+    def parse(cls, raw: Mapping[str, object]) -> RepeatContract:
+        """The contract an obligation row carries, refusing a shape `row` does not write."""
+        one_per, binds, unique_by = raw.get("onePer"), raw.get("binds", []), raw.get("uniqueBy", "")
+        if (
+            not isinstance(one_per, str)
+            or not isinstance(binds, list)
+            or not all(isinstance(bind, str) for bind in binds)
+            or not isinstance(unique_by, str)
+        ):
+            raise ValueError(f"a repeat contract has an unknown shape: {raw!r}")
+        return cls(
+            one_per=one_per,
+            binds=tuple(str(bind) for bind in binds),
+            template=RepeatTemplate.parse(raw),
+            unique_by=unique_by,
+            variants=Variants.parse(raw.get("variants")),
+        )
+
+    def row(self) -> dict[str, Any]:
+        """The contract as the obligation row carries it, leaving out what the node does not state."""
+        fields: dict[str, Any] = {"onePer": self.one_per, "binds": list(self.binds)}
+        if self.template is not None:
+            fields["template"] = self.template.template
+            fields["iterates"] = self.template.iterates
+            fields["segments"] = [segment.row() for segment in self.template.segments]
+        if self.unique_by:
+            fields["uniqueBy"] = self.unique_by
+        if self.variants is not None:
+            fields["variants"] = self.variants.row()
+        return fields
+
+
+@dataclass(frozen=True, slots=True)
+class ObligationFrame:
+    """What every obligation of one node shares: the surface it is reached on, the steps of a flow, whether it sits on a cli page, the locators, whether an `extends:` arm failed to resolve, and the repeat contract."""
+
+    surface: str
+    steps: tuple[JourneyStep, ...]
+    on_cli_page: bool
+    locators: dict[str, list[str]]
+    extends_unresolved: bool
+    repeat: RepeatContract | None
+
+    def row(self) -> dict[str, Any]:
+        """The frame as the obligation row carries it, leaving out what the node does not state."""
+        fields: dict[str, Any] = {}
+        if self.surface:
+            fields["surface"] = self.surface
+        if self.steps:
+            fields["steps"] = [step.row() for step in self.steps]
+        if self.on_cli_page:
+            fields["onCliPage"] = True
+        if self.extends_unresolved:
+            fields["extendsUnresolved"] = True
+        if self.locators:
+            fields["locators"] = self.locators
+        if self.repeat is not None:
+            fields["repeat"] = self.repeat.row()
+        return fields
 
 
 def bullet_values(value: object) -> list[str]:

@@ -23,17 +23,17 @@ plan from the book, run it, and report the evidence.
 - `evidence_map.py`: the join of obligations to evidence, with coverage as a set difference.
 - `fixtures.py`: declared QA fixtures, the named arrangements a plan may ask for and where they live.
 - `frames.py`: `ostler qa frames`, the frames around a step pulled out of a run's recording.
+- `grounding_health.py`: the health findings the context packet reports about the book, citations that resolve nowhere and relation subjects named too broadly.
 - `harness/`: the modules a generated `qa_plan.py` imports at run time.
 - `harness_host.py`: ostler's side of the QA harness boundary, where the harness lives and how to ask it to describe.
 - `lint.py`: `ostler qa lint`, the static gate a `qa_plan.py` must pass before it may run on the host.
 - `manifest.py`: the current run's artifact manifest, with content-addressed provenance.
 - `navigation.py`: each surface's navigation row from the context packet, read once into typed records.
 - `obligation.py`: one obligation of the context packet, read once into typed records where the compiler takes it in.
-- `obligation_frame.py`: the frame every obligation of a book node shares, its surface, journey, locators and repeat contract.
+- `obligation_frame.py`: the frame every obligation of a book node shares, its surface, journey, locators and repeat contract, and the typed records that carry it.
 - `outcome.py`: `QaOutcome`, the return shape every `ostler qa` subcommand shares.
 - `owners.py`: which book nodes own a change, the reasons a node is selected and the families that cite each changed file and symbol.
 - `packet.py`: the `qa context` packet `compile-plan` reads, validated once into one typed record.
-- `packet_rows.py`: the typed rows the context packet carries, health findings about the book and what each obligation of a node shares.
 - `plan.py`: version-2 QA plan parsing and fail-closed semantic validation.
 - `plan_source.py`: what every plan builder shares, the gap record and the literal spelling of a check call.
 - `references.py`: the one reference grammar `fixture:`, `needs:`, route paths, request bodies and `verify:` share.
