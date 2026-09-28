@@ -681,19 +681,25 @@ def _extract_path(data: Any, path: str) -> str | None:
     if data is None:
         return None
     try:
-        resolved, value = _path_grammar().resolve_path(data, path)
+        resolved, value = _resolve_path(data, path)
     except ValueError:
         return None
     if not resolved or value is None:
         return None
-    if _path_grammar().is_projection(path) and len(value) == 1:
+    if _is_projection(path) and isinstance(value, list) and len(value) == 1:
         value = value[0]
     return str(value) if value is not None else None
 
 
-def _path_grammar() -> Any:
-    """The harness's document-path grammar, loaded on first use so it lives in one place."""
-    return load_harness_module("ostler_qa_paths")
+def _resolve_path(document: object, path: str) -> tuple[bool, object]:
+    """Walk *path* into *document* by the harness's document-path grammar: whether it resolved, and to what."""
+    resolved, value = load_harness_module("ostler_qa_paths").resolve_path(document, path)
+    return bool(resolved), value
+
+
+def _is_projection(path: str) -> bool:
+    """Whether *path* fans out over a list, by the harness's document-path grammar."""
+    return bool(load_harness_module("ostler_qa_paths").is_projection(path))
 
 
 def _adoptable(out_file: Path, started_wall: float) -> bool:
