@@ -45,13 +45,13 @@ def test_codex_runs_a_confined_turn_behind_the_guard_hook_and_removes_its_policy
     agent = AgentProfile(name="docs", tools={"*": False}, confined=True, commands=("ostler",))
     calls: list[_GuardedCall] = []
 
-    def fake(cmd: list[str], node_id: str, timeout: float, stdin_data: str | None, on_event: object, **kwargs: object) -> turn.TurnState:
+    def _run_codex_recording_the_guard(cmd: list[str], node_id: str, timeout: float, stdin_data: str | None, on_event: object, **kwargs: object) -> turn.TurnState:
         hooks = cmd[cmd.index("--dangerously-bypass-hook-trust") + 2]
         policy_path = Path(hooks.split(" ")[-1].rstrip('"}]'))
         calls.append(_GuardedCall(hooks, policy_path, Policy.from_json(policy_path.read_text(encoding="utf-8"))))
         return turn.TurnState(result_text="OK", session_id="t")
 
-    _run_turn(CodexBackend(fake), root, cwd=str(root / "docs"), add_dirs=[str(root / "src")], agent=agent)
+    _run_turn(CodexBackend(_run_codex_recording_the_guard), root, cwd=str(root / "docs"), add_dirs=[str(root / "src")], agent=agent)
 
     (call,) = calls
     assert "codex_guard" in call.hooks
@@ -66,11 +66,11 @@ def test_codex_runs_a_confined_turn_behind_the_guard_hook_and_removes_its_policy
 def test_codex_runs_an_unconfined_turn_without_the_guard(tmp_path: Path) -> None:
     commands: list[list[str]] = []
 
-    def fake(cmd: list[str], node_id: str, timeout: float, stdin_data: str | None, on_event: object, **kwargs: object) -> turn.TurnState:
+    def _run_codex_recording_the_command(cmd: list[str], node_id: str, timeout: float, stdin_data: str | None, on_event: object, **kwargs: object) -> turn.TurnState:
         commands.append(cmd)
         return turn.TurnState(result_text="OK", session_id="t")
 
-    _run_turn(CodexBackend(fake), tmp_path, agent=AgentProfile(name="free"))
+    _run_turn(CodexBackend(_run_codex_recording_the_command), tmp_path, agent=AgentProfile(name="free"))
 
     (cmd,) = commands
     assert "--dangerously-bypass-hook-trust" not in cmd
