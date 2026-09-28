@@ -12,9 +12,9 @@ def check_section_hosts(doc: markdown.MarkdownDoc, rel: str, page_type: str,
     for section in doc.walk_sections():
         title = section.title.strip()
         stype = registry.UI_TYPES_BY_NAME.get(registry.UI_HEADING_TO_TYPE.get(title, ""))
-        if stype is None or not stype.hosts or page_type in stype.hosts or not section.children:
+        if stype is None or not stype.host_page_types or page_type in stype.host_page_types or not section.children:
             continue
-        host = " or ".join(stype.hosts)
+        host = " or ".join(stype.host_page_types)
         f.append(Finding(
             "error", "misplaced-section",
             f"{rel}: a {page_type} page holds `{'#' * section.level} {title}`, but a "

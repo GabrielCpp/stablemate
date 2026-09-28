@@ -171,7 +171,7 @@ class UINodeType:
     body_template: str = ""
     literal_id: bool = False
     step_bullets: tuple[BulletKey, ...] = ()
-    hosts: tuple[str, ...] = ()
+    host_page_types: tuple[str, ...] = ()
 
     @property
     def bullet_by_key(self) -> dict[str, BulletKey]:
@@ -590,7 +590,7 @@ UI_TYPES: tuple[UINodeType, ...] = (
         ),
     ),
     UINodeType(
-        name="command", kind="section", heading="Commands", hosts=("cli",),
+        name="command", kind="section", heading="Commands", host_page_types=("cli",),
         bullet_keys=(
             BulletKey("usage"),
             BulletKey("parent", link=True),
@@ -609,7 +609,7 @@ UI_TYPES: tuple[UINodeType, ...] = (
         ),
     ),
     UINodeType(
-        name="endpoint", kind="section", heading="Endpoints", hosts=("server",),
+        name="endpoint", kind="section", heading="Endpoints", host_page_types=("server",),
         bullet_keys=(
             BulletKey("method", locator=True, address=True, value_kind="http-method"),
             BulletKey("path", locator=True, address=True, value_kind="route"),
