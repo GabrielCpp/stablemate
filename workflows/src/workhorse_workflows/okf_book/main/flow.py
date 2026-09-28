@@ -181,8 +181,7 @@ class OkfBook(BookFlow):
         if exercised.passed:
             return self._next_surface(exercised.passed, index)
         if not exercised.stack_down and not written_by_workflow:
-            failures = self._run_failures(service, exercised)
-            return Continue(exercised.passed, self.copy_source, index=index, run_failures=failures).because(
+            return Continue(exercised.passed, self.map_run_failures, index=index, exercised=exercised).because(
                 "the existing book fails its run"
             )
         side = Side.APP if exercised.stack_down else Side.BOOK
@@ -190,13 +189,15 @@ class OkfBook(BookFlow):
         _ = record_blocker(self.records_dir, Blocker(subject=service, phase=Phase.EXERCISE, side=side, reason=reason))
         return self._next_surface(exercised.passed, index)
 
-    def _run_failures(self, service: str, exercised: ExerciseResult) -> RunFailures:
-        if exercised.summary is None:
-            return {}
-        spec = spec_dir(self.records_dir) / service
-        scenarios, _problems = plan_scenarios(self.root, spec)
-        plan = spec / PLAN_NAME
-        return exercised.summary.failures_by_page(scenarios, plan.read_text(encoding="utf-8") if plan.is_file() else "")
+    def map_run_failures(self, index: int, exercised: ExerciseResult) -> Continue[...]:
+        """Map each failure of the run to the page that covers it, and hand the book to the writer."""
+        failures: RunFailures = {}
+        if exercised.summary is not None:
+            spec = spec_dir(self.records_dir) / self.surfaces[index].service
+            scenarios, _problems = plan_scenarios(self.root, spec)
+            plan = spec / PLAN_NAME
+            failures = exercised.summary.failures_by_page(scenarios, plan.read_text(encoding="utf-8") if plan.is_file() else "")
+        return Continue(failures, self.copy_source, index=index, run_failures=failures).because("repair the pages the run failed on")
 
     def report(self) -> Await[...] | Done:
         """Publish the report. Any blocker stops the run at the operator, once."""
