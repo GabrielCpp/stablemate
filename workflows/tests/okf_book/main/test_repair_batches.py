@@ -25,7 +25,7 @@ def _page(root: Path, name: str, *, cites: bool) -> str:
     return page
 
 
-def _source(root: Path) -> None:
+def _write_source(root: Path) -> None:
     path = root / SOURCE
     path.parent.mkdir(parents=True, exist_ok=True)
     _ = path.write_text("x" * SOURCE_TOKENS * CHARS_PER_TOKEN, encoding="utf-8")
@@ -40,7 +40,7 @@ def test_problems_are_grouped_by_page_in_path_order_without_the_skipped_pages() 
 
 
 def test_pages_that_cite_one_file_share_its_cost_in_one_batch(tmp_path: Path) -> None:
-    _source(tmp_path)
+    _write_source(tmp_path)
     pages = [_page(tmp_path, f"{name}.md", cites=True) for name in ("a", "b")]
     one_citing_page_tokens = ONE_PAGE_TOKENS + SOURCE_READS * SOURCE_TOKENS
 
@@ -60,7 +60,7 @@ def test_a_page_that_would_cross_the_ceiling_starts_the_next_batch(tmp_path: Pat
 
 
 def test_a_page_alone_over_the_ceiling_goes_to_no_batch_and_is_reported_with_its_cost(tmp_path: Path) -> None:
-    _source(tmp_path)
+    _write_source(tmp_path)
     large = _page(tmp_path, "a.md", cites=True)
     small = _page(tmp_path, "b.md", cites=False)
 
