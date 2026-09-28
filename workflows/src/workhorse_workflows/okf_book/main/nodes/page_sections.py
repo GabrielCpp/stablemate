@@ -9,11 +9,12 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
+from workhorse_workflows.okf_book.shared.page_check import PageProblem
+
 HEAD = ""
 _FENCE = "```"
 _BOUNDARY = re.compile(r"^#{1,3} ")
 _NODE = re.compile(r"^### +(?P<id>.+?)\s*$")
-_LINE = re.compile(r"^(?P<page>[^:\s]+):(?P<line>\d+): ")
 
 
 @dataclass(frozen=True, slots=True)
@@ -42,16 +43,14 @@ class PageSections:
     def by_id(self, section_id: str) -> Section | None:
         return next((section for section in self.sections if section.id == section_id), None)
 
-    def section_id_of_problem(self, page: str, problem: str) -> str:
-        """The id of the section a problem on `page` sits in: the node its text names, else the line it names, else the head."""
-        anchors = {_anchor(section.id): section.id for section in self.sections if section.id != HEAD}
-        for match in re.finditer(re.escape(page) + r"#(?P<anchor>[^\s:,)]+)", problem):
-            if match.group("anchor") in anchors:
-                return anchors[match.group("anchor")]
-        located = _LINE.match(problem)
-        if located and located.group("page") == page:
-            line = int(located.group("line"))
-            return next((section.id for section in self.sections if line in section.line_numbers), HEAD)
+    def section_id_of_problem(self, problem: PageProblem) -> str:
+        """The id of the section a problem on this page sits in: the node it names, else the line it names, else the head."""
+        anchor = problem.node.partition("#")[2]
+        named = next((section.id for section in self.sections if section.id != HEAD and _anchor(section.id) == anchor), None)
+        if anchor and named is not None:
+            return named
+        if problem.line is not None:
+            return next((section.id for section in self.sections if problem.line in section.line_numbers), HEAD)
         return HEAD
 
 

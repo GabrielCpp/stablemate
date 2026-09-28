@@ -13,7 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 
 from ostler.qa.plan import load_plan
 from ostler.qa.v2 import run_plan
-from workhorse_workflows.okf_book.shared.page_check import BookCompilation, compile_services
+from workhorse_workflows.okf_book.shared.page_check import BookCompilation, PageProblem, compile_services, obligation_node, obligation_page
 
 SPEC_DIR = "spec"
 PLAN_NAME = "qa_plan.py"
@@ -92,20 +92,22 @@ class RunSummary(BaseModel):
     def failed_scenarios(self) -> tuple[str, ...]:
         return tuple(sorted(name for name, outcome in self.scenarios.items() if outcome.status != "passed"))
 
-    def failures_by_page(self, scenarios: Iterable[Scenario], plan_source: str = "") -> dict[str, tuple[str, ...]]:
+    def failures_by_page(self, scenarios: Iterable[Scenario], plan_source: str = "") -> dict[str, tuple[PageProblem, ...]]:
         """Each book page whose obligations a failed scenario covers, and what that scenario reported, pages in path order.
 
-        A scenario stopped inside the compiled *plan_source* is reported at the obligation it stopped in.
+        A scenario stopped inside the compiled *plan_source* is reported at the obligation it stopped in,
+        and on that obligation's page the problem names its node.
         """
         pages = {scenario.id: scenario.pages for scenario in scenarios}
-        grouped: dict[str, list[str]] = {}
+        grouped: dict[str, list[PageProblem]] = {}
         for name in self.failed_scenarios:
             outcome = self.scenarios[name]
             lines = outcome.failure_lines() or (outcome.status,)
             claim = outcome.failed_claim(plan_source)
             where = f"the run of scenario {name} failed at {claim}" if claim else f"the run of scenario {name} failed"
             for page in pages.get(name, ()):
-                grouped.setdefault(page, []).extend(f"{where}: {line}" for line in lines)
+                node = obligation_node(claim) if obligation_page(claim) == page else ""
+                grouped.setdefault(page, []).extend(PageProblem(page, f"{where}: {line}", node=node) for line in lines)
         return {page: tuple(grouped[page]) for page in sorted(grouped)}
 
 

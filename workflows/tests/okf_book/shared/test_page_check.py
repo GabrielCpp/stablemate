@@ -119,6 +119,7 @@ def test_gaps_are_grouped_per_node_so_each_problem_names_the_claims_of_one_node(
             page,
             f"each of 2 claims on {page}#add does not compile: unparsed-check: no check "
             + f"The claims: okf:{page}#add:does:1, okf:{page}#add:does:2",
+            node=f"{page}#add",
         ),
-        PageProblem(page, f"okf:{page}#export:does:1 does not compile: unparsed-check: no check"),
+        PageProblem(page, f"okf:{page}#export:does:1 does not compile: unparsed-check: no check", node=f"{page}#export"),
     ]

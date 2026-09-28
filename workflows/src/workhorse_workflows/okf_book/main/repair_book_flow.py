@@ -97,7 +97,7 @@ class RepairRound(BaseModel):
         closed = (page for page in dict.fromkeys((*earlier_entry_pages, *closable_batch_pages)) if page not in open_pages and page not in self.closed_pages)
         return self.model_copy(update={"closed_pages": (*self.closed_pages, *closed)})
 
-    def outcome(self, rounds: int, by_page: dict[str, tuple[str, ...]]) -> RepairOutcome:
+    def outcome(self, rounds: int, by_page: dict[str, tuple[PageProblem, ...]]) -> RepairOutcome:
         left = sum(len(problems) for problems in by_page.values())
         return RepairOutcome(rounds=rounds, failed_turns=self.failed_turns, oversized_parts=self.oversized_parts, problems_left=left)
 
@@ -108,7 +108,7 @@ class RepairBook(BookFlow):
     surface: Surface | None = None
     book_folder: str = ""
     source_folder: str = ""
-    run_failures: dict[str, tuple[str, ...]] = {}
+    run_failures: dict[str, tuple[PageProblem, ...]] = {}
 
     @property
     def surface_to_repair(self) -> Surface:
@@ -147,7 +147,7 @@ class RepairBook(BookFlow):
 
     def plan_first_round(self, uncommitted_at_start: tuple[str, ...]) -> Continue[...] | Done:
         """Plan the pages the repair works on: each page the check or the failed run finds a problem on, but one someone left uncommitted."""
-        run_problems = [PageProblem(page, text) for page, texts in self.run_failures.items() for text in texts]
+        run_problems = [problem for problems in self.run_failures.values() for problem in problems]
         problems = (*page_problems(self.root, self.service), *run_problems)
         by_page = problems_by_page(problems, frozenset(uncommitted_at_start))
         journey = journey_pages(self.root, self.service, frozenset(uncommitted_at_start))
@@ -157,7 +157,7 @@ class RepairBook(BookFlow):
     def plan_round(self, last: RepairRound, problems: tuple[PageProblem, ...]) -> Continue[...] | Done:
         """Pack the planned pages still open that have problems now. A spent repair ends with what is left."""
         found = problems_by_page(problems, frozenset(last.uncommitted_at_start))
-        by_page = {page: texts for page, texts in found.items() if page in last.planned_pages and page not in last.closed_pages}
+        by_page = {page: on_page for page, on_page in found.items() if page in last.planned_pages and page not in last.closed_pages}
         outside = sorted(set(found) - set(last.planned_pages))
         if outside:
             self.logger.info("%d pages outside this repair have problems, left for the book check: %s", len(outside), ", ".join(outside))
@@ -178,7 +178,7 @@ class RepairBook(BookFlow):
         return self._first_batch_or_done(this_round, by_page, problems)
 
     def _first_batch_or_done(
-        self, this_round: RepairRound, by_page: dict[str, tuple[str, ...]], problems: tuple[PageProblem, ...]
+        self, this_round: RepairRound, by_page: dict[str, tuple[PageProblem, ...]], problems: tuple[PageProblem, ...]
     ) -> Continue[...] | Done:
         packed = pack_repairs(self.root, by_page, this_round.journey, pages_needing_journey(problems))
         reported = {part.subject for part in this_round.oversized_parts}

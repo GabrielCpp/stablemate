@@ -167,11 +167,17 @@ def dead_book_pages(root: Path) -> tuple[DeadPage, ...]:
 
 @dataclass(frozen=True, slots=True)
 class PageProblem:
-    """One problem the check reports, the repo-relative page it sits on, and whether its fix goes on a flow or an entry page."""
+    """One problem the check reports, the repo-relative page it sits on, and whether its fix goes on a flow or an entry page.
+
+    A problem at one line of the page names it, and a problem on one node of the page names the
+    node, `page#anchor`.
+    """
 
     page: str
     text: str
     needs_journey: bool = False
+    line: int | None = None
+    node: str = ""
 
 
 def _doctor_problems(book: Graph, pages: list[str]) -> list[PageProblem]:
@@ -179,7 +185,9 @@ def _doctor_problems(book: Graph, pages: list[str]) -> list[PageProblem]:
         return []
     report = doctor.scope_to_paths(doctor.run(book), pages)
     return [
-        PageProblem(f.path, f"{f.path}:{f.line}: {f.code}: {f.message}" + (f" {f.suggestion}" if f.suggestion else ""))
+        PageProblem(
+            f.path, f"{f.path}:{f.line}: {f.code}: {f.message}" + (f" {f.suggestion}" if f.suggestion else ""), line=f.line
+        )
         for f in report.findings
         if (f.severity == "error" or f.code in CHARGED_WARNINGS) and f.code not in RESTAMPED_CODES | REACH_CODES
     ]
@@ -192,10 +200,12 @@ def gap_problems(gaps: Iterable[Gap]) -> list[PageProblem]:
         detail = WRITER_FIXES.get(gap.kind, gap.detail)
         by_fix.setdefault((obligation_node(gap.obligation_id), gap.kind, detail), []).append(gap.obligation_id)
     return [
-        PageProblem(node.partition("#")[0], f"{ids[0]} does not compile: {kind}: {detail}")
+        PageProblem(node.partition("#")[0], f"{ids[0]} does not compile: {kind}: {detail}", node=node)
         if len(ids) == 1
         else PageProblem(
-            node.partition("#")[0], f"each of {len(ids)} claims on {node} does not compile: {kind}: {detail} The claims: {', '.join(ids)}"
+            node.partition("#")[0],
+            f"each of {len(ids)} claims on {node} does not compile: {kind}: {detail} The claims: {', '.join(ids)}",
+            node=node,
         )
         for (node, kind, detail), ids in by_fix.items()
     ]
@@ -271,6 +281,7 @@ def _off_journey_problems(nodes: list[_Node]) -> list[PageProblem]:
             node.partition("#")[0],
             f"{node} is on no flow. Write a flow under flows/ whose steps link it, or link it from a step of a flow you have.",
             needs_journey=True,
+            node=node,
         )
         for node in _off_journey(nodes)
     ]

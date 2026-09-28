@@ -120,12 +120,15 @@ def _tokens(chars: int) -> int:
     return -(-chars // CHARS_PER_TOKEN)
 
 
-def _text_cost(files: CitedFiles, page: str, text: str, problems: tuple[str, ...], sections: tuple[str, ...] = ()) -> _PageCost:
+def _text_cost(
+    files: CitedFiles, page: str, text: str, problems: tuple[PageProblem, ...], sections: tuple[str, ...] = ()
+) -> _PageCost:
     cited = (files.cited(citation) for citation in citations_in(text))
     sources = {part.label: part.tokens for part in cited if part is not None}
+    texts = tuple(problem.text for problem in problems)
     return _PageCost(
-        PageRepair(page=page, problems=problems, sources=tuple(sources), sections=sections),
-        BOOK_HOLDS * _tokens(len(text)) + _tokens(sum(len(problem) for problem in problems)),
+        PageRepair(page=page, problems=texts, sources=tuple(sources), sections=sections),
+        BOOK_HOLDS * _tokens(len(text)) + _tokens(sum(len(problem) for problem in texts)),
         sources,
     )
 
@@ -137,12 +140,14 @@ def _cost(units: list[_PageCost]) -> int:
     return sum(unit.own_tokens for unit in units) + SOURCE_READS * sum(sources.values())
 
 
-def problems_by_page(problems: Iterable[PageProblem], skipped: frozenset[str] = frozenset()) -> dict[str, tuple[str, ...]]:
+def problems_by_page(
+    problems: Iterable[PageProblem], skipped: frozenset[str] = frozenset()
+) -> dict[str, tuple[PageProblem, ...]]:
     """Each page's problems, pages in path order, without the pages in `skipped`."""
-    grouped: dict[str, list[str]] = {}
+    grouped: dict[str, list[PageProblem]] = {}
     for problem in problems:
         if problem.page not in skipped:
-            grouped.setdefault(problem.page, []).append(problem.text)
+            grouped.setdefault(problem.page, []).append(problem)
     return {page: tuple(grouped[page]) for page in sorted(grouped)}
 
 
@@ -183,11 +188,11 @@ class _PageSplitter:
     def _oversized(self, page: str, tokens: int, section: str | None = None) -> OversizedPart:
         return OversizedPart(page=page, tokens=tokens, ceiling=self.ceiling, with_journey=self.with_journey, section=section)
 
-    def _section_units(self, page: str, text: str, problems: tuple[str, ...]) -> _PageSplit:
+    def _section_units(self, page: str, text: str, problems: tuple[PageProblem, ...]) -> _PageSplit:
         parts = page_sections(text)
-        by_section: dict[str, list[str]] = {}
+        by_section: dict[str, list[PageProblem]] = {}
         for problem in problems:
-            by_section.setdefault(parts.section_id_of_problem(page, problem), []).append(problem)
+            by_section.setdefault(parts.section_id_of_problem(problem), []).append(problem)
         units: list[_PageCost] = []
         oversized_parts: list[OversizedPart] = []
         for section in (section for section in parts.sections if section.id in by_section):
@@ -199,7 +204,7 @@ class _PageSplitter:
                 units.append(unit)
         return _PageSplit(units, oversized_parts)
 
-    def split_page(self, page: str, problems: tuple[str, ...]) -> _PageSplit:
+    def split_page(self, page: str, problems: tuple[PageProblem, ...]) -> _PageSplit:
         """The page whole when it fits, else each of its sections with a problem that fits, and what does not."""
         path = self.files.root / page
         text = path.read_text(encoding="utf-8") if path.is_file() else ""
@@ -213,7 +218,7 @@ class _PageSplitter:
 
 
 def _pack(
-    files: CitedFiles, by_page: dict[str, tuple[str, ...]], ceiling: int, journey: JourneyPages | None
+    files: CitedFiles, by_page: dict[str, tuple[PageProblem, ...]], ceiling: int, journey: JourneyPages | None
 ) -> PackedRepairs:
     journey_costs = [_journey_cost(files.root, journey, page) for page in journey.pages] if journey else []
     splitter = _PageSplitter(files, journey_costs, ceiling, journey is not None)
@@ -235,7 +240,7 @@ def _pack(
 
 def pack_repairs(
     root: Path,
-    by_page: dict[str, tuple[str, ...]],
+    by_page: dict[str, tuple[PageProblem, ...]],
     journey: JourneyPages | None = None,
     pages_needing_journey: frozenset[str] = frozenset(),
     ceiling: int = SOURCE_AND_BOOK_CEILING_TOKENS,

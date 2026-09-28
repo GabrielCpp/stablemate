@@ -22,12 +22,12 @@ from workhorse_workflows.okf_book.shared.book_flow import BookFlow
 from workhorse_workflows.okf_book.shared.book_run import ExerciseResult
 from workhorse_workflows.okf_book.shared.citations import book_pages
 from workhorse_workflows.okf_book.shared.entries import FEATURES_DIR
-from workhorse_workflows.okf_book.shared.page_check import book_problems
+from workhorse_workflows.okf_book.shared.page_check import PageProblem, book_problems
 from workhorse_workflows.okf_book.shared.scenarios import PLAN_NAME, plan_scenarios, spec_dir, write_run
 
 OPERATOR_NAME = "operator.md"
 
-RunFailures = dict[str, tuple[str, ...]]
+RunFailures = dict[str, tuple[PageProblem, ...]]
 
 
 def _book_folder(service: str) -> str:

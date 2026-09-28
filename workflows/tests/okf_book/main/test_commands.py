@@ -238,9 +238,9 @@ def test_a_check_scoped_to_sections_prints_their_problems_and_not_one_an_edit_ab
     path.parent.mkdir(parents=True)
     _ = path.write_text("# Ledger API\n\n### list-rows\n\n- does: lists\n\n### drop-row\n\n- does: drops\n", encoding="utf-8")
     now = (
-        PageProblem(page, f"{page}:5: step-no-verify: a claim has no verify"),
-        PageProblem(page, f"{page}:9: step-no-verify: a claim has no verify"),
-        PageProblem(page, f"{page}:1: title-stale: the title is stale"),
+        PageProblem(page, f"{page}:5: step-no-verify: a claim has no verify", line=5),
+        PageProblem(page, f"{page}:9: step-no-verify: a claim has no verify", line=9),
+        PageProblem(page, f"{page}:1: title-stale: the title is stale", line=1),
     )
     monkeypatch.setattr(check_pages, "page_problems", _page_problems_returning(now))
     problems_at_turn_start = (

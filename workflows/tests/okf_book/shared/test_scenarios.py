@@ -1,6 +1,7 @@
 """A failed scenario's report lands on the book pages whose obligations it covers."""
 from __future__ import annotations
 
+from workhorse_workflows.okf_book.shared.page_check import PageProblem
 from workhorse_workflows.okf_book.shared.scenarios import FailedCheck, RunSummary, Scenario, ScenarioOutcome
 
 ADD = Scenario(
@@ -32,7 +33,11 @@ def test_each_failed_scenario_reports_on_every_page_it_covers_and_a_passing_one_
         "the run of scenario tally-add failed: adds an expense: expected 0, observed 1",
         "the run of scenario tally-add failed: the ledger refused the entry",
     )
-    assert by_page == {"docs/features/tally/flows/budget.md": expected, "docs/features/tally/tally.md": expected}
+    assert {page: tuple(problem.text for problem in problems) for page, problems in by_page.items()} == {
+        "docs/features/tally/flows/budget.md": expected,
+        "docs/features/tally/tally.md": expected,
+    }
+    assert all(problem.page == page and not problem.node for page, problems in by_page.items() for problem in problems)
 
 
 def test_a_scenario_stopped_inside_the_plan_is_reported_at_the_obligation_it_stopped_in() -> None:
@@ -63,7 +68,11 @@ def test_a_scenario_stopped_inside_the_plan_is_reported_at_the_obligation_it_sto
 
     assert by_page == {
         "docs/features/tally/tally.md": (
-            "the run of scenario tally-list failed at okf:docs/features/tally/tally.md#add:does:2: "
-            "HttpError: POST http://localhost/entries returned 404: ledger not found",
+            PageProblem(
+                "docs/features/tally/tally.md",
+                "the run of scenario tally-list failed at okf:docs/features/tally/tally.md#add:does:2: "
+                + "HttpError: POST http://localhost/entries returned 404: ledger not found",
+                node="docs/features/tally/tally.md#add",
+            ),
         )
     }

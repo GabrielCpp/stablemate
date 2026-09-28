@@ -35,7 +35,7 @@ def test_problems_are_grouped_by_page_in_path_order_without_the_skipped_pages() 
 
     grouped = problems_by_page(problems, frozenset({"c.md"}))
 
-    assert grouped == {"a.md": ("a one",), "b.md": ("b one", "b two")}
+    assert grouped == {"a.md": (problems[1],), "b.md": (problems[0], problems[2])}
 
 
 def test_pages_that_cite_one_file_share_its_cost_in_one_batch(tmp_path: Path) -> None:
@@ -43,7 +43,7 @@ def test_pages_that_cite_one_file_share_its_cost_in_one_batch(tmp_path: Path) ->
     pages = [_page(tmp_path, f"{name}.md", cites=True) for name in ("a", "b")]
     alone = BOOK_HOLDS * PAGE_TOKENS + 1 + SOURCE_READS * SOURCE_TOKENS
 
-    batches = pack_repairs(tmp_path, {page: ("p",) for page in pages}, ceiling=alone + BOOK_HOLDS * PAGE_TOKENS + 1).batches
+    batches = pack_repairs(tmp_path, {page: (PageProblem(page, "p"),) for page in pages}, ceiling=alone + BOOK_HOLDS * PAGE_TOKENS + 1).batches
 
     assert [batch.page_paths for batch in batches] == [tuple(pages)]
     assert batches[0].sources == (SOURCE,)
@@ -53,7 +53,7 @@ def test_a_page_that_would_cross_the_ceiling_starts_the_next_batch(tmp_path: Pat
     pages = [_page(tmp_path, f"{name}.md", cites=False) for name in ("a", "b", "c")]
     one = BOOK_HOLDS * PAGE_TOKENS + 1
 
-    batches = pack_repairs(tmp_path, {page: ("p",) for page in pages}, ceiling=2 * one).batches
+    batches = pack_repairs(tmp_path, {page: (PageProblem(page, "p"),) for page in pages}, ceiling=2 * one).batches
 
     assert [batch.page_paths for batch in batches] == [tuple(pages[:2]), (pages[2],)]
     assert [batch.tokens for batch in batches] == [2 * one, one]
@@ -65,7 +65,7 @@ def test_a_page_alone_over_the_ceiling_goes_to_no_batch_and_is_reported_with_its
     small = _page(tmp_path, "b.md", cites=False)
     one = BOOK_HOLDS * PAGE_TOKENS + 1
 
-    packed = pack_repairs(tmp_path, {large: ("p",), small: ("p",)}, ceiling=one)
+    packed = pack_repairs(tmp_path, {large: (PageProblem(large, "p"),), small: (PageProblem(small, "p"),)}, ceiling=one)
 
     assert [batch.page_paths for batch in packed.batches] == [(small,)]
     assert [(part.page, part.tokens) for part in packed.oversized_parts] == [(large, one + SOURCE_READS * SOURCE_TOKENS)]
@@ -78,7 +78,7 @@ def test_pages_whose_fix_goes_on_a_journey_are_packed_first_with_the_journey_pag
     journey = JourneyPages(pages=(flow,), flow_folder=f"{BOOK}/flows")
     one = BOOK_HOLDS * PAGE_TOKENS + 1
 
-    batches = pack_repairs(tmp_path, {page: ("p",) for page in pages}, journey, frozenset(pages[1:]), ceiling=2 * one).batches
+    batches = pack_repairs(tmp_path, {page: (PageProblem(page, "p"),) for page in pages}, journey, frozenset(pages[1:]), ceiling=2 * one).batches
 
     assert [(batch.page_paths, batch.journey) for batch in batches] == [
         ((pages[1],), journey),
@@ -95,7 +95,7 @@ def test_a_page_over_the_ceiling_with_the_journey_pages_is_reported_with_them(tm
     page = _page(tmp_path, "a.md", cites=False)
     journey = JourneyPages(pages=(flow,), flow_folder=f"{BOOK}/flows")
 
-    packed = pack_repairs(tmp_path, {page: ("p",)}, journey, frozenset({page}), ceiling=BOOK_HOLDS * PAGE_TOKENS + 1)
+    packed = pack_repairs(tmp_path, {page: (PageProblem(page, "p"),)}, journey, frozenset({page}), ceiling=BOOK_HOLDS * PAGE_TOKENS + 1)
 
     assert packed.batches == ()
     assert packed.oversized_parts[0].reason.endswith("split the page or the flow pages")
@@ -108,7 +108,7 @@ def test_a_page_that_cites_one_declaration_costs_that_declaration_not_the_file(t
     _ = source.write_text(declaration + "#" * SOURCE_TOKENS * CHARS_PER_TOKEN + "\n", encoding="utf-8")
     page = _page(tmp_path, "a.md", cites=True)
 
-    batch = pack_repairs(tmp_path, {page: ("p",)}).batches[0]
+    batch = pack_repairs(tmp_path, {page: (PageProblem(page, "p"),)}).batches[0]
 
     assert batch.sources == (f"{SOURCE}:1-2",)
     assert batch.tokens == BOOK_HOLDS * PAGE_TOKENS + 1 + SOURCE_READS * -(-len(declaration) // CHARS_PER_TOKEN)
@@ -120,7 +120,7 @@ def test_a_journey_batch_counts_the_flow_pages_whole_and_the_headings_of_the_ent
     page = _page(tmp_path, "a.md", cites=False)
     journey = JourneyPages(pages=(entry, flow), flow_folder=f"{BOOK}/flows")
 
-    batch = pack_repairs(tmp_path, {page: ("p",)}, journey, frozenset({page})).batches[0]
+    batch = pack_repairs(tmp_path, {page: (PageProblem(page, "p"),)}, journey, frozenset({page})).batches[0]
 
     heading_tokens = -(-len("# ledger.md") // CHARS_PER_TOKEN)
     assert batch.tokens == BOOK_HOLDS * PAGE_TOKENS + 1 + BOOK_HOLDS * PAGE_TOKENS + BOOK_HOLDS * heading_tokens
@@ -138,19 +138,25 @@ def _server_page(root: Path, nodes: dict[str, int]) -> str:
 
 def test_a_page_over_the_ceiling_is_sent_only_the_sections_its_problems_sit_in(tmp_path: Path) -> None:
     page = _server_page(tmp_path, {"list-rows": PAGE_TOKENS, "drop-row": PAGE_TOKENS, "add-row": PAGE_TOKENS})
-    problems = (f"each of 2 claims on {page}#drop-row does not compile", f"each of 3 claims on {page}#add-row does not compile")
+    problems = (
+        PageProblem(page, f"each of 2 claims on {page}#drop-row does not compile", node=f"{page}#drop-row"),
+        PageProblem(page, f"each of 3 claims on {page}#add-row does not compile", node=f"{page}#add-row"),
+    )
 
     packed = pack_repairs(tmp_path, {page: problems}, ceiling=BOOK_HOLDS * 5 * PAGE_TOKENS // 2)
 
     assert packed.oversized_parts == ()
     assert [(repair.sections, repair.problems) for batch in packed.batches for repair in batch.pages] == [
-        (("drop-row", "add-row"), problems)
+        (("drop-row", "add-row"), tuple(problem.text for problem in problems))
     ]
 
 
 def test_a_section_alone_over_the_ceiling_is_reported_by_its_heading(tmp_path: Path) -> None:
     page = _server_page(tmp_path, {"list-rows": PAGE_TOKENS, "drop-row": 4 * PAGE_TOKENS})
-    problems = (f"{page}#list-rows is broken", f"{page}#drop-row is broken")
+    problems = (
+        PageProblem(page, f"{page}#list-rows is broken", node=f"{page}#list-rows"),
+        PageProblem(page, f"{page}#drop-row is broken", node=f"{page}#drop-row"),
+    )
 
     packed = pack_repairs(tmp_path, {page: problems}, ceiling=BOOK_HOLDS * 2 * PAGE_TOKENS)
 
