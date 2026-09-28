@@ -623,11 +623,9 @@ def render_obligations(
                     parts.append("binds " + ", ".join(f"`{b}`" for b in repeat["binds"]))
                 if repeat.get("uniqueBy"):
                     parts.append(f"unique by `{repeat['uniqueBy']}`")
-                if repeat.get("variants"):
-                    variants = repeat["variants"]
-                    parts.append(
-                        f"variants `{variants['path']}` = " + " | ".join(variants["values"])
-                    )
+                variants = Variants.parse(repeat.get("variants"))
+                if variants is not None:
+                    parts.append(f"variants `{variants.path}` = " + " | ".join(variants.values))
                 lines.append(f"  - repeated: {'; '.join(parts)}")
         for entry in obligation.get("judgment", []):
             rules = "; ".join(entry.get("rules", []))
@@ -1792,13 +1790,12 @@ def _repeat(node: dict[str, Any], scope: tuple[str, ...]) -> RepeatContract | No
             segments=tuple(Segment.parse(segment) for segment in located["segments"]),
         )
         binds = tuple(str(bind) for bind in located["binds"])
-    variants = locators_mod.variants_of(node)
     return RepeatContract(
         one_per=scope[-1],
         binds=binds,
         template=template,
         unique_by=locators_mod.unique_by_of(node),
-        variants=Variants(path=str(variants["path"]), values=tuple(variants["values"])) if variants else None,
+        variants=locators_mod.variants_of(node),
     )
 
 

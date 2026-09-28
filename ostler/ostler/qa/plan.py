@@ -20,6 +20,7 @@ from ostler import path as path_mod
 from ostler.model import load as load_graph
 from ostler.qa.compile import book_digest
 from ostler.qa.context import book_files, story_file_record
+from ostler.qa.packet_rows import Variants
 from ostler.qa.harness_host import default_interpreter, describe, load_harness_module
 from ostler.untyped import is_mapping
 from ostler.vet import placement
@@ -584,8 +585,8 @@ def _validate_instances(document: PlanDocument) -> list[str]:
                 )
                 continue
             binds = [bind for bind in repeat.get("binds") or [] if isinstance(bind, str)]
-            variants = repeat.get("variants") if is_mapping(repeat.get("variants")) else None
-            allowed = set(binds) | ({str(variants["path"])} if variants else set())
+            variants = Variants.parse(repeat.get("variants"))
+            allowed = set(binds) | ({variants.path} if variants else set())
             for key in sorted(set(binds) - set(bindings)):
                 problems.append(
                     f"scenario '{scenario_id}' instance for '{obligation_id}' does not bind "
@@ -610,7 +611,7 @@ def _validate_instances(document: PlanDocument) -> list[str]:
             if repeat is None:
                 continue
             binds = repeat.get("binds") or []
-            variants = repeat.get("variants") if is_mapping(repeat.get("variants")) else None
+            variants = Variants.parse(repeat.get("variants"))
             if not binds and not variants:
                 continue
             instances = by_obligation.get(obligation_id, [])
@@ -622,10 +623,10 @@ def _validate_instances(document: PlanDocument) -> list[str]:
                 )
                 continue
             if variants:
-                path = str(variants["path"])
+                path = variants.path
                 sampled = {str(bound[path]) for bound in instances if path in bound}
-                for value in variants.get("values") or []:
-                    if str(value) not in sampled:
+                for value in variants.values:
+                    if value not in sampled:
                         problems.append(
                             f"scenario '{scenario_id}' covers '{obligation_id}' but no "
                             f"instance samples variant `{path} = {value}` — the book "

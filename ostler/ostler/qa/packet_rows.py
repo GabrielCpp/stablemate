@@ -130,6 +130,20 @@ class Variants:
     path: str
     values: tuple[str, ...]
 
+    @classmethod
+    def parse(cls, raw: object) -> Variants | None:
+        """The variant axis an obligation row carries, or None when the row states none."""
+        if not isinstance(raw, Mapping):
+            return None
+        path, values = raw.get("path"), raw.get("values")
+        if not isinstance(path, str):
+            return None
+        return cls(path=path, values=tuple(str(value) for value in values) if isinstance(values, list) else ())
+
+    def row(self) -> dict[str, Any]:
+        """The axis as the obligation row carries it."""
+        return {"path": self.path, "values": list(self.values)}
+
 
 @dataclass(frozen=True, slots=True)
 class RepeatContract:
@@ -151,7 +165,7 @@ class RepeatContract:
         if self.unique_by:
             fields["uniqueBy"] = self.unique_by
         if self.variants is not None:
-            fields["variants"] = {"path": self.variants.path, "values": list(self.variants.values)}
+            fields["variants"] = self.variants.row()
         return fields
 
 

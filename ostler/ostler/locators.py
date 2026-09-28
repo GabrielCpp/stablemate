@@ -8,6 +8,7 @@ from pathlib import Path
 
 from ostler import graph as graph_mod
 from ostler.model import Graph, UINode
+from ostler.qa.packet_rows import Variants
 from ostler.reach import NONE_TOKENS, _screen_of
 from ostler.vet import placement as placement_mod
 
@@ -114,8 +115,8 @@ def unique_by_of(node: dict) -> str:
     return ""
 
 
-def variants_of(node: dict) -> dict | None:
-    """The enumerable variant axis: ``{"path": "field.type", "values": ["text", …]}`` or None."""
+def variants_of(node: dict) -> Variants | None:
+    """The enumerable variant axis, such as ``field.type`` over ``text | number``, or None."""
     text = _machine(_raw_bullet(node, "variants"))
     if not text or _stated_none(text):
         return None
@@ -124,7 +125,7 @@ def variants_of(node: dict) -> dict | None:
     values = [v.strip() for v in rest.split("|") if v.strip()]
     if not sep or not _PATH_RE.fullmatch(path) or not values:
         return None
-    return {"path": path, "values": values}
+    return Variants(path=path, values=tuple(values))
 
 
 def _scopes(data: dict) -> dict[str, tuple[str, ...]]:

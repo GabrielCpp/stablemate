@@ -6,6 +6,7 @@ from pathlib import Path
 
 from ostler import doctor, graph, locators
 from ostler.model import load
+from ostler.qa.packet_rows import Variants
 
 from conftest import write
 
@@ -516,8 +517,8 @@ def test_variants_parse_into_an_enumerable_axis(repo: Path):
 - unique-by: `field.id`
 """))
     node = next(n for n in data["nodes"] if n["id"].endswith("#property-field"))
-    assert locators.variants_of(node) == {
-        "path": "field.type", "values": ["text", "number", "select", "date"]}
+    assert locators.variants_of(node) == Variants(
+        path="field.type", values=("text", "number", "select", "date"))
     assert "malformed-variants" not in _codes(repo, "warn")
 
 
