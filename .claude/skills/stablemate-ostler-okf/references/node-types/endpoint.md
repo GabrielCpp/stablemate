@@ -204,14 +204,16 @@ timeout 30 ostler scaffold endpoint create-link --in docs/features/acme/http/lin
 - method: POST
 - path: /links
 - does: stores the submitted URL under a generated slug
-- verify: created(subject="a link row for the submitted URL")
+- verify: json_path(path="$.slug", matches="^[a-z0-9-]+$")
 - status: 201 with the slug in the body
 - verify: http_status(code=201, path="/links")
+- arrange: body(field="url", value="https://example.com/docs")
+- arrange: header(name="Authorization", value="Bearer @signed-in-editor.token")
 - errors: 409 when the requested slug is already in use
 - verify: http_status(code=409, path="/links")
 - auth: any signed-in editor
 - code: internal/api/links.go::CreateLink
-- fixture: signed_in_editor
+- fixture: signed-in-editor
 ```
 
 The `fixture:` bullet is also what makes the endpoint's claims observable at all. An

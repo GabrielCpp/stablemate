@@ -262,8 +262,11 @@ parsed and any other file as text. The `subject` then picks what is compared:
   read, and the whole directory otherwise. A prose subject like `"the working directory"`
   therefore gets the strictest comparison there is, and can never pass by matching nothing.
 
-On an HTTP surface the pair stays the author's to arrange, and the compiler gaps it as
-`needs-snapshot`.
+An HTTP scenario makes one call and reads nothing either side of it, so the compiler gaps each
+of these four checks there as `needs-snapshot`. On an HTTP surface a claim is verified on the
+response the call returned: `http_status`, `response_header`, `json_path` on its body, `omits`
+or `conflict_on_stale`. A write the response does not show is claimed on the route that reads
+it back, as a `json_path` on that route's body.
 
 ## The lifecycle pair
 
