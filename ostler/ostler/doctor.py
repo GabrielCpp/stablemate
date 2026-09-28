@@ -2241,7 +2241,7 @@ def _bullet_value(meta: dict, key: str) -> str:
 
 
 def _rel_path(graph: Graph, node) -> str:
-    return _rel_posix_or_absolute(node.path, graph.root)
+    return _rel_posix_or_as_given(node.path, graph.root)
 
 
 @functools.lru_cache(maxsize=65536)
@@ -2250,7 +2250,7 @@ def _rel_posix(path: Path, root: Path) -> str:
 
 
 @functools.lru_cache(maxsize=65536)
-def _rel_posix_or_absolute(path: Path, root: Path) -> str:
+def _rel_posix_or_as_given(path: Path, root: Path) -> str:
     try:
         return path.resolve().relative_to(root.resolve()).as_posix()
     except (ValueError, OSError):
