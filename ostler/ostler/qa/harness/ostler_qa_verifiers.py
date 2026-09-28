@@ -277,11 +277,6 @@ def resolve_path(document: Any, path: str) -> tuple[bool, Any]:
     return True, current
 
 
-def _resolve_path(document: Any, path: str) -> tuple[bool, Any]:
-    """`resolve_path`, under the name the verifiers grew up calling it."""
-    return resolve_path(document, path)
-
-
 def _is_projection(path: str) -> bool:
     return any(isinstance(step, (_Wild, Filter)) for step in path_steps(path))
 
@@ -351,7 +346,7 @@ def _verify_json_path(observed: Any, args: Mapping[str, Any]) -> tuple[bool, Any
     if not checked.present:
         return False, {"file": args["file"], "present": False}, {"file": "present"}
     document = checked.document
-    resolved, value = _resolve_path(document, args["path"])
+    resolved, value = resolve_path(document, args["path"])
     if "absent" in args:
         want_absent = bool(args["absent"])
         return resolved is not want_absent, {"present": resolved}, {"present": not want_absent}
@@ -406,7 +401,7 @@ def _verify_count(observed: Any, args: Mapping[str, Any]) -> tuple[bool, Any, An
         except ValueError as exc:
             return False, {"subject": args["subject"], "countable": False, "reason": str(exc)}, args["equals"]
     if isinstance(document, Mapping):
-        resolved, document = _resolve_path(document, args["subject"])
+        resolved, document = resolve_path(document, args["subject"])
         selected_nothing = _is_projection(args["subject"]) and document == []
         if not resolved and not selected_nothing:
             return False, {"subject": args["subject"], "present": False}, args["equals"]
@@ -547,7 +542,7 @@ def _verify_omits(observed: Any, args: Mapping[str, Any]) -> tuple[bool, Any, An
         except ValueError:
             document = getattr(observed, "text", observed)
     if isinstance(document, Mapping):
-        resolved, value = _resolve_path(document, args["subject"])
+        resolved, value = resolve_path(document, args["subject"])
         if resolved:
             document = value
     haystack = document if isinstance(document, str) else _rendered(document)
