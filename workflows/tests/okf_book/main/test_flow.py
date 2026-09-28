@@ -198,10 +198,10 @@ def test_an_existing_book_that_checks_and_runs_clean_sends_no_writer(
     assert result.blockers == ()
 
 
-def _written_by_the_workflow(repo: Path) -> None:
+def _written_by_the_workflow(repo: Path, subject: str = "docs(tally): write the tally book") -> None:
     _ = (repo / PAGE).write_text((repo / PAGE).read_text(encoding="utf-8") + NOTE, encoding="utf-8")
     _ = git(repo, "add", PAGE)
-    _ = git(repo, "commit", "-q", "-m", "docs(tally): write the tally book")
+    _ = git(repo, "commit", "-q", "-m", subject)
 
 
 def test_a_book_this_workflow_wrote_that_fails_its_rerun_is_a_blocker_and_sends_no_writer(
@@ -210,6 +210,23 @@ def test_a_book_this_workflow_wrote_that_fails_its_rerun_is_a_blocker_and_sends_
     repo = app("tally-cli")
     runner = _writer(repo)
     _written_by_the_workflow(repo)
+    stub_the_run_to(monkeypatch, FAILED)
+    monkeypatch.setattr(flow, "book_problems", no_problems)
+    monkeypatch.setattr(pyflow_driver, "wait_for_answer", answer([]))
+
+    result = drive_book(OkfBook(repo_dir=str(repo), surfaces=(TALLY,)), runner)
+
+    assert runner.total == 0
+    assert isinstance(result, BookReport)
+    assert [b.phase for b in result.blockers] == [Phase.EXERCISE]
+
+
+def test_a_book_this_workflow_repaired_that_fails_its_rerun_is_a_blocker_and_sends_no_writer(
+    app: App, drive_book: DriveBook, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = app("tally-cli")
+    runner = _writer(repo)
+    _written_by_the_workflow(repo, "docs(tally): repair pages of the tally book")
     stub_the_run_to(monkeypatch, FAILED)
     monkeypatch.setattr(flow, "book_problems", no_problems)
     monkeypatch.setattr(pyflow_driver, "wait_for_answer", answer([]))
