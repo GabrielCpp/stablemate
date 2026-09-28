@@ -1,0 +1,8 @@
+[codebase-map]
+exclude = [
+    "*/_vendor/*",
+    "paddock/data/apps/*",
+    "base-library/library/*",
+    "groom/groom/assets/*.min.js",
+    "groom/groom/assets/htm-preact.js",
+]
