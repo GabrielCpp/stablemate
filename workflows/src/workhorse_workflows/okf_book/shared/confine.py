@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import hashlib
 import subprocess
+import time
 from collections.abc import Iterable
 from pathlib import Path
 
@@ -15,6 +16,8 @@ from pydantic import BaseModel, ConfigDict
 from workhorse_workflows.okf_book.shared.entries import FEATURES_DIR
 
 _GIT_TIMEOUT = 60
+_LOCK_WAITS = (0.2, 0.5, 1.0, 2.0, 4.0, 8.0)
+_INDEX_LOCK = "index.lock"
 
 
 class Snapshot(BaseModel):
@@ -25,10 +28,25 @@ class Snapshot(BaseModel):
     digests: dict[str, str]
 
 
+class GitFailed(RuntimeError):
+    """A git command in the book's repo failed, with what git said."""
+
+
+def _run_git(root: Path, args: tuple[str, ...]) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(["git", *args], cwd=root, capture_output=True, text=True, timeout=_GIT_TIMEOUT)
+
+
 def _git(root: Path, *args: str) -> str:
-    return subprocess.run(
-        ["git", *args], cwd=root, capture_output=True, text=True, check=True, timeout=_GIT_TIMEOUT
-    ).stdout
+    """Run git in *root*. A command that finds the index locked by another git process waits and tries again."""
+    done = _run_git(root, args)
+    for wait in _LOCK_WAITS:
+        if done.returncode == 0 or _INDEX_LOCK not in done.stderr:
+            break
+        time.sleep(wait)
+        done = _run_git(root, args)
+    if done.returncode != 0:
+        raise GitFailed(f"git {' '.join(args)} failed in {root}: {done.stderr.strip()}")
+    return done.stdout
 
 
 def _digest(path: Path) -> str:
