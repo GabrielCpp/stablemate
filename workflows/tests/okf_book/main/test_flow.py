@@ -238,25 +238,24 @@ def test_a_book_this_workflow_repaired_that_fails_its_rerun_is_a_blocker_and_sen
     assert [b.phase for b in result.blockers] == [Phase.EXERCISE]
 
 
-def test_a_book_this_workflow_repaired_that_fails_its_check_is_a_blocker_and_sends_no_writer(
+def test_a_book_this_workflow_repaired_that_fails_its_check_goes_back_to_its_writer_on_a_rerun(
     app: App, drive_book: DriveBook, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     repo = app("tally-cli")
     runner = _writer(repo)
     _written_by_the_workflow(repo, "docs(tally): repair pages of the tally book")
 
-    def _problems(_root: Path, _service: str) -> tuple[str, ...]:
-        return ("a.md is linked from no page",)
+    def _problems_until_noted_again(root: Path, _service: str) -> tuple[str, ...]:
+        return () if (root / PAGE).read_text(encoding="utf-8").count(NOTE.strip()) > 1 else ("tally.md needs a second note",)
 
     stub_the_run_to(monkeypatch, PASSED)
-    monkeypatch.setattr(flow, "book_problems", _problems)
-    monkeypatch.setattr(pyflow_driver, "wait_for_answer", answering_operator([]))
+    monkeypatch.setattr(flow, "book_problems", _problems_until_noted_again)
 
     result = drive_book(OkfBook(repo_dir=str(repo), surfaces=(TALLY,)), runner)
 
-    assert runner.total == 0
+    assert runner.total == 1
     assert isinstance(result, BookReport)
-    assert [(b.phase, b.side) for b in result.blockers] == [(Phase.WRITE, Side.BOOK)]
+    assert result.blockers == ()
 
 
 def test_a_book_this_workflow_wrote_is_run_even_when_its_source_is_over_the_ceiling(
@@ -276,7 +275,7 @@ def test_a_book_this_workflow_wrote_is_run_even_when_its_source_is_over_the_ceil
     assert result.blockers == ()
 
 
-def test_a_book_this_workflow_wrote_that_fails_its_check_is_a_blocker_and_sends_no_writer(
+def test_a_book_this_workflow_wrote_that_fails_its_check_goes_to_its_writer_and_what_it_leaves_is_a_blocker(
     app: App, drive_book: DriveBook, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     repo = app("tally-cli")
@@ -292,7 +291,7 @@ def test_a_book_this_workflow_wrote_that_fails_its_check_is_a_blocker_and_sends_
 
     result = drive_book(OkfBook(repo_dir=str(repo), surfaces=(TALLY,)), runner)
 
-    assert runner.total == 0
+    assert runner.total == 1
     assert isinstance(result, BookReport)
     assert [(b.phase, b.side) for b in result.blockers] == [(Phase.WRITE, Side.BOOK)]
 

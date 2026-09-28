@@ -67,16 +67,16 @@ class OkfBook(BookFlow):
         return self._next_surface(reason, index)
 
     def route_book(self, index: int) -> Continue[...]:
-        """A book this workflow's writer or repair last committed is checked and run, never rewritten. Any other book with no problem goes on to its run. A missing or failing one goes to the writer."""
+        """A missing book, or one with problems, goes to the writer, so a rerun after the operator's fix repairs what the last run left. A book this workflow's writer or repair last committed with no problem is run as the workflow's own, and any other one as a book the writer may still fix."""
         service = self.surfaces[index].service
         book = _book_folder(service)
         if not (self.root / book).is_dir():
             return Continue(None, self.copy_source, index=index).because("no book yet: write it")
-        if last_commit_subject(self.root, book) in (book_commit_subject(service), repaired_book_commit_subject(service)):
-            return Continue(book, self.check_book, index=index).because("this workflow wrote the book: check it")
         problems = book_problems(self.root, service)
         if problems:
             return Continue(problems, self.copy_source, index=index).because("the existing book has problems")
+        if last_commit_subject(self.root, book) in (book_commit_subject(service), repaired_book_commit_subject(service)):
+            return Continue(book, self.check_book, index=index).because("this workflow wrote the book: check it")
         return Continue(problems, self.run_book, index=index, written_by_workflow=False).because(
             "the existing book checks clean"
         )
