@@ -53,7 +53,7 @@ def _yaml_key(line: str) -> str:
     return line.strip().partition(":")[0].strip().strip("'\"")
 
 
-def yaml_lines(text: str, dotted: str) -> tuple[int, int] | None:
+def yaml_key_span(text: str, dotted: str) -> tuple[int, int] | None:
     """The lines of the block a dotted key path names in a yaml file, 1-based and inclusive, or None when no key matches.
 
     A key may itself hold a dot, such as a path, so each step takes the key that the rest of the
@@ -86,9 +86,9 @@ def yaml_lines(text: str, dotted: str) -> tuple[int, int] | None:
     return found
 
 
-def _symbol_lines(path: Path, text: str, symbol: str) -> tuple[int, int] | None:
+def _symbol_span(path: Path, text: str, symbol: str) -> tuple[int, int] | None:
     if path.suffix in YAML_SUFFIXES:
-        return yaml_lines(text, symbol)
+        return yaml_key_span(text, symbol)
     return next(((first, last) for first, last, name in extents(path, text) if name == symbol), None)
 
 
@@ -114,7 +114,7 @@ class CitedFiles:
         if not path.is_file():
             return None
         text = self._text(citation.path)
-        span = _symbol_lines(path, text, citation.symbol) if citation.symbol else None
+        span = _symbol_span(path, text, citation.symbol) if citation.symbol else None
         if span is None:
             return CitedLines(citation.path, None, _tokens(path.stat().st_size))
         first, last = span
