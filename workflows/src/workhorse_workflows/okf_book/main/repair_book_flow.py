@@ -210,7 +210,7 @@ class RepairBook(BookFlow):
         )
 
     def put_back(self, ledger: RepairLedger, this_round: RepairRound, index: int, before: Snapshot) -> Continue[...] | Await[...]:
-        """Put back each path the turn changed but may not keep: one outside the book, the entries page, a page its batch does not own, a page an earlier batch closed, and an entry page it changed beyond adding link lines.
+        """Put back each path the turn changed but may not keep: one outside the book, the entries page, a page its batch does not own, and a page an earlier batch closed.
 
         A page someone left uncommitted has no committed copy of their edit to go back to, so a turn
         that changed one waits for the operator.
@@ -231,23 +231,33 @@ class RepairBook(BookFlow):
         unrestorable_uncommitted = restore(root, unowned, before)
         for path in sorted(set(unowned) - set(unrestorable_uncommitted) - {entries}):
             self.logger.warning("put back %s, which the repair turn changed outside the pages its batch owns", path)
-        overreach = self._entry_pages_changed_beyond_links(batch, [path for path in changed if path not in unowned])
-        _ = restore(root, overreach, before)
-        for path in overreach:
-            self.logger.warning("put back %s, an entry page the repair turn changed beyond adding link lines", path)
+        kept = [path for path in changed if path not in unowned]
         if unrestorable_uncommitted:
             return Await(
                 self.run_dir / UNCOMMITTED_PAGE_GATE,
                 "The repair turn changed pages someone left uncommitted, and code has no copy of their edits to put back:\n\n"
                 + "\n".join(f"- {path}" for path in unrestorable_uncommitted)
                 + "\n\nSort each page out in the repo, then answer here. No commit takes these pages.",
-                self.stamp_pages,
+                self.put_back_entry_overreach,
                 ledger=ledger,
                 this_round=this_round,
                 index=index,
                 before=before,
+                kept=kept,
             ).because("the repair turn changed a page someone left uncommitted")
-        return Continue(stray, self.stamp_pages, ledger=ledger, this_round=this_round, index=index, before=before).because(
+        return Continue(
+            stray, self.put_back_entry_overreach, ledger=ledger, this_round=this_round, index=index, before=before, kept=kept
+        ).because("put back the entry pages the turn changed beyond link lines")
+
+    def put_back_entry_overreach(
+        self, ledger: RepairLedger, this_round: RepairRound, index: int, before: Snapshot, kept: list[str]
+    ) -> Continue[...]:
+        """Put back each entry page the turn kept but changed beyond adding link lines."""
+        overreach = self._entry_pages_changed_beyond_links(this_round.batches[index], kept)
+        _ = restore(self.root, overreach, before)
+        for path in overreach:
+            self.logger.warning("put back %s, an entry page the repair turn changed beyond adding link lines", path)
+        return Continue(overreach, self.stamp_pages, ledger=ledger, this_round=this_round, index=index, before=before).because(
             "stamp the repaired pages"
         )
 
