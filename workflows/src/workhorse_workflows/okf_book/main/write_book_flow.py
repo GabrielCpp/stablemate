@@ -100,13 +100,13 @@ class WriteBook(BookFlow):
     def commit_unfinished(self, before: Snapshot, failure: str) -> Done | Await[...]:
         """Commit the pages the failed turn left, under a subject that is not this workflow's, so a rerun sends a writer to finish them.
 
-        A retry after the commit landed finds nothing to commit. A refused commit waits for the operator.
+        A retry after the commit landed finds nothing to commit. A failed render or a refused commit waits for the operator.
         """
         service = self.surface_to_write.service
         pages = book_changes(self.root, service, before)
-        refusal = self._commit(unfinished_book_commit_subject(service), *pages)
-        if refusal:
-            return self._await_operator_on_refused_commit(refusal, self.commit_unfinished, before=before, failure=failure)
+        waiting = self._commit_or_await(unfinished_book_commit_subject(service), pages, self.commit_unfinished, before=before, failure=failure)
+        if waiting:
+            return waiting
         return Done(WriteOutcome(committed=False, failure=failure)).because("the writer's turn failed")
 
     def put_back(self, before: Snapshot) -> Continue[...]:
@@ -126,8 +126,8 @@ class WriteBook(BookFlow):
         return Continue(pages, self.commit_book, pages=pages).because("commit the book")
 
     def commit_book(self, pages: tuple[str, ...]) -> Done | Await[...]:
-        """Commit the book's changed pages. A retry after the commit landed finds nothing to commit. A refused commit waits for the operator."""
-        refusal = self._commit(book_commit_subject(self.surface_to_write.service), *pages)
-        if refusal:
-            return self._await_operator_on_refused_commit(refusal, self.commit_book, pages=pages)
+        """Commit the book's changed pages. A retry after the commit landed finds nothing to commit. A failed render or a refused commit waits for the operator."""
+        waiting = self._commit_or_await(book_commit_subject(self.surface_to_write.service), pages, self.commit_book, pages=pages)
+        if waiting:
+            return waiting
         return Done(WriteOutcome(committed=True)).because("the book is committed")

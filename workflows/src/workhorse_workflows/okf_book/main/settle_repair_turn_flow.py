@@ -92,8 +92,8 @@ class SettleRepairTurn(BookFlow):
         return Continue(pages, self.commit_pages, pages=pages).because("commit the repaired pages")
 
     def commit_pages(self, pages: tuple[str, ...]) -> Await[...] | Done:
-        """Commit the batch's pages. A refused commit waits for the operator."""
-        refusal = self._commit(repaired_book_commit_subject(self.service), *pages)
-        if refusal:
-            return self._await_operator_on_refused_commit(refusal, self.commit_pages, pages=pages)
+        """Commit the batch's pages. A failed render or a refused commit waits for the operator."""
+        waiting = self._commit_or_await(repaired_book_commit_subject(self.service), pages, self.commit_pages, pages=pages)
+        if waiting:
+            return waiting
         return Done(SettledTurn(pages=pages)).because("the repaired pages are committed")

@@ -9,13 +9,11 @@ from okf_book.main.tally import (
     NOTE,
     PAGE,
     PASSED,
-    REFUSAL,
     TALLY,
     App,
     DriveBook,
     answering_operator,
     book_problems_until_noted,
-    refuse_commits_until_answered,
     stub_the_run_to,
 )
 from okf_book.support import ScriptedRunner, git
@@ -72,15 +70,16 @@ def test_the_agent_files_are_rendered_before_the_book_commit_so_their_drift_is_n
 
 
 @pytest.mark.usefixtures("passing")
-def test_a_render_that_failed_is_named_to_the_operator_the_refused_commit_asks(
+def test_a_render_that_failed_waits_for_the_operator_and_the_book_is_committed_after_their_answer(
     app: App, drive_book: DriveBook, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     repo = app("tally-cli")
     asked: list[str] = []
-    monkeypatch.setattr(pyflow_driver, "wait_for_answer", refuse_commits_until_answered(repo, asked))
+    failures = ["farrier could not run: no farrier"]
+    monkeypatch.setattr(pyflow_driver, "wait_for_answer", answering_operator(asked))
 
     def _render(_root: Path) -> str:
-        return "farrier could not run: no farrier"
+        return failures.pop() if failures else ""
 
     monkeypatch.setattr(book_flow, "render_agent_files", _render)
 
@@ -88,5 +87,5 @@ def test_a_render_that_failed_is_named_to_the_operator_the_refused_commit_asks(
 
     assert isinstance(result, BookReport)
     assert len(asked) == 1
-    assert REFUSAL in asked[0]
     assert "farrier could not run: no farrier" in asked[0]
+    assert git(repo, "show", "--name-only", "--format=", "HEAD").split() == [PAGE]
