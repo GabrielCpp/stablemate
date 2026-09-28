@@ -98,14 +98,14 @@ class RunSummary(BaseModel):
         A scenario stopped inside the compiled *plan_source* is reported at the obligation it stopped in,
         and on that obligation's page the problem names its node.
         """
-        pages = {scenario.id: scenario.pages for scenario in scenarios}
+        pages_by_scenario = {scenario.id: scenario.pages for scenario in scenarios}
         grouped: dict[str, list[PageProblem]] = {}
         for name in self.failed_scenarios:
             outcome = self.scenarios[name]
             lines = outcome.failure_lines() or (outcome.status,)
             claim = outcome.failed_claim(plan_source)
             where = f"the run of scenario {name} failed at {claim}" if claim else f"the run of scenario {name} failed"
-            for page in pages.get(name, ()):
+            for page in pages_by_scenario.get(name, ()):
                 node = obligation_node(claim) if obligation_page(claim) == page else ""
                 grouped.setdefault(page, []).extend(PageProblem(page, f"{where}: {line}", node=node) for line in lines)
         return {page: tuple(grouped[page]) for page in sorted(grouped)}
