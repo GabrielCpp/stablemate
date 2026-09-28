@@ -1704,7 +1704,7 @@ def _obligations(
         "evidenceRequired": "live" if required else "context",
         "reasons": [reason.row() for reason in reasons or [Reason(ReasonKind.GRAPH_CLOSURE, str(node["id"]))]],
     }
-    base.update(obligation_frame(book_node, locators_mod.repeat_contract(node, scope), book).row())
+    base.update(obligation_frame(book_node, locators_mod.repeat_contract(book_node, scope), book).row())
     combiners = {int(pos): str(word) for pos, word in (node.get("combiners") or {}).items()}
     contract, per_bullet = registry.attributed_checks(
         str(node.get("type", "")), node.get("bulletOrder") or [], combiners

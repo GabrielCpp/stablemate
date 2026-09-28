@@ -8,6 +8,7 @@ from pathlib import Path
 
 from ostler import graph as graph_mod
 from ostler.model import Graph, UINode
+from ostler.qa.obligation_frame import BookNode
 from ostler.qa.packet_rows import RepeatContract, RepeatTemplate, Segment, Variants
 from ostler.reach import NONE_TOKENS, _screen_of
 from ostler.vet import placement as placement_mod
@@ -234,8 +235,9 @@ def locator_for(node: dict, *, scope: tuple[str, ...] = ()) -> dict:
     return {"strategy": "none", "locator": "", "role": "", "name": ""}
 
 
-def repeat_contract(node: dict, scope: tuple[str, ...]) -> RepeatContract | None:
+def repeat_contract(book_node: BookNode, scope: tuple[str, ...]) -> RepeatContract | None:
     """The compiled repeat contract for a node in a `one-per:` scope, or None."""
+    node = {"bullets": {key: list(values) for key, values in book_node.bullets.items()}}
     own = repeat_of(node)
     scope = scope or ((own,) if own else ())
     if not scope:
