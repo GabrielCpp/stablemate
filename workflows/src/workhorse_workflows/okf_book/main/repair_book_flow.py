@@ -206,11 +206,11 @@ class RepairBook(BookFlow):
             ledger=ledger,
             this_round=this_round,
             index=0,
-            problems_at_turn_start=_texts(problems),
+            problems_at_turn_start=tuple(problems),
         ).because("prepare the first batch")
 
     def prepare_batch_turn(
-        self, ledger: RepairLedger, this_round: RepairRound, index: int, problems_at_turn_start: tuple[str, ...]
+        self, ledger: RepairLedger, this_round: RepairRound, index: int, problems_at_turn_start: tuple[PageProblem, ...]
     ) -> Continue[...]:
         """Snapshot the tree and write the command state that scopes the turn's check to its batch and to the problems the book has now."""
         batch = this_round.batches[index]
@@ -354,12 +354,8 @@ class RepairBook(BookFlow):
                 ledger=ledger,
                 this_round=this_round,
                 index=index + 1,
-                problems_at_turn_start=_texts(problems),
+                problems_at_turn_start=tuple(problems),
             ).because("prepare the next batch")
         return Continue(ledger.closed_pages, self.plan_round, ledger=ledger, last=this_round, problems=problems).because(
             "plan the next round"
         )
-
-
-def _texts(problems: Iterable[PageProblem]) -> tuple[str, ...]:
-    return tuple(problem.text for problem in problems)

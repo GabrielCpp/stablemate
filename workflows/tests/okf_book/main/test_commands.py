@@ -215,7 +215,7 @@ def test_a_check_scoped_to_pages_prints_their_problems_and_those_the_turn_made_b
         "docs/features/ledger/orphaned.md",
     )
     monkeypatch.setattr(check_pages, "page_problems", _problems_on(*pages))
-    problems_at_turn_start = (f"{pages[0]} is broken", f"{pages[1]} is broken", f"{pages[2]} is broken")
+    problems_at_turn_start = tuple(PageProblem(page, f"{page} is broken") for page in pages[:3])
     state = WriterCommandState(root=repo, service="ledger", pages=(pages[0],), problems_at_turn_start=problems_at_turn_start)
 
     printed = scoped_problems(state)
@@ -244,8 +244,8 @@ def test_a_check_scoped_to_sections_prints_their_problems_and_not_one_an_edit_ab
     )
     monkeypatch.setattr(check_pages, "page_problems", _page_problems_returning(now))
     problems_at_turn_start = (
-        f"{page}:4: step-no-verify: a claim has no verify",
-        f"{page}:8: step-no-verify: a claim has no verify",
+        PageProblem(page, f"{page}:4: step-no-verify: a claim has no verify", line=4),
+        PageProblem(page, f"{page}:8: step-no-verify: a claim has no verify", line=8),
     )
     state = WriterCommandState(
         root=tmp_path, service="ledger", pages=(page,), sections_by_page={page: ("list-rows",)}, problems_at_turn_start=problems_at_turn_start
@@ -254,6 +254,19 @@ def test_a_check_scoped_to_sections_prints_their_problems_and_not_one_an_edit_ab
     printed = scoped_problems(state)
 
     assert printed == (now[0].text, now[2].text)
+
+
+def test_a_command_state_reads_the_problems_at_turn_start_an_earlier_run_wrote_as_texts(tmp_path: Path) -> None:
+    page = "docs/features/ledger/http/ledger-api.md"
+    texts = [f"{page}:4: step-no-verify: a claim has no verify", f"{page} is missing"]
+
+    state = WriterCommandState.model_validate({"root": str(tmp_path), "service": "ledger", "problems_at_turn_start": texts})
+
+    assert state.problems_at_turn_start == (PageProblem(page, texts[0], line=4), PageProblem("", texts[1]))
+    assert [problem.text_ignoring_line() for problem in state.problems_at_turn_start] == [
+        f"{page}: step-no-verify: a claim has no verify",
+        texts[1],
+    ]
 
 
 def test_a_command_prints_its_first_lines_and_counts_the_rest() -> None:

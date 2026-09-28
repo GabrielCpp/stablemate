@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import re
 import sys
 import tempfile
 from collections.abc import Callable, Sequence
@@ -9,8 +10,9 @@ from contextlib import redirect_stderr, redirect_stdout
 from dataclasses import dataclass
 from pathlib import Path
 
-from pydantic import AliasChoices, BaseModel, ConfigDict, Field
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator
 
+from workhorse_workflows.okf_book.shared.page_check import PageProblem
 
 CHECK_MODULE = f"{__package__}.check_pages"
 EXERCISE_MODULE = f"{__package__}.exercise"
@@ -23,6 +25,7 @@ OSTLER_RUN_CAP = 40
 OSTLER_MAX_PRINTED_LINES = 3
 CHECK_AND_SCENARIO_RUNS_SPENT_MESSAGE = f"the {CHECK_AND_SCENARIO_RUN_CAP} runs of the check and the scenarios this turn may make are spent: stop, and reply with what is left to fix"
 OSTLER_RUNS_SPENT_MESSAGE = f"the {OSTLER_RUN_CAP} ostler runs this turn may make are spent: edit the pages by hand"
+_EARLIER_LOCATION = re.compile(r"^(?P<page>[^:\s]+):(?P<line>\d+): ")
 
 
 @dataclass(frozen=True, slots=True)
@@ -45,7 +48,8 @@ class WriterCommandState(BaseModel):
     With no pages named, the check covers the whole book. With pages named, it covers those pages
     and every problem not in `problems_at_turn_start`, the problems the book had when the turn started.
     A page in `sections_by_page` is covered only in the `###` sections named for it. The field also
-    reads its earlier key, `sections`.
+    reads its earlier key, `sections`, and `problems_at_turn_start` also reads its earlier form, the
+    problems' texts.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -54,9 +58,16 @@ class WriterCommandState(BaseModel):
     service: str
     pages: tuple[str, ...] = ()
     sections_by_page: dict[str, tuple[str, ...]] = Field(default={}, validation_alias=AliasChoices("sections_by_page", "sections"))
-    problems_at_turn_start: tuple[str, ...] = ()
+    problems_at_turn_start: tuple[PageProblem, ...] = ()
     check_and_scenario_runs: int = 0
     ostler_runs: int = 0
+
+    @field_validator("problems_at_turn_start", mode="before")
+    @classmethod
+    def _problems_from_earlier_texts(cls, value: object) -> object:
+        if not isinstance(value, list | tuple):
+            return value
+        return tuple(_problem_from_earlier_text(item) if isinstance(item, str) else item for item in value)
 
     def with_check_or_scenario_run_spent(self) -> WriterCommandState:
         """This state with one more check or scenario run spent."""
@@ -65,6 +76,13 @@ class WriterCommandState(BaseModel):
     def with_ostler_run_spent(self) -> WriterCommandState:
         """This state with one more ostler run spent."""
         return self.model_copy(update={"ostler_runs": self.ostler_runs + 1})
+
+
+def _problem_from_earlier_text(text: str) -> PageProblem:
+    located = _EARLIER_LOCATION.match(text)
+    if located is None:
+        return PageProblem("", text)
+    return PageProblem(located.group("page"), text, line=int(located.group("line")))
 
 
 def command_state_path(run_dir: Path) -> Path:

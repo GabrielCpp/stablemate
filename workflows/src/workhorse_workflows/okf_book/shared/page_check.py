@@ -179,6 +179,10 @@ class PageProblem:
     line: int | None = None
     node: str = ""
 
+    def text_ignoring_line(self) -> str:
+        """The problem's text with its line number left out, since an edit above the problem moves it."""
+        return self.text if self.line is None else f"{self.page}: " + self.text.removeprefix(f"{self.page}:{self.line}: ")
+
 
 def _doctor_problems(book: Graph, pages: list[str]) -> list[PageProblem]:
     if not pages:

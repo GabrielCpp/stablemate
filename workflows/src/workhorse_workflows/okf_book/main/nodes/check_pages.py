@@ -1,7 +1,6 @@
 """The check the writer runs on its book, or on the pages its turn repairs. It prints each problem, or "No problems"."""
 from __future__ import annotations
 
-import re
 import sys
 from collections.abc import Sequence
 from pathlib import Path
@@ -20,11 +19,6 @@ from workhorse_workflows.okf_book.shared.page_check import PageProblem, page_pro
 
 USAGE = f"usage: python -m {CHECK_MODULE} <writer-commands.json>"
 NO_PROBLEMS_LINE = "No problems"
-_LOCATION = re.compile(r"^([^:\s]+):\d+: ")
-
-
-def _without_line_number(text: str) -> str:
-    return _LOCATION.sub(r"\1: ", text)
 
 
 def _in_scope(state: WriterCommandState, root: Path, problem: PageProblem) -> bool:
@@ -41,18 +35,18 @@ def _in_scope(state: WriterCommandState, root: Path, problem: PageProblem) -> bo
 def scoped_problems(state: WriterCommandState) -> tuple[str, ...]:
     """Every problem on the book, or, when the state names pages, every problem on those pages, or their named sections, and every problem the turn made elsewhere.
 
-    A problem counts as one the book had when the turn started when its text matches but for its
-    line number, since an edit above it moves it.
+    A problem counts as one the book had when the turn started when its text, with its line number
+    left out, matches one of those.
     """
     root = state.root.resolve()
     problems = page_problems(root, state.service)
     if not state.pages:
         return tuple(problem.text for problem in problems)
-    problems_at_turn_start = frozenset(_without_line_number(text) for text in state.problems_at_turn_start)
+    problems_at_turn_start = frozenset(problem.text_ignoring_line() for problem in state.problems_at_turn_start)
     return tuple(
         problem.text
         for problem in problems
-        if _in_scope(state, root, problem) or _without_line_number(problem.text) not in problems_at_turn_start
+        if _in_scope(state, root, problem) or problem.text_ignoring_line() not in problems_at_turn_start
     )
 
 
