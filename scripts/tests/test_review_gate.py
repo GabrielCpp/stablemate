@@ -12,7 +12,7 @@ import review_gate
 import review_run
 from conftest import git, strict_repo
 from review_gate import StopEvent
-from review_run import Block, GiveUp
+from review_run import Block, GiveUp, Notice
 from review_state import BASE_STATE_FILE, EMPTY_STATE, HOOK_STATE_FILE, GateState, load_state, save_state
 from review_verdict import Finding, ReviewError, Verdict
 
@@ -347,7 +347,7 @@ def test_a_commit_too_large_to_review_alone_goes_through_with_a_notice(
     heads = _backlog(repo, monkeypatch, [["a", "b", "c"], ["d"]])
     reviewer = FakeReviewer([[]])
     outcome = review_gate.hook_decision(repo, _stop(repo), reviewer)
-    assert isinstance(outcome, GiveUp)
+    assert isinstance(outcome, Notice)
     assert f"Commit {heads[0][:8]} is too large to review on its own" in outcome.message
     assert len(reviewer.calls) == 1
     assert "+D = 1" in reviewer.calls[0][0]

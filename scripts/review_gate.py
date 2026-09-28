@@ -11,7 +11,7 @@ from pathlib import Path
 
 import strict_scope
 from claude_reviewer import claude_reviewer
-from review_backlog import in_backlog, review_next_range, with_skip_notices
+from review_backlog import walk_backlog, with_skip_notices
 from review_git import git, is_ancestor, snapshot_tree, tree_exists
 from review_run import (
     ROUNDS_BEFORE_TIEBREAK,
@@ -19,6 +19,7 @@ from review_run import (
     BatchedVerdict,
     Block,
     GiveUp,
+    Outcome,
     PendingChange,
     model_for,
     plan_review,
@@ -114,7 +115,7 @@ def review_tip(
     return Block(block_reason(review.verdict, updated))
 
 
-def hook_decision(repo: Path, event: StopEvent, reviewer: Reviewer) -> Block | GiveUp | None:
+def hook_decision(repo: Path, event: StopEvent, reviewer: Reviewer) -> Outcome:
     if event.cwd.resolve() != repo.resolve():
         return None
     scope = strict_scope.load(repo)
@@ -123,19 +124,12 @@ def hook_decision(repo: Path, event: StopEvent, reviewer: Reviewer) -> Block | G
     if not any(scope.contains(path) for path in change.paths):
         return None
     rubric = RUBRIC_PATH.read_text(encoding="utf-8")
-    skip_notices: list[str] = []
-    while in_backlog(repo, state, change) and plan_review(repo, change, rubric).too_large:
-        step = review_next_range(repo, scope, state, change, rubric, reviewer)
-        save_state(repo, HOOK_STATE_FILE, step.state)
-        if step.skip_notice is not None:
-            skip_notices.append(step.skip_notice)
-        if step.block is not None:
-            return with_skip_notices(step.block, skip_notices)
-        state = step.state
-        change = pending_change(repo, state, None)
-    if not any(scope.contains(path) for path in change.paths):
-        return with_skip_notices(None, skip_notices)
-    return with_skip_notices(review_tip(repo, state, change, rubric, reviewer), skip_notices)
+    walk = walk_backlog(repo, scope, state, change, rubric, reviewer, lambda walked: pending_change(repo, walked, None))
+    if walk.block is not None:
+        return with_skip_notices(walk.block, walk.skip_notices)
+    if not any(scope.contains(path) for path in walk.change.paths):
+        return with_skip_notices(None, walk.skip_notices)
+    return with_skip_notices(review_tip(repo, walk.state, walk.change, rubric, reviewer), walk.skip_notices)
 
 
 def review_from(repo: Path, base: str, reviewer: Reviewer) -> int:

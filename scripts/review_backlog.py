@@ -2,14 +2,33 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
 import strict_scope
 from review_git import first_parent_commits, git, is_ancestor
-from review_run import Block, GiveUp, PendingChange, model_for, plan_review, run_batches, unfinished_reason
-from review_state import GateState
+from review_run import (
+    Block,
+    GiveUp,
+    Notice,
+    Outcome,
+    PendingChange,
+    model_for,
+    plan_review,
+    run_batches,
+    unfinished_reason,
+)
+from review_state import HOOK_STATE_FILE, GateState, save_state
 from review_verdict import Reviewer, Verdict
+
+
+@dataclass(frozen=True)
+class BacklogWalk:
+    state: GateState
+    change: PendingChange
+    skip_notices: tuple[str, ...]
+    block: Block | None
 
 
 @dataclass(frozen=True)
@@ -80,11 +99,36 @@ def review_next_range(
     return RangeStep(advanced, None, Block(range_block_reason(review.verdict, label)))
 
 
-def with_skip_notices(outcome: Block | GiveUp | None, skip_notices: list[str]) -> Block | GiveUp | None:
+def walk_backlog(
+    repo: Path,
+    scope: strict_scope.StrictScope,
+    state: GateState,
+    change: PendingChange,
+    rubric: str,
+    reviewer: Reviewer,
+    pending_change: Callable[[GateState], PendingChange],
+) -> BacklogWalk:
+    """Review the committed backlog one range at a time until what is left fits one review, saving the gate's state after each range."""
+    skip_notices: list[str] = []
+    while in_backlog(repo, state, change) and plan_review(repo, change, rubric).too_large:
+        step = review_next_range(repo, scope, state, change, rubric, reviewer)
+        save_state(repo, HOOK_STATE_FILE, step.state)
+        if step.skip_notice is not None:
+            skip_notices.append(step.skip_notice)
+        if step.block is not None:
+            return BacklogWalk(step.state, change, tuple(skip_notices), step.block)
+        state = step.state
+        change = pending_change(state)
+    return BacklogWalk(state, change, tuple(skip_notices), None)
+
+
+def with_skip_notices(outcome: Outcome, skip_notices: tuple[str, ...]) -> Outcome:
     if not skip_notices:
         return outcome
     if isinstance(outcome, Block):
         return Block("\n".join([*skip_notices, outcome.reason]))
     if isinstance(outcome, GiveUp):
         return GiveUp("\n".join([*skip_notices, outcome.message]))
-    return GiveUp("\n".join(skip_notices))
+    if isinstance(outcome, Notice):
+        return Notice("\n".join([*skip_notices, outcome.message]))
+    return Notice("\n".join(skip_notices))

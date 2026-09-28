@@ -41,6 +41,17 @@ class GiveUp:
         return {"systemMessage": self.message}
 
 
+@dataclass(frozen=True)
+class Notice:
+    message: str
+
+    def payload(self) -> dict[str, str]:
+        return {"systemMessage": self.message}
+
+
+type Outcome = Block | GiveUp | Notice | None
+
+
 def model_for(state: GateState) -> str:
     if state.blocked_rounds >= ROUNDS_BEFORE_TIEBREAK:
         return TIEBREAK_MODEL
