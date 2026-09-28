@@ -932,11 +932,11 @@ class Qa:
                 self._fault(fixture, last_index, "provides", "defect", detail)
                 raise RuntimeError(f"qa fixture {fixture!r} {detail}") from exc
             path = entry.get("read") or key
-            resolved, value = resolve_path(payload, path)
-            if not resolved:
+            hit = resolve_path(payload, path)
+            if not hit.found:
                 self._fault(fixture, last_index, "provides", "defect", f"declared provides {key!r} absent")
                 raise RuntimeError(f"qa fixture {fixture!r} does not provide {key!r} at {path!r}")
-            facts[key] = str(value)
+            facts[key] = str(hit.value)
         return facts
 
     def _exec_book_fixture(self, name: str, args: Mapping[str, str]) -> "ToolResult":
@@ -1031,14 +1031,14 @@ class Qa:
     def field(self, data: Any, path: str, default: Any = MISSING) -> Any:
         """Read one value out of observed product data without ever raising."""
         try:
-            resolved, value = resolve_path(data, path)
+            hit = resolve_path(data, path)
         except ValueError:
             return default
-        if not resolved:
+        if not hit.found:
             return default
-        if is_projection(path) and len(value) == 1:
-            return value[0]
-        return value
+        if is_projection(path) and isinstance(hit.value, list) and len(hit.value) == 1:
+            return hit.value[0]
+        return hit.value
 
     def check(
         self,

@@ -693,8 +693,8 @@ def _extract_path(data: Any, path: str) -> str | None:
 
 def _resolve_path(document: object, path: str) -> tuple[bool, object]:
     """Walk *path* into *document* by the harness's document-path grammar: whether it resolved, and to what."""
-    resolved, value = load_harness_module("ostler_qa_paths").resolve_path(document, path)
-    return bool(resolved), value
+    hit = load_harness_module("ostler_qa_paths").resolve_path(document, path)
+    return bool(hit.found), hit.value
 
 
 def _is_projection(path: str) -> bool:

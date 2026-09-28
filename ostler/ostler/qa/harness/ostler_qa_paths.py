@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import json
 import re
-from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any
+
+type JsonScalar = None | bool | int | float | str
+type JsonValue = JsonScalar | list[JsonValue] | dict[str, JsonValue]
 
 
 class Wild:
@@ -24,7 +25,7 @@ class Filter:
     """The `[?(@.key==value)]` segment: the elements whose `key` holds `value`."""
 
     key: str
-    value: Any
+    value: JsonScalar
 
     def __repr__(self) -> str:
         return f"[?(@.{self.key}=={json.dumps(self.value)})]"
@@ -77,72 +78,74 @@ def path_steps(path: str) -> list[PathStep]:
     return steps
 
 
-def _step_into(current: Any, step: str | int) -> tuple[bool, Any]:
-    if isinstance(current, Mapping):
+@dataclass(frozen=True)
+class Resolved:
+    """Whether a path resolved in a document, and to what."""
+
+    found: bool
+    value: JsonValue = None
+
+
+def _step_into(current: JsonValue, step: str | int) -> Resolved:
+    if isinstance(current, dict):
         key = str(step) if isinstance(step, int) else step
-        return (True, current[key]) if key in current else (False, None)
-    if isinstance(current, (list, tuple)):
+        return Resolved(True, current[key]) if key in current else Resolved(False)
+    if isinstance(current, list):
         if isinstance(step, int):
             index = step
         elif step.isdigit():
             index = int(step)
         else:
-            return False, None
-        return (True, current[index]) if index < len(current) else (False, None)
-    return False, None
+            return Resolved(False)
+        return Resolved(True, current[index]) if index < len(current) else Resolved(False)
+    return Resolved(False)
 
 
-def _selected(current: Any, step: Wild | Filter) -> list[Any]:
-    if isinstance(current, Mapping):
+def _selected(current: JsonValue, step: Wild | Filter) -> list[JsonValue]:
+    if isinstance(current, dict):
         candidates = list(current.values())
-    elif isinstance(current, (list, tuple)):
+    elif isinstance(current, list):
         candidates = list(current)
     else:
         return []
     if isinstance(step, Wild):
         return candidates
-    chosen = []
+    chosen: list[JsonValue] = []
     for item in candidates:
-        ok, held = resolve_path(item, step.key)
-        if ok and scalar_equal(held, step.value):
+        held = resolve_path(item, step.key)
+        if held.found and scalar_equal(held.value, step.value):
             chosen.append(item)
     return chosen
 
 
-def resolve_path(document: Any, path: str) -> tuple[bool, Any]:
+def resolve_path(document: JsonValue, path: str) -> Resolved:
     """Walk `path` into `document`: whether it resolved, and to what."""
-    steps = path_steps(path)
-    current: Any = document
-    projected = False
-    for step in steps:
-        if isinstance(step, (Wild, Filter)):
-            if projected:
-                current = [item for element in current for item in _selected(element, step)]
+    current = document
+    selection: list[JsonValue] | None = None
+    for step in path_steps(path):
+        if isinstance(step, Wild | Filter):
+            if selection is None:
+                selection = _selected(current, step)
             else:
-                current = _selected(current, step)
-                projected = True
+                selection = [item for element in selection for item in _selected(element, step)]
             continue
-        if projected:
-            kept = []
-            for element in current:
-                ok, value = _step_into(element, step)
-                if ok:
-                    kept.append(value)
-            current = kept
+        if selection is not None:
+            selection = [hit.value for hit in (_step_into(element, step) for element in selection) if hit.found]
             continue
-        ok, current = _step_into(current, step)
-        if not ok:
-            return False, None
-    if projected:
-        return bool(current), current
-    return True, current
+        hit = _step_into(current, step)
+        if not hit.found:
+            return Resolved(False)
+        current = hit.value
+    if selection is not None:
+        return Resolved(bool(selection), selection)
+    return Resolved(True, current)
 
 
 def is_projection(path: str) -> bool:
     return any(isinstance(step, (Wild, Filter)) for step in path_steps(path))
 
 
-def scalar_equal(observed: Any, expected: Any) -> bool:
+def scalar_equal(observed: JsonValue, expected: JsonValue) -> bool:
     """`json_path(equals=)` against what the document holds, typed the way JSON types it."""
     if isinstance(expected, bool) or isinstance(observed, bool):
         return isinstance(observed, bool) and isinstance(expected, bool) and observed is expected

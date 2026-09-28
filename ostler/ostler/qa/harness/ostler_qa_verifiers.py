@@ -10,13 +10,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from ostler_qa_paths import is_projection, resolve_path, scalar_equal
+from ostler_qa_paths import JsonValue, Resolved, is_projection, resolve_path, scalar_equal
 
 
 _MISSING = object()
 
-
-type JsonValue = None | bool | int | float | str | list[JsonValue] | dict[str, JsonValue]
 
 type Args = Mapping[str, Any]
 
@@ -239,6 +237,15 @@ def json_value(value: object) -> JsonValue:
     raise ValueError(f"not a JSON value: {type(value).__name__}")
 
 
+def _resolve(document: object, path: str) -> Resolved:
+    """Walk `path` into *document*, which resolves nothing when JSON cannot hold it."""
+    try:
+        parsed = json_value(document)
+    except ValueError:
+        return Resolved(False)
+    return resolve_path(parsed, path)
+
+
 def _read_tree_file(path: Path) -> JsonValue:
     text = path.read_text(encoding="utf-8", errors="replace")
     if path.suffix != ".json":
@@ -319,13 +326,14 @@ def _matchable(value: object) -> str:
 def _verify_json_path(reading: DocumentReading, args: Args) -> Verdict:
     if not reading.present:
         return _verdict(False, {"file": args["file"], "present": False}, {"file": "present"})
-    resolved, value = resolve_path(reading.document, args["path"])
+    hit = _resolve(reading.document, args["path"])
     if "absent" in args:
         want_absent = bool(args["absent"])
-        return _verdict(resolved is not want_absent, {"present": resolved}, {"present": not want_absent})
-    if not resolved:
+        return _verdict(hit.found is not want_absent, {"present": hit.found}, {"present": not want_absent})
+    if not hit.found:
         return _verdict(False, {"present": False}, {"path": args["path"]})
-    if is_projection(args["path"]):
+    value = hit.value
+    if is_projection(args["path"]) and isinstance(value, list):
         if len(value) != 1:
             return _verdict(False, {"selected": value}, {"selected": "exactly one"})
         value = value[0]
@@ -369,9 +377,10 @@ def _verify_count(reading: DocumentReading, args: Args) -> Verdict:
         )
     document = reading.document
     if isinstance(document, Mapping):
-        resolved, document = resolve_path(document, args["subject"])
+        hit = _resolve(document, args["subject"])
+        document = hit.value
         selected_nothing = is_projection(args["subject"]) and document == []
-        if not resolved and not selected_nothing:
+        if not hit.found and not selected_nothing:
             return _verdict(False, {"subject": args["subject"], "present": False}, args["equals"])
     if isinstance(document, bool | str) or not isinstance(document, int | Sized):
         return _verdict(False, {"subject": args["subject"], "countable": False}, args["equals"])
@@ -563,9 +572,9 @@ def _verify_omits(reading: BodyReading, args: Args) -> Verdict:
     """What the subject must not carry — the one assertion the rest of the vocabulary cannot make."""
     document = reading.document
     if isinstance(document, Mapping):
-        resolved, value = resolve_path(document, args["subject"])
-        if resolved:
-            document = value
+        hit = _resolve(document, args["subject"])
+        if hit.found:
+            document = hit.value
     haystack = document if isinstance(document, str) else _rendered(document)
     found: list[str] = []
     if "text" in args and args["text"] in haystack:
