@@ -9,6 +9,7 @@ from collections.abc import Callable, Sequence
 from contextlib import redirect_stderr, redirect_stdout
 from dataclasses import dataclass
 from pathlib import Path
+from typing import cast
 
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator
 
@@ -67,7 +68,8 @@ class WriterCommandState(BaseModel):
     def _problems_from_earlier_texts(cls, value: object) -> object:
         if not isinstance(value, list | tuple):
             return value
-        return tuple(_problem_from_earlier_text(item) if isinstance(item, str) else item for item in value)
+        items = cast("Sequence[object]", value)
+        return tuple(_problem_from_earlier_text(item) if isinstance(item, str) else item for item in items)
 
     def with_check_or_scenario_run_spent(self) -> WriterCommandState:
         """This state with one more check or scenario run spent."""
