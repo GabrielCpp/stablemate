@@ -2525,7 +2525,7 @@ def _check_ui(graph: Graph, f: list[Finding],
         if node.type == "component":
             _check_placement(node, rel, f)
             _check_unaddressable_selector(node, rel, f)
-            for key in loc_mod.malformed_identity({"bullets": node.meta}):
+            for key in loc_mod.malformed_identity(node.meta):
                 f.append(Finding(
                     "error", "duplicate-bullet",
                     f"{node.id}: `{key}:` is stated {len(node.meta[key])} times — a component "

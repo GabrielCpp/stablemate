@@ -4,11 +4,14 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Mapping
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from ostler import graph as graph_mod
 from ostler.model import Graph, UINode
-from ostler.qa.obligation_frame import BookNode, RepeatContract, RepeatTemplate, Segment, Variants
+from ostler.qa.obligation_frame import BookNode, RepeatContract, RepeatTemplate, Segment, Variants, book_nodes
 from ostler.reach import NONE_TOKENS, _screen_of
 from ostler.vet import placement as placement_mod
 
@@ -55,12 +58,9 @@ ARIA_ROLES = frozenset({
 })
 
 
-def _bullet(node: dict, key: str) -> str:
+def _bullet(node: BookNode, key: str) -> str:
     """One bullet's value, with the markdown code fence stripped."""
-    value = node.get("bullets", {}).get(key, "")
-    if isinstance(value, list):
-        value = value[0] if value else ""
-    text = str(value).strip()
+    text = _raw_bullet(node, key)
     if len(text) > 1 and text.startswith("`") and text.endswith("`"):
         text = text[1:-1].strip()
     return text
@@ -92,14 +92,12 @@ def _machine(text: str) -> str:
     return text.split(" — ", 1)[0].strip()
 
 
-def _raw_bullet(node: dict, key: str) -> str:
-    value = node.get("bullets", {}).get(key, "")
-    if isinstance(value, list):
-        value = value[0] if value else ""
-    return str(value).strip()
+def _raw_bullet(node: BookNode, key: str) -> str:
+    values = node.bullets.get(key, ())
+    return values[0].strip() if values else ""
 
 
-def repeat_of(node: dict) -> str:
+def repeat_of(node: BookNode) -> str:
     """The node's own iteration variable — `one-per:`'s machine value — or ``""``."""
     text = _machine(_raw_bullet(node, "one-per"))
     if _IDENT_RE.fullmatch(text) and not _stated_none(text):
@@ -107,7 +105,7 @@ def repeat_of(node: dict) -> str:
     return ""
 
 
-def unique_by_of(node: dict) -> str:
+def unique_by_of(node: BookNode) -> str:
     """The distinctness claim — `unique-by:`'s machine value (one dot-path) — or ``""``."""
     text = _machine(_raw_bullet(node, "unique-by"))
     if _PATH_RE.fullmatch(text) and not _stated_none(text):
@@ -115,7 +113,7 @@ def unique_by_of(node: dict) -> str:
     return ""
 
 
-def variants_of(node: dict) -> Variants | None:
+def variants_of(node: BookNode) -> Variants | None:
     """The enumerable variant axis, such as ``field.type`` over ``text | number``, or None."""
     text = _machine(_raw_bullet(node, "variants"))
     if not text or _stated_none(text):
@@ -131,6 +129,7 @@ def variants_of(node: dict) -> Variants | None:
 def _scopes(data: dict) -> dict[str, tuple[str, ...]]:
     """Every node's in-scope iteration variables, outermost first."""
     by_id = {n["id"]: n for n in data["nodes"]}
+    book = book_nodes(by_id)
     linked: dict[str, list[str]] = {}
     for edge in data["edges"]:
         if edge.get("via") == "parent":
@@ -151,7 +150,7 @@ def _scopes(data: dict) -> dict[str, tuple[str, ...]]:
             for var in scope(parent, walking):
                 if var not in inherited:
                     inherited.append(var)
-        own = repeat_of(node)
+        own = repeat_of(book[node_id])
         if own and own not in inherited:
             inherited.append(own)
         cache[node_id] = tuple(inherited)
@@ -167,15 +166,24 @@ def scopes(data: dict) -> dict[str, tuple[str, ...]]:
     return _scopes(data)
 
 
-def compile_template(name: str, scope: tuple[str, ...]) -> dict | None:
+@dataclass(frozen=True, slots=True)
+class CompiledName:
+    """A templated name split into segments, the scope paths it binds, and whether a brace is unbalanced."""
+
+    template: str
+    segments: tuple[Segment, ...]
+    binds: tuple[str, ...]
+    malformed: bool
+
+
+def compile_template(name: str, scope: tuple[str, ...]) -> CompiledName | None:
     """Segments for a templated name, or None when the name carries no hole."""
     matches = list(_HOLE_RE.finditer(name))
     if not matches:
         if "{" in name or "}" in name:
-            return {"template": name, "segments": [{"kind": "literal", "text": name}],
-                    "binds": [], "malformed": True}
+            return CompiledName(name, (Segment("literal", name),), (), malformed=True)
         return None
-    segments: list[dict] = []
+    segments: list[Segment] = []
     binds: list[str] = []
     malformed = False
     last = 0
@@ -183,27 +191,55 @@ def compile_template(name: str, scope: tuple[str, ...]) -> dict | None:
         if match.start() > last:
             text = name[last:match.start()]
             malformed = malformed or "{" in text or "}" in text
-            segments.append({"kind": "literal", "text": text})
+            segments.append(Segment("literal", text))
         hole = match.group(1).strip()
         if _PATH_RE.fullmatch(hole) and hole.split(".", 1)[0] in scope:
-            segments.append({"kind": "bind", "path": hole})
+            segments.append(Segment("bind", hole))
             binds.append(hole)
         else:
-            segments.append({"kind": "opaque", "expr": hole})
+            segments.append(Segment("opaque", hole))
         last = match.end()
     if last < len(name):
         text = name[last:]
         malformed = malformed or "{" in text or "}" in text
-        segments.append({"kind": "literal", "text": text})
-    return {"template": name, "segments": segments, "binds": binds, "malformed": malformed}
+        segments.append(Segment("literal", text))
+    return CompiledName(name, tuple(segments), tuple(binds), malformed)
 
 
-def _pattern(segments: list[dict]) -> str:
+def _pattern(segments: tuple[Segment, ...]) -> str:
     """The portable-regex intersection of a template: escaped literals, `.*` for every hole."""
-    return "".join(re.escape(s["text"]) if s["kind"] == "literal" else ".*" for s in segments)
+    return "".join(re.escape(s.value) if s.kind == "literal" else ".*" for s in segments)
 
 
-def locator_for(node: dict, *, scope: tuple[str, ...] = ()) -> dict:
+@dataclass(frozen=True, slots=True)
+class Locator:
+    """How Playwright finds one node: by role, by a name template over a repeat scope, by selector, by scheme, or not at all."""
+
+    strategy: str
+    locator: str = ""
+    role: str = ""
+    name: str = ""
+    template: RepeatTemplate | None = None
+    binds: tuple[str, ...] = ()
+    scheme: str = ""
+    value: str = ""
+
+    def row(self) -> dict[str, Any]:
+        """The locator as `ostler locators` prints it."""
+        fields: dict[str, Any] = {"strategy": self.strategy, "locator": self.locator,
+                                  "role": self.role, "name": self.name}
+        if self.template is not None:
+            fields["template"] = self.template.template
+            fields["iterates"] = self.template.iterates
+            fields["segments"] = [segment.row() for segment in self.template.segments]
+            fields["binds"] = list(self.binds)
+        if self.strategy == "scheme":
+            fields["scheme"] = self.scheme
+            fields["value"] = self.value
+        return fields
+
+
+def locator_for(node: BookNode, *, scope: tuple[str, ...] = ()) -> Locator:
     """The Playwright locator for one node, and how much to trust it."""
     role, name = _bullet(node, "role"), _bullet(node, "name")
     selector = _bullet(node, "selector")
@@ -214,61 +250,47 @@ def locator_for(node: dict, *, scope: tuple[str, ...] = ()) -> dict:
     if role and not _stated_none(role):
         if scope and name and not _stated_none(name):
             compiled = compile_template(name, scope)
-            if compiled and not compiled["malformed"]:
-                return {"strategy": "template", "locator": "", "role": role, "name": name,
-                        "template": name, "iterates": scope[-1],
-                        "segments": compiled["segments"], "binds": compiled["binds"]}
+            if compiled and not compiled.malformed:
+                return Locator("template", role=role, name=name,
+                               template=RepeatTemplate(name, scope[-1], compiled.segments),
+                               binds=compiled.binds)
         if name and not _stated_none(name):
             call = f'getByRole("{role}", {{ name: "{_escape(name)}", exact: true }})'
         else:
             call = f'getByRole("{role}")'
-        return {"strategy": "role", "locator": call, "role": role,
-                "name": "" if _stated_none(name) else name}
+        return Locator("role", locator=call, role=role, name="" if _stated_none(name) else name)
     if selector:
         scheme = placement_mod.parse_scheme_selector(selector)
         if scheme is not None:
-            return {"strategy": "scheme", "locator": "", "role": "", "name": "",
-                    "scheme": scheme[0], "value": scheme[1]}
-        return {"strategy": "css", "locator": f'locator("{_escape(selector)}")',
-                "role": "", "name": ""}
-    return {"strategy": "none", "locator": "", "role": "", "name": ""}
+            return Locator("scheme", scheme=scheme[0], value=scheme[1])
+        return Locator("css", locator=f'locator("{_escape(selector)}")')
+    return Locator("none")
 
 
-def repeat_contract(book_node: BookNode, scope: tuple[str, ...]) -> RepeatContract | None:
+def repeat_contract(node: BookNode, scope: tuple[str, ...]) -> RepeatContract | None:
     """The compiled repeat contract for a node in a `one-per:` scope, or None."""
-    node = {"bullets": {key: list(values) for key, values in book_node.bullets.items()}}
     own = repeat_of(node)
     scope = scope or ((own,) if own else ())
     if not scope:
         return None
     located = locator_for(node, scope=scope)
-    template, binds = None, ()
-    if located["strategy"] == "template":
-        template = RepeatTemplate(
-            template=str(located["template"]),
-            iterates=str(located["iterates"]),
-            segments=tuple(Segment.parse(segment) for segment in located["segments"]),
-        )
-        binds = tuple(str(bind) for bind in located["binds"])
     return RepeatContract(
         one_per=scope[-1],
-        binds=binds,
-        template=template,
+        binds=located.binds,
+        template=located.template,
         unique_by=unique_by_of(node),
         variants=variants_of(node),
     )
 
 
-def _locatables(data: dict) -> list[tuple[str, dict]]:
+def _locatables(data: dict) -> list[tuple[str, BookNode]]:
     """(owner, node) for every component/interaction, wherever it is defined."""
     by_id = {n["id"]: n for n in data["nodes"]}
-    out = []
-    for node in data["nodes"]:
-        if node["type"] not in LOCATABLE_TYPES:
-            continue
-        owner = _screen_of(node["id"], by_id) or node["id"].split("#", 1)[0]
-        out.append((owner, node))
-    return out
+    return [
+        (_screen_of(node.id, by_id) or node.id.split("#", 1)[0], node)
+        for node in book_nodes(by_id).values()
+        if node.type in LOCATABLE_TYPES
+    ]
 
 
 def _exclusive_pairs(data: dict) -> set[frozenset[str]]:
@@ -280,26 +302,26 @@ def _exclusive_pairs(data: dict) -> set[frozenset[str]]:
 IDENTITY_KEYS = ("role", "name")
 
 
-def malformed_identity(node: dict) -> list[str]:
-    """The identity keys this node states more than once, in registry order."""
-    bullets = node.get("bullets", {})
-    return [key for key in IDENTITY_KEYS if isinstance(bullets.get(key), list)]
+def malformed_identity(bullets: Mapping[str, object]) -> list[str]:
+    """The identity keys a node's bullets state more than once, in registry order."""
+    return [key for key in IDENTITY_KEYS
+            if isinstance(value := bullets.get(key), list | tuple) and len(value) > 1]
 
 
 def collisions(data: dict) -> list[dict]:
     """Nodes sharing a screen, a role, and an accessible name — where one-to-one fails."""
     scopes = _scopes(data)
-    groups: dict[tuple[str, str, str], list[dict]] = {}
-    templated: dict[tuple[str, str], list[tuple[dict, dict]]] = {}
+    groups: dict[tuple[str, str, str], list[BookNode]] = {}
+    templated: dict[tuple[str, str], list[tuple[BookNode, RepeatTemplate]]] = {}
     for screen, node in _locatables(data):
-        if node["type"] != "component" or malformed_identity(node):
+        if node.type != "component" or malformed_identity(node.bullets):
             continue
-        loc = locator_for(node, scope=scopes.get(node["id"], ()))
-        if loc["strategy"] == "template":
-            templated.setdefault((screen, loc["role"]), []).append((node, loc))
-        if loc["strategy"] != "role":
+        loc = locator_for(node, scope=scopes.get(node.id, ()))
+        if loc.template is not None:
+            templated.setdefault((screen, loc.role), []).append((node, loc.template))
+        if loc.strategy != "role":
             continue
-        groups.setdefault((screen, loc["role"], loc["name"]), []).append(node)
+        groups.setdefault((screen, loc.role, loc.name), []).append(node)
 
     exclusive = _exclusive_pairs(data)
 
@@ -315,24 +337,24 @@ def collisions(data: dict) -> list[dict]:
     for (screen, role, name), nodes in sorted(groups.items()):
         if len(nodes) < 2:
             continue
-        conflicting = _live([n["id"] for n in nodes])
+        conflicting = _live([n.id for n in nodes])
         if len(conflicting) < 2:
             continue
         out.append({"screen": screen, "role": role, "name": name,
                     "nodes": sorted(conflicting)})
     for (screen, role), pairs in sorted(templated.items()):
-        for node, loc in pairs:
-            pattern = _pattern(loc["segments"])
+        for node, template in pairs:
+            pattern = _pattern(template.segments)
             for (other_screen, other_role, name), statics in sorted(groups.items()):
                 if (other_screen, other_role) != (screen, role) or not name:
                     continue
                 if not re.fullmatch(pattern, name):
                     continue
-                conflicting = _live([node["id"]] + [n["id"] for n in statics])
-                if len(conflicting) < 2 or node["id"] not in conflicting:
+                conflicting = _live([node.id] + [n.id for n in statics])
+                if len(conflicting) < 2 or node.id not in conflicting:
                     continue
                 out.append({"screen": screen, "role": role, "name": name,
-                            "template": loc["template"], "nodes": sorted(conflicting)})
+                            "template": template.template, "nodes": sorted(conflicting)})
     return out
 
 
@@ -342,7 +364,7 @@ def invalid_roles(data: dict) -> list[dict]:
     for screen, node in _locatables(data):
         role = _bullet(node, "role")
         if role and not _stated_none(role) and role.lower() not in ARIA_ROLES:
-            out.append({"screen": screen, "node": node["id"], "role": role})
+            out.append({"screen": screen, "node": node.id, "role": role})
     return out
 
 
@@ -357,11 +379,11 @@ def static_templates(data: dict) -> list[dict]:
         name = _bullet(node, "name")
         if not name or _stated_none(name):
             continue
-        compiled = compile_template(name, scopes.get(node["id"], ()))
-        binds = [] if compiled is None or compiled["malformed"] else compiled["binds"]
+        compiled = compile_template(name, scopes.get(node.id, ()))
+        binds = () if compiled is None or compiled.malformed else compiled.binds
         if any(b.split(".", 1)[0] == var for b in binds):
             continue
-        out.append({"screen": screen, "node": node["id"], "template": name, "iterates": var})
+        out.append({"screen": screen, "node": node.id, "template": name, "iterates": var})
     return out
 
 
@@ -373,13 +395,13 @@ def unproven_unique_names(data: dict) -> list[dict]:
         var = repeat_of(node)
         if not var or unique_by_of(node):
             continue
-        compiled = compile_template(_bullet(node, "name"), scopes.get(node["id"], ()))
-        if compiled is None or compiled["malformed"]:
+        compiled = compile_template(_bullet(node, "name"), scopes.get(node.id, ()))
+        if compiled is None or compiled.malformed:
             continue
-        own = [b for b in compiled["binds"] if b.split(".", 1)[0] == var]
+        own = [b for b in compiled.binds if b.split(".", 1)[0] == var]
         if own and all(b.rsplit(".", 1)[-1] in DISPLAY_LEAVES for b in own):
-            out.append({"screen": screen, "node": node["id"],
-                        "template": compiled["template"], "binds": own})
+            out.append({"screen": screen, "node": node.id,
+                        "template": compiled.template, "binds": own})
     return out
 
 
@@ -388,11 +410,11 @@ def malformed_templates(data: dict) -> list[dict]:
     scopes = _scopes(data)
     out = []
     for screen, node in _locatables(data):
-        if not scopes.get(node["id"]):
+        if not scopes.get(node.id):
             continue
-        compiled = compile_template(_bullet(node, "name"), scopes[node["id"]])
-        if compiled and compiled["malformed"]:
-            out.append({"screen": screen, "node": node["id"], "template": compiled["template"]})
+        compiled = compile_template(_bullet(node, "name"), scopes[node.id])
+        if compiled and compiled.malformed:
+            out.append({"screen": screen, "node": node.id, "template": compiled.template})
     return out
 
 
@@ -401,15 +423,15 @@ def templates_outside_repeat(data: dict) -> list[dict]:
     scopes = _scopes(data)
     out = []
     for screen, node in _locatables(data):
-        if scopes.get(node["id"]):
+        if scopes.get(node.id):
             continue
         name = _bullet(node, "name")
         if not name or _stated_none(name):
             continue
         compiled = compile_template(name, ())
-        if compiled is None or compiled["malformed"]:
+        if compiled is None or compiled.malformed:
             continue
-        out.append({"screen": screen, "node": node["id"], "template": name})
+        out.append({"screen": screen, "node": node.id, "template": name})
     return out
 
 
@@ -423,7 +445,7 @@ def invalid_variants(data: dict) -> list[dict]:
         if _stated_none(_machine(raw)):
             continue
         if variants_of(node) is None:
-            out.append({"screen": screen, "node": node["id"], "value": _machine(raw)})
+            out.append({"screen": screen, "node": node.id, "value": _machine(raw)})
     return out
 
 
@@ -437,11 +459,11 @@ def unnamed_interactives(data: dict) -> list[dict]:
     bases = _base_components(data)
     out = []
     for screen, node in _locatables(data):
-        if node["id"] in bases:
+        if node.id in bases:
             continue
         role, name = _bullet(node, "role"), _bullet(node, "name")
         if role.lower() in INTERACTIVE_ROLES and (not name or _stated_none(name)):
-            out.append({"screen": screen, "node": node["id"], "role": role})
+            out.append({"screen": screen, "node": node.id, "role": role})
     return out
 
 
@@ -452,8 +474,8 @@ def screen_locators(data: dict, screen: str | None = None) -> list[dict]:
     for owner, node in _locatables(data):
         if screen and owner != screen and not owner.endswith(f"/{screen}.md"):
             continue
-        entry = {"node": node["id"], "type": node["type"], "title": node.get("title", "")}
-        entry.update(locator_for(node, scope=scopes.get(node["id"], ())))
+        entry = {"node": node.id, "type": node.type, "title": node.title}
+        entry.update(locator_for(node, scope=scopes.get(node.id, ())).row())
         entry["keyboard"] = _bullet(node, "keyboard")
         by_screen.setdefault(owner, []).append(entry)
     return [{"screen": s, "locators": by_screen[s]} for s in sorted(by_screen)]

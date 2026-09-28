@@ -6,7 +6,7 @@ from pathlib import Path
 
 from ostler import doctor, graph, locators
 from ostler.model import load
-from ostler.qa.obligation_frame import Variants
+from ostler.qa.obligation_frame import BookNode, Variants
 
 from conftest import write
 
@@ -517,7 +517,7 @@ def test_variants_parse_into_an_enumerable_axis(repo: Path):
 - unique-by: `field.id`
 """))
     node = next(n for n in data["nodes"] if n["id"].endswith("#property-field"))
-    assert locators.variants_of(node) == Variants(
+    assert locators.variants_of(BookNode.parse(node)) == Variants(
         path="field.type", values=("text", "number", "select", "date"))
     assert "malformed-variants" not in _codes(repo, "warn")
 
@@ -570,7 +570,7 @@ TWO_NAMES = """\
 def test_a_repeated_identity_bullet_is_the_book_s_defect_not_a_collision(repo: Path):
     """A second `name:` (or `role:`) is `duplicate-bullet`, and the node is left out of the collision check until it is well-formed."""
     data = _build(repo, _screen(TWO_NAMES, "### other-copy\n- role: button\n- name: Copy\n"))
-    assert locators.malformed_identity(data["nodes"][1]) == ["name"]
+    assert locators.malformed_identity(data["nodes"][1]["bullets"]) == ["name"]
     assert locators.collisions(data) == []
 
     findings = doctor.run(load(repo), check_schema=False).findings
