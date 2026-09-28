@@ -118,9 +118,9 @@ template:
 # invariants: they constrain a change under `workflows/` and nothing else, and a
 # directory-scoped AGENTS.md is loaded exactly when an agent is working there.
 #
-# The aggregated text lands in AGENTS.md — the name every harness reads, Claude
-# included. `includeReadme: false` keeps the READMEs (outward-facing overviews)
-# out of every session's context.
+# The aggregated text lands in AGENTS.md — the name every harness reads. `includeReadme:
+# false` keeps the READMEs (outward-facing overviews) out of every session's
+# context.
 localInstructions:
   - policies:
       - uv-workspace
