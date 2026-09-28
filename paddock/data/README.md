@@ -182,3 +182,8 @@ rubric.md             the judge's prompt — the file to tune when scores feel w
 tests/                the properties the score rests on
 results/              pointer TOMLs for sealed rounds                    (gitignored)
 ```
+
+## Map
+
+- `tasks/`: what each round does, one module per benchmark, plus the shared round machinery.
+- `tests/`: the properties every published score rests on.
