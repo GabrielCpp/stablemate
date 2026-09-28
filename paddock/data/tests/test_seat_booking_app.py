@@ -222,10 +222,8 @@ def obligation_ids() -> set[str]:
     book = book_nodes(nodes)
     return {
         obligation["id"]
-        for node in nodes.values()
-        for obligation in _obligations(
-            node, [], journey=str(node.get("type", "")) in ("flow", "journey"), book=book
-        )
+        for node in book.values()
+        for obligation in _obligations(node, [], journey=node.type in ("flow", "journey"), book=book)
     }
 
 

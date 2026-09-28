@@ -459,8 +459,8 @@ def build_context(
         lambda ref: _grounding_for_ref(root, base, head, ref, repositories_by_id, book_root)
     )
     health.extend(row.row() for row in dangling)
-    for node_id, node in selected_nodes.items():
-        health.extend(row.row() for row in _missing_declared_checks(node_id, node))
+    for node_id in selected_nodes:
+        health.extend(row.row() for row in _missing_declared_checks(book[node_id]))
     demoted_symbols: frozenset[str] | set[str] = shared_symbols
     required_contracts = {
         node_id
@@ -511,7 +511,7 @@ def build_context(
         obligation
         for node_id in sorted(contracts)
         for obligation in _obligations(
-            nodes_by_id[node_id],
+            book[node_id],
             direct_reasons.get(node_id, []),
             journey=False,
             required=node_id in required_contracts,
@@ -520,14 +520,14 @@ def build_context(
             judgment=judgment_by_node.get(node_id),
             fixture_provides=fixture_provides,
             fixture_undetermined=fixture_undetermined,
-            resolve_locator=_locator_resolver(head_graph, book, nodes_by_id[node_id]),
+            resolve_locator=_locator_resolver(head_graph, book, book[node_id]),
             book=book,
         )
     ] + [
         obligation
         for node_id in sorted(journeys)
         for obligation in _obligations(
-            nodes_by_id[node_id],
+            book[node_id],
             direct_reasons.get(node_id, []),
             journey=True,
             required=_journey_is_required(
@@ -537,7 +537,7 @@ def build_context(
             judgment=judgment_by_node.get(node_id),
             fixture_provides=fixture_provides,
             fixture_undetermined=fixture_undetermined,
-            resolve_locator=_locator_resolver(head_graph, book, nodes_by_id[node_id]),
+            resolve_locator=_locator_resolver(head_graph, book, book[node_id]),
             book=book,
         )
     ]
@@ -1175,24 +1175,21 @@ def _named_subjects(node: dict[str, Any]) -> set[str]:
     return {subject for subject in subjects if subject}
 
 
-def _missing_declared_checks(node_id: str, node: dict[str, Any]) -> list[HealthRow]:
+def _missing_declared_checks(node: BookNode) -> list[HealthRow]:
     """A health row per normative claim of a checked node type that declares no check to fulfil it."""
-    node_type = str(node.get("type", ""))
-    if not registry.check_keys(node_type):
+    if not registry.check_keys(node.type):
         return []
-    node_bullets = node.get("bullets", {})
-    combiners = {int(pos): str(word) for pos, word in (node.get("combiners") or {}).items()}
-    _, checks_per_bullet = registry.attributed_checks(node_type, node.get("bulletOrder") or [], combiners)
+    _, checks_per_bullet = registry.attributed_checks(node.type, node.bullet_order, node.combiners)
     return [
         HealthRow(
             kind="missing-declared-check",
             severity="warning",
-            node=node_id,
+            node=node.id,
             key=key,
             message=f"impacted contract's `{key}:` claim declares no `verify:` check to fulfil it",
         )
-        for key in registry.normative_keys(node_type)
-        for index in range(1, len(bullet_values(node_bullets.get(key))) + 1)
+        for key in registry.normative_keys(node.type)
+        for index in range(1, len(node.bullets.get(key, ())) + 1)
         if not checks_per_bullet.get((key, index))
     ]
 
@@ -1442,10 +1439,10 @@ def _unparsed_checks(values: list[str]) -> list[dict[str, Any]]:
 
 
 def _locator_resolver(
-    graph: Graph, book: Mapping[str, BookNode], node: dict[str, Any]
+    graph: Graph, book: Mapping[str, BookNode], node: BookNode
 ) -> Callable[[str], LocatorTarget]:
     """Resolve this node's check locators against the book, the way `doctor` resolves them."""
-    origin = graph.root / str(node.get("path", ""))
+    origin = graph.root / node.path
 
     def resolve(value: str) -> LocatorTarget:
         located = locators_mod.located_node(graph, value, origin)
@@ -1667,7 +1664,7 @@ def _family_root(node_id: str, owners: set[str], book: Mapping[str, BookNode]) -
 
 
 def _obligations(
-    node: dict[str, Any],
+    book_node: BookNode,
     reasons: list[Reason],
     *,
     journey: bool,
@@ -1681,7 +1678,6 @@ def _obligations(
     book: Mapping[str, BookNode],
 ) -> list[dict[str, Any]]:
     """Mint one obligation per normative bullet, plus the node-level contract."""
-    book_node = book[str(node["id"])]
     required = required and owes_live_evidence(book_node.type, book_node.page_type)
     family = _same_as_component(book_node.id, book)
     representative = min(family)
@@ -1690,25 +1686,22 @@ def _obligations(
     base = {
         "id": f"okf:{representative}:{suffix}",
         "kind": "journey" if journey else "contract",
-        "node": node["id"],
+        "node": book_node.id,
         "occurrenceDocuments": occurrence_documents,
-        "nodeType": node.get("type", ""),
-        "source": node["path"],
-        "surface": node.get("surface") or "",
-        "requirement": node.get("title") or node["id"],
+        "nodeType": book_node.type,
+        "source": book_node.path,
+        "surface": book_node.surface,
+        "requirement": book_node.title or book_node.id,
         "required": required,
         "evidenceRequired": "live" if required else "context",
-        "reasons": [reason.row() for reason in reasons or [Reason(ReasonKind.GRAPH_CLOSURE, str(node["id"]))]],
+        "reasons": [reason.row() for reason in reasons or [Reason(ReasonKind.GRAPH_CLOSURE, book_node.id)]],
     }
     base.update(obligation_frame(book_node, locators_mod.repeat_contract(book_node, scope), book).row())
-    combiners = {int(pos): str(word) for pos, word in (node.get("combiners") or {}).items()}
-    contract, per_bullet = registry.attributed_checks(
-        str(node.get("type", "")), node.get("bulletOrder") or [], combiners
-    )
+    node_type, bullet_order, combiners = book_node.type, book_node.bullet_order, book_node.combiners
+    contract, per_bullet = registry.attributed_checks(node_type, bullet_order, combiners)
     undetermined = {
         claim
-        for group in registry.undetermined_claims(
-            str(node.get("type", "")), node.get("bulletOrder") or [], combiners).values()
+        for group in registry.undetermined_claims(node_type, bullet_order, combiners).values()
         for claim in group
     }
     contract_rows = _dedup_checks(_parse_checks(contract, resolve_locator))
@@ -1717,9 +1710,7 @@ def _obligations(
     contract_unparsed = _unparsed_checks(contract)
     if contract_unparsed:
         base["checksUnparsed"] = contract_unparsed
-    node_fixtures, fixtures_per_bullet = registry.attributed_fixtures(
-        str(node.get("type", "")), node.get("bulletOrder") or [], combiners
-    )
+    node_fixtures, fixtures_per_bullet = registry.attributed_fixtures(node_type, bullet_order, combiners)
     ambient = _parse_fixtures(node_fixtures, fixture_provides, fixture_undetermined)
     if ambient:
         base["fixturesDeclared"] = ambient
@@ -1729,33 +1720,28 @@ def _obligations(
     ambient_nothing = _no_arrangement_stated(node_fixtures)
     if ambient_nothing:
         base["arrangesNothing"] = True
-    node_acts, acts_per_bullet = registry.attributed_acts(
-        str(node.get("type", "")), node.get("bulletOrder") or [], combiners
-    )
+    node_acts, acts_per_bullet = registry.attributed_acts(node_type, bullet_order, combiners)
     ambient_acts = _parse_acts(node_acts, resolve_locator)
     if ambient_acts:
         base["actsDeclared"] = ambient_acts
     ambient_acts_unparsed = _unparsed_acts(node_acts)
     if ambient_acts_unparsed:
         base["actsUnparsed"] = ambient_acts_unparsed
-    captures_contract, captures_per_bullet = registry.attributed_captures(
-        str(node.get("type", "")), node.get("bulletOrder") or [], combiners
-    )
+    captures_contract, captures_per_bullet = registry.attributed_captures(node_type, bullet_order, combiners)
     contract_captures_unparsed = _unparsed_captures(captures_contract)
     if contract_captures_unparsed:
         base["capturesUnparsed"] = contract_captures_unparsed
-    node_line = int(node.get("line") or 0)
+    node_line = book_node.line
     doc_position: dict[tuple[str, int], int] = {}
-    _seen = {key: 0 for key in registry.normative_keys(str(node.get("type", "")))}
-    for row in node.get("bulletOrder") or []:
-        row_key = str(row[0])
+    _seen = {key: 0 for key in registry.normative_keys(node_type)}
+    for row_key, _, position in bullet_order:
         if row_key in _seen:
             _seen[row_key] += 1
-            doc_position[(row_key, _seen[row_key])] = int(row[2])
+            doc_position[(row_key, _seen[row_key])] = position
     base["docPosition"] = [node_line, -1]
     output = [base]
-    for key in registry.normative_keys(str(node.get("type", ""))):
-        for index, requirement in enumerate(bullet_values(node.get("bullets", {}).get(key)), start=1):
+    for key in registry.normative_keys(node_type):
+        for index, requirement in enumerate(book_node.bullets.get(key, ()), start=1):
             obligation = {
                 **base,
                 "id": f"okf:{representative}:{key.replace(' ', '-')}:{index}",
@@ -1844,7 +1830,7 @@ def _obligations(
             "text": value,
             "citation": next((href for _t, href in markdown.extract_refs(value).links), ""),
         }
-        for value in bullet_values(node.get("bullets", {}).get("unspecified"))
+        for value in book_node.bullets.get("unspecified", ())
     ]
     if unspecified:
         base["unspecified"] = unspecified

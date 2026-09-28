@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from ostler import markdown, registry
@@ -208,6 +208,11 @@ class BookNode:
     surface: str
     bullets: Mapping[str, tuple[str, ...]]
     edges: tuple[NodeEdge, ...]
+    path: str = ""
+    title: str = ""
+    line: int = 0
+    bullet_order: tuple[tuple[str, str, int], ...] = ()
+    combiners: Mapping[int, str] = field(default_factory=dict)
 
     @classmethod
     def parse(cls, raw: Mapping[str, object]) -> BookNode:
@@ -215,6 +220,9 @@ class BookNode:
         type_path = raw.get("type_path")
         bullets = raw.get("bullets")
         edges = raw.get("edges")
+        line = raw.get("line")
+        bullet_order = raw.get("bulletOrder")
+        combiners = raw.get("combiners")
         return cls(
             id=str(raw.get("id") or ""),
             type=node_type,
@@ -229,6 +237,23 @@ class BookNode:
                 tuple(edge for edge in map(NodeEdge.parse, edges) if edge is not None)
                 if isinstance(edges, list)
                 else ()
+            ),
+            path=str(raw.get("path") or ""),
+            title=str(raw.get("title") or ""),
+            line=line if isinstance(line, int) else 0,
+            bullet_order=(
+                tuple(
+                    (str(row[0]), str(row[1]), row[2])
+                    for row in bullet_order
+                    if isinstance(row, list | tuple) and len(row) == 3 and isinstance(row[2], int)
+                )
+                if isinstance(bullet_order, list)
+                else ()
+            ),
+            combiners=(
+                {int(str(position)): str(word) for position, word in combiners.items()}
+                if isinstance(combiners, Mapping)
+                else {}
             ),
         )
 
