@@ -11,6 +11,7 @@ The steps the main book flow calls. Each module owns one job a state hands off.
 - `page_sections.py`: the `###` sections of a page and the section each problem sits in.
 - `repair_batches.py`: the batches a book too large for one writer is repaired in.
 - `repair_ledger.py`: what the repair carries: each round's batches, the ledger kept from round to round, and what it leaves.
+- `repair_put_back.py`: which pages a repair turn changed that its batch may keep, and the stamp on those it keeps.
 - `report.py`: the run's account for the operator.
 - `root_entries.py`: the entries page code writes for a book that has none.
 - `source_view.py`: the copy of the product source a writer reads.
