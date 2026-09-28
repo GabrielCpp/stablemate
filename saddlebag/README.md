@@ -269,3 +269,7 @@ A **saddlebag** is the kit a horse carries on a ride — the right tools, ready 
 needed, returned to the stable when the ride is done. It fits the stablemate
 vocabulary: ostler tends the stable, farrier fits the gear, workhorse does the
 riding, saddlebag carries what's needed for the journey.
+
+## Map
+
+- `saddlebag/`: the package behind the `saddlebag` command. [Package layout](#package-layout) says what each module owns.

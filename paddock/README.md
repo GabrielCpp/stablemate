@@ -295,3 +295,8 @@ says so rather than leaving a silently stale tree.
 ```bash
 make -C paddock test
 ```
+
+## Map
+
+- `data/`: what the rounds measure: tasks, rubrics, app fixtures and recorded results.
+- `paddock/`: the package behind the `paddock` command.

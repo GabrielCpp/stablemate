@@ -69,3 +69,7 @@ Two consequences to keep in mind when changing anything here:
 
 You do not install this directly, and you cannot: the `Private :: Do Not Upload`
 classifier makes PyPI reject it.
+
+## Map
+
+- `stablemate_core/`: the one copy of the shared module anyone edits. The vendored copies in the tools are generated from it.

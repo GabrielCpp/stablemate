@@ -66,3 +66,7 @@ The prompt did not need to move because it was badly written. It moved because
   `packs/<pack>.yml`) is `farrier/docs/LAYOUT.md`. Changing it breaks the tools, not a
   version string here.
 - Scope commits touching this directory `base-library`.
+
+## Map
+
+- `library/`: the skills, prompts and policies farrier renders. The helper scripts a skill ships live beside its `SKILL.md`.

@@ -161,3 +161,7 @@ neither an overlay nor a base does it refuse to start.
   workflows call through its in-process Python API.
 
 All three live in the [stablemate](https://github.com/GabrielCpp/stablemate) workspace.
+
+## Map
+
+- `farrier/`: the package behind the `farrier` command.

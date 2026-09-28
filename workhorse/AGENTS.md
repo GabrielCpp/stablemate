@@ -59,4 +59,11 @@ docs go, conventions — is [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md). Read tha
   test: *would a different workflow want this unchanged?* If not, it belongs in the
   workflow.
 
+## Map
+
+- `livesource.py`: installing a package from a read-only bind mount without importing the mount itself.
+- `supervisor.py`: the container's PID 1: preflight, then two children with different lifecycles.
+- `tests/`: the engine's test suite.
+- `workhorse/`: the engine package.
+
 @docs/GUARDRAILS.md

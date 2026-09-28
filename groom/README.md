@@ -408,3 +408,7 @@ Those commands, the schema and its one footgun, and worked SQL are in
 
 See `docs/features/groom/` at the repo root for the full design — groom's own OKF book,
 queryable with `ostler graph --surface groom`.
+
+## Map
+
+- `groom/`: the package behind the `groom` command: the server, the collector, the store and the dashboard assets.

@@ -108,3 +108,8 @@ carries a skill reference, needs an operator's override, or runs past a screen.
 Nothing under `coder/` goes inline at all. `scripts/check_prompt_agnostic.py` and
 `coder/test_prompt_stack_neutrality.py` glob `coder/*/prompts/*.md`, so an inline body
 would escape that workflow's central invariant.
+
+## Map
+
+- `src/`: the `workhorse_workflows` package, one subpackage per workflow plus the shared `kit`.
+- `tests/`: the workflow tests, one directory per workflow.

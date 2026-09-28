@@ -567,6 +567,12 @@ The format is the OKF profile **v1.0**, versioned `<major>.<minor>`. Minor bumps
 fields; major bumps may change required frontmatter or the `epic.md` grammar. A repo may record
 `okf_version` and `ostler_profile` in `docs/epics/index.md`.
 
+## Map
+
+- `docker/`: the sandbox image a live audit runs the app under test in.
+- `ostler/`: the package behind the `ostler` command and its in-process facade.
+- `tests/`: the test suite and the fakes its tests share.
+
 ## License
 
 MIT. See [LICENSE](https://github.com/GabrielCpp/stablemate/blob/main/ostler/LICENSE).
