@@ -8,15 +8,39 @@ import urllib.parse
 from collections.abc import Callable, Mapping, Sized
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 
-from ostler_qa_paths import JsonValue, Resolved, is_projection, resolve_path, scalar_equal
+from ostler_qa_paths import JsonScalar, JsonValue, Resolved, is_projection, resolve_path, scalar_equal
 
 
 _MISSING = object()
 
 
-type Args = Mapping[str, Any]
+type CheckValue = str | int | float | bool | list[str]
+type Args = Mapping[str, CheckValue]
+
+
+def _str(args: Args, key: str) -> str:
+    """The string a check's `key` argument holds, which the check's declaration types as one."""
+    value = args[key]
+    if not isinstance(value, str):
+        raise TypeError(f"`{key}` must be a string, not {type(value).__name__}")
+    return value
+
+
+def _scalar(args: Args, key: str) -> JsonScalar:
+    """The scalar a check's `key` argument holds, which the check's declaration types as one."""
+    value = args[key]
+    if isinstance(value, list):
+        raise TypeError(f"`{key}` must be a scalar, not a list")
+    return value
+
+
+def _strings(args: Args, key: str) -> list[str]:
+    """The strings a check's optional `key` argument lists, none when it is absent."""
+    value = args.get(key, [])
+    if not isinstance(value, list):
+        raise TypeError(f"`{key}` must be a list of strings, not {type(value).__name__}")
+    return value
 
 
 @dataclass(frozen=True)
@@ -165,16 +189,16 @@ class FileReading:
 
 def _read_file(observed: object, args: Args) -> FileReading:
     """The text of the file `subject` names in a working directory, as written."""
-    subject = args["subject"]
+    subject = _str(args, "subject")
     texts = getattr(observed, "texts", None)
     if isinstance(texts, Mapping):
         text = texts.get(subject)
         return FileReading(text=text if isinstance(text, str) else None)
     if not isinstance(observed, Mapping):
         raise TypeError(f"a file is read from a working directory, got {type(observed).__name__}")
-    if subject not in observed:
+    value = dict(observed).get(subject, _MISSING)
+    if value is _MISSING:
         return FileReading(text=None)
-    value = observed[subject]
     return FileReading(text=value if isinstance(value, str) else json.dumps(value))
 
 
@@ -299,21 +323,21 @@ def _verify_http_status(reading: HttpReading, args: Args) -> Verdict:
         expected["title"], actual["title"] = args["title"], found
         passed = passed and found == args["title"]
     if "path" in args:
-        expected["path"], actual["path"] = args["path"], reading.route
-        passed = passed and reading.route == args["path"]
+        expected["path"], actual["path"] = _str(args, "path"), reading.route
+        passed = passed and reading.route == _str(args, "path")
     return _verdict(passed, actual, expected)
 
 
 def _verify_response_header(reading: HeaderReading, args: Args) -> Verdict:
-    wanted = str(args["name"]).lower()
+    wanted = str(_str(args, "name")).lower()
     value = next((v for k, v in reading.headers if k.lower() == wanted), None)
-    actual = {args["name"]: value}
+    actual = {_str(args, "name"): value}
     if value is None:
-        return _verdict(False, actual, {args["name"]: "present"})
+        return _verdict(False, actual, {_str(args, "name"): "present"})
     if "equals" in args:
-        return _verdict(value == args["equals"], actual, {args["name"]: args["equals"]})
-    return _verdict(re.search(args["matches"], value) is not None, actual,
-                    {args["name"]: f"~ {args['matches']}"})
+        return _verdict(value == args["equals"], actual, {_str(args, "name"): args["equals"]})
+    return _verdict(re.search(_str(args, "matches"), value) is not None, actual,
+                    {_str(args, "name"): f"~ {_str(args, 'matches')}"})
 
 
 def _matchable(value: object) -> str:
@@ -326,28 +350,28 @@ def _matchable(value: object) -> str:
 def _verify_json_path(reading: DocumentReading, args: Args) -> Verdict:
     if not reading.present:
         return _verdict(False, {"file": args["file"], "present": False}, {"file": "present"})
-    hit = _resolve(reading.document, args["path"])
+    hit = _resolve(reading.document, _str(args, "path"))
     if "absent" in args:
         want_absent = bool(args["absent"])
         return _verdict(hit.found is not want_absent, {"present": hit.found}, {"present": not want_absent})
     if not hit.found:
-        return _verdict(False, {"present": False}, {"path": args["path"]})
+        return _verdict(False, {"present": False}, {"path": _str(args, "path")})
     value = hit.value
-    if is_projection(args["path"]) and isinstance(value, list):
+    if is_projection(_str(args, "path")) and isinstance(value, list):
         if len(value) != 1:
             return _verdict(False, {"selected": value}, {"selected": "exactly one"})
         value = value[0]
     if "equals" in args:
-        return _verdict(scalar_equal(value, args["equals"]), value, args["equals"])
+        return _verdict(scalar_equal(value, _scalar(args, "equals")), value, args["equals"])
     if "matches" in args:
-        return _verdict(re.search(args["matches"], _matchable(value)) is not None, value,
-                        f"~ {args['matches']}")
+        return _verdict(re.search(_str(args, "matches"), _matchable(value)) is not None, value,
+                        f"~ {_str(args, 'matches')}")
     return _verdict(False, value, "equals=, matches= or absent=true — presence asserts nothing")
 
 
 def _verify_unchanged(reading: PairReading, args: Args) -> Verdict:
     before, after = _named_file_or_tree(reading.before, reading.after, args.get("subject"))
-    allowed = set(args.get("except_fields", []))
+    allowed = set(_strings(args, "except_fields"))
     before_paths, after_paths = _paths(before), _paths(after)
     changed = sorted(
         {
@@ -373,17 +397,17 @@ def _verify_count(reading: DocumentReading, args: Args) -> Verdict:
         return _verdict(False, {"file": args["file"], "present": False}, args["equals"])
     if reading.unreadable is not None:
         return _verdict(
-            False, {"subject": args["subject"], "countable": False, "reason": reading.unreadable}, args["equals"]
+            False, {"subject": _str(args, "subject"), "countable": False, "reason": reading.unreadable}, args["equals"]
         )
     document = reading.document
     if isinstance(document, Mapping):
-        hit = _resolve(document, args["subject"])
+        hit = _resolve(document, _str(args, "subject"))
         document = hit.value
-        selected_nothing = is_projection(args["subject"]) and document == []
+        selected_nothing = is_projection(_str(args, "subject")) and document == []
         if not hit.found and not selected_nothing:
-            return _verdict(False, {"subject": args["subject"], "present": False}, args["equals"])
+            return _verdict(False, {"subject": _str(args, "subject"), "present": False}, args["equals"])
     if isinstance(document, bool | str) or not isinstance(document, int | Sized):
-        return _verdict(False, {"subject": args["subject"], "countable": False}, args["equals"])
+        return _verdict(False, {"subject": _str(args, "subject"), "countable": False}, args["equals"])
     found = document if isinstance(document, int) else len(document)
     return _verdict(found == args["equals"], found, args["equals"])
 
@@ -471,8 +495,8 @@ def _verify_visible(reading: VisibilityReading, args: Args) -> Verdict:
     if "text" not in args:
         return _verdict(reading.shown, {"visible": reading.shown}, {"visible": True})
     text = reading.readings[0] if reading.readings else None
-    contains = reading.shown and any(args["text"] in each for each in reading.readings)
-    return _verdict(contains, {"visible": reading.shown, "text": text}, {"visible": True, "text": args["text"]})
+    contains = reading.shown and any(_str(args, "text") in each for each in reading.readings)
+    return _verdict(contains, {"visible": reading.shown, "text": text}, {"visible": True, "text": _str(args, "text")})
 
 
 @dataclass(frozen=True)
@@ -572,15 +596,15 @@ def _verify_omits(reading: BodyReading, args: Args) -> Verdict:
     """What the subject must not carry — the one assertion the rest of the vocabulary cannot make."""
     document = reading.document
     if isinstance(document, Mapping):
-        hit = _resolve(document, args["subject"])
+        hit = _resolve(document, _str(args, "subject"))
         if hit.found:
             document = hit.value
     haystack = document if isinstance(document, str) else _rendered(document)
     found: list[str] = []
-    if "text" in args and args["text"] in haystack:
-        found.append(args["text"])
+    if "text" in args and _str(args, "text") in haystack:
+        found.append(_str(args, "text"))
     if "matches" in args:
-        hit = re.search(args["matches"], haystack)
+        hit = re.search(_str(args, "matches"), haystack)
         if hit is not None:
             found.append(hit.group(0))
     return _verdict(not found, {"found": found}, {"found": []})
@@ -639,9 +663,9 @@ def _read_stream(stream: str) -> Callable[[object, Args], StreamReading]:
 def _verify_printed(reading: StreamReading, args: Args) -> Verdict:
     """The command printed on the stream what the book says it prints."""
     missing = {key: args[key] for key in ("text", "matches") if key in args}
-    if "text" in args and args["text"] in reading.printed:
+    if "text" in args and _str(args, "text") in reading.printed:
         missing.pop("text")
-    if "matches" in args and re.search(args["matches"], reading.printed) is not None:
+    if "matches" in args and re.search(_str(args, "matches"), reading.printed) is not None:
         missing.pop("matches")
     return _verdict(not missing, reading.printed, missing)
 
@@ -650,11 +674,11 @@ def _verify_contents(reading: FileReading, args: Args) -> Verdict:
     """The file `subject` names holds the text or the pattern the book says it holds."""
     text = reading.text
     if text is None:
-        return _verdict(False, {"subject": args["subject"], "present": False}, {"subject": "present"})
+        return _verdict(False, {"subject": _str(args, "subject"), "present": False}, {"subject": "present"})
     missing = {key: args[key] for key in ("text", "matches") if key in args}
-    if "text" in args and args["text"] in text:
+    if "text" in args and _str(args, "text") in text:
         missing.pop("text")
-    if "matches" in args and re.search(args["matches"], text) is not None:
+    if "matches" in args and re.search(_str(args, "matches"), text) is not None:
         missing.pop("matches")
     return _verdict(not missing, text, missing)
 
