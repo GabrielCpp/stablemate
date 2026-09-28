@@ -1783,27 +1783,43 @@ def _linked_surface(
     return ""
 
 
+@dataclass(frozen=True, slots=True)
+class _JourneyStep:
+    """One node a flow's `steps:` names: its id, the link the book wrote, its type and its surface."""
+
+    ref: str
+    href: str
+    node_type: str
+    surface: str
+
+    def row(self) -> dict[str, str]:
+        """The step as the obligation row carries it."""
+        return {"ref": self.ref, "href": self.href, "nodeType": self.node_type, "surface": self.surface}
+
+
 def _journey_steps(
     node: dict[str, Any], nodes_by_id: dict[str, dict[str, Any]]
-) -> list[dict[str, str]]:
+) -> tuple[_JourneyStep, ...]:
     """The nodes a flow's `steps:` names, in the order the book wrote them."""
     resolved = {
         str(edge["href"]): str(edge["to"])
         for edge in node.get("edges") or []
         if edge.get("to") and edge.get("href")
     }
-    walk: list[dict[str, str]] = []
+    walk: list[_JourneyStep] = []
     for item in _values(node.get("bullets", {}).get("steps")):
         for _text, href in markdown.extract_refs(item).links:
             target_id = resolved.get(href, "")
             target = nodes_by_id.get(target_id, {}) if target_id else {}
-            walk.append({
-                "ref": target_id,
-                "href": href,
-                "nodeType": str(target.get("type") or ""),
-                "surface": str(target.get("surface") or ""),
-            })
-    return walk
+            walk.append(
+                _JourneyStep(
+                    ref=target_id,
+                    href=href,
+                    node_type=str(target.get("type") or ""),
+                    surface=str(target.get("surface") or ""),
+                )
+            )
+    return tuple(walk)
 
 
 def _family_root(node_id: str, owners: set[str], nodes_by_id: dict[str, dict[str, Any]]) -> str:
@@ -1830,30 +1846,70 @@ def _family_root(node_id: str, owners: set[str], nodes_by_id: dict[str, dict[str
     return current
 
 
-def _repeat(node: dict[str, Any], scope: tuple[str, ...]) -> dict[str, Any] | None:
+@dataclass(frozen=True, slots=True)
+class _RepeatTemplate:
+    """The name template a repeated node's locator compiles to: its text, the scope it iterates, and its compiled segments."""
+
+    template: str
+    iterates: str
+    segments: tuple[dict[str, str], ...]
+
+
+@dataclass(frozen=True, slots=True)
+class _Variants:
+    """The enumerable variant axis of a repeated node: the dot-path it varies on and each value."""
+
+    path: str
+    values: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class _RepeatContract:
+    """The contract of a node in a `one-per:` scope: what it repeats over, what its name binds, its template, what makes it distinct, and its variants."""
+
+    one_per: str
+    binds: tuple[str, ...]
+    template: _RepeatTemplate | None
+    unique_by: str
+    variants: _Variants | None
+
+    def row(self) -> dict[str, Any]:
+        """The contract as the obligation row carries it, leaving out what the node does not state."""
+        fields: dict[str, Any] = {"onePer": self.one_per, "binds": list(self.binds)}
+        if self.template is not None:
+            fields["template"] = self.template.template
+            fields["iterates"] = self.template.iterates
+            fields["segments"] = list(self.template.segments)
+        if self.unique_by:
+            fields["uniqueBy"] = self.unique_by
+        if self.variants is not None:
+            fields["variants"] = {"path": self.variants.path, "values": list(self.variants.values)}
+        return fields
+
+
+def _repeat(node: dict[str, Any], scope: tuple[str, ...]) -> _RepeatContract | None:
     """The compiled repeat contract for a node in a `one-per:` scope, or None."""
     own = locators_mod.repeat_of(node)
     scope = scope or ((own,) if own else ())
     if not scope:
         return None
-    repeat: dict[str, Any] = {"onePer": scope[-1], "binds": []}
     located = locators_mod.locator_for(node, scope=scope)
+    template, binds = None, ()
     if located["strategy"] == "template":
-        repeat.update(
-            {
-                "template": located["template"],
-                "iterates": located["iterates"],
-                "segments": located["segments"],
-                "binds": located["binds"],
-            }
+        template = _RepeatTemplate(
+            template=str(located["template"]),
+            iterates=str(located["iterates"]),
+            segments=tuple(located["segments"]),
         )
-    unique = locators_mod.unique_by_of(node)
-    if unique:
-        repeat["uniqueBy"] = unique
+        binds = tuple(str(bind) for bind in located["binds"])
     variants = locators_mod.variants_of(node)
-    if variants:
-        repeat["variants"] = variants
-    return repeat
+    return _RepeatContract(
+        one_per=scope[-1],
+        binds=binds,
+        template=template,
+        unique_by=locators_mod.unique_by_of(node),
+        variants=_Variants(path=str(variants["path"]), values=tuple(variants["values"])) if variants else None,
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -1861,11 +1917,11 @@ class _ObligationFrame:
     """What every obligation of one node shares: the surface it is reached on, the steps of a flow, whether it sits on a cli page, the locators, whether an `extends:` arm failed to resolve, and the repeat contract."""
 
     surface: str
-    steps: list[dict[str, str]]
+    steps: tuple[_JourneyStep, ...]
     on_cli_page: bool
     locators: dict[str, list[str]]
     extends_unresolved: bool
-    repeat: dict[str, Any] | None
+    repeat: _RepeatContract | None
 
     def row(self) -> dict[str, Any]:
         """The frame as the obligation row carries it, leaving out what the node does not state."""
@@ -1873,15 +1929,15 @@ class _ObligationFrame:
         if self.surface:
             fields["surface"] = self.surface
         if self.steps:
-            fields["steps"] = self.steps
+            fields["steps"] = [step.row() for step in self.steps]
         if self.on_cli_page:
             fields["onCliPage"] = True
         if self.extends_unresolved:
             fields["extendsUnresolved"] = True
         if self.locators:
             fields["locators"] = self.locators
-        if self.repeat:
-            fields["repeat"] = self.repeat
+        if self.repeat is not None:
+            fields["repeat"] = self.repeat.row()
         return fields
 
 
@@ -1889,7 +1945,7 @@ def _obligation_frame(
     node: dict[str, Any], scope: tuple[str, ...], nodes_by_id: dict[str, dict[str, Any]] | None
 ) -> _ObligationFrame:
     """The frame every obligation of *node* shares."""
-    surface, steps = "", []
+    surface, steps = "", ()
     if nodes_by_id is not None and node.get("type") == "flow":
         surface = _linked_surface(node, node.get("bullets", {}).get("end"), nodes_by_id)
         steps = _journey_steps(node, nodes_by_id)
