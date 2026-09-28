@@ -87,10 +87,10 @@ def test_a_claim_no_run_observes_is_the_books_to_restate(app: Callable[[str], Pa
 
 def test_a_cli_page_whose_binary_the_repo_opts_into_no_qa_tool_cannot_be_invoked(app: Callable[[str], Path]) -> None:
     repo = app("tally-cli")
-    opted_in = [problem for problem in book_problems(repo, "tally") if "no run can invoke" in problem]
+    uninvokable_while_opted_in = [problem for problem in book_problems(repo, "tally") if "no run can invoke" in problem]
     _drop_lines(repo / "agents.yml", "- python3")
 
-    assert opted_in == []
+    assert uninvokable_while_opted_in == []
     assert [problem for problem in book_problems(repo, "tally") if "no run can invoke" in problem] == [
         f"{COMMANDS.as_posix()}: no run can invoke `python3`, because this repository opts no QA tool of that name in. "
         + UNINVOKABLE_FIX
