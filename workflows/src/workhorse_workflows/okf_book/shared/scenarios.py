@@ -65,8 +65,8 @@ class ScenarioOutcome(BaseModel):
 
     def failure_lines(self) -> tuple[str, ...]:
         """Every failed check, then the last line of the run's own message."""
-        last = self.message.strip().splitlines()[-1:]
-        return (*(check.failure_line() for check in self.failed_checks), *last)
+        message_last_line = self.message.strip().splitlines()[-1:]
+        return (*(check.failure_line() for check in self.failed_checks), *message_last_line)
 
     def failed_claim(self, plan_source: str) -> str:
         """The obligation whose compiled lines in *plan_source* the run's traceback stopped in, or nothing when it stopped in none."""
