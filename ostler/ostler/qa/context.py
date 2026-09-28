@@ -38,7 +38,7 @@ from ostler.qa.obligation_frame import (
 from ostler.qa.outcome import QaOutcome
 from ostler.qa.packet_rows import (
     HealthRow,
-    Variants,
+    RepeatContract,
     relation_fanout_warnings,
     resolve_groundings,
 )
@@ -619,17 +619,8 @@ def render_obligations(
         if locators:
             for key, values in sorted(obligation.get("locators", {}).items()):
                 lines.append(f"  - {key}: {'; '.join(values)}")
-            repeat = obligation.get("repeat")
-            if repeat:
-                parts = [f"one per `{repeat['onePer']}`"]
-                if repeat.get("binds"):
-                    parts.append("binds " + ", ".join(f"`{b}`" for b in repeat["binds"]))
-                if repeat.get("uniqueBy"):
-                    parts.append(f"unique by `{repeat['uniqueBy']}`")
-                variants = Variants.parse(repeat.get("variants"))
-                if variants is not None:
-                    parts.append(f"variants `{variants.path}` = " + " | ".join(variants.values))
-                lines.append(f"  - repeated: {'; '.join(parts)}")
+            if obligation.get("repeat"):
+                lines.append(f"  - repeated: {_render_repeat(RepeatContract.parse(obligation['repeat']))}")
         for entry in obligation.get("judgment", []):
             rules = "; ".join(entry.get("rules", []))
             lines.append(f"  - judgment: `{entry['concept']}`" + (f" — {rules}" if rules else ""))
@@ -640,6 +631,18 @@ def render_obligations(
         for entry in obligation.get("unspecified", []):
             lines.append(f"  - unspecified (resolved by design): {entry['text']}")
     return lines
+
+
+def _render_repeat(repeat: RepeatContract) -> str:
+    """One line naming what a repeated obligation repeats over, binds, is unique by and varies over."""
+    parts = [f"one per `{repeat.one_per}`"]
+    if repeat.binds:
+        parts.append("binds " + ", ".join(f"`{bind}`" for bind in repeat.binds))
+    if repeat.unique_by:
+        parts.append(f"unique by `{repeat.unique_by}`")
+    if repeat.variants is not None:
+        parts.append(f"variants `{repeat.variants.path}` = " + " | ".join(repeat.variants.values))
+    return "; ".join(parts)
 
 
 def select_obligations(
