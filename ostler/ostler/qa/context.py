@@ -7,7 +7,7 @@ import json
 import re
 import subprocess
 from collections.abc import Callable, Iterable, Sequence
-from dataclasses import dataclass, replace
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -27,6 +27,15 @@ from ostler.qa.dispatch import owes_live_evidence
 from ostler.qa import fixtures as fixtures_mod
 from ostler.qa.compile import annotate_deferred_obligations
 from ostler.qa.outcome import QaOutcome
+from ostler.qa.packet_rows import (
+    ObligationFrame,
+    bullet_values,
+    journey_steps,
+    missing_declared_checks,
+    relation_fanout,
+    repeat_contract,
+    resolve_groundings,
+)
 from ostler.qa.runbook import bullet_text
 from ostler.qa.owners import (
     ChangedUnit,
@@ -74,8 +83,6 @@ _EVENT_KEYS = ("emits", "consumes")
 _SHARED_INVARIANT_KEYS = frozenset(RELATION_KEYS) | frozenset(_EVENT_KEYS)
 
 _RELATION_SUBJECT_RE = re.compile(r"^([a-z0-9][a-z0-9._-]*)\s+—\s+(\S.*)$", re.DOTALL)
-
-_RELATION_FANOUT = 6
 
 _CLOSURE_REASON_KINDS = frozenset(
     {
@@ -377,32 +384,32 @@ def build_context(
         emitted = {
             value
             for node_id in selected
-            for value in _values(nodes_by_id[node_id].get("bullets", {}).get("emits"))
+            for value in bullet_values(nodes_by_id[node_id].get("bullets", {}).get("emits"))
         }
         consumed = {
             value
             for node_id in selected
-            for value in _values(nodes_by_id[node_id].get("bullets", {}).get("consumes"))
+            for value in bullet_values(nodes_by_id[node_id].get("bullets", {}).get("consumes"))
         }
         relation_values = {
             _relation_join_key(value)
             for node_id in selected
             for key in relation_keys
-            for value in _values(nodes_by_id[node_id].get("bullets", {}).get(key))
+            for value in bullet_values(nodes_by_id[node_id].get("bullets", {}).get(key))
         }
         for node_id, node in nodes_by_id.items():
             if node_id in selected:
                 continue
             bullets = node.get("bullets", {})
             reasons: list[Reason] = []
-            for value in _values(bullets.get("consumes")):
+            for value in bullet_values(bullets.get("consumes")):
                 if value in emitted:
                     reasons.append(Reason(ReasonKind.EVENT_CONSUMER, value))
-            for value in _values(bullets.get("emits")):
+            for value in bullet_values(bullets.get("emits")):
                 if value in consumed:
                     reasons.append(Reason(ReasonKind.EVENT_PRODUCER, value))
             for key in relation_keys:
-                for value in _values(bullets.get(key)):
+                for value in bullet_values(bullets.get(key)):
                     join = _relation_join_key(value)
                     if join in relation_values:
                         reasons.append(Reason(relation_reason_kind(key), join))
@@ -424,9 +431,9 @@ def build_context(
             {
                 "concept": target,
                 "title": concept.get("title") or target,
-                "rules": _values(bullets.get("rule")),
-                "prefers": _values(bullets.get("prefers")),
-                "deprecates": _values(bullets.get("deprecates")),
+                "rules": bullet_values(bullets.get("rule")),
+                "prefers": bullet_values(bullets.get("prefers")),
+                "deprecates": bullet_values(bullets.get("deprecates")),
             }
         )
         if target not in contracts and target not in journeys:
@@ -446,12 +453,12 @@ def build_context(
         if item["impacted"]
     ]
     selected_nodes = {node_id: nodes_by_id[node_id] for node_id in sorted(selected)}
-    grounded, dangling = _resolve_groundings(
+    grounded, dangling = resolve_groundings(
         selected_nodes, lambda ref: _grounding_for_ref(root, base, head, ref, repositories_by_id, book_root)
     )
     health.extend(row.row() for row in dangling)
     for node_id, node in selected_nodes.items():
-        health.extend(row.row() for row in _missing_declared_checks(node_id, node))
+        health.extend(row.row() for row in missing_declared_checks(node_id, node))
     demoted_symbols: frozenset[str] | set[str] = shared_symbols
     required_contracts = {
         node_id
@@ -495,7 +502,7 @@ def build_context(
                 for node_id in contracts
                 if _is_required(node_id, direct_reasons, grounded, shared_files, demoted_symbols)
             }
-        health.extend(row.row() for row in _relation_fanout(subjects_by_node, required_subjects))
+        health.extend(row.row() for row in relation_fanout(subjects_by_node, required_subjects))
     fixture_provides = _fixture_provides_index(nodes_by_id)
     fixture_undetermined = _fixture_undetermined_index(nodes_by_id)
     obligations = [
@@ -1093,12 +1100,6 @@ def _git(root: Path, *args: str) -> str:
     return _git_bytes(root, *args).decode("utf-8", errors="replace")
 
 
-def _values(value: Any) -> list[str]:
-    if isinstance(value, list):
-        return [str(item) for item in value]
-    return [str(value)] if value else []
-
-
 def relation_subject(value: str) -> tuple[str | None, str]:
     """Split a relation bullet into the subject it names and the claim it makes."""
     match = _RELATION_SUBJECT_RE.match(value.strip())
@@ -1127,7 +1128,7 @@ def _cli_binaries(nodes_by_id: dict[str, dict[str, Any]]) -> dict[str, str]:
     for node in nodes_by_id.values():
         if node.get("type") != "cli" or node.get("kind") != "file":
             continue
-        values = _values(node.get("bullets", {}).get("binary"))
+        values = bullet_values(node.get("bullets", {}).get("binary"))
         binary = bullet_text(values[0]) if values else ""
         if binary:
             binaries[str(node["path"])] = binary
@@ -1161,101 +1162,14 @@ def _named_subjects(node: dict[str, Any]) -> set[str]:
     subjects = {
         subject
         for key in RELATION_KEYS
-        for value in _values(bullets.get(key))
+        for value in bullet_values(bullets.get(key))
         if (subject := relation_subject(value)[0]) is not None
     }
     for key in _EVENT_KEYS:
-        for value in _values(bullets.get(key)):
+        for value in bullet_values(bullets.get(key)):
             subject, _ = relation_subject(value)
             subjects.add(subject if subject is not None else value.strip())
     return {subject for subject in subjects if subject}
-
-
-@dataclass(frozen=True, slots=True)
-class _HealthRow:
-    """One health finding about the book, as the packet's health lists it once serialized."""
-
-    kind: str
-    severity: str
-    message: str
-    node: str = ""
-    ref: str = ""
-    key: str = ""
-
-    def row(self) -> dict[str, str]:
-        """The finding as the packet lists it, leaving out the fields it does not name."""
-        named = {"node": self.node, "ref": self.ref, "key": self.key}
-        return {"kind": self.kind, "severity": self.severity, **{name: value for name, value in named.items() if value}, "message": self.message}
-
-
-def _resolve_groundings(
-    nodes: dict[str, dict[str, Any]], resolves: Callable[[str], bool]
-) -> tuple[set[str], list[_HealthRow]]:
-    """The nodes with a code citation that resolves, and a health row per citation that resolves nowhere. Each distinct citation is resolved once."""
-    grounded: set[str] = set()
-    dangling: list[_HealthRow] = []
-    ref_resolves: dict[str, bool] = {}
-    for node_id, node in nodes.items():
-        for normalized in refs_mod.code_refs(node.get("bullets", {}).get("code")):
-            if normalized not in ref_resolves:
-                ref_resolves[normalized] = resolves(normalized)
-            if ref_resolves[normalized]:
-                grounded.add(node_id)
-            else:
-                dangling.append(
-                    _HealthRow(
-                        kind="dangling-grounding",
-                        severity="error",
-                        node=node_id,
-                        ref=normalized,
-                        message="code grounding resolves in neither base nor head",
-                    )
-                )
-    return grounded, dangling
-
-
-def _missing_declared_checks(node_id: str, node: dict[str, Any]) -> list[_HealthRow]:
-    """A health row per normative claim of a checked node type that declares no check to fulfil it."""
-    node_type = str(node.get("type", ""))
-    if not registry.check_keys(node_type):
-        return []
-    node_bullets = node.get("bullets", {})
-    combiners = {int(pos): str(word) for pos, word in (node.get("combiners") or {}).items()}
-    _, checks_per_bullet = registry.attributed_checks(node_type, node.get("bulletOrder") or [], combiners)
-    return [
-        _HealthRow(
-            kind="missing-declared-check",
-            severity="warning",
-            node=node_id,
-            key=key,
-            message=f"impacted contract's `{key}:` claim declares no `verify:` check to fulfil it",
-        )
-        for key in registry.normative_keys(node_type)
-        for index in range(1, len(_values(node_bullets.get(key))) + 1)
-        if not checks_per_bullet.get((key, index))
-    ]
-
-
-def _relation_fanout(subjects_by_node: dict[str, set[str]], required_subjects: set[str]) -> list[_HealthRow]:
-    """A health row per required relation subject that more nodes name than a change can owe evidence for."""
-    owners_by_subject: dict[str, list[str]] = {}
-    for node_id, subjects in subjects_by_node.items():
-        for subject in subjects & required_subjects:
-            owners_by_subject.setdefault(subject, []).append(node_id)
-    return [
-        _HealthRow(
-            kind="relation-fanout",
-            severity="warning",
-            ref=subject,
-            message=(
-                f"relation subject `{subject}` binds {len(owners_by_subject[subject])} nodes; a change"
-                " reaching any of them owes live evidence for all of them, which"
-                " usually means the subject is named more broadly than the record"
-            ),
-        )
-        for subject in sorted(required_subjects)
-        if len(owners_by_subject.get(subject, [])) > _RELATION_FANOUT
-    ]
 
 
 def _merge_snapshot_nodes(
@@ -1287,7 +1201,7 @@ def _as_ref(candidate: str) -> str:
 def _verification_refs(node: dict[str, Any]) -> list[str]:
     """Every test a node's ``tests:`` bullets cite, as ``path`` or ``path::name``."""
     refs: list[str] = []
-    for value in _values(node.get("bullets", {}).get("tests")):
+    for value in bullet_values(node.get("bullets", {}).get("tests")):
         spans = markdown.all_code_spans(value)
         if spans:
             found = [_as_ref(span) for span in spans]
@@ -1552,7 +1466,7 @@ def _fixture_provides_closure(
             head = str(entry.get("headline", "")).partition("—")[0].split()
             if head:
                 stated[head[0]] = entry.get("properties") or {}
-        for value in _values(node.get("bullets", {}).get("provides")):
+        for value in bullet_values(node.get("bullets", {}).get("provides")):
             head = value.partition("—")[0].split()
             if not head:
                 continue
@@ -1686,9 +1600,9 @@ def _locators(node: dict[str, Any]) -> dict[str, list[str]]:
     declared = registry.declared_keys(node.get("type", ""))
     bullets = node.get("bullets", {})
     return {
-        _LOCATOR_KEY_RENAME.get(key, key): _values(bullets.get(key))
+        _LOCATOR_KEY_RENAME.get(key, key): bullet_values(bullets.get(key))
         for key in _LOCATOR_KEYS
-        if key in declared and _values(bullets.get(key))
+        if key in declared and bullet_values(bullets.get(key))
     }
 
 
@@ -1768,7 +1682,7 @@ def _linked_surface(
     """The surface of the node *value*'s own links point at — "" when they point at none."""
     hrefs = {
         href
-        for item in _values(value)
+        for item in bullet_values(value)
         for _text, href in markdown.extract_refs(item).links
     }
     if not hrefs:
@@ -1781,45 +1695,6 @@ def _linked_surface(
         if target and target.get("surface"):
             return str(target["surface"])
     return ""
-
-
-@dataclass(frozen=True, slots=True)
-class _JourneyStep:
-    """One node a flow's `steps:` names: its id, the link the book wrote, its type and its surface."""
-
-    ref: str
-    href: str
-    node_type: str
-    surface: str
-
-    def row(self) -> dict[str, str]:
-        """The step as the obligation row carries it."""
-        return {"ref": self.ref, "href": self.href, "nodeType": self.node_type, "surface": self.surface}
-
-
-def _journey_steps(
-    node: dict[str, Any], nodes_by_id: dict[str, dict[str, Any]]
-) -> tuple[_JourneyStep, ...]:
-    """The nodes a flow's `steps:` names, in the order the book wrote them."""
-    resolved = {
-        str(edge["href"]): str(edge["to"])
-        for edge in node.get("edges") or []
-        if edge.get("to") and edge.get("href")
-    }
-    walk: list[_JourneyStep] = []
-    for item in _values(node.get("bullets", {}).get("steps")):
-        for _text, href in markdown.extract_refs(item).links:
-            target_id = resolved.get(href, "")
-            target = nodes_by_id.get(target_id, {}) if target_id else {}
-            walk.append(
-                _JourneyStep(
-                    ref=target_id,
-                    href=href,
-                    node_type=str(target.get("type") or ""),
-                    surface=str(target.get("surface") or ""),
-                )
-            )
-    return tuple(walk)
 
 
 def _family_root(node_id: str, owners: set[str], nodes_by_id: dict[str, dict[str, Any]]) -> str:
@@ -1846,133 +1721,14 @@ def _family_root(node_id: str, owners: set[str], nodes_by_id: dict[str, dict[str
     return current
 
 
-_SEGMENT_FIELDS = {"literal": "text", "bind": "path", "opaque": "expr"}
-
-
-@dataclass(frozen=True, slots=True)
-class _Segment:
-    """One compiled piece of a name template: literal text, a bound scope path, or an opaque expression."""
-
-    kind: str
-    value: str
-
-    @classmethod
-    def parse(cls, raw: dict[str, Any]) -> _Segment:
-        """The segment a compiled locator carries, refusing a kind the compiler does not emit."""
-        kind = str(raw.get("kind", ""))
-        field = _SEGMENT_FIELDS.get(kind)
-        if field is None or not isinstance(raw.get(field), str):
-            raise ValueError(f"a template segment has an unknown shape: {raw!r}")
-        return cls(kind=kind, value=raw[field])
-
-    def row(self) -> dict[str, str]:
-        """The segment as the obligation row carries it."""
-        return {"kind": self.kind, _SEGMENT_FIELDS[self.kind]: self.value}
-
-
-@dataclass(frozen=True, slots=True)
-class _RepeatTemplate:
-    """The name template a repeated node's locator compiles to: its text, the scope it iterates, and its compiled segments."""
-
-    template: str
-    iterates: str
-    segments: tuple[_Segment, ...]
-
-
-@dataclass(frozen=True, slots=True)
-class _Variants:
-    """The enumerable variant axis of a repeated node: the dot-path it varies on and each value."""
-
-    path: str
-    values: tuple[str, ...]
-
-
-@dataclass(frozen=True, slots=True)
-class _RepeatContract:
-    """The contract of a node in a `one-per:` scope: what it repeats over, what its name binds, its template, what makes it distinct, and its variants."""
-
-    one_per: str
-    binds: tuple[str, ...]
-    template: _RepeatTemplate | None
-    unique_by: str
-    variants: _Variants | None
-
-    def row(self) -> dict[str, Any]:
-        """The contract as the obligation row carries it, leaving out what the node does not state."""
-        fields: dict[str, Any] = {"onePer": self.one_per, "binds": list(self.binds)}
-        if self.template is not None:
-            fields["template"] = self.template.template
-            fields["iterates"] = self.template.iterates
-            fields["segments"] = [segment.row() for segment in self.template.segments]
-        if self.unique_by:
-            fields["uniqueBy"] = self.unique_by
-        if self.variants is not None:
-            fields["variants"] = {"path": self.variants.path, "values": list(self.variants.values)}
-        return fields
-
-
-def _repeat(node: dict[str, Any], scope: tuple[str, ...]) -> _RepeatContract | None:
-    """The compiled repeat contract for a node in a `one-per:` scope, or None."""
-    own = locators_mod.repeat_of(node)
-    scope = scope or ((own,) if own else ())
-    if not scope:
-        return None
-    located = locators_mod.locator_for(node, scope=scope)
-    template, binds = None, ()
-    if located["strategy"] == "template":
-        template = _RepeatTemplate(
-            template=str(located["template"]),
-            iterates=str(located["iterates"]),
-            segments=tuple(_Segment.parse(segment) for segment in located["segments"]),
-        )
-        binds = tuple(str(bind) for bind in located["binds"])
-    variants = locators_mod.variants_of(node)
-    return _RepeatContract(
-        one_per=scope[-1],
-        binds=binds,
-        template=template,
-        unique_by=locators_mod.unique_by_of(node),
-        variants=_Variants(path=str(variants["path"]), values=tuple(variants["values"])) if variants else None,
-    )
-
-
-@dataclass(frozen=True, slots=True)
-class _ObligationFrame:
-    """What every obligation of one node shares: the surface it is reached on, the steps of a flow, whether it sits on a cli page, the locators, whether an `extends:` arm failed to resolve, and the repeat contract."""
-
-    surface: str
-    steps: tuple[_JourneyStep, ...]
-    on_cli_page: bool
-    locators: dict[str, list[str]]
-    extends_unresolved: bool
-    repeat: _RepeatContract | None
-
-    def row(self) -> dict[str, Any]:
-        """The frame as the obligation row carries it, leaving out what the node does not state."""
-        fields: dict[str, Any] = {}
-        if self.surface:
-            fields["surface"] = self.surface
-        if self.steps:
-            fields["steps"] = [step.row() for step in self.steps]
-        if self.on_cli_page:
-            fields["onCliPage"] = True
-        if self.extends_unresolved:
-            fields["extendsUnresolved"] = True
-        if self.locators:
-            fields["locators"] = self.locators
-        if self.repeat is not None:
-            fields["repeat"] = self.repeat.row()
-        return fields
-
-
 def _obligation_frame(
     node: dict[str, Any], scope: tuple[str, ...], nodes_by_id: dict[str, dict[str, Any]] | None
-) -> _ObligationFrame:
+) -> ObligationFrame:
     """The frame every obligation of *node* shares."""
     surface, steps = "", ()
     if nodes_by_id is not None and node.get("type") == "flow":
         surface = _linked_surface(node, node.get("bullets", {}).get("end"), nodes_by_id)
-        steps = _journey_steps(node, nodes_by_id)
+        steps = journey_steps(node, nodes_by_id)
     locators = _locators(node)
     extends_unresolved = False
     if nodes_by_id is not None and node.get("type") in ("interaction", "invocation"):
@@ -1983,13 +1739,13 @@ def _obligation_frame(
             extends_unresolved = extends_malformed
     if nodes_by_id is not None and node.get("type") == "invocation":
         locators = {**_endpoint_address(node, nodes_by_id), **locators}
-    return _ObligationFrame(
+    return ObligationFrame(
         surface=surface,
         steps=steps,
         on_cli_page=_page_type(node) == "cli",
         locators=locators,
         extends_unresolved=extends_unresolved,
-        repeat=_repeat(node, scope),
+        repeat=repeat_contract(node, scope),
     )
 
 
@@ -2085,7 +1841,7 @@ def _obligations(
     base["docPosition"] = [node_line, -1]
     output = [base]
     for key in registry.normative_keys(str(node.get("type", ""))):
-        for index, requirement in enumerate(_values(node.get("bullets", {}).get(key)), start=1):
+        for index, requirement in enumerate(bullet_values(node.get("bullets", {}).get(key)), start=1):
             obligation = {
                 **base,
                 "id": f"okf:{representative}:{key.replace(' ', '-')}:{index}",
@@ -2174,7 +1930,7 @@ def _obligations(
             "text": value,
             "citation": next((href for _t, href in markdown.extract_refs(value).links), ""),
         }
-        for value in _values(node.get("bullets", {}).get("unspecified"))
+        for value in bullet_values(node.get("bullets", {}).get("unspecified"))
     ]
     if unspecified:
         base["unspecified"] = unspecified
