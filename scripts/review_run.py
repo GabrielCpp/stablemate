@@ -1,4 +1,4 @@
-"""One review of a change: the batches its diff is cut into, the model that reads them, and what the stop hook answers with."""
+"""One review of a change: the batches its diff is cut into and the model that reads them."""
 
 from __future__ import annotations
 
@@ -23,33 +23,6 @@ class PendingChange:
     base_tree: str
     tree: str
     paths: tuple[str, ...]
-
-
-@dataclass(frozen=True)
-class Block:
-    reason: str
-
-    def payload(self) -> dict[str, str]:
-        return {"decision": "block", "reason": self.reason}
-
-
-@dataclass(frozen=True)
-class GiveUp:
-    message: str
-
-    def payload(self) -> dict[str, str]:
-        return {"systemMessage": self.message}
-
-
-@dataclass(frozen=True)
-class Notice:
-    message: str
-
-    def payload(self) -> dict[str, str]:
-        return {"systemMessage": self.message}
-
-
-type Outcome = Block | GiveUp | Notice | None
 
 
 def model_for(state: GateState) -> str:

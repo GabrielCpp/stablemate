@@ -13,13 +13,11 @@ import strict_scope
 from claude_reviewer import claude_reviewer
 from review_backlog import walk_backlog, with_skip_notices
 from review_git import git, is_ancestor, snapshot_tree, tree_exists
+from review_outcome import Block, GiveUp, Outcome
 from review_run import (
     ROUNDS_BEFORE_TIEBREAK,
     TIEBREAK_MODEL,
     BatchedVerdict,
-    Block,
-    GiveUp,
-    Outcome,
     PendingChange,
     model_for,
     plan_review,

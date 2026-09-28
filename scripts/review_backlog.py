@@ -7,17 +7,8 @@ from pathlib import Path
 
 import strict_scope
 from review_git import first_parent_commits, git, is_ancestor
-from review_run import (
-    Block,
-    GiveUp,
-    Notice,
-    Outcome,
-    PendingChange,
-    model_for,
-    plan_review,
-    run_batches,
-    unfinished_reason,
-)
+from review_outcome import Block, GiveUp, Notice, Outcome
+from review_run import PendingChange, model_for, plan_review, run_batches, unfinished_reason
 from review_state import HOOK_STATE_FILE, GateState, save_state
 from review_verdict import Reviewer, Verdict
 

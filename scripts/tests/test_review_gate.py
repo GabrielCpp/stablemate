@@ -12,7 +12,7 @@ import review_gate
 import review_run
 from conftest import git, strict_repo
 from review_gate import StopEvent
-from review_run import Block, GiveUp, Notice
+from review_outcome import Block, GiveUp, Notice
 from review_state import BASE_STATE_FILE, EMPTY_STATE, HOOK_STATE_FILE, GateState, load_state, save_state
 from review_verdict import Finding, ReviewError, Verdict
 

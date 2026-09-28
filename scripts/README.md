@@ -20,7 +20,8 @@ Repo-level checks that no package ships. Each guard is a module with a `main()`,
 - `review_diff.py`: cutting a diff into reviewer-sized batches.
 - `review_gate.py`: the Stop hook that holds an agent until a fresh reviewer passes its diff.
 - `review_git.py`: the git reads the review gate makes, none of which touch the live index.
-- `review_run.py`: one review of a change: its batches, the model that reads them, and the answer the stop hook gives.
+- `review_outcome.py`: what the stop hook answers with.
+- `review_run.py`: one review of a change: the batches its diff is cut into and the model that reads them.
 - `review_state.py`: what the review gate remembers between stops.
 - `review_verdict.py`: the reviewer's verdict and how the gate reads it.
 - `strict_scope.py`: which paths the strict gate covers, from `[tool.stablemate.strict]`.
