@@ -34,7 +34,7 @@ HARMLESS_REDIRECT = re.compile(r"(?<=\s)2>(?:&1|/dev/null)(?=\s|\||$)")
 TIMEOUT_PROGRAM = "timeout"
 DURATION = re.compile(r"\d+(?:\.\d+)?[smhd]?")
 PIPE = "|"
-PUNCTUATION = frozenset("();<>|&")
+SHELL_OPERATOR_CHARS = frozenset("();<>|&")
 
 
 def _unquoted_hazard(command: str) -> str | None:
@@ -171,7 +171,7 @@ def shell_denial(command: str, policy: Policy) -> str | None:
         tokens = _tokens(command)
     except ValueError as error:
         return f"the command does not parse: {error}"
-    chaining_tokens = [token for token in tokens if token != PIPE and set(token) <= PUNCTUATION]
+    chaining_tokens = [token for token in tokens if token != PIPE and set(token) <= SHELL_OPERATOR_CHARS]
     if chaining_tokens:
         return f"the command joins or redirects with `{chaining_tokens[0]}`"
     for stage in _stages(tokens):
