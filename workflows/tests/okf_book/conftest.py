@@ -33,8 +33,9 @@ def rendered_repos(monkeypatch: pytest.MonkeyPatch) -> list[Path]:
     """The repos a book commit rendered the agent files of, with farrier itself left out of every test."""
     rendered: list[Path] = []
 
-    def _render(root: Path, _logger: object) -> None:
+    def _render(root: Path) -> str:
         rendered.append(root)
+        return ""
 
     monkeypatch.setattr(book_flow, "render_agent_files", _render)
     return rendered

@@ -25,9 +25,14 @@ class BookFlow(Workflow):
         return Path(self.parent_records_dir) if self.parent_records_dir else self.run_dir
 
     def _commit(self, message: str, *pathspecs: str) -> str:
-        """Render the repo's agent files, then commit exactly *pathspecs*. Returns what the repo said when it refused, and empty when it did not."""
-        render_agent_files(self.root, self.logger)
-        return commit_returning_refusal(self.root, message, *pathspecs)
+        """Render the repo's agent files, then commit exactly *pathspecs*. Returns what the repo said when it refused, and why the render failed when it did, and empty when the commit landed."""
+        render_failure = render_agent_files(self.root)
+        refusal = commit_returning_refusal(self.root, message, *pathspecs)
+        if render_failure:
+            self.logger.warning("%s", render_failure)
+            if refusal:
+                return f"{refusal}\n\nThe agent files were not rendered before this commit. {render_failure}"
+        return refusal
 
     def _await_operator_on_refused_commit[**P](self, refusal: str, retry: Callable[P, Transition], *args: P.args, **kwargs: P.kwargs) -> Await[P]:
         """Stop at the operator when the repo refused a book commit. Their answer tries the same commit again."""
