@@ -93,3 +93,10 @@ def test_codex_hook_notices_neither_fail_nor_end_the_turn() -> None:
     assert state.diagnostics == []
     assert not state.timed_out
     assert state.result_text == "DONE"
+
+
+if __name__ == "__main__":
+    import subprocess
+    import sys
+
+    raise SystemExit(subprocess.call([sys.executable, "-m", "pytest", "-q", __file__]))
