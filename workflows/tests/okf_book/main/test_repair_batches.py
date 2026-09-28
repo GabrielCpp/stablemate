@@ -76,7 +76,8 @@ def test_pages_whose_fix_goes_on_a_journey_are_packed_first_with_the_journey_pag
     pages = [_page(tmp_path, f"{name}.md", cites=False) for name in ("a", "b", "c")]
     journey = JourneyPages(pages=(flow,), flow_folder=f"{BOOK}/flows")
 
-    batches = pack_repairs(tmp_path, {page: (PageProblem(page, "p"),) for page in pages}, journey, frozenset(pages[1:]), ceiling=2 * ONE_PAGE_TOKENS).batches
+    by_page: dict[str, tuple[PageProblem, ...]] = {page: (PageProblem(page, "p", needs_journey=page != pages[0]),) for page in pages}
+    batches = pack_repairs(tmp_path, by_page, journey, ceiling=2 * ONE_PAGE_TOKENS).batches
 
     assert [(batch.page_paths, batch.journey) for batch in batches] == [
         ((pages[1],), journey),
@@ -92,7 +93,7 @@ def test_each_journey_batch_may_write_one_new_flow_page_named_when_it_is_planned
     pages = [_page(tmp_path, f"{folder}/add.md", cites=False) for folder in ("ops", "admin")]
     journey = JourneyPages(pages=(flow,), flow_folder=f"{BOOK}/flows")
 
-    batches = pack_repairs(tmp_path, {page: (PageProblem(page, "p"),) for page in pages}, journey, frozenset(pages), ceiling=2 * ONE_PAGE_TOKENS).batches
+    batches = pack_repairs(tmp_path, {page: (PageProblem(page, "p", needs_journey=True),) for page in pages}, journey, ceiling=2 * ONE_PAGE_TOKENS).batches
 
     assert [batch.new_flow_page for batch in batches] == [f"{BOOK}/flows/add-2.md", f"{BOOK}/flows/add-3.md"]
     assert batches[0].owns(f"{BOOK}/flows/add-2.md")
@@ -105,7 +106,7 @@ def test_a_page_over_the_ceiling_with_the_journey_pages_is_reported_with_them(tm
     page = _page(tmp_path, "a.md", cites=False)
     journey = JourneyPages(pages=(flow,), flow_folder=f"{BOOK}/flows")
 
-    packed = pack_repairs(tmp_path, {page: (PageProblem(page, "p"),)}, journey, frozenset({page}), ceiling=BOOK_HOLDS * PAGE_TOKENS + 1)
+    packed = pack_repairs(tmp_path, {page: (PageProblem(page, "p", needs_journey=True),)}, journey, ceiling=BOOK_HOLDS * PAGE_TOKENS + 1)
 
     assert packed.batches == ()
     assert packed.oversized_parts[0].reason.endswith("split the page or the flow pages")
@@ -124,17 +125,34 @@ def test_a_page_that_cites_one_declaration_costs_that_declaration_not_the_file(t
     assert batch.tokens == BOOK_HOLDS * PAGE_TOKENS + 1 + SOURCE_READS * -(-len(declaration) // CHARS_PER_TOKEN)
 
 
-def test_a_journey_batch_counts_the_flow_pages_whole_and_the_headings_of_the_entry_pages(tmp_path: Path) -> None:
+def test_a_journey_batch_counts_the_headings_of_each_journey_page_and_the_largest_flow_page_whole(tmp_path: Path) -> None:
     flow = _page(tmp_path, "flows/add.md", cites=False)
+    small_flow = tmp_path / BOOK / "flows" / "split.md"
+    _ = small_flow.write_text("# split\n\nx\n", encoding="utf-8")
     entry = _page(tmp_path, "ledger.md", cites=False)
     page = _page(tmp_path, "a.md", cites=False)
-    journey = JourneyPages(pages=(entry, flow), flow_folder=f"{BOOK}/flows")
+    journey = JourneyPages(pages=(entry, flow, f"{BOOK}/flows/split.md"), flow_folder=f"{BOOK}/flows")
 
-    batch = pack_repairs(tmp_path, {page: (PageProblem(page, "p"),)}, journey, frozenset({page})).batches[0]
+    batch = pack_repairs(tmp_path, {page: (PageProblem(page, "p", needs_journey=True),)}, journey).batches[0]
 
-    heading_tokens = -(-len("# ledger.md") // CHARS_PER_TOKEN)
-    assert batch.tokens == BOOK_HOLDS * PAGE_TOKENS + 1 + BOOK_HOLDS * PAGE_TOKENS + BOOK_HOLDS * heading_tokens
+    entry_headings = -(-len("# ledger.md") // CHARS_PER_TOKEN)
+    split_headings = -(-len("# split") // CHARS_PER_TOKEN)
+    assert batch.tokens == BOOK_HOLDS * PAGE_TOKENS + 1 + BOOK_HOLDS * PAGE_TOKENS + BOOK_HOLDS * (entry_headings + split_headings)
     assert batch.owns(entry)
+
+
+def test_a_page_s_problems_that_need_no_journey_are_packed_without_the_journey_pages(tmp_path: Path) -> None:
+    flow = _page(tmp_path, "flows/add.md", cites=False)
+    page = _page(tmp_path, "a.md", cites=False)
+    journey = JourneyPages(pages=(flow,), flow_folder=f"{BOOK}/flows")
+    on_no_flow, uncompilable = PageProblem(page, "on no flow", needs_journey=True), PageProblem(page, "does not compile")
+
+    batches = pack_repairs(tmp_path, {page: (on_no_flow, uncompilable)}, journey).batches
+
+    assert [(batch.pages[0].problems, batch.journey) for batch in batches] == [
+        ((on_no_flow.text,), journey),
+        ((uncompilable.text,), None),
+    ]
 
 
 def _server_page(root: Path, nodes: dict[str, int]) -> str:

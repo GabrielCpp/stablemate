@@ -14,7 +14,7 @@ from workhorse_workflows.okf_book.main.nodes.cited_lines import CitedFiles
 from workhorse_workflows.okf_book.main.nodes.journey import JourneyPages
 from workhorse_workflows.okf_book.main.nodes.page_sections import page_sections
 from workhorse_workflows.okf_book.main.nodes.repair_batch_models import OversizedPart, PackedRepairs, PageRepair, RepairBatch
-from workhorse_workflows.okf_book.main.nodes.repair_cost import PageCost, batch_tokens, journey_cost, text_cost
+from workhorse_workflows.okf_book.main.nodes.repair_cost import PageCost, batch_tokens, journey_costs, text_cost
 from workhorse_workflows.okf_book.main.nodes.turn_budget import SOURCE_AND_BOOK_CEILING_TOKENS
 from workhorse_workflows.okf_book.shared.page_check import PageProblem
 
@@ -109,8 +109,8 @@ class _PageSplitter:
 def _pack(
     files: CitedFiles, by_page: dict[str, tuple[PageProblem, ...]], ceiling: int, journey: JourneyPages | None
 ) -> PackedRepairs:
-    journey_costs = [journey_cost(files.root, journey, page) for page in journey.pages] if journey else []
-    splitter = _PageSplitter(files, journey_costs, ceiling, journey is not None)
+    read_journey = journey_costs(files.root, journey) if journey else []
+    splitter = _PageSplitter(files, read_journey, ceiling, journey is not None)
     batches: list[RepairBatch] = []
     oversized_parts: list[OversizedPart] = []
     filling_batch_units: list[PageCost] = []
@@ -119,12 +119,12 @@ def _pack(
         split = splitter.split_page(page, problems)
         oversized_parts.extend(split.oversized_parts)
         for unit in split.units:
-            if filling_batch_units and batch_tokens([*journey_costs, *filling_batch_units, unit]) > ceiling:
-                batches.append(_batch(files.root, journey_costs, filling_batch_units, journey, claimed_flow_pages))
+            if filling_batch_units and batch_tokens([*read_journey, *filling_batch_units, unit]) > ceiling:
+                batches.append(_batch(files.root, read_journey, filling_batch_units, journey, claimed_flow_pages))
                 filling_batch_units = []
             filling_batch_units.append(unit)
     if filling_batch_units:
-        batches.append(_batch(files.root, journey_costs, filling_batch_units, journey, claimed_flow_pages))
+        batches.append(_batch(files.root, read_journey, filling_batch_units, journey, claimed_flow_pages))
     return PackedRepairs(batches=tuple(batches), oversized_parts=tuple(oversized_parts))
 
 
@@ -132,16 +132,17 @@ def pack_repairs(
     root: Path,
     by_page: dict[str, tuple[PageProblem, ...]],
     journey: JourneyPages | None = None,
-    pages_needing_journey: frozenset[str] = frozenset(),
     ceiling: int = SOURCE_AND_BOOK_CEILING_TOKENS,
 ) -> PackedRepairs:
     """Pack the pages, in the order given, into batches each under `ceiling`, and set aside each page alone over it.
 
-    The pages in `pages_needing_journey` go first, into batches that also hold the journey pages and count
-    what the writer reads of them, since their fix goes on a flow or an entry page.
+    The problems whose fix goes on a flow or an entry page go first, into batches that also hold the
+    journey pages and count what the writer reads of them. A page's other problems go to batches
+    without them, so a large page with one such problem is not costed the journey pages in every
+    section.
     """
-    on_journey = {page: problems for page, problems in by_page.items() if journey and page in pages_needing_journey}
-    rest = {page: problems for page, problems in by_page.items() if page not in on_journey}
+    on_journey = {page: kept for page, problems in by_page.items() if journey and (kept := tuple(p for p in problems if p.needs_journey))}
+    rest = {page: kept for page, problems in by_page.items() if (kept := tuple(p for p in problems if not (journey and p.needs_journey)))}
     files = CitedFiles(root)
     journey_packed = _pack(files, on_journey, ceiling, journey)
     rest_packed = _pack(files, rest, ceiling, None)

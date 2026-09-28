@@ -22,7 +22,7 @@ import time
 from pathlib import Path
 
 from workhorse.pyflow import AgentTimeout, AgentTurnFailed, Continue, Done, WorkflowFailed
-from workhorse_workflows.okf_book.main.nodes.journey import journey_pages, pages_needing_journey
+from workhorse_workflows.okf_book.main.nodes.journey import journey_pages
 from workhorse_workflows.okf_book.main.nodes.repair_batches import pack_repairs, problems_by_page
 from workhorse_workflows.okf_book.main.nodes.repair_ledger import BatchTurn, RepairLedger, RepairRound
 from workhorse_workflows.okf_book.main.nodes.surface import Surface
@@ -103,7 +103,7 @@ class RepairBook(BookFlow):
         by_page: dict[str, tuple[PageProblem, ...]],
         problems: tuple[PageProblem, ...],
     ) -> Continue[...] | Done:
-        packed = pack_repairs(self.root, by_page, ledger.journey, pages_needing_journey(problems))
+        packed = pack_repairs(self.root, by_page, ledger.journey)
         reported = {part.subject for part in ledger.oversized_parts}
         oversized_parts = (*ledger.oversized_parts, *(part for part in packed.oversized_parts if part.subject not in reported))
         ledger = ledger.model_copy(update={"oversized_parts": oversized_parts})

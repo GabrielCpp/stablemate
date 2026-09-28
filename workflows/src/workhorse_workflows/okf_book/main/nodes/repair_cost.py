@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from workhorse_workflows.okf_book.main.nodes.cited_lines import CitedFiles
-from workhorse_workflows.okf_book.main.nodes.journey import JourneyPages
+from workhorse_workflows.okf_book.main.nodes.journey import JourneyPages, outline
 from workhorse_workflows.okf_book.main.nodes.repair_batch_models import PageRepair
 from workhorse_workflows.okf_book.main.nodes.turn_budget import BOOK_HOLDS, CHARS_PER_TOKEN, SOURCE_READS
 from workhorse_workflows.okf_book.shared.citations import citations_in
@@ -55,8 +55,13 @@ def batch_tokens(units: list[PageCost]) -> int:
     return sum(unit.own_tokens for unit in units) + SOURCE_READS * sum(sources.values())
 
 
-def journey_cost(root: Path, journey: JourneyPages, page: str) -> PageCost:
-    """What the writer reads of a journey page a batch may also change."""
-    path = root / page
-    text = path.read_text(encoding="utf-8") if path.is_file() else ""
-    return PageCost(PageRepair(page=page, problems=()), BOOK_HOLDS * tokens_of_chars(len(journey.read_by_writer(page, text))), {})
+def _read_cost(page: str, text: str) -> PageCost:
+    return PageCost(PageRepair(page=page, problems=()), BOOK_HOLDS * tokens_of_chars(len(text)), {})
+
+
+def journey_costs(root: Path, journey: JourneyPages) -> list[PageCost]:
+    """What the writer reads of the journey pages a batch may also change: the headings of each, and the largest flow page whole."""
+    texts = {page: (root / page).read_text(encoding="utf-8") if (root / page).is_file() else "" for page in journey.pages}
+    flows = [page for page in journey.flow_pages if page in texts]
+    extended = max(flows, key=lambda page: len(texts[page]), default=None)
+    return [_read_cost(page, text if page == extended else outline(text)) for page, text in texts.items()]

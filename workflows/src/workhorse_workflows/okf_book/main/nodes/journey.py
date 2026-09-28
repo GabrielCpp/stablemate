@@ -2,14 +2,12 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Iterable
 from difflib import SequenceMatcher
 from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict
 
 from workhorse_workflows.okf_book.shared.entries import book_dir, read_entries
-from workhorse_workflows.okf_book.shared.page_check import PageProblem
 
 FLOWS_FOLDER = "flows"
 _LINK = re.compile(r"\]\([^)\s]+\)")
@@ -18,10 +16,11 @@ _LINK = re.compile(r"\]\([^)\s]+\)")
 class JourneyPages(BaseModel):
     """The pages a fix that puts a page on a journey may change: the entry pages and the flow pages.
 
-    A batch counts each flow page whole, since the writer reads a flow whole to extend it. It counts
-    only the outline of an entry page, since the writer reads the headings to place a link and adds
-    no more than link lines there. A flow page written after the pages were listed is not one of
-    them, since no batch counted it. A later round reports it and leaves it for the book check.
+    A batch counts the outline of every one of them, since the writer reads the headings to find the
+    flow a page belongs on and to place a link, and adds no more than link lines to an entry page.
+    It counts the largest flow page whole once more, since the writer reads the one flow it extends
+    whole. A flow page written after the pages were listed is not one of them, since no batch
+    counted it. A later round reports it and leaves it for the book check.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -43,10 +42,6 @@ class JourneyPages(BaseModel):
     @property
     def entry_pages(self) -> tuple[str, ...]:
         return tuple(page for page in self.pages if not self.is_flow(page))
-
-    def read_by_writer(self, page: str, text: str) -> str:
-        """What the writer reads of the page: a flow page whole, the heading lines of an entry page."""
-        return text if self.is_flow(page) else outline(text)
 
 
 def outline(text: str) -> str:
@@ -76,7 +71,3 @@ def journey_pages(root: Path, service: str, uncommitted_at_start: frozenset[str]
         flow_folder=(folder / FLOWS_FOLDER).relative_to(root).as_posix(),
     )
 
-
-def pages_needing_journey(problems: Iterable[PageProblem]) -> frozenset[str]:
-    """The pages with a problem whose fix goes on a flow or an entry page."""
-    return frozenset(problem.page for problem in problems if problem.needs_journey)

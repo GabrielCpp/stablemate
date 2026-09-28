@@ -71,9 +71,10 @@ gives relative to the repository starts there.
   - `{{ page }}`
 {% endfor %}
 
-  Read a flow page whole before you extend it. On any other of these, add link lines and change
-  nothing else: read its headings with `rg -n '^#'`, and add the link under the heading it belongs
-  to. Code puts back such a page when a turn changed more than that.
+  Find the flow that walks near it by the flow pages' headings, read with `rg -n '^#'`, and read
+  only the flow you extend whole. On any page of these that is not a flow, add link lines and
+  change nothing else: add the link under the heading it belongs to. Code puts back such a page
+  when a turn changed more than that.
 {% endif %}
 - Do not edit `entries.md`. Code writes it.
 - Change no page but {% if flow_folder %}those above{% else %}yours{% endif %}. Code puts back every other change when the turn ends, so

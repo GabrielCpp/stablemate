@@ -47,11 +47,3 @@ def test_an_entry_page_change_is_only_links_when_every_added_line_holds_a_link_a
     after: str, only_links: bool
 ) -> None:
     assert adds_only_links("# Ledger\n\nprose\n", after) is only_links
-
-
-def test_a_writer_reads_a_flow_page_whole_and_only_the_headings_of_an_entry_page() -> None:
-    journey = JourneyPages(pages=(f"{BOOK}/ledger.md", f"{BOOK}/flows/add.md"), flow_folder=f"{BOOK}/flows")
-    text = "---\ntitle: x\n---\n# Ledger\n\nprose\n## Add\nmore\n"
-
-    assert journey.read_by_writer(f"{BOOK}/flows/add.md", text) == text
-    assert journey.read_by_writer(f"{BOOK}/ledger.md", text) == "# Ledger\n## Add"
