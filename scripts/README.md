@@ -16,9 +16,11 @@ Repo-level checks that no package ships. Each guard is a module with a `main()`,
 - `check_public.py`: the public/private split: no private project name in the tree or its history.
 - `claude_reviewer.py`: one read-only review turn on the claude CLI.
 - `private_names.py`: where the private-name denylist is read from.
+- `review_backlog.py`: walking a committed backlog too large to review at once, one reviewable commit range at a time.
 - `review_diff.py`: cutting a diff into reviewer-sized batches.
 - `review_gate.py`: the Stop hook that holds an agent until a fresh reviewer passes its diff.
 - `review_git.py`: the git reads the review gate makes, none of which touch the live index.
+- `review_run.py`: one review of a change: its batches, the model that reads them, and the answer the stop hook gives.
 - `review_state.py`: what the review gate remembers between stops.
 - `review_verdict.py`: the reviewer's verdict and how the gate reads it.
 - `strict_scope.py`: which paths the strict gate covers, from `[tool.stablemate.strict]`.

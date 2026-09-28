@@ -7,9 +7,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import pytest
+import review_diff
 import review_gate
+import review_run
 from conftest import git, strict_repo
-from review_gate import Block, GiveUp, StopEvent
+from review_gate import StopEvent
+from review_run import Block, GiveUp
 from review_state import BASE_STATE_FILE, EMPTY_STATE, HOOK_STATE_FILE, GateState, load_state, save_state
 from review_verdict import Finding, ReviewError, Verdict
 
@@ -80,7 +83,7 @@ def test_the_reviewer_reads_the_rubric_and_the_diff(tmp_path: Path) -> None:
     reviewer = FakeReviewer([[]])
     assert review_gate.hook_decision(repo, _stop(repo), reviewer) is None
     prompt, model = reviewer.calls[0]
-    assert model == review_gate.PRIMARY_MODEL
+    assert model == review_run.PRIMARY_MODEL
     assert "string-keyed-state" in prompt
     assert "+VALUE = 3" in prompt
 
@@ -180,10 +183,10 @@ def test_the_third_round_goes_to_the_tiebreak_model(tmp_path: Path) -> None:
         review_gate.hook_decision(repo, _stop(repo), reviewer)
     models = [model for _, model in reviewer.calls]
     assert models == [
-        review_gate.PRIMARY_MODEL,
-        review_gate.PRIMARY_MODEL,
-        review_gate.TIEBREAK_MODEL,
-        review_gate.PRIMARY_MODEL,
+        review_run.PRIMARY_MODEL,
+        review_run.PRIMARY_MODEL,
+        review_run.TIEBREAK_MODEL,
+        review_run.PRIMARY_MODEL,
     ]
     assert load_state(repo, HOOK_STATE_FILE).blocked_rounds == 0
 
@@ -201,7 +204,7 @@ def test_the_gate_gives_up_at_the_round_cap_and_starts_the_count_again(
     assert isinstance(released, GiveUp)
     assert "gave up after 3 blocked rounds" in released.message
     assert "[bad-name] stuck" in released.payload()["systemMessage"]
-    assert reviewer.calls[3][1] == review_gate.PRIMARY_MODEL
+    assert reviewer.calls[3][1] == review_run.PRIMARY_MODEL
     assert "+VALUE = 3" in reviewer.calls[3][0]
 
 
@@ -216,8 +219,8 @@ def test_a_reviewer_that_cannot_run_blocks_the_stop_and_counts_no_round(tmp_path
 
 def _budget(monkeypatch: pytest.MonkeyPatch, diff_chars: int) -> None:
     rubric = review_gate.RUBRIC_PATH.read_text(encoding="utf-8")
-    tokens = (len(rubric) + diff_chars) // review_gate.CHARS_PER_TOKEN
-    monkeypatch.setattr(review_gate, "PROMPT_BUDGET_TOKENS", tokens)
+    tokens = (len(rubric) + diff_chars) // review_diff.CHARS_PER_TOKEN
+    monkeypatch.setattr(review_run, "PROMPT_BUDGET_TOKENS", tokens)
 
 
 def test_a_diff_over_the_budget_is_reviewed_in_batches(
@@ -282,7 +285,7 @@ def test_a_diff_needing_more_batches_than_the_cap_is_too_large(
     for name in ("a", "b", "c"):
         (repo / "pkg" / "strict" / f"{name}.py").write_text(f"{name.upper()} = 1\n", encoding="utf-8")
     _budget(monkeypatch, 200)
-    monkeypatch.setattr(review_gate, "MAX_BATCHES", 2)
+    monkeypatch.setattr(review_run, "MAX_BATCHES", 2)
     reviewer = FakeReviewer([])
     outcome = review_gate.hook_decision(repo, _stop(repo), reviewer)
     assert isinstance(outcome, Block)
@@ -300,7 +303,7 @@ def _backlog(repo: Path, monkeypatch: pytest.MonkeyPatch, commits: list[list[str
         _commit(repo, "+".join(names))
         heads.append(git(repo, "rev-parse", "HEAD"))
     _budget(monkeypatch, 200)
-    monkeypatch.setattr(review_gate, "MAX_BATCHES", 2)
+    monkeypatch.setattr(review_run, "MAX_BATCHES", 2)
     return heads
 
 
@@ -375,7 +378,7 @@ def test_review_from_a_base_covers_every_path(
     assert review_gate.review_from(repo, "HEAD", reviewer) == 1
     assert "+VALUE = 9" in reviewer.calls[0][0]
     out = capsys.readouterr().out
-    assert out.startswith(f"verdict: block ({review_gate.PRIMARY_MODEL}, 1 files since HEAD)")
+    assert out.startswith(f"verdict: block ({review_run.PRIMARY_MODEL}, 1 files since HEAD)")
     assert "[bad-name] loose is loose" in out
 
 

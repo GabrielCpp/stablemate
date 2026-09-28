@@ -11,43 +11,26 @@ from pathlib import Path
 
 import strict_scope
 from claude_reviewer import claude_reviewer
-from review_diff import CHARS_PER_TOKEN, ReviewBatches, pack, split_diff
-from review_git import first_parent_commits, git, is_ancestor, snapshot_tree, tree_exists
+from review_backlog import in_backlog, review_next_range, with_skip_notices
+from review_git import git, is_ancestor, snapshot_tree, tree_exists
+from review_run import (
+    ROUNDS_BEFORE_TIEBREAK,
+    TIEBREAK_MODEL,
+    BatchedVerdict,
+    Block,
+    GiveUp,
+    PendingChange,
+    model_for,
+    plan_review,
+    run_batches,
+    unfinished_reason,
+)
 from review_state import BASE_STATE_FILE, HOOK_STATE_FILE, GateState, load_state, next_state, save_state
-from review_verdict import Reviewer, ReviewError, Verdict
+from review_verdict import Reviewer, Verdict
 
 REPO = Path(__file__).resolve().parents[1]
 RUBRIC_PATH = Path(__file__).resolve().with_name("review_gate_prompt.md")
-PRIMARY_MODEL = "claude-sonnet-5"
-TIEBREAK_MODEL = "claude-opus-5-5"
-ROUNDS_BEFORE_TIEBREAK = 2
-PROMPT_BUDGET_TOKENS = 60_000
-MAX_BATCHES = 4
 MAX_BLOCKED_ROUNDS = 10
-
-
-@dataclass(frozen=True)
-class PendingChange:
-    head: str
-    base_tree: str
-    tree: str
-    paths: tuple[str, ...]
-
-
-@dataclass(frozen=True)
-class Block:
-    reason: str
-
-    def payload(self) -> dict[str, str]:
-        return {"decision": "block", "reason": self.reason}
-
-
-@dataclass(frozen=True)
-class GiveUp:
-    message: str
-
-    def payload(self) -> dict[str, str]:
-        return {"systemMessage": self.message}
 
 
 @dataclass(frozen=True)
@@ -84,49 +67,9 @@ def pending_change(repo: Path, state: GateState, base: str | None) -> PendingCha
     return PendingChange(head=head, base_tree=base_tree, tree=tree, paths=tuple(names.splitlines()))
 
 
-def model_for(state: GateState) -> str:
-    if state.blocked_rounds >= ROUNDS_BEFORE_TIEBREAK:
-        return TIEBREAK_MODEL
-    return PRIMARY_MODEL
-
-
-@dataclass(frozen=True)
-class BatchedVerdict:
-    verdict: Verdict
-    unreviewed: str | None
-
-
-def plan_review(repo: Path, change: PendingChange, rubric: str) -> ReviewBatches:
-    diff = git(repo, "diff", "--no-color", "-M", "-D", change.base_tree, change.tree)
-    budget_tokens = PROMPT_BUDGET_TOKENS - len(rubric) // CHARS_PER_TOKEN
-    return pack(split_diff(diff), budget_tokens, MAX_BATCHES)
-
-
-def run_batches(rubric: str, plan: ReviewBatches, reviewer: Reviewer, model: str) -> BatchedVerdict:
-    findings = list(plan.too_large)
-    for done, batch in enumerate(plan.batches):
-        try:
-            findings.extend(reviewer(rubric + batch, model).findings)
-        except ReviewError as exc:
-            unreviewed = f"batch {done + 1} of {len(plan.batches)}: {exc}"
-            return BatchedVerdict(verdict=Verdict(model=model, findings=tuple(findings)), unreviewed=unreviewed)
-    return BatchedVerdict(verdict=Verdict(model=model, findings=tuple(findings)), unreviewed=None)
-
-
 def review_change(repo: Path, change: PendingChange, reviewer: Reviewer, model: str) -> BatchedVerdict:
     rubric = RUBRIC_PATH.read_text(encoding="utf-8")
     return run_batches(rubric, plan_review(repo, change, rubric), reviewer, model)
-
-
-def unfinished_reason(review: BatchedVerdict) -> str:
-    found = [f"- {finding.render()}" for finding in review.verdict.findings]
-    return "\n".join([
-        f"The review gate ({review.verdict.model}) failed on {review.unreviewed},"
-        " so your diff is not approved and this round does not count.",
-        "Fix what the finished batches found, then stop again to review the whole diff."
-        if found else "Stop again to review the whole diff.",
-        *found,
-    ])
 
 
 def save_next_state(
@@ -156,84 +99,6 @@ def give_up_message(verdict: Verdict, rounds: int) -> str:
     ])
 
 
-@dataclass(frozen=True)
-class RangeStep:
-    state: GateState
-    skipped: str | None
-    block: Block | None
-
-
-def in_backlog(repo: Path, state: GateState, change: PendingChange) -> bool:
-    return (
-        state.base_head is not None
-        and state.base_tree == change.base_tree
-        and state.base_head != change.head
-        and is_ancestor(repo, state.base_head, change.head)
-    )
-
-
-def commit_change(repo: Path, base_tree: str, commit: str) -> PendingChange:
-    tree = git(repo, "rev-parse", f"{commit}^{{tree}}")
-    names = git(repo, "diff", "--name-only", base_tree, tree)
-    return PendingChange(head=commit, base_tree=base_tree, tree=tree, paths=tuple(names.splitlines()))
-
-
-def widest_range(repo: Path, base_tree: str, commits: list[str], rubric: str) -> PendingChange | None:
-    fitting = None
-    for commit in commits:
-        candidate = commit_change(repo, base_tree, commit)
-        if plan_review(repo, candidate, rubric).too_large:
-            break
-        fitting = candidate
-    return fitting
-
-
-def range_block_reason(verdict: Verdict, label: str) -> str:
-    return "\n".join([
-        f"The review gate ({verdict.model}) found problems in commits {label}, which are already committed.",
-        "Fix each one in a new commit, then stop again. The gate has moved past these commits,"
-        " so it reviews your fix with the rest of your diff.",
-        *(f"- {finding.render()}" for finding in verdict.findings),
-    ])
-
-
-def review_next_range(
-    repo: Path,
-    scope: strict_scope.StrictScope,
-    state: GateState,
-    change: PendingChange,
-    rubric: str,
-    reviewer: Reviewer,
-) -> RangeStep:
-    base_head = state.base_head or change.head
-    commits = first_parent_commits(repo, base_head, change.head)
-    fitting = widest_range(repo, change.base_tree, commits, rubric)
-    if fitting is None:
-        alone = commit_change(repo, change.base_tree, commits[0])
-        skipped = f"Commit {commits[0][:8]} is too large to review on its own, so it goes through unreviewed."
-        return RangeStep(GateState(alone.tree, alone.head, 0), skipped, None)
-    advanced = GateState(fitting.tree, fitting.head, 0)
-    if not any(scope.contains(path) for path in fitting.paths):
-        return RangeStep(advanced, None, None)
-    review = run_batches(rubric, plan_review(repo, fitting, rubric), reviewer, model_for(state))
-    if review.unreviewed is not None:
-        return RangeStep(state, None, Block(unfinished_reason(review)))
-    if review.verdict.passed:
-        return RangeStep(advanced, None, None)
-    label = f"{base_head[:8]}..{fitting.head[:8]}"
-    return RangeStep(advanced, None, Block(range_block_reason(review.verdict, label)))
-
-
-def with_skipped(outcome: Block | GiveUp | None, skipped: list[str]) -> Block | GiveUp | None:
-    if not skipped:
-        return outcome
-    if isinstance(outcome, Block):
-        return Block("\n".join([*skipped, outcome.reason]))
-    if isinstance(outcome, GiveUp):
-        return GiveUp("\n".join([*skipped, outcome.message]))
-    return GiveUp("\n".join(skipped))
-
-
 def review_tip(
     repo: Path, state: GateState, change: PendingChange, rubric: str, reviewer: Reviewer
 ) -> Block | GiveUp | None:
@@ -258,19 +123,19 @@ def hook_decision(repo: Path, event: StopEvent, reviewer: Reviewer) -> Block | G
     if not any(scope.contains(path) for path in change.paths):
         return None
     rubric = RUBRIC_PATH.read_text(encoding="utf-8")
-    skipped: list[str] = []
+    skip_notices: list[str] = []
     while in_backlog(repo, state, change) and plan_review(repo, change, rubric).too_large:
         step = review_next_range(repo, scope, state, change, rubric, reviewer)
         save_state(repo, HOOK_STATE_FILE, step.state)
-        if step.skipped is not None:
-            skipped.append(step.skipped)
+        if step.skip_notice is not None:
+            skip_notices.append(step.skip_notice)
         if step.block is not None:
-            return with_skipped(step.block, skipped)
+            return with_skip_notices(step.block, skip_notices)
         state = step.state
         change = pending_change(repo, state, None)
     if not any(scope.contains(path) for path in change.paths):
-        return with_skipped(None, skipped)
-    return with_skipped(review_tip(repo, state, change, rubric, reviewer), skipped)
+        return with_skip_notices(None, skip_notices)
+    return with_skip_notices(review_tip(repo, state, change, rubric, reviewer), skip_notices)
 
 
 def review_from(repo: Path, base: str, reviewer: Reviewer) -> int:
