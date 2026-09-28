@@ -10,7 +10,8 @@ it has later is left for the book check, so no turn repairs it twice. An entry p
 after the round's last batch that may add link lines to it. A page too large for one writer is sent to no turn and
 reported.
 
-Code puts back each page a turn changed that its batch may not keep, by the rules of `nodes/repair_put_back.py`.
+After each turn the repair hands its changes to `settle_repair_turn_flow.py`, which puts back what
+the batch may not keep and commits the rest.
 
 A page someone left uncommitted when the repair started is never sent to a turn and never committed,
 so their edits stay theirs. A turn that changed one waits for the operator.
@@ -20,31 +21,23 @@ from __future__ import annotations
 import time
 from pathlib import Path
 
-from workhorse.pyflow import AgentTimeout, AgentTurnFailed, Await, Continue, Done, WorkflowFailed
-from workhorse_workflows.kit import commit_returning_refusal
+from workhorse.pyflow import AgentTimeout, AgentTurnFailed, Continue, Done, WorkflowFailed
 from workhorse_workflows.okf_book.main.nodes.journey import journey_pages, pages_needing_journey
 from workhorse_workflows.okf_book.main.nodes.repair_batches import pack_repairs, problems_by_page
 from workhorse_workflows.okf_book.main.nodes.repair_ledger import RepairLedger, RepairRound
-from workhorse_workflows.okf_book.main.nodes.repair_put_back import (
-    entry_pages_changed_beyond_links,
-    pages_to_stamp,
-    stamp_repaired_pages,
-    turn_changes,
-)
 from workhorse_workflows.okf_book.main.nodes.surface import Surface
 from workhorse_workflows.okf_book.main.nodes.writer_commands import WriterCommandState, write_command_state
 from workhorse_workflows.okf_book.main.nodes.writer_request import writer_request
 from workhorse_workflows.okf_book.main.root_book_flow import RootBook, RootedBook
+from workhorse_workflows.okf_book.main.settle_repair_turn_flow import SettledTurn, SettleRepairTurn
 from workhorse_workflows.okf_book.shared.blockers import Phase
-from workhorse_workflows.okf_book.shared.book_commits import repaired_book_commit_subject
 from workhorse_workflows.okf_book.shared.book_flow import BookFlow
-from workhorse_workflows.okf_book.shared.confine import Snapshot, put_back_outside, restore, snapshot
+from workhorse_workflows.okf_book.shared.confine import Snapshot, snapshot
 from workhorse_workflows.okf_book.shared.metrics import TurnMetric, record_turn, turn_metric
 from workhorse_workflows.okf_book.shared.page_check import PageProblem, page_problems
 
 REPAIR_PROMPT = "main/prompts/repair-pages.md"
 REPAIR_ROUNDS = 3
-UNCOMMITTED_PAGE_GATE = "uncommitted-page-changed.md"
 
 
 class RepairBook(BookFlow):
@@ -178,77 +171,24 @@ class RepairBook(BookFlow):
     ) -> Continue[...]:
         """Record what the repair turn cost."""
         record_turn(self.records_dir, metric)
-        return Continue(metric, self.put_back_outside_book, ledger=ledger, this_round=this_round, index=index, before=before).because(
-            "put back what the turn changed outside its book"
+        return Continue(metric, self.settle_turn, ledger=ledger, this_round=this_round, index=index, before=before).because(
+            "settle what the turn changed"
         )
 
-    def put_back_outside_book(self, ledger: RepairLedger, this_round: RepairRound, index: int, before: Snapshot) -> Continue[...]:
-        """Put back each path the turn changed outside the book."""
-        stray = put_back_outside(self.root, self.service, before, self.run_dir)
-        for path in stray:
-            self.logger.warning("put back %s, which the repair turn changed outside its book", path)
-        return Continue(stray, self.put_back_pages_batch_may_not_keep, ledger=ledger, this_round=this_round, index=index, before=before).because(
-            "put back the book pages the turn may not keep"
-        )
-
-    def put_back_pages_batch_may_not_keep(self, ledger: RepairLedger, this_round: RepairRound, index: int, before: Snapshot) -> Continue[...] | Await[...]:
-        """Put back each book page the turn changed but may not keep: the entries page, a page its batch does not own, and a page an earlier batch closed.
-
-        A page someone left uncommitted has no committed copy of their edit to go back to, so a turn
-        that changed one waits for the operator.
-        """
-        changes = turn_changes(self.root, self.service, before, this_round.batches[index], ledger.closed_pages)
-        unrestorable_uncommitted = restore(self.root, changes.to_put_back, before)
-        for path in sorted(set(changes.to_put_back) - set(unrestorable_uncommitted) - {changes.entries_page}):
-            self.logger.warning("put back %s, which the repair turn changed outside the pages its batch owns", path)
-        kept = list(changes.kept)
-        if unrestorable_uncommitted:
-            return Await(
-                self.run_dir / UNCOMMITTED_PAGE_GATE,
-                "The repair turn changed pages someone left uncommitted, and code has no copy of their edits to put back:\n\n"
-                + "\n".join(f"- {path}" for path in unrestorable_uncommitted)
-                + "\n\nSort each page out in the repo, then answer here. No commit takes these pages.",
-                self.put_back_entry_overreach,
-                ledger=ledger,
-                this_round=this_round,
-                index=index,
+    def settle_turn(self, ledger: RepairLedger, this_round: RepairRound, index: int, before: Snapshot) -> Continue[...]:
+        """Hand the turn's changes to be put back where its batch may not keep them, and the rest stamped and committed."""
+        settled = SettledTurn.model_validate(
+            self.handoff(
+                SettleRepairTurn,
+                parent_records_dir=str(self.records_dir),
+                service=self.service,
+                batch=this_round.batches[index],
+                closed_pages=ledger.closed_pages,
                 before=before,
-                kept=kept,
-            ).because("the repair turn changed a page someone left uncommitted")
-        return Continue(
-            changes.to_put_back, self.put_back_entry_overreach, ledger=ledger, this_round=this_round, index=index, before=before, kept=kept
-        ).because("put back the entry pages the turn changed beyond link lines")
-
-    def put_back_entry_overreach(
-        self, ledger: RepairLedger, this_round: RepairRound, index: int, before: Snapshot, kept: list[str]
-    ) -> Continue[...]:
-        """Put back each entry page the turn kept but changed beyond adding link lines."""
-        overreach = entry_pages_changed_beyond_links(self.root, this_round.batches[index], kept)
-        _ = restore(self.root, overreach, before)
-        for path in overreach:
-            self.logger.warning("put back %s, an entry page the repair turn changed beyond adding link lines", path)
-        return Continue(overreach, self.stamp_pages, ledger=ledger, this_round=this_round, index=index, before=before).because(
-            "stamp the repaired pages"
+                repair_run_dir=str(self.run_dir),
+            )
         )
-
-    def stamp_pages(self, ledger: RepairLedger, this_round: RepairRound, index: int, before: Snapshot) -> Continue[...]:
-        """Stamp each page the turn changed that its batch owns, but the entries page and the pages someone left uncommitted."""
-        batch = this_round.batches[index]
-        pages = pages_to_stamp(self.root, self.service, before, batch)
-        changed_journey_pages = sorted(set(pages) - set(batch.page_paths))
-        if changed_journey_pages:
-            self.logger.info("the repair turn also changed %d journey pages: %s", len(changed_journey_pages), ", ".join(changed_journey_pages))
-        stamp_repaired_pages(self.root, pages)
-        return Continue(pages, self.commit_pages, ledger=ledger, this_round=this_round, index=index, pages=pages).because(
-            "commit the repaired pages"
-        )
-
-    def commit_pages(self, ledger: RepairLedger, this_round: RepairRound, index: int, pages: tuple[str, ...]) -> Continue[...] | Await[...]:
-        """Commit the batch's pages. A refused commit waits for the operator."""
-        refusal = commit_returning_refusal(self.root, repaired_book_commit_subject(self.service), *pages)
-        if refusal:
-            return self._await_operator_on_refused_commit(refusal, self.commit_pages, ledger=ledger, this_round=this_round, index=index, pages=pages)
-        return Continue(pages, self.close_batch, ledger=ledger, this_round=this_round, index=index).because(
+        return Continue(settled.pages, self.close_batch, ledger=ledger, this_round=this_round, index=index).because(
             "close the pages the batch left clean"
         )
 
