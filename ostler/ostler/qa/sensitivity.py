@@ -465,17 +465,17 @@ def _plan_contents(args: Mapping[str, Any]) -> _WitnessPlan:
 
 def _plan(call: checks.CheckCall) -> _WitnessPlan:
     """The witness observation, the mutations to try against it, and why there are none: in the file a `file=` names, when the call names one."""
-    observed = _plan_observed(call)
-    if "file" not in call.args or observed.witness is None:
-        return observed
+    unfiled_plan = _plan_observed(call)
+    if "file" not in call.args or unfiled_plan.witness is None:
+        return unfiled_plan
     name = str(call.args["file"])
     return _WitnessPlan(
-        {name: observed.witness},
+        {name: unfiled_plan.witness},
         (
-            *(_Mutation(mutation.label, {name: mutation.observed}) for mutation in observed.mutations),
+            *(_Mutation(mutation.label, {name: mutation.observed}) for mutation in unfiled_plan.mutations),
             _Mutation("the file is not there", {}),
         ),
-        observed.note,
+        unfiled_plan.note,
     )
 
 
