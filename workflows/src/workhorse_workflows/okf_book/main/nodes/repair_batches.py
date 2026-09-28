@@ -37,7 +37,7 @@ def _repairs_joined_by_page(units: list[PageCost]) -> tuple[PageRepair, ...]:
     return tuple(by_page.values())
 
 
-def _new_flow_page(root: Path, journey: JourneyPages, page: str, claimed_flow_pages: set[str]) -> str:
+def _claim_new_flow_page(root: Path, journey: JourneyPages, page: str, claimed_flow_pages: set[str]) -> str:
     """A path in the flow folder named for the page, that no page on disk and no other batch holds."""
     stem = Path(page).stem
     candidates = (f"{journey.flow_folder}/{stem}{'' if n == 1 else f'-{n}'}.md" for n in range(1, len(claimed_flow_pages) + 2))
@@ -54,7 +54,7 @@ def _batch(
         pages=pages,
         tokens=batch_tokens([*journey_costs, *filling_batch_units]),
         journey=journey,
-        new_flow_page=_new_flow_page(root, journey, pages[0].page, claimed_flow_pages) if journey else "",
+        new_flow_page=_claim_new_flow_page(root, journey, pages[0].page, claimed_flow_pages) if journey else "",
     )
 
 
