@@ -6,7 +6,7 @@ from pathlib import Path
 
 from ostler import doctor, graph, locators
 from ostler.model import load
-from ostler.qa.obligation_frame import BookNode, Variants
+from ostler.qa.obligation_frame import Variants
 
 from conftest import write
 
@@ -76,9 +76,13 @@ NOTHING = """\
 """
 
 
-def _build(repo: Path, body: str):
+def _build(repo: Path, body: str) -> locators.LocatorBook:
     write(repo / DASH, body)
-    return graph.build(load(repo), surface="web")
+    return _book(repo)
+
+
+def _book(repo: Path) -> locators.LocatorBook:
+    return locators.LocatorBook.parse(graph.build(load(repo), surface="web"))
 
 
 def test_role_and_name_become_a_get_by_role_call(repo: Path):
@@ -266,7 +270,7 @@ def test_a_shared_component_is_checked_too(repo: Path):
     """A navbar lives in a component library, not on a screen — and renders on every screen."""
     write(repo / LIB, SHARED)
     _build(repo, _screen(SAVE))
-    bad = locators.invalid_roles(graph.build(load(repo), surface="web"))
+    bad = locators.invalid_roles(_book(repo))
     assert [b["node"].split("#")[-1] for b in bad] == ["navbar-home-link"]
     assert "invalid-role" in _codes(repo)
 
@@ -277,7 +281,7 @@ def test_shared_components_collide_within_their_own_file(repo: Path):
         "- role: `link` — renders an `<a>` via ListItemButton", "- role: link")
         + "\n### navbar-home-dup\n- role: link\n- name: Home\n")
     _build(repo, _screen(SAVE))
-    collisions = locators.collisions(graph.build(load(repo), surface="web"))
+    collisions = locators.collisions(_book(repo))
     assert len(collisions) == 1
     assert collisions[0]["screen"] == LIB
 
@@ -304,7 +308,7 @@ title: App shell
 - name: none
 - extends: [row-base](../components/app-shell.md#row-base)
 """))
-    unnamed = locators.unnamed_interactives(graph.build(load(repo), surface="web"))
+    unnamed = locators.unnamed_interactives(_book(repo))
     assert [u["node"].split("#")[-1] for u in unnamed] == ["dash-row"]
 
 
@@ -340,7 +344,7 @@ def test_exclusive_with_clears_a_false_positive_collision(repo: Path):
 - role: alert
 - name: none
 """))
-    assert locators.collisions(graph.build(load(repo), surface="web")) == []
+    assert locators.collisions(_book(repo)) == []
     assert "ambiguous-locator" not in _codes(repo)
 
 
@@ -356,7 +360,7 @@ def test_exclusive_with_is_symmetric(repo: Path):
 - name: none
 - exclusive-with: [a-alert](#a-alert)
 """))
-    assert locators.collisions(graph.build(load(repo), surface="web")) == []
+    assert locators.collisions(_book(repo)) == []
 
 
 def test_a_real_co_render_collision_is_not_cleared_by_an_unrelated_exclusion(repo: Path):
@@ -375,7 +379,7 @@ def test_a_real_co_render_collision_is_not_cleared_by_an_unrelated_exclusion(rep
 - role: button
 - name: Save
 """))
-    collisions = locators.collisions(graph.build(load(repo), surface="web"))
+    collisions = locators.collisions(_book(repo))
     assert len(collisions) == 1
     assert [n.split("#")[-1] for n in collisions[0]["nodes"]] == ["save-a", "save-b", "save-c"]
 
@@ -516,8 +520,8 @@ def test_variants_parse_into_an_enumerable_axis(repo: Path):
 - name: `{field.label}`
 - unique-by: `field.id`
 """))
-    node = next(n for n in data["nodes"] if n["id"].endswith("#property-field"))
-    assert locators.variants_of(BookNode.parse(node)) == Variants(
+    node = next(node for _, node in data.locatables if node.id.endswith("#property-field"))
+    assert locators.variants_of(node) == Variants(
         path="field.type", values=("text", "number", "select", "date"))
     assert "malformed-variants" not in _codes(repo, "warn")
 
@@ -570,7 +574,8 @@ TWO_NAMES = """\
 def test_a_repeated_identity_bullet_is_the_book_s_defect_not_a_collision(repo: Path):
     """A second `name:` (or `role:`) is `duplicate-bullet`, and the node is left out of the collision check until it is well-formed."""
     data = _build(repo, _screen(TWO_NAMES, "### other-copy\n- role: button\n- name: Copy\n"))
-    assert locators.malformed_identity(data["nodes"][1]["bullets"]) == ["name"]
+    node = next(node for _, node in data.locatables if node.id.endswith("#copy-button"))
+    assert locators.malformed_identity(node.bullets) == ["name"]
     assert locators.collisions(data) == []
 
     findings = doctor.run(load(repo), check_schema=False).findings

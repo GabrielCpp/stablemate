@@ -2260,12 +2260,13 @@ def _rel_posix_or_as_given(path: Path, root: Path) -> str:
 def _check_locators(data: dict, f: list[Finding]) -> None:
     """Every documented control must map to exactly one Playwright locator."""
     by_id = {n["id"]: n for n in data["nodes"]}
+    book = loc_mod.LocatorBook.parse(data)
 
     def _at(node_id: str) -> dict:
         node = by_id.get(node_id, {})
         return {"path": node_id.split("#")[0], "line": node.get("line", 0)}
 
-    for collision in loc_mod.collisions(data):
+    for collision in loc_mod.collisions(book):
         named = f" name={collision['name']!r}" if collision["name"] else " with no name"
         for node_id in collision["nodes"]:
             f.append(Finding(
@@ -2277,7 +2278,7 @@ def _check_locators(data: dict, f: list[Finding]) -> None:
                 suggestion="give each control a distinct accessible `name:`",
                 **_at(node_id)))
 
-    for bad in loc_mod.invalid_roles(data):
+    for bad in loc_mod.invalid_roles(book):
         f.append(Finding(
             "error", "invalid-role",
             f"{bad['node']}: `role: {bad['role']}` is not an ARIA role — `getByRole` would match "
@@ -2285,7 +2286,7 @@ def _check_locators(data: dict, f: list[Finding]) -> None:
             ref=bad["node"], suggestion="- role: <one bare ARIA role, or `none`>",
             **_at(bad["node"])))
 
-    for unnamed in loc_mod.unnamed_interactives(data):
+    for unnamed in loc_mod.unnamed_interactives(book):
         f.append(Finding(
             "error", "unnamed-interactive",
             f"{unnamed['node']}: role={unnamed['role']} is operable but has no accessible "
@@ -2294,7 +2295,7 @@ def _check_locators(data: dict, f: list[Finding]) -> None:
             suggestion="- name: <the control's visible label or aria-label>",
             **_at(unnamed["node"])))
 
-    for item in loc_mod.static_templates(data):
+    for item in loc_mod.static_templates(book):
         var = item["iterates"]
         f.append(Finding(
             "error", "static-template",
@@ -2306,7 +2307,7 @@ def _check_locators(data: dict, f: list[Finding]) -> None:
                        f"control an instance-specific aria-label in the app",
             **_at(item["node"])))
 
-    for item in loc_mod.unproven_unique_names(data):
+    for item in loc_mod.unproven_unique_names(book):
         f.append(Finding(
             "warn", "unproven-unique-name",
             f"{item['node']}: instances are told apart only by display value(s) "
@@ -2317,7 +2318,7 @@ def _check_locators(data: dict, f: list[Finding]) -> None:
                        "guaranteed-distinct datum into the name",
             **_at(item["node"])))
 
-    for item in loc_mod.malformed_templates(data):
+    for item in loc_mod.malformed_templates(book):
         f.append(Finding(
             "error", "malformed-template",
             f"{item['node']}: `name:` {item['template']!r} has an unbalanced brace — the one "
@@ -2327,7 +2328,7 @@ def _check_locators(data: dict, f: list[Finding]) -> None:
                        "verbatim as opaque, so no hole needs rewording",
             **_at(item["node"])))
 
-    for item in loc_mod.invalid_variants(data):
+    for item in loc_mod.invalid_variants(book):
         f.append(Finding(
             "warn", "malformed-variants",
             f"{item['node']}: `variants: {item['value']}` does not parse as "
@@ -2338,7 +2339,7 @@ def _check_locators(data: dict, f: list[Finding]) -> None:
                        "backtick span",
             **_at(item["node"])))
 
-    for item in loc_mod.templates_outside_repeat(data):
+    for item in loc_mod.templates_outside_repeat(book):
         f.append(Finding(
             "warn", "template-outside-repeat",
             f"{item['node']}: `name:` {item['template']!r} carries `{{…}}` holes but the node "

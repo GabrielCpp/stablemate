@@ -12,7 +12,7 @@ from typing import Any
 from ostler import graph as graph_mod
 from ostler.model import Graph, UINode
 from ostler.qa.obligation_frame import BookNode, RepeatContract, RepeatTemplate, Segment, Variants, book_nodes
-from ostler.reach import NONE_TOKENS, _screen_of
+from ostler.reach import NONE_TOKENS
 from ostler.vet import placement as placement_mod
 
 INTERACTIVE_ROLES = frozenset({
@@ -126,44 +126,63 @@ def variants_of(node: BookNode) -> Variants | None:
     return Variants(path=path, values=tuple(values))
 
 
-def _scopes(data: dict) -> dict[str, tuple[str, ...]]:
+def _scopes(nodes: Mapping[str, BookNode], parents: Mapping[str, tuple[str, ...]]) -> dict[str, tuple[str, ...]]:
     """Every node's in-scope iteration variables, outermost first."""
-    by_id = {n["id"]: n for n in data["nodes"]}
-    book = book_nodes(by_id)
-    linked: dict[str, list[str]] = {}
-    for edge in data["edges"]:
-        if edge.get("via") == "parent":
-            linked.setdefault(edge["from"], []).append(edge["to"])
-
     cache: dict[str, tuple[str, ...]] = {}
 
     def scope(node_id: str, walking: frozenset[str]) -> tuple[str, ...]:
         if node_id in cache:
             return cache[node_id]
-        node = by_id.get(node_id)
+        node = nodes.get(node_id)
         if node is None or node_id in walking:
             return ()
         walking |= {node_id}
         inherited: list[str] = []
-        parents = ([node["parent"]] if node.get("parent") else []) + linked.get(node_id, [])
-        for parent in parents:
+        for parent in parents.get(node_id, ()):
             for var in scope(parent, walking):
                 if var not in inherited:
                     inherited.append(var)
-        own = repeat_of(book[node_id])
+        own = repeat_of(node)
         if own and own not in inherited:
             inherited.append(own)
         cache[node_id] = tuple(inherited)
         return cache[node_id]
 
-    for node in data["nodes"]:
-        scope(node["id"], frozenset())
+    for node_id in nodes:
+        scope(node_id, frozenset())
     return cache
 
 
-def scopes(data: dict) -> dict[str, tuple[str, ...]]:
-    """Public face of `_scopes` for consumers outside this module (``qa/context``)."""
-    return _scopes(data)
+@dataclass(frozen=True, slots=True)
+class LocatorBook:
+    """A built graph parsed once for the locator checks: every locatable node with its owner, each node's iteration scope, and the edges the checks read."""
+
+    locatables: tuple[tuple[str, BookNode], ...]
+    scopes: Mapping[str, tuple[str, ...]]
+    exclusive: frozenset[frozenset[str]]
+    bases: frozenset[str]
+
+    @classmethod
+    def parse(cls, data: dict) -> LocatorBook:
+        raw_nodes = {node["id"]: node for node in data["nodes"]}
+        nodes = book_nodes(raw_nodes)
+        parents: dict[str, list[str]] = {}
+        for node_id, node in raw_nodes.items():
+            if node.get("parent"):
+                parents.setdefault(node_id, []).append(node["parent"])
+        for edge in data["edges"]:
+            if edge.get("via") == "parent":
+                parents.setdefault(edge["from"], []).append(edge["to"])
+        return cls(
+            locatables=tuple(
+                (node.id.split("#", 1)[0], node) for node in nodes.values() if node.type in LOCATABLE_TYPES
+            ),
+            scopes=_scopes(nodes, {node_id: tuple(ids) for node_id, ids in parents.items()}),
+            exclusive=frozenset(
+                frozenset((edge["from"], edge["to"])) for edge in data["edges"] if edge.get("via") == "exclusive-with"
+            ),
+            bases=frozenset(edge["to"] for edge in data["edges"] if edge.get("via") == "extends"),
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -283,22 +302,6 @@ def repeat_contract(node: BookNode, scope: tuple[str, ...]) -> RepeatContract | 
     )
 
 
-def _locatables(data: dict) -> list[tuple[str, BookNode]]:
-    """(owner, node) for every component/interaction, wherever it is defined."""
-    by_id = {n["id"]: n for n in data["nodes"]}
-    return [
-        (_screen_of(node.id, by_id) or node.id.split("#", 1)[0], node)
-        for node in book_nodes(by_id).values()
-        if node.type in LOCATABLE_TYPES
-    ]
-
-
-def _exclusive_pairs(data: dict) -> set[frozenset[str]]:
-    """Unordered node pairs declared never to be in the DOM together (``exclusive-with:``)."""
-    return {frozenset((e["from"], e["to"]))
-            for e in data["edges"] if e.get("via") == "exclusive-with"}
-
-
 IDENTITY_KEYS = ("role", "name")
 
 
@@ -308,12 +311,12 @@ def malformed_identity(bullets: Mapping[str, object]) -> list[str]:
             if isinstance(value := bullets.get(key), list | tuple) and len(value) > 1]
 
 
-def collisions(data: dict) -> list[dict]:
+def collisions(book: LocatorBook) -> list[dict]:
     """Nodes sharing a screen, a role, and an accessible name — where one-to-one fails."""
-    scopes = _scopes(data)
+    scopes = book.scopes
     groups: dict[tuple[str, str, str], list[BookNode]] = {}
     templated: dict[tuple[str, str], list[tuple[BookNode, RepeatTemplate]]] = {}
-    for screen, node in _locatables(data):
+    for screen, node in book.locatables:
         if node.type != "component" or malformed_identity(node.bullets):
             continue
         loc = locator_for(node, scope=scopes.get(node.id, ()))
@@ -323,7 +326,7 @@ def collisions(data: dict) -> list[dict]:
             continue
         groups.setdefault((screen, loc.role, loc.name), []).append(node)
 
-    exclusive = _exclusive_pairs(data)
+    exclusive = book.exclusive
 
     def _live(ids: list[str]) -> set[str]:
         conflicting: set[str] = set()
@@ -358,21 +361,21 @@ def collisions(data: dict) -> list[dict]:
     return out
 
 
-def invalid_roles(data: dict) -> list[dict]:
+def invalid_roles(book: LocatorBook) -> list[dict]:
     """Nodes whose ``role:`` is not an ARIA role — usually a real role with prose stapled to it."""
     out = []
-    for screen, node in _locatables(data):
+    for screen, node in book.locatables:
         role = _bullet(node, "role")
         if role and not _stated_none(role) and role.lower() not in ARIA_ROLES:
             out.append({"screen": screen, "node": node.id, "role": role})
     return out
 
 
-def static_templates(data: dict) -> list[dict]:
+def static_templates(book: LocatorBook) -> list[dict]:
     """Repeated nodes whose name carries no per-instance datum — one name, many instances."""
-    scopes = _scopes(data)
+    scopes = book.scopes
     out = []
-    for screen, node in _locatables(data):
+    for screen, node in book.locatables:
         var = repeat_of(node)
         if not var:
             continue
@@ -387,11 +390,11 @@ def static_templates(data: dict) -> list[dict]:
     return out
 
 
-def unproven_unique_names(data: dict) -> list[dict]:
+def unproven_unique_names(book: LocatorBook) -> list[dict]:
     """Repeated nodes discriminated only by display values, with no ``unique-by:`` claim."""
-    scopes = _scopes(data)
+    scopes = book.scopes
     out = []
-    for screen, node in _locatables(data):
+    for screen, node in book.locatables:
         var = repeat_of(node)
         if not var or unique_by_of(node):
             continue
@@ -405,11 +408,11 @@ def unproven_unique_names(data: dict) -> list[dict]:
     return out
 
 
-def malformed_templates(data: dict) -> list[dict]:
+def malformed_templates(book: LocatorBook) -> list[dict]:
     """Repeated-scope nodes whose name template has an unbalanced brace — the one hard error."""
-    scopes = _scopes(data)
+    scopes = book.scopes
     out = []
-    for screen, node in _locatables(data):
+    for screen, node in book.locatables:
         if not scopes.get(node.id):
             continue
         compiled = compile_template(_bullet(node, "name"), scopes[node.id])
@@ -418,11 +421,11 @@ def malformed_templates(data: dict) -> list[dict]:
     return out
 
 
-def templates_outside_repeat(data: dict) -> list[dict]:
+def templates_outside_repeat(book: LocatorBook) -> list[dict]:
     """Nodes whose ``name:`` reads as a template but which repeat over nothing."""
-    scopes = _scopes(data)
+    scopes = book.scopes
     out = []
-    for screen, node in _locatables(data):
+    for screen, node in book.locatables:
         if scopes.get(node.id):
             continue
         name = _bullet(node, "name")
@@ -435,10 +438,10 @@ def templates_outside_repeat(data: dict) -> list[dict]:
     return out
 
 
-def invalid_variants(data: dict) -> list[dict]:
+def invalid_variants(book: LocatorBook) -> list[dict]:
     """Repeated nodes whose ``variants:`` machine value the micro-syntax rejects."""
     out = []
-    for screen, node in _locatables(data):
+    for screen, node in book.locatables:
         raw = _raw_bullet(node, "variants")
         if not raw or not repeat_of(node):
             continue
@@ -449,16 +452,11 @@ def invalid_variants(data: dict) -> list[dict]:
     return out
 
 
-def _base_components(data: dict) -> set[str]:
-    """Nodes another component ``extends:`` — shared bases rather than rendered controls."""
-    return {e["to"] for e in data["edges"] if e.get("via") == "extends"}
-
-
-def unnamed_interactives(data: dict) -> list[dict]:
+def unnamed_interactives(book: LocatorBook) -> list[dict]:
     """Operable controls with no accessible name — unannounceable and unaddressable alike."""
-    bases = _base_components(data)
+    bases = book.bases
     out = []
-    for screen, node in _locatables(data):
+    for screen, node in book.locatables:
         if node.id in bases:
             continue
         role, name = _bullet(node, "role"), _bullet(node, "name")
@@ -467,11 +465,11 @@ def unnamed_interactives(data: dict) -> list[dict]:
     return out
 
 
-def screen_locators(data: dict, screen: str | None = None) -> list[dict]:
+def screen_locators(book: LocatorBook, screen: str | None = None) -> list[dict]:
     """Every locatable node, grouped by its owner (a screen, or a shared component file)."""
     by_screen: dict[str, list[dict]] = {}
-    scopes = _scopes(data)
-    for owner, node in _locatables(data):
+    scopes = book.scopes
+    for owner, node in book.locatables:
         if screen and owner != screen and not owner.endswith(f"/{screen}.md"):
             continue
         entry = {"node": node.id, "type": node.type, "title": node.title}
@@ -482,18 +480,18 @@ def screen_locators(data: dict, screen: str | None = None) -> list[dict]:
 
 
 def build(graph: Graph, *, surface: str | None = None, screen: str | None = None) -> dict:
-    data = graph_mod.build(graph, surface=surface)
-    screens = screen_locators(data, screen)
+    book = LocatorBook.parse(graph_mod.build(graph, surface=surface))
+    screens = screen_locators(book, screen)
     flat = [locator for entry in screens for locator in entry["locators"]]
     return {
         "screens": screens,
-        "collisions": collisions(data),
-        "unnamed": unnamed_interactives(data),
-        "invalid_roles": invalid_roles(data),
-        "static_templates": static_templates(data),
-        "unproven_unique": unproven_unique_names(data),
-        "malformed_templates": malformed_templates(data),
-        "invalid_variants": invalid_variants(data),
+        "collisions": collisions(book),
+        "unnamed": unnamed_interactives(book),
+        "invalid_roles": invalid_roles(book),
+        "static_templates": static_templates(book),
+        "unproven_unique": unproven_unique_names(book),
+        "malformed_templates": malformed_templates(book),
+        "invalid_variants": invalid_variants(book),
         "counts": {
             "locators": len(flat),
             "by_role": sum(1 for locator in flat if locator["strategy"] == "role"),

@@ -817,7 +817,7 @@ def _serialized_graph(
     dict[str, dict[str, Any]],
     set[tuple[str, str]],
     set[tuple[str, str]],
-    dict[str, tuple[str, ...]],
+    Mapping[str, tuple[str, ...]],
     set[tuple[str, str]],
 ]:
     """The nodes, every resolved edge, the flow destinations, each node's repeat scope, and the `detail:` edges."""
@@ -844,7 +844,7 @@ def _serialized_graph(
         }
         named = [edge for edge in walked if edge.get("href") in hrefs]
         ends.update((item["id"], edge["to"]) for edge in named or walked[-1:])
-    return nodes, edges, ends, locators_mod.scopes(data), details
+    return nodes, edges, ends, locators_mod.LocatorBook.parse(data).scopes, details
 
 
 def _in_book(path: str, offset: str) -> str | None:
