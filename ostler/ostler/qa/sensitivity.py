@@ -224,7 +224,7 @@ def _drop_path(document: Any, path: str) -> Any:
     return document
 
 
-def _int(value: Any) -> int:
+def _int(value: checks.CheckValue) -> int:
     """A declared numeric argument as a number, whichever way the book spelled it."""
     return int(str(value))
 
@@ -423,7 +423,7 @@ class _WitnessPlan:
         return cls(None, (), reason)
 
 
-def _witness_texts(args: Mapping[str, Any]) -> _WitnessTexts | _NoWitness:
+def _witness_texts(args: Mapping[str, checks.CheckValue]) -> _WitnessTexts | _NoWitness:
     """A text holding what the call's `text=` and `matches=` name and one holding neither, or why no such pair exists."""
     pattern = str(args["matches"]) if "matches" in args else None
     expected_output = str(args.get("text", ""))
@@ -438,7 +438,7 @@ def _witness_texts(args: Mapping[str, Any]) -> _WitnessTexts | _NoWitness:
     return _WitnessTexts(matching=expected_output, other=other_output)
 
 
-def _plan_stream(stream: str, args: Mapping[str, Any]) -> _WitnessPlan:
+def _plan_stream(stream: str, args: Mapping[str, checks.CheckValue]) -> _WitnessPlan:
     """A tool result that printed what the call names on `stream`, and the results that printed it elsewhere or not at all."""
     texts = _witness_texts(args)
     if isinstance(texts, _NoWitness):
@@ -450,7 +450,7 @@ def _plan_stream(stream: str, args: Mapping[str, Any]) -> _WitnessPlan:
         (f"the command printed it on {other_stream} instead", _printed(other_stream, expected_output)),
     ])
 
-def _plan_contents(args: Mapping[str, Any]) -> _WitnessPlan:
+def _plan_contents(args: Mapping[str, checks.CheckValue]) -> _WitnessPlan:
     """A working directory whose file holds what the call names, and the directories where it holds something else or is not there."""
     texts = _witness_texts(args)
     if isinstance(texts, _NoWitness):
@@ -484,7 +484,7 @@ def _plan_observed(call: checks.CheckCall) -> _WitnessPlan:
     return _PLANNERS[call.name](call.args)
 
 
-def _plan_http_status(args: Mapping[str, Any]) -> _WitnessPlan:
+def _plan_http_status(args: Mapping[str, checks.CheckValue]) -> _WitnessPlan:
     code = _int(args["code"])
     route = str(args.get("path", "/witness"))
     body = {"title": args["title"]} if "title" in args else {}
@@ -499,7 +499,7 @@ def _plan_http_status(args: Mapping[str, Any]) -> _WitnessPlan:
     return _WitnessPlan.of(witness, mutations)
 
 
-def _plan_response_header(args: Mapping[str, Any]) -> _WitnessPlan:
+def _plan_response_header(args: Mapping[str, checks.CheckValue]) -> _WitnessPlan:
     header = str(args["name"])
     if "equals" in args:
         value = str(args["equals"])
@@ -516,14 +516,14 @@ def _plan_response_header(args: Mapping[str, Any]) -> _WitnessPlan:
     return _WitnessPlan.of(witness, mutations)
 
 
-def _plan_json_path(args: Mapping[str, Any]) -> _WitnessPlan:
+def _plan_json_path(args: Mapping[str, checks.CheckValue]) -> _WitnessPlan:
     path = str(args["path"])
     if "absent" in args:
         if args["absent"]:
             return _WitnessPlan.of({}, [("the field the claim forbids is there", _set_path({}, path, "x"))])
         return _WitnessPlan.of(_set_path({}, path, "x"), [("the field the claim requires is missing", {})])
     if "equals" in args:
-        value: Any = args["equals"]
+        value: checks.CheckValue = args["equals"]
     elif "matches" in args:
         found = _matching(str(args["matches"]))
         if found is None:
@@ -540,7 +540,7 @@ def _plan_json_path(args: Mapping[str, Any]) -> _WitnessPlan:
     return _WitnessPlan.of(witness, mutations)
 
 
-def _plan_unchanged(args: Mapping[str, Any]) -> _WitnessPlan:
+def _plan_unchanged(args: Mapping[str, checks.CheckValue]) -> _WitnessPlan:
     declared = args.get("except_fields", [])
     allowed = [str(field) for field in declared] if isinstance(declared, list) else []
     before = {"claimed": 1, "also_claimed": 2, **{field: 1 for field in allowed}}
@@ -550,7 +550,7 @@ def _plan_unchanged(args: Mapping[str, Any]) -> _WitnessPlan:
     )
 
 
-def _plan_keys_unchanged(_args: Mapping[str, Any]) -> _WitnessPlan:
+def _plan_keys_unchanged(_args: Mapping[str, checks.CheckValue]) -> _WitnessPlan:
     before = {"a": 1, "b": 2}
     return _WitnessPlan.of(
         (before, dict(before)),
@@ -561,7 +561,7 @@ def _plan_keys_unchanged(_args: Mapping[str, Any]) -> _WitnessPlan:
     )
 
 
-def _plan_count(args: Mapping[str, Any]) -> _WitnessPlan:
+def _plan_count(args: Mapping[str, checks.CheckValue]) -> _WitnessPlan:
     want = _int(args["equals"])
     subject = str(args["subject"])
     if _PATHLIKE.match(subject):
@@ -577,25 +577,25 @@ def _plan_count(args: Mapping[str, Any]) -> _WitnessPlan:
     )
 
 
-def _plan_absent(_args: Mapping[str, Any]) -> _WitnessPlan:
+def _plan_absent(_args: Mapping[str, checks.CheckValue]) -> _WitnessPlan:
     return _WitnessPlan.of(None, [("the subject is there after all", ["something"])])
 
 
-def _plan_created(_args: Mapping[str, Any]) -> _WitnessPlan:
+def _plan_created(_args: Mapping[str, checks.CheckValue]) -> _WitnessPlan:
     return _WitnessPlan.of((None, {"id": "x"}), [
         ("it was already there before the action", ({"id": "x"}, {"id": "x"})),
         ("nothing was created", (None, None)),
     ])
 
 
-def _plan_removed(_args: Mapping[str, Any]) -> _WitnessPlan:
+def _plan_removed(_args: Mapping[str, checks.CheckValue]) -> _WitnessPlan:
     return _WitnessPlan.of(({"id": "x"}, None), [
         ("it was never there to remove", (None, None)),
         ("it is still there afterwards", ({"id": "x"}, {"id": "x"})),
     ])
 
 
-def _plan_visible(args: Mapping[str, Any]) -> _WitnessPlan:
+def _plan_visible(args: Mapping[str, checks.CheckValue]) -> _WitnessPlan:
     text = str(args.get("text", "witness"))
     witness = _Locator(visible=True, text=text)
     mutations: list[tuple[str, object]] = [("the element is not on the page", _Locator(visible=False, text=text))]
@@ -604,13 +604,13 @@ def _plan_visible(args: Mapping[str, Any]) -> _WitnessPlan:
     return _WitnessPlan.of(witness, mutations)
 
 
-def _plan_actionable(_args: Mapping[str, Any]) -> _WitnessPlan:
+def _plan_actionable(_args: Mapping[str, checks.CheckValue]) -> _WitnessPlan:
     return _WitnessPlan.of(_Locator(visible=True, text="witness", enabled=True), [
         ("the control is disabled", _Locator(visible=True, text="witness", enabled=False)),
     ])
 
 
-def _plan_focusable(args: Mapping[str, Any]) -> _WitnessPlan:
+def _plan_focusable(args: Mapping[str, checks.CheckValue]) -> _WitnessPlan:
     key = str(args["activates"]) if "activates" in args else None
     witness = _Focusable(takes_focus=True, fires_on=key)
     mutations: list[tuple[str, object]] = [
@@ -623,21 +623,21 @@ def _plan_focusable(args: Mapping[str, Any]) -> _WitnessPlan:
     return _WitnessPlan.of(witness, mutations)
 
 
-def _plan_inert(_args: Mapping[str, Any]) -> _WitnessPlan:
+def _plan_inert(_args: Mapping[str, checks.CheckValue]) -> _WitnessPlan:
     return _WitnessPlan.of(_Locator(visible=True, text="witness", enabled=False), [
         ("the control still accepts the action",
          _Locator(visible=True, text="witness", enabled=True)),
     ])
 
 
-def _plan_persists(_args: Mapping[str, Any]) -> _WitnessPlan:
+def _plan_persists(_args: Mapping[str, checks.CheckValue]) -> _WitnessPlan:
     return _WitnessPlan.of(("written", "written"), [
         ("nothing was re-read after the restart", ("written", None)),
         ("what came back is not what was written", ("written", _OTHER)),
     ])
 
 
-def _plan_emitted(args: Mapping[str, Any]) -> _WitnessPlan:
+def _plan_emitted(args: Mapping[str, checks.CheckValue]) -> _WitnessPlan:
     want = _int(args["count"]) if "count" in args else 1
     witness = [{"event": i} for i in range(want)]
     mutations: list[tuple[str, object]] = []
@@ -648,7 +648,7 @@ def _plan_emitted(args: Mapping[str, Any]) -> _WitnessPlan:
     return _WitnessPlan.of(witness, mutations)
 
 
-def _plan_omits(args: Mapping[str, Any]) -> _WitnessPlan:
+def _plan_omits(args: Mapping[str, checks.CheckValue]) -> _WitnessPlan:
     subject = str(args["subject"])
     pattern = str(args["matches"]) if "matches" in args else None
     leak = str(args["text"]) if "text" in args else _matching(pattern or "")
@@ -673,19 +673,19 @@ def _plan_omits(args: Mapping[str, Any]) -> _WitnessPlan:
     return _WitnessPlan.of(clean, [("the observation carries what it may not", tainted)])
 
 
-def _plan_exit_status(args: Mapping[str, Any]) -> _WitnessPlan:
+def _plan_exit_status(args: Mapping[str, checks.CheckValue]) -> _WitnessPlan:
     code = _int(args["code"])
     return _WitnessPlan.of(SimpleNamespace(exit_code=code), [
         ("the process exited differently", SimpleNamespace(exit_code=code + 1 if code == 0 else 0)),
     ])
 
 
-def _plan_conflict_on_stale(_args: Mapping[str, Any]) -> _WitnessPlan:
+def _plan_conflict_on_stale(_args: Mapping[str, checks.CheckValue]) -> _WitnessPlan:
     url = "http://witness/subject"
     return _WitnessPlan.of(_Response(409, {}, url), [("the stale write was accepted", _Response(200, {}, url))])
 
 
-_PLANNERS: dict[str, Callable[[Mapping[str, Any]], _WitnessPlan]] = {
+_PLANNERS: dict[str, Callable[[Mapping[str, checks.CheckValue]], _WitnessPlan]] = {
     "http_status": _plan_http_status,
     "response_header": _plan_response_header,
     "json_path": _plan_json_path,
