@@ -65,7 +65,7 @@ class RepairOutcome(BaseModel):
     rounds: int
     failed_turns: tuple[str, ...] = ()
     oversized_parts: tuple[OversizedPart, ...] = ()
-    problems_left: int = 0
+    problem_count_left: int = 0
 
 
 class RepairRound(BaseModel):
@@ -107,7 +107,7 @@ class RepairLedger(BaseModel):
 
     def outcome(self, rounds: int, by_page: dict[str, tuple[PageProblem, ...]]) -> RepairOutcome:
         left = sum(len(problems) for problems in by_page.values())
-        return RepairOutcome(rounds=rounds, failed_turns=self.failed_turns, oversized_parts=self.oversized_parts, problems_left=left)
+        return RepairOutcome(rounds=rounds, failed_turns=self.failed_turns, oversized_parts=self.oversized_parts, problem_count_left=left)
 
 
 class RepairBook(BookFlow):

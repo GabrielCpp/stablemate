@@ -19,7 +19,7 @@ from pydantic import BaseModel, ConfigDict
 
 from workhorse_workflows.okf_book.main.nodes.cited_lines import CitedFiles
 from workhorse_workflows.okf_book.main.nodes.journey import JourneyPages
-from workhorse_workflows.okf_book.main.nodes.page_sections import HEAD, page_sections
+from workhorse_workflows.okf_book.main.nodes.page_sections import HEAD_SECTION_ID, page_sections
 from workhorse_workflows.okf_book.main.nodes.turn_budget import BOOK_HOLDS, CHARS_PER_TOKEN, SOURCE_AND_BOOK_CEILING_TOKENS, SOURCE_READS
 from workhorse_workflows.okf_book.shared.citations import citations_in
 from workhorse_workflows.okf_book.shared.page_check import PageProblem
@@ -27,7 +27,7 @@ from workhorse_workflows.okf_book.shared.page_check import PageProblem
 class PageRepair(BaseModel):
     """One page to repair, repo-relative, each problem the check reports on it, and the parts of files it cites.
 
-    A page too large for one writer names the `###` sections the turn repairs, `HEAD` for the lines
+    A page too large for one writer names the `###` sections the turn repairs, `HEAD_SECTION_ID` for the lines
     under no `###` heading. With none named, the turn repairs the whole page.
     """
 
@@ -87,7 +87,7 @@ class OversizedPart(BaseModel):
         """The page, or the section of it, no turn was sent."""
         if self.section is None:
             return self.page
-        return f"{self.page}, the lines under no ### heading" if self.section == HEAD else f"{self.page}, ### {self.section}"
+        return f"{self.page}, the lines under no ### heading" if self.section == HEAD_SECTION_ID else f"{self.page}, ### {self.section}"
 
     @property
     def reason(self) -> str:

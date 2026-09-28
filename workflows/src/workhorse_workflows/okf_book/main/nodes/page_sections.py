@@ -11,7 +11,7 @@ from dataclasses import dataclass
 
 from workhorse_workflows.okf_book.shared.page_check import PageProblem
 
-HEAD = ""
+HEAD_SECTION_ID = ""
 _FENCE = "```"
 _BOUNDARY = re.compile(r"^#{1,3} ")
 _NODE = re.compile(r"^### +(?P<id>.+?)\s*$")
@@ -46,29 +46,29 @@ class PageSections:
     def section_id_of_problem(self, problem: PageProblem) -> str:
         """The id of the section a problem on this page sits in: the node it names, else the line it names, else the head."""
         anchor = problem.node.partition("#")[2]
-        named = next((section.id for section in self.sections if section.id != HEAD and _anchor(section.id) == anchor), None)
+        named = next((section.id for section in self.sections if section.id != HEAD_SECTION_ID and _anchor(section.id) == anchor), None)
         if anchor and named is not None:
             return named
         if problem.line is not None:
-            return next((section.id for section in self.sections if problem.line in section.line_numbers), HEAD)
-        return HEAD
+            return next((section.id for section in self.sections if problem.line in section.line_numbers), HEAD_SECTION_ID)
+        return HEAD_SECTION_ID
 
 
 def page_sections(text: str) -> PageSections:
     """Split a page into its head and its `###` nodes. A heading inside a fenced block splits nothing."""
     owner: list[str] = []
-    current = HEAD
+    current = HEAD_SECTION_ID
     fenced = False
     for line in text.splitlines():
         if line.lstrip().startswith(_FENCE):
             fenced = not fenced
         elif not fenced and _BOUNDARY.match(line):
             node = _NODE.match(line)
-            current = node.group("id") if node else HEAD
+            current = node.group("id") if node else HEAD_SECTION_ID
         owner.append(current)
-    ids = list(dict.fromkeys([HEAD, *owner]))
+    ids = list(dict.fromkeys([HEAD_SECTION_ID, *owner]))
     sections = tuple(
         Section(section_id, tuple(number for number, holder in enumerate(owner, start=1) if holder == section_id))
         for section_id in ids
     )
-    return PageSections(text, tuple(section for section in sections if section.line_numbers or section.id == HEAD))
+    return PageSections(text, tuple(section for section in sections if section.line_numbers or section.id == HEAD_SECTION_ID))
