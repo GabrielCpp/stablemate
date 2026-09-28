@@ -14,7 +14,7 @@ from pathlib import Path
 
 from ostler.stamp import stamp_page
 from workhorse_workflows.okf_book.main.nodes.journey import adds_only_links
-from workhorse_workflows.okf_book.main.nodes.repair_batches import RepairBatch
+from workhorse_workflows.okf_book.main.nodes.repair_batch_models import RepairBatch
 from workhorse_workflows.okf_book.shared.confine import Snapshot, book_changes, committed_text
 from workhorse_workflows.okf_book.shared.entries import FEATURES_DIR, entries_path
 

@@ -23,7 +23,8 @@ from okf_book.support import ScriptedRunner, git
 
 from workhorse_workflows.okf_book.main import repair_book_flow
 from workhorse_workflows.okf_book.main.nodes.journey import JourneyPages
-from workhorse_workflows.okf_book.main.nodes.repair_batches import PackedRepairs, PageRepair, RepairBatch, pack_repairs
+from workhorse_workflows.okf_book.main.nodes.repair_batch_models import PackedRepairs, PageRepair, RepairBatch
+from workhorse_workflows.okf_book.main.nodes.repair_batches import pack_repairs
 from workhorse_workflows.okf_book.main.nodes.repair_ledger import RepairLedger, RepairRound
 from workhorse_workflows.okf_book.main.nodes.report import BookReport
 from workhorse_workflows.okf_book.shared.page_check import PageProblem

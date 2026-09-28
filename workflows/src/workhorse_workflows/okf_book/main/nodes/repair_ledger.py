@@ -6,7 +6,7 @@ from collections.abc import Iterable
 from pydantic import BaseModel, ConfigDict
 
 from workhorse_workflows.okf_book.main.nodes.journey import JourneyPages
-from workhorse_workflows.okf_book.main.nodes.repair_batches import OversizedPart, RepairBatch
+from workhorse_workflows.okf_book.main.nodes.repair_batch_models import OversizedPart, RepairBatch
 from workhorse_workflows.okf_book.shared.page_check import PageProblem
 
 

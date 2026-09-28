@@ -32,7 +32,8 @@ from workhorse.runner.failure import BackendInvocationError
 
 from workhorse_workflows.okf_book.main import flow, repair_book_flow, root_book_flow
 from workhorse_workflows.okf_book.main.nodes import turn_budget
-from workhorse_workflows.okf_book.main.nodes.repair_batches import PageRepair, pack_repairs
+from workhorse_workflows.okf_book.main.nodes.repair_batch_models import PageRepair
+from workhorse_workflows.okf_book.main.nodes.repair_batches import pack_repairs
 from workhorse_workflows.okf_book.main.nodes.report import BookReport
 from workhorse_workflows.okf_book.main.nodes.writer_commands import CHECK_MODULE, EXERCISE_MODULE, OSTLER_MODULE
 from workhorse_workflows.okf_book.main.repair_book_flow import REPAIR_ROUNDS
