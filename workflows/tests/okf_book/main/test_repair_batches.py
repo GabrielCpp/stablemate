@@ -12,6 +12,7 @@ BOOK = "docs/features/ledger"
 SOURCE = "ledger/cli.py"
 PAGE_TOKENS = 100
 SOURCE_TOKENS = 400
+ONE_PAGE_TOKENS = BOOK_HOLDS * PAGE_TOKENS + 1
 
 
 def _page(root: Path, name: str, *, cites: bool) -> str:
@@ -41,9 +42,9 @@ def test_problems_are_grouped_by_page_in_path_order_without_the_skipped_pages() 
 def test_pages_that_cite_one_file_share_its_cost_in_one_batch(tmp_path: Path) -> None:
     _source(tmp_path)
     pages = [_page(tmp_path, f"{name}.md", cites=True) for name in ("a", "b")]
-    alone = BOOK_HOLDS * PAGE_TOKENS + 1 + SOURCE_READS * SOURCE_TOKENS
+    one_citing_page_tokens = ONE_PAGE_TOKENS + SOURCE_READS * SOURCE_TOKENS
 
-    batches = pack_repairs(tmp_path, {page: (PageProblem(page, "p"),) for page in pages}, ceiling=alone + BOOK_HOLDS * PAGE_TOKENS + 1).batches
+    batches = pack_repairs(tmp_path, {page: (PageProblem(page, "p"),) for page in pages}, ceiling=one_citing_page_tokens + ONE_PAGE_TOKENS).batches
 
     assert [batch.page_paths for batch in batches] == [tuple(pages)]
     assert batches[0].sources == (SOURCE,)
@@ -51,24 +52,22 @@ def test_pages_that_cite_one_file_share_its_cost_in_one_batch(tmp_path: Path) ->
 
 def test_a_page_that_would_cross_the_ceiling_starts_the_next_batch(tmp_path: Path) -> None:
     pages = [_page(tmp_path, f"{name}.md", cites=False) for name in ("a", "b", "c")]
-    one = BOOK_HOLDS * PAGE_TOKENS + 1
 
-    batches = pack_repairs(tmp_path, {page: (PageProblem(page, "p"),) for page in pages}, ceiling=2 * one).batches
+    batches = pack_repairs(tmp_path, {page: (PageProblem(page, "p"),) for page in pages}, ceiling=2 * ONE_PAGE_TOKENS).batches
 
     assert [batch.page_paths for batch in batches] == [tuple(pages[:2]), (pages[2],)]
-    assert [batch.tokens for batch in batches] == [2 * one, one]
+    assert [batch.tokens for batch in batches] == [2 * ONE_PAGE_TOKENS, ONE_PAGE_TOKENS]
 
 
 def test_a_page_alone_over_the_ceiling_goes_to_no_batch_and_is_reported_with_its_cost(tmp_path: Path) -> None:
     _source(tmp_path)
     large = _page(tmp_path, "a.md", cites=True)
     small = _page(tmp_path, "b.md", cites=False)
-    one = BOOK_HOLDS * PAGE_TOKENS + 1
 
-    packed = pack_repairs(tmp_path, {large: (PageProblem(large, "p"),), small: (PageProblem(small, "p"),)}, ceiling=one)
+    packed = pack_repairs(tmp_path, {large: (PageProblem(large, "p"),), small: (PageProblem(small, "p"),)}, ceiling=ONE_PAGE_TOKENS)
 
     assert [batch.page_paths for batch in packed.batches] == [(small,)]
-    assert [(part.page, part.tokens) for part in packed.oversized_parts] == [(large, one + SOURCE_READS * SOURCE_TOKENS)]
+    assert [(part.page, part.tokens) for part in packed.oversized_parts] == [(large, ONE_PAGE_TOKENS + SOURCE_READS * SOURCE_TOKENS)]
     assert packed.oversized_parts[0].reason.startswith(f"{large} and the files it cites cost")
 
 
@@ -76,16 +75,15 @@ def test_pages_whose_fix_goes_on_a_journey_are_packed_first_with_the_journey_pag
     flow = _page(tmp_path, "flows/add.md", cites=False)
     pages = [_page(tmp_path, f"{name}.md", cites=False) for name in ("a", "b", "c")]
     journey = JourneyPages(pages=(flow,), flow_folder=f"{BOOK}/flows")
-    one = BOOK_HOLDS * PAGE_TOKENS + 1
 
-    batches = pack_repairs(tmp_path, {page: (PageProblem(page, "p"),) for page in pages}, journey, frozenset(pages[1:]), ceiling=2 * one).batches
+    batches = pack_repairs(tmp_path, {page: (PageProblem(page, "p"),) for page in pages}, journey, frozenset(pages[1:]), ceiling=2 * ONE_PAGE_TOKENS).batches
 
     assert [(batch.page_paths, batch.journey) for batch in batches] == [
         ((pages[1],), journey),
         ((pages[2],), journey),
         ((pages[0],), None),
     ]
-    assert batches[0].tokens == one + BOOK_HOLDS * PAGE_TOKENS
+    assert batches[0].tokens == ONE_PAGE_TOKENS + BOOK_HOLDS * PAGE_TOKENS
     assert not batches[2].owns(flow)
 
 
@@ -93,9 +91,8 @@ def test_each_journey_batch_may_write_one_new_flow_page_named_when_it_is_planned
     flow = _page(tmp_path, "flows/add.md", cites=False)
     pages = [_page(tmp_path, f"{folder}/add.md", cites=False) for folder in ("ops", "admin")]
     journey = JourneyPages(pages=(flow,), flow_folder=f"{BOOK}/flows")
-    one = BOOK_HOLDS * PAGE_TOKENS + 1
 
-    batches = pack_repairs(tmp_path, {page: (PageProblem(page, "p"),) for page in pages}, journey, frozenset(pages), ceiling=2 * one).batches
+    batches = pack_repairs(tmp_path, {page: (PageProblem(page, "p"),) for page in pages}, journey, frozenset(pages), ceiling=2 * ONE_PAGE_TOKENS).batches
 
     assert [batch.new_flow_page for batch in batches] == [f"{BOOK}/flows/add-2.md", f"{BOOK}/flows/add-3.md"]
     assert batches[0].owns(f"{BOOK}/flows/add-2.md")
