@@ -7,7 +7,6 @@ import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 
 from ostler import graph as graph_mod
 from ostler.model import Graph, UINode
@@ -244,10 +243,10 @@ class Locator:
     scheme: str = ""
     value: str = ""
 
-    def row(self) -> dict[str, Any]:
+    def row(self) -> dict[str, JsonValue]:
         """The locator as `ostler locators` prints it."""
-        fields: dict[str, Any] = {"strategy": self.strategy, "locator": self.locator,
-                                  "role": self.role, "name": self.name}
+        fields: dict[str, JsonValue] = {"strategy": self.strategy, "locator": self.locator,
+                                        "role": self.role, "name": self.name}
         if self.template is not None:
             fields["template"] = self.template.template
             fields["iterates"] = self.template.iterates
@@ -582,7 +581,7 @@ def screen_locators(book: LocatorBook, screen: str | None = None) -> list[dict]:
     for owner, node in book.locatables:
         if screen and owner != screen and not owner.endswith(f"/{screen}.md"):
             continue
-        entry = {"node": node.id, "type": node.type, "title": node.title}
+        entry: dict[str, JsonValue] = {"node": node.id, "type": node.type, "title": node.title}
         entry.update(locator_for(node, scope=scopes.get(node.id, ())).row())
         entry["keyboard"] = _bullet(node, "keyboard")
         by_screen.setdefault(owner, []).append(entry)
