@@ -95,14 +95,14 @@ def _checked_document(observed: Any, args: Mapping[str, Any]) -> _CheckedDocumen
     return _CheckedDocument(present=name in observed, document=observed.get(name))
 
 
-def _json_value(value: object) -> JsonValue:
+def json_value(value: object) -> JsonValue:
     """*value* as parsed JSON, refused with `ValueError` on anything JSON cannot hold."""
     if value is None or isinstance(value, bool | int | float | str):
         return value
     if isinstance(value, list):
-        return [_json_value(item) for item in value]
+        return [json_value(item) for item in value]
     if isinstance(value, dict) and all(isinstance(key, str) for key in value):
-        return {str(key): _json_value(item) for key, item in value.items()}
+        return {str(key): json_value(item) for key, item in value.items()}
     raise ValueError(f"not a JSON value: {type(value).__name__}")
 
 
@@ -111,7 +111,7 @@ def _read_tree_file(path: Path) -> JsonValue:
     if path.suffix != ".json":
         return text
     try:
-        return _json_value(json.loads(text))
+        return json_value(json.loads(text))
     except ValueError:
         return text
 

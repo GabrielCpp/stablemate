@@ -30,7 +30,7 @@ from ostler_qa_verifiers import (
     VERIFIERS,
     JsonValue,
     Tree,
-    _json_value,
+    json_value,
 )
 
 __all__ = [
@@ -1456,7 +1456,7 @@ class ToolResult:
     def json(self) -> JsonValue:
         """Parse stdout as JSON, naming the command and a stdout excerpt when it is not."""
         try:
-            return _json_value(json.loads(self.stdout))
+            return json_value(json.loads(self.stdout))
         except json.JSONDecodeError as exc:
             raise ValueError(
                 f"{' '.join(self.command)} exited {self.exit_code} with a stdout that is not JSON: "
