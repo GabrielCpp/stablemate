@@ -133,7 +133,7 @@ def _text_cost(
     )
 
 
-def _cost(units: list[_PageCost]) -> int:
+def _batch_tokens(units: list[_PageCost]) -> int:
     sources: dict[str, int] = {}
     for unit in units:
         sources.update(unit.source_tokens)
@@ -166,7 +166,7 @@ def _repairs_joined_by_page(units: list[_PageCost]) -> tuple[PageRepair, ...]:
 
 
 def _batch(journey_costs: list[_PageCost], filling_batch_units: list[_PageCost], journey: JourneyPages | None) -> RepairBatch:
-    return RepairBatch(pages=_repairs_joined_by_page(filling_batch_units), tokens=_cost([*journey_costs, *filling_batch_units]), journey=journey)
+    return RepairBatch(pages=_repairs_joined_by_page(filling_batch_units), tokens=_batch_tokens([*journey_costs, *filling_batch_units]), journey=journey)
 
 
 @dataclass(frozen=True, slots=True)
@@ -183,7 +183,7 @@ class _PageSplitter:
     with_journey: bool
 
     def _tokens_alone(self, unit: _PageCost) -> int:
-        return _cost([*self.journey_costs, unit])
+        return _batch_tokens([*self.journey_costs, unit])
 
     def _oversized(self, page: str, tokens: int, section: str | None = None) -> OversizedPart:
         return OversizedPart(page=page, tokens=tokens, ceiling=self.ceiling, with_journey=self.with_journey, section=section)
@@ -229,7 +229,7 @@ def _pack(
         split = splitter.split_page(page, problems)
         oversized_parts.extend(split.oversized_parts)
         for unit in split.units:
-            if filling_batch_units and _cost([*journey_costs, *filling_batch_units, unit]) > ceiling:
+            if filling_batch_units and _batch_tokens([*journey_costs, *filling_batch_units, unit]) > ceiling:
                 batches.append(_batch(journey_costs, filling_batch_units, journey))
                 filling_batch_units = []
             filling_batch_units.append(unit)

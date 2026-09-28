@@ -52,7 +52,7 @@ def _tracked(root: Path, path: str) -> bool:
     return bool(_git(root, "ls-tree", "--name-only", "HEAD", "--", path).strip())
 
 
-def untracked(root: Path, paths: Iterable[str]) -> frozenset[str]:
+def absent_from_head(root: Path, paths: Iterable[str]) -> frozenset[str]:
     """The paths HEAD does not hold, such as a page a turn created."""
     return frozenset(path for path in paths if not _tracked(root, path))
 

@@ -46,7 +46,7 @@ from workhorse_workflows.okf_book.shared.confine import (
     put_back_outside,
     restore,
     snapshot,
-    untracked,
+    absent_from_head,
 )
 from workhorse_workflows.okf_book.shared.entries import FEATURES_DIR, entries_path
 from workhorse_workflows.okf_book.shared.metrics import TurnMetric, record_turn, turn_metric
@@ -140,7 +140,7 @@ class RepairBook(BookFlow):
         """
         path = entries_path(self.root, self.service)
         page = path.relative_to(self.root).as_posix()
-        if page not in untracked(self.root, (page,)) or page in uncommitted_at_start:
+        if page not in absent_from_head(self.root, (page,)) or page in uncommitted_at_start:
             return Continue(None, self.plan_first_round, uncommitted_at_start=uncommitted_at_start).because("the book has its root")
         if not path.is_file():
             page = write_root_entries(self.root, self.service)
@@ -276,7 +276,7 @@ class RepairBook(BookFlow):
         batch = this_round.batches[index]
         entries = entries_path(root, self.service).relative_to(root).as_posix()
         changed = book_changes(root, self.service, before)
-        created = untracked(root, changed)
+        created = absent_from_head(root, changed)
         unowned = [
             path
             for path in changed
@@ -322,7 +322,7 @@ class RepairBook(BookFlow):
         batch = this_round.batches[index]
         entries = entries_path(root, self.service).relative_to(root).as_posix()
         changed = book_changes(root, self.service, before)
-        created = untracked(root, changed)
+        created = absent_from_head(root, changed)
         pages = tuple(path for path in changed if path != entries and path not in before.digests and batch.owns(path, created))
         journey = sorted(set(pages) - set(batch.page_paths))
         if journey:
