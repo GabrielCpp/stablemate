@@ -95,6 +95,21 @@ def test_codex_hook_notices_neither_fail_nor_end_the_turn() -> None:
     assert state.result_text == "DONE"
 
 
+
+def test_codex_other_tool_router_errors_stay_diagnostics() -> None:
+    """A tool failure the router reports that is neither a refusal nor a missed patch is still a failure of the turn."""
+    lines = [
+        "2026-01-01T00:00:00Z ERROR codex_core::tools::router: error=exec_command failed: sandbox denied",
+        json.dumps({"type": "item.completed", "item": {"type": "agent_message", "text": "DONE"}}),
+    ]
+
+    def fake_stream(cmd: list[str], node_id: str, timeout: float, on_line, **kwargs: object) -> tuple[bool, int]:
+        return any(on_line(raw) for raw in lines), 0
+
+    with patch.object(process, "stream_subprocess", fake_stream):
+        state = jsonl.stream_jsonl(["codex"], "n", 3600, None, codex._on_event, resilience=RESILIENCE, non_failure_markers=codex.NON_FAILURE_MARKERS)
+    assert [d for d in state.diagnostics if "sandbox denied" in d]
+
 if __name__ == "__main__":
     import subprocess
     import sys

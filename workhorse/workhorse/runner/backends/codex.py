@@ -64,7 +64,7 @@ def flags_with_policy_file(policy: Policy | None) -> Iterator[list[str]]:
         policy_path.unlink(missing_ok=True)
 
 
-NON_FAILURE_MARKERS = ("codex_core::tools::router", "blocked by PreToolUse hook", "`--dangerously-bypass-hook-trust` is enabled")
+NON_FAILURE_MARKERS = ("apply_patch verification failed", "blocked by PreToolUse hook", "`--dangerously-bypass-hook-trust` is enabled")
 
 
 def _on_event(event, state: TurnState, node_id):
