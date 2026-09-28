@@ -27,11 +27,15 @@ class Side(StrEnum):
 
 
 class Blocker(BaseModel):
-    """One thing the run stopped working on: a file, a page, an obligation or a scenario, and why."""
+    """One thing the run stopped working on: a file, a page, an obligation or a scenario, the service it belongs to, and why.
+
+    A record written before blockers named their service reads with no service.
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     subject: str
+    service: str = ""
     phase: Phase
     side: Side
     reason: str
@@ -49,10 +53,10 @@ def record_blocker(run_dir: Path, blocker: Blocker) -> Blocker:
     return blocker
 
 
-def forget_blockers(run_dir: Path, phase: Phase, side: Side, subject_prefix: str) -> None:
-    """Drop the blockers of *phase* and *side* whose subject starts with *subject_prefix*, so a later check that no longer finds them clears them."""
+def forget_blockers(run_dir: Path, phase: Phase, side: Side, service: str) -> None:
+    """Drop the blockers of *phase* and *side* on *service*, so a later check that no longer finds them clears them."""
     for blocker in read_blockers(run_dir):
-        if blocker.phase is phase and blocker.side is side and blocker.subject.startswith(subject_prefix):
+        if blocker.phase is phase and blocker.side is side and blocker.service == service:
             (run_dir / BLOCKERS_DIR / f"{blocker.key}.json").unlink()
 
 

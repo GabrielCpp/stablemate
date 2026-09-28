@@ -61,7 +61,8 @@ class OkfBook(BookFlow):
         return Continue(result, self.report).because("every surface is settled")
 
     def _block_surface_and_move_on(self, index: int, reason: str) -> Continue[...]:
-        blocker = Blocker(subject=self.surfaces[index].service, phase=Phase.WRITE, side=Side.WORKFLOW, reason=reason)
+        service = self.surfaces[index].service
+        blocker = Blocker(subject=service, service=service, phase=Phase.WRITE, side=Side.WORKFLOW, reason=reason)
         _ = record_blocker(self.records_dir, blocker)
         return self._next_surface(reason, index)
 
@@ -125,9 +126,9 @@ class OkfBook(BookFlow):
         service = self.surfaces[index].service
         if repaired.failed_turns:
             reason = "\n".join(repaired.failed_turns)
-            _ = record_blocker(self.records_dir, Blocker(subject=service, phase=Phase.WRITE, side=Side.WORKFLOW, reason=reason))
+            _ = record_blocker(self.records_dir, Blocker(subject=service, service=service, phase=Phase.WRITE, side=Side.WORKFLOW, reason=reason))
         for part in repaired.oversized_parts:
-            blocker = Blocker(subject=f"{service}: {part.subject}", phase=Phase.WRITE, side=Side.WORKFLOW, reason=part.reason)
+            blocker = Blocker(subject=f"{service}: {part.subject}", service=service, phase=Phase.WRITE, side=Side.WORKFLOW, reason=part.reason)
             _ = record_blocker(self.records_dir, blocker)
         return Continue(repaired, self.check_book, index=index).because("check the repaired book")
 
@@ -156,9 +157,9 @@ class OkfBook(BookFlow):
         """Repeat the writer's own page check. Each problem it finds is a blocker, and one an earlier check found that this one does not is no longer."""
         service = self.surfaces[index].service
         problems = book_problems(self.root, service)
-        forget_blockers(self.records_dir, Phase.WRITE, Side.BOOK, f"{service}: ")
+        forget_blockers(self.records_dir, Phase.WRITE, Side.BOOK, service)
         for problem in problems:
-            _ = record_blocker(self.records_dir, Blocker(subject=f"{service}: {problem}", phase=Phase.WRITE, side=Side.BOOK, reason=problem))
+            _ = record_blocker(self.records_dir, Blocker(subject=f"{service}: {problem}", service=service, phase=Phase.WRITE, side=Side.BOOK, reason=problem))
         return Continue(problems, self.run_book, index=index, written_by_workflow=True).because("run the book against the app")
 
     def run_book(self, index: int, written_by_workflow: bool) -> Continue[...]:
@@ -186,7 +187,7 @@ class OkfBook(BookFlow):
             )
         side = Side.APP if exercised.stack_down else Side.BOOK
         reason = "\n".join(exercised.lines)
-        _ = record_blocker(self.records_dir, Blocker(subject=service, phase=Phase.EXERCISE, side=side, reason=reason))
+        _ = record_blocker(self.records_dir, Blocker(subject=service, service=service, phase=Phase.EXERCISE, side=side, reason=reason))
         return self._next_surface(exercised.passed, index)
 
     def map_run_failures(self, index: int, exercised: ExerciseResult) -> Continue[...]:
