@@ -1,7 +1,12 @@
 ---
-name: python-dead-code
+name: stablemate-python-dead-code
 description: "Find and delete Python code that no production path reaches: modules only tests import, modules nothing imports, and unused functions, classes and constants. Ships a stdlib reachability script and pairs it with vulture for unused symbols. Every candidate is verified against dynamic references before deletion, and a dead module leaves with its tests and its doc mentions. Load before a refactor or a target-architecture pass, when a module looks orphaned, or when asked to trim, prune or clean up unused code. Applies to **/*.py."
-tags: [architecture, standards, refactoring]
+metadata:
+  generated_by: farrier
+  source: library/skills/stacks/python/python-dead-code/SKILL.md
+  resolve: "farrier source .claude/skills/stablemate-python-dead-code/SKILL.md"
+  do_not_edit: "generated — run the `resolve` command below for this machine's editable source path, edit that, then `make agent-install` to regenerate"
+  tags: [architecture, standards, refactoring]
 ---
 
 # Python dead code
