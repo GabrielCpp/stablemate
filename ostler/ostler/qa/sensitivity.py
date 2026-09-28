@@ -393,7 +393,7 @@ class _WitnessTexts:
 
 @dataclass(frozen=True)
 class _NoWitness:
-    """Why no pair of texts can tell a call's pass from its failure."""
+    """Why no witness can tell a call's pass from its failure."""
 
     reason: str
 
@@ -408,19 +408,14 @@ class _Mutation:
 
 @dataclass(frozen=True)
 class _WitnessPlan:
-    """The observation a call must pass, the mutations it must fail, and why there are none when there are none."""
+    """The observation a call must pass, and the mutations it must fail."""
 
     witness: object
     mutations: tuple[_Mutation, ...]
-    note: str = ""
 
     @classmethod
     def of(cls, witness: object, mutations: list[tuple[str, object]]) -> _WitnessPlan:
         return cls(witness, tuple(_Mutation(label, observed) for label, observed in mutations))
-
-    @classmethod
-    def refused(cls, reason: str) -> _WitnessPlan:
-        return cls(None, (), reason)
 
 
 def _witness_texts(args: Mapping[str, checks.CheckValue]) -> _WitnessTexts | _NoWitness:
@@ -438,11 +433,11 @@ def _witness_texts(args: Mapping[str, checks.CheckValue]) -> _WitnessTexts | _No
     return _WitnessTexts(matching=expected_output, other=other_output)
 
 
-def _plan_stream(stream: str, args: Mapping[str, checks.CheckValue]) -> _WitnessPlan:
+def _plan_stream(stream: str, args: Mapping[str, checks.CheckValue]) -> _WitnessPlan | _NoWitness:
     """A tool result that printed what the call names on `stream`, and the results that printed it elsewhere or not at all."""
     texts = _witness_texts(args)
     if isinstance(texts, _NoWitness):
-        return _WitnessPlan.refused(texts.reason)
+        return texts
     expected_output, other_output = texts.matching, texts.other
     other_stream = "stderr" if stream == "stdout" else "stdout"
     return _WitnessPlan.of(_printed(stream, expected_output), [
@@ -450,11 +445,11 @@ def _plan_stream(stream: str, args: Mapping[str, checks.CheckValue]) -> _Witness
         (f"the command printed it on {other_stream} instead", _printed(other_stream, expected_output)),
     ])
 
-def _plan_contents(args: Mapping[str, checks.CheckValue]) -> _WitnessPlan:
+def _plan_contents(args: Mapping[str, checks.CheckValue]) -> _WitnessPlan | _NoWitness:
     """A working directory whose file holds what the call names, and the directories where it holds something else or is not there."""
     texts = _witness_texts(args)
     if isinstance(texts, _NoWitness):
-        return _WitnessPlan.refused(texts.reason)
+        return texts
     expected, other = texts.matching, texts.other
     subject = str(args["subject"])
     return _WitnessPlan.of({subject: expected}, [
@@ -463,10 +458,10 @@ def _plan_contents(args: Mapping[str, checks.CheckValue]) -> _WitnessPlan:
     ])
 
 
-def _plan(call: checks.CheckCall) -> _WitnessPlan:
+def _plan(call: checks.CheckCall) -> _WitnessPlan | _NoWitness:
     """The witness observation, the mutations to try against it, and why there are none: in the file a `file=` names, when the call names one."""
     unfiled_plan = _plan_observed(call)
-    if "file" not in call.args or unfiled_plan.witness is None:
+    if isinstance(unfiled_plan, _NoWitness) or "file" not in call.args:
         return unfiled_plan
     name = str(call.args["file"])
     return _WitnessPlan(
@@ -475,11 +470,10 @@ def _plan(call: checks.CheckCall) -> _WitnessPlan:
             *(_Mutation(mutation.label, {name: mutation.observed}) for mutation in unfiled_plan.mutations),
             _Mutation("the file is not there", {}),
         ),
-        unfiled_plan.note,
     )
 
 
-def _plan_observed(call: checks.CheckCall) -> _WitnessPlan:
+def _plan_observed(call: checks.CheckCall) -> _WitnessPlan | _NoWitness:
     """The witness observation, the mutations to try against it, and why there are none. Every check in the vocabulary has a planner."""
     return _PLANNERS[call.name](call.args)
 
@@ -499,14 +493,14 @@ def _plan_http_status(args: Mapping[str, checks.CheckValue]) -> _WitnessPlan:
     return _WitnessPlan.of(witness, mutations)
 
 
-def _plan_response_header(args: Mapping[str, checks.CheckValue]) -> _WitnessPlan:
+def _plan_response_header(args: Mapping[str, checks.CheckValue]) -> _WitnessPlan | _NoWitness:
     header = str(args["name"])
     if "equals" in args:
         value = str(args["equals"])
     else:
         found = _matching(str(args["matches"]))
         if found is None:
-            return _WitnessPlan.refused(f"no witness value can be invented for /{args['matches']}/")
+            return _NoWitness(f"no witness value can be invented for /{args['matches']}/")
         value = found
     witness = _Response(200, {}, "http://witness/", {header: value})
     mutations: list[tuple[str, object]] = [("the response does not carry the header", _Response(200, {}, "http://witness/"))]
@@ -516,7 +510,7 @@ def _plan_response_header(args: Mapping[str, checks.CheckValue]) -> _WitnessPlan
     return _WitnessPlan.of(witness, mutations)
 
 
-def _plan_json_path(args: Mapping[str, checks.CheckValue]) -> _WitnessPlan:
+def _plan_json_path(args: Mapping[str, checks.CheckValue]) -> _WitnessPlan | _NoWitness:
     path = str(args["path"])
     if "absent" in args:
         if args["absent"]:
@@ -527,7 +521,7 @@ def _plan_json_path(args: Mapping[str, checks.CheckValue]) -> _WitnessPlan:
     elif "matches" in args:
         found = _matching(str(args["matches"]))
         if found is None:
-            return _WitnessPlan.refused(f"no witness value can be invented for /{args['matches']}/")
+            return _NoWitness(f"no witness value can be invented for /{args['matches']}/")
         value = found
     else:
         value = "x"
@@ -648,15 +642,15 @@ def _plan_emitted(args: Mapping[str, checks.CheckValue]) -> _WitnessPlan:
     return _WitnessPlan.of(witness, mutations)
 
 
-def _plan_omits(args: Mapping[str, checks.CheckValue]) -> _WitnessPlan:
+def _plan_omits(args: Mapping[str, checks.CheckValue]) -> _WitnessPlan | _NoWitness:
     subject = str(args["subject"])
     pattern = str(args["matches"]) if "matches" in args else None
     leak = str(args["text"]) if "text" in args else _matching(pattern or "")
     if leak is None:
-        return _WitnessPlan.refused(f"no leaking value can be invented for /{args.get('matches')}/")
+        return _NoWitness(f"no leaking value can be invented for /{args.get('matches')}/")
     clean = _avoiding(pattern, str(args["text"]) if "text" in args else None)
     if clean is None:
-        return _WitnessPlan.refused(f"every observation carries something /{pattern}/ matches")
+        return _NoWitness(f"every observation carries something /{pattern}/ matches")
     framed = f"… {leak} …"
     if pattern is None or re.search(pattern, framed):
         tainted = framed
@@ -665,7 +659,7 @@ def _plan_omits(args: Mapping[str, checks.CheckValue]) -> _WitnessPlan:
     else:
         tainted = None
     if tainted is None:
-        return _WitnessPlan.refused(f"no perturbation of /{pattern}/ would itself violate the claim")
+        return _NoWitness(f"no perturbation of /{pattern}/ would itself violate the claim")
     if _PATHLIKE.match(subject):
         return _WitnessPlan.of(_set_path({}, subject, clean), [
             ("the subject carries what it may not", _set_path({}, subject, tainted)),
@@ -685,7 +679,7 @@ def _plan_conflict_on_stale(_args: Mapping[str, checks.CheckValue]) -> _WitnessP
     return _WitnessPlan.of(_Response(409, {}, url), [("the stale write was accepted", _Response(200, {}, url))])
 
 
-_PLANNERS: dict[str, Callable[[Mapping[str, checks.CheckValue]], _WitnessPlan]] = {
+_PLANNERS: dict[str, Callable[[Mapping[str, checks.CheckValue]], _WitnessPlan | _NoWitness]] = {
     "http_status": _plan_http_status,
     "response_header": _plan_response_header,
     "json_path": _plan_json_path,
@@ -722,9 +716,11 @@ def trial(call: checks.CheckCall) -> Trial:
     if refused:
         return Trial(call.text(), False, (), (), refused, unsatisfiable=True)
     plan = _plan(call)
+    if isinstance(plan, _NoWitness):
+        return Trial(call.text(), False, (), (), plan.reason)
     verifier = _VERIFIERS.get(call.name)
     if verifier is None or not plan.mutations:
-        return Trial(call.text(), False, (), (), plan.note or f"`{call.name}` has no verifier")
+        return Trial(call.text(), False, (), (), f"`{call.name}` has no verifier")
     if not _green(verifier, plan.witness, call.args):
         return Trial(call.text(), False, (), (), "the witness this harness builds does not satisfy the call")
     flipped, survived = [], []
