@@ -75,17 +75,24 @@ def _stages(tokens: list[str]) -> list[list[str]]:
     return stages
 
 
+def _path_in_argument(token: str) -> str:
+    """The path an argument names: the whole token, the value after an option's `=`, or an option's text from its first `/`."""
+    if not token.startswith("-"):
+        return token
+    if "=" in token:
+        return token.partition("=")[2]
+    return token[token.find("/") :] if "/" in token else ""
+
+
 def _path_denial(tokens: Sequence[str], policy: Policy) -> str | None:
     """Why one of the arguments names a path the turn may not read, or None."""
     for token in tokens:
-        value = token
-        if token.startswith("-"):
-            value = token.partition("=")[2] if "=" in token else token[token.find("/") :] if "/" in token else ""
-        if value.startswith("~"):
+        named_path = _path_in_argument(token)
+        if named_path.startswith("~"):
             return f"`{token}` starts at the home directory"
-        if ".." in Path(value).parts:
+        if ".." in Path(named_path).parts:
             return f"`{token}` climbs out of its directory with `..`"
-        if value.startswith("/") and not policy.may_read(Path(os.path.normpath(value))):
+        if named_path.startswith("/") and not policy.may_read(Path(os.path.normpath(named_path))):
             return f"`{token}` is outside the directories this turn reads"
     return None
 
