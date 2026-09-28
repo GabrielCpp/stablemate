@@ -69,31 +69,39 @@ class RepairOutcome(BaseModel):
 
 
 class RepairRound(BaseModel):
-    """One round of the repair: the book pages someone left uncommitted when it started, which no turn may touch, the pages the first round planned and the journey pages it planned, its number, the turns that failed so far, the pages and sections too large for one writer, the pages a batch closed, and its batches."""
+    """One round of the repair: its number and its batches."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    number: int
+    batches: tuple[RepairBatch, ...] = ()
+
+
+class RepairLedger(BaseModel):
+    """What the repair carries from round to round: the book pages someone left uncommitted when it started, which no turn may touch, the pages the first round planned and the journey pages it planned, the turns that failed so far, the pages and sections too large for one writer, and the pages a batch closed."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     uncommitted_at_start: tuple[str, ...]
     planned_pages: tuple[str, ...]
     journey: JourneyPages
-    number: int
     failed_turns: tuple[str, ...] = ()
     oversized_parts: tuple[OversizedPart, ...] = ()
     closed_pages: tuple[str, ...] = ()
-    batches: tuple[RepairBatch, ...] = ()
 
-    def with_clean_pages_closed(self, index: int, problems: Iterable[PageProblem]) -> RepairRound:
-        """This round with each page of its batch at `index` the check finds no problem on added to its closed pages.
+    def with_clean_pages_closed(self, this_round: RepairRound, index: int, problems: Iterable[PageProblem]) -> RepairLedger:
+        """This ledger with each page of the round's batch at `index` the check finds no problem on added to its closed pages.
 
         An entry page stays open while a later batch of the round owns the journey, since that batch
         may add link lines to it. After the last such batch, the clean entry pages of every earlier
         batch close too.
         """
+        batches = this_round.batches
         open_pages = {problem.page for problem in problems}
         entry_pages = set(self.journey.entry_pages)
-        journey_ahead = any(batch.journey is not None for batch in self.batches[index + 1 :])
-        earlier_entry_pages = () if journey_ahead else (page for batch in self.batches[:index] for page in batch.page_paths if page in entry_pages)
-        closable_batch_pages = (page for page in self.batches[index].page_paths if not (journey_ahead and page in entry_pages))
+        journey_ahead = any(batch.journey is not None for batch in batches[index + 1 :])
+        earlier_entry_pages = () if journey_ahead else (page for batch in batches[:index] for page in batch.page_paths if page in entry_pages)
+        closable_batch_pages = (page for page in batches[index].page_paths if not (journey_ahead and page in entry_pages))
         closed = (page for page in dict.fromkeys((*earlier_entry_pages, *closable_batch_pages)) if page not in open_pages and page not in self.closed_pages)
         return self.model_copy(update={"closed_pages": (*self.closed_pages, *closed)})
 
@@ -151,48 +159,59 @@ class RepairBook(BookFlow):
         problems = (*page_problems(self.root, self.service), *run_problems)
         by_page = problems_by_page(problems, frozenset(uncommitted_at_start))
         journey = journey_pages(self.root, self.service, frozenset(uncommitted_at_start))
-        this_round = RepairRound(uncommitted_at_start=uncommitted_at_start, planned_pages=tuple(by_page), journey=journey, number=1)
-        return self._first_batch_or_done(this_round, by_page, problems)
+        ledger = RepairLedger(uncommitted_at_start=uncommitted_at_start, planned_pages=tuple(by_page), journey=journey)
+        return self._first_batch_or_done(ledger, RepairRound(number=1), by_page, problems)
 
-    def plan_round(self, last: RepairRound, problems: tuple[PageProblem, ...]) -> Continue[...] | Done:
+    def plan_round(self, ledger: RepairLedger, last: RepairRound, problems: tuple[PageProblem, ...]) -> Continue[...] | Done:
         """Pack the planned pages still open that have problems now. A spent repair ends with what is left."""
-        found = problems_by_page(problems, frozenset(last.uncommitted_at_start))
-        by_page = {page: on_page for page, on_page in found.items() if page in last.planned_pages and page not in last.closed_pages}
-        outside = sorted(set(found) - set(last.planned_pages))
+        found = problems_by_page(problems, frozenset(ledger.uncommitted_at_start))
+        by_page = {page: on_page for page, on_page in found.items() if page in ledger.planned_pages and page not in ledger.closed_pages}
+        outside = sorted(set(found) - set(ledger.planned_pages))
         if outside:
             self.logger.info("%d pages outside this repair have problems, left for the book check: %s", len(outside), ", ".join(outside))
-        reopened = sorted(set(found) & set(last.closed_pages))
+        reopened = sorted(set(found) & set(ledger.closed_pages))
         if reopened:
             self.logger.info("%d pages a batch closed have problems again, left for the book check: %s", len(reopened), ", ".join(reopened))
         if last.number >= REPAIR_ROUNDS:
-            return Done(last.outcome(last.number, by_page)).because("the repair rounds are spent")
-        current_journey = journey_pages(self.root, self.service, frozenset(last.uncommitted_at_start))
-        unplanned_flow_pages = sorted(set(current_journey.flow_pages) - set(last.journey.pages))
+            return Done(ledger.outcome(last.number, by_page)).because("the repair rounds are spent")
+        current_journey = journey_pages(self.root, self.service, frozenset(ledger.uncommitted_at_start))
+        unplanned_flow_pages = sorted(set(current_journey.flow_pages) - set(ledger.journey.pages))
         if unplanned_flow_pages:
             self.logger.info(
                 "%d flow pages written after the repair planned its journey, left for the book check: %s",
                 len(unplanned_flow_pages),
                 ", ".join(unplanned_flow_pages),
             )
-        this_round = last.model_copy(update={"number": last.number + 1, "batches": ()})
-        return self._first_batch_or_done(this_round, by_page, problems)
+        return self._first_batch_or_done(ledger, RepairRound(number=last.number + 1), by_page, problems)
 
     def _first_batch_or_done(
-        self, this_round: RepairRound, by_page: dict[str, tuple[PageProblem, ...]], problems: tuple[PageProblem, ...]
+        self,
+        ledger: RepairLedger,
+        this_round: RepairRound,
+        by_page: dict[str, tuple[PageProblem, ...]],
+        problems: tuple[PageProblem, ...],
     ) -> Continue[...] | Done:
-        packed = pack_repairs(self.root, by_page, this_round.journey, pages_needing_journey(problems))
-        reported = {part.subject for part in this_round.oversized_parts}
-        oversized_parts = (*this_round.oversized_parts, *(part for part in packed.oversized_parts if part.subject not in reported))
-        this_round = this_round.model_copy(update={"oversized_parts": oversized_parts, "batches": packed.batches})
+        packed = pack_repairs(self.root, by_page, ledger.journey, pages_needing_journey(problems))
+        reported = {part.subject for part in ledger.oversized_parts}
+        oversized_parts = (*ledger.oversized_parts, *(part for part in packed.oversized_parts if part.subject not in reported))
+        ledger = ledger.model_copy(update={"oversized_parts": oversized_parts})
+        this_round = this_round.model_copy(update={"batches": packed.batches})
         if not packed.batches:
-            return Done(this_round.outcome(this_round.number - 1, by_page)).because("no planned page is left for a turn")
+            return Done(ledger.outcome(this_round.number - 1, by_page)).because("no planned page is left for a turn")
         pages = sum(len(batch.pages) for batch in packed.batches)
         self.logger.info("round %d repairs %d pages in %d turns", this_round.number, pages, len(packed.batches))
         return Continue(
-            len(packed.batches), self.prepare_batch_turn, this_round=this_round, index=0, problems_at_turn_start=_texts(problems)
+            len(packed.batches),
+            self.prepare_batch_turn,
+            ledger=ledger,
+            this_round=this_round,
+            index=0,
+            problems_at_turn_start=_texts(problems),
         ).because("prepare the first batch")
 
-    def prepare_batch_turn(self, this_round: RepairRound, index: int, problems_at_turn_start: tuple[str, ...]) -> Continue[...]:
+    def prepare_batch_turn(
+        self, ledger: RepairLedger, this_round: RepairRound, index: int, problems_at_turn_start: tuple[str, ...]
+    ) -> Continue[...]:
         """Snapshot the tree and write the command state that scopes the turn's check to its batch and to the problems the book has now."""
         batch = this_round.batches[index]
         before = snapshot(self.root)
@@ -204,10 +223,12 @@ class RepairBook(BookFlow):
             problems_at_turn_start=problems_at_turn_start,
         )
         _ = write_command_state(self.run_dir, state)
-        return Continue(batch.page_paths, self.repair_batch, this_round=this_round, index=index, before=before).because("repair the batch")
+        return Continue(batch.page_paths, self.repair_batch, ledger=ledger, this_round=this_round, index=index, before=before).because(
+            "repair the batch"
+        )
 
-    def repair_batch(self, this_round: RepairRound, index: int, before: Snapshot) -> Continue[...]:
-        """One turn, confined to the book folder and to ostler, the scoped check and the scenario run, repairs one batch of pages."""
+    def repair_batch(self, ledger: RepairLedger, this_round: RepairRound, index: int, before: Snapshot) -> Continue[...]:
+        """One turn, confined to the book folder and to ostler, the scoped check and the scenario run, repairs one batch of pages. A turn that ends without a reply joins the failed ones."""
         batch = this_round.batches[index]
         request = writer_request(self.run_dir, self.root, self.surface_to_repair, self.book_folder, self.source_folder)
         started = time.monotonic()
@@ -225,21 +246,24 @@ class RepairBook(BookFlow):
             )
         except (AgentTurnFailed, AgentTimeout) as ended:
             failure = f"the repair turn on {', '.join(batch.page_paths)} ended without a reply: {ended}"
+            self.logger.warning("%s", failure)
+            ledger = ledger.model_copy(update={"failed_turns": (*ledger.failed_turns, failure)})
         node = Path(REPAIR_PROMPT).stem
         metric = turn_metric(Phase.WRITE, node, (self.service,), (time.monotonic() - started) / 60, self.turn_usage(node))
         return Continue(
-            failure, self.record_repair_turn, this_round=this_round, index=index, before=before, metric=metric, failure=failure
+            failure, self.record_repair_turn, ledger=ledger, this_round=this_round, index=index, before=before, metric=metric
         ).because("record what the turn cost")
 
-    def record_repair_turn(self, this_round: RepairRound, index: int, before: Snapshot, metric: TurnMetric, failure: str) -> Continue[...]:
-        """Record what the repair turn cost, and the turn among the failed ones when it ended without a reply."""
+    def record_repair_turn(
+        self, ledger: RepairLedger, this_round: RepairRound, index: int, before: Snapshot, metric: TurnMetric
+    ) -> Continue[...]:
+        """Record what the repair turn cost."""
         record_turn(self.records_dir, metric)
-        if failure:
-            self.logger.warning("%s", failure)
-            this_round = this_round.model_copy(update={"failed_turns": (*this_round.failed_turns, failure)})
-        return Continue(failure, self.put_back, this_round=this_round, index=index, before=before).because("put back what the turn may not keep")
+        return Continue(metric, self.put_back, ledger=ledger, this_round=this_round, index=index, before=before).because(
+            "put back what the turn may not keep"
+        )
 
-    def put_back(self, this_round: RepairRound, index: int, before: Snapshot) -> Continue[...] | Await[...]:
+    def put_back(self, ledger: RepairLedger, this_round: RepairRound, index: int, before: Snapshot) -> Continue[...] | Await[...]:
         """Put back each path the turn changed but may not keep: one outside the book, the entries page, a page its batch does not own, a page an earlier batch closed, and an entry page it changed beyond adding link lines.
 
         A page someone left uncommitted has no committed copy of their edit to go back to, so a turn
@@ -256,7 +280,7 @@ class RepairBook(BookFlow):
         unowned = [
             path
             for path in changed
-            if path == entries or path in before.digests or path in this_round.closed_pages or not batch.owns(path, created)
+            if path == entries or path in before.digests or path in ledger.closed_pages or not batch.owns(path, created)
         ]
         unrestorable_uncommitted = restore(root, unowned, before)
         for path in sorted(set(unowned) - set(unrestorable_uncommitted) - {entries}):
@@ -272,11 +296,14 @@ class RepairBook(BookFlow):
                 + "\n".join(f"- {path}" for path in unrestorable_uncommitted)
                 + "\n\nSort each page out in the repo, then answer here. No commit takes these pages.",
                 self.stamp_pages,
+                ledger=ledger,
                 this_round=this_round,
                 index=index,
                 before=before,
             ).because("the repair turn changed a page someone left uncommitted")
-        return Continue(stray, self.stamp_pages, this_round=this_round, index=index, before=before).because("stamp the repaired pages")
+        return Continue(stray, self.stamp_pages, ledger=ledger, this_round=this_round, index=index, before=before).because(
+            "stamp the repaired pages"
+        )
 
     def _entry_pages_changed_beyond_links(self, batch: RepairBatch, kept: list[str]) -> list[str]:
         if batch.journey is None:
@@ -289,7 +316,7 @@ class RepairBook(BookFlow):
         after = current.read_text(encoding="utf-8") if current.is_file() else ""
         return adds_only_links(committed_text(self.root, path), after)
 
-    def stamp_pages(self, this_round: RepairRound, index: int, before: Snapshot) -> Continue[...]:
+    def stamp_pages(self, ledger: RepairLedger, this_round: RepairRound, index: int, before: Snapshot) -> Continue[...]:
         """Stamp each page the turn changed that its batch owns, but the entries page and the pages someone left uncommitted."""
         root = self.root
         batch = this_round.batches[index]
@@ -303,28 +330,35 @@ class RepairBook(BookFlow):
         for page in pages:
             if page.endswith(".md") and (root / page).is_file():
                 _ = stamp_page(root, root / FEATURES_DIR, page)
-        return Continue(pages, self.commit_pages, this_round=this_round, index=index, pages=pages).because("commit the repaired pages")
+        return Continue(pages, self.commit_pages, ledger=ledger, this_round=this_round, index=index, pages=pages).because(
+            "commit the repaired pages"
+        )
 
-    def commit_pages(self, this_round: RepairRound, index: int, pages: tuple[str, ...]) -> Continue[...] | Await[...]:
+    def commit_pages(self, ledger: RepairLedger, this_round: RepairRound, index: int, pages: tuple[str, ...]) -> Continue[...] | Await[...]:
         """Commit the batch's pages. A refused commit waits for the operator."""
         refusal = commit_returning_refusal(self.root, repaired_book_commit_subject(self.service), *pages)
         if refusal:
-            return self._commit_refused(refusal, self.commit_pages, this_round=this_round, index=index, pages=pages)
-        return Continue(pages, self.close_batch, this_round=this_round, index=index).because("close the pages the batch left clean")
+            return self._commit_refused(refusal, self.commit_pages, ledger=ledger, this_round=this_round, index=index, pages=pages)
+        return Continue(pages, self.close_batch, ledger=ledger, this_round=this_round, index=index).because(
+            "close the pages the batch left clean"
+        )
 
-    def close_batch(self, this_round: RepairRound, index: int) -> Continue[...]:
+    def close_batch(self, ledger: RepairLedger, this_round: RepairRound, index: int) -> Continue[...]:
         """Check the book, close each page of the batch the check finds clean, and move to the next batch, or plan the next round after the last."""
         problems = page_problems(self.root, self.service)
-        this_round = this_round.with_clean_pages_closed(index, problems)
+        ledger = ledger.with_clean_pages_closed(this_round, index, problems)
         if index + 1 < len(this_round.batches):
             return Continue(
-                this_round.closed_pages,
+                ledger.closed_pages,
                 self.prepare_batch_turn,
+                ledger=ledger,
                 this_round=this_round,
                 index=index + 1,
                 problems_at_turn_start=_texts(problems),
             ).because("prepare the next batch")
-        return Continue(this_round.closed_pages, self.plan_round, last=this_round, problems=problems).because("plan the next round")
+        return Continue(ledger.closed_pages, self.plan_round, ledger=ledger, last=this_round, problems=problems).because(
+            "plan the next round"
+        )
 
 
 def _texts(problems: Iterable[PageProblem]) -> tuple[str, ...]:

@@ -185,10 +185,11 @@ def _batch_of(page: str, journey: JourneyPages | None) -> RepairBatch:
 def test_an_entry_page_closes_only_after_the_last_batch_of_the_round_that_may_add_links_to_it() -> None:
     journey = JourneyPages(pages=(PAGE, FLOW_PAGE), flow_folder=Path(FLOW_PAGE).parent.as_posix())
     batches = (_batch_of(PAGE, journey), _batch_of(FLOW_PAGE, journey), _batch_of(OTHER_PAGE, None))
-    this_round = repair_book_flow.RepairRound(uncommitted_at_start=(), planned_pages=(), journey=journey, number=1, batches=batches)
+    this_round = repair_book_flow.RepairRound(number=1, batches=batches)
+    ledger = repair_book_flow.RepairLedger(uncommitted_at_start=(), planned_pages=(), journey=journey)
 
-    after_first = this_round.with_clean_pages_closed(0, ())
-    after_last_journey_batch = after_first.with_clean_pages_closed(1, ())
+    after_first = ledger.with_clean_pages_closed(this_round, 0, ())
+    after_last_journey_batch = after_first.with_clean_pages_closed(this_round, 1, ())
 
     assert after_first.closed_pages == ()
     assert after_last_journey_batch.closed_pages == (PAGE, FLOW_PAGE)
