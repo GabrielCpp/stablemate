@@ -62,11 +62,11 @@ gives relative to the repository starts there.
   `fixture:` naming the arrangement, or `fixture: none, because …`.
 {% if flow_folder %}
 - A {% if kind == "cli" %}command{% elif kind == "http" %}endpoint{% else %}screen{% endif %} on no flow goes onto a journey a user takes. Link it from a step of a flow that
-  already walks near it, or write a new `flow` page in `{{ flow_folder }}/`, as the skill's flow
+  already walks near it, or write a new `flow` page at `{{ new_flow_page }}`, as the skill's flow
   reference says, and link that flow from a page the entries page links.
 - A page nothing reaches is linked from the page a reader would come from, or deleted when it
   documents nothing the app does.
-- Besides your pages, you may change these, and add a new page in `{{ flow_folder }}/`:
+- Besides your pages, you may change these, and write the new flow page `{{ new_flow_page }}`:
 {% for page in journey_pages %}
   - `{{ page }}`
 {% endfor %}

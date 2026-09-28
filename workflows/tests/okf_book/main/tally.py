@@ -80,7 +80,7 @@ def refuse_commits_until_answered(repo: Path, asked: list[str]) -> Callable[...,
 OTHER_PAGE = "docs/features/tally/concepts/ledger-file.md"
 OUTSIDE_EDIT = "\nan edit outside the batch\n"
 FLOW_PAGE = "docs/features/tally/flows/track-a-trip.md"
-NEW_FLOW = "docs/features/tally/flows/split-a-bill.md"
+NEW_FLOW = "docs/features/tally/flows/tally.md"
 
 
 def repairer_also_editing(repo: Path, *pages: str) -> ScriptedRunner:

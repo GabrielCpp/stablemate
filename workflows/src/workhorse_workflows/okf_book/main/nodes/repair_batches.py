@@ -50,21 +50,24 @@ class PageRepair(BaseModel):
 
 
 class RepairBatch(BaseModel):
-    """The pages one repair turn is sent, the journey pages it may also change, and the tokens of those pages and the files they cite."""
+    """The pages one repair turn is sent, the journey pages it may also change, the new flow page it may write, and the tokens of those pages and the files they cite."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     pages: tuple[PageRepair, ...]
     tokens: int
     journey: JourneyPages | None = None
+    new_flow_page: str = ""
 
     @property
     def page_paths(self) -> tuple[str, ...]:
         return tuple(repair.page for repair in self.pages)
 
-    def owns(self, path: str, created: frozenset[str] = frozenset()) -> bool:
-        """Whether the turn may change the path: one of its pages, or a journey page when it has one."""
-        return path in self.page_paths or (self.journey is not None and self.journey.owns(path, created))
+    def owns(self, path: str) -> bool:
+        """Whether the turn may change the path: one of its pages, a journey page, or the new flow page planned for it."""
+        if path in self.page_paths:
+            return True
+        return self.journey is not None and (self.journey.owns(path) or path == self.new_flow_page)
 
     @property
     def sources(self) -> tuple[str, ...]:
@@ -165,8 +168,25 @@ def _repairs_joined_by_page(units: list[_PageCost]) -> tuple[PageRepair, ...]:
     return tuple(by_page.values())
 
 
-def _batch(journey_costs: list[_PageCost], filling_batch_units: list[_PageCost], journey: JourneyPages | None) -> RepairBatch:
-    return RepairBatch(pages=_repairs_joined_by_page(filling_batch_units), tokens=_batch_tokens([*journey_costs, *filling_batch_units]), journey=journey)
+def _new_flow_page(root: Path, journey: JourneyPages, page: str, taken: set[str]) -> str:
+    """A path in the flow folder named for the page, that no page on disk and no other batch holds."""
+    stem = Path(page).stem
+    candidates = (f"{journey.flow_folder}/{stem}{'' if n == 1 else f'-{n}'}.md" for n in range(1, len(taken) + 2))
+    path = next(path for path in candidates if path not in taken and not (root / path).exists())
+    taken.add(path)
+    return path
+
+
+def _batch(
+    root: Path, journey_costs: list[_PageCost], filling_batch_units: list[_PageCost], journey: JourneyPages | None, taken: set[str]
+) -> RepairBatch:
+    pages = _repairs_joined_by_page(filling_batch_units)
+    return RepairBatch(
+        pages=pages,
+        tokens=_batch_tokens([*journey_costs, *filling_batch_units]),
+        journey=journey,
+        new_flow_page=_new_flow_page(root, journey, pages[0].page, taken) if journey else "",
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -225,16 +245,17 @@ def _pack(
     batches: list[RepairBatch] = []
     oversized_parts: list[OversizedPart] = []
     filling_batch_units: list[_PageCost] = []
+    taken: set[str] = set(journey.pages) if journey else set()
     for page, problems in by_page.items():
         split = splitter.split_page(page, problems)
         oversized_parts.extend(split.oversized_parts)
         for unit in split.units:
             if filling_batch_units and _batch_tokens([*journey_costs, *filling_batch_units, unit]) > ceiling:
-                batches.append(_batch(journey_costs, filling_batch_units, journey))
+                batches.append(_batch(files.root, journey_costs, filling_batch_units, journey, taken))
                 filling_batch_units = []
             filling_batch_units.append(unit)
     if filling_batch_units:
-        batches.append(_batch(journey_costs, filling_batch_units, journey))
+        batches.append(_batch(files.root, journey_costs, filling_batch_units, journey, taken))
     return PackedRepairs(batches=tuple(batches), oversized_parts=tuple(oversized_parts))
 
 

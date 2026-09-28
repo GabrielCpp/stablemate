@@ -86,6 +86,7 @@ class WriterRequest:
             "pages": [repair.model_dump() for repair in batch.pages],
             "journey_pages": list(batch.journey.pages) if batch.journey else [],
             "flow_folder": batch.journey.flow_folder if batch.journey else "",
+            "new_flow_page": batch.new_flow_page,
         }
 
     @property

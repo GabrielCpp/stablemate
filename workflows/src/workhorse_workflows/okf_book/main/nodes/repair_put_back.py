@@ -15,7 +15,7 @@ from pathlib import Path
 from ostler.stamp import stamp_page
 from workhorse_workflows.okf_book.main.nodes.journey import adds_only_links
 from workhorse_workflows.okf_book.main.nodes.repair_batches import RepairBatch
-from workhorse_workflows.okf_book.shared.confine import Snapshot, absent_from_head, book_changes, committed_text
+from workhorse_workflows.okf_book.shared.confine import Snapshot, book_changes, committed_text
 from workhorse_workflows.okf_book.shared.entries import FEATURES_DIR, entries_path
 
 
@@ -32,11 +32,10 @@ def turn_changes(root: Path, service: str, before: Snapshot, batch: RepairBatch,
     """Split the book pages the turn changed into those the batch owns and those it does not."""
     entries_page = entries_path(root, service).relative_to(root).as_posix()
     changed = book_changes(root, service, before)
-    created = absent_from_head(root, changed)
     unowned = tuple(
         path
         for path in changed
-        if path == entries_page or path in before.digests or path in closed_pages or not batch.owns(path, created)
+        if path == entries_page or path in before.digests or path in closed_pages or not batch.owns(path)
     )
     return TurnChanges(entries_page, tuple(path for path in changed if path not in unowned), unowned)
 
@@ -59,8 +58,7 @@ def pages_to_stamp(root: Path, service: str, before: Snapshot, batch: RepairBatc
     """The pages the turn changed that its batch owns, but the entries page and the pages someone left uncommitted."""
     entries_page = entries_path(root, service).relative_to(root).as_posix()
     changed = book_changes(root, service, before)
-    created = absent_from_head(root, changed)
-    return tuple(path for path in changed if path != entries_page and path not in before.digests and batch.owns(path, created))
+    return tuple(path for path in changed if path != entries_page and path not in before.digests and batch.owns(path))
 
 
 def stamp_repaired_pages(root: Path, pages: tuple[str, ...]) -> None:

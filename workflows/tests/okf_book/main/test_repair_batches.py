@@ -86,8 +86,21 @@ def test_pages_whose_fix_goes_on_a_journey_are_packed_first_with_the_journey_pag
         ((pages[0],), None),
     ]
     assert batches[0].tokens == one + BOOK_HOLDS * PAGE_TOKENS
-    assert batches[0].owns(f"{BOOK}/flows/new.md", frozenset({f"{BOOK}/flows/new.md"}))
     assert not batches[2].owns(flow)
+
+
+def test_each_journey_batch_may_write_one_new_flow_page_named_when_it_is_planned(tmp_path: Path) -> None:
+    flow = _page(tmp_path, "flows/add.md", cites=False)
+    pages = [_page(tmp_path, f"{folder}/add.md", cites=False) for folder in ("ops", "admin")]
+    journey = JourneyPages(pages=(flow,), flow_folder=f"{BOOK}/flows")
+    one = BOOK_HOLDS * PAGE_TOKENS + 1
+
+    batches = pack_repairs(tmp_path, {page: (PageProblem(page, "p"),) for page in pages}, journey, frozenset(pages), ceiling=2 * one).batches
+
+    assert [batch.new_flow_page for batch in batches] == [f"{BOOK}/flows/add-2.md", f"{BOOK}/flows/add-3.md"]
+    assert batches[0].owns(f"{BOOK}/flows/add-2.md")
+    assert not batches[0].owns(f"{BOOK}/flows/add-3.md")
+    assert not batches[0].owns(f"{BOOK}/flows/other.md")
 
 
 def test_a_page_over_the_ceiling_with_the_journey_pages_is_reported_with_them(tmp_path: Path) -> None:

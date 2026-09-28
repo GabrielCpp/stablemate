@@ -18,7 +18,7 @@ def _page(root: Path, name: str) -> str:
     return page
 
 
-def test_the_journey_pages_are_the_linked_and_flow_pages_left_committed_and_a_flow_the_turn_creates(tmp_path: Path) -> None:
+def test_the_journey_pages_are_the_linked_and_flow_pages_left_committed(tmp_path: Path) -> None:
     root_page = _page(tmp_path, "ledger.md")
     flows = [_page(tmp_path, f"flows/{name}.md") for name in ("add", "split")]
     _ = _page(tmp_path, "concepts/entry.md")
@@ -27,9 +27,9 @@ def test_the_journey_pages_are_the_linked_and_flow_pages_left_committed_and_a_fl
     journey = journey_pages(tmp_path, "ledger", frozenset({flows[1]}))
 
     assert journey == JourneyPages(pages=(root_page, flows[0]), flow_folder=f"{BOOK}/flows")
-    assert journey.owns(f"{BOOK}/flows/new.md", frozenset({f"{BOOK}/flows/new.md"}))
+    assert journey.owns(flows[0])
     assert not journey.owns(f"{BOOK}/flows/new.md")
-    assert not journey.owns(flows[1], frozenset({f"{BOOK}/flows/new.md"}))
+    assert not journey.owns(flows[1])
     assert not journey.owns(f"{BOOK}/concepts/entry.md")
 
 

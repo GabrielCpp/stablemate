@@ -16,7 +16,7 @@ _LINK = re.compile(r"\]\([^)\s]+\)")
 
 
 class JourneyPages(BaseModel):
-    """The pages a fix that puts a page on a journey may change: the entry pages, the flow pages, and a new page in the flow folder.
+    """The pages a fix that puts a page on a journey may change: the entry pages and the flow pages.
 
     A batch counts each flow page whole, since the writer reads a flow whole to extend it. It counts
     only the outline of an entry page, since the writer reads the headings to place a link and adds
@@ -29,9 +29,9 @@ class JourneyPages(BaseModel):
     pages: tuple[str, ...]
     flow_folder: str
 
-    def owns(self, path: str, created: frozenset[str] = frozenset()) -> bool:
-        """Whether a turn may change the path: one of the pages, or a flow page in `created`, the paths the turn wrote new."""
-        return path in self.pages or (self.is_flow(path) and path in created)
+    def owns(self, path: str) -> bool:
+        """Whether a turn may change the path: one of the pages listed when the round was planned."""
+        return path in self.pages
 
     def is_flow(self, path: str) -> bool:
         return path.startswith(f"{self.flow_folder}/")
