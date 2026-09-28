@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import re
 import urllib.parse
-from collections.abc import Callable, Mapping, Sized
+from collections.abc import Callable, Iterable, Mapping, Sized
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -93,7 +93,7 @@ class HttpReading:
     """What a response answered: its status, its parsed body, and the route that answered."""
 
     status: int
-    body: object
+    body: JsonValue
     route: str | None
 
 
@@ -108,11 +108,11 @@ def _read_response(observed: object, args: Args) -> HttpReading:
             "http_status observes a response — pass the object qa.http returned (or its "
             f"integer status), not {type(observed).__name__}"
         )
-    body: object = None
+    body: JsonValue = None
     reader = getattr(observed, "json", None)
     if callable(reader):
         try:
-            body = reader()
+            body = json_value(reader())
         except ValueError:
             body = None
     url = getattr(observed, "url", None)
@@ -207,47 +207,73 @@ class DocumentReading:
     """What a check reads, whether the file its `file=` names was there to read, and why it could not be parsed when it could not."""
 
     present: bool
-    document: object
+    document: JsonValue
     unreadable: str | None = None
 
+    def resolve(self, path: str) -> Resolved:
+        """Walk `path` into the document, which resolves nothing when it could not be read as JSON."""
+        if self.unreadable is not None:
+            return Resolved(False)
+        return resolve_path(self.document, path)
 
-def _read_document(observed: object, args: Args) -> DocumentReading:
-    """What a check reads: the file its `file=` names in a working directory, or what was observed when it names none."""
+
+def _named(observed: object, args: Args) -> tuple[bool, object]:
+    """The file a check's `file=` names in a working directory and whether it is there, or what was observed when it names none."""
     if "file" not in args:
-        return DocumentReading(present=True, document=observed)
+        return True, observed
     if not isinstance(observed, Mapping):
         raise TypeError(f"`file=` reads a working directory, got {type(observed).__name__}")
     name = args["file"]
-    return DocumentReading(present=name in observed, document=observed.get(name))
+    return name in observed, observed.get(name)
+
+
+def _read_document(observed: object, args: Args) -> DocumentReading:
+    """What a check reads, as JSON: the file its `file=` names in a working directory, or what was observed when it names none."""
+    present, named = _named(observed, args)
+    try:
+        return DocumentReading(present=present, document=json_value(named))
+    except ValueError as exc:
+        return DocumentReading(present=present, document=None, unreadable=str(exc))
+
+
+def _countable(value: object) -> JsonValue:
+    """*value* as JSON a count reads, where a collection of anything keeps its length."""
+    if isinstance(value, Sized) and isinstance(value, Iterable) and not isinstance(value, Mapping | str):
+        return [_recorded(item) for item in value]
+    return json_value(value)
 
 
 def _read_countable(observed: object, args: Args) -> DocumentReading:
     """The document a count resolves its subject in, parsed when it is a response."""
-    checked = _read_document(observed, args)
-    reader = getattr(checked.document, "json", None)
-    if not checked.present or not callable(reader):
-        return checked
+    present, named = _named(observed, args)
+    if not present:
+        return DocumentReading(present=False, document=None)
+    reader = getattr(named, "json", None)
     try:
-        return DocumentReading(present=True, document=reader())
+        return DocumentReading(present=True, document=_countable(reader() if callable(reader) else named))
     except ValueError as exc:
         return DocumentReading(present=True, document=None, unreadable=str(exc))
 
 
 @dataclass(frozen=True)
 class BodyReading:
-    """Everything the subject carries: a response's parsed body, its text when that does not parse, or the value itself."""
+    """Everything the subject carries: a response's parsed body, its text when that does not parse, or the value itself, rendered when JSON cannot hold it."""
 
-    document: object
+    document: JsonValue
 
 
 def _read_body(observed: object, args: Args) -> BodyReading:
+    carried = observed
     reader = getattr(observed, "json", None)
-    if not callable(reader):
-        return BodyReading(document=observed)
+    if callable(reader):
+        try:
+            carried = reader()
+        except ValueError:
+            carried = getattr(observed, "text", observed)
     try:
-        return BodyReading(document=reader())
+        return BodyReading(document=json_value(carried))
     except ValueError:
-        return BodyReading(document=getattr(observed, "text", observed))
+        return BodyReading(document=_rendered(carried))
 
 
 def json_value(value: object) -> JsonValue:
@@ -259,15 +285,6 @@ def json_value(value: object) -> JsonValue:
     if isinstance(value, dict) and all(isinstance(key, str) for key in value):
         return {str(key): json_value(item) for key, item in value.items()}
     raise ValueError(f"not a JSON value: {type(value).__name__}")
-
-
-def _resolve(document: object, path: str) -> Resolved:
-    """Walk `path` into *document*, which resolves nothing when JSON cannot hold it."""
-    try:
-        parsed = json_value(document)
-    except ValueError:
-        return Resolved(False)
-    return resolve_path(parsed, path)
 
 
 def _read_tree_file(path: Path) -> JsonValue:
@@ -350,7 +367,7 @@ def _matchable(value: object) -> str:
 def _verify_json_path(reading: DocumentReading, args: Args) -> Verdict:
     if not reading.present:
         return _verdict(False, {"file": args["file"], "present": False}, {"file": "present"})
-    hit = _resolve(reading.document, _str(args, "path"))
+    hit = reading.resolve(_str(args, "path"))
     if "absent" in args:
         want_absent = bool(args["absent"])
         return _verdict(hit.found is not want_absent, {"present": hit.found}, {"present": not want_absent})
@@ -400,13 +417,13 @@ def _verify_count(reading: DocumentReading, args: Args) -> Verdict:
             False, {"subject": _str(args, "subject"), "countable": False, "reason": reading.unreadable}, args["equals"]
         )
     document = reading.document
-    if isinstance(document, Mapping):
-        hit = _resolve(document, _str(args, "subject"))
+    if isinstance(document, dict):
+        hit = resolve_path(document, _str(args, "subject"))
         document = hit.value
         selected_nothing = is_projection(_str(args, "subject")) and document == []
         if not hit.found and not selected_nothing:
             return _verdict(False, {"subject": _str(args, "subject"), "present": False}, args["equals"])
-    if isinstance(document, bool | str) or not isinstance(document, int | Sized):
+    if isinstance(document, bool) or not isinstance(document, int | list | dict):
         return _verdict(False, {"subject": _str(args, "subject"), "countable": False}, args["equals"])
     found = document if isinstance(document, int) else len(document)
     return _verdict(found == args["equals"], found, args["equals"])
@@ -595,8 +612,8 @@ def _verify_emitted(reading: SizeReading, args: Args) -> Verdict:
 def _verify_omits(reading: BodyReading, args: Args) -> Verdict:
     """What the subject must not carry — the one assertion the rest of the vocabulary cannot make."""
     document = reading.document
-    if isinstance(document, Mapping):
-        hit = _resolve(document, _str(args, "subject"))
+    if isinstance(document, dict):
+        hit = resolve_path(document, _str(args, "subject"))
         if hit.found:
             document = hit.value
     haystack = document if isinstance(document, str) else _rendered(document)
