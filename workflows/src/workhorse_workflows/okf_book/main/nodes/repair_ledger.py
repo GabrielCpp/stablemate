@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict
 
 from workhorse_workflows.okf_book.main.nodes.journey import JourneyPages
 from workhorse_workflows.okf_book.main.nodes.repair_batch_models import OversizedPart, RepairBatch
+from workhorse_workflows.okf_book.shared.confine import Snapshot
 from workhorse_workflows.okf_book.shared.page_check import PageProblem
 
 
@@ -61,3 +62,19 @@ class RepairLedger(BaseModel):
     def outcome(self, rounds: int, by_page: dict[str, tuple[PageProblem, ...]]) -> RepairOutcome:
         left = sum(len(problems) for problems in by_page.values())
         return RepairOutcome(rounds=rounds, failed_turns=self.failed_turns, oversized_parts=self.oversized_parts, problem_count_left=left)
+
+
+class BatchTurn(BaseModel):
+    """Where the repair stands during one batch's turn: the ledger, the round, which of its batches, and the tree before the turn."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    ledger: RepairLedger
+    this_round: RepairRound
+    index: int
+    before: Snapshot
+
+    @property
+    def batch(self) -> RepairBatch:
+        """The batch this turn repairs."""
+        return self.this_round.batches[self.index]

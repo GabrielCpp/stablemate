@@ -24,7 +24,7 @@ from pathlib import Path
 from workhorse.pyflow import AgentTimeout, AgentTurnFailed, Continue, Done, WorkflowFailed
 from workhorse_workflows.okf_book.main.nodes.journey import journey_pages, pages_needing_journey
 from workhorse_workflows.okf_book.main.nodes.repair_batches import pack_repairs, problems_by_page
-from workhorse_workflows.okf_book.main.nodes.repair_ledger import RepairLedger, RepairRound
+from workhorse_workflows.okf_book.main.nodes.repair_ledger import BatchTurn, RepairLedger, RepairRound
 from workhorse_workflows.okf_book.main.nodes.surface import Surface
 from workhorse_workflows.okf_book.main.nodes.writer_commands import WriterCommandState, write_command_state
 from workhorse_workflows.okf_book.main.nodes.writer_request import writer_request
@@ -32,7 +32,7 @@ from workhorse_workflows.okf_book.main.root_book_flow import RootBook, RootedBoo
 from workhorse_workflows.okf_book.main.settle_repair_turn_flow import SettledTurn, SettleRepairTurn
 from workhorse_workflows.okf_book.shared.blockers import Phase
 from workhorse_workflows.okf_book.shared.book_flow import BookFlow
-from workhorse_workflows.okf_book.shared.confine import Snapshot, snapshot
+from workhorse_workflows.okf_book.shared.confine import snapshot
 from workhorse_workflows.okf_book.shared.metrics import TurnMetric, record_turn, turn_metric
 from workhorse_workflows.okf_book.shared.page_check import PageProblem, page_problems
 
@@ -125,8 +125,8 @@ class RepairBook(BookFlow):
         self, ledger: RepairLedger, this_round: RepairRound, index: int, problems_at_turn_start: tuple[PageProblem, ...]
     ) -> Continue[...]:
         """Snapshot the tree and write the command state that scopes the turn's check to its batch and to the problems the book has now."""
-        batch = this_round.batches[index]
-        before = snapshot(self.root)
+        turn = BatchTurn(ledger=ledger, this_round=this_round, index=index, before=snapshot(self.root))
+        batch = turn.batch
         state = WriterCommandState(
             root=self.root,
             service=self.service,
@@ -135,13 +135,11 @@ class RepairBook(BookFlow):
             problems_at_turn_start=problems_at_turn_start,
         )
         _ = write_command_state(self.run_dir, state)
-        return Continue(batch.page_paths, self.repair_batch, ledger=ledger, this_round=this_round, index=index, before=before).because(
-            "repair the batch"
-        )
+        return Continue(batch.page_paths, self.repair_batch, turn=turn).because("repair the batch")
 
-    def repair_batch(self, ledger: RepairLedger, this_round: RepairRound, index: int, before: Snapshot) -> Continue[...]:
+    def repair_batch(self, turn: BatchTurn) -> Continue[...]:
         """One turn, confined to the book folder and to ostler, the scoped check and the scenario run, repairs one batch of pages. A turn that ends without a reply joins the failed ones."""
-        batch = this_round.batches[index]
+        batch = turn.batch
         request = writer_request(self.run_dir, self.root, self.surface_to_repair, self.book_folder, self.source_folder)
         started = time.monotonic()
         failure = ""
@@ -159,38 +157,33 @@ class RepairBook(BookFlow):
         except (AgentTurnFailed, AgentTimeout) as ended:
             failure = f"the repair turn on {', '.join(batch.page_paths)} ended without a reply: {ended}"
             self.logger.warning("%s", failure)
-            ledger = ledger.model_copy(update={"failed_turns": (*ledger.failed_turns, failure)})
+            ledger = turn.ledger.model_copy(update={"failed_turns": (*turn.ledger.failed_turns, failure)})
+            turn = turn.model_copy(update={"ledger": ledger})
         node = Path(REPAIR_PROMPT).stem
         metric = turn_metric(Phase.WRITE, node, (self.service,), (time.monotonic() - started) / 60, self.turn_usage(node))
-        return Continue(
-            failure, self.record_repair_turn, ledger=ledger, this_round=this_round, index=index, before=before, metric=metric
-        ).because("record what the turn cost")
+        return Continue(failure, self.record_repair_turn, turn=turn, metric=metric).because("record what the turn cost")
 
-    def record_repair_turn(
-        self, ledger: RepairLedger, this_round: RepairRound, index: int, before: Snapshot, metric: TurnMetric
-    ) -> Continue[...]:
+    def record_repair_turn(self, turn: BatchTurn, metric: TurnMetric) -> Continue[...]:
         """Record what the repair turn cost."""
         record_turn(self.records_dir, metric)
-        return Continue(metric, self.settle_turn, ledger=ledger, this_round=this_round, index=index, before=before).because(
-            "settle what the turn changed"
-        )
+        return Continue(metric, self.settle_turn, turn=turn).because("settle what the turn changed")
 
-    def settle_turn(self, ledger: RepairLedger, this_round: RepairRound, index: int, before: Snapshot) -> Continue[...]:
+    def settle_turn(self, turn: BatchTurn) -> Continue[...]:
         """Hand the turn's changes to be put back where its batch may not keep them, and the rest stamped and committed."""
         settled = SettledTurn.model_validate(
             self.handoff(
                 SettleRepairTurn,
                 parent_records_dir=str(self.records_dir),
                 service=self.service,
-                batch=this_round.batches[index],
-                closed_pages=ledger.closed_pages,
-                before=before,
+                batch=turn.batch,
+                closed_pages=turn.ledger.closed_pages,
+                before=turn.before,
                 repair_run_dir=str(self.run_dir),
             )
         )
-        return Continue(settled.pages, self.close_batch, ledger=ledger, this_round=this_round, index=index).because(
-            "close the pages the batch left clean"
-        )
+        return Continue(
+            settled.pages, self.close_batch, ledger=turn.ledger, this_round=turn.this_round, index=turn.index
+        ).because("close the pages the batch left clean")
 
     def close_batch(self, ledger: RepairLedger, this_round: RepairRound, index: int) -> Continue[...]:
         """Check the book, close each page of the batch the check finds clean, and move to the next batch, or plan the next round after the last."""
