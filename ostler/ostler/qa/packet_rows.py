@@ -2,21 +2,12 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Any
 
-from ostler import locators as locators_mod
-from ostler import markdown, refs as refs_mod, registry
 
 RELATION_FANOUT = 6
-
-
-def bullet_values(value: Any) -> list[str]:
-    """A bullet's values as strings: each item of a list, or the one value when it is set."""
-    if isinstance(value, list):
-        return [str(item) for item in value]
-    return [str(value)] if value else []
 
 
 @dataclass(frozen=True, slots=True)
@@ -37,14 +28,14 @@ class HealthRow:
 
 
 def resolve_groundings(
-    nodes: dict[str, dict[str, Any]], resolves: Callable[[str], bool]
+    code_refs_by_node: dict[str, tuple[str, ...]], resolves: Callable[[str], bool]
 ) -> tuple[set[str], list[HealthRow]]:
     """The nodes with a code citation that resolves, and a health row per citation that resolves nowhere. Each distinct citation is resolved once."""
     grounded: set[str] = set()
     dangling: list[HealthRow] = []
     ref_resolves: dict[str, bool] = {}
-    for node_id, node in nodes.items():
-        for normalized in refs_mod.code_refs(node.get("bullets", {}).get("code")):
+    for node_id, code_refs in code_refs_by_node.items():
+        for normalized in code_refs:
             if normalized not in ref_resolves:
                 ref_resolves[normalized] = resolves(normalized)
             if ref_resolves[normalized]:
@@ -60,28 +51,6 @@ def resolve_groundings(
                     )
                 )
     return grounded, dangling
-
-
-def missing_declared_checks(node_id: str, node: dict[str, Any]) -> list[HealthRow]:
-    """A health row per normative claim of a checked node type that declares no check to fulfil it."""
-    node_type = str(node.get("type", ""))
-    if not registry.check_keys(node_type):
-        return []
-    node_bullets = node.get("bullets", {})
-    combiners = {int(pos): str(word) for pos, word in (node.get("combiners") or {}).items()}
-    _, checks_per_bullet = registry.attributed_checks(node_type, node.get("bulletOrder") or [], combiners)
-    return [
-        HealthRow(
-            kind="missing-declared-check",
-            severity="warning",
-            node=node_id,
-            key=key,
-            message=f"impacted contract's `{key}:` claim declares no `verify:` check to fulfil it",
-        )
-        for key in registry.normative_keys(node_type)
-        for index in range(1, len(bullet_values(node_bullets.get(key))) + 1)
-        if not checks_per_bullet.get((key, index))
-    ]
 
 
 def relation_fanout(subjects_by_node: dict[str, set[str]], required_subjects: set[str]) -> list[HealthRow]:
@@ -120,31 +89,6 @@ class JourneyStep:
         return {"ref": self.ref, "href": self.href, "nodeType": self.node_type, "surface": self.surface}
 
 
-def journey_steps(
-    node: dict[str, Any], nodes_by_id: dict[str, dict[str, Any]]
-) -> tuple[JourneyStep, ...]:
-    """The nodes a flow's `steps:` names, in the order the book wrote them."""
-    resolved = {
-        str(edge["href"]): str(edge["to"])
-        for edge in node.get("edges") or []
-        if edge.get("to") and edge.get("href")
-    }
-    walk: list[JourneyStep] = []
-    for item in bullet_values(node.get("bullets", {}).get("steps")):
-        for _text, href in markdown.extract_refs(item).links:
-            target_id = resolved.get(href, "")
-            target = nodes_by_id.get(target_id, {}) if target_id else {}
-            walk.append(
-                JourneyStep(
-                    ref=target_id,
-                    href=href,
-                    node_type=str(target.get("type") or ""),
-                    surface=str(target.get("surface") or ""),
-                )
-            )
-    return tuple(walk)
-
-
 _SEGMENT_FIELDS = {"literal": "text", "bind": "path", "opaque": "expr"}
 
 
@@ -156,13 +100,14 @@ class Segment:
     value: str
 
     @classmethod
-    def parse(cls, raw: dict[str, Any]) -> Segment:
+    def parse(cls, raw: Mapping[str, object]) -> Segment:
         """The segment a compiled locator carries, refusing a kind the compiler does not emit."""
         kind = str(raw.get("kind", ""))
         field = _SEGMENT_FIELDS.get(kind)
-        if field is None or not isinstance(raw.get(field), str):
+        value = raw.get(field) if field is not None else None
+        if not isinstance(value, str):
             raise ValueError(f"a template segment has an unknown shape: {raw!r}")
-        return cls(kind=kind, value=raw[field])
+        return cls(kind=kind, value=value)
 
     def row(self) -> dict[str, str]:
         """The segment as the obligation row carries it."""
@@ -208,31 +153,6 @@ class RepeatContract:
         if self.variants is not None:
             fields["variants"] = {"path": self.variants.path, "values": list(self.variants.values)}
         return fields
-
-
-def repeat_contract(node: dict[str, Any], scope: tuple[str, ...]) -> RepeatContract | None:
-    """The compiled repeat contract for a node in a `one-per:` scope, or None."""
-    own = locators_mod.repeat_of(node)
-    scope = scope or ((own,) if own else ())
-    if not scope:
-        return None
-    located = locators_mod.locator_for(node, scope=scope)
-    template, binds = None, ()
-    if located["strategy"] == "template":
-        template = RepeatTemplate(
-            template=str(located["template"]),
-            iterates=str(located["iterates"]),
-            segments=tuple(Segment.parse(segment) for segment in located["segments"]),
-        )
-        binds = tuple(str(bind) for bind in located["binds"])
-    variants = locators_mod.variants_of(node)
-    return RepeatContract(
-        one_per=scope[-1],
-        binds=binds,
-        template=template,
-        unique_by=locators_mod.unique_by_of(node),
-        variants=Variants(path=str(variants["path"]), values=tuple(variants["values"])) if variants else None,
-    )
 
 
 @dataclass(frozen=True, slots=True)
