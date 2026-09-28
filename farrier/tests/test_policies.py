@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from farrier._vendor.stablemate_core import discovery
-from farrier.frontmatter import mapping_policy_names, read_yaml
+from farrier.frontmatter import local_instructions, mapping_policy_names, read_yaml
 from farrier.install import main, render_expected, set_layers
 
 POLICY = (
@@ -57,7 +57,8 @@ def _render(
     root = _library(tmp_path, policies)
     set_layers(root)
     repo = _repo(tmp_path, mapping)
-    return repo, render_expected(read_yaml(repo / "agents.yml"), repo)
+    config = read_yaml(repo / "agents.yml")
+    return repo, render_expected(config, repo, local_instructions(config))
 
 
 FULL_MAPPING = (
@@ -184,7 +185,8 @@ def test_an_overlay_policy_shadows_the_base_one(tmp_path, monkeypatch):
         tmp_path,
         '  - policies: [house-rules]\n    paths: ["."]\n    includeReadme: false\n',
     )
-    outputs = render_expected(read_yaml(repo / "agents.yml"), repo)
+    config = read_yaml(repo / "agents.yml")
+    outputs = render_expected(config, repo, local_instructions(config))
     assert "Overlay rules." in outputs[repo / "AGENTS.md"]
     assert "Commit as you go." not in outputs[repo / "AGENTS.md"]
 

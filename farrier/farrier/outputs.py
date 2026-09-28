@@ -1,20 +1,14 @@
 """Full-render orchestration and the repo mutations that install it."""
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass, replace
 from fnmatch import fnmatch
 from pathlib import Path
 from typing import Any
 
 from farrier.drift import Drifted, report
-from farrier.frontmatter import (
-    frontmatter_mapping,
-    mapping_claude_md,
-    mapping_include_readme,
-    mapping_policy_names,
-    mapping_prompt_names,
-    mapping_skill_names,
-)
+from farrier.frontmatter import LocalInstruction, frontmatter_mapping
 from farrier.hook_managers import (
     HOOK_RUNNER,
     LEFTHOOK_INCLUDE,
@@ -99,12 +93,12 @@ USER_MANAGED = Managed(
 )
 
 
-def repo_managed(config: dict[str, Any]) -> Managed:
+def repo_managed(instructions: Sequence[LocalInstruction]) -> Managed:
     """REPO_MANAGED plus the CLAUDE.md in every localInstructions directory."""
     pointers = tuple(
         (Path(rel) / "CLAUDE.md").as_posix()
-        for mapping in config.get("localInstructions", []) or []
-        for rel in mapping.get("paths", []) or []
+        for instruction in instructions
+        for rel in instruction.paths
     )
     return replace(REPO_MANAGED, files=REPO_MANAGED.files + pointers)
 
@@ -218,7 +212,9 @@ def check_selection(
         raise SystemExit("\n\n".join(reports))
 
 
-def render_expected(config: dict[str, Any], repo: Path) -> dict[Path, str]:
+def render_expected(
+    config: dict[str, Any], repo: Path, instructions: Sequence[LocalInstruction]
+) -> dict[Path, str]:
     repo_config = config.get("repo") or {}
     prefix = repo_prefix(repo)
     agents = normalize_agents(config)
@@ -270,23 +266,18 @@ def render_expected(config: dict[str, Any], repo: Path) -> dict[Path, str]:
     )
     outputs = renderer.render(agents, roots)
 
-    for mapping in config.get("localInstructions", []) or []:
-        skill_names = mapping_skill_names(mapping)
-        prompt_names = mapping_prompt_names(mapping)
-        policy_names = mapping_policy_names(mapping)
-        if not skill_names and not prompt_names and not policy_names:
-            raise SystemExit(
-                "A localInstructions entry must select at least one source "
-                "(`policy`/`policies`, `skill`/`skills` and/or `prompt`/`prompts`)"
-            )
-        include_readme = mapping_include_readme(mapping)
-        claude_md = mapping_claude_md(mapping)
+    for instruction in instructions:
+        skill_names = instruction.skills
+        prompt_names = instruction.prompts
+        policy_names = instruction.policies
+        include_readme = instruction.include_readme
+        claude_md = instruction.claude_md
         claude_only = bool(agents.get("claude")) and not (
             agents.get("codex") or agents.get("copilot")
         )
         readme_import = include_readme and claude_only and claude_md
         target = "claude" if claude_only else "codex"
-        for rel in mapping.get("paths", []) or []:
+        for rel in instruction.paths:
             directory = repo / rel
             if not directory.exists():
                 raise SystemExit(

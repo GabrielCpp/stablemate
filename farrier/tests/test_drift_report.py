@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from farrier.drift import Drifted, attribute, report, sources_for
-from farrier.frontmatter import read_yaml
+from farrier.frontmatter import local_instructions, read_yaml
 from farrier.install import check_outputs, install_outputs, render_expected, set_layers
 
 SKILL_BODY = "House rules.\n\nThe repo is linted with ruff."
@@ -48,7 +48,8 @@ def rendered(tmp_path: Path) -> tuple[Path, dict[Path, str]]:
         "    includeReadme: false\n",
         encoding="utf-8",
     )
-    outputs = render_expected(read_yaml(repo / "agents.yml"), repo)
+    config = read_yaml(repo / "agents.yml")
+    outputs = render_expected(config, repo, local_instructions(config))
     install_outputs(repo, outputs)
     return repo, outputs
 

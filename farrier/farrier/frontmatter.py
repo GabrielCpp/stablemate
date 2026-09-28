@@ -1,6 +1,7 @@
 """YAML front-matter and metadata parsing for library and generated files."""
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -115,6 +116,54 @@ def mapping_claude_md(mapping: dict[str, Any]) -> bool:
             f"localInstructions.claudeMd must be true or false (got {value!r})"
         )
     return value
+
+
+@dataclass(frozen=True)
+class LocalInstruction:
+    """One checked localInstructions entry of agents.yml."""
+
+    paths: tuple[str, ...]
+    skills: list[str]
+    prompts: list[str]
+    policies: list[str]
+    include_readme: bool
+    claude_md: bool
+
+
+def _instruction_paths(mapping: dict[str, Any]) -> tuple[str, ...]:
+    """The directories one localInstructions entry writes into."""
+    paths = mapping.get("paths", []) or []
+    if not isinstance(paths, list) or not all(isinstance(rel, str) for rel in paths):
+        raise SystemExit(
+            f"localInstructions.paths must be a list of directories (got {paths!r})"
+        )
+    return tuple(paths)
+
+
+def local_instructions(config: dict[str, Any]) -> tuple[LocalInstruction, ...]:
+    """The localInstructions entries of *config*, each checked once."""
+    entries = config.get("localInstructions", []) or []
+    if not isinstance(entries, list):
+        raise SystemExit(f"localInstructions must be a list of entries (got {entries!r})")
+    parsed: list[LocalInstruction] = []
+    for mapping in entries:
+        if not isinstance(mapping, dict):
+            raise SystemExit(f"A localInstructions entry must be a mapping (got {mapping!r})")
+        instruction = LocalInstruction(
+            paths=_instruction_paths(mapping),
+            skills=mapping_skill_names(mapping),
+            prompts=mapping_prompt_names(mapping),
+            policies=mapping_policy_names(mapping),
+            include_readme=mapping_include_readme(mapping),
+            claude_md=mapping_claude_md(mapping),
+        )
+        if not instruction.skills and not instruction.prompts and not instruction.policies:
+            raise SystemExit(
+                "A localInstructions entry must select at least one source "
+                "(`policy`/`policies`, `skill`/`skills` and/or `prompt`/`prompts`)"
+            )
+        parsed.append(instruction)
+    return tuple(parsed)
 
 
 def _as_text(value: Any) -> str:

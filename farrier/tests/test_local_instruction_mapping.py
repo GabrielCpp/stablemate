@@ -46,9 +46,11 @@ def _render(
     root = _library(tmp_path)
     set_layers(root)
     repo = _repo(tmp_path, mapping, codex)
-    from farrier.frontmatter import read_yaml
+    from farrier.frontmatter import local_instructions, read_yaml
 
-    return repo, render_expected(read_yaml(repo / "agents.yml"), repo)
+    config = read_yaml(repo / "agents.yml")
+
+    return repo, render_expected(config, repo, local_instructions(config))
 
 
 def test_prompt_body_is_aggregated_after_the_skills(tmp_path):
@@ -156,9 +158,11 @@ def test_codex_only_repo_gets_no_claude_pointer(tmp_path):
         '  - skill: demo-stablemate-ostler\n    paths: ["."]\n    includeReadme: false\n',
         encoding="utf-8",
     )
-    from farrier.frontmatter import read_yaml
+    from farrier.frontmatter import local_instructions, read_yaml
 
-    outputs = render_expected(read_yaml(repo / "agents.yml"), repo)
+    config = read_yaml(repo / "agents.yml")
+
+    outputs = render_expected(config, repo, local_instructions(config))
     assert "Ostler rules." in outputs[repo / "AGENTS.md"]
     assert repo / "CLAUDE.md" not in outputs
 
@@ -234,3 +238,15 @@ def test_source_resolves_either_generated_file_to_skill_and_prompt(
         str((root / "library/skills/stablemate/ostler/SKILL.md").resolve()),
         str((root / "library/prompts/stablemate/commit.md").resolve()),
     ]
+
+
+def test_a_string_paths_is_rejected_rather_than_read_one_character_at_a_time(tmp_path):
+    with pytest.raises(SystemExit) as exc:
+        _render(tmp_path, "  - skill: demo-stablemate-ostler\n    paths: docs\n")
+    assert "localInstructions.paths" in str(exc.value)
+
+
+def test_an_entry_that_is_no_mapping_is_rejected(tmp_path):
+    with pytest.raises(SystemExit) as exc:
+        _render(tmp_path, "  - demo-stablemate-ostler\n")
+    assert "must be a mapping" in str(exc.value)

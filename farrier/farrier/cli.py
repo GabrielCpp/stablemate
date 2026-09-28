@@ -29,9 +29,7 @@ from farrier.frontmatter import (
     LOCAL_INSTRUCTION_FILES,
     banner_sources,
     frontmatter_metadata,
-    mapping_policy_names,
-    mapping_prompt_names,
-    mapping_skill_names,
+    local_instructions,
     read_yaml,
 )
 from farrier.hook_managers import (
@@ -169,13 +167,14 @@ def _run_install(args: argparse.Namespace) -> int:
     config = read_yaml(config_path)
     manager = configured_manager(config, repo)
     try:
-        outputs = render_expected(config, repo)
+        instructions = local_instructions(config)
+        outputs = render_expected(config, repo, instructions)
     except SystemExit as exc:
         if not (args.check and getattr(args, "skip_unresolvable", False)):
             raise
         print(f"Skipped the generated-file check: {exc}")
         return 0
-    managed = repo_managed(config)
+    managed = repo_managed(instructions)
     if args.check:
         return check_outputs(repo, outputs, manager, managed)
     install_outputs(repo, outputs, manager, managed)
@@ -278,12 +277,12 @@ def mapped_instruction_sources(generated: Path) -> list[str] | None:
     skill_names: list[str] = []
     prompt_names: list[str] = []
     policy_names: list[str] = []
-    for mapping in config.get("localInstructions", []) or []:
-        for rel in mapping.get("paths", []) or []:
+    for instruction in local_instructions(config):
+        for rel in instruction.paths:
             if (repo / rel).resolve() == directory:
-                skill_names = mapping_skill_names(mapping)
-                prompt_names = mapping_prompt_names(mapping)
-                policy_names = mapping_policy_names(mapping)
+                skill_names = instruction.skills
+                prompt_names = instruction.prompts
+                policy_names = instruction.policies
     if not skill_names and not prompt_names and not policy_names:
         raise SystemExit(
             f"error: {generated} is not mapped by {config_path} → "
