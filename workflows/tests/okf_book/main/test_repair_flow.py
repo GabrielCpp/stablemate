@@ -236,7 +236,7 @@ def test_an_existing_book_over_the_ceiling_that_fails_its_run_is_repaired_once_o
     _assert_repaired_once_on_the_failed_page(runner, result)
 
 
-def _a_book_this_workflow_wrote(app: App) -> Path:
+def _repo_with_a_book_this_workflow_wrote(app: App) -> Path:
     repo = app("tally-cli")
     _ = (repo / PAGE).write_text((repo / PAGE).read_text(encoding="utf-8") + NOTE, encoding="utf-8")
     _ = git(repo, "commit", "-qam", "docs(tally): write the tally book")
@@ -245,7 +245,7 @@ def _a_book_this_workflow_wrote(app: App) -> Path:
 
 @pytest.mark.usefixtures("failing_add")
 def test_a_book_this_workflow_wrote_that_fails_its_run_is_a_blocker_and_no_repair(app: App, drive_book: DriveBook) -> None:
-    repo = _a_book_this_workflow_wrote(app)
+    repo = _repo_with_a_book_this_workflow_wrote(app)
     runner = _repairer(repo)
 
     result = drive_book(OkfBook(repo_dir=str(repo), surfaces=(TALLY,)), runner)
