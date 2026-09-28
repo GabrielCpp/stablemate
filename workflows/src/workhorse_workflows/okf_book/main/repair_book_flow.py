@@ -74,7 +74,7 @@ class RepairBook(BookFlow):
         ledger = RepairLedger(uncommitted_at_start=uncommitted_at_start, planned_pages=tuple(by_page), journey=journey)
         return self._pack_round(ledger, RepairRound(number=1), by_page, problems)
 
-    def plan_round(self, ledger: RepairLedger, last: RepairRound, problems: tuple[PageProblem, ...]) -> Continue[...] | Done:
+    def plan_round(self, ledger: RepairLedger, finished_round: RepairRound, problems: tuple[PageProblem, ...]) -> Continue[...] | Done:
         """Pack the planned pages still open that have problems now. A spent repair ends with what is left."""
         current_problems_by_page = problems_by_page(problems, frozenset(ledger.uncommitted_at_start))
         by_page = {page: on_page for page, on_page in current_problems_by_page.items() if page in ledger.planned_pages and page not in ledger.closed_pages}
@@ -84,8 +84,8 @@ class RepairBook(BookFlow):
         reopened = sorted(set(current_problems_by_page) & set(ledger.closed_pages))
         if reopened:
             self.logger.info("%d pages a batch closed have problems again, left for the book check: %s", len(reopened), ", ".join(reopened))
-        if last.number >= REPAIR_ROUNDS:
-            return Done(ledger.outcome(last.number, by_page)).because("the repair rounds are spent")
+        if finished_round.number >= REPAIR_ROUNDS:
+            return Done(ledger.outcome(finished_round.number, by_page)).because("the repair rounds are spent")
         current_journey = journey_pages(self.root, self.service, frozenset(ledger.uncommitted_at_start))
         unplanned_flow_pages = sorted(set(current_journey.flow_pages) - set(ledger.journey.pages))
         if unplanned_flow_pages:
@@ -94,7 +94,7 @@ class RepairBook(BookFlow):
                 len(unplanned_flow_pages),
                 ", ".join(unplanned_flow_pages),
             )
-        return self._pack_round(ledger, RepairRound(number=last.number + 1), by_page, problems)
+        return self._pack_round(ledger, RepairRound(number=finished_round.number + 1), by_page, problems)
 
     def _pack_round(
         self,
@@ -198,6 +198,6 @@ class RepairBook(BookFlow):
                 index=index + 1,
                 problems_at_turn_start=tuple(problems),
             ).because("prepare the next batch")
-        return Continue(ledger.closed_pages, self.plan_round, ledger=ledger, last=this_round, problems=problems).because(
+        return Continue(ledger.closed_pages, self.plan_round, ledger=ledger, finished_round=this_round, problems=problems).because(
             "plan the next round"
         )
