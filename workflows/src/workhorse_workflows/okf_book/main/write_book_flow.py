@@ -104,7 +104,7 @@ class WriteBook(BookFlow):
         """
         service = self.surface_to_write.service
         pages = book_changes(self.root, service, before)
-        waiting = self._commit_or_await(unfinished_book_commit_subject(service), pages, self.commit_unfinished, before=before, failure=failure)
+        waiting = self._render_and_commit_or_await(unfinished_book_commit_subject(service), pages, self.commit_unfinished, before=before, failure=failure)
         if waiting:
             return waiting
         return Done(WriteOutcome(committed=False, failure=failure)).because("the writer's turn failed")
@@ -127,7 +127,7 @@ class WriteBook(BookFlow):
 
     def commit_book(self, pages: tuple[str, ...]) -> Done | Await[...]:
         """Commit the book's changed pages. A retry after the commit landed finds nothing to commit. A failed render or a refused commit waits for the operator."""
-        waiting = self._commit_or_await(book_commit_subject(self.surface_to_write.service), pages, self.commit_book, pages=pages)
+        waiting = self._render_and_commit_or_await(book_commit_subject(self.surface_to_write.service), pages, self.commit_book, pages=pages)
         if waiting:
             return waiting
         return Done(WriteOutcome(committed=True)).because("the book is committed")

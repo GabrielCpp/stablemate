@@ -8,7 +8,7 @@ from workhorse_workflows.kit.tools import run_tool
 AGENTS_CONFIG = "agents.yml"
 
 
-def render_agent_files(root: Path) -> str:
+def render_agent_files_returning_failure(root: Path) -> str:
     """Render *root*'s agent files with farrier when the repo selects any. Returns why the render failed, and empty when it did not fail."""
     if not (root / AGENTS_CONFIG).is_file():
         return ""

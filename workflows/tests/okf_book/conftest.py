@@ -37,7 +37,7 @@ def rendered_repos(monkeypatch: pytest.MonkeyPatch) -> list[Path]:
         rendered.append(root)
         return ""
 
-    monkeypatch.setattr(book_flow, "render_agent_files", _render)
+    monkeypatch.setattr(book_flow, "render_agent_files_returning_failure", _render)
     return rendered
 
 

@@ -43,7 +43,7 @@ class RootBook(BookFlow):
 
     def commit_root(self, uncommitted_at_start: tuple[str, ...], page: str) -> Done | Await[...]:
         """Commit the entries page. A failed render or a refused commit waits for the operator."""
-        waiting = self._commit_or_await(rooted_book_commit_subject(self.service), (page,), self.commit_root, uncommitted_at_start=uncommitted_at_start, page=page)
+        waiting = self._render_and_commit_or_await(rooted_book_commit_subject(self.service), (page,), self.commit_root, uncommitted_at_start=uncommitted_at_start, page=page)
         if waiting:
             return waiting
         return Done(RootedBook(uncommitted_at_start=uncommitted_at_start)).because("the book is rooted")

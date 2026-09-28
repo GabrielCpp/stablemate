@@ -6,7 +6,7 @@ from pathlib import Path
 
 from workhorse.pyflow import Await, Transition, Workflow
 from workhorse_workflows.kit import commit_returning_refusal
-from workhorse_workflows.okf_book.shared.agent_files import render_agent_files
+from workhorse_workflows.okf_book.shared.agent_files import render_agent_files_returning_failure
 
 COMMIT_GATE = "commit-refused.md"
 RENDER_GATE = "agent-files-unrendered.md"
@@ -25,11 +25,11 @@ class BookFlow(Workflow):
     def records_dir(self) -> Path:
         return Path(self.parent_records_dir) if self.parent_records_dir else self.run_dir
 
-    def _commit_or_await[**P](
+    def _render_and_commit_or_await[**P](
         self, message: str, pathspecs: tuple[str, ...], retry: Callable[P, Transition], *args: P.args, **kwargs: P.kwargs
     ) -> Await[P] | None:
         """Render the repo's agent files, then commit exactly *pathspecs*. A render that failed or a commit the repo refused waits for the operator, whose answer tries the whole step again."""
-        render_failure = render_agent_files(self.root)
+        render_failure = render_agent_files_returning_failure(self.root)
         if render_failure:
             return Await(
                 self.run_dir / RENDER_GATE,

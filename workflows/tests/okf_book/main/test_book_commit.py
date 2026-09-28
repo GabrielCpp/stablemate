@@ -60,7 +60,7 @@ def test_the_agent_files_are_rendered_before_the_book_commit_so_their_drift_is_n
         (root / ".drifted").unlink(missing_ok=True)
         return ""
 
-    monkeypatch.setattr(book_flow, "render_agent_files", _render)
+    monkeypatch.setattr(book_flow, "render_agent_files_returning_failure", _render)
 
     result = drive_book(OkfBook(repo_dir=str(repo), surfaces=(TALLY,)), _writer(repo))
 
@@ -81,7 +81,7 @@ def test_a_render_that_failed_waits_for_the_operator_and_the_book_is_committed_a
     def _render(_root: Path) -> str:
         return failures.pop() if failures else ""
 
-    monkeypatch.setattr(book_flow, "render_agent_files", _render)
+    monkeypatch.setattr(book_flow, "render_agent_files_returning_failure", _render)
 
     result = drive_book(OkfBook(repo_dir=str(repo), surfaces=(TALLY,)), _writer(repo))
 
