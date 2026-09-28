@@ -187,11 +187,11 @@ class RepairBook(BookFlow):
         stray = put_back_outside(self.root, self.service, before, self.run_dir)
         for path in stray:
             self.logger.warning("put back %s, which the repair turn changed outside its book", path)
-        return Continue(stray, self.put_back, ledger=ledger, this_round=this_round, index=index, before=before).because(
+        return Continue(stray, self.put_back_pages_batch_may_not_keep, ledger=ledger, this_round=this_round, index=index, before=before).because(
             "put back the book pages the turn may not keep"
         )
 
-    def put_back(self, ledger: RepairLedger, this_round: RepairRound, index: int, before: Snapshot) -> Continue[...] | Await[...]:
+    def put_back_pages_batch_may_not_keep(self, ledger: RepairLedger, this_round: RepairRound, index: int, before: Snapshot) -> Continue[...] | Await[...]:
         """Put back each book page the turn changed but may not keep: the entries page, a page its batch does not own, and a page an earlier batch closed.
 
         A page someone left uncommitted has no committed copy of their edit to go back to, so a turn
