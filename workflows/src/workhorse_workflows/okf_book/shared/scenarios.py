@@ -104,10 +104,10 @@ class RunSummary(BaseModel):
             outcome = self.scenarios[name]
             lines = outcome.failure_lines() or (outcome.status,)
             claim = outcome.failed_claim(plan_source)
-            where = f"the run of scenario {name} failed at {claim}" if claim else f"the run of scenario {name} failed"
+            failure_prefix = f"the run of scenario {name} failed at {claim}" if claim else f"the run of scenario {name} failed"
             for page in pages_by_scenario.get(name, ()):
                 node = obligation_node(claim) if obligation_page(claim) == page else ""
-                grouped.setdefault(page, []).extend(PageProblem(page, f"{where}: {line}", node=node) for line in lines)
+                grouped.setdefault(page, []).extend(PageProblem(page, f"{failure_prefix}: {line}", node=node) for line in lines)
         return {page: tuple(grouped[page]) for page in sorted(grouped)}
 
 

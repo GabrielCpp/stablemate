@@ -83,12 +83,12 @@ class RepairBook(BookFlow):
 
     def plan_round(self, ledger: RepairLedger, last: RepairRound, problems: tuple[PageProblem, ...]) -> Continue[...] | Done:
         """Pack the planned pages still open that have problems now. A spent repair ends with what is left."""
-        found = problems_by_page(problems, frozenset(ledger.uncommitted_at_start))
-        by_page = {page: on_page for page, on_page in found.items() if page in ledger.planned_pages and page not in ledger.closed_pages}
-        outside = sorted(set(found) - set(ledger.planned_pages))
+        current_problems_by_page = problems_by_page(problems, frozenset(ledger.uncommitted_at_start))
+        by_page = {page: on_page for page, on_page in current_problems_by_page.items() if page in ledger.planned_pages and page not in ledger.closed_pages}
+        outside = sorted(set(current_problems_by_page) - set(ledger.planned_pages))
         if outside:
             self.logger.info("%d pages outside this repair have problems, left for the book check: %s", len(outside), ", ".join(outside))
-        reopened = sorted(set(found) & set(ledger.closed_pages))
+        reopened = sorted(set(current_problems_by_page) & set(ledger.closed_pages))
         if reopened:
             self.logger.info("%d pages a batch closed have problems again, left for the book check: %s", len(reopened), ", ".join(reopened))
         if last.number >= REPAIR_ROUNDS:
