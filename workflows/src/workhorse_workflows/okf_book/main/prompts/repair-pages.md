@@ -59,7 +59,8 @@ gives relative to the repository starts there.
 {% if kind == "http" %}
   A request the app refused as unauthorized sends the token a sign-in fixture mints, and one it
   refused as malformed sends the body it lacked. Both are `arrange:` acts, as the skill's
-  endpoint reference says. A check the run gapped as `needs-snapshot` is restated on the response.
+  endpoint reference says. A route that needs an id or a query string gets it on the path its
+  `http_status` row spells. A check the run gapped as `needs-snapshot` is restated on the response.
 {% endif %}
 {% endif %}
   A claim the source contradicts is corrected to what the source does. A claim with no `verify:`
