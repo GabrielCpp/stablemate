@@ -30,7 +30,6 @@ from ostler.qa.obligation_frame import (
     BookNode,
     RepeatContract,
     book_nodes,
-    bullet_values,
     declared_locators,
     linked_surface,
     obligation_frame,
@@ -441,7 +440,7 @@ def build_context(
 
     selected = contracts | journeys
     verification_index: list[dict[str, Any]] = []
-    for node_id, node in sorted(nodes_by_id.items()):
+    for node_id, node in sorted(book.items()):
         for ref in _verification_refs(node):
             verification_index.append(
                 {"node": node_id, "ref": ref, "path": _code_path(ref), "impacted": node_id in selected}
@@ -503,8 +502,8 @@ def build_context(
                 if _is_required(node_id, direct_reasons, grounded, shared_files, demoted_symbols)
             }
         health.extend(row.row() for row in relation_fanout_warnings(subjects_by_node, required_subjects))
-    fixture_provides = _fixture_provides_index(nodes_by_id)
-    fixture_undetermined = _fixture_undetermined_index(nodes_by_id)
+    fixture_provides = _fixture_provides_index(book)
+    fixture_undetermined = _fixture_undetermined_index(book)
     obligations = [
         obligation
         for node_id in sorted(contracts)
@@ -550,7 +549,7 @@ def build_context(
         deduped_obligations.append(obligation)
     obligations = deduped_obligations
     navigation = _navigation(head_graph)
-    cli_binaries = _run_binaries_by_path(nodes_by_id)
+    cli_binaries = _run_binaries_by_path(book)
     changed_code = _changed_code_rows(changes)
     return {
         "version": 2 if repositories else 1,
@@ -1123,37 +1122,37 @@ def _owner_node(node: dict[str, Any]) -> OwnerNode:
     )
 
 
-def _cli_binaries(nodes_by_id: dict[str, dict[str, Any]]) -> dict[str, str]:
+def _cli_binaries(book: Mapping[str, BookNode]) -> dict[str, str]:
     """Every `cli` file node's declared `binary:`, keyed by the file `path` its `command` sections share."""
     binaries: dict[str, str] = {}
-    for node in nodes_by_id.values():
-        if node.get("type") != "cli" or node.get("kind") != "file":
+    for node in book.values():
+        if node.type != "cli" or node.kind != "file":
             continue
-        values = bullet_values(node.get("bullets", {}).get("binary"))
+        values = node.bullets.get("binary", ())
         binary = bullet_text(values[0]) if values else ""
         if binary:
-            binaries[str(node["path"])] = binary
+            binaries[node.path] = binary
     return binaries
 
 
-def _run_binaries_by_path(nodes_by_id: dict[str, dict[str, Any]]) -> dict[str, str]:
+def _run_binaries_by_path(book: Mapping[str, BookNode]) -> dict[str, str]:
     """The executable a page's `run:` resolves to, keyed by the page's file `path`.
 
     A `cli` file resolves to its own declared binary. Any other file of a surface with exactly one
     `cli` file borrows that file's binary, so a format's field that states a `run:` names the same
     executable the surface's commands do.
     """
-    declared = _cli_binaries(nodes_by_id)
-    files = [node for node in nodes_by_id.values() if node.get("kind") == "file"]
+    declared = _cli_binaries(book)
+    files = [node for node in book.values() if node.kind == "file"]
     cli_paths_by_surface: dict[str, list[str]] = {}
     for node in files:
-        if node.get("type") == "cli":
-            cli_paths_by_surface.setdefault(str(node.get("surface") or ""), []).append(str(node["path"]))
+        if node.type == "cli":
+            cli_paths_by_surface.setdefault(node.surface, []).append(node.path)
     binaries = dict(declared)
     for node in files:
-        surface_cli_paths = cli_paths_by_surface.get(str(node.get("surface") or ""), [])
-        if node.get("type") != "cli" and len(surface_cli_paths) == 1 and surface_cli_paths[0] in declared:
-            binaries[str(node["path"])] = declared[surface_cli_paths[0]]
+        surface_cli_paths = cli_paths_by_surface.get(node.surface, [])
+        if node.type != "cli" and len(surface_cli_paths) == 1 and surface_cli_paths[0] in declared:
+            binaries[node.path] = declared[surface_cli_paths[0]]
     return binaries
 
 
@@ -1217,10 +1216,10 @@ def _as_ref(candidate: str) -> str:
     return f"{path}::{symbol}" if separator and symbol else path
 
 
-def _verification_refs(node: dict[str, Any]) -> list[str]:
+def _verification_refs(node: BookNode) -> list[str]:
     """Every test a node's ``tests:`` bullets cite, as ``path`` or ``path::name``."""
     refs: list[str] = []
-    for value in bullet_values(node.get("bullets", {}).get("tests")):
+    for value in node.bullets.get("tests", ()):
         spans = markdown.all_code_spans(value)
         if spans:
             found = [_as_ref(span) for span in spans]
@@ -1458,46 +1457,42 @@ def _dedup_checks(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return list({row["call"]: row for row in rows}.values())
 
 
-def _fixture_provides_index(nodes_by_id: dict[str, dict[str, Any]]) -> dict[str, list[str]]:
+def _fixture_provides_index(book: Mapping[str, BookNode]) -> dict[str, list[str]]:
     """Every book fixture's own `provides:` keys, plus every one reachable through `needs:`."""
-    resolved = _fixture_provides_closure(nodes_by_id)
+    resolved = _fixture_provides_closure(book)
     return {name: sorted(ref for ref, _ in pairs) for name, pairs in resolved.items()}
 
 
-def _fixture_undetermined_index(nodes_by_id: dict[str, dict[str, Any]]) -> dict[str, list[str]]:
+def _fixture_undetermined_index(book: Mapping[str, BookNode]) -> dict[str, list[str]]:
     """Every reachable `provides:` key whose *source* the book left undetermined, by fixture stem."""
-    resolved = _fixture_provides_closure(nodes_by_id)
+    resolved = _fixture_provides_closure(book)
     return {name: sorted(ref for ref, bad in pairs if bad) for name, pairs in resolved.items()}
 
 
 def _fixture_provides_closure(
-    nodes_by_id: dict[str, dict[str, Any]],
+    book: Mapping[str, BookNode],
 ) -> dict[str, set[tuple[str, bool]]]:
     """`{fixture stem: {(`<owner>.<key>`, source-undetermined), ...}}` over the `needs:` closure."""
-    fixtures = {node_id: node for node_id, node in nodes_by_id.items() if node.get("type") == "fixture"}
+    fixtures = {node_id: node for node_id, node in book.items() if node.type == "fixture"}
     provides: dict[str, set[tuple[str, bool]]] = {}
     needs: dict[str, set[str]] = {}
     for node_id, node in fixtures.items():
         keys: set[tuple[str, bool]] = set()
-        entries = node.get("entries", {}).get("provides") or []
-        stated = {}
-        for entry in entries:
-            head = str(entry.get("headline", "")).partition("—")[0].split()
+        stated: dict[str, Mapping[str, str]] = {}
+        for entry in node.entries.get("provides", ()):
+            head = entry.headline.partition("—")[0].split()
             if head:
-                stated[head[0]] = entry.get("properties") or {}
-        for value in bullet_values(node.get("bullets", {}).get("provides")):
+                stated[head[0]] = entry.properties
+        for value in node.bullets.get("provides", ()):
             head = value.partition("—")[0].split()
             if not head:
                 continue
             properties = stated.get(head[0], {})
-            observed = bool(_property_text(properties.get("from")))
-            asserted = bool(_property_text(properties.get("is")))
+            observed = bool(properties.get("from"))
+            asserted = bool(properties.get("is"))
             keys.add((head[0], observed == asserted))
         provides[node_id] = keys
-        needs[node_id] = {
-            edge["to"] for edge in node.get("edges", [])
-            if edge.get("via") == "needs" and edge.get("to") in fixtures
-        }
+        needs[node_id] = {edge.to for edge in node.edges if edge.via == "needs" and edge.to in fixtures}
 
     closure: dict[str, set[tuple[str, bool]]] = {}
 
@@ -1514,13 +1509,6 @@ def _fixture_provides_closure(
         return pairs
 
     return {Path(node_id).stem: resolve(node_id, frozenset()) for node_id in fixtures}
-
-
-def _property_text(value: object) -> str:
-    """One serialized entry property as its text — the JSON-side twin of `Entry.property_text`."""
-    if isinstance(value, list):
-        return " ".join(str(v).strip() for v in value if str(v).strip())
-    return str(value).strip() if value is not None else ""
 
 
 def _parse_captures(values: list[str]) -> list[dict[str, Any]]:

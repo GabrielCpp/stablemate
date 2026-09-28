@@ -197,6 +197,36 @@ class NodeEdge:
         )
 
 
+def property_text(value: object) -> str:
+    """One serialized entry property as its text — the JSON-side twin of `Entry.property_text`."""
+    if isinstance(value, list):
+        return " ".join(str(v).strip() for v in value if str(v).strip())
+    return str(value).strip() if value is not None else ""
+
+
+@dataclass(frozen=True)
+class NodeEntry:
+    """One entry under a node's bullet: its headline, and each of its properties as text."""
+
+    headline: str
+    properties: Mapping[str, str]
+
+    @classmethod
+    def parse(cls, raw: object) -> NodeEntry | None:
+        if not isinstance(raw, Mapping):
+            return None
+        fields = {str(key): value for key, value in raw.items()}
+        properties = fields.get("properties")
+        return cls(
+            headline=str(fields.get("headline", "")),
+            properties=(
+                {str(key): property_text(value) for key, value in properties.items()}
+                if isinstance(properties, Mapping)
+                else {}
+            ),
+        )
+
+
 @dataclass(frozen=True)
 class BookNode:
     """The parts of a serialized book node the obligation frame reads."""
@@ -212,6 +242,8 @@ class BookNode:
     line: int = 0
     bullet_order: tuple[tuple[str, str, int], ...] = ()
     combiners: Mapping[int, str] = field(default_factory=dict)
+    kind: str = ""
+    entries: Mapping[str, tuple[NodeEntry, ...]] = field(default_factory=dict)
 
     @classmethod
     def parse(cls, raw: Mapping[str, object]) -> BookNode:
@@ -222,6 +254,7 @@ class BookNode:
         line = raw.get("line")
         bullet_order = raw.get("bulletOrder")
         combiners = raw.get("combiners")
+        entries = raw.get("entries")
         return cls(
             id=str(raw.get("id") or ""),
             type=node_type,
@@ -252,6 +285,16 @@ class BookNode:
             combiners=(
                 {int(str(position)): str(word) for position, word in combiners.items()}
                 if isinstance(combiners, Mapping)
+                else {}
+            ),
+            kind=str(raw.get("kind") or ""),
+            entries=(
+                {
+                    str(key): tuple(entry for entry in map(NodeEntry.parse, value) if entry is not None)
+                    for key, value in entries.items()
+                    if isinstance(value, list)
+                }
+                if isinstance(entries, Mapping)
                 else {}
             ),
         )

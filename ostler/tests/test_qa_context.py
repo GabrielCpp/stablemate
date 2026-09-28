@@ -1843,14 +1843,14 @@ def test_a_backticked_verify_ref_keeps_the_commas_inside_its_test_name():
         "`docs-app/app/lib/drafts.test.ts::describe(\"createPairedDrafts\") > generates once, "
         "cloning the input independently` and `docs-app/app/x.browser.test.tsx::describe(\"S\") > b`"
     )
-    assert _verification_refs({"bullets": {"tests": backticked}}) == [
+    assert _verification_refs(BookNode.parse({"bullets": {"tests": backticked}})) == [
         'docs-app/app/lib/drafts.test.ts::describe("createPairedDrafts") > generates once, '
         "cloning the input independently",
         'docs-app/app/x.browser.test.tsx::describe("S") > b',
     ]
-    assert _verification_refs({"bullets": {"tests": "`not a citation at all`"}}) == []
+    assert _verification_refs(BookNode.parse({"bullets": {"tests": "`not a citation at all`"}})) == []
     assert _verification_refs(
-        {"bullets": {"tests": "tests/test_items.py::test_save, tests/test_items.py::test_retry"}}
+        BookNode.parse({"bullets": {"tests": "tests/test_items.py::test_save, tests/test_items.py::test_retry"}})
     ) == ["tests/test_items.py::test_save", "tests/test_items.py::test_retry"]
 
 
