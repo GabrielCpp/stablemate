@@ -12,7 +12,6 @@ from pathlib import Path
 from pydantic import BaseModel, ConfigDict
 
 from workhorse.pyflow import Await, Continue, Done
-from workhorse_workflows.kit import commit_returning_refusal
 from workhorse_workflows.okf_book.main.nodes.repair_batch_models import RepairBatch
 from workhorse_workflows.okf_book.main.nodes.repair_put_back import (
     entry_pages_changed_beyond_links,
@@ -94,7 +93,7 @@ class SettleRepairTurn(BookFlow):
 
     def commit_pages(self, pages: tuple[str, ...]) -> Await[...] | Done:
         """Commit the batch's pages. A refused commit waits for the operator."""
-        refusal = commit_returning_refusal(self.root, repaired_book_commit_subject(self.service), *pages)
+        refusal = self._commit(repaired_book_commit_subject(self.service), *pages)
         if refusal:
             return self._await_operator_on_refused_commit(refusal, self.commit_pages, pages=pages)
         return Done(SettledTurn(pages=pages)).because("the repaired pages are committed")

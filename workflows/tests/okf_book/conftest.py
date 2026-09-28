@@ -13,6 +13,7 @@ from workhorse.config_run import RunConfig
 from workhorse.pyflow.engine import RunEnv
 
 from workhorse_workflows import okf_book
+from workhorse_workflows.okf_book.shared import book_flow
 from workhorse_workflows.okf_book.workflow import OkfBook, workflow
 
 
@@ -25,6 +26,18 @@ def git_identity(monkeypatch: pytest.MonkeyPatch) -> None:
         ("GIT_COMMITTER_EMAIL", "test@example.com"),
     ):
         monkeypatch.setenv(key, value)
+
+
+@pytest.fixture(autouse=True)
+def rendered_repos(monkeypatch: pytest.MonkeyPatch) -> list[Path]:
+    """The repos a book commit rendered the agent files of, with farrier itself left out of every test."""
+    rendered: list[Path] = []
+
+    def _render(root: Path, _logger: object) -> None:
+        rendered.append(root)
+
+    monkeypatch.setattr(book_flow, "render_agent_files", _render)
+    return rendered
 
 
 @pytest.fixture

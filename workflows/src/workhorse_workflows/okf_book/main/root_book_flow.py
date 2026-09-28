@@ -3,7 +3,6 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict
 from workhorse.pyflow import Await, Continue, Done
-from workhorse_workflows.kit import commit_returning_refusal
 from workhorse_workflows.okf_book.main.nodes.root_entries import write_root_entries
 from workhorse_workflows.okf_book.shared.book_commits import rooted_book_commit_subject
 from workhorse_workflows.okf_book.shared.book_flow import BookFlow
@@ -44,7 +43,7 @@ class RootBook(BookFlow):
 
     def commit_root(self, uncommitted_at_start: tuple[str, ...], page: str) -> Done | Await[...]:
         """Commit the entries page. A refused commit waits for the operator."""
-        refusal = commit_returning_refusal(self.root, rooted_book_commit_subject(self.service), page)
+        refusal = self._commit(rooted_book_commit_subject(self.service), page)
         if refusal:
             return self._await_operator_on_refused_commit(refusal, self.commit_root, uncommitted_at_start=uncommitted_at_start, page=page)
         return Done(RootedBook(uncommitted_at_start=uncommitted_at_start)).because("the book is rooted")

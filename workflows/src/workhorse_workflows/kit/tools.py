@@ -12,7 +12,7 @@ def run_tool(
     *,
     check: bool = False,
     logger: logging.Logger | None = None,
-) -> subprocess.CompletedProcess:
+) -> subprocess.CompletedProcess[str]:
     """Run an external CLI tool as a subprocess and return the completed process."""
     result = subprocess.run(
         argv,
