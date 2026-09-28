@@ -145,9 +145,9 @@ def _stage_denial(stage: Sequence[str], policy: Policy) -> str | None:
     if not stage:
         return "a pipe has an empty side"
     for command in policy.commands:
-        head = shlex.split(command)
-        if list(stage[: len(head)]) == head:
-            return _path_denial(stage[len(head) :], policy)
+        command_tokens = shlex.split(command)
+        if list(stage[: len(command_tokens)]) == command_tokens:
+            return _path_denial(stage[len(command_tokens) :], policy)
     program, arguments = stage[0], stage[1:]
     if program not in READ_ONLY_PROGRAMS:
         return f"`{program}` is neither one of this turn's commands nor a read-only command"
