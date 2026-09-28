@@ -9,7 +9,7 @@ import pytest
 from workhorse_workflows.okf_book.shared.confine import GitFailed, restore, snapshot
 
 
-def _repo(root: Path) -> Path:
+def _committed_page(root: Path) -> Path:
     for args in (("init", "-q"), ("config", "user.email", "t@example.com"), ("config", "user.name", "t")):
         _ = subprocess.run(["git", *args], cwd=root, check=True)
     page = root / "page.md"
@@ -20,7 +20,7 @@ def _repo(root: Path) -> Path:
 
 
 def test_a_put_back_waits_for_another_git_process_to_release_the_index(tmp_path: Path) -> None:
-    page = _repo(tmp_path)
+    page = _committed_page(tmp_path)
     before = snapshot(tmp_path)
     _ = page.write_text("the turn's edit\n", encoding="utf-8")
     lock = tmp_path / ".git" / "index.lock"

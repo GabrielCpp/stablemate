@@ -113,12 +113,12 @@ def test_a_turn_keeps_an_entry_page_it_only_added_link_lines_to(
     assert git(repo, "status", "--porcelain").strip() == ""
 
 
-BREAK = "\na flow step that walks no endpoint\n"
+FLOW_BREAKING_LINE = "\na flow step that walks no endpoint\n"
 
 
 def _flow_and_page_until_noted(root: Path, service: str) -> tuple[PageProblem, ...]:
     flow_text = (root / FLOW_PAGE).read_text(encoding="utf-8")
-    broken = BREAK.strip() in flow_text or BREAK.strip() in (root / PAGE).read_text(encoding="utf-8")
+    broken = FLOW_BREAKING_LINE.strip() in flow_text or FLOW_BREAKING_LINE.strip() in (root / PAGE).read_text(encoding="utf-8")
     flow_open = NOTE.strip() not in flow_text or broken
     flow_problems = (PageProblem(FLOW_PAGE, "track-a-trip.md needs a note", needs_journey=True),) if flow_open else ()
     return (*flow_problems, *off_journey_until_noted(root, service))
@@ -135,7 +135,7 @@ def _one_page_per_batch(
 def _notes_its_page_and_breaks_the_flow(repo: Path, broken_page: str) -> ScriptedRunner:
     def _reply(args: dict[str, object]) -> dict[str, object]:
         [repair] = TypeAdapter(tuple[PageRepair, ...]).validate_python(args["pages"])
-        edits = ((FLOW_PAGE, NOTE),) if repair.page == FLOW_PAGE else ((PAGE, NOTE), (broken_page, BREAK))
+        edits = ((FLOW_PAGE, NOTE),) if repair.page == FLOW_PAGE else ((PAGE, NOTE), (broken_page, FLOW_BREAKING_LINE))
         for page, text in edits:
             _ = (repo / page).write_text((repo / page).read_text(encoding="utf-8") + text, encoding="utf-8")
         return {"value": f"repaired {repair.page}"}
@@ -163,7 +163,7 @@ def test_a_later_batch_cannot_change_a_flow_page_an_earlier_batch_closed(app: Ap
 
     assert isinstance(result, BookReport)
     assert _sent_pages(runner) == [FLOW_PAGE, PAGE]
-    assert BREAK.strip() not in (repo / FLOW_PAGE).read_text(encoding="utf-8")
+    assert FLOW_BREAKING_LINE.strip() not in (repo / FLOW_PAGE).read_text(encoding="utf-8")
     assert git(repo, "status", "--porcelain").strip() == ""
 
 
@@ -176,7 +176,7 @@ def test_a_page_a_batch_closed_that_another_page_breaks_is_left_for_the_book_che
 
     assert isinstance(result, BookReport)
     assert _sent_pages(runner) == [FLOW_PAGE, PAGE]
-    assert BREAK.strip() in (repo / PAGE).read_text(encoding="utf-8")
+    assert FLOW_BREAKING_LINE.strip() in (repo / PAGE).read_text(encoding="utf-8")
 
 
 def _batch_of(page: str, journey: JourneyPages | None) -> RepairBatch:

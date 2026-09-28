@@ -4,7 +4,7 @@ from __future__ import annotations
 from workhorse_workflows.okf_book.shared.page_check import PageProblem
 from workhorse_workflows.okf_book.shared.scenarios import FailedCheck, RunSummary, Scenario, ScenarioOutcome
 
-ADD = Scenario(
+ADD_SCENARIO = Scenario(
     id="tally-add",
     covers=(
         "okf:docs/features/tally/tally.md#add:does:1",
@@ -12,11 +12,11 @@ ADD = Scenario(
         "okf:docs/features/tally/flows/budget.md:end:1",
     ),
 )
-LIST = Scenario(id="tally-list", covers=("okf:docs/features/tally/tally.md#list:does:1",))
+LIST_SCENARIO = Scenario(id="tally-list", covers=("okf:docs/features/tally/tally.md#list:does:1",))
 
 
 def test_a_scenario_names_each_page_its_obligations_sit_on_once() -> None:
-    assert ADD.pages == ("docs/features/tally/tally.md", "docs/features/tally/flows/budget.md")
+    assert ADD_SCENARIO.pages == ("docs/features/tally/tally.md", "docs/features/tally/flows/budget.md")
 
 
 def test_each_failed_scenario_reports_on_every_page_it_covers_and_a_passing_one_on_none() -> None:
@@ -27,7 +27,7 @@ def test_each_failed_scenario_reports_on_every_page_it_covers_and_a_passing_one_
     )
     summary = RunSummary(status="failed", scenarios={"tally-add": failed, "tally-list": ScenarioOutcome(status="passed")})
 
-    by_page = summary.failures_by_page((ADD, LIST))
+    by_page = summary.failures_by_page((ADD_SCENARIO, LIST_SCENARIO))
 
     expected = (
         "the run of scenario tally-add failed: adds an expense: expected 0, observed 1",
@@ -64,7 +64,7 @@ def test_a_scenario_stopped_inside_the_plan_is_reported_at_the_obligation_it_sto
     )
     summary = RunSummary(status="failed", scenarios={"tally-list": ScenarioOutcome(status="failed", message=message)})
 
-    by_page = summary.failures_by_page((LIST,), plan)
+    by_page = summary.failures_by_page((LIST_SCENARIO,), plan)
 
     assert by_page == {
         "docs/features/tally/tally.md": (
