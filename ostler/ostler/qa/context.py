@@ -446,7 +446,7 @@ def build_context(
         if item["impacted"]
     ]
     selected_nodes = {node_id: nodes_by_id[node_id] for node_id in sorted(selected)}
-    grounded, dangling = _grounded_nodes(
+    grounded, dangling = _resolve_groundings(
         selected_nodes, lambda ref: _grounding_for_ref(root, base, head, ref, repositories_by_id, book_root)
     )
     health.extend(row.row() for row in dangling)
@@ -1188,7 +1188,7 @@ class _HealthRow:
         return {"kind": self.kind, "severity": self.severity, **{name: value for name, value in named.items() if value}, "message": self.message}
 
 
-def _grounded_nodes(
+def _resolve_groundings(
     nodes: dict[str, dict[str, Any]], resolves: Callable[[str], bool]
 ) -> tuple[set[str], list[_HealthRow]]:
     """The nodes with a code citation that resolves, and a health row per citation that resolves nowhere. Each distinct citation is resolved once."""
