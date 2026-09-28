@@ -190,6 +190,7 @@ def _origin(url: str) -> str:
 
 
 DRIVER_BULLET = "driver"
+SCREEN_DRIVERS = frozenset({"web", "mobile"})
 BUNDLE_ID_BULLET = "bundle-id"
 LAUNCH_SCREEN_BULLET = "launch-screen"
 
@@ -238,9 +239,17 @@ def entry_origin(dump: dict, surface: str) -> str | None:
 
 
 def surface_driver(dump: dict, surface: str) -> str | None:
-    """The `driver:` of the runbook that exercises *surface*; ``None`` if none states one."""
-    driver = _surface_value(dump, surface, DRIVER_BULLET)
-    return driver.lower() if driver else None
+    """The `driver:` of the runbook that exercises *surface*; ``None`` if none states one.
+
+    A browser or a device drives screens, so a surface with no screen skips a runbook whose driver
+    is one of them and takes the driver of the next.
+    """
+    has_screens = bool(screens_of(graph_mod.subset(dump, surface)))
+    for node in surface_runbooks(dump, surface):
+        driver = bullet_value(node["bullets"], DRIVER_BULLET).strip().lower()
+        if driver and (has_screens or driver not in SCREEN_DRIVERS):
+            return driver
+    return None
 
 
 def surface_bundle_id(dump: dict, surface: str) -> str | None:

@@ -794,6 +794,19 @@ def test_two_runbooks_stating_the_same_driver_settle_on_it(repo: Path):
     assert reach.surface_driver(dump, "groom") == "http"
 
 
+@pytest.mark.parametrize("screen_driver", ["web", "mobile"])
+def test_a_surface_with_no_screen_skips_a_screen_driver_for_the_next_runbook_s(repo: Path, screen_driver: str):
+    _write_two_runbook_book(repo, screen_driver, "http")
+    dump = graph.build(load(repo))
+    assert reach.surface_driver(dump, "groom") == "http"
+
+
+def test_a_surface_with_no_screen_and_only_a_screen_driver_has_no_driver(repo: Path):
+    _write_two_runbook_book(repo, "web", "mobile")
+    dump = graph.build(load(repo))
+    assert reach.surface_driver(dump, "groom") is None
+
+
 def test_a_sole_runbook_settles_its_own_driver(repo: Path):
     _write_driver_surface_book(repo, "cli", DEV_CLI, "../cli/tally.md")
     dump = graph.build(load(repo))
