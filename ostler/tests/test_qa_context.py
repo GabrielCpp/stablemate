@@ -630,6 +630,25 @@ def test_an_invocation_carries_the_address_of_the_endpoint_it_calls(tmp_path: Pa
     assert all(item["locators"].get("path") == ["/api/rows"] for item in invocations), invocations
 
 
+def test_an_invocation_of_a_post_arranges_the_body_it_sends(tmp_path: Path):
+    """An invocation of a route that takes a body states that body with `arrange:`, as an endpoint arm does."""
+    (tmp_path / "docs/features/demo/http").mkdir(parents=True)
+    (tmp_path / "docs/features/demo/http/api.md").write_text(
+        "---\ntype: server\nslug: api\ntitle: API\n---\n# API\n\n"
+        "## Endpoints\n\n### rows\n- method: POST\n- path: /api/rows\n\n"
+        "## Invocations\n\n### add-row\n- on: [rows](#rows)\n- trigger: POST\n"
+        "- does:\n  - adds the row\n- arrange: body(field=\"amount\", value=\"1\")\n"
+        "- verify: http_status(code=201)\n",
+        encoding="utf-8",
+    )
+    _git(tmp_path, "init")
+
+    [does] = [item for item in book_context(tmp_path)["obligations"] if item["id"].endswith("add-row:does:1")]
+
+    assert [row["call"] for row in does["actsDeclared"]] == ['body(field="amount", value="1")'], does
+    assert not does.get("actsUnparsed"), does
+
+
 def test_concepts_chained_by_extends_citing_one_symbol_stay_one_family(tmp_path: Path):
     """Six `concept` nodes chained by `extends:` are one documented thing, not six owners.
 

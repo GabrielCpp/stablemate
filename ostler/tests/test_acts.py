@@ -145,5 +145,5 @@ def test_the_act_key_is_an_arrangement_the_binding_sees_but_not_a_fixture_name()
 
 def test_a_cli_claim_below_the_command_states_the_run_it_is_about() -> None:
     assert registry.performed_keys("command") == ("run",)
-    assert registry.performed_keys("invocation") == ("run",)
+    assert registry.performed_keys("invocation") == ("run", "arrange")
     assert registry.performed_keys("field") == ("run",)

@@ -681,6 +681,7 @@ UI_TYPES: tuple[UINodeType, ...] = (
             BulletKey("detail", link=True),
             BulletKey("verify", check=True),
             BulletKey("fixture", arrange=True),
+            BulletKey("arrange", performs=True),
             BulletKey("capture", capture=True),
             BulletKey("tests", link=True),
         ),

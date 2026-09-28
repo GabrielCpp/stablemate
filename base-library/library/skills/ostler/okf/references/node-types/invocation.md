@@ -33,6 +33,7 @@ Section type. A `### <id>` under an `## Invocations` heading. Its id is `path#an
 | `detail` | no | link — an explanatory [`concept`](concept.md) |
 | `verify` | no | a check |
 | `fixture` | no | a fixture |
+| `arrange` | no | an act — a request body member or header the invocation sends, on an HTTP surface |
 | `capture` | no | a capture |
 | `tests` | no | link — the test files covering it |
 
@@ -45,7 +46,14 @@ its grounding so a `verify:` written under one binds to that one.
 command it acts on: one `invoke(argv=[...])` per value, bound to the `verify:` below it by
 document order, with the executable read from the owning [`cli`](cli.md) node's `binary:`. See
 [command.md](command.md) for the whole rule. On an HTTP surface an invocation has no use for it,
-since the endpoint's route and body already say what to send.
+since the endpoint's route already says where to send the call.
+
+`arrange:` is what an HTTP invocation sends. An invocation of a route that takes a body
+states that body the way an endpoint arm does, one `body(field=..., value=...)` per member,
+and a caller's credential with `header(name=..., value=...)`. It binds by document order to
+the `verify:` below it. An invocation of a `POST` that arranges no body compiles nothing, and
+`doctor` reports `unarranged-request-body`. See
+[endpoint.md](endpoint.md#arranging-a-request-body) for the acts and their values.
 
 An invocation carries no `role:`/`name:`/`keyboard:`: there is no operator to announce
 anything to. If those apply, it is an interaction.
