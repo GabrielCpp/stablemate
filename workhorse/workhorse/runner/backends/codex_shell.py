@@ -85,7 +85,7 @@ def _path_denial(tokens: Sequence[str], policy: Policy) -> str | None:
             return f"`{token}` starts at the home directory"
         if ".." in Path(value).parts:
             return f"`{token}` climbs out of its directory with `..`"
-        if value.startswith("/") and not policy.reads(Path(os.path.normpath(value))):
+        if value.startswith("/") and not policy.may_read(Path(os.path.normpath(value))):
             return f"`{token}` is outside the directories this turn reads"
     return None
 

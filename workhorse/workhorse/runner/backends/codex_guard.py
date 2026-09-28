@@ -48,7 +48,7 @@ class Policy:
             raise ValueError("the policy needs a string cwd and string lists for read_roots and commands")
         return cls(cwd=Path(cwd), read_roots=tuple(Path(root) for root in read_roots), commands=commands)
 
-    def reads(self, path: Path) -> bool:
+    def may_read(self, path: Path) -> bool:
         """Whether the turn may read the absolute path."""
         return _within(path, self.read_roots)
 
