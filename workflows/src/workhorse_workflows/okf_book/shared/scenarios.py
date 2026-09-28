@@ -13,7 +13,8 @@ from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 
 from ostler.qa.plan import load_plan
 from ostler.qa.v2 import run_plan
-from workhorse_workflows.okf_book.shared.page_check import BookCompilation, PageProblem, compile_services, obligation_node, obligation_page
+from workhorse_workflows.okf_book.shared.book_compilation import BookCompilation, compile_services, obligation_node, obligation_page
+from workhorse_workflows.okf_book.shared.page_check import PageProblem
 
 SPEC_DIR = "spec"
 PLAN_NAME = "qa_plan.py"

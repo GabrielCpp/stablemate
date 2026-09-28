@@ -8,9 +8,7 @@ from ostler.qa.plan_source import Gap
 from workhorse_workflows.okf_book.shared.page_check import (
     PageProblem,
     book_problems,
-    compile_services,
     gap_problems,
-    obligation_page,
     off_journey_nodes,
 )
 
@@ -61,15 +59,6 @@ def test_a_prose_link_from_a_flow_does_not_put_a_command_on_it(app: Callable[[st
     _ = flow.write_text("\n".join(kept) + "\n\nThe journey" + prose + "\nSee [report](../tally.md#report).\n", encoding="utf-8")
 
     assert off_journey_nodes(repo, "tally") == (f"{COMMANDS.as_posix()}#report",)
-
-
-def test_a_compile_states_only_the_named_books_obligations(app: Callable[[str], Path]) -> None:
-    repo = app("globex")
-
-    compiled = compile_services(repo, ("api-service",))
-
-    assert compiled.obligations
-    assert {obligation_page(obligation).split("/")[2] for obligation in compiled.obligations} == {"api-service"}
 
 
 def test_a_claim_no_run_observes_is_the_books_to_restate(app: Callable[[str], Path]) -> None:
