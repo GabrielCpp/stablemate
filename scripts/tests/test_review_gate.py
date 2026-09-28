@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 import review_gate
 from conftest import git, strict_repo
-from review_gate import Block, StopEvent
+from review_gate import Block, GiveUp, StopEvent
 from review_state import BASE_STATE_FILE, EMPTY_STATE, HOOK_STATE_FILE, load_state
 from review_verdict import Finding, ReviewError, Verdict
 
@@ -186,6 +186,23 @@ def test_the_third_round_goes_to_the_tiebreak_model(tmp_path: Path) -> None:
         review_gate.PRIMARY_MODEL,
     ]
     assert load_state(repo, HOOK_STATE_FILE).blocked_rounds == 0
+
+
+def test_the_gate_gives_up_at_the_round_cap_and_starts_the_count_again(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = strict_repo(tmp_path)
+    _edit_strict(repo)
+    monkeypatch.setattr(review_gate, "MAX_BLOCKED_ROUNDS", 3)
+    reviewer = FakeReviewer([["stuck"]] * 4)
+    outcomes = [review_gate.hook_decision(repo, _stop(repo), reviewer) for _ in range(4)]
+    assert [type(outcome) for outcome in outcomes] == [Block, Block, GiveUp, Block]
+    released = outcomes[2]
+    assert isinstance(released, GiveUp)
+    assert "gave up after 3 blocked rounds" in released.message
+    assert "[bad-name] stuck" in released.payload()["systemMessage"]
+    assert reviewer.calls[3][1] == review_gate.PRIMARY_MODEL
+    assert "+VALUE = 3" in reviewer.calls[3][0]
 
 
 def test_a_reviewer_that_cannot_run_blocks_the_stop_and_counts_no_round(tmp_path: Path) -> None:

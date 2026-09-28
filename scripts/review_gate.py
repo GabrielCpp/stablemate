@@ -6,7 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 import strict_scope
@@ -23,6 +23,7 @@ TIEBREAK_MODEL = "claude-opus-5-5"
 ROUNDS_BEFORE_TIEBREAK = 2
 PROMPT_BUDGET_TOKENS = 60_000
 MAX_BATCHES = 4
+MAX_BLOCKED_ROUNDS = 10
 
 
 @dataclass(frozen=True)
@@ -39,6 +40,14 @@ class Block:
 
     def payload(self) -> dict[str, str]:
         return {"decision": "block", "reason": self.reason}
+
+
+@dataclass(frozen=True)
+class GiveUp:
+    message: str
+
+    def payload(self) -> dict[str, str]:
+        return {"systemMessage": self.message}
 
 
 @dataclass(frozen=True)
@@ -139,7 +148,15 @@ def block_reason(verdict: Verdict, state: GateState) -> str:
     return "\n".join(lines)
 
 
-def hook_decision(repo: Path, event: StopEvent, reviewer: Reviewer) -> Block | None:
+def give_up_message(verdict: Verdict, rounds: int) -> str:
+    return "\n".join([
+        f"The review gate ({verdict.model}) gave up after {rounds} blocked rounds, so this stop goes through unapproved.",
+        "The next stop reviews the same diff again, from round 1.",
+        *(f"- {finding.render()}" for finding in verdict.findings),
+    ])
+
+
+def hook_decision(repo: Path, event: StopEvent, reviewer: Reviewer) -> Block | GiveUp | None:
     if event.cwd.resolve() != repo.resolve():
         return None
     scope = strict_scope.load(repo)
@@ -153,6 +170,9 @@ def hook_decision(repo: Path, event: StopEvent, reviewer: Reviewer) -> Block | N
     updated = save_next_state(repo, HOOK_STATE_FILE, state, change, review.verdict)
     if review.verdict.passed:
         return None
+    if updated.blocked_rounds >= MAX_BLOCKED_ROUNDS:
+        save_state(repo, HOOK_STATE_FILE, replace(updated, blocked_rounds=0))
+        return GiveUp(give_up_message(review.verdict, updated.blocked_rounds))
     return Block(block_reason(review.verdict, updated))
 
 
