@@ -7,7 +7,7 @@ import json
 import re
 import subprocess
 from collections.abc import Callable, Iterable, Mapping, Sequence
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -43,6 +43,7 @@ from ostler.qa.owners import (
     OwnerNode,
     Reason,
     ReasonKind,
+    SharedCitations,
     citing_family_counts,
     map_changes,
     no_demotion,
@@ -238,6 +239,66 @@ def _navigation(head_graph: Graph) -> dict[str, dict[str, Any]]:
     return navigation
 
 
+@dataclass(frozen=True, slots=True)
+class _BookSnapshot:
+    """The book at base and head merged into one node set, with the edges either side resolves."""
+
+    head_graph: Graph
+    nodes_by_id: dict[str, dict[str, Any]]
+    book: dict[str, BookNode]
+    owner_nodes: dict[str, OwnerNode]
+    node_scopes: dict[str, tuple[str, ...]]
+    edges: set[tuple[str, str]]
+    end_edges: set[tuple[str, str]]
+    detail_edges: set[tuple[str, str]]
+    declared_config: set[str]
+    excluded_doc_roots: set[str]
+
+
+@dataclass(frozen=True, slots=True)
+class _ChangeSet:
+    """The changed units the packet maps, and the row each source repository contributes."""
+
+    changes: list[ChangedUnit]
+    repository_rows: list[dict[str, Any]]
+
+
+@dataclass(frozen=True, slots=True)
+class _DirectMapping:
+    """Each node's direct reasons, the changes nothing owns, and the citations shared too widely to be owed."""
+
+    reasons: dict[str, list[Reason]]
+    unmapped: list[dict[str, Any]]
+    shared: SharedCitations
+
+
+@dataclass(frozen=True, slots=True)
+class _Selection:
+    """The contracts and journeys the change reaches, with every node's reasons and its judgment context."""
+
+    direct_reasons: dict[str, list[Reason]]
+    contracts: set[str]
+    journeys: set[str]
+    judgment_by_node: dict[str, list[dict[str, Any]]]
+
+
+@dataclass(frozen=True, slots=True)
+class _Grounding:
+    """The selected nodes whose citations resolve, and the health rows about the ones that do not."""
+
+    grounded: set[str]
+    health: list[dict[str, Any]]
+
+
+@dataclass(frozen=True, slots=True)
+class _Requirement:
+    """The contracts owed live evidence, the ones the diff itself reached, and the health rows deciding them raised."""
+
+    required_contracts: set[str]
+    reached_by_the_diff: set[str]
+    health: list[dict[str, Any]]
+
+
 def build_context(
     root: Path,
     *,
@@ -256,79 +317,156 @@ def build_context(
     because a whole book has no change to be proportional to.
     """
     root = root.resolve()
-    excluded_paths = {str(path) for path in exclude_paths}
     features_root = path_mod.resolve_features_root(features_root, root)
     source_roots = source_roots or {}
     book_root = _book_root(root, features_root)
-    book_files_list = book_files(root, features_root)
-    story_file_record_value = story_file_record(root, story_file)
+    snapshot = _book_snapshot(root, base, head, features_root)
+    change_set = _change_set(root, base, head, source_roots, repositories)
+    changes = _production_changes(root, change_set.changes, snapshot, {str(path) for path in exclude_paths})
+    mapping = _direct_mapping(changes, snapshot, book_root, source_roots, whole_book=whole_book)
+    selection = _selection(snapshot, mapping.reasons)
+    verification_index = _verification_index(snapshot.book, selection.contracts | selection.journeys)
+    repositories_by_id = {repository.id: repository for repository in repositories}
+    grounding = _grounding(
+        snapshot.book,
+        selection.contracts | selection.journeys,
+        lambda ref: _grounding_for_ref(root, base, head, ref, repositories_by_id, book_root),
+    )
+    requirement = _requirement(snapshot.book, selection, grounding.grounded, mapping.shared)
+    changed_code = _changed_code_rows(changes)
+    return {
+        "version": 2 if repositories else 1,
+        "available": bool(snapshot.nodes_by_id),
+        "base": base,
+        "head": head,
+        "featuresRoot": features_root,
+        "bookFiles": book_files(root, features_root),
+        "storyFile": story_file_record(root, story_file),
+        "changedCode": changed_code,
+        **({"changedUnits": changed_code, "repositories": change_set.repository_rows} if repositories else {}),
+        "directNodes": [
+            {"node": node_id, "reasons": [reason.row() for reason in selection.direct_reasons[node_id]]}
+            for node_id in sorted(selection.direct_reasons)
+        ],
+        "contracts": sorted(selection.contracts),
+        "journeys": sorted(selection.journeys),
+        "journeyNodes": sorted(selection.journeys),
+        "verificationRefs": [
+            {"node": item["node"], "ref": item["ref"], "path": item["path"]}
+            for item in verification_index
+            if item["impacted"]
+        ],
+        "verificationIndex": verification_index,
+        "navigation": _navigation(snapshot.head_graph),
+        "cliBinaries": _run_binaries_by_path(snapshot.book),
+        "screenRoutes": routes_mod.screen_routes(snapshot.head_graph),
+        "healthFindings": [*mapping.unmapped, *grounding.health, *requirement.health],
+        "story": _story_identity(story_file),
+        "acceptanceCriteria": _acceptance_criteria(story_file),
+        "obligations": _minted_obligations(snapshot, selection, requirement),
+    }
+
+
+def _book_snapshot(root: Path, base: str, head: str, features_root: str) -> _BookSnapshot:
+    """The book at *base* and at *head*, merged so a node either side holds is in it."""
     current = load(root, root_overrides={"features": features_root})
     base_graph = _graph_at_revision(root, base, features_root)
     head_graph = current if head == "WORKTREE" else _graph_at_revision(root, head, features_root)
-    excluded_doc_roots = {
-        path.resolve().relative_to(root).as_posix()
-        for path in current.doc_roots.values()
-        if path.resolve().is_relative_to(root)
-    }
     base_nodes, base_edges, base_ends, base_scopes, base_details = _serialized_graph(base_graph)
     head_nodes, head_edges, head_ends, head_scopes, head_details = _serialized_graph(head_graph)
     nodes_by_id = _merge_snapshot_nodes(base_nodes, head_nodes)
-    book = book_nodes(nodes_by_id)
-    owner_nodes = {node_id: _owner_node(node) for node_id, node in nodes_by_id.items()}
-    node_scopes = {**base_scopes, **head_scopes}
-    declared_config = {
-        item
-        for node in nodes_by_id.values()
-        for item in refs_mod.code_refs(node.get("bullets", {}).get("config"))
-    }
-    repository_rows: list[dict[str, Any]] = []
-    repositories_by_id = {repository.id: repository for repository in repositories}
-    health: list[dict[str, Any]] = []
-    if repositories:
-        changes_all: list[ChangedUnit] = []
-        seen_repositories: set[str] = set()
-        for repository in repositories:
-            if repository.id in seen_repositories:
-                raise ValueError(f"duplicate source repository id {repository.id!r}")
-            seen_repositories.add(repository.id)
-            checkout = Path(repository.checkout).resolve()
-            roots: dict[str, list[str]] = {}
-            for scope in repository.scopes:
-                roots.setdefault(scope.surface, []).append(scope.root)
-            for change in _changed_units(checkout, repository.base, repository.head, roots):
-                changes_all.append(replace(
-                    change,
-                    repository=repository.id,
-                    surface=surface_owner(change.path, roots),
-                    source_root=str(checkout),
-                ))
-            repository_rows.append({
-                "id": repository.id,
-                "base": repository.base,
-                "baseSha": _git(checkout, "rev-parse", "--verify",
-                                f"{repository.base}^{{commit}}").strip(),
-                "head": repository.head,
-                "headSha": (None if repository.head == "WORKTREE" else
-                            _git(checkout, "rev-parse", "--verify",
-                                 f"{repository.head}^{{commit}}").strip()),
-                "headAnchorSha": (_git(checkout, "rev-parse", "HEAD").strip()
-                                   if repository.head == "WORKTREE" else None),
-                "sourceFingerprint": source_fingerprint(repository),
-                "scopes": [scope.model_dump(mode="json") for scope in repository.scopes],
-            })
-    else:
-        changes_all = _changed_units(root, base, head, source_roots)
+    return _BookSnapshot(
+        head_graph=head_graph,
+        nodes_by_id=nodes_by_id,
+        book=book_nodes(nodes_by_id),
+        owner_nodes={node_id: _owner_node(node) for node_id, node in nodes_by_id.items()},
+        node_scopes={**base_scopes, **head_scopes},
+        edges=base_edges | head_edges,
+        end_edges=base_ends | head_ends,
+        detail_edges=base_details | head_details,
+        declared_config={
+            item
+            for node in nodes_by_id.values()
+            for item in refs_mod.code_refs(node.get("bullets", {}).get("config"))
+        },
+        excluded_doc_roots={
+            path.resolve().relative_to(root).as_posix()
+            for path in current.doc_roots.values()
+            if path.resolve().is_relative_to(root)
+        },
+    )
 
-    changes = [
+
+def _change_set(
+    root: Path,
+    base: str,
+    head: str,
+    source_roots: dict[str, list[str]],
+    repositories: Sequence[SourceRepository],
+) -> _ChangeSet:
+    """Every changed unit, across the named source repositories when there are any, else in *root*."""
+    if not repositories:
+        return _ChangeSet(changes=_changed_units(root, base, head, source_roots), repository_rows=[])
+    changes: list[ChangedUnit] = []
+    rows: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for repository in repositories:
+        if repository.id in seen:
+            raise ValueError(f"duplicate source repository id {repository.id!r}")
+        seen.add(repository.id)
+        changes.extend(_repository_changes(repository))
+        rows.append(_repository_row(repository))
+    return _ChangeSet(changes=changes, repository_rows=rows)
+
+
+def _repository_changes(repository: SourceRepository) -> list[ChangedUnit]:
+    """The changed units of one source repository, each tagged with the repository and surface that own it."""
+    checkout = Path(repository.checkout).resolve()
+    roots: dict[str, list[str]] = {}
+    for scope in repository.scopes:
+        roots.setdefault(scope.surface, []).append(scope.root)
+    return [
+        replace(
+            change,
+            repository=repository.id,
+            surface=surface_owner(change.path, roots),
+            source_root=str(checkout),
+        )
+        for change in _changed_units(checkout, repository.base, repository.head, roots)
+    ]
+
+
+def _repository_row(repository: SourceRepository) -> dict[str, Any]:
+    """One source repository as the packet lists it, with the commits its revisions resolve to."""
+    checkout = Path(repository.checkout).resolve()
+    return {
+        "id": repository.id,
+        "base": repository.base,
+        "baseSha": _git(checkout, "rev-parse", "--verify", f"{repository.base}^{{commit}}").strip(),
+        "head": repository.head,
+        "headSha": (None if repository.head == "WORKTREE" else
+                    _git(checkout, "rev-parse", "--verify", f"{repository.head}^{{commit}}").strip()),
+        "headAnchorSha": (_git(checkout, "rev-parse", "HEAD").strip()
+                          if repository.head == "WORKTREE" else None),
+        "sourceFingerprint": source_fingerprint(repository),
+        "scopes": [scope.model_dump(mode="json") for scope in repository.scopes],
+    }
+
+
+def _production_changes(
+    root: Path, changes: Sequence[ChangedUnit], snapshot: _BookSnapshot, excluded_paths: set[str]
+) -> list[ChangedUnit]:
+    """The changes that are production code or declared config, outside the excluded paths and the book itself."""
+    return [
         change
-        for change in changes_all
+        for change in changes
         if change.path not in excluded_paths
         and (change.repository or not any(
             change.path == prefix or change.path.startswith(prefix.rstrip("/") + "/")
-            for prefix in excluded_doc_roots
+            for prefix in snapshot.excluded_doc_roots
         ))
         and (
-            source_ref(change.repository, change.path) in declared_config
+            source_ref(change.repository, change.path) in snapshot.declared_config
             or (
                 not _is_non_production_path(change.path)
                 and not _is_generated_unit(Path(change.source_root) if change.source_root else root,
@@ -337,23 +475,60 @@ def build_context(
         )
     ]
 
-    mapped_changes = map_changes(changes, owner_nodes, book_root, source_roots)
-    direct_reasons = mapped_changes.reasons
-    health.extend(change.row() for change in mapped_changes.unmapped)
-    if whole_book:
-        for node_id in nodes_by_id:
-            direct_reasons.setdefault(node_id, []).append(Reason(ReasonKind.BOOK_CLAIM, node_id))
 
+def _direct_mapping(
+    changes: Sequence[ChangedUnit],
+    snapshot: _BookSnapshot,
+    book_root: str,
+    source_roots: dict[str, list[str]],
+    *,
+    whole_book: bool,
+) -> _DirectMapping:
+    """Each node the changes name directly, or every node when the whole book is owed."""
+    mapped = map_changes(changes, snapshot.owner_nodes, book_root, source_roots)
+    reasons = mapped.reasons
+    if whole_book:
+        for node_id in snapshot.nodes_by_id:
+            reasons.setdefault(node_id, []).append(Reason(ReasonKind.BOOK_CLAIM, node_id))
     demote = no_demotion if whole_book else shared_citations
     shared = demote(
         citing_family_counts(
-            mapped_changes.file_owners,
-            mapped_changes.symbol_owners,
-            lambda node_id, family_members: _family_root(node_id, family_members, book),
+            mapped.file_owners,
+            mapped.symbol_owners,
+            lambda node_id, family_members: _family_root(node_id, family_members, snapshot.book),
         )
     )
-    shared_files, shared_symbols = shared.files, shared.symbols
+    return _DirectMapping(reasons=reasons, unmapped=[change.row() for change in mapped.unmapped], shared=shared)
 
+
+def _selection(snapshot: _BookSnapshot, direct_reasons: dict[str, list[Reason]]) -> _Selection:
+    """The contracts and journeys the direct reasons reach, closed over parents, flows, shared subjects and judgment."""
+    impacted = _impacted_with_parents(snapshot.nodes_by_id, direct_reasons)
+    flows = {node_id for node_id, node in snapshot.nodes_by_id.items() if node.get("type") == "flow"}
+    journeys = set(impacted & flows)
+    for source, target in snapshot.edges:
+        if source in flows and target in impacted:
+            journeys.add(source)
+            direct_reasons.setdefault(source, []).append(Reason(ReasonKind.FLOW_LINKS_CONTRACT, target))
+    contracts = impacted - flows
+    for source, target in snapshot.edges:
+        if source in journeys and target in snapshot.nodes_by_id and target not in flows:
+            contracts.add(target)
+            direct_reasons.setdefault(target, []).append(Reason(ReasonKind.FLOW_CONTRACT_CLOSURE, source))
+    _close_over_shared_subjects(snapshot.book, contracts, journeys, direct_reasons)
+    judgment_by_node = _judgment_context(snapshot, contracts, journeys, direct_reasons)
+    return _Selection(
+        direct_reasons=direct_reasons,
+        contracts=contracts,
+        journeys=journeys,
+        judgment_by_node=judgment_by_node,
+    )
+
+
+def _impacted_with_parents(
+    nodes_by_id: Mapping[str, Mapping[str, Any]], direct_reasons: dict[str, list[Reason]]
+) -> set[str]:
+    """The directly impacted nodes and every ancestor of one, each ancestor given its reason."""
     impacted = set(direct_reasons)
     for node_id in list(impacted):
         parent = nodes_by_id.get(node_id, {}).get("parent")
@@ -362,67 +537,72 @@ def build_context(
                 direct_reasons.setdefault(parent, []).append(Reason(ReasonKind.CONTAINS_IMPACTED_NODE, node_id))
             impacted.add(parent)
             parent = nodes_by_id[parent].get("parent")
-    edges = base_edges | head_edges
-    end_edges = base_ends | head_ends
-    flows = {node_id for node_id, node in nodes_by_id.items() if node.get("type") == "flow"}
-    journeys = set(impacted & flows)
-    for source, target in edges:
-        if source in flows and target in impacted:
-            journeys.add(source)
-            direct_reasons.setdefault(source, []).append(Reason(ReasonKind.FLOW_LINKS_CONTRACT, target))
-    contracts = impacted - flows
-    for source, target in edges:
-        if source in journeys and target in nodes_by_id and target not in flows:
-            contracts.add(target)
-            direct_reasons.setdefault(target, []).append(Reason(ReasonKind.FLOW_CONTRACT_CLOSURE, source))
+    return impacted
 
-    relation_keys = RELATION_KEYS
+
+def _close_over_shared_subjects(
+    book: Mapping[str, BookNode],
+    contracts: set[str],
+    journeys: set[str],
+    direct_reasons: dict[str, list[Reason]],
+) -> None:
+    """Add every node that shares an event or a relation with the selection, until none is left to add."""
     related = True
     while related:
         related = False
         selected = contracts | journeys
-        emitted = {
-            value
-            for node_id in selected
-            for value in book[node_id].bullets.get("emits", ())
-        }
-        consumed = {
-            value
-            for node_id in selected
-            for value in book[node_id].bullets.get("consumes", ())
-        }
+        emitted = {value for node_id in selected for value in book[node_id].bullets.get("emits", ())}
+        consumed = {value for node_id in selected for value in book[node_id].bullets.get("consumes", ())}
         relation_values = {
             _relation_join_key(value)
             for node_id in selected
-            for key in relation_keys
+            for key in RELATION_KEYS
             for value in book[node_id].bullets.get(key, ())
         }
         for node_id, node in book.items():
             if node_id in selected:
                 continue
-            reasons: list[Reason] = []
-            for value in node.bullets.get("consumes", ()):
-                if value in emitted:
-                    reasons.append(Reason(ReasonKind.EVENT_CONSUMER, value))
-            for value in node.bullets.get("emits", ()):
-                if value in consumed:
-                    reasons.append(Reason(ReasonKind.EVENT_PRODUCER, value))
-            for key in relation_keys:
-                for value in node.bullets.get(key, ()):
-                    join = _relation_join_key(value)
-                    if join in relation_values:
-                        reasons.append(Reason(relation_reason_kind(key), join))
+            reasons = _shared_subject_reasons(node, emitted, consumed, relation_values)
             if reasons:
                 (journeys if node.type == "flow" else contracts).add(node_id)
                 direct_reasons.setdefault(node_id, []).extend(reasons)
                 related = True
 
-    detail_edges = base_details | head_details
+
+def _shared_subject_reasons(
+    node: BookNode, emitted: set[str], consumed: set[str], relation_values: set[str]
+) -> list[Reason]:
+    """Why *node* shares an event or a relation with the selection, empty when it shares none."""
+    reasons = [
+        Reason(ReasonKind.EVENT_CONSUMER, value)
+        for value in node.bullets.get("consumes", ())
+        if value in emitted
+    ]
+    reasons.extend(
+        Reason(ReasonKind.EVENT_PRODUCER, value)
+        for value in node.bullets.get("emits", ())
+        if value in consumed
+    )
+    for key in RELATION_KEYS:
+        for value in node.bullets.get(key, ()):
+            join = _relation_join_key(value)
+            if join in relation_values:
+                reasons.append(Reason(relation_reason_kind(key), join))
+    return reasons
+
+
+def _judgment_context(
+    snapshot: _BookSnapshot,
+    contracts: set[str],
+    journeys: set[str],
+    direct_reasons: dict[str, list[Reason]],
+) -> dict[str, list[dict[str, Any]]]:
+    """Each selected node's `detail:` concepts, each concept joining the selection as context."""
     judgment_by_node: dict[str, list[dict[str, Any]]] = {}
-    for source, target in sorted(detail_edges):
+    for source, target in sorted(snapshot.detail_edges):
         if source not in contracts and source not in journeys:
             continue
-        concept = book.get(target)
+        concept = snapshot.book.get(target)
         if concept is None or concept.type != "concept":
             continue
         judgment_by_node.setdefault(source, []).append(
@@ -437,53 +617,46 @@ def build_context(
         if target not in contracts and target not in journeys:
             contracts.add(target)
             direct_reasons.setdefault(target, []).append(Reason(ReasonKind.JUDGMENT_CONTEXT, source))
+    return judgment_by_node
 
-    selected = contracts | journeys
-    verification_index: list[dict[str, Any]] = []
-    for node_id, node in sorted(book.items()):
-        for ref in _verification_refs(node):
-            verification_index.append(
-                {"node": node_id, "ref": ref, "path": _code_path(ref), "impacted": node_id in selected}
-            )
-    verification_refs = [
-        {"node": item["node"], "ref": item["ref"], "path": item["path"]}
-        for item in verification_index
-        if item["impacted"]
+
+def _verification_index(book: Mapping[str, BookNode], selected: set[str]) -> list[dict[str, Any]]:
+    """Every verification reference the book declares, marked impacted when its node is selected."""
+    return [
+        {"node": node_id, "ref": ref, "path": _code_path(ref), "impacted": node_id in selected}
+        for node_id, node in sorted(book.items())
+        for ref in _verification_refs(node)
     ]
+
+
+def _grounding(
+    book: Mapping[str, BookNode], selected: set[str], resolves: Callable[[str], bool]
+) -> _Grounding:
+    """Which selected nodes cite code that resolves, with a health row per dangling citation and missing check."""
     selected_nodes = {node_id: book[node_id] for node_id in sorted(selected)}
     grounded, dangling = resolve_groundings(
         {node_id: tuple(refs_mod.code_refs(list(node.bullets.get("code", ())))) for node_id, node in selected_nodes.items()},
-        lambda ref: _grounding_for_ref(root, base, head, ref, repositories_by_id, book_root)
+        resolves,
     )
-    health.extend(row.row() for row in dangling)
+    health = [row.row() for row in dangling]
     for node in selected_nodes.values():
         health.extend(row.row() for row in _missing_declared_checks(node))
-    demoted_symbols: frozenset[str] | set[str] = shared_symbols
-    required_contracts = {
-        node_id
-        for node_id in contracts
-        if _is_required(node_id, direct_reasons, grounded, shared_files, shared_symbols)
-    }
+    return _Grounding(grounded=grounded, health=health)
+
+
+def _requirement(
+    book: Mapping[str, BookNode], selection: _Selection, grounded: set[str], shared: SharedCitations
+) -> _Requirement:
+    """The contracts owed live evidence, widened to the ones naming a required contract's relation subject."""
+    health: list[dict[str, Any]] = []
+    demoted_symbols: frozenset[str] = shared.symbols
+    required_contracts = _required_contracts(selection, grounded, shared.files, demoted_symbols)
     if not required_contracts:
-        floored = {
-            node_id
-            for node_id in contracts
-            if _is_required(node_id, direct_reasons, grounded, shared_files, frozenset())
-        }
+        floored = _required_contracts(selection, grounded, shared.files, frozenset())
         if floored:
             required_contracts = floored
             demoted_symbols = frozenset()
-            health.append(
-                {
-                    "kind": "shared-symbol-floor",
-                    "severity": "warning",
-                    "message": (
-                        "every changed symbol is cited by enough nodes to be demoted, which"
-                        " would leave this change owing no live evidence at all; the"
-                        " demotion was dropped and the changed-code reasons kept"
-                    ),
-                }
-            )
+            health.append(_SHARED_SYMBOL_FLOOR.row())
     reached_by_the_diff = set(required_contracts)
     subjects_by_node = {node_id: _named_subjects(node) for node_id, node in book.items()}
     required_subjects = {
@@ -491,93 +664,89 @@ def build_context(
     }
     if required_subjects:
         hopped = False
-        for node_id in sorted(contracts - required_contracts):
+        for node_id in sorted(selection.contracts - required_contracts):
             for subject in sorted(subjects_by_node[node_id] & required_subjects):
-                direct_reasons.setdefault(node_id, []).append(Reason(ReasonKind.RELATION_OF_REQUIRED, subject))
+                selection.direct_reasons.setdefault(node_id, []).append(
+                    Reason(ReasonKind.RELATION_OF_REQUIRED, subject)
+                )
                 hopped = True
         if hopped:
-            required_contracts = {
-                node_id
-                for node_id in contracts
-                if _is_required(node_id, direct_reasons, grounded, shared_files, demoted_symbols)
-            }
+            required_contracts = _required_contracts(selection, grounded, shared.files, demoted_symbols)
         health.extend(row.row() for row in relation_fanout_warnings(subjects_by_node, required_subjects))
+    return _Requirement(required_contracts=required_contracts, reached_by_the_diff=reached_by_the_diff, health=health)
+
+
+_SHARED_SYMBOL_FLOOR = HealthRow(
+    kind="shared-symbol-floor",
+    severity="warning",
+    message=(
+        "every changed symbol is cited by enough nodes to be demoted, which"
+        " would leave this change owing no live evidence at all; the"
+        " demotion was dropped and the changed-code reasons kept"
+    ),
+)
+
+
+def _required_contracts(
+    selection: _Selection, grounded: set[str], shared_files: frozenset[str], demoted_symbols: frozenset[str]
+) -> set[str]:
+    """The selected contracts owed live evidence with *demoted_symbols* counted as context."""
+    return {
+        node_id
+        for node_id in selection.contracts
+        if _is_required(node_id, selection.direct_reasons, grounded, shared_files, demoted_symbols)
+    }
+
+
+def _minted_obligations(
+    snapshot: _BookSnapshot, selection: _Selection, requirement: _Requirement
+) -> list[dict[str, Any]]:
+    """Every selected contract's and journey's obligations, in id order, each id once."""
+    book = snapshot.book
     fixture_provides = _fixture_provides_index(book)
     fixture_undetermined = _fixture_undetermined_index(book)
-    obligations = [
-        obligation
-        for node_id in sorted(contracts)
-        for obligation in _obligations(
+
+    def mint(node_id: str, *, journey: bool, required: bool, owed_keys: frozenset[str] | None) -> list[dict[str, Any]]:
+        return _obligations(
             book[node_id],
-            direct_reasons.get(node_id, []),
-            journey=False,
-            required=node_id in required_contracts,
-            owed_keys=None if node_id in reached_by_the_diff else _SHARED_INVARIANT_KEYS,
-            scope=node_scopes.get(node_id, ()),
-            judgment=judgment_by_node.get(node_id),
+            selection.direct_reasons.get(node_id, []),
+            journey=journey,
+            required=required,
+            owed_keys=owed_keys,
+            scope=snapshot.node_scopes.get(node_id, ()),
+            judgment=selection.judgment_by_node.get(node_id),
             fixture_provides=fixture_provides,
             fixture_undetermined=fixture_undetermined,
-            resolve_locator=_locator_resolver(head_graph, book, book[node_id]),
+            resolve_locator=_locator_resolver(snapshot.head_graph, book, book[node_id]),
             book=book,
+        )
+
+    obligations = [
+        obligation
+        for node_id in sorted(selection.contracts)
+        for obligation in mint(
+            node_id,
+            journey=False,
+            required=node_id in requirement.required_contracts,
+            owed_keys=None if node_id in requirement.reached_by_the_diff else _SHARED_INVARIANT_KEYS,
         )
     ] + [
         obligation
-        for node_id in sorted(journeys)
-        for obligation in _obligations(
-            book[node_id],
-            direct_reasons.get(node_id, []),
+        for node_id in sorted(selection.journeys)
+        for obligation in mint(
+            node_id,
             journey=True,
             required=_journey_is_required(
-                node_id, direct_reasons, required_contracts, end_edges
+                node_id, selection.direct_reasons, requirement.required_contracts, snapshot.end_edges
             ),
-            scope=node_scopes.get(node_id, ()),
-            judgment=judgment_by_node.get(node_id),
-            fixture_provides=fixture_provides,
-            fixture_undetermined=fixture_undetermined,
-            resolve_locator=_locator_resolver(head_graph, book, book[node_id]),
-            book=book,
+            owed_keys=None,
         )
     ]
     obligations.sort(key=lambda item: _sort_key(str(item["id"])))
-    seen_obligation_ids: set[str] = set()
-    deduped_obligations: list[dict[str, Any]] = []
+    deduped: dict[str, dict[str, Any]] = {}
     for obligation in obligations:
-        obligation_id = str(obligation["id"])
-        if obligation_id in seen_obligation_ids:
-            continue
-        seen_obligation_ids.add(obligation_id)
-        deduped_obligations.append(obligation)
-    obligations = deduped_obligations
-    navigation = _navigation(head_graph)
-    cli_binaries = _run_binaries_by_path(book)
-    changed_code = _changed_code_rows(changes)
-    return {
-        "version": 2 if repositories else 1,
-        "available": bool(nodes_by_id),
-        "base": base,
-        "head": head,
-        "featuresRoot": features_root,
-        "bookFiles": book_files_list,
-        "storyFile": story_file_record_value,
-        "changedCode": changed_code,
-        **({"changedUnits": changed_code, "repositories": repository_rows} if repositories else {}),
-        "directNodes": [
-            {"node": node_id, "reasons": [reason.row() for reason in direct_reasons[node_id]]}
-            for node_id in sorted(direct_reasons)
-        ],
-        "contracts": sorted(contracts),
-        "journeys": sorted(journeys),
-        "journeyNodes": sorted(journeys),
-        "verificationRefs": verification_refs,
-        "verificationIndex": verification_index,
-        "navigation": navigation,
-        "cliBinaries": cli_binaries,
-        "screenRoutes": routes_mod.screen_routes(head_graph),
-        "healthFindings": health,
-        "story": _story_identity(story_file),
-        "acceptanceCriteria": _acceptance_criteria(story_file),
-        "obligations": obligations,
-    }
+        deduped.setdefault(str(obligation["id"]), obligation)
+    return list(deduped.values())
 
 
 VERIFICATION_INDEX_FILE = "qa-okf-verification-index.json"
