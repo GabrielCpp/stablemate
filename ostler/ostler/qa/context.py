@@ -1817,6 +1817,107 @@ def _family_root(node_id: str, owners: set[str], book: Mapping[str, BookNode]) -
     return current
 
 
+_Claim = tuple[str, int]
+
+
+@dataclass(frozen=True, slots=True)
+class _Attributed:
+    """One kind of bullet a node declares, split into the node's own and each claim's."""
+
+    own: list[str]
+    per_claim: dict[_Claim, list[str]]
+
+    def of(self, claim: _Claim) -> list[str]:
+        return self.per_claim.get(claim, [])
+
+
+@dataclass(frozen=True, slots=True)
+class _Attribution:
+    """A node's checks, fixtures, acts and captures, each attributed to the node or to one claim under it."""
+
+    checks: _Attributed
+    fixtures: _Attributed
+    acts: _Attributed
+    captures: _Attributed
+
+
+@dataclass(frozen=True, slots=True)
+class _Parts:
+    """The checks, fixtures, acts and captures one obligation declares, with the bullets each parser refused."""
+
+    checks: list[dict[str, Any]]
+    checks_unparsed: list[dict[str, Any]]
+    fixtures: list[dict[str, Any]]
+    fixtures_unparsed: list[dict[str, Any]]
+    arranges_nothing: bool
+    acts: list[dict[str, Any]]
+    acts_unparsed: list[dict[str, Any]]
+    captures: list[dict[str, Any]]
+    captures_unparsed: list[dict[str, Any]]
+
+    def stamp(self, obligation: dict[str, Any]) -> None:
+        """Write each part that is present onto *obligation*, and drop each one that is absent."""
+        fields: tuple[tuple[str, object], ...] = (
+            ("checksDeclared", self.checks),
+            ("checksUnparsed", self.checks_unparsed),
+            ("fixturesDeclared", self.fixtures),
+            ("fixturesUnparsed", self.fixtures_unparsed),
+            ("arrangesNothing", self.arranges_nothing),
+            ("actsDeclared", self.acts),
+            ("actsUnparsed", self.acts_unparsed),
+            ("capturesDeclared", self.captures),
+            ("capturesUnparsed", self.captures_unparsed),
+        )
+        for key, value in fields:
+            if value:
+                obligation[key] = value
+            else:
+                obligation.pop(key, None)
+
+
+@dataclass(frozen=True, slots=True)
+class _PartReader:
+    """What parsing a node's parts reads from the book: its locators and each fixture's provided keys."""
+
+    resolve_locator: Callable[[str], LocatorTarget] | None
+    fixture_provides: dict[str, list[str]] | None
+    fixture_undetermined: dict[str, list[str]] | None
+
+    def node_parts(self, attribution: _Attribution) -> _Parts:
+        """The parts the node states for every claim under it."""
+        fixtures = attribution.fixtures.own
+        return _Parts(
+            checks=_dedup_checks(_parse_checks(attribution.checks.own, self.resolve_locator)),
+            checks_unparsed=_unparsed_checks(attribution.checks.own),
+            fixtures=_parse_fixtures(fixtures, self.fixture_provides, self.fixture_undetermined),
+            fixtures_unparsed=_unparsed_fixtures(fixtures),
+            arranges_nothing=_no_arrangement_stated(fixtures),
+            acts=_parse_acts(attribution.acts.own, self.resolve_locator),
+            acts_unparsed=_unparsed_acts(attribution.acts.own),
+            captures=[],
+            captures_unparsed=_unparsed_captures(attribution.captures.own),
+        )
+
+    def claim_parts(self, node: _Parts, attribution: _Attribution, claim: _Claim) -> _Parts:
+        """The parts one claim owes: its own checks and captures, and its fixtures and acts on top of the node's."""
+        checks = attribution.checks.of(claim)
+        fixtures = attribution.fixtures.of(claim)
+        acts = attribution.acts.of(claim)
+        captures = attribution.captures.of(claim)
+        arranged = _parse_fixtures(fixtures, self.fixture_provides, self.fixture_undetermined)
+        return _Parts(
+            checks=_dedup_checks(_parse_checks(checks, self.resolve_locator)),
+            checks_unparsed=_unparsed_checks(checks),
+            fixtures=list({(row["name"], tuple(row["args"])): row for row in [*node.fixtures, *arranged]}.values()),
+            fixtures_unparsed=_dedup_by_value([*node.fixtures_unparsed, *_unparsed_fixtures(fixtures)]),
+            arranges_nothing=node.arranges_nothing or _no_arrangement_stated(fixtures),
+            acts=list({row["call"]: row for row in [*node.acts, *_parse_acts(acts, self.resolve_locator)]}.values()),
+            acts_unparsed=_dedup_by_value([*node.acts_unparsed, *_unparsed_acts(acts)]),
+            captures=_parse_captures(captures),
+            captures_unparsed=_unparsed_captures(captures),
+        )
+
+
 def _obligations(
     book_node: BookNode,
     reasons: list[Reason],
@@ -1835,13 +1936,58 @@ def _obligations(
     required = required and owes_live_evidence(book_node.type, book_node.page_type)
     family = _same_as_component(book_node.id, book)
     representative = min(family)
-    occurrence_documents = sorted({_document_of(member) for member in family})
-    suffix = "end-state" if journey else "contract"
-    base = {
-        "id": f"okf:{representative}:{suffix}",
+    base = _node_obligation(book_node, reasons, family, journey=journey, required=required, scope=scope, book=book)
+    reader = _PartReader(resolve_locator, fixture_provides, fixture_undetermined)
+    attribution = _attribution(book_node)
+    node_parts = reader.node_parts(attribution)
+    node_parts.stamp(base)
+    base["docPosition"] = [book_node.line, -1]
+    undetermined = _undetermined_claims(book_node)
+    positions = _doc_positions(book_node)
+    output = [base]
+    for key in registry.normative_keys(book_node.type):
+        for index, requirement in enumerate(book_node.bullets.get(key, ()), start=1):
+            claim = (key, index)
+            obligation = _claim_obligation(
+                base,
+                book_node,
+                claim,
+                requirement,
+                representative=representative,
+                position=positions.get(claim, 0),
+                book=book,
+            )
+            if claim in undetermined:
+                obligation["claimCombiner"] = "unstated"
+            if required and owed_keys is not None and key not in owed_keys:
+                obligation["required"] = False
+                obligation["evidenceRequired"] = "context"
+            reader.claim_parts(node_parts, attribution, claim).stamp(obligation)
+            output.append(obligation)
+    if judgment:
+        base["judgment"] = judgment
+    unspecified = _unspecified(book_node)
+    if unspecified:
+        base["unspecified"] = unspecified
+    return output
+
+
+def _node_obligation(
+    book_node: BookNode,
+    reasons: list[Reason],
+    family: frozenset[str],
+    *,
+    journey: bool,
+    required: bool,
+    scope: tuple[str, ...],
+    book: Mapping[str, BookNode],
+) -> dict[str, Any]:
+    """The node-level contract or end-state obligation, before its parts are stamped on."""
+    obligation: dict[str, Any] = {
+        "id": f"okf:{min(family)}:{'end-state' if journey else 'contract'}",
         "kind": "journey" if journey else "contract",
         "node": book_node.id,
-        "occurrenceDocuments": occurrence_documents,
+        "occurrenceDocuments": sorted({_document_of(member) for member in family}),
         "nodeType": book_node.type,
         "source": book_node.path,
         "surface": book_node.surface,
@@ -1850,145 +1996,82 @@ def _obligations(
         "evidenceRequired": "live" if required else "context",
         "reasons": [reason.row() for reason in reasons or [Reason(ReasonKind.GRAPH_CLOSURE, book_node.id)]],
     }
-    base.update(obligation_frame(book_node, locators_mod.repeat_contract(book_node, scope), book).row())
-    node_type, bullet_order, combiners = book_node.type, book_node.bullet_order, book_node.combiners
-    contract, per_bullet = registry.attributed_checks(node_type, bullet_order, combiners)
-    undetermined = {
-        claim
-        for group in registry.undetermined_claims(node_type, bullet_order, combiners).values()
-        for claim in group
+    obligation.update(obligation_frame(book_node, locators_mod.repeat_contract(book_node, scope), book).row())
+    return obligation
+
+
+def _claim_obligation(
+    base: dict[str, Any],
+    book_node: BookNode,
+    claim: _Claim,
+    requirement: str,
+    *,
+    representative: str,
+    position: int,
+    book: Mapping[str, BookNode],
+) -> dict[str, Any]:
+    """One claim's obligation, the node's obligation restated for the claim's own requirement and subject."""
+    key, index = claim
+    obligation = {
+        **base,
+        "id": f"okf:{representative}:{key.replace(' ', '-')}:{index}",
+        "kind": key.replace(" ", "-"),
+        "requirement": requirement,
+        "docPosition": [book_node.line, position],
     }
-    contract_rows = _dedup_checks(_parse_checks(contract, resolve_locator))
-    if contract_rows:
-        base["checksDeclared"] = contract_rows
-    contract_unparsed = _unparsed_checks(contract)
-    if contract_unparsed:
-        base["checksUnparsed"] = contract_unparsed
-    node_fixtures, fixtures_per_bullet = registry.attributed_fixtures(node_type, bullet_order, combiners)
-    ambient = _parse_fixtures(node_fixtures, fixture_provides, fixture_undetermined)
-    if ambient:
-        base["fixturesDeclared"] = ambient
-    ambient_unparsed = _unparsed_fixtures(node_fixtures)
-    if ambient_unparsed:
-        base["fixturesUnparsed"] = ambient_unparsed
-    ambient_nothing = _no_arrangement_stated(node_fixtures)
-    if ambient_nothing:
-        base["arrangesNothing"] = True
-    node_acts, acts_per_bullet = registry.attributed_acts(node_type, bullet_order, combiners)
-    ambient_acts = _parse_acts(node_acts, resolve_locator)
-    if ambient_acts:
-        base["actsDeclared"] = ambient_acts
-    ambient_acts_unparsed = _unparsed_acts(node_acts)
-    if ambient_acts_unparsed:
-        base["actsUnparsed"] = ambient_acts_unparsed
-    captures_contract, captures_per_bullet = registry.attributed_captures(node_type, bullet_order, combiners)
-    contract_captures_unparsed = _unparsed_captures(captures_contract)
-    if contract_captures_unparsed:
-        base["capturesUnparsed"] = contract_captures_unparsed
-    node_line = book_node.line
-    doc_position: dict[tuple[str, int], int] = {}
-    _seen = {key: 0 for key in registry.normative_keys(node_type)}
-    for row_key, _, position in bullet_order:
-        if row_key in _seen:
-            _seen[row_key] += 1
-            doc_position[(row_key, _seen[row_key])] = position
-    base["docPosition"] = [node_line, -1]
-    output = [base]
-    for key in registry.normative_keys(node_type):
-        for index, requirement in enumerate(book_node.bullets.get(key, ()), start=1):
-            obligation = {
-                **base,
-                "id": f"okf:{representative}:{key.replace(' ', '-')}:{index}",
-                "kind": key.replace(" ", "-"),
-                "requirement": requirement,
-                "docPosition": [node_line, doc_position.get((key, index), 0)],
-            }
-            if key in RELATION_KEYS or key in _EVENT_KEYS:
-                subject, prose = relation_subject(requirement)
-                obligation["requirement"] = prose
-                if subject is not None:
-                    obligation["subject"] = subject
-            if book_node.type == "flow":
-                linked = linked_surface(book_node, (requirement,), book)
-                if linked:
-                    obligation["surface"] = linked
-            if (key, index) in undetermined:
-                obligation["claimCombiner"] = "unstated"
-            if required and owed_keys is not None and key not in owed_keys:
-                obligation["required"] = False
-                obligation["evidenceRequired"] = "context"
-            rows = _dedup_checks(
-                _parse_checks(per_bullet.get((key, index), []), resolve_locator))
-            if rows:
-                obligation["checksDeclared"] = rows
-            else:
-                obligation.pop("checksDeclared", None)
-            refused = _unparsed_checks(per_bullet.get((key, index), []))
-            if refused:
-                obligation["checksUnparsed"] = refused
-            else:
-                obligation.pop("checksUnparsed", None)
-            arranged = _parse_fixtures(
-                fixtures_per_bullet.get((key, index), []), fixture_provides, fixture_undetermined)
-            combined = list({(row["name"], tuple(row["args"])): row
-                             for row in [*ambient, *arranged]}.values())
-            if combined:
-                obligation["fixturesDeclared"] = combined
-            else:
-                obligation.pop("fixturesDeclared", None)
-            unparsed = list({row["value"]: row for row in [
-                *ambient_unparsed,
-                *_unparsed_fixtures(fixtures_per_bullet.get((key, index), [])),
-            ]}.values())
-            if unparsed:
-                obligation["fixturesUnparsed"] = unparsed
-            else:
-                obligation.pop("fixturesUnparsed", None)
-            if ambient_nothing or _no_arrangement_stated(
-                fixtures_per_bullet.get((key, index), [])
-            ):
-                obligation["arrangesNothing"] = True
-            else:
-                obligation.pop("arrangesNothing", None)
-            performed = list({row["call"]: row for row in [
-                *ambient_acts,
-                *_parse_acts(acts_per_bullet.get((key, index), []), resolve_locator),
-            ]}.values())
-            if performed:
-                obligation["actsDeclared"] = performed
-            else:
-                obligation.pop("actsDeclared", None)
-            refused_acts = list({row["value"]: row for row in [
-                *ambient_acts_unparsed,
-                *_unparsed_acts(acts_per_bullet.get((key, index), [])),
-            ]}.values())
-            if refused_acts:
-                obligation["actsUnparsed"] = refused_acts
-            else:
-                obligation.pop("actsUnparsed", None)
-            captures = _parse_captures(captures_per_bullet.get((key, index), []))
-            if captures:
-                obligation["capturesDeclared"] = captures
-            else:
-                obligation.pop("capturesDeclared", None)
-            refused_captures = _unparsed_captures(captures_per_bullet.get((key, index), []))
-            if refused_captures:
-                obligation["capturesUnparsed"] = refused_captures
-            else:
-                obligation.pop("capturesUnparsed", None)
-            output.append(obligation)
-    if judgment:
-        base["judgment"] = judgment
-    unspecified = [
+    if key in RELATION_KEYS or key in _EVENT_KEYS:
+        subject, prose = relation_subject(requirement)
+        obligation["requirement"] = prose
+        if subject is not None:
+            obligation["subject"] = subject
+    if book_node.type == "flow":
+        linked = linked_surface(book_node, (requirement,), book)
+        if linked:
+            obligation["surface"] = linked
+    return obligation
+
+
+def _attribution(book_node: BookNode) -> _Attribution:
+    """The node's checks, fixtures, acts and captures, attributed the way the registry combines its claims."""
+    args = (book_node.type, book_node.bullet_order, book_node.combiners)
+    return _Attribution(
+        checks=_Attributed(*registry.attributed_checks(*args)),
+        fixtures=_Attributed(*registry.attributed_fixtures(*args)),
+        acts=_Attributed(*registry.attributed_acts(*args)),
+        captures=_Attributed(*registry.attributed_captures(*args)),
+    )
+
+
+def _undetermined_claims(book_node: BookNode) -> set[_Claim]:
+    """The claims whose combiner the node leaves unstated."""
+    groups = registry.undetermined_claims(book_node.type, book_node.bullet_order, book_node.combiners)
+    return {claim for group in groups.values() for claim in group}
+
+
+def _doc_positions(book_node: BookNode) -> dict[_Claim, int]:
+    """Each normative claim's position in the node's document, by key and index."""
+    positions: dict[_Claim, int] = {}
+    seen = {key: 0 for key in registry.normative_keys(book_node.type)}
+    for key, _, position in book_node.bullet_order:
+        if key in seen:
+            seen[key] += 1
+            positions[(key, seen[key])] = position
+    return positions
+
+
+def _unspecified(book_node: BookNode) -> list[dict[str, str]]:
+    """The node's `unspecified:` bullets, each with the first link it cites."""
+    return [
         {
             "text": value,
             "citation": next((href for _t, href in markdown.extract_refs(value).links), ""),
         }
         for value in book_node.bullets.get("unspecified", ())
     ]
-    if unspecified:
-        base["unspecified"] = unspecified
-    return output
+
+
+def _dedup_by_value(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return list({row["value"]: row for row in rows}.values())
 
 
 def _acceptance_criteria(story_file: Path | None) -> list[dict[str, str]]:
