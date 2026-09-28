@@ -8,7 +8,7 @@ from pathlib import Path
 
 from ostler import graph as graph_mod
 from ostler.model import Graph, UINode
-from ostler.qa.packet_rows import Variants
+from ostler.qa.packet_rows import RepeatContract, RepeatTemplate, Segment, Variants
 from ostler.reach import NONE_TOKENS, _screen_of
 from ostler.vet import placement as placement_mod
 
@@ -232,6 +232,30 @@ def locator_for(node: dict, *, scope: tuple[str, ...] = ()) -> dict:
         return {"strategy": "css", "locator": f'locator("{_escape(selector)}")',
                 "role": "", "name": ""}
     return {"strategy": "none", "locator": "", "role": "", "name": ""}
+
+
+def repeat_contract(node: dict, scope: tuple[str, ...]) -> RepeatContract | None:
+    """The compiled repeat contract for a node in a `one-per:` scope, or None."""
+    own = repeat_of(node)
+    scope = scope or ((own,) if own else ())
+    if not scope:
+        return None
+    located = locator_for(node, scope=scope)
+    template, binds = None, ()
+    if located["strategy"] == "template":
+        template = RepeatTemplate(
+            template=str(located["template"]),
+            iterates=str(located["iterates"]),
+            segments=tuple(Segment.parse(segment) for segment in located["segments"]),
+        )
+        binds = tuple(str(bind) for bind in located["binds"])
+    return RepeatContract(
+        one_per=scope[-1],
+        binds=binds,
+        template=template,
+        unique_by=unique_by_of(node),
+        variants=variants_of(node),
+    )
 
 
 def _locatables(data: dict) -> list[tuple[str, dict]]:

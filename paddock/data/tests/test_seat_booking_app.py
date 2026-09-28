@@ -216,14 +216,15 @@ def defect_ids() -> list[str]:
 def obligation_ids() -> set[str]:
     """Every obligation id this book can mint, independent of any diff."""
     from ostler.model import load  # noqa: PLC0415 - a heavy import only these tests need
-    from ostler.qa.context import _obligations, _serialized_graph  # noqa: PLC0415
+    from ostler.qa.context import _obligations, _serialized_graph, book_nodes  # noqa: PLC0415
 
     nodes, _edges, _ends, _scopes, _details = _serialized_graph(load(APP))
+    book = book_nodes(nodes)
     return {
         obligation["id"]
         for node in nodes.values()
         for obligation in _obligations(
-            node, [], journey=str(node.get("type", "")) in ("flow", "journey")
+            node, [], journey=str(node.get("type", "")) in ("flow", "journey"), book=book
         )
     }
 

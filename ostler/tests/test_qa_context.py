@@ -24,7 +24,7 @@ from ostler.qa.context import (
     select_obligations,
     validate_context,
 )
-from ostler.qa.obligation_frame import declared_locators
+from ostler.qa.obligation_frame import BookNode, declared_locators
 
 from conftest import write
 
@@ -2312,7 +2312,7 @@ def test_a_locator_key_undeclared_on_the_nodes_type_is_not_read():
             "on": ["[item-form](#item-form)"],
         },
     }
-    located = declared_locators(node)
+    located = declared_locators(BookNode.parse(node))
     assert "on" not in located
     assert located["does"] == ["writes the ledger."]
 
@@ -2328,7 +2328,7 @@ def test_channel_is_read_as_an_endpoints_address_locator():
             "channel": ["ws://events"],
         },
     }
-    located = declared_locators(node)
+    located = declared_locators(BookNode.parse(node))
     assert located["method"] == ["GET"]
     assert located["path"] == ["/api/things"]
     assert located["channel"] == ["ws://events"]

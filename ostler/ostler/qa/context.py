@@ -6,7 +6,7 @@ import hashlib
 import json
 import re
 import subprocess
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
@@ -27,12 +27,13 @@ from ostler.qa.dispatch import owes_live_evidence
 from ostler.qa import fixtures as fixtures_mod
 from ostler.qa.compile import annotate_deferred_obligations
 from ostler.qa.obligation_frame import (
+    BookNode,
+    book_nodes,
     bullet_values,
     declared_locators,
     extends_target,
     linked_surface,
     obligation_frame,
-    page_type,
 )
 from ostler.qa.outcome import QaOutcome
 from ostler.qa.packet_rows import (
@@ -277,6 +278,7 @@ def build_context(
     base_nodes, base_edges, base_ends, base_scopes, base_details = _serialized_graph(base_graph)
     head_nodes, head_edges, head_ends, head_scopes, head_details = _serialized_graph(head_graph)
     nodes_by_id = _merge_snapshot_nodes(base_nodes, head_nodes)
+    book = book_nodes(nodes_by_id)
     owner_nodes = {node_id: _owner_node(node) for node_id, node in nodes_by_id.items()}
     node_scopes = {**base_scopes, **head_scopes}
     declared_config = {
@@ -352,7 +354,7 @@ def build_context(
         citing_family_counts(
             mapped_changes.file_owners,
             mapped_changes.symbol_owners,
-            lambda node_id, family_members: _family_root(node_id, family_members, nodes_by_id),
+            lambda node_id, family_members: _family_root(node_id, family_members, book),
         )
     )
     shared_files, shared_symbols = shared.files, shared.symbols
@@ -522,8 +524,8 @@ def build_context(
             judgment=judgment_by_node.get(node_id),
             fixture_provides=fixture_provides,
             fixture_undetermined=fixture_undetermined,
-            resolve_locator=_locator_resolver(head_graph, nodes_by_id, nodes_by_id[node_id]),
-            nodes_by_id=nodes_by_id,
+            resolve_locator=_locator_resolver(head_graph, book, nodes_by_id[node_id]),
+            book=book,
         )
     ] + [
         obligation
@@ -539,8 +541,8 @@ def build_context(
             judgment=judgment_by_node.get(node_id),
             fixture_provides=fixture_provides,
             fixture_undetermined=fixture_undetermined,
-            resolve_locator=_locator_resolver(head_graph, nodes_by_id, nodes_by_id[node_id]),
-            nodes_by_id=nodes_by_id,
+            resolve_locator=_locator_resolver(head_graph, book, nodes_by_id[node_id]),
+            book=book,
         )
     ]
     obligations.sort(key=lambda item: _sort_key(str(item["id"])))
@@ -1441,7 +1443,7 @@ def _unparsed_checks(values: list[str]) -> list[dict[str, Any]]:
 
 
 def _locator_resolver(
-    graph: Graph, nodes_by_id: dict[str, dict[str, Any]], node: dict[str, Any]
+    graph: Graph, book: Mapping[str, BookNode], node: dict[str, Any]
 ) -> Callable[[str], LocatorTarget]:
     """Resolve this node's check locators against the book, the way `doctor` resolves them."""
     origin = graph.root / str(node.get("path", ""))
@@ -1450,7 +1452,7 @@ def _locator_resolver(
         located = locators_mod.located_node(graph, value, origin)
         if located is None:
             return {"node": "", "locators": {}}
-        serialized = nodes_by_id.get(located.id)
+        serialized = book.get(located.id)
         return {
             "node": located.id,
             "locators": declared_locators(serialized) if serialized is not None else {},
@@ -1620,33 +1622,19 @@ def _no_arrangement_stated(values: list[str]) -> bool:
     )
 
 
-def _same_as_targets(
-    node: dict[str, Any], nodes_by_id: dict[str, dict[str, Any]]
-) -> list[dict[str, Any]]:
-    """The nodes *node*'s `same-as:` bullet resolves to, in document order."""
-    return [
-        target
-        for edge in node.get("edges") or []
-        if edge.get("via") == "same-as" and edge.get("to")
-        for target in [nodes_by_id.get(str(edge["to"]))]
-        if target is not None
-    ]
-
-
-def _same_as_component(node_id: str, nodes_by_id: dict[str, dict[str, Any]]) -> frozenset[str]:
+def _same_as_component(node_id: str, book: Mapping[str, BookNode]) -> frozenset[str]:
     """Every node id reachable from *node_id* by following declared `same-as:` edges, *node_id* included."""
     seen = {node_id}
     frontier = [node_id]
     while frontier:
         current = frontier.pop()
-        node = nodes_by_id.get(current)
+        node = book.get(current)
         if node is None:
             continue
-        for target in _same_as_targets(node, nodes_by_id):
-            target_id = str(target["id"])
-            if target_id not in seen:
-                seen.add(target_id)
-                frontier.append(target_id)
+        for target in node.targets("same-as", book):
+            if target.id not in seen:
+                seen.add(target.id)
+                frontier.append(target.id)
     return frozenset(seen)
 
 
@@ -1655,21 +1643,21 @@ def _document_of(node_id: str) -> str:
     return node_id.split("#", 1)[0]
 
 
-def _family_root(node_id: str, owners: set[str], nodes_by_id: dict[str, dict[str, Any]]) -> str:
+def _family_root(node_id: str, owners: set[str], book: Mapping[str, BookNode]) -> str:
     """The declared-family root *node_id* belongs to among *owners*, for `CONTAINER_FANOUT`."""
     seen: set[str] = set()
     current = node_id
     while current not in seen:
         seen.add(current)
-        same_as_root = min(_same_as_component(current, nodes_by_id))
+        same_as_root = min(_same_as_component(current, book))
         if same_as_root != current:
             current = same_as_root
             continue
-        node = nodes_by_id.get(current)
+        node = book.get(current)
         if node is not None:
-            target, _malformed = extends_target(node, nodes_by_id)
+            target, _malformed = extends_target(node, book)
             if target is not None:
-                current = str(target["id"])
+                current = target.id
                 continue
         file_id, sep, _anchor = current.partition("#")
         if sep and file_id in owners:
@@ -1691,15 +1679,12 @@ def _obligations(
     fixture_provides: dict[str, list[str]] | None = None,
     fixture_undetermined: dict[str, list[str]] | None = None,
     resolve_locator: Callable[[str], LocatorTarget] | None = None,
-    nodes_by_id: dict[str, dict[str, Any]] | None = None,
+    book: Mapping[str, BookNode],
 ) -> list[dict[str, Any]]:
     """Mint one obligation per normative bullet, plus the node-level contract."""
-    required = required and owes_live_evidence(str(node.get("type", "")), page_type(node))
-    family = (
-        _same_as_component(str(node["id"]), nodes_by_id)
-        if nodes_by_id is not None
-        else frozenset({str(node["id"])})
-    )
+    book_node = book[str(node["id"])]
+    required = required and owes_live_evidence(book_node.type, book_node.page_type)
+    family = _same_as_component(book_node.id, book)
     representative = min(family)
     occurrence_documents = sorted({_document_of(member) for member in family})
     suffix = "end-state" if journey else "contract"
@@ -1716,7 +1701,7 @@ def _obligations(
         "evidenceRequired": "live" if required else "context",
         "reasons": [reason.row() for reason in reasons or [Reason(ReasonKind.GRAPH_CLOSURE, str(node["id"]))]],
     }
-    base.update(obligation_frame(node, scope, nodes_by_id).row())
+    base.update(obligation_frame(book_node, locators_mod.repeat_contract(node, scope), book).row())
     combiners = {int(pos): str(word) for pos, word in (node.get("combiners") or {}).items()}
     contract, per_bullet = registry.attributed_checks(
         str(node.get("type", "")), node.get("bulletOrder") or [], combiners
@@ -1784,8 +1769,8 @@ def _obligations(
                 obligation["requirement"] = prose
                 if subject is not None:
                     obligation["subject"] = subject
-            if nodes_by_id is not None and node.get("type") == "flow":
-                linked = linked_surface(node, requirement, nodes_by_id)
+            if book_node.type == "flow":
+                linked = linked_surface(book_node, (requirement,), book)
                 if linked:
                     obligation["surface"] = linked
             if (key, index) in undetermined:
