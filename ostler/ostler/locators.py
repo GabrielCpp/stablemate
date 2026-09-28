@@ -245,7 +245,7 @@ class Locator:
     """How Playwright finds one node: by role, by a name template over a repeat scope, by selector, by scheme, or not at all."""
 
     strategy: str
-    locator: str = ""
+    playwright_call: str = ""
     role: str = ""
     name: str = ""
     template: RepeatTemplate | None = None
@@ -255,7 +255,7 @@ class Locator:
 
     def row(self) -> dict[str, JsonValue]:
         """The locator as `ostler locators` prints it."""
-        fields: dict[str, JsonValue] = {"strategy": self.strategy, "locator": self.locator,
+        fields: dict[str, JsonValue] = {"strategy": self.strategy, "locator": self.playwright_call,
                                         "role": self.role, "name": self.name}
         if self.template is not None:
             fields["template"] = self.template.template
@@ -287,12 +287,12 @@ def locator_for(node: BookNode, *, scope: tuple[str, ...] = ()) -> Locator:
             call = f'getByRole("{role}", {{ name: "{_escape(name)}", exact: true }})'
         else:
             call = f'getByRole("{role}")'
-        return Locator("role", locator=call, role=role, name="" if _stated_none(name) else name)
+        return Locator("role", playwright_call=call, role=role, name="" if _stated_none(name) else name)
     if selector:
         scheme = placement_mod.parse_scheme_selector(selector)
         if scheme is not None:
             return Locator("scheme", scheme=scheme[0], value=scheme[1])
-        return Locator("css", locator=f'locator("{_escape(selector)}")')
+        return Locator("css", playwright_call=f'locator("{_escape(selector)}")')
     return Locator("none")
 
 
