@@ -6,7 +6,8 @@ from pathlib import Path
 from workhorse.pyflow import Await, Continue, Done, WorkflowFailed
 from workhorse_workflows.kit import last_commit_subject
 from workhorse_workflows.okf_book.main.exercise_book_flow import ExerciseBook
-from workhorse_workflows.okf_book.main.repair_book_flow import RepairBook, RepairOutcome
+from workhorse_workflows.okf_book.main.nodes.repair_ledger import RepairOutcome
+from workhorse_workflows.okf_book.main.repair_book_flow import RepairBook
 from workhorse_workflows.okf_book.main.nodes.report import build_report, read_report, write_report
 from workhorse_workflows.okf_book.main.nodes.source_view import build_source_view, source_view_folder
 from workhorse_workflows.okf_book.main.nodes.surface import Surface
