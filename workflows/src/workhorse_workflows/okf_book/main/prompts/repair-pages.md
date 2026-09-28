@@ -56,6 +56,11 @@ gives relative to the repository starts there.
 {% if exercise %}
   A check the run failed is fixed in the book, never by weakening it. Where the app refused a
   request, read the source for what it requires, and arrange that with a `fixture:`.
+{% if kind == "http" %}
+  A request the app refused as unauthorized sends the token a sign-in fixture mints, and one it
+  refused as malformed sends the body it lacked. Both are `arrange:` acts, as the skill's
+  endpoint reference says. A check the run gapped as `needs-snapshot` is restated on the response.
+{% endif %}
 {% endif %}
   A claim the source contradicts is corrected to what the source does. A claim with no `verify:`
   gets one that would fail if the app stopped doing it. A claim that arranges nothing gets a
