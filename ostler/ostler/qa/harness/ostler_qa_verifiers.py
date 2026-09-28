@@ -10,6 +10,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from ostler_qa_paths import is_projection, resolve_path, scalar_equal
+
 
 _MISSING = object()
 
@@ -148,139 +150,6 @@ def _paths(value: Any, prefix: str = "") -> dict[str, Any]:
     return {prefix: value}
 
 
-class _Wild:
-    """The `[*]` segment: every element of a list, every value of an object."""
-
-    def __repr__(self) -> str:
-        return "[*]"
-
-
-WILD = _Wild()
-
-
-@dataclass(frozen=True)
-class Filter:
-    """The `[?(@.key==value)]` segment: the elements whose `key` holds `value`."""
-
-    key: str
-    value: Any
-
-    def __repr__(self) -> str:
-        return f"[?(@.{self.key}=={json.dumps(self.value)})]"
-
-
-PathStep = str | int | _Wild | Filter
-
-_FILTER = re.compile(
-    r"\[\?\(@\.(?P<key>[^=\s)]+)\s*==\s*"
-    r"(?P<value>'[^']*'|\"[^\"]*\"|-?\d+(?:\.\d+)?|true|false|null)\s*\)\]"
-)
-
-
-def path_steps(path: str) -> list[PathStep]:
-    """The segments of a path, in the one grammar every reader of a document path shares."""
-    steps: list[PathStep] = []
-    text = path.strip()
-    if text.startswith("$"):
-        text = text[1:]
-    pos = 0
-    while pos < len(text):
-        char = text[pos]
-        if char == ".":
-            pos += 1
-            continue
-        if char == "[":
-            if text.startswith("[*]", pos):
-                steps.append(WILD)
-                pos += 3
-                continue
-            hit = _FILTER.match(text, pos)
-            if hit is not None:
-                steps.append(Filter(hit.group("key"), json.loads(hit.group("value").replace("'", '"'))))
-                pos = hit.end()
-                continue
-            close = text.find("]", pos)
-            if close == -1:
-                raise ValueError(f"json path {path!r}: '[' at {pos} is never closed")
-            inner = text[pos + 1 : close]
-            steps.append(int(inner) if inner.isdigit() else inner)
-            pos = close + 1
-            continue
-        nxt = len(text)
-        for stop in (".", "["):
-            found = text.find(stop, pos)
-            if found != -1:
-                nxt = min(nxt, found)
-        steps.append(text[pos:nxt])
-        pos = nxt
-    return steps
-
-
-def _step_into(current: Any, step: str | int) -> tuple[bool, Any]:
-    if isinstance(current, Mapping):
-        key = str(step) if isinstance(step, int) else step
-        return (True, current[key]) if key in current else (False, None)
-    if isinstance(current, (list, tuple)):
-        if isinstance(step, int):
-            index = step
-        elif step.isdigit():
-            index = int(step)
-        else:
-            return False, None
-        return (True, current[index]) if index < len(current) else (False, None)
-    return False, None
-
-
-def _selected(current: Any, step: _Wild | Filter) -> list[Any]:
-    if isinstance(current, Mapping):
-        candidates = list(current.values())
-    elif isinstance(current, (list, tuple)):
-        candidates = list(current)
-    else:
-        return []
-    if isinstance(step, _Wild):
-        return candidates
-    chosen = []
-    for item in candidates:
-        ok, held = resolve_path(item, step.key)
-        if ok and _scalar_equal(held, step.value):
-            chosen.append(item)
-    return chosen
-
-
-def resolve_path(document: Any, path: str) -> tuple[bool, Any]:
-    """Walk `path` into `document`: whether it resolved, and to what."""
-    steps = path_steps(path)
-    current: Any = document
-    projected = False
-    for step in steps:
-        if isinstance(step, (_Wild, Filter)):
-            if projected:
-                current = [item for element in current for item in _selected(element, step)]
-            else:
-                current = _selected(current, step)
-                projected = True
-            continue
-        if projected:
-            kept = []
-            for element in current:
-                ok, value = _step_into(element, step)
-                if ok:
-                    kept.append(value)
-            current = kept
-            continue
-        ok, current = _step_into(current, step)
-        if not ok:
-            return False, None
-    if projected:
-        return bool(current), current
-    return True, current
-
-
-def _is_projection(path: str) -> bool:
-    return any(isinstance(step, (_Wild, Filter)) for step in path_steps(path))
-
-
 def _verify_http_status(observed: Any, args: Mapping[str, Any]) -> tuple[bool, Any, Any]:
     status, body = _observed_status(observed)
     expected: Any = {"code": args["code"]}
@@ -323,17 +192,6 @@ def _verify_response_header(observed: Any, args: Mapping[str, Any]) -> tuple[boo
             {args["name"]: f"~ {args['matches']}"})
 
 
-def _scalar_equal(observed: Any, expected: Any) -> bool:
-    """`json_path(equals=)` against what the document holds, typed the way JSON types it."""
-    if isinstance(expected, bool) or isinstance(observed, bool):
-        return isinstance(observed, bool) and isinstance(expected, bool) and observed is expected
-    if isinstance(expected, (int, float)):
-        return isinstance(observed, (int, float)) and observed == expected
-    if isinstance(expected, str):
-        return isinstance(observed, str) and observed == expected
-    return False
-
-
 def _matchable(value: Any) -> str:
     """*value* rendered the way a `json_path(matches=...)` pattern is written against."""
     if isinstance(value, str):
@@ -352,12 +210,12 @@ def _verify_json_path(observed: Any, args: Mapping[str, Any]) -> tuple[bool, Any
         return resolved is not want_absent, {"present": resolved}, {"present": not want_absent}
     if not resolved:
         return False, {"present": False}, {"path": args["path"]}
-    if _is_projection(args["path"]):
+    if is_projection(args["path"]):
         if len(value) != 1:
             return False, {"selected": value}, {"selected": "exactly one"}
         value = value[0]
     if "equals" in args:
-        return _scalar_equal(value, args["equals"]), value, args["equals"]
+        return scalar_equal(value, args["equals"]), value, args["equals"]
     if "matches" in args:
         return (re.search(args["matches"], _matchable(value)) is not None, value,
                 f"~ {args['matches']}")
@@ -402,7 +260,7 @@ def _verify_count(observed: Any, args: Mapping[str, Any]) -> tuple[bool, Any, An
             return False, {"subject": args["subject"], "countable": False, "reason": str(exc)}, args["equals"]
     if isinstance(document, Mapping):
         resolved, document = resolve_path(document, args["subject"])
-        selected_nothing = _is_projection(args["subject"]) and document == []
+        selected_nothing = is_projection(args["subject"]) and document == []
         if not resolved and not selected_nothing:
             return False, {"subject": args["subject"], "present": False}, args["equals"]
     if isinstance(document, bool | str) or not isinstance(document, int | Sized):

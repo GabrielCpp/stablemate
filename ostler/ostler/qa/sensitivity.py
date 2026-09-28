@@ -19,7 +19,7 @@ from ostler.qa.harness_host import load_harness_module
 _parser = importlib.import_module("re._parser")
 
 _harness = load_harness_module("ostler_qa")
-_verifiers = load_harness_module("ostler_qa_verifiers")
+_paths = load_harness_module("ostler_qa_paths")
 _VERIFIERS = _harness.VERIFIERS
 _UNSATISFIABLE = _harness.UNSATISFIABLE
 
@@ -159,18 +159,18 @@ def _set_path(document: dict[str, Any], path: str, value: Any) -> Any:
     steps = _steps(path)
     if not steps:
         return value
-    root: Any = [] if isinstance(steps[0], int | _verifiers._Wild | _verifiers.Filter) else document
+    root: Any = [] if isinstance(steps[0], int | _paths.Wild | _paths.Filter) else document
     cursor: Any = root
     for step, following in zip(steps, [*steps[1:], None], strict=True):
-        nxt: Any = [] if isinstance(following, int | _verifiers._Wild | _verifiers.Filter) else {}
-        if isinstance(step, _verifiers._Wild | _verifiers.Filter):
+        nxt: Any = [] if isinstance(following, int | _paths.Wild | _paths.Filter) else {}
+        if isinstance(step, _paths.Wild | _paths.Filter):
             if not cursor:
                 cursor.append(None)
             if following is None:
-                cursor[0] = value if isinstance(step, _verifiers._Wild) else (value if isinstance(value, dict) else {})
+                cursor[0] = value if isinstance(step, _paths.Wild) else (value if isinstance(value, dict) else {})
             elif cursor[0] is None:
                 cursor[0] = nxt
-            if isinstance(step, _verifiers.Filter) and isinstance(cursor[0], dict):
+            if isinstance(step, _paths.Filter) and isinstance(cursor[0], dict):
                 _set_path(cursor[0], step.key, step.value)
             cursor = cursor[0]
             continue
@@ -186,7 +186,7 @@ def _set_path(document: dict[str, Any], path: str, value: Any) -> Any:
 
 
 def _steps(path: str) -> list[Any]:
-    return _verifiers.path_steps(path)
+    return _paths.path_steps(path)
 
 
 def _collection(subject: str, size: int) -> dict[str, Any]:
@@ -196,10 +196,10 @@ def _collection(subject: str, size: int) -> dict[str, Any]:
     last = steps[-1] if steps else None
     if last is None:
         return _set_path({}, subject, items)
-    if isinstance(last, _verifiers._Wild | _verifiers.Filter):
-        marker = "[*]" if isinstance(last, _verifiers._Wild) else "[?("
+    if isinstance(last, _paths.Wild | _paths.Filter):
+        marker = "[*]" if isinstance(last, _paths.Wild) else "[?("
         parent = subject[: subject.rfind(marker)]
-        if isinstance(last, _verifiers.Filter):
+        if isinstance(last, _paths.Filter):
             key, value = last.key, last.value
             items = [_set_path(item, key, value) for item in items]
         return _set_path({}, parent, items)
@@ -213,9 +213,9 @@ def _drop_path(document: Any, path: str) -> Any:
         return None
     cursor = document
     for step in steps[:-1]:
-        cursor = cursor[0] if isinstance(step, _verifiers._Wild | _verifiers.Filter) else cursor[step]
+        cursor = cursor[0] if isinstance(step, _paths.Wild | _paths.Filter) else cursor[step]
     last = steps[-1]
-    if isinstance(last, _verifiers._Wild | _verifiers.Filter):
+    if isinstance(last, _paths.Wild | _paths.Filter):
         cursor.clear()
     elif isinstance(last, int):
         del cursor[last]

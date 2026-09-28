@@ -10,5 +10,6 @@ and Playwright.
 - `ostler_qa_browser.py`: the Playwright lifecycle of a browser scenario.
 - `ostler_qa_checkout.py`: the copy of the checkout a scenario's commands run in.
 - `ostler_qa_hierarchy.py`: the view-hierarchy scan a device screen is vetted from.
+- `ostler_qa_paths.py`: the document-path grammar, the steps a path parses into and how it walks a document.
 - `ostler_qa_scan.py`: the DOM scan `ostler vet` is built on.
-- `ostler_qa_verifiers.py`: the claim verifiers, what each `verify:` kind observes, and the document reads they share.
+- `ostler_qa_verifiers.py`: the claim verifiers, what each `verify:` kind observes.

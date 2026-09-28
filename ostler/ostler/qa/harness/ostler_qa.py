@@ -25,14 +25,12 @@ from typing import Any
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from ostler_qa_checkout import copy_checkout
+from ostler_qa_paths import is_projection, path_steps, resolve_path
 from ostler_qa_verifiers import (
     VERIFIERS,
     JsonValue,
     Tree,
-    _is_projection,
     _json_value,
-    path_steps,
-    resolve_path,
 )
 
 __all__ = [
@@ -1038,7 +1036,7 @@ class Qa:
             return default
         if not resolved:
             return default
-        if _is_projection(path) and len(value) == 1:
+        if is_projection(path) and len(value) == 1:
             return value[0]
         return value
 

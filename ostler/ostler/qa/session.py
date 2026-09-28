@@ -681,19 +681,19 @@ def _extract_path(data: Any, path: str) -> str | None:
     if data is None:
         return None
     try:
-        resolved, value = _harness().resolve_path(data, path)
+        resolved, value = _paths().resolve_path(data, path)
     except ValueError:
         return None
     if not resolved or value is None:
         return None
-    if _harness()._is_projection(path) and len(value) == 1:
+    if _paths().is_projection(path) and len(value) == 1:
         value = value[0]
     return str(value) if value is not None else None
 
 
-def _harness() -> Any:
-    """The harness module, loaded on first use — the path grammar lives there, once."""
-    return load_harness_module("ostler_qa")
+def _paths() -> Any:
+    """The harness's document-path grammar, loaded on first use so it lives in one place."""
+    return load_harness_module("ostler_qa_paths")
 
 
 def _adoptable(out_file: Path, started_wall: float) -> bool:
