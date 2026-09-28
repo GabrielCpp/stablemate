@@ -17,7 +17,7 @@ PREVIEW = (
 WEB_STACK = Path("docs/features/web-app/ops/web-app-stack.md")
 
 
-def _split_environments(repo: Path) -> Path:
+def _repo_with_web_app_on_preview(repo: Path) -> Path:
     _ = (repo / WEB_STACK.parent / "preview.md").write_text(PREVIEW, encoding="utf-8")
     stack = repo / WEB_STACK
     text = stack.read_text(encoding="utf-8")
@@ -38,7 +38,7 @@ def brought_up(monkeypatch: pytest.MonkeyPatch) -> list[str]:
 
 
 def test_a_service_brings_up_the_stack_its_own_book_declares(app: Callable[[str], Path], brought_up: list[str]) -> None:
-    repo = _split_environments(app("globex"))
+    repo = _repo_with_web_app_on_preview(app("globex"))
 
     readiness = bring_up(logging.getLogger(__name__), repo, "web-app")
 
@@ -47,7 +47,7 @@ def test_a_service_brings_up_the_stack_its_own_book_declares(app: Callable[[str]
 
 
 def test_another_service_leaves_that_stack_down(app: Callable[[str], Path], brought_up: list[str]) -> None:
-    repo = _split_environments(app("globex"))
+    repo = _repo_with_web_app_on_preview(app("globex"))
 
     _ = bring_up(logging.getLogger(__name__), repo, "api-service")
 
