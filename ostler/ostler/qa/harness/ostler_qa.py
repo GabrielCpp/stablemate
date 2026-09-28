@@ -27,12 +27,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from ostler_qa_checkout import copy_checkout
 from ostler_qa_verifiers import (
     VERIFIERS,
-    Filter as Filter,
     JsonValue,
     Tree,
     _is_projection,
     _json_value,
-    _Wild as _Wild,
     path_steps,
     resolve_path,
 )
