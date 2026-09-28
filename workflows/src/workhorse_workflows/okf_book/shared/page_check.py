@@ -264,10 +264,10 @@ def _service_nodes(book: Graph, service: str) -> list[_Node]:
 
 def off_journey_nodes(root: Path, service: str) -> tuple[str, ...]:
     """Every command, endpoint and screen of the service that no flow's walk links, itself or through a part of it."""
-    return _off_journey(_service_nodes(load(root), service))
+    return _off_journey_node_ids(_service_nodes(load(root), service))
 
 
-def _off_journey(nodes: list[_Node]) -> tuple[str, ...]:
+def _off_journey_node_ids(nodes: list[_Node]) -> tuple[str, ...]:
     parents = {node.id: node.parent for node in nodes}
     walked: set[str] = set()
     for flow in (node for node in nodes if node.type == "flow"):
@@ -287,7 +287,7 @@ def _off_journey_problems(nodes: list[_Node]) -> list[PageProblem]:
             needs_journey=True,
             node=node,
         )
-        for node in _off_journey(nodes)
+        for node in _off_journey_node_ids(nodes)
     ]
 
 
