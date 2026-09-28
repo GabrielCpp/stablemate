@@ -25,19 +25,19 @@ class TurnChanges:
 
     entries_page: str
     kept: tuple[str, ...]
-    unowned: tuple[str, ...]
+    to_put_back: tuple[str, ...]
 
 
 def turn_changes(root: Path, service: str, before: Snapshot, batch: RepairBatch, closed_pages: tuple[str, ...]) -> TurnChanges:
-    """Split the book pages the turn changed into those the batch owns and those it does not."""
+    """Split the book pages the turn changed into those the batch may keep and those code puts back."""
     entries_page = entries_path(root, service).relative_to(root).as_posix()
     changed = book_changes(root, service, before)
-    unowned = tuple(
+    to_put_back = tuple(
         path
         for path in changed
         if path == entries_page or path in before.digests or path in closed_pages or not batch.owns(path)
     )
-    return TurnChanges(entries_page, tuple(path for path in changed if path not in unowned), unowned)
+    return TurnChanges(entries_page, tuple(path for path in changed if path not in to_put_back), to_put_back)
 
 
 def entry_pages_changed_beyond_links(root: Path, batch: RepairBatch, kept: Sequence[str]) -> list[str]:

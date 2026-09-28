@@ -198,8 +198,8 @@ class RepairBook(BookFlow):
         that changed one waits for the operator.
         """
         changes = turn_changes(self.root, self.service, before, this_round.batches[index], ledger.closed_pages)
-        unrestorable_uncommitted = restore(self.root, changes.unowned, before)
-        for path in sorted(set(changes.unowned) - set(unrestorable_uncommitted) - {changes.entries_page}):
+        unrestorable_uncommitted = restore(self.root, changes.to_put_back, before)
+        for path in sorted(set(changes.to_put_back) - set(unrestorable_uncommitted) - {changes.entries_page}):
             self.logger.warning("put back %s, which the repair turn changed outside the pages its batch owns", path)
         kept = list(changes.kept)
         if unrestorable_uncommitted:
@@ -216,7 +216,7 @@ class RepairBook(BookFlow):
                 kept=kept,
             ).because("the repair turn changed a page someone left uncommitted")
         return Continue(
-            changes.unowned, self.put_back_entry_overreach, ledger=ledger, this_round=this_round, index=index, before=before, kept=kept
+            changes.to_put_back, self.put_back_entry_overreach, ledger=ledger, this_round=this_round, index=index, before=before, kept=kept
         ).because("put back the entry pages the turn changed beyond link lines")
 
     def put_back_entry_overreach(
