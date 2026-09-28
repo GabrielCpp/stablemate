@@ -15,8 +15,8 @@ from okf_book.main.tally import (
     TALLY,
     App,
     DriveBook,
-    off_journey_until_noted,
-    repair_over_the_ceiling,
+    journey_problems_until_noted,
+    stub_a_book_sent_to_repair,
     repairer_also_editing,
 )
 from okf_book.support import ScriptedRunner, git
@@ -33,7 +33,7 @@ from workhorse_workflows.okf_book.workflow import OkfBook
 
 @pytest.fixture
 def over_the_ceiling(monkeypatch: pytest.MonkeyPatch) -> None:
-    repair_over_the_ceiling(monkeypatch)
+    stub_a_book_sent_to_repair(monkeypatch)
 
 
 @pytest.mark.usefixtures("over_the_ceiling")
@@ -41,7 +41,7 @@ def test_a_batch_with_a_page_off_the_journey_owns_the_entry_and_flow_pages_and_a
     app: App, drive_book: DriveBook, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     repo = app("tally-cli")
-    monkeypatch.setattr(repair_book_flow, "page_problems", off_journey_until_noted)
+    monkeypatch.setattr(repair_book_flow, "page_problems", journey_problems_until_noted)
     runner = repairer_also_editing(repo, OTHER_PAGE, FLOW_PAGE, NEW_FLOW)
 
     result = drive_book(OkfBook(repo_dir=str(repo), surfaces=(TALLY,)), runner)
@@ -69,7 +69,7 @@ def test_a_later_round_keeps_the_journey_pages_the_first_round_planned(
     app: App, drive_book: DriveBook, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     repo = app("tally-cli")
-    monkeypatch.setattr(repair_book_flow, "page_problems", off_journey_until_noted)
+    monkeypatch.setattr(repair_book_flow, "page_problems", journey_problems_until_noted)
     runner = _writes_a_flow_then_notes(repo)
 
     result = drive_book(OkfBook(repo_dir=str(repo), surfaces=(TALLY,)), runner)
@@ -122,7 +122,7 @@ def _flow_and_page_until_noted(root: Path, service: str) -> tuple[PageProblem, .
     broken = FLOW_BREAKING_LINE.strip() in flow_text or FLOW_BREAKING_LINE.strip() in (root / PAGE).read_text(encoding="utf-8")
     flow_open = NOTE.strip() not in flow_text or broken
     flow_problems = (PageProblem(FLOW_PAGE, "track-a-trip.md needs a note", needs_journey=True),) if flow_open else ()
-    return (*flow_problems, *off_journey_until_noted(root, service))
+    return (*flow_problems, *journey_problems_until_noted(root, service))
 
 
 def _one_page_per_batch(
@@ -150,7 +150,7 @@ def _sent_pages(runner: ScriptedRunner) -> list[str]:
 
 @pytest.fixture
 def one_page_per_batch(monkeypatch: pytest.MonkeyPatch) -> None:
-    repair_over_the_ceiling(monkeypatch)
+    stub_a_book_sent_to_repair(monkeypatch)
     monkeypatch.setattr(repair_book_flow, "page_problems", _flow_and_page_until_noted)
     monkeypatch.setattr(repair_book_flow, "pack_repairs", _one_page_per_batch)
 

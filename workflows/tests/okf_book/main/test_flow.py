@@ -18,7 +18,7 @@ from okf_book.main.tally import (
     no_problems,
     refuse_commits_until_answered,
     stub_the_run_to,
-    until_noted,
+    book_problems_until_noted,
 )
 from okf_book.support import ScriptedRunner, commits, git
 from workhorse.pyflow import WorkflowFailed
@@ -50,7 +50,7 @@ def _writer(repo: Path, *, stray: bool = False) -> ScriptedRunner:
 @pytest.fixture
 def passing(monkeypatch: pytest.MonkeyPatch) -> None:
     stub_the_run_to(monkeypatch, PASSED)
-    monkeypatch.setattr(flow, "book_problems", until_noted)
+    monkeypatch.setattr(flow, "book_problems", book_problems_until_noted)
 
 
 @pytest.mark.usefixtures("passing")

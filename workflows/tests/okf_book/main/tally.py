@@ -58,7 +58,7 @@ def no_problems(_root: Path, _service: str) -> tuple[str, ...]:
     return ()
 
 
-def until_noted(root: Path, _service: str) -> tuple[str, ...]:
+def book_problems_until_noted(root: Path, _service: str) -> tuple[str, ...]:
     return () if NOTE.strip() in (root / PAGE).read_text(encoding="utf-8") else ("tally.md needs a note",)
 
 
@@ -94,18 +94,18 @@ def repairer_also_editing(repo: Path, *pages: str) -> ScriptedRunner:
     return ScriptedRunner({"repair-pages": _reply})
 
 
-def off_journey_until_noted(root: Path, service: str) -> tuple[PageProblem, ...]:
-    return tuple(PageProblem(p.page, p.text, needs_journey=True) for p in pages_until_noted(root, service))
+def journey_problems_until_noted(root: Path, service: str) -> tuple[PageProblem, ...]:
+    return tuple(PageProblem(p.page, p.text, needs_journey=True) for p in page_problems_until_noted(root, service))
 
 
-def pages_until_noted(root: Path, _service: str) -> tuple[PageProblem, ...]:
+def page_problems_until_noted(root: Path, _service: str) -> tuple[PageProblem, ...]:
     return () if NOTE.strip() in (root / PAGE).read_text(encoding="utf-8") else (PageProblem(PAGE, "tally.md needs a note"),)
 
 
-def repair_over_the_ceiling(monkeypatch: pytest.MonkeyPatch) -> None:
+def stub_a_book_sent_to_repair(monkeypatch: pytest.MonkeyPatch) -> None:
     """Send an existing book that passes its run to the repair, with the page check clean once tally.md is noted."""
     stub_the_run_to(monkeypatch, PASSED)
-    monkeypatch.setattr(flow, "book_problems", until_noted)
+    monkeypatch.setattr(flow, "book_problems", book_problems_until_noted)
     monkeypatch.setattr(turn_budget, "SOURCE_AND_BOOK_CEILING_TOKENS", 10)
-    monkeypatch.setattr(repair_book_flow, "page_problems", pages_until_noted)
+    monkeypatch.setattr(repair_book_flow, "page_problems", page_problems_until_noted)
     monkeypatch.setattr(pyflow_driver, "wait_for_answer", answering_operator([]))

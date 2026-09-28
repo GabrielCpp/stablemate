@@ -19,9 +19,9 @@ from okf_book.main.tally import (
     TALLY,
     answering_operator,
     no_problems,
-    pages_until_noted,
+    page_problems_until_noted,
     refuse_commits_until_answered,
-    repair_over_the_ceiling,
+    stub_a_book_sent_to_repair,
     repairer_also_editing,
     stub_the_run_to,
 )
@@ -55,7 +55,7 @@ def _repairer(repo: Path) -> ScriptedRunner:
 
 @pytest.fixture
 def over_the_ceiling(monkeypatch: pytest.MonkeyPatch) -> None:
-    repair_over_the_ceiling(monkeypatch)
+    stub_a_book_sent_to_repair(monkeypatch)
 
 
 @pytest.mark.usefixtures("over_the_ceiling")
@@ -153,7 +153,7 @@ def test_a_repair_turn_that_ends_without_a_reply_is_a_blocker_and_the_rounds_sti
 
 
 def _another_page_once_noted(root: Path, service: str) -> tuple[PageProblem, ...]:
-    return pages_until_noted(root, service) or (PageProblem(OTHER_PAGE, "ledger-file.md needs a note"),)
+    return page_problems_until_noted(root, service) or (PageProblem(OTHER_PAGE, "ledger-file.md needs a note"),)
 
 
 @pytest.mark.usefixtures("over_the_ceiling")
