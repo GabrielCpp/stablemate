@@ -146,10 +146,10 @@ def test_a_repair_turn_that_ends_without_a_reply_is_a_blocker_and_the_rounds_sti
     result = drive_book(OkfBook(repo_dir=str(repo), surfaces=(TALLY,)), runner)
 
     assert isinstance(result, BookReport)
-    failed = [b for b in result.blockers if b.side is Side.WORKFLOW]
+    workflow_blockers = [b for b in result.blockers if b.side is Side.WORKFLOW]
     assert runner.total == REPAIR_ROUNDS
-    assert [b.phase for b in failed] == [Phase.WRITE]
-    assert failed[0].reason.count("no result event") == REPAIR_ROUNDS
+    assert [b.phase for b in workflow_blockers] == [Phase.WRITE]
+    assert workflow_blockers[0].reason.count("no result event") == REPAIR_ROUNDS
 
 
 def _another_page_once_noted(root: Path, service: str) -> tuple[PageProblem, ...]:
