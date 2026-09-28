@@ -29,6 +29,7 @@ plan from the book, run it, and report the evidence.
 - `manifest.py`: the current run's artifact manifest, with content-addressed provenance.
 - `navigation.py`: each surface's navigation row from the context packet, read once into typed records.
 - `obligation.py`: one obligation of the context packet, read once into typed records where the compiler takes it in.
+- `obligation_frame.py`: the frame every obligation of a book node shares, its surface, journey, locators and repeat contract.
 - `outcome.py`: `QaOutcome`, the return shape every `ostler qa` subcommand shares.
 - `owners.py`: which book nodes own a change, the reasons a node is selected and the families that cite each changed file and symbol.
 - `packet.py`: the `qa context` packet `compile-plan` reads, validated once into one typed record.

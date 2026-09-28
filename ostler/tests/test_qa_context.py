@@ -14,7 +14,6 @@ from ostler.qa.context import (
     _book_root,
     _graph_at_revision,
     _is_generated_unit,
-    _locators,
     _navigation,
     _sort_key,
     _verification_refs,
@@ -25,6 +24,7 @@ from ostler.qa.context import (
     select_obligations,
     validate_context,
 )
+from ostler.qa.obligation_frame import declared_locators
 
 from conftest import write
 
@@ -2304,7 +2304,7 @@ title: Items
 
 
 def test_a_locator_key_undeclared_on_the_nodes_type_is_not_read():
-    """`on:` is declared on `interaction`/`invocation`, never on `method` — but before 3aa, `_locators` read every `_LOCATOR_KEYS` member straight off a node's raw bullets with no reference to what its type actually declares, so an `on:` authored on a `method` node (the real book this generalizes from carried 205 of these) leaked through anyway."""
+    """`on:` is declared on `interaction`/`invocation`, never on `method` — but before 3aa, `declared_locators` read every `_LOCATOR_KEYS` member straight off a node's raw bullets with no reference to what its type actually declares, so an `on:` authored on a `method` node (the real book this generalizes from carried 205 of these) leaked through anyway."""
     node = {
         "type": "method",
         "bullets": {
@@ -2312,7 +2312,7 @@ def test_a_locator_key_undeclared_on_the_nodes_type_is_not_read():
             "on": ["[item-form](#item-form)"],
         },
     }
-    located = _locators(node)
+    located = declared_locators(node)
     assert "on" not in located
     assert located["does"] == ["writes the ledger."]
 
@@ -2328,7 +2328,7 @@ def test_channel_is_read_as_an_endpoints_address_locator():
             "channel": ["ws://events"],
         },
     }
-    located = _locators(node)
+    located = declared_locators(node)
     assert located["method"] == ["GET"]
     assert located["path"] == ["/api/things"]
     assert located["channel"] == ["ws://events"]
