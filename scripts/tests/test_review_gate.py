@@ -293,7 +293,8 @@ def test_a_diff_needing_more_batches_than_the_cap_is_too_large(
     assert reviewer.calls == []
 
 
-def _backlog(repo: Path, monkeypatch: pytest.MonkeyPatch, commits: list[list[str]]) -> list[str]:
+def _commit_backlog_over_the_cap(repo: Path, monkeypatch: pytest.MonkeyPatch, commits: list[list[str]]) -> list[str]:
+    """Approve HEAD, commit each group of files on top, and shrink the review budget so the whole backlog is over the cap. Returns the commit heads."""
     approved = GateState(git(repo, "rev-parse", "HEAD^{tree}"), git(repo, "rev-parse", "HEAD"), 0)
     save_state(repo, HOOK_STATE_FILE, approved)
     heads = []
@@ -311,7 +312,7 @@ def test_a_committed_backlog_over_the_cap_is_reviewed_one_range_at_a_time(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     repo = strict_repo(tmp_path)
-    heads = _backlog(repo, monkeypatch, [["a"], ["b"], ["c"]])
+    heads = _commit_backlog_over_the_cap(repo, monkeypatch, [["a"], ["b"], ["c"]])
     reviewer = FakeReviewer([[], [], []])
     assert review_gate.hook_decision(repo, _stop(repo), reviewer) is None
     prompts = [prompt for prompt, _ in reviewer.calls]
@@ -321,11 +322,29 @@ def test_a_committed_backlog_over_the_cap_is_reviewed_one_range_at_a_time(
     assert load_state(repo, HOOK_STATE_FILE).base_head == heads[2]
 
 
+def test_a_commit_made_during_the_walk_waits_for_the_next_stop(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = strict_repo(tmp_path)
+    heads = _commit_backlog_over_the_cap(repo, monkeypatch, [["a"], ["b"], ["c"]])
+    passing = FakeReviewer([[], [], []])
+
+    def committing_during_review(prompt: str, model: str) -> Verdict:
+        if not passing.calls:
+            (repo / "pkg" / "strict" / "d.py").write_text("D = 1\n", encoding="utf-8")
+            _commit(repo, "d")
+        return passing(prompt, model)
+
+    assert review_gate.hook_decision(repo, _stop(repo), committing_during_review) is None
+    assert not any("+D = 1" in prompt for prompt, _ in passing.calls)
+    assert load_state(repo, HOOK_STATE_FILE).base_head == heads[2]
+
+
 def test_findings_in_a_committed_range_are_handed_over_once(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     repo = strict_repo(tmp_path)
-    heads = _backlog(repo, monkeypatch, [["a"], ["b"], ["c"]])
+    heads = _commit_backlog_over_the_cap(repo, monkeypatch, [["a"], ["b"], ["c"]])
     reviewer = FakeReviewer([["A says nothing"], [], []])
     outcome = review_gate.hook_decision(repo, _stop(repo), reviewer)
     assert isinstance(outcome, Block)
@@ -344,7 +363,7 @@ def test_a_commit_too_large_to_review_alone_goes_through_with_a_notice(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     repo = strict_repo(tmp_path)
-    heads = _backlog(repo, monkeypatch, [["a", "b", "c"], ["d"]])
+    heads = _commit_backlog_over_the_cap(repo, monkeypatch, [["a", "b", "c"], ["d"]])
     reviewer = FakeReviewer([[]])
     outcome = review_gate.hook_decision(repo, _stop(repo), reviewer)
     assert isinstance(outcome, Notice)
@@ -355,11 +374,11 @@ def test_a_commit_too_large_to_review_alone_goes_through_with_a_notice(
     assert load_state(repo, HOOK_STATE_FILE).base_head == heads[1]
 
 
-def test_an_uncommitted_diff_over_the_cap_still_blocks_after_the_backlog(
+def test_an_uncommitted_diff_over_the_cap_still_blocks_after_the_commit_backlog_over_the_cap(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     repo = strict_repo(tmp_path)
-    heads = _backlog(repo, monkeypatch, [["a"]])
+    heads = _commit_backlog_over_the_cap(repo, monkeypatch, [["a"]])
     for name in ("x", "y", "z"):
         (repo / "pkg" / "strict" / f"{name}.py").write_text(f"{name.upper()} = 1\n", encoding="utf-8")
     reviewer = FakeReviewer([[]])

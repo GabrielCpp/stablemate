@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -51,6 +50,12 @@ def change_up_to_commit(repo: Path, base_tree: str, commit: str) -> PendingChang
     tree = git(repo, "rev-parse", f"{commit}^{{tree}}")
     names = git(repo, "diff", "--name-only", base_tree, tree)
     return PendingChange(head=commit, base_tree=base_tree, tree=tree, paths=tuple(names.splitlines()))
+
+
+def change_since(repo: Path, reviewed: GateState, change: PendingChange) -> PendingChange:
+    base_tree = reviewed.base_tree or change.base_tree
+    names = git(repo, "diff", "--name-only", base_tree, change.tree)
+    return PendingChange(head=change.head, base_tree=base_tree, tree=change.tree, paths=tuple(names.splitlines()))
 
 
 def widest_range(repo: Path, base_tree: str, commits: list[str], rubric: str) -> PendingChange | None:
@@ -106,9 +111,11 @@ def walk_backlog(
     change: PendingChange,
     rubric: str,
     reviewer: Reviewer,
-    pending_change: Callable[[GateState], PendingChange],
 ) -> BacklogWalk:
-    """Review the committed backlog one range at a time until what is left fits one review, saving the gate's state after each range."""
+    """Review the committed backlog one range at a time until what is left fits one review, saving the gate's state after each range.
+
+    The walk keeps the head and the tree *change* read at the stop, so a commit or an edit made during the walk waits for the next stop.
+    """
     skip_notices: list[str] = []
     while in_backlog(repo, state, change) and plan_review(repo, change, rubric).too_large:
         step = review_next_range(repo, scope, state, change, rubric, reviewer)
@@ -118,7 +125,7 @@ def walk_backlog(
         if step.block is not None:
             return BacklogWalk(step.state, change, tuple(skip_notices), step.block)
         state = step.state
-        change = pending_change(state)
+        change = change_since(repo, step.state, change)
     return BacklogWalk(state, change, tuple(skip_notices), None)
 
 

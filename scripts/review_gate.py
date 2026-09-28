@@ -124,7 +124,7 @@ def hook_decision(repo: Path, event: StopEvent, reviewer: Reviewer) -> Outcome:
     if not any(scope.contains(path) for path in change.paths):
         return None
     rubric = RUBRIC_PATH.read_text(encoding="utf-8")
-    walk = walk_backlog(repo, scope, state, change, rubric, reviewer, lambda walked: pending_change(repo, walked, None))
+    walk = walk_backlog(repo, scope, state, change, rubric, reviewer)
     if walk.block is not None:
         return with_skip_notices(walk.block, walk.skip_notices)
     if not any(scope.contains(path) for path in walk.change.paths):
