@@ -189,19 +189,6 @@ You never install the base — see [Installing](#installing). Because it is data
 than a distribution, nothing depends on it in either direction, so content versions on
 its own clock; the tools a workflow needs are declared by the workflow's own package.
 
-## Map
-
-- `base-library/`: the skills and packs farrier renders into a repository. Data, with nothing to import.
-- `core/`: the runtime state the tools must agree on: the home config, base-library discovery and its cache. `make vendor` copies it into each tool.
-- `farrier/`: rendering the prompt library into a repository's agent adapters, hooks and launcher.
-- `groom/`: the local dashboard and OTLP collector that shows running workflows and answers their operator gates.
-- `ostler/`: a repository's `docs/` knowledge graph: its schema, validation, search, edits and the book's QA.
-- `paddock/`: the benchmark harness: seeds, tasks, trial runs and their scores.
-- `saddlebag/`: the credentials and environments a run needs, kept out of the repository.
-- `scripts/`: the repo-level guards and the Stop review gate. No package ships this code.
-- `workflows/`: the state machines workhorse drives, each with its own `workhorse-<name>` command.
-- `workhorse/`: the engine that drives an agent CLI through a checkpointed state machine.
-
 ## Installing
 
 Install the engines. **The base library is not something you install** — it is content,
