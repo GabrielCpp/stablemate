@@ -204,7 +204,7 @@ def _written_by_the_workflow(repo: Path, subject: str = "docs(tally): write the 
     _ = git(repo, "commit", "-q", "-m", subject)
 
 
-def test_a_book_this_workflow_wrote_that_fails_its_rerun_is_a_blocker_and_sends_no_writer(
+def test_a_book_this_workflow_wrote_that_fails_its_rerun_goes_to_its_writer_once_then_is_a_blocker(
     app: App, drive_book: DriveBook, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     repo = app("tally-cli")
@@ -216,12 +216,12 @@ def test_a_book_this_workflow_wrote_that_fails_its_rerun_is_a_blocker_and_sends_
 
     result = drive_book(OkfBook(repo_dir=str(repo), surfaces=(TALLY,)), runner)
 
-    assert runner.total == 0
+    assert runner.total == 1
     assert isinstance(result, BookReport)
     assert [b.phase for b in result.blockers] == [Phase.EXERCISE]
 
 
-def test_a_book_this_workflow_repaired_that_fails_its_rerun_is_a_blocker_and_sends_no_writer(
+def test_a_book_this_workflow_repaired_that_fails_its_rerun_goes_to_its_writer_once_then_is_a_blocker(
     app: App, drive_book: DriveBook, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     repo = app("tally-cli")
@@ -233,7 +233,7 @@ def test_a_book_this_workflow_repaired_that_fails_its_rerun_is_a_blocker_and_sen
 
     result = drive_book(OkfBook(repo_dir=str(repo), surfaces=(TALLY,)), runner)
 
-    assert runner.total == 0
+    assert runner.total == 1
     assert isinstance(result, BookReport)
     assert [b.phase for b in result.blockers] == [Phase.EXERCISE]
 

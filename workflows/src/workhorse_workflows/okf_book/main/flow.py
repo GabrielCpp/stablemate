@@ -67,7 +67,7 @@ class OkfBook(BookFlow):
         return self._next_surface(reason, index)
 
     def route_book(self, index: int) -> Continue[...]:
-        """A missing book, or one with problems, goes to the writer, so a rerun after the operator's fix repairs what the last run left. A book this workflow's writer or repair last committed with no problem is run as the workflow's own, and any other one as a book the writer may still fix."""
+        """A missing book, or one with problems, goes to the writer, so a rerun after the operator's fix repairs what the last run left. A book this workflow's writer or repair last committed with no problem goes through the check again, and any other one goes straight to its run."""
         service = self.surfaces[index].service
         book = _book_folder(service)
         if not (self.root / book).is_dir():
@@ -77,7 +77,7 @@ class OkfBook(BookFlow):
             return Continue(problems, self.copy_source, index=index).because("the existing book has problems")
         if last_commit_subject(self.root, book) in (book_commit_subject(service), repaired_book_commit_subject(service)):
             return Continue(book, self.check_book, index=index).because("this workflow wrote the book: check it")
-        return Continue(problems, self.run_book, index=index, written_by_workflow=False).because(
+        return Continue(problems, self.run_book, index=index, run_failures_repaired=False).because(
             "the existing book checks clean"
         )
 
@@ -99,7 +99,9 @@ class OkfBook(BookFlow):
         tokens = source_and_book_tokens(folder_tokens(view), folder_tokens(self.root / _book_folder(surface.service)))
         reason = ceiling_blocker_reason(tokens)
         if reason is None:
-            return Continue(tokens, self.write_book, index=index).because("the source fits one writer")
+            return Continue(tokens, self.write_book, index=index, run_failures_repaired=run_failures is not None).because(
+                "the source fits one writer"
+            )
         if book_pages(self.root, surface.service):
             return Continue(tokens, self.repair_book, index=index, run_failures=run_failures).because(
                 "the book is over one writer: repair it in batches"
@@ -119,9 +121,11 @@ class OkfBook(BookFlow):
                 run_failures=run_failures or {},
             )
         )
-        return Continue(repaired, self.settle_repair, index=index, repaired=repaired).because("settle the repair")
+        return Continue(
+            repaired, self.settle_repair, index=index, repaired=repaired, run_failures_repaired=run_failures is not None
+        ).because("settle the repair")
 
-    def settle_repair(self, index: int, repaired: RepairOutcome) -> Continue[...]:
+    def settle_repair(self, index: int, repaired: RepairOutcome, run_failures_repaired: bool = False) -> Continue[...]:
         """The repair turns that ended without a reply are one blocker on the workflow, and each page too large for one writer is another. The repaired book goes to its check."""
         service = self.surfaces[index].service
         if repaired.failed_turns:
@@ -130,9 +134,11 @@ class OkfBook(BookFlow):
         for part in repaired.oversized_parts:
             blocker = Blocker(subject=f"{service}: {part.subject}", service=service, phase=Phase.WRITE, side=Side.WORKFLOW, reason=part.reason)
             _ = record_blocker(self.records_dir, blocker)
-        return Continue(repaired, self.check_book, index=index).because("check the repaired book")
+        return Continue(repaired, self.check_book, index=index, run_failures_repaired=run_failures_repaired).because(
+            "check the repaired book"
+        )
 
-    def write_book(self, index: int) -> Continue[...]:
+    def write_book(self, index: int, run_failures_repaired: bool = False) -> Continue[...]:
         """Hand the surface to its writer."""
         surface = self.surfaces[index]
         source = _source_folder(self.root, surface)
@@ -145,24 +151,30 @@ class OkfBook(BookFlow):
                 source_folder=source,
             )
         )
-        return Continue(written, self.settle_write, index=index, written=written).because("settle the writer's turn")
+        return Continue(
+            written, self.settle_write, index=index, written=written, run_failures_repaired=run_failures_repaired
+        ).because("settle the writer's turn")
 
-    def settle_write(self, index: int, written: WriteOutcome) -> Continue[...]:
+    def settle_write(self, index: int, written: WriteOutcome, run_failures_repaired: bool = False) -> Continue[...]:
         """A turn that ended without a reply is a blocker on the surface. A committed book goes to its check."""
         if not written.committed:
             return self._block_surface_and_move_on(index, written.failure)
-        return Continue(written, self.check_book, index=index).because("check the committed book")
+        return Continue(written, self.check_book, index=index, run_failures_repaired=run_failures_repaired).because(
+            "check the committed book"
+        )
 
-    def check_book(self, index: int) -> Continue[...]:
+    def check_book(self, index: int, run_failures_repaired: bool = False) -> Continue[...]:
         """Repeat the writer's own page check. Each problem it finds is a blocker, and one an earlier check found that this one does not is no longer."""
         service = self.surfaces[index].service
         problems = book_problems(self.root, service)
         forget_blockers(self.records_dir, Phase.WRITE, Side.BOOK, service)
         for problem in problems:
             _ = record_blocker(self.records_dir, Blocker(subject=f"{service}: {problem}", service=service, phase=Phase.WRITE, side=Side.BOOK, reason=problem))
-        return Continue(problems, self.run_book, index=index, written_by_workflow=True).because("run the book against the app")
+        return Continue(problems, self.run_book, index=index, run_failures_repaired=run_failures_repaired).because(
+            "run the book against the app"
+        )
 
-    def run_book(self, index: int, written_by_workflow: bool) -> Continue[...]:
+    def run_book(self, index: int, run_failures_repaired: bool) -> Continue[...]:
         """Run the book against the app, by handing off to the run flow."""
         service = self.surfaces[index].service
         exercised = ExerciseResult.model_validate(self.handoff(ExerciseBook, parent_records_dir=str(self.records_dir), service=service))
@@ -170,18 +182,18 @@ class OkfBook(BookFlow):
             exercised,
             self.settle_run,
             index=index,
-            written_by_workflow=written_by_workflow,
+            run_failures_repaired=run_failures_repaired,
             exercised=exercised,
         ).because("settle the run")
 
-    def settle_run(self, index: int, written_by_workflow: bool, exercised: ExerciseResult) -> Continue[...]:
-        """A passing book is done. A failing book this workflow did not write goes to the writer, with the failures of its run on the pages they cover. A book this workflow wrote that fails its run is a blocker, and so is a stack that cannot come up. Either way the book stays."""
+    def settle_run(self, index: int, run_failures_repaired: bool, exercised: ExerciseResult) -> Continue[...]:
+        """A passing book is done. A failing book goes to the writer once per run, with the failures of its run on the pages they cover, since a claim the run cannot exercise is a defect of the book. A book that fails its run again is a blocker, and so is a stack that cannot come up. Either way the book stays."""
         service = self.surfaces[index].service
         if exercised.summary is not None:
             _ = write_run(self.records_dir, exercised.summary)
         if exercised.passed:
             return self._next_surface(exercised.passed, index)
-        if not exercised.stack_down and not written_by_workflow:
+        if not exercised.stack_down and not run_failures_repaired:
             return Continue(exercised.passed, self.map_run_failures, index=index, exercised=exercised).because(
                 "the existing book fails its run"
             )

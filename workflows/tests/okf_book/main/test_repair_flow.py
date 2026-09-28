@@ -1,4 +1,4 @@
-"""A book over the ceiling one writer reads is repaired a batch of problem pages at a time, and a book this workflow wrote that fails its run is a blocker."""
+"""A book over the ceiling one writer reads is repaired a batch of problem pages at a time, and a book that fails its run is repaired once on the pages that failed."""
 from __future__ import annotations
 
 from functools import partial
@@ -244,16 +244,18 @@ def _repo_with_a_book_this_workflow_wrote(app: App) -> Path:
 
 
 @pytest.mark.usefixtures("failing_add")
-def test_a_book_this_workflow_wrote_that_fails_its_run_is_a_blocker_and_no_repair(app: App, drive_book: DriveBook) -> None:
+def test_a_book_this_workflow_wrote_that_fails_its_run_is_repaired_once_on_the_pages_that_failed(
+    app: App, drive_book: DriveBook, monkeypatch: pytest.MonkeyPatch
+) -> None:
     repo = _repo_with_a_book_this_workflow_wrote(app)
     runner = _repairer(repo)
+    monkeypatch.setattr(turn_budget, "SOURCE_AND_BOOK_CEILING_TOKENS", 10)
 
     result = drive_book(OkfBook(repo_dir=str(repo), surfaces=(TALLY,)), runner)
 
-    assert runner.total == 0
+    _assert_repaired_once_on_the_failed_page(runner, result)
     assert isinstance(result, BookReport)
-    assert [(b.phase, b.side) for b in result.blockers] == [(Phase.EXERCISE, Side.BOOK)]
-    assert commits(repo)[0] == "docs(tally): write the tally book"
+    assert [b.side for b in result.blockers] == [Side.BOOK]
 
 
 @pytest.mark.usefixtures("over_the_ceiling")
