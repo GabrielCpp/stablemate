@@ -93,7 +93,7 @@ USER_MANAGED = Managed(
 )
 
 
-def repo_managed(instructions: Sequence[LocalInstruction]) -> Managed:
+def repo_managed_with_claude_pointers(instructions: Sequence[LocalInstruction]) -> Managed:
     """REPO_MANAGED plus the CLAUDE.md in every localInstructions directory."""
     pointers = tuple(
         (Path(rel) / "CLAUDE.md").as_posix()

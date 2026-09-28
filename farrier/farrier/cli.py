@@ -58,7 +58,7 @@ from farrier.outputs import (
     install_outputs,
     render_expected,
     render_user_expected,
-    repo_managed,
+    repo_managed_with_claude_pointers,
     selected_hooks,
     write_text,
 )
@@ -174,7 +174,7 @@ def _run_install(args: argparse.Namespace) -> int:
             raise
         print(f"Skipped the generated-file check: {exc}")
         return 0
-    managed = repo_managed(instructions)
+    managed = repo_managed_with_claude_pointers(instructions)
     if args.check:
         return check_outputs(repo, outputs, manager, managed)
     install_outputs(repo, outputs, manager, managed)
