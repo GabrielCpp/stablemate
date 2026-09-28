@@ -28,7 +28,7 @@ SEARCH_VALUE_OPTIONS = (
     *("-f", "--file"),
     *("-g", "--glob", "-t", "--type", "-T", "--type-not", "-A", "-B", "-C", "-m", "--max-count", "-M"),
 )
-SED_OPTIONS = ("-n", "-E", "-r", "-u", "--quiet", "--silent")
+ALLOWED_SED_OPTIONS = ("-n", "-E", "-r", "-u", "--quiet", "--silent")
 SED_PRINT = re.compile(r"(?:\d+|\$)(?:,(?:\d+|\$))?p(?:;(?:\d+|\$)(?:,(?:\d+|\$))?p)*")
 HARMLESS_REDIRECT = re.compile(r"(?<=\s)2>(?:&1|/dev/null)(?=\s|\||$)")
 TIMEOUT_PROGRAM = "timeout"
@@ -93,8 +93,8 @@ def _path_denial(tokens: Sequence[str], policy: Policy) -> str | None:
 def _sed_denial(arguments: Sequence[str]) -> str | None:
     options = [argument for argument in arguments if argument.startswith("-")]
     scripts = [argument for argument in arguments if not argument.startswith("-")][:1]
-    if any(option not in SED_OPTIONS for option in options):
-        return f"`sed` runs here with {', '.join(SED_OPTIONS)} only"
+    if any(option not in ALLOWED_SED_OPTIONS for option in options):
+        return f"`sed` runs here with {', '.join(ALLOWED_SED_OPTIONS)} only"
     if not scripts or not SED_PRINT.fullmatch(scripts[0]):
         return "`sed` runs here only to print lines, as in `sed -n '1,200p' FILE`"
     return None
