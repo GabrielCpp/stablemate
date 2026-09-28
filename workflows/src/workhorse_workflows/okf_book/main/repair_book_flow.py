@@ -199,7 +199,7 @@ class RepairBook(BookFlow):
         """
         changes = turn_changes(self.root, self.service, before, this_round.batches[index], ledger.closed_pages)
         unrestorable_uncommitted = restore(self.root, changes.unowned, before)
-        for path in sorted(set(changes.unowned) - set(unrestorable_uncommitted) - {changes.entries}):
+        for path in sorted(set(changes.unowned) - set(unrestorable_uncommitted) - {changes.entries_page}):
             self.logger.warning("put back %s, which the repair turn changed outside the pages its batch owns", path)
         kept = list(changes.kept)
         if unrestorable_uncommitted:

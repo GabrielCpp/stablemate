@@ -23,22 +23,22 @@ from workhorse_workflows.okf_book.shared.entries import FEATURES_DIR, entries_pa
 class TurnChanges:
     """The book pages a repair turn changed: those its batch may keep, and those code puts back."""
 
-    entries: str
+    entries_page: str
     kept: tuple[str, ...]
     unowned: tuple[str, ...]
 
 
 def turn_changes(root: Path, service: str, before: Snapshot, batch: RepairBatch, closed_pages: tuple[str, ...]) -> TurnChanges:
     """Split the book pages the turn changed into those the batch owns and those it does not."""
-    entries = entries_path(root, service).relative_to(root).as_posix()
+    entries_page = entries_path(root, service).relative_to(root).as_posix()
     changed = book_changes(root, service, before)
     created = absent_from_head(root, changed)
     unowned = tuple(
         path
         for path in changed
-        if path == entries or path in before.digests or path in closed_pages or not batch.owns(path, created)
+        if path == entries_page or path in before.digests or path in closed_pages or not batch.owns(path, created)
     )
-    return TurnChanges(entries, tuple(path for path in changed if path not in unowned), unowned)
+    return TurnChanges(entries_page, tuple(path for path in changed if path not in unowned), unowned)
 
 
 def entry_pages_changed_beyond_links(root: Path, batch: RepairBatch, kept: Sequence[str]) -> list[str]:
@@ -57,10 +57,10 @@ def _adds_only_links(root: Path, path: str) -> bool:
 
 def pages_to_stamp(root: Path, service: str, before: Snapshot, batch: RepairBatch) -> tuple[str, ...]:
     """The pages the turn changed that its batch owns, but the entries page and the pages someone left uncommitted."""
-    entries = entries_path(root, service).relative_to(root).as_posix()
+    entries_page = entries_path(root, service).relative_to(root).as_posix()
     changed = book_changes(root, service, before)
     created = absent_from_head(root, changed)
-    return tuple(path for path in changed if path != entries and path not in before.digests and batch.owns(path, created))
+    return tuple(path for path in changed if path != entries_page and path not in before.digests and batch.owns(path, created))
 
 
 def stamp_repaired_pages(root: Path, pages: tuple[str, ...]) -> None:
