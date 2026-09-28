@@ -130,7 +130,7 @@ class PairReading:
     after: object
 
 
-def _pair(check: str) -> Callable[[object, Args], PairReading]:
+def _read_pair(check: str) -> Callable[[object, Args], PairReading]:
     """A reader insisting on the before/after a differential check needs, rather than inferring it."""
 
     def read(observed: object, args: Args) -> PairReading:
@@ -473,7 +473,7 @@ class ControlReading:
     enabled: bool
 
 
-def _control(check: str) -> Callable[[object, Args], ControlReading]:
+def _read_control(check: str) -> Callable[[object, Args], ControlReading]:
     def read(observed: object, args: Args) -> ControlReading:
         is_enabled = getattr(observed, "is_enabled", None)
         if not callable(is_enabled):
@@ -658,17 +658,17 @@ VERIFIERS: dict[str, Verifier] = {
     "http_status": _check(_read_response, _verify_http_status),
     "response_header": _check(_read_headers, _verify_response_header),
     "json_path": _check(_read_document, _verify_json_path),
-    "unchanged": _check(_pair("unchanged"), _verify_unchanged),
-    "keys_unchanged": _check(_pair("keys_unchanged"), _verify_keys_unchanged),
+    "unchanged": _check(_read_pair("unchanged"), _verify_unchanged),
+    "keys_unchanged": _check(_read_pair("keys_unchanged"), _verify_keys_unchanged),
     "count": _check(_read_countable, _verify_count),
     "absent": _check(_read_absence, _verify_absent),
-    "created": _check(_pair("created"), _verify_created),
-    "removed": _check(_pair("removed"), _verify_removed),
+    "created": _check(_read_pair("created"), _verify_created),
+    "removed": _check(_read_pair("removed"), _verify_removed),
     "visible": _check(_read_visibility, _verify_visible),
-    "actionable": _check(_control("actionable"), _verify_actionable),
-    "inert": _check(_control("inert"), _verify_inert),
+    "actionable": _check(_read_control("actionable"), _verify_actionable),
+    "inert": _check(_read_control("inert"), _verify_inert),
     "focusable": _check(_read_focus, _verify_focusable),
-    "persists": _check(_pair("persists"), _verify_persists),
+    "persists": _check(_read_pair("persists"), _verify_persists),
     "emitted": _check(_read_size, _verify_emitted),
     "omits": _check(_read_body, _verify_omits),
     "exit_status": _check(_read_exit, _verify_exit_status),
