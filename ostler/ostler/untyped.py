@@ -1,8 +1,10 @@
-"""Narrowing helpers for data that came off disk untyped."""
+"""Narrowing helpers for data that came off disk untyped, and the JSON value type it narrows to."""
 
 from __future__ import annotations
 
 from typing import Any, TypeGuard
+
+type JsonValue = None | bool | int | float | str | list[JsonValue] | dict[str, JsonValue]
 
 
 def is_mapping(value: object) -> TypeGuard[dict[str, Any]]:

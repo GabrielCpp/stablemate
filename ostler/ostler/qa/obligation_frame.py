@@ -4,9 +4,8 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
-from typing import Any
-
 from ostler import markdown, registry
+from ostler.untyped import JsonValue
 
 _LOCATOR_KEYS = tuple(sorted(registry.LOCATOR_KEYS))
 _LOCATOR_KEY_RENAME = {"exclusive-with": "exclusiveWith"}
@@ -21,7 +20,7 @@ class JourneyStep:
     node_type: str
     surface: str
 
-    def row(self) -> dict[str, str]:
+    def row(self) -> dict[str, JsonValue]:
         """The step as the obligation row carries it."""
         return {"ref": self.ref, "href": self.href, "nodeType": self.node_type, "surface": self.surface}
 
@@ -46,7 +45,7 @@ class Segment:
             raise ValueError(f"a template segment has an unknown shape: {raw!r}")
         return cls(kind=kind, value=value)
 
-    def row(self) -> dict[str, str]:
+    def row(self) -> dict[str, JsonValue]:
         """The segment as the obligation row carries it."""
         return {"kind": self.kind, _SEGMENT_FIELDS[self.kind]: self.value}
 
@@ -94,9 +93,9 @@ class Variants:
             raise ValueError(f"a variant axis has an unknown shape: {raw!r}")
         return cls(path=path, values=tuple(str(value) for value in values))
 
-    def row(self) -> dict[str, Any]:
+    def row(self) -> dict[str, JsonValue]:
         """The axis as the obligation row carries it."""
-        return {"path": self.path, "values": list(self.values)}
+        return {"path": self.path, "values": [*self.values]}
 
 
 @dataclass(frozen=True, slots=True)
@@ -128,9 +127,9 @@ class RepeatContract:
             variants=Variants.parse(raw.get("variants")),
         )
 
-    def row(self) -> dict[str, Any]:
+    def row(self) -> dict[str, JsonValue]:
         """The contract as the obligation row carries it, leaving out what the node does not state."""
-        fields: dict[str, Any] = {"onePer": self.one_per, "binds": list(self.binds)}
+        fields: dict[str, JsonValue] = {"onePer": self.one_per, "binds": [*self.binds]}
         if self.template is not None:
             fields["template"] = self.template.template
             fields["iterates"] = self.template.iterates
@@ -153,9 +152,9 @@ class ObligationFrame:
     extends_unresolved: bool
     repeat: RepeatContract | None
 
-    def row(self) -> dict[str, Any]:
+    def row(self) -> dict[str, JsonValue]:
         """The frame as the obligation row carries it, leaving out what the node does not state."""
-        fields: dict[str, Any] = {}
+        fields: dict[str, JsonValue] = {}
         if self.surface:
             fields["surface"] = self.surface
         if self.steps:
@@ -165,7 +164,7 @@ class ObligationFrame:
         if self.extends_unresolved:
             fields["extendsUnresolved"] = True
         if self.locators:
-            fields["locators"] = self.locators
+            fields["locators"] = {key: [*values] for key, values in self.locators.items()}
         if self.repeat is not None:
             fields["repeat"] = self.repeat.row()
         return fields

@@ -19,6 +19,7 @@ from typing import Any
 from ostler import path as path_mod
 from ostler.model import load as load_graph
 from ostler.routes import arrived_at, literal_route, screen_routes
+from ostler.untyped import JsonValue
 from ostler.qa import book_fixtures as qa_book_fixtures
 from ostler.qa import fixtures as qa_fixtures
 from ostler.qa import tools as qa_tools
@@ -71,9 +72,6 @@ def _covers_in(
 
 
 DEFAULT_VIEWPORT = {"width": 1440, "height": 900}
-
-
-type JsonValue = None | bool | int | float | str | list[JsonValue] | dict[str, JsonValue]
 
 
 @dataclass(frozen=True)

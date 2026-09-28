@@ -59,7 +59,7 @@ says how to use it. This page says where each concern lives.
 - `testsupport.py`: the plumbing for a test suite that gates its own inline book fixtures.
 - `todo.py`: `ostler todo`, the epics queue as markdown.
 - `trace.py`: `ostler trace`, a walk of the organization graph from any node.
-- `untyped.py`: narrowing helpers for data that came off disk untyped.
+- `untyped.py`: narrowing helpers for data that came off disk untyped, and the JSON value type it narrows to.
 - `util.py`: small runtime compatibility helpers.
 - `values.py`: one parser for each value kind a bullet key declares.
 - `artifact/`: `ostler artifact`, schema-checked workflow artifacts.
