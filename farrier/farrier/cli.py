@@ -62,7 +62,7 @@ from farrier.outputs import (
     selected_hooks,
     write_text,
 )
-from farrier.renderer import Renderer
+from farrier.renderer import LOCAL_TEXT_SOURCE, Renderer
 from farrier.scaffolds import (
     available_scaffold_ids,
     fetch_scaffold_url,
@@ -277,13 +277,15 @@ def mapped_instruction_sources(generated: Path) -> list[str] | None:
     skill_names: list[str] = []
     prompt_names: list[str] = []
     policy_names: list[str] = []
+    local_text = ""
     for instruction in local_instructions(config):
         for rel in instruction.paths:
             if (repo / rel).resolve() == directory:
                 skill_names = instruction.skills
                 prompt_names = instruction.prompts
                 policy_names = instruction.policies
-    if not skill_names and not prompt_names and not policy_names:
+                local_text = instruction.text.strip()
+    if not skill_names and not prompt_names and not policy_names and not local_text:
         raise SystemExit(
             f"error: {generated} is not mapped by {config_path} → "
             "localInstructions — the mapping was removed or moved, so this file "
@@ -311,7 +313,7 @@ def mapped_instruction_sources(generated: Path) -> list[str] | None:
         for source in renderer.instruction_sources(
             skill_names, prompt_names, policy_names
         )
-    ]
+    ] + ([LOCAL_TEXT_SOURCE] if local_text else [])
 
 
 def _run_source(args: argparse.Namespace) -> int:
@@ -340,6 +342,9 @@ def _run_source(args: argparse.Namespace) -> int:
             "farrier banner — it is not a farrier-generated file."
         )
     for rel in rel_sources:
+        if rel == LOCAL_TEXT_SOURCE and generated.name in LOCAL_INSTRUCTION_FILES:
+            print(find_agents_config(generated.parent))
+            continue
         hit = find_in_layers(rel)
         if hit is None or not hit[1].is_file():
             raise SystemExit(

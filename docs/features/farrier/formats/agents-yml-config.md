@@ -186,6 +186,12 @@ about the repo. `farrier source AGENTS.md` resolves the provenance instead.
   copied into `AGENTS.md` under a `## Local README` heading, and the pointer does not import it a
   second time. The legacy `inline`/`import`/`none` spellings still parse, as `true`/`true`/`false`;
   any other string raises `SystemExit`.
+- `text` — type: `string` — required: no — default: `""`. Repo-specific text written after the
+  library sources and before the folded `README.md`, behind the same `---` rule. It is the place
+  for text that belongs in one generated `AGENTS.md` only, such as that directory's `## Map`. It
+  renders through the same template helpers as the library bodies. A mapping may carry `text`
+  alone, with no library source. A non-string value raises `SystemExit`. The drift report and
+  `farrier source` name `agents.yml` as the source of this part.
 
 For each `paths` entry, `AGENTS.md` is always written, and `CLAUDE.md` additionally when the
 entry sets `claudeMd: true`. Template helpers inside the aggregated bodies resolve against the shared `.agents/`

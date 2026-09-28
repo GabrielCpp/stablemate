@@ -292,6 +292,7 @@ def render_expected(
                 include_readme and not readme_import,
                 prompt_names,
                 policy_names,
+                instruction.text,
             )
             if writes_claude_md:
                 claude_path = directory / "CLAUDE.md"

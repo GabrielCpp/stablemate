@@ -250,3 +250,69 @@ def test_an_entry_that_is_no_mapping_is_rejected(tmp_path):
     with pytest.raises(SystemExit) as exc:
         _render(tmp_path, "  - demo-stablemate-ostler\n")
     assert "must be a mapping" in str(exc.value)
+
+
+def test_text_is_written_after_the_library_sources_and_before_the_readme(tmp_path):
+    root = _library(tmp_path)
+    set_layers(root)
+    repo = _repo(
+        tmp_path,
+        "  - skill: demo-stablemate-ostler\n"
+        '    paths: ["."]\n'
+        "    text: |\n"
+        "      ## Map\n\n"
+        "      - `api/`: the HTTP surface.\n",
+    )
+    (repo / "README.md").write_text("# Demo\n\nThe readme.\n", encoding="utf-8")
+    from farrier.frontmatter import local_instructions, read_yaml
+
+    config = read_yaml(repo / "agents.yml")
+    body = render_expected(config, repo, local_instructions(config))[repo / "AGENTS.md"]
+    assert body.index("Ostler rules.") < body.index("## Map") < body.index("The readme.")
+    assert "- `api/`: the HTTP surface." in body
+
+
+def test_text_only_mapping_needs_no_library_source(tmp_path):
+    repo, outputs = _render(
+        tmp_path,
+        '  - paths: ["."]\n    includeReadme: false\n    text: "## Map\\n"\n',
+    )
+    assert outputs[repo / "AGENTS.md"].strip() == "## Map"
+
+
+def test_non_string_text_is_rejected(tmp_path):
+    with pytest.raises(SystemExit) as exc:
+        _render(tmp_path, '  - skill: demo-stablemate-ostler\n    paths: ["."]\n    text: [a]\n')
+    assert "localInstructions.text" in str(exc.value)
+
+
+def test_drift_in_the_text_is_attributed_to_agents_yml(tmp_path):
+    from farrier.drift import attribute
+
+    repo, outputs = _render(
+        tmp_path,
+        "  - skill: demo-stablemate-ostler\n"
+        '    paths: ["."]\n'
+        "    includeReadme: false\n"
+        '    text: "- `api/`: the HTTP surface.\\n"\n',
+    )
+    expected = outputs[repo / "AGENTS.md"]
+    edited = expected.replace("the HTTP surface", "the HTTP and gRPC surface")
+    assert attribute(expected, edited) == {"agents.yml"}
+
+
+def test_source_resolves_the_text_to_the_repo_config(tmp_path, capsys):
+    root = _library(tmp_path)
+    repo = _repo(
+        tmp_path,
+        "  - skill: demo-stablemate-ostler\n"
+        '    paths: ["."]\n'
+        '    text: "## Map\\n"\n',
+    )
+    generated = repo / "AGENTS.md"
+    generated.write_text("# Body\n", encoding="utf-8")
+    assert main(["source", str(generated), "--library", str(root)]) == 0
+    assert capsys.readouterr().out.strip().splitlines() == [
+        str((root / "library/skills/stablemate/ostler/SKILL.md").resolve()),
+        str(repo / "agents.yml"),
+    ]

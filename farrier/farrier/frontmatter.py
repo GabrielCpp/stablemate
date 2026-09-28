@@ -118,6 +118,16 @@ def mapping_writes_claude_md(mapping: dict[str, Any]) -> bool:
     return value
 
 
+def mapping_text(mapping: dict[str, Any]) -> str:
+    """The repo-specific text a localInstructions mapping writes after its library sources."""
+    value = mapping.get("text", "")
+    if value is None:
+        return ""
+    if not isinstance(value, str):
+        raise SystemExit(f"localInstructions.text must be a string (got {value!r})")
+    return value
+
+
 @dataclass(frozen=True)
 class LocalInstruction:
     """One checked localInstructions entry of agents.yml."""
@@ -128,6 +138,7 @@ class LocalInstruction:
     policies: list[str]
     include_readme: bool
     writes_claude_md: bool
+    text: str = ""
 
 
 def _instruction_paths(mapping: dict[str, Any]) -> tuple[str, ...]:
@@ -156,11 +167,18 @@ def local_instructions(config: dict[str, Any]) -> tuple[LocalInstruction, ...]:
             policies=mapping_policy_names(mapping),
             include_readme=mapping_include_readme(mapping),
             writes_claude_md=mapping_writes_claude_md(mapping),
+            text=mapping_text(mapping),
         )
-        if not instruction.skills and not instruction.prompts and not instruction.policies:
+        if not (
+            instruction.skills
+            or instruction.prompts
+            or instruction.policies
+            or instruction.text.strip()
+        ):
             raise SystemExit(
                 "A localInstructions entry must select at least one source "
-                "(`policy`/`policies`, `skill`/`skills` and/or `prompt`/`prompts`)"
+                "(`policy`/`policies`, `skill`/`skills` and/or `prompt`/`prompts`) "
+                "or carry `text`"
             )
         parsed.append(instruction)
     return tuple(parsed)

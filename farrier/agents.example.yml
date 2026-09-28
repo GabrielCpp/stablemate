@@ -126,6 +126,10 @@ localInstructions:
   - skills: [myrepo, myrepo-developer]
     paths: ["."]              # repo root
     includeReadme: false
+    text: |
+      ## Map
+
+      - `api/`: the HTTP service.
   - skill: myrepo-go
     paths: ["api"]            # write under api/
     includeReadme: true

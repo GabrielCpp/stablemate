@@ -48,7 +48,7 @@ def _sources_clause(sources: list[str], drifted: set[str]) -> str:
         f"    - {rel}" + ("  <- the drift is in this one" if rel in drifted else "")
         for rel in sources
     )
-    return "  It is generated from these library files, in render order:\n" + listed
+    return "  It is generated from these files, in render order:\n" + listed
 
 
 def changed_report(rel: str, sources: list[str], drifted: set[str]) -> str:

@@ -40,6 +40,9 @@ from farrier.sources import (
 )
 
 
+LOCAL_TEXT_SOURCE = "agents.yml"
+
+
 class Rendered(str):
     """A generated file's text, plus how it must be written."""
 
@@ -680,6 +683,7 @@ class Renderer:
         include_readme: bool = True,
         prompt_names: list[str] | None = None,
         policy_names: list[str] | None = None,
+        text: str = "",
     ) -> str:
         """The aggregated AGENTS.md for one localInstructions mapping."""
         parts: list[tuple[str, str]] = []
@@ -690,6 +694,9 @@ class Renderer:
             part = self.render_templates(body, target, output_path).strip()
             if part:
                 parts.append((library_source_path(source), part))
+        local_text = self.render_templates(text, target, output_path).strip()
+        if local_text:
+            parts.append((LOCAL_TEXT_SOURCE, local_text))
         rendered = "\n\n---\n\n".join(part for _, part in parts)
 
         readme = output_path.parent / "README.md"
