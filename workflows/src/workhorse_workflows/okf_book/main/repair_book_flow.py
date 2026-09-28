@@ -96,7 +96,7 @@ class RepairBook(BookFlow):
         """Commit the entries page. A refused commit waits for the operator."""
         refusal = commit_returning_refusal(self.root, rooted_book_commit_subject(self.service), page)
         if refusal:
-            return self._commit_refused(refusal, self.commit_root, uncommitted_at_start=uncommitted_at_start, page=page)
+            return self._await_operator_on_refused_commit(refusal, self.commit_root, uncommitted_at_start=uncommitted_at_start, page=page)
         return Continue(page, self.plan_first_round, uncommitted_at_start=uncommitted_at_start).because("the book is rooted")
 
     def plan_first_round(self, uncommitted_at_start: tuple[str, ...]) -> Continue[...] | Done:
@@ -294,7 +294,7 @@ class RepairBook(BookFlow):
         """Commit the batch's pages. A refused commit waits for the operator."""
         refusal = commit_returning_refusal(self.root, repaired_book_commit_subject(self.service), *pages)
         if refusal:
-            return self._commit_refused(refusal, self.commit_pages, ledger=ledger, this_round=this_round, index=index, pages=pages)
+            return self._await_operator_on_refused_commit(refusal, self.commit_pages, ledger=ledger, this_round=this_round, index=index, pages=pages)
         return Continue(pages, self.close_batch, ledger=ledger, this_round=this_round, index=index).because(
             "close the pages the batch left clean"
         )

@@ -107,7 +107,7 @@ class WriteBook(BookFlow):
         pages = book_changes(self.root, service, before)
         refusal = commit_returning_refusal(self.root, unfinished_book_commit_subject(service), *pages)
         if refusal:
-            return self._commit_refused(refusal, self.commit_unfinished, before=before, failure=failure)
+            return self._await_operator_on_refused_commit(refusal, self.commit_unfinished, before=before, failure=failure)
         return Done(WriteOutcome(committed=False, failure=failure)).because("the writer's turn failed")
 
     def put_back(self, before: Snapshot) -> Continue[...]:
@@ -130,5 +130,5 @@ class WriteBook(BookFlow):
         """Commit the book's changed pages. A retry after the commit landed finds nothing to commit. A refused commit waits for the operator."""
         refusal = commit_returning_refusal(self.root, book_commit_subject(self.surface_to_write.service), *pages)
         if refusal:
-            return self._commit_refused(refusal, self.commit_book, pages=pages)
+            return self._await_operator_on_refused_commit(refusal, self.commit_book, pages=pages)
         return Done(WriteOutcome(committed=True)).because("the book is committed")

@@ -22,7 +22,7 @@ class BookFlow(Workflow):
     def records_dir(self) -> Path:
         return Path(self.parent_records_dir) if self.parent_records_dir else self.run_dir
 
-    def _commit_refused[**P](self, refusal: str, retry: Callable[P, Transition], *args: P.args, **kwargs: P.kwargs) -> Await[P]:
+    def _await_operator_on_refused_commit[**P](self, refusal: str, retry: Callable[P, Transition], *args: P.args, **kwargs: P.kwargs) -> Await[P]:
         """Stop at the operator when the repo refused a book commit. Their answer tries the same commit again."""
         return Await(
             self.run_dir / COMMIT_GATE,
