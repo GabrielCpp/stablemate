@@ -17,7 +17,7 @@ from okf_book.main.tally import (
     PAGE,
     REFUSAL,
     TALLY,
-    answer,
+    answering_operator,
     no_problems,
     pages_until_noted,
     refuse_commits_until_answered,
@@ -209,7 +209,7 @@ def failing_add(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(flow, "book_problems", no_problems)
     monkeypatch.setattr(flow, "plan_scenarios", _planned)
     monkeypatch.setattr(repair_book_flow, "page_problems", _no_page_problems)
-    monkeypatch.setattr(pyflow_driver, "wait_for_answer", answer([]))
+    monkeypatch.setattr(pyflow_driver, "wait_for_answer", answering_operator([]))
 
 
 def _assert_repaired_once_on_the_failed_page(runner: ScriptedRunner, result: object) -> None:
@@ -275,7 +275,7 @@ def test_a_turn_that_changed_a_page_someone_left_uncommitted_waits_for_the_opera
 ) -> None:
     repo = app("tally-cli")
     asked: list[str] = []
-    monkeypatch.setattr(pyflow_driver, "wait_for_answer", answer(asked))
+    monkeypatch.setattr(pyflow_driver, "wait_for_answer", answering_operator(asked))
     _ = (repo / OTHER_PAGE).write_text((repo / OTHER_PAGE).read_text(encoding="utf-8") + "their edit\n", encoding="utf-8")
 
     result = drive_book(OkfBook(repo_dir=str(repo), surfaces=(TALLY,)), repairer_also_editing(repo, OTHER_PAGE))

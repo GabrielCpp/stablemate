@@ -46,7 +46,7 @@ def stub_the_run_to(monkeypatch: pytest.MonkeyPatch, exercised: ExerciseResult) 
     monkeypatch.setattr(exercise_book_flow, "run_plan", _run)
 
 
-def answer(asked: list[str]) -> Callable[..., None]:
+def answering_operator(asked: list[str]) -> Callable[..., None]:
     def _operator(path: Path, **_kwargs: object) -> None:
         asked.append(path.read_text(encoding="utf-8"))
         _ = path.write_text("STATUS: ANSWERED\n\nRead it.\n", encoding="utf-8")
@@ -108,4 +108,4 @@ def repair_over_the_ceiling(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(flow, "book_problems", until_noted)
     monkeypatch.setattr(turn_budget, "SOURCE_AND_BOOK_CEILING_TOKENS", 10)
     monkeypatch.setattr(repair_book_flow, "page_problems", pages_until_noted)
-    monkeypatch.setattr(pyflow_driver, "wait_for_answer", answer([]))
+    monkeypatch.setattr(pyflow_driver, "wait_for_answer", answering_operator([]))
