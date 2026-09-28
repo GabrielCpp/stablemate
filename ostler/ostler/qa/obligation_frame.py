@@ -39,8 +39,8 @@ class Segment:
     def parse(cls, raw: Mapping[str, object]) -> Segment:
         """The segment a compiled locator carries, refusing a kind the compiler does not emit."""
         kind = str(raw.get("kind", ""))
-        field = _SEGMENT_FIELDS.get(kind)
-        value = raw.get(field) if field is not None else None
+        value_key = _SEGMENT_FIELDS.get(kind)
+        value = raw.get(value_key) if value_key is not None else None
         if not isinstance(value, str):
             raise ValueError(f"a template segment has an unknown shape: {raw!r}")
         return cls(kind=kind, value=value)
