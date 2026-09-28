@@ -188,7 +188,7 @@ class _PageSplitter:
     def _oversized(self, page: str, tokens: int, section: str | None = None) -> OversizedPart:
         return OversizedPart(page=page, tokens=tokens, ceiling=self.ceiling, with_journey=self.with_journey, section=section)
 
-    def _section_units(self, page: str, text: str, problems: tuple[PageProblem, ...]) -> _PageSplit:
+    def _split_by_section(self, page: str, text: str, problems: tuple[PageProblem, ...]) -> _PageSplit:
         parts = page_sections(text)
         by_section: dict[str, list[PageProblem]] = {}
         for problem in problems:
@@ -213,7 +213,7 @@ class _PageSplitter:
         if tokens_alone <= self.ceiling:
             return _PageSplit([whole], [])
         if len(page_sections(text).sections) > 1:
-            return self._section_units(page, text, problems)
+            return self._split_by_section(page, text, problems)
         return _PageSplit([], [self._oversized(page, tokens_alone)])
 
 
