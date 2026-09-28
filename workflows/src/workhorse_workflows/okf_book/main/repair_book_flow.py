@@ -79,7 +79,7 @@ class RepairBook(BookFlow):
         by_page = problems_by_page(problems, frozenset(uncommitted_at_start))
         journey = journey_pages(self.root, self.service, frozenset(uncommitted_at_start))
         ledger = RepairLedger(uncommitted_at_start=uncommitted_at_start, planned_pages=tuple(by_page), journey=journey)
-        return self._first_batch_or_done(ledger, RepairRound(number=1), by_page, problems)
+        return self._pack_round(ledger, RepairRound(number=1), by_page, problems)
 
     def plan_round(self, ledger: RepairLedger, last: RepairRound, problems: tuple[PageProblem, ...]) -> Continue[...] | Done:
         """Pack the planned pages still open that have problems now. A spent repair ends with what is left."""
@@ -101,9 +101,9 @@ class RepairBook(BookFlow):
                 len(unplanned_flow_pages),
                 ", ".join(unplanned_flow_pages),
             )
-        return self._first_batch_or_done(ledger, RepairRound(number=last.number + 1), by_page, problems)
+        return self._pack_round(ledger, RepairRound(number=last.number + 1), by_page, problems)
 
-    def _first_batch_or_done(
+    def _pack_round(
         self,
         ledger: RepairLedger,
         this_round: RepairRound,
