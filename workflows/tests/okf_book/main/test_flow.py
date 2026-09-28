@@ -26,7 +26,7 @@ from workhorse.pyflow import driver as pyflow_driver
 from workhorse.pyflow.graph import preflight, registry_graphs, state_graph
 from workhorse.runner.failure import BackendInvocationError
 
-from workhorse_workflows.okf_book.main import exercise_book_flow, flow, repair_book_flow, write_book_flow
+from workhorse_workflows.okf_book.main import exercise_book_flow, flow, repair_book_flow, root_book_flow, write_book_flow
 from workhorse_workflows.okf_book.main.nodes import turn_budget
 from workhorse_workflows.okf_book.main.nodes.source_view import source_view_folder
 from workhorse_workflows.okf_book.main.nodes.writer_commands import CHECK_MODULE, EXERCISE_MODULE, OSTLER_MODULE
@@ -312,9 +312,15 @@ def test_a_run_with_no_surface_fails(app: App, drive_book: DriveBook) -> None:
         _ = drive_book(OkfBook(repo_dir=str(repo)), ScriptedRunner({}))
 
 
-@pytest.mark.parametrize("machine", [OkfBook, exercise_book_flow.ExerciseBook, write_book_flow.WriteBook, repair_book_flow.RepairBook])
+@pytest.mark.parametrize(
+    "machine", [OkfBook, exercise_book_flow.ExerciseBook, write_book_flow.WriteBook, repair_book_flow.RepairBook, root_book_flow.RootBook]
+)
 def test_every_transition_says_why(
-    machine: type[OkfBook] | type[exercise_book_flow.ExerciseBook] | type[write_book_flow.WriteBook] | type[repair_book_flow.RepairBook],
+    machine: type[OkfBook]
+    | type[exercise_book_flow.ExerciseBook]
+    | type[write_book_flow.WriteBook]
+    | type[repair_book_flow.RepairBook]
+    | type[root_book_flow.RootBook],
 ) -> None:
     edges = [edge for node in state_graph(machine).states for edge in node.edges]
     assert edges

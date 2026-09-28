@@ -1,4 +1,4 @@
-"""The repair of a book: code roots it, then one confined turn per batch of problem pages fixes them, round after round.
+"""The repair of a book: once its root is committed, one confined turn per batch of problem pages fixes them, round after round.
 
 A book goes to its repair when it is too large for one writer. When the book failed its run, the
 run's failures are the first round's problems on the pages they cover.
@@ -31,15 +31,14 @@ from workhorse_workflows.okf_book.main.nodes.repair_put_back import (
     stamp_repaired_pages,
     turn_changes,
 )
-from workhorse_workflows.okf_book.main.nodes.root_entries import write_root_entries
 from workhorse_workflows.okf_book.main.nodes.surface import Surface
 from workhorse_workflows.okf_book.main.nodes.writer_commands import WriterCommandState, write_command_state
 from workhorse_workflows.okf_book.main.nodes.writer_request import writer_request
+from workhorse_workflows.okf_book.main.root_book_flow import RootBook, RootedBook
 from workhorse_workflows.okf_book.shared.blockers import Phase
-from workhorse_workflows.okf_book.shared.book_commits import repaired_book_commit_subject, rooted_book_commit_subject
+from workhorse_workflows.okf_book.shared.book_commits import repaired_book_commit_subject
 from workhorse_workflows.okf_book.shared.book_flow import BookFlow
-from workhorse_workflows.okf_book.shared.confine import Snapshot, absent_from_head, in_book, put_back_outside, restore, snapshot
-from workhorse_workflows.okf_book.shared.entries import entries_path
+from workhorse_workflows.okf_book.shared.confine import Snapshot, put_back_outside, restore, snapshot
 from workhorse_workflows.okf_book.shared.metrics import TurnMetric, record_turn, turn_metric
 from workhorse_workflows.okf_book.shared.page_check import PageProblem, page_problems
 
@@ -49,7 +48,7 @@ UNCOMMITTED_PAGE_GATE = "uncommitted-page-changed.md"
 
 
 class RepairBook(BookFlow):
-    """Roots the book, then sends one repair turn per batch of problem pages until the check is clean or the rounds are spent."""
+    """Has the book rooted, then sends one repair turn per batch of problem pages until the check is clean or the rounds are spent."""
 
     surface: Surface | None = None
     book_folder: str = ""
@@ -67,29 +66,11 @@ class RepairBook(BookFlow):
         return self.surface_to_repair.service
 
     def start(self) -> Continue[...]:
-        """Record the book pages someone left uncommitted, so no turn is sent them and no commit takes them."""
-        uncommitted_at_start = tuple(sorted(path for path in snapshot(self.root).digests if in_book(self.service, path)))
-        return Continue(uncommitted_at_start, self.root_book, uncommitted_at_start=uncommitted_at_start).because("root the book")
-
-    def root_book(self, uncommitted_at_start: tuple[str, ...]) -> Continue[...]:
-        """Write and commit the entries page of a book HEAD holds none for, so every check can tell what it reaches.
-
-        A page someone left uncommitted roots the book as it is. One an earlier try of this state wrote is still committed here, since no later state commits it.
-        """
-        path = entries_path(self.root, self.service)
-        page = path.relative_to(self.root).as_posix()
-        if page not in absent_from_head(self.root, (page,)) or page in uncommitted_at_start:
-            return Continue(None, self.plan_first_round, uncommitted_at_start=uncommitted_at_start).because("the book has its root")
-        if not path.is_file():
-            page = write_root_entries(self.root, self.service)
-        return Continue(page, self.commit_root, uncommitted_at_start=uncommitted_at_start, page=page).because("commit the entries page")
-
-    def commit_root(self, uncommitted_at_start: tuple[str, ...], page: str) -> Continue[...] | Await[...]:
-        """Commit the entries page. A refused commit waits for the operator."""
-        refusal = commit_returning_refusal(self.root, rooted_book_commit_subject(self.service), page)
-        if refusal:
-            return self._await_operator_on_refused_commit(refusal, self.commit_root, uncommitted_at_start=uncommitted_at_start, page=page)
-        return Continue(page, self.plan_first_round, uncommitted_at_start=uncommitted_at_start).because("the book is rooted")
+        """Hand the book to its root, which records the pages someone left uncommitted so no turn is sent them and no commit takes them."""
+        rooted = RootedBook.model_validate(
+            self.handoff(RootBook, parent_records_dir=str(self.records_dir), service=self.service)
+        )
+        return Continue(rooted, self.plan_first_round, uncommitted_at_start=rooted.uncommitted_at_start).because("the book is rooted")
 
     def plan_first_round(self, uncommitted_at_start: tuple[str, ...]) -> Continue[...] | Done:
         """Plan the pages the repair works on: each page the check or the failed run finds a problem on, but one someone left uncommitted."""

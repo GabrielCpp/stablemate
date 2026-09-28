@@ -26,10 +26,11 @@ from okf_book.main.tally import (
     stub_the_run_to,
 )
 from okf_book.support import ScriptedRunner, commits, git
+from workhorse.pyflow import Continue, Done
 from workhorse.pyflow import driver as pyflow_driver
 from workhorse.runner.failure import BackendInvocationError
 
-from workhorse_workflows.okf_book.main import flow, repair_book_flow
+from workhorse_workflows.okf_book.main import flow, repair_book_flow, root_book_flow
 from workhorse_workflows.okf_book.main.nodes import turn_budget
 from workhorse_workflows.okf_book.main.nodes.repair_batches import PageRepair, pack_repairs
 from workhorse_workflows.okf_book.main.nodes.report import BookReport
@@ -80,12 +81,14 @@ def test_an_existing_book_over_the_ceiling_is_rooted_repaired_page_by_page_and_r
 def test_a_retried_root_still_commits_the_entries_page_an_earlier_try_wrote(app: App) -> None:
     """No later state commits the entries page, so a try stopped between its write and its commit must not read as rooted."""
     repo = app("tally-cli")
-    book = repair_book_flow.RepairBook(repo_dir=str(repo), surface=TALLY)
+    book = root_book_flow.RootBook(repo_dir=str(repo), service="tally")
 
     first = book.root_book(uncommitted_at_start=())
     written = (repo / "docs/features/tally/entries.md").read_text(encoding="utf-8")
     retried = book.root_book(uncommitted_at_start=())
 
+    assert isinstance(first, Continue)
+    assert isinstance(retried, Continue)
     assert (first.state, retried.state) == ("commit_root", "commit_root")
     assert retried.params == first.params
     assert (repo / "docs/features/tally/entries.md").read_text(encoding="utf-8") == written
@@ -95,9 +98,9 @@ def test_an_entries_page_someone_left_uncommitted_roots_the_book_as_it_is(app: A
     repo = app("tally-cli")
     page = "docs/features/tally/entries.md"
     _ = (repo / page).write_text("---\ntype: entries\n---\n", encoding="utf-8")
-    book = repair_book_flow.RepairBook(repo_dir=str(repo), surface=TALLY)
+    book = root_book_flow.RootBook(repo_dir=str(repo), service="tally")
 
-    assert book.root_book(uncommitted_at_start=(page,)).state == "plan_first_round"
+    assert isinstance(book.root_book(uncommitted_at_start=(page,)), Done)
 
 
 @pytest.mark.usefixtures("over_the_ceiling")
