@@ -76,8 +76,11 @@ gives relative to the repository starts there.
   change nothing else: add the link under the heading it belongs to. Code puts back such a page
   when a turn changed more than that.
 {% endif %}
+- A `fixture:` that names a fixture the repository does not declare is fixed by declaring it:
+  write its `fixture` page under `{{ fixture_folder }}/`, as the skill's fixture reference says.
+  You may write and change any page in that folder.
 - Do not edit `entries.md`. Code writes it.
-- Change no page but {% if flow_folder %}those above{% else %}yours{% endif %}. Code puts back every other change when the turn ends, so
+- Change no page but {% if flow_folder %}those above{% else %}yours{% endif %} and the fixture pages. Code puts back every other change when the turn ends, so
   a fix made there is lost. The check below covers your pages and reports every problem your edits
   cause on a page you did not touch, such as an endpoint a flow you edited no longer walks.
 

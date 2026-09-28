@@ -7,6 +7,7 @@ from pathlib import Path
 from ostler.qa.tools import catalog
 from workhorse.runner.backends import AgentProfile
 from workhorse_workflows.okf_book.main.nodes.repair_batch_models import RepairBatch
+from workhorse_workflows.okf_book.main.nodes.repair_put_back import fixture_folder
 from workhorse_workflows.okf_book.main.nodes.source_view import source_view_folder
 from workhorse_workflows.okf_book.main.nodes.surface import Surface
 from workhorse_workflows.okf_book.main.nodes.turn_budget import WRITER_STEPS
@@ -87,6 +88,7 @@ class WriterRequest:
             "journey_pages": list(batch.journey.pages) if batch.journey else [],
             "flow_folder": batch.journey.flow_folder if batch.journey else "",
             "new_flow_page": batch.new_flow_page,
+            "fixture_folder": fixture_folder(self.surface.service),
         }
 
     @property

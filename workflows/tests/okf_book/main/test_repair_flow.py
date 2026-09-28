@@ -271,6 +271,21 @@ def test_a_page_the_turn_changed_outside_its_batch_is_put_back(app: App, drive_b
 
 
 @pytest.mark.usefixtures("over_the_ceiling")
+def test_a_fixture_page_the_turn_wrote_is_kept_with_its_pages(app: App, drive_book: DriveBook) -> None:
+    """A repair turn declares the fixture a claim names in the book's fixture folder, which no batch is sent but every batch may write."""
+    repo = app("tally-cli")
+    fixture_page = "docs/features/tally/fixtures/trip.md"
+    runner = repairer_also_editing(repo, fixture_page)
+
+    result = drive_book(OkfBook(repo_dir=str(repo), surfaces=(TALLY,)), runner)
+
+    assert isinstance(result, BookReport)
+    assert runner.args_of("repair-pages")[0]["fixture_folder"] == "docs/features/tally/fixtures"
+    assert sorted(git(repo, "show", "--name-only", "--format=", "HEAD").split()) == [fixture_page, PAGE]
+    assert git(repo, "status", "--porcelain").strip() == ""
+
+
+@pytest.mark.usefixtures("over_the_ceiling")
 def test_a_turn_that_changed_a_page_someone_left_uncommitted_waits_for_the_operator(
     app: App, drive_book: DriveBook, monkeypatch: pytest.MonkeyPatch
 ) -> None:
