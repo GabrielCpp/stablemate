@@ -234,3 +234,12 @@ question upward, and the run stays resumable.
 The counters travel as one frozen `Budget` in the state parameters, so a checkpoint carries
 them as legible JSON an operator can edit, and a resume rebuilds the model rather than the
 dict.
+
+---
+
+## Map
+
+- `nodes/`: the research loop's non-agent work, grouped by subject.
+- `scaffold/`: the command that stamps a new program folder for this workflow to drive.
+- `schemas.py`: every model the research loop validates: agent replies, node returns and the `Budget` counters.
+- `workflow.py`: the `Research` gate loop, its budget caps, and the `research` command.
