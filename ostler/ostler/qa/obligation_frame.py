@@ -276,15 +276,23 @@ def declared_locators(node: BookNode) -> dict[str, list[str]]:
     }
 
 
-def extends_target(node: BookNode, book: Mapping[str, BookNode]) -> tuple[BookNode | None, bool]:
+@dataclass(frozen=True, slots=True)
+class ExtendsResolution:
+    """Where a node's `extends:` arm lands: the base node it inherits its control identity from, or None, and whether the arm names a base that is missing from the book or of another type."""
+
+    target: BookNode | None
+    unresolved: bool
+
+
+def resolve_extends(node: BookNode, book: Mapping[str, BookNode]) -> ExtendsResolution:
     """The base node an `extends:` arm inherits its control identity from (D51)."""
     to_ids = [edge.to for edge in node.edges if edge.via == "extends" and edge.to]
     if not to_ids:
-        return None, False
+        return ExtendsResolution(target=None, unresolved=False)
     target = book.get(to_ids[0])
     if target is None or target.type != node.type:
-        return None, True
-    return target, False
+        return ExtendsResolution(target=None, unresolved=True)
+    return ExtendsResolution(target=target, unresolved=False)
 
 
 def _endpoint_address(node: BookNode, book: Mapping[str, BookNode]) -> dict[str, list[str]]:
@@ -340,11 +348,10 @@ def obligation_frame(
     locators = declared_locators(node)
     extends_unresolved = False
     if node.type in ("interaction", "invocation"):
-        base, extends_malformed = extends_target(node, book)
-        if base is not None:
-            locators = {**declared_locators(base), **locators}
-        else:
-            extends_unresolved = extends_malformed
+        extends = resolve_extends(node, book)
+        if extends.target is not None:
+            locators = {**declared_locators(extends.target), **locators}
+        extends_unresolved = extends.unresolved
     if node.type == "invocation":
         locators = {**_endpoint_address(node, book), **locators}
     return ObligationFrame(

@@ -32,9 +32,9 @@ from ostler.qa.obligation_frame import (
     book_nodes,
     bullet_values,
     declared_locators,
-    extends_target,
     linked_surface,
     obligation_frame,
+    resolve_extends,
 )
 from ostler.qa.outcome import QaOutcome
 from ostler.qa.grounding_health import HealthRow, relation_fanout_warnings, resolve_groundings
@@ -1651,7 +1651,7 @@ def _family_root(node_id: str, owners: set[str], book: Mapping[str, BookNode]) -
             continue
         node = book.get(current)
         if node is not None:
-            target, _malformed = extends_target(node, book)
+            target = resolve_extends(node, book).target
             if target is not None:
                 current = target.id
                 continue
