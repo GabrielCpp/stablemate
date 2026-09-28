@@ -53,7 +53,7 @@ def resolve_groundings(
     return grounded, dangling
 
 
-def relation_fanout(subjects_by_node: dict[str, set[str]], required_subjects: set[str]) -> list[HealthRow]:
+def relation_fanout_warnings(subjects_by_node: dict[str, set[str]], required_subjects: set[str]) -> list[HealthRow]:
     """A health row per required relation subject that more nodes name than a change can owe evidence for."""
     owners_by_subject: dict[str, list[str]] = {}
     for node_id, subjects in subjects_by_node.items():

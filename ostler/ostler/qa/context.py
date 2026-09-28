@@ -35,7 +35,7 @@ from ostler.qa.packet_rows import (
     RepeatTemplate,
     Segment,
     Variants,
-    relation_fanout,
+    relation_fanout_warnings,
     resolve_groundings,
 )
 from ostler.qa.runbook import bullet_text
@@ -505,7 +505,7 @@ def build_context(
                 for node_id in contracts
                 if _is_required(node_id, direct_reasons, grounded, shared_files, demoted_symbols)
             }
-        health.extend(row.row() for row in relation_fanout(subjects_by_node, required_subjects))
+        health.extend(row.row() for row in relation_fanout_warnings(subjects_by_node, required_subjects))
     fixture_provides = _fixture_provides_index(nodes_by_id)
     fixture_undetermined = _fixture_undetermined_index(nodes_by_id)
     obligations = [
