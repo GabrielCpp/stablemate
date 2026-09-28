@@ -205,20 +205,26 @@ class RepairBook(BookFlow):
     ) -> Continue[...]:
         """Record what the repair turn cost."""
         record_turn(self.records_dir, metric)
-        return Continue(metric, self.put_back, ledger=ledger, this_round=this_round, index=index, before=before).because(
-            "put back what the turn may not keep"
+        return Continue(metric, self.put_back_outside_book, ledger=ledger, this_round=this_round, index=index, before=before).because(
+            "put back what the turn changed outside its book"
+        )
+
+    def put_back_outside_book(self, ledger: RepairLedger, this_round: RepairRound, index: int, before: Snapshot) -> Continue[...]:
+        """Put back each path the turn changed outside the book."""
+        stray = put_back_outside(self.root, self.service, before, self.run_dir)
+        for path in stray:
+            self.logger.warning("put back %s, which the repair turn changed outside its book", path)
+        return Continue(stray, self.put_back, ledger=ledger, this_round=this_round, index=index, before=before).because(
+            "put back the book pages the turn may not keep"
         )
 
     def put_back(self, ledger: RepairLedger, this_round: RepairRound, index: int, before: Snapshot) -> Continue[...] | Await[...]:
-        """Put back each path the turn changed but may not keep: one outside the book, the entries page, a page its batch does not own, and a page an earlier batch closed.
+        """Put back each book page the turn changed but may not keep: the entries page, a page its batch does not own, and a page an earlier batch closed.
 
         A page someone left uncommitted has no committed copy of their edit to go back to, so a turn
         that changed one waits for the operator.
         """
         root = self.root
-        stray = put_back_outside(root, self.service, before, self.run_dir)
-        for path in stray:
-            self.logger.warning("put back %s, which the repair turn changed outside its book", path)
         batch = this_round.batches[index]
         entries = entries_path(root, self.service).relative_to(root).as_posix()
         changed = book_changes(root, self.service, before)
@@ -246,7 +252,7 @@ class RepairBook(BookFlow):
                 kept=kept,
             ).because("the repair turn changed a page someone left uncommitted")
         return Continue(
-            stray, self.put_back_entry_overreach, ledger=ledger, this_round=this_round, index=index, before=before, kept=kept
+            unowned, self.put_back_entry_overreach, ledger=ledger, this_round=this_round, index=index, before=before, kept=kept
         ).because("put back the entry pages the turn changed beyond link lines")
 
     def put_back_entry_overreach(
