@@ -110,8 +110,8 @@ class RepairBook(BookFlow):
         this_round = this_round.model_copy(update={"batches": packed.batches})
         if not packed.batches:
             return Done(ledger.outcome(this_round.number - 1, by_page)).because("no planned page is left for a turn")
-        pages = sum(len(batch.pages) for batch in packed.batches)
-        self.logger.info("round %d repairs %d pages in %d turns", this_round.number, pages, len(packed.batches))
+        page_count = sum(len(batch.pages) for batch in packed.batches)
+        self.logger.info("round %d repairs %d pages in %d turns", this_round.number, page_count, len(packed.batches))
         return Continue(
             len(packed.batches),
             self.prepare_batch_turn,
