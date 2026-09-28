@@ -1846,13 +1846,37 @@ def _family_root(node_id: str, owners: set[str], nodes_by_id: dict[str, dict[str
     return current
 
 
+_SEGMENT_FIELDS = {"literal": "text", "bind": "path", "opaque": "expr"}
+
+
+@dataclass(frozen=True, slots=True)
+class _Segment:
+    """One compiled piece of a name template: literal text, a bound scope path, or an opaque expression."""
+
+    kind: str
+    value: str
+
+    @classmethod
+    def parse(cls, raw: dict[str, Any]) -> _Segment:
+        """The segment a compiled locator carries, refusing a kind the compiler does not emit."""
+        kind = str(raw.get("kind", ""))
+        field = _SEGMENT_FIELDS.get(kind)
+        if field is None or not isinstance(raw.get(field), str):
+            raise ValueError(f"a template segment has an unknown shape: {raw!r}")
+        return cls(kind=kind, value=raw[field])
+
+    def row(self) -> dict[str, str]:
+        """The segment as the obligation row carries it."""
+        return {"kind": self.kind, _SEGMENT_FIELDS[self.kind]: self.value}
+
+
 @dataclass(frozen=True, slots=True)
 class _RepeatTemplate:
     """The name template a repeated node's locator compiles to: its text, the scope it iterates, and its compiled segments."""
 
     template: str
     iterates: str
-    segments: tuple[dict[str, str], ...]
+    segments: tuple[_Segment, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -1879,7 +1903,7 @@ class _RepeatContract:
         if self.template is not None:
             fields["template"] = self.template.template
             fields["iterates"] = self.template.iterates
-            fields["segments"] = list(self.template.segments)
+            fields["segments"] = [segment.row() for segment in self.template.segments]
         if self.unique_by:
             fields["uniqueBy"] = self.unique_by
         if self.variants is not None:
@@ -1899,7 +1923,7 @@ def _repeat(node: dict[str, Any], scope: tuple[str, ...]) -> _RepeatContract | N
         template = _RepeatTemplate(
             template=str(located["template"]),
             iterates=str(located["iterates"]),
-            segments=tuple(located["segments"]),
+            segments=tuple(_Segment.parse(segment) for segment in located["segments"]),
         )
         binds = tuple(str(bind) for bind in located["binds"])
     variants = locators_mod.variants_of(node)
