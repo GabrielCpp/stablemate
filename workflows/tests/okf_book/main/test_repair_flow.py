@@ -90,7 +90,7 @@ def test_a_retried_root_still_commits_the_entries_page_an_earlier_try_wrote(app:
 
     assert isinstance(first, Continue)
     assert isinstance(retried, Continue)
-    assert (first.state, retried.state) == ("commit_root", "commit_root")
+    assert (first.state, retried.state) == ("render_agent_files", "render_agent_files")
     assert retried.params == first.params
     assert (repo / "docs/features/tally/entries.md").read_text(encoding="utf-8") == written
 

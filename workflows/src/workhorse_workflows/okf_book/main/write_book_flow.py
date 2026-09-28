@@ -95,16 +95,23 @@ class WriteBook(BookFlow):
         stray = put_back_outside(self.root, self.surface_to_write.service, before, self.run_dir)
         for path in stray:
             self.logger.warning("put back %s, which the failed writer turn changed outside its book", path)
-        return Continue(stray, self.commit_unfinished, before=before, failure=failure).because("keep the pages it left")
+        return Continue(stray, self.render_agent_files_for_unfinished, before=before, failure=failure).because("render the agent files")
+
+    def render_agent_files_for_unfinished(self, before: Snapshot, failure: str) -> Continue[...] | Await[...]:
+        """Render the repo's agent files before the unfinished pages are committed. A failed render waits for the operator."""
+        waiting = self._render_agent_files_or_await(self.render_agent_files_for_unfinished, before=before, failure=failure)
+        if waiting:
+            return waiting
+        return Continue(failure, self.commit_unfinished, before=before, failure=failure).because("keep the pages it left")
 
     def commit_unfinished(self, before: Snapshot, failure: str) -> Done | Await[...]:
         """Commit the pages the failed turn left, under a subject that is not this workflow's, so a rerun sends a writer to finish them.
 
-        A retry after the commit landed finds nothing to commit. A failed render or a refused commit waits for the operator.
+        A retry after the commit landed finds nothing to commit. A refused commit waits for the operator.
         """
         service = self.surface_to_write.service
         pages = book_changes(self.root, service, before)
-        waiting = self._render_and_commit_or_await(unfinished_book_commit_subject(service), pages, self.commit_unfinished, before=before, failure=failure)
+        waiting = self._commit_or_await(unfinished_book_commit_subject(service), pages, self.commit_unfinished, before=before, failure=failure)
         if waiting:
             return waiting
         return Done(WriteOutcome(committed=False, failure=failure)).because("the writer's turn failed")
@@ -123,11 +130,18 @@ class WriteBook(BookFlow):
         for page in pages:
             if page.endswith(".md") and (root / page).is_file():
                 _ = stamp_page(root, root / FEATURES_DIR, page)
+        return Continue(pages, self.render_agent_files, pages=pages).because("render the agent files")
+
+    def render_agent_files(self, pages: tuple[str, ...]) -> Continue[...] | Await[...]:
+        """Render the repo's agent files before the book is committed. A failed render waits for the operator."""
+        waiting = self._render_agent_files_or_await(self.render_agent_files, pages=pages)
+        if waiting:
+            return waiting
         return Continue(pages, self.commit_book, pages=pages).because("commit the book")
 
     def commit_book(self, pages: tuple[str, ...]) -> Done | Await[...]:
-        """Commit the book's changed pages. A retry after the commit landed finds nothing to commit. A failed render or a refused commit waits for the operator."""
-        waiting = self._render_and_commit_or_await(book_commit_subject(self.surface_to_write.service), pages, self.commit_book, pages=pages)
+        """Commit the book's changed pages. A retry after the commit landed finds nothing to commit. A refused commit waits for the operator."""
+        waiting = self._commit_or_await(book_commit_subject(self.surface_to_write.service), pages, self.commit_book, pages=pages)
         if waiting:
             return waiting
         return Done(WriteOutcome(committed=True)).because("the book is committed")

@@ -25,23 +25,27 @@ class BookFlow(Workflow):
     def records_dir(self) -> Path:
         return Path(self.parent_records_dir) if self.parent_records_dir else self.run_dir
 
-    def _render_and_commit_or_await[**P](
+    def _render_agent_files_or_await[**P](self, retry: Callable[P, Transition], *args: P.args, **kwargs: P.kwargs) -> Await[P] | None:
+        """Render the repo's agent files before a book commit, so a skill the library changed does not refuse it. A failed render waits for the operator, whose answer renders again."""
+        failure = render_agent_files_returning_failure(self.root)
+        if not failure:
+            return None
+        return Await(
+            self.run_dir / RENDER_GATE,
+            f"The repo's agent files could not be rendered before the book commit:\n\n{failure}\n\nFix it, then answer here to render them again.",
+            retry,
+            *args,
+            **kwargs,
+        ).because("the agent files could not be rendered")
+
+    def _commit_or_await[**P](
         self, message: str, pathspecs: tuple[str, ...], retry: Callable[P, Transition], *args: P.args, **kwargs: P.kwargs
     ) -> Await[P] | None:
-        """Render the repo's agent files, then commit exactly *pathspecs*. A render that failed or a commit the repo refused waits for the operator, whose answer tries the whole step again."""
-        render_failure = render_agent_files_returning_failure(self.root)
-        if render_failure:
-            return Await(
-                self.run_dir / RENDER_GATE,
-                f"The repo's agent files could not be rendered before the book commit:\n\n{render_failure}\n\nFix it, then answer here to render and commit again.",
-                retry,
-                *args,
-                **kwargs,
-            ).because("the agent files could not be rendered")
+        """Commit exactly *pathspecs*. A commit the repo refused waits for the operator, whose answer commits again."""
         refusal = commit_returning_refusal(self.root, message, *pathspecs)
-        if refusal:
-            return self._await_operator_on_refused_commit(refusal, retry, *args, **kwargs)
-        return None
+        if not refusal:
+            return None
+        return self._await_operator_on_refused_commit(refusal, retry, *args, **kwargs)
 
     def _await_operator_on_refused_commit[**P](self, refusal: str, retry: Callable[P, Transition], *args: P.args, **kwargs: P.kwargs) -> Await[P]:
         """Stop at the operator when the repo refused a book commit. Their answer tries the same commit again."""

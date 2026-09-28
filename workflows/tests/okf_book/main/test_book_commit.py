@@ -14,6 +14,7 @@ from okf_book.main.tally import (
     DriveBook,
     answering_operator,
     book_problems_until_noted,
+    refuse_commits_until_answered,
     stub_the_run_to,
 )
 from okf_book.support import ScriptedRunner, git
@@ -88,4 +89,20 @@ def test_a_render_that_failed_waits_for_the_operator_and_the_book_is_committed_a
     assert isinstance(result, BookReport)
     assert len(asked) == 1
     assert "farrier could not run: no farrier" in asked[0]
+    assert git(repo, "show", "--name-only", "--format=", "HEAD").split() == [PAGE]
+
+
+@pytest.mark.usefixtures("passing")
+def test_an_answer_to_a_refused_commit_commits_again_without_rendering_again(
+    app: App, drive_book: DriveBook, rendered_repos: list[Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = app("tally-cli")
+    asked: list[str] = []
+    monkeypatch.setattr(pyflow_driver, "wait_for_answer", refuse_commits_until_answered(repo, asked))
+
+    result = drive_book(OkfBook(repo_dir=str(repo), surfaces=(TALLY,)), _writer(repo))
+
+    assert isinstance(result, BookReport)
+    assert len(asked) == 1
+    assert rendered_repos == [repo.resolve()]
     assert git(repo, "show", "--name-only", "--format=", "HEAD").split() == [PAGE]

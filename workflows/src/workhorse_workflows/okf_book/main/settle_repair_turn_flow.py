@@ -89,11 +89,18 @@ class SettleRepairTurn(BookFlow):
         if changed_journey_pages:
             self.logger.info("the repair turn also changed %d journey pages: %s", len(changed_journey_pages), ", ".join(changed_journey_pages))
         stamp_repaired_pages(self.root, pages)
+        return Continue(pages, self.render_agent_files, pages=pages).because("render the agent files")
+
+    def render_agent_files(self, pages: tuple[str, ...]) -> Continue[...] | Await[...]:
+        """Render the repo's agent files before the repaired pages are committed. A failed render waits for the operator."""
+        waiting = self._render_agent_files_or_await(self.render_agent_files, pages=pages)
+        if waiting:
+            return waiting
         return Continue(pages, self.commit_pages, pages=pages).because("commit the repaired pages")
 
     def commit_pages(self, pages: tuple[str, ...]) -> Await[...] | Done:
-        """Commit the batch's pages. A failed render or a refused commit waits for the operator."""
-        waiting = self._render_and_commit_or_await(repaired_book_commit_subject(self.service), pages, self.commit_pages, pages=pages)
+        """Commit the batch's pages. A refused commit waits for the operator."""
+        waiting = self._commit_or_await(repaired_book_commit_subject(self.service), pages, self.commit_pages, pages=pages)
         if waiting:
             return waiting
         return Done(SettledTurn(pages=pages)).because("the repaired pages are committed")
