@@ -962,10 +962,10 @@ def test_created_and_removed_judge_only_the_file_the_subject_names(tmp_path: Pat
     (after / "tally.json").write_text("{}", encoding="utf-8")
     pair = (harness.Tree(before), harness.Tree(after))
 
-    assert harness.VERIFIERS["created"](pair, {"subject": "tally.json"})[0] is True
-    assert harness.VERIFIERS["created"](pair, {"subject": "the ledger"})[0] is False
-    assert harness.VERIFIERS["removed"](pair, {"subject": "notes.txt"})[0] is True
-    assert harness.VERIFIERS["removed"](pair, {"subject": "tally.json"})[0] is False
+    assert harness.VERIFIERS["created"](pair, {"subject": "tally.json"}).passed is True
+    assert harness.VERIFIERS["created"](pair, {"subject": "the ledger"}).passed is False
+    assert harness.VERIFIERS["removed"](pair, {"subject": "notes.txt"}).passed is True
+    assert harness.VERIFIERS["removed"](pair, {"subject": "tally.json"}).passed is False
 
 
 def test_absent_on_a_directory_judges_only_the_file_the_subject_names(tmp_path: Path) -> None:
@@ -973,8 +973,8 @@ def test_absent_on_a_directory_judges_only_the_file_the_subject_names(tmp_path: 
     (tmp_path / "notes.txt").write_text("x", encoding="utf-8")
     tree = harness.Tree(tmp_path)
 
-    assert harness.VERIFIERS["absent"](tree, {"subject": "tally.json"})[0] is True
-    assert harness.VERIFIERS["absent"](tree, {"subject": "notes.txt"})[0] is False
+    assert harness.VERIFIERS["absent"](tree, {"subject": "tally.json"}).passed is True
+    assert harness.VERIFIERS["absent"](tree, {"subject": "notes.txt"}).passed is False
 
 
 def test_unchanged_compares_the_named_file_or_else_the_whole_tree(tmp_path: Path) -> None:
@@ -987,14 +987,14 @@ def test_unchanged_compares_the_named_file_or_else_the_whole_tree(tmp_path: Path
     (after / "stray.txt").write_text("new", encoding="utf-8")
     pair = (harness.Tree(before), harness.Tree(after))
 
-    assert harness.VERIFIERS["unchanged"](pair, {"subject": "tally.json"})[0] is True
-    assert harness.VERIFIERS["unchanged"](pair, {"subject": "the working directory"})[0] is False
-    assert harness.VERIFIERS["unchanged"](pair, {"subject": "stray.txt"})[0] is False
-    assert harness.VERIFIERS["keys_unchanged"](pair, {"subject": "tally.json"})[0] is True
-    assert harness.VERIFIERS["keys_unchanged"](pair, {"subject": "no-such.json"})[0] is False
+    assert harness.VERIFIERS["unchanged"](pair, {"subject": "tally.json"}).passed is True
+    assert harness.VERIFIERS["unchanged"](pair, {"subject": "the working directory"}).passed is False
+    assert harness.VERIFIERS["unchanged"](pair, {"subject": "stray.txt"}).passed is False
+    assert harness.VERIFIERS["keys_unchanged"](pair, {"subject": "tally.json"}).passed is True
+    assert harness.VERIFIERS["keys_unchanged"](pair, {"subject": "no-such.json"}).passed is False
     quiet = (harness.Tree(before), harness.Tree(before))
-    assert harness.VERIFIERS["unchanged"](quiet, {"subject": "no-such.json"})[0] is True
-    assert harness.VERIFIERS["keys_unchanged"](quiet, {"subject": "no-such.json"})[0] is True
+    assert harness.VERIFIERS["unchanged"](quiet, {"subject": "no-such.json"}).passed is True
+    assert harness.VERIFIERS["keys_unchanged"](quiet, {"subject": "no-such.json"}).passed is True
 
 
 def test_contents_reads_the_text_of_the_file_the_subject_names(tmp_path: Path) -> None:
@@ -1004,13 +1004,13 @@ def test_contents_reads_the_text_of_the_file_the_subject_names(tmp_path: Path) -
     tree = harness.Tree(tmp_path)
     contents = harness.VERIFIERS["contents"]
 
-    assert contents(tree, {"subject": "out.csv", "text": "2024-01-02,12.50"})[0] is True
-    assert contents(tree, {"subject": "out.csv", "matches": r"^date,amount\n2024"})[0] is True
-    assert contents(tree, {"subject": "out.csv", "text": "13.00"})[0] is False
-    assert contents(tree, {"subject": "tally.json", "text": '"entries": []'})[0] is True
+    assert contents(tree, {"subject": "out.csv", "text": "2024-01-02,12.50"}).passed is True
+    assert contents(tree, {"subject": "out.csv", "matches": r"^date,amount\n2024"}).passed is True
+    assert contents(tree, {"subject": "out.csv", "text": "13.00"}).passed is False
+    assert contents(tree, {"subject": "tally.json", "text": '"entries": []'}).passed is True
     missing = contents(tree, {"subject": "export.csv", "text": "date"})
-    assert missing[0] is False
-    assert missing[1]["present"] is False
+    assert missing.passed is False
+    assert missing.actual["present"] is False
 
 
 def test_json_path_and_count_read_the_file_named_by_file(tmp_path: Path) -> None:
@@ -1021,14 +1021,14 @@ def test_json_path_and_count_read_the_file_named_by_file(tmp_path: Path) -> None
     tree = harness.Tree(tmp_path)
     json_path, count = harness.VERIFIERS["json_path"], harness.VERIFIERS["count"]
 
-    assert json_path(tree, {"path": "entries[0].amount", "equals": 12.5, "file": "tally.json"})[0] is True
-    assert json_path(tree, {"path": "entries[0].amount", "equals": 3, "file": "tally.json"})[0] is False
-    assert count(tree, {"subject": "entries", "equals": 2, "file": "tally.json"})[0] is True
-    assert count(tree, {"subject": "entries", "equals": 3, "file": "tally.json"})[0] is False
-    assert count(tree, {"subject": "entries", "equals": 2, "file": "notes.txt"})[0] is False
+    assert json_path(tree, {"path": "entries[0].amount", "equals": 12.5, "file": "tally.json"}).passed is True
+    assert json_path(tree, {"path": "entries[0].amount", "equals": 3, "file": "tally.json"}).passed is False
+    assert count(tree, {"subject": "entries", "equals": 2, "file": "tally.json"}).passed is True
+    assert count(tree, {"subject": "entries", "equals": 3, "file": "tally.json"}).passed is False
+    assert count(tree, {"subject": "entries", "equals": 2, "file": "notes.txt"}).passed is False
     absent = json_path(tree, {"path": "entries", "equals": [], "file": "ledger.json"})
-    assert absent[0] is False
-    assert absent[1] == {"file": "ledger.json", "present": False}
+    assert absent.passed is False
+    assert absent.actual == {"file": "ledger.json", "present": False}
 
 
 def test_a_failed_check_on_a_command_records_how_the_command_ended(tmp_path: Path) -> None:

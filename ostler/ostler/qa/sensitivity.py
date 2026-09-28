@@ -100,7 +100,7 @@ class _Focusable:
             self._activated = True
 
     def evaluate(self, expression: str) -> Any:
-        """Answer the three expressions `_verify_focusable` sends, and refuse a fourth."""
+        """Answer the three expressions `_read_focus` sends, and refuse a fourth."""
         if "document.activeElement" in expression:
             return self._focused
         if "addEventListener" in expression:
@@ -736,10 +736,10 @@ def trial(call: checks.CheckCall) -> Trial:
 def _green(verifier: Any, observed: Any, args: Any) -> bool:
     """The verifier's verdict, with a raise reading as red."""
     try:
-        passed, _, _ = verifier(observed, args)
+        verdict = verifier(observed, args)
     except Exception:  # noqa: BLE001 — every failure to compare is "not green"
         return False
-    return bool(passed)
+    return bool(verdict.passed)
 
 
 def _minted(node: model.UINode) -> list[tuple[str, int]]:

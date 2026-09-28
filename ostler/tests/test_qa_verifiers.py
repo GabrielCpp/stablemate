@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import astuple
 from types import SimpleNamespace
 from typing import Any
 
@@ -33,10 +34,10 @@ def test_a_lifecycle_check_refuses_an_after_only_observation(check: str) -> None
 def test_created_is_the_absence_before_and_the_presence_after(
     before: Any, after: Any, passes: bool
 ) -> None:
-    ok, actual, expected = harness.VERIFIERS["created"]((before, after), {"subject": "booking"})
-    assert ok is passes
-    assert actual == {"before": before, "after": after}
-    assert expected == {"before": "absent", "after": "present"}
+    verdict = harness.VERIFIERS["created"]((before, after), {"subject": "booking"})
+    assert verdict.passed is passes
+    assert verdict.actual == {"before": before, "after": after}
+    assert verdict.expected == {"before": "absent", "after": "present"}
 
 
 @pytest.mark.parametrize(
@@ -51,10 +52,10 @@ def test_created_is_the_absence_before_and_the_presence_after(
 def test_removed_is_the_presence_before_and_the_absence_after(
     before: Any, after: Any, passes: bool
 ) -> None:
-    ok, actual, expected = harness.VERIFIERS["removed"]((before, after), {"subject": "hold"})
-    assert ok is passes
-    assert actual == {"before": before, "after": after}
-    assert expected == {"before": "present", "after": "absent"}
+    verdict = harness.VERIFIERS["removed"]((before, after), {"subject": "hold"})
+    assert verdict.passed is passes
+    assert verdict.actual == {"before": before, "after": after}
+    assert verdict.expected == {"before": "present", "after": "absent"}
 
 
 class _Response:
@@ -79,12 +80,12 @@ def test_http_status_compares_the_route_that_answered(
     url: str, declared: str, passes: bool
 ) -> None:
     """`path=` says *which* request answered."""
-    ok, actual, expected = harness.VERIFIERS["http_status"](
+    verdict = harness.VERIFIERS["http_status"](
         _Response(200, {}, url), {"code": 200, "path": declared}
     )
-    assert ok is passes
-    assert expected["path"] == declared
-    assert actual["path"] == declared if passes else actual["path"] != declared
+    assert verdict.passed is passes
+    assert verdict.expected["path"] == declared
+    assert verdict.actual["path"] == declared if passes else verdict.actual["path"] != declared
 
 
 def test_http_status_refuses_a_bare_status_when_a_path_was_declared() -> None:
@@ -108,16 +109,16 @@ def test_response_header_reads_a_header_by_its_case_blind_name(
 ) -> None:
     """HTTP header names carry no case, so the check finds the header whatever case the server sent it in."""
     served = SimpleNamespace(headers={"content-type": "application/pdf"})
-    ok, actual, _ = harness.VERIFIERS["response_header"](served, args)
-    assert ok is passes
-    assert list(actual) == [args["name"]]
+    verdict = harness.VERIFIERS["response_header"](served, args)
+    assert verdict.passed is passes
+    assert list(verdict.actual) == [args["name"]]
 
 
 def test_response_header_reads_headers_a_driver_exposes_as_a_method() -> None:
     """A browser response hands its headers out through a call, not an attribute."""
     served = SimpleNamespace(all_headers=None, headers=lambda: {"Content-Type": "application/pdf"})
-    ok, _, _ = harness.VERIFIERS["response_header"](served, {"name": "content-type", "equals": "application/pdf"})
-    assert ok is True
+    verdict = harness.VERIFIERS["response_header"](served, {"name": "content-type", "equals": "application/pdf"})
+    assert verdict.passed is True
 
 
 def test_response_header_refuses_an_observation_that_carries_no_headers() -> None:
@@ -134,72 +135,72 @@ def test_a_response_header_with_a_broken_pattern_is_unsatisfiable() -> None:
 
 def test_count_walks_its_subject_into_the_document_it_was_given() -> None:
     """`{"claims": [a, b]}` has one key and two claims."""
-    ok, actual, _ = harness.VERIFIERS["count"](
+    verdict = harness.VERIFIERS["count"](
         {"claims": [{"id": "cl-1"}, {"id": "cl-2"}]}, {"subject": "claims", "equals": 1}
     )
-    assert ok is False
-    assert actual == 2
+    assert verdict.passed is False
+    assert verdict.actual == 2
 
 
 def test_count_reads_a_response_body_before_resolving_its_subject() -> None:
-    ok, actual, _ = harness.VERIFIERS["count"](
+    verdict = harness.VERIFIERS["count"](
         _Response(200, {"claims": []}, "http://localhost/api/claims"),
         {"subject": "claims", "equals": 0},
     )
-    assert ok is True
-    assert actual == 0
+    assert verdict.passed is True
+    assert verdict.actual == 0
 
 
 def test_count_is_red_when_the_document_has_no_such_subject() -> None:
     """The product omitting the collection is a defect of the product, so it goes red rather than raising — the shape the scenario handed over was the right one."""
-    ok, actual, _ = harness.VERIFIERS["count"](
+    verdict = harness.VERIFIERS["count"](
         {"policies": []}, {"subject": "claims", "equals": 0}
     )
-    assert ok is False
-    assert actual == {"subject": "claims", "present": False}
+    assert verdict.passed is False
+    assert verdict.actual == {"subject": "claims", "present": False}
 
 
 def test_count_leaves_an_already_extracted_collection_alone() -> None:
     """A subject no path can address — a CLI's "entries in the ledger" — still counts the collection the scenario extracted for it."""
-    ok, actual, _ = harness.VERIFIERS["count"](
+    verdict = harness.VERIFIERS["count"](
         [1, 2, 3], {"subject": "entries in the ledger", "equals": 3}
     )
-    assert ok is True
-    assert actual == 3
+    assert verdict.passed is True
+    assert verdict.actual == 3
 
 
 def test_count_reads_a_commands_json_stdout_before_resolving_its_subject() -> None:
     """A CLI's `--json` output is the document the subject walks into, as a response body is."""
     ran = harness.ToolResult(command=["tally", "report", "--json"], stdout='{"people": [1, 2]}', stderr="", exit_code=0)
-    ok, actual, _ = harness.VERIFIERS["count"](ran, {"subject": "people", "equals": 2})
-    assert ok is True
-    assert actual == 2
+    verdict = harness.VERIFIERS["count"](ran, {"subject": "people", "equals": 2})
+    assert verdict.passed is True
+    assert verdict.actual == 2
     assert ran.json() == {"people": [1, 2]}
 
 
 def test_a_count_on_a_command_whose_stdout_is_not_json_is_red_and_names_the_command() -> None:
     """The product printed something, and what it printed is the observation: the scenario grades it and runs on."""
     silent = harness.ToolResult(command=["tally", "add"], stdout="", stderr="tally: added", exit_code=0)
-    ok, actual, expected = harness.VERIFIERS["count"](silent, {"subject": "entries in the ledger", "equals": 1})
-    assert ok is False
-    assert expected == 1
-    assert actual["countable"] is False
-    assert "tally add exited 0 with a stdout that is not JSON" in actual["reason"]
+    verdict = harness.VERIFIERS["count"](silent, {"subject": "entries in the ledger", "equals": 1})
+    assert verdict.passed is False
+    assert verdict.expected == 1
+    assert verdict.actual["countable"] is False
+    assert "tally add exited 0 with a stdout that is not JSON" in verdict.actual["reason"]
 
 
 def test_json_path_equals_compares_a_json_scalar_by_type() -> None:
     """`equals=8250` is a number, not the string "8250": a product that serialises an amount as text is a different product, and `true` is not `1`."""
     verify = harness.VERIFIERS["json_path"]
-    assert verify({"amount": 8250}, {"path": "amount", "equals": 8250})[0] is True
-    assert verify({"amount": 8250}, {"path": "amount", "equals": 8250.0})[0] is True
-    ok, actual, expected = verify({"amount": "8250"}, {"path": "amount", "equals": 8250})
-    assert ok is False and actual == "8250" and expected == 8250
-    assert verify({"amount": 8250}, {"path": "amount", "equals": "8250"})[0] is False
-    assert verify({"paid": True}, {"path": "paid", "equals": True})[0] is True
-    assert verify({"paid": 1}, {"path": "paid", "equals": True})[0] is False
-    assert verify({"paid": True}, {"path": "paid", "equals": 1})[0] is False
-    assert verify({"tags": ["a"]}, {"path": "tags", "equals": "a"})[0] is False
-    assert verify({"id": "abc"}, {"path": "id", "equals": "abc"})[0] is True
+    assert verify({"amount": 8250}, {"path": "amount", "equals": 8250}).passed is True
+    assert verify({"amount": 8250}, {"path": "amount", "equals": 8250.0}).passed is True
+    verdict = verify({"amount": "8250"}, {"path": "amount", "equals": 8250})
+    assert verdict.passed is False and verdict.actual == "8250" and verdict.expected == 8250
+    assert verify({"amount": 8250}, {"path": "amount", "equals": "8250"}).passed is False
+    assert verify({"paid": True}, {"path": "paid", "equals": True}).passed is True
+    assert verify({"paid": 1}, {"path": "paid", "equals": True}).passed is False
+    assert verify({"paid": True}, {"path": "paid", "equals": 1}).passed is False
+    assert verify({"tags": ["a"]}, {"path": "tags", "equals": "a"}).passed is False
+    assert verify({"id": "abc"}, {"path": "id", "equals": "abc"}).passed is True
 
 
 LEDGER = {
@@ -215,107 +216,107 @@ def test_a_filter_segment_selects_the_entry_by_what_it_holds_not_where_it_sits()
     """`people[?(@.who=='ana')].total_cents` is a claim about ana, not about entry 0 — the order the product writes its list in is not what the book claimed."""
     verify = harness.VERIFIERS["json_path"]
     args = {"path": "people[?(@.who=='ana')].total_cents", "equals": 4200}
-    assert verify(LEDGER, args)[0] is True
+    assert verify(LEDGER, args).passed is True
     shuffled = {"people": list(reversed(LEDGER["people"]))}
-    assert verify(shuffled, args)[0] is True
-    ok, actual, expected = verify(LEDGER, {"path": "people[?(@.who=='zed')].total_cents", "equals": 1})
-    assert ok is False and actual == {"present": False}
-    assert verify(LEDGER, {"path": "people[?(@.who=='zed')]", "absent": True})[0] is True
-    assert verify(LEDGER, {"path": "people[?(@.who=='bo')]", "absent": True})[0] is False
-    assert verify(LEDGER, {"path": "people[?(@.total_cents==1300)].who", "matches": "^bo$"})[0] is False
+    assert verify(shuffled, args).passed is True
+    verdict = verify(LEDGER, {"path": "people[?(@.who=='zed')].total_cents", "equals": 1})
+    assert verdict.passed is False and verdict.actual == {"present": False}
+    assert verify(LEDGER, {"path": "people[?(@.who=='zed')]", "absent": True}).passed is True
+    assert verify(LEDGER, {"path": "people[?(@.who=='bo')]", "absent": True}).passed is False
+    assert verify(LEDGER, {"path": "people[?(@.total_cents==1300)].who", "matches": "^bo$"}).passed is False
 
 
 def test_a_selector_that_picks_out_two_values_is_an_ambiguous_claim_not_a_pass() -> None:
     """Two selections and one `equals=` is a book that failed to single the entry out; the verdict is red and reports what was selected so the author sees the ambiguity."""
     verify = harness.VERIFIERS["json_path"]
-    ok, actual, expected = verify(LEDGER, {"path": "people[?(@.total_cents==1300)].who", "equals": "bo"})
-    assert ok is False
-    assert actual == {"selected": ["bo", "cy"]}
-    assert expected == {"selected": "exactly one"}
-    ok, actual, _ = verify(LEDGER, {"path": "people[*].who", "equals": "ana"})
-    assert ok is False and actual == {"selected": ["ana", "bo", "cy"]}
+    verdict = verify(LEDGER, {"path": "people[?(@.total_cents==1300)].who", "equals": "bo"})
+    assert verdict.passed is False
+    assert verdict.actual == {"selected": ["bo", "cy"]}
+    assert verdict.expected == {"selected": "exactly one"}
+    verdict = verify(LEDGER, {"path": "people[*].who", "equals": "ana"})
+    assert verdict.passed is False and verdict.actual == {"selected": ["ana", "bo", "cy"]}
 
 
 def test_count_counts_what_a_wildcard_or_filter_selects() -> None:
     count = harness.VERIFIERS["count"]
-    assert count(LEDGER, {"subject": "people[*]", "equals": 3})[0] is True
-    assert count(LEDGER, {"subject": "people[*].trips[*]", "equals": 3})[0] is True
-    assert count(LEDGER, {"subject": "people[?(@.total_cents==1300)]", "equals": 2})[0] is True
-    ok, actual, _ = count(LEDGER, {"subject": "people[?(@.who=='ana')].trips[*]", "equals": 2})
-    assert ok is True and actual == 2
+    assert count(LEDGER, {"subject": "people[*]", "equals": 3}).passed is True
+    assert count(LEDGER, {"subject": "people[*].trips[*]", "equals": 3}).passed is True
+    assert count(LEDGER, {"subject": "people[?(@.total_cents==1300)]", "equals": 2}).passed is True
+    verdict = count(LEDGER, {"subject": "people[?(@.who=='ana')].trips[*]", "equals": 2})
+    assert verdict.passed is True and verdict.actual == 2
 
 
 def test_count_is_zero_when_a_wildcard_or_filter_selects_nothing() -> None:
     """An empty selection is a count, so an empty ledger is not reported as a missing one."""
     count = harness.VERIFIERS["count"]
-    assert count({"entries": []}, {"subject": "$.entries[*]", "equals": 0}) == (True, 0, 0)
-    assert count(LEDGER, {"subject": "people[?(@.who=='zed')]", "equals": 0}) == (True, 0, 0)
-    ok, actual, _ = count({"policies": []}, {"subject": "claims[*]", "equals": 0})
-    assert ok is False and actual == {"subject": "claims[*]", "present": False}
+    assert astuple(count({"entries": []}, {"subject": "$.entries[*]", "equals": 0})) == (True, 0, 0)
+    assert astuple(count(LEDGER, {"subject": "people[?(@.who=='zed')]", "equals": 0})) == (True, 0, 0)
+    verdict = count({"policies": []}, {"subject": "claims[*]", "equals": 0})
+    assert verdict.passed is False and verdict.actual == {"subject": "claims[*]", "present": False}
 
 
 def test_json_path_without_a_comparison_is_red_not_green() -> None:
     """`ostler.checks` refuses this call where it is declared."""
-    ok, actual, expected = harness.VERIFIERS["json_path"](
+    verdict = harness.VERIFIERS["json_path"](
         {"item": {"id": "abc"}}, {"path": "$.item.id"}
     )
-    assert ok is False
-    assert actual == "abc"
-    assert "presence asserts nothing" in expected
+    assert verdict.passed is False
+    assert verdict.actual == "abc"
+    assert "presence asserts nothing" in verdict.expected
 
 
 def test_omits_reads_the_field_its_subject_names() -> None:
     """The C9 shape: a well-formed refusal carrying the credential it rejected."""
     leak = "The bearer token eyJhbGciOi… was not accepted."
-    ok, actual, _ = harness.VERIFIERS["omits"](
+    verdict = harness.VERIFIERS["omits"](
         _Response(401, {"title": "Unauthorized", "detail": leak}, "http://x/api/claims"),
         {"subject": "$.detail", "matches": "eyJ[A-Za-z0-9]+"},
     )
-    assert ok is False
-    assert actual["found"] == ["eyJhbGciOi"]
+    assert verdict.passed is False
+    assert verdict.actual["found"] == ["eyJhbGciOi"]
 
 
 def test_omits_passes_when_the_subject_says_nothing_it_may_not() -> None:
-    ok, actual, expected = harness.VERIFIERS["omits"](
+    verdict = harness.VERIFIERS["omits"](
         _Response(401, {"title": "Unauthorized", "detail": "The credential was not accepted."},
                   "http://x/api/claims"),
         {"subject": "$.detail", "matches": "eyJ[A-Za-z0-9]+"},
     )
-    assert ok is True
-    assert actual == expected == {"found": []}
+    assert verdict.passed is True
+    assert verdict.actual == verdict.expected == {"found": []}
 
 
 def test_omits_searches_everything_when_its_subject_does_not_resolve() -> None:
     """A leak lands where the defect put it, not where the author guessed."""
-    ok, actual, _ = harness.VERIFIERS["omits"](
+    verdict = harness.VERIFIERS["omits"](
         _Response(401, {"error": {"note": "token eyJabc rejected"}}, "http://x/api/claims"),
         {"subject": "$.detail", "text": "eyJabc"},
     )
-    assert ok is False
-    assert actual["found"] == ["eyJabc"]
+    assert verdict.passed is False
+    assert verdict.actual["found"] == ["eyJabc"]
 
 
 def test_omits_searches_a_plain_string_observation() -> None:
     """A command's output is not a document, and its stderr is where a path leaks."""
-    ok, actual, _ = harness.VERIFIERS["omits"](
+    verdict = harness.VERIFIERS["omits"](
         "error: cannot open /home/ci/.secrets/ledger.key",
         {"subject": "the message", "text": "/home/ci/.secrets"},
     )
-    assert ok is False
-    assert actual["found"] == ["/home/ci/.secrets"]
+    assert verdict.passed is False
+    assert verdict.actual["found"] == ["/home/ci/.secrets"]
 
 
 def test_absent_false_is_a_presence_assertion_that_can_go_red() -> None:
     """A book spelling `absent=false` claims the field is there."""
-    present, _, _ = harness.VERIFIERS["json_path"](
+    present = harness.VERIFIERS["json_path"](
         {"policies": [{"version": "1"}]}, {"path": "policies[0].version", "absent": False}
     )
-    missing, actual, expected = harness.VERIFIERS["json_path"](
+    missing = harness.VERIFIERS["json_path"](
         {"policies": [{}]}, {"path": "policies[0].version", "absent": False}
     )
-    assert present is True
-    assert missing is False
-    assert actual == {"present": False} and expected == {"present": True}
+    assert present.passed is True
+    assert missing.passed is False
+    assert missing.actual == {"present": False} and missing.expected == {"present": True}
 
 
 class _StyledLocator:
@@ -338,26 +339,26 @@ class _StyledLocator:
 def test_visible_reads_the_dom_when_css_repainted_the_text() -> None:
     """The one thing QA grounded on the book must not do is redden against a correct app, and casing applied by CSS is not a disagreement with the book about content."""
     element = _StyledLocator(rendered="A1\nFREE", dom="A1free")
-    ok, actual, expected = harness.VERIFIERS["visible"](element, {"text": "free"})
-    assert ok is True
-    assert actual == {"visible": True, "text": "A1\nFREE"}
-    assert expected == {"visible": True, "text": "free"}
+    verdict = harness.VERIFIERS["visible"](element, {"text": "free"})
+    assert verdict.passed is True
+    assert verdict.actual == {"visible": True, "text": "A1\nFREE"}
+    assert verdict.expected == {"visible": True, "text": "free"}
 
 
 def test_visible_still_fails_on_text_neither_reading_carries() -> None:
     """The fallback widens the spellings, not the verdict: a string the element does not say is absent from both readings, which is what keeps the check able to go red."""
     element = _StyledLocator(rendered="A1\nFREE", dom="A1free")
-    ok, _actual, _expected = harness.VERIFIERS["visible"](element, {"text": "booked"})
-    assert ok is False
+    verdict = harness.VERIFIERS["visible"](element, {"text": "booked"})
+    assert verdict.passed is False
 
 
 def test_exit_status_reads_exit_code_and_refuses_other_subjects() -> None:
     """The check observes the one thing a command's output never carries — how the process ended — and a plan that hands it a response or a document has mis-wired the claim."""
     verify = harness.VERIFIERS["exit_status"]
-    assert verify(SimpleNamespace(exit_code=0), {"code": 0}) == (True, 0, 0)
-    ok, actual, expected = verify(SimpleNamespace(exit_code=2), {"code": 0})
-    assert (ok, actual, expected) == (False, 2, 0)
-    assert verify(harness.ToolResult(command=["tally"], stdout="", stderr="", exit_code=3), {"code": 3})[0]
+    assert astuple(verify(SimpleNamespace(exit_code=0), {"code": 0})) == (True, 0, 0)
+    verdict = verify(SimpleNamespace(exit_code=2), {"code": 0})
+    assert astuple(verdict) == (False, 2, 0)
+    assert verify(harness.ToolResult(command=["tally"], stdout="", stderr="", exit_code=3), {"code": 3}).passed
     with pytest.raises(TypeError, match="exit_code"):
         verify(_Response(200, {}, "http://x/"), {"code": 0})
     with pytest.raises(TypeError, match="exit_code"):
@@ -369,9 +370,9 @@ def test_exit_status_reads_exit_code_and_refuses_other_subjects() -> None:
 def test_a_stream_check_reads_only_the_stream_it_names() -> None:
     """A refusal printed on stdout is not the one the book says goes to stderr, and each argument the output lacks is named."""
     result = harness.ToolResult(command=["tally"], stdout="no ledger at x.csv", stderr="", exit_code=2)
-    ok, actual, expected = harness.VERIFIERS["stderr"](result, {"text": "no ledger", "matches": "x[.]csv"})
-    assert (ok, actual, expected) == (False, "", {"text": "no ledger", "matches": "x[.]csv"})
-    assert harness.VERIFIERS["stdout"](result, {"text": "no ledger", "matches": "x[.]csv"}) == (True, "no ledger at x.csv", {})
+    verdict = harness.VERIFIERS["stderr"](result, {"text": "no ledger", "matches": "x[.]csv"})
+    assert astuple(verdict) == (False, "", {"text": "no ledger", "matches": "x[.]csv"})
+    assert astuple(harness.VERIFIERS["stdout"](result, {"text": "no ledger", "matches": "x[.]csv"})) == (True, "no ledger at x.csv", {})
     with pytest.raises(TypeError, match="stdout"):
         harness.VERIFIERS["stdout"](_Response(200, {}, "http://x/"), {"text": "ok"})
 

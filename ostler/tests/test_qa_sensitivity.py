@@ -9,6 +9,7 @@ import pytest
 
 from ostler import checks, model
 from ostler.qa import sensitivity
+from ostler.qa.harness_host import load_harness_module
 
 
 def _trial(text: str) -> sensitivity.Trial:
@@ -126,7 +127,7 @@ def test_a_presence_assertion_is_not_asked_to_notice_a_changed_value() -> None:
 def test_a_check_nothing_could_falsify_is_insensitive(monkeypatch: pytest.MonkeyPatch) -> None:
     """The property under test is the harness's own: a rubber stamp has to read as one."""
     monkeypatch.setitem(
-        sensitivity._VERIFIERS, "visible", lambda observed, args: (True, {}, {})
+        sensitivity._VERIFIERS, "visible", lambda observed, args: load_harness_module("ostler_qa_verifiers").Verdict(True, {}, {})
     )
     trial = _trial('visible(locator="text=Draft", text="Draft")')
     assert trial.witnessed and not trial.sensitive

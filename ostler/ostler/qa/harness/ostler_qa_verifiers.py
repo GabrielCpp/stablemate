@@ -16,37 +16,132 @@ from ostler_qa_paths import is_projection, resolve_path, scalar_equal
 _MISSING = object()
 
 
-def _observed_status(observed: Any) -> tuple[int, Any]:
-    """The status code and parsed body of whatever a scenario handed over as a response."""
+type JsonValue = None | bool | int | float | str | list[JsonValue] | dict[str, JsonValue]
+
+type Args = Mapping[str, Any]
+
+
+@dataclass(frozen=True)
+class Verdict:
+    """Whether a check passed, and the actual and expected values its assert record carries."""
+
+    passed: bool
+    actual: JsonValue
+    expected: JsonValue
+
+
+type Verifier = Callable[[object, Args], Verdict]
+
+
+def _recorded_key(key: object) -> str:
+    """*key* spelled the way `json.dumps` spells a dict key."""
+    if isinstance(key, str):
+        return key
+    if key is None or isinstance(key, bool | int | float):
+        return json.dumps(key)
+    return str(key)
+
+
+def _recorded(value: object) -> JsonValue:
+    """*value* as the assert record writes it, which serializes with `default=str`."""
+    if value is None or isinstance(value, bool | int | float | str):
+        return value
+    if isinstance(value, list | tuple):
+        return [_recorded(item) for item in value]
+    if isinstance(value, dict):
+        return {_recorded_key(key): _recorded(item) for key, item in value.items()}
+    return str(value)
+
+
+def _verdict(passed: bool, actual: object, expected: object) -> Verdict:
+    return Verdict(passed=passed, actual=_recorded(actual), expected=_recorded(expected))
+
+
+def _check[R](read: Callable[[object, Args], R], judge: Callable[[R, Args], Verdict]) -> Verifier:
+    """A verifier that parses the observation once with *read*, then judges only that reading."""
+
+    def verify(observed: object, args: Args) -> Verdict:
+        return judge(read(observed, args), args)
+
+    return verify
+
+
+@dataclass(frozen=True)
+class HttpReading:
+    """What a response answered: its status, its parsed body, and the route that answered."""
+
+    status: int
+    body: object
+    route: str | None
+
+
+def _read_response(observed: object, args: Args) -> HttpReading:
+    """The status code, parsed body and route of whatever a scenario handed over as a response."""
     if isinstance(observed, int) and not isinstance(observed, bool):
-        return observed, None
-    status = getattr(observed, "status", getattr(observed, "status_code", None))
+        status: object = observed
+    else:
+        status = getattr(observed, "status", getattr(observed, "status_code", None))
     if not isinstance(status, int):
         raise TypeError(
             "http_status observes a response — pass the object qa.http returned (or its "
             f"integer status), not {type(observed).__name__}"
         )
-    body: Any = None
+    body: object = None
     reader = getattr(observed, "json", None)
     if callable(reader):
         try:
             body = reader()
         except ValueError:
             body = None
-    return status, body
+    url = getattr(observed, "url", None)
+    if "path" in args and not isinstance(url, str):
+        raise TypeError(
+            "http_status(path=…) observes which request answered — pass the object "
+            f"qa.http returned, not {type(observed).__name__}"
+        )
+    route = urllib.parse.urlsplit(url).path if isinstance(url, str) else None
+    return HttpReading(status=status, body=body, route=route)
 
 
-def _pair(observed: Any, check: str) -> tuple[Any, Any]:
-    """The before/after a differential check needs, insisted on rather than inferred."""
-    if isinstance(observed, (tuple, list)) and len(observed) == 2:
-        return observed[0], observed[1]
-    raise TypeError(
-        f"{check} observes a change — pass `(before, after)`, the two reads it compares, "
-        f"not {type(observed).__name__}"
-    )
+@dataclass(frozen=True)
+class HeaderReading:
+    """The headers a response carried, in the order it carried them."""
+
+    headers: tuple[tuple[str, str], ...]
 
 
-type JsonValue = None | bool | int | float | str | list[JsonValue] | dict[str, JsonValue]
+def _read_headers(observed: object, args: Args) -> HeaderReading:
+    headers = getattr(observed, "headers", None)
+    if callable(headers):
+        headers = headers()
+    if not isinstance(headers, Mapping):
+        raise TypeError(
+            "response_header observes the headers a response carried — pass the object "
+            f"qa.http returned, not {type(observed).__name__}"
+        )
+    return HeaderReading(headers=tuple((str(key), str(value)) for key, value in headers.items()))
+
+
+@dataclass(frozen=True)
+class PairReading:
+    """The two reads a differential check compares."""
+
+    before: object
+    after: object
+
+
+def _pair(check: str) -> Callable[[object, Args], PairReading]:
+    """A reader insisting on the before/after a differential check needs, rather than inferring it."""
+
+    def read(observed: object, args: Args) -> PairReading:
+        if isinstance(observed, tuple | list) and len(observed) == 2:
+            return PairReading(before=observed[0], after=observed[1])
+        raise TypeError(
+            f"{check} observes a change — pass `(before, after)`, the two reads it compares, "
+            f"not {type(observed).__name__}"
+        )
+
+    return read
 
 
 class Tree(dict[str, JsonValue]):
@@ -63,36 +158,74 @@ class Tree(dict[str, JsonValue]):
                     self[name] = _read_tree_file(path)
 
 
-def _file_text(observed: Any, subject: str) -> str | None:
-    """The text of the file `subject` names in a working directory, as written, or `None` when no file sits there."""
+@dataclass(frozen=True)
+class FileReading:
+    """The text of the one file a check names, or `None` when no file sits there."""
+
+    text: str | None
+
+
+def _read_file(observed: object, args: Args) -> FileReading:
+    """The text of the file `subject` names in a working directory, as written."""
+    subject = args["subject"]
     texts = getattr(observed, "texts", None)
     if isinstance(texts, Mapping):
         text = texts.get(subject)
-        return text if isinstance(text, str) else None
+        return FileReading(text=text if isinstance(text, str) else None)
     if not isinstance(observed, Mapping):
         raise TypeError(f"a file is read from a working directory, got {type(observed).__name__}")
     if subject not in observed:
-        return None
+        return FileReading(text=None)
     value = observed[subject]
-    return value if isinstance(value, str) else json.dumps(value)
+    return FileReading(text=value if isinstance(value, str) else json.dumps(value))
 
 
 @dataclass(frozen=True)
-class _CheckedDocument:
-    """What a check reads, and whether the file its `file=` names was there to read."""
+class DocumentReading:
+    """What a check reads, whether the file its `file=` names was there to read, and why it could not be parsed when it could not."""
 
     present: bool
-    document: Any
+    document: object
+    unreadable: str | None = None
 
 
-def _checked_document(observed: Any, args: Mapping[str, Any]) -> _CheckedDocument:
+def _read_document(observed: object, args: Args) -> DocumentReading:
     """What a check reads: the file its `file=` names in a working directory, or what was observed when it names none."""
     if "file" not in args:
-        return _CheckedDocument(present=True, document=observed)
+        return DocumentReading(present=True, document=observed)
     if not isinstance(observed, Mapping):
         raise TypeError(f"`file=` reads a working directory, got {type(observed).__name__}")
     name = args["file"]
-    return _CheckedDocument(present=name in observed, document=observed.get(name))
+    return DocumentReading(present=name in observed, document=observed.get(name))
+
+
+def _read_countable(observed: object, args: Args) -> DocumentReading:
+    """The document a count resolves its subject in, parsed when it is a response."""
+    checked = _read_document(observed, args)
+    reader = getattr(checked.document, "json", None)
+    if not checked.present or not callable(reader):
+        return checked
+    try:
+        return DocumentReading(present=True, document=reader())
+    except ValueError as exc:
+        return DocumentReading(present=True, document=None, unreadable=str(exc))
+
+
+@dataclass(frozen=True)
+class BodyReading:
+    """Everything the subject carries: a response's parsed body, its text when that does not parse, or the value itself."""
+
+    document: object
+
+
+def _read_body(observed: object, args: Args) -> BodyReading:
+    reader = getattr(observed, "json", None)
+    if not callable(reader):
+        return BodyReading(document=observed)
+    try:
+        return BodyReading(document=reader())
+    except ValueError:
+        return BodyReading(document=getattr(observed, "text", observed))
 
 
 def json_value(value: object) -> JsonValue:
@@ -116,7 +249,7 @@ def _read_tree_file(path: Path) -> JsonValue:
         return text
 
 
-def _named_files(before: Any, after: Any, subject: Any) -> tuple[Any, Any]:
+def _named_files(before: object, after: object, subject: object) -> tuple[object, object]:
     """A tree pair cut down to the one file `subject` names, present or not, so `created` and `removed` judge that file and nothing else in the directory."""
     if not isinstance(before, Tree) or not isinstance(after, Tree):
         return before, after
@@ -126,19 +259,19 @@ def _named_files(before: Any, after: Any, subject: Any) -> tuple[Any, Any]:
     )
 
 
-def _named_file_or_tree(before: Any, after: Any, subject: Any) -> tuple[Any, Any]:
+def _named_file_or_tree(before: object, after: object, subject: object) -> tuple[object, object]:
     """A tree pair cut down to the file `subject` names when either side holds it, or left whole, which asserts more than any part of it."""
     if not isinstance(before, Tree) or not isinstance(after, Tree):
         return before, after
     if subject in before or subject in after:
-        return before.get(subject), after.get(subject)
+        return before.get(str(subject)), after.get(str(subject))
     return before, after
 
 
-def _paths(value: Any, prefix: str = "") -> dict[str, Any]:
+def _paths(value: object, prefix: str = "") -> dict[str, object]:
     """Every leaf of a JSON-ish value, keyed by its dotted path."""
     if isinstance(value, dict):
-        out: dict[str, Any] = {}
+        out: dict[str, object] = {}
         for key, item in value.items():
             out.update(_paths(item, f"{prefix}.{key}" if prefix else str(key)))
         return out
@@ -150,81 +283,62 @@ def _paths(value: Any, prefix: str = "") -> dict[str, Any]:
     return {prefix: value}
 
 
-def _verify_http_status(observed: Any, args: Mapping[str, Any]) -> tuple[bool, Any, Any]:
-    status, body = _observed_status(observed)
-    expected: Any = {"code": args["code"]}
-    actual: Any = {"code": status}
-    passed = status == args["code"]
+def _verify_http_status(reading: HttpReading, args: Args) -> Verdict:
+    expected: dict[str, object] = {"code": args["code"]}
+    actual: dict[str, object] = {"code": reading.status}
+    passed = reading.status == args["code"]
     if "title" in args:
-        found = body.get("title") if isinstance(body, dict) else None
+        found = reading.body.get("title") if isinstance(reading.body, dict) else None
         expected["title"], actual["title"] = args["title"], found
         passed = passed and found == args["title"]
     if "path" in args:
-        url = getattr(observed, "url", None)
-        if not isinstance(url, str):
-            raise TypeError(
-                "http_status(path=…) observes which request answered — pass the object "
-                f"qa.http returned, not {type(observed).__name__}"
-            )
-        route = urllib.parse.urlsplit(url).path
-        expected["path"], actual["path"] = args["path"], route
-        passed = passed and route == args["path"]
-    return passed, actual, expected
+        expected["path"], actual["path"] = args["path"], reading.route
+        passed = passed and reading.route == args["path"]
+    return _verdict(passed, actual, expected)
 
 
-def _verify_response_header(observed: Any, args: Mapping[str, Any]) -> tuple[bool, Any, Any]:
-    headers = getattr(observed, "headers", None)
-    if callable(headers):
-        headers = headers()
-    if not isinstance(headers, Mapping):
-        raise TypeError(
-            "response_header observes the headers a response carried — pass the object "
-            f"qa.http returned, not {type(observed).__name__}"
-        )
+def _verify_response_header(reading: HeaderReading, args: Args) -> Verdict:
     wanted = str(args["name"]).lower()
-    value = next((str(v) for k, v in headers.items() if str(k).lower() == wanted), None)
+    value = next((v for k, v in reading.headers if k.lower() == wanted), None)
     actual = {args["name"]: value}
     if value is None:
-        return False, actual, {args["name"]: "present"}
+        return _verdict(False, actual, {args["name"]: "present"})
     if "equals" in args:
-        return value == args["equals"], actual, {args["name"]: args["equals"]}
-    return (re.search(args["matches"], value) is not None, actual,
-            {args["name"]: f"~ {args['matches']}"})
+        return _verdict(value == args["equals"], actual, {args["name"]: args["equals"]})
+    return _verdict(re.search(args["matches"], value) is not None, actual,
+                    {args["name"]: f"~ {args['matches']}"})
 
 
-def _matchable(value: Any) -> str:
+def _matchable(value: object) -> str:
     """*value* rendered the way a `json_path(matches=...)` pattern is written against."""
     if isinstance(value, str):
         return value
     return json.dumps(value)
 
 
-def _verify_json_path(observed: Any, args: Mapping[str, Any]) -> tuple[bool, Any, Any]:
-    checked = _checked_document(observed, args)
-    if not checked.present:
-        return False, {"file": args["file"], "present": False}, {"file": "present"}
-    document = checked.document
-    resolved, value = resolve_path(document, args["path"])
+def _verify_json_path(reading: DocumentReading, args: Args) -> Verdict:
+    if not reading.present:
+        return _verdict(False, {"file": args["file"], "present": False}, {"file": "present"})
+    resolved, value = resolve_path(reading.document, args["path"])
     if "absent" in args:
         want_absent = bool(args["absent"])
-        return resolved is not want_absent, {"present": resolved}, {"present": not want_absent}
+        return _verdict(resolved is not want_absent, {"present": resolved}, {"present": not want_absent})
     if not resolved:
-        return False, {"present": False}, {"path": args["path"]}
+        return _verdict(False, {"present": False}, {"path": args["path"]})
     if is_projection(args["path"]):
         if len(value) != 1:
-            return False, {"selected": value}, {"selected": "exactly one"}
+            return _verdict(False, {"selected": value}, {"selected": "exactly one"})
         value = value[0]
     if "equals" in args:
-        return scalar_equal(value, args["equals"]), value, args["equals"]
+        return _verdict(scalar_equal(value, args["equals"]), value, args["equals"])
     if "matches" in args:
-        return (re.search(args["matches"], _matchable(value)) is not None, value,
-                f"~ {args['matches']}")
-    return False, value, "equals=, matches= or absent=true — presence asserts nothing"
+        return _verdict(re.search(args["matches"], _matchable(value)) is not None, value,
+                        f"~ {args['matches']}")
+    return _verdict(False, value, "equals=, matches= or absent=true — presence asserts nothing")
 
 
-def _verify_unchanged(observed: Any, args: Mapping[str, Any]) -> tuple[bool, Any, Any]:
-    before, after = _pair(observed, "unchanged")
-    before, after = _named_file_or_tree(before, after, args.get("subject"))
+def _verify_unchanged(reading: PairReading, args: Args) -> Verdict:
+    before, after = _named_file_or_tree(reading.before, reading.after, args.get("subject"))
     allowed = set(args.get("except_fields", []))
     before_paths, after_paths = _paths(before), _paths(after)
     changed = sorted(
@@ -235,77 +349,86 @@ def _verify_unchanged(observed: Any, args: Mapping[str, Any]) -> tuple[bool, Any
         }
         - allowed
     )
-    return not changed, {"changed": changed}, {"changed": []}
+    return _verdict(not changed, {"changed": changed}, {"changed": []})
 
 
-def _verify_keys_unchanged(observed: Any, args: Mapping[str, Any]) -> tuple[bool, Any, Any]:
-    before, after = _pair(observed, "keys_unchanged")
-    before, after = _named_file_or_tree(before, after, args.get("subject"))
+def _verify_keys_unchanged(reading: PairReading, args: Args) -> Verdict:
+    before, after = _named_file_or_tree(reading.before, reading.after, args.get("subject"))
     gone = sorted(_paths(before).keys() - _paths(after).keys())
     added = sorted(_paths(after).keys() - _paths(before).keys())
-    return not gone and not added, {"removed": gone, "added": added}, {"removed": [], "added": []}
+    return _verdict(not gone and not added, {"removed": gone, "added": added}, {"removed": [], "added": []})
 
 
-def _verify_count(observed: Any, args: Mapping[str, Any]) -> tuple[bool, Any, Any]:
+def _verify_count(reading: DocumentReading, args: Args) -> Verdict:
     """How many of `subject` there are — the subject resolved, not taken on trust."""
-    checked = _checked_document(observed, args)
-    if not checked.present:
-        return False, {"file": args["file"], "present": False}, args["equals"]
-    document = checked.document
-    reader = getattr(document, "json", None)
-    if callable(reader):
-        try:
-            document = reader()
-        except ValueError as exc:
-            return False, {"subject": args["subject"], "countable": False, "reason": str(exc)}, args["equals"]
+    if not reading.present:
+        return _verdict(False, {"file": args["file"], "present": False}, args["equals"])
+    if reading.unreadable is not None:
+        return _verdict(
+            False, {"subject": args["subject"], "countable": False, "reason": reading.unreadable}, args["equals"]
+        )
+    document = reading.document
     if isinstance(document, Mapping):
         resolved, document = resolve_path(document, args["subject"])
         selected_nothing = is_projection(args["subject"]) and document == []
         if not resolved and not selected_nothing:
-            return False, {"subject": args["subject"], "present": False}, args["equals"]
+            return _verdict(False, {"subject": args["subject"], "present": False}, args["equals"])
     if isinstance(document, bool | str) or not isinstance(document, int | Sized):
-        return False, {"subject": args["subject"], "countable": False}, args["equals"]
+        return _verdict(False, {"subject": args["subject"], "countable": False}, args["equals"])
     found = document if isinstance(document, int) else len(document)
-    return found == args["equals"], found, args["equals"]
+    return _verdict(found == args["equals"], found, args["equals"])
 
 
-def _empty(value: Any) -> bool:
+def _empty(value: object) -> bool:
     """Nothing there: `None`, or a sized thing with nothing in it."""
-    return value is None or (hasattr(value, "__len__") and len(value) == 0)
+    return value is None or (isinstance(value, Sized) and len(value) == 0)
 
 
-def _verify_absent(observed: Any, args: Mapping[str, Any]) -> tuple[bool, Any, Any]:
+@dataclass(frozen=True)
+class AbsenceReading:
+    """Whether nothing is there, and what was there to see."""
+
+    empty: bool
+    seen: object
+
+
+def _read_absence(observed: object, args: Args) -> AbsenceReading:
     """Nothing there. On a working directory, no file at the path `subject` names."""
     if isinstance(observed, Tree):
         subject = args.get("subject")
-        return subject not in observed, {path: value for path, value in observed.items() if path == subject}, "absent"
-    return _empty(observed), observed, "absent"
+        return AbsenceReading(
+            empty=subject not in observed,
+            seen={path: value for path, value in observed.items() if path == subject},
+        )
+    return AbsenceReading(empty=_empty(observed), seen=observed)
 
 
-def _verify_created(observed: Any, args: Mapping[str, Any]) -> tuple[bool, Any, Any]:
+def _verify_absent(reading: AbsenceReading, args: Args) -> Verdict:
+    return _verdict(reading.empty, reading.seen, "absent")
+
+
+def _verify_created(reading: PairReading, args: Args) -> Verdict:
     """Absent before the action, present after — both halves, or it proves nothing."""
-    before, after = _pair(observed, "created")
-    before, after = _named_files(before, after, args.get("subject"))
+    before, after = _named_files(reading.before, reading.after, args.get("subject"))
     was_absent, is_present = _empty(before), not _empty(after)
-    return (
+    return _verdict(
         was_absent and is_present,
         {"before": before, "after": after},
         {"before": "absent", "after": "present"},
     )
 
 
-def _verify_removed(observed: Any, args: Mapping[str, Any]) -> tuple[bool, Any, Any]:
+def _verify_removed(reading: PairReading, args: Args) -> Verdict:
     """Present before the action, absent after — the mirror of `created`, and for the mirror reason: absence afterwards alone passes on a subject that was never there."""
-    before, after = _pair(observed, "removed")
-    before, after = _named_files(before, after, args.get("subject"))
-    return (
+    before, after = _named_files(reading.before, reading.after, args.get("subject"))
+    return _verdict(
         not _empty(before) and _empty(after),
         {"before": before, "after": after},
         {"before": "present", "after": "absent"},
     )
 
 
-def _readings(observed: Any) -> list[str]:
+def _readings(observed: object) -> tuple[str, ...]:
     """Every spelling of an element's text the page can offer, rendered first."""
     readings: list[str] = []
     for reader in ("inner_text", "text_content"):
@@ -315,90 +438,130 @@ def _readings(observed: Any) -> list[str]:
         value = read()
         if value is not None and str(value) not in readings:
             readings.append(str(value))
-    return readings
+    return tuple(readings)
 
 
-def _verify_visible(observed: Any, args: Mapping[str, Any]) -> tuple[bool, Any, Any]:
-    if hasattr(observed, "is_visible"):
-        shown = bool(observed.is_visible())
-        readings = _readings(observed) if shown and "text" in args else []
-    else:
-        shown = bool(observed)
-        readings = [str(observed)] if "text" in args and observed is not None else []
+@dataclass(frozen=True)
+class VisibilityReading:
+    """Whether the subject is shown, and every spelling of its text when the check reads text."""
+
+    shown: bool
+    readings: tuple[str, ...]
+
+
+def _read_visibility(observed: object, args: Args) -> VisibilityReading:
+    is_visible = getattr(observed, "is_visible", None)
+    if callable(is_visible):
+        shown = bool(is_visible())
+        return VisibilityReading(shown=shown, readings=_readings(observed) if shown and "text" in args else ())
+    readings = (str(observed),) if "text" in args and observed is not None else ()
+    return VisibilityReading(shown=bool(observed), readings=readings)
+
+
+def _verify_visible(reading: VisibilityReading, args: Args) -> Verdict:
     if "text" not in args:
-        return shown, {"visible": shown}, {"visible": True}
-    text = readings[0] if readings else None
-    contains = shown and any(args["text"] in reading for reading in readings)
-    return contains, {"visible": shown, "text": text}, {"visible": True, "text": args["text"]}
+        return _verdict(reading.shown, {"visible": reading.shown}, {"visible": True})
+    text = reading.readings[0] if reading.readings else None
+    contains = reading.shown and any(args["text"] in each for each in reading.readings)
+    return _verdict(contains, {"visible": reading.shown, "text": text}, {"visible": True, "text": args["text"]})
 
 
-def _enabled(observed: Any, check: str) -> bool:
+@dataclass(frozen=True)
+class ControlReading:
     """Whether the product will let a user act on this control."""
-    if not hasattr(observed, "is_enabled"):
-        raise TypeError(
-            f"{check} observes whether a control accepts the action — pass the element "
-            f"itself, not {type(observed).__name__}"
-        )
-    return bool(observed.is_enabled())
+
+    enabled: bool
 
 
-def _verify_actionable(observed: Any, args: Mapping[str, Any]) -> tuple[bool, Any, Any]:
-    usable = _enabled(observed, "actionable")
-    return usable, {"actionable": usable}, {"actionable": True}
+def _control(check: str) -> Callable[[object, Args], ControlReading]:
+    def read(observed: object, args: Args) -> ControlReading:
+        is_enabled = getattr(observed, "is_enabled", None)
+        if not callable(is_enabled):
+            raise TypeError(
+                f"{check} observes whether a control accepts the action — pass the element "
+                f"itself, not {type(observed).__name__}"
+            )
+        return ControlReading(enabled=bool(is_enabled()))
+
+    return read
 
 
-def _verify_inert(observed: Any, args: Mapping[str, Any]) -> tuple[bool, Any, Any]:
-    usable = _enabled(observed, "inert")
-    return not usable, {"actionable": usable}, {"actionable": False}
+def _verify_actionable(reading: ControlReading, args: Args) -> Verdict:
+    return _verdict(reading.enabled, {"actionable": reading.enabled}, {"actionable": True})
 
 
-def _verify_focusable(observed: Any, args: Mapping[str, Any]) -> tuple[bool, Any, Any]:
+def _verify_inert(reading: ControlReading, args: Args) -> Verdict:
+    return _verdict(not reading.enabled, {"actionable": reading.enabled}, {"actionable": False})
+
+
+@dataclass(frozen=True)
+class FocusReading:
+    """Whether a real keypress reached the control, and whether the key `activates` names then clicked it, when it names one."""
+
+    focused: bool
+    activated: bool | None
+
+
+def _read_focus(observed: object, args: Args) -> FocusReading:
     """Reachable by a real keypress, and — when `activates` names one — responsive to it."""
-    if not hasattr(observed, "focus"):
+    focus = getattr(observed, "focus", None)
+    if not callable(focus):
         raise TypeError(
             f"focusable observes a control through real keyboard focus — pass the element "
             f"itself, not {type(observed).__name__}"
         )
-    observed.focus()
-    focused = bool(observed.evaluate("el => el === document.activeElement"))
+    focus()
+    evaluate = getattr(observed, "evaluate")
+    focused = bool(evaluate("el => el === document.activeElement"))
     if "activates" not in args:
-        return focused, {"focused": focused}, {"focused": True}
+        return FocusReading(focused=focused, activated=None)
     if not focused:
-        return False, {"focused": False, "activated": False}, {"focused": True, "activated": True}
-    observed.evaluate(
+        return FocusReading(focused=False, activated=False)
+    evaluate(
         "el => { el.__ostlerActivated = false; "
         "el.addEventListener('click', () => { el.__ostlerActivated = true; }, {once: true}); }"
     )
-    observed.page.keyboard.press(args["activates"])
-    activated = bool(observed.evaluate("el => el.__ostlerActivated === true"))
-    return (
-        activated,
-        {"focused": True, "activated": activated},
+    getattr(observed, "page").keyboard.press(args["activates"])
+    return FocusReading(focused=True, activated=bool(evaluate("el => el.__ostlerActivated === true")))
+
+
+def _verify_focusable(reading: FocusReading, args: Args) -> Verdict:
+    if reading.activated is None:
+        return _verdict(reading.focused, {"focused": reading.focused}, {"focused": True})
+    return _verdict(
+        reading.focused and reading.activated,
+        {"focused": reading.focused, "activated": reading.activated},
         {"focused": True, "activated": True},
     )
 
 
-def _verify_persists(observed: Any, args: Mapping[str, Any]) -> tuple[bool, Any, Any]:
-    written, reread = _pair(observed, "persists")
-    return reread is not None and reread == written, reread, written
+def _verify_persists(reading: PairReading, args: Args) -> Verdict:
+    written, reread = reading.before, reading.after
+    return _verdict(reread is not None and reread == written, reread, written)
 
 
-def _verify_emitted(observed: Any, args: Mapping[str, Any]) -> tuple[bool, Any, Any]:
-    found = len(observed)
+@dataclass(frozen=True)
+class SizeReading:
+    """How many things were emitted."""
+
+    size: int
+
+
+def _read_size(observed: object, args: Args) -> SizeReading:
+    if not isinstance(observed, Sized):
+        raise TypeError(f"object of type '{type(observed).__name__}' has no len()")
+    return SizeReading(size=len(observed))
+
+
+def _verify_emitted(reading: SizeReading, args: Args) -> Verdict:
     if "count" in args:
-        return found == args["count"], found, args["count"]
-    return found > 0, found, "at least one"
+        return _verdict(reading.size == args["count"], reading.size, args["count"])
+    return _verdict(reading.size > 0, reading.size, "at least one")
 
 
-def _verify_omits(observed: Any, args: Mapping[str, Any]) -> tuple[bool, Any, Any]:
+def _verify_omits(reading: BodyReading, args: Args) -> Verdict:
     """What the subject must not carry — the one assertion the rest of the vocabulary cannot make."""
-    document = observed
-    reader = getattr(document, "json", None)
-    if callable(reader):
-        try:
-            document = reader()
-        except ValueError:
-            document = getattr(observed, "text", observed)
+    document = reading.document
     if isinstance(document, Mapping):
         resolved, value = resolve_path(document, args["subject"])
         if resolved:
@@ -411,10 +574,10 @@ def _verify_omits(observed: Any, args: Mapping[str, Any]) -> tuple[bool, Any, An
         hit = re.search(args["matches"], haystack)
         if hit is not None:
             found.append(hit.group(0))
-    return not found, {"found": found}, {"found": []}
+    return _verdict(not found, {"found": found}, {"found": []})
 
 
-def _rendered(document: Any) -> str:
+def _rendered(document: object) -> str:
     """Everything the subject carries, as one string to search."""
     try:
         return json.dumps(document, default=str, sort_keys=True)
@@ -422,76 +585,95 @@ def _rendered(document: Any) -> str:
         return str(document)
 
 
-def _verify_exit_status(observed: Any, args: Mapping[str, Any]) -> tuple[bool, Any, Any]:
-    """The process ended the way the book says it does."""
+@dataclass(frozen=True)
+class ExitReading:
+    """The code a process exited with."""
+
+    code: int
+
+
+def _read_exit(observed: object, args: Args) -> ExitReading:
     code = getattr(observed, "exit_code", None)
     if isinstance(code, bool) or not isinstance(code, int):
         raise TypeError(
             "exit_status observes a tool or maestro result (something with an exit_code), "
             f"got {type(observed).__name__}"
         )
-    return code == args["code"], code, args["code"]
+    return ExitReading(code=code)
 
 
+def _verify_exit_status(reading: ExitReading, args: Args) -> Verdict:
+    """The process ended the way the book says it does."""
+    return _verdict(reading.code == args["code"], reading.code, args["code"])
 
-def _stream_verifier(stream: str) -> Callable[[Any, Mapping[str, Any]], tuple[bool, Any, Any]]:
-    """A verifier reading one output stream of a tool result for the text or the pattern the book names."""
 
-    def verify(observed: Any, args: Mapping[str, Any]) -> tuple[bool, Any, Any]:
+@dataclass(frozen=True)
+class StreamReading:
+    """What a command printed on one output stream."""
+
+    printed: str
+
+
+def _read_stream(stream: str) -> Callable[[object, Args], StreamReading]:
+    def read(observed: object, args: Args) -> StreamReading:
         printed = getattr(observed, stream, None)
         if not isinstance(printed, str):
             raise TypeError(
                 f"{stream} observes a tool result (something with a text {stream}), "
                 f"got {type(observed).__name__}"
             )
-        missing = {key: args[key] for key in ("text", "matches") if key in args}
-        if "text" in args and args["text"] in printed:
-            missing.pop("text")
-        if "matches" in args and re.search(args["matches"], printed) is not None:
-            missing.pop("matches")
-        return not missing, printed, missing
+        return StreamReading(printed=printed)
 
-    verify.__doc__ = f"The command printed on {stream} what the book says it prints."
-    return verify
+    return read
 
-def _verify_contents(observed: Any, args: Mapping[str, Any]) -> tuple[bool, Any, Any]:
+
+def _verify_printed(reading: StreamReading, args: Args) -> Verdict:
+    """The command printed on the stream what the book says it prints."""
+    missing = {key: args[key] for key in ("text", "matches") if key in args}
+    if "text" in args and args["text"] in reading.printed:
+        missing.pop("text")
+    if "matches" in args and re.search(args["matches"], reading.printed) is not None:
+        missing.pop("matches")
+    return _verdict(not missing, reading.printed, missing)
+
+
+def _verify_contents(reading: FileReading, args: Args) -> Verdict:
     """The file `subject` names holds the text or the pattern the book says it holds."""
-    text = _file_text(observed, args["subject"])
+    text = reading.text
     if text is None:
-        return False, {"subject": args["subject"], "present": False}, {"subject": "present"}
+        return _verdict(False, {"subject": args["subject"], "present": False}, {"subject": "present"})
     missing = {key: args[key] for key in ("text", "matches") if key in args}
     if "text" in args and args["text"] in text:
         missing.pop("text")
     if "matches" in args and re.search(args["matches"], text) is not None:
         missing.pop("matches")
-    return not missing, text, missing
+    return _verdict(not missing, text, missing)
 
 
-def _verify_conflict_on_stale(observed: Any, args: Mapping[str, Any]) -> tuple[bool, Any, Any]:
-    status, _ = _observed_status(observed)
-    return 400 <= status < 500, status, "a refusal (4xx)"
+def _verify_conflict_on_stale(reading: HttpReading, args: Args) -> Verdict:
+    return _verdict(400 <= reading.status < 500, reading.status, "a refusal (4xx)")
 
 
-VERIFIERS: dict[str, Callable[[Any, Mapping[str, Any]], tuple[bool, Any, Any]]] = {
-    "http_status": _verify_http_status,
-    "response_header": _verify_response_header,
-    "json_path": _verify_json_path,
-    "unchanged": _verify_unchanged,
-    "keys_unchanged": _verify_keys_unchanged,
-    "count": _verify_count,
-    "absent": _verify_absent,
-    "created": _verify_created,
-    "removed": _verify_removed,
-    "visible": _verify_visible,
-    "actionable": _verify_actionable,
-    "inert": _verify_inert,
-    "focusable": _verify_focusable,
-    "persists": _verify_persists,
-    "emitted": _verify_emitted,
-    "omits": _verify_omits,
-    "exit_status": _verify_exit_status,
-    "stdout": _stream_verifier("stdout"),
-    "stderr": _stream_verifier("stderr"),
-    "contents": _verify_contents,
-    "conflict_on_stale": _verify_conflict_on_stale,
+VERIFIERS: dict[str, Verifier] = {
+    "http_status": _check(_read_response, _verify_http_status),
+    "response_header": _check(_read_headers, _verify_response_header),
+    "json_path": _check(_read_document, _verify_json_path),
+    "unchanged": _check(_pair("unchanged"), _verify_unchanged),
+    "keys_unchanged": _check(_pair("keys_unchanged"), _verify_keys_unchanged),
+    "count": _check(_read_countable, _verify_count),
+    "absent": _check(_read_absence, _verify_absent),
+    "created": _check(_pair("created"), _verify_created),
+    "removed": _check(_pair("removed"), _verify_removed),
+    "visible": _check(_read_visibility, _verify_visible),
+    "actionable": _check(_control("actionable"), _verify_actionable),
+    "inert": _check(_control("inert"), _verify_inert),
+    "focusable": _check(_read_focus, _verify_focusable),
+    "persists": _check(_pair("persists"), _verify_persists),
+    "emitted": _check(_read_size, _verify_emitted),
+    "omits": _check(_read_body, _verify_omits),
+    "exit_status": _check(_read_exit, _verify_exit_status),
+    "stdout": _check(_read_stream("stdout"), _verify_printed),
+    "stderr": _check(_read_stream("stderr"), _verify_printed),
+    "contents": _check(_read_file, _verify_contents),
+    "conflict_on_stale": _check(_read_response, _verify_conflict_on_stale),
 }

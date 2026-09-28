@@ -10,6 +10,7 @@ import pytest
 
 from ostler.qa import sensitivity
 from ostler.qa.evidence_map import EvidenceMapError, build_evidence_map, render_evidence_map
+from ostler.qa.harness_host import load_harness_module
 
 CONTRACT = "okf:docs/features/orders/publish.md:contract"
 CONFLICT = "okf:docs/features/orders/publish.md:does:1"
@@ -353,7 +354,7 @@ def test_a_pass_off_a_check_nothing_could_falsify_is_not_covered(
 ) -> None:
     """The quietest failure: every declared check ran, passed, and proved nothing."""
     monkeypatch.setitem(
-        sensitivity._VERIFIERS, "conflict_on_stale", lambda observed, args: (True, {}, {})
+        sensitivity._VERIFIERS, "conflict_on_stale", lambda observed, args: load_harness_module("ostler_qa_verifiers").Verdict(True, {}, {})
     )
     spec = _spec(
         tmp_path,

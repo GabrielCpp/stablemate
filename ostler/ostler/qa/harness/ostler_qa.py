@@ -1140,17 +1140,17 @@ class Qa:
                 f"'{check}' is not a declared check — the vocabulary is: "
                 f"{', '.join(sorted(VERIFIERS))}"
             )
-        passed, actual, expected = verifier(observed, args)
+        verdict = verifier(observed, args)
         rendered = ", ".join(f"{key}={value!r}" for key, value in args.items())
         ending_fields = (
             {"command_ending": {"exit_code": observed.exit_code, "stderr": observed.stderr.strip()[-500:]}}
-            if not passed and isinstance(observed, ToolResult) else {}
+            if not verdict.passed and isinstance(observed, ToolResult) else {}
         )
         return self._record(
             label or f"{check}({rendered})",
-            passed,
-            actual,
-            expected,
+            verdict.passed,
+            verdict.actual,
+            verdict.expected,
             covers,
             extra={"check": check, "check_args": args, **ending_fields},
         )
