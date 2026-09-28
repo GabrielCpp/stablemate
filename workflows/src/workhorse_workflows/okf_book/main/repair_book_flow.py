@@ -270,9 +270,9 @@ class RepairBook(BookFlow):
         changed = book_changes(root, self.service, before)
         created = absent_from_head(root, changed)
         pages = tuple(path for path in changed if path != entries and path not in before.digests and batch.owns(path, created))
-        journey = sorted(set(pages) - set(batch.page_paths))
-        if journey:
-            self.logger.info("the repair turn also changed %d journey pages: %s", len(journey), ", ".join(journey))
+        changed_journey_pages = sorted(set(pages) - set(batch.page_paths))
+        if changed_journey_pages:
+            self.logger.info("the repair turn also changed %d journey pages: %s", len(changed_journey_pages), ", ".join(changed_journey_pages))
         for page in pages:
             if page.endswith(".md") and (root / page).is_file():
                 _ = stamp_page(root, root / FEATURES_DIR, page)
