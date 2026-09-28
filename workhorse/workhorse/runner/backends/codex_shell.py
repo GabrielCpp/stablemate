@@ -107,7 +107,7 @@ def _names_patterns(argument: str) -> bool:
     return argument.startswith("-") and bool(set(argument[1:]) & {"e", "f"})
 
 
-def _search_path_arguments(arguments: Sequence[str]) -> list[str]:
+def _arguments_without_patterns(arguments: Sequence[str]) -> list[str]:
     """A search's arguments without the patterns it matches, which name no file it reads."""
     kept: list[str] = []
     pattern_left = not any(_names_patterns(argument) for argument in arguments)
@@ -151,7 +151,7 @@ def _stage_denial(stage: Sequence[str], policy: Policy) -> str | None:
         denial = _sed_denial(arguments)
         if denial is not None:
             return denial
-    return _path_denial(_search_path_arguments(arguments) if program in ("rg", "grep") else arguments, policy)
+    return _path_denial(_arguments_without_patterns(arguments) if program in ("rg", "grep") else arguments, policy)
 
 
 def shell_denial(command: str, policy: Policy) -> str | None:
