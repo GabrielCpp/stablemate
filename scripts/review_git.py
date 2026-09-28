@@ -46,3 +46,7 @@ def snapshot_tree(repo: Path) -> str:
         env = {**os.environ, "GIT_INDEX_FILE": str(index)}
         git(repo, "add", "-A", env=env)
         return git(repo, "write-tree", env=env)
+
+
+def first_parent_commits(repo: Path, since: str, head: str) -> list[str]:
+    return git(repo, "rev-list", "--reverse", "--first-parent", f"{since}..{head}").split()

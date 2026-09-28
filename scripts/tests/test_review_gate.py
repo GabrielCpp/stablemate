@@ -10,7 +10,7 @@ import pytest
 import review_gate
 from conftest import git, strict_repo
 from review_gate import Block, GiveUp, StopEvent
-from review_state import BASE_STATE_FILE, EMPTY_STATE, HOOK_STATE_FILE, load_state
+from review_state import BASE_STATE_FILE, EMPTY_STATE, HOOK_STATE_FILE, GateState, load_state, save_state
 from review_verdict import Finding, ReviewError, Verdict
 
 
@@ -288,6 +288,82 @@ def test_a_diff_needing_more_batches_than_the_cap_is_too_large(
     assert isinstance(outcome, Block)
     assert "[too-large] the change needs 3 review batches, over the cap of 2" in outcome.reason
     assert reviewer.calls == []
+
+
+def _backlog(repo: Path, monkeypatch: pytest.MonkeyPatch, commits: list[list[str]]) -> list[str]:
+    approved = GateState(git(repo, "rev-parse", "HEAD^{tree}"), git(repo, "rev-parse", "HEAD"), 0)
+    save_state(repo, HOOK_STATE_FILE, approved)
+    heads = []
+    for names in commits:
+        for name in names:
+            (repo / "pkg" / "strict" / f"{name}.py").write_text(f"{name.upper()} = 1\n", encoding="utf-8")
+        _commit(repo, "+".join(names))
+        heads.append(git(repo, "rev-parse", "HEAD"))
+    _budget(monkeypatch, 200)
+    monkeypatch.setattr(review_gate, "MAX_BATCHES", 2)
+    return heads
+
+
+def test_a_committed_backlog_over_the_cap_is_reviewed_one_range_at_a_time(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = strict_repo(tmp_path)
+    heads = _backlog(repo, monkeypatch, [["a"], ["b"], ["c"]])
+    reviewer = FakeReviewer([[], [], []])
+    assert review_gate.hook_decision(repo, _stop(repo), reviewer) is None
+    prompts = [prompt for prompt, _ in reviewer.calls]
+    assert ["+A = 1" in prompt for prompt in prompts] == [True, False, False]
+    assert ["+B = 1" in prompt for prompt in prompts] == [False, True, False]
+    assert ["+C = 1" in prompt for prompt in prompts] == [False, False, True]
+    assert load_state(repo, HOOK_STATE_FILE).base_head == heads[2]
+
+
+def test_findings_in_a_committed_range_are_handed_over_once(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = strict_repo(tmp_path)
+    heads = _backlog(repo, monkeypatch, [["a"], ["b"], ["c"]])
+    reviewer = FakeReviewer([["A says nothing"], [], []])
+    outcome = review_gate.hook_decision(repo, _stop(repo), reviewer)
+    assert isinstance(outcome, Block)
+    assert f"commits {heads[0][:8]}" not in outcome.reason
+    assert f"..{heads[1][:8]}, which are already committed" in outcome.reason
+    assert "[bad-name] A says nothing" in outcome.reason
+    assert load_state(repo, HOOK_STATE_FILE) == GateState(
+        git(repo, "rev-parse", f"{heads[1]}^{{tree}}"), heads[1], 0
+    )
+    assert review_gate.hook_decision(repo, _stop(repo), reviewer) is None
+    assert "+C = 1" in reviewer.calls[2][0]
+    assert "+A = 1" not in reviewer.calls[2][0]
+
+
+def test_a_commit_too_large_to_review_alone_goes_through_with_a_notice(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = strict_repo(tmp_path)
+    heads = _backlog(repo, monkeypatch, [["a", "b", "c"], ["d"]])
+    reviewer = FakeReviewer([[]])
+    outcome = review_gate.hook_decision(repo, _stop(repo), reviewer)
+    assert isinstance(outcome, GiveUp)
+    assert f"Commit {heads[0][:8]} is too large to review on its own" in outcome.message
+    assert len(reviewer.calls) == 1
+    assert "+D = 1" in reviewer.calls[0][0]
+    assert "+A = 1" not in reviewer.calls[0][0]
+    assert load_state(repo, HOOK_STATE_FILE).base_head == heads[1]
+
+
+def test_an_uncommitted_diff_over_the_cap_still_blocks_after_the_backlog(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = strict_repo(tmp_path)
+    heads = _backlog(repo, monkeypatch, [["a"]])
+    for name in ("x", "y", "z"):
+        (repo / "pkg" / "strict" / f"{name}.py").write_text(f"{name.upper()} = 1\n", encoding="utf-8")
+    reviewer = FakeReviewer([[]])
+    outcome = review_gate.hook_decision(repo, _stop(repo), reviewer)
+    assert isinstance(outcome, Block)
+    assert "[too-large] the change needs 3 review batches" in outcome.reason
+    assert load_state(repo, HOOK_STATE_FILE).base_head == heads[0]
 
 
 def test_review_from_a_base_covers_every_path(
