@@ -473,26 +473,53 @@ def unnamed_interactives(book: LocatorBook) -> list[UnnamedInteractive]:
     return out
 
 
-def screen_locators(book: LocatorBook, screen: str | None = None) -> list[dict]:
+@dataclass(frozen=True, slots=True)
+class PlacedLocator:
+    """One locatable node and how Playwright finds it, with the keys its page states for it."""
+
+    node: str
+    type: str
+    title: str
+    locator: Locator
+    keyboard: str
+
+    def row(self) -> dict[str, JsonValue]:
+        """The node's locator as `ostler locators` prints it."""
+        return {"node": self.node, "type": self.type, "title": self.title, **self.locator.row(),
+                "keyboard": self.keyboard}
+
+
+@dataclass(frozen=True, slots=True)
+class ScreenLocators:
+    """The locatable nodes one owner holds, which is a screen or a shared component file."""
+
+    screen: str
+    locators: tuple[PlacedLocator, ...]
+
+    def row(self) -> dict[str, JsonValue]:
+        """The owner's locators as `ostler locators` prints them."""
+        return {"screen": self.screen, "locators": [placed.row() for placed in self.locators]}
+
+
+def screen_locators(book: LocatorBook, screen: str | None = None) -> list[ScreenLocators]:
     """Every locatable node, grouped by its owner (a screen, or a shared component file)."""
-    by_screen: dict[str, list[dict]] = {}
+    by_screen: dict[str, list[PlacedLocator]] = {}
     scopes = book.scopes
     for owner, node in book.locatables:
         if screen and owner != screen and not owner.endswith(f"/{screen}.md"):
             continue
-        entry: dict[str, JsonValue] = {"node": node.id, "type": node.type, "title": node.title}
-        entry.update(locator_for(node, scope=scopes.get(node.id, ())).row())
-        entry["keyboard"] = _bullet(node, "keyboard")
-        by_screen.setdefault(owner, []).append(entry)
-    return [{"screen": s, "locators": by_screen[s]} for s in sorted(by_screen)]
+        placed = PlacedLocator(node.id, node.type, node.title, locator_for(node, scope=scopes.get(node.id, ())),
+                               _bullet(node, "keyboard"))
+        by_screen.setdefault(owner, []).append(placed)
+    return [ScreenLocators(owner, tuple(by_screen[owner])) for owner in sorted(by_screen)]
 
 
 def build(graph: Graph, *, surface: str | None = None, screen: str | None = None) -> dict:
     book = LocatorBook.parse(graph_mod.build(graph, surface=surface))
     screens = screen_locators(book, screen)
-    flat = [locator for entry in screens for locator in entry["locators"]]
+    strategies = [placed.locator.strategy for entry in screens for placed in entry.locators]
     return {
-        "screens": screens,
+        "screens": [entry.row() for entry in screens],
         "collisions": [item.row() for item in collisions(book)],
         "unnamed": [item.row() for item in unnamed_interactives(book)],
         "invalid_roles": [item.row() for item in invalid_roles(book)],
@@ -501,12 +528,12 @@ def build(graph: Graph, *, surface: str | None = None, screen: str | None = None
         "malformed_templates": [item.row() for item in malformed_templates(book)],
         "invalid_variants": [item.row() for item in invalid_variants(book)],
         "counts": {
-            "locators": len(flat),
-            "by_role": sum(1 for locator in flat if locator["strategy"] == "role"),
-            "by_template": sum(1 for locator in flat if locator["strategy"] == "template"),
-            "by_css": sum(1 for locator in flat if locator["strategy"] == "css"),
-            "by_scheme": sum(1 for locator in flat if locator["strategy"] == "scheme"),
-            "unlocatable": sum(1 for locator in flat if locator["strategy"] == "none"),
+            "locators": len(strategies),
+            "by_role": strategies.count("role"),
+            "by_template": strategies.count("template"),
+            "by_css": strategies.count("css"),
+            "by_scheme": strategies.count("scheme"),
+            "unlocatable": strategies.count("none"),
         },
     }
 

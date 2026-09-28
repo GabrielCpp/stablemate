@@ -87,31 +87,31 @@ def _book(repo: Path) -> locators.LocatorBook:
 
 def test_role_and_name_become_a_get_by_role_call(repo: Path):
     data = _build(repo, _screen(SAVE))
-    entry = locators.screen_locators(data)[0]["locators"][0]
-    assert entry["locator"] == 'getByRole("button", { name: "Save", exact: true })'
-    assert entry["strategy"] == "role"
-    assert entry["keyboard"] == "enter"
+    entry = locators.screen_locators(data)[0].locators[0]
+    assert entry.locator.playwright_call == 'getByRole("button", { name: "Save", exact: true })'
+    assert entry.locator.strategy == "role"
+    assert entry.keyboard == "enter"
 
 
 def test_selector_is_a_fallback_and_is_marked_as_one(repo: Path):
     """A CSS locator works, so it is not an error — but it is not the a11y contract either."""
     data = _build(repo, _screen(CSS_ONLY))
-    entry = locators.screen_locators(data)[0]["locators"][0]
-    assert entry["locator"] == 'locator("#legacy")'
-    assert entry["strategy"] == "css"
+    locator = locators.screen_locators(data)[0].locators[0].locator
+    assert locator.playwright_call == 'locator("#legacy")'
+    assert locator.strategy == "css"
 
 
 def test_a_node_with_neither_is_unlocatable(repo: Path):
     data = _build(repo, _screen(NOTHING))
-    entry = locators.screen_locators(data)[0]["locators"][0]
-    assert entry["strategy"] == "none" and entry["locator"] == ""
+    locator = locators.screen_locators(data)[0].locators[0].locator
+    assert locator.strategy == "none" and locator.playwright_call == ""
     assert locators.build(load(repo), surface="web")["counts"]["unlocatable"] == 1
 
 
 def test_quotes_in_an_accessible_name_are_escaped(repo: Path):
     """The locator is emitted as JS source, so a name with a quote must not end the string."""
     data = _build(repo, _screen('### q\n- role: button\n- name: Say "hi"\n'))
-    assert locators.screen_locators(data)[0]["locators"][0]["locator"] == (
+    assert locators.screen_locators(data)[0].locators[0].locator.playwright_call == (
         'getByRole("button", { name: "Say \\"hi\\"", exact: true })')
 
 
@@ -215,7 +215,7 @@ def test_a_role_with_prose_stapled_to_it_is_not_a_role(repo: Path):
         "### spinner\n- selector: `.spin`\n- role: `progressbar` (implicit MUI role)\n- name: none\n"))
     assert [b.role for b in locators.invalid_roles(data)] == [
         "`progressbar` (implicit MUI role)"]
-    assert locators.screen_locators(data)[0]["locators"][0]["strategy"] == "css"
+    assert locators.screen_locators(data)[0].locators[0].locator.strategy == "css"
 
 
 def test_doctor_errors_on_an_invalid_role(repo: Path):
@@ -315,15 +315,15 @@ title: App shell
 def test_na_is_the_same_claim_as_none(repo: Path):
     """`n/a` is what authors actually write, and reading it as a name is a silent wrong answer."""
     data = _build(repo, _screen("### m\n- selector: `.m`\n- role: menu\n- name: n/a\n"))
-    entry = locators.screen_locators(data)[0]["locators"][0]
-    assert entry["locator"] == 'getByRole("menu")'
-    assert "n/a" not in entry["locator"]
+    call = locators.screen_locators(data)[0].locators[0].locator.playwright_call
+    assert call == 'getByRole("menu")'
+    assert "n/a" not in call
 
 
 def test_na_role_is_the_empty_sentinel_not_an_invalid_role(repo: Path):
     data = _build(repo, _screen("### w\n- selector: `.w`\n- role: n/a\n- name: n/a\n"))
     assert locators.invalid_roles(data) == []
-    assert locators.screen_locators(data)[0]["locators"][0]["strategy"] == "css"
+    assert locators.screen_locators(data)[0].locators[0].locator.strategy == "css"
 
 
 def test_an_unnamed_interactive_is_still_caught_when_spelled_na(repo: Path):
@@ -396,7 +396,7 @@ REPEATED = """\
 
 def _locator(repo: Path, *components: str) -> dict:
     data = _build(repo, _screen(*components))
-    return locators.screen_locators(data)[0]["locators"][0]
+    return locators.screen_locators(data)[0].locators[0].row()
 
 
 def test_a_one_per_node_compiles_to_a_data_only_template(repo: Path):
