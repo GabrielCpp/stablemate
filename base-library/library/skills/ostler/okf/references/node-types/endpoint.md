@@ -76,6 +76,18 @@ does, and is held to the same bar: it must spell a path. A parameterised path (`
 is ordinary and legal here — an endpoint is a route *family* by nature, and nothing downstream
 asks an endpoint to identify one page.
 
+The run calls the path a claim's `http_status(path=...)` row spells, and falls back to `path:`
+only when no row spells one. That row is where a parameterised route gets a real value, most
+often a fact a fixture provides, and where a route that requires a query string gets it:
+
+```markdown
+- status: 200
+- verify: http_status(code=200, path="/links/@seeded-link.id?format=full")
+```
+
+A claim whose path still holds a `{…}` template variable when it is called is
+`unresolved-precondition`, since no run can send it.
+
 ## `channel` and `message`
 
 An endpoint answers one address family or the other — `method:`/`path:` for HTTP, or
