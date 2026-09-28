@@ -271,11 +271,11 @@ def render_expected(
         prompt_names = instruction.prompts
         policy_names = instruction.policies
         include_readme = instruction.include_readme
-        claude_md = instruction.claude_md
+        writes_claude_md = instruction.writes_claude_md
         claude_only = bool(agents.get("claude")) and not (
             agents.get("codex") or agents.get("copilot")
         )
-        readme_import = include_readme and claude_only and claude_md
+        readme_import = include_readme and claude_only and writes_claude_md
         target = "claude" if claude_only else "codex"
         for rel in instruction.paths:
             directory = repo / rel
@@ -293,7 +293,7 @@ def render_expected(
                 prompt_names,
                 policy_names,
             )
-            if claude_md:
+            if writes_claude_md:
                 claude_path = directory / "CLAUDE.md"
                 outputs[claude_path] = renderer.render_claude_pointer(
                     skill_names,

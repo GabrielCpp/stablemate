@@ -108,7 +108,7 @@ def mapping_include_readme(mapping: dict[str, Any]) -> bool:
     return _README_ALIASES[key]
 
 
-def mapping_claude_md(mapping: dict[str, Any]) -> bool:
+def mapping_writes_claude_md(mapping: dict[str, Any]) -> bool:
     """Whether a localInstructions mapping also writes the `@AGENTS.md` CLAUDE.md."""
     value = mapping.get("claudeMd", False)
     if not isinstance(value, bool):
@@ -127,7 +127,7 @@ class LocalInstruction:
     prompts: list[str]
     policies: list[str]
     include_readme: bool
-    claude_md: bool
+    writes_claude_md: bool
 
 
 def _instruction_paths(mapping: dict[str, Any]) -> tuple[str, ...]:
@@ -155,7 +155,7 @@ def local_instructions(config: dict[str, Any]) -> tuple[LocalInstruction, ...]:
             prompts=mapping_prompt_names(mapping),
             policies=mapping_policy_names(mapping),
             include_readme=mapping_include_readme(mapping),
-            claude_md=mapping_claude_md(mapping),
+            writes_claude_md=mapping_writes_claude_md(mapping),
         )
         if not instruction.skills and not instruction.prompts and not instruction.policies:
             raise SystemExit(
