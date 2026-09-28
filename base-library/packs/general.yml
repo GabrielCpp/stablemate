@@ -7,8 +7,10 @@ skills:
   - root-cause
   - vet-proposal
   - code-review
+  - codebase-map
   - root-cause
   - grill
+  - decompose
   - brainstorm
   - research-study
 prompts:

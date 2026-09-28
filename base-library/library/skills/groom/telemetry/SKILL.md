@@ -1,6 +1,6 @@
 ---
 name: telemetry
-description: "Investigating a workhorse run from groom's store — the SQLite telemetry (spans/metrics/logs/turns) and the turn-record archive that sits beside it. Which command answers which question (`status`, `logs`, `cost`, `loops`, `profile`, `transcript`), why an unfinished node has no span, the archive's visit-key layout and how to get records out of a container or backfill them from the agent CLI, and the raw `sqlite3` recipes — including the dotted-attribute-key footgun that silently returns NULL. Load when asked why a run is stuck, why a loop repeats, what a run cost, or what a node actually said — not for acting on a run (reload, switch, answer), which is workhorse-operate."
+description: "Investigating a workhorse run from groom's store — the SQLite telemetry (spans/metrics/logs/turns) and the turn-record archive that sits beside it. Which command answers which question (`status`, `logs`, `cost`, `loops`, `profile`, `transcript`), why an unfinished node has no span, the archive's visit-key layout and how to get records out of a container or backfill them from the agent CLI, and the raw `sqlite3` recipes — including the dotted-attribute-key footgun that silently returns NULL. Load when asked why a run is stuck, why a loop repeats, what a run cost, what a node actually said, or why a coder run gave up on a QA gate — not for acting on a run (reload, switch, answer), which is workhorse-operate."
 tags: [cli, backend, standards]
 ---
 
@@ -230,6 +230,28 @@ writing a second query: the dotted-key footgun that returns NULL **silently** fo
 three column semantics that make a wrong answer look right (NULL is not `0.0`;
 `resume_generation`; `head_start`/`head_end` are observations), the recipe set, and the
 `/traces` HTTP surface. Read it whenever the table above sends you to `sqlite3`.
+
+## A coder QA `give_up` is a bug report
+
+When a `coder` run gives up on a QA gate, the run has handed you a defect and stopped. It is not
+self-recovery, and narrating it as recovery leaves the defect in the tree. It enters
+[[diagnosing-bugs]] at Phase 1 like any other bug, with the run's own artifacts as the starting
+evidence:
+
+```bash
+groom status                                   # which run, which node, how long it has been there
+groom transcript ls --run <id>                 # what the node visit was told and what it answered
+groom loops                                    # the review→rework lap that failed to converge
+ostler qa context --base <rev> --spec <dir> --json   # the obligations the story actually owes
+ostler qa validate <dir>/qa-plan.yml --spec <dir> --json
+```
+
+The red signal is usually already there: an obligation with no step, a plan that fails
+validation, or a scenario whose `qa/traces/<scenario>-diagnostics.json` carries the console
+error or the 5xx nobody asserted on. Turn it into a command **you** can run before proposing a
+fix. `ostler qa run` on the repaired plan is a legitimate Phase 1 loop. A `give_up` that is
+diagnosed and fixed is a bug closed. One that is narrated comes back on the next story.
+
 ## Hygiene, and two ways to read a lie
 
 - **Test telemetry is not evidence.** One `make test` of the workflows suite once wrote a

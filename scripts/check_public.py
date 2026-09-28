@@ -24,6 +24,7 @@ BASE_SKILL_FAMILIES = {
     "ui",
     "code-review",
     "grill",
+    "decompose",
     "brainstorm",
     "diagnosing-bugs",
     "root-cause",

@@ -19,10 +19,42 @@ which rule fired.
 **Statement.** Environment variables, config files, and flags are read at the entry point into one
 immutable settings object, which is passed down. Nothing below the entry point reads them.
 
-**Trigger.** Any environment or config read at module scope, or anywhere outside the entry point.
+An environment fact is configuration too, even when the code writes it down instead of reading it.
+An environment fact is anything that changes from one machine or deployment to the next: where a
+file or an install lives, which host and port a service answers on, which user runs the program,
+and which platform it runs on.
+
+**Trigger.** Any of these shapes, outside the entry point and the settings type:
+
+- An environment or config read, at module scope or anywhere else.
+- A path literal that is absolute, starts with `~`, or names a user's home or a platform's
+  application directory.
+- A URL, hostname or port literal for a service the program talks to.
+- A branch on the platform, such as `sys.platform`, `runtime.GOOS` or `process.platform`.
+- A lookup of the current user or home directory, such as `USER`, `HOME` or `expanduser("~")`.
 
 **Fix.** One settings type per concern, constructed from the environment at startup, passed
-explicitly to whatever needs it. Overrides produce a modified copy, not a mutation.
+explicitly to whatever needs it. Overrides produce a modified copy, not a mutation. When a setting
+has platform conventions, such as where an application keeps its data, the settings constructor
+tries them in order. When none exists, it raises an error that names the setting to provide.
+
+```text
+DATA_DIR = home() + "/.local/share/acme/data"    # ✗ this machine's install, frozen at import
+if platform == "win32": base = appdata()          # ✗ a platform branch inside a loader
+for c in candidates: if exists(c): return c
+return candidates[0]                              # ✗ a guess that fails later, far from the cause
+
+settings = Settings.from_env(environ)             # ✓ tries each convention once, raises if none exist
+archive = Archive(settings.data_dir)              # ✓ everything below receives the path
+```
+
+A written-down environment fact works on the machine it was written on and nowhere else. A test
+cannot point it at a fixture. The second machine finds out through a missing file, in a module far
+from the literal that caused it.
+
+A fact about the domain is not an environment fact, even when it lives in a data file. It belongs
+to its owner under rule 2.8. A tuning value that a stage learns or an experiment sets is not one
+either.
 
 Two things go wrong without this, and the second is the expensive one. Values read at import time
 freeze before a test or a caller can influence them — so the only way to exercise the other branch
@@ -39,7 +71,9 @@ def run(prompt, timeout = null):              # ✓ resolve inside, from injecte
 ```
 
 **Counter-case.** The settings object's own constructor. Reading the environment is its job, and it
-is at the edge by construction.
+is at the edge by construction. A path relative to the program's own root is a fact about the
+program, not the machine, so it takes one owner under rule 2.7 instead. A test that builds an
+environment on purpose may write its literals.
 
 ## 4.2 A classifier, parser, or mapper performs no I/O — and the clock is I/O
 

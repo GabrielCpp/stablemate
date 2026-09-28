@@ -1,6 +1,6 @@
 ---
 name: stablemate-architecture-code-structure
-description: "The language-neutral rules for where code lives *inside* a layer — when a pile of functions becomes an object, when a module becomes two, when a forwarding wrapper should collapse, when a value crossing a boundary needs a name, and where configuration and side effects are allowed to appear. Every rule carries a mechanically detectable trigger, so a violation is a finding rather than a matter of taste. Load when adding a module, growing a parameter list, choosing between a function and a class, finding one function that only forwards to another, or reviewing structure; hexagonal-architecture governs the boundaries *between* layers, and the stack architecture skill (go-architecture, python-architecture, flutter-architecture, typescript-architecture) supplies the mechanics. Applies to **/*.go,**/*.dart,**/*.ts,**/*.tsx,**/*.py."
+description: "Language-neutral rules for where code lives inside one layer: when functions become an object, when a module splits, where configuration, environment facts and side effects may appear, when a branch chain is a table, and which assumptions must raise. Each rule has a trigger a reader or a grep can detect. Load when choosing between a function and a class, growing a parameter list or a module, adding a setting or a file path, reading a value another stage fills, or reviewing structure. hexagonal-architecture covers the boundaries between layers. Applies to **/*.go,**/*.dart,**/*.ts,**/*.tsx,**/*.py."
 metadata:
   generated_by: farrier
   source: library/skills/architecture/code-structure/SKILL.md
@@ -60,7 +60,21 @@ reason the rule exists. Each carries a quarter of the rule set:
   designing a checkpoint, a wire format, or a reader for another tool's output.
 - **[references/config-and-effects.md](references/config-and-effects.md)** — rules 4.1–4.3. Where
   configuration may be read and where a side effect may live. Read it when adding a setting, a
-  default parameter, a cache write, or a `sleep`.
+  file path, a default parameter, a cache write, or a `sleep`.
+
+- **[references/control-flow.md](references/control-flow.md)**: rules 6.1 to 6.5. When a branch
+  chain is a table, and when a loop is doing more than one job. Read it when you write an `elif` on
+  a kind, copy a function to change its numbers, nest a loop, or add a fallback pass.
+- **[references/contracts.md](references/contracts.md)**: rules 7.1 to 7.6. Which assumptions must
+  raise, and when a signature serves two purposes. Read it when a field is filled by another stage,
+  when you search for something that must exist, or when you add a boolean or optional callback
+  parameter.
+
+Rules 2.5 to 2.10 in modules.md cover where shared code lives: below every feature that uses it,
+in a module whose name predicts it, in a directory of its kind, with one owner per decoding,
+constant and domain fact, and no module that only tests import. Rules 1.5 to 1.8 in objects.md
+keep derived analysis off a core model, keep one model per entity, keep an index read-only after it
+is built, and keep a function's parameters to the data it reads.
 
 Rule 5 stays here, because it is the one to carry without looking anything up.
 
@@ -98,17 +112,38 @@ but this is the exception that is real.
 | [1.2](references/objects.md) | 2+ functions touching the same module-level mutable | that state is an object |
 | [1.3](references/objects.md) | a container created only so a closure can write to it | the closure set is an object |
 | [1.4](references/objects.md) | a class with no fields | make it a module |
+| [1.5](references/objects.md) | a model field one stage derives from the model's other fields | its own value, passed explicitly |
+| [1.6](references/objects.md) | a second representation rebuilding a query the main model answers | convert at the edge |
+| [1.7](references/objects.md) | a later stage writing into an index it was handed, or snapshotting it to undo | freeze it, the owner takes the writes |
+| [1.8](references/objects.md) | a container parameter whose body reads one or two of its fields | pass the fields |
 | [2.1](references/modules.md) | a module docstring that needs bullets | one module per bullet |
 | [2.2](references/modules.md) | wiring and >1 command body in one file | one module per command |
 | [2.3](references/modules.md) | one caller only forwards to one private helper | inline the helper |
 | [2.4](references/modules.md) | a banner-style divider comment naming a new section mid-file | that section is its own module |
+| [2.5](references/modules.md) | a shared module importing from one feature that uses it | move the names down |
+| [2.6](references/modules.md) | importers use names that don't share the module's noun | move each name to its noun |
+| [2.7](references/modules.md) | the same decode loop or constant literal in two modules | one owner, import it |
+| [2.8](references/modules.md) | domain entity names as literals outside their owner | query the owner |
+| [2.9](references/modules.md) | an entry that isn't the kind its directory holds | move it to its kind |
+| [2.10](references/modules.md) | a module only tests import, or a doc naming files that are gone | wire it or delete it |
 | [3.1](references/boundaries.md) | literal in, key-lookup-with-default out | one model owns both directions |
 | [3.2](references/boundaries.md) | 3+-tuple, documented map keys, mutated argument | a named record |
 | [3.3](references/boundaries.md) | a strict model mirroring a foreign schema | tolerant read, owned type |
-| [4.1](references/config-and-effects.md) | config read at module scope or below the edge | inject immutable settings |
+| [4.1](references/config-and-effects.md) | config read, or an environment fact written, below the edge | inject immutable settings |
 | [4.2](references/config-and-effects.md) | a decision function that writes or sleeps | split; inject the clock |
 | [4.3](references/config-and-effects.md) | an effect in a function named for something else | move it to the invariant's owner |
 | [5](#5-the-question-that-catches-most-of-the-above) | a test patching a private name | add the injection point |
+| [6.1](references/control-flow.md) | `elif` chain comparing one value to literals | a table keyed by kind |
+| [6.2](references/control-flow.md) | two bodies differing only in literals | one function, one record per variant |
+| [6.3](references/control-flow.md) | `break` + `continue` + flag in one loop, nesting > 4 | name each job |
+| [6.4](references/control-flow.md) | the same iterable looped twice under a `force` flag | caller walks the rule sets |
+| [6.5](references/control-flow.md) | threshold chains, or passes each with a fallback | options as a weighted list |
+| [7.1](references/contracts.md) | empty default on a field another stage fills | strict accessor or sentinel |
+| [7.2](references/contracts.md) | get-or-create for a shared value outside its producer | consumers require |
+| [7.3](references/contracts.md) | `for` + `break` with no `else` for a must-exist search | raise on miss |
+| [7.4](references/contracts.md) | `continue` before writes a later stage reads | write the fallback or raise |
+| [7.5](references/contracts.md) | a boolean tested in several `if`s, or derived from a kind | pass rules as a value |
+| [7.6](references/contracts.md) | 2+ optional callbacks, or a `quiet`/`dry_run` parameter | planner returns a plan |
 
 When you add a rule to this file, add its row. A rule with no row is a preference, and preferences
 belong in a review comment rather than a skill.
