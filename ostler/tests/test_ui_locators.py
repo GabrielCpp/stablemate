@@ -123,8 +123,8 @@ def test_two_controls_sharing_role_and_name_collide(repo: Path):
     """The reverse direction of one-to-one: this locator would match two nodes, not one."""
     collisions = locators.collisions(_build(repo, _screen(SAVE, DUPLICATE_SAVE)))
     assert len(collisions) == 1
-    assert collisions[0]["role"] == "button" and collisions[0]["name"] == "Save"
-    assert [n.split("#")[-1] for n in collisions[0]["nodes"]] == [
+    assert collisions[0].role == "button" and collisions[0].name == "Save"
+    assert [n.split("#")[-1] for n in collisions[0].nodes] == [
         "footer-save-button", "save-button"]
 
 
@@ -173,7 +173,7 @@ def test_two_interactions_on_one_control_do_not_collide(repo: Path):
 
 def test_unnamed_interactive_is_found(repo: Path):
     unnamed = locators.unnamed_interactives(_build(repo, _screen(UNNAMED)))
-    assert [u["role"] for u in unnamed] == ["button"]
+    assert [u.role for u in unnamed] == ["button"]
 
 
 def test_a_non_interactive_role_may_be_unnamed(repo: Path):
@@ -213,7 +213,7 @@ def test_a_role_with_prose_stapled_to_it_is_not_a_role(repo: Path):
     """The common real-world shape: a true role, plus a parenthetical the locator cannot use."""
     data = _build(repo, _screen(
         "### spinner\n- selector: `.spin`\n- role: `progressbar` (implicit MUI role)\n- name: none\n"))
-    assert [b["role"] for b in locators.invalid_roles(data)] == [
+    assert [b.role for b in locators.invalid_roles(data)] == [
         "`progressbar` (implicit MUI role)"]
     assert locators.screen_locators(data)[0]["locators"][0]["strategy"] == "css"
 
@@ -271,7 +271,7 @@ def test_a_shared_component_is_checked_too(repo: Path):
     write(repo / LIB, SHARED)
     _build(repo, _screen(SAVE))
     bad = locators.invalid_roles(_book(repo))
-    assert [b["node"].split("#")[-1] for b in bad] == ["navbar-home-link"]
+    assert [b.node.split("#")[-1] for b in bad] == ["navbar-home-link"]
     assert "invalid-role" in _codes(repo)
 
 
@@ -283,7 +283,7 @@ def test_shared_components_collide_within_their_own_file(repo: Path):
     _build(repo, _screen(SAVE))
     collisions = locators.collisions(_book(repo))
     assert len(collisions) == 1
-    assert collisions[0]["screen"] == LIB
+    assert collisions[0].screen == LIB
 
 
 def test_a_shared_base_may_be_unnamed_but_its_consumers_may_not(repo: Path):
@@ -309,7 +309,7 @@ title: App shell
 - extends: [row-base](../components/app-shell.md#row-base)
 """))
     unnamed = locators.unnamed_interactives(_book(repo))
-    assert [u["node"].split("#")[-1] for u in unnamed] == ["dash-row"]
+    assert [u.node.split("#")[-1] for u in unnamed] == ["dash-row"]
 
 
 def test_na_is_the_same_claim_as_none(repo: Path):
@@ -329,7 +329,7 @@ def test_na_role_is_the_empty_sentinel_not_an_invalid_role(repo: Path):
 def test_an_unnamed_interactive_is_still_caught_when_spelled_na(repo: Path):
     """The synonym must not become a way to smuggle an unlabeled control past the check."""
     data = _build(repo, _screen("### b\n- selector: `.b`\n- role: button\n- name: n/a\n"))
-    assert [u["role"] for u in locators.unnamed_interactives(data)] == ["button"]
+    assert [u.role for u in locators.unnamed_interactives(data)] == ["button"]
 
 
 def test_exclusive_with_clears_a_false_positive_collision(repo: Path):
@@ -381,7 +381,7 @@ def test_a_real_co_render_collision_is_not_cleared_by_an_unrelated_exclusion(rep
 """))
     collisions = locators.collisions(_book(repo))
     assert len(collisions) == 1
-    assert [n.split("#")[-1] for n in collisions[0]["nodes"]] == ["save-a", "save-b", "save-c"]
+    assert [n.split("#")[-1] for n in collisions[0].nodes] == ["save-a", "save-b", "save-c"]
 
 
 
@@ -438,7 +438,7 @@ def test_the_repeat_bullets_are_known_to_the_registry(repo: Path):
 def test_an_all_opaque_template_is_static(repo: Path):
     """`${t("row_edit")}` on every row collides at runtime like two buttons sharing an i18n key."""
     data = _build(repo, _screen('### e\n- role: button\n- one-per: `row`\n- name: `${t("row_edit")}`\n'))
-    assert [s["node"].split("#")[-1] for s in locators.static_templates(data)] == ["e"]
+    assert [s.node.split("#")[-1] for s in locators.static_templates(data)] == ["e"]
     assert "static-template" in _codes(repo)
 
 
@@ -464,13 +464,13 @@ def test_a_bind_of_an_ancestor_variable_does_not_discriminate(repo: Path):
 - parent: [group-panel](#group-panel)
 """)
     data = _build(repo, body)
-    assert [s["node"].split("#")[-1] for s in locators.static_templates(data)] == ["row-toggle"]
+    assert [s.node.split("#")[-1] for s in locators.static_templates(data)] == ["row-toggle"]
 
 
 def test_display_value_binds_without_unique_by_warn(repo: Path):
     """The book can warn that `name` may repeat across instances; it cannot prove it doesn't."""
     data = _build(repo, _screen("### b\n- role: button\n- one-per: `stage`\n- name: `{stage.name}`\n"))
-    assert [u["binds"] for u in locators.unproven_unique_names(data)] == [["stage.name"]]
+    assert [u.binds for u in locators.unproven_unique_names(data)] == [("stage.name",)]
     assert "unproven-unique-name" in _codes(repo, "warn")
 
 
@@ -489,8 +489,8 @@ def test_a_template_pattern_matching_a_static_sibling_is_ambiguous(repo: Path):
     static = "### total-label\n- role: button\n- name: Total — 12.00 $\n"
     collisions = locators.collisions(_build(repo, _screen(REPEATED, static)))
     assert len(collisions) == 1
-    assert collisions[0]["template"] == "{stage.name} — {fmt(stage.totalCost, 2)} $"
-    assert [n.split("#")[-1] for n in collisions[0]["nodes"]] == [
+    assert collisions[0].template == "{stage.name} — {fmt(stage.totalCost, 2)} $"
+    assert [n.split("#")[-1] for n in collisions[0].nodes] == [
         "stage-row-button", "total-label"]
     assert _codes(repo).count("ambiguous-locator") == 2
 
@@ -537,7 +537,7 @@ def test_an_unparsable_variants_axis_is_surfaced_not_dropped(repo: Path):
 def test_a_templated_name_outside_any_repeat_warns(repo: Path):
     """Holes with no iteration variable to bind are all wildcards — the name pins nothing."""
     data = _build(repo, _screen("### s\n- role: button\n- name: `{stage.name} — total`\n"))
-    assert [t["node"].split("#")[-1] for t in locators.templates_outside_repeat(data)] == ["s"]
+    assert [t.node.split("#")[-1] for t in locators.templates_outside_repeat(data)] == ["s"]
     assert "template-outside-repeat" in _codes(repo, "warn")
 
 

@@ -2267,89 +2267,89 @@ def _check_locators(data: dict, f: list[Finding]) -> None:
         return {"path": node_id.split("#")[0], "line": node.get("line", 0)}
 
     for collision in loc_mod.collisions(book):
-        named = f" name={collision['name']!r}" if collision["name"] else " with no name"
-        for node_id in collision["nodes"]:
+        named = f" name={collision.name!r}" if collision.name else " with no name"
+        for node_id in collision.nodes:
             f.append(Finding(
                 "error", "ambiguous-locator",
-                f"{node_id}: role={collision['role']}{named} also matches "
-                + ", ".join(o.split("#")[-1] for o in collision["nodes"] if o != node_id)
+                f"{node_id}: role={collision.role}{named} also matches "
+                + ", ".join(o.split("#")[-1] for o in collision.nodes if o != node_id)
                 + " on the same screen — `getByRole` cannot tell them apart",
-                ref=refs_mod.collision_ref(node_id, collision),
+                ref=collision.ref(node_id),
                 suggestion="give each control a distinct accessible `name:`",
                 **_at(node_id)))
 
     for bad in loc_mod.invalid_roles(book):
         f.append(Finding(
             "error", "invalid-role",
-            f"{bad['node']}: `role: {bad['role']}` is not an ARIA role — `getByRole` would match "
+            f"{bad.node}: `role: {bad.role}` is not an ARIA role — `getByRole` would match "
             f"nothing; state the bare computed role, and put any caveat in prose",
-            ref=bad["node"], suggestion="- role: <one bare ARIA role, or `none`>",
-            **_at(bad["node"])))
+            ref=bad.node, suggestion="- role: <one bare ARIA role, or `none`>",
+            **_at(bad.node)))
 
     for unnamed in loc_mod.unnamed_interactives(book):
         f.append(Finding(
             "error", "unnamed-interactive",
-            f"{unnamed['node']}: role={unnamed['role']} is operable but has no accessible "
+            f"{unnamed.node}: role={unnamed.role} is operable but has no accessible "
             f"`name:` — unannounceable to assistive tech and unaddressable by `getByRole`",
-            ref=unnamed["node"],
+            ref=unnamed.node,
             suggestion="- name: <the control's visible label or aria-label>",
-            **_at(unnamed["node"])))
+            **_at(unnamed.node)))
 
     for item in loc_mod.static_templates(book):
-        var = item["iterates"]
+        var = item.iterates
         f.append(Finding(
             "error", "static-template",
-            f"{item['node']}: repeats one-per `{var}` but `name:` {item['template']!r} carries no "
+            f"{item.node}: repeats one-per `{var}` but `name:` {item.template!r} carries no "
             f"bindable hole of `{var}` — every instance shares one accessible name, and no "
             f"consumer can discriminate them",
-            ref=item["node"],
+            ref=item.node,
             suggestion=f"interpolate a per-instance datum (e.g. `{{{var}.name}}`) or give the "
                        f"control an instance-specific aria-label in the app",
-            **_at(item["node"])))
+            **_at(item.node)))
 
     for item in loc_mod.unproven_unique_names(book):
         f.append(Finding(
             "warn", "unproven-unique-name",
-            f"{item['node']}: instances are told apart only by display value(s) "
-            f"({', '.join(item['binds'])}), which nothing guarantees distinct — two instances "
+            f"{item.node}: instances are told apart only by display value(s) "
+            f"({', '.join(item.binds)}), which nothing guarantees distinct — two instances "
             f"sharing one are ambiguous at runtime with no warning anywhere",
-            ref=item["node"],
+            ref=item.node,
             suggestion="state the distinct key as `- unique-by: `<var>.<key>``, or interpolate a "
                        "guaranteed-distinct datum into the name",
-            **_at(item["node"])))
+            **_at(item.node)))
 
     for item in loc_mod.malformed_templates(book):
         f.append(Finding(
             "error", "malformed-template",
-            f"{item['node']}: `name:` {item['template']!r} has an unbalanced brace — the one "
+            f"{item.node}: `name:` {item.template!r} has an unbalanced brace — the one "
             f"template error classification cannot absorb",
-            ref=item["node"],
+            ref=item.node,
             suggestion="balance the `{…}` holes; anything the path grammar rejects is kept "
                        "verbatim as opaque, so no hole needs rewording",
-            **_at(item["node"])))
+            **_at(item.node)))
 
     for item in loc_mod.invalid_variants(book):
         f.append(Finding(
             "warn", "malformed-variants",
-            f"{item['node']}: `variants: {item['value']}` does not parse as "
+            f"{item.node}: `variants: {item.value}` does not parse as "
             f"`<var>.<path> = tok | tok | …` — the axis would be silently dropped and QA would "
             f"stop owing one instance per variant",
-            ref=item["node"],
+            ref=item.node,
             suggestion="- variants: `<var>.<path> = <literal> | <literal>` — all inside one "
                        "backtick span",
-            **_at(item["node"])))
+            **_at(item.node)))
 
     for item in loc_mod.templates_outside_repeat(book):
         f.append(Finding(
             "warn", "template-outside-repeat",
-            f"{item['node']}: `name:` {item['template']!r} carries `{{…}}` holes but the node "
+            f"{item.node}: `name:` {item.template!r} carries `{{…}}` holes but the node "
             f"repeats over nothing — every hole is opaque, so every consumer matches the name "
             f"as a wildcard instead of the value it was written to pin",
-            ref=item["node"],
+            ref=item.node,
             suggestion="declare the repeat (`- one-per: `<var>``, plus `unique-by:` for the "
                        "distinct key) if the control renders per member of a collection; "
                        "otherwise write the literal rendered name",
-            **_at(item["node"])))
+            **_at(item.node)))
 
 
 def _check_placement(node, rel: str, f: list[Finding]) -> None:

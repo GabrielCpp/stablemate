@@ -13,6 +13,7 @@ from ostler import graph as graph_mod
 from ostler.model import Graph, UINode
 from ostler.qa.obligation_frame import BookNode, RepeatContract, RepeatTemplate, Segment, Variants, book_nodes
 from ostler.reach import NONE_TOKENS
+from ostler.untyped import JsonValue
 from ostler.vet import placement as placement_mod
 
 INTERACTIVE_ROLES = frozenset({
@@ -311,7 +312,118 @@ def malformed_identity(bullets: Mapping[str, object]) -> list[str]:
             if isinstance(value := bullets.get(key), list | tuple) and len(value) > 1]
 
 
-def collisions(book: LocatorBook) -> list[dict]:
+@dataclass(frozen=True, slots=True)
+class LocatorCollision:
+    """Nodes on one screen that one role and one accessible name cannot tell apart."""
+
+    screen: str
+    role: str
+    name: str
+    nodes: tuple[str, ...]
+    template: str = ""
+
+    def ref(self, node_id: str) -> str:
+        """The address of this collision as *node_id* takes part in it, not of the node."""
+        others = "+".join(sorted(o.rpartition("#")[2] for o in self.nodes if o != node_id))
+        return f"{node_id}#" + ":".join((self.screen, self.role, self.name, others))
+
+    def row(self) -> dict[str, JsonValue]:
+        row: dict[str, JsonValue] = {"screen": self.screen, "role": self.role, "name": self.name}
+        if self.template:
+            row["template"] = self.template
+        row["nodes"] = list(self.nodes)
+        return row
+
+
+@dataclass(frozen=True, slots=True)
+class InvalidRole:
+    """A node whose ``role:`` is not an ARIA role."""
+
+    screen: str
+    node: str
+    role: str
+
+    def row(self) -> dict[str, JsonValue]:
+        return {"screen": self.screen, "node": self.node, "role": self.role}
+
+
+@dataclass(frozen=True, slots=True)
+class StaticTemplate:
+    """A repeated node whose name carries no datum of the collection it iterates."""
+
+    screen: str
+    node: str
+    template: str
+    iterates: str
+
+    def row(self) -> dict[str, JsonValue]:
+        return {"screen": self.screen, "node": self.node, "template": self.template,
+                "iterates": self.iterates}
+
+
+@dataclass(frozen=True, slots=True)
+class UnprovenUniqueName:
+    """A repeated node told apart only by display values nothing guarantees distinct."""
+
+    screen: str
+    node: str
+    template: str
+    binds: tuple[str, ...]
+
+    def row(self) -> dict[str, JsonValue]:
+        return {"screen": self.screen, "node": self.node, "template": self.template,
+                "binds": list(self.binds)}
+
+
+@dataclass(frozen=True, slots=True)
+class MalformedTemplate:
+    """A repeated-scope node whose name template has an unbalanced brace."""
+
+    screen: str
+    node: str
+    template: str
+
+    def row(self) -> dict[str, JsonValue]:
+        return {"screen": self.screen, "node": self.node, "template": self.template}
+
+
+@dataclass(frozen=True, slots=True)
+class TemplateOutsideRepeat:
+    """A node whose name reads as a template but which repeats over nothing."""
+
+    screen: str
+    node: str
+    template: str
+
+    def row(self) -> dict[str, JsonValue]:
+        return {"screen": self.screen, "node": self.node, "template": self.template}
+
+
+@dataclass(frozen=True, slots=True)
+class InvalidVariants:
+    """A repeated node whose ``variants:`` value the micro-syntax rejects."""
+
+    screen: str
+    node: str
+    value: str
+
+    def row(self) -> dict[str, JsonValue]:
+        return {"screen": self.screen, "node": self.node, "value": self.value}
+
+
+@dataclass(frozen=True, slots=True)
+class UnnamedInteractive:
+    """An operable control with no accessible name."""
+
+    screen: str
+    node: str
+    role: str
+
+    def row(self) -> dict[str, JsonValue]:
+        return {"screen": self.screen, "node": self.node, "role": self.role}
+
+
+def collisions(book: LocatorBook) -> list[LocatorCollision]:
     """Nodes sharing a screen, a role, and an accessible name — where one-to-one fails."""
     scopes = book.scopes
     groups: dict[tuple[str, str, str], list[BookNode]] = {}
@@ -336,15 +448,14 @@ def collisions(book: LocatorBook) -> list[dict]:
                     conflicting.update((a, b))
         return conflicting
 
-    out = []
+    out: list[LocatorCollision] = []
     for (screen, role, name), nodes in sorted(groups.items()):
         if len(nodes) < 2:
             continue
         conflicting = _live([n.id for n in nodes])
         if len(conflicting) < 2:
             continue
-        out.append({"screen": screen, "role": role, "name": name,
-                    "nodes": sorted(conflicting)})
+        out.append(LocatorCollision(screen, role, name, tuple(sorted(conflicting))))
     for (screen, role), pairs in sorted(templated.items()):
         for node, template in pairs:
             pattern = _pattern(template.segments)
@@ -356,22 +467,22 @@ def collisions(book: LocatorBook) -> list[dict]:
                 conflicting = _live([node.id] + [n.id for n in statics])
                 if len(conflicting) < 2 or node.id not in conflicting:
                     continue
-                out.append({"screen": screen, "role": role, "name": name,
-                            "template": template.template, "nodes": sorted(conflicting)})
+                out.append(LocatorCollision(screen, role, name, tuple(sorted(conflicting)),
+                                            template.template))
     return out
 
 
-def invalid_roles(book: LocatorBook) -> list[dict]:
+def invalid_roles(book: LocatorBook) -> list[InvalidRole]:
     """Nodes whose ``role:`` is not an ARIA role — usually a real role with prose stapled to it."""
     out = []
     for screen, node in book.locatables:
         role = _bullet(node, "role")
         if role and not _stated_none(role) and role.lower() not in ARIA_ROLES:
-            out.append({"screen": screen, "node": node.id, "role": role})
+            out.append(InvalidRole(screen, node.id, role))
     return out
 
 
-def static_templates(book: LocatorBook) -> list[dict]:
+def static_templates(book: LocatorBook) -> list[StaticTemplate]:
     """Repeated nodes whose name carries no per-instance datum — one name, many instances."""
     scopes = book.scopes
     out = []
@@ -386,11 +497,11 @@ def static_templates(book: LocatorBook) -> list[dict]:
         binds = () if compiled is None or compiled.malformed else compiled.binds
         if any(b.split(".", 1)[0] == var for b in binds):
             continue
-        out.append({"screen": screen, "node": node.id, "template": name, "iterates": var})
+        out.append(StaticTemplate(screen, node.id, name, var))
     return out
 
 
-def unproven_unique_names(book: LocatorBook) -> list[dict]:
+def unproven_unique_names(book: LocatorBook) -> list[UnprovenUniqueName]:
     """Repeated nodes discriminated only by display values, with no ``unique-by:`` claim."""
     scopes = book.scopes
     out = []
@@ -403,12 +514,11 @@ def unproven_unique_names(book: LocatorBook) -> list[dict]:
             continue
         own = [b for b in compiled.binds if b.split(".", 1)[0] == var]
         if own and all(b.rsplit(".", 1)[-1] in DISPLAY_LEAVES for b in own):
-            out.append({"screen": screen, "node": node.id,
-                        "template": compiled.template, "binds": own})
+            out.append(UnprovenUniqueName(screen, node.id, compiled.template, tuple(own)))
     return out
 
 
-def malformed_templates(book: LocatorBook) -> list[dict]:
+def malformed_templates(book: LocatorBook) -> list[MalformedTemplate]:
     """Repeated-scope nodes whose name template has an unbalanced brace — the one hard error."""
     scopes = book.scopes
     out = []
@@ -417,11 +527,11 @@ def malformed_templates(book: LocatorBook) -> list[dict]:
             continue
         compiled = compile_template(_bullet(node, "name"), scopes[node.id])
         if compiled and compiled.malformed:
-            out.append({"screen": screen, "node": node.id, "template": compiled.template})
+            out.append(MalformedTemplate(screen, node.id, compiled.template))
     return out
 
 
-def templates_outside_repeat(book: LocatorBook) -> list[dict]:
+def templates_outside_repeat(book: LocatorBook) -> list[TemplateOutsideRepeat]:
     """Nodes whose ``name:`` reads as a template but which repeat over nothing."""
     scopes = book.scopes
     out = []
@@ -434,11 +544,11 @@ def templates_outside_repeat(book: LocatorBook) -> list[dict]:
         compiled = compile_template(name, ())
         if compiled is None or compiled.malformed:
             continue
-        out.append({"screen": screen, "node": node.id, "template": name})
+        out.append(TemplateOutsideRepeat(screen, node.id, name))
     return out
 
 
-def invalid_variants(book: LocatorBook) -> list[dict]:
+def invalid_variants(book: LocatorBook) -> list[InvalidVariants]:
     """Repeated nodes whose ``variants:`` machine value the micro-syntax rejects."""
     out = []
     for screen, node in book.locatables:
@@ -448,11 +558,11 @@ def invalid_variants(book: LocatorBook) -> list[dict]:
         if _stated_none(_machine(raw)):
             continue
         if variants_of(node) is None:
-            out.append({"screen": screen, "node": node.id, "value": _machine(raw)})
+            out.append(InvalidVariants(screen, node.id, _machine(raw)))
     return out
 
 
-def unnamed_interactives(book: LocatorBook) -> list[dict]:
+def unnamed_interactives(book: LocatorBook) -> list[UnnamedInteractive]:
     """Operable controls with no accessible name — unannounceable and unaddressable alike."""
     bases = book.bases
     out = []
@@ -461,7 +571,7 @@ def unnamed_interactives(book: LocatorBook) -> list[dict]:
             continue
         role, name = _bullet(node, "role"), _bullet(node, "name")
         if role.lower() in INTERACTIVE_ROLES and (not name or _stated_none(name)):
-            out.append({"screen": screen, "node": node.id, "role": role})
+            out.append(UnnamedInteractive(screen, node.id, role))
     return out
 
 
@@ -485,13 +595,13 @@ def build(graph: Graph, *, surface: str | None = None, screen: str | None = None
     flat = [locator for entry in screens for locator in entry["locators"]]
     return {
         "screens": screens,
-        "collisions": collisions(book),
-        "unnamed": unnamed_interactives(book),
-        "invalid_roles": invalid_roles(book),
-        "static_templates": static_templates(book),
-        "unproven_unique": unproven_unique_names(book),
-        "malformed_templates": malformed_templates(book),
-        "invalid_variants": invalid_variants(book),
+        "collisions": [item.row() for item in collisions(book)],
+        "unnamed": [item.row() for item in unnamed_interactives(book)],
+        "invalid_roles": [item.row() for item in invalid_roles(book)],
+        "static_templates": [item.row() for item in static_templates(book)],
+        "unproven_unique": [item.row() for item in unproven_unique_names(book)],
+        "malformed_templates": [item.row() for item in malformed_templates(book)],
+        "invalid_variants": [item.row() for item in invalid_variants(book)],
         "counts": {
             "locators": len(flat),
             "by_role": sum(1 for locator in flat if locator["strategy"] == "role"),

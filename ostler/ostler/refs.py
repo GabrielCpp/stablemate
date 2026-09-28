@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from typing import Any
 
@@ -120,13 +119,6 @@ def bullet_ref(node_id: str, key: str, index: int | None = None) -> str:
     return anchor if index is None else f"{anchor}:{index}"
 
 
-def collision_ref(node_id: str, collision: Mapping[str, Any]) -> str:
-    """The address of *one collision a node takes part in*, not of the node."""
-    others = "+".join(sorted(o.rpartition("#")[2] for o in collision["nodes"] if o != node_id))
-    parts = [collision["screen"], collision["role"], collision["name"] or "", others]
-    return f"{node_id}#" + ":".join(parts)
-
-
 def strip_digest(ref: str) -> str:
     """A citation's identity with any stamped ``@digest`` dropped, rendered back canonically."""
     try:
@@ -149,7 +141,6 @@ __all__ = [
     "bare_targets",
     "bullet_ref",
     "code_refs",
-    "collision_ref",
     "is_test_source",
     "normalize_ref",
     "parse_code_ref",
