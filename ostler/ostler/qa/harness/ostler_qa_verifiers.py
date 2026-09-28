@@ -79,7 +79,7 @@ def _verdict(passed: bool, actual: object, expected: object) -> Verdict:
     return Verdict(passed=passed, actual=_recorded(actual), expected=_recorded(expected))
 
 
-def _check[R](read: Callable[[object, Args], R], judge: Callable[[R, Args], Verdict]) -> Verifier:
+def _verifier[R](read: Callable[[object, Args], R], judge: Callable[[R, Args], Verdict]) -> Verifier:
     """A verifier that parses the observation once with *read*, then judges only that reading."""
 
     def verify(observed: object, args: Args) -> Verdict:
@@ -299,17 +299,17 @@ def _named_file_or_tree(before: object, after: object, subject: object) -> tuple
     return before, after
 
 
-def _paths(value: object, prefix: str = "") -> dict[str, object]:
+def _leaves_by_path(value: object, prefix: str = "") -> dict[str, object]:
     """Every leaf of a JSON-ish value, keyed by its dotted path."""
     if isinstance(value, dict):
         out: dict[str, object] = {}
         for key, item in value.items():
-            out.update(_paths(item, f"{prefix}.{key}" if prefix else str(key)))
+            out.update(_leaves_by_path(item, f"{prefix}.{key}" if prefix else str(key)))
         return out
     if isinstance(value, list):
         out = {}
         for index, item in enumerate(value):
-            out.update(_paths(item, f"{prefix}[{index}]"))
+            out.update(_leaves_by_path(item, f"{prefix}[{index}]"))
         return out
     return {prefix: value}
 
@@ -372,12 +372,12 @@ def _verify_json_path(reading: DocumentReading, args: Args) -> Verdict:
 def _verify_unchanged(reading: PairReading, args: Args) -> Verdict:
     before, after = _named_file_or_tree(reading.before, reading.after, args.get("subject"))
     allowed = set(_strings(args, "except_fields"))
-    before_paths, after_paths = _paths(before), _paths(after)
+    before_leaves, after_leaves = _leaves_by_path(before), _leaves_by_path(after)
     changed = sorted(
         {
             path
-            for path in before_paths.keys() | after_paths.keys()
-            if before_paths.get(path, _MISSING) != after_paths.get(path, _MISSING)
+            for path in before_leaves.keys() | after_leaves.keys()
+            if before_leaves.get(path, _MISSING) != after_leaves.get(path, _MISSING)
         }
         - allowed
     )
@@ -386,8 +386,8 @@ def _verify_unchanged(reading: PairReading, args: Args) -> Verdict:
 
 def _verify_keys_unchanged(reading: PairReading, args: Args) -> Verdict:
     before, after = _named_file_or_tree(reading.before, reading.after, args.get("subject"))
-    gone = sorted(_paths(before).keys() - _paths(after).keys())
-    added = sorted(_paths(after).keys() - _paths(before).keys())
+    gone = sorted(_leaves_by_path(before).keys() - _leaves_by_path(after).keys())
+    added = sorted(_leaves_by_path(after).keys() - _leaves_by_path(before).keys())
     return _verdict(not gone and not added, {"removed": gone, "added": added}, {"removed": [], "added": []})
 
 
@@ -688,25 +688,25 @@ def _verify_conflict_on_stale(reading: HttpReading, args: Args) -> Verdict:
 
 
 VERIFIERS: dict[str, Verifier] = {
-    "http_status": _check(_read_response, _verify_http_status),
-    "response_header": _check(_read_headers, _verify_response_header),
-    "json_path": _check(_read_document, _verify_json_path),
-    "unchanged": _check(_read_pair("unchanged"), _verify_unchanged),
-    "keys_unchanged": _check(_read_pair("keys_unchanged"), _verify_keys_unchanged),
-    "count": _check(_read_countable, _verify_count),
-    "absent": _check(_read_absence, _verify_absent),
-    "created": _check(_read_pair("created"), _verify_created),
-    "removed": _check(_read_pair("removed"), _verify_removed),
-    "visible": _check(_read_visibility, _verify_visible),
-    "actionable": _check(_read_control("actionable"), _verify_actionable),
-    "inert": _check(_read_control("inert"), _verify_inert),
-    "focusable": _check(_read_focus, _verify_focusable),
-    "persists": _check(_read_pair("persists"), _verify_persists),
-    "emitted": _check(_read_size, _verify_emitted),
-    "omits": _check(_read_body, _verify_omits),
-    "exit_status": _check(_read_exit, _verify_exit_status),
-    "stdout": _check(_read_stream("stdout"), _verify_printed),
-    "stderr": _check(_read_stream("stderr"), _verify_printed),
-    "contents": _check(_read_file, _verify_contents),
-    "conflict_on_stale": _check(_read_response, _verify_conflict_on_stale),
+    "http_status": _verifier(_read_response, _verify_http_status),
+    "response_header": _verifier(_read_headers, _verify_response_header),
+    "json_path": _verifier(_read_document, _verify_json_path),
+    "unchanged": _verifier(_read_pair("unchanged"), _verify_unchanged),
+    "keys_unchanged": _verifier(_read_pair("keys_unchanged"), _verify_keys_unchanged),
+    "count": _verifier(_read_countable, _verify_count),
+    "absent": _verifier(_read_absence, _verify_absent),
+    "created": _verifier(_read_pair("created"), _verify_created),
+    "removed": _verifier(_read_pair("removed"), _verify_removed),
+    "visible": _verifier(_read_visibility, _verify_visible),
+    "actionable": _verifier(_read_control("actionable"), _verify_actionable),
+    "inert": _verifier(_read_control("inert"), _verify_inert),
+    "focusable": _verifier(_read_focus, _verify_focusable),
+    "persists": _verifier(_read_pair("persists"), _verify_persists),
+    "emitted": _verifier(_read_size, _verify_emitted),
+    "omits": _verifier(_read_body, _verify_omits),
+    "exit_status": _verifier(_read_exit, _verify_exit_status),
+    "stdout": _verifier(_read_stream("stdout"), _verify_printed),
+    "stderr": _verifier(_read_stream("stderr"), _verify_printed),
+    "contents": _verifier(_read_file, _verify_contents),
+    "conflict_on_stale": _verifier(_read_response, _verify_conflict_on_stale),
 }
