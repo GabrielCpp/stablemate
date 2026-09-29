@@ -287,6 +287,40 @@ def test_provides_from_names_an_earlier_step_and_read_names_its_path(tmp_path: P
     assert globex_out.read_text(encoding="utf-8") == "7"
 
 
+CHAINED_STEPS_SCENARIO = '''\
+@scenario(target=api, mechanism="live", covers=["ac:1"])
+def a_later_step_reads_what_an_earlier_step_provided(qa: Qa) -> None:
+    """A fixture signs in, then seeds with the token its sign-in step printed."""
+    qa.fixture("seeded-acme")
+    qa.check("fixture ran", True)
+'''
+
+
+def test_a_later_step_reads_each_fact_an_earlier_step_provided_from_its_environment(tmp_path: Path) -> None:
+    sign_in = tmp_path / "sign-in.sh"
+    _seed_step(sign_in, "#!/bin/sh\necho '{\"idToken\": \"tok-1\"}'\n")
+    seen = tmp_path / "seen.txt"
+    seed = tmp_path / "seed.sh"
+    _seed_step(seed, f'#!/bin/sh\nprintf "%s %s" "$token" "$region" > {seen}\necho \'{{}}\'\n')
+    module = _write(tmp_path, CHAINED_STEPS_SCENARIO)
+    book_fixtures = {
+        "seeded-acme": {
+            "steps": [
+                {"kind": "seed", "id": "sign-in", "command": str(sign_in), "cwd": str(tmp_path)},
+                {"kind": "seed", "id": "seed-it", "command": str(seed), "cwd": str(tmp_path)},
+            ],
+            "args": [], "needs": [], "secrets": [],
+            "provides": [
+                {"key": "token", "from": "sign-in", "read": "idToken"},
+                {"key": "region", "is": "eu"},
+            ],
+        }
+    }
+    code, stdout, _records = _run(module, "a-later-step-reads-what-an-earlier-step-provided", tmp_path, book_fixtures=book_fixtures)
+    assert code == 0, stdout
+    assert seen.read_text(encoding="utf-8") == "tok-1 eu"
+
+
 def test_provides_from_naming_an_unknown_step_is_a_defect(tmp_path: Path) -> None:
     script = tmp_path / "seed.sh"
     _seed_step(script, "#!/bin/sh\necho '{}'\n")

@@ -540,6 +540,21 @@ def _not_yet(exc: BaseException) -> bool:
     ] == "playwright"
 
 
+def _facts_of_step(declared: Sequence[Mapping[str, str]], step_id: str, stdout: str) -> dict[str, str]:
+    """The provided facts a fixture's step `step_id` printed, which the fixture's later steps read from their environment."""
+    try:
+        payload = json.loads(stdout)
+    except json.JSONDecodeError:
+        return {}
+    facts: dict[str, str] = {}
+    for entry in declared:
+        if entry.get("from") == step_id and not entry.get("is"):
+            hit = resolve_path(payload, entry.get("read") or entry["key"])
+            if hit.found:
+                facts[entry["key"]] = str(hit.value)
+    return facts
+
+
 def _sampled(actual: Any) -> Any:
     """Read an `actual=` that may be a callable, after the poll loop has settled."""
     if not callable(actual):
@@ -979,6 +994,10 @@ class Qa:
                     raise RuntimeError(f"qa fixture {name!r} {detail}")
                 env[arg_name] = args[arg_name]
         steps = spec.get("steps", [])
+        provides = spec.get("provides", [])
+        for entry in provides:
+            if entry.get("is") and not entry.get("from"):
+                env.setdefault(entry["key"], entry["is"])
         result: ToolResult | None = None
         step_results: dict[str, ToolResult] = {}
         for index, step in enumerate(steps):
@@ -990,9 +1009,9 @@ class Qa:
             step_id = step.get("id")
             if step_id:
                 step_results[step_id] = result
-        self._node_facts[name] = self._extract_provides(
-            name, spec.get("provides", []), step_results, len(steps) - 1
-        )
+                for key, value in _facts_of_step(provides, step_id, result.stdout).items():
+                    env.setdefault(key, value)
+        self._node_facts[name] = self._extract_provides(name, provides, step_results, len(steps) - 1)
         if result is None:
             result = ToolResult(command=[], stdout="", stderr="", exit_code=0)
         self._book_fixture_memo[memo_key] = result
