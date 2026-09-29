@@ -1,10 +1,14 @@
 """The git commands workflow scripts need, wrapped so a script never shells out."""
 from __future__ import annotations
 
+import time
 from pathlib import Path
 
 from git import Git, Repo
 from git.exc import GitCommandError, GitError
+
+_LOCK_WAITS = (0.2, 0.5, 1.0, 2.0, 4.0, 8.0)
+_INDEX_LOCK = "index.lock"
 
 
 def open_repo(path: str | Path) -> Repo:
@@ -132,13 +136,26 @@ def commit_paths(path: str | Path, message: str, *pathspecs: str, verify: bool =
     return True
 
 
-def commit_returning_refusal(path: str | Path, message: str, *pathspecs: str) -> str:
-    """Commit exactly ``pathspecs`` as `commit_paths` does, and return what git said when it refused. Empty when nothing refused."""
+def _refusal(path: str | Path, message: str, pathspecs: tuple[str, ...]) -> str:
     try:
         _ = commit_paths(path, message, *pathspecs)
     except GitCommandError as refused:
         return str(refused.stderr).strip() or str(refused)
     return ""
+
+
+def commit_returning_refusal(path: str | Path, message: str, *pathspecs: str) -> str:
+    """Commit exactly ``pathspecs`` as `commit_paths` does, and return what git said when it refused. Empty when nothing refused.
+
+    A commit that finds the index locked by another git process waits and tries again, so a lock that clears on its own is no refusal.
+    """
+    refusal = _refusal(path, message, pathspecs)
+    for wait in _LOCK_WAITS:
+        if _INDEX_LOCK not in refusal:
+            break
+        time.sleep(wait)
+        refusal = _refusal(path, message, pathspecs)
+    return refusal
 
 
 def commit_all(path: str | Path, message: str) -> bool:

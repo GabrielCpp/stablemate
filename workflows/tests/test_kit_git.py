@@ -2,13 +2,14 @@
 from __future__ import annotations
 
 import subprocess
+import threading
 from pathlib import Path
 
 import pytest
 from git.exc import GitError
 
 from workhorse.testing import make_git_repo
-from workhorse_workflows.kit.git import commit_all, commit_paths, last_commit_subject
+from workhorse_workflows.kit.git import commit_all, commit_paths, commit_returning_refusal, last_commit_subject
 
 
 def _tracked(root: Path, ref: str = "HEAD") -> set[str]:
@@ -133,3 +134,17 @@ def test_a_refused_commit_raises_instead_of_reading_as_an_empty_one(tmp_path: Pa
 
     (root / ".git" / "index.lock").unlink()
     assert commit_all(root, "coder: STORY-1") is True
+
+
+def test_a_commit_waits_for_another_git_process_to_release_the_index(tmp_path: Path) -> None:
+    root = make_git_repo(tmp_path / "acme")
+    _write(root, "docs/page.md")
+    lock = root / ".git" / "index.lock"
+    lock.write_text("", encoding="utf-8")
+    release = threading.Timer(0.3, lock.unlink)
+    release.start()
+
+    refusal = commit_returning_refusal(root, "docs: page", "docs")
+    release.join()
+
+    assert (refusal, _tracked(root)) == ("", {"docs/page.md"})
