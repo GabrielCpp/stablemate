@@ -65,7 +65,9 @@ gives relative to the repository starts there.
   sign-in fixture on its own `fixture:`, as the skill's flow reference says.
 {% endif %}
   A fixture step that failed with exit 127 runs a command the repository does not have. Its
-  `run:` becomes a real one, as the skill's fixture reference says.
+  `run:` becomes a real one, as the skill's fixture reference says. A fixture step that failed
+  with exit 22 got an HTTP error from `curl`, so its request is wrong. A sign-in step uses a user
+  the stack's seed creates, as that reference says.
 {% endif %}
   A claim the source contradicts is corrected to what the source does. A claim with no `verify:`
   gets one that would fail if the app stopped doing it. A claim that arranges nothing gets a
