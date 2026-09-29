@@ -42,6 +42,10 @@ WRITER_FIXES = {
         "field, a response header, or a later read that returns what was stored. Delete the claim "
         "when nothing outside the app shows it."
     ),
+    "unarrangeable-server-fault": (
+        "No request makes a healthy app answer a 5xx. Say in the section's prose that the route "
+        "fails when a dependency does, and delete the bullet and its `verify:`."
+    ),
 }
 
 
