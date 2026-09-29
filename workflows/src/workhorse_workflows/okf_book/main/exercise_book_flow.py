@@ -2,7 +2,8 @@
 from __future__ import annotations
 
 from workhorse.pyflow import Continue, Done
-from workhorse_workflows.okf_book.shared.book_run import bring_up, compile_scenarios, failed_run, run_plan, stack_down_result
+from workhorse_workflows.kit.qa.runner import release_stack
+from workhorse_workflows.okf_book.shared.book_run import bring_up, compile_scenarios, failed_run, release, run_plan, stack_down_result
 from workhorse_workflows.okf_book.shared.book_flow import BookFlow
 
 SPEC_DIR = "spec"
@@ -24,10 +25,15 @@ class ExerciseBook(BookFlow):
         """Bring the app's stack up, or adopt one serving. A stack that cannot come up ends the run."""
         stack = bring_up(self.logger, self.root, self.service)
         if not stack.up:
+            release(self.logger, stack)
             return Done(stack_down_result(gaps, stack.notes)).because("the app's stack cannot come up")
-        return Continue(stack, self.run_scenarios, gaps=gaps, serving=stack.serving).because("run the scenarios")
+        return Continue(stack, self.run_scenarios, gaps=gaps, serving=stack.serving, owned=stack.owned).because(
+            "run the scenarios")
 
-    def run_scenarios(self, gaps: tuple[str, ...], serving: bool) -> Done:
-        """Run every scenario against the app, on a copy of it when it serves nothing."""
-        exercised = run_plan(self.root, self.records_dir / SPEC_DIR / self.service, gaps, serving)
+    def run_scenarios(self, gaps: tuple[str, ...], serving: bool, owned: tuple[str, ...] = ()) -> Done:
+        """Run every scenario against the app, on a copy of it when it serves nothing, then stop what bring-up started."""
+        try:
+            exercised = run_plan(self.root, self.records_dir / SPEC_DIR / self.service, gaps, serving)
+        finally:
+            release_stack(self.logger, owned)
         return Done(exercised).because("the scenarios ran")
