@@ -516,6 +516,32 @@ def test_an_endpoint_credential_rides_on_every_claim_but_the_one_about_a_401() -
     assert 'qa.http.get("/api/things", expect_status=401)\n' in source
 
 
+def test_a_claim_about_a_401_stays_anonymous_though_it_repeats_the_callers_token() -> None:
+    """A writer who arranges the token under every arm must not turn the claim about the anonymous caller into a signed-in request, and a bad token that claim sends on purpose still goes out."""
+    signed_in = [{"name": "signed-in-editor", "args": [], "provides": "a signed-in editor",
+                  "providesKeys": ["signed-in-editor.token"]}]
+    token = _header_act("Authorization", "Bearer @signed-in-editor.token")
+    served, repeated, forged, inherited = (f"okf:docs/features/demo/globex.md#get-things:{arm}"
+                                           for arm in ("does:1", "errors:1", "errors:2", "does:2"))
+    context = _context(
+        _obligation(served, checksDeclared=[{"call": "ok", "name": "http_status", "args": {"code": 200}}],
+                    fixturesDeclared=signed_in, docPosition=[1, 0], node="get-things", actsDeclared=[token]),
+        _obligation(repeated, checksDeclared=[{"call": "no", "name": "http_status", "args": {"code": 401}}],
+                    fixturesDeclared=signed_in, docPosition=[2, 0], node="get-things", actsDeclared=[token]),
+        _obligation(forged, checksDeclared=[{"call": "no", "name": "http_status", "args": {"code": 401}}],
+                    fixturesDeclared=signed_in, docPosition=[3, 0], node="get-things",
+                    actsDeclared=[_header_act("Authorization", "Bearer forged")]),
+        _obligation(inherited, checksDeclared=[{"call": "ok", "name": "http_status", "args": {"code": 200}}],
+                    fixturesDeclared=signed_in, docPosition=[4, 0], node="get-things"),
+    )
+    source, _gaps = compile_plan_gaps(context, story="demo-story")
+    assert source is not None
+    sent = 'headers={"Authorization": qa.resolve("Bearer @signed-in-editor.token")}'
+    assert source.count(f'qa.http.get("/api/things", expect_status=200, {sent})') == 2
+    assert 'qa.http.get("/api/things", expect_status=401)\n' in source
+    assert 'qa.http.get("/api/things", expect_status=401, headers={"Authorization": "Bearer forged"})' in source
+
+
 def test_each_claim_of_a_page_runs_in_its_own_claim_block() -> None:
     """A page's first refused request must not stop the run from trying the claims after it."""
     first, second = (f"okf:docs/features/demo/globex.md#get-things:{arm}" for arm in ("does:1", "emits:1"))
