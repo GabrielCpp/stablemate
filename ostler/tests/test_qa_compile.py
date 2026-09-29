@@ -369,6 +369,25 @@ def test_one_state_two_claims_is_arranged_once() -> None:
     assert source.count('qa.fixture("seeded-ledger"') == 2
 
 
+def test_a_fixture_that_fails_fails_only_the_claims_that_declare_it() -> None:
+    """Each fixture of a book page's scenario is arranged inside a claim covering the obligations that need it, so the rest still run."""
+    ledger = {"name": "seeded-ledger", "args": ["2"], "provides": "two policies on file"}
+    signed_in = {"name": "signed-in-clerk", "args": [], "provides": "a clerk's token"}
+    context = _context(
+        _obligation("okf:docs/features/demo/api.md#post-things:does:1",
+                    checksDeclared=[_check()], fixturesDeclared=[ledger, signed_in]),
+        _obligation("okf:docs/features/demo/api.md#post-things:does:2",
+                    checksDeclared=[_check()], fixturesDeclared=[signed_in]),
+    )
+    source = compile_plan(context, story="demo-story")
+    ast.parse(source)
+    assert ('    with qa.claim(["okf:docs/features/demo/api.md#post-things:does:1"]):\n'
+            '        qa.fixture("seeded-ledger", "2")') in source
+    assert ('    with qa.claim(["okf:docs/features/demo/api.md#post-things:does:1", '
+            '"okf:docs/features/demo/api.md#post-things:does:2"]):\n'
+            '        qa.fixture("signed-in-clerk")') in source
+
+
 def test_a_book_that_says_it_needs_nothing_arranged_gets_an_empty_precondition_list() -> None:
     """`fixture: none, because ...` is an answer, and the plan states it as one."""
     context = _context(

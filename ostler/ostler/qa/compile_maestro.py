@@ -390,7 +390,7 @@ def mobile_scenarios(
         lines.extend(target_lines(target_var, MAESTRO.name, app_id, emitted))
         scenario = SourceScenario(
             source, target_var, [o.id for o in obligations if o.id in covered],
-            arrangement.rows, body)
+            arrangement, body)
         lines.extend(scenario_lines(scenario, claim_scenario_function_name(scenario, emitted)))
     return lines
 

@@ -135,6 +135,7 @@ class Arrangement:
 
     rows: list[FixtureRow]
     stated_none: bool
+    needed_by: dict[tuple[str, tuple[str, ...]], list[str]] = field(default_factory=dict)
 
     @property
     def unstated(self) -> bool:
@@ -143,11 +144,17 @@ class Arrangement:
 
 
 def arrangement_of(obligations: list[Obligation]) -> Arrangement:
-    """Every fixture the obligations in one scenario declare, in order, arranged once each."""
-    rows = [row for obligation in obligations for row in obligation.fixtures]
+    """Every fixture the obligations in one scenario declare, in order, arranged once each, with the obligations that declare it."""
+    rows: dict[tuple[str, tuple[str, ...]], FixtureRow] = {}
+    needed_by: dict[tuple[str, tuple[str, ...]], list[str]] = {}
+    for obligation in obligations:
+        for row in obligation.fixtures:
+            rows[(row.name, row.args)] = row
+            needed_by.setdefault((row.name, row.args), []).append(obligation.id)
     return Arrangement(
-        rows=list({(row.name, row.args): row for row in rows}.values()),
+        rows=list(rows.values()),
         stated_none=any(o.arranges_nothing for o in obligations),
+        needed_by=needed_by,
     )
 
 
@@ -155,6 +162,11 @@ def fixture_call(row: FixtureRow) -> str:
     """The `qa.fixture(...)` line that arranges *row* inside a scenario body."""
     return (f"    qa.fixture({python_literal(row.name)}"
             + "".join(f", {python_literal(arg)}" for arg in row.args) + ")")
+
+
+def contained_fixture_call(row: FixtureRow, covers: list[str]) -> list[str]:
+    """The claim that arranges *row* in a book page's scenario, so a fixture that fails fails the claims in *covers* that need it and the scenario goes on to the next."""
+    return [f"    with qa.claim([{', '.join(python_literal(oid) for oid in covers)}]):", f"    {fixture_call(row)}"]
 
 
 @dataclass(frozen=True)
@@ -195,7 +207,7 @@ class SourceScenario:
     source: str
     target_var: str
     covers: list[str]
-    arranged: list[FixtureRow]
+    arranged: Arrangement
     body: list[str]
 
 
@@ -211,7 +223,8 @@ def claim_scenario_function_name(scenario: SourceScenario, emitted: EmittedScena
 
 def scenario_lines(scenario: SourceScenario, function_name: str) -> list[str]:
     """The rendered `@scenario` source, named `function_name`, holding every obligation one book page owes live evidence for on one target."""
-    arranged = scenario.arranged
+    arranged = scenario.arranged.rows
+    needed_by = scenario.arranged.needed_by
     preconditions = [
         "    preconditions=[",
         *(f"        {python_literal(row.precondition)}," for row in arranged),
@@ -219,7 +232,8 @@ def scenario_lines(scenario: SourceScenario, function_name: str) -> list[str]:
     ] if arranged else ["    preconditions=[],"]
     fixtures = [
         "",
-        *(fixture_call(row) for row in arranged),
+        *(line for row in arranged for line in contained_fixture_call(
+            row, [oid for oid in needed_by.get((row.name, row.args), []) if oid in scenario.covers])),
     ] if arranged else []
     return [
         "",
