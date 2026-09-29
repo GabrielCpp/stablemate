@@ -40,6 +40,22 @@ def test_each_failed_scenario_reports_on_every_page_it_covers_and_a_passing_one_
     assert all(problem.page == page and not problem.node for page, problems in by_page.items() for problem in problems)
 
 
+def test_a_check_made_for_one_claim_is_reported_on_that_claims_page_alone() -> None:
+    claim = "okf:docs/features/tally/tally.md#add:does:2"
+    failed = ScenarioOutcome(
+        status="failed",
+        failed_checks=(FailedCheck(label="POST /add answers [201]", expected="[201]", actual="403", covers=(claim,)),),
+    )
+    summary = RunSummary(status="failed", scenarios={"tally-add": failed})
+
+    by_page = summary.failures_by_page((ADD_SCENARIO,))
+
+    assert by_page == {"docs/features/tally/tally.md": (PageProblem(
+        "docs/features/tally/tally.md",
+        f"the run of scenario tally-add failed at {claim}: POST /add answers [201]: expected [201], observed 403",
+        node="docs/features/tally/tally.md#add"),)}
+
+
 def test_a_scenario_stopped_inside_the_plan_is_reported_at_the_obligation_it_stopped_in() -> None:
     plan = "\n".join(
         (

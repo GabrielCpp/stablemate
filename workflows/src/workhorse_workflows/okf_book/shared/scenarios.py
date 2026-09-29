@@ -48,6 +48,12 @@ class FailedCheck(BaseModel):
     expected: str = ""
     actual: str = ""
     command_ending_text: str = ""
+    covers: tuple[str, ...] = ()
+
+    @property
+    def claim(self) -> str:
+        """The one book claim this check was made for, or nothing when it covers none or several."""
+        return self.covers[0] if len(self.covers) == 1 and obligation_page(self.covers[0]) else ""
 
     def failure_line(self) -> str:
         observed = f"{self.label}: expected {self.expected}, observed {self.actual}"
@@ -69,6 +75,11 @@ class ScenarioOutcome(BaseModel):
         """Every failed check, then the last line of the run's own message."""
         message_last_line = self.message.strip().splitlines()[-1:]
         return (*(check.failure_line() for check in self.failed_checks), *message_last_line)
+
+    def unclaimed_failure_lines(self) -> tuple[str, ...]:
+        """Every failed check made for no one claim, then the last line of the run's own message."""
+        message_last_line = self.message.strip().splitlines()[-1:]
+        return (*(check.failure_line() for check in self.failed_checks if not check.claim), *message_last_line)
 
     def failed_claim(self, plan_source: str) -> str:
         """The obligation whose compiled lines in *plan_source* the run's traceback stopped in, or nothing when it stopped in none.
@@ -104,15 +115,21 @@ class RunSummary(BaseModel):
     def failures_by_page(self, scenarios: Iterable[Scenario], plan_source: str = "") -> dict[str, tuple[PageProblem, ...]]:
         """Each book page whose obligations a failed scenario covers, and what that scenario reported, pages in path order.
 
-        A scenario stopped inside the compiled *plan_source* is reported at the obligation it stopped in,
-        and on that obligation's page the problem names its node. A journey stopped at a step is also
+        A check made for one claim is reported on that claim's page alone, naming its node. A scenario
+        stopped inside the compiled *plan_source* is reported at the obligation it stopped in, and on
+        that obligation's page the problem names its node. A journey stopped at a step is also
         reported on the page of the node that step performs, which the scenario covers no claim of.
         """
         pages_by_scenario = {scenario.id: scenario.pages for scenario in scenarios}
         grouped: dict[str, list[PageProblem]] = {}
         for name in self.failed_scenarios:
             outcome = self.scenarios[name]
-            lines = outcome.failure_lines() or (outcome.status,)
+            claimed = _claimed_problems(name, outcome)
+            for problem in claimed:
+                grouped.setdefault(problem.page, []).append(problem)
+            lines = outcome.unclaimed_failure_lines() or (() if claimed else (outcome.status,))
+            if not lines:
+                continue
             claim = outcome.failed_claim(plan_source)
             failure_prefix = f"the run of scenario {name} failed at {claim}" if claim else f"the run of scenario {name} failed"
             pages = pages_by_scenario.get(name, ())
@@ -123,6 +140,14 @@ class RunSummary(BaseModel):
                 node = obligation_node(claim) if obligation_page(claim) == page else ""
                 grouped.setdefault(page, []).extend(PageProblem(page, f"{failure_prefix}: {line}", node=node) for line in lines)
         return {page: tuple(grouped[page]) for page in sorted(grouped)}
+
+
+def _claimed_problems(name: str, outcome: ScenarioOutcome) -> list[PageProblem]:
+    """Each check of scenario *name* made for one claim, as a problem on that claim's page naming its node."""
+    return [PageProblem(obligation_page(check.claim),
+                        f"the run of scenario {name} failed at {check.claim}: {check.failure_line()}",
+                        node=obligation_node(check.claim))
+            for check in outcome.failed_checks if check.claim]
 
 
 _SCENARIOS = TypeAdapter(tuple[Scenario, ...])
