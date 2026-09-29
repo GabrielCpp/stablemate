@@ -134,7 +134,11 @@ def ensure_stack(
 
 
 def release_stack(logger: logging.Logger, owned_pgids: tuple[str, ...]) -> None:
-    """Stop the process groups a bring-up started, newest first, and leave an adopted one up."""
+    """Stop the process groups a bring-up started, newest first, and leave an adopted one up.
+
+    It never raises, because ostler's teardown fails soft on a process group, so a caller releases
+    in a `finally` and a failure of the work it wraps is never masked.
+    """
     for pgid in reversed(owned_pgids):
         _ = stack.teardown_app(pgid, "", "", logger=logger)
 
