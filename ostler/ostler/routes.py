@@ -11,11 +11,12 @@ from ostler.model import Graph
 
 
 def is_path_shaped(route: str) -> bool:
-    """Whether *route* could be a path at all — the question a browser could even be asked."""
-    return route.strip().startswith("/")
+    """Whether *route* could be a path at all — the question a browser could even be asked. A path begins with `/` and holds no whitespace."""
+    text = route.strip()
+    return text.startswith("/") and not any(character.isspace() for character in text)
 
 
-NOT_PATH_SHAPED_REASON = "it is not a path (it does not begin with `/`)"
+NOT_PATH_SHAPED_REASON = "it is not a path (a path begins with `/` and holds no whitespace)"
 
 
 def is_screen_name_shaped(route: str) -> bool:

@@ -702,9 +702,9 @@ def _check_record_properties(graph: Graph, f: list[Finding]) -> None:
 
 
 def _driven_kind_parser(predicate: Callable[[str], bool], reason: str) -> Callable[[str], str]:
-    """Compose a `*_grammar(driver)` pair into a `values.VALUE_KINDS`-shaped parser."""
+    """Compose a `*_grammar(driver)` pair into a `values.VALUE_KINDS`-shaped parser that reads every line of the bullet, as the compiler does."""
     def parse(value: str) -> str:
-        return "" if predicate(runbook_mod.bullet_text(value)) else reason
+        return "" if predicate(runbook_mod.bullet_text(" ".join(value.split()))) else reason
     return parse
 
 

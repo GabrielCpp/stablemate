@@ -99,6 +99,13 @@ def test_a_valid_endpoint_path_is_clean(repo: Path) -> None:
     assert found == []
 
 
+def test_an_endpoint_path_a_prose_line_joined_is_reported(repo: Path) -> None:
+    write(repo / ENDPOINT_PATH, _endpoint_book(path="/api/accounts\nThis route fails when a dependency does."))
+    found = [f for f in _findings(repo, "unparsable-bullet-value") if "#path:" in f.ref]
+    assert len(found) == 1
+    assert "whitespace" in found[0].message
+
+
 def test_a_valid_server_entry_url_is_clean(repo: Path) -> None:
     write(repo / "docs/features/app/ops/qa-stack.md", (
         "---\ntype: runbook\ntitle: QA stack\n---\n\n# QA stack\n\n"
