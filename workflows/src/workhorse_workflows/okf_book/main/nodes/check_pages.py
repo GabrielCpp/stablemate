@@ -10,6 +10,7 @@ from workhorse_workflows.okf_book.main.nodes.writer_commands import (
     CHECK_MODULE,
     CHECK_AND_SCENARIO_RUNS_SPENT_MESSAGE,
     CommandOutput,
+    announce_running,
     printed_lines,
     run_quietly,
     WriterCommandState,
@@ -57,6 +58,7 @@ def run_check(argv: Sequence[str]) -> CommandOutput:
     state = spend_check_or_scenario_run(Path(argv[0]))
     if state is None:
         return CommandOutput(1, (CHECK_AND_SCENARIO_RUNS_SPENT_MESSAGE,))
+    announce_running()
     problems, _ = run_quietly(lambda: scoped_problems(state))
     return CommandOutput(1, printed_lines(problems)) if problems else CommandOutput(0, (NO_PROBLEMS_LINE,))
 

@@ -11,6 +11,7 @@ from workhorse_workflows.okf_book.main.nodes.writer_commands import (
     CHECK_AND_SCENARIO_RUNS_SPENT_MESSAGE,
     EXERCISE_MODULE,
     CommandOutput,
+    announce_running,
     printed_lines,
     run_quietly,
     spend_check_or_scenario_run,
@@ -62,6 +63,7 @@ def run_exercise(argv: Sequence[str]) -> CommandOutput:
     state = spend_check_or_scenario_run(Path(argv[0]))
     if state is None:
         return CommandOutput(1, (CHECK_AND_SCENARIO_RUNS_SPENT_MESSAGE,))
+    announce_running()
     root = state.root.resolve()
     targets = tuple(repo_target(root, target) for target in argv[1:])
     with tempfile.TemporaryDirectory(prefix="okf-spec-") as spec:

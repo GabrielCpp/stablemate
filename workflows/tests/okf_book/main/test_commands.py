@@ -49,6 +49,7 @@ from workhorse_workflows.okf_book.main.nodes.writer_commands import (
     OSTLER_MODULE,
     OSTLER_RUN_CAP,
     OSTLER_RUNS_SPENT_MESSAGE,
+    RUNNING_LINE,
     WriterCommandState,
     check_command,
     exercise_command,
@@ -276,7 +277,7 @@ def test_a_check_prints_only_its_own_lines(
     output = run_check([str(path)])
 
     assert output == CommandOutput(1, ("problem in ledger",))
-    assert capfd.readouterr() == ("", "")
+    assert capfd.readouterr() == (f"{RUNNING_LINE}\n", "")
 
 
 def _problems_on(*pages: str) -> Callable[[Path, str], tuple[PageProblem, ...]]:
