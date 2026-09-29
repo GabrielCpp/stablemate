@@ -201,6 +201,10 @@ sending:
 - arrange: header(name="Authorization", value="Bearer @signed-in-editor.token")
 ```
 
+A `header` act is the caller's, not one arm's. The run sends it with every claim of the
+endpoint, and leaves it off a claim whose `http_status` row expects 401, because that claim is
+about the anonymous caller. Arrange the credential once per endpoint.
+
 The fixture has to mint the credential for real, against the app's own sign-in or its auth
 emulator, and provide it under the key the header names. A fixture that only writes a file
 naming a caller leaves the route anonymous. A header that names a fact no fixture in the
