@@ -182,6 +182,23 @@ def test_a_nonzero_exit_is_a_defect(tmp_path: Path) -> None:
     assert fault["fault_class"] == "defect"
 
 
+def test_a_failed_step_keeps_the_end_of_its_output_where_the_error_is_named(tmp_path: Path) -> None:
+    """A traceback names its error on its last line, so the detail keeps the tail of a long output."""
+    script = tmp_path / "seed.sh"
+    _seed_step(script, "#!/bin/sh\nprintf 'frame %.0s' $(seq 200) >&2\necho 'HTTPError: HTTP Error 400: Bad Request' >&2\nexit 1\n")
+    module = _write(tmp_path, SECRET_SCENARIO)
+    book_fixtures = {
+        "seeded-acme": {
+            "steps": [{"kind": "seed", "id": "seed-it", "command": str(script), "cwd": str(tmp_path)}],
+            "args": [], "provides": [], "needs": [], "secrets": [],
+        }
+    }
+    code, _stdout, records = _run(module, "needs-a-secret", tmp_path, book_fixtures=book_fixtures)
+    assert code != 0
+    [fault] = [r for r in records if r.get("type") == "fixture_fault"]
+    assert fault["detail"].endswith("HTTP Error 400: Bad Request")
+
+
 def test_a_missing_command_is_a_defect_whose_detail_names_it(tmp_path: Path) -> None:
     """`bash -c` exits 126/127 for a name it never found — identical, from the exit code alone, to a typo in the recipe."""
     module = _write(tmp_path, SECRET_SCENARIO)

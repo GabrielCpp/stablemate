@@ -887,7 +887,7 @@ class Qa:
             ) from exc
         result = ToolResult(command=argv, stdout=done.stdout, stderr=done.stderr, exit_code=done.returncode)
         if not result.ok:
-            body = (result.stderr or result.stdout).strip()[:500]
+            body = (result.stderr or result.stdout).strip()[-500:]
             prefix = (
                 f"command not found (exit {result.exit_code})"
                 if result.exit_code in (126, 127)
