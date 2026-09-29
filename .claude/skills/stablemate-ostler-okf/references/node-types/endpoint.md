@@ -210,6 +210,14 @@ emulator, and provide it under the key the header names. A fixture that only wri
 naming a caller leaves the route anonymous. A header that names a fact no fixture in the
 scenario provides is `unresolved-precondition`.
 
+## A server fault is not a claim
+
+A healthy app answers no request with a 5xx, so nothing a scenario sends can observe one. An
+`http_status` row that expects 500 or above is `unarrangeable-server-fault`, and the run does
+not send it. Say in the section's prose that the route answers 500 when a dependency fails.
+Do not write it as an `emits:`, `errors:` or `status:` bullet, because each of those mints an
+obligation the run owes a check.
+
 ## Minimal example
 
 ```bash
@@ -248,7 +256,7 @@ no scenario is compiled for it.
 `weak-check`, `unstated-precondition`, `unparsed-check`, `misfiled-test-ref`,
 `dangling-code-ref`,
 `missing-code-symbol`, `unknown-book-fixture`, `unarranged-request-body`,
-`invalid-http-method`, `misnested-bullet`, `unarranged-scenario`,
+`unarrangeable-server-fault`, `invalid-http-method`, `misnested-bullet`, `unarranged-scenario`,
 `misbound-status-check`. See
 [../doctor-codes.md](../doctor-codes.md).
 
