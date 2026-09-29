@@ -59,7 +59,10 @@ gives relative to the repository starts there.
 {% if kind == "http" %}
   A request the app refused as unauthorized sends the token a sign-in fixture mints, and one it
   refused as malformed sends the body it lacked. Both are `arrange:` acts, as the skill's
-  endpoint reference says. A route that needs an id or a query string gets it on the path its
+  endpoint reference says. A request refused as forbidden sends the token of a caller who holds
+  the role the source checks, from a sign-in fixture for that role. A request refused as a
+  conflict sends a fresh value for every field the source requires to be unique, not the email
+  alone. A route that needs an id or a query string gets it on the path its
   `http_status` row spells. A check the run gapped as `needs-snapshot` is restated on the response.
   A flow step sends what its endpoint arranges, so a flow refused as unauthorized names the
   sign-in fixture on its own `fixture:`, as the skill's flow reference says.
