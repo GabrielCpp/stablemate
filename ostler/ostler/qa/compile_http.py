@@ -349,16 +349,24 @@ def _scenario_body(obligations: list[Obligation], gaps: list[Gap], covered: set[
         produced.record_fixtures(obligation)
         request = _claim_request(obligation, observed, produced, gaps,
                                  credentials.get(obligation.node, ()))
-        lines.extend(_request_lines(oid, request, observed, gaps))
+        claim_lines = _request_lines(oid, request, observed, gaps)
         responded = observed if isinstance(request, _ClaimRequest) else None
-        lines.extend(_claim_captures(obligation, responded, produced, gaps, captured))
+        claim_lines.extend(_claim_captures(obligation, responded, produced, gaps, captured))
         if responded is None:
+            lines.extend(claim_lines)
             continue
         asserted = _claim_assertions(obligation, observed, produced, gaps)
-        lines.extend(asserted.todos or asserted.assertions)
+        claim_lines.extend(asserted.todos or asserted.assertions)
+        lines.extend(_within_claim(oid, claim_lines))
         if not asserted.todos:
             covered.add(oid)
     return lines
+
+
+def _within_claim(oid: str, lines: list[str]) -> list[str]:
+    """*lines* inside the claim's `qa.claim` block, so a claim that fails is recorded against it and the scenario goes on to the next."""
+    indented = [f"    {line}" if line else line for text in lines for line in text.split("\n")]
+    return [f"    with qa.claim([{python_literal(oid)}]):", *indented]
 
 
 @dataclass(frozen=True)

@@ -484,6 +484,39 @@ def test_an_unmet_expect_status_is_recorded_before_it_raises(tmp_path: Path) -> 
     assert records[-1]["status"] == "errored"
 
 
+CLAIM_PLAN = STATUS_PLAN.split("@scenario")[0] + '''\
+@scenario(target=api, mechanism="live", covers=["okf:docs/a.md#confirm:does:1", "okf:docs/a.md#confirm:does:2", "okf:docs/a.md#confirm:does:3"])
+def each_claim_is_its_own(qa: Qa) -> None:
+    """Three claims of one page, the first two refused."""
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Always201)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    qa.http.base_url = "http://127.0.0.1:%d" % server.server_address[1]
+    with qa.claim(["okf:docs/a.md#confirm:does:1"]):
+        qa.http.post("/api/seats/A2/booking", expect_status=409)
+        qa.check("unreached", True)
+    with qa.claim(["okf:docs/a.md#confirm:does:2"]):
+        qa.http.get("/api/seats/A2/booking")
+    with qa.claim(["okf:docs/a.md#confirm:does:3"]):
+        qa.http.post("/api/seats/A2/booking", expect_status=201)
+        qa.check("reached", True, covers=["okf:docs/a.md#confirm:does:3"])
+'''
+
+
+def test_a_refused_claim_is_recorded_against_it_and_the_scenario_goes_on(tmp_path: Path) -> None:
+    """A page's first refused request must not hide what its other claims would show."""
+    code, records = _run(_write(tmp_path, CLAIM_PLAN), "each-claim-is-its-own", tmp_path)
+
+    assert code == 1
+    asserted = _asserts(records)
+    assert [(record["covers"], record["passed"]) for record in asserted] == [
+        (["okf:docs/a.md#confirm:does:1"], False),
+        (["okf:docs/a.md#confirm:does:2"], False),
+        (["okf:docs/a.md#confirm:does:3"], True),
+    ]
+    assert "returned 501" in asserted[1]["actual"]
+    assert records[-1]["status"] == "failed"
+
+
 ROOT_TOKEN_PLAN = '''\
 from ostler_qa import Qa, plan, scenario, target
 

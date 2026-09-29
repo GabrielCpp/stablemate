@@ -90,7 +90,11 @@ _PROCESS_START = time.monotonic()
 
 
 class HttpError(RuntimeError):
-    """A response whose status the scenario did not say it expected."""
+    """A response whose status the scenario did not say it expected, and whether the scenario already recorded it as a failed check."""
+
+    def __init__(self, message: str, *, recorded: bool = False) -> None:
+        super().__init__(message)
+        self.recorded = recorded
 
 
 class CheckFailed(AssertionError):
@@ -496,7 +500,8 @@ class Http:
                 self._on_unexpected_status(method.upper(), url, response.status, sorted(allowed))
             raise HttpError(
                 f"{method.upper()} {url} returned {response.status}, expected "
-                f"{sorted(allowed)}: {response.text[:500]}"
+                f"{sorted(allowed)}: {response.text[:500]}",
+                recorded=self._on_unexpected_status is not None,
             )
         return response
 
@@ -1203,6 +1208,23 @@ class Qa:
         self._recorder.emit(record)
         return passed
 
+
+    @contextmanager
+    def claim(self, covers: Sequence[str]) -> Iterator[None]:
+        """Run one claim's request and checks, so a claim that fails is recorded against it alone and the scenario goes on to the next."""
+        scenario_covers = self.covers
+        self.covers = list(covers)
+        try:
+            yield
+        except CheckFailed:
+            pass
+        except HttpError as exc:
+            if not exc.recorded:
+                _ = self._record(str(exc), False, str(exc), "a response", covers)
+        except Exception as exc:
+            _ = self._record(f"the claim raised {type(exc).__name__}", False, str(exc), "no error", covers)
+        finally:
+            self.covers = scenario_covers
 
     @contextmanager
     def step(self, label: str) -> Iterator[None]:

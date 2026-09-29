@@ -10,7 +10,7 @@ import subprocess
 import sys
 import threading
 import time
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -101,16 +101,18 @@ class CommandEnding:
 
 @dataclass(frozen=True)
 class FailedCheck:
-    """One assertion that did not hold: what it asserted, what it expected, and what it observed."""
+    """One assertion that did not hold: what it asserted, what it expected, what it observed, and the claims it covers."""
 
     label: str
     expected: str
     actual: str
     command_ending_text: str = ""
+    covers: tuple[str, ...] = ()
 
     @classmethod
     def of(
         cls, label: str, expected: JsonValue, actual: JsonValue, command_ending: CommandEnding | None = None,
+        covers: Sequence[str] = (),
     ) -> FailedCheck:
         """A failed check whose expected and observed values are rendered as JSON text, with how the command it observed ended."""
         return cls(
@@ -118,6 +120,7 @@ class FailedCheck:
             json.dumps(expected, default=str),
             json.dumps(actual, default=str),
             command_ending.text() if command_ending is not None else "",
+            tuple(covers),
         )
 
 
@@ -478,7 +481,7 @@ class PythonDriver(QaDriver):
         if not passed:
             tally.count_failure(FailedCheck.of(
                 str(record.get("label", "")), record.get("expected"), record.get("actual"),
-                CommandEnding.read(record)))
+                CommandEnding.read(record), [str(claim) for claim in record.get("covers") or []]))
 
     def _grade_vet_and_list_problems(
         self,
