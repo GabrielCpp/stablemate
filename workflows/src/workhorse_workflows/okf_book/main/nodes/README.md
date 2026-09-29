@@ -21,5 +21,6 @@ The steps the main book flow calls. Each module owns one job a state hands off.
 - `surface_pass.py`: the services one pass of the run routes.
 - `turn_budget.py`: what one writer turn reads, held against its budget.
 - `writer_commands.py`: the writer's three commands and the state they share.
+- `writer_jobs.py`: a check or scenario run kept apart from the call that starts it, whose result the same command reads on a later call.
 - `writer_ostler.py`: the ostler commands a writer may run, counted and clipped.
 - `writer_request.py`: what one writer turn is sent.

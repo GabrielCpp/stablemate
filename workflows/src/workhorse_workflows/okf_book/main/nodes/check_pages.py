@@ -8,14 +8,13 @@ from pathlib import Path
 from workhorse_workflows.okf_book.main.nodes.page_sections import page_sections
 from workhorse_workflows.okf_book.main.nodes.writer_commands import (
     CHECK_MODULE,
-    CHECK_AND_SCENARIO_RUNS_SPENT_MESSAGE,
     CommandOutput,
-    announce_running,
     printed_lines,
+    read_command_state,
     run_quietly,
     WriterCommandState,
-    spend_check_or_scenario_run,
 )
+from workhorse_workflows.okf_book.main.nodes.writer_jobs import Start, detached, run_or_attach
 from workhorse_workflows.okf_book.shared.page_check import PageProblem, page_problems
 
 USAGE = f"usage: python -m {CHECK_MODULE} <writer-commands.json>"
@@ -51,16 +50,18 @@ def scoped_problems(state: WriterCommandState) -> tuple[str, ...]:
     )
 
 
-def run_check(argv: Sequence[str]) -> CommandOutput:
-    """What the check exits with and prints for command state file named in `argv`."""
-    if len(argv) != 1:
-        return CommandOutput(2, (USAGE,))
-    state = spend_check_or_scenario_run(Path(argv[0]))
-    if state is None:
-        return CommandOutput(1, (CHECK_AND_SCENARIO_RUNS_SPENT_MESSAGE,))
-    announce_running()
+def checked(argv: Sequence[str]) -> CommandOutput:
+    """What the check of the command state file named first in `argv` exits with and prints."""
+    state = read_command_state(Path(argv[0]))
     problems, _ = run_quietly(lambda: scoped_problems(state))
     return CommandOutput(1, printed_lines(problems)) if problems else CommandOutput(0, (NO_PROBLEMS_LINE,))
+
+
+def run_check(argv: Sequence[str], start: Start | None = None) -> CommandOutput:
+    """What the writer's call of the check on the command state file named in `argv` exits with and prints."""
+    if len(argv) != 1:
+        return CommandOutput(2, (USAGE,))
+    return run_or_attach(CHECK_MODULE, argv, start or detached(checked))
 
 
 def main() -> int:

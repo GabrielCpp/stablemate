@@ -9,6 +9,7 @@ from ostler.stamp import stamp_page
 from workhorse.pyflow import AgentTimeout, AgentTurnFailed, Await, Continue, Done, WorkflowFailed
 from workhorse_workflows.okf_book.main.nodes.surface import Surface
 from workhorse_workflows.okf_book.main.nodes.writer_commands import WriterCommandState, write_command_state
+from workhorse_workflows.okf_book.main.nodes.writer_jobs import settle_jobs
 from workhorse_workflows.okf_book.main.nodes.writer_request import writer_request
 from workhorse_workflows.okf_book.shared.blockers import Phase
 from workhorse_workflows.okf_book.shared.book_commits import book_commit_subject, unfinished_book_commit_subject
@@ -50,6 +51,7 @@ class WriteBook(BookFlow):
 
     def reset_command_state(self, before: Snapshot) -> Continue[...]:
         """Write the command state the writer's three commands read, with none of their runs spent."""
+        settle_jobs(self.run_dir)
         command_state_file = write_command_state(self.run_dir, WriterCommandState(root=self.root, service=self.surface_to_write.service))
         return Continue(command_state_file.as_posix(), self.write_book, before=before).because("send the writer")
 
@@ -73,6 +75,7 @@ class WriteBook(BookFlow):
             )
         except (AgentTurnFailed, AgentTimeout) as failed:
             failure = f"the writer's turn ended without a reply: {failed}"
+        settle_jobs(self.run_dir)
         node = Path(WRITE_PROMPT).stem
         metric = turn_metric(
             Phase.WRITE, node, (surface.service,), (time.monotonic() - started) / 60, self.turn_usage(node)

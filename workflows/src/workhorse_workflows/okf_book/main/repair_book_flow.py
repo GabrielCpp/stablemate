@@ -27,6 +27,7 @@ from workhorse_workflows.okf_book.main.nodes.repair_batches import pack_repairs,
 from workhorse_workflows.okf_book.main.nodes.repair_ledger import BatchTurn, RepairLedger, RepairRound
 from workhorse_workflows.okf_book.main.nodes.surface import Surface
 from workhorse_workflows.okf_book.main.nodes.writer_commands import WriterCommandState, write_command_state
+from workhorse_workflows.okf_book.main.nodes.writer_jobs import settle_jobs
 from workhorse_workflows.okf_book.main.nodes.writer_request import writer_request
 from workhorse_workflows.okf_book.main.root_book_flow import RootBook, RootedBook
 from workhorse_workflows.okf_book.main.settle_repair_turn_flow import SettledTurn, SettleRepairTurn
@@ -134,6 +135,7 @@ class RepairBook(BookFlow):
             sections_by_page={page.page: page.sections for page in batch.pages if page.sections},
             problems_at_turn_start=problems_at_turn_start,
         )
+        settle_jobs(self.run_dir)
         _ = write_command_state(self.run_dir, state)
         return Continue(batch.page_paths, self.repair_batch, turn=turn).because("repair the batch")
 
@@ -159,6 +161,7 @@ class RepairBook(BookFlow):
             self.logger.warning("%s", failure)
             ledger = turn.ledger.model_copy(update={"failed_turns": (*turn.ledger.failed_turns, failure)})
             turn = turn.model_copy(update={"ledger": ledger})
+        settle_jobs(self.run_dir)
         node = Path(REPAIR_PROMPT).stem
         metric = turn_metric(Phase.WRITE, node, (self.service,), (time.monotonic() - started) / 60, self.turn_usage(node))
         return Continue(failure, self.record_repair_turn, turn=turn, metric=metric).because("record what the turn cost")

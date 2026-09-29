@@ -26,10 +26,6 @@ OSTLER_RUN_CAP = 40
 OSTLER_MAX_PRINTED_LINES = 3
 CHECK_AND_SCENARIO_RUNS_SPENT_MESSAGE = f"the {CHECK_AND_SCENARIO_RUN_CAP} runs of the check and the scenarios this turn may make are spent: stop, and reply with what is left to fix"
 OSTLER_RUNS_SPENT_MESSAGE = f"the {OSTLER_RUN_CAP} ostler runs this turn may make are spent: edit the pages by hand"
-RUNNING_LINE = (
-    "running: this takes minutes, and prints its result when it exits. If your shell hands the call back first, "
-    "with a session id or no output, wait on that same call until it exits, and never start the command again meanwhile"
-)
 _EARLIER_LOCATION = re.compile(r"^(?P<page>[^:\s]+):(?P<line>\d+): ")
 
 
@@ -140,11 +136,6 @@ def printed_lines(lines: Sequence[str], limit: int = MAX_PRINTED_LINES) -> tuple
     if len(lines) <= limit:
         return shown
     return (*shown, f"… and {len(lines) - limit} more: fix these, then run it again")
-
-
-def announce_running() -> None:
-    """Print, before a long command's work starts, that its result comes only when it exits."""
-    print(RUNNING_LINE, flush=True)
 
 
 def run_quietly[T](work: Callable[[], T]) -> tuple[T, str]:

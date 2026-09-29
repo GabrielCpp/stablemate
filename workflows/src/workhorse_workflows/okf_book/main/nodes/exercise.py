@@ -1,6 +1,7 @@
 """Run the book, or the pages and fixture pages named after the state file, against the real app. It prints each check that failed, or "All N scenarios pass"."""
 from __future__ import annotations
 
+import fcntl
 import logging
 import sys
 import tempfile
@@ -8,14 +9,13 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from workhorse_workflows.okf_book.main.nodes.writer_commands import (
-    CHECK_AND_SCENARIO_RUNS_SPENT_MESSAGE,
     EXERCISE_MODULE,
     CommandOutput,
-    announce_running,
     printed_lines,
+    read_command_state,
     run_quietly,
-    spend_check_or_scenario_run,
 )
+from workhorse_workflows.okf_book.main.nodes.writer_jobs import Start, detached, run_or_attach
 from workhorse_workflows.okf_book.shared.book_run import (
     ExerciseResult,
     bring_up,
@@ -27,6 +27,7 @@ from workhorse_workflows.okf_book.shared.book_run import (
 )
 
 USAGE = f"usage: python -m {EXERCISE_MODULE} <writer-commands.json> [page | fixture page ...]"
+STACK_LOCK = "exercise.lock"
 
 
 def repo_target(root: Path, target: str) -> str:
@@ -56,19 +57,24 @@ def exercise_book(logger: logging.Logger, root: Path, service: str, spec: Path, 
         release(logger, stack)
 
 
-def run_exercise(argv: Sequence[str]) -> CommandOutput:
-    """What the run exits with and prints for the command state file named first in `argv`, and the targets after it."""
-    if not argv:
-        return CommandOutput(2, (USAGE,))
-    state = spend_check_or_scenario_run(Path(argv[0]))
-    if state is None:
-        return CommandOutput(1, (CHECK_AND_SCENARIO_RUNS_SPENT_MESSAGE,))
-    announce_running()
+def exercised(argv: Sequence[str]) -> CommandOutput:
+    """What the run for the command state file named first in `argv`, and the targets after it, exits with and prints. One run at a time holds the app."""
+    state_path = Path(argv[0])
+    state = read_command_state(state_path)
     root = state.root.resolve()
     targets = tuple(repo_target(root, target) for target in argv[1:])
-    with tempfile.TemporaryDirectory(prefix="okf-spec-") as spec:
-        exercised, _ = run_quietly(lambda: exercise_book(logging.getLogger(EXERCISE_MODULE), root, state.service, Path(spec), targets))
-    return CommandOutput(0 if exercised.passed else 1, printed_lines(exercised.lines))
+    with (state_path.parent / STACK_LOCK).open("w", encoding="utf-8") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        with tempfile.TemporaryDirectory(prefix="okf-spec-") as spec:
+            result, _ = run_quietly(lambda: exercise_book(logging.getLogger(EXERCISE_MODULE), root, state.service, Path(spec), targets))
+    return CommandOutput(0 if result.passed else 1, printed_lines(result.lines))
+
+
+def run_exercise(argv: Sequence[str], start: Start | None = None) -> CommandOutput:
+    """What the writer's call of the run on the command state file named first in `argv`, and the targets after it, exits with and prints."""
+    if not argv:
+        return CommandOutput(2, (USAGE,))
+    return run_or_attach(EXERCISE_MODULE, argv, start or detached(exercised))
 
 
 def main() -> int:

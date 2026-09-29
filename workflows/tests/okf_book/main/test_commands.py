@@ -5,7 +5,7 @@ import logging
 import os
 import subprocess
 import sys
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from pathlib import Path
 
 import pytest
@@ -16,10 +16,11 @@ from workhorse.testing import make_git_repo
 
 from workhorse_workflows import okf_book
 from workhorse_workflows.okf_book.main.nodes import check_pages, exercise
-from workhorse_workflows.okf_book.main.nodes.check_pages import NO_PROBLEMS_LINE, run_check, scoped_problems
+from workhorse_workflows.okf_book.main.nodes.check_pages import NO_PROBLEMS_LINE, checked, run_check, scoped_problems
 from workhorse_workflows.okf_book.main.nodes.check_pages import USAGE as CHECK_USAGE
 from workhorse_workflows.okf_book.main.nodes.exercise import USAGE as EXERCISE_USAGE
 from workhorse_workflows.okf_book.main.nodes.exercise import run_exercise
+from workhorse_workflows.okf_book.main.nodes.writer_jobs import Start, Work, finish_job
 from workhorse_workflows.okf_book.main.nodes.writer_ostler import USAGE as OSTLER_USAGE
 from workhorse_workflows.okf_book.main.nodes.writer_ostler import run_ostler
 from workhorse_workflows.okf_book.main.nodes.turn_budget import (
@@ -49,7 +50,6 @@ from workhorse_workflows.okf_book.main.nodes.writer_commands import (
     OSTLER_MODULE,
     OSTLER_RUN_CAP,
     OSTLER_RUNS_SPENT_MESSAGE,
-    RUNNING_LINE,
     WriterCommandState,
     check_command,
     exercise_command,
@@ -193,14 +193,21 @@ def test_the_check_prints_each_problem_of_a_book_with_no_entries_page(app: Calla
     assert NO_PROBLEMS_LINE not in output.lines
 
 
-def test_a_turn_that_spent_its_check_runs_is_told_to_stop(app: Callable[[str], Path], tmp_path: Path) -> None:
+def _here(work: Work) -> Start:
+    def start(job: Path, argv: Sequence[str]) -> None:
+        finish_job(job, work, argv)
+
+    return start
+
+
+def test_a_turn_that_spent_its_check_runs_is_told_to_stop_and_still_reads_its_last_result(app: Callable[[str], Path], tmp_path: Path) -> None:
     repo = app("tally-cli")
     path = write_command_state(tmp_path / "run", WriterCommandState(root=repo, service="ledger", check_and_scenario_runs=CHECK_AND_SCENARIO_RUN_CAP - 1))
 
-    _ = run_check([str(path)])
+    last = run_check([str(path)], _here(checked))
 
     assert read_command_state(path).check_and_scenario_runs == CHECK_AND_SCENARIO_RUN_CAP
-    assert run_check([str(path)]) == CommandOutput(1, (CHECK_AND_SCENARIO_RUNS_SPENT_MESSAGE,))
+    assert run_check([str(path)], _here(checked)) == last
     assert run_exercise([str(path)]) == CommandOutput(1, (CHECK_AND_SCENARIO_RUNS_SPENT_MESSAGE,))
 
 
@@ -274,10 +281,10 @@ def test_a_check_prints_only_its_own_lines(
     monkeypatch.setattr(check_pages, "page_problems", _noisy_problems)
     path = write_command_state(tmp_path / "run", WriterCommandState(root=tmp_path / "repo", service="ledger"))
 
-    output = run_check([str(path)])
+    output = run_check([str(path)], _here(checked))
 
     assert output == CommandOutput(1, ("problem in ledger",))
-    assert capfd.readouterr() == (f"{RUNNING_LINE}\n", "")
+    assert capfd.readouterr() == ("", "")
 
 
 def _problems_on(*pages: str) -> Callable[[Path, str], tuple[PageProblem, ...]]:
