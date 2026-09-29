@@ -18,6 +18,7 @@ The steps the main book flow calls. Each module owns one job a state hands off.
 - `root_entries.py`: the entries page code writes for a book that has none.
 - `source_view.py`: the copy of the product source a writer reads.
 - `surface.py`: the declaration of one surface of a service.
+- `surface_pass.py`: the services one pass of the run routes.
 - `turn_budget.py`: what one writer turn reads, held against its budget.
 - `writer_commands.py`: the writer's three commands and the state they share.
 - `writer_ostler.py`: the ostler commands a writer may run, counted and clipped.

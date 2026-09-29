@@ -11,6 +11,7 @@ from workhorse_workflows.okf_book.main.repair_book_flow import RepairBook
 from workhorse_workflows.okf_book.main.nodes.report import build_report, write_report
 from workhorse_workflows.okf_book.main.nodes.source_view import build_source_view, source_view_folder
 from workhorse_workflows.okf_book.main.nodes.surface import Surface
+from workhorse_workflows.okf_book.main.nodes.surface_pass import read_pass, write_pass
 from workhorse_workflows.okf_book.main.nodes.turn_budget import (
     ceiling_blocker_reason,
     folder_tokens,
@@ -53,11 +54,17 @@ class OkfBook(BookFlow):
         """A run with no surface has no book to write."""
         if not self.surfaces:
             raise WorkflowFailed("the run names no surface: pass each one under `surfaces`")
+        write_pass(self.records_dir, self.services)
         return Continue(None, self.route_book, index=0).because("route the first surface's book")
 
+    def _routed_after(self, index: int) -> int | None:
+        routed = read_pass(self.records_dir, self.services)
+        return next((later for later in range(index + 1, len(self.surfaces)) if self.surfaces[later].service in routed), None)
+
     def _next_surface(self, result: object, index: int) -> Continue[...]:
-        if index + 1 < len(self.surfaces):
-            return Continue(result, self.route_book, index=index + 1).because("this surface is settled: next one")
+        later = self._routed_after(index)
+        if later is not None:
+            return Continue(result, self.route_book, index=later).because("this surface is settled: next one")
         return Continue(result, self.report).because("every surface is settled")
 
     def _block_surface_and_move_on(self, index: int, reason: str) -> Continue[...]:
@@ -213,7 +220,7 @@ class OkfBook(BookFlow):
         return Continue(failures, self.copy_source, index=index, run_failures=failures).because("repair the pages the run failed on")
 
     def report(self) -> Await[...] | Done:
-        """Publish the report. Any blocker stops the run at the operator, whose answer sends every book back through its route."""
+        """Publish the report. Any blocker stops the run at the operator, whose answer sends each blocked book back through its route."""
         report = build_report(self.root, self.records_dir, self.services)
         page = write_report(self.records_dir, report)
         blockers = read_blockers(self.records_dir)
@@ -223,11 +230,15 @@ class OkfBook(BookFlow):
             self.run_dir / OPERATOR_NAME,
             f"The run stopped on {len(blockers)} blockers, each listed in {page}. "
             + "Fix the book, ostler, the app or the workflow each one names, and reload the run when you changed its code. "
-            + "Answer here, and the run routes every book again: a book that still fails goes back to its repair.",
+            + "Answer here, and the run routes each blocked book again: a book that still fails goes back to its repair.",
             self.resume,
         ).because("blockers wait for the operator")
 
     def resume(self) -> Continue[...]:
-        """The operator has fixed what the blockers named. Every blocker is forgotten, since the books' next pass records again each one that still holds."""
+        """The operator has fixed what the blockers named. The books they named pass again, and every blocker is forgotten, since that pass records again each one that still holds. A blocker that names no service sends every book."""
+        blocked = {blocker.service for blocker in read_blockers(self.records_dir)}
+        blocked_services = tuple(service for service in self.services if service in blocked)
+        write_pass(self.records_dir, blocked_services if blocked_services and "" not in blocked else self.services)
         forget_every_blocker(self.records_dir)
-        return Continue(None, self.route_book, index=0).because("the operator answered: route the books again")
+        first = self._routed_after(-1)
+        return Continue(None, self.route_book, index=first or 0).because("the operator answered: route the blocked books again")
