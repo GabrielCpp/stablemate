@@ -3164,6 +3164,23 @@ def test_a_journey_get_step_sends_the_header_its_node_arranges() -> None:
     assert 'observed_1 = qa.http.get("/api/things", headers={"X-Tenant": "acme"})' in result.source
 
 
+def test_a_journey_step_is_marked_with_the_node_it_performs() -> None:
+    """A walk stopped at a step names the endpoint that step performs, which the flow covers no claim of."""
+    oid = f"okf:{_FLOW}:end-state"
+    context = _navigation_context(
+        _flow_obligation(
+            oid, source=_FLOW, surface="api",
+            steps=[_step(f"{_API}#get-things", "endpoint", "api")],
+            checks=[{"call": "it", "name": "http_status", "args": {"status": 200, "path": "/api/things"}}],
+        ),
+        _step_node(f"{_API}#get-things", {"route": ["GET /api/things"]}),
+        navigation=_api_navigation(),
+    )
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(result, Plan)
+    assert f'    # okf:{_API}#get-things\n    observed_1 = qa.http.get("/api/things")' in result.source
+
+
 def _journey_calling_a_route_with_a_query(query_path: str, fixtures: list[dict] | None = None) -> tuple[str, dict]:
     oid = f"okf:{_FLOW}:end-state"
     get_node = _step_node(f"{_API}#get-videos", {"route": ["GET /api/videos"]})

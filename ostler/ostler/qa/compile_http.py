@@ -505,6 +505,7 @@ def _http_steps(walk: JourneyWalk, sinks: PlanSinks) -> _HttpSteps | None:
         target = (f"qa.resolve({python_literal(bound)})" if references.find_references(bound)
                   else python_literal(bound))
         expect = f", expect_status={refused_status}" if refused_status is not None and index == len(walk.steps) else ""
+        lines.append(f"    # okf:{step.ref}")
         lines.append(f"    {observed} = qa.http.{request.method.lower()}({target}{expect}{request.kwargs_source})")
         if "{" in bound:
             lines.append("    # TODO(arrange): the path above still carries a template variable")
