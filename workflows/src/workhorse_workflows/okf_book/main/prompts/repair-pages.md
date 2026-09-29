@@ -61,7 +61,11 @@ gives relative to the repository starts there.
   refused as malformed sends the body it lacked. Both are `arrange:` acts, as the skill's
   endpoint reference says. A route that needs an id or a query string gets it on the path its
   `http_status` row spells. A check the run gapped as `needs-snapshot` is restated on the response.
+  A flow step sends what its endpoint arranges, so a flow refused as unauthorized names the
+  sign-in fixture on its own `fixture:`, as the skill's flow reference says.
 {% endif %}
+  A fixture step that failed with exit 127 runs a command the repository does not have. Its
+  `run:` becomes a real one, as the skill's fixture reference says.
 {% endif %}
   A claim the source contradicts is corrected to what the source does. A claim with no `verify:`
   gets one that would fail if the app stopped doing it. A claim that arranges nothing gets a
