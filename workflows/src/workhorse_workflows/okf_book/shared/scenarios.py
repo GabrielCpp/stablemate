@@ -22,6 +22,7 @@ RUN_NAME = "run-summary.json"
 OBLIGATION_PAGE = re.compile(r"^okf:(?P<page>[^#]+?\.md)(?:[#:]|$)")
 PLAN_FRAME = re.compile(rf'File "[^"]*{re.escape(PLAN_NAME)}", line (?P<line>\d+)')
 CLAIM_MARK = re.compile(r"^\s*# (?P<claim>okf:\S+)")
+SCENARIO_DEF = re.compile(r"^def ")
 
 
 class Scenario(BaseModel):
@@ -70,12 +71,19 @@ class ScenarioOutcome(BaseModel):
         return (*(check.failure_line() for check in self.failed_checks), *message_last_line)
 
     def failed_claim(self, plan_source: str) -> str:
-        """The obligation whose compiled lines in *plan_source* the run's traceback stopped in, or nothing when it stopped in none."""
+        """The obligation whose compiled lines in *plan_source* the run's traceback stopped in, or nothing when it stopped in none.
+
+        The search stops at the scenario's own `def`, so a scenario stopped before its first mark names no obligation of another.
+        """
         stopped_at_lines = [int(frame.group(1)) for frame in PLAN_FRAME.finditer(self.message)]
         if not stopped_at_lines:
             return ""
-        above = reversed(plan_source.splitlines()[: stopped_at_lines[-1]])
-        return next((mark["claim"] for line in above if (mark := CLAIM_MARK.match(line))), "")
+        for line in reversed(plan_source.splitlines()[: stopped_at_lines[-1]]):
+            if SCENARIO_DEF.match(line):
+                return ""
+            if mark := CLAIM_MARK.match(line):
+                return mark["claim"]
+        return ""
 
 
 class RunSummary(BaseModel):
@@ -97,7 +105,8 @@ class RunSummary(BaseModel):
         """Each book page whose obligations a failed scenario covers, and what that scenario reported, pages in path order.
 
         A scenario stopped inside the compiled *plan_source* is reported at the obligation it stopped in,
-        and on that obligation's page the problem names its node.
+        and on that obligation's page the problem names its node. A journey stopped at a step is also
+        reported on the page of the node that step performs, which the scenario covers no claim of.
         """
         pages_by_scenario = {scenario.id: scenario.pages for scenario in scenarios}
         grouped: dict[str, list[PageProblem]] = {}
@@ -106,7 +115,11 @@ class RunSummary(BaseModel):
             lines = outcome.failure_lines() or (outcome.status,)
             claim = outcome.failed_claim(plan_source)
             failure_prefix = f"the run of scenario {name} failed at {claim}" if claim else f"the run of scenario {name} failed"
-            for page in pages_by_scenario.get(name, ()):
+            pages = pages_by_scenario.get(name, ())
+            claim_page = obligation_page(claim)
+            if claim_page and claim_page not in pages:
+                pages = (*pages, claim_page)
+            for page in pages:
                 node = obligation_node(claim) if obligation_page(claim) == page else ""
                 grouped.setdefault(page, []).extend(PageProblem(page, f"{failure_prefix}: {line}", node=node) for line in lines)
         return {page: tuple(grouped[page]) for page in sorted(grouped)}

@@ -76,3 +76,68 @@ def test_a_scenario_stopped_inside_the_plan_is_reported_at_the_obligation_it_sto
             ),
         )
     }
+
+
+def test_a_scenario_stopped_before_its_first_mark_names_no_obligation_of_the_scenario_above() -> None:
+    plan = "\n".join(
+        (
+            "def tally_add(qa):",
+            "    # okf:docs/features/tally/tally.md#add:does:1",
+            "    qa.http.post('/entries', expect_status=400)",
+            "",
+            "def tally_list(qa):",
+            "    token = qa.fixture('signed-in-user')",
+            "    # okf:docs/features/tally/tally.md#list:does:1",
+            "    qa.http.get('/entries')",
+        )
+    )
+    message = "\n".join(
+        (
+            "Traceback (most recent call last):",
+            '  File "/runs/okf-book-1/spec/tally/qa_plan.py", line 6, in tally_list',
+            "    token = qa.fixture('signed-in-user')",
+            "FixtureError: step 1 exited 22",
+        )
+    )
+    summary = RunSummary(status="failed", scenarios={"tally-list": ScenarioOutcome(status="failed", message=message)})
+
+    by_page = summary.failures_by_page((LIST_SCENARIO,), plan)
+
+    assert by_page == {
+        "docs/features/tally/tally.md": (
+            PageProblem("docs/features/tally/tally.md", "the run of scenario tally-list failed: FixtureError: step 1 exited 22"),
+        )
+    }
+
+
+def test_a_journey_stopped_at_a_step_is_reported_on_the_page_of_the_node_that_step_performs() -> None:
+    journey = Scenario(id="budget-journey", covers=("okf:docs/features/tally/flows/budget.md:end:1",))
+    plan = "\n".join(
+        (
+            "def budget_journey(qa):",
+            "    # okf:docs/features/tally/api.md#list-entries",
+            "    observed_1 = qa.http.get('/entries')",
+            "    # okf:docs/features/tally/flows/budget.md:end:1",
+            "    qa.verify('http_status', observed_1, code=200)",
+        )
+    )
+    message = "\n".join(
+        (
+            "Traceback (most recent call last):",
+            '  File "/runs/okf-book-1/spec/tally/qa_plan.py", line 3, in budget_journey',
+            "    observed_1 = qa.http.get('/entries')",
+            "HttpError: GET http://localhost/entries returned 400: month is required",
+        )
+    )
+    summary = RunSummary(status="failed", scenarios={"budget-journey": ScenarioOutcome(status="failed", message=message)})
+
+    by_page = summary.failures_by_page((journey,), plan)
+
+    text = (
+        "the run of scenario budget-journey failed at okf:docs/features/tally/api.md#list-entries: "
+        + "HttpError: GET http://localhost/entries returned 400: month is required"
+    )
+    assert by_page == {
+        "docs/features/tally/api.md": (PageProblem("docs/features/tally/api.md", text, node="docs/features/tally/api.md#list-entries"),),
+        "docs/features/tally/flows/budget.md": (PageProblem("docs/features/tally/flows/budget.md", text),),
+    }
