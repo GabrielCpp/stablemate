@@ -435,6 +435,30 @@ def test_a_plain_core_reload_comes_back_on_the_cli_the_run_is_on():
     assert at_exec == [("fake", "")], at_exec
 
 
+def test_a_plain_core_reload_comes_back_on_the_profile_the_run_is_on():
+    """A bare `--cli` resume runs on the CLI's default model, not the one the run's profile names."""
+    at_exec: list[tuple[str, str]] = []
+
+    def fake_drive(wf: Any, env: Any, resume: Any = None) -> Any:
+        env.writer.write_state_checkpoint("start", {}, inputs={}, flow="Stub", ctx={})
+        raise reload.ReloadRequested("engine fix pushed", core=True)
+
+    def fake_exec(name: str, run_dir: Path, *, cli: str = "", profile: str = "") -> int:
+        at_exec.append((cli, profile))
+        return reload.RELOAD_EXIT_CODE
+
+    with tempfile.TemporaryDirectory() as tmp:
+        invocation = dataclasses.replace(
+            _invocation(tmp), config=RunConfig(backend=FakeBackend(), profile="cheap")
+        )
+        with (
+            patch.object(run_mod, "drive", fake_drive),
+            patch.object(run_mod, "_exec_reload", fake_exec),
+        ):
+            assert run_pyflow(invocation) == reload.RELOAD_EXIT_CODE
+    assert at_exec == [("", "cheap")], at_exec
+
+
 
 _FLOW_V1 = '''
 """The broken flow. It pushes the fix over itself, then asks to be reloaded."""

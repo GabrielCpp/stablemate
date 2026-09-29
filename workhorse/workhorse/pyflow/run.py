@@ -372,12 +372,13 @@ def _drive_reloadable(
                     "[workhorse] reload: --core — re-executing this run from '%s'",
                     pending_resume.state,
                 )
+                if exc.cli:
+                    raise _CoreReloadRequested(exc.cli) from exc
                 live = env.agent_runner.profile.name if env.agent_runner else ""
                 backend = env.config.backend.name
-                raise _CoreReloadRequested(
-                    exc.cli or (backend if backend != "none" else ""),
-                    live if live != env.config.profile else "",
-                ) from exc
+                if live:
+                    raise _CoreReloadRequested(profile=live) from exc
+                raise _CoreReloadRequested(backend if backend != "none" else "") from exc
             registry, replaced = _reimport(registry)
             env.workflow_dir = registry.directory()
             env.nodes = registry.nodes
