@@ -78,6 +78,7 @@ GAP_KINDS = frozenset({
     "unarranged-journey",
     "unarranged-scenario",
     "unarranged-request-body",
+    "unarrangeable-server-fault",
     "unarranged-interaction-precondition",
     "unidentifiable-screen",
     "unparsed-fixture",

@@ -119,6 +119,7 @@ def api_scenarios(
 
 
 _BODILESS_METHODS = frozenset({"GET", "DELETE", "HEAD", "OPTIONS"})
+_SERVER_FAULT = 500
 
 
 @dataclass(frozen=True)
@@ -263,6 +264,10 @@ def _claim_request(
         return _UnbuiltClaimRequest(why, ScenarioRefusal("uncompilable-claim", why))
     method, template = route
     rows = obligation.checks
+    status = _expect_status(rows)
+    if status is not None and status >= _SERVER_FAULT:
+        why = f"no request a caller sends makes a healthy app answer {status}"
+        return _UnbuiltClaimRequest(why, ScenarioRefusal("unarrangeable-server-fault", why))
     path = _concrete_path(rows) or template
     path_refs = references.find_references(path)
     gaps.extend(Gap(obligation.id, "unresolved-precondition",
@@ -279,7 +284,6 @@ def _claim_request(
                         f"the request references {ref!r}, not resolvable without running the plan")
                     for ref in arranged.named_references() if not produced.resolves(ref))
     path_expr = f"qa.resolve({python_literal(path)})" if path_refs else python_literal(path)
-    status = _expect_status(rows)
     expect = f", expect_status={status}" if status is not None else ""
     kwargs_source = arranged.kwargs_source(with_body=wants_body) if arranged is not None else ""
     return _ClaimRequest(f"    {observed} = qa.http.{method.lower()}({path_expr}{expect}{kwargs_source})", "{" in path)

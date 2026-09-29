@@ -30,6 +30,7 @@ DORMANT_UNREACHABLE: dict[str, str] = {
     "unarranged-interaction-precondition": _BRIDGE,
     "unarranged-journey": _BRIDGE,
     "unarranged-request-body": _BRIDGE,
+    "unarrangeable-server-fault": _BRIDGE,
     "unarranged-scenario": _BRIDGE,
     "unarranged-state": _BRIDGE,
     "uncompilable-claim": _BRIDGE,

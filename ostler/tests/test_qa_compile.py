@@ -542,6 +542,24 @@ def test_a_claim_about_a_401_stays_anonymous_though_it_repeats_the_callers_token
     assert 'qa.http.get("/api/things", expect_status=401, headers={"Authorization": "Bearer forged"})' in source
 
 
+def test_a_claim_about_a_server_fault_is_withheld_as_unarrangeable() -> None:
+    """No request makes a healthy app fail, so a claim that expects a 5xx is a gap, not a check the run fails every time."""
+    served, faulted = (f"okf:docs/features/demo/globex.md#post-things:{arm}" for arm in ("does:1", "emits:1"))
+    body = [_body_act("name", "Widget A")]
+    context = _context(
+        _obligation(served, checksDeclared=[_check()], docPosition=[1, 0], node="post-things",
+                    locators={"route": ["POST /api/things"]}, actsDeclared=body),
+        _obligation(faulted, checksDeclared=[_check(code=500)], docPosition=[2, 0], node="post-things",
+                    locators={"route": ["POST /api/things"]}, actsDeclared=body),
+    )
+    source, gaps = compile_plan_gaps(context, story="demo-story")
+    assert source is not None
+    assert _gap_kinds(gaps, faulted) == ["unarrangeable-server-fault"]
+    assert _gap_kinds(gaps, served) == []
+    assert "expect_status=500" not in source
+    assert "expect_status=201" in source
+
+
 def test_each_claim_of_a_page_runs_in_its_own_claim_block() -> None:
     """A page's first refused request must not stop the run from trying the claims after it."""
     first, second = (f"okf:docs/features/demo/globex.md#get-things:{arm}" for arm in ("does:1", "emits:1"))
