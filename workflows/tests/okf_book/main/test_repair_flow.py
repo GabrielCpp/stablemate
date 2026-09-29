@@ -30,14 +30,16 @@ from workhorse.pyflow import Continue, Done
 from workhorse.pyflow import driver as pyflow_driver
 from workhorse.runner.failure import BackendInvocationError
 
-from workhorse_workflows.okf_book.main import flow, repair_book_flow, root_book_flow
+from workhorse_workflows.okf_book.main import flow, repair_book_flow, root_book_flow, settle_repair_turn_flow
 from workhorse_workflows.okf_book.main.nodes import turn_budget
-from workhorse_workflows.okf_book.main.nodes.repair_batch_models import PageRepair
+from workhorse_workflows.okf_book.main.nodes.repair_batch_models import PageRepair, RepairBatch
 from workhorse_workflows.okf_book.main.nodes.repair_batches import pack_repairs
 from workhorse_workflows.okf_book.main.nodes.report import BookReport
 from workhorse_workflows.okf_book.main.nodes.writer_commands import CHECK_MODULE, EXERCISE_MODULE, OSTLER_MODULE
 from workhorse_workflows.okf_book.main.repair_book_flow import REPAIR_ROUNDS
 from workhorse_workflows.okf_book.shared.blockers import Phase, Side
+from workhorse_workflows.okf_book.shared.confine import snapshot
+from workhorse_workflows.okf_book.shared.entries import drop_links, links_to_deleted
 from workhorse_workflows.okf_book.shared.page_check import PageProblem
 from workhorse_workflows.okf_book.shared.scenarios import FailedCheck, RunSummary, Scenario, ScenarioOutcome
 from workhorse_workflows.okf_book.workflow import OkfBook
@@ -270,6 +272,73 @@ def test_a_page_the_turn_changed_outside_its_batch_is_put_back(app: App, drive_b
     assert git(repo, "show", "--name-only", "--format=", "HEAD").split() == [PAGE]
     assert OUTSIDE_EDIT.strip() not in (repo / OTHER_PAGE).read_text(encoding="utf-8")
     assert git(repo, "status", "--porcelain").strip() == ""
+
+
+def _problems_until_deleted(root: Path, _service: str) -> tuple[PageProblem, ...]:
+    return (PageProblem(PAGE, "tally.md documents nothing the app does"),) if (root / PAGE).is_file() else ()
+
+
+def _book_problems_until_deleted(root: Path, service: str) -> tuple[str, ...]:
+    return tuple(problem.text for problem in _problems_until_deleted(root, service))
+
+
+def _repairer_deleting_page(repo: Path) -> ScriptedRunner:
+    def _reply(_args: dict[str, object]) -> dict[str, object]:
+        (repo / PAGE).unlink()
+        return {"value": f"deleted {PAGE}"}
+
+    return ScriptedRunner({"repair-pages": _reply})
+
+
+@pytest.mark.usefixtures("over_the_ceiling")
+def test_a_page_the_turn_deleted_leaves_no_entries_link_to_it(app: App, drive_book: DriveBook, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Only code writes the entries page, so code drops a link to a page a turn deleted and commits it with the turn."""
+    repo = app("tally-cli")
+    entries = "docs/features/tally/entries.md"
+    monkeypatch.setattr(flow, "book_problems", _book_problems_until_deleted)
+    monkeypatch.setattr(repair_book_flow, "page_problems", _problems_until_deleted)
+
+    _ = drive_book(OkfBook(repo_dir=str(repo), surfaces=(TALLY,)), _repairer_deleting_page(repo))
+
+    assert sorted(git(repo, "show", "--name-only", "--format=", "HEAD").split()) == [entries, PAGE]
+    assert "](tally.md)" not in (repo / entries).read_text(encoding="utf-8")
+    assert git(repo, "status", "--porcelain").strip() == ""
+
+
+def test_a_retried_drop_still_commits_the_entries_page_an_earlier_try_wrote(app: App) -> None:
+    """The drop leaves no dead link behind, so a retry after it must still commit the entries page it changed."""
+    repo = app("tally-cli")
+    entries = "docs/features/tally/entries.md"
+    _ = (repo / entries).write_text("---\ntype: entries\n---\n\n- [Tally](tally.md)\n", encoding="utf-8")
+    _ = git(repo, "add", entries)
+    _ = git(repo, "commit", "-q", "-m", "docs(tally): root the tally book")
+    before = snapshot(repo)
+    (repo / PAGE).unlink()
+    batch = RepairBatch(pages=(PageRepair(page=PAGE, problems=("p",)),), tokens=1)
+    turn = settle_repair_turn_flow.SettleRepairTurn(repo_dir=str(repo), service="tally", batch=batch, before=before)
+
+    drop_links(repo, "tally", links_to_deleted(repo, "tally", (PAGE,)))
+
+    retried = turn.drop_dead_entry_links(pages=(PAGE,))
+
+    assert retried.params == {"pages": (PAGE, entries)}
+    assert "](tally.md)" not in (repo / entries).read_text(encoding="utf-8")
+
+
+@pytest.mark.usefixtures("over_the_ceiling")
+def test_an_entries_page_someone_left_uncommitted_keeps_its_link_to_a_page_the_turn_deleted(
+    app: App, drive_book: DriveBook, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = app("tally-cli")
+    entries = repo / "docs/features/tally/entries.md"
+    _ = entries.write_text("---\ntype: entries\n---\n\n- [Tally](tally.md)\n", encoding="utf-8")
+    monkeypatch.setattr(flow, "book_problems", _book_problems_until_deleted)
+    monkeypatch.setattr(repair_book_flow, "page_problems", _problems_until_deleted)
+
+    _ = drive_book(OkfBook(repo_dir=str(repo), surfaces=(TALLY,)), _repairer_deleting_page(repo))
+
+    assert git(repo, "show", "--name-only", "--format=", "HEAD").split() == [PAGE]
+    assert "- [Tally](tally.md)" in entries.read_text(encoding="utf-8")
 
 
 @pytest.mark.usefixtures("over_the_ceiling")

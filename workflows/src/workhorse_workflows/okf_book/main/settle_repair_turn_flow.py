@@ -1,6 +1,7 @@
 """What code does with one repair turn's changes: put back what its batch may not keep, then stamp and commit the rest.
 
 Code puts back each page a turn changed that its batch may not keep, by the rules of `nodes/repair_put_back.py`.
+A turn may delete a page the entries page links, so code drops that link and commits the entries page with the turn.
 
 A page someone left uncommitted when the repair started has no committed copy of their edit to go
 back to, so a turn that changed one waits for the operator. A commit the repo refuses waits for them too.
@@ -21,7 +22,8 @@ from workhorse_workflows.okf_book.main.nodes.repair_put_back import (
 )
 from workhorse_workflows.okf_book.shared.book_commits import repaired_book_commit_subject
 from workhorse_workflows.okf_book.shared.book_flow import BookFlow
-from workhorse_workflows.okf_book.shared.confine import Snapshot, put_back_outside, restore
+from workhorse_workflows.okf_book.shared.confine import Snapshot, committed_text, put_back_outside, restore
+from workhorse_workflows.okf_book.shared.entries import drop_links, entries_path, links_to_deleted
 
 UNCOMMITTED_PAGE_GATE = "uncommitted-page-changed.md"
 
@@ -89,6 +91,23 @@ class SettleRepairTurn(BookFlow):
         if changed_journey_pages:
             self.logger.info("the repair turn also changed %d journey pages: %s", len(changed_journey_pages), ", ".join(changed_journey_pages))
         stamp_repaired_pages(self.root, pages)
+        return Continue(pages, self.drop_dead_entry_links, pages=pages).because("drop the entries links to pages the turn deleted")
+
+    def drop_dead_entry_links(self, pages: tuple[str, ...]) -> Continue[...]:
+        """Drop each entries link to a page the turn deleted, and commit the entries page with the turn's pages, since only code writes it.
+
+        An entries page someone left uncommitted stays theirs, so code leaves it as it is. Code commits the
+        entries page whenever it differs from HEAD, so a retry after the drop still commits it.
+        """
+        entries_page = entries_path(self.root, self.service).relative_to(self.root).as_posix()
+        if entries_page in self.before.digests or not (self.root / entries_page).is_file():
+            return Continue(pages, self.render_agent_files, pages=pages).because("render the agent files")
+        dead_links = links_to_deleted(self.root, self.service, pages)
+        if dead_links:
+            drop_links(self.root, self.service, dead_links)
+            self.logger.info("dropped the links of %s to pages the repair turn deleted", entries_page)
+        if (self.root / entries_page).read_text(encoding="utf-8") != committed_text(self.root, entries_page):
+            pages = (*pages, entries_page)
         return Continue(pages, self.render_agent_files, pages=pages).because("render the agent files")
 
     def render_agent_files(self, pages: tuple[str, ...]) -> Continue[...] | Await[...]:
