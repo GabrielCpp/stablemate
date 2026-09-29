@@ -100,6 +100,7 @@ def ensure_stack(
 
     results = runbook.bring_up_stacks(manifests, repo_root=str(root), logger=logger)
     last = results[-1]
+    owned = tuple(r["app_pgid"] for r in results if r.get("app_pgid") and r.get("adopted") != "yes")
     if last.get("ready") == "yes":
         chosen = _entry_result(results, selection.runbooks, near, graph)
         common = {
@@ -112,7 +113,8 @@ def ensure_stack(
         where = ", ".join(r.get("entry_url") or "(no entry url)" for r in results)
         plural = "" if len(results) == 1 else f" ({len(results)} services)"
         return StackStatus(
-            ready="yes", notes=f"Stack {how} and healthy at {where}{plural}.", **common)
+            ready="yes", notes=f"Stack {how} and healthy at {where}{plural}.",
+            owned_pgids=owned, **common)
 
     common = {
         "app_pid": last.get("app_pid", ""),
@@ -126,8 +128,15 @@ def ensure_stack(
         notes=bring_up_failure(
             last.get("failed_step", "unknown"), (last.get("error") or "").strip(),
             manifest.get("source", "")),
+        owned_pgids=owned,
         **common,
     )
+
+
+def release_stack(logger: logging.Logger, owned_pgids: tuple[str, ...]) -> None:
+    """Stop the process groups a bring-up started, newest first, and leave an adopted one up."""
+    for pgid in reversed(owned_pgids):
+        _ = stack.teardown_app(pgid, "", "", logger=logger)
 
 
 def bring_up_failure(step: str, error: str, source: str) -> str:

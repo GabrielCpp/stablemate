@@ -15,20 +15,31 @@ from workhorse_workflows.okf_book.main.nodes.writer_commands import (
     run_quietly,
     spend_check_or_scenario_run,
 )
-from workhorse_workflows.okf_book.shared.book_run import ExerciseResult, bring_up, compile_scenarios, failed_run, run_plan, stack_down_result
+from workhorse_workflows.okf_book.shared.book_run import (
+    ExerciseResult,
+    bring_up,
+    compile_scenarios,
+    failed_run,
+    release,
+    run_plan,
+    stack_down_result,
+)
 
 USAGE = f"usage: python -m {EXERCISE_MODULE} <writer-commands.json>"
 
 
 def exercise_book(logger: logging.Logger, root: Path, service: str, spec: Path) -> ExerciseResult:
-    """Compile the service's book, bring its stack up and run every scenario."""
+    """Compile the service's book, bring its stack up, run every scenario, and stop what the bring-up started."""
     outcome = compile_scenarios(root, service, spec)
     if not outcome.planned:
         return failed_run(outcome.gaps, "the book compiles to no plan")
     stack = bring_up(logger, root, service)
-    if not stack.up:
-        return stack_down_result(outcome.gaps, stack.notes)
-    return run_plan(root, spec, outcome.gaps, stack.serving)
+    try:
+        if not stack.up:
+            return stack_down_result(outcome.gaps, stack.notes)
+        return run_plan(root, spec, outcome.gaps, stack.serving)
+    finally:
+        release(logger, stack)
 
 
 def run_exercise(argv: Sequence[str]) -> CommandOutput:

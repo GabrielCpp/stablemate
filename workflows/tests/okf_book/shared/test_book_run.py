@@ -1,4 +1,4 @@
-"""The run brings up the stack its own book declares, not the first stack another book declares."""
+"""The run brings up the stack its own book declares, not the first stack another book declares, and stops only what it started."""
 from __future__ import annotations
 
 import logging
@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from workhorse_workflows.kit.qa import runner
-from workhorse_workflows.okf_book.shared.book_run import bring_up
+from workhorse_workflows.okf_book.shared.book_run import bring_up, release
 
 PREVIEW = (
     "---\ntype: environment\nslug: preview\ntitle: Preview\n---\n# Preview\n\n"
@@ -53,3 +53,42 @@ def test_another_service_leaves_that_stack_down(app: Callable[[str], Path], brou
 
     assert "docs/features/api-service/ops/api-service-stack.md" in brought_up
     assert WEB_STACK.as_posix() not in brought_up
+
+
+def _bring_up_returns(monkeypatch: pytest.MonkeyPatch, results: list[dict[str, str]]) -> None:
+    def _bring_up(*_args: object, **_kwargs: object) -> list[dict[str, str]]:
+        return results
+
+    monkeypatch.setattr(runner.runbook, "bring_up_stacks", _bring_up)
+
+
+def test_a_bring_up_owns_the_servers_it_started_and_not_one_it_adopted(
+    app: Callable[[str], Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _bring_up_returns(monkeypatch, [
+        {"ready": "yes", "app_pgid": "11"},
+        {"ready": "yes", "app_pgid": "22", "adopted": "yes"},
+        {"ready": "yes", "app_pgid": "33"},
+    ])
+    reaped: list[str] = []
+
+    def _teardown(pgid: str, *_args: object, **_kwargs: object) -> dict[str, str]:
+        reaped.append(pgid)
+        return {"torn_down": "yes"}
+
+    monkeypatch.setattr(runner.stack, "teardown_app", _teardown)
+
+    readiness = bring_up(logging.getLogger(__name__), app("globex"), "web-app")
+    release(logging.getLogger(__name__), readiness)
+
+    assert readiness.owned == ("11", "33")
+    assert reaped == ["33", "11"]
+
+
+def test_a_failed_bring_up_still_owns_the_servers_it_started(app: Callable[[str], Path], monkeypatch: pytest.MonkeyPatch) -> None:
+    _bring_up_returns(monkeypatch, [{"ready": "yes", "app_pgid": "11"}, {"ready": "no", "failed_step": "launch", "app_pgid": ""}])
+
+    readiness = bring_up(logging.getLogger(__name__), app("globex"), "web-app")
+
+    assert not readiness.up
+    assert readiness.owned == ("11",)

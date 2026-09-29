@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict
-from workhorse_workflows.kit.qa.runner import ensure_stack
+from workhorse_workflows.kit.qa.runner import ensure_stack, release_stack
 from workhorse_workflows.okf_book.shared.entries import book_dir
 from workhorse_workflows.okf_book.shared.scenarios import RunSummary, compile_book, run_scenarios
 
@@ -53,11 +53,12 @@ class CompileOutcome:
 
 @dataclass(frozen=True, slots=True)
 class StackReadiness:
-    """Whether the app's stack is up, whether it serves, and why it is not up."""
+    """Whether the app's stack is up, whether it serves, why it is not up, and the process groups its bring-up started."""
 
     up: bool
     serving: bool
     notes: str
+    owned: tuple[str, ...] = ()
 
 
 def failed_run(gaps: tuple[str, ...], problem: str) -> ExerciseResult:
@@ -80,7 +81,14 @@ def compile_scenarios(root: Path, service: str, spec: Path) -> CompileOutcome:
 def bring_up(logger: logging.Logger, root: Path, service: str) -> StackReadiness:
     """Bring up the stack the service's book declares, or adopt one serving."""
     stack = ensure_stack(logger, repo_dir=str(root), near=str(book_dir(root, service)))
-    return StackReadiness(up=stack.ready not in ("no", "none"), serving=stack.ready == "yes", notes=stack.notes)
+    return StackReadiness(
+        up=stack.ready not in ("no", "none"), serving=stack.ready == "yes", notes=stack.notes,
+        owned=stack.owned_pgids)
+
+
+def release(logger: logging.Logger, stack: StackReadiness) -> None:
+    """Stop the processes `bring_up` started, so the next bring-up finds the app's ports free."""
+    release_stack(logger, stack.owned)
 
 
 def run_plan(root: Path, spec: Path, gaps: tuple[str, ...], serving: bool) -> ExerciseResult:

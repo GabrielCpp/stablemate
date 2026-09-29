@@ -13,7 +13,7 @@ import pytest
 from workhorse.config_run import AgentResilience
 from workhorse.testing import make_git_repo
 
-from workhorse_workflows.okf_book.main.nodes import check_pages
+from workhorse_workflows.okf_book.main.nodes import check_pages, exercise
 from workhorse_workflows.okf_book.main.nodes.check_pages import NO_PROBLEMS_LINE, run_check, scoped_problems
 from workhorse_workflows.okf_book.main.nodes.check_pages import USAGE as CHECK_USAGE
 from workhorse_workflows.okf_book.main.nodes.exercise import USAGE as EXERCISE_USAGE
@@ -33,6 +33,7 @@ from workhorse_workflows.okf_book.main.nodes.turn_budget import (
 from workhorse_workflows.okf_book.main.nodes.source_view import build_source_view, source_view_folder
 from workhorse_workflows.okf_book.main.nodes.surface import Surface, SurfaceKind
 from workhorse_workflows.okf_book.main.nodes.writer_request import WriterRequest
+from workhorse_workflows.okf_book.shared.book_run import CompileOutcome, ExerciseResult, StackReadiness
 from workhorse_workflows.okf_book.shared.page_check import PageProblem
 from workhorse_workflows.okf_book.main.nodes.writer_commands import (
     CHECK_MODULE,
@@ -94,6 +95,52 @@ def test_the_writer_waits_on_an_exercise_past_the_cli_default_and_inside_the_sil
 def test_each_command_names_its_usage_without_one_command_state() -> None:
     assert run_check([]) == CommandOutput(2, (CHECK_USAGE,))
     assert run_exercise(["a", "b"]) == CommandOutput(2, (EXERCISE_USAGE,))
+
+
+def _stub_exercise(monkeypatch: pytest.MonkeyPatch, stack: StackReadiness) -> list[StackReadiness]:
+    released: list[StackReadiness] = []
+
+    def _compile(*_args: object) -> CompileOutcome:
+        return CompileOutcome(gaps=(), planned=True)
+
+    def _bring_up(*_args: object) -> StackReadiness:
+        return stack
+
+    def _run_plan(*_args: object) -> ExerciseResult:
+        raise RuntimeError("the runner died")
+
+    def _release(_logger: logging.Logger, readiness: StackReadiness) -> None:
+        released.append(readiness)
+
+    monkeypatch.setattr(exercise, "compile_scenarios", _compile)
+    monkeypatch.setattr(exercise, "bring_up", _bring_up)
+    monkeypatch.setattr(exercise, "run_plan", _run_plan)
+    monkeypatch.setattr(exercise, "release", _release)
+    return released
+
+
+def test_a_scenario_run_stops_the_servers_it_started_even_when_the_runner_dies(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    stack = StackReadiness(up=True, serving=True, notes="", owned=("4242",))
+    released = _stub_exercise(monkeypatch, stack)
+
+    with pytest.raises(RuntimeError):
+        _ = exercise.exercise_book(logging.getLogger(__name__), tmp_path, "ledger", tmp_path / "spec")
+
+    assert released == [stack]
+
+
+def test_a_scenario_run_whose_stack_failed_stops_the_servers_it_started(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    stack = StackReadiness(up=False, serving=False, notes="the launch exited 1", owned=("4242",))
+    released = _stub_exercise(monkeypatch, stack)
+
+    result = exercise.exercise_book(logging.getLogger(__name__), tmp_path, "ledger", tmp_path / "spec")
+
+    assert result.stack_down
+    assert released == [stack]
 
 
 def test_the_check_prints_each_problem_of_a_book_with_no_entries_page(app: Callable[[str], Path], tmp_path: Path) -> None:

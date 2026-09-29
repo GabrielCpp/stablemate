@@ -64,6 +64,7 @@ class StackStatus(QaBaseResult):
     entry_url: str = ""
     failed_step: str = ""
     notes: str = ""
+    owned_pgids: tuple[str, ...] = ()
 
 
 __all__ = ["BLOCKED_STATUSES", "QaBaseResult", "QaPlanRun", "QaResult", "QaStatus", "StackStatus"]
