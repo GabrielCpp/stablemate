@@ -113,6 +113,11 @@ route or its auth emulator, and provides the token the response carries:
 - run: curl -sf -H 'Content-Type: application/json' -d '{"email":"editor@example.com","password":"dev-password","returnSecureToken":true}' 'http://localhost:9099/identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=fake-api-key'
 ```
 
+The email and password above are placeholders. A sign-in step uses a user the stack's own seed
+creates, read from the seed command the runbook runs. The app refuses a user nobody created, so
+`curl -f` exits 22 and the scenario stops before its first claim. A caller whose role no seeded
+user holds is created first, by a step that does what the seed script does for its users.
+
 A route that refuses a value an earlier run already took, such as a sign-up email, gets a fresh
 one from a fixture step that prints it:
 `run: printf '{"email":"qa-%s@example.com"}' "$(date +%s%N)"`.
