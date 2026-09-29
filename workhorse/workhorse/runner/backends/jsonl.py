@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from typing import Any, Protocol
 
 from workhorse.config_run import AgentResilience
@@ -10,6 +11,8 @@ from workhorse.runner import failure as _failure
 from workhorse.runner import process as _process
 from workhorse.runner.backends import AgentBackend
 from workhorse.runner.backends.turn import TurnState
+
+_LOG_RECORD = re.compile(r"^\d{4}-\d{2}-\d{2}T\S+\s+(?:ERROR|WARN|INFO|DEBUG|TRACE)\b")
 
 
 class OnEvent(Protocol):
@@ -51,9 +54,11 @@ def stream_jsonl(
     """Run ``cmd``, feed ``stdin_data`` (or nothing), and stream its JSONL stdout, invoking ``on_event(event, state, node_id)`` per parsed object.
 
     A text line carrying one of ``non_failure_markers`` is printed but is no diagnostic, so a CLI's report of an ordinary event never reads as a failure.
+    Neither are the lines that continue it, such as the file text a missed patch quotes, up to the next event or log record.
     """
     state = TurnState()
     early_abort = [""]
+    excused = [False]
 
     def on_line(raw: str) -> bool:
         line = raw.strip()
@@ -65,10 +70,14 @@ def stream_jsonl(
         except json.JSONDecodeError:
             event = None
         if isinstance(event, dict):
+            excused[0] = False
             on_event(event, state, node_id)
         else:
             print(f"[{node_id}] {line}", flush=True)
-            if not any(marker in line for marker in non_failure_markers):
+            if any(marker in line for marker in non_failure_markers):
+                excused[0] = True
+            elif not excused[0] or _LOG_RECORD.match(line):
+                excused[0] = False
                 state.diagnostics.append(line)
         new_diag = "\n".join(state.diagnostics[before:])
         if not early_abort[0] and new_diag and _failure.is_cap(new_diag):

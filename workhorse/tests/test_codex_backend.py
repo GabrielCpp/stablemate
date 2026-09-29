@@ -96,6 +96,41 @@ def test_codex_hook_notices_neither_fail_nor_end_the_turn() -> None:
 
 
 
+def test_the_file_text_a_missed_patch_quotes_is_no_provider_outage() -> None:
+    """A page that documents a 500 must not read as the provider answering one when a patch against it misses."""
+    lines = [
+        "2026-01-01T00:00:00.503861Z ERROR codex_core::tools::router: error=apply_patch verification failed: Failed to find expected lines in a.md:",
+        "- emits: `500` [Problem response](../formats/problem-response.md) for any other service failure",
+        json.dumps({"type": "item.completed", "item": {"type": "agent_message", "text": "DONE"}}),
+    ]
+
+    def fake_stream(cmd: list[str], node_id: str, timeout: float, on_line, **kwargs: object) -> tuple[bool, int]:
+        return any(on_line(raw) for raw in lines), 0
+
+    with patch.object(process, "stream_subprocess", fake_stream):
+        state = jsonl.stream_jsonl(["codex"], "n", 3600, None, codex._on_event, resilience=RESILIENCE, non_failure_markers=codex.NON_FAILURE_MARKERS)
+    assert state.diagnostics == []
+    assert not state.timed_out
+    assert state.result_text == "DONE"
+
+
+def test_a_log_record_after_a_missed_patch_is_still_a_diagnostic() -> None:
+    """Only the missed patch's own quoted lines are excused, not the next failure the CLI logs."""
+    lines = [
+        "2026-01-01T00:00:00Z ERROR codex_core::tools::router: error=apply_patch verification failed: Failed to find expected lines in a.md:",
+        "- a quoted line",
+        "2026-01-01T00:00:01Z ERROR codex_api: stream disconnected: 503 Service Unavailable",
+    ]
+
+    def fake_stream(cmd: list[str], node_id: str, timeout: float, on_line, **kwargs: object) -> tuple[bool, int]:
+        return any(on_line(raw) for raw in lines), 0
+
+    with patch.object(process, "stream_subprocess", fake_stream):
+        state = jsonl.stream_jsonl(["codex"], "n", 3600, None, codex._on_event, resilience=RESILIENCE, non_failure_markers=codex.NON_FAILURE_MARKERS)
+    assert state.diagnostics == [lines[2]]
+    assert state.timed_out
+
+
 def test_codex_other_tool_router_errors_stay_diagnostics() -> None:
     """A tool failure the router reports that is neither a refusal nor a missed patch is still a failure of the turn."""
     lines = [
