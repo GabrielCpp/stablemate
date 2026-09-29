@@ -91,7 +91,10 @@ arrangement did not take. The harness runs that step. A fixture carries no `veri
 because no runner performs one on a fixture and `ostler doctor` raises `unknown-bullet` on it.
 
 A step's `run:` is a command bash runs from the repository root, with the fixture's args and
-secrets in its environment. It names a script the repository holds or a program such as `curl`,
+secrets in its environment. Each fact the fixture provides is in the environment of every step
+after the one that printed it, under the fact's key, and an `is:` fact is there from the first
+step. So a step that seeds as a signed-in caller reads `$token` when an earlier sign-in step
+provides `token`. It names a script the repository holds or a program such as `curl`,
 never a name the book made up. A command bash cannot find fails the scenario with exit 127
 before any claim is checked. A step whose output a `provides:` entry reads prints that JSON and
 nothing else on stdout, so its progress goes to stderr.
