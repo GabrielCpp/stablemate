@@ -120,7 +120,8 @@ user holds is created first, by a step that does what the seed script does for i
 
 A route that refuses a value an earlier run already took, such as a sign-up email, gets a fresh
 one from a fixture step that prints it:
-`run: printf '{"email":"qa-%s@example.com"}' "$(date +%s%N)"`.
+`run: printf '{"email":"qa-%s@example.com"}' "$(date +%s%N)"`. The step prints a fresh value
+for every field the source holds unique, such as a company name beside the email.
 
 A fixture's own steps do **not** carry `capture:`. `capture:` lives on the seven consuming
 node types, where it names what a *scenario* pulled out of a live response or the DOM — a
