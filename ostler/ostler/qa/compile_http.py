@@ -337,11 +337,12 @@ def _scenario_body(obligations: list[Obligation], gaps: list[Gap], covered: set[
 
 @dataclass(frozen=True)
 class _HttpRequest:
-    """One journey step's request: the verb, the path, and the `json_body=`/`headers=` it sends."""
+    """One journey step's request: the verb, the path, the query its node's claims spell, and the `json_body=`/`headers=` it sends."""
     method: str
     path: str
     kwargs_source: str
     sent_references: tuple[references.Reference, ...] = ()
+    query: str = ""
 
 
 @dataclass(frozen=True)
@@ -372,19 +373,20 @@ def _http_request(
         return _UnbuiltStep("this journey could not compile the node this step names, so it "
                             "holds no response to capture the field from")
     method, path = route
+    query = "" if "?" in path else book.queries_by_node.get(ref, "")
     node_rows = book.acts_by_node.get(ref, [])
     arranged = (None if (ref in book.acts_refused or not node_rows)
                 else _http_arrangement(tuple(node_rows)))
-    sent_references = tuple(arranged.named_references()) if arranged else ()
+    sent_references = (*(arranged.named_references() if arranged else ()), *references.find_references(query))
     if method in _BODILESS_METHODS:
-        return _HttpRequest(method, path, arranged.kwargs_source(with_body=False) if arranged else "", sent_references)
+        return _HttpRequest(method, path, arranged.kwargs_source(with_body=False) if arranged else "", sent_references, query)
     if arranged is None or not arranged.body:
         gaps.extend(Gap(oid, "unarranged-request-body",
                         f"step {index} is a {method} and the book carries no request body")
                     for oid in ids)
         return _UnbuiltStep("this journey could not build this step's request body, so it "
                             "holds no response to capture the field from")
-    return _HttpRequest(method, path, arranged.kwargs_source(with_body=True), sent_references)
+    return _HttpRequest(method, path, arranged.kwargs_source(with_body=True), sent_references, query)
 
 
 def _book_spelling(ref: references.Reference) -> str:
@@ -499,7 +501,7 @@ def _http_steps(walk: JourneyWalk, sinks: PlanSinks) -> _HttpSteps | None:
                                      gaps, sinks.captured, because=request.because)
             return None
         observed, last_path = f"observed_{index}", request.path
-        bound = _bound_path(request.path, produced, owners)
+        bound = _bound_path(request.path, produced, owners) + (f"?{request.query}" if request.query else "")
         target = (f"qa.resolve({python_literal(bound)})" if references.find_references(bound)
                   else python_literal(bound))
         expect = f", expect_status={refused_status}" if refused_status is not None and index == len(walk.steps) else ""
@@ -518,7 +520,7 @@ def _journey_assertion(
 ) -> str | ScenarioRefusal | None:
     """One flow check asserted on the journey's last response, or why not; `None` once its gaps are filed."""
     named = row.args.get("path")
-    if isinstance(named, str) and named != steps.last_path and check_observes(row.name) == "response":
+    if isinstance(named, str) and named.partition("?")[0] != steps.last_path and check_observes(row.name) == "response":
         return ScenarioRefusal(
             "uncompilable-claim",
             f"`{row.name}` names `path={named}`, and this journey ended on `{steps.last_path}` — a "

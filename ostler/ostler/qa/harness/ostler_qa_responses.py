@@ -58,7 +58,7 @@ def verify_http_status(reading: HttpReading, args: Args) -> Verdict:
         passed = passed and found == args["title"]
     if "path" in args:
         expected["path"], actual["path"] = str_arg(args, "path"), reading.route
-        passed = passed and reading.route == str_arg(args, "path")
+        passed = passed and reading.route == str_arg(args, "path").partition("?")[0]
     return verdict(passed, actual, expected)
 
 

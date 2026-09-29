@@ -3164,6 +3164,50 @@ def test_a_journey_get_step_sends_the_header_its_node_arranges() -> None:
     assert 'observed_1 = qa.http.get("/api/things", headers={"X-Tenant": "acme"})' in result.source
 
 
+def _journey_calling_a_route_with_a_query(query_path: str, fixtures: list[dict] | None = None) -> tuple[str, dict]:
+    oid = f"okf:{_FLOW}:end-state"
+    get_node = _step_node(f"{_API}#get-videos", {"route": ["GET /api/videos"]})
+    get_node["checksDeclared"] = [{"call": "it", "name": "http_status", "args": {"code": 200, "path": query_path}}]
+    context = _navigation_context(
+        _flow_obligation(
+            oid, source=_FLOW, surface="api",
+            steps=[_step(f"{_API}#get-videos", "endpoint", "api")],
+            checks=[{"call": "it", "name": "http_status", "args": {"status": 200, "path": "/api/videos"}}],
+            fixtures=fixtures,
+        ),
+        get_node,
+        navigation=_api_navigation(),
+    )
+    return oid, context
+
+
+def test_a_journey_step_sends_the_query_its_node_spells() -> None:
+    """A route that requires a query string gets the one its endpoint's own `http_status` row spells, and the flow's check still names the route."""
+    oid, context = _journey_calling_a_route_with_a_query("/api/videos?root=r-1&locale=en")
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(result, Plan)
+    ast.parse(result.source)
+    assert 'observed_1 = qa.http.get("/api/videos?root=r-1&locale=en")' in result.source
+    assert oid in _covers(result.source)
+    assert _gap_kinds(result.gaps, oid) == []
+
+
+def test_a_journey_step_query_resolves_the_key_its_fixture_provides() -> None:
+    oid, context = _journey_calling_a_route_with_a_query("/api/videos?root=@video-root.id", fixtures=[
+        {"name": "video-root", "args": [], "provides": "a root", "providesKeys": ["video-root.id"]},
+    ])
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(result, Plan)
+    assert 'observed_1 = qa.http.get(qa.resolve("/api/videos?root=@video-root.id"))' in result.source
+    assert _gap_kinds(result.gaps, oid) == []
+
+
+def test_a_journey_step_query_no_fixture_provides_drops_the_walk() -> None:
+    oid, context = _journey_calling_a_route_with_a_query("/api/videos?root=@video-root.id")
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert "unresolved-precondition" in _gap_kinds(result.gaps, oid)
+
+
 def _journey_sending_a_reader_token(fixture: str) -> tuple[str, dict]:
     oid = f"okf:{_FLOW}:end-state"
     get_node = _step_node(f"{_API}#get-things", {"route": ["GET /api/things"]})

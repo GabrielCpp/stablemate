@@ -88,6 +88,15 @@ def test_http_status_compares_the_route_that_answered(
     assert verdict.actual["path"] == declared if passes else verdict.actual["path"] != declared
 
 
+def test_http_status_compares_a_declared_query_route_on_its_path() -> None:
+    """A `path=` that spells the query string its request sent names the route before the `?`."""
+    verdict = harness.VERIFIERS["http_status"](
+        _Response(200, {}, "http://localhost:8080/api/videos?root=r-1"), {"code": 200, "path": "/api/videos?root=r-1"}
+    )
+    assert verdict.passed is True
+    assert verdict.expected["path"] == "/api/videos?root=r-1"
+
+
 def test_http_status_refuses_a_bare_status_when_a_path_was_declared() -> None:
     """An integer carries no route, so the declared comparison cannot be made — a scenario defect, told at the call rather than filed against the product."""
     with pytest.raises(TypeError) as raised:

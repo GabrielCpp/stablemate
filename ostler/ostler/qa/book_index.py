@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from dataclasses import field
 
 from ostler import registry
 from ostler.qa.obligation import CallRow
@@ -21,7 +22,7 @@ class OwnedCapture:
 
 @dataclass(frozen=True)
 class BookIndex:
-    """The lookups every builder in one plan shares: the book's locators, routes, acts, captures and binaries, and each surface's base URL as this run resolved it."""
+    """The lookups every builder in one plan shares: the book's locators, routes, queries, acts, captures and binaries, and each surface's base URL as this run resolved it."""
     locators_by_node: dict[str, Locators]
     screen_routes: dict[str, str]
     acts_by_node: dict[str, list[CallRow]]
@@ -30,6 +31,7 @@ class BookIndex:
     cli_binaries: dict[str, str]
     resolved_web_base_urls: dict[str, str]
     resolved_api_base_urls: dict[str, str]
+    queries_by_node: dict[str, str] = field(default_factory=dict[str, str])
 
 
 @dataclass(frozen=True)
@@ -61,6 +63,20 @@ def node_acts(obligations: list[Obligation]) -> NodeActs:
         for node_id, rows in rows_by_node.items()
     }
     return NodeActs(ordered, refused)
+
+
+def queries_by_node(obligations: list[Obligation]) -> dict[str, str]:
+    """Each node's query string: the first one a `path=` check argument of its claims spells, in book order."""
+    queries: dict[str, str] = {}
+    for obligation in sorted(obligations, key=lambda o: o.doc_position):
+        if not _is_declared_claim(obligation) or obligation.node in queries:
+            continue
+        for row in obligation.checks:
+            path = row.args.get("path")
+            if isinstance(path, str) and path.startswith("/") and "?" in path:
+                queries[obligation.node] = path.partition("?")[2]
+                break
+    return queries
 
 
 def captures_by_node(obligations: list[Obligation]) -> dict[str, list[OwnedCapture]]:
