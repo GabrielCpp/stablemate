@@ -8,7 +8,7 @@ from workhorse_workflows.kit import last_commit_subject
 from workhorse_workflows.okf_book.main.exercise_book_flow import ExerciseBook
 from workhorse_workflows.okf_book.main.nodes.repair_ledger import RepairOutcome
 from workhorse_workflows.okf_book.main.repair_book_flow import RepairBook
-from workhorse_workflows.okf_book.main.nodes.report import build_report, read_report, write_report
+from workhorse_workflows.okf_book.main.nodes.report import build_report, write_report
 from workhorse_workflows.okf_book.main.nodes.source_view import build_source_view, source_view_folder
 from workhorse_workflows.okf_book.main.nodes.surface import Surface
 from workhorse_workflows.okf_book.main.nodes.turn_budget import (
@@ -17,7 +17,7 @@ from workhorse_workflows.okf_book.main.nodes.turn_budget import (
     source_and_book_tokens,
 )
 from workhorse_workflows.okf_book.main.write_book_flow import WriteBook, WriteOutcome
-from workhorse_workflows.okf_book.shared.blockers import Blocker, Phase, Side, forget_blockers, read_blockers, record_blocker
+from workhorse_workflows.okf_book.shared.blockers import Blocker, Phase, Side, forget_blockers, forget_every_blocker, read_blockers, record_blocker
 from workhorse_workflows.okf_book.shared.book_commits import book_commit_subject, repaired_book_commit_subject
 from workhorse_workflows.okf_book.shared.book_flow import BookFlow
 from workhorse_workflows.okf_book.shared.book_run import ExerciseResult
@@ -213,7 +213,7 @@ class OkfBook(BookFlow):
         return Continue(failures, self.copy_source, index=index, run_failures=failures).because("repair the pages the run failed on")
 
     def report(self) -> Await[...] | Done:
-        """Publish the report. Any blocker stops the run at the operator, once."""
+        """Publish the report. Any blocker stops the run at the operator, whose answer sends every book back through its route."""
         report = build_report(self.root, self.records_dir, self.services)
         page = write_report(self.records_dir, report)
         blockers = read_blockers(self.records_dir)
@@ -222,11 +222,12 @@ class OkfBook(BookFlow):
         return Await(
             self.run_dir / OPERATOR_NAME,
             f"The run stopped on {len(blockers)} blockers, each listed in {page}. "
-            + "Fix the book, ostler, the app or the workflow each one names, then restart the run. "
-            + "Answer here to close this run.",
-            self.finish,
+            + "Fix the book, ostler, the app or the workflow each one names, and reload the run when you changed its code. "
+            + "Answer here, and the run routes every book again: a book that still fails goes back to its repair.",
+            self.resume,
         ).because("blockers wait for the operator")
 
-    def finish(self) -> Done:
-        """The operator has read the report."""
-        return Done(read_report(self.records_dir)).because("the operator read the report")
+    def resume(self) -> Continue[...]:
+        """The operator has fixed what the blockers named. Every blocker is forgotten, since the books' next pass records again each one that still holds."""
+        forget_every_blocker(self.records_dir)
+        return Continue(None, self.route_book, index=0).because("the operator answered: route the books again")

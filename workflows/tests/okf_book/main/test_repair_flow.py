@@ -18,6 +18,7 @@ from okf_book.main.tally import (
     REFUSAL,
     TALLY,
     answering_operator,
+    stopping_operator,
     no_problems,
     page_problems_until_noted,
     refuse_commits_until_answered,
@@ -212,7 +213,7 @@ def failing_add(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(flow, "book_problems", no_problems)
     monkeypatch.setattr(flow, "plan_scenarios", _planned)
     monkeypatch.setattr(repair_book_flow, "page_problems", _no_page_problems)
-    monkeypatch.setattr(pyflow_driver, "wait_for_answer", answering_operator([]))
+    monkeypatch.setattr(pyflow_driver, "wait_for_answer", stopping_operator([]))
 
 
 def _assert_repaired_once_on_the_failed_page(runner: ScriptedRunner, result: object) -> None:

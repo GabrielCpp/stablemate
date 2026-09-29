@@ -1,4 +1,4 @@
-"""What a run could not finish, collected across its books and handed to the operator once, after the last."""
+"""What a run could not finish, collected across its books and handed to the operator after the last."""
 from __future__ import annotations
 
 import hashlib
@@ -58,6 +58,12 @@ def forget_blockers(run_dir: Path, phase: Phase, side: Side, service: str) -> No
     for blocker in read_blockers(run_dir):
         if blocker.phase is phase and blocker.side is side and blocker.service == service:
             (run_dir / BLOCKERS_DIR / f"{blocker.key}.json").unlink()
+
+
+def forget_every_blocker(run_dir: Path) -> None:
+    """Drop every blocker, once the operator has fixed what they named."""
+    for path in (run_dir / BLOCKERS_DIR).glob("*.json"):
+        path.unlink()
 
 
 def read_blockers(run_dir: Path) -> tuple[Blocker, ...]:

@@ -7,11 +7,12 @@ from collections.abc import Callable
 from pathlib import Path
 
 import pytest
-from okf_book.support import ScriptedRunner, git
+from okf_book.support import ScriptedRunner, StoppedAtTheGate, git
 from workhorse.pyflow import driver as pyflow_driver
 
 from workhorse_workflows.okf_book.main import exercise_book_flow, flow, repair_book_flow
 from workhorse_workflows.okf_book.main.nodes import turn_budget
+from workhorse_workflows.okf_book.main.nodes.report import read_report
 from workhorse_workflows.okf_book.main.nodes.surface import Surface, SurfaceKind
 from workhorse_workflows.okf_book.shared.book_run import CompileOutcome, ExerciseResult, StackReadiness
 from workhorse_workflows.okf_book.shared.page_check import PageProblem
@@ -46,7 +47,30 @@ def stub_the_run_to(monkeypatch: pytest.MonkeyPatch, exercised: ExerciseResult) 
     monkeypatch.setattr(exercise_book_flow, "run_plan", _run)
 
 
+def stub_the_runs_to(monkeypatch: pytest.MonkeyPatch, *results: ExerciseResult) -> None:
+    """Each run of the book ends on the next of *results*."""
+    left = list(results)
+
+    def _run(_root: Path, _spec: Path, _gaps: tuple[str, ...], _serving: bool) -> ExerciseResult:
+        return left.pop(0)
+
+    stub_the_run_to(monkeypatch, PASSED)
+    monkeypatch.setattr(exercise_book_flow, "run_plan", _run)
+
+
+def stopping_operator(asked: list[str]) -> Callable[..., None]:
+    """An operator who reads the report at the gate and stops the run there."""
+
+    def _operator(path: Path, **_kwargs: object) -> None:
+        asked.append(path.read_text(encoding="utf-8"))
+        raise StoppedAtTheGate(read_report(path.parent))
+
+    return _operator
+
+
 def answering_operator(asked: list[str]) -> Callable[..., None]:
+    """An operator who reads the report at the gate and answers it."""
+
     def _operator(path: Path, **_kwargs: object) -> None:
         asked.append(path.read_text(encoding="utf-8"))
         _ = path.write_text("STATUS: ANSWERED\n\nRead it.\n", encoding="utf-8")
@@ -108,4 +132,4 @@ def stub_a_book_sent_to_repair(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(flow, "book_problems", book_problems_until_noted)
     monkeypatch.setattr(turn_budget, "SOURCE_AND_BOOK_CEILING_TOKENS", 10)
     monkeypatch.setattr(repair_book_flow, "page_problems", page_problems_until_noted)
-    monkeypatch.setattr(pyflow_driver, "wait_for_answer", answering_operator([]))
+    monkeypatch.setattr(pyflow_driver, "wait_for_answer", stopping_operator([]))

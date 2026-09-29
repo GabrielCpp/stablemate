@@ -13,6 +13,7 @@ from okf_book.main.tally import (
     App,
     DriveBook,
     answering_operator,
+    stopping_operator,
     book_problems_until_noted,
     refuse_commits_until_answered,
     stub_the_run_to,
@@ -55,7 +56,7 @@ def test_the_agent_files_are_rendered_before_the_book_commit_so_their_drift_is_n
     )
     hook.chmod(0o755)
     asked: list[str] = []
-    monkeypatch.setattr(pyflow_driver, "wait_for_answer", answering_operator(asked))
+    monkeypatch.setattr(pyflow_driver, "wait_for_answer", stopping_operator(asked))
 
     def _render(root: Path) -> str:
         (root / ".drifted").unlink(missing_ok=True)

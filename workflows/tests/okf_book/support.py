@@ -16,7 +16,24 @@ from workhorse.runner.spec import AgentNode
 
 from workhorse_workflows.okf_book.workflow import OkfBook
 
-driver: Callable[[OkfBook, RunEnv], object] = drive
+_drive: Callable[[OkfBook, RunEnv], object] = drive
+
+
+class StoppedAtTheGate(Exception):
+    """The operator stopped the run at its gate, as `control stop` does, with the report the gate showed."""
+
+    def __init__(self, report: object) -> None:
+        super().__init__("the operator stopped the run at its gate")
+        self.report = report
+
+
+def driver(flow: OkfBook, env: RunEnv) -> object:
+    """Drive the run to its end, or to the gate its operator stopped it at, and return what it ended on."""
+    try:
+        return _drive(flow, env)
+    except StoppedAtTheGate as stopped:
+        return stopped.report
+
 
 APPS = Path(__file__).resolve().parents[3] / "paddock" / "data" / "apps"
 
