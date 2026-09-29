@@ -6,6 +6,7 @@ from pathlib import Path
 
 from ostler.qa.tools import catalog
 from workhorse.runner.backends import AgentProfile
+from workhorse_workflows.okf_book.shared.book_run import stack_pages
 from workhorse_workflows.okf_book.main.nodes.repair_batch_models import RepairBatch
 from workhorse_workflows.okf_book.main.nodes.repair_put_back import fixture_folder
 from workhorse_workflows.okf_book.main.nodes.source_view import source_view_folder
@@ -40,7 +41,7 @@ def offered_qa_tools(root: Path) -> tuple[QaTool, ...]:
 
 @dataclass(frozen=True, slots=True)
 class WriterRequest:
-    """One writer turn: the surface it writes, where its book and source are, and the three commands it may run."""
+    """One writer turn: the surface it writes, where its book and source are, the runbook pages its stack starts from, and the three commands it may run."""
 
     surface: Surface
     repo_root: Path
@@ -51,6 +52,7 @@ class WriterRequest:
     check_command_line: str
     exercise_command_line: str
     qa_tools: tuple[QaTool, ...]
+    stack_pages: tuple[str, ...] = ()
 
     def template_args(self) -> dict[str, object]:
         """The write-book prompt's arguments."""
@@ -89,6 +91,7 @@ class WriterRequest:
             "flow_folder": batch.journey.flow_folder if batch.journey else "",
             "new_flow_page": batch.new_flow_page,
             "fixture_folder": fixture_folder(self.surface.service),
+            "stack_pages": list(self.stack_pages),
         }
 
     @property
@@ -128,4 +131,5 @@ def writer_request(run_dir: Path, root: Path, surface: Surface, book_folder: str
         check_command_line=check_command(run_dir),
         exercise_command_line=exercise_command(run_dir),
         qa_tools=offered_qa_tools(root),
+        stack_pages=stack_pages(root, surface.service),
     )

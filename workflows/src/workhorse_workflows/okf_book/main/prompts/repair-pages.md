@@ -71,6 +71,12 @@ gives relative to the repository starts there.
   `run:` becomes a real one, as the skill's fixture reference says. A fixture step that failed
   with exit 22 got an HTTP error from `curl`, so its request is wrong. A sign-in step uses a user
   the stack's seed creates, as that reference says.
+{% if stack_pages %}
+  The run starts the app from {% for page in stack_pages %}`{{ page }}`{% if not loop.last %} and {% endif %}{% endfor %},
+  and every scenario runs against that stack. A fixture seeds that stack and signs in with a user
+  its seed creates. A page that describes another environment's stack is not the one the run
+  starts, so no fixture seeds or reads it.
+{% endif %}
 {% endif %}
   A claim the source contradicts is corrected to what the source does. A claim with no `verify:`
   gets one that would fail if the app stopped doing it. A claim that arranges nothing gets a

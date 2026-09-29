@@ -7,7 +7,10 @@ import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
+from ostler import model
+from ostler.qa.runbook import select_stack
 from pydantic import BaseModel, ConfigDict
+from workhorse_workflows.kit import find_docs_root
 from workhorse_workflows.kit.qa.runner import ensure_stack, release_stack
 from workhorse_workflows.okf_book.shared.entries import book_dir
 from workhorse_workflows.okf_book.shared.scenarios import RunSummary, compile_book, run_scenarios
@@ -76,6 +79,11 @@ def compile_scenarios(root: Path, service: str, spec: Path) -> CompileOutcome:
     compiled = compile_book(root, (service,), spec)
     gaps = tuple(f"gap: {gap.obligation_id}: {gap.kind}: {gap.detail}" for gap in compiled.gaps)
     return CompileOutcome(gaps=gaps, planned=compiled.planned)
+
+
+def stack_pages(root: Path, service: str) -> tuple[str, ...]:
+    """The runbook pages `bring_up` starts the service's stack from, or none when the book names no single stack."""
+    return tuple(node.id for node in select_stack(model.load(find_docs_root("", str(root))), near=book_dir(root, service)).runbooks)
 
 
 def bring_up(logger: logging.Logger, root: Path, service: str) -> StackReadiness:
