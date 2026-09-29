@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from workhorse_workflows.kit.qa import runner
-from workhorse_workflows.okf_book.shared.book_run import bring_up, release
+from workhorse_workflows.okf_book.shared.book_run import bring_up, compile_scenarios, release
 
 PREVIEW = (
     "---\ntype: environment\nslug: preview\ntitle: Preview\n---\n# Preview\n\n"
@@ -92,3 +92,14 @@ def test_a_failed_bring_up_still_owns_the_servers_it_started(app: Callable[[str]
 
     assert not readiness.up
     assert readiness.owned == ("11",)
+
+
+def test_a_run_scoped_to_a_flow_page_compiles_the_whole_book_and_runs_only_that_flow(app: Callable[[str], Path], tmp_path: Path) -> None:
+    flow_page = "docs/features/api-service/flows/add-widget-via-api.md"
+
+    outcome = compile_scenarios(app("globex"), "api-service", tmp_path / "spec", (flow_page,))
+
+    assert outcome.planned
+    assert outcome.only == ("docs-features-api-service-flows-add-widget-via-api-journey",)
+    assert outcome.gaps
+    assert all(f"okf:{flow_page}" in gap for gap in outcome.gaps)

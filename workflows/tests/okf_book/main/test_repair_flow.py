@@ -221,7 +221,7 @@ def _assert_repaired_once_on_the_failed_page(runner: ScriptedRunner, result: obj
     sent = TypeAdapter(tuple[PageRepair, ...]).validate_python(runner.args_of("repair-pages")[0]["pages"])
     run_failure = "the run of scenario tally-add failed: adds an expense: expected 0, observed 1"
     assert [(repair.page, repair.problems) for repair in sent] == [(PAGE, (run_failure,))]
-    assert runner.args_of("repair-pages")[0]["exercise"]
+    assert runner.args_of("repair-pages")[0]["failed_run"]
     assert isinstance(result, BookReport)
     assert [b.phase for b in result.blockers] == [Phase.EXERCISE]
 

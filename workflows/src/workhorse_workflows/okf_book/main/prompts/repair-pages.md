@@ -4,7 +4,7 @@ You run from the book's folder, `{{ book_folder }}/` in this repository, and you
 under it. You can read the app's source, without its tests, test doubles and fixtures, in a
 copy under `{{ source_view }}/`. Each file there is the repository's file at the same path under
 `{{ source_folder }}/`, and a `code:` bullet cites that repository path. Your shell runs the
-{% if exercise %}three{% else %}two{% endif %} commands below, and nothing else. Start each shell call with one of them, spelled in
+three commands below, and nothing else. Start each shell call with one of them, spelled in
 full exactly as written here, never through a variable, an alias or a `cd`. The shell refuses
 any other spelling, and a refused call means only that its spelling was wrong: the
 commands keep working. Read files with your file tools. Where you have none, read them in
@@ -24,7 +24,7 @@ gives relative to the repository starts there.
 
 - The format is the `ostler-okf` skill. Load it first and hold every page you touch to its bar:
   {{ skill_load_ref("ostler-okf", skill_dir() + "/ostler-okf/SKILL.md") }}
-{% if exercise %}
+{% if failed_run %}
 - The book failed its run against the real app. Each turn repairs a few of its pages. These are
   yours, each path relative to the repository root, with every check of the run that failed on
   it, every problem the check reports on it, and the source files it cites:
@@ -53,8 +53,7 @@ gives relative to the repository starts there.
   those lines only, never the rest of the file. Where a claim rests on code outside them, leave
   the claim as it is, and name it in your reply with the declaration it needs.
 - Fix each problem at its cause. Read the source a claim describes before you change the claim.
-{% if exercise %}
-  A check the run failed is fixed in the book, never by weakening it. Where the app refused a
+  A check a run failed is fixed in the book, never by weakening it. Where the app refused a
   request, read the source for what it requires, and arrange that with a `fixture:`.
 {% if kind == "http" %}
   A request the app refused as unauthorized sends the token a sign-in fixture mints, and one it
@@ -76,7 +75,6 @@ gives relative to the repository starts there.
   and every scenario runs against that stack. A fixture seeds that stack and signs in with a user
   its seed creates. A page that describes another environment's stack is not the one the run
   starts, so no fixture seeds or reads it.
-{% endif %}
 {% endif %}
   A claim the source contradicts is corrected to what the source does. A claim with no `verify:`
   gets one that would fail if the app stopped doing it. A claim that arranges nothing gets a
@@ -105,20 +103,25 @@ gives relative to the repository starts there.
   a fix made there is lost. The check below covers your pages and reports every problem your edits
   cause on a page you did not touch, such as an endpoint a flow you edited no longer walks.
 
-{% if exercise %}
-- This command compiles the whole book into scenarios, runs them against the real app, and
-  prints each check that failed with what it expected and what it got:
+- This command runs the book's scenarios against the real app, and prints each check that failed
+  with what it expected and what it got. Name pages after it, each path relative to the
+  repository root, and it runs only the scenarios on those pages. A fixture page runs the first
+  scenario that arranges its fixture, so a seed is tried on its own. Each run brings the app up
+  first, which takes a minute, so fix every failure a run prints before you run it again:
 
   ```
-  {{ exercise }}
+  {{ exercise }} <page> …
   ```
 
-You are done when the check below prints "No problems", and the command above no longer
-prints a failure on your pages. The two commands share {{ check_run_cap }} runs in all, so fix
-every problem a run prints before you run either again.
+{% if failed_run %}
+You are done when the check below prints "No problems", and the command above, run on your
+pages, no longer prints a failure. The two commands share {{ check_run_cap }} runs in all, so
+fix every problem a run prints before you run either again.
 {% else %}
-You are done when the check below prints "No problems". It runs {{ check_run_cap }} times in all,
-so fix every problem a run prints before you run it again.
+You are done when the check below prints "No problems". Once a flow or a fixture page is whole,
+run the command above on it, so a request the app refuses is fixed now and not after the book's
+full run. The two commands share {{ check_run_cap }} runs in all, so fix every problem a run
+prints before you run either again.
 {% endif %}
 
 ```

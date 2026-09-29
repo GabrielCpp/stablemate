@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
 
@@ -56,11 +56,12 @@ def is_defect(gap: Gap) -> bool:
 
 @dataclass(frozen=True, slots=True)
 class BookCompilation:
-    """What compiling the books gave: the plan, when one compiled, and every defect gap either way."""
+    """What compiling the books gave: the plan, when one compiled, every defect gap either way, and the obligations that arrange each fixture."""
 
     plan: Plan | None
     gaps: tuple[Gap, ...]
     obligations: tuple[str, ...] = ()
+    arranging: dict[str, tuple[str, ...]] = field(default_factory=dict)
 
     @property
     def planned(self) -> bool:
@@ -68,6 +69,7 @@ class BookCompilation:
 
 
 _JSON_FIELDS = TypeAdapter(dict[str, JsonValue])
+_FIXTURES_DECLARED = TypeAdapter(list[dict[str, JsonValue]])
 
 
 class _Obligation(BaseModel):
@@ -81,6 +83,12 @@ class _Obligation(BaseModel):
     def _extras_are_json(self) -> _Obligation:
         _ = _JSON_FIELDS.validate_python(self.model_extra or {})
         return self
+
+    @property
+    def fixtures(self) -> tuple[str, ...]:
+        """The names of the fixtures the obligation arranges."""
+        declared = _FIXTURES_DECLARED.validate_python((self.model_extra or {}).get("fixturesDeclared", []))
+        return tuple(str(fixture["name"]) for fixture in declared if "name" in fixture)
 
 
 class _ServicesContext(BaseModel):
@@ -107,7 +115,12 @@ class _ServicesContext(BaseModel):
         compiled = compile_plan_gaps(self.model_dump(mode="json"), story=BOOK_STORY)
         gaps = tuple(gap for gap in compiled.gaps if is_defect(gap))
         obligations = tuple(obligation.id for obligation in self.obligations)
-        return BookCompilation(plan=compiled if isinstance(compiled, Plan) else None, gaps=gaps, obligations=obligations)
+        arranging: dict[str, tuple[str, ...]] = {}
+        for obligation in self.obligations:
+            for fixture in obligation.fixtures:
+                arranging[fixture] = (*arranging.get(fixture, ()), obligation.id)
+        plan = compiled if isinstance(compiled, Plan) else None
+        return BookCompilation(plan=plan, gaps=gaps, obligations=obligations, arranging=arranging)
 
 
 def compile_services(root: Path, services: Iterable[str], spec: Path | None = None) -> BookCompilation:

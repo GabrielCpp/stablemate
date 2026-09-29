@@ -76,10 +76,15 @@ gives relative to the repository starts there.
 {% endfor %}
 {% endif %}
 - Every claim runs against the real app. This command compiles the book into scenarios and
-  runs them, and prints each check that failed with what it expected and what it got:
+  runs them, and prints each check that failed with what it expected and what it got. Name
+  pages after it, each path relative to the repository root, and it runs only the scenarios on
+  those pages. A fixture page runs the first scenario that arranges its fixture, so a seed is
+  tried on its own. Each run brings the app up first, which takes a minute. Once a flow or a
+  fixture page is whole, run the command on it, and fix every failure it prints before you run
+  it again:
 
   ```
-  {{ exercise }}
+  {{ exercise }} <page> …
   ```
 
   Claims on one page run in document order in one working directory, so a claim sees the

@@ -6,8 +6,8 @@ run directory, so the book's repo only ever changes through a committed page.
 from __future__ import annotations
 
 import re
-from collections.abc import Iterable
-from pathlib import Path
+from collections.abc import Iterable, Mapping, Sequence
+from pathlib import Path, PurePosixPath
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 
@@ -176,6 +176,30 @@ def plan_scenarios(root: Path, spec: Path) -> tuple[tuple[Scenario, ...], tuple[
     if document is None:
         return (), tuple(problems)
     return _SCENARIOS.validate_python(document.data.get("scenarios", [])), tuple(problems)
+
+
+class Selection(BaseModel):
+    """The scenarios some target pages name, and the targets that name none."""
+
+    model_config = ConfigDict(frozen=True)
+
+    scenarios: tuple[str, ...] = ()
+    unmatched: tuple[str, ...] = ()
+
+
+def select_scenarios(scenarios: Sequence[Scenario], arranging: Mapping[str, Sequence[str]], targets: Sequence[str]) -> Selection:
+    """The scenarios that cover each target page, or for a fixture page the first scenario that arranges its fixture."""
+    chosen: dict[str, None] = {}
+    unmatched: list[str] = []
+    for target in targets:
+        named = [scenario.id for scenario in scenarios if target in scenario.pages]
+        if not named:
+            arranged = set(arranging.get(PurePosixPath(target).stem, ()))
+            named = [scenario.id for scenario in scenarios if arranged.intersection(scenario.covers)][:1]
+        if not named:
+            unmatched.append(target)
+        chosen.update(dict.fromkeys(named))
+    return Selection(scenarios=tuple(chosen), unmatched=tuple(unmatched))
 
 
 def run_scenarios(root: Path, spec: Path, only: Iterable[str]) -> RunSummary:

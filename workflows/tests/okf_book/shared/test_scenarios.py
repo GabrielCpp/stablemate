@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from workhorse_workflows.okf_book.shared.page_check import PageProblem
-from workhorse_workflows.okf_book.shared.scenarios import FailedCheck, RunSummary, Scenario, ScenarioOutcome
+from workhorse_workflows.okf_book.shared.scenarios import FailedCheck, RunSummary, Scenario, ScenarioOutcome, Selection, select_scenarios
 
 ADD_SCENARIO = Scenario(
     id="tally-add",
@@ -157,3 +157,25 @@ def test_a_journey_stopped_at_a_step_is_reported_on_the_page_of_the_node_that_st
         "docs/features/tally/api.md": (PageProblem("docs/features/tally/api.md", text, node="docs/features/tally/api.md#list-entries"),),
         "docs/features/tally/flows/budget.md": (PageProblem("docs/features/tally/flows/budget.md", text),),
     }
+
+
+SEED_SCENARIO = Scenario(id="tally-seeded", covers=("okf:docs/features/tally/reports.md#monthly:does:1",))
+SEEDED = {"seeded-ledger": ("okf:docs/features/tally/reports.md#monthly:does:1", "okf:docs/features/tally/tally.md#list:does:1")}
+
+
+def test_a_page_selects_every_scenario_that_covers_it() -> None:
+    selected = select_scenarios((ADD_SCENARIO, LIST_SCENARIO, SEED_SCENARIO), SEEDED, ("docs/features/tally/tally.md",))
+
+    assert selected == Selection(scenarios=("tally-add", "tally-list"))
+
+
+def test_a_fixture_page_selects_the_first_scenario_that_arranges_its_fixture() -> None:
+    selected = select_scenarios((ADD_SCENARIO, LIST_SCENARIO, SEED_SCENARIO), SEEDED, ("docs/features/tally/fixtures/seeded-ledger.md",))
+
+    assert selected == Selection(scenarios=("tally-list",))
+
+
+def test_a_target_no_scenario_runs_is_named_back() -> None:
+    selected = select_scenarios((ADD_SCENARIO,), SEEDED, ("docs/features/tally/flows/budget.md", "docs/features/tally/missing.md"))
+
+    assert selected == Selection(scenarios=("tally-add",), unmatched=("docs/features/tally/missing.md",))

@@ -4,6 +4,7 @@ from __future__ import annotations
 import logging
 import shutil
 import tempfile
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -13,7 +14,8 @@ from pydantic import BaseModel, ConfigDict
 from workhorse_workflows.kit import find_docs_root
 from workhorse_workflows.kit.qa.runner import ensure_stack, release_stack
 from workhorse_workflows.okf_book.shared.entries import book_dir
-from workhorse_workflows.okf_book.shared.scenarios import RunSummary, compile_book, run_scenarios
+from workhorse_workflows.okf_book.shared.book_compilation import gap_page
+from workhorse_workflows.okf_book.shared.scenarios import RunSummary, compile_book, plan_scenarios, run_scenarios, select_scenarios
 
 COPY_IGNORED = shutil.ignore_patterns(".git", "__pycache__", ".venv", "node_modules", "*.pyc")
 
@@ -39,19 +41,21 @@ def _failure_lines(summary: RunSummary) -> list[str]:
     return lines
 
 
-def _run_in_copy(root: Path, spec: Path) -> RunSummary:
+def _run_in_copy(root: Path, spec: Path, only: Sequence[str]) -> RunSummary:
     with tempfile.TemporaryDirectory(prefix="okf-exercise-") as tmp:
         app = Path(tmp) / "app"
         _ = shutil.copytree(root, app, ignore=COPY_IGNORED)
-        return run_scenarios(app, spec, ())
+        return run_scenarios(app, spec, only)
 
 
 @dataclass(frozen=True, slots=True)
 class CompileOutcome:
-    """What compiling the book left: the gaps it names, and whether it compiled to a plan."""
+    """What compiling the book left: the gaps it names, whether it compiled to a plan, the scenarios the targets name, and the targets that name none."""
 
     gaps: tuple[str, ...]
     planned: bool
+    only: tuple[str, ...] = ()
+    unmatched: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -74,11 +78,16 @@ def stack_down_result(gaps: tuple[str, ...], notes: str) -> ExerciseResult:
     return ExerciseResult(lines=(*gaps, f"problem: the app's stack cannot come up: {notes}"), stack_down=True)
 
 
-def compile_scenarios(root: Path, service: str, spec: Path) -> CompileOutcome:
-    """Compile the service's book into `spec`."""
+def compile_scenarios(root: Path, service: str, spec: Path, targets: Sequence[str] = ()) -> CompileOutcome:
+    """Compile the service's whole book into `spec`, and pick the scenarios the target pages name, with only their gaps."""
     compiled = compile_book(root, (service,), spec)
-    gaps = tuple(f"gap: {gap.obligation_id}: {gap.kind}: {gap.detail}" for gap in compiled.gaps)
-    return CompileOutcome(gaps=gaps, planned=compiled.planned)
+    kept = [gap for gap in compiled.gaps if not targets or gap_page(gap) in targets]
+    gaps = tuple(f"gap: {gap.obligation_id}: {gap.kind}: {gap.detail}" for gap in kept)
+    if not targets or not compiled.planned:
+        return CompileOutcome(gaps=gaps, planned=compiled.planned)
+    scenarios, _problems = plan_scenarios(root, spec)
+    selection = select_scenarios(scenarios, compiled.arranging, targets)
+    return CompileOutcome(gaps=gaps, planned=True, only=selection.scenarios, unmatched=selection.unmatched)
 
 
 def stack_pages(root: Path, service: str) -> tuple[str, ...]:
@@ -99,9 +108,9 @@ def release(logger: logging.Logger, stack: StackReadiness) -> None:
     release_stack(logger, stack.owned)
 
 
-def run_plan(root: Path, spec: Path, gaps: tuple[str, ...], serving: bool) -> ExerciseResult:
-    """Run every compiled scenario, on a copy of the app when it serves nothing."""
-    summary = run_scenarios(root, spec, ()) if serving else _run_in_copy(root, spec)
+def run_plan(root: Path, spec: Path, gaps: tuple[str, ...], serving: bool, only: Sequence[str] = ()) -> ExerciseResult:
+    """Run the named compiled scenarios, every one when none is named, on a copy of the app when it serves nothing."""
+    summary = run_scenarios(root, spec, only) if serving else _run_in_copy(root, spec, only)
     empty = () if summary.scenarios else ("problem: the plan runs no scenario",)
     failures = (*gaps, *_failure_lines(summary), *empty)
     if failures:

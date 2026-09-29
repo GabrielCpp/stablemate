@@ -118,14 +118,16 @@ def test_a_repair_of_a_failed_run_is_told_the_stack_the_run_starts(tmp_path: Pat
 
 def test_each_command_names_its_usage_without_one_command_state() -> None:
     assert run_check([]) == CommandOutput(2, (CHECK_USAGE,))
-    assert run_exercise(["a", "b"]) == CommandOutput(2, (EXERCISE_USAGE,))
+    assert run_exercise([]) == CommandOutput(2, (EXERCISE_USAGE,))
 
 
-def _stub_exercise(monkeypatch: pytest.MonkeyPatch, stack: StackReadiness) -> list[StackReadiness]:
+def _stub_exercise(
+    monkeypatch: pytest.MonkeyPatch, stack: StackReadiness, outcome: CompileOutcome | None = None
+) -> list[StackReadiness]:
     released: list[StackReadiness] = []
 
     def _compile(*_args: object) -> CompileOutcome:
-        return CompileOutcome(gaps=(), planned=True)
+        return outcome or CompileOutcome(gaps=(), planned=True)
 
     def _bring_up(*_args: object) -> StackReadiness:
         return stack
@@ -165,6 +167,18 @@ def test_a_scenario_run_whose_stack_failed_stops_the_servers_it_started(
 
     assert result.stack_down
     assert released == [stack]
+
+
+def test_a_page_no_scenario_runs_is_named_back_before_the_stack_comes_up(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    stack = StackReadiness(up=True, serving=True, notes="", owned=("4242",))
+    released = _stub_exercise(monkeypatch, stack, CompileOutcome(gaps=(), planned=True, unmatched=("docs/x.md",)))
+
+    result = exercise.exercise_book(logging.getLogger(__name__), tmp_path, "ledger", tmp_path / "spec", ("docs/x.md",))
+
+    assert result.lines == ("problem: no scenario runs docs/x.md: name a page of the book a scenario covers, or a fixture page a claim arranges",)
+    assert released == []
 
 
 def test_the_check_prints_each_problem_of_a_book_with_no_entries_page(app: Callable[[str], Path], tmp_path: Path) -> None:
