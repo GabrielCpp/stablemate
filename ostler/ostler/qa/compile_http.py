@@ -205,8 +205,32 @@ class _UnbuiltClaimRequest:
     refusal: ScenarioRefusal
 
 
+def _node_credentials(obligations: list[Obligation]) -> dict[str, tuple[CallRow, ...]]:
+    """Each endpoint's `header` acts, from every claim of it that arranges one, less a name two claims set apart."""
+    values: dict[str, dict[str, set[str]]] = {}
+    rows: dict[str, dict[str, CallRow]] = {}
+    for obligation in obligations:
+        for row in obligation.acts:
+            if row.name != "header" or not obligation.node:
+                continue
+            name = row.text_arg("name")
+            values.setdefault(obligation.node, {}).setdefault(name, set()).add(row.text_arg("value"))
+            rows.setdefault(obligation.node, {}).setdefault(name, row)
+    return {node: tuple(row for name, row in by_name.items() if len(values[node][name]) == 1)
+            for node, by_name in rows.items()}
+
+
+def _claim_acts(obligation: Obligation, credentials: tuple[CallRow, ...]) -> tuple[CallRow, ...]:
+    """The acts a claim sends: its own, plus each endpoint header it does not set, unless it expects a 401."""
+    if _expect_status(obligation.checks) == 401:
+        return obligation.acts
+    own = {row.text_arg("name") for row in obligation.acts if row.name == "header"}
+    return (*obligation.acts, *(row for row in credentials if row.text_arg("name") not in own))
+
+
 def _claim_request(
     obligation: Obligation, observed: str, produced: _Produced, gaps: list[Gap],
+    credentials: tuple[CallRow, ...] = (),
 ) -> _ClaimRequest | _UnbuiltClaimRequest:
     """The request one endpoint claim makes into *observed*, or why the book gives it none."""
     route = _route(obligation.locators)
@@ -226,7 +250,7 @@ def _claim_request(
                     f"the path references {ref!r}, not resolvable without running the plan")
                 for ref in path_refs if not produced.resolves(ref))
     wants_body = method not in _BODILESS_METHODS
-    act_rows = obligation.acts
+    act_rows = _claim_acts(obligation, credentials)
     arranged = None if (not act_rows or obligation.acts_unparsed) else _http_arrangement(act_rows)
     if wants_body and (arranged is None or not arranged.body):
         why = "the book carries no request body"
@@ -317,12 +341,14 @@ def _scenario_body(obligations: list[Obligation], gaps: list[Gap], covered: set[
     lines: list[str] = []
     produced = _Produced()
     ordered = sorted(obligations, key=lambda o: o.doc_position or (0, 0))
+    credentials = _node_credentials(ordered)
     for index, obligation in enumerate(ordered, start=1):
         oid = obligation.id
         observed = f"observed_{index}"
         lines.extend(["", f"    # {oid}", f"    # {' '.join(obligation.requirement.split())}"])
         produced.record_fixtures(obligation)
-        request = _claim_request(obligation, observed, produced, gaps)
+        request = _claim_request(obligation, observed, produced, gaps,
+                                 credentials.get(obligation.node, ()))
         lines.extend(_request_lines(oid, request, observed, gaps))
         responded = observed if isinstance(request, _ClaimRequest) else None
         lines.extend(_claim_captures(obligation, responded, produced, gaps, captured))

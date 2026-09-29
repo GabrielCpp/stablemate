@@ -495,6 +495,27 @@ def test_an_arranged_header_is_sent_with_its_fixture_reference_resolved() -> Non
             'headers={"Authorization": qa.resolve("Bearer @signed-in-editor.token")})') in source
 
 
+def test_an_endpoint_credential_rides_on_every_claim_but_the_one_about_a_401() -> None:
+    """A writer arranges the token once per endpoint, yet the route refuses every claim sent without it, and the claim about the anonymous caller must stay anonymous."""
+    signed_in = [{"name": "signed-in-editor", "args": [], "provides": "a signed-in editor",
+                  "providesKeys": ["signed-in-editor.token"]}]
+    arranged, served, refused = (f"okf:docs/features/demo/globex.md#get-things:{arm}" for arm in ("message:1", "does:1", "emits:2"))
+    context = _context(
+        _obligation(arranged, checksDeclared=[{"call": "ok", "name": "http_status", "args": {"code": 200}}],
+                    fixturesDeclared=signed_in, docPosition=[1, 0], node="get-things",
+                    actsDeclared=[_header_act("Authorization", "Bearer @signed-in-editor.token")]),
+        _obligation(served, checksDeclared=[{"call": "ok", "name": "http_status", "args": {"code": 200}}],
+                    fixturesDeclared=signed_in, docPosition=[2, 0], node="get-things"),
+        _obligation(refused, checksDeclared=[{"call": "no", "name": "http_status", "args": {"code": 401}}],
+                    fixturesDeclared=signed_in, docPosition=[3, 0], node="get-things"),
+    )
+    source, _gaps = compile_plan_gaps(context, story="demo-story")
+    assert source is not None
+    sent = 'headers={"Authorization": qa.resolve("Bearer @signed-in-editor.token")}'
+    assert source.count(f'qa.http.get("/api/things", expect_status=200, {sent})') == 2
+    assert 'qa.http.get("/api/things", expect_status=401)\n' in source
+
+
 def test_a_response_header_check_compiles_against_the_response_it_reads() -> None:
     """A route that streams a file is proven by the header that names its type, read off the same response the status came from."""
     oid = "okf:docs/features/demo/globex.md#get-report:does:1"
