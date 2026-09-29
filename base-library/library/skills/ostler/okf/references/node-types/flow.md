@@ -82,6 +82,19 @@ just made. Without such a capture, the flow's `fixture:` supplies it when exactl
 `provides:` a key of that name. A name neither supplies stays a template, and the compiler
 files it as `unresolved-precondition` on the step.
 
+A step on an `http` surface sends what its endpoint arranges. Its headers and body are the
+endpoint's `arrange:` acts under its claims, never the ones under its `errors:`. Its query
+string is the one the endpoint's own `http_status` row spells. A flow carries no `arrange:` of
+its own. A step that sends a fact a fixture provides, such as `Bearer @signed-in-editor.token`,
+needs that fixture on the flow's own `fixture:` row, because a flow runs only the fixtures it
+names. A flow with `fixture: none` sends no credential, so a route that refuses an anonymous
+caller answers 401 on every walk.
+
+Every step before the last must succeed. A step that answers 4xx or 5xx stops the walk, and the
+flow's checks never run. Each `verify:` on a flow observes the one response its last step got,
+so a flow checks one outcome. A refusal such as 401 or 403 is a claim on the endpoint's
+`errors:`, not a second `end:` of the flow.
+
 **A journey whose steps cross targets is legal, and today it compiles to nothing.** A step's
 target is its node type paired with the `driver:` of the surface it lives on, so a flow that
 walks a mobile app and then a web app — or drives an api and then a browser — names two. One

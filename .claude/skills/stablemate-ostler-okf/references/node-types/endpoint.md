@@ -93,6 +93,8 @@ often a fact a fixture provides, and where a route that requires a query string 
 - verify: http_status(code=200, path="/links/@seeded-link.id?format=full")
 ```
 
+A flow step that walks the endpoint sends the query string that row spells, too.
+
 A claim whose path still holds a `{…}` template variable when it is called is
 `unresolved-precondition`, since no run can send it.
 

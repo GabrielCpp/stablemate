@@ -82,6 +82,33 @@ A fixture confirms it landed with a `kind: verify` step whose `run:` exits non-z
 arrangement did not take. The harness runs that step. A fixture carries no `verify:` bullet,
 because no runner performs one on a fixture and `ostler doctor` raises `unknown-bullet` on it.
 
+A step's `run:` is a command bash runs from the repository root, with the fixture's args and
+secrets in its environment. It names a script the repository holds or a program such as `curl`,
+never a name the book made up. A command bash cannot find fails the scenario with exit 127
+before any claim is checked. A step whose output a `provides:` entry reads prints that JSON and
+nothing else on stdout, so its progress goes to stderr.
+
+A fixture that signs a caller in mints the credential for real, against the app's own sign-in
+route or its auth emulator, and provides the token the response carries:
+
+```markdown
+- provides:
+  - token — an ID token for the seeded editor
+    - from: [sign-in](#sign-in)
+    - read: idToken
+
+## Steps
+
+### sign-in
+
+- kind: seed
+- run: curl -sf -H 'Content-Type: application/json' -d '{"email":"editor@example.com","password":"dev-password","returnSecureToken":true}' 'http://localhost:9099/identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=fake-api-key'
+```
+
+A route that refuses a value an earlier run already took, such as a sign-up email, gets a fresh
+one from a fixture step that prints it:
+`run: printf '{"email":"qa-%s@example.com"}' "$(date +%s%N)"`.
+
 A fixture's own steps do **not** carry `capture:`. `capture:` lives on the seven consuming
 node types, where it names what a *scenario* pulled out of a live response or the DOM — a
 fixture's `provides:` is the equivalent idea for what the arrangement itself leaves behind.
