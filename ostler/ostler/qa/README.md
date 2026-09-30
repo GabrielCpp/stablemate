@@ -47,3 +47,4 @@ plan from the book, run it, and report the evidence.
 - `stack.py`: the lifecycle of a QA or dev stack that must outlive a single agent turn.
 - `tools.py`: the QA tool registry, which external commands a repo opted into and what they resolve to on this machine.
 - `v2.py`: version-2 QA orchestration across the command, browser and mobile drivers.
+- `verdict.py`: the verdict each claim ends a run with, and the one it keeps when several scenarios judge it.

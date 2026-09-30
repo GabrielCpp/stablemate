@@ -1308,6 +1308,16 @@ class Qa:
         self._recorder.emit(record)
         return passed
 
+    def stop_evidence(self, exc: BaseException) -> dict[str, Any]:
+        """What stopped the scenario: the last request and the fixture fault it met, and the exception's type when no request explains it."""
+        evidence: dict[str, Any] = {}
+        if self._exchange is not None:
+            evidence["exchange"] = asdict(self._exchange)
+        if self._claim_fault is not None:
+            evidence["fault"] = asdict(self._claim_fault)
+        if not isinstance(exc, HttpError):
+            evidence["raised"] = type(exc).__name__
+        return evidence
 
     @contextmanager
     def claim(self, covers: Sequence[str]) -> Iterator[None]:
@@ -2084,14 +2094,16 @@ def _run(module_path: Path, scenario_id: str, context: dict[str, Any]) -> int:
     )
     browser = None
     status, error = "passed", None
+    stop: dict[str, Any] = {}
     try:
         if target_decl.driver == "playwright":
             browser = _open_browser(qa)
         declared.func(qa)
     except CheckFailed:
         status = "failed"
-    except BaseException:  # noqa: BLE001 - the traceback is the scenario's verdict
+    except BaseException as exc:  # noqa: BLE001 - the traceback is the scenario's verdict
         status, error = "errored", traceback.format_exc()
+        stop = qa.stop_evidence(exc)
         print(error, file=sys.stdout)
     if browser is not None:
         unclean = _bind_browser_unclean(qa, browser.unclean())
@@ -2122,6 +2134,7 @@ def _run(module_path: Path, scenario_id: str, context: dict[str, Any]) -> int:
             "assertions": qa.assertions,
             "failures": qa.failures,
             "error": error,
+            **({"stop": stop} if stop else {}),
         }
     )
     recorder.close()

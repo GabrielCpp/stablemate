@@ -14,7 +14,17 @@ from ostler.qa.attribution import signatures
 from ostler.qa.drivers import DriverBlocked, QaDriver, ScenarioResult, create_driver
 from ostler.qa.plan import PlanDocument, check_runtime_requirements
 from ostler.qa.session import QA_DIRNAME, QaSession
+from ostler.qa.verdict import Verdict, judge, merged
 from ostler.qa.report import REPORT_FILE, ReportError, write_report
+
+
+def _run_verdicts(selected: list[dict[str, Any]], results: Mapping[str, ScenarioResult]) -> dict[str, str]:
+    """Every claim the selected scenarios cover, with its worst verdict; a scenario the run never reached leaves its claims unreached."""
+    verdicts = merged(result.verdicts for result in results.values())
+    for scenario in selected:
+        if str(scenario["id"]) not in results:
+            judge(verdicts, [str(claim) for claim in scenario.get("covers", [])], Verdict.UNREACHED)
+    return {claim: str(verdict) for claim, verdict in sorted(verdicts.items())}
 
 
 def run_plan(
@@ -199,9 +209,11 @@ def run_plan(
                     **({"message": result.message} if result.message else {}),
                     **({"failed_checks": [asdict(check) for check in result.failed_checks]}
                        if result.failed_checks else {}),
+                    **({"unreached": result.unreached} if result.unreached else {}),
                 }
                 for name, result in results.items()
             },
+            "verdicts": _run_verdicts(selected, results),
             "signatures": [
                 asdict(signature)
                 for signature in signatures(

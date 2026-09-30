@@ -25,6 +25,7 @@ from ostler.qa import book_fixtures as qa_book_fixtures
 from ostler.qa.attribution import NO_ATTRIBUTION, SAMPLE_CHARS, Attribution, Cause, CheckEvidence, CommandEnding, attribute
 from ostler.qa import fixtures as qa_fixtures
 from ostler.qa import tools as qa_tools
+from ostler.qa.verdict import Verdict, judge
 from ostler.qa.harness_host import (
     DEFAULT_SCENARIO_TIMEOUT,
     default_interpreter,
@@ -131,6 +132,7 @@ class _Tally:
     assertions: int = 0
     failures: int = 0
     failed_checks: list[FailedCheck] = field(default_factory=list)
+    verdicts: dict[str, Verdict] = field(default_factory=dict)
 
     def count_assertion(self) -> int:
         """Count one more assertion and return its number, which is the action it is recorded under."""
@@ -140,6 +142,9 @@ class _Tally:
     def count_failure(self, check: FailedCheck) -> None:
         self.failures += 1
         self.failed_checks.append(check)
+
+    def judge(self, claims: Sequence[str], passed: bool) -> None:
+        judge(self.verdicts, claims, Verdict.PASS if passed else Verdict.FAIL)
 
 
 @dataclass
@@ -151,6 +156,8 @@ class ScenarioResult:
     artifacts: list[str] = field(default_factory=list)
     message: str = ""
     failed_checks: list[FailedCheck] = field(default_factory=list)
+    unreached: list[str] = field(default_factory=list)
+    verdicts: dict[str, Verdict] = field(default_factory=dict)
 
 
 class DriverBlocked(RuntimeError):
@@ -441,7 +448,21 @@ class PythonDriver(QaDriver):
                 covers=covers,
                 sentinel=True,
             )
-            tally.failures += 1
+        unreached = [claim for claim in covers if claim not in tally.verdicts] if aborted else []
+        if not aborted:
+            tally.judge(covers, True)
+        elif unreached or not tally.failed_checks:
+            if unreached:
+                judge(tally.verdicts, unreached, Verdict.UNREACHED)
+            else:
+                tally.judge(covers, False)
+            tally.count_failure(FailedCheck.of(
+                f"scenario '{scenario_id}' stopped before it reached what it claims",
+                "every step runs and the scenario grades itself as passed",
+                message or f"scenario '{scenario_id}' did not finish",
+                covers=unreached or covers,
+                attribution=attribute(_evidence((terminal or {}).get("stop") or {})),
+            ))
         status = "passed"
         failures = tally.failures
         if aborted or failures:
@@ -454,6 +475,8 @@ class PythonDriver(QaDriver):
             message=message,
             aborted=aborted,
             failed_checks=tally.failed_checks,
+            unreached=unreached,
+            verdicts=tally.verdicts,
         )
 
     def _grade_assert(
@@ -478,6 +501,7 @@ class PythonDriver(QaDriver):
             declared=_declared(record),
             step=step,
         )
+        tally.judge([str(claim) for claim in record.get("covers") or []], passed)
         if not passed:
             evidence = _evidence(record)
             tally.count_failure(FailedCheck.of(
@@ -499,6 +523,7 @@ class PythonDriver(QaDriver):
             verdicts, trouble = [], [f"scenario '{scenario_id}' vet failed: {exc}"]
         for verdict in verdicts:
             action = tally.count_assertion()
+            verdict_covers = _covers_in(covers, verdict.node_id, self.obligation_documents)
             passed, _ = self.session.run_assert(
                 f"{scenario_id}-{action}",
                 verdict.sentence(),
@@ -512,9 +537,10 @@ class PythonDriver(QaDriver):
                 scenario=scenario_id,
                 driver="python",
                 action=action,
-                covers=_covers_in(covers, verdict.node_id, self.obligation_documents),
+                covers=verdict_covers,
                 step=step,
             )
+            tally.judge(verdict_covers, passed)
             if not passed:
                 tally.count_failure(FailedCheck.of(
                     verdict.sentence(), verdict.expected, verdict.observed(), attribution=Attribution(Cause.BOOK)))

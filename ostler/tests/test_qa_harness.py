@@ -570,6 +570,32 @@ def test_a_refused_claim_is_recorded_against_it_and_the_scenario_goes_on(tmp_pat
     assert records[-1]["status"] == "failed"
 
 
+STOP_PLAN = STATUS_PLAN.split("@scenario")[0].replace("send_response(201)", "send_response(500)") + '''\
+@scenario(target=api, mechanism="live", covers=["okf:docs/a.md#confirm:does:1"])
+def a_setup_step_fails(qa: Qa) -> None:
+    """The request before the claimed one answers 500."""
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Always201)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    qa.http.base_url = "http://127.0.0.1:%d" % server.server_address[1]
+    qa.http.post("/api/seats")
+    qa.check("unreached", True, covers=["okf:docs/a.md#confirm:does:1"])
+'''
+
+
+def test_a_stopped_scenario_keeps_the_request_that_stopped_it(tmp_path: Path) -> None:
+    """Whose fault an abort is depends on the request it stopped on, so the scenario's result carries it."""
+    code, records = _run(_write(tmp_path, STOP_PLAN), "a-setup-step-fails", tmp_path)
+
+    assert code == 1
+    assert _asserts(records) == []
+    assert records[-1]["stop"] == {
+        "exchange": {
+            "method": "POST", "path": "/api/seats", "status": 500, "expected": None,
+            "credential_sent": False, "precondition": "",
+        },
+    }
+
+
 ROOT_TOKEN_PLAN = '''\
 from ostler_qa import Qa, plan, scenario, target
 
