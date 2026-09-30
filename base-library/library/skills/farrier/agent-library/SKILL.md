@@ -200,5 +200,4 @@ timeout 120 farrier --repo /path/to/repo --check --library "$(farrier config sho
    otherwise the install is a no-op for that repo.
 4. Commit the regenerated adapter files alongside the library change.
 
-Every command above is bounded by a wall-clock `timeout`, per
-`{{ instruction_file("infra-cli-writer") }}`.
+Every command above is bounded by a wall-clock `timeout`.
