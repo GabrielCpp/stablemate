@@ -1,6 +1,6 @@
 ---
 name: stablemate-decompose
-description: "Divide a problem top-down before writing any code: state the problem in domain terms, split it into a few top-level parts, break each part into concepts with what they own and must never know, derive each pattern from a named force, and only then map the design onto the existing system. When the input is an as-built spec or a request to rebuild something, extract the problem from it first and treat its design decisions as claims to re-derive. Produces a design note and stops for approval. Load before a feature, a new step or module, a change that crosses two modules or adds a concept, or whenever asked to think top-down or design before coding. For options on a problem with no plan yet, load brainstorm first. For a repo-wide restructuring, load target-architecture instead."
+description: "Divide a problem top-down before writing any code: state the problem in domain terms, split it into a few top-level parts, break each part into concepts with what they own and must never know, derive each pattern from a named force, and only then map the design onto the existing system. Records the assumptions behind its choices instead of asking. When the input is an as-built spec or a request to rebuild something, extract the problem from it first and treat its design decisions as claims to re-derive. Produces a design note and stops for approval. Load before a feature, a new step or module, a change that crosses two modules or adds a concept, or whenever asked to think top-down or design before coding. For options on a problem with no plan yet, load brainstorm first. For a repo-wide restructuring, load target-architecture instead."
 metadata:
   generated_by: farrier
   source: library/skills/decompose/SKILL.md
@@ -158,9 +158,11 @@ A mismatch is a finding. Cite the file and line that shows it. Decide which side
 the design or the code, and say why. Never bend a concept to fit the file it lands in
 without saying so. For each claim from section 1b, say whether the existing system follows
 it and whether the design does. When the mapping shows the repo's structure is wrong beyond
-this problem, park it under section 7 and point at `target-architecture`.
+this problem, record it as an assumption in section 7: the structure stays for this change,
+and `target-architecture` owns the fix.
 
-Resolve the open lookups from section 4 here. When a lookup or a mismatch changes a part, a
+Resolve the open lookups from section 4 here. A lookup you cannot resolve becomes an
+assumption in section 7. When a lookup or a mismatch changes a part, a
 concept or a pattern, go back and change it in its own section. Do not patch the design in
 section 5. Open section 5 with a short revision log instead: one line per change, naming the
 section and item that changed and the finding that changed it. The changed item keeps its
@@ -172,10 +174,24 @@ Order the work as vertical slices, following `vertical-slicing`. The first slice
 thinnest path that makes the section 1 outcome observable. Each slice names the parts and
 concepts it touches and its done-when.
 
-### 7. Open decisions
+### 7. Assumptions
 
-Numbered. Each gives the question, the options, your recommendation and its one-line
-reason. Parked findings from section 5 go here too.
+Never block on a question. When the problem, the domain facts or the code leave a choice
+open, make the choice, record the assumption behind it here, and go on. Cite it where it
+applies in the note as `(A3)`.
+
+Number the assumptions and order them by the cost of being wrong, the most expensive first.
+Each gives:
+
+- **Assumption**: what you took to be true, stated as a fact about the problem, the domain
+  or the code.
+- **Decided**: what the design does because of it.
+- **Basis**: the evidence behind it, such as a number, a file and line, or the problem's own
+  words. Write "none" when it is a guess.
+- **If wrong**: the items to re-derive, by section and name.
+
+An assumption with no basis and a high cost of being wrong is the first thing to measure or
+look up. Do that before writing the note when it takes minutes.
 
 ## Stop
 
@@ -183,8 +199,9 @@ Present the note and stop. Write no code and edit no source file until I approve
 plan mode is on, the note is the plan. When the caller is another agent, return the note's
 path, the level 1 parts and section 7, plus anything else the caller asked for.
 
-When I push back on a part or a concept, change its section and re-derive what hangs off
-it: its concepts, its invariants, its pattern, its mapping. A change patched only into the
+When I push back on a part, a concept or an assumption, change its section and re-derive
+what hangs off it: its concepts, its invariants, its pattern, its mapping, and every item
+that cites the assumption. A change patched only into the
 mapping leaves the design and the code disagreeing on paper before a line is written.
 
 ## Smells that the order slipped
@@ -197,3 +214,6 @@ mapping leaves the design and the code disagreeing on paper before a line is wri
   force present today.
 - Section 5 has no mismatch at all on a problem that crosses two modules.
 - The slices are layers ("models first, then the step, then the CLI") instead of paths.
+- The note asks the reader a question, or offers options without choosing one.
+- A choice in the design has no basis in the problem, the domain or the code, and no
+  assumption in section 7.
