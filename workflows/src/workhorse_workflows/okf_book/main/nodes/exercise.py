@@ -24,6 +24,7 @@ from workhorse_workflows.okf_book.shared.book_run import (
     release,
     run_plan,
     stack_down_result,
+    with_app_logs,
 )
 
 USAGE = f"usage: python -m {EXERCISE_MODULE} <writer-commands.json> [page | fixture page ...]"
@@ -52,7 +53,7 @@ def exercise_book(logger: logging.Logger, root: Path, service: str, spec: Path, 
     try:
         if not stack.up:
             return stack_down_result(outcome.gaps, stack.notes)
-        return run_plan(root, spec, outcome.gaps, stack.serving, outcome.only)
+        return with_app_logs(run_plan(root, spec, outcome.gaps, stack.serving, outcome.only), stack.app_logs)
     finally:
         release(logger, stack)
 

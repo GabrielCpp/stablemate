@@ -8,7 +8,9 @@ from pathlib import Path
 import pytest
 
 from workhorse_workflows.kit.qa import runner
-from workhorse_workflows.okf_book.shared.book_run import bring_up, compile_scenarios, release
+from workhorse_workflows.okf_book.shared import book_run
+from workhorse_workflows.okf_book.shared.book_run import bring_up, compile_scenarios, release, run_plan, with_app_logs
+from workhorse_workflows.okf_book.shared.scenarios import RunSummary, ScenarioOutcome
 
 PREVIEW = (
     "---\ntype: environment\nslug: preview\ntitle: Preview\n---\n# Preview\n\n"
@@ -103,3 +105,51 @@ def test_a_run_scoped_to_a_flow_page_compiles_the_whole_book_and_runs_only_that_
     assert outcome.only == ("docs-features-api-service-flows-add-widget-via-api-journey",)
     assert outcome.gaps
     assert all(f"okf:{flow_page}" in gap for gap in outcome.gaps)
+
+
+def test_a_bring_up_names_the_logs_of_the_apps_it_launched(app: Callable[[str], Path], monkeypatch: pytest.MonkeyPatch) -> None:
+    _bring_up_returns(monkeypatch, [{"ready": "yes", "app_log": "/cache/api.log"}, {"ready": "yes", "adopted": "yes"}])
+
+    readiness = bring_up(logging.getLogger(__name__), app("globex"), "web-app")
+
+    assert readiness.app_logs == ("/cache/api.log",)
+
+
+def _ran(monkeypatch: pytest.MonkeyPatch, message: str) -> None:
+    summary = RunSummary(status="failed", scenarios={"create-widget": ScenarioOutcome(status="failed", assertions=1, failures=1, message=message)})
+
+    def _run_scenarios(*_args: object) -> RunSummary:
+        return summary
+
+    monkeypatch.setattr(book_run, "run_scenarios", _run_scenarios)
+
+
+def _app_log(tmp_path: Path) -> str:
+    log = tmp_path / "api.log"
+    _ = log.write_text(
+        "listening on :8080\n"
+        "POST /widgets Authorization: Bearer eyJhbGciOi.eyJzdWIi.c2lnbmF0dXJl\n"
+        "error cloning the default widget: relation widgets_default does not exist\n",
+        encoding="utf-8")
+    return str(log)
+
+
+def test_a_check_the_app_answered_with_a_server_error_shows_the_end_of_its_log_without_credentials(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    _ran(monkeypatch, "POST http://localhost:8080/widgets returned 500: internal error")
+    log = _app_log(tmp_path)
+
+    result = with_app_logs(run_plan(tmp_path, tmp_path / "spec", (), True), (log,))
+
+    assert f"the app answered a server error, and its log {log} ends with:" in result.lines
+    assert "  error cloning the default widget: relation widgets_default does not exist" in result.lines
+    assert not any("eyJ" in line or "c2lnbmF0dXJl" in line for line in result.lines)
+
+
+def test_a_check_that_failed_without_a_server_error_leaves_the_log_out(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    _ran(monkeypatch, "GET http://localhost:8080/widgets returned 404: not found")
+
+    result = with_app_logs(run_plan(tmp_path, tmp_path / "spec", (), True), (_app_log(tmp_path),))
+
+    assert not any("its log" in line for line in result.lines)

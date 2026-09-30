@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import shutil
 import tempfile
 from collections.abc import Sequence
@@ -11,6 +12,7 @@ from pathlib import Path
 from ostler import model
 from ostler.qa.runbook import select_stack
 from pydantic import BaseModel, ConfigDict
+from workhorse.runner.redact import REDACTED, SecretRedactor
 from workhorse_workflows.kit import find_docs_root
 from workhorse_workflows.kit.qa.runner import ensure_stack, release_stack
 from workhorse_workflows.okf_book.shared.entries import book_dir
@@ -18,6 +20,15 @@ from workhorse_workflows.okf_book.shared.book_compilation import gap_page
 from workhorse_workflows.okf_book.shared.scenarios import RunSummary, compile_book, plan_scenarios, run_scenarios, select_scenarios
 
 COPY_IGNORED = shutil.ignore_patterns(".git", "__pycache__", ".venv", "node_modules", "*.pyc")
+SERVER_ERROR = re.compile(r"\b(?:HTTP Error|returned|observed|answered HTTP) 5\d\d\b")
+SECRET_SHAPES = (
+    re.compile(r"(?i)\b((?:bearer|basic)\s+)[\w.~+/=-]+"),
+    re.compile(r"\beyJ[\w-]+\.[\w-]+\.[\w-]*"),
+    re.compile(r"(?i)\b([\w-]*(?:authorization|password|secret|token|api[_-]?key)[\w-]*[\"']?\s*[:=]\s*)[\"']?[^\s\"',}]+"),
+)
+LOG_TAIL_LINES = 40
+LOG_TAIL_BYTES = 64_000
+LOG_LINE_CHARS = 400
 
 
 class ExerciseResult(BaseModel):
@@ -41,6 +52,28 @@ def _failure_lines(summary: RunSummary) -> list[str]:
     return lines
 
 
+def _masked(line: str) -> str:
+    masked = SecretRedactor().redact(line)
+    for shape in SECRET_SHAPES:
+        masked = shape.sub(lambda hit: (hit.group(1) if hit.lastindex else "") + REDACTED, masked)
+    return masked[:LOG_LINE_CHARS]
+
+
+def app_log_lines(app_logs: Sequence[str]) -> list[str]:
+    """The end of each log the launched app wrote, with credentials masked, which says why the app answered a server error."""
+    lines: list[str] = []
+    for log in app_logs:
+        try:
+            text = Path(log).read_bytes()[-LOG_TAIL_BYTES:].decode("utf-8", errors="replace")
+        except OSError:
+            continue
+        tail = text.splitlines()[-LOG_TAIL_LINES:]
+        if tail:
+            lines.append(f"the app answered a server error, and its log {log} ends with:")
+            lines.extend(f"  {_masked(line)}" for line in tail)
+    return lines
+
+
 def _run_in_copy(root: Path, spec: Path, only: Sequence[str]) -> RunSummary:
     with tempfile.TemporaryDirectory(prefix="okf-exercise-") as tmp:
         app = Path(tmp) / "app"
@@ -60,12 +93,13 @@ class CompileOutcome:
 
 @dataclass(frozen=True, slots=True)
 class StackReadiness:
-    """Whether the app's stack is up, whether it serves, why it is not up, and the process groups its bring-up started."""
+    """Whether the app's stack is up, whether it serves, why it is not up, the process groups its bring-up started, and the logs of the apps it launched."""
 
     up: bool
     serving: bool
     notes: str
     owned: tuple[str, ...] = ()
+    app_logs: tuple[str, ...] = ()
 
 
 def failed_run(gaps: tuple[str, ...], problem: str) -> ExerciseResult:
@@ -100,7 +134,7 @@ def bring_up(logger: logging.Logger, root: Path, service: str) -> StackReadiness
     stack = ensure_stack(logger, repo_dir=str(root), near=str(book_dir(root, service)))
     return StackReadiness(
         up=stack.ready not in ("no", "none"), serving=stack.ready == "yes", notes=stack.notes,
-        owned=stack.owned_pgids)
+        owned=stack.owned_pgids, app_logs=stack.app_logs)
 
 
 def release(logger: logging.Logger, stack: StackReadiness) -> None:
@@ -116,3 +150,10 @@ def run_plan(root: Path, spec: Path, gaps: tuple[str, ...], serving: bool, only:
     if failures:
         return ExerciseResult(lines=failures, summary=summary)
     return ExerciseResult(lines=(f"All {len(summary.scenarios)} scenarios pass",), passed=True, summary=summary)
+
+
+def with_app_logs(result: ExerciseResult, app_logs: Sequence[str]) -> ExerciseResult:
+    """The run's result with the end of the app's logs after its lines, when a check failed on a server error the app answered."""
+    if not any(SERVER_ERROR.search(line) for line in result.lines):
+        return result
+    return result.model_copy(update={"lines": (*result.lines, *app_log_lines(app_logs))})

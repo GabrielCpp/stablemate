@@ -101,6 +101,7 @@ def ensure_stack(
     results = runbook.bring_up_stacks(manifests, repo_root=str(root), logger=logger)
     last = results[-1]
     owned = tuple(r["app_pgid"] for r in results if r.get("app_pgid") and r.get("adopted") != "yes")
+    app_logs = tuple(r["app_log"] for r in results if r.get("app_log"))
     if last.get("ready") == "yes":
         chosen = _entry_result(results, selection.runbooks, near, graph)
         common = {
@@ -114,7 +115,7 @@ def ensure_stack(
         plural = "" if len(results) == 1 else f" ({len(results)} services)"
         return StackStatus(
             ready="yes", notes=f"Stack {how} and healthy at {where}{plural}.",
-            owned_pgids=owned, **common)
+            owned_pgids=owned, app_logs=app_logs, **common)
 
     common = {
         "app_pid": last.get("app_pid", ""),
@@ -129,6 +130,7 @@ def ensure_stack(
             last.get("failed_step", "unknown"), (last.get("error") or "").strip(),
             manifest.get("source", "")),
         owned_pgids=owned,
+        app_logs=app_logs,
         **common,
     )
 
