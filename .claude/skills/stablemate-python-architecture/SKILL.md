@@ -14,9 +14,9 @@ metadata:
 This skill is the **Python spelling** of two language-neutral contracts. Read them first; the *why*
 lives there and is not repeated here:
 
-- [`../stablemate-architecture-hexagonal-architecture/SKILL.md`](../stablemate-architecture-hexagonal-architecture/SKILL.md)
+- [`~/.claude/skills/architecture-hexagonal-architecture/SKILL.md`](~/.claude/skills/architecture-hexagonal-architecture/SKILL.md)
   — dependency direction, domain purity, port purity, generic-engine-vs-port, testability.
-- [`../stablemate-architecture-code-structure/SKILL.md`](../stablemate-architecture-code-structure/SKILL.md)
+- [`~/.claude/skills/architecture-code-structure/SKILL.md`](~/.claude/skills/architecture-code-structure/SKILL.md)
   — when functions become an object, when a module becomes two, data at boundaries, configuration
   and effects.
 
