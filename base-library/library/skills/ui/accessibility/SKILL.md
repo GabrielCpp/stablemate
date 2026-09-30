@@ -11,7 +11,7 @@ This is the framework-neutral definition of what "accessible" means. It states t
 the concrete mechanics of meeting it are framework-specific — pair this with the matching framework
 skill for the stack you're in:
 
-- HTMX / server-rendered HTML / vanilla JS → [`{{ instruction_file("python-htmx-accessibility") }}`]({{ instruction_file("python-htmx-accessibility") }})
+- HTMX / server-rendered HTML / vanilla JS → the `python-htmx-accessibility` skill
 - React Router + MUI → the `react-router-a11y` skill
 - Flutter → the `flutter-a11y` skill
 - React Native → the `react-native-a11y` skill
