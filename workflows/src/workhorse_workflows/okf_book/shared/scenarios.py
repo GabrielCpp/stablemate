@@ -14,6 +14,7 @@ from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 from ostler.qa.attribution import Cause, Signature
 from ostler.qa.plan import load_plan
 from ostler.qa.v2 import run_plan
+from ostler.qa.verdict import Verdict
 from workhorse_workflows.okf_book.shared.book_compilation import BookCompilation, compile_services, obligation_node, obligation_page
 from workhorse_workflows.okf_book.shared.page_check import PageProblem
 
@@ -78,6 +79,7 @@ class ScenarioOutcome(BaseModel):
     failures: int = 0
     message: str = ""
     failed_checks: tuple[FailedCheck, ...] = ()
+    unreached: tuple[str, ...] = ()
 
     def failure_lines(self) -> tuple[str, ...]:
         """Every failed check, then the last line of the run's own message."""
@@ -116,7 +118,7 @@ class ScenarioOutcome(BaseModel):
 
 
 class RunSummary(BaseModel):
-    """What running the plan did: its status, each scenario's outcome, and what stopped it."""
+    """What running the plan did: its status, each scenario's outcome, what stopped it, and the verdict each claim ended with."""
 
     model_config = ConfigDict(frozen=True, extra="ignore", validate_by_name=True, validate_by_alias=True)
 
@@ -126,6 +128,7 @@ class RunSummary(BaseModel):
     runner_errors: tuple[str, ...] = ()
     report_path: str = Field(default="", validation_alias="report")
     signatures: tuple[Signature, ...] = ()
+    verdicts: dict[str, Verdict] = {}
 
     @property
     def failed_scenarios(self) -> tuple[str, ...]:

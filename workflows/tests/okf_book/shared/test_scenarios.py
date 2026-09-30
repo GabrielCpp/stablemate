@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from ostler.qa.attribution import Cause, Signature
+from ostler.qa.verdict import Verdict
 
 from workhorse_workflows.okf_book.shared.page_check import PageProblem
 from workhorse_workflows.okf_book.shared.scenarios import FailedCheck, RunSummary, Scenario, ScenarioOutcome, Selection, select_scenarios
@@ -205,6 +206,19 @@ def test_a_run_summary_reads_back_its_signatures() -> None:
     summary = RunSummary.model_validate({"status": "failed", "signatures": [written]})
 
     assert summary.signatures == (Signature(Cause.ENVIRONMENT, "", "could not connect", "GET /entries/…", 3, "lists"),)
+    assert RunSummary.model_validate_json(summary.model_dump_json()) == summary
+
+
+def test_a_run_summary_reads_back_each_claims_verdict_and_what_a_stop_left_unreached() -> None:
+    claims = ("okf:docs/features/tally/tally.md#list:does:1", "okf:docs/features/tally/tally.md#list:does:2")
+    summary = RunSummary.model_validate({
+        "status": "failed",
+        "scenarios": {"tally-list": {"status": "failed", "unreached": [claims[1]]}},
+        "verdicts": {claims[0]: "pass", claims[1]: "unreached"},
+    })
+
+    assert summary.scenarios["tally-list"].unreached == (claims[1],)
+    assert summary.verdicts == {claims[0]: Verdict.PASS, claims[1]: Verdict.UNREACHED}
     assert RunSummary.model_validate_json(summary.model_dump_json()) == summary
 
 
