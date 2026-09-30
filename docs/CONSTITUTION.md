@@ -86,13 +86,18 @@ driving whichever agent CLI the user already pays for. It works with nothing con
 *Chooses:* the general mechanism over the one that fits here. A default that is safe
 everywhere over one that is optimal here.
 
-### 8. It runs without anyone watching, and asks well when it must
+### 8. It runs without anyone watching, and asks upward when it must
 
-Work survives crashes, caps and days. When only a person can answer, it parks and waits
-for them rather than assuming they are present.
+Work survives crashes, caps and days. Attendance is a pyramid. A node does one narrow
+task, and a blocked node asks the level above it. That level is an agent before it is a
+person. Each level reasons about what the level below could not see, then sends the fix
+down as a narrower task than its own. A person stands at the top and is asked only what
+only a person can answer, such as a secret's value or what the product should do. It
+parks and waits for them rather than assuming they are present.
 
-*Chooses:* a gate over a prompt. Resuming where it stopped over starting again. Sleeping
-until a window reopens over dying inside it.
+*Chooses:* asking the attendant over parking for a person. Diagnosing before dispatching
+over fixing in place. A gate over a prompt. Resuming where it stopped over starting
+again. Sleeping until a window reopens over dying inside it.
 
 ## The product bars
 
