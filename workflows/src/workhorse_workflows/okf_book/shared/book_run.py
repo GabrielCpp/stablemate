@@ -10,6 +10,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from ostler import model
+from ostler.qa.attribution import Cause
+from ostler.qa.plan_source import is_probe
 from ostler.qa.runbook import select_stack
 from pydantic import BaseModel, ConfigDict
 from workhorse.runner.redact import REDACTED, SecretRedactor
@@ -29,6 +31,7 @@ SECRET_SHAPES = (
 LOG_TAIL_LINES = 40
 LOG_TAIL_BYTES = 64_000
 LOG_LINE_CHARS = 400
+PROBE_STOPS = frozenset({Cause.ARRANGEMENT, Cause.ENVIRONMENT})
 
 
 class ExerciseResult(BaseModel):
@@ -143,8 +146,23 @@ def release(logger: logging.Logger, stack: StackReadiness) -> None:
 
 
 def run_plan(root: Path, spec: Path, gaps: tuple[str, ...], serving: bool, only: Sequence[str] = ()) -> ExerciseResult:
-    """Run the named compiled scenarios, every one when none is named, on a copy of the app when it serves nothing."""
-    summary = run_scenarios(root, spec, only) if serving else _run_in_copy(root, spec, only)
+    """Run the named compiled scenarios, every one when none is named, on a copy of the app when it serves nothing.
+
+    A run of every scenario probes each precondition first. A probe that fails on what its fixture
+    arranges, or on the environment, stops the run before the book, since every claim that fixture
+    arranges would fail the same way.
+    """
+    run = run_scenarios if serving else _run_in_copy
+    if not only:
+        scenarios, _problems = plan_scenarios(root, spec)
+        probes = [scenario.id for scenario in scenarios if is_probe(scenario.id)]
+        if probes:
+            probed = run(root, spec, probes)
+            if any(signature.cause in PROBE_STOPS for signature in probed.signatures):
+                lines = ("problem: a precondition probe failed, so the book did not run", *gaps, *_failure_lines(probed))
+                return ExerciseResult(lines=lines, summary=probed)
+            only = [scenario.id for scenario in scenarios if not is_probe(scenario.id)]
+    summary = run(root, spec, only)
     empty = () if summary.scenarios else ("problem: the plan runs no scenario",)
     failures = (*gaps, *_failure_lines(summary), *empty)
     if failures:

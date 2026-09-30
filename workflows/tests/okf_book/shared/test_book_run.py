@@ -10,7 +10,8 @@ import pytest
 from workhorse_workflows.kit.qa import runner
 from workhorse_workflows.okf_book.shared import book_run
 from workhorse_workflows.okf_book.shared.book_run import bring_up, compile_scenarios, release, run_plan, with_app_logs
-from workhorse_workflows.okf_book.shared.scenarios import RunSummary, ScenarioOutcome
+from ostler.qa.attribution import Cause, Signature
+from workhorse_workflows.okf_book.shared.scenarios import RunSummary, Scenario, ScenarioOutcome
 
 PREVIEW = (
     "---\ntype: environment\nslug: preview\ntitle: Preview\n---\n# Preview\n\n"
@@ -153,3 +154,61 @@ def test_a_check_that_failed_without_a_server_error_leaves_the_log_out(monkeypat
     result = with_app_logs(run_plan(tmp_path, tmp_path / "spec", (), True), (_app_log(tmp_path),))
 
     assert not any("its log" in line for line in result.lines)
+
+
+def _probed(monkeypatch: pytest.MonkeyPatch, probe_cause: Cause | None) -> list[tuple[str, ...]]:
+    """Run a plan of one probe and one book page, whose probe fails with *probe_cause*, and record what each run was asked for."""
+    plan = (Scenario(id="probe-signed-in-editor", covers=("okf:docs/a.md#get:does:1",)),
+            Scenario(id="docs-a-from-the-book", covers=("okf:docs/a.md#get:does:1",)))
+    asked: list[tuple[str, ...]] = []
+
+    def _plan_scenarios(*_args: object) -> tuple[tuple[Scenario, ...], tuple[str, ...]]:
+        return plan, ()
+
+    def _run_scenarios(_root: Path, _spec: Path, only: tuple[str, ...]) -> RunSummary:
+        asked.append(tuple(only))
+        if probe_cause is None or tuple(only) != ("probe-signed-in-editor",):
+            return RunSummary(status="passed", scenarios={name: ScenarioOutcome(status="passed") for name in only})
+        refused = Signature(probe_cause, "docs/fixtures/signed-in-editor.md", "403", "GET /api/things", 1, "GET /api/things answers [200]")
+        return RunSummary(status="failed", signatures=(refused,),
+                          scenarios={"probe-signed-in-editor": ScenarioOutcome(status="failed", assertions=1, failures=1)})
+
+    monkeypatch.setattr(book_run, "plan_scenarios", _plan_scenarios)
+    monkeypatch.setattr(book_run, "run_scenarios", _run_scenarios)
+    return asked
+
+
+def test_a_precondition_whose_probe_is_refused_stops_the_run_before_the_book(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    asked = _probed(monkeypatch, Cause.ARRANGEMENT)
+
+    result = run_plan(tmp_path, tmp_path / "spec", (), True)
+
+    assert asked == [("probe-signed-in-editor",)]
+    assert result.lines[0] == "problem: a precondition probe failed, so the book did not run"
+    assert result.summary is not None
+    assert list(result.summary.failures_by_page(())) == ["docs/fixtures/signed-in-editor.md"]
+
+
+def test_probes_that_pass_let_the_book_run_without_them(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    asked = _probed(monkeypatch, None)
+
+    result = run_plan(tmp_path, tmp_path / "spec", (), True)
+
+    assert asked == [("probe-signed-in-editor",), ("docs-a-from-the-book",)]
+    assert result.passed
+
+
+def test_a_probe_the_app_fails_leaves_the_book_to_run(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    asked = _probed(monkeypatch, Cause.APP)
+
+    _ = run_plan(tmp_path, tmp_path / "spec", (), True)
+
+    assert asked[-1] == ("docs-a-from-the-book",)
+
+
+def test_a_run_of_named_scenarios_probes_nothing(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    asked = _probed(monkeypatch, Cause.ARRANGEMENT)
+
+    _ = run_plan(tmp_path, tmp_path / "spec", (), True, only=("docs-a-from-the-book",))
+
+    assert asked == [("docs-a-from-the-book",)]
