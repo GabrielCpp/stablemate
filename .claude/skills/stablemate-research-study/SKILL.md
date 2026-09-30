@@ -1,6 +1,6 @@
 ---
 name: stablemate-research-study
-description: "Running a research or optimization loop alone until the operator's question is answered, and reporting what was tried, what worked and what did not: a gitignored working directory in the repo, the question's done-condition written before any number, a mandatory TRIED.md in plain words, a frozen yardstick, a profile before any hypothesis, a field of original candidates mapped before digging, single-variable probes cheapest-decisive first, a ledger that keeps every failure, a projection of each result against the question, standing authority to redesign an instrument that measures the wrong thing, and a loop that starts the next study when one dies. Load when told to find a way to make something faster, cheaper or better, when handed a goal or research question to pursue without the operator, when a measurement comes back and the next step is unclear, or when the last hours went to making an experiment runnable rather than to results."
+description: "Running a research or optimization loop alone until the operator's question is answered, and reporting what was tried, what worked and what did not: a gitignored working directory in the repo, the question's done-condition written before any number, a mandatory TRIED.md in plain words, a frozen yardstick, a profile before any hypothesis, a field of original candidates mapped before digging, several framings of the question written in isolation so no reading inherits another's assumptions, a paper gate that discards any candidate answering another question or unable to succeed by construction before anything is built, single-variable probes cheapest-decisive first, a ledger that keeps every failure, a projection of each result against the question, standing authority to redesign an instrument that measures the wrong thing, and a loop that starts the next study when one dies. Load when told to find a way to make something faster, cheaper or better, when handed a goal or research question to pursue without the operator, when a measurement comes back and the next step is unclear, or when the last hours went to making an experiment runnable rather than to results."
 metadata:
   generated_by: farrier
   source: library/skills/research-study/SKILL.md
@@ -20,7 +20,7 @@ study ends without answering the question, the next one starts from the field wi
 asking. The operator reads one file, `TRIED.md`, and hears from the loop only when a
 method dies, a method wins, or the loop stops.
 
-Five traps turn a study into one idea pursued for days:
+Seven traps turn a study into one idea pursued for days:
 
 - **The first idea wins.** One plausible fix absorbs the session, and the rest of the field
   is never compared against it.
@@ -31,6 +31,13 @@ Five traps turn a study into one idea pursued for days:
   an eight-hour purpose gets logged, and the next slice starts.
 - **The number replaces the question.** A study meets its bar with a method that does not
   answer what the operator asked, and the win is recorded as progress.
+- **Framings inbreed.** Each new framing grows out of the last one's parts, and every brief
+  a study writes carries the briefer's reading of the question. The field then varies the
+  implementation while every candidate shares one reading. A failure of that reading
+  passes for a failure of the question, and it steers the next study toward its neighbour.
+- **The framing decides the answer.** The study casts the problem so that no method can
+  succeed, builds the method, measures the failure, and reports a "no" that was known on
+  paper before anything ran.
 
 You do not perceive wall-clock time. A 15-minute command and a 1-minute command reach you
 as one result each. The ledger's timestamps are how you see time. Read them.
@@ -45,7 +52,8 @@ out of git without a change to a tracked file.
 .study/<question-slug>/
   QUESTION.md    the question and its done-condition, in the operator's words
   TRIED.md       one line per method or route: what it was, whether it worked, why
-  FIELD.md       the standing field of candidates, ordered, each with its kill result
+  FRAMINGS.md    each reading of the question, in plain words, with its status
+  FIELD.md       the standing field of candidates, ordered, each with its framing and kill result
   ledger.jsonl   every step, in the format of references/ledger.md
   reports/       one report per finished study, in the format of references/report.md
   logs/          background job logs
@@ -63,7 +71,25 @@ Done when the directory exists, is excluded from git, and holds `QUESTION.md`.
 
 ## 2. Write the question, then the purpose
 
-Copy the operator's question into `QUESTION.md` word for word. Under it, write the
+Copy the operator's question into `QUESTION.md` word for word. Under it, copy every
+premise, suggestion and constraint the operator gave anywhere in the conversation, also
+word for word, each with where it came from. A suggestion the operator made in passing is
+a premise until the operator drops it. A study that reads the question and not its
+premises answers a narrower question than the one asked.
+
+Take the premises from the record, not from memory. When the conversation's transcript is
+on disk, extract every message the operator wrote and read each one. Memory keeps the
+premises that fit the reading already formed and drops the ones that rule it out. Three
+kinds are the easiest to lose:
+
+- **the end goal** behind the question, such as "reduce my dependency on frontier models",
+  which fixes what the result is compared against,
+- **a ruling** on an approach, such as "a compiler is over-restrictive, the model will have
+  no agency", which removes a whole reading before any agent proposes it,
+- **the setting**, such as "we are building this for production code", which rules out a
+  testbed that only works because it is small.
+
+Under the premises, write the
 **done-condition**: what a reader would have to see to agree the question is answered.
 Take it from the project's own completion criteria when they exist. This is the only
 purpose the loop has. Every study serves it.
@@ -140,7 +166,80 @@ needs less work, not more tuning.
 
 Done when the top cost items are named with their share of the total.
 
-## 5. Map the field
+## 5. Frame the question, then map the field
+
+### Framings first
+
+A **framing** is a reading of the question. It says what the thing under study does, on
+which input, to produce which output, judged how, and what the question's key verb means,
+such as "leverage", "replace" or "speed up". It names no mechanism, no architecture, no
+data source and no file. Those belong to candidates, and a candidate always sits under one
+framing.
+
+Write at least three framings. Isolation keeps a framing from inheriting another's details,
+and it does not make framings differ. Agents that share a model and read the same documents
+converge on one reading. Handing a later agent the first reading and one axis to vary does
+not fix that either: the agent turns that axis and copies the first reading on every other
+one, so every framing is a sibling of the first. Framings differ when each is built from
+its own choice on every open axis:
+
+1. **List the axes.** One agent reads the question and the premises from step 2, and
+   nothing else. It lists the axes a reading must choose on: the role the thing under
+   study plays, the input it reads when it runs, the output it produces, what counts as
+   right and who judges, what the question's key verb is measured against, which part of
+   the problem the study may redesign, and any axis the question adds. For each axis it
+   writes **fixed**, with the operator's words that fix it, or **open**, with at least
+   three values. An axis is fixed only as far as its words go. "Reduce my dependency"
+   fixes a direction, not zero, and "prefer" fixes a preference, not a requirement. A
+   fixed axis stated stronger than its quote removes readings the operator left open,
+   and nothing downstream sees them go. A value says what, never how. A value that names
+   an algorithm, an architecture, an algebra, a fitting method or a data generator is a
+   candidate, and it waits for step "Then the candidates". Rows built from mechanisms
+   differ in implementation and share one reading of the question. At least one value per open axis is one the project's existing apparatus
+   does not support. It then holds every open value against every fixed axis and drops a
+   value that breaks one, with the quote that breaks it.
+2. **Draw the rows.** Pick one value per open axis for each framing, so that any two
+   framings differ on at least half of the open axes. No row is the "direct" reading, and
+   no row is written first for the others to vary. Each clause of the question is the
+   measure a verdict rests on in at least one row. A clause such as "to limit training
+   cost" that no row is judged by is a reading the field never tests.
+3. **Write each row in isolation.** A fresh agent, or a fresh context, gets the question,
+   the premises word for word, pointers into the project and its row. It reads nothing the
+   study has produced and no other row's framing. It writes the framing its row implies. A
+   row agent never repairs its own row. When a value fails gate 1, the agent stops and
+   returns that value with the operator's words that break it. Agents that share a model
+   and repair alone reach the same repair, so five repaired rows converge on one yardstick.
+   The axis agent drops or corrects the value for every row, redraws the rows, and the
+   failed rows are written again.
+
+Three rules hold for every framing agent:
+
+- the brief carries the question, the premises word for word, pointers into the project
+  and the agent's row. It carries nothing the briefer concluded. A sentence such as "the
+  task here means X" in a brief is the briefer's framing, and every agent that reads it
+  inherits it. A premise the briefer paraphrased is the briefer's framing too,
+- anything the loop or its agents made earlier counts as study output: a roadmap line, a
+  hypothesis, a result, and also code, a benchmark, a judge or a testbed. A framing agent
+  reads study output for facts it can check, never for goals, bars or verdicts. An artifact
+  the study built is one value on an axis, never the default,
+- on a refill after a study ends, the framing agents also read the one-line status of each
+  past framing in `FRAMINGS.md`, so they can avoid it. They read none of its
+  implementation, because a dead framing's details are the main route of contamination.
+
+Then compare the framings pair by pair, on the values each framing holds as written and
+not on the row it was assigned, and list the assumptions each pair shares. Two
+framings that share their input, their output and the role they give the thing under study
+are one framing. Merge them and generate another. Put each surviving framing through
+step 6's two gates at the framing level before any candidate is mapped under it.
+
+Write the framings into `FRAMINGS.md` in plain words a reader outside the project follows.
+The file records meaning, not implementation: what each reading takes the question to ask,
+what it assumes, and its status. A framing's status changes only on a framing-level
+reason. A candidate that dies kills the candidate. A framing dies when it fails a paper
+gate, or when its candidates die of an assumption the framing holds and no mechanism
+could change.
+
+### Then the candidates
 
 Read `TRIED.md` and `FIELD.md` first, then the project's own history of what was tried.
 Then load [[brainstorm]] and generate before judging. Judging while generating settles on
@@ -148,6 +247,8 @@ the obvious candidate, because it arrives with a metric and a price already atta
 
 The field is built for originality. Each time it is mapped or refilled:
 
+- give every surviving framing at least 3 candidates, so no framing is judged by one
+  mechanism,
 - generate at least 10 candidates that differ in **mechanism**, not in size, such as less
   input per step, fewer steps, a cheaper model per stage, different work order, skipping
   work a cheap check proves unneeded, parallelism, or a different instrument,
@@ -181,7 +282,108 @@ over cost to test and start at the top. Do not wait for the operator.
 Done when the field holds at least as many candidates as the profile has cost items, meets
 the originality counts above, and gives each candidate its kill result.
 
-## 6. Probe
+## 6. Reason on paper before building
+
+A candidate reaches a build only after it survives on paper. The paper phase reads the
+question, the field and the repository, and nothing runs. Most dead candidates die here,
+because the reason they fail is already written in their own description. A build that
+measures a failure the paper predicted says nothing about the question.
+
+For each candidate that is about to be probed, write a **card** into `FIELD.md` before any
+code, data or model call. The card holds:
+
+- **the question's task**: its input, its output and the role it gives the thing under
+  study, copied from the operator's words and not paraphrased,
+- **the method's task**: the input the method reads at test time, the output it produces,
+  and who or what produces each part of it,
+- **the training task**, when the method learns: the input, the target, where the pairs
+  come from and how many exist,
+- **the judge**: what counts as a right output,
+- **every assumption** the method needs, one per line, each marked as stated by the
+  operator, checked, or assumed,
+- **which inputs are fixed and which are designed**: an input the world hands over, such
+  as an existing codebase, is fixed. An input whose format the study may choose, such as
+  the notation a request is written in, is designed. Mark each, and cite the premise that
+  makes it so,
+- **the named method's defining parts**, when the candidate borrows a name such as an
+  architecture, an algorithm or a published technique: each part that makes the name true,
+  marked built or left out.
+
+### Gate 1: does it answer the question as posed?
+
+Hold the method's task against the question's task, part by part.
+
+- **The input matches.** A method that swaps the question's input for a proxy answers
+  another question. A model that writes a function from its nearest sibling does not write
+  it from the specification the question names. A chooser that never reads that
+  specification is not a method for it.
+- **The output matches.** A method that produces a slice of the output answers the
+  question only when the question allows a slice and the rest has a named author.
+- **The role matches.** A question that asks how to leverage a component is not answered
+  by casting that component as a replacement for the whole system. Write the role the
+  question gives it on the card.
+- **Every premise holds.** A premise the operator stated and the method dropped makes a
+  different question.
+
+A candidate that fails gate 1 leaves the field with the mismatch as its reason. A rewrite
+that makes the input, the output and the role match is a new candidate with its own card.
+
+### Gate 2: can it succeed by construction?
+
+Each check asks whether the method can succeed when everything uncertain goes its way. One
+"no" means the build can only confirm a failure already known.
+
+- **Identifiability.** The input carries the information the output needs. For each part
+  of the output, name the part of the input it comes from. A part with no source must be
+  guessed, and the guess rate is the ceiling. Check the training pairs and the test cases
+  separately. When the missing part sits in a designed input, the repair is to
+  change the input's format so it carries the part. Accepting the loss is a choice the card
+  must argue for, and a designed input never loses a fact by default.
+- **Train equals test.** The training task has the same input and the same output as the
+  measured task. A model trained to edit one artifact into another is not trained to write
+  the second from a description.
+- **The judge accepts every right answer.** A judge that credits only one reference
+  output fails a correct output that differs from it. Prefer a functional judge, such as
+  compiled checks, tests or a build. When the judge must compare against a reference, say
+  how many right answers it accepts and why that is enough.
+- **Method fidelity.** Every defining part of the named method is built, or the verdict
+  names the gap. A result from a method missing its defining parts is a result about
+  another method, and it cannot close the named one.
+- **The data fits the target.** The training data comes from the distribution the test
+  draws from, in kind and in volume. Name the source and count it before building.
+- **The compute fits the claim.** Estimate what the method needs to learn the task at all,
+  from the size of the output space and from published results. A budget short by orders
+  of magnitude makes the run measure the budget.
+- **The operator's levers are used.** When the question names a lever, such as a preset,
+  a prior, a representation or a budget, the card says how the method uses it. A method
+  that ignores a named lever tests the question without its premise.
+
+A candidate that fails gate 2 is repaired on paper, with the failed check named in the
+repair, or it leaves the field. Record it in `TRIED.md` as "did not work (on paper)" with
+the failed check as its reason.
+
+### Declare the framing each probe tests
+
+Every card names its framing from `FRAMINGS.md`. Test each framing against the operator's
+words, sentence by sentence, as its own claim: which component does what, on which input,
+judged how. The framing is where a study goes blind. A framing that makes the question
+unanswerable yields a "no" about the framing, and the study reports it as a "no" about the
+question.
+
+A "no" found under one framing is a "no" for that framing. The question is answered in the
+negative only when every surviving framing has died, each for its own reason.
+
+Have the framings and the cards checked. A second agent that did not write them reads the
+question, the premises, the framings and the cards, and nothing of the study's reasoning.
+It answers both gates for each, names any assumption that makes the question unsolvable,
+and names any two framings that share their input, output and role. A card or a framing it
+fails goes back to repair.
+
+Done when at least three framings survive in `FRAMINGS.md` or the rest died on paper,
+every candidate about to be probed has a card that passed both gates in writing, and a
+second agent agreed.
+
+## 7. Probe
 
 **Read the ceiling before running the instrument.** Most instruments have an expensive
 part: a model call, a full rerun, a human judge. Compute the best result the run could
@@ -220,7 +422,7 @@ Run anything over a few minutes as a background job with its log in `logs/`, and
 work while it runs. Combine winners only after each has won alone, and measure the
 combination as its own probe.
 
-## 7. Record, including the failures
+## 8. Record, including the failures
 
 One ledger row per step, appended before the step starts and completed when it ends. The
 command that appends the row takes the start time from `date -Iseconds`, so the row exists
@@ -232,7 +434,7 @@ Each row carries its `kind`:
 | `decisive` | its result settles a claim about the purpose |
 | `exploration` | it informs the field without settling anything |
 | `apparatus` | it makes a decisive step runnable, and names that step |
-| `reflection` | a step back, written by the triggers in step 9 |
+| `reflection` | a step back, written by the triggers in step 10 |
 
 A failed probe keeps its row with the reason it failed. The row is the report.
 
@@ -256,7 +458,7 @@ it before the next probe starts. One line per method or route, newest first:
 A `blocked` line names the layer it stopped at, apparatus, mechanism or question, and the
 cheapest change that would unblock it.
 
-## 8. Project every result against the question
+## 9. Project every result against the question
 
 When a number arrives, extrapolate it to the full workload and hold it against the
 sentence from step 2. Write the projection into the row's outcome: "30 min a page × 1,000
@@ -279,7 +481,7 @@ holds it against the bar, and repeats the leak check. Its number goes into the r
 `checked` field. When the two numbers differ, the row records both and the result stays
 open until the difference is explained.
 
-## 9. Step back
+## 10. Step back
 
 Write a `reflection` row when any of these fires:
 
@@ -289,9 +491,9 @@ Write a `reflection` row when any of these fires:
 - three probes in a row moved nothing,
 - a result met the study's number and left the question unanswered.
 
-A reflection answers four questions: where did the time go, what has been settled, is the
-current path still the cheapest route to the done-condition, and does the yardstick still
-measure the question. If a cheaper route exists, name it and take it. Continuing is a
+A reflection answers five questions: where did the time go, what has been settled, is the
+current path still the cheapest route to the done-condition, does the yardstick still
+measure the question, and does the framing in `QUESTION.md` still pass both paper gates. If a cheaper route exists, name it and take it. Continuing is a
 decision the reflection has to argue for.
 
 **The loop holds standing authority to redesign.** When a reflection finds that a
@@ -307,19 +509,23 @@ redesign it without waiting for the operator. Three rules bound that authority:
 When two reflections in a row find no cheaper route, refill the field with step 5 instead
 of stopping.
 
-## 10. End a study, continue the loop
+## 11. End a study, continue the loop
 
 A study ends on one of three verdicts, and its report states it first:
 
 - **reached**: the purpose is met on the yardstick.
 - **banked**: a claim the study can defend that is not the purpose, stated with its gap
   to the purpose in numbers. Banking records a real result without moving the bar.
-- **negative**: a kill result fired, or the study's candidates are exhausted.
+- **negative**: a kill result fired, or the study's candidates are exhausted. A negative
+  verdict lists every assumption on the cards that could flip it. A verdict that one
+  undeclared assumption could flip is not negative. It is open.
 
 Write the study's report from the ledger into `reports/`. The format is in
 [references/report.md](references/report.md). Update `TRIED.md`. Then tell the operator in
 a few lines: what died or won, and what the loop takes next. Take the next candidate from
-`FIELD.md` and start the next study at step 2.
+`FIELD.md` and start the next study at step 2. When the study died of its framing, update
+`FRAMINGS.md` first, and take the next candidate from another framing. The next study does
+not start from a neighbour of the framing that just failed.
 
 The loop stops only when:
 
