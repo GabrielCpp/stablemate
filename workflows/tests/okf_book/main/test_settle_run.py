@@ -62,7 +62,11 @@ def test_a_run_whose_every_failure_is_escalated_skips_the_repair(tmp_path: Path)
 def test_a_repaired_run_whose_every_failure_is_escalated_blocks_nothing_on_the_book(tmp_path: Path) -> None:
     book = _book(tmp_path)
 
-    _ = book.settle_run(index=0, run_failures_repaired=True, exercised=_escalated_run(CRASHED))
+    exercised = _escalated_run(CRASHED)
+    step = book.settle_run(index=0, run_failures_repaired=True, exercised=exercised)
+    _ = book.map_run_failures(index=0, exercised=exercised, run_failures_repaired=True)
+
+    assert step.state == "map_run_failures"
 
     assert [blocker.side for blocker in read_blockers(tmp_path)] == [Side.APP]
 
@@ -73,6 +77,10 @@ def test_a_repaired_run_that_still_fails_the_book_is_a_book_blocker(tmp_path: Pa
     summary = RunSummary(status="failed", scenarios={"tally-add": ScenarioOutcome(status="failed", failed_checks=(misread,))},
                          signatures=(MISREAD, CRASHED))
 
-    _ = book.settle_run(index=0, run_failures_repaired=True, exercised=ExerciseResult(lines=("failed",), summary=summary))
+    exercised = ExerciseResult(lines=("failed",), summary=summary)
+    step = book.settle_run(index=0, run_failures_repaired=True, exercised=exercised)
+    _ = book.map_run_failures(index=0, exercised=exercised, run_failures_repaired=True)
+
+    assert step.state == "map_run_failures"
 
     assert sorted(blocker.side for blocker in read_blockers(tmp_path)) == [Side.APP, Side.BOOK]
