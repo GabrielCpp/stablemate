@@ -11,6 +11,7 @@ from pathlib import Path, PurePosixPath
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 
+from ostler.qa.attribution import Cause, Signature
 from ostler.qa.plan import load_plan
 from ostler.qa.v2 import run_plan
 from workhorse_workflows.okf_book.shared.book_compilation import BookCompilation, compile_services, obligation_node, obligation_page
@@ -40,7 +41,10 @@ class Scenario(BaseModel):
 
 
 class FailedCheck(BaseModel):
-    """One check that did not hold: what it asserted, what it expected, and what it observed."""
+    """One check that did not hold: what it asserted, what it expected, what it observed, and whose fault it is.
+
+    A check from a run that attributed no cause is the book's to fix.
+    """
 
     model_config = ConfigDict(frozen=True, extra="ignore")
 
@@ -49,6 +53,10 @@ class FailedCheck(BaseModel):
     actual: str = ""
     command_ending_text: str = ""
     covers: tuple[str, ...] = ()
+    cause: Cause = Cause.BOOK
+    precondition: str = ""
+    status: str = ""
+    shape: str = ""
 
     @property
     def claim(self) -> str:
@@ -76,10 +84,20 @@ class ScenarioOutcome(BaseModel):
         message_last_line = self.message.strip().splitlines()[-1:]
         return (*(check.failure_line() for check in self.failed_checks), *message_last_line)
 
+    @property
+    def book_checks(self) -> tuple[FailedCheck, ...]:
+        """The failed checks the book's writer can fix."""
+        return tuple(check for check in self.failed_checks if check.cause is Cause.BOOK)
+
+    @property
+    def fails_the_book(self) -> bool:
+        """Whether the writer has something to fix here: a failed check of the book's, or a failure no check accounts for."""
+        return bool(self.book_checks) or not self.failed_checks
+
     def unclaimed_failure_lines(self) -> tuple[str, ...]:
-        """Every failed check made for no one claim, then the last line of the run's own message."""
+        """Every failed check of the book's made for no one claim, then the last line of the run's own message."""
         message_last_line = self.message.strip().splitlines()[-1:]
-        return (*(check.failure_line() for check in self.failed_checks if not check.claim), *message_last_line)
+        return (*(check.failure_line() for check in self.book_checks if not check.claim), *message_last_line)
 
     def failed_claim(self, plan_source: str) -> str:
         """The obligation whose compiled lines in *plan_source* the run's traceback stopped in, or nothing when it stopped in none.
@@ -107,6 +125,7 @@ class RunSummary(BaseModel):
     problems: tuple[str, ...] = ()
     runner_errors: tuple[str, ...] = ()
     report_path: str = Field(default="", validation_alias="report")
+    signatures: tuple[Signature, ...] = ()
 
     @property
     def failed_scenarios(self) -> tuple[str, ...]:
@@ -115,15 +134,22 @@ class RunSummary(BaseModel):
     def failures_by_page(self, scenarios: Iterable[Scenario], plan_source: str = "") -> dict[str, tuple[PageProblem, ...]]:
         """Each book page whose obligations a failed scenario covers, and what that scenario reported, pages in path order.
 
-        A check made for one claim is reported on that claim's page alone, naming its node. A scenario
+        Only a failure the book's writer can fix is reported. A check whose precondition page arranged
+        it wrong is reported once per signature, on that precondition's page, and a check another party
+        must fix is left to its escalation. A check made for one claim is reported on that claim's page alone, naming its node. A scenario
         stopped inside the compiled *plan_source* is reported at the obligation it stopped in, and on
         that obligation's page the problem names its node. A journey stopped at a step is also
         reported on the page of the node that step performs, which the scenario covers no claim of.
         """
         pages_by_scenario = {scenario.id: scenario.pages for scenario in scenarios}
         grouped: dict[str, list[PageProblem]] = {}
+        for signature in self.signatures:
+            if signature.cause is Cause.ARRANGEMENT and signature.precondition:
+                grouped.setdefault(signature.precondition, []).append(_arrangement_problem(signature))
         for name in self.failed_scenarios:
             outcome = self.scenarios[name]
+            if not outcome.fails_the_book:
+                continue
             claimed = _claimed_problems(name, outcome)
             for problem in claimed:
                 grouped.setdefault(problem.page, []).append(problem)
@@ -147,7 +173,15 @@ def _claimed_problems(name: str, outcome: ScenarioOutcome) -> list[PageProblem]:
     return [PageProblem(obligation_page(check.claim),
                         f"the run of scenario {name} failed at {check.claim}: {check.failure_line()}",
                         node=obligation_node(check.claim))
-            for check in outcome.failed_checks if check.claim]
+            for check in outcome.book_checks if check.claim]
+
+
+def _arrangement_problem(signature: Signature) -> PageProblem:
+    """Every check one precondition arranged wrong, as one problem on the precondition's page."""
+    return PageProblem(
+        signature.precondition,
+        f"{signature.count} checks failed on what this page arranges ({signature.text()}); for example {signature.sample}",
+    )
 
 
 _SCENARIOS = TypeAdapter(tuple[Scenario, ...])

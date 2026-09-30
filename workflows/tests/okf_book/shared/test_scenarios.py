@@ -1,6 +1,8 @@
 """A failed scenario's report lands on the book pages whose obligations it covers."""
 from __future__ import annotations
 
+from ostler.qa.attribution import Cause, Signature
+
 from workhorse_workflows.okf_book.shared.page_check import PageProblem
 from workhorse_workflows.okf_book.shared.scenarios import FailedCheck, RunSummary, Scenario, ScenarioOutcome, Selection, select_scenarios
 
@@ -157,6 +159,53 @@ def test_a_journey_stopped_at_a_step_is_reported_on_the_page_of_the_node_that_st
         "docs/features/tally/api.md": (PageProblem("docs/features/tally/api.md", text, node="docs/features/tally/api.md#list-entries"),),
         "docs/features/tally/flows/budget.md": (PageProblem("docs/features/tally/flows/budget.md", text),),
     }
+
+
+SIGNED_IN = "docs/features/tally/fixtures/signed-in.md"
+
+
+def test_checks_a_precondition_arranged_wrong_land_once_on_its_page_and_not_on_their_claims() -> None:
+    claim = "okf:docs/features/tally/tally.md#add:does:2"
+    refused = FailedCheck(label="POST /add answers [201]", expected="[201]", actual="403", covers=(claim,),
+                          cause=Cause.ARRANGEMENT, precondition=SIGNED_IN, status="403")
+    signature = Signature(Cause.ARRANGEMENT, SIGNED_IN, "403", "", 7, "POST /add answers [201]: expected [201], observed 403")
+    summary = RunSummary(status="failed", scenarios={"tally-add": ScenarioOutcome(status="failed", failed_checks=(refused,))},
+                         signatures=(signature,))
+
+    by_page = summary.failures_by_page((ADD_SCENARIO,))
+
+    assert by_page == {SIGNED_IN: (PageProblem(
+        SIGNED_IN,
+        f"7 checks failed on what this page arranges (arrangement: {SIGNED_IN} answered 403); "
+        + "for example POST /add answers [201]: expected [201], observed 403"),)}
+
+
+def test_a_scenario_whose_every_check_another_party_must_fix_reaches_no_page() -> None:
+    crashed = FailedCheck(label="GET /entries answers [200]", expected="[200]", actual="500", cause=Cause.APP, status="500")
+    outcome = ScenarioOutcome(status="failed", message="exit status 1", failed_checks=(crashed,))
+    summary = RunSummary(status="failed", scenarios={"tally-list": outcome})
+
+    assert summary.failures_by_page((LIST_SCENARIO,)) == {}
+
+
+def test_a_check_from_a_run_that_attributed_nothing_is_the_books() -> None:
+    summary = RunSummary.model_validate({
+        "status": "failed",
+        "scenarios": {"tally-list": {"status": "failed", "failed_checks": [{"label": "lists", "expected": "1", "actual": "0"}]}},
+    })
+
+    assert summary.scenarios["tally-list"].failed_checks[0].cause is Cause.BOOK
+    assert summary.signatures == ()
+
+
+def test_a_run_summary_reads_back_its_signatures() -> None:
+    written = {"cause": "environment", "precondition": "", "status": "could not connect", "shape": "GET /entries/…",
+               "count": 3, "sample": "lists"}
+
+    summary = RunSummary.model_validate({"status": "failed", "signatures": [written]})
+
+    assert summary.signatures == (Signature(Cause.ENVIRONMENT, "", "could not connect", "GET /entries/…", 3, "lists"),)
+    assert RunSummary.model_validate_json(summary.model_dump_json()) == summary
 
 
 SEED_SCENARIO = Scenario(id="tally-seeded", covers=("okf:docs/features/tally/reports.md#monthly:does:1",))

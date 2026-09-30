@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from ostler.qa.attribution import Cause, Signature
 from workhorse.pyflow import Await, Continue, Done, WorkflowFailed
 from workhorse_workflows.kit import last_commit_subject
 from workhorse_workflows.okf_book.main.exercise_book_flow import ExerciseBook
@@ -32,6 +33,8 @@ OPERATOR_NAME = "operator.md"
 
 RunFailures = dict[str, tuple[PageProblem, ...]]
 
+ESCALATED_SIDES = {Cause.ENVIRONMENT: Side.ENVIRONMENT, Cause.APP: Side.APP, Cause.UNATTRIBUTED: Side.UNATTRIBUTED}
+
 
 def _book_folder(service: str) -> str:
     return (FEATURES_DIR / service).as_posix()
@@ -40,6 +43,12 @@ def _book_folder(service: str) -> str:
 def _source_folder(root: Path, surface: Surface) -> str:
     entry = Path(surface.entry)
     return (entry if (root / entry).is_dir() else entry.parent).as_posix()
+
+
+def _escalated(exercised: ExerciseResult) -> tuple[Signature, ...]:
+    """The signatures of the run that a party other than the book's writer must fix."""
+    signatures = exercised.summary.signatures if exercised.summary is not None else ()
+    return tuple(signature for signature in signatures if signature.cause in ESCALATED_SIDES)
 
 
 class OkfBook(BookFlow):
@@ -195,29 +204,48 @@ class OkfBook(BookFlow):
         ).because("settle the run")
 
     def settle_run(self, index: int, run_failures_repaired: bool, exercised: ExerciseResult) -> Continue[...]:
-        """A passing book is done. A failing book goes to the writer once per run, with the failures of its run on the pages they cover, since a claim the run cannot exercise is a defect of the book. A book that fails its run again is a blocker, and so is a stack that cannot come up. Either way the book stays."""
+        """A passing book is done. Each failure another party must fix is a blocker, one per signature. A failing book goes to the writer once per run, with the failures of its run on the pages they cover, since a claim the run cannot exercise is a defect of the book. A book that fails its run again is a blocker, and so is a stack that cannot come up. A run whose every failure is escalated has nothing for the writer. Either way the book stays."""
         service = self.surfaces[index].service
         if exercised.summary is not None:
             _ = write_run(self.records_dir, exercised.summary)
+        escalated = self._escalate_signatures(service, exercised)
         if exercised.passed:
             return self._next_surface(exercised.passed, index)
         if not exercised.stack_down and not run_failures_repaired:
             return Continue(exercised.passed, self.map_run_failures, index=index, exercised=exercised).because(
                 "the existing book fails its run"
             )
-        side = Side.APP if exercised.stack_down else Side.BOOK
-        reason = "\n".join(exercised.lines)
-        _ = record_blocker(self.records_dir, Blocker(subject=service, service=service, phase=Phase.EXERCISE, side=side, reason=reason))
+        if exercised.stack_down or self._book_failures(index, exercised) or not escalated:
+            side = Side.APP if exercised.stack_down else Side.BOOK
+            reason = "\n".join(exercised.lines)
+            _ = record_blocker(self.records_dir, Blocker(subject=service, service=service, phase=Phase.EXERCISE, side=side, reason=reason))
         return self._next_surface(exercised.passed, index)
 
+    def _escalate_signatures(self, service: str, exercised: ExerciseResult) -> tuple[Signature, ...]:
+        """Record one blocker per signature the book's writer cannot fix, after dropping the ones an earlier run of this book recorded."""
+        for side in ESCALATED_SIDES.values():
+            forget_blockers(self.records_dir, Phase.EXERCISE, side, service)
+        escalated = _escalated(exercised)
+        for signature in escalated:
+            reason = f"{signature.count} checks failed this way; for example {signature.sample}"
+            blocker = Blocker(subject=f"{service}: {signature.text()}", service=service, phase=Phase.EXERCISE,
+                              side=ESCALATED_SIDES[signature.cause], reason=reason)
+            _ = record_blocker(self.records_dir, blocker)
+        return escalated
+
+    def _book_failures(self, index: int, exercised: ExerciseResult) -> RunFailures:
+        if exercised.summary is None:
+            return {}
+        spec = spec_dir(self.records_dir) / self.surfaces[index].service
+        scenarios, _problems = plan_scenarios(self.root, spec)
+        plan = spec / PLAN_NAME
+        return exercised.summary.failures_by_page(scenarios, plan.read_text(encoding="utf-8") if plan.is_file() else "")
+
     def map_run_failures(self, index: int, exercised: ExerciseResult) -> Continue[...]:
-        """Map each failure of the run to the page that covers it, and hand the book to the writer."""
-        failures: RunFailures = {}
-        if exercised.summary is not None:
-            spec = spec_dir(self.records_dir) / self.surfaces[index].service
-            scenarios, _problems = plan_scenarios(self.root, spec)
-            plan = spec / PLAN_NAME
-            failures = exercised.summary.failures_by_page(scenarios, plan.read_text(encoding="utf-8") if plan.is_file() else "")
+        """Map each failure of the run the writer can fix to the page that covers it, and hand the book to the writer. A run whose every failure is escalated skips the repair."""
+        failures = self._book_failures(index, exercised)
+        if not failures and _escalated(exercised):
+            return self._next_surface(exercised.passed, index)
         return Continue(failures, self.copy_source, index=index, run_failures=failures).because("repair the pages the run failed on")
 
     def report(self) -> Await[...] | Done:

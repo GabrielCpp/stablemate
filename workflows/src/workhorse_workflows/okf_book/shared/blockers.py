@@ -24,6 +24,8 @@ class Side(StrEnum):
     OSTLER = "ostler"
     APP = "app"
     WORKFLOW = "workflow"
+    ENVIRONMENT = "environment"
+    UNATTRIBUTED = "unattributed"
 
 
 class Blocker(BaseModel):
