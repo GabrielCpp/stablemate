@@ -72,8 +72,8 @@ class WriterRequest:
             "qa_tools": [{"name": tool.name, "description": tool.description} for tool in self.qa_tools],
         }
 
-    def repair_template_args(self, batch: RepairBatch, *, failed_run: bool) -> dict[str, object]:
-        """The repair-pages prompt's arguments for one batch, and whether the book failed its run."""
+    def repair_template_args(self, batch: RepairBatch, *, failed_run: bool, operator_answer: str = "") -> dict[str, object]:
+        """The repair-pages prompt's arguments for one batch, whether the book failed its run, and what the operator last answered."""
         return {
             "service": self.surface.service,
             "kind": self.surface.kind.value,
@@ -93,6 +93,7 @@ class WriterRequest:
             "new_flow_page": batch.new_flow_page,
             "fixture_folder": fixture_folder(self.surface.service),
             "stack_pages": list(self.stack_pages),
+            "operator_answer": operator_answer,
         }
 
     @property

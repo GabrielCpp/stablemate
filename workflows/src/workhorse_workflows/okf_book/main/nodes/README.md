@@ -8,6 +8,7 @@ The steps the main book flow calls. Each module owns one job a state hands off.
 - `cited_lines.py`: the lines of a cited file a claim rests on.
 - `exercise.py`: the run of a book, or of the pages and fixture pages the writer names, against the real app.
 - `journey.py`: the pages a fix that puts a page on a journey may change.
+- `operator_answer.py`: the operator's latest answer, which every repair turn reads until the next gate.
 - `page_sections.py`: the `###` sections of a page and the section each problem sits in.
 - `repair_batch_models.py`: the pages one repair turn is sent, the batches they go in, and the parts too large for any turn.
 - `repair_batches.py`: the batches a book too large for one writer is repaired in.

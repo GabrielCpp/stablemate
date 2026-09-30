@@ -6,6 +6,7 @@ from pathlib import Path
 from workhorse.pyflow import Await, Continue, Done, WorkflowFailed
 from workhorse_workflows.kit import last_commit_subject
 from workhorse_workflows.okf_book.main.exercise_book_flow import ExerciseBook
+from workhorse_workflows.okf_book.main.nodes.operator_answer import answer_below, write_answer
 from workhorse_workflows.okf_book.main.nodes.repair_ledger import RepairOutcome
 from workhorse_workflows.okf_book.main.repair_book_flow import RepairBook
 from workhorse_workflows.okf_book.main.nodes.report import build_report, write_report
@@ -226,16 +227,19 @@ class OkfBook(BookFlow):
         blockers = read_blockers(self.records_dir)
         if not blockers:
             return Done(report).because("no blocker: the books are done")
-        return Await(
-            self.run_dir / OPERATOR_NAME,
+        question = (
             f"The run stopped on {len(blockers)} blockers, each listed in {page}. "
             + "Fix the book, ostler, the app or the workflow each one names, and reload the run when you changed its code. "
-            + "Answer here, and the run routes each blocked book again: a book that still fails goes back to its repair.",
-            self.resume,
-        ).because("blockers wait for the operator")
+            + "Answer here, and the run routes each blocked book again: a book that still fails goes back to its repair, "
+            + "and every repair turn reads your answer."
+        )
+        gate = self.run_dir / OPERATOR_NAME
+        return Await(gate, question, self.resume, gate=str(gate), question=question).because("blockers wait for the operator")
 
-    def resume(self) -> Continue[...]:
-        """The operator has fixed what the blockers named. The books they named pass again, and every blocker is forgotten, since that pass records again each one that still holds. A blocker that names no service sends every book."""
+    def resume(self, gate: str = "", question: str = "") -> Continue[...]:
+        """The operator has fixed what the blockers named, or said how. Their answer is kept for every repair turn. The books they named pass again, and every blocker is forgotten, since that pass records again each one that still holds. A blocker that names no service sends every book."""
+        text = Path(gate).read_text(encoding="utf-8") if gate and Path(gate).is_file() else ""
+        write_answer(self.records_dir, answer_below(text, question))
         blocked = {blocker.service for blocker in read_blockers(self.records_dir)}
         blocked_services = tuple(service for service in self.services if service in blocked)
         write_pass(self.records_dir, blocked_services if blocked_services and "" not in blocked else self.services)

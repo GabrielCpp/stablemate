@@ -23,6 +23,7 @@ from pathlib import Path
 
 from workhorse.pyflow import AgentTimeout, AgentTurnFailed, Continue, Done, WorkflowFailed
 from workhorse_workflows.okf_book.main.nodes.journey import journey_pages
+from workhorse_workflows.okf_book.main.nodes.operator_answer import read_answer
 from workhorse_workflows.okf_book.main.nodes.repair_batches import pack_repairs, problems_by_page
 from workhorse_workflows.okf_book.main.nodes.repair_ledger import BatchTurn, RepairLedger, RepairRound
 from workhorse_workflows.okf_book.main.nodes.surface import Surface
@@ -151,7 +152,7 @@ class RepairBook(BookFlow):
                 returns=str,
                 power="medium",
                 timeout=float("inf"),
-                args=request.repair_template_args(batch, failed_run=bool(self.run_failures)),
+                args=request.repair_template_args(batch, failed_run=bool(self.run_failures), operator_answer=read_answer(self.records_dir)),
                 cwd=self.root / self.book_folder,
                 add_dirs=[request.source_view],
                 profile=request.repair_profile,

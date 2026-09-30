@@ -24,6 +24,14 @@ gives relative to the repository starts there.
 
 - The format is the `ostler-okf` skill. Load it first and hold every page you touch to its bar:
   {{ skill_load_ref("ostler-okf", skill_dir() + "/ostler-okf/SKILL.md") }}
+{% if operator_answer %}
+- The operator read the last run's report and the app's log, and answered. Their answer names
+  causes a failed check does not show, such as a token another fixture revoked or a fixture a
+  section uses without declaring it. Where it names one of your pages or sections, fix what it
+  says there first. It covers the whole book, so leave what it says about other pages alone:
+
+{{ operator_answer | indent(4, first=True) }}
+{% endif %}
 {% if failed_run %}
 - The book failed its run against the real app. Each turn repairs a few of its pages. These are
   yours, each path relative to the repository root, with every check of the run that failed on
