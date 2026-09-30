@@ -59,10 +59,10 @@ def test_removed_is_the_presence_before_and_the_absence_after(
 
 
 class _Response:
-    """As much of the harness's `Response` as a verifier reads: a status, a body, a URL."""
+    """As much of the harness's `Response` as a verifier reads: a status, a body, a URL, its text."""
 
-    def __init__(self, status: int, body: Any, url: str) -> None:
-        self.status, self._body, self.url = status, body, url
+    def __init__(self, status: int, body: Any, url: str, text: str = "") -> None:
+        self.status, self._body, self.url, self.text = status, body, url, text
 
     def json(self) -> Any:
         return self._body
@@ -95,6 +95,25 @@ def test_http_status_compares_a_declared_query_route_on_its_path() -> None:
     )
     assert verdict.passed is True
     assert verdict.expected["path"] == "/api/videos?root=r-1"
+
+
+def test_a_failed_http_status_shows_what_the_app_replied_with_its_tokens_masked() -> None:
+    """A refusal's reason is in its reply, and a repair cannot tell a missing token from an unknown user without it."""
+    token = "eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJ1LTEifQ.c2ln"
+    reply = f'{{"error":"user not provisioned","token":"{token}"}}'
+
+    failed = harness.VERIFIERS["http_status"](_Response(401, {}, "http://localhost/profile", reply), {"code": 200})
+    passed = harness.VERIFIERS["http_status"](_Response(200, {}, "http://localhost/profile", reply), {"code": 200})
+
+    assert "user not provisioned" in failed.actual["reply"]
+    assert token not in failed.actual["reply"]
+    assert "reply" not in passed.actual
+
+
+def test_a_long_reply_is_cut() -> None:
+    verdict = harness.VERIFIERS["http_status"](_Response(500, {}, "http://localhost/x", "e" * 5000), {"code": 200})
+
+    assert len(verdict.actual["reply"]) <= 301
 
 
 def test_http_status_refuses_a_bare_status_when_a_path_was_declared() -> None:

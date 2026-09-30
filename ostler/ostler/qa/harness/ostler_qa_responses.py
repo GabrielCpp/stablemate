@@ -10,14 +10,18 @@ from dataclasses import dataclass
 from ostler_qa_paths import JsonValue
 from ostler_qa_verdicts import Args, Verdict, json_value, str_arg, verdict
 
+REPLY_EXCERPT_CHARS = 300
+_TOKEN = re.compile(r"eyJ[\w-]+\.[\w-]+\.[\w-]*|(?i:bearer)\s+\S+")
+
 
 @dataclass(frozen=True)
 class HttpReading:
-    """What a response answered: its status, its parsed body, and the route that answered."""
+    """What a response answered: its status, its parsed body, its raw text, and the route that answered."""
 
     status: int
     body: JsonValue
     route: str | None
+    text: str = ""
 
 
 def read_response(observed: object, args: Args) -> HttpReading:
@@ -45,7 +49,14 @@ def read_response(observed: object, args: Args) -> HttpReading:
             f"qa.http returned, not {type(observed).__name__}"
         )
     route = urllib.parse.urlsplit(url).path if isinstance(url, str) else None
-    return HttpReading(status=status, body=body, route=route)
+    text = getattr(observed, "text", "")
+    return HttpReading(status=status, body=body, route=route, text=text if isinstance(text, str) else "")
+
+
+def reply_excerpt(text: str) -> str:
+    """The head of what a response said, with every token it carried masked, so a failed check shows why the app answered as it did."""
+    masked = _TOKEN.sub("[token]", text.strip())
+    return masked if len(masked) <= REPLY_EXCERPT_CHARS else f"{masked[:REPLY_EXCERPT_CHARS]}…"
 
 
 def verify_http_status(reading: HttpReading, args: Args) -> Verdict:
@@ -59,6 +70,8 @@ def verify_http_status(reading: HttpReading, args: Args) -> Verdict:
     if "path" in args:
         expected["path"], actual["path"] = str_arg(args, "path"), reading.route
         passed = passed and reading.route == str_arg(args, "path").partition("?")[0]
+    if not passed and reading.text.strip():
+        actual["reply"] = reply_excerpt(reading.text)
     return verdict(passed, actual, expected)
 
 
