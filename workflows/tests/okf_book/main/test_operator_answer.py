@@ -25,10 +25,10 @@ def test_the_answer_to_the_blockers_is_kept_for_the_repair(tmp_path: Path) -> No
     _ = book.start()
     _ = record_blocker(tmp_path, Blocker(subject="tally", service="tally", phase=Phase.EXERCISE, side=Side.BOOK, reason="failed its run"))
     question = "The run stopped on 1 blockers."
-    gate = tmp_path / OPERATOR_NAME
-    _ = gate.write_text(gates.apply_answer(gates.format_operator_gate(question), ANSWER), encoding="utf-8")
+    gate_path = tmp_path / OPERATOR_NAME
+    _ = gate_path.write_text(gates.apply_answer(gates.format_operator_gate(question), ANSWER), encoding="utf-8")
 
-    step = book.resume(gate=str(gate), question=question)
+    step = book.resume(gate_path=str(gate_path), question=question)
 
     assert read_answer(tmp_path) == ANSWER
     assert step.state == "route_blocked"

@@ -233,13 +233,13 @@ class OkfBook(BookFlow):
             + "Answer here, and the run routes each blocked book again: a book that still fails goes back to its repair, "
             + "and every repair turn reads your answer."
         )
-        gate = self.run_dir / OPERATOR_NAME
-        return Await(gate, question, self.resume, gate=str(gate), question=question).because("blockers wait for the operator")
+        gate_path = self.run_dir / OPERATOR_NAME
+        return Await(gate_path, question, self.resume, gate_path=str(gate_path), question=question).because("blockers wait for the operator")
 
-    def resume(self, gate: str = "", question: str = "") -> Continue[...]:
+    def resume(self, gate_path: str = "", question: str = "") -> Continue[...]:
         """The operator has fixed what the blockers named, or said how. Their answer is kept for every repair turn."""
-        text = Path(gate).read_text(encoding="utf-8") if gate and Path(gate).is_file() else ""
-        write_answer(self.records_dir, answer_below(text, question))
+        gate_text = Path(gate_path).read_text(encoding="utf-8") if gate_path and Path(gate_path).is_file() else ""
+        write_answer(self.records_dir, answer_below(gate_text, question))
         return Continue(None, self.route_blocked).because("the operator's answer is kept for the repair turns")
 
     def route_blocked(self) -> Continue[...]:
