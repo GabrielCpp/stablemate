@@ -1,7 +1,7 @@
 """Whose fault a failed check is, read from what its request got back, and the grouping of failures that share one cause."""
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable
 from dataclasses import dataclass
 from enum import StrEnum
 
@@ -63,6 +63,18 @@ class FaultEvidence(BaseModel):
     page: str
 
 
+class CommandEnding(BaseModel):
+    """How the command a failed check observed ended, as the harness record states it."""
+
+    model_config = ConfigDict(frozen=True, strict=True)
+
+    exit_code: int
+    stderr: str = ""
+
+    def text(self) -> str:
+        return f"exit {self.exit_code}, stderr: {self.stderr}" if self.stderr else f"exit {self.exit_code}, stderr empty"
+
+
 class CheckEvidence(BaseModel):
     """What one failed harness check recorded about why it failed, validated once as it leaves the harness."""
 
@@ -71,7 +83,7 @@ class CheckEvidence(BaseModel):
     fault: FaultEvidence | None = None
     exchange: ExchangeEvidence | None = None
     raised: str = ""
-    command_ending: Mapping[str, object] | None = None
+    command_ending: CommandEnding | None = None
 
 
 def attribute(evidence: CheckEvidence) -> Attribution:

@@ -22,7 +22,7 @@ from ostler.model import load as load_graph
 from ostler.routes import arrived_at, literal_route, screen_routes
 from ostler.untyped import JsonValue
 from ostler.qa import book_fixtures as qa_book_fixtures
-from ostler.qa.attribution import NO_ATTRIBUTION, SAMPLE_CHARS, Attribution, Cause, CheckEvidence, attribute
+from ostler.qa.attribution import NO_ATTRIBUTION, SAMPLE_CHARS, Attribution, Cause, CheckEvidence, CommandEnding, attribute
 from ostler.qa import fixtures as qa_fixtures
 from ostler.qa import tools as qa_tools
 from ostler.qa.harness_host import (
@@ -82,31 +82,6 @@ def _evidence(record: Mapping[str, Any]) -> CheckEvidence:
         return CheckEvidence.model_validate(record)
     except ValidationError as exc:
         raise DriverBlocked(f"a harness record's failure evidence is malformed: {exc}") from exc
-
-
-@dataclass(frozen=True)
-class CommandEnding:
-    """How the command a failed check observed ended, as the harness record states it."""
-
-    exit_code: int
-    stderr: str
-
-    @classmethod
-    def read(cls, record: Mapping[str, Any]) -> CommandEnding | None:
-        """The record's `command_ending`, or None when the check observed no command."""
-        ending = record.get("command_ending")
-        if ending is None:
-            return None
-        if not isinstance(ending, Mapping):
-            raise DriverBlocked(f"a harness record's command_ending is not an object: {ending!r}")
-        code, stderr = ending.get("exit_code"), ending.get("stderr", "")
-        if isinstance(code, bool) or not isinstance(code, int) or not isinstance(stderr, str):
-            raise DriverBlocked(
-                f"a harness record's command_ending needs an integer exit_code and a text stderr: {ending!r}")
-        return cls(code, stderr)
-
-    def text(self) -> str:
-        return f"exit {self.exit_code}, stderr: {self.stderr}" if self.stderr else f"exit {self.exit_code}, stderr empty"
 
 
 @dataclass(frozen=True)
@@ -504,9 +479,10 @@ class PythonDriver(QaDriver):
             step=step,
         )
         if not passed:
+            evidence = _evidence(record)
             tally.count_failure(FailedCheck.of(
                 str(record.get("label", "")), record.get("expected"), record.get("actual"),
-                CommandEnding.read(record), [str(claim) for claim in record.get("covers") or []], attribute(_evidence(record))))
+                evidence.command_ending, [str(claim) for claim in record.get("covers") or []], attribute(evidence)))
 
     def _grade_vet_and_list_problems(
         self,

@@ -716,6 +716,14 @@ class _Missing:
 MISSING = _Missing()
 
 
+def _fixture_page(name: str, spec: Mapping[str, Any]) -> str:
+    """The book page that declares fixture `name`, refused when the context does not carry it as text."""
+    page = spec.get("page")
+    if not isinstance(page, str) or not page:
+        raise ValueError(f"book fixture {name!r} names no page it is declared on: {page!r}")
+    return page
+
+
 @dataclass
 class FixtureFault:
     """One book-fixture step that could not prove its state, classified per Q38."""
@@ -755,6 +763,7 @@ class Qa:
         self._tool_commands = dict(tools or {})
         self._fixtures = {name: dict(spec) for name, spec in (fixtures or {}).items()}
         self._book_fixtures = {name: dict(spec) for name, spec in (book_fixtures or {}).items()}
+        self._fixture_pages = {name: _fixture_page(name, spec) for name, spec in self._book_fixtures.items()}
         self._book_fixture_memo: dict[tuple[str, tuple[tuple[str, str], ...]], ToolResult] = {}
         self._node_facts: dict[str, dict[str, str]] = {}
         self._tool_env_allowed = frozenset(tool_env)
@@ -903,7 +912,7 @@ class Qa:
             fault_class=fault_class, detail=detail,
         )
         self._recorder.emit({"type": "fixture_fault", **asdict(fault)})
-        self._claim_fault = ClaimFault(fault_class, fixture, str(self._book_fixtures.get(fixture, {}).get("page", "")))
+        self._claim_fault = ClaimFault(fault_class, fixture, self._fixture_pages.get(fixture, ""))
 
     def scenario_checkout_copy(self) -> Path:
         """This scenario's own directory under `self.dir`: a fresh copy of the checkout as the runbook left it, made on the first call.
@@ -1104,7 +1113,7 @@ class Qa:
         """The page of the precondition whose fact appears in a credential header value, or ``""`` when none does."""
         for name, facts in self._node_facts.items():
             if any(len(fact) >= _CREDENTIAL_FACT_MIN_CHARS and fact in value for fact in facts.values() for value in sent):
-                return str(self._book_fixtures.get(name, {}).get("page") or name)
+                return self._fixture_pages[name]
         return ""
 
     def _status_mismatch(

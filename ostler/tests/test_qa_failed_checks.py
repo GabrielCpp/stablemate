@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from ostler.qa.attribution import Cause
-from ostler.qa.drivers import CommandEnding, DriverBlocked, FailedCheck, PythonDriver
+from ostler.qa.drivers import DriverBlocked, FailedCheck, PythonDriver
 from ostler.qa.session import QaSession
 
 
@@ -72,11 +72,15 @@ def test_a_failed_check_carries_whose_fault_it_is(repo: Path) -> None:
     assert (check.cause, check.status, check.shape) == (Cause.APP, "503", "GET /api/…")
 
 
-def test_a_command_ending_the_harness_did_not_shape_as_it_writes_one_is_refused() -> None:
+def test_a_command_ending_the_harness_did_not_shape_as_it_writes_one_is_refused(repo: Path) -> None:
     """The harness writes an integer exit code and a text stderr; anything else is a harness defect, not a failure to report."""
-    with pytest.raises(DriverBlocked, match="integer exit_code"):
-        CommandEnding.read({"command_ending": {"exit_code": "1", "stderr": ""}})
-    assert CommandEnding.read({}) is None
+    records = [
+        {**_assert("exit_status(code=0)", passed=False, expected=0, actual=1), "command_ending": {"exit_code": "1", "stderr": ""}},
+        {"type": "scenario", "id": "s-1", "status": "failed", "assertions": 1, "failures": 1},
+    ]
+
+    with pytest.raises(DriverBlocked, match="command_ending.exit_code"):
+        _ = _driver(repo)._grade("s-1", ["ac:1"], records, "", 0, timed_out=False)
 
 
 def test_failure_evidence_the_harness_did_not_shape_as_it_writes_it_is_refused(repo: Path) -> None:

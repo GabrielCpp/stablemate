@@ -41,9 +41,10 @@ def _harness(*args: str, env: dict[str, str], records_to: Path) -> tuple[int, st
     return done.returncode, done.stdout + done.stderr, records
 
 
-def _with_resolved_timeouts(book_fixtures: dict) -> dict:
-    """Fill in the `timeout` every step carries once `book_fixtures.resolved()` has run."""
-    for spec in book_fixtures.values():
+def _as_resolved(book_fixtures: dict) -> dict:
+    """Fill in the page and the step `timeout` every fixture carries once `book_fixtures.resolved()` has run."""
+    for name, spec in book_fixtures.items():
+        spec.setdefault("page", f"docs/fixtures/{name}.md")
         for step in spec.get("steps", []):
             if not step.get("missing_run") and "timeout" not in step:
                 step["timeout"] = 5.0
@@ -58,7 +59,7 @@ def _run(
             "root": str(tmp_path),
             "spec_dir": str(tmp_path),
             "qa_dir": str(tmp_path / "qa"),
-            "book_fixtures": _with_resolved_timeouts(book_fixtures),
+            "book_fixtures": _as_resolved(book_fixtures),
         }
     )
     return _harness(
@@ -560,7 +561,7 @@ def test_the_scenario_frame_and_a_tool_run_land_in_the_same_directory(tmp_path: 
             "root": str(tmp_path),
             "spec_dir": str(tmp_path),
             "qa_dir": str(tmp_path / "qa"),
-            "book_fixtures": _with_resolved_timeouts(book_fixtures),
+            "book_fixtures": _as_resolved(book_fixtures),
             "tools": {"sh": "sh"},
         }
     )
@@ -724,3 +725,13 @@ def test_a_failed_check_names_the_precondition_whose_credential_it_sent_and_neve
     assert arranged["fault"] == {"fault_class": "defect", "fixture": "broken", "page": "docs/fixtures/broken.md"}
     assert arranged["raised"] == "RuntimeError"
     assert TOKEN not in json.dumps([sent, unsent, arranged])
+
+
+def test_a_book_fixture_that_names_no_page_is_refused_before_any_claim_runs(tmp_path: Path) -> None:
+    book_fixtures = {"signed-in": {"page": "", "steps": [], "args": [], "provides": [], "needs": [], "secrets": []}}
+
+    code, stdout, records = _run(_write(tmp_path, CREDENTIAL_SCENARIO), "a-token-the-app-refuses", tmp_path, book_fixtures=book_fixtures)
+
+    assert code != 0
+    assert "names no page" in stdout
+    assert not [r for r in records if r.get("type") == "assert"]
