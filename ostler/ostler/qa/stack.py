@@ -237,17 +237,27 @@ def boot_app(
     else:
         logger.info("booting app: %s (cwd %s) — no entry url, so readiness is whatever "
                     "the manifest's health gates assert", launch_cmd, app_cwd)
+    log_path = app_log_path(app_cwd)
+    try:
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        log = log_path.open("wb")
+    except OSError:
+        log = None
     try:
         proc = subprocess.Popen(  # noqa: S603 (documented recipe, loopback stack)
             _shell_argv(launch_cmd), cwd=app_cwd,
-            stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
-            start_new_session=True,
+            stdout=log or subprocess.DEVNULL, stderr=subprocess.STDOUT,
+            stdin=subprocess.DEVNULL, start_new_session=True,
         )
     except (OSError, ValueError) as exc:
         logger.warning("launch command %r could not be spawned: %s", launch_cmd, exc)
         return {"boot_ok": "no", "entry_url": entry_url, "app_pid": "", "app_pgid": "",
                 "reason": f"the launch command could not be spawned at all "
                           f"({type(exc).__name__}: {exc})"}
+    finally:
+        if log:
+            log.close()
+    written = f"; its output is in {log_path}" if log else ""
 
     pgid = os.getpgid(proc.pid)
     detached = False  # the command returned; whatever it started serves outside our pgid
@@ -279,7 +289,7 @@ def boot_app(
                 return {"boot_ok": "no", "entry_url": entry_url, "app_pid": "",
                         "app_pgid": "",
                         "reason": f"the launch command exited with code {proc.returncode} "
-                                  f"during startup" + _port_hint(health_url)}
+                                  f"during startup{written}" + _port_hint(health_url)}
             # Exit 0 with nothing serving yet: a bring-up command that handed the app off
             # to something it doesn't own (containers, a supervisor). Not death — keep
             # polling health to the deadline.
@@ -429,9 +439,11 @@ def ensure_stack(
 
     ``prepare``/``seed``/``health``/``fresh`` entries are a bare command string or a mapping
     with ``run`` (+ optional ``working-directory``/``timeout``). Returns
-    ``{ready, adopted, entry_url, app_pid, app_pgid[, failed_step, error]}`` — ``error``
-    being the failing step's own message, so a caller routing the failure to a repairer
-    can say what broke and not merely which step did.
+    ``{ready, adopted, entry_url, app_pid, app_pgid[, app_log, failed_step, error]}`` —
+    ``error`` being the failing step's own message, so a caller routing the failure to a
+    repairer can say what broke and not merely which step did, and ``app_log`` the file
+    holding what the app this run launched printed, so a caller can show why it answered
+    an error.
     """
     app_cwd = manifest.get("app_cwd") or "."
     root = repo_root or manifest.get("repo_root") or app_cwd
@@ -502,7 +514,7 @@ def ensure_stack(
             logger.warning("prepare[%d] failed: %s", i, err)
             return _fail(f"prepare[{i}]", err)
 
-    app_pid = app_pgid = ""
+    app_pid = app_pgid = app_log = ""
     if launch_cmd:
         # adopt=False: ensure_stack owns the reuse decision above; the launch itself must
         # always run (and be self-freshening) once we have decided not to adopt.
@@ -521,6 +533,7 @@ def ensure_stack(
                                               f"{health_url or entry_url}",
                          res["app_pid"], res["app_pgid"])
         app_pid, app_pgid = res["app_pid"], res["app_pgid"]
+        app_log = str(app_log_path(launch_cwd)) if app_log_path(launch_cwd).is_file() else ""
         # An owned foreground server outlives this process, and its handles must too:
         # record it so a teardown running in a different process — or the next run's
         # bring-up, when this one is killed before teardown — can still reap it.
@@ -535,7 +548,7 @@ def ensure_stack(
 
     logger.info("stack is ready at %s", health_url or entry_url or "(no entry url)")
     return {"ready": "yes", "adopted": "no", "entry_url": entry_url,
-            "app_pid": app_pid, "app_pgid": app_pgid}
+            "app_pid": app_pid, "app_pgid": app_pgid, "app_log": app_log}
 
 
 def teardown_stack(
@@ -774,6 +787,11 @@ def _reap_pgid(pgid: int, *, clock: Clock) -> None:
 # with the run it describes protects nothing. Every operation here fails soft — the
 # record is a safety net, and failing a bring-up because a cache dir was unwritable
 # would cost more than the net saves.
+
+
+def app_log_path(app_cwd: str) -> Path:
+    """Where the output of the app launched from *app_cwd* goes, which the last launch overwrote."""
+    return _record_path(app_cwd).with_suffix(".log")
 
 
 def _record_path(app_cwd: str) -> Path:

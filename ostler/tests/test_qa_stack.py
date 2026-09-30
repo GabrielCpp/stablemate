@@ -436,7 +436,7 @@ def test_ensure_stack_runs_prepare_launch_seed_health_in_order(monkeypatch) -> N
         logger=LOG,
     )
     assert out == {"ready": "yes", "adopted": "no", "entry_url": "http://localhost:8080",
-                   "app_pid": "10", "app_pgid": "10"}
+                   "app_pid": "10", "app_pgid": "10", "app_log": ""}
     assert order == ["prepare[0]", "launch", "seed[0]", "seed[1]", "health[0]"]
 
 
@@ -686,6 +686,43 @@ def test_boot_reports_a_nonzero_exit_as_the_reason(monkeypatch) -> None:
     )
     assert out["boot_ok"] == "no"
     assert "exited with code 2" in out["reason"]
+
+
+def test_boot_keeps_what_the_app_printed_and_names_it_when_the_app_dies(monkeypatch, tmp_path) -> None:
+    real_popen = stack.subprocess.Popen
+
+    def finished(*args, **kwargs):
+        proc = real_popen(*args, **kwargs)
+        proc.wait()
+        return proc
+
+    monkeypatch.setattr(stack.subprocess, "Popen", finished)
+    monkeypatch.setattr(stack.os, "getpgid", lambda pid: pid)
+    monkeypatch.setattr(stack, "health_probe", lambda *_a, **_kw: "nothing is serving")
+
+    out = stack.boot_app(
+        "echo 'panic: no database'; exit 3", "http://localhost:3000", "/", str(tmp_path), ".", "",
+        60, logger=LOG, clock=FakeClock(),
+    )
+
+    log = stack.app_log_path(str(tmp_path))
+    assert "panic: no database" in log.read_text(encoding="utf-8")
+    assert f"its output is in {log}" in out["reason"]
+
+
+def test_ensure_stack_reports_the_log_of_the_app_it_launched(monkeypatch) -> None:
+    def boot(_cmd, _url, _path, cwd, *_a, **_kw):
+        stack.app_log_path(cwd).parent.mkdir(parents=True, exist_ok=True)
+        stack.app_log_path(cwd).write_text("listening on :8080\n", encoding="utf-8")
+        return {"boot_ok": "yes", "entry_url": "", "app_pid": "", "app_pgid": ""}
+
+    monkeypatch.setattr(stack, "health_probe", lambda *_a, **_kw: "nothing is serving")
+    monkeypatch.setattr(stack, "_run_step", lambda *_a, **_kw: (True, ""))
+    monkeypatch.setattr(stack, "boot_app", boot)
+
+    out = stack.ensure_stack({"launch": "make run", "app_cwd": "/repo", "launch_cwd": "/repo/api"}, logger=LOG)
+
+    assert out["app_log"] == str(stack.app_log_path("/repo/api"))
 
 
 def test_teardown_stack_delegates_with_the_leave_up_policy(monkeypatch) -> None:
