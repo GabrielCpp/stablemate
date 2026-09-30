@@ -26,6 +26,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from ostler_qa_checkout import copy_checkout
 from ostler_qa_paths import is_projection, path_steps, resolve_path
+from ostler_qa_responses import reply_excerpt
 from ostler_qa_verifiers import (
     VERIFIERS,
     JsonValue,
@@ -442,7 +443,7 @@ class Http:
         base_url: str | None,
         *,
         timeout: float = DEFAULT_HTTP_TIMEOUT,
-        on_unexpected_status: Callable[[str, str, int, Sequence[int]], None] | None = None,
+        on_unexpected_status: Callable[[str, str, int, Sequence[int], str], None] | None = None,
     ) -> None:
         self.base_url = (base_url or "").rstrip("/")
         self.timeout = timeout
@@ -497,7 +498,7 @@ class Http:
                 )
         elif response.status not in allowed:
             if self._on_unexpected_status is not None:
-                self._on_unexpected_status(method.upper(), url, response.status, sorted(allowed))
+                self._on_unexpected_status(method.upper(), url, response.status, sorted(allowed), response.text)
             raise HttpError(
                 f"{method.upper()} {url} returned {response.status}, expected "
                 f"{sorted(allowed)}: {response.text[:500]}",
@@ -1041,13 +1042,13 @@ class Qa:
 
 
     def _status_mismatch(
-        self, method: str, url: str, status: int, allowed: Sequence[int]
+        self, method: str, url: str, status: int, allowed: Sequence[int], reply: str
     ) -> None:
-        """Write down an `expect_status` the product did not meet, before it raises."""
+        """Write down an `expect_status` the product did not meet, with what it replied, before it raises."""
         self._record(
             f"{method} {url} answers {list(allowed)}",
             False,
-            status,
+            {"code": status, "reply": reply_excerpt(reply)} if reply.strip() else status,
             list(allowed),
             self.covers,
         )

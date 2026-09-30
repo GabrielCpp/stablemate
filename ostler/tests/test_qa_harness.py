@@ -484,6 +484,28 @@ def test_an_unmet_expect_status_is_recorded_before_it_raises(tmp_path: Path) -> 
     assert records[-1]["status"] == "errored"
 
 
+REPLY_PLAN = STATUS_PLAN.replace(
+    '''        self.send_response(201)
+        self.send_header("Content-Length", "0")
+        self.end_headers()''',
+    '''        body = b\'{"detail":"user not provisioned","token":"eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJ1In0.c2ln"}\'
+        self.send_response(401)
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)''',
+)
+
+
+def test_an_unmet_expect_status_keeps_what_the_app_replied(tmp_path: Path) -> None:
+    """A refusal's reason is in its reply, and a repair cannot tell a missing token from an unknown user without it."""
+    _, records = _run(_write(tmp_path, REPLY_PLAN), "a-stale-confirm-is-refused", tmp_path)
+
+    actual = _asserts(records)[0]["actual"]
+    assert actual["code"] == 401
+    assert "user not provisioned" in actual["reply"]
+    assert "eyJ" not in actual["reply"]
+
+
 CLAIM_PLAN = STATUS_PLAN.split("@scenario")[0] + '''\
 @scenario(target=api, mechanism="live", covers=["okf:docs/a.md#confirm:does:1", "okf:docs/a.md#confirm:does:2", "okf:docs/a.md#confirm:does:3"])
 def each_claim_is_its_own(qa: Qa) -> None:
