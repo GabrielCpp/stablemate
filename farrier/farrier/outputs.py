@@ -25,7 +25,7 @@ from farrier.launcher import (
     LAUNCHER_CONTEXT_MANIFEST,
     LAUNCHER_ROOT_MAKEFILE,
 )
-from farrier._vendor.stablemate_core.config import config_path
+from farrier._vendor.stablemate_core.config import config_path, read_config
 from farrier.layers import available_names
 from farrier.naming import repo_prefix
 from farrier.ownership import is_owned, owned_files, sweep
@@ -36,6 +36,7 @@ from farrier.selection_errors import (
 )
 from farrier.skill_hooks import SkillHook, hooks_for
 from farrier.sources import (
+    Source,
     collect_selection,
     load_layered_sources,
     public_name,
@@ -263,6 +264,12 @@ def render_expected(
         skills,
         prompts,
         all_policies,
+        home_skills={
+            harness: skills
+            for harness, (skills, _prompts) in user_selections(
+                read_config(), all_skills, all_prompts
+            ).items()
+        },
     )
     outputs = renderer.render(agents, roots)
 
@@ -304,6 +311,8 @@ def render_expected(
                     policy_names,
                 )
 
+    renderer.check_resolved()
+
     manager = configured_manager(config, repo)
     if manager != "none":
         outputs[repo / HOOK_RUNNER] = Rendered(
@@ -315,21 +324,12 @@ def render_expected(
     return outputs
 
 
-def render_user_expected(config: dict[str, Any], home: Path) -> dict[Path, str]:
-    """The complete user-scope output set, from the stablemate config's user_library."""
-    selections = user_library_tables(config)
-    if not selections:
-        raise SystemExit(
-            "error: no user library is configured. Add a "
-            "[user_library.<harness>] table naming the skills to install for every "
-            f"project — one of {', '.join(HARNESSES)} — to {config_path()}."
-        )
-    values = user_template_values(config)
-    all_skills = load_layered_sources("skill", "library", "skills")
-    all_prompts = load_layered_sources("prompt", "library", "prompts")
-
-    outputs: dict[Path, str] = {}
-    for harness, table in selections.items():
+def user_selections(
+    config: dict[str, Any], all_skills: list[Source], all_prompts: list[Source]
+) -> dict[str, tuple[list[Source], list[Source]]]:
+    """Each harness's user-library skills and prompts, from the stablemate config."""
+    selections: dict[str, tuple[list[Source], list[Source]]] = {}
+    for harness, table in user_library_tables(config).items():
         include_skills, include_prompts, roots, _scaffolds = collect_selection(table)
         if roots:
             raise SystemExit(
@@ -360,6 +360,26 @@ def render_user_expected(config: dict[str, Any], home: Path) -> dict[Path, str]:
             raise SystemExit(
                 f"error: [user_library.{harness}] selected no skills or prompts."
             )
+        selections[harness] = (skills, prompts)
+    return selections
+
+
+def render_user_expected(config: dict[str, Any], home: Path) -> dict[Path, str]:
+    """The complete user-scope output set, from the stablemate config's user_library."""
+    if not user_library_tables(config):
+        raise SystemExit(
+            "error: no user library is configured. Add a "
+            "[user_library.<harness>] table naming the skills to install for every "
+            f"project — one of {', '.join(HARNESSES)} — to {config_path()}."
+        )
+    values = user_template_values(config)
+    all_skills = load_layered_sources("skill", "library", "skills")
+    all_prompts = load_layered_sources("prompt", "library", "prompts")
+
+    outputs: dict[Path, str] = {}
+    for harness, (skills, prompts) in user_selections(
+        config, all_skills, all_prompts
+    ).items():
         renderer = Renderer(home, "", {}, values, skills, prompts, scope="user")
         outputs.update(renderer.render({harness: True}, set()))
     return outputs

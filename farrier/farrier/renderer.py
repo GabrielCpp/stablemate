@@ -190,6 +190,7 @@ class Renderer:
         prompts: list[Source],
         policies: list[Source] | None = None,
         scope: str = "repo",
+        home_skills: dict[str, list[Source]] | None = None,
     ):
         self.repo = repo
         self.scope = scope
@@ -209,6 +210,11 @@ class Renderer:
         self.prompts = prompts
         self.skill_lookup = build_lookup(skills, prefix)
         self.prompt_lookup = build_lookup(prompts, prefix)
+        self.home_lookups = {
+            target: build_lookup(sources, "")
+            for target, sources in (home_skills or {}).items()
+        }
+        self.unresolved: list[str] = []
         self.policies = list(policies or [])
         self.policy_lookup = build_policy_lookup(self.policies)
         self._tags: dict[Path, list[str]] = {}
@@ -245,6 +251,41 @@ class Renderer:
         if source is None and self.prefix and not key.startswith(f"{self.prefix}-"):
             source = self.skill_lookup.get(f"{self.prefix}-{key}")
         return source
+
+    def home_skill_source(self, name: str, target: str) -> Source | None:
+        """The user-library skill *name* names for *target*, at repo scope only."""
+        if self.scope != "repo":
+            return None
+        return self.home_lookups.get(target, {}).get(name.replace(".", "-"))
+
+    def skill_reference(
+        self, name: str, target: str, from_file: Path, missing: str
+    ) -> str:
+        """Where *from_file* finds skill *name*: in this repo, else in the user library."""
+        if self.optional_skill_source(name):
+            return relative_reference(from_file, self.skill_output_path(name, target))
+        if self.scope == "user":
+            return missing
+        home = self.home_skill_source(name, target)
+        if home is None:
+            self.unresolved.append(
+                f"  - {self.dest_rel(from_file)} → {name!r} "
+                f"(not in [user_library.{target}])"
+            )
+            return missing
+        generated = public_name("", home)
+        return f"~/{user_harness_dir(target)}/skills/{generated}/SKILL.md"
+
+    def check_resolved(self) -> None:
+        """Exit naming every skill reference found neither in this repo nor at home."""
+        if self.unresolved:
+            raise SystemExit(
+                "error: these generated files reference skills that neither this "
+                "repo's selection nor the stablemate config's user library installs. "
+                "Select each one in agents.yml, add it to the user library, or drop "
+                "the reference from the library source:\n"
+                + "\n".join(dict.fromkeys(self.unresolved))
+            )
 
     def policy_source(self, name: str) -> Source:
         """The library file a ``policies:`` entry names, or exit."""
@@ -336,11 +377,10 @@ class Renderer:
         template = env.from_string(content)
 
         def instruction_ref(name: str) -> str:
-            if self.optional_skill_source(name):
-                return relative_reference(
-                    from_file, self.skill_output_path(name, target)
-                )
-            return f"generated {name} instruction file when installed"
+            return self.skill_reference(
+                name, target, from_file,
+                f"generated {name} instruction file when installed",
+            )
 
         def prompt_ref(name: str) -> str:
             if self.optional_prompt_source(name):
@@ -350,11 +390,9 @@ class Renderer:
             return f"generated {name} prompt when installed"
 
         def skill_file(name: str) -> str:
-            if self.optional_skill_source(name):
-                return relative_reference(
-                    from_file, self.skill_output_path(name, target)
-                )
-            return f"generated {name} skill when installed"
+            return self.skill_reference(
+                name, target, from_file, f"generated {name} skill when installed"
+            )
 
         def prompt_file_fn(name: str) -> str:
             if self.optional_prompt_source(name):
@@ -365,7 +403,10 @@ class Renderer:
 
         def is_using_instruction(instruction_name: str) -> bool:
             """Check if this project has a specific instruction selected."""
-            return self.optional_skill_source(instruction_name) is not None
+            return (
+                self.optional_skill_source(instruction_name) is not None
+                or self.home_skill_source(instruction_name, target) is not None
+            )
 
         def find_by_tags(*tags: str) -> str:
             """The installed skills tagged with all of *tags*, as a reference list."""
@@ -392,13 +433,7 @@ class Renderer:
         )
         try:
             return template.render(
-                instruction_file=lambda name: (
-                    relative_reference(
-                        from_file, self.skill_output_path(name, target)
-                    )
-                    if self.optional_skill_source(name)
-                    else f"generated {name} instruction file when installed"
-                ),
+                instruction_file=instruction_ref,
                 instruction_ref=instruction_ref,
                 skill_file=skill_file,
                 prompt_file=prompt_file_fn,

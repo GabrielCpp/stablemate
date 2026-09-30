@@ -119,9 +119,13 @@ it with `| default(...)`) if `content` contains any of a fixed token list (`inst
 (cheap skip for templates using none of these). Helpers exposed to the template:
 
 - `instruction_ref(name)` / `instruction_file(name)` — a relative path (`relative_reference`,
-  computed from `from_file`) to `name`'s rendered skill output for this render pass's `target`;
-  falls back to `"generated <name> instruction file when installed"` if `name` isn't a
-  selected skill.
+  computed from `from_file`) to `name`'s rendered skill output for this render pass's `target`.
+  A skill the repo does not select resolves to its user-library copy,
+  `~/<harness>/skills/<name>/SKILL.md`, when the stablemate config's `[user_library.<target>]`
+  selects it. A skill found in neither place is recorded, and `check_resolved()` exits once
+  after the render, naming every such reference, so a repo that dropped a pack never ships a
+  pointer to a file nobody installs. At user scope there is no repo to look in, and the
+  reference keeps the soft `"generated <name> instruction file when installed"` fallback.
 - `skill_file(name)` — the same resolution as `instruction_ref`. Copilot used to be sent
   through a `copilot-instruction` pseudo-target here, so the two helpers pointed at different
   files for the same skill; the per-skill `.instructions.md` copy is no longer written, and
@@ -129,7 +133,9 @@ it with `| default(...)`) if `content` contains any of a fixed token list (`inst
 - `prompt_ref(name)` / `prompt_file(name)` — a relative path to `name`'s rendered prompt output for
   `target`; same "generated ... when installed" fallback if unselected.
 - `skill_dir()` — a relative path to this `target`'s skill directory (`skill_dir_path`).
-- `isUsingInstruction(name)` — `True` iff `name` is a selected skill (for `{% if %}` gating).
+- `isUsingInstruction(name)` — `True` iff `name` is a selected skill or, at repo scope, a
+  user-library skill for this `target` (for `{% if %}` gating). An optional reference belongs
+  inside this guard, because an unguarded one to a skill found nowhere fails the install.
 - `find_by_tags(*tags)` — the selected skills whose front matter declares **all** of `tags`
   (`skills_with_tags` over the cached `skill_tags`), rendered as their sorted `relative_reference`
   paths, backticked and comma-joined; the empty string when the query is empty or nothing matches.
