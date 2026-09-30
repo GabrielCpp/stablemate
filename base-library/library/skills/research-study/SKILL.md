@@ -74,15 +74,18 @@ a premise until the operator drops it. A study that reads the question and not i
 premises answers a narrower question than the one asked.
 
 Take the premises from the record, not from memory. When the conversation's transcript is
-on disk, extract every message the operator wrote and read each one. Memory keeps the
+on disk, extract every message the operator wrote and read each one. The operator also
+writes as the arguments of a command, such as a `/loop` prompt or a skill's arguments. The
+transcript wraps those in the command's own markup, so a filter on plain messages drops
+them, and they often carry the setting. Memory keeps the
 premises that fit the reading already formed and drops the ones that rule it out. Three
 kinds are the easiest to lose:
 
-- **the end goal** behind the question, such as "reduce my dependency on frontier models",
+- **the end goal** behind the question, such as "cut what we pay the vendor",
   which fixes what the result is compared against,
-- **a ruling** on an approach, such as "a compiler is over-restrictive, the model will have
-  no agency", which removes a whole reading before any agent proposes it,
-- **the setting**, such as "we are building this for production code", which rules out a
+- **a ruling** on an approach, such as "a fixed rule table is too rigid", which removes a
+  whole reading before any agent proposes it,
+- **the setting**, such as "this runs on real customer data", which rules out a
   testbed that only works because it is small.
 
 Under the premises, write the
@@ -168,50 +171,112 @@ Done when the top cost items are named with their share of the total.
 
 A **framing** is a reading of the question. It says what the thing under study does, on
 which input, to produce which output, judged how, and what the question's key verb means,
-such as "leverage", "replace" or "speed up". It names no mechanism, no architecture, no
-data source and no file. Those belong to candidates, and a candidate always sits under one
-framing.
+such as "use", "replace" or "speed up". It names no mechanism, no architecture and no
+file. Those belong to candidates, and a candidate always sits under one framing. A framing
+that learns does name whose work supplies its training data: the target's own past,
+other sources of the same kind, data generated from a known structure, or a stronger
+system working on the target. Gate 2 counts
+that data. When no framing may choose the source, every row takes the obvious one by
+default, and the gate fails them together.
 
 Write at least three framings. Isolation keeps a framing from inheriting another's details,
 and it does not make framings differ. Agents that share a model and read the same documents
 converge on one reading. Handing a later agent the first reading and one axis to vary does
 not fix that either: the agent turns that axis and copies the first reading on every other
 one, so every framing is a sibling of the first. Framings differ when each is built from
-its own choice on every open axis:
+its own choice on every open axis. Axes drawn from the question's own words still share
+one vocabulary, so every value on them varies one literal reading:
 
-1. **List the axes.** One agent reads the question and the premises from step 2, and
-   nothing else. It lists the axes a reading must choose on: the role the thing under
+1. **Restate the question by analogy.** At least three agents each restate the question
+   in the terms of one distant field, such as a type system, the geometry of a space, a
+   research line that met the same problem, or, for a question about learning, what the
+   learned space must hold rather than the arithmetic that fills it. The study picks the
+   fields. A field the operator named is a seed, not the list. At least half the fields
+   are the study's own, and each sits far from the question's domain, from the operator's
+   examples and from the other fields: a physical or life science, a craft with its own
+   practice, a theory of communication or of decisions. Each agent reads the
+   question and the premises, and no other restatement. Each maps the question's parts
+   onto its field's objects, and names what that field already knows about the problem:
+   what it holds solvable, what it holds impossible, and what it would measure. A
+   restatement says what, never how. Each one returns the axes and the values it adds
+   that the literal reading lacks. One that adds none is a synonym, and it is replaced.
+   A restatement without a decomposition is a metaphor, and no framing can be built on
+   it. Each one breaks the problem into the parts its field would cut it into. For each
+   part it names the matching part of the real problem and works one case from a sample
+   of the operator's real work through it. It then states what share of that sample the
+   part covers, and which cases it leaves to another part. It ends with where to start:
+   the part whose check is cheapest and whose failure would change the most.
+2. **List the axes.** One agent reads the question, the premises from step 2 and the
+   restatements, and nothing else. It lays the decompositions side by side. A part one
+   field names and another misses is an axis. It lists the axes a reading must choose on: the role the thing under
    study plays, the input it reads when it runs, the output it produces, what counts as
    right and who judges, what the question's key verb is measured against, which part of
-   the problem the study may redesign, and any axis the question adds. For each axis it
+   the problem the study may redesign, whose work supplies the training data, and any axis
+   the question adds. Every check gate 2 makes turns on some axis, and that axis is listed. For each axis it
    writes **fixed**, with the operator's words that fix it, or **open**, with at least
    three values. An axis is fixed only as far as its words go. "Reduce my dependency"
    fixes a direction, not zero, and "prefer" fixes a preference, not a requirement. A
    fixed axis stated stronger than its quote removes readings the operator left open,
    and nothing downstream sees them go. A value says what, never how. A value that names
    an algorithm, an architecture, an algebra, a fitting method or a data generator is a
-   candidate, and it waits for step "Then the candidates". Rows built from mechanisms
-   differ in implementation and share one reading of the question. At least one value per open axis is one the project's existing apparatus
-   does not support. It then holds every open value against every fixed axis and drops a
-   value that breaks one, with the quote that breaks it.
-2. **Draw the rows.** Pick one value per open axis for each framing, so that any two
+   candidate, and it waits for step "Then the candidates". The source of the training
+   data is a what, and a generator that draws pairs from that source is a how. Rows built from mechanisms
+   differ in implementation and share one reading of the question. At least one value
+   per open axis is one the project's existing apparatus does not support. It then holds every open value against every fixed axis and drops a
+   value that breaks one, with the quote that breaks it. A test that drops one value runs
+   on every value of that axis. A value that falls back to a weaker judge, input or source
+   on some cases inherits every defect of that fallback.
+3. **Draw the rows.** Pick one value per open axis for each framing, so that any two
    framings differ on at least half of the open axes. No row is the "direct" reading, and
    no row is written first for the others to vary. Each clause of the question is the
-   measure a verdict rests on in at least one row. A clause such as "to limit training
-   cost" that no row is judged by is a reading the field never tests.
-3. **Write each row in isolation.** A fresh agent, or a fresh context, gets the question,
+   measure a verdict rests on in at least one row. A clause such as "at low
+   cost" that no row is judged by is a reading the field never tests. Each clause's
+   measure passes step 2's proxy test before any row is drawn. A measure that reads zero
+   or a constant for some part of a named lever, whatever the method does, is a proxy.
+   A share of cases a prior admits is a proxy when the prior always admits a move that
+   covers any output. The rank of a right output, found by judging candidates in order, is
+   a pass rate at k, and every rule for an untrained pass rate governs it. A comparison
+   whose reference arm may read zero names the anchor that stops it, and no row drops
+   that anchor. A probability or a rank a prior gives the one recorded answer credits only
+   that answer. It passes the proxy test only when a different right answer cannot score
+   worse, or when the verdict rests on a judged output. A judged output reported beside a
+   verdict that does not rest on it does not count. A control that draws its
+   alternatives from within a stratum reports how many cases stand alone in their stratum.
+   A case alone in its stratum makes the control equal the method by construction.
+4. **Write each row in isolation.** A fresh agent, or a fresh context, gets the question,
    the premises word for word, pointers into the project and its row. It reads nothing the
    study has produced and no other row's framing. It writes the framing its row implies. A
    row agent never repairs its own row. When a value fails gate 1, the agent stops and
-   returns that value with the operator's words that break it. Agents that share a model
+   returns that value with the operator's words that break it. When a value makes the
+   framing fail gate 2, the agent returns that value with the check it fails, such as a
+   measure that reads zero before any training. A row agent never rules its own defect
+   harmless. An argument that a defect affects every arm alike, or that a direction still
+   holds if an assumption fails, rules it harmless. It passes only when the defect's rate
+   is measured and reported. A pass with conditions is a repair, and the value goes back. A return claims
+   the value cannot work, and it carries the same burden as a pass. Before returning, the
+   agent names the obstacle and asks whether it is real: whether a premise or another
+   value of the row already handles it with no value changed. A part the operator
+   assigned to another component is handled by that component. An obstacle
+   the premises already handle is no failure, and the value stays. A checker holds each
+   return to the same test. Agents that share a model
    and repair alone reach the same repair, so five repaired rows converge on one yardstick.
    The axis agent drops or corrects the value for every row, redraws the rows, and the
    failed rows are written again.
 
-Three rules hold for every framing agent:
+Four rules hold for every framing agent:
 
+- an agent that cannot read the whole skill stops and says so. Its gate section answers
+  every check by name, with a reason for any check it finds not applicable,
 - the brief carries the question, the premises word for word, pointers into the project
-  and the agent's row. It carries nothing the briefer concluded. A sentence such as "the
+  and the agent's row. It also lists each fixed axis with the operator's words that fix it
+  and the sampled cases it caps, so the row subtracts them before it states a ceiling. It
+  carries, in full, the axis list's statement of what no value removes, and the identity of
+  every sampled case the list counts in a class. A brief that points at a document the row
+  does not receive is a brief fault. It
+  states each assigned value in the axis list's full text. Before judging a return, the
+  checker compares the brief's wording to the list. A return caused by a clause the brief
+  dropped goes back to the briefer, and the value stands. The brief
+  carries nothing the briefer concluded. A sentence such as "the
   task here means X" in a brief is the briefer's framing, and every agent that reads it
   inherits it. A premise the briefer paraphrased is the briefer's framing too,
 - anything the loop or its agents made earlier counts as study output: a roadmap line, a
@@ -260,8 +325,8 @@ The field always holds the **no-method control**: the simplest mechanism that us
 the idea under test, such as brute-force search, a fixed rule, or the unchanged system
 given the same extra compute. Measure it early. When it matches the method, the yardstick
 cannot credit the method, and that is a finding about the yardstick. Give the control
-every move the fault can need. A search that swaps names cannot fail on faults in operators
-or literals and then count as the control for them.
+every move the fault can need. A control that can change only one kind of part cannot fail on
+faults in another kind and then count as the control for them.
 
 The field also holds the **broken-link control**: the method's own output, attached to
 the wrong case or the wrong site. A method that beats the no-method control and ties the
@@ -298,9 +363,10 @@ code, data or model call. The card holds:
 - **every assumption** the method needs, one per line, each marked as stated by the
   operator, checked, or assumed,
 - **which inputs are fixed and which are designed**: an input the world hands over, such
-  as an existing codebase, is fixed. An input whose format the study may choose, such as
-  the notation a request is written in, is designed. Mark each, and cite the premise that
-  makes it so,
+  as an existing system, is fixed. An input whose format the study may choose, such as
+  the notation a request is written in, is designed. An input the study wrote, such as
+  its own sample requests, is designed even when it already exists. Mark each, and cite
+  the premise that makes it so,
 - **the named method's defining parts**, when the candidate borrows a name such as an
   architecture, an algorithm or a published technique: each part that makes the name true,
   marked built or left out.
@@ -310,12 +376,12 @@ code, data or model call. The card holds:
 Hold the method's task against the question's task, part by part.
 
 - **The input matches.** A method that swaps the question's input for a proxy answers
-  another question. A model that writes a function from its nearest sibling does not write
-  it from the specification the question names. A chooser that never reads that
+  another question. A method that copies the nearest solved case does not derive the
+  answer from the specification the question names. A chooser that never reads that
   specification is not a method for it.
 - **The output matches.** A method that produces a slice of the output answers the
   question only when the question allows a slice and the rest has a named author.
-- **The role matches.** A question that asks how to leverage a component is not answered
+- **The role matches.** A question that asks how to use a component is not answered
   by casting that component as a replacement for the whole system. Write the role the
   question gives it on the card.
 - **Every premise holds.** A premise the operator stated and the method dropped makes a
@@ -331,25 +397,106 @@ Each check asks whether the method can succeed when everything uncertain goes it
 
 - **Identifiability.** The input carries the information the output needs. For each part
   of the output, name the part of the input it comes from. A part with no source must be
-  guessed, and the guess rate is the ceiling. Check the training pairs and the test cases
-  separately. When the missing part sits in a designed input, the repair is to
+  guessed, and the guess rate is the ceiling. A part the output carries through without reading
+  it needs only what the method decides from: its kind, and which instance it is, so a
+  repeat stays the same instance. Its content can be restored after. Only the parts the
+  method decides need a source it can read. Check the training pairs and each test set the
+  verdict reads, one at a time. A test set on which a decided part has no source fails,
+  whatever the other sets show. A guess rate is a ceiling, never a source. When the missing part sits in a designed input, the repair is to
   change the input's format so it carries the part. Accepting the loss is a choice the card
   must argue for, and a designed input never loses a fact by default.
+  A test input written after its answer existed may leak it, and one written from the
+  answer does. Run-time inputs are written before the answer, so every measure reports
+  apart on the test cases written that way, even when they are few. A value that reads the
+  live environment at run time needs the same reads in every training pair and every
+  historical test case. A historical case replayed against today's environment reads the
+  state after the change, and that is a leak. A writer who fills a designed test input
+  from linked material reads that material as it stood before the answer existed, and the
+  card names the version it reads.
 - **Train equals test.** The training task has the same input and the same output as the
   measured task. A model trained to edit one artifact into another is not trained to write
-  the second from a description.
+  the second from a description. When the input form is designed, each training source
+  names who writes that form for each pair, and counts it. A source with no such writer
+  fails.
 - **The judge accepts every right answer.** A judge that credits only one reference
   output fails a correct output that differs from it. Prefer a functional judge, such as
   compiled checks, tests or a build. When the judge must compare against a reference, say
-  how many right answers it accepts and why that is enough.
+  how many right answers it accepts and why that is enough. A recorded past output counts
+  as a right answer only after the judge accepts it, and the card reports how many
+  recorded outputs the judge rejects. A case where a measure lacks its second right answer
+  reads as unmeasured, never as a score on the recorded output alone. A judge shown a second output
+  beside the one it grades says whether it grades each alone or picks between them. One
+  that picks between them compares against a reference, and the same count applies.
+- **The judge rejects wrong answers.** Name a wrong output the judge would pass, such as
+  an output that passes checks the method wrote for itself. A judge that passes it credits
+  the method for grading itself. The first wrong output to try is the unchanged state. A
+  recorded output enters a set of known wrong outputs only after a later record names what
+  was wrong with it. A status label alone does not qualify. Read each member, and count the
+  ones whose label named something else. A
+  judge built from the input the method reads cannot check a fact that another value
+  forbids that input to carry. List each class of value the method reads from outside the
+  request, and name beside it the check or record that fails a wrong value. A sentence
+  saying each class has a check is not the list. The judge sees the logged
+  source of every such value, or that class is unjudged and the check fails. The second
+  wrong output to try does what was asked and
+  also something that was not asked. A judge with no reader of the request shows how it
+  rejects that output. A case the judge cannot score stays in the denominator as a
+  failure, and the count of such cases reports beside the rate.
 - **Method fidelity.** Every defining part of the named method is built, or the verdict
   names the gap. A result from a method missing its defining parts is a result about
   another method, and it cannot close the named one.
 - **The data fits the target.** The training data comes from the distribution the test
-  draws from, in kind and in volume. Name the source and count it before building.
+  draws from, in kind and in volume. Name the source and count it before building. A
+  source counted as unbounded is also counted in kind: the share of real test cases whose
+  shape it can produce. A count taken from a published description is not a count of data
+  on hand. When a training input is rendered from a source, count the source items that
+  carry the facts the test input carries. An item that carries only a one-line label
+  leaves the rest to be guessed. When the source was written after its answer, count it
+  both ways: items missing facts the test input carries, and items stating facts of the
+  answer that no test input carries. Length is not a count of facts. Read a sample and
+  state the share. A source that writes both the request and the answer counts in kind by
+  the share of test shapes it can produce at the state it writes against. A shape that
+  needs a defect or an event to exist first counts only where one exists, and the card
+  counts where. State how many test cases exist today, the rate at which new ones arrive,
+  and the date the set reaches the resolution floor, and price the wait. A set that starts
+  empty and grows only if someone changes how they work states that change as an
+  assumption, with its current rate. A verdict whose floor date falls after the study's
+  date returns the value that sets the test form.
 - **The compute fits the claim.** Estimate what the method needs to learn the task at all,
   from the size of the output space and from published results. A budget short by orders
-  of magnitude makes the run measure the budget.
+  of magnitude makes the run measure the budget. This check is the exception to the rule
+  above: it never assumes the uncertain part goes the method's way. When the estimate from
+  published results exceeds the budget by an order of magnitude or more, the check fails
+  unless the budget is resized or the verdict states that it measures that budget. Price it on the hardware the run will
+  use, checked on the machine and named on the card. Price memory as well as time: the
+  largest input one step holds, at the precision the device supports, against device
+  memory. Name whether the software stack supports the device. When that support is
+  unconfirmed, price the time on the fallback device too. Every hour spent building a
+  component the prior or the method needs counts in the cost the verdict reads, and a
+  component that does not exist yet is priced before the verdict is read. A row never
+  narrows a clause measure's cost ledger, and the checker compares it item by item. When
+  the verdict reads no cost, the build hours report beside it as its price.
+- **The ceiling covers the workload.** Sample the operator's real work, such as its
+  recent cases, and count the cases the framing could serve if everything
+  uncertain went its way. The sample spans every body of work the operator called theirs.
+  A framing that names one place to test still counts every place, and only a value that
+  forbids service elsewhere caps the work. The ceiling is a table of the sampled cases,
+  with the value that reaches or excludes each one. A ceiling stated without that table is
+  not a count. Count cases in the unit the verdict divides by. When one request yields
+  several recorded outputs, count requests, and state how many outputs each yields. A case
+  reached only through a fallback that reads zero on the verdict's measure counts as
+  reached for the rate and unread for the measure, and the table states that count.
+  Before marking a case unreached, ask whether the missing part is one the
+  operator decides. A part the operator decides sits in the request and is reached. For
+  each case it cannot serve, name the value that excludes it. The ceiling has no
+  threshold: any case an open value excludes returns that value, whatever its share.
+  A value from an open axis never caps the workload by default. It returns to the axis
+  agent, like a value that fails gate 1. Only a fixed axis may cap it, and the card
+  quotes the operator's words that fix it. A framing that passes with a cap from an open
+  axis answers a smaller question than the one asked. The ceiling counts the work a value
+  serves at run time. How many past cases exist to test a value is a resolution question
+  for step 3, never a ceiling. A framing that claims more than a fixed axis allows has
+  widened that axis, and it fails gate 1.
 - **The operator's levers are used.** When the question names a lever, such as a preset,
   a prior, a representation or a budget, the card says how the method uses it. A method
   that ignores a named lever tests the question without its premise.
@@ -373,7 +520,10 @@ Have the framings and the cards checked. A second agent that did not write them 
 question, the premises, the framings and the cards, and nothing of the study's reasoning.
 It answers both gates for each, names any assumption that makes the question unsolvable,
 and names any two framings that share their input, output and role. A card or a framing it
-fails goes back to repair.
+fails goes back to repair. When two counts of one fact disagree, it states both with the
+method behind each. A count by text search does not overturn a count by reading the
+artifacts. A framing that relies on a class count names the cases in it. The checker
+recounts the class by a stated method and reports the framing's cases beside its own.
 
 Done when at least three framings survive in `FRAMINGS.md` or the rest died on paper,
 every candidate about to be probed has a card that passed both gates in writing, and a

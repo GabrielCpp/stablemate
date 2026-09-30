@@ -1,94 +1,94 @@
 ---
 name: code-review
-allowed-tools: Bash(gh issue view:*), Bash(gh search:*), Bash(gh issue list:*), Bash(gh pr comment:*), Bash(gh pr diff:*), Bash(gh pr view:*), Bash(gh pr list:*)
-description: Code review a pull request
-disable-model-invocation: false
+description: "Review a code change against the rules the repository states: the code-structure triggers, every AGENTS.md and CLAUDE.md on the changed files' paths, and bugs. Ships a Stop hook that holds the implementing agent until a fresh reviewer passes its diff, and the same reviewer for a pull request. Load when reviewing a change or a pull request, before reporting work done, or when the review gate blocks a stop."
 tags: [review, standards]
 ---
 
-Provide a code review for the given pull request.
+# Code review
 
-To do this, follow these steps precisely:
+The agent that wrote a change reads it as the plan it had in mind. It does not see two
+implementations sharing one module, because it put them there on purpose. A reviewer
+that did not write the change, and that reads the repository's rules first, does.
 
-1. Use a Haiku agent to check if the pull request (a) is closed, (b) is a draft, (c) does not need a code review (eg. because it is an automated pull request, or is very simple and obviously ok), or (d) already has a code review from you from earlier. If so, do not proceed.
-2. Use another Haiku agent to give you a list of file paths to (but not the contents of) any relevant CLAUDE.md files from the codebase: the root CLAUDE.md file (if one exists), as well as any CLAUDE.md files in the directories whose files the pull request modified
-3. Use a Haiku agent to view the pull request, and ask the agent to return a summary of the change
-4. Then, launch 5 parallel Sonnet agents to independently code review the change. The agents should do the following, then return a list of issues and the reason each issue was flagged (eg. CLAUDE.md adherence, bug, historical git context, etc.):
-   a. Agent #1: Audit the changes to make sure they compily with the CLAUDE.md. Note that CLAUDE.md is guidance for Claude as it writes code, so not all instructions will be applicable during code review.
-   b. Agent #2: Read the file changes in the pull request, then do a shallow scan for obvious bugs. Avoid reading extra context beyond the changes, focusing just on the changes themselves. Focus on large bugs, and avoid small issues and nitpicks. Ignore likely false positives.
-   c. Agent #3: Read the git blame and history of the code modified, to identify any bugs in light of that historical context
-   d. Agent #4: Read previous pull requests that touched these files, and check for any comments on those pull requests that may also apply to the current pull request.
-   e. Agent #5: Read code comments in the modified files, and make sure the changes in the pull request comply with any guidance in the comments.
-5. For each issue found in #4, launch a parallel Haiku agent that takes the PR, issue description, and list of CLAUDE.md files (from step 2), and returns a score to indicate the agent's level of confidence for whether the issue is real or false positive. To do that, the agent should score each issue on a scale from 0-100, indicating its level of confidence. For issues that were flagged due to CLAUDE.md instructions, the agent should double check that the CLAUDE.md actually calls out that issue specifically. The scale is (give this rubric to the agent verbatim):
-   a. 0: Not confident at all. This is a false positive that doesn't stand up to light scrutiny, or is a pre-existing issue.
-   b. 25: Somewhat confident. This might be a real issue, but may also be a false positive. The agent wasn't able to verify that it's a real issue. If the issue is stylistic, it is one that was not explicitly called out in the relevant CLAUDE.md.
-   c. 50: Moderately confident. The agent was able to verify this is a real issue, but it might be a nitpick or not happen very often in practice. Relative to the rest of the PR, it's not very important.
-   d. 75: Highly confident. The agent double checked the issue, and verified that it is very likely it is a real issue that will be hit in practice. The existing approach in the PR is insufficient. The issue is very important and will directly impact the code's functionality, or it is an issue that is directly mentioned in the relevant CLAUDE.md.
-   e. 100: Absolutely certain. The agent double checked the issue, and confirmed that it is definitely a real issue, that will happen frequently in practice. The evidence directly confirms this.
-6. Filter out any issues with a score less than 80. If there are no issues that meet this criteria, do not proceed.
-7. Use a Haiku agent to repeat the eligibility check from #1, to make sure that the pull request is still eligible for code review.
-8. Finally, use the gh bash command to comment back on the pull request with the result. When writing your comment, keep in mind to:
-   a. Keep your output brief
-   b. Avoid emojis
-   c. Link and cite relevant code, files, and URLs
+## What a review checks
 
-Examples of false positives, for steps 4 and 5:
+A review reports three kinds of finding, and nothing else:
 
-- Pre-existing issues
-- Something that looks like a bug but is not actually a bug
-- Pedantic nitpicks that a senior engineer wouldn't call out
-- Issues that a linter, typechecker, or compiler would catch (eg. missing or incorrect imports, type errors, broken tests, formatting issues, pedantic style issues like newlines). No need to run these build steps yourself -- it is safe to assume that they will be run separately as part of CI.
-- General code quality issues (eg. lack of test coverage, general security issues, poor documentation), unless explicitly required in CLAUDE.md
-- Issues that are called out in CLAUDE.md, but explicitly silenced in the code (eg. due to a lint ignore comment)
-- Changes in functionality that are likely intentional or are directly related to the broader change
-- Real issues, but on lines that the user did not modify in their pull request
+1. **A structure trigger fires.** The
+   [`{{ instruction_file("code-structure") }}`]({{ instruction_file("code-structure") }})
+   skill opens with a table of triggers. Each links the reference that holds its fix and
+   its counter-case. A trigger that fires with no counter-case is a finding, and its id
+   is the row number, such as `2.1`.
+2. **A written rule breaks.** Every AGENTS.md and CLAUDE.md from a changed file's
+   directory up to the root binds that file. The id is `agents`, and the finding quotes
+   the rule.
+3. **A bug.** A wrong result, a crash, a lost write, or a broken invariant that a
+   docstring or a test states. The id is `bug`.
 
-Notes:
+The reviewer judges each touched module, class and function as it stands after the
+change. A module that now holds two capabilities is a finding even when the second one
+arrived in lines the diff did not touch. Two implementations of one capability that a
+reader cannot tell apart in one glance are the common form.
 
-- Do not check build signal or attempt to build or typecheck the app. These will run separately, and are not relevant to your code review.
-- Use `gh` to interact with Github (eg. to fetch a pull request, or to create inline comments), rather than web fetch
-- Make a todo list first
-- You must cite and link each bug (eg. if referring to a CLAUDE.md, you must link it)
-- For your final comment, follow the following format precisely (assuming for this example that you found 3 issues):
+[scripts/review_prompt.md](scripts/review_prompt.md) is the reviewer's full rubric.
 
----
+## What is not a finding
 
-### Code review
+- A problem in code the change leaves untouched.
+- Anything a linter, a type checker or the test suite reports. Those gates run
+  separately.
+- A style preference that no rule states.
+- A hypothetical problem with no line to point at.
 
-Found 3 issues:
+## The Stop gate
 
-1. <brief description of bug> (CLAUDE.md says "<...>")
+[scripts/review_gate.py](scripts/review_gate.py) runs as a Claude Code Stop hook. When the
+agent tries to stop with source changes, it asks a fresh `claude -p` reviewer to review
+the diff. The reviewer gets read-only tools and no hooks. A finding blocks the stop, and
+the agent reads the findings as its next instruction.
 
-<link to file and line with full sha1 + line range for context, note that you MUST provide the full sha and not use bash here, eg. https://github.com/anthropics/claude-code/blob/1d54823877c4de72b2316a64032a54afc404e619/README.md#L13-L17>
 
-2. <brief description of bug> (some/other/CLAUDE.md says "<...>")
+How it behaves:
 
-<link to file and line with full sha1 + line range for context>
+- **Scope.** It reviews the working tree, staged or not, against the last approved
+  tree. A stop with no source change passes without a review.
+- **Memory.** A pass pins the approved tree in the git directory. A commit on top keeps
+  the pin, so the next review covers only what changed since the approval.
+- **Escalation.** The first two blocked rounds go to `sonnet`. Later rounds go to
+  `opus`, which breaks a disagreement between the agent and the first reviewer.
+- **Give up.** After ten blocked rounds the stop goes through with the open findings as
+  a notice. The next stop starts again from round one.
+- **Budget.** The diff is packed into batches of about 60,000 tokens, at most four. A
+  larger change blocks with a `too-large` finding, because a reviewer cannot hold it.
+- **Failure.** A reviewer that errors or times out blocks the stop, and the round does
+  not count.
 
-3. <brief description of bug> (bug due to <file and code snippet>)
+Configure it in `.agent-checks.toml` at the repository root. Every key is optional:
 
-<link to file and line with full sha1 + line range for context>
+```toml
+[code-review]
+extensions = [".py"]
+exclude = ["vendor/*", ".venv/*"]
+rules = ["docs/architecture.md"]
+```
 
-🤖 Generated with [Claude Code](https://claude.ai/code)
+- `extensions` replaces the default set of source file extensions.
+- `exclude` lists glob patterns of paths the gate never reviews.
+- `rules` lists more rule documents, relative to the root, for the reviewer to read
+  beside the code-structure skill.
 
-<sub>- If this code review was useful, please react with 👍. Otherwise, react with 👎.</sub>
+## Reviewing by hand or a pull request
 
----
+`--base REV` runs the same reviewer against any revision and prints the verdict:
 
-- Or, if you found no issues:
+```bash
+python3 .claude/skills/<prefix>-code-review/scripts/review_gate.py --base main
+```
 
----
+It exits 1 when it finds something. Its round count lives apart from the hook's, so a
+manual review never spends the hook's rounds.
 
-### Code review
-
-No issues found. Checked for bugs and CLAUDE.md compliance.
-
-🤖 Generated with [Claude Code](https://claude.ai/code)
-
-- When linking to code, follow the following format precisely, otherwise the Markdown preview won't render correctly: https://github.com/anthropics/claude-cli-internal/blob/c21d3c10bc8e898b7ac1a2d745bdc9bc4e423afe/package.json#L10-L15
-  - Requires full git sha
-  - You must provide the full sha. Commands like `https://github.com/owner/repo/blob/$(git rev-parse HEAD)/foo/bar` will not work, since your comment will be directly rendered in Markdown.
-  - Repo name must match the repo you're code reviewing
-  - # sign after the file name
-  - Line range format is L[start]-L[end]
-  - Provide at least 1 line of context before and after, centered on the line you are commenting about (eg. if you are commenting about lines 5-6, you should link to `L4-7`)
+To review a pull request, check out its branch and run `--base` with its merge base.
+Post the findings with `gh pr comment`. Link each one to the file at the full commit
+sha with a line range, such as `blob/<sha>/path/to/file.py#L10-L15`. A branch name in
+the link moves when the branch does.

@@ -2,7 +2,9 @@
 
 Three triggers say a pile of functions has become an object, and one stop condition says it
 has not. The stop condition matters as much as the other three — a codebase that classes
-everything is as unreadable as one that classes nothing.
+everything is as unreadable as one that classes nothing. Rules 1.5 to 1.8 cover the values
+objects hand each other. Rules 1.9 to 1.11 cover a behaviour with several variants: the role
+they share, who names a variant, and how wide the role is.
 
 Every rule below is one of the trigger rows in
 [the code-structure skill](../SKILL.md); read that table first if you are scanning for
@@ -87,7 +89,8 @@ it. The trigger is *sharing across a closure*, not mutation.
 for.
 
 **Trigger.** A class with no fields, or whose only field is a value passed identically to every
-method.
+method, and that implements no role. A fieldless class that implements a role is a variant (rule
+1.9), and the stop condition does not fire.
 
 **Fix.** Delete the class; keep the functions in a well-named module.
 
@@ -208,3 +211,82 @@ possible change to the function, so a reviewer has to read the body to rule it o
 method of the container itself. Rule 1.1 also wins when several functions take the same fields,
 because those fields are then an object's state and the object is the right parameter. The trigger
 is a large container used thinly, not a small one used fully.
+
+## 1.9 A variant implements a role. It never extends another variant
+
+**Statement.** When two or more implementations can stand in for each other, they are variants of
+one role. The role is an interface the consumer owns. Each variant implements that interface, and
+no variant inherits from another.
+
+**Trigger.** Either shape fires the rule:
+
+- A class that extends a concrete class of the same codebase: one that is itself instantiated,
+  or that declares no abstract member.
+- A subclass whose overrides only return a different function, class or constant than its
+  parent's.
+
+**Fix.** Name the role after what the consumer asks of it, and declare it as an interface. Make
+each variant its own implementation, in its own module. Code the variants share becomes a
+collaborator each one holds as a field, or a set of functions each one calls. The consumer takes
+the role as a parameter, and the entry point picks the variant.
+
+```text
+# ✗ The second variant is a subclass of the first. The type says a PDF report is an HTML report.
+class PdfReport(HtmlReport):
+    def _render(self, doc): return render_pdf(doc)
+
+# ✓ One report, one role, two implementations. The entry point chooses.
+class Renderer(Protocol):
+    def render(self, doc: Document) -> bytes: ...
+class HtmlRenderer: ...
+class PdfRenderer: ...
+Report(renderer=PdfRenderer())
+```
+
+Inheriting from a working class reuses its code and claims to be a kind of it in one move. The
+claim is false for a sibling variant, so every reader who trusts the type is misled. The parent
+cannot change without checking a subclass that was never meant to be one, and a third variant has
+to pick which sibling to extend.
+
+**Counter-case.** A base class the framework requires, such as an exception hierarchy or a UI
+widget. A test double that subclasses the null implementation of a port. A variant written as a
+parameterised instance of one class, when the variants differ only in data (rule 6.2).
+
+## 1.10 A consumer names the role, never a variant
+
+**Statement.** Code that uses one of several variants depends on the role alone. Only the entry
+point, where the program is assembled, imports a variant by name.
+
+**Trigger.** Either shape fires the rule, once a second variant exists:
+
+- A module outside the entry point that imports a specific variant in order to call it.
+- A consumer that imports the role from a module that also imports the variants, such as the
+  module holding the name table. The consumer then loads every variant to learn one type.
+- A parameter typed by the role whose default value is one variant.
+
+**Fix.** Make the parameter required and typed by the role. Move the choice, and the import of
+each variant, to the entry point. A configuration value names the variant, and a table at the
+entry point maps the name to it (rule 6.1). Declare the role beside its consumer, or in a
+module of its own that imports no variant.
+
+A default variant below the entry point is a decision made twice. The entry point's choice
+overrides it on one path, and every other path, including the tests, quietly runs the default.
+
+**Counter-case.** A role with one implementation and no second one on the table. A plain call is
+right there, and the role is extracted when the second variant arrives.
+
+## 1.11 A role is as wide as its consumer's use
+
+**Statement.** An interface declares what its consumer calls, and nothing more. Two consumers
+that call different things are two roles.
+
+**Trigger.** Either shape fires the rule:
+
+- An implementation that fills a member with a stub, such as raising "not implemented", passing,
+  or returning a placeholder, only to satisfy the interface.
+- An interface whose consumers each call a disjoint subset of its members.
+
+**Fix.** Split the interface along the consumers' use. A class that serves both consumers
+implements both roles.
+
+**Counter-case.** A null object, whose empty members are its purpose.

@@ -5,7 +5,7 @@ wins whenever the force is weak or absent today.
 
 | Force | Candidate pattern | Plain answer when the force is weak |
 |---|---|---|
-| One behaviour, several interchangeable variants chosen at run time | Strategy behind a protocol | A function with a parameter |
+| One behaviour, several interchangeable variants chosen at run time | Strategy: a role the consumer owns, one implementation per variant, chosen where the system is assembled | One variant today and no second one on the table: a plain function |
 | Variants added over time by name, from config or data | Registry keyed by name | A dict literal |
 | Ordered stages that each transform a shared result | Pipeline of steps with typed inputs and outputs | Sequential function calls |
 | A dependency that must be swapped in tests or by environment | Port (protocol) with adapters, injected at the root | Pass the value in |

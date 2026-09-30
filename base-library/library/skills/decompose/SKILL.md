@@ -1,6 +1,6 @@
 ---
 name: decompose
-description: "Divide a problem top-down before writing any code: state the problem in domain terms, split it into a few top-level parts, break each part into concepts with what they own and must never know, derive each pattern from a named force, and only then map the design onto the existing system. Records the assumptions behind its choices instead of asking. When the input is an as-built spec or a request to rebuild something, extract the problem from it first and treat its design decisions as claims to re-derive. Produces a design note and stops for approval. Load before a feature, a new step or module, a change that crosses two modules or adds a concept, or whenever asked to think top-down or design before coding. For options on a problem with no plan yet, load brainstorm first. For a repo-wide restructuring, load target-architecture instead."
+description: "Divide a problem top-down before writing any code: state the problem in domain terms, split it into a few top-level parts, break each part into concepts with what they own and must never know, derive each pattern from a named force, and only then map the design onto the existing system. Records the assumptions behind its choices instead of asking. When the input is an as-built spec or a request to rebuild something, extract the problem from it first and treat its design decisions as claims to re-derive. Produces a design note and stops for approval. Load before a feature, a new step or module, a change that crosses two modules or adds a concept, a second way to do something the system already does (an alternative algorithm, a mode, an option that switches between two behaviours, an experiment promoted to production), or whenever asked to think top-down or design before coding. For options on a problem with no plan yet, load brainstorm first. For a repo-wide restructuring, load target-architecture instead."
 argument-hint: "[the problem to decompose]"
 tags: [design, planning]
 ---
@@ -138,6 +138,28 @@ Rules for both:
 - Open lookups go here: each is a fact you need from the existing system, and the decision
   that waits on it. A lookup may need a run or a measurement, not only a read.
 
+**Variants are roles.** When a force says one behaviour has two or more interchangeable
+variants, the design names three kinds of concept in section 2. The **role** is named for what
+its consumer asks of it, not after any variant. Each **variant** is its own concept that owns
+one way of doing it. The **choice** of variant belongs to the part that assembles the system. A
+variant that already exists, such as the original algorithm, becomes one variant among the
+others. It is never the base the new one extends.
+
+**Check the design against SOLID** before section 5, one question per principle:
+
+- **Single responsibility.** Does every concept's Owns read without "and"?
+- **Open/closed.** Would adding one more variant add one concept and one line where the choice
+  is made, and change nothing else?
+- **Liskov substitution.** Is each variant a kind of its role only, and never a kind of another
+  variant?
+- **Interface segregation.** Does the role declare only what its consumer calls?
+- **Dependency inversion.** Does the consumer's Never-knows name the variants, so that it depends
+  on the role alone?
+
+A "no" is a change to section 2, not a note. The
+[`{{ instruction_file("code-structure") }}`]({{ instruction_file("code-structure") }}) rules
+1.9 to 1.11 are the same checks, read from code instead of from a design.
+
 ### 5. Mapping onto the existing system
 
 Now read the code and the documents that describe it. Map each part first, then each
@@ -208,6 +230,9 @@ mapping leaves the design and the code disagreeing on paper before a line is wri
 - A claim from section 1b shows up in the design with no force behind it.
 - A pattern is justified by elegance, consistency or "future flexibility" instead of a
   force present today.
+- A variant shows up as a flag, an override, or a subclass of another variant, instead of as
+  its own concept behind a role.
+- The role carries the name of one of its variants.
 - Section 5 has no mismatch at all on a problem that crosses two modules.
 - The slices are layers ("models first, then the step, then the CLI") instead of paths.
 - The note asks the reader a question, or offers options without choosing one.

@@ -1,6 +1,6 @@
 ---
 name: code-structure
-description: "Language-neutral rules for where code lives inside one layer: when functions become an object, when a module splits, where configuration, environment facts and side effects may appear, when a branch chain is a table, and which assumptions must raise. Each rule has a trigger a reader or a grep can detect. Load when choosing between a function and a class, growing a parameter list or a module, adding a setting or a file path, reading a value another stage fills, or reviewing structure. hexagonal-architecture covers the boundaries between layers. Applies to **/*.go,**/*.dart,**/*.ts,**/*.tsx,**/*.py."
+description: "Language-neutral rules for where code lives inside one layer: when functions become an object, when a module splits, where configuration, environment facts and side effects may appear, when a branch chain is a table, and which assumptions must raise. Each rule has a trigger a reader or a grep can detect. Load when choosing between a function and a class, adding a second way to do something the code already does, growing a parameter list or a module, adding a setting or a file path, reading a value another stage fills, or reviewing structure. hexagonal-architecture covers the boundaries between layers. Applies to **/*.go,**/*.dart,**/*.ts,**/*.tsx,**/*.py."
 applyTo: "**/*.go,**/*.dart,**/*.ts,**/*.tsx,**/*.py"
 tags: [standards]
 ---
@@ -72,7 +72,28 @@ constant and domain fact, and no module that only tests import. Rules 1.5 to 1.8
 keep derived analysis off a core model, keep one model per entity, keep an index read-only after it
 is built, and keep a function's parameters to the data it reads.
 
+Rules 1.9 to 1.11 in objects.md cover variants: a second implementation of something the code
+already does implements a role the consumer owns, the consumer never names a variant, and the role
+stays as narrow as its use.
+
 Rule 5 stays here, because it is the one to carry without looking anything up.
+
+## SOLID is decided in the design and detected here
+
+The five SOLID principles are design outcomes. They hold when the roles and the variants are named
+before the code is written, which is the job of
+[`{{ instruction_file("decompose") }}`]({{ instruction_file("decompose") }}). Load it before
+adding a second way to do something the code already does, even when the request reads as wiring,
+such as "add an option to switch between X and Y". The rules below are how a reader detects,
+after the fact, a principle the design missed.
+
+| Principle | What breaks it | Rules that fire |
+|---|---|---|
+| Single responsibility | a module or concept that needs "and" to describe | 2.1, 2.4, 6.3 |
+| Open/closed | a new variant added by editing the consumer or subclassing a sibling | 1.9, 6.1, 7.5 |
+| Liskov substitution | a variant that extends another variant instead of the role | 1.9 |
+| Interface segregation | a role with members its consumer never calls | 1.11 |
+| Dependency inversion | a consumer or shared module that names one variant | 1.10, 2.5 |
 
 ---
 
@@ -112,6 +133,9 @@ but this is the exception that is real.
 | [1.6](references/objects.md) | a second representation rebuilding a query the main model answers | convert at the edge |
 | [1.7](references/objects.md) | a later stage writing into an index it was handed, or snapshotting it to undo | freeze it, the owner takes the writes |
 | [1.8](references/objects.md) | a container parameter whose body reads one or two of its fields | pass the fields |
+| [1.9](references/objects.md) | a class extending a concrete class, or an override that only swaps a function | one role, one implementation per variant |
+| [1.10](references/objects.md) | a variant imported, or defaulted, outside the entry point | take the role; the entry point picks |
+| [1.11](references/objects.md) | a stubbed interface member, or consumers using disjoint subsets | split the role |
 | [2.1](references/modules.md) | a module docstring that needs bullets | one module per bullet |
 | [2.2](references/modules.md) | wiring and >1 command body in one file | one module per command |
 | [2.3](references/modules.md) | one caller only forwards to one private helper | inline the helper |
