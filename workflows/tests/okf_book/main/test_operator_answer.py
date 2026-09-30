@@ -9,7 +9,7 @@ from workhorse import gates, templates
 
 from workhorse_workflows import okf_book
 from workhorse_workflows.okf_book.main.flow import OPERATOR_NAME
-from workhorse_workflows.okf_book.main.nodes.operator_answer import answer_below, read_answer, write_answer
+from workhorse_workflows.okf_book.main.nodes.operator_answer import ANSWER_LIMIT_CHARS, answer_below, read_answer, write_answer
 from workhorse_workflows.okf_book.main.nodes.repair_batch_models import PageRepair, RepairBatch
 from workhorse_workflows.okf_book.main.nodes.writer_commands import check_command, exercise_command, ostler_command
 from workhorse_workflows.okf_book.main.nodes.writer_request import WriterRequest
@@ -74,4 +74,7 @@ def test_the_repair_prompt_carries_the_answer(tmp_path: Path) -> None:
 def test_a_long_answer_is_capped() -> None:
     text = gates.apply_answer(gates.format_operator_gate("A question."), "x" * 20000)
 
-    assert len(answer_below(text, "A question.")) < 9000
+    answer = answer_below(text, "A question.")
+
+    assert ANSWER_LIMIT_CHARS - 10 < len(answer) <= ANSWER_LIMIT_CHARS
+    assert answer == "x" * len(answer)
