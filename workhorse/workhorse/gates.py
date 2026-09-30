@@ -11,6 +11,7 @@ _SCOPE_RE = re.compile(r"^SCOPE:[ \t]*(\S+)", re.MULTILINE)
 _MARKDOWN = MarkdownIt("commonmark")
 _QUESTION_HEADINGS = {"question from the agent", "questions from the agent"}
 _QUESTION_LIMIT = 8000
+TRUNCATION_NOTE = "\n\n[truncated; read the gate file for the rest]"
 
 
 def _has_question_heading(text: str) -> bool:
@@ -45,7 +46,7 @@ def latest_question(text: str, limit: int = _QUESTION_LIMIT) -> str:
     question = _STATUS_RE.sub("", "\n".join(lines[start:end]), count=1).strip()
     if len(question) <= limit:
         return question
-    return question[:limit].rstrip() + "\n\n[truncated; read the gate file for the rest]"
+    return question[:limit].rstrip() + TRUNCATION_NOTE
 
 
 def status_of(text: str) -> str:
