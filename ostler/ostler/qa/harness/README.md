@@ -13,6 +13,7 @@ and Playwright.
 - `ostler_qa_elements.py`: the verifiers that read page elements: shown, actionable, focusable, and how many were emitted.
 - `ostler_qa_files.py`: the verifiers that read files and trees: what a working directory holds, and what changed in it.
 - `ostler_qa_hierarchy.py`: the view-hierarchy scan a device screen is vetted from.
+- `ostler_qa_lap.py`: the lap record, what each precondition built once in a lap leaves for the later scenarios.
 - `ostler_qa_paths.py`: the document-path grammar, the steps a path parses into and how it walks a document.
 - `ostler_qa_responses.py`: the verifiers that read what a request or a command answered: status, headers, exit code and output.
 - `ostler_qa_scan.py`: the DOM scan `ostler vet` is built on.

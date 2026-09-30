@@ -25,6 +25,7 @@ from typing import Any
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from ostler_qa_checkout import copy_checkout
+from ostler_qa_lap import Arranged, LapRecord
 from ostler_qa_paths import is_projection, path_steps, resolve_path
 from ostler_qa_responses import reply_excerpt
 from ostler_qa_verifiers import (
@@ -753,6 +754,7 @@ class Qa:
         fixtures: Mapping[str, Mapping[str, Any]] | None = None,
         book_fixtures: Mapping[str, Mapping[str, Any]] | None = None,
         tool_env: Sequence[str] = (),
+        lap_dir: Path | None = None,
     ) -> None:
         self.scenario_id = scenario_id
         self.target = target
@@ -766,6 +768,8 @@ class Qa:
         self._fixture_pages = {name: _fixture_page(name, spec) for name, spec in self._book_fixtures.items()}
         self._book_fixture_memo: dict[tuple[str, tuple[tuple[str, str], ...]], ToolResult] = {}
         self._node_facts: dict[str, dict[str, str]] = {}
+        self._lap = LapRecord(lap_dir) if lap_dir is not None else None
+        self._last_fault: FixtureFault | None = None
         self._tool_env_allowed = frozenset(tool_env)
         self._recorder = recorder
         self._captures: dict[str, str] = {}
@@ -912,6 +916,7 @@ class Qa:
             fault_class=fault_class, detail=detail,
         )
         self._recorder.emit({"type": "fixture_fault", **asdict(fault)})
+        self._last_fault = fault
         self._claim_fault = ClaimFault(fault_class, fixture, self._fixture_pages.get(fixture, ""))
 
     def scenario_checkout_copy(self) -> Path:
@@ -1017,11 +1022,56 @@ class Qa:
         return facts
 
     def _exec_book_fixture(self, name: str, args: Mapping[str, str]) -> "ToolResult":
-        """Run one book `fixture` node's steps, memoized on `(name, frozen args)` per scenario."""
+        """Arrange one book `fixture` node, built once per lap when the run keeps a lap record, and memoized on `(name, frozen args)` per scenario."""
         memo_key = (name, tuple(sorted(args.items())))
         cached = self._book_fixture_memo.get(memo_key)
         if cached is not None:
             return cached
+        arranged = self._lap.built(name, args) if self._lap is not None else None
+        result = self._build_book_fixture(name, args) if arranged is None else self._reuse_book_fixture(name, arranged)
+        self._book_fixture_memo[memo_key] = result
+        self._recorder.emit(
+            {
+                "kind": "fixture",
+                "scenario": self.scenario_id,
+                "name": name,
+                "provides": ",".join(entry["key"] for entry in self._book_fixtures[name].get("provides", [])),
+                "command": result.command,
+                "exit_code": result.exit_code,
+                "ok": result.ok,
+                "reused": arranged is not None,
+            }
+        )
+        return result
+
+    def _build_book_fixture(self, name: str, args: Mapping[str, str]) -> "ToolResult":
+        """Run *name*'s steps, and keep what they left, or the fault that stopped them, in the lap record."""
+        self._last_fault = None
+        try:
+            result = self._run_book_fixture(name, args)
+        except RuntimeError as exc:
+            if self._lap is not None and self._last_fault is not None:
+                self._lap.keep(name, args, Arranged(fault=asdict(self._last_fault), error=str(exc)))
+            raise
+        if self._lap is not None:
+            self._lap.keep(name, args, Arranged(
+                facts=self._node_facts[name], command=list(result.command),
+                stdout=result.stdout, stderr=result.stderr, exit_code=result.exit_code))
+        return result
+
+    def _reuse_book_fixture(self, name: str, arranged: Arranged) -> "ToolResult":
+        """*name* as an earlier scenario of this lap built it: its facts and its needs', or the fault that stopped it."""
+        if arranged.fault is not None:
+            self._fault(**arranged.fault)
+            raise RuntimeError(arranged.error)
+        for need in self._book_fixtures[name].get("needs", []):
+            if need.get("fixture") is not None:
+                self._exec_book_fixture(str(need["fixture"]), {})
+        self._node_facts[name] = dict(arranged.facts)
+        return ToolResult(command=arranged.command, stdout=arranged.stdout, stderr=arranged.stderr, exit_code=arranged.exit_code)
+
+    def _run_book_fixture(self, name: str, args: Mapping[str, str]) -> "ToolResult":
+        """Run one book `fixture` node's steps, its needs first, and bind the facts it provides."""
         spec = self._book_fixtures[name]
         env: dict[str, str] = {}
         secrets = spec.get("secrets", [])
@@ -1071,18 +1121,6 @@ class Qa:
         self._node_facts[name] = self._extract_provides(name, provides, step_results, len(steps) - 1)
         if result is None:
             result = ToolResult(command=[], stdout="", stderr="", exit_code=0)
-        self._book_fixture_memo[memo_key] = result
-        self._recorder.emit(
-            {
-                "kind": "fixture",
-                "scenario": self.scenario_id,
-                "name": name,
-                "provides": ",".join(entry["key"] for entry in spec.get("provides", [])),
-                "command": result.command,
-                "exit_code": result.exit_code,
-                "ok": result.ok,
-            }
-        )
         return result
 
     def instance(self, obligation: str, bindings: dict[str, object]) -> None:
@@ -2091,6 +2129,7 @@ def _run(module_path: Path, scenario_id: str, context: dict[str, Any]) -> int:
         fixtures=context.get("fixtures", {}),
         book_fixtures=context.get("book_fixtures", {}),
         tool_env=REGISTRY.tool_env,
+        lap_dir=Path(context["lap_dir"]) if context.get("lap_dir") else None,
     )
     browser = None
     status, error = "passed", None

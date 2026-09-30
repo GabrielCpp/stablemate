@@ -53,6 +53,7 @@ def _as_resolved(book_fixtures: dict) -> dict:
 
 def _run(
     module: Path, scenario_id: str, tmp_path: Path, *, book_fixtures: dict, env: dict[str, str] | None = None,
+    lap_dir: Path | None = None,
 ) -> tuple[int, str, list[dict]]:
     context = json.dumps(
         {
@@ -60,6 +61,7 @@ def _run(
             "spec_dir": str(tmp_path),
             "qa_dir": str(tmp_path / "qa"),
             "book_fixtures": _as_resolved(book_fixtures),
+            "lap_dir": str(lap_dir) if lap_dir is not None else "",
         }
     )
     return _harness(
@@ -392,6 +394,89 @@ def test_a_shared_need_runs_exactly_once_per_scenario(tmp_path: Path) -> None:
     assert code == 0, stdout
     assert counter.read_text(encoding="utf-8") == "x"
     assert globex_out.read_text(encoding="utf-8") == "acc-1"
+
+
+LAP_SCENARIOS = '''\
+@scenario(target=api, mechanism="live", covers=["ac:1"])
+def first_page(qa: Qa) -> None:
+    """Arranges the dependent fixture first in the lap."""
+    qa.fixture("seeded-globex")
+    qa.check("fixture ran", True)
+
+
+@scenario(target=api, mechanism="live", covers=["ac:2"])
+def second_page(qa: Qa) -> None:
+    """Arranges it again later in the same lap, and reads what its need provides."""
+    qa.fixture("seeded-globex")
+    qa.check("the need's id reached this scenario", qa.resolve("@seeded-acme.id") == "acc-1")
+'''
+
+
+def _lap_fixtures(tmp_path: Path, counter: Path, acme_body: str) -> dict:
+    acme_script = tmp_path / "seed-acme.sh"
+    _seed_step(acme_script, acme_body)
+    globex_script = tmp_path / "seed-globex.sh"
+    _seed_step(globex_script, f'#!/bin/sh\nprintf "g" >> {counter}\necho \'{{}}\'\n')
+    return {
+        "seeded-acme": {
+            "steps": [{"kind": "seed", "id": "seed-it", "command": str(acme_script), "cwd": str(tmp_path)}],
+            "args": [], "provides": [{"key": "id", "from": "seed-it", "read": ""}], "needs": [], "secrets": [],
+        },
+        "seeded-globex": {
+            "steps": [{"kind": "seed", "command": str(globex_script), "cwd": str(tmp_path)}],
+            "args": ["id"], "provides": [],
+            "needs": [{"fixture": "seeded-acme", "args": {"id": "@seeded-acme.id"}}],
+            "secrets": [],
+        },
+    }
+
+
+def test_a_precondition_built_in_one_scenario_is_reused_by_the_next_in_its_lap(tmp_path: Path) -> None:
+    counter = tmp_path / "runs.txt"
+    book_fixtures = _lap_fixtures(tmp_path, counter, f'#!/bin/sh\nprintf "a" >> {counter}\necho \'{{"id": "acc-1"}}\'\n')
+    module = _write(tmp_path, LAP_SCENARIOS)
+    lap = tmp_path / "lap"
+
+    first_code, first_out, first_records = _run(module, "first-page", tmp_path, book_fixtures=book_fixtures, lap_dir=lap)
+    second_code, second_out, second_records = _run(module, "second-page", tmp_path, book_fixtures=book_fixtures, lap_dir=lap)
+
+    assert first_code == 0, first_out
+    assert second_code == 0, second_out
+    assert counter.read_text(encoding="utf-8") == "ag"
+    assert {r["name"]: r["reused"] for r in first_records if r.get("kind") == "fixture"} == {
+        "seeded-acme": False, "seeded-globex": False}
+    assert {r["name"]: r["reused"] for r in second_records if r.get("kind") == "fixture"} == {
+        "seeded-acme": True, "seeded-globex": True}
+
+
+def test_a_precondition_that_failed_in_its_lap_fails_again_without_running(tmp_path: Path) -> None:
+    counter = tmp_path / "runs.txt"
+    book_fixtures = _lap_fixtures(tmp_path, counter, f'#!/bin/sh\nprintf "a" >> {counter}\necho boom >&2\nexit 3\n')
+    module = _write(tmp_path, LAP_SCENARIOS)
+    lap = tmp_path / "lap"
+
+    first_code, _first_out, first_records = _run(module, "first-page", tmp_path, book_fixtures=book_fixtures, lap_dir=lap)
+    second_code, _second_out, second_records = _run(module, "second-page", tmp_path, book_fixtures=book_fixtures, lap_dir=lap)
+
+    assert first_code != 0
+    assert second_code != 0
+    assert counter.read_text(encoding="utf-8") == "a"
+    [first_fault] = [r for r in first_records if r.get("type") == "fixture_fault"]
+    [second_fault] = [r for r in second_records if r.get("type") == "fixture_fault"]
+    assert second_fault == first_fault
+
+
+def test_without_a_lap_each_scenario_builds_its_own_preconditions(tmp_path: Path) -> None:
+    counter = tmp_path / "runs.txt"
+    book_fixtures = _lap_fixtures(tmp_path, counter, f'#!/bin/sh\nprintf "a" >> {counter}\necho \'{{"id": "acc-1"}}\'\n')
+    module = _write(tmp_path, LAP_SCENARIOS)
+
+    first_code, first_out, _first_records = _run(module, "first-page", tmp_path, book_fixtures=book_fixtures)
+    second_code, second_out, _second_records = _run(module, "second-page", tmp_path, book_fixtures=book_fixtures)
+
+    assert first_code == 0, first_out
+    assert second_code == 0, second_out
+    assert counter.read_text(encoding="utf-8") == "agag"
 
 
 def test_a_needs_binding_naming_an_unresolvable_node_key_is_a_defect(tmp_path: Path) -> None:

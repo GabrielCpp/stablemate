@@ -322,6 +322,7 @@ class PythonDriver(QaDriver):
             "root": str(self.root),
             "spec_dir": str(self.session.spec_dir),
             "qa_dir": str(self.session.qa_dir),
+            "lap_dir": self.variables.get("lap_dir", ""),
             "offset_ms": self.session.offset_ms(),
             "tools": qa_tools.resolved_commands(self.root),
             "fixtures": qa_fixtures.resolved(self.root),

@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import tempfile
 from dataclasses import asdict
 from pathlib import Path
 from collections.abc import Mapping
@@ -34,8 +35,17 @@ def run_plan(
     stop_on_fail: bool = False,
     only: list[str] | None = None,
     qa_dirname: str = QA_DIRNAME,
+    lap: Path | None = None,
 ) -> tuple[str, str, dict[str, Any]]:
-    """Execute a validated plan and return ``(status, message, summary)``."""
+    """Execute a validated plan and return ``(status, message, summary)``.
+
+    Each precondition is built once per lap and kept in the lap record under *lap*, so a caller
+    that runs one lap in several calls hands each the same directory. Without one, this call is
+    the lap.
+    """
+    if lap is None:
+        with tempfile.TemporaryDirectory(prefix="ostler-lap-") as scratch:
+            return run_plan(document, root=root, stop_on_fail=stop_on_fail, only=only, qa_dirname=qa_dirname, lap=Path(scratch))
     plan = document.data
     spec_dir = document.spec_dir
     scored = qa_dirname == QA_DIRNAME
@@ -71,6 +81,7 @@ def run_plan(
         for name, path in plan.get("inputs", {}).items()
     }
     variables["qa_dir"] = str(qa_dir.resolve())
+    variables["lap_dir"] = str(lap.resolve())
     session = QaSession.create(
         spec_dir,
         document.run_id,
