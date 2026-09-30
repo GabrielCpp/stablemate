@@ -337,12 +337,14 @@ def user_selections(
                 "repo's always-on instruction file, and no harness reads one from the "
                 "home directory."
             )
-        if include_prompts and harness != "claude":
-            raise SystemExit(
-                f"error: [user_library.{harness}] names prompts. Claude is the only "
-                "harness with a personal command directory (~/.claude/commands), so "
-                "prompts are Claude-only at user scope."
-            )
+        if harness != "claude":
+            if table.get("prompts"):
+                raise SystemExit(
+                    f"error: [user_library.{harness}] names prompts. Claude is the only "
+                    "harness with a personal command directory (~/.claude/commands), so "
+                    "prompts are Claude-only at user scope."
+                )
+            include_prompts = set()
         exclude = table.get("exclude") or {}
         skills = selected_sources(
             all_skills, include_skills, set(exclude.get("skills", []) or [])

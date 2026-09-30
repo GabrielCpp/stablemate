@@ -157,6 +157,28 @@ def test_prompts_under_a_non_claude_harness_are_an_error(
     assert "prompts are Claude-only at user scope" in str(exc.value)
 
 
+def test_a_pack_under_a_non_claude_harness_installs_its_skills_only(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    library = make_library(tmp_path)
+    (library / "packs" / "general.yml").write_text(
+        "skills:\n  - stablemate/*\nprompts:\n  - stablemate/grill\n", encoding="utf-8"
+    )
+    write_config(
+        tmp_path,
+        monkeypatch,
+        '[user_library.claude]\npacks = ["general"]\n\n'
+        '[user_library.codex]\npacks = ["general"]\n',
+    )
+    home = tmp_path / "home"
+
+    assert install(home, library) == 0
+
+    assert (home / ".claude/commands/stablemate-grill.md").is_file()
+    assert (home / ".codex/skills/stablemate-db/SKILL.md").is_file()
+    assert not (home / ".codex/commands").exists()
+
+
 def test_an_unknown_harness_table_is_an_error(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

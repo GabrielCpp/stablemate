@@ -308,6 +308,11 @@ it — are the operator's to choose, not farrier's.
   - run: no user-library table at all is an error naming the config path, since `--user` was
     asked for explicitly
   - verify: exit_status(code=1)
+  - run: install prompts only under Claude, the one harness with a personal command directory. A
+    `prompts:` key under any other table is an error, and a pack's prompts are skipped there, so
+    one `packs = ["general"]` line serves both Claude and Codex
+  - tests: `farrier/tests/test_user_install.py::test_prompts_under_a_non_claude_harness_are_an_error`
+  - tests: `farrier/tests/test_user_install.py::test_a_pack_under_a_non_claude_harness_installs_its_skills_only`
   - run: render each table's selection with a [`Renderer`](concepts/renderer.md) at user scope
     into `~/.claude/skills/<name>/SKILL.md`, `~/.claude/commands/<name>.md`,
     `~/.codex/skills/<name>/SKILL.md` and `~/.copilot/skills/<name>/SKILL.md`
