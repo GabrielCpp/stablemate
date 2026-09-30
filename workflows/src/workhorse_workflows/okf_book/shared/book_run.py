@@ -5,7 +5,7 @@ import logging
 import re
 import shutil
 import tempfile
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -77,11 +77,11 @@ def app_log_lines(app_logs: Sequence[str]) -> list[str]:
     return lines
 
 
-def _run_in_copy(root: Path, spec: Path, only: Sequence[str]) -> RunSummary:
+def _run_in_copy(root: Path, spec: Path, only: Sequence[str], lap: Path) -> RunSummary:
     with tempfile.TemporaryDirectory(prefix="okf-exercise-") as tmp:
         app = Path(tmp) / "app"
         _ = shutil.copytree(root, app, ignore=COPY_IGNORED)
-        return run_scenarios(app, spec, only)
+        return run_scenarios(app, spec, only, lap)
 
 
 @dataclass(frozen=True, slots=True)
@@ -150,19 +150,25 @@ def run_plan(root: Path, spec: Path, gaps: tuple[str, ...], serving: bool, only:
 
     A run of every scenario probes each precondition first. A probe that fails on what its fixture
     arranges, or on the environment, stops the run before the book, since every claim that fixture
-    arranges would fail the same way.
+    arranges would fail the same way. The probes and the book are one lap, so each precondition is
+    built once across both.
     """
-    run = run_scenarios if serving else _run_in_copy
+    runner = run_scenarios if serving else _run_in_copy
+    with tempfile.TemporaryDirectory(prefix="okf-lap-") as lap:
+        return _run_lap(root, spec, gaps, only, lambda names: runner(root, spec, names, Path(lap)))
+
+
+def _run_lap(root: Path, spec: Path, gaps: tuple[str, ...], only: Sequence[str], run: Callable[[Sequence[str]], RunSummary]) -> ExerciseResult:
     if not only:
         scenarios, _problems = plan_scenarios(root, spec)
         probes = [scenario.id for scenario in scenarios if is_probe(scenario.id)]
         if probes:
-            probed = run(root, spec, probes)
+            probed = run(probes)
             if any(signature.cause in PROBE_STOPS for signature in probed.signatures):
                 lines = ("problem: a precondition probe failed, so the book did not run", *gaps, *_failure_lines(probed))
                 return ExerciseResult(lines=lines, summary=probed)
             only = [scenario.id for scenario in scenarios if not is_probe(scenario.id)]
-    summary = run(root, spec, only)
+    summary = run(only)
     empty = () if summary.scenarios else ("problem: the plan runs no scenario",)
     failures = (*gaps, *_failure_lines(summary), *empty)
     if failures:

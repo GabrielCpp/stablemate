@@ -165,7 +165,7 @@ def _probed(monkeypatch: pytest.MonkeyPatch, probe_cause: Cause | None) -> list[
     def _plan_scenarios(*_args: object) -> tuple[tuple[Scenario, ...], tuple[str, ...]]:
         return plan, ()
 
-    def _run_scenarios(_root: Path, _spec: Path, only: tuple[str, ...]) -> RunSummary:
+    def _run_scenarios(_root: Path, _spec: Path, only: tuple[str, ...], _lap: Path) -> RunSummary:
         asked.append(tuple(only))
         if probe_cause is None or tuple(only) != ("probe-signed-in-editor",):
             return RunSummary(status="passed", scenarios={name: ScenarioOutcome(status="passed") for name in only})
@@ -187,6 +187,25 @@ def test_a_precondition_whose_probe_is_refused_stops_the_run_before_the_book(mon
     assert result.lines[0] == "problem: a precondition probe failed, so the book did not run"
     assert result.summary is not None
     assert list(result.summary.failures_by_page(())) == ["docs/fixtures/signed-in-editor.md"]
+
+
+def test_the_probes_and_the_book_run_in_one_lap_that_ends_with_the_run(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    _ = _probed(monkeypatch, None)
+    laps: list[Path] = []
+    probing = book_run.run_scenarios
+
+    def _run_scenarios(root: Path, spec: Path, only: tuple[str, ...], lap: Path) -> RunSummary:
+        laps.append(lap)
+        _ = (lap / "arranged.json").write_text("{}", encoding="utf-8")
+        return probing(root, spec, only, lap)
+
+    monkeypatch.setattr(book_run, "run_scenarios", _run_scenarios)
+
+    _ = run_plan(tmp_path, tmp_path / "spec", (), True)
+
+    assert len(laps) == 2
+    assert laps[0] == laps[1]
+    assert not laps[0].exists()
 
 
 def test_probes_that_pass_let_the_book_run_without_them(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

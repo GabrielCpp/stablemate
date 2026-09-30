@@ -239,12 +239,12 @@ def select_scenarios(scenarios: Sequence[Scenario], arranging: Mapping[str, Sequ
     return Selection(scenarios=tuple(chosen), unmatched=tuple(unmatched))
 
 
-def run_scenarios(root: Path, spec: Path, only: Iterable[str]) -> RunSummary:
-    """Run the named scenarios of the compiled plan, all of them when none is named."""
+def run_scenarios(root: Path, spec: Path, only: Iterable[str], lap: Path | None = None) -> RunSummary:
+    """Run the named scenarios of the compiled plan, all of them when none is named, building each precondition once in the lap *lap* records."""
     document, problems = load_plan(spec / PLAN_NAME, spec, root)
     if document is None:
         return RunSummary(status="invalid", problems=tuple(problems))
-    _status, _message, summary = run_plan(document, root=root, only=list(only) or None)
+    _status, _message, summary = run_plan(document, root=root, only=list(only) or None, lap=lap)
     return RunSummary.model_validate(summary)
 
 
