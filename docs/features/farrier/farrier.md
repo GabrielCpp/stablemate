@@ -331,10 +331,16 @@ it — are the operator's to choose, not farrier's.
     `.gitignore` rules, no aggregated `AGENTS.md`. Each of those describes a checkout
   - run: [ownership](#ownership) is unchanged, so a hand-written `~/.claude/skills/mine/SKILL.md`
     survives every install and a path farrier would overwrite aborts the run naming the file
-- **Never implied by a repo install.** The two scopes collide differently per harness — a personal
-  Claude skill shadows the project's copy, while Copilot resolves the project's first — so which
-  copy an agent gets depends on the harness. That is a decision for the operator to take once,
-  explicitly, rather than a side effect of installing into some repo.
+- **A repo install refreshes it once it is configured.** The two scopes collide differently per
+  harness. A personal Claude skill shadows the project's copy, while Copilot resolves the
+  project's first, so which copy an agent gets depends on the harness. Writing a
+  `[user_library.<harness>]` table is the operator's one explicit decision to take that on. From
+  then on every repo install (not `--check`) re-renders the user library after the repo, so the
+  personal copy follows the library as a repo's does. With no table, a repo install never touches
+  the home directory.
+  - tests: `farrier/tests/test_user_install.py::test_a_repo_install_also_refreshes_the_user_library`
+  - tests: `farrier/tests/test_user_install.py::test_a_repo_install_leaves_the_home_alone_without_a_user_library`
+  - tests: `farrier/tests/test_user_install.py::test_a_repo_check_never_writes_the_user_library`
 - code: `farrier/farrier/cli.py::_run_user_install` @e7cba44feabc, `farrier/farrier/outputs.py::render_user_expected` @3967ecfa24a2
 - verify: created(subject="selected user-scope harness outputs")
 - verify: absent(subject="repo scaffolding in the user home")

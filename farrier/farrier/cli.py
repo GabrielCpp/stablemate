@@ -78,6 +78,7 @@ from farrier.sources import (
     load_layered_sources,
     selected_sources,
 )
+from farrier.user_library import user_library_tables
 
 
 def _add_install_args(parser: argparse.ArgumentParser) -> None:
@@ -112,13 +113,14 @@ def _add_install_args(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         help="Install into the harness home directories (~/.claude, ~/.codex, "
              "~/.copilot) from the [user_library.<harness>] tables of the stablemate "
-             "config, instead of into a repo. Needs no repo and no agents.yml.",
+             "config, instead of into a repo. Needs no repo and no agents.yml. A repo "
+             "install does this too, after the repo, whenever those tables exist.",
     )
     parser.add_argument(
         "--home",
         type=Path,
-        help="With --user: the home directory to install into (default: ~). For tests "
-             "and for trying a selection out without touching the real one.",
+        help="The home directory the user library installs into (default: ~). For "
+             "tests and for trying a selection out without touching the real one.",
     )
 
 
@@ -179,6 +181,8 @@ def _run_install(args: argparse.Namespace) -> int:
         return check_outputs(repo, outputs, manager, managed)
     install_outputs(repo, outputs, manager, managed)
     print(f"Installed {len(outputs)} generated files into {repo}")
+    if user_library_tables(read_config()):
+        return _run_user_install(args)
     return 0
 
 

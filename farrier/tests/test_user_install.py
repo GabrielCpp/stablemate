@@ -251,3 +251,53 @@ def test_the_generated_file_names_the_user_scope_command(
     assert "farrier install --user" in text
     assert "make agent-install" not in text
     assert 'resolve: "farrier source ~/.claude/skills/stablemate-db/SKILL.md"' in text
+
+
+def install_repo(repo: Path, home: Path, library: Path, *extra: str) -> int:
+    repo.mkdir(parents=True, exist_ok=True)
+    (repo / "agents.yml").write_text(
+        'agents:\n  claude: true\nskills:\n  - "stablemate/cache"\n', encoding="utf-8"
+    )
+    return main(["install", "--repo", str(repo), "--home", str(home),
+                 "--library", str(library), *extra])
+
+
+def test_a_repo_install_also_refreshes_the_user_library(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    library = make_library(tmp_path)
+    write_config(tmp_path, monkeypatch, CLAUDE_ONE)
+    repo = tmp_path / "acme"
+    home = tmp_path / "home"
+
+    assert install_repo(repo, home, library) == 0
+
+    assert (repo / ".claude/skills/acme-stablemate-cache/SKILL.md").is_file()
+    assert (home / ".claude/skills/stablemate-db/SKILL.md").is_file()
+
+
+def test_a_repo_install_leaves_the_home_alone_without_a_user_library(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    library = make_library(tmp_path)
+    write_config(tmp_path, monkeypatch, "")
+    repo = tmp_path / "acme"
+    home = tmp_path / "home"
+
+    assert install_repo(repo, home, library) == 0
+
+    assert not home.exists()
+
+
+def test_a_repo_check_never_writes_the_user_library(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    library = make_library(tmp_path)
+    write_config(tmp_path, monkeypatch, CLAUDE_ONE)
+    repo = tmp_path / "acme"
+    home = tmp_path / "home"
+    assert install_repo(repo, tmp_path / "other-home", library) == 0
+
+    assert install_repo(repo, home, library, "--check") == 0
+
+    assert not home.exists()
