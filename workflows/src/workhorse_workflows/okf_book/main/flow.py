@@ -237,9 +237,13 @@ class OkfBook(BookFlow):
         return Await(gate, question, self.resume, gate=str(gate), question=question).because("blockers wait for the operator")
 
     def resume(self, gate: str = "", question: str = "") -> Continue[...]:
-        """The operator has fixed what the blockers named, or said how. Their answer is kept for every repair turn. The books they named pass again, and every blocker is forgotten, since that pass records again each one that still holds. A blocker that names no service sends every book."""
+        """The operator has fixed what the blockers named, or said how. Their answer is kept for every repair turn."""
         text = Path(gate).read_text(encoding="utf-8") if gate and Path(gate).is_file() else ""
         write_answer(self.records_dir, answer_below(text, question))
+        return Continue(None, self.route_blocked).because("the operator's answer is kept for the repair turns")
+
+    def route_blocked(self) -> Continue[...]:
+        """The books the blockers named pass again, and every blocker is forgotten, since that pass records again each one that still holds. A blocker that names no service sends every book."""
         blocked = {blocker.service for blocker in read_blockers(self.records_dir)}
         blocked_services = tuple(service for service in self.services if service in blocked)
         write_pass(self.records_dir, blocked_services if blocked_services and "" not in blocked else self.services)

@@ -28,9 +28,10 @@ def test_the_answer_to_the_blockers_is_kept_for_the_repair(tmp_path: Path) -> No
     gate = tmp_path / OPERATOR_NAME
     _ = gate.write_text(gates.apply_answer(gates.format_operator_gate(question), ANSWER), encoding="utf-8")
 
-    _ = book.resume(gate=str(gate), question=question)
+    step = book.resume(gate=str(gate), question=question)
 
     assert read_answer(tmp_path) == ANSWER
+    assert step.state == "route_blocked"
 
 
 def test_a_gate_asking_something_newer_holds_no_answer_to_the_old_question() -> None:

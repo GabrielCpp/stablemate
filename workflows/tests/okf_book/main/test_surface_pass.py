@@ -21,7 +21,7 @@ def test_the_operators_answer_routes_only_the_books_it_blocked(tmp_path: Path) -
     _ = book.start()
     _ = record_blocker(tmp_path, Blocker(subject="ledger", service="ledger", phase=Phase.EXERCISE, side=Side.BOOK, reason="failed its run"))
 
-    step = book.resume()
+    step = book.route_blocked()
 
     assert (step.state, step.params) == ("route_book", {"index": 1})
     assert read_pass(tmp_path, book.services) == ("ledger",)
