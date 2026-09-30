@@ -21,6 +21,7 @@ from ostler.model import load as load_graph
 from ostler.routes import arrived_at, literal_route, screen_routes
 from ostler.untyped import JsonValue
 from ostler.qa import book_fixtures as qa_book_fixtures
+from ostler.qa.attribution import NO_ATTRIBUTION, SAMPLE_CHARS, Attribution, Cause, attribute
 from ostler.qa import fixtures as qa_fixtures
 from ostler.qa import tools as qa_tools
 from ostler.qa.harness_host import (
@@ -101,18 +102,22 @@ class CommandEnding:
 
 @dataclass(frozen=True)
 class FailedCheck:
-    """One assertion that did not hold: what it asserted, what it expected, what it observed, and the claims it covers."""
+    """One assertion that did not hold: what it asserted, what it expected, what it observed, the claims it covers, and whose fault it is."""
 
     label: str
     expected: str
     actual: str
     command_ending_text: str = ""
     covers: tuple[str, ...] = ()
+    cause: Cause = Cause.UNATTRIBUTED
+    precondition: str = ""
+    status: str = ""
+    shape: str = ""
 
     @classmethod
     def of(
         cls, label: str, expected: JsonValue, actual: JsonValue, command_ending: CommandEnding | None = None,
-        covers: Sequence[str] = (),
+        covers: Sequence[str] = (), attribution: Attribution = NO_ATTRIBUTION,
     ) -> FailedCheck:
         """A failed check whose expected and observed values are rendered as JSON text, with how the command it observed ended."""
         return cls(
@@ -121,7 +126,18 @@ class FailedCheck:
             json.dumps(actual, default=str),
             command_ending.text() if command_ending is not None else "",
             tuple(covers),
+            attribution.cause,
+            attribution.precondition,
+            attribution.status,
+            attribution.shape,
         )
+
+    def attribution(self) -> Attribution:
+        return Attribution(self.cause, self.precondition, self.status, self.shape)
+
+    def sample(self) -> str:
+        """The check as one line a signature shows for every check it groups."""
+        return f"{self.label}: expected {self.expected}, observed {self.actual}"[:SAMPLE_CHARS]
 
 
 @dataclass
@@ -481,7 +497,7 @@ class PythonDriver(QaDriver):
         if not passed:
             tally.count_failure(FailedCheck.of(
                 str(record.get("label", "")), record.get("expected"), record.get("actual"),
-                CommandEnding.read(record), [str(claim) for claim in record.get("covers") or []]))
+                CommandEnding.read(record), [str(claim) for claim in record.get("covers") or []], attribute(record)))
 
     def _grade_vet_and_list_problems(
         self,
@@ -515,7 +531,8 @@ class PythonDriver(QaDriver):
                 step=step,
             )
             if not passed:
-                tally.count_failure(FailedCheck.of(verdict.sentence(), verdict.expected, verdict.observed()))
+                tally.count_failure(FailedCheck.of(
+                    verdict.sentence(), verdict.expected, verdict.observed(), attribution=Attribution(Cause.BOOK)))
         return trouble
 
     def _step_record(

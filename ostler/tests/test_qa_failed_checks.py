@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+from ostler.qa.attribution import Cause
 from ostler.qa.drivers import CommandEnding, DriverBlocked, FailedCheck, PythonDriver
 from ostler.qa.session import QaSession
 
@@ -56,7 +57,19 @@ def test_a_failed_check_on_a_command_says_how_the_command_ended(repo: Path) -> N
     result = _driver(repo)._grade("s-1", ["ac:1"], records, "", 0, timed_out=False)
 
     assert result.failed_checks == [
-        FailedCheck("exit_status(code=0)", "0", "1", "exit 1, stderr: No module named tally")]
+        FailedCheck("exit_status(code=0)", "0", "1", "exit 1, stderr: No module named tally", cause=Cause.BOOK)]
+
+
+def test_a_failed_check_carries_whose_fault_it_is(repo: Path) -> None:
+    exchange = {"method": "GET", "path": "/api/orders", "status": 503, "expected": [200], "credential_sent": False, "precondition": ""}
+    records = [
+        {**_assert("GET /api/orders answers [200]", passed=False, expected=[200], actual=503), "exchange": exchange},
+        {"type": "scenario", "id": "s-1", "status": "failed", "assertions": 1, "failures": 1},
+    ]
+
+    [check] = _driver(repo)._grade("s-1", ["ac:1"], records, "", 0, timed_out=False).failed_checks
+
+    assert (check.cause, check.status, check.shape) == (Cause.APP, "503", "GET /api/…")
 
 
 def test_a_command_ending_the_harness_did_not_shape_as_it_writes_one_is_refused() -> None:

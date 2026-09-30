@@ -10,6 +10,7 @@ from pathlib import Path
 from collections.abc import Mapping
 from typing import Any
 
+from ostler.qa.attribution import signatures
 from ostler.qa.drivers import DriverBlocked, QaDriver, ScenarioResult, create_driver
 from ostler.qa.plan import PlanDocument, check_runtime_requirements
 from ostler.qa.session import QA_DIRNAME, QaSession
@@ -201,6 +202,14 @@ def run_plan(
                 }
                 for name, result in results.items()
             },
+            "signatures": [
+                asdict(signature)
+                for signature in signatures(
+                    (check.attribution(), check.sample())
+                    for result in results.values()
+                    for check in result.failed_checks
+                )
+            ],
         }
     )
     if cleanup_errors:

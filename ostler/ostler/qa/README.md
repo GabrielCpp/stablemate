@@ -6,6 +6,7 @@ plan from the book, run it, and report the evidence.
 ## Map
 
 - `book_fixtures.py`: book-declared fixtures, walked into the shape the harness executes them from.
+- `attribution.py`: whose fault a failed check is, read from its request and reply, and the signatures that group failures sharing one cause.
 - `book_index.py`: what every scenario builder in one plan reads off the whole book, and the base URLs this run resolved for it.
 - `captures.py`: the `capture:` bullet grammar, a fact a scenario produces by running and where to read it.
 - `clean.py`: `ostler qa clean`, which removes the scratch roots the old sibling layout left behind.

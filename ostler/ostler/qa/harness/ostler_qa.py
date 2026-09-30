@@ -89,6 +89,9 @@ EVENTUALLY_INTERVAL = 0.1
 
 _PROCESS_START = time.monotonic()
 
+_CREDENTIAL_HEADERS = frozenset({"authorization", "cookie", "proxy-authorization", "x-api-key"})
+_CREDENTIAL_FACT_MIN_CHARS = 8
+
 
 class HttpError(RuntimeError):
     """A response whose status the scenario did not say it expected, and whether the scenario already recorded it as a failed check."""
@@ -425,6 +428,17 @@ class Response:
             ) from exc
 
 
+@dataclass(frozen=True)
+class Exchange:
+    """One request a scenario made and the status it got back, with no status when it could not connect."""
+
+    method: str
+    url: str
+    status: int | None
+    expected: list[int] | None
+    headers: Mapping[str, str]
+
+
 class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
     """Turns a 3xx response into an `HTTPError` instead of following it."""
 
@@ -444,11 +458,13 @@ class Http:
         *,
         timeout: float = DEFAULT_HTTP_TIMEOUT,
         on_unexpected_status: Callable[[str, str, int, Sequence[int], str], None] | None = None,
+        on_exchange: Callable[[Exchange], None] | None = None,
     ) -> None:
         self.base_url = (base_url or "").rstrip("/")
         self.timeout = timeout
         self.headers: dict[str, str] = {}
         self._on_unexpected_status = on_unexpected_status
+        self._on_exchange = on_exchange
 
     def url_for(self, path: str) -> str:
         if path.startswith(("http://", "https://")):
@@ -481,6 +497,8 @@ class Http:
         for key, value in merged.items():
             request.add_header(key, value)
         opener_open = _NO_REDIRECT_OPENER.open if not follow_redirects else urllib.request.urlopen
+        allowed = _allowed_statuses(expect_status)
+        expected = sorted(allowed) if allowed is not None else None
         try:
             with opener_open(  # noqa: S310
                 request, timeout=timeout or self.timeout
@@ -489,8 +507,9 @@ class Http:
         except urllib.error.HTTPError as exc:
             response = Response(exc.code, dict(exc.headers or {}), exc.read(), url)
         except urllib.error.URLError as exc:
+            self._exchanged(Exchange(method.upper(), url, None, expected, merged))
             raise HttpError(f"{method.upper()} {url} could not connect: {exc.reason}") from exc
-        allowed = _allowed_statuses(expect_status)
+        self._exchanged(Exchange(method.upper(), url, response.status, expected, merged))
         if allowed is None:
             if response.status >= 400:
                 raise HttpError(
@@ -505,6 +524,10 @@ class Http:
                 recorded=self._on_unexpected_status is not None,
             )
         return response
+
+    def _exchanged(self, exchange: Exchange) -> None:
+        if self._on_exchange is not None:
+            self._on_exchange(exchange)
 
     def get(self, path: str, **kwargs: Any) -> Response:
         return self.request("GET", path, **kwargs)
@@ -717,7 +740,9 @@ class Qa:
         self._recorder = recorder
         self._captures: dict[str, str] = {}
         self._checkout_copy: Path | None = None
-        self.http = Http(target.base_url, on_unexpected_status=self._status_mismatch)
+        self._exchange: dict[str, Any] | None = None
+        self._claim_fault: dict[str, str] | None = None
+        self.http = Http(target.base_url, on_unexpected_status=self._status_mismatch, on_exchange=self._saw_exchange)
         self._index = 0
         self.assertions = 0
         self.failures = 0
@@ -857,6 +882,7 @@ class Qa:
             fault_class=fault_class, detail=detail,
         )
         self._recorder.emit({"type": "fixture_fault", **asdict(fault)})
+        self._claim_fault = {"class": fault_class, "fixture": fixture, "page": str(self._book_fixtures.get(fixture, {}).get("page", ""))}
 
     def scenario_checkout_copy(self) -> Path:
         """This scenario's own directory under `self.dir`: a fresh copy of the checkout as the runbook left it, made on the first call.
@@ -1041,6 +1067,25 @@ class Qa:
         )
 
 
+    def _saw_exchange(self, exchange: Exchange) -> None:
+        """Keep what the last request asked and got, and which precondition issued the credential it sent, never the credential itself."""
+        sent = [value for key, value in exchange.headers.items() if key.lower() in _CREDENTIAL_HEADERS and value.strip()]
+        self._exchange = {
+            "method": exchange.method,
+            "path": urllib.parse.urlsplit(exchange.url).path,
+            "status": exchange.status,
+            "expected": exchange.expected,
+            "credential_sent": bool(sent),
+            "precondition": self._issuer_of(sent),
+        }
+
+    def _issuer_of(self, sent: Sequence[str]) -> str:
+        """The page of the precondition whose fact appears in a credential header value, or ``""`` when none does."""
+        for name, facts in self._node_facts.items():
+            if any(len(fact) >= _CREDENTIAL_FACT_MIN_CHARS and fact in value for fact in facts.values() for value in sent):
+                return str(self._book_fixtures.get(name, {}).get("page") or name)
+        return ""
+
     def _status_mismatch(
         self, method: str, url: str, status: int, allowed: Sequence[int], reply: str
     ) -> None:
@@ -1223,6 +1268,11 @@ class Qa:
             "expected": expected,
             "covers": list(covers) if covers is not None else [],
         }
+        if not passed:
+            if self._exchange is not None:
+                record["exchange"] = self._exchange
+            if self._claim_fault is not None:
+                record["fault"] = self._claim_fault
         if extra:
             record.update(extra)
         self._recorder.emit(record)
@@ -1234,6 +1284,8 @@ class Qa:
         """Run one claim's request and checks, so a claim that fails is recorded against it alone and the scenario goes on to the next."""
         scenario_covers = self.covers
         self.covers = list(covers)
+        self._exchange = None
+        self._claim_fault = None
         try:
             yield
         except CheckFailed:
@@ -1242,9 +1294,13 @@ class Qa:
             if not exc.recorded:
                 _ = self._record(str(exc), False, str(exc), "a response", covers)
         except Exception as exc:
-            _ = self._record(f"the claim raised {type(exc).__name__}", False, str(exc), "no error", covers)
+            _ = self._record(
+                f"the claim raised {type(exc).__name__}", False, str(exc), "no error", covers,
+                extra={"raised": type(exc).__name__},
+            )
         finally:
             self.covers = scenario_covers
+            self._claim_fault = None
 
     @contextmanager
     def step(self, label: str) -> Iterator[None]:

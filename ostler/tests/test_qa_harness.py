@@ -484,6 +484,37 @@ def test_an_unmet_expect_status_is_recorded_before_it_raises(tmp_path: Path) -> 
     assert records[-1]["status"] == "errored"
 
 
+def test_an_unmet_expect_status_keeps_the_request_it_answered(tmp_path: Path) -> None:
+    """Whose fault a refusal is depends on the request and its status, so the failed check carries both."""
+    _, records = _run(_write(tmp_path, STATUS_PLAN), "a-stale-confirm-is-refused", tmp_path)
+
+    assert _asserts(records)[0]["exchange"] == {
+        "method": "POST", "path": "/api/seats/A2/booking", "status": 201, "expected": [409],
+        "credential_sent": False, "precondition": "",
+    }
+
+
+UNREACHABLE_PLAN = STATUS_PLAN.split("@scenario")[0] + '''\
+@scenario(target=api, mechanism="live", covers=["okf:docs/a.md#confirm:does:1"])
+def nothing_listens(qa: Qa) -> None:
+    """A request to a port nothing listens on."""
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Always201)
+    port = server.server_address[1]
+    server.server_close()
+    qa.http.base_url = "http://127.0.0.1:%d" % port
+    with qa.claim(["okf:docs/a.md#confirm:does:1"]):
+        qa.http.get("/api/seats", expect_status=200)
+'''
+
+
+def test_a_request_that_could_not_connect_keeps_no_status(tmp_path: Path) -> None:
+    _, records = _run(_write(tmp_path, UNREACHABLE_PLAN), "nothing-listens", tmp_path)
+
+    [asserted] = _asserts(records)
+    assert asserted["passed"] is False
+    assert (asserted["exchange"]["path"], asserted["exchange"]["status"]) == ("/api/seats", None)
+
+
 REPLY_PLAN = STATUS_PLAN.replace(
     '''        self.send_response(201)
         self.send_header("Content-Length", "0")

@@ -119,6 +119,7 @@ def resolved(graph: Graph) -> dict[str, dict[str, Any]]:
     for node in nodes:
         stem = Path(node.id).stem
         out[stem] = {
+            "page": node.id,
             "steps": _steps_of(graph, node),
             "args": _declared_args(node),
             "provides": _declared_provides(node),

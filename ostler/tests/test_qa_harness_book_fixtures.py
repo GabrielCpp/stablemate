@@ -663,3 +663,64 @@ def test_a_scenario_that_runs_no_command_copies_no_checkout(tmp_path: Path) -> N
 
     assert code == 0, (stdout, records)
     assert not (tmp_path / "qa" / "a-scenario-that-runs-no-command").exists()
+
+
+CREDENTIAL_SCENARIO = '''\
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+
+class Refuses(BaseHTTPRequestHandler):
+    def do_GET(self):  # noqa: N802
+        self.send_response(401)
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
+    def log_message(self, *args):
+        pass
+
+
+@scenario(target=api, mechanism="live", covers=["ac:1", "ac:2", "ac:3"])
+def a_token_the_app_refuses(qa: Qa) -> None:
+    """One request with the seeded token, one with none, and a claim whose precondition breaks."""
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Refuses)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    qa.http.base_url = "http://127.0.0.1:%d" % server.server_address[1]
+    qa.fixture("signed-in")
+    with qa.claim(["ac:1"]):
+        qa.http.get("/api/me", headers={"Authorization": qa.resolve("Bearer @signed-in.token")}, expect_status=200)
+    with qa.claim(["ac:2"]):
+        qa.http.get("/api/me", expect_status=200)
+    with qa.claim(["ac:3"]):
+        qa.fixture("broken")
+'''
+
+TOKEN = "tok-4f1c-99ab-seeded"
+
+
+def test_a_failed_check_names_the_precondition_whose_credential_it_sent_and_never_the_credential(tmp_path: Path) -> None:
+    seed = tmp_path / "seed.sh"
+    _seed_step(seed, f'#!/bin/sh\necho \'{{"token": "{TOKEN}"}}\'\n')
+    broken = tmp_path / "broken.sh"
+    _seed_step(broken, "#!/bin/sh\nexit 3\n")
+    book_fixtures = {
+        "signed-in": {
+            "page": "docs/fixtures/signed-in.md",
+            "steps": [{"kind": "seed", "id": "seed-it", "command": str(seed), "cwd": str(tmp_path)}],
+            "args": [], "provides": [{"key": "token", "from": "seed-it", "read": ""}], "needs": [], "secrets": [],
+        },
+        "broken": {
+            "page": "docs/fixtures/broken.md",
+            "steps": [{"kind": "seed", "id": "fail", "command": str(broken), "cwd": str(tmp_path)}],
+            "args": [], "provides": [], "needs": [], "secrets": [],
+        },
+    }
+
+    _, stdout, records = _run(_write(tmp_path, CREDENTIAL_SCENARIO), "a-token-the-app-refuses", tmp_path, book_fixtures=book_fixtures)
+
+    sent, unsent, arranged = [r for r in records if r.get("type") == "assert"]
+    assert (sent["exchange"]["credential_sent"], sent["exchange"]["precondition"]) == (True, "docs/fixtures/signed-in.md"), stdout
+    assert (unsent["exchange"]["credential_sent"], unsent["exchange"]["precondition"]) == (False, "")
+    assert arranged["fault"] == {"class": "defect", "fixture": "broken", "page": "docs/fixtures/broken.md"}
+    assert arranged["raised"] == "RuntimeError"
+    assert TOKEN not in json.dumps([sent, unsent, arranged])
