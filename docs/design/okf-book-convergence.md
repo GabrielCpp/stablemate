@@ -324,6 +324,17 @@ read-only reference. No concept belongs to two parts.
   answer names the signatures it settles, so each writer reads only its own (aim 2, three
   narrower rooms). A failure no rule matches is unattributed and goes up, never to the
   book by default.
+- **R5.** §6, slice 1. Building Attribution refined its rules. A fault on a fixture page
+  that is not `environment` is the arrangement's. A request that could not connect is the
+  environment's. A 401 or 403 on a claim that expects success is the arrangement's when a
+  fixture issued the credential it sent, the book's when it sent none, and unattributed
+  otherwise. The harness matches the credential to its fixture by value and records only
+  the page. A Signature is keyed by cause, precondition page, reply status and route
+  shape, the method with the first path segment. Cause has no tool member, because no rule
+  can tell ostler's own defect from evidence yet. Slice 1 extends the blocker's `Side`
+  with environment and unattributed instead of splitting cause from party, which waits on
+  Escalation. The done-when is measured on the next run's output, since run 17's output
+  predates the exchange evidence the rules read.
 
 ### Parts
 
