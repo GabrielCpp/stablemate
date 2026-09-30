@@ -721,6 +721,6 @@ def test_a_failed_check_names_the_precondition_whose_credential_it_sent_and_neve
     sent, unsent, arranged = [r for r in records if r.get("type") == "assert"]
     assert (sent["exchange"]["credential_sent"], sent["exchange"]["precondition"]) == (True, "docs/fixtures/signed-in.md"), stdout
     assert (unsent["exchange"]["credential_sent"], unsent["exchange"]["precondition"]) == (False, "")
-    assert arranged["fault"] == {"class": "defect", "fixture": "broken", "page": "docs/fixtures/broken.md"}
+    assert arranged["fault"] == {"fault_class": "defect", "fixture": "broken", "page": "docs/fixtures/broken.md"}
     assert arranged["raised"] == "RuntimeError"
     assert TOKEN not in json.dumps([sent, unsent, arranged])

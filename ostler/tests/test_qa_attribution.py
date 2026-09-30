@@ -6,7 +6,7 @@ from typing import Any
 
 import pytest
 
-from ostler.qa.attribution import Attribution, Cause, attribute, route_shape, signatures
+from ostler.qa.attribution import Attribution, Cause, CheckEvidence, attribute, route_shape, signatures
 
 SIGNED_IN = "docs/features/tally/fixtures/signed-in.md"
 
@@ -41,31 +41,31 @@ def _failed(status: int | None, *, path: str = "/api/orders/42", expected: list[
     ],
 )
 def test_the_first_rule_the_evidence_meets_names_the_cause(record: dict[str, Any], cause: Cause) -> None:
-    assert attribute(record).cause is cause
+    assert attribute(CheckEvidence.model_validate(record)).cause is cause
 
 
 def test_a_refused_credential_blames_the_precondition_that_issued_it_whatever_the_route() -> None:
     record = _failed(401, credential_sent=True, precondition=SIGNED_IN)
 
-    assert attribute(record) == Attribution(Cause.ARRANGEMENT, SIGNED_IN, "401")
+    assert attribute(CheckEvidence.model_validate(record)) == Attribution(Cause.ARRANGEMENT, SIGNED_IN, "401")
 
 
 def test_a_fixture_that_broke_inside_a_claim_blames_its_page() -> None:
-    record = {**_failed(None), "raised": "RuntimeError", "fault": {"class": "defect", "fixture": "signed-in", "page": SIGNED_IN}}
+    record = {**_failed(None), "raised": "RuntimeError", "fault": {"fault_class": "defect", "fixture": "signed-in", "page": SIGNED_IN}}
 
-    assert attribute(record) == Attribution(Cause.ARRANGEMENT, SIGNED_IN)
+    assert attribute(CheckEvidence.model_validate(record)) == Attribution(Cause.ARRANGEMENT, SIGNED_IN)
 
 
 def test_a_missing_secret_is_the_environment_s_even_on_a_book_fixture() -> None:
-    record = {"label": "a check", "passed": False, "fault": {"class": "environment", "fixture": "signed-in", "page": SIGNED_IN}}
+    record = {"label": "a check", "passed": False, "fault": {"fault_class": "environment", "fixture": "signed-in", "page": SIGNED_IN}}
 
-    assert attribute(record).cause is Cause.ENVIRONMENT
+    assert attribute(CheckEvidence.model_validate(record)).cause is Cause.ENVIRONMENT
 
 
 def test_a_fault_outside_the_book_s_fixtures_falls_through_to_the_reply() -> None:
-    record = {**_failed(500), "fault": {"class": "defect", "fixture": "a-scenario", "page": ""}}
+    record = {**_failed(500), "fault": {"fault_class": "defect", "fixture": "a-scenario", "page": ""}}
 
-    assert attribute(record).cause is Cause.APP
+    assert attribute(CheckEvidence.model_validate(record)).cause is Cause.APP
 
 
 def test_a_route_shape_keeps_the_method_and_first_segment() -> None:

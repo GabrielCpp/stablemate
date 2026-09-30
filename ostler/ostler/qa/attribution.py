@@ -4,7 +4,8 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Any
+
+from pydantic import BaseModel, ConfigDict
 
 UNREACHABLE = "could not connect"
 SAMPLE_CHARS = 300
@@ -39,44 +40,73 @@ def route_shape(method: str, path: str) -> str:
     return f"{method} /{segment}/…" if segment else f"{method} /"
 
 
-def attribute(record: Mapping[str, Any]) -> Attribution:
+class ExchangeEvidence(BaseModel):
+    """What a failed check's last request asked and got, and which precondition issued the credential it sent."""
+
+    model_config = ConfigDict(frozen=True)
+
+    method: str
+    path: str
+    status: int | None
+    expected: tuple[int, ...] | None
+    credential_sent: bool
+    precondition: str
+
+
+class FaultEvidence(BaseModel):
+    """The book-fixture fault a failed check met: its class, the fixture and the page that declares it."""
+
+    model_config = ConfigDict(frozen=True)
+
+    fault_class: str
+    fixture: str
+    page: str
+
+
+class CheckEvidence(BaseModel):
+    """What one failed harness check recorded about why it failed, validated once as it leaves the harness."""
+
+    model_config = ConfigDict(frozen=True)
+
+    fault: FaultEvidence | None = None
+    exchange: ExchangeEvidence | None = None
+    raised: str = ""
+    command_ending: Mapping[str, object] | None = None
+
+
+def attribute(evidence: CheckEvidence) -> Attribution:
     """The cause of one failed harness check, by the first rule its evidence meets; no rule met leaves it unattributed."""
-    fault = record.get("fault")
-    if isinstance(fault, Mapping):
-        blamed = str(fault.get("page") or "")
-        if fault.get("class") == "environment":
-            return Attribution(Cause.ENVIRONMENT, blamed or str(fault.get("fixture") or ""))
-        if blamed:
-            return Attribution(Cause.ARRANGEMENT, blamed)
-    exchange = record.get("exchange")
-    if not isinstance(exchange, Mapping):
-        return Attribution(Cause.BOOK if record.get("command_ending") is not None else Cause.UNATTRIBUTED)
-    status = exchange.get("status")
-    path = str(exchange.get("path") or "")
-    shape = route_shape(str(exchange.get("method") or ""), path)
-    if not isinstance(status, int):
+    fault = evidence.fault
+    if fault is not None:
+        if fault.fault_class == "environment":
+            return Attribution(Cause.ENVIRONMENT, fault.page or fault.fixture)
+        if fault.page:
+            return Attribution(Cause.ARRANGEMENT, fault.page)
+    exchange = evidence.exchange
+    if exchange is None:
+        return Attribution(Cause.BOOK if evidence.command_ending is not None else Cause.UNATTRIBUTED)
+    shape = route_shape(exchange.method, exchange.path)
+    status = exchange.status
+    if status is None:
         return Attribution(Cause.ENVIRONMENT, status=UNREACHABLE, shape=shape)
     seen = str(status)
-    if record.get("raised"):
+    if evidence.raised:
         return Attribution(Cause.UNATTRIBUTED, status=seen, shape=shape)
     if status >= 500:
         return Attribution(Cause.APP, status=seen, shape=shape)
-    if status == 404 and "{" in path:
+    if status == 404 and "{" in exchange.path:
         return Attribution(Cause.BOOK, status=seen, shape=shape)
-    if status in (401, 403) and _expects_success(exchange.get("expected")):
-        issuer = str(exchange.get("precondition") or "")
-        if issuer:
-            return Attribution(Cause.ARRANGEMENT, issuer, seen)
-        if not exchange.get("credential_sent"):
+    if status in (401, 403) and _expects_success(exchange.expected):
+        if exchange.precondition:
+            return Attribution(Cause.ARRANGEMENT, exchange.precondition, seen)
+        if not exchange.credential_sent:
             return Attribution(Cause.BOOK, status=seen, shape=shape)
         return Attribution(Cause.UNATTRIBUTED, status=seen, shape=shape)
     return Attribution(Cause.BOOK, status=seen, shape=shape)
 
 
-def _expects_success(expected: object) -> bool:
-    if expected is None:
-        return True
-    return isinstance(expected, list) and all(isinstance(code, int) and code < 400 for code in expected)
+def _expects_success(expected: tuple[int, ...] | None) -> bool:
+    return expected is None or all(code < 400 for code in expected)
 
 
 @dataclass(frozen=True)

@@ -15,13 +15,14 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from pydantic import ValidationError
 
 from ostler import path as path_mod
 from ostler.model import load as load_graph
 from ostler.routes import arrived_at, literal_route, screen_routes
 from ostler.untyped import JsonValue
 from ostler.qa import book_fixtures as qa_book_fixtures
-from ostler.qa.attribution import NO_ATTRIBUTION, SAMPLE_CHARS, Attribution, Cause, attribute
+from ostler.qa.attribution import NO_ATTRIBUTION, SAMPLE_CHARS, Attribution, Cause, CheckEvidence, attribute
 from ostler.qa import fixtures as qa_fixtures
 from ostler.qa import tools as qa_tools
 from ostler.qa.harness_host import (
@@ -73,6 +74,14 @@ def _covers_in(
 
 
 DEFAULT_VIEWPORT = {"width": 1440, "height": 900}
+
+
+def _evidence(record: Mapping[str, Any]) -> CheckEvidence:
+    """The evidence a failed harness record carries about why it failed, or a blocked driver when the harness wrote it malformed."""
+    try:
+        return CheckEvidence.model_validate(record)
+    except ValidationError as exc:
+        raise DriverBlocked(f"a harness record's failure evidence is malformed: {exc}") from exc
 
 
 @dataclass(frozen=True)
@@ -497,7 +506,7 @@ class PythonDriver(QaDriver):
         if not passed:
             tally.count_failure(FailedCheck.of(
                 str(record.get("label", "")), record.get("expected"), record.get("actual"),
-                CommandEnding.read(record), [str(claim) for claim in record.get("covers") or []], attribute(record)))
+                CommandEnding.read(record), [str(claim) for claim in record.get("covers") or []], attribute(_evidence(record))))
 
     def _grade_vet_and_list_problems(
         self,

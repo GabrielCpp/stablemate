@@ -439,6 +439,27 @@ class Exchange:
     headers: Mapping[str, str]
 
 
+@dataclass(frozen=True)
+class ExchangeEvidence:
+    """What a failed claim's last request asked and got, and which precondition issued its credential, never the credential itself."""
+
+    method: str
+    path: str
+    status: int | None
+    expected: list[int] | None
+    credential_sent: bool
+    precondition: str
+
+
+@dataclass(frozen=True)
+class ClaimFault:
+    """The book-fixture fault a claim met: its class, the fixture and the page that declares it."""
+
+    fault_class: str
+    fixture: str
+    page: str
+
+
 class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
     """Turns a 3xx response into an `HTTPError` instead of following it."""
 
@@ -740,8 +761,8 @@ class Qa:
         self._recorder = recorder
         self._captures: dict[str, str] = {}
         self._checkout_copy: Path | None = None
-        self._exchange: dict[str, Any] | None = None
-        self._claim_fault: dict[str, str] | None = None
+        self._exchange: ExchangeEvidence | None = None
+        self._claim_fault: ClaimFault | None = None
         self.http = Http(target.base_url, on_unexpected_status=self._status_mismatch, on_exchange=self._saw_exchange)
         self._index = 0
         self.assertions = 0
@@ -882,7 +903,7 @@ class Qa:
             fault_class=fault_class, detail=detail,
         )
         self._recorder.emit({"type": "fixture_fault", **asdict(fault)})
-        self._claim_fault = {"class": fault_class, "fixture": fixture, "page": str(self._book_fixtures.get(fixture, {}).get("page", ""))}
+        self._claim_fault = ClaimFault(fault_class, fixture, str(self._book_fixtures.get(fixture, {}).get("page", "")))
 
     def scenario_checkout_copy(self) -> Path:
         """This scenario's own directory under `self.dir`: a fresh copy of the checkout as the runbook left it, made on the first call.
@@ -1070,14 +1091,14 @@ class Qa:
     def _saw_exchange(self, exchange: Exchange) -> None:
         """Keep what the last request asked and got, and which precondition issued the credential it sent, never the credential itself."""
         sent = [value for key, value in exchange.headers.items() if key.lower() in _CREDENTIAL_HEADERS and value.strip()]
-        self._exchange = {
-            "method": exchange.method,
-            "path": urllib.parse.urlsplit(exchange.url).path,
-            "status": exchange.status,
-            "expected": exchange.expected,
-            "credential_sent": bool(sent),
-            "precondition": self._issuer_of(sent),
-        }
+        self._exchange = ExchangeEvidence(
+            method=exchange.method,
+            path=urllib.parse.urlsplit(exchange.url).path,
+            status=exchange.status,
+            expected=exchange.expected,
+            credential_sent=bool(sent),
+            precondition=self._issuer_of(sent),
+        )
 
     def _issuer_of(self, sent: Sequence[str]) -> str:
         """The page of the precondition whose fact appears in a credential header value, or ``""`` when none does."""
@@ -1270,9 +1291,9 @@ class Qa:
         }
         if not passed:
             if self._exchange is not None:
-                record["exchange"] = self._exchange
+                record["exchange"] = asdict(self._exchange)
             if self._claim_fault is not None:
-                record["fault"] = self._claim_fault
+                record["fault"] = asdict(self._claim_fault)
         if extra:
             record.update(extra)
         self._recorder.emit(record)

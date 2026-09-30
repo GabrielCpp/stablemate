@@ -77,3 +77,13 @@ def test_a_command_ending_the_harness_did_not_shape_as_it_writes_one_is_refused(
     with pytest.raises(DriverBlocked, match="integer exit_code"):
         CommandEnding.read({"command_ending": {"exit_code": "1", "stderr": ""}})
     assert CommandEnding.read({}) is None
+
+
+def test_failure_evidence_the_harness_did_not_shape_as_it_writes_it_is_refused(repo: Path) -> None:
+    records = [
+        {**_assert("GET /api/orders answers [200]", passed=False, expected=[200], actual=503), "exchange": {"method": "GET"}},
+        {"type": "scenario", "id": "s-1", "status": "failed", "assertions": 1, "failures": 1},
+    ]
+
+    with pytest.raises(DriverBlocked, match="failure evidence is malformed"):
+        _ = _driver(repo)._grade("s-1", ["ac:1"], records, "", 0, timed_out=False)
