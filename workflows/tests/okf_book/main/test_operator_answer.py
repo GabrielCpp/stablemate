@@ -68,3 +68,9 @@ def test_the_repair_prompt_carries_the_answer(tmp_path: Path) -> None:
 
     assert f"    {ANSWER}" in answered
     assert "The operator read" not in unanswered
+
+
+def test_a_long_answer_is_capped() -> None:
+    text = gates.apply_answer(gates.format_operator_gate("A question."), "x" * 20000)
+
+    assert len(answer_below(text, "A question.")) < 9000

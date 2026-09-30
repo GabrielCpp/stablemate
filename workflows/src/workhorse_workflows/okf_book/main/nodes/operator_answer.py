@@ -8,9 +8,9 @@ from workhorse import gates
 ANSWER_NAME = "operator-answer.md"
 
 
-def answer_below(gate: str, question: str) -> str:
-    """What the operator wrote under *question* on *gate*. A gate whose newest question is not *question* holds no answer to it."""
-    latest = gates.latest_question(gate, limit=len(gate))
+def answer_below(text: str, question: str) -> str:
+    """What the operator wrote under *question* on the gate *text*, capped as the gate caps its newest exchange. A gate whose newest question is not *question* holds no answer to it."""
+    latest = gates.latest_question(text)
     asked = question.strip()
     if not asked or not latest.startswith(asked):
         return ""
