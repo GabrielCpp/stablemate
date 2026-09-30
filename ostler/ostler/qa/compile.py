@@ -14,6 +14,7 @@ from ostler.qa import book_index as book_index_mod
 from ostler.qa.book_index import BookIndex
 from ostler.qa.compile_cli import cli_scenario_body
 from ostler.qa.compile_http import api_scenarios
+from ostler.qa.compile_http import probe_scenarios
 from ostler.qa.compile_http import http_walk
 from ostler.qa.compile_journey import JourneyPlan
 from ostler.qa.compile_journey import JourneyWalkers
@@ -444,6 +445,7 @@ def _compile_packet(
     journeys = JourneyPlan(book=book, sinks=sinks, navigation=navigation, walkers=_JOURNEY_WALKERS)
     lines = [
         *_plan_header(packet.digest, story, run_id),
+        *probe_scenarios(http_owed, book, emitted),
         *api_scenarios(http_owed, book, sinks, emitted),
         *_cli_scenarios(lanes.cli, book, sinks, emitted),
         *mobile_scenarios(lanes.mobile, book, navigation, sinks, emitted),

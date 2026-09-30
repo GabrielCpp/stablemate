@@ -37,6 +37,7 @@ from ostler.qa.plan_source import call_kwargs
 from ostler.qa.plan_source import check_observes
 from ostler.qa.plan_source import decline_captures
 from ostler.qa.plan_source import operand_for
+from ostler.qa.plan_source import probe_function_name
 from ostler.qa.plan_source import python_literal
 from ostler.qa.plan_source import scenario_lines
 from ostler.qa.plan_source import target_lines
@@ -116,6 +117,69 @@ def api_scenarios(
             arrangement, body)
         lines.extend(scenario_lines(scenario, claim_scenario_function_name(scenario, emitted)))
     return lines
+
+
+_REFUSED = (401, 403)
+
+
+def probe_scenarios(http_owed: list[Obligation], book: BookIndex, emitted: EmittedScenarios) -> list[str]:
+    """One scenario per fixture whose fact a claim sends as a credential: the fixture built on its own, then the first such claim's request, which must not be refused."""
+    lines: list[str] = []
+    probed: set[str] = set()
+    for source, obligations in by_source(http_owed).items():
+        ordered = sorted((o for o in obligations if o.checks), key=lambda o: o.doc_position)
+        credentials = _node_credentials(ordered)
+        callers = _node_caller_headers(ordered)
+        for obligation in ordered:
+            probe = _probe(obligation, credentials.get(obligation.node, ()), callers.get(obligation.node, frozenset()))
+            if probe is None or probe.fixture in probed:
+                continue
+            probed.add(probe.fixture)
+            surface = obligation.surface
+            target_var = target_variable(surface, "api")
+            base_url = f", base_url={python_literal(book.resolved_api_base_urls.get(surface))}"
+            lines.extend(target_lines(target_var, PYTHON.name, base_url, emitted))
+            scenario = SourceScenario(
+                source, target_var, [obligation.id], arrangement_of([obligation]), probe.body(obligation.id),
+                objective=f"Whether {probe.fixture} builds on its own and a caller it signs in is answered on {probe.route}.")
+            lines.extend(scenario_lines(scenario, probe_function_name(probe.fixture, emitted)))
+    return lines
+
+
+@dataclass(frozen=True)
+class _Probe:
+    """The fixture a claim's credential comes from, the route the claim asks, and the request it sends."""
+    fixture: str
+    route: str
+    request: _ClaimRequest
+
+    def body(self, oid: str) -> list[str]:
+        """The claim's request, then the check that the fixture's credential was not refused."""
+        label = f"{self.fixture} signs a caller in that {self.route} does not refuse"
+        refused = python_literal(list(_REFUSED))
+        check = (f"    qa.check({python_literal(label)}, observed.status not in {refused}, "
+                 f"actual=observed.status, expected={python_literal(f'not {refused}')}, covers=[{python_literal(oid)}])")
+        return ["", *_within_claim(oid, [self.request.call, check])]
+
+
+def _probe(obligation: Obligation, credentials: tuple[CallRow, ...], caller: frozenset[tuple[str, str]]) -> _Probe | None:
+    """The probe of the first fixture whose fact *obligation* sends in a header, when the claim is a GET that expects success on a path it can build."""
+    route = _route(obligation.locators)
+    status = _expect_status(obligation.checks)
+    if route is None or route[0] != "GET" or status is None or status >= 400:
+        return None
+    sent = {ref.node for row in _claim_acts(obligation, credentials, caller) if row.name == "header"
+            for ref in references.find_references(row.text_arg("value")) if isinstance(ref, references.NodeRef)}
+    fixture = next((row.name for row in obligation.fixtures if row.name in sent), None)
+    if fixture is None:
+        return None
+    produced = _Produced()
+    produced.record_fixtures(obligation)
+    gaps: list[Gap] = []
+    request = _claim_request(obligation, "observed", produced, gaps, credentials, caller)
+    if not isinstance(request, _ClaimRequest) or request.templated or gaps:
+        return None
+    return _Probe(fixture, f"{route[0]} {_concrete_path(obligation.checks) or route[1]}", request)
 
 
 _BODILESS_METHODS = frozenset({"GET", "DELETE", "HEAD", "OPTIONS"})
@@ -363,7 +427,7 @@ def _scenario_body(obligations: list[Obligation], gaps: list[Gap], covered: set[
     """Compile every claim's request, captures and assertions, in book order."""
     lines: list[str] = []
     produced = _Produced()
-    ordered = sorted(obligations, key=lambda o: o.doc_position or (0, 0))
+    ordered = sorted(obligations, key=lambda o: o.doc_position)
     credentials = _node_credentials(ordered)
     callers = _node_caller_headers(ordered)
     for index, obligation in enumerate(ordered, start=1):

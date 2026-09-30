@@ -12,7 +12,7 @@ plan from the book, run it, and report the evidence.
 - `clean.py`: `ostler qa clean`, which removes the scratch roots the old sibling layout left behind.
 - `compile.py`: the QA plan skeleton compiled out of the book, without reading the implementation.
 - `compile_cli.py`: the CLI builders, a `command` node's claims and a journey of `run:`s as `qa.tool(...)` calls.
-- `compile_http.py`: the endpoint builders, a route's claims as HTTP calls and a journey walked as requests.
+- `compile_http.py`: the endpoint builders, a route's claims as HTTP calls, a journey walked as requests, and the probe of each fixture whose credential a claim sends.
 - `compile_journey.py`: the flow builders, which bind each flow's journey to one driver and walk its steps.
 - `compile_maestro.py`: the mobile builders, each owed screen claim and each journey as a Maestro flow.
 - `compile_page.py`: the screen builders, one arrival scenario per screen and one per interaction arm.

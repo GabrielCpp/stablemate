@@ -203,12 +203,13 @@ def target_lines(target_var: str, driver: str, kwargs: str, emitted: EmittedScen
 
 @dataclass(frozen=True)
 class SourceScenario:
-    """One book page's compiled scenario: its target, the obligations it covers, and its arranged body."""
+    """One book page's compiled scenario: its target, the obligations it covers, its arranged body, and what it sets out to show when that is not the page's evidence."""
     source: str
     target_var: str
     covers: list[str]
     arranged: Arrangement
     body: list[str]
+    objective: str = ""
 
 
 def claim_scenario_function_name(scenario: SourceScenario, emitted: EmittedScenarios) -> str:
@@ -219,6 +220,21 @@ def claim_scenario_function_name(scenario: SourceScenario, emitted: EmittedScena
         name = f"{page}_on_{scenario.target_var}_from_the_book"
     emitted.functions.add(name)
     return name
+
+
+PROBE_PREFIX = "probe"
+
+
+def probe_function_name(fixture: str, emitted: EmittedScenarios) -> str:
+    """Reserve the function name the probe of *fixture* gets, and return it."""
+    name = f"{PROBE_PREFIX}_{python_identifier(fixture)}"
+    emitted.functions.add(name)
+    return name
+
+
+def is_probe(scenario_id: str) -> bool:
+    """Whether *scenario_id* names a precondition probe, a scenario that runs before the book."""
+    return scenario_id.startswith(f"{PROBE_PREFIX}-")
 
 
 def scenario_lines(scenario: SourceScenario, function_name: str) -> list[str]:
@@ -249,7 +265,7 @@ def scenario_lines(scenario: SourceScenario, function_name: str) -> list[str]:
         "    forbid=[],  # TODO: the weaker observations this scenario must not settle for",
         ")",
         f"def {function_name}(qa: Qa) -> None:",
-        f'    """Obligations {scenario.source} owes live evidence for."""',
+        f'    """{scenario.objective or f"Obligations {scenario.source} owes live evidence for."}"""',
         *fixtures,
         *scenario.body,
     ]

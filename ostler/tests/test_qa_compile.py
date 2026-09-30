@@ -530,9 +530,10 @@ def test_an_endpoint_credential_rides_on_every_claim_but_the_one_about_a_401() -
     )
     source, _gaps = compile_plan_gaps(context, story="demo-story")
     assert source is not None
+    book = source.split("_from_the_book(qa")[-1]
     sent = 'headers={"Authorization": qa.resolve("Bearer @signed-in-editor.token")}'
-    assert source.count(f'qa.http.get("/api/things", expect_status=200, {sent})') == 2
-    assert 'qa.http.get("/api/things", expect_status=401)\n' in source
+    assert book.count(f'qa.http.get("/api/things", expect_status=200, {sent})') == 2
+    assert 'qa.http.get("/api/things", expect_status=401)\n' in book
 
 
 def test_a_claim_about_a_401_stays_anonymous_though_it_repeats_the_callers_token() -> None:
@@ -555,10 +556,50 @@ def test_a_claim_about_a_401_stays_anonymous_though_it_repeats_the_callers_token
     )
     source, _gaps = compile_plan_gaps(context, story="demo-story")
     assert source is not None
+    book = source.split("_from_the_book(qa")[-1]
     sent = 'headers={"Authorization": qa.resolve("Bearer @signed-in-editor.token")}'
-    assert source.count(f'qa.http.get("/api/things", expect_status=200, {sent})') == 2
-    assert 'qa.http.get("/api/things", expect_status=401)\n' in source
+    assert book.count(f'qa.http.get("/api/things", expect_status=200, {sent})') == 2
+    assert 'qa.http.get("/api/things", expect_status=401)\n' in book
     assert 'qa.http.get("/api/things", expect_status=401, headers={"Authorization": "Bearer forged"})' in source
+
+
+def test_a_fixture_whose_token_a_get_claim_sends_is_probed_before_the_book() -> None:
+    """A sign-in fixture that mints a token the app refuses fails every claim it arranges, so it is probed on its own, on the first GET that expects success, before any book page runs."""
+    signed_in = [{"name": "signed-in-editor", "args": [], "provides": "a signed-in editor",
+                  "providesKeys": ["signed-in-editor.token"]}]
+    token = _header_act("Authorization", "Bearer @signed-in-editor.token")
+    served, refused = (f"okf:docs/features/demo/globex.md#get-things:{arm}" for arm in ("does:1", "errors:1"))
+    context = _context(
+        _obligation(refused, checksDeclared=[{"call": "no", "name": "http_status", "args": {"code": 401}}],
+                    fixturesDeclared=signed_in, docPosition=[1, 0], node="get-things", actsDeclared=[token]),
+        _obligation(served, checksDeclared=[{"call": "ok", "name": "http_status", "args": {"code": 200}}],
+                    fixturesDeclared=signed_in, docPosition=[2, 0], node="get-things", actsDeclared=[token]),
+    )
+    source, _gaps = compile_plan_gaps(context, story="demo-story")
+    assert source is not None
+    ast.parse(source)
+    probe = source.split("def probe_signed_in_editor(qa")[-1].split("\n@scenario(")[0]
+    book = source.split("_from_the_book(qa")[-1]
+    assert source.index("def probe_signed_in_editor(") < source.index("_from_the_book(qa")
+    assert 'qa.fixture("signed-in-editor")' in probe
+    assert 'qa.http.get("/api/things", expect_status=200, headers={"Authorization": qa.resolve("Bearer @signed-in-editor.token")})' in probe
+    assert f'observed.status not in [401, 403], actual=observed.status, expected="not [401, 403]", covers=["{served}"])' in probe
+    assert refused not in probe
+    assert served in book
+
+
+@pytest.mark.parametrize("route, code", [("POST /api/things", 201), ("GET /api/things/{id}", 200), ("GET /api/things", 401)])
+def test_no_probe_is_compiled_for_a_claim_it_could_not_send_on_its_own(route: str, code: int) -> None:
+    """A probe sends one request with nothing but the fixture behind it, so a claim with a body, an unbound path or an expected refusal gives it nothing to ask."""
+    context = _context(
+        _obligation("okf:docs/features/demo/globex.md#things:does:1", locators={"route": [route]},
+                    checksDeclared=[{"call": "ok", "name": "http_status", "args": {"code": code}}],
+                    fixturesDeclared=[{"name": "signed-in-editor", "args": [], "provides": "a signed-in editor",
+                                       "providesKeys": ["signed-in-editor.token"]}],
+                    actsDeclared=[_header_act("Authorization", "Bearer @signed-in-editor.token")]),
+    )
+    source, _gaps = compile_plan_gaps(context, story="demo-story")
+    assert "def probe_" not in (source or "")
 
 
 def test_a_claim_about_a_server_fault_is_withheld_as_unarrangeable() -> None:
