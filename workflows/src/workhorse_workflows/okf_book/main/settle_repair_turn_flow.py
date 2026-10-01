@@ -5,6 +5,9 @@ A turn may delete a page the entries page links, so code drops that link and com
 
 A page someone left uncommitted when the repair started has no committed copy of their edit to go
 back to, so a turn that changed one waits for the operator. A commit the repo refuses waits for them too.
+
+A small model reads the staged diff and names what the commit changed. When it cannot, the commit
+keeps the fixed subject, so a repair never waits on its own message.
 """
 from __future__ import annotations
 
@@ -12,7 +15,8 @@ from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict
 
-from workhorse.pyflow import Await, Continue, Done
+from workhorse.pyflow import AgentTimeout, AgentTurnFailed, Await, Continue, Done
+from workhorse_workflows.kit import diff_to_commit
 from workhorse_workflows.okf_book.main.nodes.repair_batch_models import RepairBatch
 from workhorse_workflows.okf_book.main.nodes.repair_put_back import (
     entry_pages_changed_beyond_links,
@@ -20,12 +24,46 @@ from workhorse_workflows.okf_book.main.nodes.repair_put_back import (
     stamp_repaired_pages,
     turn_changes,
 )
-from workhorse_workflows.okf_book.shared.book_commits import repaired_book_commit_subject
+from workhorse_workflows.okf_book.shared.book_commits import repair_description_refusal, repaired_book_commit_message
 from workhorse_workflows.okf_book.shared.book_flow import BookFlow
 from workhorse_workflows.okf_book.shared.confine import Snapshot, committed_text, put_back_outside, restore
 from workhorse_workflows.okf_book.shared.entries import drop_links, entries_path, links_to_deleted
 
 UNCOMMITTED_PAGE_GATE = "uncommitted-page-changed.md"
+DESCRIBE_LABEL = "describe-repair-commit"
+DESCRIBE_TIMEOUT = 300.0
+DIFF_LIMIT = 40_000
+DESCRIBE_PROMPT = """Write the commit message for the repair of pages of the {{ service }} book.
+
+The commit takes these paths:
+
+{% for page in pages %}- {{ page }}
+{% endfor %}
+Here is what it records{% if truncated %}, cut at {{ limit }} characters{% endif %}:
+
+```diff
+{{ diff }}
+```
+
+Reply with a description and a body, from the diff alone. Run no command.
+
+- The description follows `docs({{ service }}): ` in the subject, so the whole subject stays within 72
+  characters. It is a lowercase imperative that names what changed for a reader of the book, such as
+  "document the refund flow's error responses". It has no trailing period.
+- The body is empty, or one to three lines wrapped at 72 columns saying why the pages changed.
+{% if refused %}
+
+Your last reply was refused: {{ refused }}
+{% endif %}"""
+
+
+class RepairCommitDescription(BaseModel):
+    """What the small model says one repair commit changed."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    description: str
+    body: str = ""
 
 
 class SettledTurn(BaseModel):
@@ -115,11 +153,49 @@ class SettleRepairTurn(BookFlow):
         waiting = self._render_agent_files_or_await(self.render_agent_files, pages=pages)
         if waiting:
             return waiting
-        return Continue(pages, self.commit_pages, pages=pages).because("commit the repaired pages")
+        return Continue(pages, self.describe_commit, pages=pages).because("describe the repaired pages")
 
-    def commit_pages(self, pages: tuple[str, ...]) -> Await[...] | Done:
-        """Commit the batch's pages. A refused commit waits for the operator."""
-        waiting = self._commit_or_await(repaired_book_commit_subject(self.service), pages, self.commit_pages, pages=pages)
+    def describe_commit(self, pages: tuple[str, ...]) -> Continue[...]:
+        """A small model names what the staged pages changed. A turn that fails, or a diff with nothing in it, keeps the fixed subject."""
+        diff = diff_to_commit(self.root, *pages)
+        if not diff:
+            return Continue(pages, self.commit_pages, pages=pages, commit_message=repaired_book_commit_message(self.service)).because(
+                "nothing staged to describe"
+            )
+        try:
+            described = self.agent(
+                DESCRIBE_PROMPT,
+                label=DESCRIBE_LABEL,
+                returns=RepairCommitDescription,
+                power="low",
+                timeout=DESCRIBE_TIMEOUT,
+                args={
+                    "service": self.service,
+                    "pages": list(pages),
+                    "diff": diff[:DIFF_LIMIT],
+                    "truncated": len(diff) > DIFF_LIMIT,
+                    "limit": DIFF_LIMIT,
+                },
+                cwd=self.root,
+                accept=self._accept_description,
+            )
+        except (AgentTurnFailed, AgentTimeout) as ended:
+            self.logger.warning("kept the fixed repair subject, since the describe turn ended without a reply: %s", ended)
+            return Continue(pages, self.commit_pages, pages=pages, commit_message=repaired_book_commit_message(self.service)).because(
+                "the describe turn failed"
+            )
+        message = repaired_book_commit_message(self.service, described.description, described.body)
+        return Continue(pages, self.commit_pages, pages=pages, commit_message=message).because("commit the repaired pages")
+
+    def _accept_description(self, described: RepairCommitDescription) -> None:
+        refusal = repair_description_refusal(self.service, described.description)
+        if refusal:
+            raise ValueError(refusal)
+
+    def commit_pages(self, pages: tuple[str, ...], commit_message: str = "") -> Await[...] | Done:
+        """Commit the batch's pages under *commit_message*, else under the fixed subject. A refused commit waits for the operator, and its retry keeps the message."""
+        message = commit_message or repaired_book_commit_message(self.service)
+        waiting = self._commit_or_await(message, pages, self.commit_pages, pages=pages, commit_message=message)
         if waiting:
             return waiting
         return Done(SettledTurn(pages=pages)).because("the repaired pages are committed")

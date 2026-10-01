@@ -6,7 +6,7 @@ The code more than one okf-book machine calls.
 
 - `agent_files.py`: rendering the repo's agent files from its prompt library before a book commit, so a skill the library changed does not refuse it.
 - `blockers.py`: what a run could not finish, collected across its books and handed to the operator after the last.
-- `book_commits.py`: the subjects a book is committed under, which tell a rerun whether this workflow finished it.
+- `book_commits.py`: the messages a book is committed under, which tell a rerun whether this workflow finished it.
 - `book_compilation.py`: compiling the named services' books into a QA plan, and reading the page and node an obligation id names.
 - `book_flow.py`: the base every okf-book machine sits on: the repo it writes, the folder its records go in, and how it commits a book.
 - `book_run.py`: compiling a service's book, bringing its app's stack up, running every scenario or those some target pages name, and what that run did.

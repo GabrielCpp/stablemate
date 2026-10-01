@@ -5,7 +5,7 @@ from pathlib import Path
 
 from ostler.qa.attribution import Cause, Signature
 from workhorse.pyflow import Await, Continue, Done, WorkflowFailed
-from workhorse_workflows.kit import last_commit_subject
+from workhorse_workflows.kit import last_commit_subject, last_commit_trailer
 from workhorse_workflows.okf_book.main.exercise_book_flow import ExerciseBook
 from workhorse_workflows.okf_book.main.nodes.operator_answer import answer_below, write_answer
 from workhorse_workflows.okf_book.main.nodes.progress_ledger import LapCounts, lap_counts, read_laps, record_lap, service_laps, stalled, trend
@@ -22,7 +22,12 @@ from workhorse_workflows.okf_book.main.nodes.turn_budget import (
 )
 from workhorse_workflows.okf_book.main.write_book_flow import WriteBook, WriteOutcome
 from workhorse_workflows.okf_book.shared.blockers import Blocker, Phase, Side, forget_blockers, forget_every_blocker, read_blockers, record_blocker
-from workhorse_workflows.okf_book.shared.book_commits import book_commit_subject, repaired_book_commit_subject
+from workhorse_workflows.okf_book.shared.book_commits import (
+    BOOK_TRAILER,
+    REPAIRED,
+    book_commit_subject,
+    repaired_book_commit_subject,
+)
 from workhorse_workflows.okf_book.shared.book_flow import BookFlow
 from workhorse_workflows.okf_book.shared.book_run import ExerciseResult
 from workhorse_workflows.okf_book.shared.citations import book_pages
@@ -110,7 +115,8 @@ class OkfBook(BookFlow):
         problems = book_problems(self.root, service)
         if problems:
             return Continue(problems, self.copy_source, index=index).because("the existing book has problems")
-        if last_commit_subject(self.root, book) in (book_commit_subject(service), repaired_book_commit_subject(service)):
+        ours = last_commit_subject(self.root, book) in (book_commit_subject(service), repaired_book_commit_subject(service))
+        if ours or last_commit_trailer(self.root, BOOK_TRAILER, book) == REPAIRED:
             return Continue(book, self.check_book, index=index).because("this workflow wrote the book: check it")
         return Continue(problems, self.run_book, index=index, run_failures_repaired=False).because(
             "the existing book checks clean"

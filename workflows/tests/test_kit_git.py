@@ -9,7 +9,14 @@ import pytest
 from git.exc import GitError
 
 from workhorse.testing import make_git_repo
-from workhorse_workflows.kit.git import commit_all, commit_paths, commit_returning_refusal, last_commit_subject
+from workhorse_workflows.kit.git import (
+    commit_all,
+    commit_paths,
+    commit_returning_refusal,
+    diff_to_commit,
+    last_commit_subject,
+    last_commit_trailer,
+)
 
 
 def _tracked(root: Path, ref: str = "HEAD") -> set[str]:
@@ -74,6 +81,36 @@ def test_last_subject_names_the_last_commit_that_touched_the_path(tmp_path: Path
 
     assert last_commit_subject(root, "docs") == "docs: write a"
     assert last_commit_subject(root, "missing") == ""
+
+
+def test_last_trailer_reads_the_value_on_the_last_commit_that_touched_the_path(tmp_path: Path) -> None:
+    root = make_git_repo(tmp_path / "acme")
+    _write(root, "docs/a.md")
+    assert commit_paths(root, "docs: write a\n\nOkf-Book: repaired", "docs") is True
+    _write(root, "src/b.py")
+    assert commit_paths(root, "feat: add b", "src") is True
+
+    assert last_commit_trailer(root, "Okf-Book", "docs") == "repaired"
+    assert last_commit_trailer(root, "Okf-Book", "src") == ""
+
+
+def test_diff_to_commit_shows_a_new_and_a_deleted_path_and_leaves_the_index_as_it_was(tmp_path: Path) -> None:
+    root = make_git_repo(tmp_path / "acme")
+    _write(root, "docs/old.md")
+    assert commit_paths(root, "docs: write old", "docs") is True
+    (root / "docs/old.md").unlink()
+    _write(root, "docs/new.md")
+    _write(root, "src/unrelated.py")
+
+    diff = diff_to_commit(root, "docs/old.md", "docs/new.md")
+
+    assert "docs/old.md" in diff
+    assert "docs/new.md" in diff
+    assert "unrelated" not in diff
+    assert subprocess.run(["git", "diff", "--cached", "--quiet"], cwd=root, check=False).returncode == 0
+    assert commit_paths(root, "docs: replace old", "docs/old.md", "docs/new.md") is True
+    assert _tracked(root) == {"docs/new.md"}
+    assert diff_to_commit(root, "docs/new.md") == ""
 
 
 def _reject_commits(root: Path) -> None:

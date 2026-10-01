@@ -190,6 +190,32 @@ def last_commit_subject(path: str | Path, *pathspecs: str) -> str:
         return ""
 
 
+def last_commit_trailer(path: str | Path, key: str, *pathspecs: str) -> str:
+    """The value of trailer ``key`` on the last commit that touched ``pathspecs``, or "" when it carries none."""
+    try:
+        return open_repo(path).git.log("-1", f"--format=%(trailers:key={key},valueonly)", "--", *pathspecs).strip()
+    except GitError:
+        return ""
+
+
+def diff_to_commit(path: str | Path, *pathspecs: str) -> str:
+    """What `commit_paths` of ``pathspecs`` would record: the file summary, then the patch. The index is left as it was. "" when git refuses or nothing changed."""
+    if not pathspecs:
+        return ""
+    scope = ["--", *pathspecs]
+    try:
+        repo = open_repo(path)
+        repo.git.add(*pathspecs)
+        try:
+            summary = repo.git.diff("--cached", "--stat", *scope)
+            patch = repo.git.diff("--cached", *scope)
+        finally:
+            repo.git.reset("-q", *scope)
+    except GitError:
+        return ""
+    return f"{summary}\n\n{patch}" if patch else ""
+
+
 def short_sha(path: str | Path, ref: str = "HEAD") -> str:
     """The abbreviated commit sha for ``ref`` (``git rev-parse --short``), or "" when it can't be resolved."""
     try:

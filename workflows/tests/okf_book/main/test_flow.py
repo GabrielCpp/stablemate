@@ -242,12 +242,16 @@ def test_the_operators_answer_sends_a_book_that_still_fails_back_to_its_repair(
     assert result.blockers == ()
 
 
+@pytest.mark.parametrize(
+    "message",
+    ["docs(tally): repair pages of the tally book", "docs(tally): note what tally prints\n\nOkf-Book: repaired"],
+)
 def test_a_book_this_workflow_repaired_that_fails_its_rerun_goes_to_its_writer_once_then_is_a_blocker(
-    app: App, drive_book: DriveBook, monkeypatch: pytest.MonkeyPatch
+    app: App, drive_book: DriveBook, monkeypatch: pytest.MonkeyPatch, message: str
 ) -> None:
     repo = app("tally-cli")
     runner = _writer(repo)
-    _written_by_the_workflow(repo, "docs(tally): repair pages of the tally book")
+    _written_by_the_workflow(repo, message)
     stub_the_run_to(monkeypatch, FAILED)
     monkeypatch.setattr(flow, "book_problems", no_problems)
     monkeypatch.setattr(pyflow_driver, "wait_for_answer", stopping_operator([]))
