@@ -134,31 +134,34 @@ def _html_neighbours(path: Path) -> list[Path]:
 
 
 def neighbours(root: Path, path: Path) -> list[Path]:
-    """The files `path` imports or loads that exist inside `root`."""
+    """The files `path` imports or loads, as found and not yet resolved."""
     suffix = path.suffix
     if suffix == ".py":
-        found = _python_neighbours(root, path)
-    elif suffix == ".go":
-        found = _go_neighbours(root, path)
-    elif suffix in _SCRIPT_GRAMMAR:
-        found = _script_neighbours(path)
-    elif suffix in _HTML:
-        found = _html_neighbours(path)
-    else:
-        found = []
-    return [p.resolve() for p in found if p.resolve().is_relative_to(root)]
+        return _python_neighbours(root, path)
+    if suffix == ".go":
+        return _go_neighbours(root, path)
+    if suffix in _SCRIPT_GRAMMAR:
+        return _script_neighbours(path)
+    if suffix in _HTML:
+        return _html_neighbours(path)
+    return []
 
 
 def reached_files(root: Path, starts: Iterable[str]) -> tuple[str, ...]:
     """Every production file an import path from one of `starts` reaches, nearest first, repo-relative."""
     base = root.resolve()
-    queue = deque((base / start).resolve() for start in starts)
+    queue = deque(base / start for start in starts)
+    met: set[Path] = set()
     seen: dict[Path, str] = {}
     while queue:
-        path = queue.popleft()
+        found = queue.popleft()
+        if found in met:
+            continue
+        met.add(found)
+        path = found.resolve()
         rel = path.relative_to(base).as_posix() if path.is_relative_to(base) else ""
         if path in seen or not rel or not path.is_file() or is_test_source(rel):
             continue
         seen[path] = rel
-        queue.extend(neighbours(base, path))
+        queue.extend(neighbour for neighbour in neighbours(base, path) if neighbour not in met)
     return tuple(seen.values())
