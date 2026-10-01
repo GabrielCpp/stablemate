@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from ostler import checks
-from ostler.qa import sensitivity
+from ostler.qa import run_log, sensitivity
 from ostler.qa.session import QA_DIRNAME, scratch_dirname
 from ostler.util import is_mapping
 
@@ -41,16 +41,9 @@ def read_log(path: Path) -> list[dict[str, Any]]:
     """The run ledger, one record per line."""
     if not path.exists():
         raise EvidenceMapError(f"the run log is missing at {path} — has this spec been run?")
-    records: list[dict[str, Any]] = []
-    for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
-        if not line.strip():
-            continue
-        try:
-            record = json.loads(line)
-        except json.JSONDecodeError as exc:
-            raise EvidenceMapError(f"{path}:{number} is not valid JSON: {exc}") from exc
-        if is_mapping(record):
-            records.append(dict(record))
+    records, problems = run_log.read_records(path)
+    if problems:
+        raise EvidenceMapError(f"{path}: {problems[0]}")
     return records
 
 

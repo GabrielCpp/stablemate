@@ -7,17 +7,32 @@ from pathlib import Path
 from typing import Any
 
 
+def read_records(path: Path) -> tuple[list[dict[str, Any]], list[str]]:
+    """Every object the log holds, and one problem for each line that is not one."""
+    records: list[dict[str, Any]] = []
+    problems: list[str] = []
+    for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+        if not line.strip():
+            continue
+        try:
+            record = json.loads(line)
+        except json.JSONDecodeError as exc:
+            problems.append(f"line {number} is invalid JSON ({exc})")
+            continue
+        if not isinstance(record, dict):
+            problems.append(f"line {number} is not an object")
+            continue
+        records.append(record)
+    return records, problems
+
+
 def run_log_tally(spec_dir: Path) -> tuple[int, int]:
     """(passing, failing) assertion counts from ``qa/qa-run.ndjson`` — the runner's ground truth."""
     log_path = spec_dir / "qa" / "qa-run.ndjson"
     if not log_path.is_file():
         return (0, 0)
     passed = failed = 0
-    for line in log_path.read_text(encoding="utf-8").splitlines():
-        try:
-            rec = json.loads(line)
-        except json.JSONDecodeError:
-            continue
+    for rec in read_records(log_path)[0]:
         if rec.get("kind") != "assert":
             continue
         result = str(rec.get("result", "")).strip().upper()
@@ -34,31 +49,10 @@ def latest_session_run_id(spec_dir: Path) -> str:
     if not log_path.is_file():
         return ""
     run_id = ""
-    for line in log_path.read_text(encoding="utf-8").splitlines():
-        try:
-            record = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        if isinstance(record, dict) and record.get("kind") == "session_start":
+    for record in read_records(log_path)[0]:
+        if record.get("kind") == "session_start":
             run_id = str(record.get("run_id", "")).strip()
     return run_id
-
-
-def strict_ndjson(path: Path, problems: list[str]) -> list[dict[str, Any]]:
-    records: list[dict[str, Any]] = []
-    for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
-        if not line.strip():
-            continue
-        try:
-            record = json.loads(line)
-        except json.JSONDecodeError as exc:
-            problems.append(f"qa_run_log line {number} is invalid JSON ({exc}).")
-            continue
-        if not isinstance(record, dict):
-            problems.append(f"qa_run_log line {number} is not an object.")
-            continue
-        records.append(record)
-    return records
 
 
 def relative_evidence_path(value: Any, spec_dir: Path) -> str:

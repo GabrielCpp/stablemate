@@ -303,7 +303,8 @@ def _qa_evidence_vet(data: Any, spec_dir: Path, root: Path) -> list[str]:  # noq
                         problems.append("qa_run_log is missing or escapes spec_dir.")
                         records = []
                     else:
-                        records = run_log.strict_ndjson(log_path, problems)
+                        records, unreadable = run_log.read_records(log_path)
+                        problems.extend(f"qa_run_log {problem}." for problem in unreadable)
                         normalized_log = run_log.relative_evidence_path(log_ref, spec_dir)
                         if normalized_log not in artifacts:
                             problems.append("qa_run_log is not registered in the current run manifest.")
