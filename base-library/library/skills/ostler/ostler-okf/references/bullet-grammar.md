@@ -1,0 +1,445 @@
+# Bullet grammar
+
+The mechanical half of the OKF UI profile: what a `- key: value` bullet *is* to the machinery
+that reads it. Every recognized key carries a set of flags, and those flags — not prose about
+them — decide whether the key mints a QA obligation, resolves as a link, grounds against source,
+or is silently inert. Companion to [`../SKILL.md`](../SKILL.md); the per-type key lists are in
+[node-types/](node-types/), and this file is the vocabulary they all draw on.
+
+Source of truth: `ostler/ostler/registry.py`. When this file and the registry disagree, the
+registry is right and this file is a bug.
+
+## The flags
+
+Each recognized bullet is a `BulletKey` (`registry.py:230-258`). A key can carry several flags.
+
+| Flag | What it means to a consumer |
+| --- | --- |
+| `required` | The type must carry the bullet, even to say `none`. Absent → `missing-required-bullet` (error, fixable by `scaffold`). |
+| `nested` | The value is a nested-bullet list, one child per effect (`does:`). Each child is counted separately. |
+| `entries` | The nested list is one of *things that have claims*, not one of claims (`provides:`, `flags:`). Each direct child is one value; that child's own children are **its properties**, not further values of this key. Meaningful only with `nested`. |
+| `record` | The nested block is **one thing with named properties**, not a list of anything (`response:` on an endpoint). Each direct child is a `- name: value` property of this bullet. Meaningful only with `nested`, and never with `entries` — the two say different things about the same child. A child spelled like a bullet key of the node type is `misnested-bullet`; a child outside a declared `properties` vocabulary is `unknown-record-property`. |
+| `properties` | The property vocabulary an `entries` or `record` key admits. Empty means *undeclared, so unchecked* — not "no property allowed". A property outside a declared vocabulary is `unknown-entry-property` (`entries`) or `unknown-record-property` (`record`). |
+| `link` | The value is a reference `ostler` resolves — a doc link or a code ref. Unresolvable → `dangling-link` / `unresolved-relation` / `missing-anchor`. |
+| `check` | The value is a named check from `ostler.checks` — an **observation**. Parsed and grounded against the vocabulary. |
+| `arrange` | The value names a fixture this repo declares — the **arrangement** that reaches the state the claim above it is about. |
+| `normative` | The value is a **claim**. QA mints one obligation per value, which one scenario then has to prove. |
+| `alias` | A second accepted spelling of the key declared just above it (`error` for `errors`). Ordered like the primary; never stubbed by `scaffold`. |
+| `owns` | The value names a file (or `path::symbol`) the node is documented *against*, so a change to that file reaches the node. This is what `ostler qa context` reads when it maps a diff onto the book. |
+
+`owns` and `link` are distinct: `openapi: none; …` is a citation the reader does not resolve and
+is still an ownership claim. `owns` and grounding are distinct too — owning a file is not being
+grounded in a symbol, so `doctor` asks nothing of an owning key it does not also ground.
+
+## The four key families
+
+Every load-bearing key falls into one of four families, and confusing them is the single most
+common authoring defect.
+
+- **Claims** (`normative=True`) — what the node asserts. One value, one obligation, one scenario.
+- **Observations** (`check=True`) — what proving a claim looks like. `verify:` on the four
+  normative section types.
+- **Arrangements** (`arrange=True`) — how to reach the state a claim is about. `fixture:`.
+- **Grounding and ownership** (`link` / `owns`) — where it lives. `code:`, `openapi:`, `file:`,
+  `config:`, `tests:`.
+
+`code:` and `tests:` are not interchangeable with `verify:`, and the difference is a category
+error rather than a typo. A test id says which code *ran*; `verify:` says what was *seen*. An
+assertion filed under a test id can be arbitrarily weaker than the claim above it, which is why
+`verify:` stopped being a code reference (`CODE_GROUNDING_KEYS` is now `{"code"}` alone) and
+became the check vocabulary. See [check-vocabulary.md](check-vocabulary.md).
+
+## Keys that are normative on every type
+
+`SHARED_NORMATIVE_KEYS` (`registry.py:293`) mint obligations wherever they appear, whatever the
+node type declares:
+
+```
+consistency, consistency rule, consistency group, persistence,
+emits, consumes, concurrency, idempotency
+```
+
+`normative_keys(type)` is these plus the type's own `normative=True` keys. Note the consequence:
+`emits:`/`consumes:` are declared *without* `normative` on `endpoint` and `invocation`, and are
+normative there anyway because the shared set overrides. `declared_keys(type)` — what the type
+recognizes at all — is its own keys plus this shared set; anything outside it that is
+load-bearing on some other type is `unknown-bullet`.
+
+## Relation keys are legal on every type
+
+`RELATION_KEYS` (`registry.py:389`) name another node rather than assert anything about this
+one, and every one of them is accepted wherever it is written, whatever the node type:
+
+```
+on, parent, extends, same-as, steps, presents, detail, environment,
+cli, surfaces, requires, params, leads-to, exclusive-with, prefers, deprecates,
+launch-screen
+```
+
+`declared_keys(type)` lists only some of them per type — `endpoint` carries `detail`, `concept`
+carries `deprecates`/`extends`/`prefers`/`same-as`, `component` carries five — and that
+distribution is an accident of how each profile was written, not a grammar. It decides nothing:
+`unknown_bullet_keys` (`registry.py:434`) flags an undeclared key only when it is *load-bearing*,
+and `LOAD_BEARING_KEYS` (`registry.py:1343`) subtracts the relation keys wholesale. So a
+node-type page that carries no row for `same-as:` is not saying the key is illegal there — it is
+saying nothing about it, and the key works.
+
+The pages are held to that: a type's page must document every key its own profile makes
+load-bearing, and may additionally carry a row for any relation key, because those are true
+everywhere. A row for anything else is a row for a key nothing reads.
+
+**A relation key may not point at the node it is written on.** A relation is between two
+things; a bullet whose target resolves to its own source has no second thing for the relation
+to hold between, and every reading of it is false — a node is not a detail of itself, and
+`exclusive-with:` pointing home says the node rules itself out. `self-relation` reports it on
+every relation key, because nothing about the defect is particular to a key. It is not a
+harmless no-op: a self-reference looks like a satisfied relation to everything that walks the
+edge, so a check that clears a group when one member adjudicates another can be cleared by a
+member adjudicating itself.
+
+## Ownership: what `qa context` reads
+
+`owning_keys(type)` (`registry.py:311`) decides which nodes a changed file reaches:
+
+- `code:` owns on **every** type, whether or not the profile lists the key;
+- plus the type's own `owns=True` keys — `openapi:` on `server`/`endpoint`, `file:` on `format`,
+  `config:` on `environment`/`format`.
+
+`tests:` is deliberately **not** owning (`registry.py:318-320`): a test file is verification
+evidence, not the node's subject. Neither is `binary:`, which names a program rather than a path.
+`config:` additionally punches its file through `qa context`'s non-production filter, so a stack
+config that would otherwise be dropped from the change surface still reaches its node.
+
+## One provable claim per normative bullet
+
+Each value of a normative key becomes **one** QA obligation, proved by **one** scenario. A bullet
+that holds three requirements ships with the scenario proving whichever clause the planner read
+and the other two claimed-as-covered — which is how a story passes QA over behaviour nobody
+tested.
+
+- `doctor` **errors** past 700 characters of prose in one normative bullet
+  (`MAX_NORMATIVE_PROSE`, `doctor.py:771`) → `overlong-normative-bullet`.
+- `doctor` **warns** when one bullet states more than one observation →
+  `compound-normative-bullet`. A warn rather than an error because splitting is authoring
+  judgment: only the author knows which clauses are separate requirements.
+
+Split on the real seams — the success effect, each error case, what is persisted, what is
+emitted — by **repeating the key**, not by rewording:
+
+```markdown
+- does: writes the revision under the caller's name
+- does: bumps the document's `updatedAt`
+- errors: 409 when the supplied version token is stale
+```
+
+## A claim that states its own emptiness
+
+Two normative keys can say there is nothing there, and mean it as a finished claim rather than
+a blank: `raises:` on a [`method`](node-types/method.md), and `keyboard:` on a
+[`component`](node-types/component.md) or an [`interaction`](node-types/interaction.md). No
+exception leaves this method; this control is read rather than operated. There is no behaviour
+left for a check to bind to — nothing to provoke, no keystroke to send — so the bullet mints no
+obligation, and neither `undeclared-obligation` nor `uneven-claim-coverage` asks it for a check.
+
+The spelling is `none` or `nothing` **and the reason**:
+
+```markdown
+- raises: nothing, because a refusal is a returned message rather than an error
+- keyboard: none, because the badge is read rather than operated
+```
+
+A bare `- raises: none` is a blank left blank — forgotten, not decided — and stays an open claim
+that owes its check. The `because` is what turns the absence into a fact somebody stands behind,
+and it is the whole difference between the two readings. It is also why the rule is scoped to
+these two keys rather than written over any value that starts with `none`: on `does:` or
+`states:`, an absence is a fact about the *subject*, still there to be read and still provable.
+
+`fixture:` spells its own emptiness the same way for the same reason, but it is an arrangement
+rather than a claim — see [`unarranged-journey`](doctor-codes.md) — so it owes no check either
+way.
+
+## Document order is the binding
+
+A `verify:`, a `fixture:` or a `capture:` binds to a claim by **position**, not by name
+(`attributed_checks` / `attributed_fixtures` / `attributed_captures`). The three families are
+listed together in `registry.attached_keys`, which is what `ostler fmt` reads so that
+reordering a node moves each of them with the claim it was written under rather than sorting
+it onto whichever claim ends up last:
+
+- a check binds to the **nearest authored normative bullet above it**;
+- a check written **above every** normative bullet belongs to the node's own *contract*
+  obligation;
+- a check written under a `nested` parent was written against the whole of it, so it fans out to
+  **every child**;
+- a `fixture:` above every claim is ambient — state reached once is the state every later claim
+  is read in — so it fans out to **all** the node's obligations. (This is the one asymmetry: an
+  observation is specific by nature, an arrangement is ambient by nature.)
+- a `capture:` binds like a check — it records what observing *that* claim pulled back out;
+- a `verify:`, `fixture:`, `run:` or `capture:` indented **under one child** of a claim list
+  binds to that child alone, whatever the list's combiner. Nothing fans it out to the siblings.
+
+```markdown
+- does:
+  - Records one expense in the ledger.
+    - fixture: existing-ledger
+    - verify: count(subject="$.entries", equals=1, file="tally.json")
+  - Reports the amount on stderr.
+    - verify: stderr(matches="added")
+- verify: exit_status(code=0)
+```
+
+Here the first child gets the `count` check and the fixture. The second child gets the `stderr`
+check. Both get `exit_status`, because it sits beside the list and fans out.
+
+## A nested claim list says how its children combine
+
+Fan-out — the third rule above — is sound over a list whose children are **parts of one thing**
+and unsound over a list whose children are **mutually exclusive branches**. On an endpoint,
+`body:`/`status:`/`path:` under one parent are parts: a check about the whole is a check about
+each. On an interaction, `does:` is routinely branches:
+
+```markdown
+- does: branches
+  - success: browser navigates to [widget-list](widget-list.md)
+  - failure: field error spans are populated from the response body
+  - failure: page stays put (no navigation)
+```
+
+Fanned out across those, a check observing the success branch does not merely fail to inform on
+the other two — against "page stays put" it is a **refutation**, and an unqualified fan-out files
+it as a proof. That is the one way a green run can be evidence for a claim the run disproved.
+
+So the parent states the combiner in its own value, which is otherwise empty:
+
+| Value | Children are | Fan-out |
+| --- | --- | --- |
+| `all` | parts of one effect, all true together | a check binds to every child |
+| `branches` | mutually exclusive outcomes, one per run | a check binds to **no** child; each branch carries its own `verify:`, indented under it |
+
+The label before the colon on a child (`success:`, `failure:`, `navigation:`) stays free prose —
+it is for the reader, and nothing derives the combiner from it. Deriving it would fail *open*: a
+list whose labels the vocabulary did not anticipate would silently read as `all`, which is the
+unsound direction. Stating it fails closed, the same reason `requires:` and `params:` must say
+`none` rather than be omitted — a walk cannot tell "these all hold" from "nobody wrote it down".
+
+`doctor` requires the combiner only where it changes an outcome: a nested claim list with more
+than one child **and a check written under it**. A list nobody observes binds nothing, and
+demanding a word there would be churn across every book in the tree. Missing there →
+`unstated-claim-combiner` (error): undetermined, so no executable code is emitted for it, and
+`compile_plan` gaps every child rather than guessing. A branch with no check of its own is
+`unobserved-branch` — a real gap, and on a book that previously borrowed the success branch's
+check it is a gap that *appears* the day the combiner is stated. That is the debt becoming
+visible, not new debt.
+
+Canonical bullet order is the type's `bullet_keys` order and is applied by `ostler fmt`, so a
+stub written in the wrong place is one the formatter moves the first time the file is touched.
+`ostler scaffold` already emits check stubs under the last claim for this reason.
+
+## Fixture references: `args:` / `provides:` / `needs:` / `capture:`
+
+A [`fixture`](node-types/fixture.md) node is a named, static-checkable arrangement, written once
+and referenced by name from a `fixture:` bullet anywhere. Its own three keys are not the
+`arrange`/`check`/`normative` families above — they describe the fixture itself, not a claim:
+
+- `args:` — the parameters the fixture takes, space-separated names. Spelled `args`, not `params`
+  — `params` is a global relation key (`RELATION_KEYS`) already checked by
+  `relation-without-subject`, and a fixture's parameter list is not a relation.
+- `provides:` (`nested`) — what the fixture's last step leaves behind, one child per key.
+- `needs:` (`nested`, `link`) — another fixture this one composes on top of, linked by file.
+  Runtime runs the needs target once per scenario with no args, then binds the binding's own
+  `name=value` tokens into *this* fixture's own env — so the binding's names are checked against
+  this fixture's own `args:`, never the target's, which may not declare any of its own.
+
+`capture:` is the mirror of `fixture:`/`verify:` on the same seven node types
+(`environment`, `command`, `endpoint`, `interaction`, `invocation`, `method`, `field`): where
+`fixture:` says how state was reached and `verify:` says what was observed, `capture:` says what a
+scenario pulled out of the response or the DOM for a *later* step to use — `capture: <name> from
+<json path | UI locator>`. Attribution (`capture_keys` / `attributed_captures`,
+`registry.py:352-420`) delegates to the same `_attributed` engine as `arrange_keys` /
+`attributed_fixtures` and `attributed_checks` — one binding-by-position engine, three key
+families. A fixture node's own `## Steps` never carries `capture:`; what a fixture's own last step
+leaves behind is named by `provides:` instead.
+
+**Only one builder binds a capture today, and the rest say so.** A `capture: <name> from $.<json
+path>` on a node the HTTP builder compiles becomes a real `qa.capture_field(...)` in the plan.
+Every other pairing — a UI-locator source on a node compiled as an HTTP request, any capture on a
+screen arrival or an interaction, a step's capture restated on the journey that walks it — compiles
+to a `TODO(arrange)` line plus an `uncaptured-declaration` gap naming which builder declined and
+why (doctor reports it as `uncompilable-claim`). This is not a judgement on the book: the bullet
+named a fact and where to read it, which is all the grammar asks. What is missing is an *action*,
+and a declared capture no builder accounts for is refused outright by the compiler rather than
+dropped — an unconsumed declaration is indistinguishable from an absent one, and a value the book
+promised a later step would be silently unbound at run time instead.
+
+Two reference forms read those values elsewhere in the book: `@<fixture-id>.<key>` names a value a
+fixture `provides:`, and `$<captured-name>` names a value some earlier `capture:` produced. Both
+are recognized wherever a `fixture:` bullet's args, a `needs:` binding, a route path template, a
+request-body value, a request-header value, or a `verify:` call can appear — parsed by one shared parser
+(`ostler.qa.references`) rather than reimplemented per call site, and resolved statically (no
+execution) by `compile_plan`. An `@<fixture>.<key>` naming a key the fixture never declares in
+`provides:` is `fixture-undeclared-provides`; naming a key it declares but has not arranged yet in
+the scenario, or a `$name` with no earlier `capture:`, is `unresolved-precondition` instead — the
+first is a fact about the book, the second is a fact about the order a scenario reads it in. See
+[node-types/fixture.md](node-types/fixture.md) and
+[doctor-codes.md](../doctor-codes.md#fixtures).
+
+`compile_plan` is the only writer of these substitutions into a plan: it wraps the one literal a
+reference was actually found in — the route path, a body member, a header value, a verify
+argument — in `qa.resolve(...)`, the harness's single explicit substitution entry point, and
+leaves every other literal untouched.
+`Http` (`path`/`json_body`/`headers`), the locator helpers (`by_role`/`by_label`/`by_test_id`/
+`by_text`/`by_css`), and `goto` never resolve a string on their own — a literal such as
+`user@acme.dev` or `Pay $total` would otherwise be misread as a reference it is not. A
+hand-written scenario plan must call `qa.resolve(...)` itself wherever it wants `@fixture.key` or
+`$captured-name` substituted; nothing does it implicitly on the plan's behalf.
+
+## Repeated controls: `one-per:` / `unique-by:` / `variants:`
+
+A control the app renders once per member of a collection is **one node** carrying the repeat
+keys (declared on `component` and `interaction`), not N copies:
+
+```markdown
+- one-per: `stage` — one row per stage in the project's stage list
+- name: `{stage.name} stage row`
+- unique-by: `stage.id` — primary key of the stages table
+- variants: `stage.kind = draft | active` — the union StageKind
+```
+
+The grammar is strict so fixtures and tests can be compiled from it:
+
+- **The machine value is the first backticked span**; the tail after ` — ` is prose and is
+  never parsed. `one-per:` holds one identifier — the iteration variable. `unique-by:` holds
+  one dot-path rooted at that variable. `variants:` holds `path = token | token | …` entirely
+  inside the backticks, tokens copied from a closed enumeration in the source.
+- With `one-per:` in force, `name:` is a **template**. A `{…}` hole that is a plain dot-path
+  rooted at an in-scope iteration variable is *bindable*; anything else is *opaque* — kept
+  verbatim, matched as a wildcard, **never evaluated**. Classification cannot fail; the only
+  hard error is an unbalanced brace (`malformed-template`).
+- Scope flows through markdown containment and `parent:` only. An `on:` edge is a reference,
+  not membership — an interaction `on:` a repeated component does not inherit its family.
+- The data-only segments compiled from the template (never code) travel with every obligation
+  the node mints, and the QA plan validator demands a sampled instance per covered repeat
+  obligation — see the qa-plan-authoring reference in the ostler-cli skill.
+
+## The `untyped` node
+
+A `## Heading` that names no type still promotes its `### id` children to nodes
+(`registry.py:739`) — their links are captured, they nest, they are queryable — rather than
+inventing a garbage type from prose. An `untyped` node declares no bullet keys, so it mints
+nothing and is checked for nothing; a claim written in one is `unminted-claim`'s to find. It is
+not a type an author picks: if the content has a type, give the heading its type.
+
+## A numbered list item is prose, and what nests under it is invisible
+
+A `1. …` item in a numbered ladder, procedure, or decision list is running text, not a bullet
+key — the same fallback that reads an undeclared `- key:` container also applies here, so
+anything nested under the item folds into a flattened string on the section's parsed meta and
+never reaches the node's own bullets. This holds for every node type, because the defect is in
+the shape of the container, not in what the node happens to declare: a `consistency:` or
+`verify:` bullet filed a level too deep is unminted and unchecked no matter which type buries it,
+which is why this lives on the shared grammar page rather than one type's own reference.
+
+The distinction from an undeclared-but-plausible container (a `- request:` bullet on a type that
+never declared `request:`) is the shape of the parent, not the outcome: both bury a child, but a
+prose item was never a candidate bullet in the first place, so promoting it is not "the type
+forgot this key" — it is "this sentence was never a key."
+
+Before — the claim and its check are inside the ladder item, so nothing outside this paragraph
+ever sees them:
+
+```markdown
+1. A cap signal is classified before a timeout, so the message never claims a wait that never
+   happened.
+   - consistency: A cap signal is classified as a scheduled-reset cap before `timed_out`.
+   - verify: omits(subject="cap failure message", text="Timeout waiting for result")
+```
+
+After — the claim and its check are pulled out to the node's own top-level bullets, where the
+grammar reads them:
+
+```markdown
+1. A cap signal is classified before a timeout, so the message never claims a wait that never
+   happened.
+- consistency: A cap signal is classified as a scheduled-reset cap before `timed_out`.
+- verify: omits(subject="cap failure message", text="Timeout waiting for result")
+```
+
+## Mechanical and judgment
+
+Everything above is the **mechanical** surface: enforced, orderable, gradeable. It is
+deliberately not the whole of what a book has to carry.
+
+Bullet keys say *what a node is*. They cannot say *whether a reader should be using it* — and in
+a codebase with two ways to do the same thing, that second question is the one that bites. Two
+notification services, one legacy and one current, each correct in a different context, will both
+produce perfectly conformant nodes: correct `code:` grounding, well-split `does:` bullets,
+discriminating `verify:` checks. `doctor` passes both, and the graph is structurally silent about
+the only thing the reader needed to know.
+
+**Prose is judgment, and the format deliberately does not check it** — which is precisely why
+where it goes has to be written down. It goes in a `concept` node, the one type in the registry
+whose own keys mint nothing, linked from each competing node with `detail:`. See
+[node-types/concept.md](node-types/concept.md).
+
+The concept carries three **advisory** keys for exactly this — a fifth family, beside the four
+above, that drives no obligation and never will:
+
+- `rule:` — the selection rule, stated as prose. Plain, not load-bearing: on any other type the
+  key stays the author's own word, and nothing mints from it anywhere, because a selection rule
+  is not live-provable and an obligation minted from one would demand evidence no scenario can
+  produce.
+- `prefers:` / `deprecates:` — the supersession pair, pointing at the winning and superseded
+  nodes. Both are relations (`registry.RELATION_KEYS`), so a dangling side is
+  `unresolved-relation` rather than silence, and both stay out of the load-bearing set.
+
+Supersession lives there and **only** there. Four other keys look like it without being it:
+
+- `exclusive-with:` is a **DOM co-render assertion**, consumed only by `locators.py` and
+  `vet/placement.py` to suppress locator collisions between controls that never appear together;
+- `extends:` is inheritance;
+- `legacySurface` (`registry.py:40`) exists only on epic **seeds**, in the planning layer, and
+  never reaches the book;
+- `doctor.py:950`'s `legacy` is an unrelated reachability-root waiver.
+
+## `unspecified` — deliberately out of contract
+
+One of the two **advisory** keys writable on every type (`registry.SHARED_ADVISORY_KEYS`). An
+`unspecified:` bullet records a behaviour the book looked at and *decided* to leave out of
+contract — an encoding order, a duplicate policy, a tie-break nobody promised. It mints
+nothing: a statement of what is not promised has no observation to prove, and QA reads it as
+resolved-by-design rather than as a gap to invent coverage for.
+
+That reading is trust, and the citation is what earns it. Every `unspecified:` value must
+carry at least one markdown link resolving to the record that settled the decision — a
+decision doc, an acceptance criterion, a stated convention:
+
+```markdown
+- unspecified: the export's field encoding order — settled in
+  [0007](../../../decisions/0007-export-encoding.md)
+```
+
+A bullet with no live citation is `ungrounded-unspecified`, an **error**: uncited, nothing
+distinguishes it from a gap someone decorated, and the remedy is mechanical — cite what
+settled it, or delete the bullet. The link names a record, not a node, so it is grounded by
+that check rather than by the relation resolver.
+
+## `known-defect` — the code is the side at fault
+
+The other advisory key. A correspondence finding — `ambiguous-locator`, `unnamed-interactive`
+— says book and code disagree, and doctor, reading the book alone, cannot say which is wrong.
+When the source has been read against the story's intent and the code is the side at fault,
+the finding is real and stays real until an engineer fixes the code. `known-defect:` records
+that verdict on the node the finding is raised on:
+
+```markdown
+- known-defect: PRED-0412 unnamed-interactive — the menu renders with no aria-label
+```
+
+The value is `<seed-id> <finding-code>`, prose after it. The seed carries the obligation; the
+bullet carries the pointer, mints nothing, and is not a locator. Doctor drops exactly that
+code on exactly that node while the seed is open (`backlog`, `researched`, `covered`), and
+raises `stale-defect` the moment either exit fires: the seed is resolved, dropped, deferred or
+unknown, or the excused finding no longer fires. Both exits are mechanical, which is what makes
+this a record and not a waiver. On a collision pair, one bullet per node the finding names. A
+value stating no seed or no code is `malformed-defect`: excusing a code with no work behind it
+is a waiver, and naming a seed with no code excuses everything.

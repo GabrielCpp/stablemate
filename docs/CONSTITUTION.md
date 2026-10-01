@@ -141,7 +141,7 @@ someone watching, the workflow has not recovered.
 **ostler** organises documentation across a repository and manages the okf books.
 *Bar:* a book true, complete, sufficient and intelligible enough that running it tests the
 product, and an agent holding nothing but the book can operate the app and explain why it
-behaves as it does. The four properties are defined in the `ostler/okf` skill.
+behaves as it does. The four properties are defined in the `ostler-okf` skill.
 *Rejects:* buying one property with another. Completeness bought by adding a flag nobody
 can read costs intelligibility, and the book has not moved forward.
 

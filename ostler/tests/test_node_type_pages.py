@@ -9,7 +9,7 @@ from pathlib import Path
 from ostler import registry
 
 REFERENCES = (Path(__file__).resolve().parents[2]
-              / "base-library/library/skills/ostler/okf/references")
+              / "base-library/library/skills/ostler/ostler-okf/references")
 
 
 def _bullet_grammar_text() -> str:

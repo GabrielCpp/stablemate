@@ -84,7 +84,7 @@ def test_a_declaration_on_a_surface_with_no_node_is_stale(repo: Path):
 def test_the_documented_obligation_class_is_the_one_the_gate_applies():
     """The class is spelled twice — a frozenset here, a sentence in `doctor-codes.md`."""
     ref = Path(__file__).resolve().parents[2] / (
-        "base-library/library/skills/ostler/okf/references/doctor-codes.md")
+        "base-library/library/skills/ostler/ostler-okf/references/doctor-codes.md")
     sentence = re.search(r"`exercised: false`.*?obligation-class findings under that "
                          r"surface\s*—(.*?)\.\s", ref.read_text(), re.S)
     assert sentence is not None, "doctor-codes.md no longer describes the class in prose"

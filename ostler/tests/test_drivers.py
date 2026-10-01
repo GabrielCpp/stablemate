@@ -26,7 +26,7 @@ def test_the_runbook_lists_every_driver_value_drivers_declares() -> None:
 def _node_type_page_row_values() -> list[str]:
     """The backtick-quoted values of the `driver` row on the `runbook` node-type page."""
     page = (Path(__file__).resolve().parents[2]
-            / "base-library/library/skills/ostler/okf/references/node-types/runbook.md")
+            / "base-library/library/skills/ostler/ostler-okf/references/node-types/runbook.md")
     [row] = re.findall(r"^\| `driver` \|(.+)\|$", page.read_text(), re.M)
     return re.findall(r"`([a-z]+)`", row)
 

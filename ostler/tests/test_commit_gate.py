@@ -12,7 +12,7 @@ import pytest
 
 SCRIPT = (
     Path(__file__).resolve().parents[2]
-    / "base-library/library/skills/ostler/cli/scripts/check_staged_files.py"
+    / "base-library/library/skills/ostler/ostler-cli/scripts/check_staged_files.py"
 )
 
 

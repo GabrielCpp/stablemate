@@ -928,7 +928,7 @@ def _emitted_codes() -> dict[str, str]:
 
 def _documented_codes() -> dict[str, str]:
     page = Path(__file__).resolve().parents[2] / (
-        "base-library/library/skills/ostler/okf/references/doctor-codes.md")
+        "base-library/library/skills/ostler/ostler-okf/references/doctor-codes.md")
     rows = re.findall(r"^\| `([a-z0-9-]+)` \| (error|warn) \|", page.read_text(), re.M)
     documented = dict(rows)
     assert len(rows) == len(documented), "doctor-codes.md documents one code twice"

@@ -116,7 +116,7 @@ def test_is_known_type():
 
 
 NODE_TYPE_PAGES = Path(__file__).resolve().parents[2] / (
-    "base-library/library/skills/ostler/okf/references/node-types")
+    "base-library/library/skills/ostler/ostler-okf/references/node-types")
 
 
 def _example_bullets(block: str) -> list[tuple[str, str, int]]:

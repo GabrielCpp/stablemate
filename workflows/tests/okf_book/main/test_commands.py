@@ -396,4 +396,4 @@ def test_the_prompt_and_skill_allowance_covers_the_prompt_and_the_format_skill()
     repo = Path(__file__).resolve().parents[4]
     prompt = repo / "workflows/src/workhorse_workflows/okf_book/main/prompts/write-book.md"
 
-    assert folder_tokens(repo / "base-library/library/skills/ostler/okf") + folder_tokens(prompt.parent) <= PROMPT_AND_SKILL_ALLOWANCE_TOKENS
+    assert folder_tokens(repo / "base-library/library/skills/ostler/ostler-okf") + folder_tokens(prompt.parent) <= PROMPT_AND_SKILL_ALLOWANCE_TOKENS
