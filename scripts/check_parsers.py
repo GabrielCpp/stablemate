@@ -224,9 +224,8 @@ def main() -> int:
         print(f"  {problem}", file=sys.stderr)
     print(
         "\nA format with a grammar gets its parser; a regex over its raw text is that parser "
-        "re-implemented without its cases, and it fails silently. See the "
-        "`stablemate-structured-parsing` skill for the rule, the parser-per-format table, and "
-        "how to declare an exemption when no parser exists.",
+        "re-implemented without its cases, and it fails silently. Each finding above names "
+        f"its parser. Where no parser exists, declare the site in [{TABLE}.allow] in {CONFIG}.",
         file=sys.stderr,
     )
     if allowed:

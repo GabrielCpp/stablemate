@@ -126,8 +126,7 @@ formats expected, and how source names map to generated adapters. That is docume
 A skill or prompt is markdown with YAML frontmatter, and `farrier.frontmatter` reads it
 with a markdown parser and `yaml.safe_load` — never a fence regex. (It is farrier's own
 module rather than `ostler.markdown` because farrier needs frontmatter only and does not
-depend on ostler; both follow the same rule, which the `stablemate-structured-parsing`
-skill states in full.) A CRLF file, a closing `---` with a trailing space and a file with
+depend on ostler; both follow the same rule, which `make check-parsers` enforces.) A CRLF file, a closing `---` with a trailing space and a file with
 no newline after it are all ordinary documents, and the regexes that preceded this read
 every one of them as having no frontmatter at all.
 

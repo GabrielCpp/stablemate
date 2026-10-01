@@ -232,8 +232,9 @@ an epic's stories, a gate's frontmatter or a table in the book goes through
 path, one layer down: a bullet regex matches inside a fenced example, misses the
 `- **Status**:` spelling of the field it wants, and reports a confident wrong answer rather
 than raising. Agent *output* is different — a CLI's log line has no grammar, and regex is
-what reads it. The boundary, the parser for each format, and how to declare an exemption
-are in the `stablemate-structured-parsing` skill; `make check-parsers` enforces it.
+what reads it. `make check-parsers` enforces the boundary. Its guard,
+`scripts/check_parsers.py`, names the parser for each format, and an exemption goes in
+the `[check-parsers.allow]` table of `.agent-checks.toml`.
 
 ## A prompt does not name a stack's skill (load-bearing)
 

@@ -442,8 +442,7 @@ Two public modules come with it, and they are the reason nothing here reads a do
 a regex: **`ostler.markdown`** is the one markdown parser (frontmatter, sections, bullets,
 GFM tables, links — never one inside a fence), and **`ostler.syntax`** is the tree-sitter
 front end for Go, TypeScript/TSX, PHP and Twig that grounds `code:` citations and the
-coverage join. The rule they serve is the `structured-parsing` skill in the base library,
-enforced by `make check-parsers`.
+coverage join. The rule they serve is enforced by `make check-parsers`.
 
 The facade's snapshot semantics, the full call surface, and why the code side is tree-sitter
 rather than each language's own toolchain are in
