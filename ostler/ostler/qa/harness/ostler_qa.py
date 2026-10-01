@@ -18,6 +18,7 @@ import urllib.request
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass, field
+from functools import lru_cache
 from pathlib import Path
 from types import FunctionType
 from typing import Any
@@ -1758,9 +1759,24 @@ CHECK_METHODS = frozenset({"check", "require", "eventually", "require_eventually
 VET_METHOD = "vet"
 
 
+@dataclass(frozen=True)
+class _ParsedPlan:
+    """A plan's source parsed once: its module constants and every call each top-level function reaches."""
+
+    constants: dict[str, Any]
+    reachable: dict[str, list[ast.Call]]
+
+
+@lru_cache(maxsize=1)
+def _parsed(source: str) -> _ParsedPlan:
+    """The plan source parsed once, so every extractor reading the same plan shares one parse and one walk."""
+    tree = ast.parse(source)
+    return _ParsedPlan(_module_constants(tree), _reachable_calls(tree))
+
+
 def count_checks(source: str) -> dict[str, int]:
     """How many `qa.check` / `qa.require` calls each top-level function contains."""
-    reachable = _reachable_calls(ast.parse(source))
+    reachable = _parsed(source).reachable
     return {
         name: sum(
             1
@@ -1779,14 +1795,18 @@ def _reachable_calls(tree: ast.Module) -> dict[str, list[ast.Call]]:
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
     }
 
-    def own(node: ast.FunctionDef | ast.AsyncFunctionDef) -> list[ast.Call]:
-        calls = [child for child in ast.walk(node) if isinstance(child, ast.Call)]
-        return sorted(calls, key=lambda call: (call.lineno, call.col_offset))
+    walked: dict[str, list[ast.Call]] = {}
+
+    def own(name: str) -> list[ast.Call]:
+        if name not in walked:
+            calls = [child for child in ast.walk(functions[name]) if isinstance(child, ast.Call)]
+            walked[name] = sorted(calls, key=lambda call: (call.lineno, call.col_offset))
+        return walked[name]
 
     found: dict[str, list[ast.Call]] = {}
-    for name, node in functions.items():
+    for name in functions:
         seen = {name}
-        pending = [node]
+        pending = [name]
         calls: list[ast.Call] = []
         while pending:
             body = own(pending.pop(0))
@@ -1794,20 +1814,19 @@ def _reachable_calls(tree: ast.Module) -> dict[str, list[ast.Call]]:
             for call in body:
                 if not isinstance(call.func, ast.Name) or call.func.id in seen:
                     continue
-                helper = functions.get(call.func.id)
-                if helper is not None:
+                if call.func.id in functions:
                     seen.add(call.func.id)
-                    pending.append(helper)
+                    pending.append(call.func.id)
         found[name] = calls
     return found
 
 
 def extract_check_covers(source: str) -> dict[str, list[str]]:
     """Which obligation ids each scenario's `qa.check`/`qa.require` calls claim, as written."""
-    tree = ast.parse(source)
-    constants = _module_constants(tree)
+    parsed = _parsed(source)
+    constants = parsed.constants
     found: dict[str, list[str]] = {}
-    for name, calls in _reachable_calls(tree).items():
+    for name, calls in parsed.reachable.items():
         claimed: list[str] = []
         for call in calls:
             if (
@@ -1869,10 +1888,10 @@ VERIFY_METHOD = "verify"
 
 def extract_check_calls(source: str) -> dict[str, list[dict[str, Any]]]:
     """Which named checks each scenario invokes, with the arguments it wrote and what it binds."""
-    tree = ast.parse(source)
-    constants = _module_constants(tree)
+    parsed = _parsed(source)
+    constants = parsed.constants
     found: dict[str, list[dict[str, Any]]] = {}
-    for function, reachable in _reachable_calls(tree).items():
+    for function, reachable in parsed.reachable.items():
         calls: list[dict[str, Any]] = []
         for call in reachable:
             if not isinstance(call.func, ast.Attribute) or call.func.attr != VERIFY_METHOD:
@@ -1918,7 +1937,7 @@ COMPUTED = "*"
 def extract_locators(source: str) -> dict[str, list[dict[str, Any]]]:
     """The locators and navigations each scenario writes, in the shape `validate` reads."""
     found: dict[str, list[dict[str, Any]]] = {}
-    for name, calls in _reachable_calls(ast.parse(source)).items():
+    for name, calls in _parsed(source).reachable.items():
         actions: list[dict[str, Any]] = []
         for call in calls:
             if not isinstance(call.func, ast.Attribute):
@@ -1949,7 +1968,7 @@ def _locator_action(call: ast.Call, method: str) -> dict[str, Any] | None:
 def extract_vets(source: str) -> dict[str, list[str]]:
     """Which screens each scenario hands to the book, as written."""
     found: dict[str, list[str]] = {}
-    for name, calls in _reachable_calls(ast.parse(source)).items():
+    for name, calls in _parsed(source).reachable.items():
         screens: list[str] = []
         for call in calls:
             if not isinstance(call.func, ast.Attribute) or call.func.attr != VET_METHOD:
@@ -1965,10 +1984,10 @@ INSTANCE_METHOD = "instance"
 
 def extract_instances(source: str) -> dict[str, list[dict[str, Any]]]:
     """The concrete instances each scenario declares for repeated obligations, as written."""
-    tree = ast.parse(source)
-    constants = _module_constants(tree)
+    parsed = _parsed(source)
+    constants = parsed.constants
     found: dict[str, list[dict[str, Any]]] = {}
-    for function, reachable in _reachable_calls(tree).items():
+    for function, reachable in parsed.reachable.items():
         instances: list[dict[str, Any]] = []
         for call in reachable:
             if not isinstance(call.func, ast.Attribute) or call.func.attr != INSTANCE_METHOD:

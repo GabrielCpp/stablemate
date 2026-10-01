@@ -438,6 +438,32 @@ def test_describe_counts_eventually_as_an_assertion_and_binds_its_covers(
     assert scenario["check_covers"] == ["ac:2"]
 
 
+def test_every_extractor_shares_one_parse_of_a_plan(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A describe reads the plan through six extractors, and a compiled book's plan costs seconds per parse, so one plan source is parsed once for all six."""
+    harness = load_harness_module("ostler_qa")
+    parses: list[str] = []
+    parse = harness.ast.parse
+
+    def counted(source: str, *args: Any, **kwargs: Any) -> Any:
+        parses.append(source)
+        return parse(source, *args, **kwargs)
+
+    monkeypatch.setattr(harness.ast, "parse", counted)
+    source = PLAN + "\n\nPARSED_ONCE = 1\n"
+    extractors = (
+        harness.count_checks,
+        harness.extract_check_covers,
+        harness.extract_check_calls,
+        harness.extract_locators,
+        harness.extract_vets,
+        harness.extract_instances,
+    )
+    for extract in extractors:
+        _ = extract(source)
+
+    assert parses.count(source) == 1
+
+
 STATUS_PLAN = '''\
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
