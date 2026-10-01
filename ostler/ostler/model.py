@@ -144,16 +144,26 @@ class Graph:
     surfaces: dict[str, dict] = field(default_factory=dict)
     ids: dict | None = None
     template_kinds: tuple = ()
+    _ui_index: tuple[list[UINode] | None, int, dict[str, UINode]] = field(
+        default=(None, -1, {}), init=False, repr=False, compare=False)
 
     def ui_nodes_of_type(self, type_name: str) -> list[UINode]:
         return [n for n in self.ui_nodes if n.type == type_name]
 
     def find_ui_node(self, ident: str) -> UINode | None:
-        """Look up a UI node by its identity (repo-relative path, or ``path#anchor``)."""
-        for n in self.ui_nodes:
-            if n.id == ident:
-                return n
-        return None
+        """Look up a UI node by its identity (repo-relative path, or ``path#anchor``).
+
+        The first node with that identity wins. The lookup indexes the nodes by identity, and
+        indexes them again whenever the node list is replaced or changes length.
+        """
+        nodes = self.ui_nodes
+        listed, count, by_id = self._ui_index
+        if listed is not nodes or count != len(nodes):
+            by_id = {}
+            for n in nodes:
+                _ = by_id.setdefault(n.id, n)
+            self._ui_index = (nodes, len(nodes), by_id)
+        return by_id.get(ident)
 
     def resolve_doc_ref(self, href: str, *, origin: Path | None = None) -> str:
         """Normalize a document link into a node identity (``<repo-rel-path>[#anchor]``)."""

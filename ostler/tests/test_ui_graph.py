@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from ostler import graph, links
-from ostler.model import load
+from ostler.model import Graph, UINode, load
 
 from conftest import write
 
@@ -282,3 +282,25 @@ def test_orphans_are_whole_pages_nothing_reaches(repo: Path):
     assert sorted(n["path"] for n in orphans) == ["docs/features/demo/hub.md",
                                                    "docs/features/demo/lonely.md"]
     assert all(n["parent"] not in {m["id"] for m in d["nodes"]} for n in orphans)
+
+
+def _node(ident: str, title: str = "") -> UINode:
+    return UINode(type="component", kind="section", id=ident, path=Path("s.md"), title=title)
+
+
+def test_a_node_is_found_by_its_identity_and_the_first_of_two_wins() -> None:
+    g = Graph(root=Path("."), org_name="acme", profile="full", doc_roots={},
+              ui_nodes=[_node("s.md#a", "first"), _node("s.md#a", "second"), _node("s.md#b")])
+    found = g.find_ui_node("s.md#a")
+    assert found is not None and found.title == "first"
+    assert g.find_ui_node("s.md#missing") is None
+
+
+def test_a_node_added_or_replaced_after_a_lookup_is_found() -> None:
+    g = Graph(root=Path("."), org_name="acme", profile="full", doc_roots={}, ui_nodes=[_node("s.md#a")])
+    assert g.find_ui_node("s.md#b") is None
+    g.ui_nodes.append(_node("s.md#b"))
+    assert g.find_ui_node("s.md#b") is not None
+    g.ui_nodes = [_node("s.md#c")]
+    assert g.find_ui_node("s.md#a") is None
+    assert g.find_ui_node("s.md#c") is not None
