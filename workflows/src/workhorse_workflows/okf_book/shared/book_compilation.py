@@ -15,6 +15,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, JsonValue, TypeAdapter, model_validator
 
+from ostler import index
 from ostler.qa.compile import Plan, compile_plan_gaps
 from ostler.qa.context import book_context, validate_context, write_context
 from ostler.qa.plan_source import Gap
@@ -128,10 +129,12 @@ def compile_services(root: Path, services: Iterable[str], spec: Path | None = No
 
     Only the obligations those books' pages state are compiled. Another book's pages still inform
     the context, but its scenarios are not this run's. The QA context is written into `spec` first,
-    when one is given.
+    when one is given. The pages parse through ostler's index, so a compile after an earlier one
+    reparses only the pages written since.
     """
     sources = {service: sorted(production_files(root, service)) for service in services}
-    packet = book_context(root, source_roots=sources)
+    with index.session(root):
+        packet = book_context(root, source_roots=sources)
     problems = validate_context(packet)
     if problems:
         raise ValueError(f"the books' QA context is malformed: {'; '.join(problems)}")
