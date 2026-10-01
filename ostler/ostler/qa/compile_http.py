@@ -79,6 +79,16 @@ def _concrete_path(rows: tuple[CallRow, ...]) -> str | None:
     return None
 
 
+def _request_path(template: str, rows: tuple[CallRow, ...]) -> str:
+    """The path a claim requests: a declared check's real path, unless it drops a reference the route names."""
+    concrete = _concrete_path(rows)
+    if concrete is None:
+        return template
+    if set(references.find_references(template)) - set(references.find_references(concrete)):
+        return template
+    return concrete
+
+
 def _expect_status(rows: tuple[CallRow, ...]) -> int | None:
     """The status code a declared `http_status` check expects, when one states it."""
     for row in rows:
@@ -179,7 +189,7 @@ def _probe(obligation: Obligation, credentials: tuple[CallRow, ...], caller: fro
     request = _claim_request(obligation, "observed", produced, gaps, credentials, caller)
     if not isinstance(request, _ClaimRequest) or request.templated or gaps:
         return None
-    return _Probe(fixture, f"{route[0]} {_concrete_path(obligation.checks) or route[1]}", request)
+    return _Probe(fixture, f"{route[0]} {_request_path(route[1], obligation.checks)}", request)
 
 
 _BODILESS_METHODS = frozenset({"GET", "DELETE", "HEAD", "OPTIONS"})
@@ -332,7 +342,7 @@ def _claim_request(
     if status is not None and status >= _SERVER_FAULT:
         why = f"no request a caller sends makes a healthy app answer {status}"
         return _UnbuiltClaimRequest(why, ScenarioRefusal("unarrangeable-server-fault", why))
-    path = _concrete_path(rows) or template
+    path = _request_path(template, rows)
     path_refs = references.find_references(path)
     gaps.extend(Gap(obligation.id, "unresolved-precondition",
                     f"the path references {ref!r}, not resolvable without running the plan")

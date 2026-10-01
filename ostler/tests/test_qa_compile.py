@@ -947,6 +947,23 @@ def test_only_the_literal_a_reference_was_found_in_is_wrapped_in_resolve() -> No
     assert 'qa.resolve("thing.id")' not in source
 
 
+def test_a_check_path_that_drops_the_routes_fixture_fact_does_not_replace_the_route() -> None:
+    oid = "okf:docs/features/acme/api.md#get-thing:does:1"
+    context = _context(
+        _obligation(
+            oid,
+            locators={"route": ["GET /api/things/@seeded-acme.id"]},
+            checksDeclared=[{"call": "ok", "name": "http_status",
+                              "args": {"code": 200, "path": "/api/things/0123456789ABCDEF"}}],
+            fixturesDeclared=[{"name": "seeded-acme", "args": [], "provides": "an account exists",
+                               "providesKeys": ["seeded-acme.id"]}],
+        )
+    )
+    source = compile_plan(context, story="demo-story")
+    assert 'qa.http.get(qa.resolve("/api/things/@seeded-acme.id"), expect_status=200)' in source
+    assert 'qa.http.get("/api/things/0123456789ABCDEF"' not in source
+
+
 def test_a_capture_resolves_a_reference_on_a_strictly_later_obligation() -> None:
     """`$name` names a fact an earlier `capture:` bullet left behind — an obligation after the one that captures it may reference it with no gap."""
     capturing = "okf:docs/features/acme/api.md#post-thing:does:1"
