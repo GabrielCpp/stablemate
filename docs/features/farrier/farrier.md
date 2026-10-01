@@ -352,6 +352,12 @@ it — are the operator's to choose, not farrier's.
   - tests: `farrier/tests/test_user_install.py::test_a_repo_install_also_refreshes_the_user_library`
   - tests: `farrier/tests/test_user_install.py::test_a_repo_install_leaves_the_home_alone_without_a_user_library`
   - tests: `farrier/tests/test_user_install.py::test_a_repo_check_never_writes_the_user_library`
+- **A repo install names each skill it installs twice.** A skill the repo selects and the user
+  library also installs for an enabled harness gets one info line before the install writes. The
+  repo copy stays, because it is the one every contributor gets. A `--check` prints none.
+  - tests: `farrier/tests/test_user_install.py::test_a_repo_install_names_each_skill_the_home_also_installs`
+  - tests: `farrier/tests/test_user_install.py::test_a_home_copy_for_a_harness_the_repo_does_not_enable_is_no_duplicate`
+  - tests: `farrier/tests/test_user_install.py::test_a_repo_check_prints_no_duplicate_notice`
 - code: `farrier/farrier/cli.py::_run_user_install` @e7cba44feabc, `farrier/farrier/outputs.py::render_user_expected` @3967ecfa24a2
 - verify: created(subject="selected user-scope harness outputs")
 - verify: absent(subject="repo scaffolding in the user home")
