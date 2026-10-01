@@ -112,8 +112,9 @@ def _add_install_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--user",
         action="store_true",
-        help="Install into the harness home directories (~/.claude, ~/.codex, "
-             "~/.copilot) from the [user_library.<harness>] tables of the stablemate "
+        help="Install into the harness home directories (~/.claude, and "
+             "~/.agents for Codex and Copilot) from the [user_library.<harness>] "
+             "tables of the stablemate "
              "config, instead of into a repo. Needs no repo and no agents.yml. A repo "
              "install does this too, after the repo, whenever those tables exist.",
     )

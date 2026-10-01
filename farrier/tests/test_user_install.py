@@ -58,8 +58,8 @@ def test_skills_and_prompts_land_in_the_harness_home(
     assert (home / ".claude/skills/db/SKILL.md").is_file()
     assert (home / ".claude/skills/cache/SKILL.md").is_file()
     assert (home / ".claude/commands/grill.md").is_file()
-    assert (home / ".codex/skills/db/SKILL.md").is_file()
-    assert not (home / ".codex/commands").exists()
+    assert (home / ".agents/skills/db/SKILL.md").is_file()
+    assert not (home / ".agents/commands").exists()
 
 
 def test_the_repo_scaffolding_stays_out_of_the_home(
@@ -175,8 +175,51 @@ def test_a_pack_under_a_non_claude_harness_installs_its_skills_only(
     assert install(home, library) == 0
 
     assert (home / ".claude/commands/grill.md").is_file()
-    assert (home / ".codex/skills/db/SKILL.md").is_file()
-    assert not (home / ".codex/commands").exists()
+    assert (home / ".agents/skills/db/SKILL.md").is_file()
+    assert not (home / ".agents/commands").exists()
+
+
+def test_codex_and_copilot_install_the_union_of_their_tables_into_one_folder(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    library = make_library(tmp_path)
+    write_config(
+        tmp_path,
+        monkeypatch,
+        '[user_library.codex]\nskills = ["stablemate/db"]\n\n'
+        '[user_library.copilot]\nskills = ["stablemate/cache"]\n',
+    )
+    home = tmp_path / "home"
+
+    assert install(home, library) == 0
+
+    assert (home / ".agents/skills/db/SKILL.md").is_file()
+    assert (home / ".agents/skills/cache/SKILL.md").is_file()
+    assert not (home / ".codex").exists()
+    assert not (home / ".copilot").exists()
+
+
+def test_a_skill_left_in_the_old_codex_and_copilot_folders_is_swept(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    library = make_library(tmp_path)
+    write_config(tmp_path, monkeypatch, '[user_library.codex]\nskills = ["stablemate/db"]\n')
+    home = tmp_path / "home"
+    assert install(home, library) == 0
+    generated = (home / ".agents/skills/db/SKILL.md").read_text(encoding="utf-8")
+    for old in (".codex", ".copilot"):
+        stale = home / old / "skills/db/SKILL.md"
+        stale.parent.mkdir(parents=True)
+        stale.write_text(generated, encoding="utf-8")
+        mine = home / old / "skills/mine/SKILL.md"
+        mine.parent.mkdir(parents=True)
+        mine.write_text(HANDWRITTEN, encoding="utf-8")
+
+    assert install(home, library) == 0
+
+    for old in (".codex", ".copilot"):
+        assert not (home / old / "skills/db").exists()
+        assert (home / old / "skills/mine/SKILL.md").read_text(encoding="utf-8") == HANDWRITTEN
 
 
 def test_an_unknown_harness_table_is_an_error(

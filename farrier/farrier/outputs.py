@@ -29,7 +29,7 @@ from farrier._vendor.stablemate_core.config import config_path, read_config
 from farrier.layers import available_names
 from farrier.naming import repo_prefix
 from farrier.ownership import is_owned, owned_files, sweep
-from farrier.renderer import Rendered, Renderer
+from farrier.renderer import Rendered, Renderer, user_harness_dir
 from farrier.selection_errors import (
     suggestions,
     unknown_selection_error,
@@ -89,7 +89,13 @@ class Managed:
 REPO_MANAGED = Managed(tuple(MANAGED_DIRS), tuple(MANAGED_FILES), tuple(ASSUMED_OWNED))
 
 USER_MANAGED = Managed(
-    (".claude/skills", ".claude/commands", ".codex/skills", ".copilot/skills"),
+    (
+        ".claude/skills",
+        ".claude/commands",
+        ".agents/skills",
+        ".codex/skills",
+        ".copilot/skills",
+    ),
     repo_scaffolding=False,
 )
 
@@ -363,7 +369,23 @@ def user_selections(
                 f"error: [user_library.{harness}] selected no skills or prompts."
             )
         selections[harness] = (skills, prompts)
-    return selections
+    return share_home_folders(selections)
+
+
+def share_home_folders(
+    selections: dict[str, tuple[list[Source], list[Source]]],
+) -> dict[str, tuple[list[Source], list[Source]]]:
+    """Each harness's selection widened to the union of every harness that installs into the same home folder."""
+    by_folder: dict[str, list[str]] = {}
+    for harness in selections:
+        by_folder.setdefault(user_harness_dir(harness), []).append(harness)
+    shared: dict[str, tuple[list[Source], list[Source]]] = {}
+    for harnesses in by_folder.values():
+        skills = list(dict.fromkeys(s for h in harnesses for s in selections[h][0]))
+        prompts = list(dict.fromkeys(p for h in harnesses for p in selections[h][1]))
+        for harness in harnesses:
+            shared[harness] = (skills, prompts)
+    return shared
 
 
 def render_user_expected(config: dict[str, Any], home: Path) -> dict[Path, str]:
@@ -378,10 +400,14 @@ def render_user_expected(config: dict[str, Any], home: Path) -> dict[Path, str]:
     all_skills = load_layered_sources("skill", "library", "skills")
     all_prompts = load_layered_sources("prompt", "library", "prompts")
 
+    selections = user_selections(config, all_skills, all_prompts)
     outputs: dict[Path, str] = {}
-    for harness, (skills, prompts) in user_selections(
-        config, all_skills, all_prompts
-    ).items():
+    rendered: set[str] = set()
+    for harness in HARNESSES:
+        if harness not in selections or user_harness_dir(harness) in rendered:
+            continue
+        rendered.add(user_harness_dir(harness))
+        skills, prompts = selections[harness]
         renderer = Renderer(home, "", {}, values, skills, prompts, scope="user")
         outputs.update(renderer.render({harness: True}, set()))
     return outputs

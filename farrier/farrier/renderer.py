@@ -175,8 +175,8 @@ def strip_arguments_placeholder(body: str) -> str:
 
 USER_HARNESS_DIRS = {
     "claude": ".claude",
-    "codex": ".codex",
-    "copilot": ".copilot",
+    "codex": ".agents",
+    "copilot": ".agents",
 }
 
 
