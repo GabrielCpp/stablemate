@@ -10,6 +10,7 @@ from ostler import markdown
 from workhorse.pyflow import WorkflowFailed
 from workhorse_workflows.author.shared.survey.blueprint import blueprint
 from workhorse_workflows.author.shared.survey import stubs
+from workhorse_workflows.author.shared.survey.backlog import write_section
 from workhorse_workflows.author.shared import paths
 from workhorse_workflows.author.shared.paths import launch_repo_root
 from workhorse_workflows.author.shared.schemas.parity import ParityConfig
@@ -153,15 +154,6 @@ def expand_parity_inventory(
     )
 
 
-def replace_parity_section(text: str, section: str) -> str:
-    """Replace the parity-surveyor fence, or append one."""
-    begin, end = text.find(PARITY_BEGIN), text.find(PARITY_END)
-    if begin != -1 and end > begin:
-        return text[:begin] + section + text[end + len(PARITY_END) :]
-    prefix = text.rstrip() + "\n\n" if text.strip() else "# Backlog\n\n"
-    return f"{prefix}{PARITY_HEADING}\n\n{section}\n"
-
-
 @blueprint.node(stub=stubs.emitted)
 def emit_parity_backlog(
     logger: logging.Logger,
@@ -206,11 +198,13 @@ def emit_parity_backlog(
             }
         )
 
-    section = "\n".join([PARITY_BEGIN, *bullets, PARITY_END])
-    backlog_path = root / backlog
-    backlog_path.parent.mkdir(parents=True, exist_ok=True)
-    existing = backlog_path.read_text(encoding="utf-8") if backlog_path.is_file() else ""
-    backlog_path.write_text(replace_parity_section(existing, section), encoding="utf-8")
+    write_section(
+        root / backlog,
+        bullets,
+        begin=PARITY_BEGIN,
+        end=PARITY_END,
+        heading=PARITY_HEADING,
+    )
 
     manifest_path = root / unit_manifest
     manifest_path.parent.mkdir(parents=True, exist_ok=True)
@@ -248,5 +242,4 @@ __all__ = [
     "expand_parity_inventory",
     "load_parity_config",
     "parity_slug",
-    "replace_parity_section",
 ]

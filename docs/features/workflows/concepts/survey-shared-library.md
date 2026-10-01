@@ -369,6 +369,21 @@ remain in their respective flow packages and consume these results.
 - code: `workflows/src/workhorse_workflows/author/shared/survey/records.py::verify_records` @cdb6cbd9f5ee
 - tests: `workflows/tests/author/shared/survey/test_records.py::test_a_fully_covered_survey_holds`
 
+### write_section
+- sig: `write_section(path: Path, bullets: list[str], *, begin: str, end: str, heading: str) -> None`
+- does: fences the supplied bullets between the caller's begin and end markers
+- verify: count(subject="fenced survey sections", equals=1)
+- does: replaces the content from the first begin marker through the following end marker
+- verify: unchanged(subject="backlog content outside survey markers")
+- persistence: survey-backlog-section — appends the caller's heading and the fenced section beneath an existing document
+- verify: created(subject="the appended survey section")
+- persistence: survey-backlog-section — creates the backlog and its `# Backlog` heading when the document is absent or blank
+- verify: created(subject="the survey backlog")
+- code: `workflows/src/workhorse_workflows/author/shared/survey/backlog.py::write_section` @37f8aac21123
+- tests: `workflows/tests/author/surveyor/test_partition.py::test_re_emitting_replaces_the_section_and_nothing_else`
+- tests: `workflows/tests/author/parity_surveyor/test_parity.py::test_re_emitting_replaces_only_the_parity_fence`
+- tests: `workflows/tests/author/parity_surveyor/test_parity.py::test_emit_creates_a_backlog_when_none_exists`
+
 The package also provides dry-run callback implementations for the registered gate nodes. They
 return successful blank models so a dry-run exercises the success branches without creating
 survey artifacts.

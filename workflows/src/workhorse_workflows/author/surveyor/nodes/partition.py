@@ -8,6 +8,7 @@ import re
 import yaml
 from workhorse_workflows.author.shared.survey.blueprint import blueprint
 from workhorse_workflows.author.shared.survey import stubs
+from workhorse_workflows.author.shared.survey.backlog import write_section
 from workhorse_workflows.author.shared import paths
 from workhorse_workflows.author.shared.paths import survey_repo_root
 from workhorse_workflows.author.shared.schemas.survey import EmitResult, PartitionCheck
@@ -149,16 +150,6 @@ def bullet_for(cluster: dict) -> str:
     return f"- [survey-{cid}] {title} ({'; '.join(hints)})"
 
 
-def replace_section(text: str, section: str) -> str:
-    """Replace the marker-fenced survey section, or append one if absent."""
-    begin, end = text.find(SECTION_BEGIN), text.find(SECTION_END)
-    if begin != -1 and end != -1 and end > begin:
-        return text[:begin] + section + text[end + len(SECTION_END) :]
-    body = text.rstrip("\n")
-    prefix = (body + "\n\n") if body else "# Backlog\n\n"
-    return prefix + SECTION_HEADING + "\n\n" + section + "\n"
-
-
 @blueprint.node(stub=stubs.emitted)
 def emit_artifacts(
     logger: logging.Logger,
@@ -198,12 +189,13 @@ def emit_artifacts(
         (c for c in clusters if isinstance(c, dict)),
         key=lambda c: (c.get("order", 10**6), str(c.get("id", ""))),
     )
-    section = "\n".join([SECTION_BEGIN, *(bullet_for(c) for c in ordered), SECTION_END])
-
-    backlog_path = root / backlog_rel
-    backlog_path.parent.mkdir(parents=True, exist_ok=True)
-    existing = backlog_path.read_text(encoding="utf-8") if backlog_path.is_file() else ""
-    backlog_path.write_text(replace_section(existing, section), encoding="utf-8")
+    write_section(
+        root / backlog_rel,
+        [bullet_for(c) for c in ordered],
+        begin=SECTION_BEGIN,
+        end=SECTION_END,
+        heading=SECTION_HEADING,
+    )
 
     bullets_by_unit: dict[str, list[str]] = {}
     clusters_by_unit: dict[str, list[str]] = {}
@@ -266,6 +258,5 @@ __all__ = [
     "STRATEGIES",
     "bullet_for",
     "emit_artifacts",
-    "replace_section",
     "validate_partition",
 ]

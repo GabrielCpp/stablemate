@@ -32,8 +32,8 @@ re-planning completed work.
 - code: `workflows/src/workhorse_workflows/author/surveyor/flow.py::MAX_VERIFY_RESOLVES` @262eac5ce86e
 - code: `workflows/src/workhorse_workflows/author/surveyor/nodes/config.py::load_survey_config` @bd999c6757d7
 - code: `workflows/src/workhorse_workflows/author/surveyor/nodes/config.py::check_inventory` @bd999c6757d7
-- code: `workflows/src/workhorse_workflows/author/surveyor/nodes/partition.py::validate_partition` @636d218c69b8
-- code: `workflows/src/workhorse_workflows/author/surveyor/nodes/partition.py::emit_artifacts` @636d218c69b8
+- code: `workflows/src/workhorse_workflows/author/surveyor/nodes/partition.py::validate_partition` @e6f804dfa71e
+- code: `workflows/src/workhorse_workflows/author/surveyor/nodes/partition.py::emit_artifacts` @e6f804dfa71e
 - tests: `workflows/tests/author/surveyor/test_flow.py::test_two_components_are_planned_assessed_verified_and_emitted`
 - tests: `workflows/tests/author/surveyor/test_config.py::test_the_config_derives_every_path_from_survey_dir`
 - tests: `workflows/tests/author/surveyor/test_partition.py::test_one_bullet_per_cluster_lands_in_the_fenced_section`
@@ -268,7 +268,7 @@ re-planning completed work.
 - verify: json_path(path="$.partition_ok", equals=true)
 - returns: returns `PartitionCheck(partition_ok=false, partition_errors=...)` containing all detected validation errors when any check fails
 - verify: json_path(path="$.partition_ok", equals=false)
-- code: `workflows/src/workhorse_workflows/author/surveyor/nodes/partition.py::validate_partition` @636d218c69b8
+- code: `workflows/src/workhorse_workflows/author/surveyor/nodes/partition.py::validate_partition` @e6f804dfa71e
 - tests: `workflows/tests/author/surveyor/test_partition.py::test_an_assessed_unit_in_no_cluster_is_the_gate`
 
 ### emit_artifacts
@@ -294,7 +294,7 @@ re-planning completed work.
 - verify: json_path(path="$.emit_ok", equals=true)
 - returns: returns `EmitResult(emit_ok=false, emit_errors=...)` and writes neither generated artifact when an input artifact cannot be read
 - verify: json_path(path="$.emit_ok", equals=false)
-- code: `workflows/src/workhorse_workflows/author/surveyor/nodes/partition.py::emit_artifacts` @636d218c69b8
+- code: `workflows/src/workhorse_workflows/author/surveyor/nodes/partition.py::emit_artifacts` @e6f804dfa71e
 - tests: `workflows/tests/author/surveyor/test_partition.py::test_re_emitting_replaces_the_section_and_nothing_else`
 
 ### bullet_for
@@ -308,18 +308,5 @@ re-planning completed work.
   - verify: visible(locator="cluster notes hint", text=" ")
 - returns: returns one markdown list item string for the supplied cluster
 - verify: count(subject="rendered cluster bullets", equals=1)
-- code: `workflows/src/workhorse_workflows/author/surveyor/nodes/partition.py::bullet_for` @636d218c69b8
+- code: `workflows/src/workhorse_workflows/author/surveyor/nodes/partition.py::bullet_for` @e6f804dfa71e
 - tests: `workflows/tests/author/surveyor/test_partition.py::test_one_bullet_per_cluster_lands_in_the_fenced_section`
-
-### replace_section
-- sig: `replace_section(text: str, section: str) -> str`
-- does: replaces the content from the first survey begin marker through the following end marker
-- verify: unchanged(subject="backlog content outside survey markers")
-- persistence: survey-backlog-section — appends a generated survey section beneath an existing document
-- verify: visible(locator="appended survey section", text="## Survey findings")
-- persistence: survey-backlog-section — creates the `# Backlog` heading when the document is empty
-- verify: created(subject="the survey backlog")
-- returns: returns text containing exactly the supplied generated section and preserving unrelated text
-- verify: count(subject="survey section replacements", equals=1)
-- code: `workflows/src/workhorse_workflows/author/surveyor/nodes/partition.py::replace_section` @636d218c69b8
-- tests: `workflows/tests/author/surveyor/test_partition.py::test_re_emitting_replaces_the_section_and_nothing_else`

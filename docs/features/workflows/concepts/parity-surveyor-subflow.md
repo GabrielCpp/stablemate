@@ -14,9 +14,9 @@ the [author surveyor](author-surveyor-subflow.md); this subflow differs by havin
 splitting, or clustering stage.
 
 - code: `workflows/src/workhorse_workflows/author/parity_surveyor/flow.py::ParitySurveyor` @afa650d81faa
-- code: `workflows/src/workhorse_workflows/author/parity_surveyor/nodes/parity.py::load_parity_config` @09b3ca61b54d
-- code: `workflows/src/workhorse_workflows/author/parity_surveyor/nodes/parity.py::expand_parity_inventory` @09b3ca61b54d
-- code: `workflows/src/workhorse_workflows/author/parity_surveyor/nodes/parity.py::emit_parity_backlog` @09b3ca61b54d
+- code: `workflows/src/workhorse_workflows/author/parity_surveyor/nodes/parity.py::load_parity_config` @e7b871650845
+- code: `workflows/src/workhorse_workflows/author/parity_surveyor/nodes/parity.py::expand_parity_inventory` @e7b871650845
+- code: `workflows/src/workhorse_workflows/author/parity_surveyor/nodes/parity.py::emit_parity_backlog` @e7b871650845
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/parity.py::ParityConfig` @9c1c30dc1201
 - tests: `workflows/tests/author/parity_surveyor/test_flow.py::test_a_two_surface_baseline_surveys_both_and_emits_only_the_unowned_one`
 - tests: `workflows/tests/author/parity_surveyor/test_parity.py::test_expand_freezes_one_unit_per_baseline_surface`
@@ -136,15 +136,7 @@ directory and keeps derived paths repository-relative.
 - does: converts a unit id to a lowercase hyphenated finding-record filename stem
 - returns: returns the normalized stem with non-alphanumeric runs collapsed and edge hyphens removed
 - verify: count(subject="parity record slug conversions", equals=1)
-- code: `workflows/src/workhorse_workflows/author/parity_surveyor/nodes/parity.py::parity_slug` @09b3ca61b54d
-
-### replace_parity_section
-- sig: `replace_parity_section(text: str, section: str) -> str`
-- does: replaces an existing parity marker section without changing text outside its markers
-- does: appends the parity heading and marker section to a non-empty backlog when no marker exists
-- returns: returns the resulting backlog text
-- verify: count(subject="parity backlog section replacements", equals=1)
-- code: `workflows/src/workhorse_workflows/author/parity_surveyor/nodes/parity.py::replace_parity_section` @09b3ca61b54d
+- code: `workflows/src/workhorse_workflows/author/parity_surveyor/nodes/parity.py::parity_slug` @e7b871650845
 
 ### load_parity_config
 - sig: `load_parity_config(logger: logging.Logger, baseline: str, survey_dir: str = "docs/survey/legacy-vs-new", repo_dir: str = "") -> ParityConfig`
@@ -153,7 +145,7 @@ directory and keeps derived paths repository-relative.
 - raises: raises `WorkflowFailed` with failure class `parity-target-missing` when the target feature book is absent
 - returns: returns a [parity configuration](../formats/parity-config.md) with paths derived from the selected repository root
 - verify: count(subject="loaded parity configurations", equals=1)
-- code: `workflows/src/workhorse_workflows/author/parity_surveyor/nodes/parity.py::load_parity_config` @09b3ca61b54d
+- code: `workflows/src/workhorse_workflows/author/parity_surveyor/nodes/parity.py::load_parity_config` @e7b871650845
 
 ### expand_parity_inventory
 - sig: `expand_parity_inventory(logger: logging.Logger, baseline: str, inventory: str, repo_dir: str = "") -> Expansion`
@@ -162,7 +154,7 @@ directory and keeps derived paths repository-relative.
 - does: rejects malformed, duplicate, unreadable, and zero-unit baselines without writing a freeze
 - returns: returns an `Expansion` identifying the frozen unit count and source note
 - verify: count(subject="expanded parity inventories", equals=1)
-- code: `workflows/src/workhorse_workflows/author/parity_surveyor/nodes/parity.py::expand_parity_inventory` @09b3ca61b54d
+- code: `workflows/src/workhorse_workflows/author/parity_surveyor/nodes/parity.py::expand_parity_inventory` @e7b871650845
 
 ### emit_parity_backlog
 - sig: `emit_parity_backlog(logger: logging.Logger, inventory: str, findings_dir: str, unit_manifest: str, repo_dir: str = "") -> EmitResult`
@@ -171,4 +163,4 @@ directory and keeps derived paths repository-relative.
 - does: writes a version-one manifest with each unit's path, status, owner, and emitted bullet id
 - returns: returns an `EmitResult` with emitted bullet count and suppression summary
 - verify: count(subject="emitted parity backlogs", equals=1)
-- code: `workflows/src/workhorse_workflows/author/parity_surveyor/nodes/parity.py::emit_parity_backlog` @09b3ca61b54d
+- code: `workflows/src/workhorse_workflows/author/parity_surveyor/nodes/parity.py::emit_parity_backlog` @e7b871650845
