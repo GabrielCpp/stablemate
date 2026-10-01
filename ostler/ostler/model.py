@@ -682,9 +682,10 @@ def load(
     graph = Graph(root=root, org_name=org_name, profile=profile, doc_roots=roots,
                   template_kinds=template_kinds)
 
-    _load_features(graph)
+    pages = _feature_pages(graph)
+    _load_features(graph, pages)
     _load_surfaces(graph)
-    _load_ui_nodes(graph)
+    _load_ui_nodes(graph, pages)
     if profile == "full":
         _load_milestones(graph)
         _load_epics(graph)
@@ -795,9 +796,8 @@ def _doc_from_products(payload: _DocProducts) -> markdown.MarkdownDoc:
 _FEATURE_DOC_CACHE: dict[Path, tuple[markdown.MarkdownDoc, dict, list[UINode]]] = {}
 
 
-def _feature_doc(path: Path, root: Path) -> tuple[dict, list[UINode]]:
+def _feature_doc(doc: markdown.MarkdownDoc, path: Path, root: Path) -> tuple[dict, list[UINode]]:
     """The two products the feature book is read for — frontmatter and UI nodes — parsed once."""
-    doc = read_doc(path)
     hit = _FEATURE_DOC_CACHE.get(path)
     if hit is not None and hit[0] is doc:
         return dict(hit[1]), hit[2]
@@ -821,31 +821,30 @@ def _ui_nodes(doc: markdown.MarkdownDoc, path: Path, root: Path) -> list[UINode]
     return nodes
 
 
-def _feature_paths(graph: Graph) -> list[Path]:
-    """Every book page under the features root -- a file's membership in the corpus is a claim the file makes, not a property of where it sits, so a candidate must declare a `type` to count (the same rule `doctor._check_conformance` enforces as `okf-missing-type`, and that check walks its own `etype.location` glob independently of this function, so gating here does not silence it)."""
+def _feature_pages(graph: Graph) -> list[tuple[Path, dict, list[UINode]]]:
+    """Every book page under the features root, with its frontmatter and UI nodes, each page read once.
+
+    A file's membership in the corpus is a claim the file makes, not a property of where it sits, so a candidate must declare a `type` to count (the same rule `doctor._check_conformance` enforces as `okf-missing-type`, and that check walks its own `etype.location` glob independently of this function, so gating here does not silence it)."""
     froot = graph.doc_roots["features"]
     if not froot.is_dir():
         return []
-    paths = []
+    pages = []
     for p in sorted(froot.rglob("*.md")):
         if not p.is_file() or p.name in registry.RESERVED_FILES:
             continue
         try:
-            fm = read_doc(p).frontmatter or {}
+            doc = read_doc(p)
         except OSError:
             continue
-        if registry.type_of(fm):
-            paths.append(p)
-    return paths
+        if registry.type_of(doc.frontmatter or {}):
+            frontmatter, nodes = _feature_doc(doc, p, graph.root)
+            pages.append((p, frontmatter, nodes))
+    return pages
 
 
-def _load_features(graph: Graph) -> None:
+def _load_features(graph: Graph, pages: list[tuple[Path, dict, list[UINode]]]) -> None:
     froot = graph.doc_roots["features"]
-    for path in _feature_paths(graph):
-        try:
-            data, _ = _feature_doc(path, graph.root)
-        except OSError:
-            continue
+    for path, data, _ in pages:
         rel = path.relative_to(froot).with_suffix("")
         slug = str(data.get("slug") or rel.name)
         area = str(data.get("area") or (rel.parent.as_posix() if rel.parent.as_posix() != "." else ""))
@@ -1027,12 +1026,8 @@ def _parse_ui_nodes(doc: markdown.MarkdownDoc, path: Path, root: Path) -> list[U
     return nodes
 
 
-def _load_ui_nodes(graph: Graph) -> None:
-    for path in _feature_paths(graph):
-        try:
-            _, nodes = _feature_doc(path, graph.root)
-        except OSError:
-            continue
+def _load_ui_nodes(graph: Graph, pages: list[tuple[Path, dict, list[UINode]]]) -> None:
+    for _, _, nodes in pages:
         graph.ui_nodes.extend(nodes)
 
 

@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ostler import graph, links
+import pytest
+
+from ostler import graph, links, markdown, model
 from ostler.model import Graph, UINode, load
 
 from conftest import write
@@ -304,3 +306,19 @@ def test_a_node_added_or_replaced_after_a_lookup_is_found() -> None:
     g.ui_nodes = [_node("s.md#c")]
     assert g.find_ui_node("s.md#a") is None
     assert g.find_ui_node("s.md#c") is not None
+
+
+def test_a_graph_load_reads_each_book_page_once(repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    reads: list[Path] = []
+    real = model.read_doc
+
+    def counted(path: Path) -> markdown.MarkdownDoc:
+        reads.append(Path(path))
+        return real(path)
+
+    monkeypatch.setattr(model, "read_doc", counted)
+    g = _repo(repo)
+    pages = [p for p in reads if p.name != "index.md"]
+    assert pages and len(pages) == len(set(pages))
+    assert {"dash", "ds", "diff"} <= {f.slug for f in g.features}
+    assert g.find_ui_node("docs/features/groom/concepts/diff.md") is not None
