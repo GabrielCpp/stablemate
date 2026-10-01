@@ -46,6 +46,7 @@ from workhorse.runner import process as agent_process
 from workhorse.runner import transcript
 from workhorse.runner.failure import BackendInvocationError
 from workhorse.runner.ladder import resolved_profile
+from workhorse.templates import turn_catalog
 
 
 @dataclass(frozen=True, slots=True)
@@ -150,9 +151,8 @@ def run_pyflow(invocation: RunInvocation) -> int:
     params = dict(invocation.params)
     config = invocation.config
     name = registry.name or "workflow"
-    manifest_layer = invocation.context_manifest.as_context()
-
-    unresolved_refs = missing_references(registry.directory(), manifest_layer)
+    workspace = Path(config.workspace or os.getcwd()).resolve()
+    unresolved_refs = missing_references(registry.directory(), turn_catalog(workspace))
     if unresolved_refs:
         print(f"[workhorse] WARNING: {format_missing(unresolved_refs)}")
 

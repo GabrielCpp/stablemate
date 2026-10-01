@@ -3,8 +3,9 @@ import json
 import logging
 import os
 import sys
-from collections.abc import Iterable, Iterator
-from pathlib import Path, PurePosixPath
+from collections.abc import Callable, Iterable
+from functools import cache
+from pathlib import Path
 from typing import Any
 
 from jinja2 import (
@@ -19,8 +20,17 @@ from jinja2 import (
 )
 
 from workhorse._vendor.stablemate_core.config import resolve_default_cli
+from workhorse._vendor.stablemate_core.skill_refs import (
+    RETIRED_HELPERS,
+    RetiredHelper,
+    SkillCatalog,
+    SkillRefs,
+    repo_root,
+    scan_catalog,
+)
 from workhorse.manifest import ManifestContext
-from workhorse.references import resolve_instruction
+
+NODE_ADD_DIRS = "_node_add_dirs"
 
 _undefined_logger = logging.getLogger("workhorse.templates")
 if not _undefined_logger.handlers:
@@ -35,27 +45,47 @@ ResilientUndefined = make_logging_undefined(
 )
 
 
-def _flatten(names: Iterable[Any]) -> Iterator[str]:
-    """Yield reference names from either calling convention, skipping empties."""
-    for name in names:
-        if isinstance(name, str):
-            if name:
-                yield name
-        elif isinstance(name, Iterable):
-            yield from _flatten(name)
+def _node_add_dirs(context: dict[str, Any], cwd: Path) -> list[Path]:
+    value = context.get(NODE_ADD_DIRS)
+    if not isinstance(value, (list, tuple)):
+        return []
+    return [(cwd / str(directory)).resolve() for directory in value if directory]
 
 
-def _farrier_globals(
-    context: dict[str, Any], workflow_dir: Path, *, quiet: bool = False
-) -> dict[str, Any]:
-    """Return Jinja2 globals for the farrier template helpers, resolved at run time."""
-    manifest = ManifestContext.from_context(context)
-    instructions = manifest.instructions
-    instruction_tags = manifest.instruction_tags
-    prompts = manifest.prompts
-    used_skills = set(manifest.used_skills)
-    skill_dir_value = manifest.skill_dir
+def agent_cli() -> str:
+    return (os.environ.get("AGENT_CLI") or resolve_default_cli()).strip().lower()
 
+
+def turn_catalog(cwd: Path, add_dirs: Iterable[Path] = ()) -> SkillCatalog:
+    """The skills the default harness loads for a turn started in `cwd` with `add_dirs`."""
+    return scan_catalog(
+        agent_cli(), cwd, home=Path.home(), added_dirs=add_dirs, root=repo_root(cwd)
+    )
+
+
+def skill_refs(context: dict[str, Any], *, quiet: bool = False) -> SkillRefs:
+    """The skill reference helpers for one turn, bound to what its harness loads from where it starts."""
+    start = context.get("_node_cwd") or ManifestContext.from_context(context).repo_root
+    cwd = Path(start or os.getcwd()).resolve()
+    catalog = turn_catalog(cwd, _node_add_dirs(context, cwd))
+
+    def placeholder(name: str) -> str:
+        return f"generated {name} skill when installed"
+
+    return SkillRefs(
+        catalog, agent_cli(), cwd, repo_root(cwd), Path.home(), placeholder if quiet else None
+    )
+
+
+def _retired(name: str) -> Callable[..., str]:
+    def call(*_args: Any, **_kwargs: Any) -> str:
+        raise RetiredHelper(name)
+
+    return call
+
+
+def template_globals(context: dict[str, Any], *, quiet: bool = False) -> dict[str, Any]:
+    """The globals every prompt renders with: the run's values and the skill reference helpers."""
     run_dir_value = context.get("_run_dir", "")
 
     def workhorse_var(name: str) -> Any:  # noqa: ANN202
@@ -74,112 +104,35 @@ def _farrier_globals(
         except (json.JSONDecodeError, OSError):
             return default
 
-    def skill_dir() -> str:
-        return skill_dir_value if skill_dir_value else str(workflow_dir)
+    @cache
+    def refs() -> SkillRefs:
+        return skill_refs(context, quiet=quiet)
 
-    manifest_present = manifest.present
+    def skill_link(name: str) -> str:
+        return refs().skill_link(name)
 
-    def unresolved(kind: str, name: str) -> None:
-        """Report a reference that rendered as prose instead of a path."""
-        if manifest_present and not quiet:
-            _undefined_logger.warning(
-                "%s '%s' did not resolve against the context manifest — the prompt "
-                "will carry the placeholder text instead of a path",
-                kind,
-                name,
-            )
+    def skill_path(name: str, relative: str = "") -> str:
+        return refs().skill_path(name, relative)
 
-    def instruction_ref(name: str = "") -> str:
-        resolved = resolve_instruction(instructions, name)
-        if resolved is not None:
-            return resolved
-        unresolved("skill", name)
-        return f"generated {name} instruction file when installed"
+    def skill_command(name: str) -> str:
+        return refs().skill_command(name)
 
-    def prompt_ref(name: str = "") -> str:
-        if name in prompts:
-            return prompts[name]
-        unresolved("prompt", name)
-        return f"generated {name} prompt when installed"
+    def find_by_tags(*tags: str) -> str:
+        return refs().find_by_tags(*tags)
 
-    def _as_list(paths: Iterable[str]) -> str:
-        """The one rendering of a resolved set: backticked paths, comma-joined."""
-        return ", ".join(f"`{path}`" for path in paths)
-
-    def _rendered(names: Iterable[Any], lookup: Any) -> str:
-        seen: set[str] = set()
-        out: list[str] = []
-        for name in _flatten(names):
-            path = lookup(name)
-            if path is not None and path not in seen:
-                seen.add(path)
-                out.append(path)
-        return _as_list(out)
-
-    def instruction_refs(*names: Any) -> str:
-        return _rendered(names, lambda n: resolve_instruction(instructions, n))
-
-    def prompt_refs(*names: Any) -> str:
-        return _rendered(names, prompts.get)
-
-    def find_by_tags(*tags: Any) -> str:
-        """The installed skills tagged with **all** of *tags*, as a reference list."""
-        wanted = {tag.lower() for tag in _flatten(tags)}
-        if not wanted:
-            return ""
-        matched: set[str] = set()
-        for name, owned in instruction_tags.items():
-            if not wanted <= set(owned):
-                continue
-            path = resolve_instruction(instructions, name)
-            if path is not None:
-                matched.add(path)
-        return _as_list(sorted(matched))
-
-    def is_using_instruction(name: str = "", *_args: Any, **_kwargs: Any) -> bool:
-        return name in used_skills
-
-    def agent_cli() -> str:
-        return (os.environ.get("AGENT_CLI") or resolve_default_cli()).strip().lower()
-
-    def skill_load_ref(skill_name: str, skill_path: str = "") -> str:
-        """Return the harness-native instruction for loading a skill."""
-        resolved = resolve_instruction(instructions, skill_name)
-        if resolved is None:
-            unresolved("skill", skill_name)
-        path = resolved or skill_path or f"{skill_dir()}/{skill_name}/SKILL.md"
-        if agent_cli() == "claude":
-            return f"/{PurePosixPath(path).parent.name or skill_name}"
-        return f"Read `{path}` and follow its instructions"
-
-    def skill_path_ref(skill_name: str, relative: str) -> str:
-        """Return the path of a file that ships inside an installed skill."""
-        resolved = resolve_instruction(instructions, skill_name)
-        if resolved is None:
-            unresolved("skill", skill_name)
-        parent = PurePosixPath(resolved).parent if resolved else None
-        base = str(parent) if parent and str(parent) != "." else f"{skill_dir()}/{skill_name}"
-        return f"{base}/{relative}"
+    def has_skill(name: str) -> bool:
+        return refs().has_skill(name)
 
     return {
+        **{name: _retired(name) for name in RETIRED_HELPERS},
         "workhorse_var": workhorse_var,
         "agent_cli": agent_cli,
-        "skill_load_ref": skill_load_ref,
-        "skill_path_ref": skill_path_ref,
         "get_node_output": get_node_output,
-        "skill_dir": skill_dir,
-        "instruction_ref": instruction_ref,
-        "instruction_file": instruction_ref,
-        "skill_file": instruction_ref,
-        "prompt_file": prompt_ref,
-        "prompt_ref": prompt_ref,
-        "instruction_refs": instruction_refs,
-        "instruction_files": instruction_refs,
-        "skill_files": instruction_refs,
-        "prompt_refs": prompt_refs,
-        "prompt_files": prompt_refs,
+        "skill_link": skill_link,
+        "skill_path": skill_path,
+        "skill_command": skill_command,
         "find_by_tags": find_by_tags,
-        "isUsingInstruction": is_using_instruction,
+        "has_skill": has_skill,
     }
 
 
@@ -243,7 +196,7 @@ def _environment(
     env = Environment(
         loader=loader, undefined=ResilientUndefined, keep_trailing_newline=True
     )
-    env.globals.update(_farrier_globals(context, workflow_dir))
+    env.globals.update(template_globals(context))
     return env
 
 
@@ -271,7 +224,6 @@ def render_string(
 ) -> str:
     """Render an inline Jinja2 template string (an agent turn's cwd/args/add_dirs)."""
     env = Environment(undefined=ChainableUndefined if quiet else ResilientUndefined)
-    workflow_dir = Path(ManifestContext.from_context(context).skill_dir or ".")
-    env.globals.update(_farrier_globals(context, workflow_dir, quiet=quiet))
+    env.globals.update(template_globals(context, quiet=quiet))
     tmpl = env.from_string(template_str)
     return tmpl.render(**context)

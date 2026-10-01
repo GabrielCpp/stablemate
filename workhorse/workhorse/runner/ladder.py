@@ -43,7 +43,7 @@ from workhorse.runner.waits import (
     active_recovery_wait_budget,
     recovery_wait_scope,
 )
-from workhorse.templates import render, render_string, render_text
+from workhorse.templates import NODE_ADD_DIRS, render, render_string, render_text
 
 if TYPE_CHECKING:
     from workhorse.runner.backends import AgentBackend
@@ -203,20 +203,6 @@ class AgentRunner:
 
         rendered_cwd = render_string(node.cwd, ctx).strip() if node.cwd else None
 
-        rendered_args = {k: render_string(v, ctx) for k, v in node.args.items()}
-        prompt_ctx = {
-            **ctx,
-            **rendered_args,
-            "node_timeout_s": "unbounded" if unbounded else int(effective_timeout),
-            "node_timeout_min": "unbounded" if unbounded else int(round(effective_timeout / 60)),
-            "_node_cwd": rendered_cwd or "",
-        }
-        rendered_prompt = (
-            render_text(node.id, node.prompt_text, prompt_ctx, workflow_dir)
-            if node.prompt_text
-            else render(node.prompt, prompt_ctx, workflow_dir)
-        )
-
         if isinstance(node.add_dirs, str):
             bare = re.fullmatch(r"\{\{\s*(\w+)\s*\}\}", node.add_dirs.strip())
             if bare:
@@ -233,6 +219,21 @@ class AgentRunner:
         if rendered_cwd and rendered_add_dirs:
             cwd_resolved = Path(rendered_cwd).resolve()
             rendered_add_dirs = [d for d in rendered_add_dirs if Path(d).resolve() != cwd_resolved]
+
+        rendered_args = {k: render_string(v, ctx) for k, v in node.args.items()}
+        prompt_ctx = {
+            **ctx,
+            **rendered_args,
+            "node_timeout_s": "unbounded" if unbounded else int(effective_timeout),
+            "node_timeout_min": "unbounded" if unbounded else int(round(effective_timeout / 60)),
+            "_node_cwd": rendered_cwd or "",
+            NODE_ADD_DIRS: list(rendered_add_dirs),
+        }
+        rendered_prompt = (
+            render_text(node.id, node.prompt_text, prompt_ctx, workflow_dir)
+            if node.prompt_text
+            else render(node.prompt, prompt_ctx, workflow_dir)
+        )
 
         return RenderedTurn(
             prompt=rendered_prompt,

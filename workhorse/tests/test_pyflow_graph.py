@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import patch
 
+import pytest
 from pydantic import BaseModel
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -25,7 +26,6 @@ from workhorse.pyflow import (  # noqa: E402
     WorkflowFailed,
     state,
 )
-from workhorse.manifest import ManifestContext  # noqa: E402
 from workhorse.pyflow.dot import to_dot  # noqa: E402
 from workhorse.pyflow.graph import (  # noqa: E402
     Edge,
@@ -657,55 +657,60 @@ def test_a_real_run_still_fails_on_the_same_fail_terminal():
     assert "ERROR: budget exhausted" in out, out
 
 
-def _run_with_manifest(manifest: ManifestContext, *, dry_run: bool) -> tuple[int, str]:
-    """Drive a trivial workflow whose one prompt names a skill, under `manifest`."""
+def _run_naming_a_skill(
+    tmp: Path, monkeypatch: pytest.MonkeyPatch, *, installed: bool, dry_run: bool
+) -> tuple[int, str]:
+    """Drive a trivial workflow whose one prompt names a skill, from a repo that has it or not."""
     from workhorse.pyflow import run as pyflow_run
 
     class Named(Workflow):
         def start(self) -> Transition:
             return Done(None)
 
+    repo = tmp / "acme"
+    (repo / ".git").mkdir(parents=True, exist_ok=True)
+    if installed:
+        skill = repo / ".claude/skills/acme-story-docs/SKILL.md"
+        skill.parent.mkdir(parents=True, exist_ok=True)
+        skill.write_text("---\nname: acme-story-docs\nmetadata:\n  name: story-docs\n---\n")
+    monkeypatch.chdir(repo)
+    monkeypatch.setenv("HOME", str(tmp / "home"))
+    monkeypatch.setenv("AGENT_CLI", "claude")
+
     registry = RegistryAt("acme")
     registry.entry_point(Named)
+    workflow_dir = tmp / "wf"
+    prompts = workflow_dir / "prompts"
+    prompts.mkdir(parents=True, exist_ok=True)
+    (prompts / "review.md").write_text('{{ skill_link("story-docs") }}\n', encoding="utf-8")
+    registry.at = workflow_dir
     out = io.StringIO()
-    with tempfile.TemporaryDirectory() as tmp:
-        prompts = Path(tmp) / "prompts"
-        prompts.mkdir()
-        (prompts / "review.md").write_text(
-            '{{ instruction_ref("story-docs") }}\n', encoding="utf-8"
-        )
-        registry.at = Path(tmp)
-        with contextlib.redirect_stdout(out):
-            code = pyflow_run.run_pyflow(
-                pyflow_run.RunInvocation(
-                    registry,
-                    runs_dir=Path(tmp) / "runs",
-                    run_id="refs",
-                    dry_run=dry_run,
-                    context_manifest=manifest,
-                )
+    with contextlib.redirect_stdout(out):
+        code = pyflow_run.run_pyflow(
+            pyflow_run.RunInvocation(
+                registry, runs_dir=tmp / f"runs-{dry_run}", run_id="refs", dry_run=dry_run
             )
+        )
     return code, out.getvalue()
 
 
-def test_an_unresolvable_skill_reference_warns_a_real_run_and_fails_a_dry_one():
-    """A `{{ instruction_ref(...) }}` that resolves against nothing renders a sentence of prose into a live agent prompt, so the only way it becomes visible is by being said."""
-    manifest = ManifestContext(
-        present=True, instructions={"go": ".claude/skills/acme-go/SKILL.md"}
-    )
-
-    code, out = _run_with_manifest(manifest, dry_run=False)
+def test_an_unresolvable_skill_reference_warns_a_real_run_and_fails_a_dry_one(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A named skill the harness will not load stops the turn that asks for it, so the run says so before it starts."""
+    code, out = _run_naming_a_skill(tmp_path, monkeypatch, installed=False, dry_run=False)
     assert code == 0, out
     assert "WARNING" in out and "story-docs" in out, out
 
-    code, out = _run_with_manifest(manifest, dry_run=True)
+    code, out = _run_naming_a_skill(tmp_path, monkeypatch, installed=False, dry_run=True)
     assert code == 1, out
     assert "ERROR" in out and "story-docs" in out, out
 
 
-def test_a_run_carrying_no_manifest_is_not_warned_about_references():
-    """Unresolved is the normal state for a manifest-free run (loop-runner, tests); warning there would train the operator to ignore the warning that matters."""
-    code, out = _run_with_manifest(ManifestContext(), dry_run=True)
+def test_a_run_whose_skills_are_installed_is_not_warned_about_references(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    code, out = _run_naming_a_skill(tmp_path, monkeypatch, installed=True, dry_run=True)
     assert code == 0, out
     assert "story-docs" not in out, out
 

@@ -1276,7 +1276,7 @@ def test_a_spent_turn_nobody_catches_still_ends_the_run():
 
 
 def test_the_context_manifest_is_the_outer_layer_of_an_agent_turn():
-    """A ported library prompt calls `instruction_ref(...)` / `template.*`, and those helpers read the farrier manifest off the render context."""
+    """A ported library prompt reads `template.*` and the repo root off the farrier manifest in the render context."""
     with tempfile.TemporaryDirectory() as tmp:
         seen: list[Any] = []
 
@@ -1289,7 +1289,7 @@ def test_the_context_manifest_is_the_outer_layer_of_an_agent_turn():
             agent_runner=ScriptedRunner(fake_run_agent),
             manifest=ManifestContext(
                 present=True,
-                instructions={"go": ".claude/skills/acme-go/SKILL.md"},
+                repo_root="/work/acme",
                 values={
                     "template": {"backend_layer_name": "Go gateway"},
                     "unit": "from-the-manifest",
@@ -1307,7 +1307,7 @@ def test_the_context_manifest_is_the_outer_layer_of_an_agent_turn():
         drive(Asks(), env)
 
         ctx = seen[0]
-        assert ctx["_instructions"] == {"go": ".claude/skills/acme-go/SKILL.md"}
+        assert ctx["_repo_root"] == "/work/acme"
         assert ctx["template"] == {"backend_layer_name": "Go gateway"}
         assert ctx["unit"] == "CASE-1", "the state's own argument wins"
 

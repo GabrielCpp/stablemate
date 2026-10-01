@@ -251,7 +251,7 @@ Two things an inline turn may not do. `self.agent` refuses each one with a
 
 | Refused | Why |
 |---|---|
-| a manifest reference (`skill_file`, `prompt_ref`, `find_by_tags`, …) | the reference preflight globs prompt files, and an inline body is not one |
+| a skill reference (`skill_link`, `skill_command`, `find_by_tags`, …) | the reference sweep globs prompt files, and an inline body is not one |
 | text that is not valid Jinja | a file prompt fails this late at render time; an inline one fails at authoring time |
 
 The boundary: inline is a short fixed turn with no skill reference and nothing an

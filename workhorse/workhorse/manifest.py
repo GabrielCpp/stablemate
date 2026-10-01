@@ -14,37 +14,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from workhorse._vendor.stablemate_core.config import resolve_default_cli
 
-_INSTRUCTIONS = "_instructions"
-_INSTRUCTION_TAGS = "_instruction_tags"
-_PROMPTS = "_prompts"
-_USED_SKILLS = "_used_skills"
-_SKILL_DIR = "_skill_dir"
 _REPO_ROOT = "_repo_root"
-
-
-def _str_map(value: Any) -> dict[str, str]:
-    """The string→string pairs of a mapping, dropping anything else."""
-    if not isinstance(value, Mapping):
-        return {}
-    return {k: v for k, v in value.items() if isinstance(k, str) and isinstance(v, str)}
-
-
-def _str_list(value: Any) -> list[str]:
-    """The strings of a sequence, dropping anything else."""
-    if isinstance(value, str) or not isinstance(value, (list, tuple, set, frozenset)):
-        return []
-    return [v for v in value if isinstance(v, str)]
-
-
-def _tag_map(value: Any) -> dict[str, list[str]]:
-    """The name→tags pairs of a mapping, dropping anything else."""
-    if not isinstance(value, Mapping):
-        return {}
-    return {
-        k: [t.lower() for t in _str_list(v)]
-        for k, v in value.items()
-        if isinstance(k, str) and _str_list(v)
-    }
 
 
 def _text(value: Any) -> str:
@@ -60,36 +30,10 @@ class ContextManifest(BaseModel):
     repo: dict[str, Any] = Field(default_factory=dict)
     vars: dict[str, Any] = Field(default_factory=dict)
 
-    instructions: dict[str, str] = Field(default_factory=dict)
-    instruction_tags: dict[str, list[str]] = Field(default_factory=dict)
-    prompts: dict[str, str] = Field(default_factory=dict)
-    used_skills: list[str] = Field(default_factory=list)
-    skill_dir: str = ""
-
     @field_validator("template", "repo", "vars", mode="before")
     @classmethod
     def _tolerate_mapping(cls, value: Any) -> dict[str, Any]:
         return dict(value) if isinstance(value, Mapping) else {}
-
-    @field_validator("instructions", "prompts", mode="before")
-    @classmethod
-    def _tolerate_str_map(cls, value: Any) -> dict[str, str]:
-        return _str_map(value)
-
-    @field_validator("instruction_tags", mode="before")
-    @classmethod
-    def _tolerate_tag_map(cls, value: Any) -> dict[str, list[str]]:
-        return _tag_map(value)
-
-    @field_validator("used_skills", mode="before")
-    @classmethod
-    def _tolerate_str_list(cls, value: Any) -> list[str]:
-        return _str_list(value)
-
-    @field_validator("skill_dir", mode="before")
-    @classmethod
-    def _tolerate_text(cls, value: Any) -> str:
-        return _text(value)
 
     def project(self, *, repo_root: Path) -> ManifestContext:
         """Project the file onto the render context for one repo, every path where farrier rendered it."""
@@ -105,11 +49,6 @@ class ContextManifest(BaseModel):
         return ManifestContext(
             present=True,
             values=values,
-            instructions=dict(self.instructions),
-            instruction_tags={k: list(v) for k, v in self.instruction_tags.items()},
-            prompts=dict(self.prompts),
-            used_skills=tuple(self.used_skills),
-            skill_dir=self.skill_dir,
             repo_root=str(repo_root.resolve()),
         )
 
@@ -120,11 +59,6 @@ class ManifestContext:
 
     present: bool = False
     values: dict[str, Any] = field(default_factory=dict)
-    instructions: dict[str, str] = field(default_factory=dict)
-    instruction_tags: dict[str, list[str]] = field(default_factory=dict)
-    prompts: dict[str, str] = field(default_factory=dict)
-    used_skills: tuple[str, ...] = ()
-    skill_dir: str = ""
     repo_root: str = ""
 
     def as_context(self) -> dict[str, Any]:
@@ -132,12 +66,6 @@ class ManifestContext:
         if not self.present:
             return {}
         ctx: dict[str, Any] = dict(self.values)
-        ctx[_INSTRUCTIONS] = dict(self.instructions)
-        ctx[_INSTRUCTION_TAGS] = {k: list(v) for k, v in self.instruction_tags.items()}
-        ctx[_PROMPTS] = dict(self.prompts)
-        ctx[_USED_SKILLS] = list(self.used_skills)
-        if self.skill_dir:
-            ctx[_SKILL_DIR] = self.skill_dir
         ctx[_REPO_ROOT] = self.repo_root
         return ctx
 
@@ -145,12 +73,7 @@ class ManifestContext:
     def from_context(cls, context: Mapping[str, Any]) -> ManifestContext:
         """Read the manifest half back out of a render context."""
         return cls(
-            present=_INSTRUCTIONS in context or _PROMPTS in context,
-            instructions=_str_map(context.get(_INSTRUCTIONS)),
-            instruction_tags=_tag_map(context.get(_INSTRUCTION_TAGS)),
-            prompts=_str_map(context.get(_PROMPTS)),
-            used_skills=tuple(_str_list(context.get(_USED_SKILLS))),
-            skill_dir=_text(context.get(_SKILL_DIR)),
+            present=_REPO_ROOT in context,
             repo_root=_text(context.get(_REPO_ROOT)),
         )
 

@@ -138,12 +138,13 @@ merely installed somewhere else on `PATH`.
 The skill and prompt *content* those prompts reference is separate, and separately
 configured — see [Initial setup](https://github.com/GabrielCpp/stablemate/blob/main/workhorse/docs/BACKENDS.md#initial-setup).
 
-The skill and prompt references those prompts make are checked before the first state, and
-the ones that will not resolve are printed with the fix. It is a warning, not an error — an
-unresolved reference degrades a prompt rather than stopping the run — and `--dry-run` is
-what turns it into an exit code. Which references count as *required*, and the Jinja
-helpers (`find_by_tags`, `instruction_refs`, `skill_load_ref`) a workflow shipping to
-unknown repos uses to ask for a skill without demanding it, are in
+A prompt names a skill by its library name, and a turn finds it among the skills its
+harness loads: the repo from the turn's `cwd` up, the turn's added dirs, then home. A name
+that is not there stops the turn with an error. The run checks every name its prompts make
+before the first state and prints the ones that will not resolve, with the fix. It is a
+warning on a real run, and `--dry-run` turns it into an exit code. The helpers
+(`skill_link`, `skill_command`, and `find_by_tags` and `has_skill` for a workflow shipping
+to unknown repos) are in
 [docs/CHECKING.md](https://github.com/GabrielCpp/stablemate/blob/main/workhorse/docs/CHECKING.md).
 
 > **Running unattended in a container?** The source repo ships a Docker harness

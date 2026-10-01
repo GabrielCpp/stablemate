@@ -238,9 +238,9 @@ class Workflow(BaseModel):
         if used:
             raise WorkflowDefinitionError(
                 f"the inline prompt labelled {label!r} calls "
-                f"{', '.join(sorted(used))} — a manifest reference is resolved against "
-                "the manifest and checked by a sweep over prompt files, which an "
-                "inline body is not. Put this turn in a prompt file."
+                f"{', '.join(sorted(used))}. A skill reference is checked before the run "
+                "by a sweep over prompt files, which an inline body is not. Put this "
+                "turn in a prompt file."
             )
 
     def pipeline(
