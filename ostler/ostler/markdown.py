@@ -126,6 +126,25 @@ _TRAILING_DIGEST = re.compile(r"^(\s*@[0-9a-f]{12})(.*)$", re.DOTALL)
 
 def leading_code_spans(text: str) -> list[str]:
     """The inline-code spans a value *opens* with, comma-separated; ``[]`` if it opens with prose."""
+    plain = _plain_leading_code_spans(text)
+    return plain if plain is not None else _parsed_leading_code_spans(text)
+
+
+_PLAIN_SPAN = re.compile(r"[ \t,]*`([^` \n][^`\n]*(?<! ))`(?!`)([ \t]*@[0-9a-f]{12})?")
+_PROSE_OR_END = re.compile(r"[ \t,]*(?:$|[^\\`*_~\[!<&\r\n \t,])")
+
+
+def _plain_leading_code_spans(text: str) -> list[str] | None:
+    """`leading_code_spans` for a value whose opening spans and first prose character need no parser; ``None`` when they do."""
+    spans: list[str] = []
+    pos = 0
+    while match := _PLAIN_SPAN.match(text, pos):
+        spans.append(match[1] + (match[2] or "").strip())
+        pos = match.end()
+    return spans if _PROSE_OR_END.match(text, pos) else None
+
+
+def _parsed_leading_code_spans(text: str) -> list[str]:
     spans: list[str] = []
     for child in _inline_children(text):
         if child.type == "code_inline":

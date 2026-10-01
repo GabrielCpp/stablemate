@@ -306,3 +306,21 @@ def test_bullet_label_and_value_still_parse_a_code_span_after_the_separator():
         text="does: fetch `https://x` and render it", line_start=0, line_end=1)
     assert bullet.label == "does"
     assert bullet.value == "fetch `https://x` and render it"
+
+
+@pytest.mark.parametrize("text", [
+    "`a`", "`a`, `b`", "`a` @0123456789ab", "`a`@0123456789ab, `b` @fedcba987654 rest", "`a` @0123456789abcd",
+    "`a` , @0123456789ab", "prose `a`", ", `a`", "`a` and `b`", "` a `", "` a`", "`a `", "``a``", "`a``",
+    "`a", "`a`\n`b`", "`a`  \nb", "`a` \\`b`", "`a` *b*", "`a` _b_", "`a` [b](c)", "`a` <b>", "`a` &amp;",
+    "`a` !x", "`a` ~b", "`a`\tb", "`a` é", "`a` — b", "`a` (b)", "`a`\r\nb", "  ", "", "`a`\n@0123456789ab",
+])
+def test_the_leading_code_span_shortcut_agrees_with_the_parser(text: str):
+    """The shortcut answers only where it reads the opening spans as the parser does, and leaves every other value to it."""
+    shortcut = markdown._plain_leading_code_spans(text)
+    assert shortcut is None or shortcut == markdown._parsed_leading_code_spans(text)
+
+
+def test_a_stamped_code_bullet_takes_the_leading_code_span_shortcut():
+    """Most owning bullets read like this one, and the shortcut is what keeps a writer's check from parsing each."""
+    text = "`api/service.go::Load` @0123456789ab, `web/app.ts::App` @fedcba987654 — the loader"
+    assert markdown._plain_leading_code_spans(text) == ["api/service.go::Load@0123456789ab", "web/app.ts::App@fedcba987654"]
