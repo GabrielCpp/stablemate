@@ -9,6 +9,7 @@ from typing import Any
 
 from ostler import Ostler
 from ostler.qa import REPORT_FILE, run_id_of
+from ostler.qa.run_log import run_log_tally
 
 from workhorse_workflows.kit.qa.schemas import QaResult, QaStatus
 from workhorse_workflows.kit import find_repo_root
@@ -25,27 +26,6 @@ PASSTHROUGH_STATUSES: dict[str, QaStatus] = {
 }
 
 CRITERION_KINDS = ("behavioral", "parity", "data-entry", "transient")
-
-
-def _run_log_tally(spec_dir: Path) -> tuple[int, int]:
-    """`(passing, failing)` assertion counts from the QA run log (`qa/qa-run.ndjson`)."""
-    log_path = spec_dir / "qa" / "qa-run.ndjson"
-    if not log_path.is_file():
-        return (0, 0)
-    passed = failed = 0
-    for line in log_path.read_text(encoding="utf-8").splitlines():
-        try:
-            record = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        if record.get("kind") != "assert":
-            continue
-        result = str(record.get("result", "")).strip().upper()
-        if result == "PASS":
-            passed += 1
-        elif result == "FAIL":
-            failed += 1
-    return (passed, failed)
 
 
 def _exists(ref: Any, root: Path, spec_dir: Path) -> bool:
@@ -460,7 +440,7 @@ def verify_qa_evidence(
         obligations = []
 
     if not criteria and not obligations:
-        passed, failed = _run_log_tally(spec_path)
+        passed, failed = run_log_tally(spec_path)
         if passed == 0 or failed > 0:
             logger.warning("%s has no criteria/obligations and no clean run-log proof", EVIDENCE_FILE)
             return QaResult(

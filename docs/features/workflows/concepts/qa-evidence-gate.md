@@ -53,13 +53,13 @@ The gate is part of the [Coder QA subflow](coder-qa-subflow.md) and is reached b
 
 ## Methods
 
-### _run_log_tally
-- sig: `_run_log_tally(spec_dir: Path) -> tuple[int, int]`
+### run_log_tally
+- sig: `run_log_tally(spec_dir: Path) -> tuple[int, int]`
 - does: counts PASS assertion records in `qa/qa-run.ndjson` as the first result and FAIL assertion records as the second
 - verify: json_path(path="$.tally", matches=".+")
 - does: returns `(0, 0)` when the log is absent, empty, malformed, or contains no assertion records
 - verify: json_path(path="$.tally", equals="(0, 0)")
-- code: `workflows/src/workhorse_workflows/coder/qa/nodes/evidence.py::_run_log_tally` @4f1b75300464
+- code: `ostler/ostler/qa/run_log.py::run_log_tally` @b2d1c68eaf42
 
 ### _exists
 - sig: `_exists(ref: Any, root: Path, spec_dir: Path) -> bool`
