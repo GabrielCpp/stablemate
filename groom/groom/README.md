@@ -16,6 +16,7 @@ The package behind the `groom` dashboard, its OTLP collector and the in-containe
 - `cli.py`: the `groom` and `groom-sidecar` console entry points and every `groom` subcommand.
 - `discovery.py`: the startup scan that finds workhorse containers already running before groom started.
 - `dispatch.py`: the config-declared dispatch queues that launch a workflow per item under a concurrency cap.
+- `dispatch_ledger.py`: the dispatch items table: each queued item's status, pid and exit.
 - `docker_io.py`: every call to the `docker` CLI: listing, exec, file reads and writes, and diffs inside a volume.
 - `export.py`: writing the turn archive out in the by-node layout distillation reads.
 - `gates.py`: the operator gate file format: its status, its question, and writing an answer into it.
@@ -32,6 +33,6 @@ The package behind the `groom` dashboard, its OTLP collector and the in-containe
 - `sidecar_hub.py`: the host-side registry of live sidecar sockets and the RPCs sent over them.
 - `sidecar_turns.py`: pulling a container's turn records over the sidecar socket into the archive.
 - `state.py`: the in-memory process state: tracked workflows, open tabs, watched runs and the broadcast to them.
-- `store.py`: the SQLite telemetry store and every query over it, from log search to cost, loop and profile reports.
+- `store.py`: the SQLite telemetry store: its schema, its connection and the queries over spans, metrics, logs and turns.
 - `turns.py`: the durable archive of turn records and the harvester that fills it from run directories.
 - `wait.py`: `groom wait`, which blocks on the websocket until a chosen attention event arrives.

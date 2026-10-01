@@ -30,6 +30,7 @@ from groom import (
     attend_transcript,
     discovery,
     dispatch,
+    dispatch_ledger,
     docker_io,
     localfs,
     notify,
@@ -593,7 +594,7 @@ async def dispatch_enqueue(queue: Annotated[str, PathParameter()], data: dict) -
 @get("/api/dispatch/{queue:str}/items", include_in_schema=False)
 async def dispatch_items(queue: Annotated[str, PathParameter()]) -> dict:
     """This queue's items, newest first — the latest 200, same cap `attend_sessions` uses."""
-    rows = await asyncio.to_thread(store.dispatch_list, queue, 200)
+    rows = await asyncio.to_thread(dispatch_ledger.dispatch_list, queue, 200)
     return {"items": rows}
 
 

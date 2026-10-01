@@ -15,7 +15,7 @@ from typing import Any
 from workhorse.config_run import AgentResilience
 from workhorse.runner.process import ProcessSupervisor
 
-from groom import store
+from groom import dispatch_ledger
 from groom.settings import DispatchQueueSettings, resolve_dispatch_queues
 
 logger = logging.getLogger(__name__)
@@ -40,7 +40,7 @@ def _slot(queue: str, concurrency: int) -> threading.Semaphore:
     with _SLOTS_LOCK:
         existing = _SLOTS.get(queue)
         if existing is None:
-            occupied = len(store.dispatch_running_for_queue(queue))
+            occupied = len(dispatch_ledger.dispatch_running_for_queue(queue))
             existing = threading.Semaphore(max(0, concurrency - occupied))
             _SLOTS[queue] = existing
         return existing
@@ -85,8 +85,8 @@ def _own(item_id: str, queue: str, proc: subprocess.Popen[str], slot: threading.
             code = proc.wait()
         except Exception:
             logger.exception("dispatch: lost the process for %s/%s", queue, item_id)
-        status = store.DISPATCH_DONE if code == 0 else store.DISPATCH_FAILED
-        if not store.dispatch_finish(item_id, status=status, exit_code=code):
+        status = dispatch_ledger.DISPATCH_DONE if code == 0 else dispatch_ledger.DISPATCH_FAILED
+        if not dispatch_ledger.dispatch_finish(item_id, status=status, exit_code=code):
             return
         slot.release()
         _drain(queue)
@@ -101,9 +101,9 @@ def enqueue(queue: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
         raise UnknownQueue(queue)
     item_id = uuid.uuid4().hex[:12]
     expanded = _apply_templates(settings, params or {})
-    store.dispatch_enqueue(item_id, queue=queue, command=settings.command, params=expanded)
+    dispatch_ledger.dispatch_enqueue(item_id, queue=queue, command=settings.command, params=expanded)
     _drain(queue)
-    return store.dispatch_get(item_id) or {}
+    return dispatch_ledger.dispatch_get(item_id) or {}
 
 
 def _apply_templates(
@@ -127,7 +127,7 @@ def _drain(queue: str) -> None:
     if settings is None:
         return
     slot = _slot(queue, settings.concurrency)
-    for row in store.dispatch_pending_for_queue(queue):
+    for row in dispatch_ledger.dispatch_pending_for_queue(queue):
         if not slot.acquire(blocking=False):
             return
         item_id = str(row.get("item_id") or "")
@@ -136,21 +136,21 @@ def _drain(queue: str) -> None:
         except Exception:
             logger.exception("dispatch: could not launch %s/%s", queue, item_id)
             slot.release()
-            store.dispatch_finish(item_id, status=store.DISPATCH_FAILED, exit_code=None)
+            dispatch_ledger.dispatch_finish(item_id, status=dispatch_ledger.DISPATCH_FAILED, exit_code=None)
             continue
-        store.dispatch_start(item_id, run_id=item_id, pid=proc.pid)
+        dispatch_ledger.dispatch_start(item_id, run_id=item_id, pid=proc.pid)
         _own(item_id, queue, proc, slot)
 
 
 def cancel_pending(item_id: str) -> bool:
     """Drop a still-`pending` item before it ever spawns anything."""
-    return store.dispatch_cancel_pending(item_id)
+    return dispatch_ledger.dispatch_cancel_pending(item_id)
 
 
 def stop(item_id: str) -> bool:
     """Kill a running item's process group and flip its row to `cancelled`."""
-    row = store.dispatch_get(item_id)
-    if row is None or row.get("status") != store.DISPATCH_RUNNING:
+    row = dispatch_ledger.dispatch_get(item_id)
+    if row is None or row.get("status") != dispatch_ledger.DISPATCH_RUNNING:
         return False
     pid = row.get("pid")
     if isinstance(pid, int) and pid > 0:
@@ -160,7 +160,7 @@ def stop(item_id: str) -> bool:
             except OSError:
                 break
             time.sleep(0.2)
-    won = store.dispatch_finish(item_id, status=store.DISPATCH_CANCELLED, exit_code=None)
+    won = dispatch_ledger.dispatch_finish(item_id, status=dispatch_ledger.DISPATCH_CANCELLED, exit_code=None)
     if not won:
         return False
     queue = str(row.get("queue") or "")
@@ -189,11 +189,11 @@ def _alive(pid: Any) -> bool:
 def recover_orphans() -> int:
     """Reconcile every row still saying `running` after a groom restart."""
     closed = 0
-    for row in store.dispatch_orphans():
+    for row in dispatch_ledger.dispatch_orphans():
         item_id = str(row.get("item_id") or "")
         if not item_id or _alive(row.get("pid")):
             continue
-        store.dispatch_finish(item_id, status=store.DISPATCH_FAILED, exit_code=None)
+        dispatch_ledger.dispatch_finish(item_id, status=dispatch_ledger.DISPATCH_FAILED, exit_code=None)
         closed += 1
     return closed
 
@@ -202,7 +202,7 @@ def queue_status() -> list[dict[str, Any]]:
     """Every configured queue with its concurrency and current occupancy — the whole answer to `GET /api/dispatch/queues` in one place, off the route module."""
     result = []
     for name, settings in sorted(queues().items()):
-        running = store.dispatch_running_for_queue(name)
+        running = dispatch_ledger.dispatch_running_for_queue(name)
         result.append(
             {
                 "name": name,
