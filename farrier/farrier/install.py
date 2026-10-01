@@ -60,15 +60,17 @@ from farrier.naming import (
     strip_known_suffix,
     yaml_quote,
 )
-from farrier.outputs import (
+from farrier.managed_blocks import (
     AGENTS_GITIGNORE_BLOCK,
     MAKEFILE_INCLUDE_END,
     MAKEFILE_INCLUDE_MARKER,
-    MANAGED_DIRS,
-    check_outputs,
     ensure_agents_gitignore,
     ensure_gitignore_entry,
     ensure_makefile_include,
+)
+from farrier.outputs import (
+    MANAGED_DIRS,
+    check_outputs,
     expected_text,
     install_outputs,
     normalize_agents,

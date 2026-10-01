@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from farrier.hooks import QA_GITIGNORE_BLOCK, ensure_qa_gitignore
+from farrier.managed_blocks import QA_GITIGNORE_BLOCK, ensure_qa_gitignore
 from farrier.outputs import install_outputs
 from farrier.naming import compose_name, repo_prefix
 

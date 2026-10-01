@@ -9,7 +9,6 @@ The package behind the `farrier` command. It renders the layered prompt library 
 - `drift.py`: the report `--check` prints when a generated file no longer matches its source.
 - `frontmatter.py`: parsing YAML front matter, banners and headings.
 - `hook_managers.py`: wiring farrier's pre-commit runner into the repo's hook manager through a fenced block.
-- `hooks.py`: the managed QA-evidence `.gitignore` block that ships with the staged-files gate.
 - `init.py`: the starter `agents.yml` that `farrier init` writes.
 - `install.py`: the console-script entry point and the module's public re-exports.
 - `launcher.py`: the generated `.agents/agents.mk` launcher and the launcher file paths.
@@ -17,8 +16,9 @@ The package behind the `farrier` command. It renders the layered prompt library 
 - `library_check.py`: front-matter validation of a library's skills and prompts.
 - `library_view.py`: the read side of the layer stack: the catalog of items and the text of one item.
 - `local_instructions.py`: the `localInstructions` entries of `agents.yml`: their schema, checks and the files they write.
+- `managed_blocks.py`: the managed blocks farrier keeps in files the repo owns: the `.agents/` and QA-evidence `.gitignore` blocks and the root Makefile include.
 - `naming.py`: pure name transforms: kebab case, prefixes, source ids and quoting.
-- `outputs.py`: the full render run and the repo writes that install it: conflicts, sweeps, `.gitignore` and Makefile edits.
+- `outputs.py`: rendering, checking and installing agent outputs: conflicts and sweeps.
 - `ownership.py`: which files farrier generated, so it may delete them and must not overwrite others.
 - `pipx.py`: which workflows this machine can run, according to `pipx list`.
 - `renderer.py`: turning one library source into the adapter text each agent harness expects.

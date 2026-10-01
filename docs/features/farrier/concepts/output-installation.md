@@ -104,19 +104,19 @@ maintains repository integration files.
 - sig: `ensure_gitignore_entry(repo: Path, entry: str) -> bool`
 - does: append one exact ignore entry with separation and no duplicate
 - verify: count(subject="duplicate gitignore entries", equals=0)
-- code: `farrier/farrier/outputs.py::ensure_gitignore_entry` @3967ecfa24a2
+- code: `farrier/farrier/managed_blocks.py::ensure_gitignore_entry` @fad93ccc89d7
 
 ### method: ensure_agents_gitignore
 - sig: `ensure_agents_gitignore(repo: Path) -> bool`
 - does: replace superseded `.agents` ignore spellings with the current managed block
 - verify: count(subject="managed agents gitignore block", equals=1)
-- code: `farrier/farrier/outputs.py::ensure_agents_gitignore` @3967ecfa24a2
+- code: `farrier/farrier/managed_blocks.py::ensure_agents_gitignore` @fad93ccc89d7
 
 ### method: ensure_makefile_include
 - sig: `ensure_makefile_include(repo: Path) -> bool`
 - does: append a marked launcher include to an existing root Makefile without replacing its content
 - verify: count(subject="generated launcher include blocks", equals=1)
-- code: `farrier/farrier/outputs.py::ensure_makefile_include` @3967ecfa24a2
+- code: `farrier/farrier/managed_blocks.py::ensure_makefile_include` @fad93ccc89d7
 
 ### method: install_outputs
 - sig: `install_outputs(repo: Path, outputs: dict[Path, str], manager: str | None = None, managed: Managed = REPO_MANAGED) -> None`

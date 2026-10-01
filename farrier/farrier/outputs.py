@@ -1,4 +1,4 @@
-"""Full-render orchestration and the repo mutations that install it."""
+"""Full-render orchestration and the writes that install it."""
 from __future__ import annotations
 
 from collections.abc import Sequence
@@ -19,12 +19,16 @@ from farrier.hook_managers import (
     lefthook_include_text,
     runner_text,
 )
-from farrier.hooks import GATE_SCRIPT, ensure_qa_gitignore
 from farrier.launcher import (
     LAUNCHER_AGENTS_MK,
     LAUNCHER_COMPOSE,
     LAUNCHER_CONTEXT_MANIFEST,
-    LAUNCHER_ROOT_MAKEFILE,
+)
+from farrier.managed_blocks import (
+    GATE_SCRIPT,
+    ensure_agents_gitignore,
+    ensure_makefile_include,
+    ensure_qa_gitignore,
 )
 from farrier._vendor.stablemate_core.config import config_path, read_config
 from farrier.layers import available_names
@@ -490,97 +494,6 @@ def check_outputs(
         print(report(missing, changed, extra, fences))
         return 1
     return 0
-
-
-def ensure_gitignore_entry(repo: Path, entry: str) -> bool:
-    """Append `entry` to the repo's .gitignore if not already ignored."""
-    gitignore = repo / ".gitignore"
-    existing = gitignore.read_text(encoding="utf-8") if gitignore.exists() else ""
-    if entry in {line.strip() for line in existing.splitlines()}:
-        return False
-    if not existing:
-        prefix = ""
-    else:
-        prefix = existing if existing.endswith("\n") else existing + "\n"
-        if not prefix.endswith("\n\n"):
-            prefix += "\n"
-    gitignore.write_text(f"{prefix}{entry}\n", encoding="utf-8")
-    return True
-
-
-AGENTS_GITIGNORE_BLOCK = (
-    ".agents/runs/",
-    ".agents/worktrees/",
-    ".agents/workflows/",
-    ".agents/operator/",
-    ".agents/local.compose.yaml",
-    ".agents/agents-context.json",
-    ".agents/agents-context.*.json",
-)
-
-
-_SUPERSEDED_GITIGNORE_LINES = (
-    ".agents",
-    ".agents/",
-    "/.agents",
-    "/.agents/*",
-    "!/.agents/agents.mk",
-    "!/.agents/flavors/",
-    ".agents/runs",
-    ".agents/skills/",
-    ".agents/prompts/",
-    "/.agents/runs/",
-    "/.agents/worktrees/",
-    "/.agents/skills/",
-    "/.agents/prompts/",
-    "/.agents/workflows/",
-    "/.agents/operator/",
-    "/.agents/local.compose.yaml",
-    "/.agents/agents-context.json",
-    "/.agents/agents-context.*.json",
-)
-
-
-def ensure_agents_gitignore(repo: Path) -> bool:
-    """Install/upgrade the managed `.agents/` ignore block in the repo's .gitignore."""
-    gitignore = repo / ".gitignore"
-    existing = gitignore.read_text(encoding="utf-8") if gitignore.exists() else ""
-    managed = set(AGENTS_GITIGNORE_BLOCK) | set(_SUPERSEDED_GITIGNORE_LINES)
-    kept = [ln for ln in existing.splitlines() if ln.strip() not in managed]
-    body = "\n".join(kept).rstrip("\n")
-    prefix = f"{body}\n\n" if body else ""
-    desired = prefix + "\n".join(AGENTS_GITIGNORE_BLOCK) + "\n"
-    if desired == existing:
-        return False
-    gitignore.write_text(desired, encoding="utf-8")
-    return True
-
-
-MAKEFILE_INCLUDE_MARKER = "# >>> farrier: agent launcher include (generated) >>>"
-MAKEFILE_INCLUDE_END = "# <<< farrier: agent launcher include <<<"
-
-
-def ensure_makefile_include(repo: Path) -> bool:
-    """Ensure the repo's existing root Makefile includes the generated launcher."""
-    makefile = repo / LAUNCHER_ROOT_MAKEFILE
-    if not makefile.exists():
-        return False
-    include_line = f"include {LAUNCHER_AGENTS_MK}"
-    existing = makefile.read_text(encoding="utf-8")
-    if include_line in {line.strip() for line in existing.splitlines()}:
-        return False
-    prefix = existing if existing.endswith("\n") else existing + "\n"
-    if not prefix.endswith("\n\n"):
-        prefix += "\n"
-    block = (
-        f"{MAKEFILE_INCLUDE_MARKER}\n"
-        "# Surfaces agent-install / agent-check from the generated\n"
-        "# launcher. Re-created by `farrier install`; remove this block to opt out.\n"
-        f"{include_line}\n"
-        f"{MAKEFILE_INCLUDE_END}\n"
-    )
-    makefile.write_text(prefix + block, encoding="utf-8")
-    return True
 
 
 def install_outputs(
