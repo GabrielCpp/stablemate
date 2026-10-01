@@ -7,6 +7,7 @@ One module per benchmark round, loaded by `paddock` from `--data-dir`. A module 
 - `_forensics.py`: reading a staged round's run dirs back: repair loops, churn, node timing, cap-wait and the cost lines of the scorecard.
 - `_frozenapp.py`: the frozen-app QA round: materializing a story, seeding a defect from the answer key, and scoring whether QA caught it.
 - `_greenfield.py`: the backlog to genesis, author and coder round shared by every backlog fixture, including the frozen grill turn and the operator-gate ledger.
+- `_judge.py`: one agent turn that waits out usage caps, and the rubric fill every judged task uses.
 - `_leverage.py`: how far a trial's QA plan used what the book documents, read statically from the plan, the book and the run log.
 - `_linkshort.py`: the link-shortener acceptance gate: twelve black-box checks over a built product.
 - `_mutants.py`: the mutant round: seeding a curated behavior change, running the story's QA, and the pin rate it scores.

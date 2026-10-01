@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-import _greenfield as gf
+import _judge as jd
 from _stablemate import TrialError
 from paddock import Run, Score, step, task
 
@@ -335,17 +335,17 @@ def arrange(run: Run) -> None:
 
 
 def _asker(run: Run) -> Any:
-    return gf.Judge(
-        gf.get_backend(run.param("ask_cli") or None),
-        gf.AgentResilience.from_env(), gf.SYSTEM_CLOCK,
+    return jd.Judge(
+        jd.get_backend(run.param("ask_cli") or None),
+        jd.AgentResilience.from_env(), jd.SYSTEM_CLOCK,
         model=run.param("ask_model"), effort=run.param("ask_effort"),
     )
 
 
 def _judge_agent(run: Run) -> Any:
-    return gf.Judge(
-        gf.get_backend(run.param("judge_cli") or None),
-        gf.AgentResilience.from_env(), gf.SYSTEM_CLOCK,
+    return jd.Judge(
+        jd.get_backend(run.param("judge_cli") or None),
+        jd.AgentResilience.from_env(), jd.SYSTEM_CLOCK,
         model=run.param("judge_model"), effort=run.param("judge_effort"),
     )
 
@@ -364,7 +364,7 @@ def ask(run: Run) -> None:
         line = LINES_BY_NAME[trial["line"]]
         _teardown_stack(run, tree, "before")
         try:
-            trial["answer"] = gf.call_agent(
+            trial["answer"] = jd.call_agent(
                 asker, line.question, node_id=f"ask_{trial['id']}", repo=tree,
             )
         finally:
@@ -409,13 +409,13 @@ def judge(run: Run) -> None:
         tree = _tree_dir(run, trial["id"])
         scratch = run.workdir(f"judge-{trial['id']}") / "repo"
         shutil.copytree(tree, scratch, symlinks=True)
-        prompt = gf.render(
+        prompt = jd.render(
             rubric,
             line=trial["line"], arm=trial["arm"], expected=trial["expected"],
             answer=trial["answer"] or "(the agent produced no answer)",
             repo=str(scratch), scale=scale,
         )
-        text = gf.call_agent(
+        text = jd.call_agent(
             judge_agent, prompt, node_id=f"judge_{trial['id']}", repo=scratch,
         )
         trial.update(_appraise(text, scratch))

@@ -41,6 +41,7 @@ gf = importlib.util.module_from_spec(_spec)
 with _tasks_dir_on_path():
     sys.modules["_greenfield"] = gf
     _spec.loader.exec_module(gf)
+jd = sys.modules["_judge"]
 
 
 BACKLOG = (
@@ -133,7 +134,7 @@ class FakeBackend:
 
 def fake_judge(response: str) -> Any:
     """A `Judge` whose agent turn is canned — the two collaborators are real."""
-    return gf.Judge(FakeBackend(response), gf.AgentResilience(), gf.SYSTEM_CLOCK)
+    return jd.Judge(FakeBackend(response), jd.AgentResilience(), jd.SYSTEM_CLOCK)
 
 
 def judge(run: Run, bullet: dict[str, Any], response: str) -> dict[str, Any]:
@@ -199,7 +200,7 @@ def test_rubric_placeholders_are_all_filled(run: Run, fixture: Any) -> None:
 
 def test_render_leaves_json_braces_alone() -> None:
     """The rubric shows the judge a JSON shape; single braces must survive rendering."""
-    assert gf.render('{"level": 2} and {{bullet_id}}', bullet_id="todo-create") == \
+    assert jd.render('{"level": 2} and {{bullet_id}}', bullet_id="todo-create") == \
         '{"level": 2} and todo-create'
 
 
