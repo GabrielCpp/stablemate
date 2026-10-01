@@ -23,7 +23,7 @@ What more than one coder lane needs. Code that only one lane calls belongs in th
 - `roles.py`: which prompt body and model a role resolves to, with the repo's own prompts ahead of the base library.
 - `scenarios.py`: the plan's Test Scenarios list, and which of its scenarios fall to the QA lane.
 - `schemas/`: the reply and return models every coder lane validates against.
-- `story.py`: the story spine: a slug resolved to its paths, the dirs a turn may read, the post-plan scrub and the spec stamps.
+- `story.py`: which story a run is on, its workspace dirs and its spec stamps.
 - `story_status.py`: the story's Status line. It is the single place the coder records an outcome.
 - `stubs.py`: what the coder's gates return under `--dry-run`.
-- `worktree.py`: which paths were already dirty when a story started, and which still hold those bytes.
+- `worktree.py`: what the worktrees held before a turn, and what changed since.

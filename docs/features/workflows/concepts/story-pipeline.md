@@ -88,7 +88,7 @@ node identity so its recorded output cannot overwrite the parent story's prepara
 - verify: count(subject="unreadable repositories omitted from snapshots", equals=1)
 - returns: status text keyed by absolute repository path
 - verify: json_path(path="$.status", matches=".+")
-- code: `workflows/src/workhorse_workflows/coder/shared/story.py::snapshot_worktrees` @f47c3ed624b0
+- code: `workflows/src/workhorse_workflows/coder/shared/worktree.py::snapshot_worktrees` @80a8fd912cd9
 - detail: [Worktree snapshot](../formats/worktree-snapshot.md)
 - tests: `workflows/tests/coder/shared/test_clean_tree.py::test_the_snapshot_covers_the_code_repos_and_not_the_docs_root`
 
@@ -104,7 +104,7 @@ node identity so its recorded output cannot overwrite the parent story's prepara
 - verify: visible(locator="docs plan artifact", text="Plan")
 - returns: porcelain and discarded-diff details keyed by affected repository path
 - verify: json_path(path="$.reverted", matches=".+")
-- code: `workflows/src/workhorse_workflows/coder/shared/story.py::scrub_plan_mutations` @f47c3ed624b0
+- code: `workflows/src/workhorse_workflows/coder/shared/worktree.py::scrub_plan_mutations` @80a8fd912cd9
 - detail: [Plan scrub result](../formats/plan-scrub.md)
 - tests: `workflows/tests/coder/shared/test_clean_tree.py::test_the_scrub_reverts_what_the_turn_wrote_and_only_that`
 - tests: `workflows/tests/coder/shared/test_clean_tree.py::test_a_turn_that_kept_to_reading_scrubs_nothing`

@@ -26,11 +26,10 @@ from workhorse_workflows.coder.shared.story import (
     guard_story_file,
     prepare_story,
     resolve_workspace_dirs,
-    scrub_plan_mutations,
-    snapshot_worktrees,
     stamp_specs,
     workspace_dirs,
 )
+from workhorse_workflows.coder.shared.worktree import scrub_plan_mutations, snapshot_worktrees
 from workhorse_workflows.coder.shared.schemas._base import Finding
 from workhorse_workflows.coder.shared.schemas.dev import (
     DevResult,

@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from workhorse_workflows.coder.shared.story import scrub_plan_mutations, snapshot_worktrees
+from workhorse_workflows.coder.shared.worktree import scrub_plan_mutations, snapshot_worktrees
 
 
 @pytest.fixture
