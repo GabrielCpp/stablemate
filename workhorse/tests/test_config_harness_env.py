@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 from unittest.mock import patch
 
-from workhorse._vendor.stablemate_core.config import resolve_harness_env
+from workhorse._vendor.stablemate_core.profiles import resolve_harness_env
 from workhorse.config_run import AgentResilience
 from workhorse.runner import backends, failure, process
 from workhorse.runner.backends.cline import ClineBackend

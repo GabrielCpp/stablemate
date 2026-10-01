@@ -6,7 +6,7 @@ import os
 from contextlib import contextmanager, redirect_stdout
 from unittest.mock import patch
 
-from workhorse._vendor.stablemate_core.config import resolve_backend_default, resolve_power
+from workhorse._vendor.stablemate_core.profiles import resolve_backend_default, resolve_power
 from workhorse import otel, profile
 from workhorse.runner import ladder
 from workhorse.profile import resolve_power_settings

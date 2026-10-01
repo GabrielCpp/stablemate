@@ -12,10 +12,12 @@ from pydantic import ValidationError
 from workhorse import otel
 from workhorse._vendor.stablemate_core.config import (
     ConfigError,
-    UnknownProfileError,
     config_path,
     load_config,
     profile_cli,
+)
+from workhorse._vendor.stablemate_core.profiles import (
+    UnknownProfileError,
     profile_has_backend,
     resolve_backend_default,
     resolve_power,

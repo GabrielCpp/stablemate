@@ -8,6 +8,7 @@ import tomllib
 import pytest
 
 from stablemate_core import config as cfgmod
+from stablemate_core import profiles
 
 _POWER = """\
 config_version = 2
@@ -59,24 +60,24 @@ def test_writing_a_key_preserves_power_tables(cfg_file):
 def test_power_still_resolves_after_a_write(cfg_file):
     """The user-visible symptom, asserted end to end."""
     cfg_file.write_text(_POWER)
-    before = cfgmod.resolve_power(
-        "high", "claude", cfgmod.select_profile(cfgmod.load_config(), "claude")
+    before = profiles.resolve_power(
+        "high", "claude", profiles.select_profile(cfgmod.load_config(), "claude")
     )
 
     cfgmod.write_config_key("library_dir", "/x")
-    after = cfgmod.resolve_power(
-        "high", "claude", cfgmod.select_profile(cfgmod.load_config(), "claude")
+    after = profiles.resolve_power(
+        "high", "claude", profiles.select_profile(cfgmod.load_config(), "claude")
     )
 
-    assert before == after == cfgmod.PowerMapping(model="opus", effort="high")
+    assert before == after == profiles.PowerMapping(model="opus", effort="high")
 
 
 def test_repeated_writes_are_stable(cfg_file):
     cfg_file.write_text(_POWER)
     for i in range(5):
         cfgmod.write_config_key("base_dir", f"/p{i}")
-    profile = cfgmod.select_profile(cfgmod.load_config(), "claude")
-    assert cfgmod.resolve_power("low", "claude", profile).model == "haiku"
+    profile = profiles.select_profile(cfgmod.load_config(), "claude")
+    assert profiles.resolve_power("low", "claude", profile).model == "haiku"
     assert cfgmod.get_config_value("base_dir") == "/p4"
 
 
@@ -91,18 +92,18 @@ def test_values_needing_escaping_survive(cfg_file):
 
 def test_default_cli_is_the_builtin_when_unset(cfg_file):
     cfg_file.write_text(_POWER)
-    assert cfgmod.resolve_default_cli() == cfgmod.BUILTIN_DEFAULT_CLI == "claude"
+    assert profiles.resolve_default_cli() == profiles.BUILTIN_DEFAULT_CLI == "claude"
 
 
 def test_default_cli_is_read_from_the_config(cfg_file):
     cfg_file.write_text('config_version = 2\ndefault_cli = "opencode"\n')
-    assert cfgmod.resolve_default_cli() == "opencode"
+    assert profiles.resolve_default_cli() == "opencode"
 
 
 def test_default_cli_is_normalized(cfg_file):
     """The consumers lowercase what they read; do it once, here, so they agree."""
     cfg_file.write_text('config_version = 2\ndefault_cli = "  OpenCode  "\n')
-    assert cfgmod.resolve_default_cli() == "opencode"
+    assert profiles.resolve_default_cli() == "opencode"
 
 
 def test_a_malformed_default_cli_reads_as_unset(cfg_file):
@@ -112,12 +113,12 @@ def test_a_malformed_default_cli_reads_as_unset(cfg_file):
         "default_cli = true\n", 'default_cli = ["opencode"]\n',
     ):
         cfg_file.write_text(f"config_version = 2\n{bad}")
-        assert cfgmod.resolve_default_cli() == "claude", bad
+        assert profiles.resolve_default_cli() == "claude", bad
 
 
 def test_writing_the_default_cli_preserves_the_rest(cfg_file):
     cfg_file.write_text(_POWER)
-    cfgmod.write_default_cli("OpenCode")
+    profiles.write_default_cli("OpenCode")
     data = tomllib.loads(cfg_file.read_text())
     assert data["default_cli"] == "opencode"
     assert data["profiles"]["claude"]["powers"]["high"] == {
@@ -157,8 +158,8 @@ def test_legacy_files_are_read_when_unified_is_absent(tmp_path, monkeypatch):
     monkeypatch.setattr(cfgmod, "legacy_config_paths", lambda: [wh, fa])
 
     assert cfgmod.get_config_value("library_dir") == "/overlay"
-    profile = cfgmod.select_profile(cfgmod.load_config(), "claude")
-    assert cfgmod.resolve_power("high", "claude", profile).model == "opus"
+    profile = profiles.select_profile(cfgmod.load_config(), "claude")
+    assert profiles.resolve_power("high", "claude", profile).model == "opus"
 
 
 def test_first_write_migrates_legacy_into_the_unified_file(tmp_path, monkeypatch):
@@ -226,8 +227,8 @@ def test_corrupt_config_degrades_to_empty(cfg_file):
     data = cfgmod.load_config()
     assert data.get("config_version") == cfgmod.CONFIG_VERSION
     assert data.get("profiles") == {}
-    profile = cfgmod.select_profile(data, "claude") if False else {}
-    assert cfgmod.resolve_power("high", "claude", profile) == cfgmod.PowerMapping()
+    profile = profiles.select_profile(data, "claude") if False else {}
+    assert profiles.resolve_power("high", "claude", profile) == profiles.PowerMapping()
 
 
 
@@ -289,8 +290,8 @@ def test_reads_of_a_newer_config_survive_but_warn(cfg_file, caplog):
     )
 
     with caplog.at_level("WARNING"):
-        profile = cfgmod.select_profile(cfgmod.load_config(), "claude")
-        assert cfgmod.resolve_power("high", "claude", profile).model == "opus"
+        profile = profiles.select_profile(cfgmod.load_config(), "claude")
+        assert profiles.resolve_power("high", "claude", profile).model == "opus"
 
     assert "understands v" in caplog.text
 
@@ -480,24 +481,24 @@ timeout_scale = 1.5
 
 def test_timeout_scale_parses_from_a_tier_table(cfg_file):
     cfg_file.write_text(_SCALED)
-    profile = cfgmod.select_profile(cfgmod.load_config(), "claude")
+    profile = profiles.select_profile(cfgmod.load_config(), "claude")
 
-    assert cfgmod.resolve_power("high", "claude", profile).timeout_scale == 2.5
+    assert profiles.resolve_power("high", "claude", profile).timeout_scale == 2.5
 
 
 def test_timeout_scale_is_none_when_the_tier_omits_it(cfg_file):
     """Unset, not 1.0 — so the caller can still fall through to the profile's default."""
     cfg_file.write_text(_SCALED)
-    profile = cfgmod.select_profile(cfgmod.load_config(), "claude")
+    profile = profiles.select_profile(cfgmod.load_config(), "claude")
 
-    assert cfgmod.resolve_power("low", "claude", profile).timeout_scale is None
+    assert profiles.resolve_power("low", "claude", profile).timeout_scale is None
 
 
 def test_timeout_scale_falls_through_to_the_profile_default(cfg_file):
     cfg_file.write_text(_SCALED)
-    profile = cfgmod.select_profile(cfgmod.load_config(), "claude")
+    profile = profiles.select_profile(cfgmod.load_config(), "claude")
 
-    assert cfgmod.resolve_backend_default("claude", profile).timeout_scale == 1.5
+    assert profiles.resolve_backend_default("claude", profile).timeout_scale == 1.5
 
 
 def test_timeout_scale_survives_a_write(cfg_file):
@@ -505,8 +506,8 @@ def test_timeout_scale_survives_a_write(cfg_file):
 
     cfgmod.write_config_key("base_dir", "/some/path")
 
-    profile = cfgmod.select_profile(cfgmod.load_config(), "claude")
-    assert cfgmod.resolve_power("high", "claude", profile).timeout_scale == 2.5
+    profile = profiles.select_profile(cfgmod.load_config(), "claude")
+    assert profiles.resolve_power("high", "claude", profile).timeout_scale == 2.5
 
 
 def test_an_integer_timeout_scale_reads_as_a_float(cfg_file):
@@ -515,9 +516,9 @@ def test_an_integer_timeout_scale_reads_as_a_float(cfg_file):
         '[profiles.claude]\ncli = "claude"\n'
         '[profiles.claude.powers.high]\ntimeout_scale = 3\n'
     )
-    profile = cfgmod.select_profile(cfgmod.load_config(), "claude")
+    profile = profiles.select_profile(cfgmod.load_config(), "claude")
 
-    assert cfgmod.resolve_power("high", "claude", profile).timeout_scale == 3.0
+    assert profiles.resolve_power("high", "claude", profile).timeout_scale == 3.0
 
 
 @pytest.mark.parametrize("raw", ["\"2.5\"", "true", "0", "-1", "inf", "nan"])
@@ -528,9 +529,9 @@ def test_a_malformed_timeout_scale_reads_as_unset(cfg_file, raw):
         f'[profiles.claude]\ncli = "claude"\n'
         f'[profiles.claude.powers.high]\ntimeout_scale = {raw}\n'
     )
-    profile = cfgmod.select_profile(cfgmod.load_config(), "claude")
+    profile = profiles.select_profile(cfgmod.load_config(), "claude")
 
-    assert cfgmod.resolve_power("high", "claude", profile).timeout_scale is None
+    assert profiles.resolve_power("high", "claude", profile).timeout_scale is None
 
 
 if __name__ == "__main__":

@@ -7,7 +7,7 @@ from typing import Any
 from unittest.mock import patch
 
 from _fakes import FakeBackend, FakeClock
-from workhorse._vendor.stablemate_core.config import PowerMapping
+from workhorse._vendor.stablemate_core.profiles import PowerMapping
 from workhorse import profile
 from workhorse.config_run import AgentResilience
 from workhorse.runner import ladder

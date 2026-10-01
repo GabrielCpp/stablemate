@@ -19,7 +19,7 @@ from jinja2 import (
     make_logging_undefined,
 )
 
-from workhorse._vendor.stablemate_core.config import resolve_default_cli
+from workhorse._vendor.stablemate_core.profiles import resolve_default_cli
 from workhorse._vendor.stablemate_core.skill_refs import (
     RETIRED_HELPERS,
     RetiredHelper,

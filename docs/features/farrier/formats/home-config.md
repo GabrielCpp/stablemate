@@ -133,7 +133,7 @@ schemas.
 - does: reads names from the config's `profiles` table
 - returns: names sorted lexicographically, or an empty list when none are defined
 - verify: count(subject="sorted profile names", equals=1)
-- code: `farrier/farrier/_vendor/stablemate_core/config.py::profile_names` @451a081294d0
+- code: `farrier/farrier/_vendor/stablemate_core/profiles.py::profile_names` @a83db0c3bf2d
 
 ### select_profile
 - sig: `select_profile(cfg: dict[str, Any] | None, name: str) -> dict[str, Any]`
@@ -144,7 +144,7 @@ schemas.
 - raises: `ConfigError` when the named profile has no `cli` field
 - returns: the selected profile mapping, or `{}` for an empty `name`
 - verify: json_path(path="$.cli", equals="opencode")
-- code: `farrier/farrier/_vendor/stablemate_core/config.py::select_profile` @451a081294d0
+- code: `farrier/farrier/_vendor/stablemate_core/profiles.py::select_profile` @a83db0c3bf2d
 
 ### profile_backends
 - sig: `profile_backends(profile: dict[str, Any]) -> list[str]`
@@ -152,14 +152,14 @@ schemas.
 - does: returns an empty list when the profile has no usable `cli` field
 - returns: the lowercased CLI name as a one-element list, or `[]` when missing
 - verify: count(subject="profile backends", equals=1)
-- code: `farrier/farrier/_vendor/stablemate_core/config.py::profile_backends` @451a081294d0
+- code: `farrier/farrier/_vendor/stablemate_core/profiles.py::profile_backends` @a83db0c3bf2d
 
 ### profile_has_backend
 - sig: `profile_has_backend(profile: dict[str, Any], backend: str) -> bool`
 - does: reports true when the profile's `cli` field equals `backend`
 - returns: false when the profile has no `cli` field or the names differ
 - verify: json_path(path="$", equals=true)
-- code: `farrier/farrier/_vendor/stablemate_core/config.py::profile_has_backend` @451a081294d0
+- code: `farrier/farrier/_vendor/stablemate_core/profiles.py::profile_has_backend` @a83db0c3bf2d
 
 ### resolve_power
 - sig: `resolve_power(power: str | None, backend: str, cfg: dict[str, Any] | None = None) -> PowerMapping`
@@ -167,7 +167,7 @@ schemas.
 - does: reads the tier entry directly from `profile.powers.<power>` (no per-backend nesting in v2)
 - returns: a `PowerMapping` carrying `model`, `effort`, and `timeout_scale`
 - verify: json_path(path="$.model", equals="haiku")
-- code: `farrier/farrier/_vendor/stablemate_core/config.py::resolve_power` @451a081294d0
+- code: `farrier/farrier/_vendor/stablemate_core/profiles.py::resolve_power` @a83db0c3bf2d
 
 ### resolve_backend_default
 - sig: `resolve_backend_default(backend: str, cfg: dict[str, Any] | None = None) -> PowerMapping`
@@ -175,7 +175,7 @@ schemas.
 - does: returns an empty mapping when the profile's `cli` field disagrees with `backend`
 - returns: a `PowerMapping` carrying `model`, `effort`, and `timeout_scale`, or an empty mapping when the table is absent
 - verify: json_path(path="$.model", equals="opus")
-- code: `farrier/farrier/_vendor/stablemate_core/config.py::resolve_backend_default` @451a081294d0
+- code: `farrier/farrier/_vendor/stablemate_core/profiles.py::resolve_backend_default` @a83db0c3bf2d
 
 ### resolve_harness_env
 - sig: `resolve_harness_env(backend: str, cfg: dict[str, Any] | None = None) -> dict[str, str]`
@@ -183,21 +183,21 @@ schemas.
 - does: drops non-string keys and values instead of coercing them
 - returns: the valid string environment mapping, or `{}` when absent or malformed
 - verify: json_path(path="$.OPENCODE_DISABLE_AUTOCOMPACT", equals="1")
-- code: `farrier/farrier/_vendor/stablemate_core/config.py::resolve_harness_env` @451a081294d0
+- code: `farrier/farrier/_vendor/stablemate_core/profiles.py::resolve_harness_env` @a83db0c3bf2d
 
 ### resolve_default_cli
 - sig: `resolve_default_cli(cfg: dict[str, Any] | None = None) -> str`
 - does: reads and trims the configured `default_cli` value
 - returns: the lower-case configured CLI, or `claude` when absent, empty, or non-string
 - verify: json_path(path="$.default_cli", equals="claude")
-- code: `farrier/farrier/_vendor/stablemate_core/config.py::resolve_default_cli` @451a081294d0
+- code: `farrier/farrier/_vendor/stablemate_core/profiles.py::resolve_default_cli` @a83db0c3bf2d
 
 ### write_default_cli
 - sig: `write_default_cli(name: str) -> None`
 - does: persists a trimmed, lower-case `default_cli` value
 - returns: `None`
 - verify: persists(subject="default_cli")
-- code: `farrier/farrier/_vendor/stablemate_core/config.py::write_default_cli` @451a081294d0
+- code: `farrier/farrier/_vendor/stablemate_core/profiles.py::write_default_cli` @a83db0c3bf2d
 
 ### get_config_value
 - sig: `get_config_value(name: str, cfg: dict[str, Any] | None = None) -> Any`

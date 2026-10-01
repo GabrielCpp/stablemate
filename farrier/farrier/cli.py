@@ -16,15 +16,14 @@ from farrier import pipx
 from farrier._vendor.stablemate_core.config import (
     CONFIG_PATH_ENV,
     ConfigVersionError,
-    UnknownProfileError,
     config_path,
     read_config,
-    select_profile,
     write_base_dir,
     write_library_dir,
     write_stablemate_dir,
     write_worktree_dir,
 )
+from farrier._vendor.stablemate_core.profiles import UnknownProfileError, select_profile
 from farrier.frontmatter import (
     LOCAL_INSTRUCTION_FILES,
     banner_sources,

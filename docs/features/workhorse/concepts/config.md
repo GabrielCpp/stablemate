@@ -90,7 +90,7 @@ tooling.
 - sig: `write_default_cli(name: str) -> None`
 - does: strip and lowercase `name`, then persist it under `default_cli`
 - returns: `None`
-- code: `workhorse/workhorse/_vendor/stablemate_core/config.py::write_default_cli` @451a081294d0
+- code: `workhorse/workhorse/_vendor/stablemate_core/profiles.py::write_default_cli` @a83db0c3bf2d
 - detail: [default CLI configuration](default-cli-configuration.md)
 
 ### resolve_stablemate_dir
@@ -255,7 +255,7 @@ back to the top-level tables could otherwise run unattended on the wrong models.
 - sig: `auto_select_profile(cfg: dict[str, Any] | None, active_cli: str) -> dict[str, Any] | None`
 - does: resolve the auto-default for a run by matching `active_cli` against each profile's `cli` field
 - returns: the matching profile table, or `None` when `active_cli` is empty or no profile's `cli` field equals it
-- code: `workhorse/workhorse/_vendor/stablemate_core/config.py::auto_select_profile` @451a081294d0
+- code: `workhorse/workhorse/_vendor/stablemate_core/profiles.py::auto_select_profile` @a83db0c3bf2d
 
 ### select_active_profile
 - sig: `select_active_profile(cfg: dict[str, Any] | None, *, name: str = "", active_cli: str = "") -> dict[str, Any]`
@@ -263,17 +263,17 @@ back to the top-level tables could otherwise run unattended on the wrong models.
 - returns: `select_profile(cfg, name)` when `name` is set
 - returns: the `auto_select_profile` match when `active_cli` is set and one is found
 - returns: `{}` (bare-CLI mode) when neither names one
-- code: `workhorse/workhorse/_vendor/stablemate_core/config.py::select_active_profile` @451a081294d0
+- code: `workhorse/workhorse/_vendor/stablemate_core/profiles.py::select_active_profile` @a83db0c3bf2d
 
 There is **no writer**. A profile is a nested table and
 [`write_config_key`](#write_config_key) sets one top-level key, so profiles are authored by
 editing the file; [`farrier config show --profile <name>`](../../farrier/farrier.md#config)
 reads one back.
 
-- code: `workhorse/workhorse/_vendor/stablemate_core/config.py::select_profile` @451a081294d0
-- code: `workhorse/workhorse/_vendor/stablemate_core/config.py::profile_names` @451a081294d0
-- code: `workhorse/workhorse/_vendor/stablemate_core/config.py::profile_backends` @451a081294d0
-- code: `workhorse/workhorse/_vendor/stablemate_core/config.py::profile_has_backend` @451a081294d0
+- code: `workhorse/workhorse/_vendor/stablemate_core/profiles.py::select_profile` @a83db0c3bf2d
+- code: `workhorse/workhorse/_vendor/stablemate_core/profiles.py::profile_names` @a83db0c3bf2d
+- code: `workhorse/workhorse/_vendor/stablemate_core/profiles.py::profile_backends` @a83db0c3bf2d
+- code: `workhorse/workhorse/_vendor/stablemate_core/profiles.py::profile_has_backend` @a83db0c3bf2d
 - tests: `workhorse/tests/test_model_resolution.py::test_a_profile_replaces_the_top_level_tables`
 - tests: `workhorse/tests/test_model_resolution.py::test_without_a_profile_nothing_is_narrowed`
 - tests: `workhorse/tests/test_run_options.py::test_an_unknown_profile_is_refused_before_the_first_state`
@@ -298,7 +298,7 @@ the workflow.
   `load_config()`; under a [profile](#profiles) the caller passes the narrowed table
   instead, which is why this function knows nothing about profiles).
 - returns: `PowerMapping(model, effort, timeout_scale)` built from `cfg.powers.<power>` — each field `None` unless the config supplies a non-empty string (or, for the scale, a positive finite number)
-- code: `workhorse/workhorse/_vendor/stablemate_core/config.py::resolve_power` @451a081294d0
+- code: `workhorse/workhorse/_vendor/stablemate_core/profiles.py::resolve_power` @a83db0c3bf2d
 
 ## resolve_backend_default
 
@@ -315,7 +315,7 @@ non-dict `default` table does the same rather than raising.
 
 - **Input:** `backend: str`, `cfg: dict | None` (defaults to `load_config()`).
 - returns: `PowerMapping(model, effort, timeout_scale)` built from the `[profiles.<name>].default` table — each field `None` unless the config supplies a non-empty string (or, for the scale, a positive finite number)
-- code: `workhorse/workhorse/_vendor/stablemate_core/config.py::resolve_backend_default` @451a081294d0
+- code: `workhorse/workhorse/_vendor/stablemate_core/profiles.py::resolve_backend_default` @a83db0c3bf2d
 
 ## resolve_default_cli
 
@@ -341,8 +341,8 @@ to the same built-in it always used.
 - **Input:** `cfg: dict | None` (defaults to `load_config()`).
 - consistency: default-cli — `resolve_default_cli` always returns a non-empty backend name
   normalized with `strip().lower()`.
-- code: `workhorse/workhorse/_vendor/stablemate_core/config.py::resolve_default_cli` @451a081294d0
-- code: `workhorse/workhorse/_vendor/stablemate_core/config.py::write_default_cli` @451a081294d0
+- code: `workhorse/workhorse/_vendor/stablemate_core/profiles.py::resolve_default_cli` @a83db0c3bf2d
+- code: `workhorse/workhorse/_vendor/stablemate_core/profiles.py::write_default_cli` @a83db0c3bf2d
 - detail: [default CLI configuration](default-cli-configuration.md)
 - tests: `workhorse/tests/test_backends.py::test_config_default_cli_selects_backend`
 - tests: `workhorse/tests/test_backends.py::test_env_var_beats_config_default_cli`
@@ -363,7 +363,7 @@ dropped rather than coerced — an environment is strings, and quietly stringify
 
 - **Input:** `backend: str`, `cfg: dict | None` (defaults to `load_config()`).
 - returns: `dict[str, str]` filtered from the `[cli.<backend>].env` table — entries with a non-string key, an empty key, or a non-string value are dropped
-- code: `workhorse/workhorse/_vendor/stablemate_core/config.py::resolve_harness_env` @451a081294d0
+- code: `workhorse/workhorse/_vendor/stablemate_core/profiles.py::resolve_harness_env` @a83db0c3bf2d
 
 ## PowerMapping
 
@@ -379,7 +379,7 @@ it, which is a property of the model and therefore belongs beside its name. Only
 positive, finite number is honoured: a string, a bool, `0`, a negative and `inf` all read as unset,
 because a typo must not buy an unattended run an infinite budget.
 
-- code: `workhorse/workhorse/_vendor/stablemate_core/config.py::PowerMapping` @451a081294d0
+- code: `workhorse/workhorse/_vendor/stablemate_core/profiles.py::PowerMapping` @a83db0c3bf2d
 
 ## Consumers
 

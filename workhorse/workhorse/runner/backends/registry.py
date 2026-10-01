@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 from typing import Any
 
-from workhorse._vendor.stablemate_core.config import resolve_default_cli
+from workhorse._vendor.stablemate_core.profiles import resolve_default_cli
 from workhorse.runner.backends import AgentBackend
 from workhorse.runner.backends.cline import ClineBackend
 from workhorse.runner.backends.claude import ClaudeBackend
