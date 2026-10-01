@@ -153,3 +153,26 @@ def test_the_checkouts_own_base_library_shows_the_run_only_the_library(tmp_path:
     library.mkdir(parents=True)
 
     assert replace(_box(tmp_path), base_library=library).refusals(checkout) == ()
+
+
+def test_the_home_skill_folders_are_mounted_read_only_under_the_container_home(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    claude = home / ".claude" / "skills"
+    agents = home / ".agents" / "skills"
+    claude.mkdir(parents=True)
+    agents.mkdir(parents=True)
+    box = replace(_box(tmp_path), home_skills=sandbox.home_skills(home))
+
+    argv = box.docker_run_argv(["claude"], uid=1000, gid=1000)
+
+    assert f"--volume={claude}:{sandbox.HOME}/.claude/skills:ro" in argv
+    assert f"--volume={agents}:{sandbox.HOME}/.agents/skills:ro" in argv
+
+
+def test_a_home_skill_folder_that_does_not_exist_is_left_out_rather_than_refused(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    (home / ".claude" / "skills").mkdir(parents=True)
+    box = replace(_box(tmp_path), home_skills=sandbox.home_skills(home))
+
+    assert box.home_skills == {".claude/skills": home / ".claude" / "skills"}
+    assert box.refusals(tmp_path / "elsewhere") == ()

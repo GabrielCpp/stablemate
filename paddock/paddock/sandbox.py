@@ -7,7 +7,7 @@ import subprocess
 import tempfile
 import tomllib
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, ValidationError
@@ -22,6 +22,7 @@ LOGINS = {
     "opencode": f"{HOME}/.local/share/opencode/auth.json",
 }
 BASE_LIBRARY = "/opt/stablemate/base-library"
+HOME_SKILLS = (".claude/skills", ".agents/skills")
 DOCKERFILE = Path("paddock") / "docker" / "Dockerfile"
 
 
@@ -76,6 +77,11 @@ def config_clis(config: Path) -> frozenset[str]:
     return frozenset(cli for cli in named if cli)
 
 
+def home_skills(home: Path) -> dict[str, Path]:
+    """The skill folders under *home* that an agent CLI loads, keyed by their place in a home folder, each only when it exists."""
+    return {rel: home / rel for rel in HOME_SKILLS if (home / rel).is_dir()}
+
+
 def build_context(root: Path, dest: Path) -> Path:
     """Put the Dockerfile and every workspace member's wheel in *dest*, so the image installs packages and copies no source tree."""
     _ = shutil.copy2(root / DOCKERFILE, dest / "Dockerfile")
@@ -113,7 +119,7 @@ class Mount:
 
 @dataclass(frozen=True)
 class Sandbox:
-    """The paths a run sees: the app it works on, where its runs go, its model config, the login of each agent CLI it runs and, when named, the base library its skills render from."""
+    """The paths a run sees: the app it works on, where its runs go, its model config, the login of each agent CLI it runs, the user's home skills and, when named, the base library its skills render from."""
 
     app: Path
     runs_dir: Path
@@ -121,6 +127,7 @@ class Sandbox:
     logins: Mapping[str, Path]
     image: str = IMAGE
     base_library: Path | None = None
+    home_skills: Mapping[str, Path] = field(default_factory=dict)
 
     def app_dir(self) -> str:
         """Where the app sits inside the container. The name is kept, because a repo's name is read from its directory."""
@@ -134,6 +141,7 @@ class Sandbox:
             Mount(self.runs_dir, RUNS, read_only=False),
             Mount(self.config, CONFIG, read_only=True),
             *(Mount(path, LOGINS[cli], read_only=False) for cli, path in sorted(self.logins.items())),
+            *(Mount(path, f"{HOME}/{rel}", read_only=True) for rel, path in sorted(self.home_skills.items())),
             *library,
         )
 

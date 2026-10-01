@@ -190,7 +190,9 @@ machine runs, unless `--claude-code-version` or `--opencode-version` names anoth
 - `--runs-dir`, at `/runs`;
 - `--config`, read-only, as the stablemate config;
 - the login of each agent CLI the config runs, so the agents can call the model:
-  `--credentials` for claude, `--opencode-auth` for opencode.
+  `--credentials` for claude, `--opencode-auth` for opencode;
+- your home skill folders, read-only, at the same place under the container's home:
+  `~/.claude/skills` and `~/.agents/skills`, each only when it exists.
 
 A MiniMax run passes `--config paddock/data/configs/minimax-direct.toml` and
 `--profile opencode`, and the sandbox mounts only the opencode login.
@@ -200,6 +202,9 @@ use exactly as it would on a client's machine. `--base-library base-library` mou
 checkout's library read-only instead, so a run can try skill edits that are not pushed yet.
 Run `farrier --repo .` in the sandbox and commit the result before the book run, or the
 app's pre-commit hook refuses every commit as drift.
+
+The home skills let a run's prompts reference a skill you installed for yourself, as
+they would on your machine. The run sees them but cannot change them.
 
 It refuses a mount that would contain the checkout. The installed packages stay
 readable inside the container, as they would be on any machine that installs them.

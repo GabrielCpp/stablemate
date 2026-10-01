@@ -21,6 +21,6 @@ RUN git config --system user.name "paddock sandbox" \
 
 ENV HOME=/tmp/sandbox-home
 ENV PYTHONDONTWRITEBYTECODE=1
-RUN mkdir -p /tmp/sandbox-home/.claude /tmp/sandbox-home/.local/share/opencode && chmod -R 0777 /tmp/sandbox-home
+RUN mkdir -p /tmp/sandbox-home/.claude /tmp/sandbox-home/.agents /tmp/sandbox-home/.local/share/opencode && chmod -R 0777 /tmp/sandbox-home
 
 WORKDIR /work

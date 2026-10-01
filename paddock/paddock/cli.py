@@ -118,7 +118,8 @@ def _add_sandbox_commands(parser: argparse.ArgumentParser) -> None:
         help="run a command in the app, inside the sandbox",
         description=(
             f"The app is mounted at {sandbox.WORK}/<its directory name> and is the working directory, "
-            + f"--runs-dir at {sandbox.RUNS}, and --config at {sandbox.CONFIG}. Nothing else of this machine is visible."
+            + f"--runs-dir at {sandbox.RUNS}, and --config at {sandbox.CONFIG}. "
+            + f"The home skill folders that exist are mounted read-only under {sandbox.HOME}. Nothing else of this machine is visible."
         ),
     )
     sandbox_run.add_argument("--app", type=Path, required=True, help="the repo the command works on")
@@ -297,6 +298,7 @@ def cmd_sandbox_run(args: argparse.Namespace) -> int:
         logins=_logins(args),
         image=args.image,
         base_library=args.base_library,
+        home_skills=sandbox.home_skills(Path.home()),
     )
     refused = box.refusals(_project(_data_dir(args)))
     if refused:
