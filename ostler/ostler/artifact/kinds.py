@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
 
+from ostler.qa import run_log
 from ostler.untyped import is_mapping, is_sequence
 
 _KEBAB_RE = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
@@ -128,43 +129,6 @@ def _qa_evidence_scaffold() -> dict:
     }
 
 
-def _run_log_tally(spec_dir: Path) -> tuple[int, int]:
-    """(passing, failing) assertion counts from ``qa/qa-run.ndjson`` — the runner's ground truth."""
-    log_path = spec_dir / "qa" / "qa-run.ndjson"
-    if not log_path.is_file():
-        return (0, 0)
-    passed = failed = 0
-    for line in log_path.read_text(encoding="utf-8").splitlines():
-        try:
-            rec = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        if rec.get("kind") != "assert":
-            continue
-        result = str(rec.get("result", "")).strip().upper()
-        if result == "PASS":
-            passed += 1
-        elif result == "FAIL":
-            failed += 1
-    return (passed, failed)
-
-
-def _latest_session_run_id(spec_dir: Path) -> str:
-    """The runId the newest ``session_start`` in the run log opened with; "" if there is none."""
-    log_path = spec_dir / "qa" / "qa-run.ndjson"
-    if not log_path.is_file():
-        return ""
-    run_id = ""
-    for line in log_path.read_text(encoding="utf-8").splitlines():
-        try:
-            record = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        if isinstance(record, dict) and record.get("kind") == "session_start":
-            run_id = str(record.get("run_id", "")).strip()
-    return run_id
-
-
 def _qa_evidence_vet(data: Any, spec_dir: Path, root: Path) -> list[str]:  # noqa: C901
     if not isinstance(data, dict):
         return ["qa-evidence.json must be a JSON object."]
@@ -181,7 +145,7 @@ def _qa_evidence_vet(data: Any, spec_dir: Path, root: Path) -> list[str]:  # noq
     if not isinstance(obligations, list):
         return ["'obligations' must be an array when present."]
     if not criteria and not obligations:
-        passed, failed = _run_log_tally(spec_dir)
+        passed, failed = run_log.run_log_tally(spec_dir)
         if passed == 0 or failed > 0:
             return ["qa-evidence must contain at least one criterion or OKF obligation "
                     "(or, for an un-modeled infra/CLI surface, a run log with passing "
@@ -287,7 +251,7 @@ def _qa_evidence_vet(data: Any, spec_dir: Path, root: Path) -> list[str]:  # noq
     if overall == "pass" and not run_id:
         problems.append("overall Pass requires a non-empty runner-produced runId.")
 
-    started = _latest_session_run_id(spec_dir)
+    started = run_log.latest_session_run_id(spec_dir)
     if started and started != run_id:
         problems.append(
             f"qa-evidence runId '{run_id or '(missing)'}' is not the run on disk — "
@@ -339,8 +303,8 @@ def _qa_evidence_vet(data: Any, spec_dir: Path, root: Path) -> list[str]:  # noq
                         problems.append("qa_run_log is missing or escapes spec_dir.")
                         records = []
                     else:
-                        records = _strict_ndjson(log_path, problems)
-                        normalized_log = _relative_evidence_path(log_ref, spec_dir)
+                        records = run_log.strict_ndjson(log_path, problems)
+                        normalized_log = run_log.relative_evidence_path(log_ref, spec_dir)
                         if normalized_log not in artifacts:
                             problems.append("qa_run_log is not registered in the current run manifest.")
                 terminal = [record for record in records if record.get("kind") == "session_stop"]
@@ -351,7 +315,7 @@ def _qa_evidence_vet(data: Any, spec_dir: Path, root: Path) -> list[str]:  # noq
                     if not isinstance(row, dict) or str(row.get("verdict", "")).strip().lower() != "pass":
                         continue
                     item_id = str(row.get("id") or row.get("title") or "?")
-                    disproof, aborted = _failing_log_refs(item_id, records)
+                    disproof, aborted = run_log.failing_log_refs(item_id, records)
                     if disproof:
                         problems.append(
                             f"{item_id}: marked Pass but the run log records failing "
@@ -365,7 +329,7 @@ def _qa_evidence_vet(data: Any, spec_dir: Path, root: Path) -> list[str]:  # noq
                     evidence = row.get("evidence") or []
                     if isinstance(evidence, str):
                         evidence = [evidence]
-                    normalized = [_relative_evidence_path(item, spec_dir) for item in evidence]
+                    normalized = [run_log.relative_evidence_path(item, spec_dir) for item in evidence]
                     if not any(path in artifacts for path in normalized if path):
                         problems.append(
                             f"{item_id}: no cited evidence file appears by exact path in this "
@@ -376,74 +340,13 @@ def _qa_evidence_vet(data: Any, spec_dir: Path, root: Path) -> list[str]:  # noq
                         problems.append(f"{item_id}: Pass requires at least one assertion log_ref.")
                         continue
                     for ref in refs:
-                        if not _passing_log_ref(str(ref), item_id, records):
+                        if not run_log.passing_log_ref(str(ref), item_id, records):
                             problems.append(
                                 f"{item_id}: log_ref '{ref}' does not resolve to a passing "
                                 "runner assertion covering this obligation."
                             )
 
     return problems
-
-
-def _strict_ndjson(path: Path, problems: list[str]) -> list[dict[str, Any]]:
-    records: list[dict[str, Any]] = []
-    for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
-        if not line.strip():
-            continue
-        try:
-            record = json.loads(line)
-        except json.JSONDecodeError as exc:
-            problems.append(f"qa_run_log line {number} is invalid JSON ({exc}).")
-            continue
-        if not isinstance(record, dict):
-            problems.append(f"qa_run_log line {number} is not an object.")
-            continue
-        records.append(record)
-    return records
-
-
-def _relative_evidence_path(value: Any, spec_dir: Path) -> str:
-    if not _is_nonempty_str(value):
-        return ""
-    path = Path(str(value))
-    resolved = (path if path.is_absolute() else spec_dir / path).resolve()
-    try:
-        return resolved.relative_to(spec_dir.resolve()).as_posix()
-    except ValueError:
-        return ""
-
-
-def _passing_log_ref(ref: str, item_id: str, records: list[dict[str, Any]]) -> bool:
-    parts = ref.rsplit(":assert:", 1)
-    if len(parts) != 2:
-        return False
-    scenario, action = parts
-    return any(
-        record.get("kind") == "assert"
-        and record.get("result") == "PASS"
-        and record.get("scenario") == scenario
-        and str(record.get("action", "")) == action
-        and item_id in record.get("covers", [])
-        for record in records
-    )
-
-
-def _failing_log_refs(
-    item_id: str, records: list[dict[str, Any]]
-) -> tuple[list[str], list[str]]:
-    """The failing `scenario:assert:action` refs covering `item_id`, split in two."""
-    failing: list[str] = []
-    aborted: list[str] = []
-    for record in records:
-        if (
-            record.get("kind") != "assert"
-            or record.get("result") == "PASS"
-            or item_id not in record.get("covers", [])
-        ):
-            continue
-        ref = f"{record.get('scenario', '?')}:assert:{record.get('action', '?')}"
-        (aborted if record.get("sentinel") else failing).append(ref)
-    return failing, aborted
 
 
 

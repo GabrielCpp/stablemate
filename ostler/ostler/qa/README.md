@@ -40,6 +40,7 @@ plan from the book, run it, and report the evidence.
 - `references.py`: the one reference grammar `fixture:`, `needs:`, route paths, request bodies and `verify:` share.
 - `report.py`: the run, rendered for the person who has to sign it off.
 - `run.py`: the dispatch of every `ostler qa` subcommand.
+- `run_log.py`: reading the `qa-run.ndjson` log a session wrote: its records, the run it opened, and which asserts pass, fail or abort an item.
 - `runbook.py`: the durable QA stack, read out of the book's ops nodes.
 - `sensitivity.py`: whether a declared check can go red at all, measured rather than assumed.
 - `session.py`: QA session state, the NDJSON run log, the capture store and the daemon PID registry.
