@@ -13,6 +13,7 @@ from typing import Any
 
 from ostler.qa.attribution import signatures
 from ostler.qa.drivers import DriverBlocked, QaDriver, ScenarioResult, create_driver
+from ostler.qa import run_log
 from ostler.qa.plan import PlanDocument, check_runtime_requirements
 from ostler.qa.session import QA_DIRNAME, QaSession
 from ostler.qa.verdict import Verdict, judge, merged
@@ -258,12 +259,11 @@ def _write_evidence(
         for scenario_id, result in results.items()
         if result.aborted
     }
-    log_records: list[dict[str, Any]] = []
     log_path = document.spec_dir / "qa" / "qa-run.ndjson"
-    for line in log_path.read_text(encoding="utf-8").splitlines():
-        record = json.loads(line)
-        if record.get("kind") == "assert":
-            log_records.append(record)
+    records, unreadable = run_log.read_records(log_path)
+    if unreadable:
+        raise ValueError(f"{log_path}: {unreadable[0]}")
+    log_records = [record for record in records if record.get("kind") == "assert"]
     manifest_path = document.spec_dir / "qa" / "run-manifest.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     artifacts_by_scenario: dict[str, list[str]] = {}
@@ -277,16 +277,7 @@ def _write_evidence(
         source = item if isinstance(item, dict) else {"id": str(item)}
         item_id = str(source["id"])
         records = [record for record in log_records if item_id in record.get("covers", [])]
-        failing = [
-            record
-            for record in records
-            if record.get("result") != "PASS" and not record.get("sentinel")
-        ]
-        sentinels = [
-            record
-            for record in records
-            if record.get("result") != "PASS" and record.get("sentinel")
-        ]
+        failing, sentinels = run_log.failing_log_refs(item_id, records)
         stopped = [
             record
             for record in records
@@ -312,14 +303,11 @@ def _write_evidence(
             "evidence": sorted(set(evidence)),
         }
         if failing:
-            row_data["failing_log_refs"] = [
-                f"{record.get('scenario', '')}:assert:{record.get('action', '?')}"
-                for record in failing
-            ]
+            row_data["failing_log_refs"] = failing
         if stopped or sentinels:
             row_data["aborted_log_refs"] = [
-                f"{record.get('scenario', '')}:assert:{record.get('action', '?')}"
-                for record in [*stopped, *sentinels]
+                *(run_log.assert_ref(record) for record in stopped),
+                *sentinels,
             ]
         return row_data
 

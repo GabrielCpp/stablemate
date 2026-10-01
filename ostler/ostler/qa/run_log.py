@@ -66,6 +66,11 @@ def relative_evidence_path(value: Any, spec_dir: Path) -> str:
         return ""
 
 
+def assert_ref(record: dict[str, Any]) -> str:
+    """The `scenario:assert:action` ref that names one assert record."""
+    return f"{record.get('scenario', '?')}:assert:{record.get('action', '?')}"
+
+
 def passing_log_ref(ref: str, item_id: str, records: list[dict[str, Any]]) -> bool:
     parts = ref.rsplit(":assert:", 1)
     if len(parts) != 2:
@@ -94,6 +99,5 @@ def failing_log_refs(
             or item_id not in record.get("covers", [])
         ):
             continue
-        ref = f"{record.get('scenario', '?')}:assert:{record.get('action', '?')}"
-        (aborted if record.get("sentinel") else failing).append(ref)
+        (aborted if record.get("sentinel") else failing).append(assert_ref(record))
     return failing, aborted
