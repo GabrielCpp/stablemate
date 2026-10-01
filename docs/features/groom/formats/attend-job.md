@@ -147,5 +147,9 @@ Two consumers, both rows-and-strings. `spawn_headless` is the only call site: it
 - does: return the complete attendant prompt — the library doctrine (shipped in `groom/groom/prompts/attend-gate.md`) followed by a separator and the job's `.facts()` output
 - verify: json_path(path="$", matches="---")
 - returns: the full prompt that will be passed on stdin to the spawned attendant
+- does: render the doctrine as a template against the skills the attendant loads from `self.cwd()`, its workspace up to the repo root and then home, so each diagnosis skill appears as the command the attendant's CLI uses to load it
+- returns: a refusal that names the skill in place of the doctrine when a skill the doctrine names is installed nowhere the attendant looks
+- tests: `groom/tests/test_attend.py::test_the_doctrine_names_each_diagnosis_skill_by_the_command_that_loads_it`
+- tests: `groom/tests/test_attend.py::test_a_missing_diagnosis_skill_turns_the_doctrine_into_a_refusal`
 - verify: json_path(path="$", matches="## The run")
 - code: `groom/groom/attend.py::AttendJob.prompt`

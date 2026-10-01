@@ -87,7 +87,7 @@ The headless dispatch spawns a Claude agent in the run's workspace and owns its 
 - detail: [reason method](../formats/attend-job.md#reason)
 - verify: persists(subject="attend table row", field="status", value="running")
 
-The spawned prompt is the attendant doctrine (shipped in `groom/groom/prompts/attend-gate.md`) followed by the job's `.facts()` summary. The doctrine establishes the rules; the facts give context (run id, workspace, gate body or failure summary, etc.). The stdout is discarded (the session transcript is the record).
+The spawned prompt is the attendant doctrine (shipped in `groom/groom/prompts/attend-gate.md`) followed by the job's `.facts()` summary. The doctrine establishes the rules; the facts give context (run id, workspace, gate body or failure summary, etc.). Groom renders the doctrine against the skills the attendant loads in its workspace, so each diagnosis skill reads as the command that loads it. A doctrine that names a skill installed nowhere becomes a refusal that names the missing skill. The stdout is discarded (the session transcript is the record).
 
 ### stop
 - sig: `(job_id: str) -> bool`
