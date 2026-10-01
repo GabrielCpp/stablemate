@@ -5,8 +5,8 @@ from typing import ClassVar
 
 from workhorse.pyflow import Continue, Done, NodeNotRunError, Workflow, WorkflowFailed
 from workhorse_workflows.coder.shared import paths, roles
+from workhorse_workflows.coder.shared.branches import epic_of_branch
 from workhorse_workflows.coder.shared.ci import (
-    branch_epic,
     poll_pr_checks,
     push_ci_fix,
     select_ci_repo,
@@ -93,7 +93,7 @@ class FixCi(Workflow):
             args=turn.args
             | {
                 "ci_branch": self.branch,
-                "ci_epic": branch_epic(self.branch),
+                "ci_epic": epic_of_branch(self.branch),
                 "ci_summary": summary,
             },
             session=self._session(loop.repo),

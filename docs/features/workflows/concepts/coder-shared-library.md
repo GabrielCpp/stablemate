@@ -10,6 +10,7 @@ same thing in more than one machine. The package exposes only the common bluepri
 initializer; the individual modules below own the behavior and models they provide.
 
 - code: `workflows/src/workhorse_workflows/coder/shared/__init__.py::__all__` @4e6ee2c36344
+- code: `workflows/src/workhorse_workflows/coder/shared/branches.py::__all__` @4f584f6ad5fb
 - code: `workflows/src/workhorse_workflows/coder/shared/queue.py::__all__` @723b6e5574da
 - code: `workflows/src/workhorse_workflows/coder/shared/qa_support.py::QA_PLAN_FILE` @dd46fb252212
 - code: `workflows/src/workhorse_workflows/coder/shared/qa_support.py::QA_RUN_LOG` @dd46fb252212
@@ -173,6 +174,24 @@ permissive result models that ignore unknown keys and drop null values before ap
 
 The legacy queue is used as a fallback by `select_epic` and `prune_epic` when Ostler is unavailable or cannot return an epic list from the documentation graph. It is not read or maintained by the workflow when Ostler is working — Ostler's queue is authoritative when present.
 
+### epic_branch
+
+- sig: `epic_branch(epic: str) -> str`
+- does: prefixes a non-empty epic identifier with `feat/`
+- does: returns an empty string when the epic identifier is empty
+- returns: the full branch ref used for an epic pull request
+- verify: json_path(path="$", equals="feat/EPIC-1")
+- code: `workflows/src/workhorse_workflows/coder/shared/branches.py::epic_branch` @4f584f6ad5fb
+
+### epic_of_branch
+
+- sig: `epic_of_branch(branch: str) -> str`
+- does: removes the `feat/` prefix when the branch carries that prefix
+- does: leaves branches without the `feat/` prefix unchanged
+- returns: the bare epic identifier represented by the branch ref
+- verify: json_path(path="$", equals="EPIC-1")
+- code: `workflows/src/workhorse_workflows/coder/shared/branches.py::epic_of_branch` @4f584f6ad5fb
+
 ### init_base
 
 - sig: `init_base(logger: logging.Logger, repo_dir: str = "") -> BaseBranch`
@@ -180,7 +199,7 @@ The legacy queue is used as a fallback by `select_epic` and `prune_epic` when Os
 - does: falls back through the repository default branch, local `main`, local `master`, and `main`
 - returns: the selected non-empty base branch name
 - verify: json_path(path="$.base_branch", matches=".+")
-- code: `workflows/src/workhorse_workflows/coder/shared/queue.py::init_base` @723b6e5574da
+- code: `workflows/src/workhorse_workflows/coder/shared/branches.py::init_base` @4f584f6ad5fb
 - tests: `workflows/tests/coder/test_workflow.py::test_one_epic_of_one_story_builds_it_prunes_the_queue_and_ends_on_an_empty_queue`
 
 ### branch_story
@@ -191,8 +210,20 @@ The legacy queue is used as a fallback by `select_epic` and `prune_epic` when Os
 - does: reuses an existing story branch without resetting its commits
 - returns: the base branch, story branch, and names of repositories actually branched
 - verify: json_path(path="$.story_branch", matches=".+")
-- code: `workflows/src/workhorse_workflows/coder/shared/queue.py::branch_story` @723b6e5574da
+- code: `workflows/src/workhorse_workflows/coder/shared/branches.py::branch_story` @4f584f6ad5fb
 - tests: `workflows/tests/coder/test_workflow.py::test_story_mode_cuts_its_own_branch_and_ends_at_its_own_pr`
+
+### branch_code_repos
+
+- sig: `branch_code_repos(logger: logging.Logger, spec_dir: str = "", branch: str = "", docs_path: str = "", repo_dir: str = "", workspace_file: str = "", plan: dict[str, Any] | None = None) -> BranchOutcome`
+- does: derives the affected repositories from the plan
+- does: uses the documentation repository branch when no branch is supplied, or `main` when that root is not a git repository
+- does: creates or checks out the requested branch in each affected code repository
+- does: leaves repositories already on the requested branch unchanged and skips non-git repositories
+- returns: names of repositories branched and already on the branch
+- verify: count(subject="story branch dispatch", equals=1)
+- code: `workflows/src/workhorse_workflows/coder/shared/branches.py::branch_code_repos` @4f584f6ad5fb
+- tests: `workflows/tests/coder/dev/test_flow.py::test_plans_stamps_branches_and_implements_every_layer`
 
 ### branch_epic
 
@@ -206,7 +237,7 @@ The legacy queue is used as a fallback by `select_epic` and `prune_epic` when Os
 - raises: `WorkflowFailed` when checkout, safe branch reuse, or base reconciliation cannot proceed without discarding or guessing about work
 - returns: the selected epic and its `feat/<epic>` branch name
 - verify: unchanged(subject="unclaimed unmerged branch after branch refusal")
-- code: `workflows/src/workhorse_workflows/coder/shared/queue.py::branch_epic` @723b6e5574da
+- code: `workflows/src/workhorse_workflows/coder/shared/branches.py::branch_epic` @4f584f6ad5fb
 - tests: `workflows/tests/coder/test_workflow.py::test_a_branch_another_working_tree_holds_is_refused_by_name`
 
 ### select_epic

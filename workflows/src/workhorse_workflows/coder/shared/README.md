@@ -6,11 +6,12 @@ What more than one coder lane needs. Code that only one lane calls belongs in th
 
 - `backlog.py`: the repo backlog's `Filed by coder` section: what the coder files into it, and what the fix lane drains out.
 - `blueprint.py`: the one `Blueprint` every coder node registers against.
-- `ci.py`: the CI loop's work: which repo is next, what its Actions runs said, and the push of a fix. It also owns the epic branch name.
+- `branches.py`: the epic and story branches: their names, cutting them, the claim ledger and catching up with base.
+- `ci.py`: the CI loop's work: which repo is next, what its Actions runs said, and the push of a fix.
 - `commits.py`: the Conventional Commit subject and trailers of every commit the coder writes.
 - `contract.py`: the one rule for what counts as a service the planner can target.
 - `conversation.py`: the story's backbone session chain, recycled when it is full.
-- `dev.py`: the dev lane's work: branching the code repos, each service's declared gates, the story's status and sources, and the operator's answer file.
+- `dev.py`: the dev lane's work: each service's declared gates, the story's status and sources, and the operator's answer file.
 - `docs.py`: the docs lane's work: whether a book exists, which doc nodes a diff touches, and the fail-closed grounding gate.
 - `escalation.py`: the body a coder lane writes when it stops and asks a human.
 - `failure.py`: the one failure shape the repair role reads, whatever gate produced it.
@@ -18,7 +19,7 @@ What more than one coder lane needs. Code that only one lane calls belongs in th
 - `paths.py`: where every coder artifact lives: repo roots, epics, the backlog, the feature book and operator context files.
 - `plan.py`: a story's plan context: loading `plan-context.json`, projecting it, and the dispatch order.
 - `qa_support.py`: a re-export of `kit/qa/support.py` for older coder call sites. New code imports the kit module.
-- `queue.py`: the epic and story queue: what runs next, the branch it runs on, what is set aside, and the commit that records a pass.
+- `queue.py`: the epic and story queue: what runs next, what is set aside, and the commit that records a pass.
 - `resolution.py`: the resolver half of an operator gate, which tries to answer a block before the run parks on it.
 - `review.py`: the review lane's work: where review turns run, the settlement gate, and the operator inbox poll.
 - `roles.py`: which prompt body and model a role resolves to, with the repo's own prompts ahead of the base library.

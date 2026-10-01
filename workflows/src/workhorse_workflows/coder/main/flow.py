@@ -20,7 +20,13 @@ from workhorse_workflows.coder.fix_ci import FixCi
 from workhorse_workflows.coder.qa import Qa
 from workhorse_workflows.coder.qa.nodes import teardown_stack
 from workhorse_workflows.coder.review import Review
-from workhorse_workflows.coder.shared.ci import epic_branch, poll_pr_checks, push_ci_fix
+from workhorse_workflows.coder.shared.branches import (
+    branch_epic,
+    branch_story,
+    epic_branch,
+    init_base,
+)
+from workhorse_workflows.coder.shared.ci import poll_pr_checks, push_ci_fix
 from workhorse_workflows.coder.shared.worktree import snapshot_worktree_state
 from workhorse_workflows.kit.telemetry import counter_labels
 from workhorse_workflows.coder.main.nodes.pr import (
@@ -32,12 +38,9 @@ from workhorse_workflows.coder.main.nodes.pr import (
 )
 from workhorse_workflows.coder.shared.queue import (
     begin_run,
-    branch_epic,
-    branch_story,
     check_repos_clean,
     commit_story,
     flag_epic_blocked,
-    init_base,
     prune_epic,
     select_epic,
     select_story,
@@ -507,6 +510,7 @@ class Coder(Workflow):
             add_dirs=self._dirs(),
             args={
                 "ci_epic": gate.ci_epic,
+                "ci_branch": epic_branch(gate.ci_epic),
                 "ci_base": gate.ci_base,
                 "result_schema": schema_block(MergeFixResult),
             },

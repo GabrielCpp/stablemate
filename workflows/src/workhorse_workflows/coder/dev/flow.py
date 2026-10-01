@@ -13,9 +13,9 @@ from workhorse_workflows.coder.shared.plan import (
     resolve_impl_context,
     select_next_layer,
 )
+from workhorse_workflows.coder.shared.branches import branch_code_repos
 from workhorse_workflows.coder.shared.dev import (
     GATE_ORDER,
-    branch_code_repos,
     changed_files,
     check_story_status,
     declared_markers,

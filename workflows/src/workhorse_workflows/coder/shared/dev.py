@@ -4,7 +4,6 @@ from __future__ import annotations
 import logging
 import subprocess
 from pathlib import Path
-from typing import Any
 
 import yaml
 from ostler.provenance import story_commits
@@ -13,9 +12,7 @@ from workhorse_workflows.kit import find_docs_root, find_repo_root
 from workhorse_workflows.coder.shared import paths
 from workhorse_workflows.coder.shared import story_status
 from workhorse_workflows.coder.shared.blueprint import blueprint
-from workhorse_workflows.coder.shared.plan import get_affected_repos, plan_context
 from workhorse_workflows.coder.shared.schemas.dev import (
-    BranchOutcome,
     ChangedFiles,
     DispatchEntry,
     GateList,
@@ -25,12 +22,7 @@ from workhorse_workflows.coder.shared.schemas.dev import (
     StorySource,
     StorySources,
 )
-from workhorse_workflows.kit import (
-    checkout,
-    current_branch,
-    local_branch_exists,
-    resolve_workspace,
-)
+from workhorse_workflows.kit import resolve_workspace
 from ostler.select import is_done
 
 MAX_GATE_OUTPUT = 4000
@@ -42,63 +34,6 @@ GATE_ORDER = ("lint", "test")
 AWAITING = "AWAITING_OPERATOR"
 ANSWERED = "ANSWERED"
 CONSUMED = "CONSUMED"
-
-
-def _branch_repo(repo_path: Path, repo_name: str, branch: str, logger: logging.Logger) -> str:
-    """Put one repo on `branch`: `branched`, `already_on_branch` or `skipped`."""
-    if not (repo_path / ".git").exists():
-        logger.warning("%s: not a git repo, skipping", repo_name)
-        return "skipped"
-    if current_branch(repo_path) == branch:
-        logger.info("%s: already on %s", repo_name, branch)
-        return "already_on_branch"
-    if local_branch_exists(repo_path, branch):
-        checkout(repo_path, branch)
-        logger.info("%s: checked out existing %s", repo_name, branch)
-    else:
-        checkout(repo_path, branch, create=True)
-        logger.info("%s: created %s", repo_name, branch)
-    return "branched"
-
-
-@blueprint.node
-def branch_code_repos(
-    logger: logging.Logger,
-    spec_dir: str = "",
-    branch: str = "",
-    docs_path: str = "",
-    repo_dir: str = "",
-    workspace_file: str = "",
-    plan: dict[str, Any] | None = None,
-) -> BranchOutcome:
-    """Put every code repo the plan names onto the story branch."""
-    docs_root = find_docs_root(docs_path, repo_dir)
-    repos = resolve_workspace(workspace_file, repo_dir)
-    plan_ctx, _ = plan_context(plan, spec_dir, docs_root, repos, logger)
-
-    if not branch:
-        if (docs_root / ".git").exists():
-            branch = current_branch(docs_root)
-        else:
-            branch = "main"
-            logger.warning(
-                "docs root %s is not a git repo and no branch given — defaulting to 'main'",
-                docs_root,
-            )
-
-    branched: list[str] = []
-    already: list[str] = []
-    for repo_name in get_affected_repos(plan_ctx, repos):
-        repo_path = Path(repos[repo_name]["path"])
-        if repo_path == docs_root:
-            continue
-        result = _branch_repo(repo_path, repo_name, branch, logger)
-        if result == "branched":
-            branched.append(repo_name)
-        elif result == "already_on_branch":
-            already.append(repo_name)
-
-    return BranchOutcome(branched=branched, already_on_branch=already)
 
 
 def _services_config(repo_dir: str = "") -> dict[str, dict]:
@@ -455,7 +390,6 @@ def read_operator_context(logger: logging.Logger, story_path: str = "") -> Opera
 
 
 __all__ = [
-    "branch_code_repos",
     "changed_files",
     "check_story_status",
     "declared_gates",

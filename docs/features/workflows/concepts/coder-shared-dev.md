@@ -13,7 +13,7 @@ title: Coder shared development helpers
 
 The shared development modules are the deterministic boundary between a story plan and the Coder
 development flow. `plan.py` projects a checkpointed plan into `plan-context.json`, resolves dispatch and
-QA context and selects layers in implementation order. `dev.py` moves affected repositories to the story branch,
+QA context and selects layers in implementation order. `dev.py`
 discovers service-owned gate commands, executes those gates, reports story-owned changes,
 and consumes operator answers. Neither decides implementation content. Each returns typed values
 that the flow routes.
@@ -127,17 +127,6 @@ that the flow routes.
 - verify: count(subject="rendered plan summaries", equals=1)
 - code: `workflows/src/workhorse_workflows/coder/shared/plan.py::plan_summary` @428bdccd7106
 - tests: `workflows/tests/coder/dev/test_flow.py::test_the_summary_says_the_names_apart_from_the_arrangements`
-
-### branch_code_repos
-- sig: `branch_code_repos(logger: logging.Logger, spec_dir: str = "", branch: str = "", docs_path: str = "", repo_dir: str = "", workspace_file: str = "", plan: dict[str, Any] | None = None) -> BranchOutcome`
-- does: derives the affected repositories from the plan
-- does: uses the documentation repository branch when no branch is supplied, or `main` when that root is not a git repository
-- does: creates or checks out the requested branch in each affected code repository
-- does: leaves repositories already on the requested branch unchanged and skips non-git repositories
-- returns: names of repositories branched and already on the branch
-- verify: count(subject="story branch dispatch", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/dev.py::branch_code_repos` @11eaf0e506a5
-- tests: `workflows/tests/coder/dev/test_flow.py::test_plans_stamps_branches_and_implements_every_layer`
 
 ### select_next_layer
 - sig: `select_next_layer(logger: logging.Logger, spec_dir: str = "", index: int = -1, repo_dir: str = "", workspace_file: str = "", plan: dict[str, Any] | None = None) -> LayerPick`

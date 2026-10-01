@@ -8,31 +8,12 @@ title: Coder CI gating helpers
 - code: `workflows/src/workhorse_workflows/coder/shared/ci.py` @9df48b30e438
 - tests: `workflows/tests/coder/fix_ci/test_flow.py`
 
-This module supplies the repository selection, GitHub Actions polling, branch-name conversion,
-and verified push operations used by the coder CI remediation flow. It treats an absent CI
+This module supplies the repository selection, GitHub Actions polling and verified push operations used by the coder CI remediation flow. It treats an absent CI
 surface as `unavailable`, but treats an API or permission failure as `blocked`, so the flow never
 mistakes an unreadable gate for a passing one. All repository operations use the selected
 repository directory rather than the process working directory.
 
 ## Methods
-
-### epic_branch
-
-- sig: `epic_branch(epic: str) -> str`
-- does: prefixes a non-empty epic identifier with `feat/`
-- does: returns an empty string when the epic identifier is empty
-- returns: the full branch ref used for an epic pull request
-- verify: json_path(path="$", equals="feat/EPIC-1")
-- code: `workflows/src/workhorse_workflows/coder/shared/ci.py::epic_branch` @9df48b30e438
-
-### branch_epic
-
-- sig: `branch_epic(branch: str) -> str`
-- does: removes the `feat/` prefix when the branch carries that prefix
-- does: leaves branches without the `feat/` prefix unchanged
-- returns: the bare epic identifier represented by the branch ref
-- verify: json_path(path="$", equals="EPIC-1")
-- code: `workflows/src/workhorse_workflows/coder/shared/ci.py::branch_epic` @9df48b30e438
 
 ### select_ci_repo
 

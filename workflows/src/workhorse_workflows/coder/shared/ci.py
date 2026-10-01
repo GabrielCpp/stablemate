@@ -22,16 +22,6 @@ from workhorse_workflows.kit import (
     resolve_workspace,
 )
 
-def epic_branch(epic: str) -> str:
-    """The branch an epic's work lives on — the one its PR is opened from."""
-    return f"feat/{epic}" if epic else ""
-
-
-def branch_epic(branch: str) -> str:
-    """The epic an epic branch belongs to — `epic_branch` read the other way."""
-    return branch.removeprefix("feat/")
-
-
 FAIL_CONCLUSIONS = frozenset(
     {"failure", "timed_out", "cancelled", "startup_failure", "action_required", "stale"}
 )
@@ -287,8 +277,6 @@ def push_ci_fix(logger: logging.Logger, repo_dir: str, branch: str) -> PushOutco
 
 
 __all__ = [
-    "branch_epic",
-    "epic_branch",
     "poll_pr_checks",
     "push_ci_fix",
     "push_epic_branch",

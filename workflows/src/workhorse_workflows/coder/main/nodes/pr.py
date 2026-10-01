@@ -10,6 +10,7 @@ from workhorse_workflows.coder.shared.plan import get_affected_repos, load_plan_
 from workhorse_workflows.kit import find_repo_root
 from workhorse_workflows.coder.shared import commits, paths
 from workhorse_workflows.coder.shared.blueprint import blueprint
+from workhorse_workflows.coder.shared.branches import epic_branch
 from workhorse_workflows.coder.shared.ci import push_epic_branch
 from workhorse_workflows.coder.shared.queue import epics_set_aside
 from workhorse_workflows.coder.shared.schemas.pr import (
@@ -46,7 +47,7 @@ PLAN_SUMMARY_HEADING = "1. Summary"
 def _inherited_set_aside_epic(root: Path, run_dir: str, branch: str, base: str) -> str:
     """The first epic set aside this run whose *unmerged* work `branch` carries, or `""`."""
     for blocked in epics_set_aside(root, run_dir):
-        blocked_branch = f"feat/{blocked}"
+        blocked_branch = epic_branch(blocked)
         if is_ancestor(root, blocked_branch, base):
             continue
         if is_ancestor(root, blocked_branch, branch):
@@ -68,7 +69,7 @@ def open_pr(
         return PrGate(ci_base=base_branch)
 
     root = find_repo_root(repo_dir)
-    branch = f"feat/{epic}"
+    branch = epic_branch(epic)
     _commit_queue_prune(logger, root, epic, branch)
 
     inherited = _inherited_set_aside_epic(root, run_dir, branch, base_branch)
@@ -112,7 +113,7 @@ def _epic_pr_title(root: Path, epic: str) -> str:
 
 def _open_epic_pr(logger: logging.Logger, epic: str, base: str, repo_dir: str = "") -> None:
     """Push the epic branch and open its PR."""
-    branch = f"feat/{epic}"
+    branch = epic_branch(epic)
     root = find_repo_root(repo_dir)
 
     if not branch_exists(root, branch):
@@ -166,7 +167,7 @@ def merge_pr(
     logger: logging.Logger, epic: str = "", base_branch: str = "main", repo_dir: str = ""
 ) -> MergeOutcome:
     """Merge the epic's PR into its base, then move the local checkout to the merged tip."""
-    branch = f"feat/{epic}"
+    branch = epic_branch(epic)
 
     if not epic:
         logger.info("no epic given — nothing to merge")
@@ -270,7 +271,7 @@ def flag_ci_failure(
     repo_dir: str = "",
 ) -> CiFlagged:
     """CI could not be turned green within the fix budget."""
-    branch = f"feat/{epic}"
+    branch = epic_branch(epic)
     root = find_repo_root(repo_dir)
 
     logger.warning(
@@ -306,7 +307,7 @@ def flag_merge_failure(
     repo_dir: str = "",
 ) -> MergeFlagged:
     """The PR could not be merged within the conflict-resolution budget."""
-    branch = f"feat/{epic}"
+    branch = epic_branch(epic)
     root = find_repo_root(repo_dir)
 
     logger.warning(
