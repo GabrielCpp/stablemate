@@ -25,7 +25,7 @@ node callables from configuration, intake, epic selection, planning, coverage, a
 and story processing.
 
 - type: `list[str]`
-- default: `['blueprint', 'adopt_backlog', 'check_mockup_needed', 'check_story_feedback', 'check_story_grounding', 'commit_author', 'load_config', 'mark_roadmap_authored', 'plan_author_step', 'prune_bullet', 'record_attempt', 'remove_story', 'seed_story', 'select_epic', 'select_epic_document', 'select_story', 'validate_artifacts', 'validate_coverage', 'validate_roadmap_milestone', 'validate_story', 'verify_integrity', 'verify_reconcile']`
+- default: `['blueprint', 'adopt_backlog', 'check_mockup_needed', 'check_story_feedback', 'check_story_grounding', 'commit_author', 'load_config', 'mark_roadmap_authored', 'plan_author_step', 'prune_bullet', 'record_attempt', 'seed_story', 'validate_artifacts', 'validate_coverage', 'validate_roadmap_milestone', 'validate_story', 'verify_integrity', 'verify_reconcile']`
 - required: true
 - semantics: importing the package exposes exactly the shared blueprint and the listed deterministic node callables
 - verify: count(subject="author main node exports", equals=22)

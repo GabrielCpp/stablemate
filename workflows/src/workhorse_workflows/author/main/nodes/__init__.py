@@ -10,7 +10,6 @@ from workhorse_workflows.author.main.nodes.artifacts import (
 )
 from workhorse_workflows.author.main.nodes.config import load_config
 from workhorse_workflows.author.main.nodes.coverage import validate_coverage
-from workhorse_workflows.author.main.nodes.epics import select_epic, select_epic_document
 from workhorse_workflows.author.main.nodes.intake import (
     adopt_backlog,
     mark_roadmap_authored,
@@ -23,9 +22,7 @@ from workhorse_workflows.author.main.nodes.stories import (
     check_story_grounding,
     prune_bullet,
     record_attempt,
-    remove_story,
     seed_story,
-    select_story,
     validate_story,
 )
 
@@ -41,11 +38,7 @@ __all__ = [
     "plan_author_step",
     "prune_bullet",
     "record_attempt",
-    "remove_story",
     "seed_story",
-    "select_epic",
-    "select_epic_document",
-    "select_story",
     "validate_artifacts",
     "validate_coverage",
     "validate_roadmap_milestone",

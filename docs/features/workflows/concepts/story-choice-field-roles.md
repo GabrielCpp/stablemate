@@ -5,7 +5,7 @@ title: Story choice field roles
 ---
 # Story choice field roles
 
-`StoryChoice` is the single result returned by `select_story`; its properties describe different
+`StoryChoice` is the single result returned by `select_affected_story`; its properties describe different
 parts of that result rather than alternative representations of it. The source declares each
 property once with its own name and default, and declares no deprecation or preference among
 them.

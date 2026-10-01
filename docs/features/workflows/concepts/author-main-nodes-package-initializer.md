@@ -41,13 +41,9 @@ The following modules contain decorated nodes grouped by subject:
 - semantics: roadmap validation and adoption — verify provenance and retain story-mode bullet adoption
 - contains: `validate_roadmap_milestone`, `adopt_backlog`, `mark_roadmap_authored`
 
-### epics
-- semantics: epic selection — pick the next epic to work on
-- contains: `select_epic`, `select_epic_document`
-
 ### stories
 - semantics: story processing — lifecycle from seeding through validation and feedback
-- contains: `seed_story`, `select_story`, `validate_story`, `check_story_grounding`, `check_story_feedback`, `check_mockup_needed`, `prune_bullet`, `record_attempt`, `remove_story`
+- contains: `seed_story`, `validate_story`, `check_story_grounding`, `check_story_feedback`, `check_mockup_needed`, `prune_bullet`, `record_attempt`
 
 ### planner
 - semantics: artifact-derived authoring unit planning — select the next work item at the planner level

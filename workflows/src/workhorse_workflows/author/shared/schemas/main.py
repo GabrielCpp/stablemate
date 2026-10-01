@@ -6,7 +6,6 @@ from typing import Literal
 from workhorse_workflows.author.shared.schemas._base import AuthorResult
 
 
-
 class Config(AuthorResult):
     """`load_config` — the author's paths, decided once at the top of the run."""
 
@@ -39,18 +38,8 @@ class AuthorStep(AuthorResult):
     reason: str = ""
 
 
-class EpicChoice(AuthorResult):
-    """`select_epic` — the next unauthored epic, or that none is left."""
-
-    has_epic: bool = False
-    epic: str = ""
-    epic_dir: str = ""
-    reason: str = ""
-    progress: str = ""
-
-
 class StoryChoice(AuthorResult):
-    """`select_story` — the next story of this epic that still needs authoring."""
+    """`select_affected_story` — the next story of this epic that still needs authoring."""
 
     has_story: bool = False
     story_path: str = ""
@@ -70,17 +59,6 @@ class SeededStory(AuthorResult):
     story_path: str = ""
     bullet_id: str = ""
     from_backlog: bool = False
-    reason: str = ""
-
-
-class StoryMutation(AuthorResult):
-    """A standalone story graph edit made outside the main author loop."""
-
-    changed: bool = False
-    epic: str = ""
-    story_slug: str = ""
-    story_dir: str = ""
-    story_path: str = ""
     reason: str = ""
 
 
@@ -133,8 +111,6 @@ class Committed(AuthorResult):
     """`commit_author` / `commit_incomplete` — whether a commit was actually made."""
 
     committed: bool = False
-
-
 
 
 class WriteEpicResult(AuthorResult):
@@ -209,7 +185,6 @@ __all__ = [
     "Config",
     "CoverageReview",
     "Defects",
-    "EpicChoice",
     "Feedback",
     "Ledger",
     "MockupGate",
@@ -218,7 +193,6 @@ __all__ = [
     "RoadmapStatus",
     "RunContext",
     "SeededStory",
-    "StoryMutation",
     "StoryChoice",
     "StorySplit",
     "VerifyReport",

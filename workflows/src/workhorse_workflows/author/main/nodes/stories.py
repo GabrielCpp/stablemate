@@ -11,7 +11,6 @@ from ostler.model import (
     section_order_problems,
     status_bullet,
 )
-from workhorse import worklist as wl
 from workhorse.pyflow import WorkflowFailed
 from workhorse_workflows.author.main.nodes._blueprint import blueprint
 from workhorse_workflows.author.main.nodes import _stubs
@@ -26,8 +25,6 @@ from workhorse_workflows.author.shared.schemas.main import (
     MockupGate,
     Pruned,
     SeededStory,
-    StoryChoice,
-    StoryMutation,
 )
 
 MOCKUP_LAYER = "frontend"
@@ -56,8 +53,6 @@ _OPEN_QUESTION_PHRASES = [
 _OPEN_QUESTION_WORDS = {"tbd", "todo", "fixme"}
 _WORD_CHARS = "_-"
 _NO_PRIOR_IMPLEMENTATION = "No prior implementation reference exists."
-
-
 
 
 def _kebab(text: str, *, max_len: int = 60) -> str:
@@ -189,55 +184,6 @@ def seed_story(
 
 
 @blueprint.node
-def remove_story(
-    logger: logging.Logger,
-    story: str = "",
-    force: bool = False,
-    repo_dir: str = "",
-) -> StoryMutation:
-    """Delete one story from the planning graph, guarded for manual use."""
-    slug = story.strip()
-    if not slug:
-        raise WorkflowFailed(
-            "no story supplied — remove mode needs --params '{\"story\":\"<slug>\"}'"
-        )
-
-    okf = Ostler(survey_repo_root(repo_dir))
-    row = next((s for s in okf.list("story") if str(s.get("slug", "")).strip() == slug), None)
-    if row is None:
-        reason = f"story '{slug}' is already absent — idempotent no-op"
-        logger.info(reason)
-        return StoryMutation(story_slug=slug, reason=reason)
-
-    status = str(row.get("status", "")).strip()
-    if status.lower() != "not started" and not force:
-        raise WorkflowFailed(
-            f"story '{slug}' has status '{status or '<blank>'}' — refusing to delete work that "
-            "may already be planned, implemented or reviewed; rerun with "
-            "--params '{\"action\":\"remove\",\"story\":\"<slug>\",\"force\":true}' "
-            "if this deletion is intentional"
-        )
-
-    res = okf.delete_story(slug)
-    if not res.ok:
-        raise WorkflowFailed(res.message or f"could not delete story '{slug}'")
-
-    epic = str(row.get("epic", ""))
-    path = str(row.get("path", ""))
-    logger.info("deleted story '%s' from epic '%s'", slug, epic)
-    return StoryMutation(
-        changed=True,
-        epic=epic,
-        story_slug=slug,
-        story_dir=str(Path(path).parent) if path else "",
-        story_path=path,
-        reason=res.message,
-    )
-
-
-
-
-@blueprint.node
 def check_mockup_needed(
     logger: logging.Logger, story_slug: str = "", repo_dir: str = ""
 ) -> MockupGate:
@@ -309,57 +255,6 @@ def check_mockup_needed(
         required=False, layers=layers, services=services,
         evidence=f"covered seeds are tagged {', '.join(layers)} only — no {MOCKUP_LAYER} work",
     )
-
-
-@blueprint.node
-def select_story(logger: logging.Logger, epic_dir: str = "", repo_dir: str = "",
-                 parked: tuple[str, ...] = ()) -> StoryChoice:
-    """The next story in this epic whose `story.md` still needs writing."""
-    epic_dir_rel = epic_dir.strip()
-    if not epic_dir_rel:
-        logger.warning("no epic_dir supplied")
-        return StoryChoice(reason="no epic_dir supplied")
-
-    epic = Path(epic_dir_rel).name
-    okf = Ostler(survey_repo_root(repo_dir))
-
-    try:
-        report = okf.next_story_report(epic, skip=frozenset(parked), need="author")
-    except (OSError, ValueError, RuntimeError):
-        reason = f"could not read stories for epic '{epic}' via ostler's in-process API"
-        logger.warning(reason)
-        return StoryChoice(reason=reason)
-
-    if report["state"] in ("no-epic", "no-stories"):
-        logger.info("%s", report["detail"])
-        return StoryChoice(reason=report["detail"])
-
-    items = [
-        wl.WorkItem(id=f"authored-{i}", status="done")
-        for i in range(int(report["done"]))
-    ] + [wl.WorkItem(id=slug, status="pending") for slug in report["remaining"]]
-    snap = wl.snapshot(items)
-
-    if report["state"] != "ready":
-        logger.info("no story to author in epic '%s': %s", epic, report["detail"])
-        return StoryChoice(
-            reason=report["detail"], progress=snap.progress, remaining_count=snap.remaining
-        )
-
-    story = report["story"]
-    slug, path = str(story.get("slug", "")), str(story.get("path", ""))
-    logger.info("selected story '%s' — %s", slug, report["detail"])
-    return StoryChoice(
-        has_story=True,
-        story_path=path,
-        story_slug=slug,
-        story_dir=str(Path(path).parent),
-        reason=report["detail"],
-        progress=snap.progress,
-        remaining_count=snap.remaining,
-    )
-
-
 
 
 def _words(line: str) -> list[str]:
@@ -509,8 +404,6 @@ def check_story_grounding(
     return Defects(ok=not errors, errors="\n".join(errors))
 
 
-
-
 @blueprint.node
 def record_attempt(
     logger: logging.Logger,
@@ -633,6 +526,5 @@ __all__ = [
     "prune_bullet",
     "record_attempt",
     "seed_story",
-    "select_story",
     "validate_story",
 ]

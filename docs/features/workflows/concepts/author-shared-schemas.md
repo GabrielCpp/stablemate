@@ -18,10 +18,8 @@ separate source-layer groups.
 - detail: [author configuration](../formats/author-config.md)
 - detail: [author run context](../formats/run-context.md)
 - detail: [author step](../formats/author-step.md)
-- detail: [epic choice](../formats/epic-choice.md)
 - detail: [story choice](../formats/story-choice.md)
 - detail: [seeded story](../formats/seeded-story.md)
-- detail: [story mutation](../formats/story-mutation.md)
 - detail: [coverage defects](../formats/coverage-defects.md)
 - detail: [roadmap status](../formats/roadmap-status.md)
 - detail: [verification report](../formats/verify-report.md)
@@ -50,7 +48,6 @@ separate source-layer groups.
 - detail: [epic rewrite result](../formats/epic-rewrite-result.md)
 - detail: [author story choice](../formats/story-choice.md)
 - detail: [seeded story result](../formats/seeded-story.md)
-- detail: [story mutation result](../formats/story-mutation.md)
 - detail: [write story result](../formats/write-story-result.md)
 - detail: [survey shared library](survey-shared-library.md)
 - detail: [parity configuration](../formats/parity-config.md)
@@ -95,10 +92,8 @@ nodes reached from the author surfaces and subflows.
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Config` @e0c7b3335724
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::RunContext` @e0c7b3335724
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::AuthorStep` @e0c7b3335724
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::EpicChoice` @e0c7b3335724
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::StoryChoice` @e0c7b3335724
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::SeededStory` @e0c7b3335724
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::StoryMutation` @e0c7b3335724
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Defects` @e0c7b3335724
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::RoadmapStatus` @e0c7b3335724
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::VerifyReport` @e0c7b3335724

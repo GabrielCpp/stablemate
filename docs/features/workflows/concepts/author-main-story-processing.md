@@ -6,15 +6,13 @@ title: Author main story processing
 # Author main story processing
 
 The Author main story-processing module contains the deterministic nodes that register a story,
-choose the next story in dependency order, gate visual design, validate the story contract and
+gate visual design, validate the story contract and
 grounding, retain failed approaches, consume operator feedback, and prune a consumed backlog item.
 These nodes use Ostler as the source of truth for planning and document structure; they do not
 invent epic paths or duplicate the graph's story semantics.
 
 - code: `workflows/src/workhorse_workflows/author/main/nodes/stories.py::seed_story` @77042f1e2b6b
-- code: `workflows/src/workhorse_workflows/author/main/nodes/stories.py::remove_story` @77042f1e2b6b
 - code: `workflows/src/workhorse_workflows/author/main/nodes/stories.py::check_mockup_needed` @77042f1e2b6b
-- code: `workflows/src/workhorse_workflows/author/main/nodes/stories.py::select_story` @77042f1e2b6b
 - code: `workflows/src/workhorse_workflows/author/main/nodes/stories.py::validate_story` @77042f1e2b6b
 - code: `workflows/src/workhorse_workflows/author/main/nodes/stories.py::check_story_grounding` @77042f1e2b6b
 - code: `workflows/src/workhorse_workflows/author/main/nodes/stories.py::record_attempt` @77042f1e2b6b
@@ -54,27 +52,6 @@ invent epic paths or duplicate the graph's story semantics.
 - code: `workflows/src/workhorse_workflows/author/main/nodes/stories.py::seed_story` @77042f1e2b6b
 - tests: `workflows/tests/author/test_workflow.py::test_story_mode_authors_one_bullet_and_does_not_commit`
 
-### remove_story
-- sig: `remove_story(logger, story: str = "", force: bool = False, repo_dir: str = "") -> StoryMutation`
-- does: returns an unchanged idempotent result when the requested story is already absent
-- verify: count(subject="story deletions for an absent story", equals=0)
-- does: refuses to delete a story whose status is not `Not started` unless `force` is true
-- verify: count(subject="unforced deletions of started stories", equals=0)
-- does: deletes the requested story
-- verify: removed(subject="the requested story")
-- does: returns the requested story's epic
-- verify: json_path(path="$.epic", matches=".+")
-- does: returns the requested story's story directory
-- verify: json_path(path="$.story_dir", matches=".+")
-- does: returns the requested story's story path
-- verify: json_path(path="$.story_path", matches=".+")
-- does: returns a changed flag set to true
-- verify: json_path(path="$.changed", equals=true)
-- does: returns the deletion result message
-- verify: json_path(path="$.reason", matches=".+")
-- code: `workflows/src/workhorse_workflows/author/main/nodes/stories.py::remove_story` @77042f1e2b6b
-- tests: `workflows/tests/author/test_workflow.py::test_story_edit_remove_refuses_a_started_story_without_force`
-
 ### check_mockup_needed
 - sig: `check_mockup_needed(logger, story_slug: str = "", repo_dir: str = "") -> MockupGate`
 - does: returns a required gate when the story is absent, has no covered seed evidence, or has an unclassified seed layer
@@ -88,19 +65,6 @@ invent epic paths or duplicate the graph's story semantics.
 - code: `workflows/src/workhorse_workflows/author/main/nodes/stories.py::check_mockup_needed` @77042f1e2b6b
 - tests: `workflows/tests/author/test_mockup_gate.py::test_the_gate_is_the_union_of_the_covered_seeds_layers`
 - tests: `workflows/tests/author/test_mockup_gate.py::test_one_required_visual_change_requires_design`
-
-### select_story
-- sig: `select_story(logger, epic_dir: str = "", repo_dir: str = "", parked: tuple[str, ...] = ()) -> StoryChoice`
-- does: returns no story when `epic_dir` is blank or Ostler reports no epic or no stories
-- verify: json_path(path="$.has_story", equals=false)
-- does: asks Ostler for the first story needing authoring in dependency order and skips parked slugs
-- verify: count(subject="selected unparked stories", equals=1)
-- does: builds progress from Ostler's completed and remaining story counts
-- verify: json_path(path="$.remaining_count", matches="^[0-9]+$")
-- does: returns the selected story slug, path, directory, progress, remaining count, and report reason
-- verify: count(subject="selected authoring stories", equals=1)
-- code: `workflows/src/workhorse_workflows/author/main/nodes/stories.py::select_story` @77042f1e2b6b
-- tests: `workflows/tests/author/test_planner.py::test_story_author_uses_story_dag_order_and_author_current`
 
 ### validate_story
 - sig: `validate_story(logger, story_dir: str = "", repo_dir: str = "") -> Defects`

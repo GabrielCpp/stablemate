@@ -26,7 +26,6 @@ from workhorse.records import parse_checkpoint
 
 from workhorse_workflows import author
 from workhorse_workflows.author.main.nodes.artifacts import validate_artifacts
-from workhorse_workflows.author.main.nodes.epics import select_epic, select_epic_document
 from workhorse_workflows.author.main.nodes.stories import prune_bullet
 from workhorse_workflows.author.epic_edit import EpicEdit
 from workhorse_workflows.author.shared.survey import record_slug
@@ -107,8 +106,6 @@ FINDINGS = f"{SURVEY_DIR}/findings"
 PARTITION = f"{SURVEY_DIR}/partition.yaml"
 BUTTON = "src/components/button"
 CLUSTER = "missing-accessible-name"
-
-
 
 
 @pytest.fixture
@@ -204,7 +201,6 @@ def _milestone(
     path = repo / "docs/milestones/account-mvp.md"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("\n".join(lines), encoding="utf-8")
-
 
 
 _BODY = """# Story: {title}
@@ -707,8 +703,6 @@ def _drive_epic_edit(env: RunEnv, agent: _Agent, **inputs: Any) -> Any:
     return drive(EpicEdit(**inputs), replace(env, agent_runner=StubRunner(agent)))
 
 
-
-
 def test_every_flat_stage_is_directly_registered() -> None:
     assert {
         "milestone",
@@ -806,44 +800,11 @@ def test_author_nodes_use_milestones_when_todo_is_absent(backlogged: Path) -> No
     okf.create_story(EPIC, "01-sign-in", "Sign in", covers=["b1"])
 
     logger = logging.getLogger("test")
-    pick = select_epic(logger, repo_dir=str(backlogged))
-
-    assert pick.has_epic is True
-    assert pick.epic == EPIC_NAME
-
     story = backlogged / EPIC_DIR / "stories/01-sign-in/story.md"
     _write_story_doc(story, "Sign in")
     report = validate_artifacts(logger, repo_dir=str(backlogged))
 
     assert report.ok, report.errors
-
-
-@pytest.mark.parametrize("selector", [select_epic_document, select_epic])
-def test_roadmap_authoring_selects_only_its_milestone_epics(
-    backlogged: Path,
-    selector: Callable[..., object],
-) -> None:
-    okf = Ostler(backlogged)
-    assert okf.create_epic("unrelated", "Unrelated").ok
-    assert okf.create_epic(EPIC, "Accounts").ok
-    expected = Path(okf.epic_path(EPIC)).name
-    milestones = backlogged / "docs/milestones"
-    milestones.mkdir(parents=True, exist_ok=True)
-    (milestones / "000-unrelated.md").write_text(
-        "---\ntype: milestone\nid: unrelated\ntitle: Unrelated\nstatus: planned\n"
-        "sourceItems:\n  - docs/roadmaps/unrelated.md\nepics:\n  - unrelated\n---\n",
-        encoding="utf-8",
-    )
-    _milestone(backlogged, EPIC, source_items=(ROADMAP,))
-
-    pick = selector(
-        logging.getLogger("test"),
-        repo_dir=str(backlogged),
-        roadmap=ROADMAP,
-    )
-
-    assert getattr(pick, "has_epic") is True
-    assert getattr(pick, "epic") == expected
 
 
 def test_every_prompt_is_told_the_resolved_paths_not_the_blank_parameters(
@@ -941,8 +902,6 @@ def test_a_story_nobody_can_fix_is_parked_and_the_epic_carries_on(
     assert any("remains audit-blocked" in r.message for r in caplog.records)
     assert agent.args_for("write-story")[-1]["story_slug"] == "02-reset-password"
     assert _stories(backlogged)["02-reset-password"] is True
-
-
 
 
 def test_an_empty_findings_list_is_a_pass_whatever_status_says(
@@ -1044,8 +1003,6 @@ def test_coverage_resolver_cycles_share_the_epic_scoped_split_bound(
     assert any("story_split.cov_reworks" not in row for row in reset_laps), labels
 
 
-
-
 def test_an_epic_review_that_will_not_converge_reaches_the_resolver(
     backlogged: Path, tmp_path: Path
 ) -> None:
@@ -1111,8 +1068,6 @@ def test_an_escalated_story_block_waits_on_the_story_context(
     assert _stories(backlogged) == {slug: True for slug in SLUGS}
 
 
-
-
 def test_story_mode_authors_one_bullet_and_does_not_commit(
     with_epic: Path, tmp_path: Path
 ) -> None:
@@ -1142,8 +1097,6 @@ def test_story_mode_refuses_an_epic_that_does_not_exist(backlogged: Path, tmp_pa
 
     with pytest.raises(WorkflowFailed, match="does not exist"):
         _drive(_env(tmp_path), _Agent(backlogged), mode="story", epic="nope", bullet="b1")
-
-
 
 
 def test_story_edit_add_authors_one_story_and_commits(with_epic: Path, tmp_path: Path) -> None:
@@ -1321,8 +1274,6 @@ def test_epic_edit_semantic_review_reworks_are_bounded(
     assert not (with_epic / EPIC_DIR).exists()
 
 
-
-
 def test_survey_mode_runs_the_surveyor_and_stops_at_discovery(
     backlogged: Path, tmp_path: Path, write: Callable[[Path, str], Path]
 ) -> None:
@@ -1347,8 +1298,6 @@ def test_survey_mode_runs_the_surveyor_and_stops_at_discovery(
 
     assert _subject(backlogged) == "a rubric and one component"
     assert _stories(backlogged) == {}
-
-
 
 
 def test_a_run_killed_mid_story_resumes_on_that_story_alone(
@@ -1383,8 +1332,6 @@ def test_a_run_killed_mid_story_resumes_on_that_story_alone(
     }, second.counts()
     assert _stories(backlogged) == {slug: True for slug in SLUGS}
     assert result.committed is True, result
-
-
 
 
 def test_the_labels_name_the_story_and_the_epic(backlogged: Path, tmp_path: Path) -> None:

@@ -12,10 +12,9 @@ so importing a node does not eagerly import the composition flow.
 
 The imported node package is the deterministic work surface for the main machine: configuration
 loading is documented in [Author workflow configuration](../formats/author-config.md), intake in [Author
-main intake](author-main-intake.md), epic selection in [Author main epic selection](author-main-epic-selection.md),
-artifact gates in [Author artifact gates](author-artifact-gates.md), and stage selection in
+main intake](author-main-intake.md), artifact gates in [Author artifact gates](author-artifact-gates.md), and stage selection in
 [artifact-derived author stage selection](artifact-derived-author-stage-selection.md). Story
-registration, selection, validation, feedback, and backlog cleanup are documented in the [Author
+registration, validation, feedback, and backlog cleanup are documented in the [Author
 main story processing](author-main-story-processing.md) concept. The package's explicit re-export
 surface is recorded in [Author main node exports](author-main-node-exports.md).
 
