@@ -631,10 +631,6 @@ def _load_config(root: Path) -> dict:
     return {}
 
 
-def _read_frontmatter(path: Path) -> markdown.MarkdownDoc:
-    return markdown.split(path.read_text(encoding="utf-8"))
-
-
 BUILTIN_DOC_ROOTS: dict[str, str] = {
     "features": "docs/features",
     "epics": "docs/epics",
@@ -858,7 +854,7 @@ def _load_surfaces(graph: Graph) -> None:
         return
     for index_md in sorted(froot.glob("*/index.md")):
         try:
-            doc = _read_frontmatter(index_md)
+            doc = read_doc(index_md)
         except OSError:
             continue
         fm = doc.frontmatter
@@ -885,7 +881,7 @@ def _load_milestones(graph: Graph) -> None:
         if not path.is_file() or path.name in registry.RESERVED_FILES:
             continue
         try:
-            doc = _read_frontmatter(path)
+            doc = read_doc(path)
         except OSError:
             continue
         fm = doc.frontmatter or {}
@@ -1042,7 +1038,7 @@ def _load_epics(graph: Graph) -> None:
         if not epic_md.exists():
             continue
 
-        doc = _read_frontmatter(epic_md)
+        doc = read_doc(epic_md)
         fm = doc.frontmatter or {}
         epic = Epic(
             name=d.name,
@@ -1067,7 +1063,7 @@ def _attach_story_md(graph: Graph, epic: Epic, story: Story) -> None:
     for c in candidates:
         if c.exists() and c.is_file():
             story.story_md = c
-            doc = markdown.split(c.read_text(encoding="utf-8"))
+            doc = read_doc(c)
             if doc.frontmatter:
                 story.file_eid = str(doc.frontmatter.get("id") or "")
                 story.external_key = str(doc.frontmatter.get("externalKey") or "")

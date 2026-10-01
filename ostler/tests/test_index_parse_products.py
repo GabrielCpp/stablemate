@@ -119,6 +119,21 @@ def test_a_second_process_parses_nothing_it_already_has(
     assert report["index"]["hits"] > 0
 
 
+
+def test_a_second_process_reads_the_epics_and_stories_off_the_index_too(
+        ui_book: Path, tmp_path: Path, index_home: Path, monkeypatch: pytest.MonkeyPatch, capsys):
+    directory = tmp_path / "index"
+    warm_index(ui_book, directory)
+    texts, bodies = record_parses(monkeypatch)
+
+    assert main(["-C", str(ui_book), "doctor", "--json", "--index-dir", str(directory)]) == 0
+    _ = report_of(capsys)
+
+    planning = sorted((ui_book / "docs" / "epics").rglob("*.md"))
+    reparsed = {path.relative_to(ui_book).as_posix(): parse_counts(path, texts, bodies)
+                for path in planning}
+    assert planning and not {name: c for name, c in reparsed.items() if any(c)}
+
 def test_the_ui_nodes_come_off_the_index_too(
         ui_book: Path, tmp_path: Path, index_home: Path, monkeypatch: pytest.MonkeyPatch):
     """Not only the document — the nodes derived from it."""
