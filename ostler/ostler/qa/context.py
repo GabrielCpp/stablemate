@@ -382,16 +382,22 @@ def _book_snapshot(root: Path, base: str, head: str, features_root: str) -> _Boo
     base_graph = _graph_at_revision(root, base, features_root, current)
     head_graph = current if head == "WORKTREE" else _graph_at_revision(root, head, features_root, current)
     head_dump = graph_mod.build(head_graph)
-    base_nodes, base_edges, base_ends, base_scopes, base_details = _serialized_graph(graph_mod.build(base_graph))
-    head_nodes, head_edges, head_ends, head_scopes, head_details = _serialized_graph(head_dump)
+    base_dump = graph_mod.build(base_graph)
+    base_nodes, base_edges, base_ends, base_details = _serialized_graph(base_dump)
+    head_nodes, head_edges, head_ends, head_details = _serialized_graph(head_dump)
     nodes_by_id = _merge_snapshot_nodes(base_nodes, head_nodes)
+    book = book_nodes(nodes_by_id)
+    head_book = {node_id: book[node_id] for node_id in head_nodes}
     return _BookSnapshot(
         head_graph=head_graph,
         head_dump=head_dump,
         nodes_by_id=nodes_by_id,
-        book=book_nodes(nodes_by_id),
+        book=book,
         owner_nodes={node_id: _owner_node(node) for node_id, node in nodes_by_id.items()},
-        node_scopes={**base_scopes, **head_scopes},
+        node_scopes={
+            **locators_mod.LocatorBook.parse(base_dump).scopes,
+            **locators_mod.LocatorBook.parse(head_dump, head_book).scopes,
+        },
         edges=base_edges | head_edges,
         end_edges=base_ends | head_ends,
         detail_edges=base_details | head_details,
@@ -999,10 +1005,9 @@ def _serialized_graph(
     dict[str, dict[str, Any]],
     set[tuple[str, str]],
     set[tuple[str, str]],
-    Mapping[str, tuple[str, ...]],
     set[tuple[str, str]],
 ]:
-    """The nodes of *data*, a built graph, with every resolved edge, the flow destinations, each node's repeat scope, and the `detail:` edges."""
+    """The nodes of *data*, a built graph, with every resolved edge, the flow destinations, and the `detail:` edges."""
     nodes = {item["id"]: item for item in data["nodes"]}
     edges = {(item["from"], item["to"]) for item in data["edges"] if item.get("to")}
     details = {
@@ -1025,7 +1030,7 @@ def _serialized_graph(
         }
         named = [edge for edge in walked if edge.get("href") in hrefs]
         ends.update((item["id"], edge["to"]) for edge in named or walked[-1:])
-    return nodes, edges, ends, locators_mod.LocatorBook.parse(data).scopes, details
+    return nodes, edges, ends, details
 
 
 def _in_book(path: str, offset: str) -> str | None:

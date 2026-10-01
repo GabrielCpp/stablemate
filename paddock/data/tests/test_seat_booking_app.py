@@ -219,7 +219,7 @@ def defect_ids() -> list[str]:
 
 def obligation_ids() -> set[str]:
     """Every obligation id this book can mint, independent of any diff."""
-    nodes, _edges, _ends, _scopes, _details = _serialized_graph(graph_mod.build(load(APP)))
+    nodes, _edges, _ends, _details = _serialized_graph(graph_mod.build(load(APP)))
     book = book_nodes(nodes)
     return {
         obligation["id"]

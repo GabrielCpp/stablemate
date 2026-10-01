@@ -173,9 +173,11 @@ class LocatorBook:
     bases: frozenset[str]
 
     @classmethod
-    def parse(cls, data: dict) -> LocatorBook:
+    def parse(cls, data: dict, nodes: Mapping[str, BookNode] | None = None) -> LocatorBook:
+        """The book *data* serializes; *nodes* are its nodes already parsed, when the caller holds them."""
         raw_nodes = {node["id"]: node for node in data["nodes"]}
-        nodes = book_nodes(raw_nodes)
+        if nodes is None:
+            nodes = book_nodes(raw_nodes)
         parents: dict[str, list[str]] = {}
         for node_id, node in raw_nodes.items():
             if node.get("parent"):

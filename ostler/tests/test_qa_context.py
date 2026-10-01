@@ -3228,3 +3228,42 @@ def test_a_book_at_the_repo_root_is_unaffected_by_the_cwd_fix(tmp_path: Path):
     graph = _graph_at_revision(tmp_path, base, "docs/features")
 
     assert [node.title for node in graph.ui_nodes] == ["Item"]
+
+
+def test_a_node_takes_its_repeat_scope_from_head_and_a_removed_one_keeps_its_base_scope(tmp_path: Path):
+    """Head wins where both sides hold a node, and a node head removed still iterates what base declared."""
+    screens = tmp_path / "docs/features/acme/gui/screens"
+    screens.mkdir(parents=True)
+    page = """---
+type: screen
+title: Planner
+---
+# Planner
+
+## Components
+
+### stage-row
+- role: row
+- name: `{{{axis}.name}} row`
+- one-per: `{axis}`
+{extra}"""
+    removed = """
+### lane-row
+- role: row
+- name: `{lane.name} lane`
+- one-per: `lane`
+"""
+    (screens / "planner.md").write_text(page.format(axis="stage", extra=removed), encoding="utf-8")
+    _git(tmp_path, "init")
+    _git(tmp_path, "config", "user.email", "qa@example.com")
+    _git(tmp_path, "config", "user.name", "QA")
+    _git(tmp_path, "add", ".")
+    _git(tmp_path, "commit", "-m", "base")
+    base = _git(tmp_path, "rev-parse", "HEAD")
+    (screens / "planner.md").write_text(page.format(axis="phase", extra=""), encoding="utf-8")
+
+    scopes = context_mod._book_snapshot(tmp_path, base, "WORKTREE", "docs/features").node_scopes
+
+    by_anchor = {node_id.rsplit("#", 1)[-1]: scope for node_id, scope in scopes.items() if "#" in node_id}
+    assert by_anchor["stage-row"] == ("phase",)
+    assert by_anchor["lane-row"] == ("lane",)
