@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 from okf_book.support import ScriptedRunner, StoppedAtTheGate, git
-from workhorse.pyflow import driver as pyflow_driver
+from workhorse.pyflow import park as pyflow_park
 
 from workhorse_workflows.okf_book.main import exercise_book_flow, flow, repair_book_flow
 from workhorse_workflows.okf_book.main.nodes import turn_budget
@@ -132,4 +132,4 @@ def stub_a_book_sent_to_repair(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(flow, "book_problems", book_problems_until_noted)
     monkeypatch.setattr(turn_budget, "SOURCE_AND_BOOK_CEILING_TOKENS", 10)
     monkeypatch.setattr(repair_book_flow, "page_problems", page_problems_until_noted)
-    monkeypatch.setattr(pyflow_driver, "wait_for_answer", stopping_operator([]))
+    monkeypatch.setattr(pyflow_park, "wait_for_answer", stopping_operator([]))

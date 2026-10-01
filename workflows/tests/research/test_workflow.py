@@ -14,7 +14,7 @@ from _fakes import StubRunner
 from workhorse.artifacts import ArtifactWriter
 from workhorse.config_run import RunConfig
 from workhorse.pyflow import WorkflowFailed
-from workhorse.pyflow import driver as pyflow_driver
+from workhorse.pyflow import park as pyflow_park
 from workhorse.pyflow.driver import drive, read_resume
 from workhorse.pyflow.engine import RunEnv
 from workhorse.records import PyflowCheckpoint, parse_checkpoint
@@ -261,7 +261,7 @@ def _drive(
         error: WorkflowFailed | None = None
         parked: _Parked | None = None
         with ExitStack() as stack:
-            stack.enter_context(patch.object(pyflow_driver, "wait_for_answer", fake_wait))
+            stack.enter_context(patch.object(pyflow_park, "wait_for_answer", fake_wait))
             stack.enter_context(
                 patch.object(ArtifactWriter, "write_state_checkpoint", capture)
             )

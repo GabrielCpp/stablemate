@@ -51,7 +51,7 @@ restore a waiting gate.
 - sig: `answered(path: Path) -> bool`
 - returns: `False` for a missing or explicitly awaiting operator gate, otherwise `True`
 - verify: json_path(path="$.answered", equals=false)
-- code: `workhorse/workhorse/pyflow/driver.py::answered` @d60f443e957d
+- code: `workhorse/workhorse/pyflow/park.py::answered` @3bf2ebf15981
 
 ### wait_for_answer
 - sig: `wait_for_answer(path, *, interval, clock=SYSTEM_CLOCK, channel=NULL_CHANNEL, log=None, deadline=None, kind="operator") -> Request | None`
@@ -71,7 +71,7 @@ restore a waiting gate.
 - verify: unchanged(subject="gate with a draft save while STATUS remains AWAITING_OPERATOR")
 - verify: count(subject="pending operator gates after the wait exits", equals=0)
 - verify: unchanged(subject="machine wake file after an operator answer request")
-- code: `workhorse/workhorse/pyflow/driver.py::wait_for_answer` @d60f443e957d
+- code: `workhorse/workhorse/pyflow/park.py::wait_for_answer` @3bf2ebf15981
 - tests: `workhorse/tests/test_pyflow.py::test_await_ignores_a_save_that_left_the_gate_unanswered`,
   `workhorse/tests/test_pyflow.py::test_an_answer_for_another_gate_is_refused_and_the_wait_goes_on`,
   `workhorse/tests/test_pyflow.py::test_a_hand_edit_that_beats_the_socket_answer_wins`,
@@ -88,24 +88,24 @@ restore a waiting gate.
 - returns: `None` after replying with success or a refusal on the control channel
 - verify: persists(subject="socket answer in the current gate file")
 - verify: json_path(path="$.answer_ack", equals=true)
-- code: `workhorse/workhorse/pyflow/driver.py::_consume_answer` @d60f443e957d
+- code: `workhorse/workhorse/pyflow/park.py::_consume_answer` @3bf2ebf15981
 - tests: `workhorse/tests/test_pyflow.py::test_an_answer_over_the_socket_lands_in_the_gate_file_and_resumes_the_run`,
   `workhorse/tests/test_pyflow.py::test_an_answer_for_another_gate_is_refused_and_the_wait_goes_on`
 
-### _ask
-- sig: `_ask(path: Path, questions: str, log: logging.Logger) -> None`
+### ask
+- sig: `ask(path: Path, questions: str, log: logging.Logger) -> None`
 - does: leaves the gate file untouched when the question text is empty
 - does: creates a new operator gate for non-empty plain questions
 - does: re-arms an existing gate by changing its live status and appending the new question block
 - does: preserves prior questions and answers when re-arming
 - returns: `None` after the gate ask is written or intentionally omitted
 - verify: count(subject="STATUS lines after re-arming one gate", equals=1)
-- code: `workhorse/workhorse/pyflow/driver.py::_ask` @d60f443e957d
+- code: `workhorse/workhorse/pyflow/park.py::ask` @3bf2ebf15981
 - tests: `workhorse/tests/test_pyflow.py::test_blocking_twice_on_one_gate_appends_rather_than_replacing_it`,
   `workhorse/tests/test_gates.py::test_a_second_ask_keeps_the_first_ones_questions_and_its_answers`
 
-### _park
-- sig: `_park(path: Path, env: RunEnv, *, kind: str) -> None`
+### park_on
+- sig: `park_on(path: Path, env: RunEnv, *, kind: str) -> None`
 - does: waits for the gate or machine wake file using the environment poll interval and deadline
 - does: keeps handling an operator answer in the waiting frame until the current gate is answered
 - does: raises `ReloadRequested` immediately for a reload that cuts a parked wait
@@ -113,7 +113,7 @@ restore a waiting gate.
 - raises: `ReloadRequested` when a cutting reload arrives while parked
 - verify: exit_status(code=0)
 - returns: `None` after the wait ends without a cutting reload
-- code: `workhorse/workhorse/pyflow/driver.py::_park` @d60f443e957d
+- code: `workhorse/workhorse/pyflow/park.py::park_on` @3bf2ebf15981
 - tests: `workhorse/tests/test_pyflow.py::test_a_reload_cuts_a_parked_operator_wait`,
   `workhorse/tests/test_pyflow.py::test_a_reload_cut_wait_re_parks_on_resume_and_the_answer_still_lands`
 

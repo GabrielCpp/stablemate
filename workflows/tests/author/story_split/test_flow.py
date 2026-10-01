@@ -10,7 +10,7 @@ from _fakes import StubRunner
 from workhorse.artifacts import ArtifactWriter
 from workhorse.config_run import RunConfig
 from workhorse.pyflow import Registry
-from workhorse.pyflow import driver as pyflow_driver
+from workhorse.pyflow import park as pyflow_park
 from workhorse.pyflow.driver import drive
 from workhorse.pyflow.engine import RunEnv
 from workhorse_workflows import author
@@ -138,7 +138,7 @@ def test_blocked_coverage_resolves_then_rechecks_the_same_epic(
         seen.append(path)
 
     env = _env(tmp_path, agent, [Defects(ok=True), Defects(ok=True)])
-    with patch.object(pyflow_driver, "wait_for_answer", answered):
+    with patch.object(pyflow_park, "wait_for_answer", answered):
         result = drive(
             StorySplitFlow(epic=EPIC, repo_dir=str(repo)),
             replace(env, agent_runner=StubRunner(agent)),

@@ -13,7 +13,7 @@ import pytest
 from workhorse import inbox
 from workhorse.artifacts import ArtifactWriter
 from workhorse.cli.inbox import INBOX_FILE
-from workhorse.pyflow import driver as pyflow_driver
+from workhorse.pyflow import park as pyflow_park
 from workhorse.pyflow.driver import read_resume
 from workhorse.pyflow.engine import RunEnv
 from workhorse.records import parse_checkpoint
@@ -433,7 +433,7 @@ def test_the_apply_loop_is_bounded_and_then_reaches_the_operator(
     agent = _Agent(docs, needs_changes=1)
     seen: list[str] = []
 
-    with patch.object(pyflow_driver, "wait_for_answer", _answers(seen)):
+    with patch.object(pyflow_park, "wait_for_answer", _answers(seen)):
         result = drive_flow(Review(story=STORY), env(), agent)
 
     assert isinstance(result, ReviewResult), result
@@ -454,7 +454,7 @@ def test_a_blocked_settlement_escalates_without_spending_the_budget(
     agent = _Agent(docs, needs_changes=1, settle=True, settle_blocked=True)
     seen: list[str] = []
 
-    with patch.object(pyflow_driver, "wait_for_answer", _answers(seen)):
+    with patch.object(pyflow_park, "wait_for_answer", _answers(seen)):
         result = drive_flow(Review(story=STORY), env(), agent)
 
     assert isinstance(result, ReviewResult), result
@@ -474,7 +474,7 @@ def test_a_reviewer_that_cannot_reach_a_verdict_escalates_instead_of_reworking(
     agent = _Agent(docs, review_blocked=1)
     seen: list[str] = []
 
-    with patch.object(pyflow_driver, "wait_for_answer", _answers(seen)):
+    with patch.object(pyflow_park, "wait_for_answer", _answers(seen)):
         result = drive_flow(Review(story=STORY), env(), agent)
 
     assert isinstance(result, ReviewResult), result
@@ -494,7 +494,7 @@ def test_a_code_review_that_could_not_read_the_diff_escalates(
     agent = _Agent(docs, code_review_blocked=1)
     seen: list[str] = []
 
-    with patch.object(pyflow_driver, "wait_for_answer", _answers(seen)):
+    with patch.object(pyflow_park, "wait_for_answer", _answers(seen)):
         result = drive_flow(Review(story=STORY), env(), agent)
 
     assert isinstance(result, ReviewResult), result
@@ -517,7 +517,7 @@ def test_a_resolver_that_grounds_its_answer_settles_a_review_block(
     def never(path: Path, **kwargs: Any) -> None:
         raise AssertionError(f"a grounded answer must not park on {path}")
 
-    with patch.object(pyflow_driver, "wait_for_answer", never):
+    with patch.object(pyflow_park, "wait_for_answer", never):
         result = drive_flow(Review(story=STORY), env(), agent)
 
     assert isinstance(result, ReviewResult), result
@@ -543,7 +543,7 @@ def test_repeated_operator_cycles_never_give_up(
             "STATUS: ANSWERED\n\nDrop the retry; log it instead.\n", encoding="utf-8"
         )
 
-    with patch.object(pyflow_driver, "wait_for_answer", answered):
+    with patch.object(pyflow_park, "wait_for_answer", answered):
         result = drive_flow(Review(story=STORY), env(), agent)
 
     assert isinstance(result, ReviewResult), result
@@ -583,7 +583,7 @@ def test_a_story_with_no_verdict_sidecar_is_re_applied_not_believed(
     agent = _Agent(docs, needs_changes=1)
     seen: list[str] = []
 
-    with patch.object(pyflow_driver, "wait_for_answer", _answers(seen)):
+    with patch.object(pyflow_park, "wait_for_answer", _answers(seen)):
         result = drive_flow(Review(story=STORY), env(), agent)
 
     assert isinstance(result, ReviewResult), result
@@ -611,7 +611,7 @@ def test_a_previous_cycles_settlement_cannot_settle_this_ones_findings(
     agent = _Agent(docs, needs_changes=1)
     seen: list[str] = []
 
-    with patch.object(pyflow_driver, "wait_for_answer", _answers(seen)):
+    with patch.object(pyflow_park, "wait_for_answer", _answers(seen)):
         result = drive_flow(Review(story=STORY), env(), agent)
 
     assert isinstance(result, ReviewResult), result
@@ -633,7 +633,7 @@ def test_human_operator_modes_wait_on_the_story_context_file(
     seen: list[str] = []
     agent = _Agent(docs, needs_changes=1)
 
-    with patch.object(pyflow_driver, "wait_for_answer", _answers(seen)):
+    with patch.object(pyflow_park, "wait_for_answer", _answers(seen)):
         result = drive_flow(Review(story=STORY, operator_mode=operator_mode), env(), agent)
 
     assert isinstance(result, ReviewResult), result
@@ -651,7 +651,7 @@ def test_the_resolver_always_escalates_to_the_human(
     seen: list[str] = []
     agent = _Agent(docs, needs_changes=1)
 
-    with patch.object(pyflow_driver, "wait_for_answer", _answers(seen)):
+    with patch.object(pyflow_park, "wait_for_answer", _answers(seen)):
         result = drive_flow(Review(story=STORY), env(), agent)
 
     assert isinstance(result, ReviewResult), result

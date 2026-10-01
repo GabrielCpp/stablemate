@@ -23,7 +23,7 @@ from ostler import markdown
 from paddock import Run, Score
 from workhorse.cli.run import library_dirs as wh_library_dirs
 from workhorse.config_run import AgentResilience
-from workhorse.pyflow.driver import answered as gate_answered
+from workhorse.pyflow.park import answered as gate_answered
 from workhorse.runner import caps as wh_caps
 from workhorse.runner import extract as wh_extract
 from workhorse.runner import failure as wh_failure

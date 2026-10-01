@@ -12,7 +12,7 @@ from git import Repo
 from ostler import Ostler
 from workhorse.artifacts import ArtifactWriter
 from workhorse.config_run import RunConfig
-from workhorse.pyflow import driver as pyflow_driver
+from workhorse.pyflow import park as pyflow_park
 from workhorse.pyflow.driver import drive
 from workhorse.pyflow.engine import RunEnv
 from workhorse_workflows.author import epic_split as epic_split_package
@@ -118,7 +118,7 @@ def test_block_is_diagnosed_then_retried_after_operator_resume(repo: Path, tmp_p
     _planning_input(repo)
     agent = _Agent(repo, ["blocked", "approved"])
 
-    with patch.object(pyflow_driver, "wait_for_answer", return_value=None):
+    with patch.object(pyflow_park, "wait_for_answer", return_value=None):
         result = drive(
             EpicSplit(repo_dir=str(repo)),
             replace(_env(tmp_path), agent_runner=StubRunner(agent)),

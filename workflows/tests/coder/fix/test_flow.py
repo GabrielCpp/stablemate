@@ -12,7 +12,7 @@ from unittest.mock import patch
 import pytest
 from workhorse.artifacts import ArtifactWriter
 from workhorse.pyflow import WorkflowFailed
-from workhorse.pyflow import driver as pyflow_driver
+from workhorse.pyflow import park as pyflow_park
 from workhorse.pyflow.driver import read_resume
 from workhorse.pyflow.engine import RunEnv
 from workhorse.records import parse_checkpoint
@@ -357,7 +357,7 @@ def test_a_gate_still_red_when_the_laps_run_out_parks_rather_than_giving_up(
     agent = _Agent(workspace, gate_red=MAX_FIX_LAPS)
     seen: list[str] = []
 
-    with patch.object(pyflow_driver, "wait_for_answer", _answers(seen)):
+    with patch.object(pyflow_park, "wait_for_answer", _answers(seen)):
         result = drive_flow(Fix(), env(), agent)
 
     assert result.has_fix is False, result
@@ -470,7 +470,7 @@ def test_a_retry_that_says_it_cannot_parks_instead_of_rechecking_nothing(
     agent = _Agent(workspace, qa_fails=1, apply_blocked=1)
     seen: list[str] = []
 
-    with patch.object(pyflow_driver, "wait_for_answer", _answers(seen)):
+    with patch.object(pyflow_park, "wait_for_answer", _answers(seen)):
         result = drive_flow(Fix(), env(), agent)
 
     assert result.has_fix is False, result
@@ -494,7 +494,7 @@ def test_an_implementation_turn_that_says_it_cannot_parks_instead_of_qa_ing_noth
     agent = _Agent(workspace, impl_blocked=1)
     seen: list[str] = []
 
-    with patch.object(pyflow_driver, "wait_for_answer", _answers(seen)):
+    with patch.object(pyflow_park, "wait_for_answer", _answers(seen)):
         result = drive_flow(Fix(), env(), agent)
 
     assert result.has_fix is False, result

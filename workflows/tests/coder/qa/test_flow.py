@@ -16,7 +16,7 @@ from ostler.qa import stack as qa_stack
 from workhorse.artifacts import ArtifactWriter
 from workhorse.cli.inbox import INBOX_FILE
 from workhorse.pyflow import WorkflowFailed
-from workhorse.pyflow import driver as pyflow_driver
+from workhorse.pyflow import park as pyflow_park
 from workhorse.pyflow.driver import read_resume
 from workhorse.pyflow.engine import RunEnv
 from workhorse.records import parse_checkpoint
@@ -819,7 +819,7 @@ def test_the_context_repair_loop_is_bounded_at_three(
     seen: list[str] = []
 
     with (
-        patch.object(pyflow_driver, "wait_for_answer", _parked_at(seen)),
+        patch.object(pyflow_park, "wait_for_answer", _parked_at(seen)),
         pytest.raises(_Parked),
     ):
         drive_flow(Qa(story=STORY), env(), agent)
@@ -840,7 +840,7 @@ def test_an_unrepairable_packet_goes_to_the_auto_operator(
     agent = _Agent(docs, repair="blocked")
     seen: list[str] = []
 
-    with patch.object(pyflow_driver, "wait_for_answer", _answers(seen)):
+    with patch.object(pyflow_park, "wait_for_answer", _answers(seen)):
         result = drive_flow(Qa(story=STORY), env(), agent)
 
     assert result.status == "passed", result
@@ -864,7 +864,7 @@ def test_human_operator_modes_wait_on_the_story_context_file(
     seen: list[str] = []
     agent = _Agent(docs, repair="blocked")
 
-    with patch.object(pyflow_driver, "wait_for_answer", _answers(seen)):
+    with patch.object(pyflow_park, "wait_for_answer", _answers(seen)):
         result = drive_flow(Qa(story=STORY, operator_mode=operator_mode), env(), agent)
 
     assert result.status == "passed", result
@@ -883,7 +883,7 @@ def test_an_epic_scoped_answer_hands_the_story_back_to_replan(
     agent = _Agent(docs, repair="blocked", escalate=True)
     seen: list[str] = []
 
-    with patch.object(pyflow_driver, "wait_for_answer", _answers(seen, scope="epic")):
+    with patch.object(pyflow_park, "wait_for_answer", _answers(seen, scope="epic")):
         result = drive_flow(Qa(story=STORY), env(), agent)
 
     assert result.status == "replan", result
@@ -905,7 +905,7 @@ def test_a_plan_that_never_parses_spends_only_the_schema_budget(
     seen: list[str] = []
 
     with (
-        patch.object(pyflow_driver, "wait_for_answer", _parked_at(seen)),
+        patch.object(pyflow_park, "wait_for_answer", _parked_at(seen)),
         pytest.raises(_Parked),
     ):
         drive_flow(Qa(story=STORY), env(), agent)
@@ -930,7 +930,7 @@ def test_two_identical_schema_refusals_block_instead_of_buying_a_third_lap(
     seen: list[str] = []
 
     with (
-        patch.object(pyflow_driver, "wait_for_answer", _parked_at(seen)),
+        patch.object(pyflow_park, "wait_for_answer", _parked_at(seen)),
         pytest.raises(_Parked),
     ):
         drive_flow(Qa(story=STORY), env(), agent)
@@ -953,7 +953,7 @@ def test_distinct_schema_refusals_still_spend_the_whole_schema_budget(
     seen: list[str] = []
 
     with (
-        patch.object(pyflow_driver, "wait_for_answer", _parked_at(seen)),
+        patch.object(pyflow_park, "wait_for_answer", _parked_at(seen)),
         pytest.raises(_Parked),
     ):
         drive_flow(Qa(story=STORY), env(), agent)
@@ -1078,7 +1078,7 @@ def test_a_repair_that_never_dry_ran_is_repaired_again_and_costs_no_suite_run(
     seen: list[str] = []
 
     with (
-        patch.object(pyflow_driver, "wait_for_answer", _parked_at(seen)),
+        patch.object(pyflow_park, "wait_for_answer", _parked_at(seen)),
         pytest.raises(_Parked),
     ):
         drive_flow(Qa(story=STORY), env(), agent)
@@ -1101,7 +1101,7 @@ def test_a_repair_whose_dry_run_is_still_red_is_not_a_finished_repair(
     seen: list[str] = []
 
     with (
-        patch.object(pyflow_driver, "wait_for_answer", _parked_at(seen)),
+        patch.object(pyflow_park, "wait_for_answer", _parked_at(seen)),
         pytest.raises(_Parked),
     ):
         drive_flow(Qa(story=STORY), env(), agent)
@@ -1160,7 +1160,7 @@ def test_a_plan_lane_past_its_budget_still_repairs_a_plan_that_will_not_import(
 
     with (
         patch.object(qa_flow, "PLAN_LANE_BUDGET_S", 0),
-        patch.object(pyflow_driver, "wait_for_answer", _parked_at(seen)),
+        patch.object(pyflow_park, "wait_for_answer", _parked_at(seen)),
         pytest.raises(_Parked),
     ):
         drive_flow(Qa(story=STORY), env(), agent)
@@ -1200,7 +1200,7 @@ def test_a_spent_plan_budget_after_the_run_still_repairs_the_failing_plan(
 
     with (
         patch.object(qa_flow, "PLAN_LANE_BUDGET_S", 0),
-        patch.object(pyflow_driver, "wait_for_answer", _parked_at(seen)),
+        patch.object(pyflow_park, "wait_for_answer", _parked_at(seen)),
         pytest.raises(_Parked),
     ):
         drive_flow(Qa(story=STORY), env(), agent)
@@ -1239,7 +1239,7 @@ def test_a_plan_loop_that_never_converges_escalates_with_the_refusal_that_spent_
     seen: list[str] = []
 
     with (
-        patch.object(pyflow_driver, "wait_for_answer", _parked_at(seen)),
+        patch.object(pyflow_park, "wait_for_answer", _parked_at(seen)),
         pytest.raises(_Parked),
     ):
         drive_flow(Qa(story=STORY), env(), agent)
@@ -1481,7 +1481,7 @@ def test_a_stack_nobody_can_repair_gives_up_instead_of_spinning(
     seen: list[str] = []
 
     with (
-        patch.object(pyflow_driver, "wait_for_answer", _answers(seen)),
+        patch.object(pyflow_park, "wait_for_answer", _answers(seen)),
         pytest.raises(WorkflowFailed, match="transition budget exhausted"),
     ):
         drive_flow(Qa(story=STORY), env(), agent)
@@ -1505,7 +1505,7 @@ def test_a_setup_fix_that_changes_nothing_is_not_asked_a_second_time(
     seen: list[str] = []
 
     with (
-        patch.object(pyflow_driver, "wait_for_answer", _answers(seen)),
+        patch.object(pyflow_park, "wait_for_answer", _answers(seen)),
         pytest.raises(WorkflowFailed, match="transition budget exhausted"),
     ):
         drive_flow(Qa(story=STORY), env(), agent)
@@ -1531,7 +1531,7 @@ def test_a_packet_that_stays_unmappable_bounds_the_operator_gate(
     seen: list[str] = []
 
     with (
-        patch.object(pyflow_driver, "wait_for_answer", _answers(seen)),
+        patch.object(pyflow_park, "wait_for_answer", _answers(seen)),
         pytest.raises(WorkflowFailed, match="transition budget exhausted"),
     ):
         drive_flow(Qa(story=STORY), env(), agent)
@@ -1557,7 +1557,7 @@ def test_a_fixer_that_reports_blocked_reaches_the_operator(
     agent = _Agent(docs, assessment_class="product", qa_fix="blocked", escalate=True)
 
     with (
-        patch.object(pyflow_driver, "wait_for_answer", _answers(seen)),
+        patch.object(pyflow_park, "wait_for_answer", _answers(seen)),
         pytest.raises(WorkflowFailed, match="transition budget exhausted"),
     ):
         drive_flow(Qa(story=STORY), env(), agent)
@@ -1586,7 +1586,7 @@ def test_a_resolver_that_grounds_its_answer_settles_a_qa_block(
     def never(path: Path, **kwargs: Any) -> None:
         raise AssertionError(f"a grounded answer must not park on {path}")
 
-    with patch.object(pyflow_driver, "wait_for_answer", never):
+    with patch.object(pyflow_park, "wait_for_answer", never):
         result = drive_flow(Qa(story=STORY), env(), agent)
 
     assert result.status == "passed", result
@@ -1605,7 +1605,7 @@ def test_an_escalating_resolver_hands_the_block_to_a_person(
     seen: list[str] = []
     agent = _Agent(docs, repair="blocked", escalate=True)
 
-    with patch.object(pyflow_driver, "wait_for_answer", _answers(seen)):
+    with patch.object(pyflow_park, "wait_for_answer", _answers(seen)):
         result = drive_flow(Qa(story=STORY), env(), agent)
 
     assert result.status == "passed", result
@@ -1630,7 +1630,7 @@ def test_the_evidence_gate_invalidates_a_pass_it_cannot_verify(
     agent = _Agent(docs, escalate=True)
     seen: list[str] = []
 
-    with pytest.raises(_Parked), patch.object(pyflow_driver, "wait_for_answer", _parked_at(seen)):
+    with pytest.raises(_Parked), patch.object(pyflow_park, "wait_for_answer", _parked_at(seen)):
         drive_flow(Qa(story=STORY), env(), agent)
 
     assert agent.counts()["audit-qa"] == 0, agent.counts()
@@ -1650,7 +1650,7 @@ def test_an_audit_that_refutes_the_pass_turns_it_into_a_product_failure(
     agent = _Agent(docs, audit=("refuted", "product-contradiction"), escalate=True)
     seen: list[str] = []
 
-    with pytest.raises(_Parked), patch.object(pyflow_driver, "wait_for_answer", _parked_at(seen)):
+    with pytest.raises(_Parked), patch.object(pyflow_park, "wait_for_answer", _parked_at(seen)):
         drive_flow(Qa(story=STORY), env(), agent)
 
     assert agent.counts()["apply-qa-fixes"] == qa_flow.MAX_QA_REWORKS, agent.counts()
@@ -1695,7 +1695,7 @@ def test_a_fix_that_leaves_the_run_failing_identically_is_not_repeated(
     agent = _Agent(docs, assessment_class="product", triage=("qa_fix", "code"), escalate=True)
     seen: list[str] = []
 
-    with pytest.raises(_Parked), patch.object(pyflow_driver, "wait_for_answer", _parked_at(seen)):
+    with pytest.raises(_Parked), patch.object(pyflow_park, "wait_for_answer", _parked_at(seen)):
         drive_flow(Qa(story=STORY), env(), agent)
 
     unaided = agent.fix_args()
@@ -1715,7 +1715,7 @@ def test_a_stalled_plan_repair_tries_the_other_hypothesis_before_the_operator(
     agent = _Agent(docs, repair_plans=99, escalate=True)
     seen: list[str] = []
 
-    with pytest.raises(_Parked), patch.object(pyflow_driver, "wait_for_answer", _parked_at(seen)):
+    with pytest.raises(_Parked), patch.object(pyflow_park, "wait_for_answer", _parked_at(seen)):
         drive_flow(Qa(story=STORY), env(), agent)
 
     unaided = agent.fix_args()
@@ -1734,7 +1734,7 @@ def test_the_hypothesis_switch_happens_at_most_once_per_story(
     agent = _Agent(docs, repair_plans=99, escalate=True)
     seen: list[str] = []
 
-    with pytest.raises(_Parked), patch.object(pyflow_driver, "wait_for_answer", _parked_at(seen)):
+    with pytest.raises(_Parked), patch.object(pyflow_park, "wait_for_answer", _parked_at(seen)):
         drive_flow(Qa(story=STORY), env(), agent)
 
     assert agent.counts()["resolve-operator"] == 1, agent.counts()
@@ -1776,7 +1776,7 @@ def test_a_fix_that_gets_the_run_further_still_earns_its_next_lap(
     agent = _Agent(docs, assessment_class="product", triage=("qa_fix", "code"), escalate=True)
     seen: list[str] = []
 
-    with pytest.raises(_Parked), patch.object(pyflow_driver, "wait_for_answer", _parked_at(seen)):
+    with pytest.raises(_Parked), patch.object(pyflow_park, "wait_for_answer", _parked_at(seen)):
         drive_flow(Qa(story=STORY), env(), agent)
 
     assert len(agent.fix_args()) == qa_flow.MAX_QA_REWORKS, agent.counts()
@@ -1859,7 +1859,7 @@ def test_a_scenario_refused_twice_for_the_identical_reason_reaches_the_operator(
                    item_dry_run="failed", escalate=True)
     seen: list[str] = []
 
-    with pytest.raises(_Parked), patch.object(pyflow_driver, "wait_for_answer", _parked_at(seen)):
+    with pytest.raises(_Parked), patch.object(pyflow_park, "wait_for_answer", _parked_at(seen)):
         drive_flow(Qa(story=STORY), env(), agent)
 
     assert agent.counts()["fix-qa-scenario"] == 2, agent.counts()
@@ -1896,7 +1896,7 @@ def test_a_product_class_triage_past_its_budget_stops_bouncing_to_dev(
                    escalate=True)
     seen: list[str] = []
 
-    with pytest.raises(_Parked), patch.object(pyflow_driver, "wait_for_answer", _parked_at(seen)):
+    with pytest.raises(_Parked), patch.object(pyflow_park, "wait_for_answer", _parked_at(seen)):
         drive_flow(Qa(story=STORY, triage_scope=qa_flow.MAX_TRIAGE_SCOPES), env(), agent)
 
     assert len(seen) == 1, seen
@@ -1918,7 +1918,7 @@ def test_a_spent_budget_asks_the_operator_before_abandoning_the_story(
     seen: list[str] = []
 
     with (
-        patch.object(pyflow_driver, "wait_for_answer", _answers(seen)),
+        patch.object(pyflow_park, "wait_for_answer", _answers(seen)),
         pytest.raises(WorkflowFailed, match="transition budget exhausted"),
     ):
         drive_flow(Qa(story=STORY), env(), agent)
@@ -1943,7 +1943,7 @@ def test_an_escalating_resolver_gives_up_now_rather_than_halting_the_drain(
     agent = _Agent(docs, assessment_class="product", triage=("qa_fix", "code"), escalate=True)
 
     with (
-        patch.object(pyflow_driver, "wait_for_answer", _answers(seen)),
+        patch.object(pyflow_park, "wait_for_answer", _answers(seen)),
         pytest.raises(WorkflowFailed, match="transition budget exhausted"),
     ):
         drive_flow(Qa(story=STORY), env(), agent)
@@ -1965,7 +1965,7 @@ def test_the_operator_is_asked_again_after_a_guided_lap_that_does_not_clear_the_
     agent = _Agent(docs, repair="repaired", escalate=True)
     seen: list[str] = []
 
-    with patch.object(pyflow_driver, "wait_for_answer", _answers(seen)):
+    with patch.object(pyflow_park, "wait_for_answer", _answers(seen)):
         result = drive_flow(Qa(story=STORY), env(), agent)
 
     assert result.status == "passed", result
@@ -1984,7 +1984,7 @@ def test_a_human_operator_mode_still_waits_on_a_spent_budget(
     seen: list[str] = []
     agent = _Agent(docs, repair="repaired")
 
-    with patch.object(pyflow_driver, "wait_for_answer", _answers(seen)):
+    with patch.object(pyflow_park, "wait_for_answer", _answers(seen)):
         result = drive_flow(Qa(story=STORY, operator_mode="human"), env(), agent)
 
     assert result.status == "passed", result
@@ -2025,7 +2025,7 @@ def test_a_spent_rescope_budget_makes_triage_fix_in_place(
 
     with (
         pytest.raises(_Parked),
-        patch.object(pyflow_driver, "wait_for_answer", _parked_at(seen)),
+        patch.object(pyflow_park, "wait_for_answer", _parked_at(seen)),
     ):
         drive_flow(Qa(story=STORY, triage_scope=2), env(), agent)
 
@@ -2065,7 +2065,7 @@ def test_an_audit_refuting_on_a_product_test_gap_sends_the_fixer_not_the_planner
 
     with (
         pytest.raises(_Parked),
-        patch.object(pyflow_driver, "wait_for_answer", _parked_at(seen)),
+        patch.object(pyflow_park, "wait_for_answer", _parked_at(seen)),
     ):
         drive_flow(Qa(story=STORY), env(), agent)
 
@@ -2094,7 +2094,7 @@ def test_an_extend_plan_naming_a_product_test_gap_sends_the_fixer(
     seen: list[str] = []
     with (
         pytest.raises(_Parked),
-        patch.object(pyflow_driver, "wait_for_answer", _parked_at(seen)),
+        patch.object(pyflow_park, "wait_for_answer", _parked_at(seen)),
     ):
         drive_flow(Qa(story=STORY), env(), agent)
 
@@ -2316,7 +2316,7 @@ def test_a_journey_suite_that_stays_red_falls_into_the_qa_fix_loop(
 
     with (
         pytest.raises(_Parked),
-        patch.object(pyflow_driver, "wait_for_answer", _parked_at(seen)),
+        patch.object(pyflow_park, "wait_for_answer", _parked_at(seen)),
     ):
         drive_flow(Qa(story=STORY), env(), agent)
 
@@ -2392,7 +2392,7 @@ def test_a_turn_that_says_it_cannot_proceed_reaches_the_operator(
     agent = _Agent(docs, refuses={stem})
     seen: list[str] = []
 
-    with pytest.raises(_Parked), patch.object(pyflow_driver, "wait_for_answer", _parked_at(seen)):
+    with pytest.raises(_Parked), patch.object(pyflow_park, "wait_for_answer", _parked_at(seen)):
         drive_flow(Qa(story=STORY, operator_mode="human"), env(), agent)
 
     assert agent.counts()[stem] == 1, agent.counts()
@@ -2411,7 +2411,7 @@ def test_a_triage_that_cannot_proceed_reaches_the_operator(
     agent = _Agent(docs, assessment_class="product", refuses={"triage-qa"})
     seen: list[str] = []
 
-    with pytest.raises(_Parked), patch.object(pyflow_driver, "wait_for_answer", _parked_at(seen)):
+    with pytest.raises(_Parked), patch.object(pyflow_park, "wait_for_answer", _parked_at(seen)):
         drive_flow(Qa(story=STORY, operator_mode="human"), env(), agent)
 
     assert agent.counts()["triage-qa"] == 1, agent.counts()

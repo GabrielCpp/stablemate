@@ -19,7 +19,7 @@ from workhorse.artifacts import ArtifactWriter
 from workhorse.cli.inbox import INBOX_FILE
 from workhorse.config_run import RunConfig
 from workhorse.pyflow import activity as pyflow_activity
-from workhorse.pyflow import driver as pyflow_driver
+from workhorse.pyflow import park as pyflow_park
 from workhorse.pyflow.driver import drive, read_resume
 from workhorse.pyflow.engine import RunEnv
 from workhorse.records import parse_checkpoint
@@ -695,7 +695,7 @@ def _drive(
             return wait_for_answer(path, **kwargs)
         return None
 
-    with patch.object(pyflow_driver, "wait_for_answer", _wait_for_answer):
+    with patch.object(pyflow_park, "wait_for_answer", _wait_for_answer):
         return drive(Author(**inputs), replace(env, agent_runner=StubRunner(agent)))
 
 
@@ -1307,7 +1307,7 @@ def test_epic_edit_semantic_review_reworks_are_bounded(
         seen.append(path.read_text())
         agent.edit_reviews = ["approved"]
 
-    with patch.object(pyflow_driver, "wait_for_answer", answered):
+    with patch.object(pyflow_park, "wait_for_answer", answered):
         _drive_story_edit(
             _env(tmp_path),
             agent,

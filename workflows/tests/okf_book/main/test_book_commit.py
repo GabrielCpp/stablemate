@@ -19,7 +19,7 @@ from okf_book.main.tally import (
     stub_the_run_to,
 )
 from okf_book.support import ScriptedRunner, git
-from workhorse.pyflow import driver as pyflow_driver
+from workhorse.pyflow import park as pyflow_park
 
 from workhorse_workflows.okf_book.main import flow
 from workhorse_workflows.okf_book.main.nodes.report import BookReport
@@ -56,7 +56,7 @@ def test_the_agent_files_are_rendered_before_the_book_commit_so_their_drift_is_n
     )
     hook.chmod(0o755)
     asked: list[str] = []
-    monkeypatch.setattr(pyflow_driver, "wait_for_answer", stopping_operator(asked))
+    monkeypatch.setattr(pyflow_park, "wait_for_answer", stopping_operator(asked))
 
     def _render(root: Path) -> str:
         (root / ".drifted").unlink(missing_ok=True)
@@ -78,7 +78,7 @@ def test_a_render_that_failed_waits_for_the_operator_and_the_book_is_committed_a
     repo = app("tally-cli")
     asked: list[str] = []
     failures = ["farrier could not run: no farrier"]
-    monkeypatch.setattr(pyflow_driver, "wait_for_answer", answering_operator(asked))
+    monkeypatch.setattr(pyflow_park, "wait_for_answer", answering_operator(asked))
 
     def _render(_root: Path) -> str:
         return failures.pop() if failures else ""
@@ -99,7 +99,7 @@ def test_an_answer_to_a_refused_commit_commits_again_without_rendering_again(
 ) -> None:
     repo = app("tally-cli")
     asked: list[str] = []
-    monkeypatch.setattr(pyflow_driver, "wait_for_answer", refuse_commits_until_answered(repo, asked))
+    monkeypatch.setattr(pyflow_park, "wait_for_answer", refuse_commits_until_answered(repo, asked))
 
     result = drive_book(OkfBook(repo_dir=str(repo), surfaces=(TALLY,)), _writer(repo))
 

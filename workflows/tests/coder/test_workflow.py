@@ -12,7 +12,7 @@ from unittest.mock import patch
 import pytest
 from workhorse.artifacts import ArtifactWriter
 from workhorse.pyflow import Blueprint, Done, Workflow, WorkflowFailed
-from workhorse.pyflow import driver as pyflow_driver
+from workhorse.pyflow import park as pyflow_park
 from workhorse.pyflow.driver import read_resume
 from workhorse.pyflow.engine import RunEnv
 from workhorse.records import parse_checkpoint
@@ -945,7 +945,7 @@ def test_a_story_that_left_work_uncommitted_gets_one_lap_to_record_it(
     agent = _Agent(settle="commit")
     seen: list[str] = []
 
-    with patch.object(pyflow_driver, "wait_for_answer", _answers(seen, {})):
+    with patch.object(pyflow_park, "wait_for_answer", _answers(seen, {})):
         result = drive_flow(Coder(), run_env, agent)
 
     assert result.has_epic is False, result
@@ -977,7 +977,7 @@ def test_a_settle_lap_that_blocks_parks_the_story_for_an_operator(
         git(repo, "commit", "-qm", "feat(acme): story STORY-1")
         path.write_text("STATUS: ANSWERED\n\nCommitted it myself.\n", encoding="utf-8")
 
-    with patch.object(pyflow_driver, "wait_for_answer", answered):
+    with patch.object(pyflow_park, "wait_for_answer", answered):
         result = drive_flow(Coder(), run_env, agent)
 
     assert result.has_epic is False, result
@@ -1010,7 +1010,7 @@ def test_a_settle_lap_that_claims_success_it_did_not_achieve_buys_a_reading_not_
         git(repo, "commit", "-qm", "feat(acme): story STORY-1")
         path.write_text("STATUS: ANSWERED\n\nCommitted it myself.\n", encoding="utf-8")
 
-    with patch.object(pyflow_driver, "wait_for_answer", answered):
+    with patch.object(pyflow_park, "wait_for_answer", answered):
         result = drive_flow(Coder(), run_env, agent)
 
     assert result.has_epic is False, result
@@ -1153,7 +1153,7 @@ def test_a_blocked_docs_verdict_parks_for_an_operator_rather_than_shipping_the_s
     sub = _BlockingFirst(repo).install(monkeypatch)
     seen: list[str] = []
 
-    with patch.object(pyflow_driver, "wait_for_answer", _answers(seen, {"yes": True})):
+    with patch.object(pyflow_park, "wait_for_answer", _answers(seen, {"yes": True})):
         result = drive_flow(Coder(), env(), _Agent())
 
     assert result.has_epic is False, result
@@ -1187,7 +1187,7 @@ def test_a_required_final_docs_block_parks_for_an_operator_in_either_mode(
     flow = Coder() if mode == "epic" else Coder(mode="story", story="STORY-1", epic=EPIC)
     seen: list[str] = []
 
-    with patch.object(pyflow_driver, "wait_for_answer", _answers(seen, {"yes": True})):
+    with patch.object(pyflow_park, "wait_for_answer", _answers(seen, {"yes": True})):
         drive_flow(flow, env(), _Agent())
 
     assert len(seen) == 1, seen
@@ -1216,7 +1216,7 @@ def test_a_docs_handoff_that_merely_failed_parks_on_the_same_gate_a_block_does(
     sub = _FailingFirst(repo).install(monkeypatch)
     seen: list[str] = []
 
-    with patch.object(pyflow_driver, "wait_for_answer", _answers(seen, {"yes": True})):
+    with patch.object(pyflow_park, "wait_for_answer", _answers(seen, {"yes": True})):
         drive_flow(Coder(), env(), _Agent())
 
     assert len(seen) == 1, seen
@@ -1356,7 +1356,7 @@ def test_red_ci_spends_its_three_attempts_and_then_escalates_to_a_human(
     run_env = env()
     seen: list[str] = []
 
-    with patch.object(pyflow_driver, "wait_for_answer", _answers(seen, green)):
+    with patch.object(pyflow_park, "wait_for_answer", _answers(seen, green)):
         result = drive_flow(Coder(), run_env, _Agent())
 
     assert result.has_epic is False, result
@@ -1389,7 +1389,7 @@ def test_unreadable_ci_parks_at_once_instead_of_spending_a_repair_lap(
     run_env = env()
     seen: list[str] = []
 
-    with patch.object(pyflow_driver, "wait_for_answer", _answers(seen, green)):
+    with patch.object(pyflow_park, "wait_for_answer", _answers(seen, green)):
         result = drive_flow(Coder(), run_env, _Agent())
 
     assert result.has_epic is False, result
@@ -1444,7 +1444,7 @@ def test_a_merge_resolver_that_cannot_decide_parks_instead_of_spending_the_budge
 
     agent = _BlockedResolver()
 
-    with patch.object(pyflow_driver, "wait_for_answer", _answers(seen, landed)):
+    with patch.object(pyflow_park, "wait_for_answer", _answers(seen, landed)):
         result = drive_flow(Coder(), run_env, agent)
 
     assert result.has_epic is False, result

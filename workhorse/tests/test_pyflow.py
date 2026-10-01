@@ -40,7 +40,8 @@ from workhorse.pyflow import (  # noqa: E402
 )
 from workhorse.pyflow import engine as pyflow_engine  # noqa: E402
 from workhorse.pyflow import registry as registry_mod  # noqa: E402
-from workhorse.pyflow.driver import Resume, drive, read_resume, wait_for_answer  # noqa: E402
+from workhorse.pyflow.driver import Resume, drive, read_resume  # noqa: E402
+from workhorse.pyflow.park import wait_for_answer  # noqa: E402
 from workhorse.pyflow.engine import RunEnv  # noqa: E402
 from workhorse.pyflow.names import NameIndex  # noqa: E402
 from workhorse.records import NodeGraphCheckpoint  # noqa: E402

@@ -10,7 +10,7 @@ from git import Repo
 from ostler import Ostler
 from workhorse.artifacts import ArtifactWriter
 from workhorse.config_run import RunConfig
-from workhorse.pyflow import driver as pyflow_driver
+from workhorse.pyflow import park as pyflow_park
 from workhorse.pyflow.driver import drive
 from workhorse.pyflow.engine import RunEnv
 from workhorse_workflows import author
@@ -123,7 +123,7 @@ def test_block_is_diagnosed_then_retries_the_same_epic(repo: Path, tmp_path: Pat
     _planning_input(repo)
     agent = _Agent(repo, block_once=True)
 
-    with patch.object(pyflow_driver, "wait_for_answer", return_value=None):
+    with patch.object(pyflow_park, "wait_for_answer", return_value=None):
         result = drive(
             EpicAuthor(epic="sign-in", repo_dir=str(repo)),
             _env(tmp_path, agent),

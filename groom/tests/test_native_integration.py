@@ -92,7 +92,7 @@ def test_telemetry_gate_answer_reaches_the_waiting_process(native_root, monkeypa
 
     from groom import store
     from workhorse import control, gates
-    from workhorse.pyflow.driver import wait_for_answer
+    from workhorse.pyflow.park import wait_for_answer
 
     tmp_path = native_root
     _reset()

@@ -24,7 +24,7 @@ from okf_book.main.tally import (
 )
 from okf_book.support import ScriptedRunner, commits, git
 from workhorse.pyflow import WorkflowFailed
-from workhorse.pyflow import driver as pyflow_driver
+from workhorse.pyflow import park as pyflow_park
 from workhorse.pyflow.graph import preflight, registry_graphs, state_graph
 from workhorse.runner.failure import BackendInvocationError
 
@@ -120,7 +120,7 @@ def test_a_book_commit_the_repo_refuses_waits_for_the_operator_and_is_tried_agai
 ) -> None:
     repo = app("tally-cli")
     asked: list[str] = []
-    monkeypatch.setattr(pyflow_driver, "wait_for_answer", refuse_commits_until_answered(repo, asked))
+    monkeypatch.setattr(pyflow_park, "wait_for_answer", refuse_commits_until_answered(repo, asked))
 
     result = drive_book(OkfBook(repo_dir=str(repo), surfaces=(TALLY,)), _writer(repo))
 
@@ -138,7 +138,7 @@ def test_a_book_that_fails_its_run_stops_at_the_operator(
     asked: list[str] = []
     stub_the_run_to(monkeypatch, FAILED)
     monkeypatch.setattr(flow, "book_problems", no_problems)
-    monkeypatch.setattr(pyflow_driver, "wait_for_answer", stopping_operator(asked))
+    monkeypatch.setattr(pyflow_park, "wait_for_answer", stopping_operator(asked))
 
     result = drive_book(OkfBook(repo_dir=str(repo), surfaces=(TALLY,)), _writer(repo))
 
@@ -159,7 +159,7 @@ def test_each_problem_the_check_finds_is_its_own_blocker(
 
     stub_the_run_to(monkeypatch, PASSED)
     monkeypatch.setattr(flow, "book_problems", _problems)
-    monkeypatch.setattr(pyflow_driver, "wait_for_answer", stopping_operator(asked))
+    monkeypatch.setattr(pyflow_park, "wait_for_answer", stopping_operator(asked))
 
     result = drive_book(OkfBook(repo_dir=str(repo), surfaces=(TALLY,)), _writer(repo))
 
@@ -175,7 +175,7 @@ def test_a_source_over_the_ceiling_with_no_book_is_a_blocker_and_sends_no_writer
     _ = git(repo, "commit", "-q", "-m", "drop the book")
     runner = _writer(repo)
     monkeypatch.setattr(turn_budget, "SOURCE_AND_BOOK_CEILING_TOKENS", 10)
-    monkeypatch.setattr(pyflow_driver, "wait_for_answer", stopping_operator([]))
+    monkeypatch.setattr(pyflow_park, "wait_for_answer", stopping_operator([]))
 
     result = drive_book(OkfBook(repo_dir=str(repo), surfaces=(TALLY,)), runner)
 
@@ -214,7 +214,7 @@ def test_a_book_this_workflow_wrote_that_fails_its_rerun_goes_to_its_writer_once
     _written_by_the_workflow(repo)
     stub_the_run_to(monkeypatch, FAILED)
     monkeypatch.setattr(flow, "book_problems", no_problems)
-    monkeypatch.setattr(pyflow_driver, "wait_for_answer", stopping_operator([]))
+    monkeypatch.setattr(pyflow_park, "wait_for_answer", stopping_operator([]))
 
     result = drive_book(OkfBook(repo_dir=str(repo), surfaces=(TALLY,)), runner)
 
@@ -232,7 +232,7 @@ def test_the_operators_answer_sends_a_book_that_still_fails_back_to_its_repair(
     _written_by_the_workflow(repo)
     stub_the_runs_to(monkeypatch, FAILED, FAILED, FAILED, PASSED)
     monkeypatch.setattr(flow, "book_problems", no_problems)
-    monkeypatch.setattr(pyflow_driver, "wait_for_answer", answering_operator(asked))
+    monkeypatch.setattr(pyflow_park, "wait_for_answer", answering_operator(asked))
 
     result = drive_book(OkfBook(repo_dir=str(repo), surfaces=(TALLY,)), runner)
 
@@ -254,7 +254,7 @@ def test_a_book_this_workflow_repaired_that_fails_its_rerun_goes_to_its_writer_o
     _written_by_the_workflow(repo, message)
     stub_the_run_to(monkeypatch, FAILED)
     monkeypatch.setattr(flow, "book_problems", no_problems)
-    monkeypatch.setattr(pyflow_driver, "wait_for_answer", stopping_operator([]))
+    monkeypatch.setattr(pyflow_park, "wait_for_answer", stopping_operator([]))
 
     result = drive_book(OkfBook(repo_dir=str(repo), surfaces=(TALLY,)), runner)
 
@@ -312,7 +312,7 @@ def test_a_book_this_workflow_wrote_that_fails_its_check_goes_to_its_writer_and_
 
     stub_the_run_to(monkeypatch, PASSED)
     monkeypatch.setattr(flow, "book_problems", _problems)
-    monkeypatch.setattr(pyflow_driver, "wait_for_answer", stopping_operator([]))
+    monkeypatch.setattr(pyflow_park, "wait_for_answer", stopping_operator([]))
 
     result = drive_book(OkfBook(repo_dir=str(repo), surfaces=(TALLY,)), runner)
 
@@ -333,7 +333,7 @@ def test_a_writer_turn_that_ends_without_a_reply_is_a_blocker_and_keeps_its_page
         _ = (repo / "tally" / "cli.py").write_text("broken\n", encoding="utf-8")
         raise BackendInvocationError("no result event")
 
-    monkeypatch.setattr(pyflow_driver, "wait_for_answer", stopping_operator([]))
+    monkeypatch.setattr(pyflow_park, "wait_for_answer", stopping_operator([]))
 
     result = drive_book(OkfBook(repo_dir=str(repo), surfaces=(TALLY,)), ScriptedRunner({"write-book": _dies}))
 
@@ -357,7 +357,7 @@ def test_a_stack_that_cannot_come_up_is_the_apps_blocker_and_sends_no_writer(
     stub_the_run_to(monkeypatch, PASSED)
     monkeypatch.setattr(exercise_book_flow, "bring_up", _down)
     monkeypatch.setattr(flow, "book_problems", no_problems)
-    monkeypatch.setattr(pyflow_driver, "wait_for_answer", stopping_operator([]))
+    monkeypatch.setattr(pyflow_park, "wait_for_answer", stopping_operator([]))
 
     result = drive_book(OkfBook(repo_dir=str(repo), surfaces=(TALLY,)), runner)
 

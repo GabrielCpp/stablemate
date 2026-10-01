@@ -13,7 +13,7 @@ from unittest.mock import patch
 import pytest
 from pydantic import ValidationError
 from workhorse.artifacts import ArtifactWriter
-from workhorse.pyflow import driver as pyflow_driver
+from workhorse.pyflow import park as pyflow_park
 from workhorse.pyflow.driver import read_resume
 from workhorse.pyflow.engine import RunEnv
 from workhorse.records import parse_checkpoint
@@ -689,7 +689,7 @@ def test_an_unfixable_plan_exhausts_the_budget_and_reaches_the_operator(
     agent = _Agent(docs, bad_paths=4)
     seen: list[str] = []
 
-    with patch.object(pyflow_driver, "wait_for_answer", _answers(docs, seen)):
+    with patch.object(pyflow_park, "wait_for_answer", _answers(docs, seen)):
         result = drive_flow(Dev(story=STORY), env(), agent)
 
     assert result.status == "ready", result
@@ -719,7 +719,7 @@ def test_a_service_path_nobody_can_repair_never_gives_up(
             "STATUS: ANSWERED\nSCOPE: story\n\nUse the staging bucket.\n", encoding="utf-8"
         )
 
-    with patch.object(pyflow_driver, "wait_for_answer", answered):
+    with patch.object(pyflow_park, "wait_for_answer", answered):
         result = drive_flow(Dev(story=STORY), env(), agent)
 
     assert result.status == "ready", result
@@ -742,7 +742,7 @@ def test_a_resolver_that_grounds_its_answer_settles_the_block_without_a_person(
     def never(path: Path, **kwargs: Any) -> None:
         raise AssertionError(f"a grounded answer must not park on {path}")
 
-    with patch.object(pyflow_driver, "wait_for_answer", never):
+    with patch.object(pyflow_park, "wait_for_answer", never):
         result = drive_flow(Dev(story=STORY), env(), agent)
 
     assert result.status == "ready", result
@@ -770,7 +770,7 @@ def test_an_answered_block_still_spends_the_resolver_budget(
             "STATUS: ANSWERED\nSCOPE: story\n\nUse the staging bucket.\n", encoding="utf-8"
         )
 
-    with patch.object(pyflow_driver, "wait_for_answer", answered):
+    with patch.object(pyflow_park, "wait_for_answer", answered):
         result = drive_flow(Dev(story=STORY), env(), agent)
 
     assert result.status == "ready", result
@@ -789,7 +789,7 @@ def test_a_blocked_plan_goes_to_the_auto_operator_and_is_reworked(
     run_env = env()
     seen: list[str] = []
 
-    with patch.object(pyflow_driver, "wait_for_answer", _answers(docs, seen)):
+    with patch.object(pyflow_park, "wait_for_answer", _answers(docs, seen)):
         result = drive_flow(Dev(story=STORY), run_env, agent)
 
     assert result.status == "ready", result
@@ -809,7 +809,7 @@ def test_an_epic_scoped_answer_leaves_the_flow_to_be_replanned(
     agent = _Agent(docs, blocked=1)
     seen: list[str] = []
 
-    with patch.object(pyflow_driver, "wait_for_answer", _answers(docs, seen, scope="epic")):
+    with patch.object(pyflow_park, "wait_for_answer", _answers(docs, seen, scope="epic")):
         result = drive_flow(Dev(story=STORY), env(), agent)
 
     assert result.status == "replan", result
@@ -829,7 +829,7 @@ def test_human_operator_modes_wait_on_the_story_context_file(
     seen: list[str] = []
     agent = _Agent(docs, blocked=1)
 
-    with patch.object(pyflow_driver, "wait_for_answer", _answers(docs, seen)):
+    with patch.object(pyflow_park, "wait_for_answer", _answers(docs, seen)):
         result = drive_flow(Dev(story=STORY, operator_mode=operator_mode), env(), agent)
 
     assert result.status == "ready", result
@@ -847,7 +847,7 @@ def test_an_escalating_resolver_leaves_its_note_for_the_human(
     seen: list[str] = []
     agent = _Agent(docs, blocked=1)
 
-    with patch.object(pyflow_driver, "wait_for_answer", _answers(docs, seen)):
+    with patch.object(pyflow_park, "wait_for_answer", _answers(docs, seen)):
         result = drive_flow(Dev(story=STORY), env(), agent)
 
     assert result.status == "ready", result
@@ -867,7 +867,7 @@ def test_an_implementation_turn_that_says_it_cannot_reaches_the_operator(
     agent = _Agent(docs, impl_blocked=1)
     seen: list[str] = []
 
-    with patch.object(pyflow_driver, "wait_for_answer", _answers(docs, seen)):
+    with patch.object(pyflow_park, "wait_for_answer", _answers(docs, seen)):
         result = drive_flow(Dev(story=STORY), env(), agent)
 
     assert result.status == "ready", result
@@ -888,7 +888,7 @@ def test_an_implementation_block_in_human_mode_skips_the_resolver(
     agent = _Agent(docs, impl_blocked=1)
     seen: list[str] = []
 
-    with patch.object(pyflow_driver, "wait_for_answer", _answers(docs, seen)):
+    with patch.object(pyflow_park, "wait_for_answer", _answers(docs, seen)):
         result = drive_flow(Dev(story=STORY, operator_mode="human"), env(), agent)
 
     assert result.status == "ready", result
@@ -916,7 +916,7 @@ def test_a_plan_no_operator_can_unblock_never_gives_up_either(
             "STATUS: ANSWERED\nSCOPE: story\n\nUse the staging bucket.\n", encoding="utf-8"
         )
 
-    with patch.object(pyflow_driver, "wait_for_answer", answered):
+    with patch.object(pyflow_park, "wait_for_answer", answered):
         result = drive_flow(Dev(story=STORY), env(), agent)
 
     assert result.status == "ready", result
@@ -945,7 +945,7 @@ def test_human_operator_mode_never_gives_up_either(
             "STATUS: ANSWERED\nSCOPE: story\n\nUse the staging bucket.\n", encoding="utf-8"
         )
 
-    with patch.object(pyflow_driver, "wait_for_answer", answered):
+    with patch.object(pyflow_park, "wait_for_answer", answered):
         result = drive_flow(Dev(story=STORY, operator_mode="human"), env(), agent)
 
     assert result.status == "ready", result
@@ -1038,7 +1038,7 @@ def test_a_gate_no_repair_lap_can_satisfy_never_gives_up_either(
             "STATUS: ANSWERED\nSCOPE: story\n\nVendored code is exempt.\n", encoding="utf-8"
         )
 
-    with patch.object(pyflow_driver, "wait_for_answer", answered):
+    with patch.object(pyflow_park, "wait_for_answer", answered):
         result = drive_flow(Dev(story=STORY), env(), agent)
 
     assert result.status == "ready", result

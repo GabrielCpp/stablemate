@@ -17,7 +17,7 @@ import pytest
 from workhorse.artifacts import ArtifactWriter
 from workhorse.pyflow import Continue, WorkflowFailed
 from workhorse.runner.failure import BackendInvocationError
-from workhorse.pyflow import driver as pyflow_driver
+from workhorse.pyflow import park as pyflow_park
 from workhorse.pyflow.driver import read_resume
 from workhorse.pyflow.engine import RunEnv
 from workhorse.records import parse_checkpoint
@@ -1015,7 +1015,7 @@ def test_an_escalating_resolver_blocks_without_parking_the_queue(
     """In `auto` mode a resolver that will not decide gives up — it never waits on a person."""
     agent = _Agent(author_status="blocked")
 
-    with patch.object(pyflow_driver, "wait_for_answer", _never_waits):
+    with patch.object(pyflow_park, "wait_for_answer", _never_waits):
         result = drive_flow(Docs(story=STORY, epic=EPIC), env(), agent)
 
     assert result.status == "blocked", result
@@ -1077,7 +1077,7 @@ def test_operator_mode_human_still_waits_for_a_person(
             "STATUS: ANSWERED\nSCOPE: story\n\nOne slug per locale.\n", encoding="utf-8"
         )
 
-    with patch.object(pyflow_driver, "wait_for_answer", _answer):
+    with patch.object(pyflow_park, "wait_for_answer", _answer):
         result = drive_flow(Docs(story=STORY, epic=EPIC, operator_mode="human"), env(), agent)
 
     assert result.status == "blocked", result
@@ -1175,7 +1175,7 @@ def test_the_reviewers_findings_travel_to_the_operator_gate(
         asked.append(path.read_text(encoding="utf-8"))
         path.write_text("STATUS: ANSWERED\nSCOPE: story\n\nOne slug.\n", encoding="utf-8")
 
-    with patch.object(pyflow_driver, "wait_for_answer", _answer):
+    with patch.object(pyflow_park, "wait_for_answer", _answer):
         result = drive_flow(Docs(story=STORY, epic=EPIC, operator_mode="human"), env(), agent)
 
     assert result.status == "blocked", result
