@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 
 from markdown_it import MarkdownIt
 
+from workhorse import control
 from workhorse import gates as gate_file
 
 from groom import docker_io, localfs, state
@@ -17,6 +19,8 @@ CONSUMED = "CONSUMED"
 
 _MARKDOWN = MarkdownIt("commonmark")
 _QUESTION_HEADINGS = {"question from the agent", "questions from the agent"}
+
+logger = logging.getLogger(__name__)
 
 
 def status_of(text: str) -> str:
@@ -97,3 +101,15 @@ async def answer_gate(
         if not started:
             return AnswerResult(ok=True, message="answer written but restart failed — start the container manually")
         return AnswerResult(ok=True, message="answered and restarted")
+
+
+async def native_questions(run_dir: str, caller: str, run: str) -> dict | None:
+    """A native run's `questions` reply over its control socket, or ``None`` when nothing listens there or the reply is unreadable."""
+    try:
+        reply = await asyncio.to_thread(control.send, run_dir, control.Request(action=control.QUESTIONS))
+    except FileNotFoundError:
+        return None
+    except control.ControlProtocolError as exc:
+        logger.warning("%s: %s answered unreadably: %s", caller, run, exc)
+        return None
+    return dict(reply)

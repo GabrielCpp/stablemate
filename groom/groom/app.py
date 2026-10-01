@@ -45,7 +45,7 @@ from groom import (
     turns,
 )
 from groom.attention import RULE_EVENTS, AttentionEvent, AttentionFrame
-from groom.gates import answer_gate
+from groom.gates import answer_gate, native_questions
 from groom.live_history import LiveHistory
 from groom.models import AnswerResult, GateInfo, RunTelemetry, WorkflowContainer, WorkflowState
 from groom.settings import AttendSettings, write_attend_settings
@@ -881,16 +881,7 @@ async def _run_questions(wf: WorkflowContainer) -> dict | None:
     if wf.native:
         if not wf.runs_volume:
             return None
-        try:
-            reply = await asyncio.to_thread(
-                control.send, wf.runs_volume, control.Request(action=control.QUESTIONS)
-            )
-        except FileNotFoundError:
-            return None
-        except control.ControlProtocolError as exc:
-            logger.warning("gate one-shot: %s answered unreadably: %s", wf.container_id, exc)
-            return None
-        return dict(reply) or None
+        return await native_questions(wf.runs_volume, "gate one-shot", wf.container_id) or None
     try:
         reply = await sidecar_hub.ask_questions(wf.container_id)
     except sidecar_hub.SidecarError:
@@ -1179,16 +1170,8 @@ async def _backfill_wait_gate(run: RunTelemetry) -> None:
     """Fetch the live question over the control socket when telemetry's copy of gate_path/gate_question is missing."""
     if not run.native or not run.run_dir:
         return
-    try:
-        reply = await asyncio.to_thread(
-            control.send, run.run_dir, control.Request(action=control.QUESTIONS)
-        )
-    except FileNotFoundError:
-        return
-    except control.ControlProtocolError as exc:
-        logger.warning("gate backfill: %s answered unreadably: %s", run.run_id, exc)
-        return
-    if not reply.get("ok"):
+    reply = await native_questions(run.run_dir, "gate backfill", run.run_id)
+    if not reply or not reply.get("ok"):
         return
     raw_questions = reply.get("questions")
     questions = [q for q in raw_questions if isinstance(q, dict)] if isinstance(raw_questions, list) else []
