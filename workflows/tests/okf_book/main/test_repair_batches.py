@@ -50,6 +50,18 @@ def test_pages_that_cite_one_file_share_its_cost_in_one_batch(tmp_path: Path) ->
     assert batches[0].sources == (SOURCE,)
 
 
+def test_a_fixture_s_batch_may_change_the_pages_whose_requests_failed_on_what_it_arranges(tmp_path: Path) -> None:
+    fixture = _page(tmp_path, "fixtures/signed-in.md", cites=False)
+    request = f"{BOOK}/api.md"
+    problem = PageProblem(fixture, "7 checks failed on what this page arranges", requests=(request,))
+
+    batches = pack_repairs(tmp_path, {fixture: (problem,)}, ceiling=2 * ONE_PAGE_TOKENS).batches
+
+    assert batches[0].page_paths == (fixture,)
+    assert batches[0].owns(request)
+    assert not batches[0].owns(f"{BOOK}/other.md")
+
+
 def test_a_page_that_would_cross_the_ceiling_starts_the_next_batch(tmp_path: Path) -> None:
     pages = [_page(tmp_path, f"{name}.md", cites=False) for name in ("a", "b", "c")]
 

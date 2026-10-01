@@ -178,7 +178,8 @@ def test_checks_a_precondition_arranged_wrong_land_once_on_its_page_and_not_on_t
     assert by_page == {SIGNED_IN: (PageProblem(
         SIGNED_IN,
         f"7 checks failed on what this page arranges (arrangement: {SIGNED_IN} answered 403); "
-        + "for example POST /add answers [201]: expected [201], observed 403"),)}
+        + "for example POST /add answers [201]: expected [201], observed 403",
+        requests=("docs/features/tally/tally.md",)),)}
 
 
 def test_a_scenario_whose_every_check_another_party_must_fix_reaches_no_page() -> None:

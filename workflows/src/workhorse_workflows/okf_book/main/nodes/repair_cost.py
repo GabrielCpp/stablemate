@@ -40,8 +40,9 @@ def text_cost(
     cited = (files.cited(citation) for citation in citations_in(text))
     sources = {part.label: part.tokens for part in cited if part is not None}
     texts = tuple(problem.text for problem in problems)
+    requests = tuple(dict.fromkeys(request for problem in problems for request in problem.requests))
     return PageCost(
-        PageRepair(page=page, problems=texts, sources=tuple(sources), sections=sections),
+        PageRepair(page=page, problems=texts, sources=tuple(sources), sections=sections, requests=requests),
         BOOK_HOLDS * tokens_of_chars(len(text)) + tokens_of_chars(sum(len(problem) for problem in texts)),
         sources,
     )

@@ -149,17 +149,19 @@ class RunSummary(BaseModel):
         """Each book page whose obligations a failed scenario covers, and what that scenario reported, pages in path order.
 
         Only a failure the book's writer can fix is reported. A check whose precondition page arranged
-        it wrong is reported once per signature, on that precondition's page, and a check another party
-        must fix is left to its escalation. A check made for one claim is reported on that claim's page alone, naming its node. A scenario
+        it wrong is reported once per signature, on that precondition's page, naming the pages whose
+        requests failed on it, and a check another party must fix is left to its escalation. A check made for one claim is reported on that claim's page alone, naming its node. A scenario
         stopped inside the compiled *plan_source* is reported at the obligation it stopped in, and on
         that obligation's page the problem names its node. A journey stopped at a step is also
         reported on the page of the node that step performs, which the scenario covers no claim of.
         """
         pages_by_scenario = {scenario.id: scenario.pages for scenario in scenarios}
         grouped: dict[str, list[PageProblem]] = {}
+        requests = self._requests_by_precondition()
         for signature in self.signatures:
             if signature.cause is Cause.ARRANGEMENT and signature.precondition:
-                grouped.setdefault(signature.precondition, []).append(_arrangement_problem(signature))
+                problem = _arrangement_problem(signature, requests.get(signature.precondition, ()))
+                grouped.setdefault(signature.precondition, []).append(problem)
         for name in self.failed_scenarios:
             outcome = self.scenarios[name]
             if not outcome.fails_the_book:
@@ -181,6 +183,16 @@ class RunSummary(BaseModel):
                 grouped.setdefault(page, []).extend(PageProblem(page, f"{failure_prefix}: {line}", node=node) for line in lines)
         return {page: tuple(grouped[page]) for page in sorted(grouped)}
 
+    def _requests_by_precondition(self) -> dict[str, tuple[str, ...]]:
+        """Each precondition page, and the pages of the claims whose checks failed on what it arranges, in path order."""
+        found: dict[str, set[str]] = {}
+        for outcome in self.scenarios.values():
+            for check in outcome.failed_checks:
+                page = obligation_page(check.claim)
+                if check.cause is Cause.ARRANGEMENT and check.precondition and page and page != check.precondition:
+                    found.setdefault(check.precondition, set()).add(page)
+        return {precondition: tuple(sorted(pages)) for precondition, pages in found.items()}
+
 
 def _claimed_problems(name: str, outcome: ScenarioOutcome) -> list[PageProblem]:
     """Each check of scenario *name* made for one claim, as a problem on that claim's page naming its node."""
@@ -190,11 +202,12 @@ def _claimed_problems(name: str, outcome: ScenarioOutcome) -> list[PageProblem]:
             for check in outcome.book_checks if check.claim]
 
 
-def _arrangement_problem(signature: Signature) -> PageProblem:
-    """Every check one precondition arranged wrong, as one problem on the precondition's page."""
+def _arrangement_problem(signature: Signature, requests: tuple[str, ...]) -> PageProblem:
+    """Every check one precondition arranged wrong, as one problem on the precondition's page that names the pages whose requests failed on it."""
     return PageProblem(
         signature.precondition,
         f"{signature.count} checks failed on what this page arranges ({signature.text()}); for example {signature.sample}",
+        requests=requests,
     )
 
 

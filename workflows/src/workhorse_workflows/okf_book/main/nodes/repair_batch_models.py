@@ -9,6 +9,7 @@ from workhorse_workflows.okf_book.main.nodes.page_sections import HEAD_SECTION_I
 class PageRepair(BaseModel):
     """One page to repair, repo-relative, each problem the check reports on it, and the parts of files it cites.
 
+    A fixture page names the pages whose requests failed on what it arranges, since the fix may be the request.
     A page too large for one writer names the `###` sections the turn repairs, `HEAD_SECTION_ID` for the lines
     under no `###` heading. With none named, the turn repairs the whole page.
     """
@@ -19,6 +20,7 @@ class PageRepair(BaseModel):
     problems: tuple[str, ...]
     sources: tuple[str, ...] = ()
     sections: tuple[str, ...] = ()
+    requests: tuple[str, ...] = ()
 
     def joined(self, other: PageRepair) -> PageRepair:
         """This repair and another of the same page's sections, as one."""
@@ -27,6 +29,7 @@ class PageRepair(BaseModel):
                 "problems": (*self.problems, *other.problems),
                 "sources": tuple(dict.fromkeys((*self.sources, *other.sources))),
                 "sections": (*self.sections, *other.sections),
+                "requests": tuple(dict.fromkeys((*self.requests, *other.requests))),
             }
         )
 
@@ -46,8 +49,8 @@ class RepairBatch(BaseModel):
         return tuple(repair.page for repair in self.pages)
 
     def owns(self, path: str) -> bool:
-        """Whether the turn may change the path: one of its pages, a journey page, or the new flow page planned for it."""
-        if path in self.page_paths:
+        """Whether the turn may change the path: one of its pages, a page whose request failed on what one of them arranges, a journey page, or the new flow page planned for it."""
+        if path in self.page_paths or any(path in repair.requests for repair in self.pages):
             return True
         return self.journey is not None and (self.journey.owns(path) or path == self.new_flow_page)
 

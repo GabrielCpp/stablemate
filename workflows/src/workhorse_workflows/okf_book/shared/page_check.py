@@ -64,7 +64,8 @@ class PageProblem:
     """One problem the check reports, the repo-relative page it sits on, and whether its fix goes on a flow or an entry page.
 
     A problem at one line of the page names it, and a problem on one node of the page names the
-    node, `page#anchor`.
+    node, `page#anchor`. A problem with what the page arranges names the pages whose requests failed
+    on it, since the fix may be the request.
     """
 
     page: str
@@ -72,6 +73,7 @@ class PageProblem:
     needs_journey: bool = False
     line: int | None = None
     node: str = ""
+    requests: tuple[str, ...] = ()
 
     def text_ignoring_line(self) -> str:
         """The problem's text with its line number left out, since an edit above the problem moves it."""

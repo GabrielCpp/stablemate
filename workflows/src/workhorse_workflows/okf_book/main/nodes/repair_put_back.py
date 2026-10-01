@@ -1,6 +1,7 @@
 """Which book pages a repair turn changed that its batch may keep, and the stamp on those it keeps.
 
-Each batch owns the pages it is sent. A batch with a page no other page reaches, or with an endpoint
+Each batch owns the pages it is sent, and the pages whose requests failed on what a fixture page it is
+sent arranges, since the fix may be the request. A batch with a page no other page reaches, or with an endpoint
 on no flow, also owns the journey pages the repair planned: the pages the entries page links, the flow
 pages, and a new page in the flow folder, since the fix for either goes there. On a page the entries
 page links it may only add link lines. Every batch also owns the book's fixture folder, since a claim's
