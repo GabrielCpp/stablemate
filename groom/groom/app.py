@@ -37,6 +37,7 @@ from groom import (
     otlp,
     pools,
     projection,
+    run_inbox,
     sidecar_hub,
     sidecar_turns,
     state,
@@ -48,7 +49,7 @@ from groom.gates import answer_gate
 from groom.live_history import LiveHistory
 from groom.models import AnswerResult, GateInfo, RunTelemetry, WorkflowContainer, WorkflowState
 from groom.settings import AttendSettings, write_attend_settings
-from workhorse import control, inbox
+from workhorse import control
 from workhorse import reload as reload_mod
 
 logger = logging.getLogger(__name__)
@@ -449,7 +450,7 @@ async def inbox_get(
     wf = _workflow_by_run_id(run_id)
     if wf is None:
         return {"messages": []}
-    messages = await asyncio.to_thread(_inbox_messages, wf)
+    messages = await asyncio.to_thread(run_inbox.messages, wf)
     if not include_all:
         messages = [m for m in messages if not m.reply]
     return {"messages": [m.model_dump() for m in messages]}
@@ -466,7 +467,7 @@ async def inbox_post(run_id: Annotated[str, PathParameter()], data: dict) -> dic
         return {"ok": False, "message": "message body is required"}
     message_id = str(data.get("id") or uuid.uuid4().hex[:12])
     at = datetime.now(UTC).isoformat()
-    message = await asyncio.to_thread(_inbox_append, wf, message_id=message_id, body=body, at=at)
+    message = await asyncio.to_thread(run_inbox.append, wf, message_id=message_id, body=body, at=at)
     if message is None:
         return {"ok": False, "message": "no run directory yet"}
     return {"ok": True, "message": message.model_dump()}
@@ -971,45 +972,6 @@ def _workflow_by_run_id(run_id: str) -> WorkflowContainer | None:
         if candidate.run_id == run_id:
             return candidate
     return None
-
-
-_INBOX_FILE = "inbox.jsonl"
-
-
-def _docker_inbox_rel_path(runs_volume: str) -> str | None:
-    """The volume-relative path to the latest run's inbox file, or ``None`` when the volume has no run directory yet — mirrors how ``discovery._current_run_state`` finds the live run inside a runs volume."""
-    dirs = docker_io.list_run_dirs(runs_volume)
-    if not dirs:
-        return None
-    return f"{dirs[-1]}/{_INBOX_FILE}"
-
-
-def _inbox_messages(wf: WorkflowContainer) -> list[inbox.Message]:
-    """Every message in this run's inbox, oldest first — a plain read over :mod:`workhorse.inbox` for a native run, whose ``runs_volume`` is a real host path."""
-    if not wf.runs_volume:
-        return []
-    if wf.native:
-        return inbox.all_messages(Path(wf.runs_volume) / _INBOX_FILE)
-    rel_path = _docker_inbox_rel_path(wf.runs_volume)
-    if rel_path is None:
-        return []
-    raw = docker_io.read_file(wf.runs_volume, rel_path)
-    if not raw:
-        return []
-    return [inbox.Message.model_validate_json(line) for line in raw.splitlines() if line.strip()]
-
-
-def _inbox_append(wf: WorkflowContainer, *, message_id: str, body: str, at: str) -> inbox.Message | None:
-    """Append one operator message and return it, or ``None`` when the run has no directory yet to append into (a docker run whose first run dir hasn't been created)."""
-    if wf.native:
-        return inbox.append(Path(wf.runs_volume) / _INBOX_FILE, id=message_id, body=body, at=at)
-    rel_path = _docker_inbox_rel_path(wf.runs_volume)
-    if rel_path is None:
-        return None
-    message = inbox.Message.model_validate({"id": message_id, "body": body, "at": at})
-    existing = docker_io.read_file(wf.runs_volume, rel_path) or ""
-    ok = docker_io.write_file(wf.runs_volume, rel_path, existing + message.model_dump_json() + "\n")
-    return message if ok else None
 
 
 async def _handle_command(data: dict, queue: asyncio.Queue | None = None) -> None:

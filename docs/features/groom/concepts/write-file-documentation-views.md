@@ -8,7 +8,7 @@ title: Write-file documentation views
 `write_file` has one implementation in `groom/groom/docker_io.py::write_file`: it validates the
 volume-relative path, starts a temporary Docker container with the selected volume mounted at
 `/vol`, streams the complete content through standard input, and returns whether that process
-exited successfully. Its production caller in `groom/groom/app.py::_inbox_append` uses that
+exited successfully. Its production caller in `groom/groom/run_inbox.py::append` uses that
 single callable to append a message to a Docker-backed inbox.
 
 Three method nodes ground themselves in that one function. The [Groom Docker I/O
