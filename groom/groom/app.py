@@ -45,9 +45,9 @@ from groom.attention import RULE_EVENTS, AttentionEvent, AttentionFrame
 from groom.gates import answer_gate
 from groom.live_history import LiveHistory
 from groom.models import AnswerResult, GateInfo, RunTelemetry, WorkflowContainer, WorkflowState
+from groom.settings import AttendSettings, write_attend_settings
 from workhorse import control, inbox
 from workhorse import reload as reload_mod
-from workhorse._vendor.stablemate_core import config as core_config
 
 logger = logging.getLogger(__name__)
 
@@ -559,13 +559,13 @@ async def attend_settings_post(data: dict) -> dict:
     current = await asyncio.to_thread(attend.settings)
     enabled = bool(data.get("enabled"))
     wanted = (current.last_mode or attend.HEADLESS) if enabled else attend.OFF
-    updated = core_config.AttendSettings(
+    updated = AttendSettings(
         mode=wanted,
         last_mode=current.last_mode if wanted == attend.OFF else wanted,
         cli=current.cli,
         deny=current.deny,
     )
-    await asyncio.to_thread(core_config.write_attend_settings, updated)
+    await asyncio.to_thread(write_attend_settings, updated)
     attend.forget_settings()
     await _broadcast_shell()
     return (await asyncio.to_thread(attend.settings)).as_dict()

@@ -22,6 +22,7 @@ from workhorse.config_run import AgentResilience
 from workhorse.runner.process import ProcessSupervisor
 
 from groom import attend_transcript, gates, store
+from groom.settings import AttendSettings, resolve_attend_settings
 
 logger = logging.getLogger(__name__)
 
@@ -34,10 +35,10 @@ ATTENDABLE_KIND = "operator"
 _INBOX_FILE = "inbox.jsonl"
 
 
-_SETTINGS_CACHE: tuple[str, float, core_config.AttendSettings] | None = None
+_SETTINGS_CACHE: tuple[str, float, AttendSettings] | None = None
 
 
-def settings() -> core_config.AttendSettings:
+def settings() -> AttendSettings:
     """The effective ``[groom.attend]`` settings: config first, then env, then default."""
     global _SETTINGS_CACHE
     try:
@@ -50,10 +51,10 @@ def settings() -> core_config.AttendSettings:
     if cached is not None and cached[0] == key and cached[1] == stamp:
         return cached[2]
     try:
-        resolved = core_config.resolve_attend_settings()
+        resolved = resolve_attend_settings()
     except Exception:
         logger.warning("attend: could not read %s — treating attend as off", key or "the config")
-        resolved = core_config.AttendSettings(mode=OFF)
+        resolved = AttendSettings(mode=OFF)
     _SETTINGS_CACHE = (key, stamp, resolved)
     return resolved
 

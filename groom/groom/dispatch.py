@@ -12,11 +12,11 @@ import time
 import uuid
 from typing import Any
 
-from workhorse._vendor.stablemate_core import config as core_config
 from workhorse.config_run import AgentResilience
 from workhorse.runner.process import ProcessSupervisor
 
 from groom import store
+from groom.settings import DispatchQueueSettings, resolve_dispatch_queues
 
 logger = logging.getLogger(__name__)
 
@@ -46,10 +46,10 @@ def _slot(queue: str, concurrency: int) -> threading.Semaphore:
         return existing
 
 
-def queues() -> dict[str, core_config.DispatchQueueSettings]:
+def queues() -> dict[str, DispatchQueueSettings]:
     """Every configured queue, keyed by name."""
     try:
-        return core_config.resolve_dispatch_queues()
+        return resolve_dispatch_queues()
     except Exception:
         logger.warning("dispatch: could not read the dispatch queue config")
         return {}
@@ -107,7 +107,7 @@ def enqueue(queue: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
 
 
 def _apply_templates(
-    settings: core_config.DispatchQueueSettings, params: dict[str, Any]
+    settings: DispatchQueueSettings, params: dict[str, Any]
 ) -> dict[str, Any]:
     """Expand each param whose queue-config field declares a ``template``."""
     result = dict(params)

@@ -26,6 +26,7 @@ The package behind the `groom` dashboard, its OTLP collector and the in-containe
 - `pools.py`: the bounded thread pools that keep one kind of blocking work from starving another.
 - `prices.py`: the rate card that estimates a turn's cost when the harness does not report one.
 - `projection.py`: turning groom's state into the JSON the dashboard renders, including fleet order and liveness.
+- `settings.py`: the `[groom.attend]` and `[groom.dispatch]` tables of the home config, resolved with where each value came from.
 - `sidecar.py`: the in-container watcher that reports gates and run state to the host over one websocket.
 - `sidecar_hub.py`: the host-side registry of live sidecar sockets and the RPCs sent over them.
 - `sidecar_turns.py`: pulling a container's turn records over the sidecar socket into the archive.
