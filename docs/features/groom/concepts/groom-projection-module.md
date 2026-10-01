@@ -31,7 +31,7 @@ questions travel as data rather than markup.
 - consistency: fleet-row — a projected value that a human reads as a judgement is accompanied by the raw input it was derived from, so re-formatting in the browser never requires re-deciding. For example, `run_row` emits `live_label` with its `silence_s` duration.
 - verify: json_path(path="$.runs[0].live_label", equals="silent 13m 00s")
 - verify: json_path(path="$.runs[0].silence_s", equals=780.0)
-- thresholds: liveness classification reads `store.LIVE_AFTER_S`; the log trail is capped at `LOG_TRAIL_LIMIT`; severity coloring comes from `SEVERITY_CLASS`. All three are server-side policy and are not duplicated in the client.
+- thresholds: liveness classification reads `LIVE_AFTER_S`, which this module owns and `groom recent` and `live_status` share; the log trail is capped at `LOG_TRAIL_LIMIT`; severity coloring comes from `SEVERITY_CLASS`. All three are server-side policy and are not duplicated in the client.
 - ordering: fleet order is blocked, then alive, then presumed-dead, then finished, with ties broken by name so the list does not shuffle on a tick.
 - filtering: `state_message` accepts a query that filters the run list; the fleet-wide counts in `status` stay fleet-wide regardless, because a filtered count would misreport the fleet.
 
@@ -188,13 +188,13 @@ questions travel as data rather than markup.
 
 ### method-is-live
 
-- sig: `is_live(tel: RunTelemetry | None, now: float) -> bool`
+- sig: `is_live(tel: RunTelemetry | None, now: float, within: float | None = None) -> bool`
 - abstract: false
 - raises: none.
 - verify: json_path(path="exception.type", absent=true)
 - code: groom/groom/projection.py::is_live
 - step: Answer the one liveness question — is this run emitting right now — from telemetry recency alone.
-- step: Report not-running when this session's terminal has landed, or when nothing has been heard inside the liveness window; an earlier session's terminal does not count, because it is cleared as soon as a newer signal arrives.
+- step: Report not-running when this session's terminal has landed, or when nothing has been heard inside the liveness window, which is `within` seconds when the caller passes it and `LIVE_AFTER_S` otherwise; an earlier session's terminal does not count, because it is cleared as soon as a newer signal arrives.
 
 ### method-file-lang
 

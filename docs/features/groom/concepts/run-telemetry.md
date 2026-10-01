@@ -91,22 +91,23 @@ The [alert](alert.md) value is returned when an ingest or periodic rule newly pa
 
 - sig: `live_status(run: str = "", now: float | None = None) -> list[dict[str, Any]]`
 - does: projects each cached run with a producer heartbeat into the public live-status row shape.
-- does: reports node, turn, wait, gas, last-beat, and alive values, with `alive` false after the live window.
+- does: reports node, turn, wait, gas, last-beat, and alive values.
+- does: takes `alive` from `projection.is_live`, so a run is alive only when it is not terminal and its newest signal is inside the live window.
 - does: filters to the requested run id when `run` is non-empty and sorts rows newest heartbeat first.
 - returns: JSON-compatible rows when the cache entry has a heartbeat
 - verify: count(subject="live status rows", equals=1)
 - returns: no rows when the cache entry lacks a heartbeat
 - verify: count(subject="live status rows", equals=0)
-- code: `groom/groom/alerts.py::live_status` @777d4be85477
-- tests: `groom/tests/test_telemetry.py::test_live_status_row_shape_is_the_cli_json_contract`
+- code: `groom/groom/alerts.py::live_status` @da5d687bd2f0
+- tests: `groom/tests/test_telemetry.py::test_live_status_row_shape_is_the_cli_json_contract`, `groom/tests/test_telemetry.py::test_live_status_marks_an_ended_run_dead_while_its_heartbeat_is_fresh`
 
 ### live_run_ids
 
 - sig: `live_run_ids(now: float | None = None) -> set[str]`
 - does: returns exactly the run ids whose live-status rows are currently alive.
-- returns: a set containing no id for a run whose latest heartbeat is outside the live window.
+- returns: a set containing no id for a run that has ended or whose newest signal is outside the live window.
 - verify: count(subject="currently live run ids", equals=1)
-- code: `groom/groom/alerts.py::live_run_ids` @777d4be85477
+- code: `groom/groom/alerts.py::live_run_ids` @da5d687bd2f0
 - tests: `groom/tests/test_telemetry.py::test_live_status_row_shape_is_the_cli_json_contract`
 
 ### check_time_rules

@@ -8,7 +8,7 @@ import subprocess
 import time
 from pathlib import Path
 
-from groom import alerts, app as groom_app, gates, localfs, state, store
+from groom import alerts, app as groom_app, gates, localfs, projection, state
 from groom.models import GateInfo, WorkflowState
 
 
@@ -127,7 +127,7 @@ def test_a_run_that_goes_silent_still_reads_as_running(tmp_path):
                                    run_dir=str(run_dir))])
     groom_app._sync_native_row(state.RUNS["R5"])
     assert state.WORKFLOWS["R5"].state == WorkflowState.RUNNING
-    stale = time.time() - 10 * store.LIVE_AFTER_S
+    stale = time.time() - 10 * projection.LIVE_AFTER_S
     run = state.RUNS["R5"]
     run.last_heartbeat_ts = run.first_seen_ts = run.last_span_ts = stale
     groom_app._sync_native_row(run)

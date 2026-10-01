@@ -169,17 +169,26 @@ def recent(
     import json as _json
     import time
 
-    from groom import store
+    from groom import projection, store
+    from groom.models import RunTelemetry
 
     rows = store.recent_runs(limit=limit, workflow=workflow)
 
-    cutoff = float(alive_since_s) if alive_since_s is not None else store.LIVE_AFTER_S
+    cutoff = float(alive_since_s) if alive_since_s is not None else projection.LIVE_AFTER_S
     now = time.time()
+
+    def is_alive(row: store.RecentRun) -> bool:
+        tel = RunTelemetry(
+            run_id=row.run_id,
+            last_telemetry_ts=row.max_ts,
+            terminal="ended" if row.ended else "",
+        )
+        return projection.is_live(tel, now, within=cutoff)
 
     if as_json:
         out = []
         for row in rows:
-            alive = bool(row.max_ts) and (now - row.max_ts) <= cutoff
+            alive = is_alive(row)
             out.append(
                 {
                     "run": row.run_id,
@@ -207,7 +216,7 @@ def recent(
             if row.max_ts
             else "-"
         )
-        alive = bool(row.max_ts) and (now - row.max_ts) <= cutoff
+        alive = is_alive(row)
         marker = "alive" if alive else "dead "
         lines.append(
             f"{str(row.run_id)[:34]:<34} {str(row.workflow or '-')[:20]:<20}"

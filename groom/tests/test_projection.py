@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import json
 
-from groom import projection, state, store
+from groom import projection, state
 from groom.models import GateInfo, RunTelemetry, WorkflowContainer, WorkflowState
 
 
@@ -95,7 +95,7 @@ def test_fleet_rows_order_blocked_then_live_then_dead_then_finished():
     blk_wf, blk_tel = _blocked("blk", name="a", file_path="docs/a.md")
     with _runs_are({
         "live": _tel("live", last_heartbeat_ts=now - 5),
-        "dead": _tel("dead", last_heartbeat_ts=now - store.LIVE_AFTER_S - 600),
+        "dead": _tel("dead", last_heartbeat_ts=now - projection.LIVE_AFTER_S - 600),
         blk_tel.run_id: blk_tel,
     }):
         rows = projection.fleet_rows(

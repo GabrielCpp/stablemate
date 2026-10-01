@@ -1349,9 +1349,6 @@ def run_summaries(
     return [dict(row) for row in rows]
 
 
-LIVE_AFTER_S = float(os.environ.get("GROOM_LIVE_AFTER_S", "180"))
-
-
 _TEST_RUN_DIR_MARKERS = ("/pytest-of-", "/.workhorse-test/", "/.groom-test/")
 
 _PY_TEMP_DIR = re.compile(r"^tmp[A-Za-z0-9_]{6,}$")
@@ -1592,6 +1589,12 @@ class RecentRun:
     workflow: str = ""
     max_ts: float = 0.0
     spans: int = 0
+    ended_ts: float = 0.0
+
+    @property
+    def ended(self) -> bool:
+        """The run's ``run:*`` span closed, and nothing reached the store after it."""
+        return bool(self.ended_ts) and self.ended_ts >= self.max_ts
 
 
 @dataclass(frozen=True)
@@ -1683,7 +1686,8 @@ def recent_runs(limit: int = 10, workflow: str = "") -> list[RecentRun]:
 
     sql_spans = (
         "SELECT run_id, MAX(MAX(start_ts, end_ts)) AS max_ts,"
-        " MAX(workflow) AS workflow, COUNT(*) AS spans"
+        " MAX(workflow) AS workflow, COUNT(*) AS spans,"
+        " MAX(CASE WHEN name LIKE 'run:%' THEN end_ts END) AS ended_ts"
         " FROM spans WHERE run_id != ''"
     )
     params: tuple = ()
@@ -1704,12 +1708,13 @@ def recent_runs(limit: int = 10, workflow: str = "") -> list[RecentRun]:
         else conn.execute(sql_spans)  # noqa: S608 - bound placeholders
     )
 
-    spans_by_id: dict[str, tuple[float, str, int]] = {}
+    spans_by_id: dict[str, tuple[float, str, int, float]] = {}
     for row in spans_rows:
         spans_by_id[row["run_id"]] = (
             float(row["max_ts"] or 0.0),
             row["workflow"] or "",
             int(row["spans"] or 0),
+            float(row["ended_ts"] or 0.0),
         )
     if not spans_by_id:
         return []
@@ -1723,7 +1728,7 @@ def recent_runs(limit: int = 10, workflow: str = "") -> list[RecentRun]:
     metrics_by_id = {row["run_id"]: float(row["max_ts"] or 0.0) for row in metrics_rows}
 
     out: list[RecentRun] = []
-    for run_id, (span_max_ts, workflow_value, span_count) in spans_by_id.items():
+    for run_id, (span_max_ts, workflow_value, span_count, ended_ts) in spans_by_id.items():
         metric_max_ts = metrics_by_id.get(run_id, 0.0)
         merged_max_ts = max(span_max_ts, metric_max_ts)
         out.append(
@@ -1732,6 +1737,7 @@ def recent_runs(limit: int = 10, workflow: str = "") -> list[RecentRun]:
                 workflow=workflow_value,
                 max_ts=merged_max_ts,
                 spans=span_count,
+                ended_ts=ended_ts,
             )
         )
     out.sort(key=lambda row: row.max_ts, reverse=True)

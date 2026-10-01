@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import time
 from datetime import datetime
 from pathlib import PurePath
@@ -19,6 +20,8 @@ STATE_ORDER = {
 }
 
 LOG_TRAIL_LIMIT = 60
+
+LIVE_AFTER_S = float(os.environ.get("GROOM_LIVE_AFTER_S", "180"))
 
 SEVERITY_CLASS = {"FATAL": "bad", "ERROR": "bad", "WARNING": "warn"}
 
@@ -100,11 +103,11 @@ def silence_of(tel: RunTelemetry | None, now: float) -> float:
     return max(0.0, now - max(tel.last_heartbeat_ts, tel.last_span_ts, tel.first_seen_ts, tel.last_telemetry_ts))
 
 
-def is_live(tel: RunTelemetry | None, now: float) -> bool:
-    """Is this run's process emitting *right now*?"""
+def is_live(tel: RunTelemetry | None, now: float, within: float | None = None) -> bool:
+    """Is this run's process emitting *right now*, with no more than ``within`` seconds of silence?"""
     if tel is None or tel.terminal:
         return False
-    return silence_of(tel, now) <= store.LIVE_AFTER_S
+    return silence_of(tel, now) <= (LIVE_AFTER_S if within is None else within)
 
 
 def liveness(wf: WorkflowContainer, tel: RunTelemetry | None, now: float) -> tuple[str, str]:
@@ -116,7 +119,7 @@ def liveness(wf: WorkflowContainer, tel: RunTelemetry | None, now: float) -> tup
     if tel.terminal:
         return "done", tel.terminal
     silence = silence_of(tel, now)
-    if silence <= store.LIVE_AFTER_S:
+    if silence <= LIVE_AFTER_S:
         return "live", "alive"
     return "dead", f"silent {fmt_duration(silence)}"
 

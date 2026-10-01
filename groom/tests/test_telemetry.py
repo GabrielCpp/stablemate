@@ -1523,9 +1523,25 @@ def test_live_status_marks_a_run_dead_once_the_heartbeat_stops():
             otlp.parse_metrics(_metrics_request("workhorse.run.heartbeat", node="investigate")),
             now=2000.0,
         )
-        rows = alerts.live_status(now=2000.0 + store.LIVE_AFTER_S + 60)
+        rows = alerts.live_status(now=2000.0 + projection.LIVE_AFTER_S + 60)
         assert rows[0]["alive"] is False
         assert rows[0]["node"] == "investigate"
+
+
+def test_live_status_marks_an_ended_run_dead_while_its_heartbeat_is_fresh():
+    """An ended run leaves the live set at once, the same rule the dashboard's liveness chip applies."""
+    with _TelemetryEnv():
+        alerts.ingest_spans(
+            otlp.parse_traces(_trace_request([{"name": "run:coder", "terminal": "terminal", "end": 2000.0}])),
+            now=2000.0,
+        )
+        alerts.ingest_metrics(
+            otlp.parse_metrics(_metrics_request("workhorse.run.heartbeat", node="impl", ts=1990.0)),
+            now=2000.0,
+        )
+        (row,) = alerts.live_status(now=2000.0)
+        assert row["alive"] is False
+        assert alerts.live_run_ids(now=2000.0) == set()
 
 
 def test_live_run_ids_are_the_ones_beating_now():
@@ -1536,7 +1552,7 @@ def test_live_run_ids_are_the_ones_beating_now():
             now=2000.0,
         )
         assert alerts.live_run_ids(now=2000.0) == {"run-1"}
-        assert alerts.live_run_ids(now=2000.0 + store.LIVE_AFTER_S + 60) == set()
+        assert alerts.live_run_ids(now=2000.0 + projection.LIVE_AFTER_S + 60) == set()
 
 
 def test_live_status_keeps_the_newest_beat():

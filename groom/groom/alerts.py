@@ -7,7 +7,7 @@ import time
 from dataclasses import dataclass
 from typing import Any
 
-from groom import state, store
+from groom import projection, state
 from groom.models import LIVENESS_METRICS, RunTelemetry
 
 
@@ -435,7 +435,7 @@ def live_status(run: str = "", now: float | None = None) -> list[dict[str, Any]]
                 "wait_elapsed_s": tel.wait_elapsed_s if wait_kind else 0.0,
                 "gas": tel.gas,
                 "last_beat_ts": tel.last_beat_ts,
-                "alive": (now - tel.last_beat_ts) <= store.LIVE_AFTER_S,
+                "alive": projection.is_live(tel, now),
             }
         )
     return sorted(rows, key=lambda entry: entry["last_beat_ts"], reverse=True)

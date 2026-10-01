@@ -39,7 +39,7 @@ def _temp_db():
         tmp.cleanup()
 
 
-def _span(run_id: str, *, ts: float, workflow: str = "okf-builder") -> dict:
+def _span(run_id: str, *, ts: float, workflow: str = "okf-builder", name: str = "investigate") -> dict:
     """A minimal span the store will accept."""
     return {
         "span_id": f"sp_{run_id}_{ts}",
@@ -50,7 +50,7 @@ def _span(run_id: str, *, ts: float, workflow: str = "okf-builder") -> dict:
         "repo": "",
         "branch": "",
         "node": "investigate",
-        "name": "investigate",
+        "name": name,
         "run_dir": "",
         "start_ts": ts,
         "end_ts": ts + 0.5,
@@ -172,6 +172,27 @@ def test_recent_cli_dead_flag_for_run_older_than_threshold() -> None:
         out = _capture_recent(limit=5, alive_since_s=180.0)
         assert "yesterday" in out
         assert " dead " in out, f"expected ' dead ' marker; got:\n{out}"
+
+
+def test_recent_cli_marks_a_run_dead_once_its_run_span_closes() -> None:
+    """An ended run is not alive, however fresh its last span, which is the rule the dashboard shows."""
+    with _temp_db():
+        now = time.time()
+        store.insert_spans([_span("ended", ts=now - 60), _span("ended", ts=now - 30, name="run:coder")])
+
+        (row,) = json.loads(_capture_recent(limit=5, alive_since_s=180.0, as_json=True))
+        assert row["alive"] is False
+
+
+def test_recent_cli_keeps_a_run_alive_when_telemetry_outlives_its_run_span() -> None:
+    """A resumed run reuses its run id, so telemetry newer than the old ``run:*`` span is a new session that is alive."""
+    with _temp_db():
+        now = time.time()
+        store.insert_spans([_span("resumed", ts=now - 600, name="run:coder")])
+        store.insert_metrics([_metric("resumed", ts=now - 30)])
+
+        (row,) = json.loads(_capture_recent(limit=5, alive_since_s=180.0, as_json=True))
+        assert row["alive"] is True
 
 
 def test_recent_cli_workflow_filter_appears_in_empty_message() -> None:
