@@ -94,8 +94,8 @@ still shows the subcommand listing.
 - usage: `workhorse-<name> run [<flow>] [--params JSON]` (the default command)
 - flags:
   - `--context-file <path>` — the per-repo [context manifest](formats/context-manifest.md) (JSON)
-    that library prompts render against (template values, instruction/prompt path maps,
-    selected-skills set). When omitted, auto-detected as
+    that library prompts render against. Workhorse reads its `template`, `repo` and `vars`
+    values. When omitted, auto-detected as
     `$AGENT_REPO_DIR/.agents/agents-context.$AGENT_CLI.json` then
     `$AGENT_REPO_DIR/.agents/agents-context.json`; if neither exists the run proceeds with
     an empty manifest. If given explicitly, the path must exist — a typo is a hard error.
@@ -233,9 +233,9 @@ still shows the subcommand listing.
   - run: hand everything to the driver as one
     `workhorse/workhorse/pyflow/run.py::RunInvocation`, and `sys.exit()` with
     `run_pyflow`'s return code. That is where the run actually happens:
-    - **reference preflight** — warns about unresolved skill or prompt references in the manifest
-      before the first state, because an unresolved reference renders as prose in a live agent
-      prompt instead of failing
+    - **[reference preflight](concepts/reference-preflight.md)** warns before the first state
+      about each prompt that names a skill the workspace has not installed, or calls a retired
+      helper. Either call stops the turn that renders it.
     - under `--dry-run`, treats the same unresolved-reference list as an exit code
     - **`--dry-run`** — the [static preflight](concepts/pyflow-state-graph.md) first (every
       prompt path resolves, every state name binds, no state is unreachable, the machine
