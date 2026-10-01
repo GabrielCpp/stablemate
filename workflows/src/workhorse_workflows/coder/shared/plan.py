@@ -169,6 +169,13 @@ def get_affected_repos(plan_ctx: dict, repos: dict[str, dict]) -> list[str]:
     return sorted(names)
 
 
+def load_plan_context(root: Path, spec_dir: str, logger: logging.Logger) -> dict[str, Any]:
+    """The `plan-context.json` under a story's spec dir, or `{}` when there is none."""
+    if not spec_dir:
+        return {}
+    return load_json(_spec_dir(spec_dir, root) / "plan-context.json", "plan-context.json", logger)
+
+
 def plan_context(
     plan: dict[str, Any] | None, spec_dir: str, root: Path, repos: dict[str, dict],
     logger: logging.Logger,
@@ -177,9 +184,8 @@ def plan_context(
     if plan:
         spec_abs = _spec_dir(spec_dir, root) if spec_dir else None
         return plan_document(plan, repos, spec_abs, root), False
-    path = _spec_dir(spec_dir, root) / "plan-context.json" if spec_dir else None
-    on_disk = load_json(path, "plan-context.json", logger) if path else {}
-    return on_disk, path is None or not path.exists()
+    absent = not spec_dir or not (_spec_dir(spec_dir, root) / "plan-context.json").exists()
+    return load_plan_context(root, spec_dir, logger), absent
 
 
 def _dispatched_plan_problems(
@@ -429,6 +435,7 @@ def select_next_layer(
 __all__ = [
     "build_dispatch_list",
     "get_affected_repos",
+    "load_plan_context",
     "plan_context",
     "plan_document",
     "plan_summary",

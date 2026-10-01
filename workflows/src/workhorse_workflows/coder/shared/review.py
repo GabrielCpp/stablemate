@@ -9,8 +9,8 @@ from ostler import Ostler
 from workhorse_workflows.coder.shared.blueprint import blueprint
 from workhorse_workflows.coder.shared.schemas.dev import ImplResult
 from workhorse_workflows.coder.shared.schemas.review import Feedback, ReviewContext
-from workhorse_workflows.coder.shared.plan import get_affected_repos
-from workhorse_workflows.kit import find_docs_root, load_json, poll_run_inbox, resolve_workspace
+from workhorse_workflows.coder.shared.plan import get_affected_repos, load_plan_context
+from workhorse_workflows.kit import find_docs_root, poll_run_inbox, resolve_workspace
 
 RESOLUTION_FILE = "review-resolution.json"
 SETTLEMENT_FILE = "review-settlement.json"
@@ -27,11 +27,7 @@ def resolve_review_context(
 ) -> ReviewContext:
     """Where the review turns run, and which code repos they may read."""
     root = find_docs_root(docs_path, repo_dir)
-    plan_ctx = (
-        load_json(root / spec_dir / "plan-context.json", "plan-context.json", logger)
-        if spec_dir
-        else {}
-    )
+    plan_ctx = load_plan_context(root, spec_dir, logger)
     repos = resolve_workspace(workspace_file, repo_dir)
     names = [repo] if (not plan_ctx and repo) else get_affected_repos(plan_ctx, repos)
     return ReviewContext(

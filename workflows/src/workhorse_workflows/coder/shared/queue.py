@@ -8,8 +8,8 @@ from pathlib import Path
 from ostler import Ostler, markdown, path as okf_path, registry
 from workhorse import worklist as wl
 from workhorse.pyflow import WorkflowFailed
-from workhorse_workflows.coder.shared.plan import get_affected_repos
-from workhorse_workflows.kit import find_docs_root, find_repo_root, load_json
+from workhorse_workflows.coder.shared.plan import get_affected_repos, load_plan_context
+from workhorse_workflows.kit import find_docs_root, find_repo_root
 from workhorse_workflows.coder.shared import commits, paths, story_status
 from workhorse_workflows.coder.shared.blueprint import blueprint
 from workhorse_workflows.coder.shared.worktree import untouched_since
@@ -148,10 +148,7 @@ def branch_story(
     if _branch_repo(logger, docs_root, docs_root.name, branch):
         branched.append(docs_root.name)
 
-    spec_dir_rel = spec_dir or f"docs/specs/{slug}"
-    plan_ctx = load_json(
-        docs_root / spec_dir_rel / "plan-context.json", "plan-context.json", logger
-    )
+    plan_ctx = load_plan_context(docs_root, spec_dir or f"docs/specs/{slug}", logger)
     repos = resolve_workspace(workspace_file, repo_dir)
     for repo_name in get_affected_repos(plan_ctx, repos):
         repo_path = Path(repos[repo_name]["path"])
@@ -638,12 +635,7 @@ def _affected_roots(
 ) -> list[tuple[str, Path]]:
     """The repos this story's plan says it touched, as `(package name, checkout)` pairs."""
     repos = resolve_workspace(workspace_file, repo_dir)
-    spec = root / spec_dir if spec_dir else None
-    plan_ctx = (
-        load_json(spec / "plan-context.json", "plan-context.json", logger)
-        if spec and spec.exists()
-        else {}
-    )
+    plan_ctx = load_plan_context(root, spec_dir, logger)
     affected = get_affected_repos(plan_ctx, repos)
     if not affected:
         logger.info("no affected repos resolved from plan-context — falling back to the repo root")

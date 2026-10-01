@@ -99,6 +99,13 @@ that the flow routes.
 - verify: count(subject="inlined implementation plan", equals=1)
 - code: `workflows/src/workhorse_workflows/coder/shared/plan.py::read_plan_text` @428bdccd7106
 
+### load_plan_context
+- sig: `load_plan_context(root: Path, spec_dir: str, logger: logging.Logger) -> dict[str, Any]`
+- does: reads `plan-context.json` under the spec directory, taken relative to `root` unless absolute
+- returns: the parsed projection, or an empty mapping when the spec directory is empty or the file is missing or unreadable
+- verify: count(subject="plan-context reads", equals=1)
+- code: `workflows/src/workhorse_workflows/coder/shared/plan.py::load_plan_context` @ea0e347812ff
+
 ### resolve_impl_context
 - sig: `resolve_impl_context(logger: logging.Logger, spec_dir: str = "", target_env: str = "local", docs_path: str = "", repo_dir: str = "", workspace_file: str = "", plan: dict[str, Any] | None = None) -> ImplContext`
 - does: uses the checkpointed plan when present and otherwise loads the plan projection from disk

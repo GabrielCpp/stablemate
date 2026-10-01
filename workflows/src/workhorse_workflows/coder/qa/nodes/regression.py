@@ -10,6 +10,7 @@ from typing import Literal, NamedTuple
 
 from workhorse_workflows.coder.shared.blueprint import blueprint
 from workhorse_workflows.coder.shared.dev import gate_command
+from workhorse_workflows.coder.shared.plan import load_plan_context
 from workhorse_workflows.coder.shared.schemas.qa import (
     FailureAttribution,
     RegressionRun,
@@ -223,11 +224,7 @@ def detect_regression_suites(
 ) -> RegressionSuites:
     """Which committed journey suites did the approved plan put at risk?"""
     root = find_repo_root(repo_dir)
-    plan_ctx = (
-        load_json(root / spec_dir / "plan-context.json", "plan-context.json", logger)
-        if spec_dir
-        else {}
-    )
+    plan_ctx = load_plan_context(root, spec_dir, logger)
     repos = resolve_workspace(workspace_file, repo_dir)
 
     suites: list[RegressionSuite] = []

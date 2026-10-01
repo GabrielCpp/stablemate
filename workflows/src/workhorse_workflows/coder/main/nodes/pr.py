@@ -6,8 +6,8 @@ from pathlib import Path
 
 from github import GithubException
 from ostler import markdown, path as okf_path, registry
-from workhorse_workflows.coder.shared.plan import get_affected_repos
-from workhorse_workflows.kit import find_repo_root, load_json
+from workhorse_workflows.coder.shared.plan import get_affected_repos, load_plan_context
+from workhorse_workflows.kit import find_repo_root
 from workhorse_workflows.coder.shared import commits, paths
 from workhorse_workflows.coder.shared.blueprint import blueprint
 from workhorse_workflows.coder.shared.ci import push_epic_branch
@@ -377,11 +377,7 @@ def open_story_pr(
     repos = resolve_workspace(workspace_file, repo_dir)
 
     spec = root / spec_dir if spec_dir else None
-    plan_ctx = (
-        load_json(spec / "plan-context.json", "plan-context.json", logger)
-        if spec and spec.exists()
-        else {}
-    )
+    plan_ctx = load_plan_context(root, spec_dir, logger)
     affected = get_affected_repos(plan_ctx, repos)
     if not affected:
         logger.info("no affected repos resolved — nothing to PR")
