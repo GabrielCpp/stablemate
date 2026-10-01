@@ -567,6 +567,19 @@ def test_write_context_moves_the_verification_index_to_a_sidecar(tmp_path: Path)
     assert CONTEXT_HEADING in md_path.read_text(encoding="utf-8")
 
 
+def test_write_context_keeps_non_ascii_text_readable(tmp_path: Path):
+    """A writer reads the context file, so an accented title stays a letter and not a `\\u` escape."""
+    _book(tmp_path)
+    packet = build_context(tmp_path, base="HEAD", source_roots={"demo": ["app"]})
+    packet["obligations"][0]["title"] = "Créer une fiche"
+
+    json_path, _ = write_context(packet, tmp_path / "docs/specs/story-1")
+
+    text = json_path.read_text(encoding="utf-8")
+    assert "Créer une fiche" in text
+    assert json.loads(text)["obligations"][0]["title"] == "Créer une fiche"
+
+
 def _plan_covering(spec: Path, obligation: str) -> Path:
     path = spec / "qa_plan.py"
     path.write_text(

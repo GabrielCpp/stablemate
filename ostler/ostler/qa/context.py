@@ -11,6 +11,7 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
+from pydantic import TypeAdapter
 from unidiff.patch import PatchSet
 from unidiff.errors import UnidiffParseError
 
@@ -764,15 +765,16 @@ def _minted_obligations(
 VERIFICATION_INDEX_FILE = "qa-okf-verification-index.json"
 
 
+_JSON: TypeAdapter[Any] = TypeAdapter(Any)
+
+
 def write_context(packet: dict[str, Any], spec_dir: Path) -> tuple[Path, Path]:
     spec_dir.mkdir(parents=True, exist_ok=True)
     json_path = spec_dir / "qa-okf-context.json"
     md_path = spec_dir / "qa-okf-context.md"
     reader_packet = {key: value for key, value in packet.items() if key != "verificationIndex"}
-    (spec_dir / VERIFICATION_INDEX_FILE).write_text(
-        json.dumps(packet.get("verificationIndex", []), indent=2) + "\n", encoding="utf-8"
-    )
-    json_path.write_text(json.dumps(reader_packet, indent=2) + "\n", encoding="utf-8")
+    (spec_dir / VERIFICATION_INDEX_FILE).write_bytes(_JSON.dump_json(packet.get("verificationIndex", []), indent=2) + b"\n")
+    json_path.write_bytes(_JSON.dump_json(reader_packet, indent=2) + b"\n")
     md_path.write_text(render_context(reader_packet), encoding="utf-8")
     return json_path, md_path
 
