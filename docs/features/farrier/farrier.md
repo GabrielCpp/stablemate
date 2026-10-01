@@ -314,8 +314,14 @@ it — are the operator's to choose, not farrier's.
   - tests: `farrier/tests/test_user_install.py::test_prompts_under_a_non_claude_harness_are_an_error`
   - tests: `farrier/tests/test_user_install.py::test_a_pack_under_a_non_claude_harness_installs_its_skills_only`
   - run: render each table's selection with a [`Renderer`](concepts/renderer.md) at user scope
-    into `~/.claude/skills/<name>/SKILL.md`, `~/.claude/commands/<name>.md`,
-    `~/.codex/skills/<name>/SKILL.md` and `~/.copilot/skills/<name>/SKILL.md`
+    into `~/.claude/skills/<name>/SKILL.md`, `~/.claude/commands/<name>.md` and
+    `~/.agents/skills/<name>/SKILL.md`
+  - run: install the Codex and Copilot tables as one union into `~/.agents/skills`, the home
+    folder both harnesses read
+  - tests: `farrier/tests/test_user_install.py::test_codex_and_copilot_install_the_union_of_their_tables_into_one_folder`
+  - run: sweep the farrier-generated skills an older install left in `~/.codex/skills` and
+    `~/.copilot/skills`, and keep every hand-written file there
+  - tests: `farrier/tests/test_user_install.py::test_a_skill_left_in_the_old_codex_and_copilot_folders_is_swept`
   - run: name each installed skill by its **library group** (`stablemate/ostler` →
     `stablemate-ostler`), never by a repo — there is no repo to prefix with, and a personal skill
     is the same skill in every checkout
