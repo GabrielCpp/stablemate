@@ -5,19 +5,19 @@ title: Author main story processing
 ---
 # Author main story processing
 
-The Author main story-processing module contains the deterministic nodes that register a story,
-gate visual design, validate the story contract and
-grounding, retain failed approaches, consume operator feedback, and prune a consumed backlog item.
+The Author main flow's story-processing nodes register a story, gate visual design, validate
+the story contract and grounding, retain failed approaches, consume operator feedback, and prune
+a consumed backlog item.
 These nodes use Ostler as the source of truth for planning and document structure; they do not
 invent epic paths or duplicate the graph's story semantics.
 
-- code: `workflows/src/workhorse_workflows/author/main/nodes/stories.py::seed_story` @77042f1e2b6b
+- code: `workflows/src/workhorse_workflows/author/shared/nodes/story_mode.py::seed_story` @d2ddecee90dd
 - code: `workflows/src/workhorse_workflows/author/main/nodes/stories.py::check_mockup_needed` @77042f1e2b6b
-- code: `workflows/src/workhorse_workflows/author/main/nodes/stories.py::validate_story` @77042f1e2b6b
-- code: `workflows/src/workhorse_workflows/author/main/nodes/stories.py::check_story_grounding` @77042f1e2b6b
-- code: `workflows/src/workhorse_workflows/author/main/nodes/stories.py::record_attempt` @77042f1e2b6b
+- code: `workflows/src/workhorse_workflows/author/shared/nodes/stories.py::validate_story` @c2694da2f675
+- code: `workflows/src/workhorse_workflows/author/shared/nodes/stories.py::check_story_grounding` @c2694da2f675
+- code: `workflows/src/workhorse_workflows/author/shared/nodes/stories.py::record_attempt` @c2694da2f675
 - code: `workflows/src/workhorse_workflows/author/main/nodes/stories.py::check_story_feedback` @77042f1e2b6b
-- code: `workflows/src/workhorse_workflows/author/main/nodes/stories.py::prune_bullet` @77042f1e2b6b
+- code: `workflows/src/workhorse_workflows/author/shared/nodes/story_mode.py::prune_bullet` @d2ddecee90dd
 - detail: [Author main package](author-main-package.md)
 
 ## Methods
@@ -49,7 +49,7 @@ invent epic paths or duplicate the graph's story semantics.
 - verify: json_path(path="$.from_backlog", equals=true)
 - does: returns the creation or reuse reason
 - verify: json_path(path="$.reason", matches=".+")
-- code: `workflows/src/workhorse_workflows/author/main/nodes/stories.py::seed_story` @77042f1e2b6b
+- code: `workflows/src/workhorse_workflows/author/shared/nodes/story_mode.py::seed_story` @d2ddecee90dd
 - tests: `workflows/tests/author/test_workflow.py::test_story_mode_authors_one_bullet_and_does_not_commit`
 
 ### check_mockup_needed
@@ -88,7 +88,7 @@ invent epic paths or duplicate the graph's story semantics.
 - verify: json_path(path="$.ok", equals=false)
 - does: returns one newline-separated error per finding
 - verify: json_path(path="$.errors", matches=".+\\n.+")
-- code: `workflows/src/workhorse_workflows/author/main/nodes/stories.py::validate_story` @77042f1e2b6b
+- code: `workflows/src/workhorse_workflows/author/shared/nodes/stories.py::validate_story` @c2694da2f675
 - tests: `workflows/tests/author/test_story_contract.py::test_technical_notes_require_a_grounded_code_pointer`
 
 ### check_story_grounding
@@ -105,7 +105,7 @@ invent epic paths or duplicate the graph's story semantics.
 - verify: absent(subject="UI citation requirement on an empty UI graph")
 - does: returns `ok` with newline-separated findings only when seed scope and the armed UI citation contract hold
 - verify: json_path(path="$.ok", equals=false)
-- code: `workflows/src/workhorse_workflows/author/main/nodes/stories.py::check_story_grounding` @77042f1e2b6b
+- code: `workflows/src/workhorse_workflows/author/shared/nodes/stories.py::check_story_grounding` @c2694da2f675
 - tests: `workflows/tests/author/test_workflow.py::test_a_story_that_is_not_a_contract_is_reworked_against_the_gate`
 
 ### record_attempt
@@ -120,7 +120,7 @@ invent epic paths or duplicate the graph's story semantics.
 - verify: count(subject="duplicate attempt headings", equals=1)
 - does: preserves readable prior content when the ledger cannot be written
 - verify: persists(subject="the labeled failed approach in the attempts ledger")
-- code: `workflows/src/workhorse_workflows/author/main/nodes/stories.py::record_attempt` @77042f1e2b6b
+- code: `workflows/src/workhorse_workflows/author/shared/nodes/stories.py::record_attempt` @c2694da2f675
 - tests: `workflows/tests/author/test_workflow.py::test_a_story_that_is_not_a_contract_is_reworked_against_the_gate`
 
 ### check_story_feedback
@@ -144,5 +144,5 @@ invent epic paths or duplicate the graph's story semantics.
 - verify: count(subject="remaining identified backlog items", equals=2)
 - does: returns removed and remaining counts and treats write failure as a best-effort continuation
 - verify: removed(subject="the consumed backlog scope item")
-- code: `workflows/src/workhorse_workflows/author/main/nodes/stories.py::prune_bullet` @77042f1e2b6b
+- code: `workflows/src/workhorse_workflows/author/shared/nodes/story_mode.py::prune_bullet` @d2ddecee90dd
 - tests: `workflows/tests/author/test_workflow.py::test_story_prune_preserves_a_parent_with_nested_work`

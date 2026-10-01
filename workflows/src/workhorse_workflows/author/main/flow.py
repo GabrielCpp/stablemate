@@ -7,10 +7,10 @@ from workhorse.pyflow import Continue, Done, Workflow
 from workhorse_workflows.author.epic_author import EpicAuthor
 from workhorse_workflows.author.epic_split import EpicSplit
 from workhorse_workflows.author.finalize import Finalize
-from workhorse_workflows.author.main.nodes import (
+from workhorse_workflows.author.main.nodes import plan_author_step
+from workhorse_workflows.author.shared.nodes import (
     adopt_backlog,
     load_config,
-    plan_author_step,
     prune_bullet,
     seed_story,
 )

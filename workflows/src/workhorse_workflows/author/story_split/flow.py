@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any, ClassVar
 
 from workhorse.pyflow import Await, Continue, Done, Workflow, WorkflowFailed
-from workhorse_workflows.author.main.nodes import load_config, validate_coverage
+from workhorse_workflows.author.shared.nodes import load_config, validate_coverage
 from workhorse_workflows.author.shared import paths
 from workhorse_workflows.author.shared.schemas import (
     Config,

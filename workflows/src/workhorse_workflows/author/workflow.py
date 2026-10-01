@@ -15,6 +15,7 @@ from workhorse_workflows.author.main.nodes import blueprint
 from workhorse_workflows.author.milestone import Milestone
 from workhorse_workflows.author.milestone.nodes import blueprint as milestone_blueprint
 from workhorse_workflows.author.parity_surveyor import ParitySurveyor
+from workhorse_workflows.author.shared.nodes import blueprint as shared_blueprint
 from workhorse_workflows.author.shared.survey.blueprint import blueprint as survey_blueprint
 from workhorse_workflows.author.story_edit import StoryEdit
 from workhorse_workflows.author.story_edit.nodes import blueprint as story_edit_blueprint
@@ -28,6 +29,7 @@ workflow = (
     Registry("author", package=__package__)
     .add_blueprints(
         blueprint,
+        shared_blueprint,
         survey_blueprint,
         epic_edit_blueprint,
         story_edit_blueprint,

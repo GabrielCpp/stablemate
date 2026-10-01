@@ -11,7 +11,7 @@ explicit `repo_dir` input, follows the repository's configured Ostler document r
 the intake required by the selected mode. The feature book is read-only grounding; configuration
 loading does not create a surface inventory.
 
-- code: `workflows/src/workhorse_workflows/author/main/nodes/config.py::load_config` @45d9dd41985d
+- code: `workflows/src/workhorse_workflows/author/shared/nodes/config.py::load_config` @ead9f607b8ce
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Config` @e0c7b3335724
 - detail: [author shared paths](../concepts/author-shared-paths.md)
 - detail: [approved roadmap](../concepts/approved-roadmap.md)
@@ -94,7 +94,7 @@ loading does not create a surface inventory.
 - verify: count(subject="invalid approved roadmap configuration failures", equals=1)
 - returns: a `Config` containing the absolute repository root and repository-relative configured paths
 - verify: json_path(path="$.repo_root", matches=".+")
-- code: `workflows/src/workhorse_workflows/author/main/nodes/config.py::load_config` @45d9dd41985d
+- code: `workflows/src/workhorse_workflows/author/shared/nodes/config.py::load_config` @ead9f607b8ce
 - code: `workflows/tests/author/test_config.py::test_epic_authoring_requires_an_approved_roadmap`
 - tests: `workflows/tests/author/test_config.py::test_author_config_never_invents_a_surface_inventory`
 - tests: `workflows/tests/author/test_config.py::test_epic_authoring_requires_an_approved_roadmap`
@@ -108,4 +108,4 @@ loading does not create a surface inventory.
 - verify: json_path(path="$.template", matches="^\\{\\}$")
 - returns: the parsed YAML mapping or an empty mapping
 - verify: json_path(path="$.template", matches=".*")
-- code: `workflows/src/workhorse_workflows/author/main/nodes/config.py::_template` @45d9dd41985d
+- code: `workflows/src/workhorse_workflows/author/shared/nodes/config.py::_template` @ead9f607b8ce

@@ -1,28 +1,14 @@
-"""Validate and advance the durable inputs Author consumes."""
+"""Validate and advance the approved roadmap Author consumes."""
 from __future__ import annotations
 
 import logging
 import re
 
 from ostler import Ostler, markdown
-from ostler.result import Result
 from workhorse.pyflow import WorkflowFailed
 from workhorse_workflows.author.main.nodes._blueprint import blueprint
 from workhorse_workflows.author.shared.paths import survey_repo_root
 from workhorse_workflows.author.shared.schemas.main import Defects, RoadmapStatus
-
-
-@blueprint.node
-def adopt_backlog(
-    logger: logging.Logger,
-    repo_dir: str = "",
-) -> Result:
-    """Mint ids for every unnamed backlog bullet before decomposition or story lookup."""
-    result = Ostler(survey_repo_root(repo_dir)).backlog_adopt()
-    if not result.ok:
-        raise WorkflowFailed(result.message)
-    logger.info(result.message)
-    return result
 
 
 @blueprint.node
@@ -83,4 +69,4 @@ def mark_roadmap_authored(
     return RoadmapStatus(path=roadmap, status="authored")
 
 
-__all__ = ["adopt_backlog", "mark_roadmap_authored", "validate_roadmap_milestone"]
+__all__ = ["mark_roadmap_authored", "validate_roadmap_milestone"]

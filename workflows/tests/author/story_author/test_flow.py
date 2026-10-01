@@ -15,6 +15,7 @@ from workhorse.pyflow.driver import drive
 from workhorse.pyflow.engine import RunEnv
 from workhorse_workflows import author
 from workhorse_workflows.author.main.nodes import blueprint as main_blueprint
+from workhorse_workflows.author.shared.nodes import blueprint as shared_blueprint
 from workhorse_workflows.author.shared.schemas import Defects, Feedback, MockupGate
 from workhorse_workflows.author.story_author import StoryAuthor
 from workhorse_workflows.author.story_author.nodes import blueprint, prepare_story
@@ -116,7 +117,7 @@ def test_flow_prepares_explicit_story_before_authoring_without_git_side_effects(
         events.append("feedback")
         return Feedback()
 
-    registry = Registry("story-author-test").add_blueprints(main_blueprint, blueprint)
+    registry = Registry("story-author-test").add_blueprints(main_blueprint, shared_blueprint, blueprint)
     nodes = registry.override(
         prepare_story=prepare,
         check_mockup_needed=mockup,

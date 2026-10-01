@@ -49,7 +49,7 @@ title: Author story edit
 `StoryEdit.setup` resolves the repository root, backlog, epics root, and feature-book path through
 the configured document roots. In `story-edit` mode it refuses to start when the resolved backlog
 file is absent. This setup delegates to `load_config` in
-`workflows/src/workhorse_workflows/author/main/nodes/config.py`.
+`workflows/src/workhorse_workflows/author/shared/nodes/config.py`.
 
 ### Resolve the story intent
 For an add, the flow first adopts every unnamed backlog bullet through

@@ -10,7 +10,7 @@ adopts unnamed backlog bullets before selecting one; epic mode validates the sin
 owned by its roadmap and then advances that roadmap only after finalization. The nodes resolve the
 consuming repository from the explicit `repo_dir` input using the survey resolver.
 
-- code: `workflows/src/workhorse_workflows/author/main/nodes/intake.py::adopt_backlog` @123fcf25e173
+- code: `workflows/src/workhorse_workflows/author/shared/nodes/story_mode.py::adopt_backlog` @d2ddecee90dd
 - detail: [author roadmap intake](../flows/author-roadmap-intake.md)
 
 ## Methods
@@ -23,7 +23,7 @@ consuming repository from the explicit `repo_dir` input using the survey resolve
 - verify: absent(subject="backlog adoption result after failure")
 - returns: the Ostler adoption result after logging its message
 - verify: count(subject="backlog adoption results", equals=1)
-- code: `workflows/src/workhorse_workflows/author/main/nodes/intake.py::adopt_backlog` @123fcf25e173
+- code: `workflows/src/workhorse_workflows/author/shared/nodes/story_mode.py::adopt_backlog` @d2ddecee90dd
 - code: `workflows/tests/author/test_workflow.py::backlogged`
 - code: `workflows/tests/author/test_workflow.py::with_epic`
 - code: `workflows/tests/author/test_workflow.py::test_story_mode_authors_one_bullet_and_does_not_commit`

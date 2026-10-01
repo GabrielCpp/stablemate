@@ -5,8 +5,8 @@ import logging
 from pathlib import Path
 
 from ostler import Ostler
-from workhorse_workflows.author.main.nodes._blueprint import blueprint
-from workhorse_workflows.author.main.nodes import _stubs
+from workhorse_workflows.author.shared.nodes.blueprint import blueprint
+from workhorse_workflows.author.shared.nodes import stubs as _stubs
 from workhorse_workflows.author.shared.paths import survey_repo_root
 from workhorse_workflows.author.shared.schemas.main import Defects
 

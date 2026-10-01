@@ -14,7 +14,7 @@ from workhorse.pyflow import park as pyflow_park
 from workhorse.pyflow.driver import drive
 from workhorse.pyflow.engine import RunEnv
 from workhorse_workflows import author
-from workhorse_workflows.author.main.nodes import blueprint
+from workhorse_workflows.author.shared.nodes import blueprint
 from workhorse_workflows.author.shared.schemas import Defects
 from workhorse_workflows.author.story_split import StorySplitDone, StorySplitFlow
 from workhorse_workflows.author.story_split.nodes import blueprint as story_split_blueprint

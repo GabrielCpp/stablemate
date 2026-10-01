@@ -8,6 +8,8 @@ from workhorse.pyflow import Await, Continue, Done, Workflow, WorkflowFailed
 from workhorse_workflows.author.main.nodes import (
     check_mockup_needed,
     check_story_feedback,
+)
+from workhorse_workflows.author.shared.nodes import (
     check_story_grounding,
     load_config,
     record_attempt,

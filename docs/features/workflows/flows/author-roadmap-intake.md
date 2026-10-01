@@ -33,7 +33,7 @@ support a survey, `baseline_inventory` and `parity_survey_dir` support a parity 
 
 The machine itself is implemented by `workflows/src/workhorse_workflows/author/main/flow.py::Author`.
 Configuration, planning, and roadmap validation are implemented by
-`workflows/src/workhorse_workflows/author/main/nodes/config.py::load_config`,
+`workflows/src/workhorse_workflows/author/shared/nodes/config.py::load_config`,
 `workflows/src/workhorse_workflows/author/main/nodes/planner.py::plan_author_step`,
 `workflows/src/workhorse_workflows/author/main/nodes/intake.py::validate_roadmap_milestone`, and
 `workflows/src/workhorse_workflows/author/main/nodes/intake.py::mark_roadmap_authored`.
@@ -73,7 +73,7 @@ one approved roadmap and carries its resolved path in the run context; it does n
 backlog or create a feature inventory.
 
 Setup is implemented by `workflows/src/workhorse_workflows/author/main/flow.py::Author.setup`
-and `workflows/src/workhorse_workflows/author/main/nodes/config.py::load_config`.
+and `workflows/src/workhorse_workflows/author/shared/nodes/config.py::load_config`.
 
 ### Plan and dispatch
 After setup, the planner rereads the approved roadmap's planning graph and selects one incomplete
@@ -117,7 +117,7 @@ attempted after that failure.
 
 These non-epic branches are implemented by
 `workflows/src/workhorse_workflows/author/main/flow.py::Author.start` and
-`workflows/src/workhorse_workflows/author/main/nodes/intake.py::adopt_backlog`.
+`workflows/src/workhorse_workflows/author/shared/nodes/story_mode.py::adopt_backlog`.
 - tests: workflows/tests/author/test_workflow.py::test_story_mode_authors_one_bullet_and_does_not_commit
 - tests: workflows/tests/author/test_workflow.py::test_survey_mode_runs_the_surveyor_and_stops_at_discovery
 
@@ -144,9 +144,9 @@ Finalization is implemented by `workflows/src/workhorse_workflows/author/finaliz
 `workflows/src/workhorse_workflows/author/main/nodes/intake.py::validate_roadmap_milestone`,
 `workflows/src/workhorse_workflows/author/main/nodes/intake.py::mark_roadmap_authored`,
 `workflows/src/workhorse_workflows/author/main/nodes/artifacts.py::validate_artifacts`,
-`workflows/src/workhorse_workflows/author/main/nodes/artifacts.py::verify_integrity`,
+`workflows/src/workhorse_workflows/author/shared/nodes/integrity.py::verify_integrity`,
 `workflows/src/workhorse_workflows/author/main/nodes/artifacts.py::verify_reconcile`, and
-`workflows/src/workhorse_workflows/author/main/nodes/artifacts.py::commit_author`.
+`workflows/src/workhorse_workflows/author/shared/nodes/commit.py::commit_author`.
 
 When a story handoff returns an audit block, the dispatcher keeps the result, logs the blocked
 epic/story pair, adds that pair to the in-run skip set, and selects another stage. When the planner

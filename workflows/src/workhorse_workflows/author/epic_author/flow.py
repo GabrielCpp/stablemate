@@ -7,7 +7,7 @@ from typing import Any, ClassVar
 from workhorse.pyflow import Await, Continue, Done, Workflow
 from workhorse_workflows.author.epic_author.nodes import prepare_epic_target, validate_authored_epic
 from workhorse_workflows.author.epic_author.schemas import EpicAuthorContext, EpicAuthorDone
-from workhorse_workflows.author.main.nodes import load_config
+from workhorse_workflows.author.shared.nodes import load_config
 from workhorse_workflows.author.shared import paths
 from workhorse_workflows.author.shared.schemas import OperatorResolution, WriteEpicResult
 from workhorse_workflows.kit.telemetry import counter_labels

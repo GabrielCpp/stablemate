@@ -26,7 +26,7 @@ from workhorse.records import parse_checkpoint
 
 from workhorse_workflows import author
 from workhorse_workflows.author.main.nodes.artifacts import validate_artifacts
-from workhorse_workflows.author.main.nodes.stories import prune_bullet
+from workhorse_workflows.author.shared.nodes.story_mode import prune_bullet
 from workhorse_workflows.author.epic_edit import EpicEdit
 from workhorse_workflows.author.shared.survey import record_slug
 from workhorse_workflows.author.story_edit import StoryEdit

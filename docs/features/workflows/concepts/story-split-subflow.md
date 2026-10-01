@@ -199,8 +199,8 @@ nodes. Those modules are separate source-layer contracts and are descended indep
 resolution, telemetry labels, receipt persistence, and the agent result formats are already
 documented by the linked shared concepts and formats.
 
-- code: `workflows/src/workhorse_workflows/author/main/nodes/config.py::load_config` @45d9dd41985d
-- code: `workflows/src/workhorse_workflows/author/main/nodes/coverage.py::validate_coverage` @9e4ff84a79e8
+- code: `workflows/src/workhorse_workflows/author/shared/nodes/config.py::load_config` @ead9f607b8ce
+- code: `workflows/src/workhorse_workflows/author/shared/nodes/coverage.py::validate_coverage` @afd0929bfbc1
 - detail: [author coverage validator](coverage-validator.md)
 - detail: [author load_config documentation roles](author-load-config-documentation-roles.md)
 

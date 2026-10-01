@@ -64,7 +64,7 @@ allowing an unloadable graph to be explicitly skipped.
 - verify: count(subject="integrity error reports", equals=1)
 - returns: returns `VerifyReport` with the doctor summary and either a hold, skip, or formatted errors
 - verify: count(subject="integrity reports", equals=1)
-- code: `workflows/src/workhorse_workflows/author/main/nodes/artifacts.py::verify_integrity` @dcae8c53f8af
+- code: `workflows/src/workhorse_workflows/author/shared/nodes/integrity.py::verify_integrity` @ca330f6a9a15
 - tests: `workflows/tests/author/finalize/test_flow.py::test_finalizes_with_one_commit_on_the_current_branch`
 - tests: `workflows/tests/author/finalize/test_flow.py::test_terminal_validation_commits_incomplete_then_fails`
 
@@ -127,6 +127,6 @@ node in a fixture repository and captures the created commit subject.
 - verify: persists(subject="author-owned planning documents")
 - returns: returns `Committed` with `committed` indicating whether the scoped commit was created
 - verify: count(subject="author commit results", equals=1)
-- code: `workflows/src/workhorse_workflows/author/main/nodes/artifacts.py::commit_author` @dcae8c53f8af
+- code: `workflows/src/workhorse_workflows/author/shared/nodes/commit.py::commit_author` @9a9574c908ce
 - tests: `workflows/tests/author/finalize/test_flow.py::test_finalizes_with_one_commit_on_the_current_branch`
 - tests: `workflows/tests/author/finalize/test_flow.py::test_terminal_validation_commits_incomplete_then_fails`

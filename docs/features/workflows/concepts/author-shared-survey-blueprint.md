@@ -13,7 +13,9 @@ against this object, and the parity surveyor's own freeze and emission nodes reg
 on the same blueprint beside them. The author composition root imports the object as
 `survey_blueprint` and folds it into the merged registry through `add_blueprints`,
 alongside the main `Blueprint("author")` defined under
-[`main/nodes/_blueprint.py`](../../../../workflows/src/workhorse_workflows/author/main/nodes/_blueprint.py).
+[`main/nodes/_blueprint.py`](../../../../workflows/src/workhorse_workflows/author/main/nodes/_blueprint.py),
+and the `Blueprint("author-shared")` the nodes several author machines call register on, defined
+under [`shared/nodes/blueprint.py`](../../../../workflows/src/workhorse_workflows/author/shared/nodes/blueprint.py).
 
 Two graphs, one registration surface. The surveyor and the parity surveyor are
 separate state machines that happen to ship in the same package, and keeping their

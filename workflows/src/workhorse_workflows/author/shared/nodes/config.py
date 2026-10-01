@@ -6,7 +6,7 @@ from pathlib import Path
 
 import yaml
 from workhorse.pyflow import WorkflowFailed
-from workhorse_workflows.author.main.nodes._blueprint import blueprint
+from workhorse_workflows.author.shared.nodes.blueprint import blueprint
 from workhorse_workflows.author.shared import paths
 from workhorse_workflows.author.shared.paths import survey_repo_root
 from workhorse_workflows.author.shared.roadmap import approved_roadmap

@@ -256,7 +256,7 @@ The returned `Config` carries the resolved repository root, the repo-relative ba
 - does: resolve the author's paths and prove the selected intake exists
 - verify: count(subject="finalize configuration loads", equals=1)
 - verify: json_path(path="$.repo_root", matches=".+")
-- code: `workflows/src/workhorse_workflows/author/main/nodes/config.py::load_config` @45d9dd41985d
+- code: `workflows/src/workhorse_workflows/author/shared/nodes/config.py::load_config` @ead9f607b8ce
 - detail: [author load_config documentation roles](author-load-config-documentation-roles.md)
 
 ### verify_reconcile
@@ -277,7 +277,7 @@ The returned `Config` carries the resolved repository root, the repo-relative ba
 - verify: count(subject="fail-open integrity skips", equals=1)
 - consistency: integrity-error-report — when ostler doctor reports error-level findings, the returned VerifyReport.errors carries each finding's code, optional scope, and message
 - verify: json_path(path="$.errors", matches=".+\\].+")
-- code: `workflows/src/workhorse_workflows/author/main/nodes/artifacts.py::verify_integrity` @dcae8c53f8af
+- code: `workflows/src/workhorse_workflows/author/shared/nodes/integrity.py::verify_integrity` @ca330f6a9a15
 
 ### validate_roadmap_milestone
 - sig: `validate_roadmap_milestone(logger: logging.Logger, roadmap: str, repo_dir: str = "") -> Defects`
@@ -323,4 +323,4 @@ The node advances one validated roadmap from `approved` to `authored` (idempoten
 - verify: count(subject="authored commit messages", equals=1)
 - returns: a `Committed` carrying the success flag — `committed=True` when `commit_paths` produced a commit, `committed=False` when the repository has no git root, the configured scope is empty, or `commit_paths` did not produce a commit
 - verify: persists(subject="authored planning documents")
-- code: `workflows/src/workhorse_workflows/author/main/nodes/artifacts.py::commit_author` @dcae8c53f8af
+- code: `workflows/src/workhorse_workflows/author/shared/nodes/commit.py::commit_author` @9a9574c908ce

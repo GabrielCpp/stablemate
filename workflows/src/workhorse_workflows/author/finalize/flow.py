@@ -5,13 +5,15 @@ from pathlib import Path
 
 from workhorse.pyflow import Await, Continue, Done, Workflow, WorkflowFailed
 from workhorse_workflows.author.main.nodes import (
-    commit_author,
-    load_config,
     mark_roadmap_authored,
     validate_artifacts,
     validate_roadmap_milestone,
-    verify_integrity,
     verify_reconcile,
+)
+from workhorse_workflows.author.shared.nodes import (
+    commit_author,
+    load_config,
+    verify_integrity,
 )
 from workhorse_workflows.author.shared import paths
 from workhorse_workflows.author.shared.schemas import OperatorResolution, RunContext

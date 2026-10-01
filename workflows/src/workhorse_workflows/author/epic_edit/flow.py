@@ -13,7 +13,7 @@ from workhorse_workflows.author.epic_edit.nodes import (
     validate_edit_plan,
     validate_epic_document,
 )
-from workhorse_workflows.author.main.nodes import (
+from workhorse_workflows.author.shared.nodes import (
     check_story_grounding,
     commit_author,
     load_config,

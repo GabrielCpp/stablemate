@@ -4,6 +4,7 @@ What more than one author machine needs.
 
 ## Map
 
+- `nodes/`: the author nodes two or more machines call, on their own blueprint.
 - `paths.py`: where the author's artifacts live: the repo root and every derived epic, story, backlog and context path.
 - `roadmap.py`: which roadmap is the repo's one approved roadmap.
 - `schemas/`: the typed replies and node returns the author machines share.

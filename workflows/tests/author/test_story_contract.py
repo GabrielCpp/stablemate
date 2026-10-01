@@ -5,7 +5,7 @@ from pathlib import Path
 
 from ostler import Ostler
 
-from workhorse_workflows.author.main.nodes.stories import validate_story
+from workhorse_workflows.author.shared.nodes.stories import validate_story
 
 
 def _authored_story(repo: Path, technical_notes: str) -> str:
