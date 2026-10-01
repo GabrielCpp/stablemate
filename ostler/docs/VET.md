@@ -104,8 +104,9 @@ live-CDP path.
 | `regions.py` | `RegionBox` + `merge()`: groups `ScannedElement`s sharing a (near-)identical rect, labels via role. `RegionList` (a `TypeAdapter`) is the single source of truth for `*-regions.json` (de)serialization. |
 | `register.py` | IoU greedy matching between manifest elements and regions: `matched` / `missing` (expected, no rendered region — broken/occluded render) / `unexpected` (rendered, not expected — stray overlay/z-index leak) / `unlabeled` (unexpected *and* `role is None` — held for optional VLM residual review). |
 | `crop.py` | Optional: lazily imports `Pillow` to crop `unlabeled` regions out of the screenshot into in-memory PNG bytes; no-ops cleanly if `Pillow` is absent. Never writes to disk itself — dry-run-by-default is enforced by the caller bundling the bytes into the plan. |
-| `report.py` | `VetReport`/`VetSummary` models, the `docs/specs/<slug>/vet.md` Concept read-modify-write, and `VetPlan`/`VetFileWrite` (own dry-run-by-default file-write plan, supporting both text and binary content). |
+| `report.py` | `VetReport`/`VetSummary` models and the `docs/specs/<slug>/vet.md` Concept read-modify-write. |
 | `run.py` | Orchestrates one invocation end to end and returns `(VetOutcome, VetPlan)`. |
+| `writes.py` | `VetPlan`/`VetFileWrite`: the dry-run-by-default file-write plan, supporting both text and binary content. |
 
 ## Registration semantics (`register.match`)
 

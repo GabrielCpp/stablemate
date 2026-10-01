@@ -11,5 +11,6 @@ The `ostler vet` command. It registers the regions of one rendered UI state agai
 - `placement.py`: where a documented component should sit on screen and whether it did, and which selector forms each driver accepts.
 - `regions.py`: merging scanned elements that share a rect into labeled regions.
 - `register.py`: the deterministic greedy IoU match between manifest elements and regions.
-- `report.py`: the vet report, its `vet.md` Concept, and the file writes `--write` applies.
+- `report.py`: the vet report's shape and the `vet.md` Concept it rewrites.
 - `run.py`: one `ostler vet` invocation from a screenshot and a scan or replay to a report.
+- `writes.py`: the dry-run-by-default file writes `ostler vet --write` applies, text or binary.

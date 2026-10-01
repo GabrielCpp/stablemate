@@ -11,6 +11,7 @@ from ostler.model import Graph
 from ostler.vet import cdp, crop as crop_mod
 from ostler.vet import manifest as manifest_mod
 from ostler.vet import report as report_mod
+from ostler.vet.writes import VetFileWrite, VetPlan
 from ostler.vet.regions import RegionList, merge
 from ostler.vet.register import match
 
@@ -38,27 +39,27 @@ def _crop_stem(name: str, i: int) -> str:
 def run_vet(graph: Graph, screenshot: Path, manifest: Path, slug: str, *,
             cdp_url: str | None = None, regions_file: Path | None = None,
             state: str = "default", iou_threshold: float = 0.5,
-            ) -> tuple[VetOutcome, report_mod.VetPlan]:
+            ) -> tuple[VetOutcome, VetPlan]:
     """Exactly one of *cdp_url*/*regions_file* is set (enforced by the CLI's mutually exclusive group)."""
     spec_dir = graph.doc_roots["specs"] / slug
     vet_dir = spec_dir / "vet"
-    writes: list[report_mod.VetFileWrite] = []
+    writes: list[VetFileWrite] = []
 
     if cdp_url is not None:
         try:
             elements = cdp.connect_and_scan(cdp_url)
         except Exception as exc:  # noqa: BLE001 — any CDP/playwright failure is a run error
-            return VetOutcome(error=f"CDP scan of '{cdp_url}' failed: {exc}"), report_mod.VetPlan([])
+            return VetOutcome(error=f"CDP scan of '{cdp_url}' failed: {exc}"), VetPlan([])
         regions = merge(elements)
         regions_path = vet_dir / f"{state}-regions.json"
-        writes.append(report_mod.VetFileWrite(
+        writes.append(VetFileWrite(
             regions_path, RegionList.dump_json(regions, indent=2).decode("utf-8") + "\n"))
         regions_rel = _relative(regions_path, graph.root)
     else:
         assert regions_file is not None
         if not regions_file.is_file():
             return (VetOutcome(error=f"regions file '{regions_file}' does not exist"),
-                    report_mod.VetPlan([]))
+                    VetPlan([]))
         regions = RegionList.validate_json(regions_file.read_bytes())
         regions_rel = _relative(regions_file, graph.root)
 
@@ -69,7 +70,7 @@ def run_vet(graph: Graph, screenshot: Path, manifest: Path, slug: str, *,
     for i, data in crops.items():
         name = f"{state}-residual-{i}.png"
         match_result.unlabeled[i].crop = f"vet/{name}"
-        writes.append(report_mod.VetFileWrite(vet_dir / name, data))
+        writes.append(VetFileWrite(vet_dir / name, data))
 
     component_crops = crop_mod.maybe_crop(
         screenshot, [pair.region for pair in match_result.matched])
@@ -77,7 +78,7 @@ def run_vet(graph: Graph, screenshot: Path, manifest: Path, slug: str, *,
         pair = match_result.matched[i]
         name = f"{state}-{_crop_stem(pair.dom.name, i)}.png"
         pair.crop = f"vet/{name}"
-        writes.append(report_mod.VetFileWrite(vet_dir / name, data))
+        writes.append(VetFileWrite(vet_dir / name, data))
 
     vet_report = report_mod.build_report(
         slug=slug, state=state,
@@ -86,12 +87,12 @@ def run_vet(graph: Graph, screenshot: Path, manifest: Path, slug: str, *,
         iou_threshold=iou_threshold, match_result=match_result,
     )
 
-    writes.append(report_mod.VetFileWrite(
+    writes.append(VetFileWrite(
         vet_dir / f"{state}-report.json", vet_report.model_dump_json(by_alias=True, indent=2) + "\n"))
 
     concept_path = spec_dir / "vet.md"
     existing = concept_path.read_text(encoding="utf-8") if concept_path.is_file() else None
-    writes.append(report_mod.VetFileWrite(
+    writes.append(VetFileWrite(
         concept_path, report_mod.build_vet_concept(existing, vet_report)))
 
-    return VetOutcome(report=vet_report), report_mod.VetPlan(writes)
+    return VetOutcome(report=vet_report), VetPlan(writes)
