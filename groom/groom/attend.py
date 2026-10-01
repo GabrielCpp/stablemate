@@ -21,7 +21,7 @@ from workhorse._vendor.stablemate_core import skill_refs
 from workhorse.config_run import AgentResilience
 from workhorse.runner.process import ProcessSupervisor
 
-from groom import attend_transcript, gates, store
+from groom import attend_ledger, attend_transcript, gates
 from groom.settings import AttendSettings, resolve_attend_settings
 
 logger = logging.getLogger(__name__)
@@ -254,7 +254,7 @@ def _own(job: AttendJob, proc: subprocess.Popen[str], session_id: str) -> None:
             logger.exception("attend: lost the attendant for %s", job.run_id)
         if session_id:
             attend_transcript.copy_session(session_id)
-        store.attend_finish(
+        attend_ledger.attend_finish(
             job.job_id, exit_code=code, released_state=_released_state(job)
         )
         release(job.run_id)
@@ -266,7 +266,7 @@ def spawn_headless(job: AttendJob) -> None:
     """Dispatch a fresh attendant at this job and record the attempt as it starts."""
     session_id = str(uuid.uuid4()) if _mints_session(settings().cli) else ""
     proc = _launch(job, session_id)
-    store.attend_start(
+    attend_ledger.attend_start(
         job.job_id,
         run_id=job.run_id,
         workflow=job.workflow,
@@ -285,8 +285,8 @@ def spawn_headless(job: AttendJob) -> None:
 
 def stop(job_id: str) -> bool:
     """Kill a running attendant and hand the run back."""
-    row = store.attend_get(job_id)
-    if row is None or row.get("status") != store.ATTEND_RUNNING:
+    row = attend_ledger.attend_get(job_id)
+    if row is None or row.get("status") != attend_ledger.ATTEND_RUNNING:
         return False
     pid = row.get("pid")
     if isinstance(pid, int) and pid > 0:
@@ -298,7 +298,7 @@ def stop(job_id: str) -> bool:
             time.sleep(0.2)
     for session_id in row.get("session_ids") or []:
         attend_transcript.copy_session(str(session_id))
-    store.attend_finish(job_id, exit_code=None, released_state="stopped")
+    attend_ledger.attend_finish(job_id, exit_code=None, released_state="stopped")
     release(str(row.get("run_id") or ""))
     return True
 
@@ -322,12 +322,12 @@ def recover_orphans() -> int:
     """Restart every attendant groom was holding when it died."""
     spawning = mode() == HEADLESS
     restarted = 0
-    for row in store.attend_orphans():
+    for row in attend_ledger.attend_orphans():
         job_id = str(row.get("job_id") or "")
         if not job_id or _alive(row.get("pid")):
             continue
         if not spawning:
-            store.attend_finish(job_id, exit_code=None, released_state="lost")
+            attend_ledger.attend_finish(job_id, exit_code=None, released_state="lost")
             continue
         job = _job_from_row(row)
         session_id = str(uuid.uuid4()) if _mints_session(settings().cli) else ""
@@ -335,9 +335,9 @@ def recover_orphans() -> int:
             proc = _launch(job, session_id)
         except Exception:
             logger.exception("attend: could not restart the attendant for %s", job.run_id)
-            store.attend_finish(job_id, exit_code=None, released_state="lost")
+            attend_ledger.attend_finish(job_id, exit_code=None, released_state="lost")
             continue
-        store.attend_append_session(job_id, session_id, pid=proc.pid)
+        attend_ledger.attend_append_session(job_id, session_id, pid=proc.pid)
         _LEDGER.by_run[job.run_id] = job_id
         _own(job, proc, session_id)
         restarted += 1
@@ -421,7 +421,7 @@ def _blocked(run_id: str) -> bool:
     if mode() == OFF or run_id in _LEDGER.by_run:
         return True
     try:
-        return store.attend_running_for_run(run_id) is not None
+        return attend_ledger.attend_running_for_run(run_id) is not None
     except Exception:
         logger.exception("attend: could not read the running row for %s", run_id)
         return True

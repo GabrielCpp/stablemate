@@ -8,7 +8,7 @@ from datetime import datetime
 from pathlib import PurePath
 from typing import Any
 
-from groom import attend, gates, state, store
+from groom import attend, attend_ledger, gates, state, store
 from groom.attention import RULE_EVENTS, AttentionEvent
 from groom.models import GateInfo, RunTelemetry, WorkflowContainer, WorkflowState
 
@@ -273,7 +273,7 @@ def status_bar(workflows: list[WorkflowContainer]) -> dict[str, Any]:
 def attend_summary() -> dict[str, Any]:
     """The attendant's status, small enough to ride every ``state`` frame."""
     try:
-        latest = store.attend_latest_by_run()
+        latest = attend_ledger.attend_latest_by_run()
     except Exception:
         latest = {}
     by_run = {

@@ -9,6 +9,7 @@ The package behind the `groom` dashboard, its OTLP collector and the in-containe
 - `archive.py`: freezing a finished run's telemetry out of `groom.db` onto disk, and the sweep that decides which runs qualify.
 - `assets/`: the dashboard's browser client and its static files.
 - `attend.py`: dispatching an attendant agent to a run that parked on a gate or died, and its settings.
+- `attend_ledger.py`: the attendant sessions table: one row per attendance, its session ids and its outcome.
 - `attend_transcript.py`: where an attendant's session transcript is kept, and rendering it as a conversation.
 - `attention.py`: the wire records for attention events shared by the producer and `groom wait`.
 - `checkpoints.py`: reading a workhorse checkpoint's position without raising.

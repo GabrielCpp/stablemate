@@ -16,7 +16,7 @@ import pytest
 from litestar.testing import TestClient
 
 from groom import app as groom_app
-from groom import attend, attend_transcript, discovery, state, store
+from groom import attend, attend_ledger, attend_transcript, discovery, state, store
 from groom.alerts import Alert
 from groom.models import GateInfo, RunTelemetry, WorkflowContainer, WorkflowState
 
@@ -144,10 +144,10 @@ def test_a_running_row_holds_the_run_after_the_ledger_is_gone(attending: Configu
     """The durable half of "one attendant per run": groom restarted, the claude did not."""
     spawner = attending()
     assert _gate(spawner=spawner) is not None
-    store.attend_start("job-1", run_id="r1", kind="gate", started_at=0.0)
+    attend_ledger.attend_start("job-1", run_id="r1", kind="gate", started_at=0.0)
     attend.reset()
     assert _gate(spawner=spawner) is None
-    store.attend_finish("job-1", exit_code=0)
+    attend_ledger.attend_finish("job-1", exit_code=0)
     assert _gate(spawner=spawner) is not None
 
 
@@ -172,7 +172,7 @@ def test_session_mode_publishes_the_job_and_spawns_nothing(attending: Configure)
     assert _gate(spawner=spawner) is not None
     assert spawner.jobs == []
     assert [entry["gate_path"] for entry in attend.queue()] == ["docs/gate.md"]
-    assert store.attend_recent() == []
+    assert attend_ledger.attend_recent() == []
 
 
 def test_a_spawn_that_raises_leaves_the_job_published(attending: Configure):
@@ -281,42 +281,42 @@ def test_a_run_that_left_no_handoff_is_still_attended(attending: Configure, tmp_
 def test_a_row_is_running_until_the_owner_finishes_it(attending: Configure):
     """Two states, and no third: an attendant sends no heartbeat, so there is nothing a middle state could mean."""
     attending()
-    store.attend_start("j1", run_id="r1", workflow="okf-builder", kind="gate",
+    attend_ledger.attend_start("j1", run_id="r1", workflow="okf-builder", kind="gate",
                        session_id="s1", pid=99, started_at=100.0)
-    running = store.attend_running_for_run("r1")
-    assert running is not None and running["status"] == store.ATTEND_RUNNING
+    running = attend_ledger.attend_running_for_run("r1")
+    assert running is not None and running["status"] == attend_ledger.ATTEND_RUNNING
     assert running["session_ids"] == ["s1"]
-    store.attend_finish("j1", exit_code=0, released_state="ANSWERED")
-    assert store.attend_running_for_run("r1") is None
-    latest = store.attend_latest_for_run("r1")
+    attend_ledger.attend_finish("j1", exit_code=0, released_state="ANSWERED")
+    assert attend_ledger.attend_running_for_run("r1") is None
+    latest = attend_ledger.attend_latest_for_run("r1")
     assert latest is not None
     assert (latest["status"], latest["exit_code"], latest["released_state"]) == (
-        store.ATTEND_COMPLETED, 0, "ANSWERED",
+        attend_ledger.ATTEND_COMPLETED, 0, "ANSWERED",
     )
 
 
 def test_a_second_attempt_appends_to_the_row_it_already_has(attending: Configure):
     """Boot recovery is the same attendance continuing, so the history is one row."""
     attending()
-    store.attend_start("j1", run_id="r1", session_id="s1", pid=1, started_at=1.0)
-    store.attend_finish("j1", exit_code=None, released_state="")
-    store.attend_append_session("j1", "s2", pid=2)
-    row = store.attend_get("j1")
+    attend_ledger.attend_start("j1", run_id="r1", session_id="s1", pid=1, started_at=1.0)
+    attend_ledger.attend_finish("j1", exit_code=None, released_state="")
+    attend_ledger.attend_append_session("j1", "s2", pid=2)
+    row = attend_ledger.attend_get("j1")
     assert row is not None
     assert row["session_ids"] == ["s1", "s2"]
-    assert (row["status"], row["pid"], row["exit_code"]) == (store.ATTEND_RUNNING, 2, None)
-    assert store.attend_by_session("s1") == row
-    assert [orphan["job_id"] for orphan in store.attend_orphans()] == ["j1"]
+    assert (row["status"], row["pid"], row["exit_code"]) == (attend_ledger.ATTEND_RUNNING, 2, None)
+    assert attend_ledger.attend_by_session("s1") == row
+    assert [orphan["job_id"] for orphan in attend_ledger.attend_orphans()] == ["j1"]
 
 
 def test_the_log_is_newest_first_and_nothing_is_pruned(attending: Configure):
     """200 latest, most recent first — create-once, keep-forever."""
     attending()
     for index in range(5):
-        store.attend_start(f"j{index}", run_id=f"r{index}", started_at=float(index))
-    assert [row["job_id"] for row in store.attend_recent()] == ["j4", "j3", "j2", "j1", "j0"]
-    assert [row["job_id"] for row in store.attend_recent(2)] == ["j4", "j3"]
-    assert list(store.attend_latest_by_run()) == ["r0", "r1", "r2", "r3", "r4"]
+        attend_ledger.attend_start(f"j{index}", run_id=f"r{index}", started_at=float(index))
+    assert [row["job_id"] for row in attend_ledger.attend_recent()] == ["j4", "j3", "j2", "j1", "j0"]
+    assert [row["job_id"] for row in attend_ledger.attend_recent(2)] == ["j4", "j3"]
+    assert list(attend_ledger.attend_latest_by_run()) == ["r0", "r1", "r2", "r3", "r4"]
 
 
 def test_the_row_is_written_before_the_first_byte_and_flipped_at_exit(
@@ -334,17 +334,17 @@ def test_the_row_is_written_before_the_first_byte_and_flipped_at_exit(
     monkeypatch.setattr(attend, "_launch", _launch)
     job = _gate(spawner=None)
     assert job is not None
-    row = store.attend_get(job.job_id)
+    row = attend_ledger.attend_get(job.job_id)
     assert row is not None
-    assert (row["status"], row["pid"]) == (store.ATTEND_RUNNING, proc.pid)
+    assert (row["status"], row["pid"]) == (attend_ledger.ATTEND_RUNNING, proc.pid)
     assert row["session_ids"] == minted != [""]
 
     proc.done.set()
     _await(
-        lambda: (store.attend_get(job.job_id) or {}).get("status") == store.ATTEND_COMPLETED,
+        lambda: (attend_ledger.attend_get(job.job_id) or {}).get("status") == attend_ledger.ATTEND_COMPLETED,
         "the owning thread to close the row",
     )
-    assert (store.attend_get(job.job_id) or {})["exit_code"] == 0
+    assert (attend_ledger.attend_get(job.job_id) or {})["exit_code"] == 0
     assert attend.queue() == []
 
 
@@ -360,7 +360,7 @@ def test_stop_hard_kills_the_attendant_and_hands_the_run_back(attending: Configu
     attending()
     proc = _sleeper()
     try:
-        store.attend_start("j1", run_id="r1", kind="gate", session_id="s1",
+        attend_ledger.attend_start("j1", run_id="r1", kind="gate", session_id="s1",
                            pid=proc.pid, started_at=0.0)
         assert attend.stop("j1") is True
         assert proc.wait(timeout=WAIT_S) != 0
@@ -368,9 +368,9 @@ def test_stop_hard_kills_the_attendant_and_hands_the_run_back(attending: Configu
         if proc.poll() is None:
             proc.kill()
             proc.wait(timeout=WAIT_S)
-    row = store.attend_get("j1")
+    row = attend_ledger.attend_get("j1")
     assert row is not None
-    assert (row["status"], row["released_state"]) == (store.ATTEND_COMPLETED, "stopped")
+    assert (row["status"], row["released_state"]) == (attend_ledger.ATTEND_COMPLETED, "stopped")
     assert attend.stop("j1") is False
 
 
@@ -381,12 +381,12 @@ def test_boot_recovery_restarts_a_dead_pid_into_the_same_row(
     attending()
     dead = subprocess.Popen([sys.executable, "-c", ""])
     dead.wait(timeout=WAIT_S)
-    store.attend_start("j1", run_id="r1", workflow="okf-builder", kind="gate",
+    attend_ledger.attend_start("j1", run_id="r1", workflow="okf-builder", kind="gate",
                        run_dir="/runs/r1", workspace="/repo", session_id="s1",
                        pid=dead.pid, started_at=0.0)
     alive = _sleeper()
     try:
-        store.attend_start("j2", run_id="r2", kind="gate", session_id="s2",
+        attend_ledger.attend_start("j2", run_id="r2", kind="gate", session_id="s2",
                            pid=alive.pid, started_at=1.0)
         proc = _FakeProc(pid=777)
         monkeypatch.setattr(attend, "_launch", lambda job, session_id: proc)
@@ -395,14 +395,14 @@ def test_boot_recovery_restarts_a_dead_pid_into_the_same_row(
         alive.kill()
         alive.wait(timeout=WAIT_S)
 
-    row = store.attend_get("j1")
+    row = attend_ledger.attend_get("j1")
     assert row is not None
     assert len(row["session_ids"]) == 2 and row["session_ids"][0] == "s1"
-    assert (row["status"], row["pid"]) == (store.ATTEND_RUNNING, 777)
-    assert len(store.attend_recent()) == 2
+    assert (row["status"], row["pid"]) == (attend_ledger.ATTEND_RUNNING, 777)
+    assert len(attend_ledger.attend_recent()) == 2
     proc.done.set()
     _await(
-        lambda: (store.attend_get("j1") or {}).get("status") == store.ATTEND_COMPLETED,
+        lambda: (attend_ledger.attend_get("j1") or {}).get("status") == attend_ledger.ATTEND_COMPLETED,
         "the recovered attendant to close its row",
     )
 
@@ -534,9 +534,9 @@ def test_the_sessions_endpoint_is_the_log_the_pane_renders(attending: Configure)
     """Newest first, with the mode beside it — the pane says what it is looking at."""
     attending(attend.SESSION)
     _reset_fleet()
-    store.attend_start("j1", run_id="r1", workflow="okf-builder", kind="gate",
+    attend_ledger.attend_start("j1", run_id="r1", workflow="okf-builder", kind="gate",
                        reason="parked", session_id="s1", started_at=1.0)
-    store.attend_start("j2", run_id="r2", workflow="coder", kind="death",
+    attend_ledger.attend_start("j2", run_id="r2", workflow="coder", kind="death",
                        session_id="s2", started_at=2.0)
     client = _client()
     try:
@@ -552,9 +552,9 @@ def test_one_session_comes_back_with_a_pasteable_resume_line(attending: Configur
     """The point of keeping these is being able to go ask the attendant what it thought, and that needs the workspace as much as the session id."""
     attending(attend.SESSION)
     _reset_fleet()
-    store.attend_start("j1", run_id="r1", workflow="okf-builder", kind="gate",
+    attend_ledger.attend_start("j1", run_id="r1", workflow="okf-builder", kind="gate",
                        workspace="/repo", session_id="s1", started_at=1.0)
-    store.attend_append_session("j1", "s2", pid=5)
+    attend_ledger.attend_append_session("j1", "s2", pid=5)
     _transcript("s2", _MAIN)
     client = _client()
     try:
@@ -573,7 +573,7 @@ def test_the_stop_endpoint_kills_the_attendant(attending: Configure):
     _reset_fleet()
     proc = _sleeper()
     try:
-        store.attend_start("j1", run_id="r1", kind="gate", pid=proc.pid, started_at=0.0)
+        attend_ledger.attend_start("j1", run_id="r1", kind="gate", pid=proc.pid, started_at=0.0)
         client = _client()
         try:
             assert client.post("/api/attend/sessions/j1/stop").json() == {"ok": True}
@@ -585,7 +585,7 @@ def test_the_stop_endpoint_kills_the_attendant(attending: Configure):
         if proc.poll() is None:
             proc.kill()
             proc.wait(timeout=WAIT_S)
-    assert (store.attend_get("j1") or {})["status"] == store.ATTEND_COMPLETED
+    assert (attend_ledger.attend_get("j1") or {})["status"] == attend_ledger.ATTEND_COMPLETED
 
 
 def test_the_settings_endpoint_persists_the_toggle_to_the_home_config(

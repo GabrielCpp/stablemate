@@ -19,7 +19,7 @@ Connection discipline is load-bearing: one process-wide writer with an `RLock`, 
 
 - **Role**: queryable durable telemetry index, one per groom process
 - **Lifecycle**: opened lazily on first write, re-opened on connection failure, closed on process exit; tests reset between cases via `GROOM_DB` env var
-- **Data scope**: spans (traces), metrics (periodic readings), logs (structured records), turns (archived transcript index), attend_sessions (operator gate dispatch log)
+- **Data scope**: spans (traces), metrics (periodic readings), logs (structured records), turns (archived transcript index), and every table a ledger module registers through `register_table`
 - **Retention**: `RETENTION_DAYS` (default 30) bounds queryability; older rows are deleted once archival writes them to disk (`archived` set passed to `prune`)
 - **Concurrency**: SQLite WAL mode, one write lock per transaction, readers isolated per thread — no connection sharing between threads even within a pool
 - **Fault tolerance**: transient failures retry once; persistent failures (disk full, corruption) are recorded and surfaced via `health()` but not masked
@@ -33,7 +33,8 @@ Four main tables with indices for the common queries:
 - **metrics**: time-series gauge and counter points with run and name indices
 - **logs**: structured log records keyed by run and severity (3 indices)
 - **turns**: index of archived transcript files, keyed by visit (generation, seq, session) for replay order
-- **attend_sessions**: dispatch log for the operator gate attendant, one row per run needing rescue
+
+A ledger module owns its own table and registers it through `register_table`, as [Attendant session persistence](attendant-session-persistence.md) does for `attend_sessions`.
 
 Schema is versioned via `_ADDED_*_COLUMNS`, and a ledger table by the columns it passes to `register_table`, so a new groom can backfill columns on an existing store without migration tooling.
 
@@ -400,23 +401,6 @@ Input to any recovery that goes looking outside the span for what the model real
 - verify: json_path(path="$[0].span_id", matches=".+")
 - code: `groom/groom/store.py::unpriceable_turns`
 - tests: `groom/tests/test_store.py::test_unpriceable_turns_lists_turn_details_for_recovery`
-
-### attend_* (attendant gate support)
-
-- sig: `attend_start(job_id, *, run_id, ..., session_id, pid, started_at)` and `attend_append_session(job_id, session_id, pid)` and `attend_finish(job_id, *, exit_code, released_state, ended_at)` and `attend_running_for_run(run_id)` and `attend_latest_for_run(run_id)` and `attend_recent(limit)
-- does: track attendant dispatch: when groom sends a Claude session to rescue a stopped run, the row records the job, run, session history (for multi-generation rescues), exit code, and outcome
-- verify: created(subject="attendance record for stopped run")
-- does: one row per run, serial (no parallel attendants), status is running or completed
-- verify: count(subject="running attendance records per run", equals=1)
-- does: session_ids is an ordered list (newest last) so earlier attempts are findable and the latest is the active one
-- verify: persists(subject="session_ids list across multi-generation rescues")
-- returns: one row per call, or list/dict for the collection queries
-- verify: json_path(path="$.session_ids", matches="^\\[.*\\]$")
-- code: `groom/groom/store.py::attend_start`
-- code: `groom/groom/store.py::attend_running_for_run`
-- code: `groom/groom/store.py::attend_recent`
-- detail: [Attendant session persistence](attendant-session-persistence.md) — the per-method contract (signature, `does:`, `returns:`, `verify:`, `code:`) lives there; this summary block exists only to enumerate the family and is not a second spec for any one method
-- tests: `groom/tests/test_store.py::test_attend_session_tracks_dispatch_and_outcome`
 
 ## Implementation
 

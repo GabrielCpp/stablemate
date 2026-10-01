@@ -26,6 +26,7 @@ from groom import (
     alerts,
     archive,
     attend,
+    attend_ledger,
     attend_transcript,
     discovery,
     dispatch,
@@ -521,14 +522,14 @@ async def attend_queue() -> dict:
 @get("/api/attend/sessions", include_in_schema=False)
 async def attend_sessions() -> dict:
     """The attendance log: the latest 200, newest first."""
-    rows = await asyncio.to_thread(store.attend_recent, 200)
+    rows = await asyncio.to_thread(attend_ledger.attend_recent, 200)
     return {"mode": attend.mode(), "sessions": rows}
 
 
 @get("/api/attend/sessions/{session_id:str}", include_in_schema=False)
 async def attend_session(session_id: Annotated[str, PathParameter()]) -> dict:
     """One attendance, rendered as a conversation — not as JSON."""
-    row = await asyncio.to_thread(store.attend_by_session, session_id)
+    row = await asyncio.to_thread(attend_ledger.attend_by_session, session_id)
     await asyncio.to_thread(attend_transcript.ensure_body, session_id)
     rendered = await asyncio.to_thread(attend_transcript.render_session, session_id)
     workspace = str((row or {}).get("workspace") or "")
