@@ -9,15 +9,61 @@ from pathlib import Path
 from typing import Any
 
 __all__ = [
+    "RETIRED_HELPERS",
+    "HarnessFolders",
     "MissingSkill",
+    "RetiredHelper",
     "SkillCatalog",
     "SkillEntry",
     "SkillRefs",
     "display_path",
+    "harness_folders",
+    "repo_root",
+    "retired_hint",
+    "scan_catalog",
 ]
 
 SLASH_HARNESSES = frozenset({"claude", "copilot"})
 DOLLAR_HARNESSES = frozenset({"codex"})
+
+RETIRED_HELPERS = {
+    "instruction_file": "skill_link or skill_path",
+    "instruction_ref": "skill_link or skill_path",
+    "instruction_refs": "skill_link",
+    "skill_file": "skill_path",
+    "skill_files": "skill_link",
+    "instruction_files": "skill_link",
+    "prompt_file": "skill_path",
+    "prompt_ref": "skill_path",
+    "prompt_refs": "skill_link",
+    "prompt_files": "skill_link",
+    "skill_dir": "skill_path",
+    "skill_load_ref": "skill_command",
+    "skill_path_ref": "skill_path",
+    "isUsingInstruction": "has_skill",
+}
+
+
+def retired_hint(message: str) -> str:
+    """The replacement for a retired helper an undefined-name *message* names, if any."""
+    for name, replacement in RETIRED_HELPERS.items():
+        if f"'{name}' is undefined" in message:
+            return f"\n`{name}` is retired. Call {replacement} with the skill's library name."
+    return ""
+
+
+class RetiredHelper(NameError):
+    """A template called a helper that no longer exists."""
+
+    def __init__(self, name: str) -> None:
+        super().__init__(name)
+        self.helper = name
+
+    def __str__(self) -> str:
+        return (
+            f"`{self.helper}` is retired. Call {RETIRED_HELPERS[self.helper]} "
+            "with the skill's library name."
+        )
 
 
 class MissingSkill(LookupError):
@@ -142,3 +188,172 @@ class SkillRefs:
             "find_by_tags": self.find_by_tags,
             "has_skill": self.has_skill,
         }
+
+
+@dataclass(frozen=True)
+class HarnessFolders:
+    """Where one harness loads skills and prompts from, relative to a folder it searches."""
+
+    skills: tuple[str, ...]
+    prompts: tuple[str, ...]
+    home_skills: tuple[str, ...]
+    home_prompts: tuple[str, ...] = ()
+    added_dirs: bool = False
+
+
+HARNESS_FOLDERS = {
+    "claude": HarnessFolders(
+        skills=(".claude/skills",),
+        prompts=(".claude/commands",),
+        home_skills=(".claude/skills",),
+        home_prompts=(".claude/commands",),
+        added_dirs=True,
+    ),
+    "codex": HarnessFolders(
+        skills=(".agents/skills",),
+        prompts=(".agents/prompts",),
+        home_skills=(".agents/skills",),
+    ),
+    "copilot": HarnessFolders(
+        skills=(".github/skills", ".agents/skills", ".claude/skills"),
+        prompts=(".github/prompts",),
+        home_skills=(".agents/skills",),
+    ),
+}
+OTHER_HARNESS = HarnessFolders(
+    skills=(".claude/skills", ".agents/skills"),
+    prompts=(),
+    home_skills=(".claude/skills", ".agents/skills"),
+)
+
+
+def harness_folders(harness: str) -> HarnessFolders:
+    return HARNESS_FOLDERS.get(harness, OTHER_HARNESS)
+
+
+def repo_root(cwd: Path) -> Path:
+    """The nearest folder holding `.git` at or above *cwd*, else *cwd* itself."""
+    for folder in (cwd, *cwd.parents):
+        if (folder / ".git").exists():
+            return folder
+    return cwd
+
+
+def _unquote(value: str) -> str:
+    value = value.strip()
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+        return value[1:-1]
+    return value
+
+
+def _tag_list(value: str, items: list[str]) -> tuple[str, ...]:
+    value = value.strip()
+    if value.startswith("[") and value.endswith("]"):
+        value = value[1:-1]
+    raw = [*value.split(","), *items] if value else items
+    return tuple(tag for tag in (_unquote(part).lower() for part in raw) if tag)
+
+
+def _frontmatter(text: str) -> dict[str, str | tuple[str, ...]]:
+    """`name`, `tags` and `metadata.name` / `metadata.tags` from a markdown file's front matter."""
+    lines = text.splitlines()
+    if not lines or lines[0].strip() != "---":
+        return {}
+    found: dict[str, str | tuple[str, ...]] = {}
+    section = ""
+    pending: tuple[str, str, list[str]] | None = None
+
+    def flush() -> None:
+        if pending is not None:
+            key, value, items = pending
+            found[key] = _tag_list(value, items)
+
+    for line in lines[1:]:
+        if line.strip() == "---":
+            break
+        stripped = line.strip()
+        if pending is not None and stripped.startswith("- "):
+            pending[2].append(stripped[2:])
+            continue
+        flush()
+        pending = None
+        if not stripped or stripped.startswith("#") or ":" not in stripped:
+            continue
+        key, _, value = stripped.partition(":")
+        nested = line[:1].isspace()
+        if not nested:
+            section = key if not value.strip() else ""
+        scope = f"{section}." if nested and section else ""
+        if nested and not section:
+            continue
+        full = f"{scope}{key.strip()}"
+        if key.strip() == "tags":
+            pending = (full, value, [])
+        else:
+            found[full] = _unquote(value)
+    flush()
+    return found
+
+
+def _entry(path: Path, installed: str) -> SkillEntry:
+    try:
+        meta = _frontmatter(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError):
+        meta = {}
+    own = meta.get("name")
+    installed = own if isinstance(own, str) and own else installed
+    library = meta.get("metadata.name")
+    name = library if isinstance(library, str) and library else installed
+    tags = meta.get("metadata.tags", meta.get("tags", ()))
+    return SkillEntry(name, installed, path, tags if isinstance(tags, tuple) else ())
+
+
+def _skills_in(folder: Path) -> list[SkillEntry]:
+    if not folder.is_dir():
+        return []
+    return [
+        _entry(skill, skill.parent.name)
+        for skill in sorted(folder.glob("*/SKILL.md"))
+        if skill.is_file()
+    ]
+
+
+def _prompts_in(folder: Path) -> list[SkillEntry]:
+    if not folder.is_dir():
+        return []
+    return [
+        _entry(prompt, prompt.name.removesuffix(".md").removesuffix(".prompt"))
+        for prompt in sorted(folder.glob("*.md"))
+        if prompt.is_file()
+    ]
+
+
+def scan_catalog(
+    harness: str,
+    cwd: Path,
+    *,
+    home: Path,
+    added_dirs: Iterable[Path] = (),
+    root: Path | None = None,
+) -> SkillCatalog:
+    """What *harness* loads when started in *cwd*: the cwd up to the repo root, the added dirs, then home."""
+    folders = harness_folders(harness)
+    top = root if root is not None else repo_root(cwd)
+    walk = [cwd, *(parent for parent in cwd.parents if parent.is_relative_to(top))]
+    if not cwd.is_relative_to(top):
+        walk = [cwd]
+    entries: list[SkillEntry] = []
+    for folder in walk:
+        for rel in folders.skills:
+            entries += _skills_in(folder / rel)
+        for rel in folders.prompts:
+            entries += _prompts_in(folder / rel)
+    if folders.added_dirs:
+        for added in added_dirs:
+            for rel in folders.skills:
+                entries += _skills_in(added / rel)
+    for rel in folders.home_skills:
+        entries += _skills_in(home / rel)
+    for rel in folders.home_prompts:
+        entries += _prompts_in(home / rel)
+    return SkillCatalog.of(entries)

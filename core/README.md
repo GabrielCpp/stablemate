@@ -14,7 +14,9 @@ its public entry point. They share runtime state and must agree about it:
   fetch.
 - **skill references** (`skill_refs.py`) — one rule for how a template names a skill.
   Farrier renders a link at install time and workhorse renders one at run time. Both
-  must point at the same installed file.
+  must point at the same installed file. `scan_catalog` reads the skills a harness loads
+  at run time: the folders from the cwd up to the repo root, the added dirs on Claude
+  Code, then home.
 
 This was duplicated code in both tools until the duplication caused a real bug: two
 hand-rolled TOML writers, one of which stringified nested tables and silently destroyed
