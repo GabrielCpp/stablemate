@@ -1469,19 +1469,15 @@
       "reason": "non-product test detail folded into Farrier test suite runbook"
     },
     {
-      "code": "farrier/tests/test_skill_lookup_prefix_fallback.py",
+      "code": "farrier/tests/test_skill_lookup_by_name.py",
       "reason": "non-product test detail folded into Farrier test suite runbook"
     },
     {
-      "code": "farrier/tests/test_skill_lookup_prefix_fallback.py::test_generic_name_falls_back_to_repo_prefixed_skill",
+      "code": "farrier/tests/test_skill_lookup_by_name.py::test_the_library_name_resolves",
       "reason": "non-product test detail folded into Farrier test suite runbook"
     },
     {
-      "code": "farrier/tests/test_skill_lookup_prefix_fallback.py::test_exact_prefixed_name_still_resolves",
-      "reason": "non-product test detail folded into Farrier test suite runbook"
-    },
-    {
-      "code": "farrier/tests/test_skill_lookup_prefix_fallback.py::test_unknown_name_still_errors",
+      "code": "farrier/tests/test_skill_lookup_by_name.py::test_any_other_key_misses",
       "reason": "non-product test detail folded into Farrier test suite runbook"
     },
     {
@@ -1529,11 +1525,11 @@
       "reason": "non-product test detail folded into Farrier test suite runbook"
     },
     {
-      "code": "farrier/tests/test_skill_tags.py::test_skills_with_tags_is_an_and",
+      "code": "farrier/tests/test_skill_tags.py::test_a_tag_query_is_an_and",
       "reason": "non-product test detail folded into Farrier test suite runbook"
     },
     {
-      "code": "farrier/tests/test_skill_tags.py::test_find_by_tags_renders_the_matches_as_a_reference_list",
+      "code": "farrier/tests/test_skill_tags.py::test_find_by_tags_renders_the_matches_as_a_link_list",
       "reason": "non-product test detail folded into Farrier test suite runbook"
     },
     {

@@ -15,14 +15,14 @@ metadata:
 This skill is the **Python spelling** of two language-neutral contracts. Read them first; the *why*
 lives there and is not repeated here:
 
-- [`~/.claude/skills/hexagonal-architecture/SKILL.md`](~/.claude/skills/hexagonal-architecture/SKILL.md)
+- [hexagonal-architecture](~/.claude/skills/hexagonal-architecture/SKILL.md)
   — dependency direction, domain purity, port purity, generic-engine-vs-port, testability.
-- [`~/.claude/skills/code-structure/SKILL.md`](~/.claude/skills/code-structure/SKILL.md)
+- [code-structure](~/.claude/skills/code-structure/SKILL.md)
   — when functions become an object, when a module becomes two, data at boundaries, configuration
   and effects.
 
 For CLI conventions (exit codes, logging, `pathlib`, subprocess, imports) see
-[`../stablemate-python-cli/SKILL.md`](../stablemate-python-cli/SKILL.md).
+[stablemate-python-cli](../stablemate-python-cli/SKILL.md).
 
 ---
 
@@ -275,7 +275,7 @@ if TYPE_CHECKING:
 | A double stands in for the real port | `ty check` — a structural look-alike stops being assignable the moment the port changes, which is exactly when a stale fake is worth hearing about |
 
 The last four are why **`ty` runs alongside ruff** — setup and the zero-findings bar are in
-[`../stablemate-python-cli/SKILL.md`](../stablemate-python-cli/SKILL.md). Ruff reads one
+[stablemate-python-cli](../stablemate-python-cli/SKILL.md). Ruff reads one
 file at a time and never resolves a name to its definition, so no ruff rule can see an adapter
 that has drifted from its port. That is the failure this architecture is *most* exposed to: the
 whole point of a port is that the caller is written against the interface and never sees the
@@ -288,6 +288,6 @@ first time a deadline is close.
 
 This file covers package layout, interfaces, typed values, injection, and the checks. It does
 **not** cover CLI conventions — see
-[`../stablemate-python-cli/SKILL.md`](../stablemate-python-cli/SKILL.md). It does **not**
+[stablemate-python-cli](../stablemate-python-cli/SKILL.md). It does **not**
 cover test design or pytest mechanics — see
-[`../stablemate-python-testing/SKILL.md`](../stablemate-python-testing/SKILL.md).
+[stablemate-python-testing](../stablemate-python-testing/SKILL.md).

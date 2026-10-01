@@ -9,12 +9,16 @@ import yaml
 from jinja2 import Environment, StrictUndefined
 from jinja2 import UndefinedError
 
+from farrier._vendor.stablemate_core.skill_refs import (
+    SkillCatalog,
+    SkillEntry,
+    SkillRefs,
+)
 from farrier.frontmatter import (
     first_heading,
     front_matter_end,
     frontmatter_mapping,
     frontmatter_tags,
-    normalize_tags,
     split_front_matter,
 )
 from farrier.launcher import (
@@ -25,7 +29,7 @@ from farrier.launcher import (
     render_agents_mk,
 )
 from farrier.layers import available_names, find_in_layers
-from farrier.naming import relative_reference, repo_prefix, yaml_quote
+from farrier.naming import repo_prefix, yaml_quote
 from farrier.selection_errors import unknown_selection_error
 from farrier.sources import (
     Asset,
@@ -174,6 +178,40 @@ USER_HARNESS_DIRS = {
 }
 
 
+RETIRED_HELPERS = {
+    "instruction_file": "skill_link or skill_path",
+    "instruction_ref": "skill_link or skill_path",
+    "instruction_refs": "skill_link",
+    "skill_file": "skill_path",
+    "prompt_file": "skill_path",
+    "prompt_ref": "skill_path",
+    "prompt_refs": "skill_link",
+    "skill_dir": "skill_path",
+    "isUsingInstruction": "has_skill",
+}
+
+TEMPLATE_TOKENS = (
+    "{%",
+    "skill_link(",
+    "skill_path(",
+    "skill_command(",
+    "find_by_tags(",
+    "has_skill(",
+    "repo.",
+    "template.",
+    "vars.",
+    *(f"{name}(" for name in RETIRED_HELPERS),
+)
+
+
+def retired_hint(message: str) -> str:
+    """The replacement for a retired helper an undefined-name *message* names, if any."""
+    for name, replacement in RETIRED_HELPERS.items():
+        if f"'{name}' is undefined" in message:
+            return f"\n`{name}` is retired. Call {replacement} with the skill's library name."
+    return ""
+
+
 def user_harness_dir(target: str) -> str:
     if target not in USER_HARNESS_DIRS:
         raise SystemExit(f"Unknown user-scope render target: {target}")
@@ -219,6 +257,7 @@ class Renderer:
         self.policies = list(policies or [])
         self.policy_lookup = build_policy_lookup(self.policies)
         self._tags: dict[Path, list[str]] = {}
+        self._catalogs: dict[str, SkillCatalog] = {}
 
     def dest_rel(self, output_path: Path) -> str:
         """*output_path* as the generated file names itself, for `farrier source`."""
@@ -233,52 +272,73 @@ class Renderer:
             self._tags[source.path] = cached
         return cached
 
-    def skills_with_tags(self, tags: list[str]) -> list[Source]:
-        """The selected skills carrying **all** of *tags*, in library order."""
-        wanted = set(tags)
-        if not wanted:
-            return []
-        return [s for s in self.skills if wanted <= set(self.skill_tags(s))]
-
     def skill_source(self, name: str) -> Source:
-        source = self.optional_skill_source(name)
+        source = self.skill_lookup.get(name.replace(".", "-"))
         if source is None:
             raise SystemExit(f"Unknown selected skill reference: {name}")
         return source
 
-    def optional_skill_source(self, name: str) -> Source | None:
-        key = name.replace(".", "-")
-        source = self.skill_lookup.get(key)
-        if source is None and self.prefix and not key.startswith(f"{self.prefix}-"):
-            source = self.skill_lookup.get(f"{self.prefix}-{key}")
-        return source
+    def _entry(self, source: Source, installed: str, path: Path) -> SkillEntry:
+        tags = tuple(self.skill_tags(source)) if source.kind == "skill" else ()
+        return SkillEntry(
+            name=library_name(source), installed=installed, path=path, tags=tags
+        )
 
-    def home_skill_source(self, name: str, target: str) -> Source | None:
-        """The user-library skill *name* names for *target*, at repo scope only."""
-        if self.scope != "repo":
-            return None
-        return self.home_lookups.get(target, {}).get(name.replace(".", "-"))
+    def catalog(self, target: str) -> SkillCatalog:
+        """What a file rendered for *target* resolves against: this install, then home."""
+        entries = [
+            self._entry(
+                source,
+                public_name(self.prefix, source),
+                self.skill_output_path(library_name(source), target),
+            )
+            for source in self.skills
+        ]
+        entries += [
+            self._entry(
+                source,
+                public_name(self.prefix, source),
+                self.prompt_output_path(library_name(source), target),
+            )
+            for source in self.prompts
+            if self.scope == "repo" or target == "claude"
+        ]
+        if self.scope == "repo":
+            home = Path.home() / user_harness_dir(target) / "skills"
+            entries += [
+                self._entry(
+                    source,
+                    public_name("", source),
+                    home / public_name("", source) / "SKILL.md",
+                )
+                for source in self.home_lookups.get(target, {}).values()
+            ]
+        return SkillCatalog.of(entries)
 
-    def skill_reference(
-        self, name: str, target: str, from_file: Path, missing: str
-    ) -> str:
-        """Where *from_file* finds skill *name*: in this repo, else in the user library."""
-        if self.optional_skill_source(name):
-            return relative_reference(from_file, self.skill_output_path(name, target))
-        if self.scope == "user":
-            return missing
-        home = self.home_skill_source(name, target)
-        if home is None:
+    def skill_refs(self, target: str, from_file: Path) -> SkillRefs:
+        """The reference helpers for one file rendered for *target*."""
+        catalog = self._catalogs.get(target)
+        if catalog is None:
+            catalog = self._catalogs[target] = self.catalog(target)
+
+        def missing(name: str) -> str:
             self.unresolved.append(
                 f"  - {self.dest_rel(from_file)} → {name!r} "
                 f"(not in [user_library.{target}])"
             )
-            return missing
-        generated = public_name("", home)
-        return f"~/{user_harness_dir(target)}/skills/{generated}/SKILL.md"
+            return f"generated {name} skill when installed"
+
+        return SkillRefs(
+            catalog=catalog,
+            harness=target,
+            base=from_file.parent,
+            root=self.repo,
+            home=Path.home(),
+            on_missing=missing,
+        )
 
     def check_resolved(self) -> None:
-        """Exit naming every skill reference found neither in this repo nor at home."""
+        """Exit naming every skill reference found neither in this install nor at home."""
         if self.unresolved:
             raise SystemExit(
                 "error: these generated files reference skills that neither this "
@@ -287,7 +347,6 @@ class Renderer:
                 "the reference from the library source:\n"
                 + "\n".join(dict.fromkeys(self.unresolved))
             )
-
     def policy_source(self, name: str) -> Source:
         """The library file a ``policies:`` entry names, or exit."""
         key = name.replace(".", "-")
@@ -307,9 +366,6 @@ class Renderer:
         if key not in self.prompt_lookup:
             raise SystemExit(f"Unknown selected prompt reference: {name}")
         return self.prompt_lookup[key]
-
-    def optional_prompt_source(self, name: str) -> Source | None:
-        return self.prompt_lookup.get(name.replace(".", "-"))
 
     def skill_output_path(self, name: str, target: str) -> Path:
         source = self.skill_source(name)
@@ -356,69 +412,10 @@ class Renderer:
         raise SystemExit(f"Unknown skill dir target: {target}")
 
     def render_templates(self, content: str, target: str, from_file: Path) -> str:
-        if not any(
-            token in content
-            for token in [
-                "{%",
-                "instruction_file(",
-                "instruction_ref(",
-                "skill_file(",
-                "prompt_file(",
-                "prompt_ref(",
-                "find_by_tags(",
-                "skill_dir(",
-                "isUsingInstruction(",
-                "repo.",
-                "template.",
-                "vars.",
-            ]
-        ):
+        if not any(token in content for token in TEMPLATE_TOKENS):
             return content
         env = Environment(autoescape=False, undefined=StrictUndefined)
         template = env.from_string(content)
-
-        def instruction_ref(name: str) -> str:
-            return self.skill_reference(
-                name, target, from_file,
-                f"generated {name} instruction file when installed",
-            )
-
-        def prompt_ref(name: str) -> str:
-            if self.optional_prompt_source(name):
-                return relative_reference(
-                    from_file, self.prompt_output_path(name, target)
-                )
-            return f"generated {name} prompt when installed"
-
-        def skill_file(name: str) -> str:
-            return self.skill_reference(
-                name, target, from_file, f"generated {name} skill when installed"
-            )
-
-        def prompt_file_fn(name: str) -> str:
-            if self.optional_prompt_source(name):
-                return relative_reference(
-                    from_file, self.prompt_output_path(name, target)
-                )
-            return f"generated {name} prompt when installed"
-
-        def is_using_instruction(instruction_name: str) -> bool:
-            """Check if this project has a specific instruction selected."""
-            return (
-                self.optional_skill_source(instruction_name) is not None
-                or self.home_skill_source(instruction_name, target) is not None
-            )
-
-        def find_by_tags(*tags: str) -> str:
-            """The installed skills tagged with all of *tags*, as a reference list."""
-            wanted = normalize_tags(list(tags))
-            refs = sorted(
-                relative_reference(
-                    from_file, self.skill_output_path(library_name(source), target)
-                )
-                for source in self.skills_with_tags(wanted)
-            )
-            return ", ".join(f"`{ref}`" for ref in refs)
 
         def workhorse_var(name: str) -> str:
             """Emit a runtime variable reference that workhorse will fill at run time."""
@@ -434,16 +431,7 @@ class Renderer:
         )
         try:
             return template.render(
-                instruction_file=instruction_ref,
-                instruction_ref=instruction_ref,
-                skill_file=skill_file,
-                prompt_file=prompt_file_fn,
-                prompt_ref=prompt_ref,
-                skill_dir=lambda: relative_reference(
-                    from_file, self.skill_dir_path(target)
-                ),
-                isUsingInstruction=is_using_instruction,
-                find_by_tags=find_by_tags,
+                **self.skill_refs(target, from_file).globals(),
                 workhorse_var=workhorse_var,
                 repo=repo_context,
                 template=self.template_values,
@@ -453,7 +441,7 @@ class Renderer:
         except UndefinedError as exc:
             raise SystemExit(
                 f"error: {from_file.name} references a template value that is not "
-                f"defined: {exc.message}\n"
+                f"defined: {exc.message}{retired_hint(exc.message or '')}\n"
                 "Define it under `vars:` in agents.yml, or under "
                 "`[user_library.template]` for a user-scope install — or guard the "
                 'reference in the library source with `| default("…")`.'

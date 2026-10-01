@@ -101,17 +101,21 @@ def test_context_manifest_omits_the_untagged(tmp_path):
     assert renderer.context_manifest("claude")["instruction_tags"] == {}
 
 
-def test_skills_with_tags_is_an_and(tmp_path):
+def test_a_tag_query_is_an_and(tmp_path):
     web_tests = _skill(tmp_path, "web-tests", "tags: [web, tests]\n")
     web_std = _skill(tmp_path, "web-std", "tags: [web, standards]\n")
-    renderer = _renderer(tmp_path, [web_tests, web_std])
-    assert renderer.skills_with_tags(["web"]) == [web_tests, web_std]
-    assert renderer.skills_with_tags(["web", "tests"]) == [web_tests]
-    assert renderer.skills_with_tags(["web", "mobile"]) == []
-    assert renderer.skills_with_tags([]) == []
+    catalog = _renderer(tmp_path, [web_tests, web_std]).catalog("claude")
+
+    def names(*tags: str) -> list[str]:
+        return [entry.name for entry in catalog.tagged(tags)]
+
+    assert names("web") == ["web-std", "web-tests"]
+    assert names("web", "tests") == ["web-tests"]
+    assert names("web", "mobile") == []
+    assert names() == []
 
 
-def test_find_by_tags_renders_the_matches_as_a_reference_list(tmp_path):
+def test_find_by_tags_renders_the_matches_as_a_link_list(tmp_path):
     renderer = _renderer(
         tmp_path,
         [
@@ -123,8 +127,8 @@ def test_find_by_tags_renders_the_matches_as_a_reference_list(tmp_path):
         '{{ find_by_tags("web") }}', "claude", tmp_path / "AGENTS.md"
     )
     assert rendered == (
-        "`.claude/skills/demo-web-std/SKILL.md`, "
-        "`.claude/skills/demo-web-tests/SKILL.md`"
+        "[demo-web-std](.claude/skills/demo-web-std/SKILL.md), "
+        "[demo-web-tests](.claude/skills/demo-web-tests/SKILL.md)"
     )
 
 

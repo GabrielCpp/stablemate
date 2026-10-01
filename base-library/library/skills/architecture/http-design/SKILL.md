@@ -9,7 +9,7 @@ tags: [standards]
 
 This is the stack-neutral definition of a well-shaped HTTP API. It states the *contract*; the
 mechanics — router, framework, serializer, validation library — are stack-specific and live in
-the matching stack skill. The [`{{ instruction_file("hexagonal-architecture") }}`]({{ instruction_file("hexagonal-architecture") }})
+the matching stack skill. The {{ skill_link("hexagonal-architecture") }}
 skill governs where the handler sits (in the adapter ring, translating the wire into domain
 calls); this skill governs the shape of the wire itself.
 

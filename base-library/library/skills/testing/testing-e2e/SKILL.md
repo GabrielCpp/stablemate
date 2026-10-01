@@ -8,7 +8,7 @@ tags: [standards, tests]
 # The E2E Test Contract
 
 This is the driver-neutral definition of what makes an end-to-end spec trustworthy. It extends
-[`{{ instruction_file("testing-design") }}`]({{ instruction_file("testing-design") }}) — every rule
+{{ skill_link("testing-design") }} — every rule
 there applies here too — with the failure modes unique to driving a real, running system through
 its UI: locator brittleness, wait races, cold-start noise, and the "flaky or real?" judgment call.
 The mechanics of meeting it — the driver API, the assertion syntax, the mock layer — are
@@ -26,7 +26,7 @@ stable — it is what assistive technology depends on. Locate through it, not ar
 
 - **Prefer role + accessible name** over text-content or CSS/structure locators. A CSS path pins
   the DOM shape; a role locator pins the user-facing contract. This is the same contract
-  [`{{ instruction_file("ui-accessibility") }}`]({{ instruction_file("ui-accessibility") }})
+  {{ skill_link("ui-accessibility") }}
   requires the product to honor — an E2E locator is a screen-reader query, and a locator that
   cannot find an element is often reporting a real accessibility defect, not a test problem.
 - **Match the name on a stable, minimal token — a substring or pattern, never the full literal
@@ -70,7 +70,7 @@ deadline of §2 rather than a guessed bigger number sprinkled everywhere.
 ## 4. "Flaky" and "real" are both verdicts that need evidence
 
 Before a repair declares an E2E failure a test defect — or a product bug — run this checklist.
-It is [`{{ instruction_file("testing-design") }}`]({{ instruction_file("testing-design") }}) §9
+It is {{ skill_link("testing-design") }} §9
 (*ground truth from outside the code's own assumptions*) applied to E2E: the spec's own opinion of
 what happened is not evidence; the captured artifacts are.
 

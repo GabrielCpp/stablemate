@@ -238,6 +238,6 @@ holds and architecture that erodes. When you add a port, you owe both.
 This file governs the boundaries **between** rings. The rules for structure **inside** a ring —
 when a group of functions becomes an object, when a module becomes two, when a value crossing a
 boundary needs a name, where configuration and effects may appear — are in
-[`{{ instruction_file("code-structure") }}`]({{ instruction_file("code-structure") }}). The two are
+{{ skill_link("code-structure") }}. The two are
 complementary: a codebase can satisfy every obligation here and still be unreadable, because
 nothing above says a module may not be sixteen hundred lines.

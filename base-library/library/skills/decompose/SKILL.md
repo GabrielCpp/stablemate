@@ -157,7 +157,7 @@ others. It is never the base the new one extends.
   on the role alone?
 
 A "no" is a change to section 2, not a note. The
-[`{{ instruction_file("code-structure") }}`]({{ instruction_file("code-structure") }}) rules
+{{ skill_link("code-structure") }} rules
 1.9 to 1.11 are the same checks, read from code instead of from a design.
 
 ### 5. Mapping onto the existing system

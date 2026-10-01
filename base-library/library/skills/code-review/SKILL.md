@@ -15,7 +15,7 @@ that did not write the change, and that reads the repository's rules first, does
 A review reports three kinds of finding, and nothing else:
 
 1. **A structure trigger fires.** The
-   [`{{ instruction_file("code-structure") }}`]({{ instruction_file("code-structure") }})
+   {{ skill_link("code-structure") }}
    skill opens with a table of triggers. Each links the reference that holds its fix and
    its counter-case. A trigger that fires with no counter-case is a finding, and its id
    is the row number, such as `2.1`.

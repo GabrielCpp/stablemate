@@ -19,7 +19,7 @@ Specs live at `farrier/tests/test_*.py` across the 31 test modules: `test_agents
 `test_library_browse.py`, `test_library_check.py`, `test_local_instruction_mapping.py`,
 `test_makefile_include.py`, `test_pipx.py`, `test_policies.py`, `test_provenance_banner.py`,
 `test_qa_evidence_ignore.py`, `test_scaffold_command.py`, `test_selection_misses.py`,
-`test_skill_assets.py`, `test_skill_hooks.py`, `test_skill_lookup_prefix_fallback.py`,
+`test_skill_assets.py`, `test_skill_hooks.py`, `test_skill_lookup_by_name.py`,
 `test_skill_tags.py`, `test_source_command.py`, `test_tagged_deletion.py`, and `test_user_install.py`.
 
 Add a test beside the module for the behavior it exercises and use its temporary-path fixtures;

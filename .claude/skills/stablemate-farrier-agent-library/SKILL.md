@@ -61,9 +61,10 @@ skill's rules).
 4. **Wire it into a pack** — a skill or prompt is only installed if a pack the
    repo selects in `agents.yml` includes it. Packs compose via `includes:`.
 
-Cross-link sibling skills with the `{{ instruction_file("<name>") }}`
-template helper (where `<name>` is the target skill's base name) rather than
-duplicating content.
+Cross-link sibling skills with the `{{ skill_link("<name>") }}`
+template helper rather than duplicating content. `<name>` is the target skill's
+folder name, which is unique across the library. The link reads the installed
+name and points at the installed path, in this repo or in the home folder.
 
 ## Tagging a skill so a workflow can find it
 
@@ -77,7 +78,7 @@ other way. Prompts therefore ask by **capability**:
 ```
 
 The query is an AND — a skill matches only if it carries *every* tag asked for —
-and it renders the matching skills' installed paths, or nothing at all when the
+and it renders a link to each matching skill, or nothing at all when the
 repo has none. **Nothing at all is the default for an untagged library**: a skill
 with no `tags:` can never be the answer to a query, so a per-stack skill that
 isn't tagged is invisible to every workflow that would have used it.

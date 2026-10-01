@@ -166,7 +166,7 @@ def test_markdown_references_are_templated_from_their_own_location(tmp_path):
     root = _library(tmp_path)
     skill_dir = _skill(root, "go")
     _skill(root, "testing")
-    _write(skill_dir, "references/x.md", 'See {{ instruction_file("testing") }}.\n')
+    _write(skill_dir, "references/x.md", 'See {{ skill_path("testing") }}.\n')
     renderer = _renderer(tmp_path, root, ["go", "testing"])
 
     outputs = renderer.render(agents={"claude": True}, roots=set())

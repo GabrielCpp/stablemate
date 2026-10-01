@@ -3,7 +3,7 @@
 A **policy** is library text that reaches a repository only by being aggregated into a
 generated `AGENTS.md`, through a `localInstructions` mapping in that repo's `agents.yml`.
 It is never installed as a skill, never gets a slash command, is never an
-`instruction_file()` target, and never answers a tag query. It bundles no assets.
+`skill_link()` target, and never answers a tag query. It bundles no assets.
 
 ## Why the kind exists
 

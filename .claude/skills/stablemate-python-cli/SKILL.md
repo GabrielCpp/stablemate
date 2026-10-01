@@ -281,7 +281,7 @@ Always specify `encoding="utf-8"` — never rely on platform default.
 Which typed value to reach for (Pydantic vs frozen dataclass vs `TypedDict`), when a group of
 functions becomes a class, how services are wired, and where interfaces and their implementations
 live are all in
-[`../stablemate-python-architecture/SKILL.md`](../stablemate-python-architecture/SKILL.md).
+[stablemate-python-architecture](../stablemate-python-architecture/SKILL.md).
 They are not repeated here, because they were losing to the CLI mechanics around them.
 
 The three that decide most day-to-day calls:

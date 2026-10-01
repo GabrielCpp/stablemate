@@ -146,7 +146,7 @@ exclude:
 #
 # Keep always-loaded files (especially the repo root) lean: embed a skill only
 # when its full body must always be in context. For a large, situational skill,
-# *link* to it from the root skill body (`instruction_file("...")`) so the agent
+# *link* to it from the root skill body (`skill_link("...")`) so the agent
 # loads it on demand instead of paying its token cost every session.
 #
 # And when text belongs in an always-loaded file and nowhere else, write it as a

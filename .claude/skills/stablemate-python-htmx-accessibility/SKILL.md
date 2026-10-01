@@ -13,7 +13,7 @@ metadata:
 # Accessibility in an HTMX + Server-Rendered HTML App
 
 The universal obligations — role, name, keyboard, focus, perceivable state — are defined once in
-[`~/.claude/skills/ui-accessibility/SKILL.md`](~/.claude/skills/ui-accessibility/SKILL.md). **Read that
+[ui-accessibility](~/.claude/skills/ui-accessibility/SKILL.md). **Read that
 first.** This skill is the concrete *how* for a stack that is hand-authored HTML templates + HTMX
 (`hx-*` attributes, `hx-swap`, `hx-ext="ws"`) + vanilla JS, with **no JSX, no component framework,
 and no build step** — so there is no `eslint-plugin-jsx-a11y` to catch anything; the roles and

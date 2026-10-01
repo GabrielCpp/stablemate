@@ -29,9 +29,9 @@ The library is the single source of truth. Never hand-edit a generated adapter
 (`.claude/`, `.codex/`, `.github/`, `.agents/`, or a generated local
 `AGENTS.md`/`CLAUDE.md`) — change the library, then re-install.
 
-This repo does not ship the agent-library skill, so the essentials are inlined
-below. If you have `farrier` installed, `farrier config show` documents the same
-layout for the configured library.
+Read [stablemate-farrier-agent-library](../skills/stablemate-farrier-agent-library/SKILL.md) before you touch anything —
+it is the authority on layout, the `skill_link` cross-link helper, packs, and
+the install/verify loop.
 
 ## 0. Locate the library — never hardcode its path
 
@@ -82,7 +82,7 @@ Then find its home, preferring an **edit** over a new file:
   the generic group (`ui`, `infra`, `qa`, `review`, `process`, `stacks/<stack>`,
   `research`); repo-specific deltas live in `projects/<repo>/` and must **not**
   restate a generic skill — cross-link it instead with
-  `{{ instruction_file("<name>") }}`. Follow the
+  `{{ skill_link("<name>") }}`. Follow the
   reuse-before-create decision tree in `library/skills/CLAUDE.md`.
 - **Commands** — search `library/prompts/<group>/` for a prompt that already does
   the task. Extend it rather than adding a near-duplicate (two commands doing

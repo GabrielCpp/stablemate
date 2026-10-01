@@ -39,11 +39,9 @@ generated skill or prompt's public name (`public_name`).
   `load_layered_sources("skill", "library", "skills")` /
   `load_layered_sources("prompt", "library", "prompts")`, so an overlay source shadows a base one
   with the same id — see [the layer stack](library-directory.md#the-layer-stack)), each indexed into
-  `self.skill_lookup` / `self.prompt_lookup` via `build_lookup` — keyed by dotted id, deprefixed
-  public id, prefixed public name, and library-relative path (with/without `.md`/`.prompt.md`),
-  dash-normalized — so the `instruction_ref`/`prompt_ref`/`skill_file`/`isUsingInstruction` template
-  helpers below can resolve a reference by any of those spellings. Two sources normalizing to the
-  same lookup key raise `SystemExit("Ambiguous selected source id ...")`.
+  `self.skill_lookup` / `self.prompt_lookup` via `build_lookup`. The library name, the source's
+  folder name, is the only key. The template helpers below resolve a reference by that name
+  alone. Two sources sharing a library name raise `SystemExit("Ambiguous library name ...")`.
 - `policies` — the complete policy source list, copied into a policy lookup without repository
   prefix fallback; policies are included only when named by `localInstructions`.
 - `scope` — `repo` by default, or `user`; repository scope emits launchers and manifests, while
@@ -112,36 +110,35 @@ ownership, or source-part metadata.
 
 `render_templates(content, target, from_file)` renders a skill/prompt body with Jinja2
 (`StrictUndefined` — an unresolved `template.*`/`vars.*` reference raises unless the source guards
-it with `| default(...)`) if `content` contains any of a fixed token list (`instruction_file(`,
-`instruction_ref(`, `skill_file(`, `prompt_file(`, `prompt_ref(`, `skill_dir(`,
-`isUsingInstruction(`, `find_by_tags(`, `repo.`, `template.`, `vars.`); otherwise it returns
-`content` unchanged
-(cheap skip for templates using none of these). Helpers exposed to the template:
+it with `| default(...)`) if `content` contains any of a fixed token list (`skill_link(`,
+`skill_path(`, `skill_command(`, `find_by_tags(`, `has_skill(`, `{%`, `repo.`, `template.`,
+`vars.`, and the retired helper names); otherwise it returns `content` unchanged
+(cheap skip for templates using none of these).
 
-- `instruction_ref(name)` / `instruction_file(name)` — a relative path (`relative_reference`,
-  computed from `from_file`) to `name`'s rendered skill output for this render pass's `target`.
-  A skill the repo does not select resolves to its user-library copy,
-  `~/<harness>/skills/<name>/SKILL.md`, when the stablemate config's `[user_library.<target>]`
-  selects it. A skill found in neither place is recorded, and `check_resolved()` exits once
-  after the render, naming every such reference, so a repo that dropped a pack never ships a
-  pointer to a file nobody installs. At user scope there is no repo to look in, and the
-  reference keeps the soft `"generated <name> instruction file when installed"` fallback.
-- `skill_file(name)` — the same resolution as `instruction_ref`. Copilot used to be sent
-  through a `copilot-instruction` pseudo-target here, so the two helpers pointed at different
-  files for the same skill; the per-skill `.instructions.md` copy is no longer written, and
-  every target now resolves to the one open-format skill.
-- `prompt_ref(name)` / `prompt_file(name)` — a relative path to `name`'s rendered prompt output for
-  `target`; same "generated ... when installed" fallback if unselected.
-- `skill_dir()` — a relative path to this `target`'s skill directory (`skill_dir_path`).
-- `isUsingInstruction(name)` — `True` iff `name` is a selected skill or, at repo scope, a
-  user-library skill for this `target` (for `{% if %}` gating). An optional reference belongs
-  inside this guard, because an unguarded one to a skill found nowhere fails the install.
-- `find_by_tags(*tags)` — the selected skills whose front matter declares **all** of `tags`
-  (`skills_with_tags` over the cached `skill_tags`), rendered as their sorted `relative_reference`
-  paths, backticked and comma-joined; the empty string when the query is empty or nothing matches.
-  The install-time twin of workhorse's Jinja global of the same name, and it must keep rendering the
-  same shape, so one library source reads identically whether farrier rendered it into a repo or
-  workhorse rendered it from the library at run time.
+The five skill helpers come from `stablemate_core.skill_refs.SkillRefs`, the engine workhorse and
+groom render with too. `skill_refs(target, from_file)` binds it to `catalog(target)`: the selected
+skills, then the selected prompts where `target` loads them, then at repo scope the
+`[user_library.<target>]` skills installed in the home folder. The first entry for a name wins, so
+a repo copy shadows the home copy. A path under the repo renders relative to `from_file`. A path
+under the home folder renders as `~/...`. Helpers exposed to the template:
+
+- `skill_link(name)` — a Markdown link `[<installed name>](<path>)` to `name`'s installed file.
+- `skill_path(name, relative="")` — the path alone, or the path of `relative` inside the skill's
+  folder.
+- `skill_command(name)` — how `target` invokes the skill: `/<installed name>` for claude and
+  copilot, `$<installed name>` for codex, and a sentence naming the path otherwise.
+- `has_skill(name)` — `True` iff the catalog holds `name` (for `{% if %}` gating). An optional
+  reference belongs inside this guard.
+- `find_by_tags(*tags)` — a link to every catalog skill whose front matter declares **all** of
+  `tags`, sorted by name and comma-joined. The empty string when the query is empty or nothing
+  matches.
+
+A named reference that misses is recorded, and `check_resolved()` exits once after a repo render,
+naming every such reference, so a repo that dropped a pack never ships a pointer to a file nobody
+installs. At user scope the reference keeps the soft `"generated <name> skill when installed"`
+text. A retired helper (`instruction_file`, `instruction_ref`, `prompt_ref`, `skill_file`,
+`skill_dir`, `isUsingInstruction` and their siblings) fails the render with a hint naming its
+replacement.
 - `workhorse_var(name)` — emits `{{ name }}` literally, i.e. a *workhorse* template placeholder
   passed through unrendered by farrier's own Jinja pass, so workhorse can substitute it at workflow
   run time (e.g. `{{ workhorse_var('plan_path') }}` → `{{ plan_path }}` in the installed file).
@@ -275,32 +272,22 @@ template values, policies, and repo/user scope.
 - verify: count(subject="front matter reads for repeated tag lookups of the same skill source", equals=1)
 - code: `farrier/farrier/renderer.py::Renderer.skill_tags` @c90fc5d746a8
 
-### method: skills_with_tags
-- sig: `skills_with_tags(tags: list[str]) -> list[Source]`
-- does: return selected skills carrying every requested tag
-- verify: count(subject="skills carrying every requested tag for a non-empty query", equals=1)
-- does: preserve selected-source order for matching skills
+### method: catalog
+- sig: `catalog(target: str) -> SkillCatalog`
+- does: list the selected skills, the prompts `target` loads, and at repo scope the home skills, most local first
 - does: return no skills for an empty tag query
 - verify: count(subject="skills returned for an empty tag query", equals=0)
-- code: `farrier/farrier/renderer.py::Renderer.skills_with_tags` @c90fc5d746a8
-- tests: `farrier/tests/test_skill_tags.py::test_skills_with_tags_is_an_and`
+- code: `farrier/farrier/renderer.py::Renderer.catalog`
+- tests: `farrier/tests/test_skill_tags.py::test_a_tag_query_is_an_and`
 
 ### method: skill_source
 - sig: `skill_source(name: str) -> Source`
-- does: resolve a selected skill by its normalized lookup name
-- verify: count(subject="selected skill sources resolved by normalized lookup name", equals=1)
+- does: resolve a selected skill by its library name
+- verify: count(subject="selected skill sources resolved by library name", equals=1)
 - raises: `SystemExit` naming the unknown selected skill when no source matches
 - verify: count(subject="SystemExit results for unknown selected skill names", equals=1)
 - code: `farrier/farrier/renderer.py::Renderer.skill_source` @c90fc5d746a8
-
-### method: optional_skill_source
-- sig: `optional_skill_source(name: str) -> Source | None`
-- does: resolve a selected skill without raising when absent
-- verify: absent(subject="optional skill lookup result for an unknown selected skill")
-- does: accept dotted and dashed names and the repository-prefix fallback for an overlay skill
-- verify: count(subject="dotted, dashed, and repository-prefix skill lookup resolutions", equals=3)
-- code: `farrier/farrier/renderer.py::Renderer.optional_skill_source` @c90fc5d746a8
-- tests: `farrier/tests/test_skill_lookup_prefix_fallback.py::test_generic_name_falls_back_to_repo_prefixed_skill`
+- tests: `farrier/tests/test_skill_lookup_by_name.py::test_any_other_key_misses`
 
 ### method: policy_source
 - sig: `policy_source(name: str) -> Source`
@@ -374,7 +361,7 @@ template values, policies, and repo/user scope.
 - raises: `SystemExit` naming the missing template value when strict rendering finds an undefined value
 - verify: count(subject="undefined template value errors naming the missing value", equals=1)
 - code: `farrier/farrier/renderer.py::Renderer.render_templates` @c90fc5d746a8
-- tests: `farrier/tests/test_skill_tags.py::test_find_by_tags_renders_the_matches_as_a_reference_list`
+- tests: `farrier/tests/test_skill_tags.py::test_find_by_tags_renders_the_matches_as_a_link_list`
 
 ### method: context_manifest
 - sig: `context_manifest(target: str) -> dict[str, Any]`

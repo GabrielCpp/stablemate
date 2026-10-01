@@ -115,7 +115,7 @@ granted.
 
 ## Accessibility (the dashboard is a real UI — it owes the contract)
 
-The universal [`~/.claude/skills/ui-accessibility/SKILL.md`](~/.claude/skills/ui-accessibility/SKILL.md)
+The universal [ui-accessibility](~/.claude/skills/ui-accessibility/SKILL.md)
 contract applies and is the skill to load. There is **no per-stack skill for groom's stack** — it is
 a hand-authored HTML shell plus Preact islands with no router and no bundler, so the framework
 mechanics the stack skills exist to supply (HTMX swap/focus rules, React Router announcements)

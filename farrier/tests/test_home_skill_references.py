@@ -55,7 +55,7 @@ HOME_REVIEW = '[user_library.claude]\nskills = ["general/review"]\n'
 def test_a_reference_resolves_to_the_user_library_copy(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    library = make_library(tmp_path, 'See {{ instruction_file("review") }}.')
+    library = make_library(tmp_path, 'See {{ skill_path("review") }}.')
     write_config(tmp_path, monkeypatch, HOME_REVIEW)
 
     assert install(tmp_path, library) == 0
@@ -67,7 +67,7 @@ def test_a_reference_resolves_to_the_user_library_copy(
 def test_a_skill_the_repo_selects_wins_over_the_user_library(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    library = make_library(tmp_path, 'See {{ instruction_file("review") }}.')
+    library = make_library(tmp_path, 'See {{ skill_path("review") }}.')
     write_config(tmp_path, monkeypatch, HOME_REVIEW)
 
     selects = '  - "stack/*"\n  - "general/review"\n'
@@ -79,7 +79,7 @@ def test_a_skill_the_repo_selects_wins_over_the_user_library(
 def test_a_reference_found_nowhere_is_an_error(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    library = make_library(tmp_path, 'See {{ instruction_file("review") }}.')
+    library = make_library(tmp_path, 'See {{ skill_path("review") }}.')
     write_config(tmp_path, monkeypatch, "")
 
     with pytest.raises(SystemExit) as exc:
@@ -93,7 +93,7 @@ def test_a_check_that_cannot_resolve_a_reference_can_be_skipped(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """CI and a public clone have no user library, like they have no overlay."""
-    library = make_library(tmp_path, 'See {{ instruction_file("review") }}.')
+    library = make_library(tmp_path, 'See {{ skill_path("review") }}.')
     write_config(tmp_path, monkeypatch, "")
 
     assert install(tmp_path, library, "--check", "--skip-unresolvable") == 0
@@ -104,7 +104,7 @@ def test_a_guard_sees_a_user_library_skill_as_in_use(
 ) -> None:
     library = make_library(
         tmp_path,
-        '{% if isUsingInstruction("review") %}Reviewed.{% else %}Unreviewed.{% endif %}',
+        '{% if has_skill("review") %}Reviewed.{% else %}Unreviewed.{% endif %}',
     )
     write_config(tmp_path, monkeypatch, HOME_REVIEW)
 
@@ -118,11 +118,11 @@ def test_a_user_library_skill_keeps_the_soft_fallback(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """At user scope the missing skill may live in any repo, so it cannot fail."""
-    library = make_library(tmp_path, 'See {{ instruction_file("review") }}.')
+    library = make_library(tmp_path, 'See {{ skill_path("review") }}.')
     write_config(tmp_path, monkeypatch, '[user_library.claude]\nskills = ["stack/api"]\n')
     home = tmp_path / "home"
 
     assert main(["install", "--user", "--home", str(home), "--library", str(library)]) == 0
 
     text = (home / ".claude/skills/api/SKILL.md").read_text(encoding="utf-8")
-    assert "See generated review instruction file when installed." in text
+    assert "See generated review skill when installed." in text

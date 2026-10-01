@@ -7,7 +7,7 @@ tags: [standards]
 
 # Code Structure — Rules That Can Fire
 
-[`{{ instruction_file("hexagonal-architecture") }}`]({{ instruction_file("hexagonal-architecture") }})
+{{ skill_link("hexagonal-architecture") }}
 governs the boundaries **between** rings: which way dependencies point, what a port may name, where
 infrastructure is allowed to live. This skill governs the inside of a single ring — the decisions
 that never trip a layering check and produce most of the damage anyway: a 1,600-line module, a
@@ -82,7 +82,7 @@ Rule 5 stays here, because it is the one to carry without looking anything up.
 
 The five SOLID principles are design outcomes. They hold when the roles and the variants are named
 before the code is written, which is the job of
-[`{{ instruction_file("decompose") }}`]({{ instruction_file("decompose") }}). Load it before
+{{ skill_link("decompose") }}. Load it before
 adding a second way to do something the code already does, even when the request reads as wiring,
 such as "add an option to switch between X and Y". The rules below are how a reader detects,
 after the fact, a principle the design missed.

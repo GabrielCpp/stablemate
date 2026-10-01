@@ -41,7 +41,7 @@ Claude Code can invoke the installed Superdesign skill as a native slash command
 
 Include the target surface and local constraints in the prompt. Mention the
 app's UI framework, its screen/view-model patterns, and the repo's existing
-design-system files (see `{{ instruction_file("ui-design-system") }}`) when
+design-system files (see `{{ skill_path("ui-design-system") }}`) when
 relevant.
 
 ## Codex
