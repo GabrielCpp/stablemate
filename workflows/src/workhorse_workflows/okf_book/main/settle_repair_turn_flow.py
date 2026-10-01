@@ -45,16 +45,14 @@ Here is what it records{% if truncated %}, cut at {{ limit }} characters{% endif
 {{ diff }}
 ```
 
-Reply with a description and a body, from the diff alone. Run no command.
+Reply with only a JSON object, `{"description": "...", "body": "..."}`, written from the diff alone.
+Run no command.
 
 - The description follows `docs({{ service }}): ` in the subject, so the whole subject stays within 72
   characters. It is a lowercase imperative that names what changed for a reader of the book, such as
   "document the refund flow's error responses". It has no trailing period.
 - The body is empty, or one to three lines wrapped at 72 columns saying why the pages changed.
-{% if refused %}
-
-Your last reply was refused: {{ refused }}
-{% endif %}"""
+"""
 
 
 class RepairCommitDescription(BaseModel):
