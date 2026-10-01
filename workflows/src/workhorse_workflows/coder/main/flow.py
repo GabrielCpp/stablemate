@@ -38,12 +38,14 @@ from workhorse_workflows.coder.main.nodes.pr import (
 )
 from workhorse_workflows.coder.shared.queue import (
     begin_run,
-    check_repos_clean,
-    commit_story,
     flag_epic_blocked,
     prune_epic,
     select_epic,
     select_story,
+)
+from workhorse_workflows.coder.shared.story_commit import (
+    check_repos_clean,
+    commit_story,
     stamp_story_passed,
 )
 from workhorse_workflows.coder.shared.story import prepare_story, resolve_workspace_dirs

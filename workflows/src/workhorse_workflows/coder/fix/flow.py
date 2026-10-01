@@ -22,7 +22,7 @@ from workhorse_workflows.coder.shared.dev import (
 )
 from workhorse_workflows.coder.shared.escalation import context_path, escalation
 from workhorse_workflows.coder.shared.failure import from_gate
-from workhorse_workflows.coder.shared.queue import commit_story
+from workhorse_workflows.coder.shared.story_commit import commit_story
 from workhorse_workflows.coder.shared.story import (
     guard_story_file,
     prepare_fix_story,

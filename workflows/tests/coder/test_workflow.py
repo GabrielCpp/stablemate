@@ -34,10 +34,9 @@ from workhorse_workflows.coder.shared.queue import (
     BLOCKED_FILE,
     SKIP_FILE,
     begin_run,
-    check_repos_clean,
     select_epic,
-    stamp_story_passed,
 )
+from workhorse_workflows.coder.shared.story_commit import check_repos_clean, stamp_story_passed
 from workhorse_workflows.coder.shared.story import prepare_story
 from workhorse_workflows.coder.shared.schemas.ci import CiChecks, CiStatus
 from workhorse_workflows.coder.shared.schemas.dev import DevResult

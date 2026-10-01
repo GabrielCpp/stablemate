@@ -19,13 +19,14 @@ What more than one coder lane needs. Code that only one lane calls belongs in th
 - `paths.py`: where every coder artifact lives: repo roots, epics, the backlog, the feature book and operator context files.
 - `plan.py`: a story's plan context: loading `plan-context.json`, projecting it, and the dispatch order.
 - `qa_support.py`: a re-export of `kit/qa/support.py` for older coder call sites. New code imports the kit module.
-- `queue.py`: the epic and story queue: what runs next, what is set aside, and the commit that records a pass.
+- `queue.py`: the epic and story queue: which epic and story run next, and what is set aside.
 - `resolution.py`: the resolver half of an operator gate, which tries to answer a block before the run parks on it.
 - `review.py`: the review lane's work: where review turns run, the settlement gate, and the operator inbox poll.
 - `roles.py`: which prompt body and model a role resolves to, with the repo's own prompts ahead of the base library.
 - `scenarios.py`: the plan's Test Scenarios list, and which of its scenarios fall to the QA lane.
 - `schemas/`: the reply and return models every coder lane validates against.
 - `story.py`: which story a run is on, its workspace dirs and its spec stamps.
+- `story_commit.py`: the clean-tree check, the commit that records a passed story, and its stamp.
 - `story_status.py`: the story's Status line. It is the single place the coder records an outcome.
 - `stubs.py`: what the coder's gates return under `--dry-run`.
 - `worktree.py`: what the worktrees held before a turn, and what changed since.

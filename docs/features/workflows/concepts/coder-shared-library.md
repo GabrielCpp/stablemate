@@ -12,6 +12,7 @@ initializer; the individual modules below own the behavior and models they provi
 - code: `workflows/src/workhorse_workflows/coder/shared/__init__.py::__all__` @4e6ee2c36344
 - code: `workflows/src/workhorse_workflows/coder/shared/branches.py::__all__` @4f584f6ad5fb
 - code: `workflows/src/workhorse_workflows/coder/shared/queue.py::__all__` @723b6e5574da
+- code: `workflows/src/workhorse_workflows/coder/shared/story_commit.py::__all__` @fdee47c88877
 - code: `workflows/src/workhorse_workflows/coder/shared/qa_support.py::QA_PLAN_FILE` @dd46fb252212
 - code: `workflows/src/workhorse_workflows/coder/shared/qa_support.py::QA_RUN_LOG` @dd46fb252212
 - detail: [coder queue run scope](../formats/coder-queue-run-scope.md)
@@ -301,7 +302,7 @@ also `blocked`, never an implicit `done`.
 - verify: count(subject="story-owned paths after pre-existing and gate context exclusions", equals=1)
 - returns: `clean=true` only when no story-owned uncommitted paths remain, with repository names and dirty paths
 - verify: json_path(path="$.clean", equals=true)
-- code: `workflows/src/workhorse_workflows/coder/shared/queue.py::check_repos_clean` @723b6e5574da
+- code: `workflows/src/workhorse_workflows/coder/shared/story_commit.py::check_repos_clean` @fdee47c88877
 - tests: `workflows/tests/coder/test_workflow.py::test_one_epic_of_one_story_builds_it_prunes_the_queue_and_ends_on_an_empty_queue`
 
 ### stamp_story_passed
@@ -311,7 +312,7 @@ also `blocked`, never an implicit `done`.
 - does: commits only the status files written by the stamp as a `docs` commit
 - returns: whether the status was written and whether it replaced a prior non-default outcome
 - verify: persists(subject="the story's QA passed status")
-- code: `workflows/src/workhorse_workflows/coder/shared/queue.py::stamp_story_passed` @723b6e5574da
+- code: `workflows/src/workhorse_workflows/coder/shared/story_commit.py::stamp_story_passed` @fdee47c88877
 - tests: `workflows/tests/coder/test_workflow.py::test_the_story_is_stamped_and_the_next_selection_reads_it_as_done`
 
 ### commit_story
@@ -324,7 +325,7 @@ also `blocked`, never an implicit `done`.
 - raises: `WorkflowFailed` when git refuses an implementation commit
 - returns: whether implementation work committed anywhere and whether the status stamp superseded a prior outcome
 - verify: persists(subject="the story implementation commit and separate QA status stamp")
-- code: `workflows/src/workhorse_workflows/coder/shared/queue.py::commit_story` @723b6e5574da
+- code: `workflows/src/workhorse_workflows/coder/shared/story_commit.py::commit_story` @fdee47c88877
 - tests: `workflows/tests/coder/test_workflow.py::test_the_story_and_its_status_stamp_commit_as_conventional_commits`
 
 Implementation commits use the requested Conventional Commit kind and the affected checkout's
