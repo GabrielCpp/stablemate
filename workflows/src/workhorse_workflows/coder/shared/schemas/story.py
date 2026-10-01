@@ -21,22 +21,10 @@ class WorkspaceDirs(CoderResult):
     dirs: list[str] = []
 
 
-class WorktreeSnapshot(CoderResult):
-    """`snapshot_worktrees` — `git status --porcelain` per code repo, keyed by repo path."""
-
-    status: dict[str, str] = {}
-
-
-class PlanScrub(CoderResult):
-    """`scrub_plan_mutations` — what the post-plan-turn clean-tree gate reverted."""
-
-    reverted: dict[str, str] = {}
-
-
 class SpecsStamped(CoderResult):
     """`stamp-specs.py` — how many spec docs were given an OKF `type` this pass."""
 
     stamped: int = 0
 
 
-__all__ = ["PlanScrub", "SpecsStamped", "StoryPaths", "WorkspaceDirs", "WorktreeSnapshot"]
+__all__ = ["SpecsStamped", "StoryPaths", "WorkspaceDirs"]

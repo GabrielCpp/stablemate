@@ -8,7 +8,7 @@ from pathlib import Path
 from git.exc import GitError
 from workhorse_workflows.kit import find_docs_root
 from workhorse_workflows.coder.shared.blueprint import blueprint
-from workhorse_workflows.coder.shared.schemas.docs import WorktreeSnapshot
+from workhorse_workflows.coder.shared.schemas.worktree import DirtyAtStart
 from workhorse_workflows.kit import open_repo
 
 
@@ -35,7 +35,7 @@ def untouched_since(root: Path, snapshot: tuple[str, ...]) -> set[str]:
 @blueprint.node
 def snapshot_worktree_state(
     logger: logging.Logger, docs_path: str = "", repo_dir: str = ""
-) -> WorktreeSnapshot:
+) -> DirtyAtStart:
     """Record what was already dirty before this story's first dev turn."""
     root = Path(find_docs_root(docs_path, repo_dir)).resolve()
     try:
@@ -44,11 +44,11 @@ def snapshot_worktree_state(
         dirty.extend(repo.untracked_files)
     except (GitError, OSError, TypeError, ValueError, RuntimeError) as exc:
         logger.info("could not read the worktree state at %s (%s) — snapshot is empty", root, exc)
-        return WorktreeSnapshot(entries=[], notes=f"worktree state unavailable: {exc}")
+        return DirtyAtStart(entries=[], notes=f"worktree state unavailable: {exc}")
 
     entries = [f"{rel}\0{sha}" for rel in sorted(set(dirty)) if (sha := digest(root, rel))]
     logger.info("snapshotted %d pre-existing dirty path(s) at %s", len(entries), root)
-    return WorktreeSnapshot(
+    return DirtyAtStart(
         entries=entries, notes=f"{len(entries)} path(s) were already dirty when the story started"
     )
 

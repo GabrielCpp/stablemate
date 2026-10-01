@@ -25,13 +25,6 @@ class ContextClassification(CoderResult):
     notes: str = ""
 
 
-class WorktreeSnapshot(CoderResult):
-    """What was already dirty in the repo when this story started."""
-
-    entries: list[str] = []
-    notes: str = ""
-
-
 class DocumentationResult(CoderResult):
     """`docs/prompts/document-story.md` — the story folded into the as-built OKF book."""
 
@@ -222,5 +215,4 @@ __all__ = [
     "DocumentationReview",
     "OkfDetection",
     "RepairOverran",
-    "WorktreeSnapshot",
 ]

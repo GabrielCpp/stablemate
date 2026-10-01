@@ -43,13 +43,6 @@ title: Coder documentation schemas
 - verify: json_path(path="$.mode", equals="semantic")
 - code: `workflows/src/workhorse_workflows/coder/shared/schemas/docs.py::ContextClassification` @89d705a1dfe2
 
-### method: WorktreeSnapshot
-- sig: `WorktreeSnapshot(entries: list[str] = [], notes: str = "") -> WorktreeSnapshot`
-- does: carries pre-existing dirty worktree entries as path-and-content hashes
-- returns: the entries and snapshot notes used to distinguish operator edits from story changes
-- verify: json_path(path="$.entries", matches=".*")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/docs.py::WorktreeSnapshot` @89d705a1dfe2
-
 ### method: DocumentationResult
 - sig: `DocumentationResult(status: Literal["documented", "not_required", "blocked"], nodes: list[str] = [], notes: str = "") -> DocumentationResult`
 - does: carries an agent's documentation decision, touched node identities, and explanation

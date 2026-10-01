@@ -38,7 +38,7 @@ The boundary is conservative: unreadable, deleted, malformed, or changed paths a
 - code: `workflows/src/workhorse_workflows/coder/shared/worktree.py::untouched_since` @b54c182c7423
 
 ### snapshot_worktree_state
-- sig: `snapshot_worktree_state(logger: logging.Logger, docs_path: str = "", repo_dir: str = "") -> WorktreeSnapshot`
+- sig: `snapshot_worktree_state(logger: logging.Logger, docs_path: str = "", repo_dir: str = "") -> DirtyAtStart`
 - does: resolves the repository root from the documentation and repository path inputs
 - verify: json_path(path="$.root", matches=".+")
 - does: records modified tracked paths and untracked paths reported by the repository
@@ -49,7 +49,7 @@ The boundary is conservative: unreadable, deleted, malformed, or changed paths a
 - verify: count(subject="duplicate snapshot entries", equals=0)
 - does: returns an empty entry list when repository state cannot be read
 - verify: count(subject="snapshot entries after repository state read failure", equals=0)
-- returns: a `WorktreeSnapshot` containing entries and a human-readable note
+- returns: a `DirtyAtStart` containing entries and a human-readable note
 - verify: json_path(path="$.notes", matches=".*")
 - code: `workflows/src/workhorse_workflows/coder/shared/worktree.py::snapshot_worktree_state` @b54c182c7423
 - tests: `workflows/tests/coder/docs/test_flow.py::test_the_snapshot_records_what_was_already_dirty_with_its_bytes`
@@ -62,7 +62,7 @@ The boundary is conservative: unreadable, deleted, malformed, or changed paths a
 - required: false
 - semantics: each item is `<repo-relative path>\0<sha256 of file bytes>` for a path dirty before the story started
 - verify: json_path(path="$.entries", matches=".*")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/docs.py::WorktreeSnapshot.entries` @89d705a1dfe2
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/worktree.py::DirtyAtStart.entries` @69b041a7a063
 
 ### notes
 - type: `str`
@@ -70,4 +70,4 @@ The boundary is conservative: unreadable, deleted, malformed, or changed paths a
 - required: false
 - semantics: explains the number of recorded paths or why repository state was unavailable
 - verify: json_path(path="$.notes", matches=".*")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/docs.py::WorktreeSnapshot.notes` @89d705a1dfe2
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/worktree.py::DirtyAtStart.notes` @69b041a7a063

@@ -16,4 +16,5 @@ The models every coder agent reply and node return is validated against, one mod
 - `queue.py`: the main loop's spine models: the epic and story picks, their branches, and what a story's commit recorded.
 - `render.py`: the output-contract block a prompt shows, rendered from the model that parses the reply.
 - `review.py`: the review lane's models: the two review replies, the settlement gate, the inbox note and the round budgets.
-- `story.py`: the story spine's models: the resolved paths, the workspace dirs, the porcelain snapshot and the plan scrub.
+- `story.py`: the story spine's models: the resolved paths, the workspace dirs and the stamped specs count.
+- `worktree.py`: the shapes a worktree snapshot and a plan scrub record.

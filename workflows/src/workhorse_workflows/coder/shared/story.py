@@ -11,13 +11,8 @@ from workhorse.pyflow import Workflow, WorkflowFailed
 from workhorse_workflows.kit import find_docs_root
 from workhorse_workflows.coder.shared import stubs
 from workhorse_workflows.coder.shared.blueprint import blueprint
-from workhorse_workflows.coder.shared.schemas.story import (
-    PlanScrub,
-    SpecsStamped,
-    StoryPaths,
-    WorkspaceDirs,
-    WorktreeSnapshot,
-)
+from workhorse_workflows.coder.shared.schemas.story import SpecsStamped, StoryPaths, WorkspaceDirs
+from workhorse_workflows.coder.shared.schemas.worktree import PlanScrub, PorcelainSnapshot
 from workhorse_workflows.kit import resolve_workspace
 
 
@@ -194,7 +189,7 @@ def _porcelain_paths(porcelain: str) -> dict[str, str]:
 @blueprint.node
 def snapshot_worktrees(
     logger: logging.Logger, docs_path: str = "", repo_dir: str = "", workspace_file: str = ""
-) -> WorktreeSnapshot:
+) -> PorcelainSnapshot:
     """Record each code repo's `git status --porcelain` before the plan turn runs."""
     status: dict[str, str] = {}
     for repo in _code_repos(docs_path, repo_dir, workspace_file):
@@ -203,7 +198,7 @@ def snapshot_worktrees(
             logger.warning("cannot read git status in %s — the clean-tree gate skips it", repo)
             continue
         status[str(repo)] = out
-    return WorktreeSnapshot(status=status)
+    return PorcelainSnapshot(status=status)
 
 
 @blueprint.node

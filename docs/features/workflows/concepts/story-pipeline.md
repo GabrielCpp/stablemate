@@ -79,7 +79,7 @@ node identity so its recorded output cannot overwrite the parent story's prepara
 - detail: [Workflow workspace directories](../formats/workspace-dirs.md)
 
 ### snapshot_worktrees
-- sig: `snapshot_worktrees(logger, docs_path: str = "", repo_dir: str = "", workspace_file: str = "") -> WorktreeSnapshot`
+- sig: `snapshot_worktrees(logger, docs_path: str = "", repo_dir: str = "", workspace_file: str = "") -> PorcelainSnapshot`
 - does: records porcelain status for each code repository before a planning turn
 - verify: count(subject="pre-plan code worktree snapshots", equals=1)
 - does: excludes the resolved documentation root from the snapshot
