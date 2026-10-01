@@ -3,7 +3,7 @@
 The copy leaves out the tests, test doubles and fixtures no page may cite, and keeps each file at its
 repository path. It lives in the working tree, where a confined writer in a linked worktree can still
 read it, and its folder ignores itself, so git reports no change for it and the writer's turn cannot
-commit it.
+commit it. A copy of the repository root leaves out the copy itself.
 """
 from __future__ import annotations
 
@@ -30,7 +30,7 @@ def build_source_view(root: Path, source_folder: str) -> Path:
     _ = (root / VIEW_DIR / ".gitignore").write_text("*\n", encoding="utf-8")
     for path in countable_files(folder):
         relative = path.relative_to(folder)
-        if not is_test_source(relative.as_posix()):
+        if VIEW_DIR not in relative.parts and not is_test_source(relative.as_posix()):
             (view / relative).parent.mkdir(parents=True, exist_ok=True)
             _ = shutil.copy2(path, view / relative)
     return view

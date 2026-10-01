@@ -44,3 +44,16 @@ def test_the_source_copy_sits_inside_a_linked_worktree_and_git_sees_no_change(tm
     )
     assert status.stdout == ""
 
+
+
+def test_a_copy_of_the_repository_root_holds_no_copy_of_itself(tmp_path: Path) -> None:
+    repo = make_git_repo(tmp_path / "repo")
+    (repo / "api").mkdir()
+    _ = (repo / "api" / "main.go").write_text("a", encoding="utf-8")
+    _ = build_source_view(repo, ".")
+
+    view = build_source_view(repo, ".")
+
+    copied = sorted(path.relative_to(view).as_posix() for path in view.rglob("*") if path.is_file())
+    assert "api/main.go" in copied
+    assert not [path for path in copied if path.startswith(".okf-book-source")]
