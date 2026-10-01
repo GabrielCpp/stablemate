@@ -2,6 +2,7 @@
 name: stablemate-python-cli
 description: "Generic Python CLI conventions — Python 3.12+, type hints, absolute imports, uv, linting with ruff AND ty (zero findings, `# ty: ignore` not `# type: ignore`), entry points, exit codes, logging, subprocess, pathlib, JSON I/O, error handling, naming. Package structure, interfaces, typed values, and dependency injection live in python-architecture. Applies to all Python files."
 metadata:
+  name: python-cli
   generated_by: farrier
   source: library/skills/stacks/python/python-cli/SKILL.md
   resolve: "farrier source .claude/skills/stablemate-python-cli/SKILL.md"

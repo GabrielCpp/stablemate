@@ -2,6 +2,7 @@
 name: stablemate-groom
 description: "groom — the operator-gate dashboard and push-notification service for workhorse workflows: architecture, signal model, and how a workflow/script should integrate with it (gate-file convention, sidecar, backstop push)."
 metadata:
+  name: groom
   generated_by: farrier
   source: library/skills/groom/SKILL.md
   resolve: "farrier source .claude/skills/stablemate-groom/SKILL.md"

@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from farrier.layers import BASE_LAYER_NAME, LAYERS, Layer, layer_dirs
-from farrier.sources import Source, group_id, load_sources
+from farrier.sources import Source, library_name, load_sources
 
 KINDS: dict[str, str] = {
     "skills": "skill",
@@ -82,14 +82,14 @@ def _source_items(kind: str, *parts: str, installed: bool = True) -> list[Item]:
     found: dict[str, list[Source]] = {}
     for name, root in _dirs(*parts):
         for source in load_sources(root, kind, Layer(root=root, name=name)):
-            found.setdefault(source.id, []).append(source)
+            found.setdefault(library_name(source), []).append(source)
     return [
         Item(
-            name=name,
-            alias=group_id(sources[0]) if installed else "",
+            name=sources[0].id,
+            alias=library_name(sources[0]) if installed else "",
             provided=tuple((_layer_name(s), s.path) for s in sources),
         )
-        for name, sources in sorted(found.items())
+        for sources in sorted(found.values(), key=lambda group: group[0].id)
     ]
 
 

@@ -34,7 +34,7 @@ from farrier.sources import (
     build_policy_lookup,
     library_path,
     library_source_path,
-    public_id,
+    library_name,
     public_name,
     skill_assets,
 )
@@ -85,6 +85,7 @@ def skill_metadata_block(
     tag_line = f"  tags: [{', '.join(tags)}]\n" if tags else ""
     return (
         "metadata:\n"
+        f"  name: {library_name(source)}\n"
         "  generated_by: farrier\n"
         f"  source: {library_source_path(source)}\n"
         f"  resolve: {yaml_quote(f'farrier source {dest_rel}')}\n"
@@ -208,10 +209,10 @@ class Renderer:
         self.template_values = template_values
         self.skills = skills
         self.prompts = prompts
-        self.skill_lookup = build_lookup(skills, prefix)
-        self.prompt_lookup = build_lookup(prompts, prefix)
+        self.skill_lookup = build_lookup(skills)
+        self.prompt_lookup = build_lookup(prompts)
         self.home_lookups = {
-            target: build_lookup(sources, "")
+            target: build_lookup(sources)
             for target, sources in (home_skills or {}).items()
         }
         self.unresolved: list[str] = []
@@ -292,7 +293,7 @@ class Renderer:
         key = name.replace(".", "-")
         source = self.policy_lookup.get(key)
         if source is None:
-            available = sorted({public_id(s) for s in self.policies})
+            available = sorted({library_name(s) for s in self.policies})
             catalog = (
                 "Available policies: " + ", ".join(available)
                 if available
@@ -413,7 +414,7 @@ class Renderer:
             wanted = normalize_tags(list(tags))
             refs = sorted(
                 relative_reference(
-                    from_file, self.skill_output_path(source.id, target)
+                    from_file, self.skill_output_path(library_name(source), target)
                 )
                 for source in self.skills_with_tags(wanted)
             )
@@ -464,11 +465,11 @@ class Renderer:
             return path.relative_to(self.repo).as_posix()
 
         instructions = {
-            key: rel(self.skill_output_path(source.id, target))
+            key: rel(self.skill_output_path(library_name(source), target))
             for key, source in self.skill_lookup.items()
         }
         prompts = {
-            key: rel(self.prompt_output_path(source.id, target))
+            key: rel(self.prompt_output_path(library_name(source), target))
             for key, source in self.prompt_lookup.items()
         }
         instruction_tags = {
@@ -602,7 +603,7 @@ class Renderer:
         def render_skills(target: str) -> None:
             """Every selected skill into *target*, each with its bundled assets."""
             for source in self.skills:
-                output_path = self.skill_output_path(source.id, target)
+                output_path = self.skill_output_path(library_name(source), target)
                 outputs[output_path] = self.generated_skill(source, target, output_path)
                 outputs.update(self.generated_assets(source, target, output_path))
 
@@ -610,7 +611,7 @@ class Renderer:
             render_skills("copilot")
 
             for source in self.prompts:
-                output_path = self.prompt_output_path(source.id, "copilot")
+                output_path = self.prompt_output_path(library_name(source), "copilot")
                 outputs[output_path] = self.generated_command(
                     source, "copilot", output_path
                 )
@@ -637,7 +638,7 @@ class Renderer:
         if agents.get("codex"):
             render_skills("codex")
             for source in self.prompts:
-                output_path = self.prompt_output_path(source.id, "codex")
+                output_path = self.prompt_output_path(library_name(source), "codex")
                 outputs[output_path] = self.generated_command(
                     source, "codex", output_path
                 )
@@ -645,7 +646,7 @@ class Renderer:
         if agents.get("claude"):
             render_skills("claude")
             for source in self.prompts:
-                output_path = self.prompt_output_path(source.id, "claude")
+                output_path = self.prompt_output_path(library_name(source), "claude")
                 outputs[output_path] = self.generated_command(
                     source, "claude", output_path
                 )

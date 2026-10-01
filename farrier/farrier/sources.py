@@ -40,20 +40,13 @@ def library_source_path(source: Source) -> str:
     return library_path(source.path, source.rel)
 
 
-def public_id(source: Source) -> str:
-    """The source's bare basename — its name with neither group nor repo prefix."""
+def library_name(source: Source) -> str:
+    """The source's folder name: unique across its library, whatever its category."""
     return kebab(Path(source.id).name)
 
 
-def group_id(source: Source) -> str:
-    """``<group>-<basename>`` — the installed name before any repo prefix."""
-    parts = Path(source.id).parts
-    group = kebab(parts[-2]) if len(parts) > 1 else ""
-    return compose_name(group, public_id(source))
-
-
 def public_name(prefix: str, source: Source) -> str:
-    return compose_name(prefix, group_id(source))
+    return compose_name(prefix, library_name(source))
 
 
 ASSET_DIRS = ("references", "scripts")
@@ -123,13 +116,43 @@ def load_sources(root: Path, kind: str, layer: Layer | None = None) -> list[Sour
     return sources
 
 
+def layered_sources(kind: str, *parts: str) -> tuple[list[Source], list[tuple[Source, Source]]]:
+    """``(sources, overrides)`` across every layer, the higher layer winning by name."""
+    by_name: dict[str, Source] = {}
+    overrides: list[tuple[Source, Source]] = []
+    for layer, root in layer_dirs(*parts):
+        in_layer: dict[str, Source] = {}
+        for source in load_sources(root, kind, layer):
+            name = library_name(source)
+            clash = in_layer.get(name)
+            if clash is not None:
+                raise SystemExit(
+                    f"error: two library {kind} sources share the name {name!r}: "
+                    f"{clash.rel} and {source.rel} in {layer.name}. A name must be "
+                    "unique across its library, whatever folder holds it."
+                )
+            in_layer[name] = source
+            winner = by_name.get(name)
+            if winner is None:
+                by_name[name] = source
+            else:
+                overrides.append((winner, source))
+    return sorted(by_name.values(), key=lambda source: source.id), overrides
+
+
 def load_layered_sources(kind: str, *parts: str) -> list[Source]:
     """Sources of one kind across every layer, with the higher layer winning."""
-    by_id: dict[str, Source] = {}
-    for layer, root in layer_dirs(*parts):
-        for source in load_sources(root, kind, layer):
-            by_id.setdefault(source.id, source)
-    return sorted(by_id.values(), key=lambda source: source.id)
+    return layered_sources(kind, *parts)[0]
+
+
+def override_notices(kind: str, *parts: str) -> list[str]:
+    """One info line per library source a higher layer replaces by name."""
+    return [
+        f"info: {winner.layer.name if winner.layer else winner.rel}: "
+        f"{kind} {library_name(winner)!r} ({winner.rel}) overrides "
+        f"{loser.layer.name if loser.layer else loser.rel} ({loser.rel})"
+        for winner, loser in layered_sources(kind, *parts)[1]
+    ]
 
 
 def parse_scaffold_ids(entries: Any, origin: str) -> set[str]:
@@ -213,8 +236,7 @@ def collect_selection(
 def matches(source: Source, patterns: set[str]) -> bool:
     candidates = {
         source.id,
-        public_id(source),
-        group_id(source),
+        library_name(source),
         source.rel,
         source.rel.removesuffix(".md"),
         source.rel.removesuffix(".prompt.md"),
@@ -262,27 +284,17 @@ def unmatched_patterns(
     return literals, globs
 
 
-def build_lookup(sources: list[Source], prefix: str) -> dict[str, Source]:
+def build_lookup(sources: list[Source]) -> dict[str, Source]:
+    """Library name → source. The name is the only key a reference may use."""
     lookup: dict[str, Source] = {}
     for source in sources:
-        keys = {
-            source.id,
-            public_id(source),
-            group_id(source),
-            public_name(prefix, source),
-            source.rel,
-            source.rel.removesuffix(".md"),
-            source.rel.removesuffix(".prompt.md"),
-        }
-        for key in keys:
-            normalized = key.replace(".", "-")
-            existing = lookup.get(normalized)
-            if existing and existing != source:
-                raise SystemExit(
-                    f"Ambiguous selected source id {normalized!r}: "
-                    f"{existing.rel} and {source.rel}"
-                )
-            lookup[normalized] = source
+        name = library_name(source)
+        existing = lookup.get(name)
+        if existing and existing != source:
+            raise SystemExit(
+                f"Ambiguous library name {name!r}: {existing.rel} and {source.rel}"
+            )
+        lookup[name] = source
     return lookup
 
 
@@ -292,7 +304,7 @@ def build_policy_lookup(sources: list[Source]) -> dict[str, Source]:
     for source in sources:
         keys = {
             source.id,
-            public_id(source),
+            library_name(source),
             source.rel,
             source.rel.removesuffix(".md"),
         }

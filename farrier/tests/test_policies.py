@@ -63,8 +63,8 @@ def _render(
 
 FULL_MAPPING = (
     "  - policies: [house-rules]\n"
-    "    skills: [demo-stablemate-ostler]\n"
-    "    prompts: [demo-stablemate-commit]\n"
+    "    skills: [ostler]\n"
+    "    prompts: [commit]\n"
     '    paths: ["."]\n'
     "    includeReadme: false\n"
 )
@@ -122,7 +122,7 @@ def test_unknown_policy_names_the_ones_that_exist(tmp_path):
     assert "house-rules" in message
 
 
-def test_one_basename_in_two_namespaces_is_ambiguous(tmp_path):
+def test_one_basename_in_two_folders_is_a_duplicate(tmp_path):
     with pytest.raises(SystemExit) as exc:
         _render(
             tmp_path,
@@ -130,7 +130,7 @@ def test_one_basename_in_two_namespaces_is_ambiguous(tmp_path):
             policies={"stablemate/house-rules": POLICY, "acme/house-rules": POLICY},
         )
     message = str(exc.value)
-    assert "Ambiguous policy name" in message
+    assert "share the name 'house-rules'" in message
     assert "acme/house-rules.md" in message
     assert "stablemate/house-rules.md" in message
 
@@ -197,7 +197,7 @@ def test_source_resolves_a_generated_file_back_to_its_policy(tmp_path, capsys, n
     repo = _repo(
         tmp_path,
         "  - policies: [house-rules]\n"
-        "    skills: [demo-stablemate-ostler]\n"
+        "    skills: [ostler]\n"
         '    paths: ["."]\n',
     )
     generated = repo / name

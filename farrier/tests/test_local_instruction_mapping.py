@@ -56,8 +56,8 @@ def _render(
 def test_prompt_body_is_aggregated_after_the_skills(tmp_path):
     repo, outputs = _render(
         tmp_path,
-        "  - skills: [demo-stablemate-ostler]\n"
-        "    prompts: [demo-stablemate-commit]\n"
+        "  - skills: [ostler]\n"
+        "    prompts: [commit]\n"
         '    paths: ["."]\n'
         "    includeReadme: false\n",
     )
@@ -69,18 +69,18 @@ def test_prompt_body_is_aggregated_after_the_skills(tmp_path):
 def test_arguments_placeholder_is_dropped_when_aggregated(tmp_path):
     repo, outputs = _render(
         tmp_path,
-        "  - prompts: [demo-stablemate-commit]\n"
+        "  - prompts: [commit]\n"
         '    paths: ["."]\n'
         "    includeReadme: false\n",
     )
     assert "$ARGUMENTS" not in outputs[repo / "AGENTS.md"]
-    assert "$ARGUMENTS" in outputs[repo / ".claude" / "commands" / "demo-stablemate-commit.md"]
+    assert "$ARGUMENTS" in outputs[repo / ".claude" / "commands" / "demo-commit.md"]
 
 
 def test_prompt_only_mapping_needs_no_skill(tmp_path):
     repo, outputs = _render(
         tmp_path,
-        '  - prompt: demo-stablemate-commit\n    paths: ["."]\n    includeReadme: false\n',
+        '  - prompt: commit\n    paths: ["."]\n    includeReadme: false\n',
     )
     assert "Push as you go." in outputs[repo / "AGENTS.md"]
 
@@ -94,7 +94,7 @@ def test_mapping_with_no_source_is_rejected(tmp_path):
 def test_claude_repo_writes_only_agents_md_by_default(tmp_path):
     repo, outputs = _render(
         tmp_path,
-        '  - skill: demo-stablemate-ostler\n    paths: ["."]\n    includeReadme: false\n',
+        '  - skill: ostler\n    paths: ["."]\n    includeReadme: false\n',
     )
     assert "Ostler rules." in outputs[repo / "AGENTS.md"]
     assert repo / "CLAUDE.md" not in outputs
@@ -103,7 +103,7 @@ def test_claude_repo_writes_only_agents_md_by_default(tmp_path):
 def test_claude_md_flag_writes_the_agents_md_pointer(tmp_path):
     repo, outputs = _render(
         tmp_path,
-        '  - skill: demo-stablemate-ostler\n    paths: ["."]\n'
+        '  - skill: ostler\n    paths: ["."]\n'
         "    includeReadme: false\n    claudeMd: true\n",
     )
     assert "Ostler rules." in outputs[repo / "AGENTS.md"]
@@ -116,7 +116,7 @@ def test_non_boolean_claude_md_is_rejected(tmp_path):
     with pytest.raises(SystemExit) as exc:
         _render(
             tmp_path,
-            '  - skill: demo-stablemate-ostler\n    paths: ["."]\n    claudeMd: yes-please\n',
+            '  - skill: ostler\n    paths: ["."]\n    claudeMd: yes-please\n',
         )
     assert "claudeMd" in str(exc.value)
 
@@ -125,12 +125,12 @@ def test_install_removes_a_pointer_the_flag_no_longer_asks_for(tmp_path):
     root = _library(tmp_path)
     repo = _repo(
         tmp_path,
-        '  - skill: demo-stablemate-ostler\n    paths: ["."]\n    claudeMd: true\n',
+        '  - skill: ostler\n    paths: ["."]\n    claudeMd: true\n',
     )
     assert main(["install", "--repo", str(repo), "--library", str(root)]) == 0
     assert (repo / "CLAUDE.md").is_file()
 
-    _repo(tmp_path, '  - skill: demo-stablemate-ostler\n    paths: ["."]\n')
+    _repo(tmp_path, '  - skill: ostler\n    paths: ["."]\n')
     check = ["install", "--repo", str(repo), "--library", str(root), "--check"]
     assert main(check) == 1
     assert main(["install", "--repo", str(repo), "--library", str(root)]) == 0
@@ -140,7 +140,7 @@ def test_install_removes_a_pointer_the_flag_no_longer_asks_for(tmp_path):
 
 def test_install_keeps_a_hand_written_claude_md(tmp_path):
     root = _library(tmp_path)
-    repo = _repo(tmp_path, '  - skill: demo-stablemate-ostler\n    paths: ["."]\n')
+    repo = _repo(tmp_path, '  - skill: ostler\n    paths: ["."]\n')
     (repo / "CLAUDE.md").write_text("Mine.\n", encoding="utf-8")
     assert main(["install", "--repo", str(repo), "--library", str(root)]) == 0
     assert (repo / "CLAUDE.md").read_text(encoding="utf-8") == "Mine.\n"
@@ -155,7 +155,7 @@ def test_codex_only_repo_gets_no_claude_pointer(tmp_path):
         "agents:\n  claude: false\n  codex: true\n"
         "skills:\n  - stablemate/ostler\n"
         "localInstructions:\n"
-        '  - skill: demo-stablemate-ostler\n    paths: ["."]\n    includeReadme: false\n',
+        '  - skill: ostler\n    paths: ["."]\n    includeReadme: false\n',
         encoding="utf-8",
     )
     from farrier.frontmatter import local_instructions, read_yaml
@@ -177,7 +177,7 @@ def test_readme_is_imported_when_claude_is_the_only_adapter(tmp_path):
     _with_readme(tmp_path)
     repo, outputs = _render(
         tmp_path,
-        '  - skill: demo-stablemate-ostler\n    paths: ["."]\n    claudeMd: true\n',
+        '  - skill: ostler\n    paths: ["."]\n    claudeMd: true\n',
         codex=False,
     )
     assert "@README.md" in outputs[repo / "CLAUDE.md"]
@@ -187,7 +187,7 @@ def test_readme_is_imported_when_claude_is_the_only_adapter(tmp_path):
 def test_readme_is_copied_when_no_pointer_is_written(tmp_path):
     _with_readme(tmp_path)
     repo, outputs = _render(
-        tmp_path, '  - skill: demo-stablemate-ostler\n    paths: ["."]\n', codex=False
+        tmp_path, '  - skill: ostler\n    paths: ["."]\n', codex=False
     )
     assert "Local readme." in outputs[repo / "AGENTS.md"]
 
@@ -196,7 +196,7 @@ def test_readme_is_copied_when_another_adapter_reads_the_file(tmp_path):
     _with_readme(tmp_path)
     repo, outputs = _render(
         tmp_path,
-        '  - skill: demo-stablemate-ostler\n    paths: ["."]\n    claudeMd: true\n',
+        '  - skill: ostler\n    paths: ["."]\n    claudeMd: true\n',
         codex=True,
     )
     assert "Local readme." in outputs[repo / "AGENTS.md"]
@@ -206,7 +206,7 @@ def test_readme_is_copied_when_another_adapter_reads_the_file(tmp_path):
 def test_legacy_include_readme_spellings_still_map_onto_the_boolean(tmp_path):
     repo, outputs = _render(
         tmp_path,
-        '  - skill: demo-stablemate-ostler\n    paths: ["."]\n    includeReadme: none\n',
+        '  - skill: ostler\n    paths: ["."]\n    includeReadme: none\n',
     )
     assert "## Local README" not in outputs[repo / "AGENTS.md"]
 
@@ -215,7 +215,7 @@ def test_unknown_include_readme_value_is_rejected(tmp_path):
     with pytest.raises(SystemExit) as exc:
         _render(
             tmp_path,
-            '  - skill: demo-stablemate-ostler\n    paths: ["."]\n    includeReadme: maybe\n',
+            '  - skill: ostler\n    paths: ["."]\n    includeReadme: maybe\n',
         )
     assert "includeReadme" in str(exc.value)
 
@@ -227,8 +227,8 @@ def test_source_resolves_either_generated_file_to_skill_and_prompt(
     root = _library(tmp_path)
     repo = _repo(
         tmp_path,
-        "  - skills: [demo-stablemate-ostler]\n"
-        "    prompts: [demo-stablemate-commit]\n"
+        "  - skills: [ostler]\n"
+        "    prompts: [commit]\n"
         '    paths: ["."]\n',
     )
     generated = repo / name
@@ -242,13 +242,13 @@ def test_source_resolves_either_generated_file_to_skill_and_prompt(
 
 def test_a_string_paths_is_rejected_rather_than_read_one_character_at_a_time(tmp_path):
     with pytest.raises(SystemExit) as exc:
-        _render(tmp_path, "  - skill: demo-stablemate-ostler\n    paths: docs\n")
+        _render(tmp_path, "  - skill: ostler\n    paths: docs\n")
     assert "localInstructions.paths" in str(exc.value)
 
 
 def test_an_entry_that_is_no_mapping_is_rejected(tmp_path):
     with pytest.raises(SystemExit) as exc:
-        _render(tmp_path, "  - demo-stablemate-ostler\n")
+        _render(tmp_path, "  - ostler\n")
     assert "must be a mapping" in str(exc.value)
 
 
@@ -257,7 +257,7 @@ def test_text_is_written_after_the_library_sources_and_before_the_readme(tmp_pat
     set_layers(root)
     repo = _repo(
         tmp_path,
-        "  - skill: demo-stablemate-ostler\n"
+        "  - skill: ostler\n"
         '    paths: ["."]\n'
         "    text: |\n"
         "      ## Map\n\n"
@@ -282,7 +282,7 @@ def test_text_only_mapping_needs_no_library_source(tmp_path):
 
 def test_non_string_text_is_rejected(tmp_path):
     with pytest.raises(SystemExit) as exc:
-        _render(tmp_path, '  - skill: demo-stablemate-ostler\n    paths: ["."]\n    text: [a]\n')
+        _render(tmp_path, '  - skill: ostler\n    paths: ["."]\n    text: [a]\n')
     assert "localInstructions.text" in str(exc.value)
 
 
@@ -291,7 +291,7 @@ def test_drift_in_the_text_is_attributed_to_agents_yml(tmp_path):
 
     repo, outputs = _render(
         tmp_path,
-        "  - skill: demo-stablemate-ostler\n"
+        "  - skill: ostler\n"
         '    paths: ["."]\n'
         "    includeReadme: false\n"
         '    text: "- `api/`: the HTTP surface.\\n"\n',
@@ -305,7 +305,7 @@ def test_source_resolves_the_text_to_the_repo_config(tmp_path, capsys):
     root = _library(tmp_path)
     repo = _repo(
         tmp_path,
-        "  - skill: demo-stablemate-ostler\n"
+        "  - skill: ostler\n"
         '    paths: ["."]\n'
         '    text: "## Map\\n"\n',
     )

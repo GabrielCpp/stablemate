@@ -34,7 +34,7 @@ def stack(tmp_path, monkeypatch):
     """A two-layer stack: an overlay shadowing `stacks/api`, and a base with three skills."""
     base, overlay = tmp_path / "base", tmp_path / "overlay"
     skill(base, "stacks/api", desc="Base copy")
-    skill(base, "web/api", desc="A different api")
+    skill(base, "web/api-client", desc="A different api")
     skill(base, "web/forms")
     write(base, "packs/web.yml", "skills:\n  - web/*\n")
     write(base, "library/prompts/team/review.md", SKILL.format(
@@ -77,14 +77,14 @@ def test_an_item_only_one_layer_has_is_not_reported_as_shadowed(stack, capsys):
     assert "shadows" not in row
 
 
-def test_list_prints_the_installed_name_beside_the_library_id(stack, capsys):
-    """Two names for one thing, and which one you have depends on where you came from."""
+def test_list_prints_the_skill_name_beside_the_library_id(stack, capsys):
+    """The path groups the skill for a reader. The name is what a reference uses."""
     assert run(["list", "--skills"], stack) == 0
     row = next(
         line for line in capsys.readouterr().out.splitlines()
         if line.strip().startswith("web/forms")
     )
-    assert "web-forms" in row
+    assert row.split()[:2] == ["web/forms", "forms"]
 
 
 def test_layer_base_reports_what_the_base_holds_even_where_it_loses(stack, capsys):
@@ -136,23 +136,14 @@ def test_show_prints_the_source_verbatim_so_it_pipes(stack, capsys):
     assert capsys.readouterr().out == expected
 
 
-def test_show_accepts_the_installed_name(stack, capsys):
-    assert run(["show", "--skill", "web-forms"], stack) == 0
-    assert "# forms" in capsys.readouterr().out
+def test_show_refuses_the_category_joined_name(stack):
+    with pytest.raises(SystemExit):
+        run(["show", "--skill", "web-forms"], stack)
 
 
 def test_show_accepts_a_bare_basename(stack, capsys):
     assert run(["show", "--skill", "forms"], stack) == 0
     assert "# forms" in capsys.readouterr().out
-
-
-def test_an_ambiguous_basename_is_refused_with_both_spellings(stack):
-    """`api` is two skills."""
-    with pytest.raises(SystemExit) as error:
-        run(["show", "--skill", "api"], stack)
-    message = str(error.value)
-    assert "stacks/api" in message
-    assert "web/api" in message
 
 
 def test_an_unknown_name_lists_what_does_exist(stack):

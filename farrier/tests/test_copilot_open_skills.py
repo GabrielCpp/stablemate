@@ -39,7 +39,7 @@ def test_skill_dir_path_copilot_returns_github_skills(tmp_path):
 
 def test_skill_output_path_copilot_uses_open_skills_format(tmp_path):
     renderer, source = _make_renderer(tmp_path)
-    path = renderer.skill_output_path(source.id, "copilot")
+    path = renderer.skill_output_path("go", "copilot")
     assert path == tmp_path / ".github" / "skills" / "demo-go" / "SKILL.md"
 
 

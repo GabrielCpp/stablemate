@@ -1,9 +1,10 @@
 ---
 description: "Fold this conversation's durable learnings back into the agent library — skills, prompts/commands, and root instruction files"
 metadata:
+  name: update-skill-from-conversation
   generated_by: farrier
   source: library/prompts/agent-library/update-skill-from-conversation.md
-  resolve: "farrier source .claude/commands/stablemate-agent-library-update-skill-from-conversation.md"
+  resolve: "farrier source .claude/commands/stablemate-update-skill-from-conversation.md"
   do_not_edit: "generated — run the `resolve` command below for this machine's editable source path, edit that, then `make agent-install` to regenerate"
 ---
 
@@ -28,9 +29,9 @@ The library is the single source of truth. Never hand-edit a generated adapter
 (`.claude/`, `.codex/`, `.github/`, `.agents/`, or a generated local
 `AGENTS.md`/`CLAUDE.md`) — change the library, then re-install.
 
-Read ../skills/stablemate-farrier-agent-library/SKILL.md before you touch anything —
-it is the authority on layout, the `instruction_file` cross-link helper, packs, and
-the install/verify loop.
+This repo does not ship the agent-library skill, so the essentials are inlined
+below. If you have `farrier` installed, `farrier config show` documents the same
+layout for the configured library.
 
 ## 0. Locate the library — never hardcode its path
 

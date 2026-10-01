@@ -9,8 +9,9 @@ from markdown_it import MarkdownIt
 from mdit_py_plugins.front_matter import front_matter_plugin
 
 from farrier.frontmatter import front_matter_end
-from farrier.naming import compose_name, kebab, strip_known_suffix
+from farrier.naming import kebab, strip_known_suffix
 from farrier.skill_hooks import findings as hook_findings
+from farrier.sources import asset_owner
 
 __all__ = ["Finding", "check_library", "check_text", "format_findings"]
 
@@ -224,28 +225,33 @@ def check_text(text: str, path: Path, *, require_tags: bool = True) -> list[Find
     return found
 
 
-def _stutter_finding(root: Path, sub: str, path: Path) -> Finding | None:
-    """A warning when a source's basename repeats its own parent folder."""
+def _source_name(root: Path, sub: str, path: Path) -> str:
+    """The library name a source installs under: its folder, or its file stem."""
     rel = path.relative_to(root / sub)
     if path.name == "SKILL.md":
-        parts = rel.parent.parts
-    else:
-        parts = rel.with_name(strip_known_suffix(rel)).parts
-    if len(parts) < 2:
-        return None
-    group, base = kebab(parts[-2]), kebab(parts[-1])
-    if base != group and not base.startswith(f"{group}-"):
-        return None
-    installed = compose_name(group, base)
-    return Finding(
-        path=path,
-        level="warning",
-        code="group-stutter",
-        message=(
-            f"basename repeats its folder {group!r}; installs as {installed!r} either "
-            f"way, so dropping the repetition from the source renames nothing"
-        ),
-    )
+        return kebab(rel.parent.name)
+    return kebab(strip_known_suffix(rel))
+
+
+def _duplicate_findings(named: dict[str, list[Path]]) -> list[Finding]:
+    """An error per source whose library name another source in its library shares."""
+    found: list[Finding] = []
+    for name, paths in named.items():
+        if len(paths) < 2:
+            continue
+        for path in paths:
+            others = ", ".join(str(other) for other in paths if other != path)
+            found.append(Finding(
+                path=path,
+                level="error",
+                code="duplicate-name",
+                message=(
+                    f"the name {name!r} is also taken by {others}. A name must be unique "
+                    "across its library, whatever folder holds it: farrier installs and "
+                    "resolves a skill by its name alone."
+                ),
+            ))
+    return found
 
 
 def check_library(roots: list[Path], *, require_tags: bool = True) -> tuple[list[Finding], int]:
@@ -258,6 +264,7 @@ def check_library(roots: list[Path], *, require_tags: bool = True) -> tuple[list
             directory = root / sub
             if not directory.is_dir():
                 continue
+            named: dict[str, list[Path]] = {}
             for path in sorted(directory.rglob("*.md")):
                 resolved = path.resolve()
                 if resolved in seen:
@@ -270,9 +277,9 @@ def check_library(roots: list[Path], *, require_tags: bool = True) -> tuple[list
                     continue
                 checked += 1
                 findings.extend(check_text(text, path, require_tags=require_tags))
-                stutter = _stutter_finding(root, sub, path)
-                if stutter is not None:
-                    findings.append(stutter)
+                if asset_owner(directory, path) is None:
+                    named.setdefault(_source_name(root, sub, path), []).append(path)
+            findings.extend(_duplicate_findings(named))
     return findings, checked
 
 

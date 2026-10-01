@@ -76,6 +76,7 @@ from farrier.sources import (
     collect_selection,
     library_source_path,
     load_layered_sources,
+    override_notices,
     selected_sources,
 )
 from farrier.user_library import user_library_tables
@@ -156,6 +157,11 @@ def _run_user_install(args: argparse.Namespace) -> int:
 def _run_install(args: argparse.Namespace) -> int:
     ensure_base_library_dir(refresh=not args.check)
     set_layers(resolve_library_dir(args.library))
+    if not args.check:
+        for line in override_notices("skill", "library", "skills") + override_notices(
+            "prompt", "library", "prompts"
+        ):
+            print(line)
     if getattr(args, "user", False):
         return _run_user_install(args)
     repo = args.repo.resolve()

@@ -193,7 +193,7 @@ LOCAL_CONFIG = (
     "agents:\n  claude: true\n"
     "skills:\n  - db\n"
     "localInstructions:\n"
-    "  - skill: acme-db\n"
+    "  - skill: db\n"
     "    paths:\n"
     '      - "."\n'
 )

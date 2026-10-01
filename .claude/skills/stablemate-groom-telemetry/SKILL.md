@@ -2,8 +2,9 @@
 name: stablemate-groom-telemetry
 description: "Investigating a workhorse run from groom's store — the SQLite telemetry (spans/metrics/logs/turns) and the turn-record archive that sits beside it. Which command answers which question (`status`, `logs`, `cost`, `loops`, `profile`, `transcript`), why an unfinished node has no span, the archive's visit-key layout and how to get records out of a container or backfill them from the agent CLI, and the raw `sqlite3` recipes — including the dotted-attribute-key footgun that silently returns NULL. Load when asked why a run is stuck, why a loop repeats, what a run cost, what a node actually said, or why a coder run gave up on a QA gate — not for acting on a run (reload, switch, answer), which is workhorse-operate."
 metadata:
+  name: groom-telemetry
   generated_by: farrier
-  source: library/skills/groom/telemetry/SKILL.md
+  source: library/skills/groom/groom-telemetry/SKILL.md
   resolve: "farrier source .claude/skills/stablemate-groom-telemetry/SKILL.md"
   do_not_edit: "generated — run the `resolve` command below for this machine's editable source path, edit that, then `make agent-install` to regenerate"
   tags: [cli, backend, standards]

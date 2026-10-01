@@ -2,8 +2,9 @@
 name: stablemate-workhorse-workflows-author-roadmap
 description: "Writing the roadmap item consumed by the Workhorse Author workflow: one durable release contract maps to exactly one milestone, names the user journeys and locked decisions that bind every epic, and leaves epic/story decomposition to Author. Load when creating or reviewing `docs/roadmaps/*.md`, replacing backlog intake with roadmap input, or deciding whether a proposed roadmap is ready for Author."
 metadata:
+  name: workhorse-workflows-author-roadmap
   generated_by: farrier
-  source: library/skills/workhorse/workflows-author-roadmap/SKILL.md
+  source: library/skills/workhorse/workhorse-workflows-author-roadmap/SKILL.md
   resolve: "farrier source .claude/skills/stablemate-workhorse-workflows-author-roadmap/SKILL.md"
   do_not_edit: "generated — run the `resolve` command below for this machine's editable source path, edit that, then `make agent-install` to regenerate"
   tags: [planning, docs]

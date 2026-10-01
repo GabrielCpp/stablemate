@@ -2,6 +2,7 @@
 name: stablemate-python-architecture
 description: "Python mechanics for the ports-and-adapters contract and the code-structure rules — Protocol vs ABC, the port package layout (interface at the root, adapters beneath, registry apart), which typed value to reach for (Pydantic / frozen dataclass / TypedDict / NamedTuple) and why round-trip beats provenance, services built by dependency injection from a frozen settings object, null objects instead of Optional collaborators, injected clocks, and the ruff / ty / import-linter rules that turn each of these into a gate. Load when structuring any Python package beyond a single module. Applies to **/*.py."
 metadata:
+  name: python-architecture
   generated_by: farrier
   source: library/skills/stacks/python/python-architecture/SKILL.md
   resolve: "farrier source .claude/skills/stablemate-python-architecture/SKILL.md"
@@ -14,9 +15,9 @@ metadata:
 This skill is the **Python spelling** of two language-neutral contracts. Read them first; the *why*
 lives there and is not repeated here:
 
-- [`~/.claude/skills/architecture-hexagonal-architecture/SKILL.md`](~/.claude/skills/architecture-hexagonal-architecture/SKILL.md)
+- [`~/.claude/skills/hexagonal-architecture/SKILL.md`](~/.claude/skills/hexagonal-architecture/SKILL.md)
   — dependency direction, domain purity, port purity, generic-engine-vs-port, testability.
-- [`~/.claude/skills/architecture-code-structure/SKILL.md`](~/.claude/skills/architecture-code-structure/SKILL.md)
+- [`~/.claude/skills/code-structure/SKILL.md`](~/.claude/skills/code-structure/SKILL.md)
   — when functions become an object, when a module becomes two, data at boundaries, configuration
   and effects.
 

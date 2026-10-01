@@ -55,10 +55,10 @@ def test_skills_and_prompts_land_in_the_harness_home(
 
     assert install(home, library) == 0
 
-    assert (home / ".claude/skills/stablemate-db/SKILL.md").is_file()
-    assert (home / ".claude/skills/stablemate-cache/SKILL.md").is_file()
-    assert (home / ".claude/commands/stablemate-grill.md").is_file()
-    assert (home / ".codex/skills/stablemate-db/SKILL.md").is_file()
+    assert (home / ".claude/skills/db/SKILL.md").is_file()
+    assert (home / ".claude/skills/cache/SKILL.md").is_file()
+    assert (home / ".claude/commands/grill.md").is_file()
+    assert (home / ".codex/skills/db/SKILL.md").is_file()
     assert not (home / ".codex/commands").exists()
 
 
@@ -96,7 +96,7 @@ def test_check_reports_an_edited_file(
     home = tmp_path / "home"
     assert install(home, library) == 0
 
-    installed = home / ".claude/skills/stablemate-db/SKILL.md"
+    installed = home / ".claude/skills/db/SKILL.md"
     installed.write_text(installed.read_text(encoding="utf-8") + "\nEdited.\n",
                          encoding="utf-8")
 
@@ -118,8 +118,8 @@ def test_a_deselected_skill_is_swept_and_a_hand_written_one_is_not(
     write_config(tmp_path, monkeypatch, CLAUDE_ONE)
     assert install(home, library) == 0
 
-    assert not (home / ".claude/skills/stablemate-cache").exists()
-    assert not (home / ".claude/commands/stablemate-grill.md").exists()
+    assert not (home / ".claude/skills/cache").exists()
+    assert not (home / ".claude/commands/grill.md").exists()
     assert mine.read_text(encoding="utf-8") == HANDWRITTEN
 
 
@@ -129,14 +129,14 @@ def test_a_hand_written_file_in_the_way_is_refused(
     library = make_library(tmp_path)
     write_config(tmp_path, monkeypatch, CLAUDE_ONE)
     home = tmp_path / "home"
-    clash = home / ".claude/skills/stablemate-db/SKILL.md"
+    clash = home / ".claude/skills/db/SKILL.md"
     clash.parent.mkdir(parents=True)
     clash.write_text(HANDWRITTEN, encoding="utf-8")
 
     with pytest.raises(SystemExit) as exc:
         install(home, library)
 
-    assert "stablemate-db" in str(exc.value)
+    assert "skills/db/SKILL.md" in str(exc.value)
     assert clash.read_text(encoding="utf-8") == HANDWRITTEN
 
 
@@ -174,8 +174,8 @@ def test_a_pack_under_a_non_claude_harness_installs_its_skills_only(
 
     assert install(home, library) == 0
 
-    assert (home / ".claude/commands/stablemate-grill.md").is_file()
-    assert (home / ".codex/skills/stablemate-db/SKILL.md").is_file()
+    assert (home / ".claude/commands/grill.md").is_file()
+    assert (home / ".codex/skills/db/SKILL.md").is_file()
     assert not (home / ".codex/commands").exists()
 
 
@@ -221,7 +221,7 @@ def test_a_template_value_comes_from_the_shared_table(
 
     assert install(home, library) == 0
 
-    body = (home / ".claude/skills/stablemate-db/SKILL.md").read_text(encoding="utf-8")
+    body = (home / ".claude/skills/db/SKILL.md").read_text(encoding="utf-8")
     assert "Backed by Postgres." in body
 
 
@@ -269,10 +269,10 @@ def test_the_generated_file_names_the_user_scope_command(
     home = tmp_path / "home"
     assert install(home, library) == 0
 
-    text = (home / ".claude/skills/stablemate-db/SKILL.md").read_text(encoding="utf-8")
+    text = (home / ".claude/skills/db/SKILL.md").read_text(encoding="utf-8")
     assert "farrier install --user" in text
     assert "make agent-install" not in text
-    assert 'resolve: "farrier source ~/.claude/skills/stablemate-db/SKILL.md"' in text
+    assert 'resolve: "farrier source ~/.claude/skills/db/SKILL.md"' in text
 
 
 def install_repo(repo: Path, home: Path, library: Path, *extra: str) -> int:
@@ -294,8 +294,8 @@ def test_a_repo_install_also_refreshes_the_user_library(
 
     assert install_repo(repo, home, library) == 0
 
-    assert (repo / ".claude/skills/acme-stablemate-cache/SKILL.md").is_file()
-    assert (home / ".claude/skills/stablemate-db/SKILL.md").is_file()
+    assert (repo / ".claude/skills/acme-cache/SKILL.md").is_file()
+    assert (home / ".claude/skills/db/SKILL.md").is_file()
 
 
 def test_a_repo_install_leaves_the_home_alone_without_a_user_library(

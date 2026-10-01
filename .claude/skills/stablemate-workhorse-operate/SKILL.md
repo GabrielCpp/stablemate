@@ -2,8 +2,9 @@
 name: stablemate-workhorse-operate
 description: "Acting on a live workhorse run from the terminal — list the runs groom sees, resolve one to its `workflow` and `run_dir`, then `control` it over its socket: `status`, `reload` (pushed code), `switch-cli`, `switch-profile`, `questions`/`answer` (gates), `inbox read`/`reply` — and repair a stopped one with `stop --wait`, `status --params`, `rewind --to STATE` and `resume [CLI]`. Load when asked to reload, restart, rewind, resume, switch, answer, poke, or find a run — including one named from the groom dashboard. Reading *why* a run is stuck is groom-telemetry; groom's own architecture is groom; writing nodes is workhorse-engine."
 metadata:
+  name: workhorse-operate
   generated_by: farrier
-  source: library/skills/workhorse/operate/SKILL.md
+  source: library/skills/workhorse/workhorse-operate/SKILL.md
   resolve: "farrier source .claude/skills/stablemate-workhorse-operate/SKILL.md"
   do_not_edit: "generated — run the `resolve` command below for this machine's editable source path, edit that, then `make agent-install` to regenerate"
   tags: [cli]

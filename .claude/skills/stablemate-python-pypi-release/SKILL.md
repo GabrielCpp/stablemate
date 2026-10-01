@@ -2,6 +2,7 @@
 name: stablemate-python-pypi-release
 description: "Releasing Python distributions from a repo with release-please + PyPI Trusted Publishing (OIDC) — no API token anywhere. Covers the propose-in-a-PR/ship-by-merging shape, the .release-please-config.json traps that silently release nothing (changelog-sections replacing the defaults, sticky release-as, component/tag mismatch, a manifest that disagrees with pyproject), monorepo publish ordering and cross-package pins that no lockfile validates, the verify gate, and a bring-up checklist for a new repo. Load when setting up releasing, changing release config, or diagnosing a release that produced an empty or incomplete PR."
 metadata:
+  name: python-pypi-release
   generated_by: farrier
   source: library/skills/stacks/python/python-pypi-release/SKILL.md
   resolve: "farrier source .claude/skills/stablemate-python-pypi-release/SKILL.md"

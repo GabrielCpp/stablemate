@@ -121,7 +121,7 @@ def _repo_with_config(tmp_path: Path, mapped: bool) -> Path:
     repo = tmp_path / "demo"
     (repo / "svc").mkdir(parents=True, exist_ok=True)
     mapping = (
-        "localInstructions:\n  - skill: demo-stablemate-ostler\n    paths: [svc]\n"
+        "localInstructions:\n  - skill: ostler\n    paths: [svc]\n"
         if mapped
         else ""
     )

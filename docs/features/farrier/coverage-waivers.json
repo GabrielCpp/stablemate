@@ -421,19 +421,23 @@
       "reason": "non-product test detail folded into Farrier test suite runbook"
     },
     {
-      "code": "farrier/tests/test_group_prefix.py",
+      "code": "farrier/tests/test_installed_name.py",
       "reason": "non-product test detail folded into Farrier test suite runbook"
     },
     {
-      "code": "farrier/tests/test_group_prefix.py::test_the_group_prefixes_the_installed_name",
+      "code": "farrier/tests/test_installed_name.py::test_the_category_never_joins_the_installed_name",
       "reason": "non-product test detail folded into Farrier test suite runbook"
     },
     {
-      "code": "farrier/tests/test_group_prefix.py::test_the_repo_name_collapses_when_it_is_also_the_group",
+      "code": "farrier/tests/test_installed_name.py::test_the_repo_name_collapses_when_the_skill_already_carries_it",
       "reason": "non-product test detail folded into Farrier test suite runbook"
     },
     {
-      "code": "farrier/tests/test_group_prefix.py::test_a_skill_stays_selectable_by_every_spelling",
+      "code": "farrier/tests/test_installed_name.py::test_a_skill_is_selectable_by_its_path_or_its_name",
+      "reason": "non-product test detail folded into Farrier test suite runbook"
+    },
+    {
+      "code": "farrier/tests/test_installed_name.py::test_the_category_alone_no_longer_selects",
       "reason": "non-product test detail folded into Farrier test suite runbook"
     },
     {
@@ -685,7 +689,7 @@
       "reason": "non-product test detail folded into Farrier test suite runbook"
     },
     {
-      "code": "farrier/tests/test_library_browse.py::test_list_prints_the_installed_name_beside_the_library_id",
+      "code": "farrier/tests/test_library_browse.py::test_list_prints_the_skill_name_beside_the_library_id",
       "reason": "non-product test detail folded into Farrier test suite runbook"
     },
     {
@@ -717,15 +721,11 @@
       "reason": "non-product test detail folded into Farrier test suite runbook"
     },
     {
-      "code": "farrier/tests/test_library_browse.py::test_show_accepts_the_installed_name",
+      "code": "farrier/tests/test_library_browse.py::test_show_refuses_the_category_joined_name",
       "reason": "non-product test detail folded into Farrier test suite runbook"
     },
     {
       "code": "farrier/tests/test_library_browse.py::test_show_accepts_a_bare_basename",
-      "reason": "non-product test detail folded into Farrier test suite runbook"
-    },
-    {
-      "code": "farrier/tests/test_library_browse.py::test_an_ambiguous_basename_is_refused_with_both_spellings",
       "reason": "non-product test detail folded into Farrier test suite runbook"
     },
     {
@@ -913,11 +913,11 @@
       "reason": "non-product test detail folded into Farrier test suite runbook"
     },
     {
-      "code": "farrier/tests/test_library_check.py::test_a_stuttering_basename_warns_and_names_the_installed_name",
+      "code": "farrier/tests/test_library_check.py::test_two_skills_sharing_a_name_in_different_folders_are_an_error",
       "reason": "non-product test detail folded into Farrier test suite runbook"
     },
     {
-      "code": "farrier/tests/test_library_check.py::test_a_basename_that_merely_starts_like_its_folder_is_not_a_stutter",
+      "code": "farrier/tests/test_library_check.py::test_distinct_names_raise_no_duplicate",
       "reason": "non-product test detail folded into Farrier test suite runbook"
     },
     {
@@ -1101,7 +1101,7 @@
       "reason": "non-product test detail folded into Farrier test suite runbook"
     },
     {
-      "code": "farrier/tests/test_policies.py::test_one_basename_in_two_namespaces_is_ambiguous",
+      "code": "farrier/tests/test_policies.py::test_one_basename_in_two_folders_is_a_duplicate",
       "reason": "non-product test detail folded into Farrier test suite runbook"
     },
     {

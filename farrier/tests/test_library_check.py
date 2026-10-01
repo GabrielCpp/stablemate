@@ -295,30 +295,31 @@ def test_a_clean_library_says_so_rather_than_printing_nothing():
     assert format_findings([], 12) == "ok: 12 library sources, all front matter parses"
 
 
-def test_a_stuttering_basename_warns_and_names_the_installed_name(tmp_path):
-    """Never an error: both spellings install identically, so the source is fine."""
-    skill = tmp_path / "library" / "skills" / "flutter" / "flutter-api" / "SKILL.md"
+def _named_skill(tmp_path, rel):
+    skill = tmp_path / "library" / "skills" / rel / "SKILL.md"
     skill.parent.mkdir(parents=True)
+    name = rel.rsplit("/", 1)[-1]
     skill.write_text(
-        "---\nname: flutter-api\ndescription: x\ntags: [a]\n---\n\nBody.\n",
+        f"---\nname: {name}\ndescription: x\ntags: [a]\n---\n\nBody.\n",
         encoding="utf-8",
     )
 
-    findings, _ = check_library([tmp_path / "library"])
 
-    stutter = [f for f in findings if f.code == "group-stutter"]
-    assert [f.level for f in stutter] == ["warning"]
-    assert "'flutter-api'" in stutter[0].message
-
-
-def test_a_basename_that_merely_starts_like_its_folder_is_not_a_stutter(tmp_path):
-    """`go/gopls` is not `go/go-pls`: the collapse keys on a segment boundary."""
-    skill = tmp_path / "library" / "skills" / "go" / "gopls" / "SKILL.md"
-    skill.parent.mkdir(parents=True)
-    skill.write_text(
-        "---\nname: gopls\ndescription: x\ntags: [a]\n---\n\nBody.\n", encoding="utf-8"
-    )
+def test_two_skills_sharing_a_name_in_different_folders_are_an_error(tmp_path):
+    """The folder only groups a skill for a reader, so it cannot tell two names apart."""
+    _named_skill(tmp_path, "stacks/api")
+    _named_skill(tmp_path, "web/api")
 
     findings, _ = check_library([tmp_path / "library"])
 
-    assert [f for f in findings if f.code == "group-stutter"] == []
+    duplicates = [f for f in findings if f.code == "duplicate-name"]
+    assert [f.level for f in duplicates] == ["error", "error"]
+
+
+def test_distinct_names_raise_no_duplicate(tmp_path):
+    _named_skill(tmp_path, "flutter/flutter-api")
+    _named_skill(tmp_path, "go/gopls")
+
+    findings, _ = check_library([tmp_path / "library"])
+
+    assert [f for f in findings if f.code == "duplicate-name"] == []

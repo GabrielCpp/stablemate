@@ -45,7 +45,7 @@ def install(
 
 
 def installed_api(tmp_path: Path) -> str:
-    path = tmp_path / "acme/.claude/skills/acme-stack-api/SKILL.md"
+    path = tmp_path / "acme/.claude/skills/acme-api/SKILL.md"
     return path.read_text(encoding="utf-8")
 
 
@@ -60,8 +60,8 @@ def test_a_reference_resolves_to_the_user_library_copy(
 
     assert install(tmp_path, library) == 0
 
-    assert "See ~/.claude/skills/general-review/SKILL.md." in installed_api(tmp_path)
-    assert (tmp_path / "home/.claude/skills/general-review/SKILL.md").is_file()
+    assert "See ~/.claude/skills/review/SKILL.md." in installed_api(tmp_path)
+    assert (tmp_path / "home/.claude/skills/review/SKILL.md").is_file()
 
 
 def test_a_skill_the_repo_selects_wins_over_the_user_library(
@@ -73,7 +73,7 @@ def test_a_skill_the_repo_selects_wins_over_the_user_library(
     selects = '  - "stack/*"\n  - "general/review"\n'
     assert install(tmp_path, library, selects=selects) == 0
 
-    assert "See ../acme-general-review/SKILL.md." in installed_api(tmp_path)
+    assert "See ../acme-review/SKILL.md." in installed_api(tmp_path)
 
 
 def test_a_reference_found_nowhere_is_an_error(
@@ -124,5 +124,5 @@ def test_a_user_library_skill_keeps_the_soft_fallback(
 
     assert main(["install", "--user", "--home", str(home), "--library", str(library)]) == 0
 
-    text = (home / ".claude/skills/stack-api/SKILL.md").read_text(encoding="utf-8")
+    text = (home / ".claude/skills/api/SKILL.md").read_text(encoding="utf-8")
     assert "See generated review instruction file when installed." in text

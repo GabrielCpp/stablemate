@@ -2,6 +2,7 @@
 name: stablemate-python-htmx-accessibility
 description: "Accessibility for an HTMX + server-rendered HTML + vanilla-JS app (no SPA framework, no bundler) — semantic templates, ARIA on hand-authored HTML, focus management across hx-swap, aria-live for websocket/out-of-band pushes, accessible command palettes and keyboard nav, and keeping sanitized markdown perceivable. The concrete mechanics behind the universal contract for this stack. Applies to **/templates/**/*.html,**/assets/**/*.js."
 metadata:
+  name: python-htmx-accessibility
   generated_by: farrier
   source: library/skills/stacks/python/python-htmx-accessibility/SKILL.md
   resolve: "farrier source .claude/skills/stablemate-python-htmx-accessibility/SKILL.md"
