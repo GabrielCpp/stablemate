@@ -4,6 +4,7 @@ from ostler.qa.attribution import Cause
 from ostler.qa.verdict import Verdict
 from workhorse.runner.usage import TurnUsage
 
+from workhorse_workflows.okf_book.main.nodes.progress_ledger import LapCounts
 from workhorse_workflows.okf_book.main.nodes.report import BookReport, book_costs, render_report
 from workhorse_workflows.okf_book.shared.blockers import Phase
 from workhorse_workflows.okf_book.shared.metrics import TurnMetric, turn_metric
@@ -71,3 +72,14 @@ def test_the_report_lists_each_gapped_claim_with_the_capability_it_waits_for() -
 
     assert f"## Gapped claims\n\n- `{claim}`: gapped: payment provider absent\n" in rendered
     assert "## Gapped claims\n\nNone.\n" in render_report(_report(None))
+
+
+def test_the_report_shows_the_book_s_failed_checks_lap_by_lap() -> None:
+    laps = (LapCounts(service="tally", failures={Cause.BOOK: 40, Cause.APP: 2}),
+            LapCounts(service="tally", failures={Cause.BOOK: 12, Cause.ARRANGEMENT: 3}, gapped=5))
+
+    rendered = render_report(_report(None).model_copy(update={"laps": laps}))
+
+    assert "- `tally`: the book's failed checks, lap by lap: 40 → 15\n" in rendered
+    assert "  - lap 2: book 12, arrangement 3, environment 0, app 0, unattributed 0, gapped 5\n" in rendered
+    assert "## Progress per lap\n\nNo lap ran.\n" in render_report(_report(None))

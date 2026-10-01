@@ -8,6 +8,7 @@ from workhorse.pyflow import Await, Continue, Done, WorkflowFailed
 from workhorse_workflows.kit import last_commit_subject
 from workhorse_workflows.okf_book.main.exercise_book_flow import ExerciseBook
 from workhorse_workflows.okf_book.main.nodes.operator_answer import answer_below, write_answer
+from workhorse_workflows.okf_book.main.nodes.progress_ledger import LapCounts, lap_counts, read_laps, record_lap, service_laps, stalled, trend
 from workhorse_workflows.okf_book.main.nodes.repair_ledger import RepairOutcome
 from workhorse_workflows.okf_book.main.repair_book_flow import RepairBook
 from workhorse_workflows.okf_book.main.nodes.report import build_report, write_report
@@ -57,6 +58,15 @@ def _escalation_reason(signature: Signature) -> str:
         return (f"the stack lacks the {signature.gap}, and only a person can supply it; "
                 f"the {signature.count} checks that need it pass once it is there; for example {signature.sample}")
     return f"{signature.count} checks failed this way; for example {signature.sample}"
+
+
+def _stall(exercised: ExerciseResult, laps: tuple[LapCounts, ...]) -> str:
+    """Why the lap after a repair did not help, or nothing when it lowered the book's failed checks."""
+    if exercised.summary is None:
+        return "the run after the repair counted no check, so it cannot show that the repair helped"
+    if stalled(laps):
+        return f"the repair did not lower the book's failed checks, lap by lap: {trend(laps)}"
+    return ""
 
 
 class OkfBook(BookFlow):
@@ -216,6 +226,7 @@ class OkfBook(BookFlow):
         service = self.surfaces[index].service
         if exercised.summary is not None:
             _ = write_run(self.records_dir, exercised.summary)
+            _ = record_lap(self.records_dir, lap_counts(service, exercised.summary.signatures, len(exercised.summary.gaps)))
         self._block_escalated_signatures(service, exercised)
         if exercised.passed:
             return self._next_surface(exercised.passed, index)
@@ -245,16 +256,22 @@ class OkfBook(BookFlow):
         return exercised.summary.failures_by_page(scenarios, plan.read_text(encoding="utf-8") if plan.is_file() else "")
 
     def map_run_failures(self, index: int, exercised: ExerciseResult, run_failures_repaired: bool = False) -> Continue[...]:
-        """Map each failure of the run the writer can fix to the page that covers it, and hand the book to the writer once per run, since a claim the run cannot exercise is a defect of the book. A run whose every failure is escalated has nothing for the writer. A book that fails its run again after its repair is a blocker."""
+        """Map each failure of the run the writer can fix to the page that covers it, and hand the book to the writer, since a claim the run cannot exercise is a defect of the book. A run whose every failure is escalated has nothing for the writer. A repair that did not lower the book's failed checks stops the laps, and the attendant is asked with their trend."""
         failures = self._book_failures(index, exercised)
         if not failures and _escalated_signatures(exercised):
             return self._next_surface(exercised.passed, index)
-        if run_failures_repaired:
-            service = self.surfaces[index].service
-            reason = "\n".join(exercised.lines)
-            _ = record_blocker(self.records_dir, Blocker(subject=service, service=service, phase=Phase.EXERCISE, side=Side.BOOK, reason=reason))
+        if not run_failures_repaired:
+            return Continue(failures, self.copy_source, index=index, run_failures=failures).because("repair the pages the run failed on")
+        service = self.surfaces[index].service
+        stall = _stall(exercised, service_laps(read_laps(self.records_dir), service))
+        if stall:
+            blocker = Blocker(subject=f"{service}: the book's failed checks did not fall", service=service, phase=Phase.EXERCISE,
+                              side=Side.WORKFLOW, reason="\n".join((stall, *exercised.lines)))
+            _ = record_blocker(self.records_dir, blocker)
             return self._next_surface(exercised.passed, index)
-        return Continue(failures, self.copy_source, index=index, run_failures=failures).because("repair the pages the run failed on")
+        return Continue(failures, self.copy_source, index=index, run_failures=failures).because(
+            "the repair lowered the book's failed checks: repair again"
+        )
 
     def report(self) -> Await[...] | Done:
         """Publish the report. Any blocker stops the run at the operator, whose answer sends each blocked book back through its route."""

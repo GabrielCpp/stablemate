@@ -1,4 +1,4 @@
-"""The run's account for the operator: what it covered, what each book cost, what stopped it, and where to start reading.
+"""The run's account for the operator: what it covered, what each book cost, what stopped it, how each lap went, and where to start reading.
 
 It also names each page of the run's books that nothing reaches, which the run did not delete.
 """
@@ -10,6 +10,7 @@ from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict
 
+from workhorse_workflows.okf_book.main.nodes.progress_ledger import LapCounts, read_laps, service_laps, trend
 from workhorse_workflows.okf_book.shared.blockers import Blocker, read_blockers
 from workhorse_workflows.okf_book.shared.entries import book_dir, entries_path
 from workhorse_workflows.okf_book.shared.metrics import TurnMetric, read_metrics
@@ -48,6 +49,7 @@ class BookReport(BaseModel):
     blockers: tuple[Blocker, ...]
     run: RunSummary | None
     reading: tuple[str, ...]
+    laps: tuple[LapCounts, ...] = ()
 
 
 def _dollars(shares: Iterable[tuple[TurnMetric, int]]) -> float | None:
@@ -114,6 +116,7 @@ def build_report(root: Path, records_dir: Path, services: tuple[str, ...]) -> Bo
         blockers=read_blockers(records_dir),
         run=read_run(records_dir),
         reading=reading_list(root, services),
+        laps=read_laps(records_dir),
     )
 
 
@@ -135,6 +138,16 @@ def _run_lines(report: BookReport) -> list[str]:
 def _gap_lines(report: BookReport) -> list[str]:
     gaps = report.run.gaps if report.run is not None else {}
     return [f"- `{claim}`: gapped: {gap} absent" for claim, gap in gaps.items()] or ["None."]
+
+
+def _lap_lines(report: BookReport) -> list[str]:
+    lines: list[str] = []
+    for service in report.services:
+        laps = service_laps(report.laps, service)
+        if laps:
+            lines.append(f"- `{service}`: the book's failed checks, lap by lap: {trend(laps)}")
+            lines.extend(f"  - lap {number}: {lap.text()}" for number, lap in enumerate(laps, start=1))
+    return lines or ["No lap ran."]
 
 
 def _money(dollars: float | None) -> str:
@@ -164,6 +177,10 @@ def render_report(report: BookReport) -> str:
         "## Gapped claims",
         "",
         *_gap_lines(report),
+        "",
+        "## Progress per lap",
+        "",
+        *_lap_lines(report),
         "",
         "## Start reading here",
         "",

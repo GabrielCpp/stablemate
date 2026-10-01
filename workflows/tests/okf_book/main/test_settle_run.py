@@ -1,11 +1,13 @@
 """A failed run's failures go to whoever can fix them: the book's writer, or a blocker per signature for everyone else."""
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 
 from okf_book.main.tally import TALLY
 from ostler.qa.attribution import Cause, Signature
 
+from workhorse_workflows.okf_book.main.nodes.progress_ledger import LapCounts, read_laps
 from workhorse_workflows.okf_book.shared.blockers import Blocker, Phase, Side, read_blockers
 from workhorse_workflows.okf_book.shared.book_run import ExerciseResult
 from workhorse_workflows.okf_book.shared.scenarios import FailedCheck, RunSummary, ScenarioOutcome
@@ -87,16 +89,42 @@ def test_a_repaired_run_whose_every_failure_is_escalated_blocks_nothing_on_the_b
     assert [blocker.side for blocker in read_blockers(tmp_path)] == [Side.APP]
 
 
-def test_a_repaired_run_that_still_fails_the_book_is_a_book_blocker(tmp_path: Path) -> None:
-    book = _book(tmp_path)
+def _book_run(*signatures: Signature) -> ExerciseResult:
     misread = FailedCheck(label="adds", expected="[201]", actual="422", covers=("okf:docs/features/tally/tally.md#add:does:1",))
     summary = RunSummary(status="failed", scenarios={"tally-add": ScenarioOutcome(status="failed", failed_checks=(misread,))},
-                         signatures=(MISREAD, CRASHED))
+                         signatures=signatures)
+    return ExerciseResult(lines=("failed",), summary=summary)
 
-    exercised = ExerciseResult(lines=("failed",), summary=summary)
+
+def test_a_repair_that_lowers_the_book_s_failed_checks_goes_back_to_its_writer(tmp_path: Path) -> None:
+    book = _book(tmp_path)
+    _ = book.settle_run(index=0, run_failures_repaired=False, exercised=_book_run(replace(MISREAD, count=9)))
+
+    exercised = _book_run(MISREAD, CRASHED)
+    _ = book.settle_run(index=0, run_failures_repaired=True, exercised=exercised)
+    step = book.map_run_failures(index=0, exercised=exercised, run_failures_repaired=True)
+
+    assert step.state == "copy_source"
+    assert [blocker.side for blocker in read_blockers(tmp_path)] == [Side.APP]
+
+
+def test_a_repair_that_leaves_the_book_s_failed_checks_flat_asks_the_attendant_with_the_trend(tmp_path: Path) -> None:
+    book = _book(tmp_path)
+    _ = book.settle_run(index=0, run_failures_repaired=False, exercised=_book_run(MISREAD))
+
+    exercised = _book_run(MISREAD, CRASHED)
     step = book.settle_run(index=0, run_failures_repaired=True, exercised=exercised)
     _ = book.map_run_failures(index=0, exercised=exercised, run_failures_repaired=True)
 
     assert step.state == "map_run_failures"
+    stall = next(blocker for blocker in read_blockers(tmp_path) if blocker.side is Side.WORKFLOW)
+    assert stall.subject == "tally: the book's failed checks did not fall"
+    assert stall.reason.startswith("the repair did not lower the book's failed checks, lap by lap: 1 → 1\n")
 
-    assert sorted(blocker.side for blocker in read_blockers(tmp_path)) == [Side.APP, Side.BOOK]
+
+def test_a_gapped_check_counts_as_no_failure_of_its_lap(tmp_path: Path) -> None:
+    book = _book(tmp_path)
+
+    _ = book.settle_run(index=0, run_failures_repaired=False, exercised=_escalated_run(GAPPED, CRASHED))
+
+    assert read_laps(tmp_path) == (LapCounts(service="tally", failures={Cause.APP: 2}),)

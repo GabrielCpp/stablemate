@@ -258,7 +258,7 @@ def test_a_book_this_workflow_wrote_that_fails_its_run_is_repaired_once_on_the_p
 
     _assert_repaired_once_on_the_failed_page(runner, result)
     assert isinstance(result, BookReport)
-    assert [b.side for b in result.blockers] == [Side.BOOK]
+    assert [(b.side, b.subject) for b in result.blockers] == [(Side.WORKFLOW, "tally: the book's failed checks did not fall")]
 
 
 @pytest.mark.usefixtures("over_the_ceiling")
