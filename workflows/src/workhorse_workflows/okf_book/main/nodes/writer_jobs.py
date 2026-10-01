@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 import shutil
 import time
@@ -18,6 +19,7 @@ from workhorse_workflows.okf_book.main.nodes.writer_commands import (
     read_command_state,
     spend_check_or_scenario_run,
 )
+from workhorse_workflows.okf_book.main.nodes.writer_stack import KeptStack
 
 JOBS_FOLDER = "writer-jobs"
 ATTACH_WAIT_S = 25.0
@@ -162,12 +164,12 @@ def detached(work: Work) -> Start:
 
 
 def settle_jobs(run_dir: Path) -> None:
-    """Wait, up to `SETTLE_WAIT_S`, for every job a turn left running, so no two turns run the app at once, and clear them all."""
+    """Wait, up to `SETTLE_WAIT_S`, for every job a turn left running, clear them all, and stop the stack its checks kept up, so no two turns run the app at once."""
     folder = jobs_folder(run_dir)
-    if not folder.is_dir():
-        return
-    deadline = time.monotonic() + SETTLE_WAIT_S
-    for job in folder.iterdir():
-        while _running(job) and time.monotonic() < deadline:
-            time.sleep(POLL_S)
-    shutil.rmtree(folder, ignore_errors=True)
+    if folder.is_dir():
+        deadline = time.monotonic() + SETTLE_WAIT_S
+        for job in folder.iterdir():
+            while _running(job) and time.monotonic() < deadline:
+                time.sleep(POLL_S)
+        shutil.rmtree(folder, ignore_errors=True)
+    KeptStack(run_dir, logging.getLogger(__name__)).release()

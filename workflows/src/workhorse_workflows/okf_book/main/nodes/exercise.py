@@ -16,9 +16,9 @@ from workhorse_workflows.okf_book.main.nodes.writer_commands import (
     run_quietly,
 )
 from workhorse_workflows.okf_book.main.nodes.writer_jobs import Start, detached, run_or_attach
+from workhorse_workflows.okf_book.main.nodes.writer_stack import KeptStack
 from workhorse_workflows.okf_book.shared.book_run import (
     ExerciseResult,
-    bring_up,
     compile_scenarios,
     failed_run,
     release,
@@ -41,21 +41,24 @@ def repo_target(root: Path, target: str) -> str:
     return path.as_posix()
 
 
-def exercise_book(logger: logging.Logger, root: Path, service: str, spec: Path, targets: Sequence[str] = ()) -> ExerciseResult:
-    """Compile the service's book, bring its stack up, run every scenario or those the target pages name, and stop what the bring-up started."""
+def exercise_book(kept: KeptStack, root: Path, service: str, spec: Path, targets: Sequence[str] = ()) -> ExerciseResult:
+    """Compile the service's book, bring its stack up or adopt the one the turn kept, and run every scenario or those the target pages name.
+
+    A stack that serves stays up for the turn's next check. One that does not is stopped here.
+    """
     outcome = compile_scenarios(root, service, spec, targets)
     if outcome.unmatched:
         named = ", ".join(outcome.unmatched)
         return failed_run(outcome.gaps, f"no scenario runs {named}: name a page of the book a scenario covers, or a fixture page a claim arranges")
     if not outcome.planned:
         return failed_run(outcome.gaps, "the book compiles to no plan")
-    stack = bring_up(logger, root, service)
+    stack = kept.up(root, service)
     try:
         if not stack.up:
             return stack_down_result(outcome.gaps, stack.notes)
         return with_app_logs(run_plan(root, spec, outcome.gaps, stack.serving, outcome.only), stack.app_logs)
     finally:
-        release(logger, stack)
+        release(kept.logger, stack)
 
 
 def exercised(argv: Sequence[str]) -> CommandOutput:
@@ -67,7 +70,8 @@ def exercised(argv: Sequence[str]) -> CommandOutput:
     with (state_path.parent / STACK_LOCK).open("w", encoding="utf-8") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
         with tempfile.TemporaryDirectory(prefix="okf-spec-") as spec:
-            result, _ = run_quietly(lambda: exercise_book(logging.getLogger(EXERCISE_MODULE), root, state.service, Path(spec), targets))
+            kept = KeptStack(state_path.parent, logging.getLogger(EXERCISE_MODULE))
+            result, _ = run_quietly(lambda: exercise_book(kept, root, state.service, Path(spec), targets))
     return CommandOutput(0 if result.passed else 1, printed_lines(result.lines))
 
 

@@ -15,12 +15,13 @@ from workhorse.config_run import AgentResilience
 from workhorse.testing import make_git_repo
 
 from workhorse_workflows import okf_book
-from workhorse_workflows.okf_book.main.nodes import check_pages, exercise
+from workhorse_workflows.okf_book.main.nodes import check_pages, exercise, writer_stack
 from workhorse_workflows.okf_book.main.nodes.check_pages import NO_PROBLEMS_LINE, checked, run_check, scoped_problems
 from workhorse_workflows.okf_book.main.nodes.check_pages import USAGE as CHECK_USAGE
 from workhorse_workflows.okf_book.main.nodes.exercise import USAGE as EXERCISE_USAGE
 from workhorse_workflows.okf_book.main.nodes.exercise import run_exercise
 from workhorse_workflows.okf_book.main.nodes.writer_jobs import Start, Work, finish_job
+from workhorse_workflows.okf_book.main.nodes.writer_stack import KeptStack
 from workhorse_workflows.okf_book.main.nodes.writer_ostler import USAGE as OSTLER_USAGE
 from workhorse_workflows.okf_book.main.nodes.writer_ostler import run_ostler
 from workhorse_workflows.okf_book.main.nodes.turn_budget import (
@@ -137,25 +138,37 @@ def _stub_exercise(
         raise RuntimeError("the runner died")
 
     def _release(_logger: logging.Logger, readiness: StackReadiness) -> None:
-        released.append(readiness)
+        if readiness.owned:
+            released.append(readiness)
+
+    def _stack_pages(*_args: object) -> tuple[str, ...]:
+        return ()
 
     monkeypatch.setattr(exercise, "compile_scenarios", _compile)
-    monkeypatch.setattr(exercise, "bring_up", _bring_up)
+    monkeypatch.setattr(writer_stack, "bring_up", _bring_up)
+    monkeypatch.setattr(writer_stack, "stack_pages", _stack_pages)
     monkeypatch.setattr(exercise, "run_plan", _run_plan)
     monkeypatch.setattr(exercise, "release", _release)
+    monkeypatch.setattr(writer_stack, "release", _release)
     return released
 
 
-def test_a_scenario_run_stops_the_servers_it_started_even_when_the_runner_dies(
+def _kept(tmp_path: Path) -> KeptStack:
+    return KeptStack(tmp_path, logging.getLogger(__name__))
+
+
+def test_a_scenario_run_whose_runner_dies_leaves_its_stack_for_the_turn_s_end_to_stop(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     stack = StackReadiness(up=True, serving=True, notes="", owned=("4242",))
     released = _stub_exercise(monkeypatch, stack)
 
     with pytest.raises(RuntimeError):
-        _ = exercise.exercise_book(logging.getLogger(__name__), tmp_path, "ledger", tmp_path / "spec")
+        _ = exercise.exercise_book(_kept(tmp_path), tmp_path, "ledger", tmp_path / "spec")
+    assert released == []
 
-    assert released == [stack]
+    _kept(tmp_path).release()
+    assert [readiness.owned for readiness in released] == [("4242",)]
 
 
 def test_a_scenario_run_whose_stack_failed_stops_the_servers_it_started(
@@ -164,7 +177,7 @@ def test_a_scenario_run_whose_stack_failed_stops_the_servers_it_started(
     stack = StackReadiness(up=False, serving=False, notes="the launch exited 1", owned=("4242",))
     released = _stub_exercise(monkeypatch, stack)
 
-    result = exercise.exercise_book(logging.getLogger(__name__), tmp_path, "ledger", tmp_path / "spec")
+    result = exercise.exercise_book(_kept(tmp_path), tmp_path, "ledger", tmp_path / "spec")
 
     assert result.stack_down
     assert released == [stack]
@@ -176,7 +189,7 @@ def test_a_page_no_scenario_runs_is_named_back_before_the_stack_comes_up(
     stack = StackReadiness(up=True, serving=True, notes="", owned=("4242",))
     released = _stub_exercise(monkeypatch, stack, CompileOutcome(gaps=(), planned=True, unmatched=("docs/x.md",)))
 
-    result = exercise.exercise_book(logging.getLogger(__name__), tmp_path, "ledger", tmp_path / "spec", ("docs/x.md",))
+    result = exercise.exercise_book(_kept(tmp_path), tmp_path, "ledger", tmp_path / "spec", ("docs/x.md",))
 
     assert result.lines == ("problem: no scenario runs docs/x.md: name a page of the book a scenario covers, or a fixture page a claim arranges",)
     assert released == []
