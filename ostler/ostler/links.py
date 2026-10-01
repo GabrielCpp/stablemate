@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -39,6 +40,8 @@ class LinkResolver:
         self.graph = graph
         self._anchors: dict[Path, set[str]] = {}
         self._files: dict[tuple[Path, str], tuple[Path, bool, str]] = {}
+        self._dirs: dict[Path, Path] = {}
+        self._root_prefix: str | None = None
 
     def anchors(self, path: Path) -> set[str]:
         if path not in self._anchors:
@@ -53,12 +56,28 @@ class LinkResolver:
         return set(document_anchors(doc).values())
 
     def _settle_file(self, source: Path, path_part: str) -> tuple[Path, bool, str]:
-        target = source if path_part == "" else (source.parent / path_part).resolve()
-        try:
-            rel = target.relative_to(self.graph.root).as_posix()
-        except ValueError:
-            rel = target.as_posix()
-        return target, target.is_file(), rel
+        target = source if path_part == "" else self._real(source.parent / path_part)
+        return target, target.is_file(), self._rel(target)
+
+    def _real(self, joined: Path) -> Path:
+        """``joined.resolve()``, with each directory resolved once per run instead of once per link."""
+        if joined.name in ("", ".", ".."):
+            return joined.resolve()
+        if joined.parent not in self._dirs:
+            self._dirs[joined.parent] = joined.parent.resolve()
+        target = self._dirs[joined.parent] / joined.name
+        return target.resolve() if target.is_symlink() else target
+
+    def _rel(self, target: Path) -> str:
+        """*target* relative to the graph root in posix form, or its absolute posix form when outside it."""
+        if self._root_prefix is None:
+            self._root_prefix = str(self.graph.root).rstrip(os.sep) + os.sep
+        text = str(target)
+        if text.startswith(self._root_prefix):
+            return text[len(self._root_prefix):].replace(os.sep, "/")
+        if target == self.graph.root:
+            return "."
+        return target.as_posix()
 
     def resolve(self, source: Path, href: str) -> LinkTarget | None:
         """Resolve *href* found in *source*."""

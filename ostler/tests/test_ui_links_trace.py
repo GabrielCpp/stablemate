@@ -98,6 +98,26 @@ def test_resolve_missing_anchor(repo: Path):
     assert tgt.file_exists and not tgt.anchor_exists and not tgt.resolved
 
 
+def test_resolve_follows_a_symlinked_page_to_its_target(repo: Path):
+    graph = _repo_with_graph(repo)
+    src = repo / "docs/features/groom/gui/screens/changes-view.md"
+    (repo / "docs/features/groom/gui/screens/alias.md").symlink_to(
+        repo / "docs/features/groom/gui/components/design-system.md")
+    tgt = present(links.LinkResolver(graph).resolve(src, "alias.md#tree-node"))
+    assert tgt.node_id == "docs/features/groom/gui/components/design-system.md#tree-node"
+    assert tgt.resolved
+
+
+def test_resolve_reads_a_climbing_link_the_same_as_a_direct_one(repo: Path):
+    graph = _repo_with_graph(repo)
+    src = repo / "docs/features/groom/gui/screens/changes-view.md"
+    resolver = links.LinkResolver(graph)
+    direct = present(resolver.resolve(src, "../components/design-system.md"))
+    climbing = present(resolver.resolve(src, "../../gui/screens/../components/design-system.md"))
+    assert climbing.node_id == direct.node_id == "docs/features/groom/gui/components/design-system.md"
+    assert present(resolver.resolve(src, "..")).node_id == "docs/features/groom/gui"
+
+
 def test_code_ref_is_not_a_doc_link():
     assert not links.is_doc_link("groom/groom/render.py::_inbox_row")
     assert not links.is_doc_link("https://example.com")
