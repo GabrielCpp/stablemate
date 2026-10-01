@@ -12,6 +12,9 @@ its public entry point. They share runtime state and must agree about it:
   → a `stablemate_dir` checkout → the shared cache);
 - **the base-library cache** (`~/.cache/stablemate`) — one directory, one layout, one
   fetch.
+- **skill references** (`skill_refs.py`) — one rule for how a template names a skill.
+  Farrier renders a link at install time and workhorse renders one at run time. Both
+  must point at the same installed file.
 
 This was duplicated code in both tools until the duplication caused a real bug: two
 hand-rolled TOML writers, one of which stringified nested tables and silently destroyed
