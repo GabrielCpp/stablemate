@@ -11,7 +11,8 @@ from workhorse_workflows.kit.qa import runner
 from workhorse_workflows.okf_book.shared import book_run
 from workhorse_workflows.okf_book.shared.book_run import bring_up, compile_scenarios, release, run_plan, with_app_logs
 from ostler.qa.attribution import Cause, Signature
-from workhorse_workflows.okf_book.shared.scenarios import RunSummary, Scenario, ScenarioOutcome
+from ostler.qa.verdict import Verdict
+from workhorse_workflows.okf_book.shared.scenarios import FailedCheck, RunSummary, Scenario, ScenarioOutcome
 
 PREVIEW = (
     "---\ntype: environment\nslug: preview\ntitle: Preview\n---\n# Preview\n\n"
@@ -156,7 +157,7 @@ def test_a_check_that_failed_without_a_server_error_leaves_the_log_out(monkeypat
     assert not any("its log" in line for line in result.lines)
 
 
-def _probed(monkeypatch: pytest.MonkeyPatch, probe_cause: Cause | None) -> list[tuple[str, ...]]:
+def _probed(monkeypatch: pytest.MonkeyPatch, probe_cause: Cause | None, gap: str = "") -> list[tuple[str, ...]]:
     """Run a plan of one probe and one book page, whose probe fails with *probe_cause*, and record what each run was asked for."""
     plan = (Scenario(id="probe-signed-in-editor", covers=("okf:docs/a.md#get:does:1",)),
             Scenario(id="docs-a-from-the-book", covers=("okf:docs/a.md#get:does:1",)))
@@ -169,7 +170,7 @@ def _probed(monkeypatch: pytest.MonkeyPatch, probe_cause: Cause | None) -> list[
         asked.append(tuple(only))
         if probe_cause is None or tuple(only) != ("probe-signed-in-editor",):
             return RunSummary(status="passed", scenarios={name: ScenarioOutcome(status="passed") for name in only})
-        refused = Signature(probe_cause, "docs/fixtures/signed-in-editor.md", "403", "GET /api/things", 1, "GET /api/things answers [200]")
+        refused = Signature(probe_cause, "docs/fixtures/signed-in-editor.md", "403", "GET /api/things", 1, "GET /api/things answers [200]", gap)
         return RunSummary(status="failed", signatures=(refused,),
                           scenarios={"probe-signed-in-editor": ScenarioOutcome(status="failed", assertions=1, failures=1)})
 
@@ -223,6 +224,31 @@ def test_a_probe_the_app_fails_leaves_the_book_to_run(monkeypatch: pytest.Monkey
     _ = run_plan(tmp_path, tmp_path / "spec", (), True)
 
     assert asked[-1] == ("docs-a-from-the-book",)
+
+
+def test_a_probe_that_finds_a_capability_absent_leaves_the_book_to_run(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    asked = _probed(monkeypatch, Cause.ENVIRONMENT, gap="payment provider")
+
+    _ = run_plan(tmp_path, tmp_path / "spec", (), True)
+
+    assert asked[-1] == ("docs-a-from-the-book",)
+
+
+def test_a_gapped_claim_reads_as_the_capability_the_stack_lacks(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    claim = "okf:docs/billing.md#charge:does:1"
+    check = FailedCheck(label="a charge", covers=(claim,), cause=Cause.ENVIRONMENT, gap="payment provider")
+    summary = RunSummary(status="failed", verdicts={claim: Verdict.GAPPED},
+                         scenarios={"charge": ScenarioOutcome(status="failed", assertions=1, failures=1, failed_checks=(check,))})
+
+    def _run_scenarios(*_args: object) -> RunSummary:
+        return summary
+
+    monkeypatch.setattr(book_run, "run_scenarios", _run_scenarios)
+
+    result = run_plan(tmp_path, tmp_path / "spec", (), True, only=("charge",))
+
+    assert f"claim {claim}: gapped: payment provider absent" in result.lines
+    assert not result.passed
 
 
 def test_a_run_of_named_scenarios_probes_nothing(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

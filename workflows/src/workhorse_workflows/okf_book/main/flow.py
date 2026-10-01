@@ -51,6 +51,14 @@ def _escalated_signatures(exercised: ExerciseResult) -> tuple[Signature, ...]:
     return tuple(signature for signature in signatures if signature.cause in SIDE_BY_ESCALATED_CAUSE)
 
 
+def _escalation_reason(signature: Signature) -> str:
+    """Why a person must act on *signature*: a capability only a person can supply, or the checks another party must fix."""
+    if signature.gap:
+        return (f"the stack lacks the {signature.gap}, and only a person can supply it; "
+                f"the {signature.count} checks that need it pass once it is there; for example {signature.sample}")
+    return f"{signature.count} checks failed this way; for example {signature.sample}"
+
+
 class OkfBook(BookFlow):
     """The run: each surface's book is written by one confined turn, committed, checked and run against the app."""
 
@@ -223,7 +231,7 @@ class OkfBook(BookFlow):
         for side in SIDE_BY_ESCALATED_CAUSE.values():
             forget_blockers(self.records_dir, Phase.EXERCISE, side, service)
         for signature in _escalated_signatures(exercised):
-            reason = f"{signature.count} checks failed this way; for example {signature.sample}"
+            reason = _escalation_reason(signature)
             blocker = Blocker(subject=f"{service}: {signature.text()}", service=service, phase=Phase.EXERCISE,
                               side=SIDE_BY_ESCALATED_CAUSE[signature.cause], reason=reason)
             _ = record_blocker(self.records_dir, blocker)

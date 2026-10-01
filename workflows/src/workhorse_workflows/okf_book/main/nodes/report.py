@@ -132,6 +132,11 @@ def _run_lines(report: BookReport) -> list[str]:
     return lines
 
 
+def _gap_lines(report: BookReport) -> list[str]:
+    gaps = report.run.gaps if report.run is not None else {}
+    return [f"- `{claim}`: gapped: {gap} absent" for claim, gap in gaps.items()] or ["None."]
+
+
 def _money(dollars: float | None) -> str:
     return "dollars not reported" if dollars is None else f"${dollars:.2f}"
 
@@ -155,6 +160,10 @@ def render_report(report: BookReport) -> str:
         "## Scenarios",
         "",
         *_run_lines(report),
+        "",
+        "## Gapped claims",
+        "",
+        *_gap_lines(report),
         "",
         "## Start reading here",
         "",

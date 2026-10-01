@@ -58,6 +58,7 @@ class FailedCheck(BaseModel):
     precondition: str = ""
     status: str = ""
     shape: str = ""
+    gap: str = ""
 
     @property
     def claim(self) -> str:
@@ -133,6 +134,14 @@ class RunSummary(BaseModel):
     @property
     def failed_scenarios(self) -> tuple[str, ...]:
         return tuple(sorted(name for name, outcome in self.scenarios.items() if outcome.status != "passed"))
+
+    @property
+    def gaps(self) -> dict[str, str]:
+        """Each gapped claim and the capability the stack lacks for it, claims in order."""
+        gapped = {claim for claim, verdict in self.verdicts.items() if verdict is Verdict.GAPPED}
+        found = {claim: check.gap for outcome in self.scenarios.values() for check in outcome.failed_checks
+                 if check.gap for claim in check.covers if claim in gapped}
+        return dict(sorted(found.items()))
 
     def failures_by_page(self, scenarios: Iterable[Scenario], plan_source: str = "") -> dict[str, tuple[PageProblem, ...]]:
         """Each book page whose obligations a failed scenario covers, and what that scenario reported, pages in path order.

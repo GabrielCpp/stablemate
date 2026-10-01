@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+from ostler.qa.attribution import Cause
+from ostler.qa.verdict import Verdict
 from workhorse.runner.usage import TurnUsage
 
 from workhorse_workflows.okf_book.main.nodes.report import BookReport, book_costs, render_report
 from workhorse_workflows.okf_book.shared.blockers import Phase
 from workhorse_workflows.okf_book.shared.metrics import TurnMetric, turn_metric
+from workhorse_workflows.okf_book.shared.scenarios import FailedCheck, RunSummary, ScenarioOutcome
 
 
 def _report(dollars: float | None) -> BookReport:
@@ -56,3 +59,15 @@ def test_a_shared_turn_splits_its_tokens_and_dollars_evenly() -> None:
 def test_the_report_shows_the_dollars_or_says_none_were_reported() -> None:
     assert "12.0 minutes of writing, $2.73." in render_report(_report(2.73))
     assert "12.0 minutes of writing, dollars not reported." in render_report(_report(None))
+
+
+def test_the_report_lists_each_gapped_claim_with_the_capability_it_waits_for() -> None:
+    claim = "okf:docs/billing.md#charge:does:1"
+    check = FailedCheck(label="a charge", covers=(claim,), cause=Cause.ENVIRONMENT, gap="payment provider")
+    run = RunSummary(status="failed", verdicts={claim: Verdict.GAPPED},
+                     scenarios={"charge": ScenarioOutcome(status="failed", failed_checks=(check,))})
+
+    rendered = render_report(_report(None).model_copy(update={"run": run}))
+
+    assert f"## Gapped claims\n\n- `{claim}`: gapped: payment provider absent\n" in rendered
+    assert "## Gapped claims\n\nNone.\n" in render_report(_report(None))

@@ -14,6 +14,7 @@ from workhorse_workflows.okf_book.workflow import OkfBook
 UNREACHABLE = Signature(Cause.ENVIRONMENT, "", "could not connect", "GET /entries/…", 4, "lists: expected [200], observed null")
 CRASHED = Signature(Cause.APP, "", "500", "POST /entries/…", 2, "adds: expected [201], observed 500")
 MISREAD = Signature(Cause.BOOK, "", "422", "POST /entries/…", 1, "adds: expected [201], observed 422")
+GAPPED = Signature(Cause.ENVIRONMENT, "docs/fixtures/payment-provider.md", "", "", 3, "charges: probe exited 1", "payment provider")
 
 
 def _escalated_run(*signatures: Signature) -> ExerciseResult:
@@ -40,6 +41,21 @@ def test_each_signature_another_party_must_fix_is_one_blocker_on_its_side(tmp_pa
         Blocker(subject="tally: environment: GET /entries/… answered could not connect", service="tally", phase=Phase.EXERCISE,
                 side=Side.ENVIRONMENT, reason="4 checks failed this way; for example lists: expected [200], observed null"),
     )
+
+
+def test_an_absent_capability_is_parked_for_a_person_and_never_reaches_the_writer(tmp_path: Path) -> None:
+    book = _book(tmp_path)
+    gapped = FailedCheck(label="charges", cause=Cause.ENVIRONMENT, precondition="docs/fixtures/payment-provider.md", gap="payment provider")
+    summary = RunSummary(status="failed", signatures=(GAPPED,),
+                         scenarios={"tally-charge": ScenarioOutcome(status="failed", failed_checks=(gapped,))})
+    exercised = ExerciseResult(lines=("scenario tally-charge: failed",), summary=summary)
+
+    _ = book.settle_run(index=0, run_failures_repaired=False, exercised=exercised)
+
+    [blocker] = read_blockers(tmp_path)
+    assert (blocker.subject, blocker.side) == ("tally: gapped: payment provider absent", Side.ENVIRONMENT)
+    assert "only a person can supply it" in blocker.reason
+    assert book.map_run_failures(index=0, exercised=exercised).state == "report"
 
 
 def test_a_signature_the_next_run_no_longer_shows_is_forgotten(tmp_path: Path) -> None:

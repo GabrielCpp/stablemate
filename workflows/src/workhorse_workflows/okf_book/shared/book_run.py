@@ -51,6 +51,7 @@ def _failure_lines(summary: RunSummary) -> list[str]:
         outcome = summary.scenarios[name]
         lines.append(f"scenario {name}: {outcome.status}, {outcome.failures} of {outcome.assertions} checks failed")
         lines.extend(f"  {line}" for line in outcome.failure_lines())
+    lines.extend(f"claim {claim}: gapped: {gap} absent" for claim, gap in summary.gaps.items())
     lines.extend(f"problem: {problem}" for problem in (*summary.problems, *summary.runner_errors))
     return lines
 
@@ -150,8 +151,9 @@ def run_plan(root: Path, spec: Path, gaps: tuple[str, ...], serving: bool, only:
 
     A run of every scenario probes each precondition first. A probe that fails on what its fixture
     arranges, or on the environment, stops the run before the book, since every claim that fixture
-    arranges would fail the same way. The probes and the book are one lap, so each precondition is
-    built once across both.
+    arranges would fail the same way. A probe that finds a capability absent stops nothing, because
+    the book's run gaps the claims that need it and runs the rest. The probes and the book are one
+    lap, so each precondition is built once across both.
     """
     runner = run_scenarios if serving else _run_in_copy
     with tempfile.TemporaryDirectory(prefix="okf-lap-") as lap:
@@ -164,7 +166,7 @@ def _run_lap(root: Path, spec: Path, gaps: tuple[str, ...], only: Sequence[str],
         probes = [scenario.id for scenario in scenarios if is_probe(scenario.id)]
         if probes:
             probed = run(probes)
-            if any(signature.cause in PROBE_STOPS for signature in probed.signatures):
+            if any(signature.cause in PROBE_STOPS and not signature.gap for signature in probed.signatures):
                 lines = ("problem: a precondition probe failed, so the book did not run", *gaps, *_failure_lines(probed))
                 return ExerciseResult(lines=lines, summary=probed)
             only = [scenario.id for scenario in scenarios if not is_probe(scenario.id)]
