@@ -11,7 +11,7 @@ artifact validation confirms that the queue contains runnable authored work, and
 ships only the paths Author owns. Missing infrastructure is skipped only where the individual gate
 explicitly defines that fail-open behavior; actual findings remain blocking results.
 
-- code: `workflows/src/workhorse_workflows/author/main/nodes/artifacts.py::verify_reconcile` @dcae8c53f8af
+- code: `workflows/src/workhorse_workflows/author/finalize/nodes/artifacts.py::verify_reconcile` @f3adad9536ae
 - detail: [author finalize subflow](author-finalize-subflow.md)
 - detail: [author shared schemas](author-shared-schemas.md)
 
@@ -41,7 +41,7 @@ silently remove previously committed planning scope.
 - verify: count(subject="reconciliation drop reports", equals=1)
 - returns: returns `VerifyReport` with `skipped`, `holds`, `errors`, and a reconciliation summary
 - verify: count(subject="reconciliation reports", equals=1)
-- code: `workflows/src/workhorse_workflows/author/main/nodes/artifacts.py::verify_reconcile` @dcae8c53f8af
+- code: `workflows/src/workhorse_workflows/author/finalize/nodes/artifacts.py::verify_reconcile` @f3adad9536ae
 - code: `workflows/tests/author/test_workflow.py::backlogged`
 - detail: [Author backlogged fixture contexts](author-backlogged-fixture-context.md)
 - tests: `workflows/tests/author/finalize/test_flow.py::test_finalizes_with_one_commit_on_the_current_branch`
@@ -93,7 +93,7 @@ one selectable story.
 - verify: count(subject="empty selectable artifact queues", equals=1)
 - returns: returns `Defects` with `ok` true only when the queue has no errors and at least one selectable story
 - verify: count(subject="validated artifact defect reports", equals=1)
-- code: `workflows/src/workhorse_workflows/author/main/nodes/artifacts.py::validate_artifacts` @dcae8c53f8af
+- code: `workflows/src/workhorse_workflows/author/finalize/nodes/artifacts.py::validate_artifacts` @f3adad9536ae
 - tests: `workflows/tests/author/test_workflow.py::test_author_nodes_use_milestones_when_todo_is_absent`
 
 ### commit_author

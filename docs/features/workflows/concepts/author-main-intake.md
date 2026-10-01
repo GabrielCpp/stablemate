@@ -42,7 +42,7 @@ consuming repository from the explicit `repo_dir` input using the survey resolve
 - verify: json_path(path="$.ok", equals=true)
 - returns: `Defects(ok=false, errors=...)` with one line per validation failure otherwise
 - verify: json_path(path="$.errors", matches=".+")
-- code: `workflows/src/workhorse_workflows/author/main/nodes/intake.py::validate_roadmap_milestone` @123fcf25e173
+- code: `workflows/src/workhorse_workflows/author/finalize/nodes/roadmap.py::validate_roadmap_milestone` @7dddc06a333d
 - tests: `workflows/tests/author/test_config.py::test_roadmap_must_source_exactly_one_nonempty_milestone`
 - tests: `workflows/tests/author/test_config.py::test_roadmap_validation_ignores_unrelated_planning_defects`
 
@@ -58,5 +58,5 @@ consuming repository from the explicit `repo_dir` input using the survey resolve
 - verify: absent(subject="roadmap status mutation after invalid status")
 - returns: `RoadmapStatus` containing the roadmap path and status `authored`
 - verify: json_path(path="$.status", equals="authored")
-- code: `workflows/src/workhorse_workflows/author/main/nodes/intake.py::mark_roadmap_authored` @123fcf25e173
+- code: `workflows/src/workhorse_workflows/author/finalize/nodes/roadmap.py::mark_roadmap_authored` @7dddc06a333d
 - tests: `workflows/tests/author/test_config.py::test_mark_roadmap_authored_preserves_the_contract_body`

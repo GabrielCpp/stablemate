@@ -5,10 +5,6 @@ from pathlib import Path
 from typing import Any, ClassVar
 
 from workhorse.pyflow import Await, Continue, Done, Workflow, WorkflowFailed
-from workhorse_workflows.author.main.nodes import (
-    check_mockup_needed,
-    check_story_feedback,
-)
 from workhorse_workflows.author.shared.nodes import (
     check_story_grounding,
     load_config,
@@ -24,7 +20,12 @@ from workhorse_workflows.author.shared.schemas import (
     OperatorResolution,
     WriteStoryResult,
 )
-from workhorse_workflows.author.story_author.nodes import prepare_story, record_story_audit
+from workhorse_workflows.author.story_author.nodes import (
+    check_mockup_needed,
+    check_story_feedback,
+    prepare_story,
+    record_story_audit,
+)
 from workhorse_workflows.author.story_author.schemas import StoryAuthorDone, StoryTarget
 from workhorse_workflows.kit.telemetry import counter_labels
 

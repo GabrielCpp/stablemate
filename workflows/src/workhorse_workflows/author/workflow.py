@@ -10,6 +10,7 @@ from workhorse_workflows.author.epic_author.nodes import blueprint as epic_autho
 from workhorse_workflows.author.epic_split import EpicSplit
 from workhorse_workflows.author.epic_split.nodes import blueprint as epic_split_blueprint
 from workhorse_workflows.author.finalize import Finalize
+from workhorse_workflows.author.finalize.nodes import blueprint as finalize_blueprint
 from workhorse_workflows.author.main.flow import Author
 from workhorse_workflows.author.main.nodes import blueprint
 from workhorse_workflows.author.milestone import Milestone
@@ -38,6 +39,7 @@ workflow = (
         epic_author_blueprint,
         story_author_blueprint,
         story_split_blueprint,
+        finalize_blueprint,
     )
     .add_flows(
         surveyor=Surveyor,

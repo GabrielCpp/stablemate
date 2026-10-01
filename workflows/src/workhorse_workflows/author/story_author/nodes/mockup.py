@@ -1,13 +1,12 @@
-"""One story's mockup gate, and the operator's notes on it."""
+"""Whether one story needs a visual mockup before it is written."""
 from __future__ import annotations
 
 import logging
 
 from ostler import Ostler
-from workhorse_workflows.author.main.nodes._blueprint import blueprint
+from workhorse_workflows.author.story_author.nodes._blueprint import blueprint
 from workhorse_workflows.author.shared.paths import survey_repo_root
-from workhorse_workflows.kit import poll_run_inbox
-from workhorse_workflows.author.shared.schemas.main import Feedback, MockupGate
+from workhorse_workflows.author.shared.schemas.main import MockupGate
 
 MOCKUP_LAYER = "frontend"
 MOCKUP_REQUIRED = "required"
@@ -88,16 +87,4 @@ def check_mockup_needed(
     )
 
 
-@blueprint.node
-def check_story_feedback(logger: logging.Logger, run_dir: str = "") -> Feedback:
-    """Poll the operator's run-scoped inbox for un-consumed feedback."""
-    polled = poll_run_inbox(run_dir, reply_text="folded into a story rework")
-    if polled is None:
-        logger.info("no outstanding inbox messages")
-        return Feedback()
-    content, scope = polled
-    logger.info("feedback present (scope=%s)", scope)
-    return Feedback(present=True, scope=scope, content=content)
-
-
-__all__ = ["check_mockup_needed", "check_story_feedback"]
+__all__ = ["check_mockup_needed"]

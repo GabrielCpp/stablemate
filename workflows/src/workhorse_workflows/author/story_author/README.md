@@ -5,5 +5,5 @@ The standalone machine that authors one caller-named story. It never picks a sto
 ## Map
 
 - `flow.py`: the story-author state machine: mockup, write, validate, ground, audit and their rework budgets.
-- `nodes/`: the steps that resolve the named story and record its audit.
+- `nodes/`: the steps that resolve the named story, gate its mockup, read the operator's notes and record its audit.
 - `schemas.py`: the target, audit receipt and terminal values of the story-author flow.

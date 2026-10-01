@@ -267,7 +267,7 @@ The returned `Config` carries the resolved repository root, the repo-relative ba
 - verify: count(subject="dropped scope detections", equals=1)
 - consistency: reconcile-report-status — the returned VerifyReport sets holds=True when no scope was dropped, skipped=True when there is no git repository, no epics directory, or no epic with a committed baseline, and errors carrying one dropped-seed or dropped-story line per silent removal otherwise
 - verify: count(subject="reconciliation reports", equals=1)
-- code: `workflows/src/workhorse_workflows/author/main/nodes/artifacts.py::verify_reconcile` @dcae8c53f8af
+- code: `workflows/src/workhorse_workflows/author/finalize/nodes/artifacts.py::verify_reconcile` @f3adad9536ae
 
 ### verify_integrity
 - sig: `verify_integrity(logger: logging.Logger, epic: str = "", repo_dir: str = "") -> VerifyReport`
@@ -287,7 +287,7 @@ The returned `Config` carries the resolved repository root, the repo-relative ba
 - verify: count(subject="roadmap milestone cardinality checks", equals=1)
 - returns: returns whether validation holds with zero or more validation errors
 - verify: count(subject="roadmap milestone validation results", equals=1)
-- code: `workflows/src/workhorse_workflows/author/main/nodes/intake.py::validate_roadmap_milestone` @123fcf25e173
+- code: `workflows/src/workhorse_workflows/author/finalize/nodes/roadmap.py::validate_roadmap_milestone` @7dddc06a333d
 
 ### validate_artifacts
 - sig: `validate_artifacts(logger: logging.Logger, repo_dir: str = "") -> Defects`
@@ -299,7 +299,7 @@ The returned `Config` carries the resolved repository root, the repo-relative ba
 - verify: count(subject="selectable story checks", equals=1)
 - consistency: validate-artifacts-return — the returned Defects carries one error when any queued epic is unloadable, has no stories, or has an unauthored story.md
 - verify: count(subject="artifact validation results", equals=1)
-- code: `workflows/src/workhorse_workflows/author/main/nodes/artifacts.py::validate_artifacts` @dcae8c53f8af
+- code: `workflows/src/workhorse_workflows/author/finalize/nodes/artifacts.py::validate_artifacts` @f3adad9536ae
 
 ### mark_roadmap_authored
 
@@ -311,7 +311,7 @@ The node advances one validated roadmap from `approved` to `authored` (idempoten
 - does: update the roadmap's frontmatter status field from `approved` to `authored`
 - verify: json_path(path="$.status", equals="authored")
 - verify: count(subject="authored roadmap results", equals=1)
-- code: `workflows/src/workhorse_workflows/author/main/nodes/intake.py::mark_roadmap_authored` @123fcf25e173
+- code: `workflows/src/workhorse_workflows/author/finalize/nodes/roadmap.py::mark_roadmap_authored` @7dddc06a333d
 
 ### commit_author
 - sig: `commit_author(logger: logging.Logger, mode: str = "epic", epic: str = "", bullet: str = "", roadmap: str = "", repo_dir: str = "", docs_dir: str = "docs", id_registry: str = ".agents/ids.json") -> Committed`

@@ -98,7 +98,7 @@ each symbol carries:
 The three `test_write_story_prompt.py` symbols above each pin a prose-drift contract that every
 `write-story.md` copy must hold in lockstep with the parameterization the deterministic author
 gates actually produce. The grounding gate in `author/shared/nodes/stories.py` and the mockup
-gate in `author/main/nodes/stories.py` both stand down on a backend-only story:
+gate in `author/story_author/nodes/mockup.py` both stand down on a backend-only story:
 `check_story_grounding` puts its cite-a-node requirement behind `if okf.graph.ui_nodes:`,
 and `check_mockup_needed` decides from `layers:` on the covered seeds, so a story tagged
 `layers: backend` is rendered with `mockup_path=""`. The prompt must still give such a story

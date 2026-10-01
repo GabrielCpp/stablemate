@@ -8,7 +8,7 @@ import workhorse_workflows
 from ostler import Ostler
 from workhorse.pyflow import WorkflowFailed
 from workhorse_workflows.author.shared.nodes.config import load_config
-from workhorse_workflows.author.main.nodes.intake import (
+from workhorse_workflows.author.finalize.nodes.roadmap import (
     mark_roadmap_authored,
     validate_roadmap_milestone,
 )

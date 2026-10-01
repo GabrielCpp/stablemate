@@ -5,18 +5,18 @@ title: Author main story processing
 ---
 # Author main story processing
 
-The Author main flow's story-processing nodes register a story, gate visual design, validate
-the story contract and grounding, retain failed approaches, consume operator feedback, and prune
-a consumed backlog item.
+The story-processing nodes the Author main flow reaches through its story subflows register a
+story, gate visual design, validate the story contract and grounding, retain failed approaches,
+consume operator feedback, and prune a consumed backlog item.
 These nodes use Ostler as the source of truth for planning and document structure; they do not
 invent epic paths or duplicate the graph's story semantics.
 
 - code: `workflows/src/workhorse_workflows/author/shared/nodes/story_mode.py::seed_story` @d2ddecee90dd
-- code: `workflows/src/workhorse_workflows/author/main/nodes/stories.py::check_mockup_needed` @77042f1e2b6b
+- code: `workflows/src/workhorse_workflows/author/story_author/nodes/mockup.py::check_mockup_needed` @2b9a95692253
 - code: `workflows/src/workhorse_workflows/author/shared/nodes/stories.py::validate_story` @c2694da2f675
 - code: `workflows/src/workhorse_workflows/author/shared/nodes/stories.py::check_story_grounding` @c2694da2f675
 - code: `workflows/src/workhorse_workflows/author/shared/nodes/stories.py::record_attempt` @c2694da2f675
-- code: `workflows/src/workhorse_workflows/author/main/nodes/stories.py::check_story_feedback` @77042f1e2b6b
+- code: `workflows/src/workhorse_workflows/author/story_author/nodes/feedback.py::check_story_feedback` @8125ecb8d1d2
 - code: `workflows/src/workhorse_workflows/author/shared/nodes/story_mode.py::prune_bullet` @d2ddecee90dd
 - detail: [Author main package](author-main-package.md)
 
@@ -62,7 +62,7 @@ invent epic paths or duplicate the graph's story semantics.
 - verify: json_path(path="$.evidence", matches="required")
 - does: skips visual design when all covered frontend seeds are `design: preserve` or when the story has no frontend layer
 - verify: json_path(path="$.required", equals=false)
-- code: `workflows/src/workhorse_workflows/author/main/nodes/stories.py::check_mockup_needed` @77042f1e2b6b
+- code: `workflows/src/workhorse_workflows/author/story_author/nodes/mockup.py::check_mockup_needed` @2b9a95692253
 - tests: `workflows/tests/author/test_mockup_gate.py::test_the_gate_is_the_union_of_the_covered_seeds_layers`
 - tests: `workflows/tests/author/test_mockup_gate.py::test_one_required_visual_change_requires_design`
 
@@ -131,7 +131,7 @@ invent epic paths or duplicate the graph's story semantics.
 - verify: emitted(event="story feedback folded", count=1)
 - does: returns the message content, scope, and `present` flag for one consumed operator note
 - verify: count(subject="consumed operator feedback messages", equals=1)
-- code: `workflows/src/workhorse_workflows/author/main/nodes/stories.py::check_story_feedback` @77042f1e2b6b
+- code: `workflows/src/workhorse_workflows/author/story_author/nodes/feedback.py::check_story_feedback` @8125ecb8d1d2
 - tests: `workflows/tests/author/test_workflow.py::test_an_operator_note_dropped_mid_run_reworks_the_story_once`
 
 ### prune_bullet

@@ -1,4 +1,4 @@
-"""Validate and advance the approved roadmap Author consumes."""
+"""Validate and advance the approved roadmap finalize delivers."""
 from __future__ import annotations
 
 import logging
@@ -6,7 +6,7 @@ import re
 
 from ostler import Ostler, markdown
 from workhorse.pyflow import WorkflowFailed
-from workhorse_workflows.author.main.nodes._blueprint import blueprint
+from workhorse_workflows.author.finalize.nodes._blueprint import blueprint
 from workhorse_workflows.author.shared.paths import survey_repo_root
 from workhorse_workflows.author.shared.schemas.main import Defects, RoadmapStatus
 

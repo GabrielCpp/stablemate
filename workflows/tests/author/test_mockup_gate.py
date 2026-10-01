@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 from ostler import Ostler
 
-from workhorse_workflows.author.main.nodes.stories import check_mockup_needed
+from workhorse_workflows.author.story_author.nodes.mockup import check_mockup_needed
 
 EPIC = "accounts"
 

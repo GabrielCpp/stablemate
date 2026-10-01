@@ -5,7 +5,7 @@ import logging
 from pathlib import Path
 
 from ostler import Ostler, markdown, select
-from workhorse_workflows.author.main.nodes._blueprint import blueprint
+from workhorse_workflows.author.finalize.nodes._blueprint import blueprint
 from workhorse_workflows.author.shared.nodes import stubs as _stubs
 from workhorse_workflows.author.shared import paths
 from workhorse_workflows.author.shared.paths import launch_repo_root, survey_repo_root

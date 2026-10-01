@@ -35,8 +35,8 @@ The machine itself is implemented by `workflows/src/workhorse_workflows/author/m
 Configuration, planning, and roadmap validation are implemented by
 `workflows/src/workhorse_workflows/author/shared/nodes/config.py::load_config`,
 `workflows/src/workhorse_workflows/author/main/nodes/planner.py::plan_author_step`,
-`workflows/src/workhorse_workflows/author/main/nodes/intake.py::validate_roadmap_milestone`, and
-`workflows/src/workhorse_workflows/author/main/nodes/intake.py::mark_roadmap_authored`.
+`workflows/src/workhorse_workflows/author/finalize/nodes/roadmap.py::validate_roadmap_milestone`, and
+`workflows/src/workhorse_workflows/author/finalize/nodes/roadmap.py::mark_roadmap_authored`.
 
 ## Invocations
 
@@ -141,11 +141,11 @@ resolution count; human mode, exhausted resolution, or an escalated resolver res
 operator context file. Only passing or explicitly skipped gates proceed to the next validation.
 
 Finalization is implemented by `workflows/src/workhorse_workflows/author/finalize/flow.py::Finalize.close`,
-`workflows/src/workhorse_workflows/author/main/nodes/intake.py::validate_roadmap_milestone`,
-`workflows/src/workhorse_workflows/author/main/nodes/intake.py::mark_roadmap_authored`,
-`workflows/src/workhorse_workflows/author/main/nodes/artifacts.py::validate_artifacts`,
+`workflows/src/workhorse_workflows/author/finalize/nodes/roadmap.py::validate_roadmap_milestone`,
+`workflows/src/workhorse_workflows/author/finalize/nodes/roadmap.py::mark_roadmap_authored`,
+`workflows/src/workhorse_workflows/author/finalize/nodes/artifacts.py::validate_artifacts`,
 `workflows/src/workhorse_workflows/author/shared/nodes/integrity.py::verify_integrity`,
-`workflows/src/workhorse_workflows/author/main/nodes/artifacts.py::verify_reconcile`, and
+`workflows/src/workhorse_workflows/author/finalize/nodes/artifacts.py::verify_reconcile`, and
 `workflows/src/workhorse_workflows/author/shared/nodes/commit.py::commit_author`.
 
 When a story handoff returns an audit block, the dispatcher keeps the result, logs the blocked

@@ -4,7 +4,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from workhorse.pyflow import Await, Continue, Done, Workflow, WorkflowFailed
-from workhorse_workflows.author.main.nodes import (
+from workhorse_workflows.author.finalize.nodes import (
     mark_roadmap_authored,
     validate_artifacts,
     validate_roadmap_milestone,
