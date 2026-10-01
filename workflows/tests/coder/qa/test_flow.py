@@ -26,6 +26,7 @@ from ostler import Ostler
 from ostler.qa import QaOutcome
 from ostler.qa.source_context import SourceRepository
 
+from workhorse_workflows.coder.shared.plan import resolve_impl_context
 from workhorse_workflows.coder.qa import flow as qa_flow
 from workhorse_workflows.coder.qa.flow import Qa
 from workhorse_workflows.coder.qa.nodes import qa as qa_nodes
@@ -33,7 +34,6 @@ from workhorse_workflows.coder.qa.nodes import regression as regression_nodes
 from workhorse_workflows.coder.qa.nodes.qa import QA_SCRATCH_DIRNAME
 from workhorse_workflows.coder.shared import okf as okf_nodes
 from workhorse_workflows.coder.shared import qa_support
-from workhorse_workflows.coder.shared.dev import resolve_impl_context
 from workhorse_workflows.kit.qa import evidence as qa_evidence_mod
 from workhorse_workflows.kit.qa import runner as qa_runner_mod
 

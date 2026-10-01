@@ -6,14 +6,10 @@ from pathlib import Path
 from typing import Any, ClassVar, Literal
 
 from workhorse.pyflow import AgentTimeout, Await, Continue, Done, Workflow, WorkflowFailed
+from workhorse_workflows.coder.shared.plan import plan_summary, resolve_impl_context
 from workhorse_workflows.kit import find_docs_root
 from workhorse_workflows.coder.shared import paths, roles
-from workhorse_workflows.coder.shared.dev import (
-    plan_summary,
-    read_operator_context,
-    resolve_impl_context,
-    resolve_story_sources,
-)
+from workhorse_workflows.coder.shared.dev import read_operator_context, resolve_story_sources
 from workhorse_workflows.coder.shared.docs import (
     MAX_PROMPT_NOTE_CHARS,
     classify_documentation_context,

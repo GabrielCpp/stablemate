@@ -6,6 +6,7 @@ from pathlib import Path
 
 from github import GithubException
 from ostler import markdown, path as okf_path, registry
+from workhorse_workflows.coder.shared.plan import get_affected_repos
 from workhorse_workflows.kit import find_repo_root, load_json
 from workhorse_workflows.coder.shared import commits, paths
 from workhorse_workflows.coder.shared.blueprint import blueprint
@@ -25,7 +26,6 @@ from workhorse_workflows.kit import (
     commit_paths,
     current_branch,
     find_open_pr,
-    get_affected_repos,
     get_repo_config,
     is_ancestor,
     origin_url,

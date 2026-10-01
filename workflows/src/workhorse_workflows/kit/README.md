@@ -13,4 +13,4 @@ The helpers any workflow family's nodes reuse. A helper that only one family nee
 - `qa/`: the family-neutral QA domain: bringing a stack up, running a plan and checking its evidence.
 - `telemetry.py`: how a bounded retry loop reports its counters and verdicts as span labels.
 - `tools.py`: the one seam a node runs an external CLI through.
-- `workspace.py`: which repos a run spans, where they live, and their checkout. It also builds the dispatch list from a plan's services.
+- `workspace.py`: resolving and checking out a workspace, and each repo's config.

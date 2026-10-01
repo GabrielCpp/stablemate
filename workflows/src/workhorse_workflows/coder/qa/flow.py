@@ -20,12 +20,8 @@ from workhorse.pyflow import (
 from workhorse_workflows.coder.shared import paths, qa_support, roles
 from workhorse_workflows.coder.shared.backlog import file_backlog_items
 from workhorse_workflows.coder.shared.conversation import backbone
-from workhorse_workflows.coder.shared.dev import (
-    plan_summary,
-    read_operator_context,
-    resolve_impl_context,
-    resolve_story_sources,
-)
+from workhorse_workflows.coder.shared.plan import plan_summary, resolve_impl_context
+from workhorse_workflows.coder.shared.dev import read_operator_context, resolve_story_sources
 from workhorse_workflows.coder.shared.docs import detect_okf_docs, features_root
 from workhorse_workflows.coder.shared.escalation import context_path, escalation
 from workhorse_workflows.coder.shared.resolution import (

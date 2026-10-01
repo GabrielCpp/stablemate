@@ -57,9 +57,7 @@ _NAMES: dict[str, str] = {
 } | {
     name: "workhorse_workflows.kit.workspace"
     for name in (
-        "build_dispatch_list",
         "checkout_workspace",
-        "get_affected_repos",
         "get_repo_config",
         "resolve_workspace",
     )
@@ -154,9 +152,7 @@ if TYPE_CHECKING:
     from workhorse_workflows.kit.inbox import poll_run_inbox  # noqa: F401
     from workhorse_workflows.kit.tools import run_tool  # noqa: F401
     from workhorse_workflows.kit.workspace import (  # noqa: F401
-        build_dispatch_list,
         checkout_workspace,
-        get_affected_repos,
         get_repo_config,
         resolve_workspace,
     )

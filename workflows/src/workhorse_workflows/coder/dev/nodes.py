@@ -8,12 +8,12 @@ from workhorse.pyflow import Await, Continue, Done
 
 from workhorse_workflows.coder.shared import roles
 from workhorse_workflows.coder.shared.conversation import backbone, spend_turn
-from workhorse_workflows.coder.shared.dev import (
-    declared_gates,
+from workhorse_workflows.coder.shared.plan import (
     read_plan_text,
     resolve_impl_context,
     select_next_layer,
 )
+from workhorse_workflows.coder.shared.dev import declared_gates
 from workhorse_workflows.coder.shared.escalation import context_path, escalation
 from workhorse_workflows.coder.shared.resolution import RESOLVER_POWER, resolver_args
 from workhorse_workflows.coder.shared.schemas._base import CoderResult, Finding

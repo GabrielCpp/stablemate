@@ -21,8 +21,6 @@ both sides must share the host path.
 - code: `workflows/src/workhorse_workflows/kit/workspace.py::_add_worktree` @e2832eb8451a
 - code: `workflows/src/workhorse_workflows/kit/workspace.py::checkout_workspace` @e2832eb8451a
 - code: `workflows/src/workhorse_workflows/kit/workspace.py::get_repo_config` @e2832eb8451a
-- code: `workflows/src/workhorse_workflows/kit/workspace.py::build_dispatch_list` @e2832eb8451a
-- code: `workflows/src/workhorse_workflows/kit/workspace.py::get_affected_repos` @e2832eb8451a
 - code: `workflows/src/workhorse_workflows/kit/workspace.py::_main` @e2832eb8451a
 - code: `workflows/src/workhorse_workflows/kit/workspace.py::SOURCE_MODES` @e2832eb8451a
 - code: `workflows/tests/test_kit_worktree.py::host_repo`
@@ -183,35 +181,6 @@ both sides must share the host path.
 - returns: `default` when the repository or setting is absent
 - verify: json_path(path="$.value", equals="caller default")
 - code: `workflows/src/workhorse_workflows/kit/workspace.py::get_repo_config` @e2832eb8451a
-
-### build_dispatch_list
-
-- sig: `build_dispatch_list(plan_ctx: dict, repos: dict[str, dict], *, fallback: bool = False) -> list[dict]`
-- does: indexes plan services by `<repo>::<path>` and follows `implementation_order` when it is non-empty
-- verify: json_path(path="$.dispatch[0].service", equals="repo::service")
-- does: otherwise preserves the services' declared order and skips unknown ordered keys
-- verify: count(subject="dispatch records for known services", equals=1)
-- does: projects repository paths and workspace QA settings into each dispatch record
-- verify: json_path(path="$.dispatch[0].cwd", equals="resolved repository path")
-- does: defaults service type to `unknown`, plan file to `plan.md`, QA mode to `cli`, and missing lists or verification to empty values
-- verify: json_path(path="$.dispatch[0].type", equals="unknown")
-- does: selects `backend_layer_name`, then `mobile_layer_name`, then service type as the label
-- verify: json_path(path="$.dispatch[0].label", equals="selected layer label")
-- does: emits one first-repository fallback record only when `fallback` is true, no dispatch records exist, and repositories are available
-- verify: count(subject="fallback dispatch records", equals=1)
-- returns: the ordered dispatch record list
-- code: `workflows/src/workhorse_workflows/kit/workspace.py::build_dispatch_list` @e2832eb8451a
-
-### get_affected_repos
-
-- sig: `get_affected_repos(plan_ctx: dict, repos: dict[str, dict]) -> list[str]`
-- does: selects service repository names that exist in the resolved repository map
-- verify: count(subject="affected repositories present in workspace", equals=1)
-- does: removes duplicates and sorts the selected names
-- verify: removed(subject="duplicate selected repository name")
-- verify: json_path(path="$.affected", equals="sorted unique repository names")
-- returns: the sorted, deduplicated repository-name list
-- code: `workflows/src/workhorse_workflows/kit/workspace.py::get_affected_repos` @e2832eb8451a
 
 ### _main
 

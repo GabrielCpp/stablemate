@@ -8,6 +8,7 @@ from pathlib import Path
 from ostler import Ostler, markdown, path as okf_path, registry
 from workhorse import worklist as wl
 from workhorse.pyflow import WorkflowFailed
+from workhorse_workflows.coder.shared.plan import get_affected_repos
 from workhorse_workflows.kit import find_docs_root, find_repo_root, load_json
 from workhorse_workflows.coder.shared import commits, paths, story_status
 from workhorse_workflows.coder.shared.blueprint import blueprint
@@ -35,7 +36,6 @@ from workhorse_workflows.kit import (
     commit_paths,
     current_branch,
     default_branch,
-    get_affected_repos,
     GitError,
     is_ancestor,
     local_branch_exists,

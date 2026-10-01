@@ -13,10 +13,10 @@ from workhorse_workflows.coder.shared.backlog import (
     select_fix_item,
 )
 from workhorse_workflows.coder.shared.conversation import story_chain
+from workhorse_workflows.coder.shared.plan import plan_summary
 from workhorse_workflows.coder.shared.dev import (
     GATE_ORDER,
     changed_files,
-    plan_summary,
     read_operator_context,
     run_gate,
 )

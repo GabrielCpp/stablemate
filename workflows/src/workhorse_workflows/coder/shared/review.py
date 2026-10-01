@@ -9,13 +9,8 @@ from ostler import Ostler
 from workhorse_workflows.coder.shared.blueprint import blueprint
 from workhorse_workflows.coder.shared.schemas.dev import ImplResult
 from workhorse_workflows.coder.shared.schemas.review import Feedback, ReviewContext
-from workhorse_workflows.kit import (
-    find_docs_root,
-    get_affected_repos,
-    load_json,
-    poll_run_inbox,
-    resolve_workspace,
-)
+from workhorse_workflows.coder.shared.plan import get_affected_repos
+from workhorse_workflows.kit import find_docs_root, load_json, poll_run_inbox, resolve_workspace
 
 RESOLUTION_FILE = "review-resolution.json"
 SETTLEMENT_FILE = "review-settlement.json"

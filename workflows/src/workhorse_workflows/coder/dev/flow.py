@@ -8,6 +8,11 @@ from workhorse_workflows.coder.dev import nodes
 from workhorse_workflows.coder.shared import paths, roles
 from workhorse_workflows.coder.shared.conversation import backbone
 from workhorse_workflows.coder.shared.escalation import context_path
+from workhorse_workflows.coder.shared.plan import (
+    record_plan,
+    resolve_impl_context,
+    select_next_layer,
+)
 from workhorse_workflows.coder.shared.dev import (
     GATE_ORDER,
     branch_code_repos,
@@ -15,10 +20,7 @@ from workhorse_workflows.coder.shared.dev import (
     check_story_status,
     declared_markers,
     read_operator_context,
-    record_plan,
-    resolve_impl_context,
     run_gate,
-    select_next_layer,
 )
 from workhorse_workflows.coder.shared.failure import from_findings, from_gate
 from workhorse_workflows.coder.shared.resolution import answered

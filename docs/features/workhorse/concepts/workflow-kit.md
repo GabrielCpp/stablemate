@@ -60,8 +60,7 @@ rather than guessing because `resolve_workspace` (read an existing checkout) and
 
 Builds `{repo_name: {path, template, ...}}` describing every repo a node might operate on, merging
 in each repo's own `agents.yml` `workspace:` section. This is the primary lookup
-[`build_dispatch_list`](#build_dispatch_list), [`get_repo_config`](#get_repo_config) and
-[`get_affected_repos`](#get_affected_repos) all key off.
+[`get_repo_config`](#get_repo_config) keys off.
 
 - **Input:** `workspace_file: str | Path = ""` — the manifest the run was given;
   `repo_dir: str | Path = ""` — the single checkout to fall back to. Both are workflow inputs the
@@ -148,40 +147,6 @@ exists by the time the first state runs. Neither coder nor author has a "setup" 
   var (`"WORKSPACE_FILE"`) — pass `repos` explicitly when the caller already resolved the workspace
   under a different one.
 - code: `workflows/src/workhorse_workflows/kit/workspace.py::get_repo_config` @e2832eb8451a
-
-### `build_dispatch_list`
-
-Joins a plan's `services`/`implementation_order` (a workflow-supplied `plan_ctx` dict, whose schema
-is owned by whichever workflow builds it) against the [`resolve_workspace`](#resolve_workspace) repo
-map, producing one ordered record per service ready to drive a fan-out.
-
-- **Input:** `plan_ctx: dict` — expected shape `{"services": [{"repo", "path", "type"?,
-  "plan_file"?, "skills"?}, ...], "implementation_order": [str, ...]}` (both keys optional, default
-  `[]`); `repos: dict[str, dict]`; `fallback: bool = False` (keyword-only).
-- **Output:** `list[dict]`, each record carrying:
-  - `service` — `"<repo>::<path>"`, the same key `implementation_order` entries use.
-  - `repo`, `cwd` (the repo's resolved path from `repos`), `service_path`, `type` (default
-    `"unknown"`), `plan_file` (default `"plan.md"`), `skills` (default `[]`).
-  - `qa_mode` (default `"cli"`), `qa_skills` (default `[]`), `verification` (default `""`) — read
-    from `repos[repo_name]`, i.e. that repo's `agents.yml` `workspace:` section.
-  - `label` — the repo's `template.backend_layer_name`, else `template.mobile_layer_name`, else the
-    service's own `type`.
-- **Algorithm:** key every `services` entry by `f"{svc['repo']}::{svc['path']}"`; order by
-  `implementation_order` when non-empty, else by the services' declared order; build the record
-  above for each ordered key present, silently skipping a key with no matching service. With
-  `fallback=True` only: if the result is still empty and `repos` is non-empty, emit **one** record
-  from the first repo (`type: "unknown"`, `service_path: "."`, `plan_file: "plan.md"`, no skills,
-  `label` = the repo name). Pass `fallback=True` only from callers that already know the plan
-  context was absent or listed no services.
-- code: `workflows/src/workhorse_workflows/kit/workspace.py::build_dispatch_list` @e2832eb8451a
-
-### `get_affected_repos`
-
-- **Input:** `plan_ctx: dict` (same `services` shape as
-  [`build_dispatch_list`](#build_dispatch_list)); `repos: dict[str, dict]`.
-- **Output:** `list[str]` — the sorted, deduplicated set of `svc["repo"]` values that are also keys
-  of `repos`. A service naming a repo outside the resolved workspace is excluded.
-- code: `workflows/src/workhorse_workflows/kit/workspace.py::get_affected_repos` @e2832eb8451a
 
 ## git
 

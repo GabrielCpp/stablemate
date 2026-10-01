@@ -6,15 +6,16 @@ title: Coder shared development helpers
 # Coder shared development helpers
 
 - code: `workflows/src/workhorse_workflows/coder/shared/dev.py::__all__` @11eaf0e506a5
+- code: `workflows/src/workhorse_workflows/coder/shared/plan.py::__all__` @428bdccd7106
 - code: `workflows/tests/coder/shared/test_gates.py::repo`
 - detail: [coder development flow](../flows/coder-dev.md)
 - detail: [coder resolver decision handling](coder-shared-resolution.md)
 
-The shared development module is the deterministic boundary between a story plan and the Coder
-development flow. It projects a checkpointed plan into `plan-context.json`, resolves dispatch and
-QA context, moves affected repositories to the story branch, selects layers in implementation
-order, discovers service-owned gate commands, executes those gates, reports story-owned changes,
-and consumes operator answers. It does not decide implementation content; it returns typed values
+The shared development modules are the deterministic boundary between a story plan and the Coder
+development flow. `plan.py` projects a checkpointed plan into `plan-context.json`, resolves dispatch and
+QA context and selects layers in implementation order. `dev.py` moves affected repositories to the story branch,
+discovers service-owned gate commands, executes those gates, reports story-owned changes,
+and consumes operator answers. Neither decides implementation content. Each returns typed values
 that the flow routes.
 
 ## Fields
@@ -75,7 +76,7 @@ that the flow routes.
 - does: normalizes plan files that resolve inside the story spec directory to spec-relative paths
 - returns: services, implementation order, shared packages, verification setup, and typed fixture projections
 - verify: count(subject="development plan documents", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/dev.py::plan_document` @11eaf0e506a5
+- code: `workflows/src/workhorse_workflows/coder/shared/plan.py::plan_document` @428bdccd7106
 - tests: `workflows/tests/coder/dev/test_flow.py::test_the_projection_carries_the_fixtures_under_either_spelling`
 
 ### record_plan
@@ -87,7 +88,7 @@ that the flow routes.
 - does: permits a service-less plan as a repository-root dispatch when its dispatched files are valid
 - returns: `valid` with the projected document, or `invalid` with deterministic errors
 - verify: persists(subject="the plan-context projection")
-- code: `workflows/src/workhorse_workflows/coder/shared/dev.py::record_plan` @11eaf0e506a5
+- code: `workflows/src/workhorse_workflows/coder/shared/plan.py::record_plan` @428bdccd7106
 - tests: `workflows/tests/coder/dev/test_flow.py::test_an_unresolvable_service_path_reworks_the_plan`
 
 ### read_plan_text
@@ -96,7 +97,7 @@ that the flow routes.
 - raises: `OSError` when the selected plan file cannot be read
 - returns: the plan file's UTF-8 content without fallback text
 - verify: count(subject="inlined implementation plan", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/dev.py::read_plan_text` @11eaf0e506a5
+- code: `workflows/src/workhorse_workflows/coder/shared/plan.py::read_plan_text` @428bdccd7106
 
 ### resolve_impl_context
 - sig: `resolve_impl_context(logger: logging.Logger, spec_dir: str = "", target_env: str = "local", docs_path: str = "", repo_dir: str = "", workspace_file: str = "", plan: dict[str, Any] | None = None) -> ImplContext`
@@ -108,7 +109,7 @@ that the flow routes.
 - does: creates one unique `surface=source-root` QA source-root entry for each dispatched surface
 - returns: dispatch, QA, fixture, shared-package, affected-repository, and source-root context
 - verify: count(subject="resolved implementation contexts", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/dev.py::resolve_impl_context` @11eaf0e506a5
+- code: `workflows/src/workhorse_workflows/coder/shared/plan.py::resolve_impl_context` @428bdccd7106
 - tests: `workflows/tests/coder/dev/test_flow.py::test_the_implement_turn_is_handed_the_two_values_its_prompt_reads`
 
 ### plan_summary
@@ -117,7 +118,7 @@ that the flow routes.
 - does: renders implementation order, shared packages, verification setup, named fixtures, and unnamed arrangements when present
 - returns: blank text when the projection is missing or declares no services, otherwise a human-readable plan summary
 - verify: count(subject="rendered plan summaries", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/dev.py::plan_summary` @11eaf0e506a5
+- code: `workflows/src/workhorse_workflows/coder/shared/plan.py::plan_summary` @428bdccd7106
 - tests: `workflows/tests/coder/dev/test_flow.py::test_the_summary_says_the_names_apart_from_the_arrangements`
 
 ### branch_code_repos
@@ -137,7 +138,36 @@ that the flow routes.
 - does: applies repository-root fallback for a producing plan with no services or an absent projection
 - returns: the next layer with its index and dispatch count, or the unchanged index with `has_layer=false` when exhausted
 - verify: count(subject="next development layer selections", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/dev.py::select_next_layer` @11eaf0e506a5
+- code: `workflows/src/workhorse_workflows/coder/shared/plan.py::select_next_layer` @428bdccd7106
+
+### build_dispatch_list
+
+- sig: `build_dispatch_list(plan_ctx: dict, repos: dict[str, dict], *, fallback: bool = False) -> list[dict]`
+- does: indexes plan services by `<repo>::<path>` and follows `implementation_order` when it is non-empty
+- verify: json_path(path="$.dispatch[0].service", equals="repo::service")
+- does: otherwise preserves the services' declared order and skips unknown ordered keys
+- verify: count(subject="dispatch records for known services", equals=1)
+- does: projects repository paths and workspace QA settings into each dispatch record
+- verify: json_path(path="$.dispatch[0].cwd", equals="resolved repository path")
+- does: defaults service type to `unknown`, plan file to `plan.md`, QA mode to `cli`, and missing lists or verification to empty values
+- verify: json_path(path="$.dispatch[0].type", equals="unknown")
+- does: selects `backend_layer_name`, then `mobile_layer_name`, then service type as the label
+- verify: json_path(path="$.dispatch[0].label", equals="selected layer label")
+- does: emits one first-repository fallback record only when `fallback` is true, no dispatch records exist, and repositories are available
+- verify: count(subject="fallback dispatch records", equals=1)
+- returns: the ordered dispatch record list
+- code: `workflows/src/workhorse_workflows/coder/shared/plan.py::build_dispatch_list` @428bdccd7106
+
+### get_affected_repos
+
+- sig: `get_affected_repos(plan_ctx: dict, repos: dict[str, dict]) -> list[str]`
+- does: selects service repository names that exist in the resolved repository map
+- verify: count(subject="affected repositories present in workspace", equals=1)
+- does: removes duplicates and sorts the selected names
+- verify: removed(subject="duplicate selected repository name")
+- returns: the sorted, deduplicated repository-name list
+- verify: json_path(path="$.affected", equals="sorted unique repository names")
+- code: `workflows/src/workhorse_workflows/coder/shared/plan.py::get_affected_repos` @428bdccd7106
 
 ### service_keys
 - sig: `service_keys(service: str = "", service_type: str = "") -> list[str]`

@@ -85,9 +85,7 @@ Imported from `kit.github`:
 
 Imported from `kit.workspace`:
 
-- `build_dispatch_list` — build a list of repositories to process
 - `checkout_workspace` — check out the workspace at a specific commit
-- `get_affected_repos` — get repositories affected by a change
 - `get_repo_config` — get repository configuration
 - `resolve_workspace` — resolve the workspace path
 
