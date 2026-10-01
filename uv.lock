@@ -429,6 +429,7 @@ name = "groom"
 version = "1.2.0"
 source = { editable = "groom" }
 dependencies = [
+    { name = "jinja2" },
     { name = "litestar", extra = ["standard"] },
     { name = "markdown-it-py" },
     { name = "opentelemetry-proto" },
@@ -447,6 +448,7 @@ test = [
 
 [package.metadata]
 requires-dist = [
+    { name = "jinja2", specifier = ">=3.1" },
     { name = "litestar", extras = ["standard"], specifier = ">=2.10" },
     { name = "markdown-it-py", specifier = ">=3" },
     { name = "opentelemetry-proto", specifier = ">=1.25" },

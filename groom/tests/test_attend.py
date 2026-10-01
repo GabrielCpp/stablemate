@@ -50,11 +50,24 @@ class _FakeProc:
 Configure = Callable[..., _Spawner]
 
 
+DIAGNOSIS_SKILLS = ("diagnosing-bugs", "root-cause")
+
+
+def _skill(folder: Path, installed: str, name: str) -> None:
+    skill = folder / installed / "SKILL.md"
+    skill.parent.mkdir(parents=True, exist_ok=True)
+    skill.write_text(f"---\nname: {installed}\nmetadata:\n  name: {name}\n---\n", encoding="utf-8")
+
+
 @pytest.fixture
 def attending(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Configure]:
     """A groom whose database, config and transcript root are all this test's own."""
 
     def _configure(mode: str = attend.HEADLESS, **env: str) -> _Spawner:
+        home = tmp_path / "home"
+        for name in DIAGNOSIS_SKILLS:
+            _skill(home / ".claude/skills", name, name)
+        monkeypatch.setenv("HOME", str(home))
         monkeypatch.setenv("GROOM_DB", str(tmp_path / "groom.db"))
         monkeypatch.setenv("STABLEMATE_CONFIG", str(tmp_path / "config.toml"))
         monkeypatch.delenv("WORKHORSE_CONFIG", raising=False)
@@ -188,6 +201,46 @@ def test_the_doctrine_ships_with_groom(attending: Configure):
     assert job is not None
     assert attend.PROMPT_PATH.is_file()
     assert "Never answer a gate to make the run move" in job.prompt()
+
+
+def test_the_doctrine_names_each_diagnosis_skill_by_the_command_that_loads_it(attending: Configure):
+    job = _gate(spawner=attending())
+    assert job is not None
+    prompt = job.prompt()
+    assert "/diagnosing-bugs" in prompt and "/root-cause" in prompt
+    assert "skill_command" not in prompt
+
+
+def test_the_workspace_copy_of_a_skill_wins_over_home(attending: Configure, tmp_path: Path):
+    spawner = attending()
+    workspace = tmp_path / "repo"
+    (workspace / ".git").mkdir(parents=True)
+    _skill(workspace / ".claude/skills", "repo-root-cause", "root-cause")
+    job = attend.attend_gate(
+        run_id="r1", workflow="okf-builder", run_dir="/runs/r1", workspace=str(workspace),
+        gate_path="docs/gate.md", question="What now?", kind="operator", now=0.0, spawner=spawner,
+    )
+    assert job is not None
+    assert "/repo-root-cause" in job.prompt()
+
+
+def test_a_codex_attendant_gets_the_codex_invocation(attending: Configure, tmp_path: Path):
+    spawner = attending(GROOM_ATTEND_CLI="codex")
+    for name in DIAGNOSIS_SKILLS:
+        _skill(tmp_path / "home/.agents/skills", name, name)
+    job = _gate(spawner=spawner)
+    assert job is not None
+    assert "$diagnosing-bugs" in job.prompt()
+
+
+def test_a_missing_diagnosis_skill_turns_the_doctrine_into_a_refusal(attending: Configure, tmp_path: Path):
+    spawner = attending()
+    (tmp_path / "home/.claude/skills/root-cause/SKILL.md").unlink()
+    job = _gate(spawner=spawner)
+    assert job is not None
+    prompt = job.prompt()
+    assert "requires the 'root-cause' skill" in prompt
+    assert "Never answer a gate to make the run move" not in prompt
 
 
 def _failure_run(tmp_path: Path) -> str:

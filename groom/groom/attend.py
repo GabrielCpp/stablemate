@@ -14,8 +14,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol
 
+import jinja2
 from workhorse import inbox
 from workhorse._vendor.stablemate_core import config as core_config
+from workhorse._vendor.stablemate_core import skill_refs
 from workhorse.config_run import AgentResilience
 from workhorse.runner.process import ProcessSupervisor
 
@@ -140,19 +142,38 @@ class AttendJob:
             ]
         return "\n".join(lines)
 
+    def cwd(self) -> str:
+        """Where the attendant starts: the run's workspace, else its run folder."""
+        return self.workspace or self.run_dir or os.getcwd()
+
     def prompt(self) -> str:
         """The library prompt, then the job."""
-        return f"{_doctrine()}\n\n---\n\n{self.facts()}\n"
+        return f"{_doctrine(Path(self.cwd()))}\n\n---\n\n{self.facts()}\n"
 
 
-def _doctrine() -> str:
-    """The attendant prompt shipped with groom, or a refusal that names its absence."""
+def _doctrine(cwd: Path) -> str:
+    """The attendant prompt shipped with groom, rendered against the skills an attendant in *cwd* loads."""
     try:
-        return PROMPT_PATH.read_text()
+        source = PROMPT_PATH.read_text()
     except OSError:
         return (
             "The attendant prompt is missing from this groom install "
             f"({PROMPT_PATH} is unreadable). Do not attempt the repair — record what "
+            "you were handed in the run's inbox.jsonl and stop."
+        )
+    harness = Path(settings().cli).name
+    home = Path.home()
+    root = skill_refs.repo_root(cwd)
+    catalog = skill_refs.scan_catalog(harness, cwd, home=home, root=root)
+    refs = skill_refs.SkillRefs(catalog, harness, base=cwd, root=root, home=home)
+    env = jinja2.Environment(keep_trailing_newline=True, undefined=jinja2.StrictUndefined)
+    env.globals.update(refs.globals())
+    try:
+        return env.from_string(source).render()
+    except skill_refs.MissingSkill as missing:
+        return (
+            f"The attendant prompt requires the {missing.name!r} skill, and no skill folder "
+            f"an attendant in {cwd} loads holds it. Do not attempt the repair. Record what "
             "you were handed in the run's inbox.jsonl and stop."
         )
 
@@ -175,7 +196,7 @@ def _launch(job: AttendJob, session_id: str) -> subprocess.Popen[str]:
            "--output-format", "stream-json", "--verbose"]
     if session_id:
         cmd += ["--session-id", session_id]
-    cwd = job.workspace or job.run_dir or os.getcwd()
+    cwd = job.cwd()
     supervisor = ProcessSupervisor()
     proc = supervisor.spawn(
         cmd,

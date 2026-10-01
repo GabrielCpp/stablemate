@@ -18,6 +18,7 @@ classifiers = [
   "Topic :: Utilities",
 ]
 dependencies = [
+  "jinja2>=3.1",
   "markdown-it-py>=3",
   "pydantic>=2.0",
   "litestar[standard]>=2.10",
