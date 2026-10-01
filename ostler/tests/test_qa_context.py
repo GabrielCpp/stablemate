@@ -4,9 +4,11 @@ import json
 import subprocess
 from collections.abc import Mapping
 from pathlib import Path
+from typing import Any
 
 import pytest
 
+from ostler import graph as graph_mod
 from ostler import registry
 from ostler.model import Graph, load
 from ostler.qa import context as context_mod
@@ -2890,7 +2892,7 @@ def test_navigation_carries_bundle_id_through_the_screenless_stub_branch(repo: P
         "- bundle-id: com.example.mobile-app\n\n"
         "## Steps\n\n### serve\n- kind: service\n- run: `run`\n"
     ))
-    navigation = _navigation(load(repo))
+    navigation = _navigation(graph_mod.build(load(repo)))
     assert navigation["groom"]["bundleId"] == "com.example.mobile-app"
     assert navigation["groom"]["counts"]["screens"] == 0
 
@@ -2908,11 +2910,40 @@ def test_navigation_carries_bundle_id_through_the_reachability_success_path(repo
         "- bundle-id: com.example.mobile-app\n\n"
         "## Steps\n\n### serve\n- kind: service\n- run: `run`\n"
     ))
-    navigation = _navigation(load(repo))
+    navigation = _navigation(graph_mod.build(load(repo)))
     assert navigation["groom"]["bundleId"] == "com.example.mobile-app"
     assert navigation["groom"]["counts"]["screens"] == 1
     assert navigation["groom"]["counts"]["reachable"] == 1
     assert "error" not in navigation["groom"]
+
+
+def test_a_whole_book_context_builds_the_worktree_graph_once(repo: Path, monkeypatch: pytest.MonkeyPatch):
+    """Navigation and the snapshot share one dump of the head graph instead of rebuilding it per surface."""
+    _write_navigation_environment(repo)
+    write(repo / "docs/features/groom/gui/screens/dashboard.md", (
+        "---\ntype: screen\nslug: dashboard\ntitle: Dashboard\n---\n# Dashboard\n\n"
+        "- route: `/`\n- requires: none\n- params: none\n"
+    ))
+    write(repo / "docs/features/groom/ops/rb.md", (
+        "---\ntype: runbook\nslug: rb\ntitle: RB\n---\n# RB\n\n"
+        "- driver: web\n- environment: [local](local.md)\n"
+        "- surfaces: [dashboard](../gui/screens/dashboard.md)\n\n"
+        "## Steps\n\n### serve\n- kind: service\n- run: `run`\n"
+    ))
+    _git(repo, "init")
+    built: list[Graph] = []
+    build = graph_mod.build
+
+    def _build(graph: Graph, **kwargs: Any) -> dict[str, Any]:
+        built.append(graph)
+        return build(graph, **kwargs)
+
+    monkeypatch.setattr(graph_mod, "build", _build)
+
+    packet = book_context(repo)
+
+    assert packet["navigation"]["groom"]["counts"]["reachable"] == 1
+    assert len([graph for graph in built if graph.ui_nodes]) == 1
 
 
 def test_navigation_carries_bundle_id_through_the_unknown_start_exception_path(repo: Path):
@@ -2928,7 +2959,7 @@ def test_navigation_carries_bundle_id_through_the_unknown_start_exception_path(r
         "- bundle-id: com.example.mobile-app\n\n"
         "## Steps\n\n### serve\n- kind: service\n- run: `run`\n"
     ))
-    navigation = _navigation(load(repo))
+    navigation = _navigation(graph_mod.build(load(repo)))
     assert navigation["groom"]["bundleId"] == "com.example.mobile-app"
     assert "error" in navigation["groom"]
     assert navigation["groom"]["counts"]["unreachable"] == 1
@@ -2947,7 +2978,7 @@ def test_navigation_carries_launch_screen_through_the_screenless_stub_branch(rep
         "- bundle-id: com.example.mobile-app\n\n"
         "## Steps\n\n### serve\n- kind: service\n- run: `run`\n"
     ))
-    navigation = _navigation(load(repo))
+    navigation = _navigation(graph_mod.build(load(repo)))
     assert navigation["groom"]["launchScreen"] is None
     assert navigation["groom"]["counts"]["screens"] == 0
     assert "launchScreenError" not in navigation["groom"]
@@ -2967,7 +2998,7 @@ def test_navigation_carries_launch_screen_through_the_reachability_success_path(
         "- launch-screen: [dashboard](../gui/screens/dashboard.md)\n\n"
         "## Steps\n\n### serve\n- kind: service\n- run: `run`\n"
     ))
-    navigation = _navigation(load(repo))
+    navigation = _navigation(graph_mod.build(load(repo)))
     assert navigation["groom"]["launchScreen"] == "docs/features/groom/gui/screens/dashboard.md"
     assert navigation["groom"]["counts"]["screens"] == 1
     assert navigation["groom"]["counts"]["reachable"] == 1
@@ -2988,7 +3019,7 @@ def test_navigation_carries_launch_screen_through_the_unknown_start_exception_pa
         "- launch-screen: [dashboard](../gui/screens/dashboard.md)\n\n"
         "## Steps\n\n### serve\n- kind: service\n- run: `run`\n"
     ))
-    navigation = _navigation(load(repo))
+    navigation = _navigation(graph_mod.build(load(repo)))
     assert navigation["groom"]["launchScreen"] == "docs/features/groom/gui/screens/dashboard.md"
     assert "error" in navigation["groom"]
     assert navigation["groom"]["counts"]["unreachable"] == 1
@@ -3021,7 +3052,7 @@ def test_navigation_settles_a_launch_screen_two_runbooks_state_differently(repo:
         "- launch-screen: [settings](../gui/screens/settings.md)\n\n"
         "## Steps\n\n### serve\n- kind: service\n- run: `run --current`\n"
     ))
-    navigation = _navigation(load(repo))
+    navigation = _navigation(graph_mod.build(load(repo)))
     assert navigation["groom"]["launchScreen"] == "docs/features/groom/gui/screens/settings.md"
     assert "launchScreenError" not in navigation["groom"]
 def test_a_features_root_absent_at_base_is_an_empty_graph_not_an_error(tmp_path: Path):

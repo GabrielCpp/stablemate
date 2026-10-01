@@ -181,9 +181,8 @@ def _changed_code_rows(changes: Sequence[ChangedUnit]) -> list[dict[str, Any]]:
     ]
 
 
-def _navigation(head_graph: Graph) -> dict[str, dict[str, Any]]:
-    """Every surface's derived screen reachability, keyed by surface (Option C, Amendment 1)."""
-    dump = graph_mod.build(head_graph)
+def _navigation(dump: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    """Every surface's derived screen reachability in *dump*, the head graph's, keyed by surface (Option C, Amendment 1)."""
     surfaces = sorted({n["surface"] for n in dump["nodes"] if n.get("surface")})
     navigation: dict[str, dict[str, Any]] = {}
     for surface in surfaces:
@@ -212,7 +211,7 @@ def _navigation(head_graph: Graph) -> dict[str, dict[str, Any]]:
             }
             continue
         try:
-            navigation[surface] = reach.reachability(head_graph, surface=surface, driver=driver)
+            navigation[surface] = reach.reachability_in(surface_dump, surface=surface, driver=driver)
             navigation[surface]["rootPath"] = root_path
             navigation[surface]["entryUrl"] = entry_url
             navigation[surface]["driver"] = driver
@@ -244,6 +243,7 @@ class _BookSnapshot:
     """The book at base and head merged into one node set, with the edges either side resolves."""
 
     head_graph: Graph
+    head_dump: dict[str, Any]
     nodes_by_id: dict[str, dict[str, Any]]
     book: dict[str, BookNode]
     owner_nodes: dict[str, OwnerNode]
@@ -357,7 +357,7 @@ def build_context(
             if item["impacted"]
         ],
         "verificationIndex": verification_index,
-        "navigation": _navigation(snapshot.head_graph),
+        "navigation": _navigation(snapshot.head_dump),
         "cliBinaries": _run_binaries_by_path(snapshot.book),
         "screenRoutes": routes_mod.screen_routes(snapshot.head_graph),
         "healthFindings": [*mapping.unmapped, *grounding.health, *requirement.health],
@@ -372,11 +372,13 @@ def _book_snapshot(root: Path, base: str, head: str, features_root: str) -> _Boo
     current = load(root, root_overrides={"features": features_root})
     base_graph = _graph_at_revision(root, base, features_root, current)
     head_graph = current if head == "WORKTREE" else _graph_at_revision(root, head, features_root, current)
-    base_nodes, base_edges, base_ends, base_scopes, base_details = _serialized_graph(base_graph)
-    head_nodes, head_edges, head_ends, head_scopes, head_details = _serialized_graph(head_graph)
+    head_dump = graph_mod.build(head_graph)
+    base_nodes, base_edges, base_ends, base_scopes, base_details = _serialized_graph(graph_mod.build(base_graph))
+    head_nodes, head_edges, head_ends, head_scopes, head_details = _serialized_graph(head_dump)
     nodes_by_id = _merge_snapshot_nodes(base_nodes, head_nodes)
     return _BookSnapshot(
         head_graph=head_graph,
+        head_dump=head_dump,
         nodes_by_id=nodes_by_id,
         book=book_nodes(nodes_by_id),
         owner_nodes={node_id: _owner_node(node) for node_id, node in nodes_by_id.items()},
@@ -980,7 +982,7 @@ def _graph_at_revision(root: Path, revision: str, features_root: str, current: G
 
 
 def _serialized_graph(
-    graph: Graph,
+    data: dict[str, Any],
 ) -> tuple[
     dict[str, dict[str, Any]],
     set[tuple[str, str]],
@@ -988,8 +990,7 @@ def _serialized_graph(
     Mapping[str, tuple[str, ...]],
     set[tuple[str, str]],
 ]:
-    """The nodes, every resolved edge, the flow destinations, each node's repeat scope, and the `detail:` edges."""
-    data = graph_mod.build(graph)
+    """The nodes of *data*, a built graph, with every resolved edge, the flow destinations, each node's repeat scope, and the `detail:` edges."""
     nodes = {item["id"]: item for item in data["nodes"]}
     edges = {(item["from"], item["to"]) for item in data["edges"] if item.get("to")}
     details = {

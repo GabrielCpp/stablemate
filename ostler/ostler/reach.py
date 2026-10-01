@@ -389,7 +389,12 @@ def resolve_start(data: dict, start: str | None, driver: str | None = None, *,
 def reachability(graph: Graph, *, surface: str | None = None, start: str | None = None,
                  driver: str | None = None) -> dict:
     """Route every documented screen on *surface* from *start*; report the ones with no path."""
-    data = graph_mod.build(graph, surface=surface)
+    return reachability_in(graph_mod.build(graph, surface=surface), surface=surface, start=start, driver=driver)
+
+
+def reachability_in(data: dict, *, surface: str | None = None, start: str | None = None,
+                    driver: str | None = None) -> dict:
+    """:func:`reachability` over *data*, a dump already built and scoped to *surface*."""
     by_id = {n["id"]: n for n in data["nodes"]}
     edges = navigation_edges(data)
     screens = screens_of(data)
