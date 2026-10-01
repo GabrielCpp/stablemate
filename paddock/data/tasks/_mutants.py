@@ -11,6 +11,7 @@ from typing import Any
 import yaml
 import _forensics as fx
 import _frozenapp as fz
+import _leverage as lv
 from _stablemate import TrialError, effective, no_leaks, pin_held, stablemate_checkout, uv_run
 from paddock import Run, Score
 
@@ -143,7 +144,7 @@ def dont_cares(witness: Path) -> dict[str, list[str]]:
         return {}
     if "unspecified" not in getattr(registry, "SHARED_ADVISORY_KEYS", ()):
         return {}
-    book = fz.load_book(witness) or {}
+    book = lv.load_book(witness) or {}
     cares: dict[str, list[str]] = {}
     for node in book.get("nodes", []) or []:
         value = node.get("bullets", {}).get("unspecified")
@@ -204,7 +205,7 @@ def headline(trials: list[dict[str, Any]]) -> str:
     def shown(pool: str) -> str:
         counts = rates["pools"][pool]
         if not counts["total"]:
-            return f"{pool} {fz.BLANK}"
+            return f"{pool} {lv.BLANK}"
         return f"{pool} {counts['killed']}/{counts['denominator']}"
 
     gap = rates["gap"]
@@ -212,7 +213,7 @@ def headline(trials: list[dict[str, Any]]) -> str:
     resolved = sum(1 for trial in trials if trial["verdict"] == "resolved")
     unknown = sum(1 for trial in trials if trial["verdict"] == "inconclusive")
     line = (
-        f"pin-gap {gap:+.2f}" if gap is not None else f"pin-gap {fz.BLANK}"
+        f"pin-gap {gap:+.2f}" if gap is not None else f"pin-gap {lv.BLANK}"
     ) + (
         f"  ({shown('A')} killed, {shown('B')}, "
         f"{survivors} survivors, {resolved} resolved-by-design)"
@@ -326,11 +327,11 @@ def score_round(run: Run, fixture: fz.Fixture) -> Score:
             "because": because,
             "defect": f"{entry['mutant']}:{entry['pool']}",
             "obligation": str(row.get("bullet", "") or "") or f"pool B · {entry['path']}",
-            "leverage": fz.leverage(witness, str(entry["story"]), statuses),
+            "leverage": lv.leverage(witness, str(entry["story"]), statuses),
         })
 
     return Score(
         headline=headline(trials),
         detail=tuple(fz.detail(trials, fixture.leverage)),
-        data={"trials": trials, "pin": pin_rates(trials), "leverage": fz.pool_leverage(trials)},
+        data={"trials": trials, "pin": pin_rates(trials), "leverage": lv.pool_leverage(trials)},
     )

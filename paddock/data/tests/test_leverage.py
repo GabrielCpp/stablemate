@@ -7,6 +7,7 @@ import importlib.util
 import sys
 from collections.abc import Iterator
 from pathlib import Path
+from types import ModuleType
 
 import pytest
 
@@ -24,12 +25,18 @@ def _tasks_dir_on_path() -> Iterator[None]:
         sys.path[:] = saved
 
 
-_spec = importlib.util.spec_from_file_location("_frozenapp", DATA / "tasks" / "_frozenapp.py")
-assert _spec is not None and _spec.loader is not None  # noqa: S101 - a real file on disk
-frozen = importlib.util.module_from_spec(_spec)
-with _tasks_dir_on_path():
-    sys.modules["_frozenapp"] = frozen
-    _spec.loader.exec_module(frozen)
+def _load(name: str) -> ModuleType:
+    spec = importlib.util.spec_from_file_location(name, DATA / "tasks" / f"{name}.py")
+    assert spec is not None and spec.loader is not None  # noqa: S101 - a real file on disk
+    module = importlib.util.module_from_spec(spec)
+    with _tasks_dir_on_path():
+        sys.modules[name] = module
+        spec.loader.exec_module(module)
+    return module
+
+
+lev = _load("_leverage")
+frozen = _load("_frozenapp")
 
 
 
@@ -103,7 +110,7 @@ def score(**overrides) -> dict:
         "run_log": RUN_LOG, "statuses": STATUSES,
     }
     inputs.update(overrides)
-    return frozen.leverage_from(**inputs)
+    return lev.leverage_from(**inputs)
 
 
 
@@ -209,13 +216,13 @@ def test_a_metric_without_its_input_is_none_rather_than_zero(missing: dict, blan
 
 
 def test_the_line_prints_a_dash_for_every_metric_it_could_not_compute() -> None:
-    line = frozen.leverage_line(dict.fromkeys(frozen.LEVERAGE_KEYS))
-    assert line.count(frozen.BLANK) == len(frozen.LEVERAGE_KEYS)
+    line = lev.leverage_line(dict.fromkeys(lev.LEVERAGE_KEYS))
+    assert line.count(lev.BLANK) == len(lev.LEVERAGE_KEYS)
     assert "0" not in line
 
 
 def test_the_line_reads_the_way_the_headline_promises() -> None:
-    assert frozen.leverage_line({
+    assert lev.leverage_line({
         "entry": [3, 3], "deep_links": 1, "roles": [14, 15],
         "obligations": [22, 24], "journeys": [2, 3], "sensitivity": [20, 22],
     }) == ("leverage: entry 3/3  deep-links 1  roles 14/15  obligations 22/24  "
@@ -224,30 +231,30 @@ def test_the_line_reads_the_way_the_headline_promises() -> None:
 
 def test_the_line_prints_only_the_metrics_the_fixture_declared() -> None:
     """A fixture with no screen owns three of the six; the other three are not printed as blanks that read like failures, and the line says how many it left out."""
-    line = frozen.leverage_line(
+    line = lev.leverage_line(
         {"entry": None, "deep_links": None, "roles": None,
          "obligations": [22, 24], "journeys": [2, 3], "sensitivity": [20, 22]},
         ("obligations", "journeys", "sensitivity"),
     )
     assert line == "leverage: obligations 22/24  journeys 2/3  sensitivity 20/22  (3 of 6 metrics)"
-    assert frozen.BLANK not in line
+    assert lev.BLANK not in line
 
 
 def test_a_declared_metric_with_no_inputs_still_prints_blank() -> None:
-    line = frozen.leverage_line({"obligations": [22, 24]}, ("obligations", "journeys"))
-    assert line == f"leverage: obligations 22/24  journeys {frozen.BLANK}  (2 of 6 metrics)"
+    line = lev.leverage_line({"obligations": [22, 24]}, ("obligations", "journeys"))
+    assert line == f"leverage: obligations 22/24  journeys {lev.BLANK}  (2 of 6 metrics)"
 
 
 def test_a_fixture_refuses_a_leverage_key_it_does_not_have() -> None:
     with pytest.raises(ValueError, match="leverage must name one or more of"):
         frozen.Fixture(app="apps/x", repo_dir="x", leverage=("obligations", "clicks"))
-    assert frozen.Fixture(app="apps/x", repo_dir="x").leverage == frozen.LEVERAGE_KEYS
+    assert frozen.Fixture(app="apps/x", repo_dir="x").leverage == lev.LEVERAGE_KEYS
 
 
 
 
 def test_pooling_sums_numerator_and_denominator_across_trials() -> None:
-    pooled = frozen.pool_leverage([
+    pooled = lev.pool_leverage([
         {"leverage": {"entry": [1, 1], "deep_links": 0, "roles": [4, 5],
                       "obligations": None, "journeys": [1, 1], "sensitivity": [3, 3]}},
         {"leverage": {"entry": [0, 2], "deep_links": 3, "roles": [1, 1],
@@ -259,7 +266,7 @@ def test_pooling_sums_numerator_and_denominator_across_trials() -> None:
 
 def test_pooling_does_not_multiply_a_book_level_metric_by_the_trial_count() -> None:
     """Every trial in a round reads the same book, so summing its claims invents evidence."""
-    pooled = frozen.pool_leverage([
+    pooled = lev.pool_leverage([
         {"leverage": {"sensitivity": [40, 58], "obligations": [2, 3]}},
         {"leverage": {"sensitivity": [40, 58], "obligations": [2, 3]}},
         {"leverage": {"sensitivity": [39, 57], "obligations": [1, 3]}},
@@ -270,8 +277,8 @@ def test_pooling_does_not_multiply_a_book_level_metric_by_the_trial_count() -> N
 
 def test_pooling_a_ledger_written_before_the_scorecard_existed_is_all_blank() -> None:
     """Old rows carry no `leverage` key, and must not read as five zeroed metrics."""
-    pooled = frozen.pool_leverage([{"run_id": "coder-1", "verdict": "caught"}])
-    assert pooled == dict.fromkeys(frozen.LEVERAGE_KEYS)
+    pooled = lev.pool_leverage([{"run_id": "coder-1", "verdict": "caught"}])
+    assert pooled == dict.fromkeys(lev.LEVERAGE_KEYS)
 
 
 
@@ -287,4 +294,4 @@ def test_pooling_a_ledger_written_before_the_scorecard_existed_is_all_blank() ->
     ],
 )
 def test_route_matching_is_segment_wise(route: str, url: str, matches: bool) -> None:
-    assert frozen.route_matches(route, url) is matches
+    assert lev.route_matches(route, url) is matches

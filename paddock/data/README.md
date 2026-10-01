@@ -166,6 +166,7 @@ result, and when a node qualifies — is in [EVALS.md](../docs/EVALS.md).
 tasks/                what a round does, one module per benchmark  (paddock loads these)
   _greenfield.py      the backlog→genesis→author→coder round, shared by every backlog
   _frozenapp.py       the frozen-app QA round: seed a defect, run QA, score detection
+  _leverage.py        how far a QA plan used the book it was handed
   _forensics.py       reading run artifacts: repair loops, node timing, cap-wait
   _stablemate.py      driving stablemate itself: config pinning, project worktrees
 configs/              full stablemate configs a task pins, tracked
