@@ -5,14 +5,16 @@ run directory, so the book's repo only ever changes through a committed page.
 """
 from __future__ import annotations
 
+import hashlib
 import re
 from collections.abc import Iterable, Mapping, Sequence
 from pathlib import Path, PurePosixPath
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 
+from ostler.provenance import CONTEXT_FILE
 from ostler.qa.attribution import Cause, Signature
-from ostler.qa.plan import load_plan
+from ostler.qa.plan import PlanDocument, load_plan
 from ostler.qa.v2 import run_plan
 from ostler.qa.verdict import Verdict
 from workhorse_workflows.okf_book.shared.book_compilation import BookCompilation, compile_services, obligation_node, obligation_page
@@ -216,12 +218,38 @@ def compile_book(root: Path, services: Iterable[str], spec: Path) -> BookCompila
     return compiled
 
 
+_PlanKey = tuple[Path, Path, str, tuple[int, int]]
+_LOADED: dict[_PlanKey, tuple[PlanDocument | None, tuple[str, ...]]] = {}
+
+
+def _plan_key(root: Path, spec: Path) -> _PlanKey:
+    plan, context = spec / PLAN_NAME, spec / CONTEXT_FILE
+    digest = hashlib.sha256(plan.read_bytes()).hexdigest() if plan.is_file() else ""
+    stamp = (context.stat().st_mtime_ns, context.stat().st_size) if context.is_file() else (0, -1)
+    return root.resolve(), spec.resolve(), digest, stamp
+
+
+def loaded_plan(root: Path, spec: Path) -> tuple[PlanDocument | None, tuple[str, ...]]:
+    """The compiled plan in `spec` for the app at `root`, or the problems that stop it from loading.
+
+    Loading describes the plan in a subprocess, which costs seconds. The last plan loaded is kept,
+    so a check that picks its scenarios and then runs them describes the plan once, until the
+    plan or its context is written again.
+    """
+    key = _plan_key(root, spec)
+    if key not in _LOADED:
+        document, problems = load_plan(spec / PLAN_NAME, spec, root)
+        _LOADED.clear()
+        _LOADED[key] = (document, tuple(problems))
+    return _LOADED[key]
+
+
 def plan_scenarios(root: Path, spec: Path) -> tuple[tuple[Scenario, ...], tuple[str, ...]]:
     """The compiled plan's scenarios, or the problems that stop the plan from loading."""
-    document, problems = load_plan(spec / PLAN_NAME, spec, root)
+    document, problems = loaded_plan(root, spec)
     if document is None:
-        return (), tuple(problems)
-    return _SCENARIOS.validate_python(document.data.get("scenarios", [])), tuple(problems)
+        return (), problems
+    return _SCENARIOS.validate_python(document.data.get("scenarios", [])), problems
 
 
 class Selection(BaseModel):
@@ -250,9 +278,9 @@ def select_scenarios(scenarios: Sequence[Scenario], arranging: Mapping[str, Sequ
 
 def run_scenarios(root: Path, spec: Path, only: Iterable[str], lap: Path | None = None) -> RunSummary:
     """Run the named scenarios of the compiled plan, all of them when none is named, building each precondition once in the lap *lap* records."""
-    document, problems = load_plan(spec / PLAN_NAME, spec, root)
+    document, problems = loaded_plan(root, spec)
     if document is None:
-        return RunSummary(status="invalid", problems=tuple(problems))
+        return RunSummary(status="invalid", problems=problems)
     _status, _message, summary = run_plan(document, root=root, only=list(only) or None, lap=lap)
     return RunSummary.model_validate(summary)
 

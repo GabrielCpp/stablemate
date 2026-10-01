@@ -10,11 +10,12 @@ import pytest
 from ostler import index
 
 from workhorse_workflows.kit.qa import runner
-from workhorse_workflows.okf_book.shared import book_run
+from workhorse_workflows.okf_book.shared import book_run, scenarios
 from workhorse_workflows.okf_book.shared.book_run import bring_up, compile_scenarios, release, run_plan, stack_pages, with_app_logs
 from ostler.qa.attribution import Cause, Signature
+from ostler.qa.plan import PlanDocument
 from ostler.qa.verdict import Verdict
-from workhorse_workflows.okf_book.shared.scenarios import FailedCheck, RunSummary, Scenario, ScenarioOutcome
+from workhorse_workflows.okf_book.shared.scenarios import FailedCheck, RunSummary, Scenario, ScenarioOutcome, plan_scenarios
 
 PREVIEW = (
     "---\ntype: environment\nslug: preview\ntitle: Preview\n---\n# Preview\n\n"
@@ -110,6 +111,41 @@ def test_a_run_scoped_to_a_flow_page_compiles_the_whole_book_and_runs_only_that_
     assert outcome.gaps
     assert all(f"okf:{flow_page}" in gap for gap in outcome.gaps)
 
+
+def _described(monkeypatch: pytest.MonkeyPatch) -> list[Path]:
+    described: list[Path] = []
+    loading = scenarios.load_plan
+
+    def _load_plan(plan_file: Path, spec_dir: Path, root: Path) -> tuple[PlanDocument | None, list[str]]:
+        described.append(plan_file)
+        return loading(plan_file, spec_dir, root)
+
+    monkeypatch.setattr(scenarios, "load_plan", _load_plan)
+    return described
+
+
+def test_a_check_describes_its_compiled_plan_once_to_pick_and_run_its_scenarios(
+    app: Callable[[str], Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, spec = app("globex"), tmp_path / "spec"
+    described = _described(monkeypatch)
+
+    outcome = compile_scenarios(repo, "api-service", spec, ("docs/features/api-service/flows/add-widget-via-api.md",))
+    planned, _problems = plan_scenarios(repo, spec)
+
+    assert set(outcome.only) <= {scenario.id for scenario in planned}
+    assert len(described) == 1
+
+
+def test_a_plan_compiled_again_is_described_again(app: Callable[[str], Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    repo, spec = app("globex"), tmp_path / "spec"
+    flow_page = "docs/features/api-service/flows/add-widget-via-api.md"
+    described = _described(monkeypatch)
+    _ = compile_scenarios(repo, "api-service", spec, (flow_page,))
+
+    _ = compile_scenarios(repo, "api-service", spec, (flow_page,))
+
+    assert len(described) == 2
 
 def test_a_bring_up_names_the_logs_of_the_apps_it_launched(app: Callable[[str], Path], monkeypatch: pytest.MonkeyPatch) -> None:
     _bring_up_returns(monkeypatch, [{"ready": "yes", "app_log": "/cache/api.log"}, {"ready": "yes", "adopted": "yes"}])
