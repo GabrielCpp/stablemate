@@ -10,7 +10,7 @@ run currently resolves. The runner is frozen, and workflow frame handoffs may co
 runner reference, so the box is shared rather than replaced with a string on one copy.
 An empty name means the run reads the configuration's top-level tables.
 
-- code: `workhorse/workhorse/profile.py::ProfileSelection` @1d0f50919efa
+- code: `workhorse/workhorse/profile.py::ProfileSelection` @a38096178b9f
 - tests: `workhorse/tests/test_model_resolution.py::test_the_box_is_shared_so_a_sub_flow_cannot_put_the_parent_back`
 - detail: [ProfileSelection selection guidance](profile-selection-guidance.md)
 
@@ -24,5 +24,5 @@ An empty name means the run reads the configuration's top-level tables.
 - verify: json_path(path="$.profile.name", equals="cheap")
 - semantics: an empty name selects the top-level configuration tables
 - verify: json_path(path="$.profile.name", equals="")
-- code: `workhorse/workhorse/profile.py::ProfileSelection` @1d0f50919efa
+- code: `workhorse/workhorse/profile.py::ProfileSelection` @a38096178b9f
 - tests: `workhorse/tests/test_model_resolution.py::test_a_switch_is_one_assignment_that_the_next_turn_reads`

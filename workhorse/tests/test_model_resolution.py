@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import io
+import os
 from contextlib import contextmanager, redirect_stdout
 from unittest.mock import patch
 
@@ -152,6 +153,8 @@ _SWITCHABLE = {
         "cheap": {"cli": "fake", "powers": {"high": {"model": "haiku"}}},
         "elsewhere": {"cli": "claude", "powers": {"high": {"model": "opus"}}},
         "bare": {"cli": "fake"},
+        "nocli": {"powers": {"high": {"model": "haiku"}}},
+        "typo": {"cli": "claudee"},
     }
 }
 
@@ -220,6 +223,33 @@ def test_a_profile_carrying_no_models_at_all_is_allowed_through():
     runner = _runner()
     with _file(_SWITCHABLE):
         assert profile.switch_profile(runner, "bare")["ok"] is True
+
+
+def test_a_profile_with_no_cli_is_refused_rather_than_crashing_the_switch():
+    runner = _runner()
+    with _file(_SWITCHABLE):
+        reply = profile.switch_profile(runner, "nocli")
+    assert reply["ok"] is False and "no cli field" in str(reply["error"])
+    assert runner.profile.name == ""
+
+
+def test_start_and_switch_refuse_a_profile_for_a_cli_nobody_drives():
+    with _file(_SWITCHABLE):
+        reply = profile.switch_profile(_runner(), "typo")
+        try:
+            profile.select_backend(_SWITCHABLE, "typo", None)
+            raise AssertionError("expected ProfileError for a misspelled cli")
+        except profile.ProfileError as exc:
+            started = str(exc)
+    assert reply["ok"] is False and "'claudee'" in str(reply["error"])
+    assert "'claudee'" in started
+
+
+def test_the_cli_a_run_starts_on_is_the_one_its_flag_names():
+    with patch.dict("os.environ", {"AGENT_CLI": "opencode"}):
+        backend = profile.select_backend({}, "", "codex")
+        assert backend.name == "codex"
+        assert os.environ["AGENT_CLI"] == "codex"
 
 
 def test_a_run_that_drives_no_agent_is_told_so_rather_than_crashing():

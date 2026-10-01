@@ -15,16 +15,14 @@ from workhorse._vendor.stablemate_core.config import (
     UnknownProfileError,
     config_path,
     load_config,
-    profile_backends,
+    profile_cli,
     profile_has_backend,
     resolve_backend_default,
-    resolve_default_cli,
     resolve_power,
-    select_active_profile,
     select_profile,
 )
 from workhorse.records import parse_run_record
-from workhorse.runner.backends.registry import backend_names, get_backend
+from workhorse.runner.backends.registry import active_cli, backend_names, get_backend
 
 if TYPE_CHECKING:
     from workhorse.artifacts import ArtifactWriter
@@ -71,17 +69,9 @@ def switch_profile(runner: AgentRunner | None, name: str) -> dict[str, object]:
     if runner is None:
         return {"ok": False, "error": "this run drives no agent, so it resolves no models"}
     try:
-        tables = select_profile(load_config(), name)
-    except UnknownProfileError as exc:
+        _validated_cli(load_config(), name, [runner.backend.name])
+    except ProfileError as exc:
         return {"ok": False, "error": str(exc)}
-    backend = runner.backend.name
-    if not profile_has_backend(tables, backend):
-        return {
-            "ok": False,
-            "error": f"profile {name!r} declares cli = {tables.get('cli')!r} which does "
-            f"not match the CLI backend {backend!r} this run is driving. Switch-cli "
-            f"first, or pick a profile whose cli matches the new backend.",
-        }
     was, runner.profile.name = runner.profile.name, name
     _warned_missing_profile.discard(name)
     otel.run_attribute("workhorse.profile", name)
@@ -105,66 +95,27 @@ def resolve_power_settings(
 
 def select_backend(cfg: dict[str, Any], profile_name: str, cli: str | None) -> AgentBackend:
     """The backend a named profile, or else a bare CLI, selects; a bad pick raises with its fix."""
-    try:
-        if profile_name:
-            profile = select_profile(cfg, profile_name)
-            resolved_cli = _profile_cli_or_raise(profile, profile_name)
-        else:
-            active_cli = _resolve_active_cli(cli, cfg)
-            profile = select_active_profile(cfg, active_cli=active_cli)
-            resolved_cli = active_cli
-    except (UnknownProfileError, ConfigError) as exc:
-        raise ProfileError(str(exc)) from exc
-
+    resolved_cli = _validated_cli(cfg, profile_name, backend_names()) if profile_name else active_cli(cli, cfg)
     os.environ["AGENT_CLI"] = resolved_cli
-
     try:
-        backend = get_backend()
+        return get_backend(resolved_cli)
     except ValueError as e:
         raise ProfileError(str(e)) from e
 
-    _check_profile_resolves(profile_name, profile, backend.name)
-    return backend
 
-
-def _resolve_active_cli(cli: str | None, cfg: dict[str, Any]) -> str:
-    """Resolve the active CLI for a non-`--profile` run: --cli → $AGENT_CLI → config."""
-    return (
-        cli
-        or os.environ.get("AGENT_CLI")
-        or resolve_default_cli(cfg)
-    ).strip().lower()
-
-
-def _profile_cli_or_raise(profile: dict[str, Any], name: str) -> str:
-    """The CLI a `--profile`-selected profile declares, stripped and lowercased."""
-    cli = profile.get("cli")
-    if not isinstance(cli, str) or not cli.strip():
-        raise ConfigError(f"[profiles.{name}] has no cli field")
-    return cli.strip().lower()
-
-
-def _check_profile_resolves(name: str, profile: dict[str, Any], backend: str) -> None:
-    """Refuse a selected profile whose `cli` field names a backend workhorse does not drive."""
-    if not name:
-        return
-    consulted = f"(in {config_path()})"
-
-    unknown = [n for n in profile_backends(profile) if n not in backend_names()]
-    if unknown:
+def _validated_cli(cfg: dict[str, Any], name: str, drivable: list[str]) -> str:
+    """The CLI profile ``name`` declares, when it is one of ``drivable``; otherwise raise with the fix."""
+    try:
+        tables = select_profile(cfg, name)
+    except (UnknownProfileError, ConfigError) as exc:
+        raise ProfileError(str(exc)) from exc
+    cli = profile_cli(tables) or ""
+    if cli not in drivable:
         raise ProfileError(
-            f"profile {name!r} declares cli = {unknown[0]!r} {consulted}; that "
-            f"is not a backend this build of workhorse drives. Known backends: "
-            f"{', '.join(backend_names())}"
+            f"profile {name!r} declares cli = {cli!r} (in {config_path()}), "
+            f"and this run can drive only {', '.join(drivable)}"
         )
-
-    if not profile_has_backend(profile, backend):
-        raise ProfileError(
-            f"profile {name!r} declares cli = {backend!r} but carries no "
-            f"models for it {consulted}. Add a [profiles.{name}.powers.<tier>] "
-            f"table or a [profiles.{name}.default] entry, or run with --cli "
-            f"<this-cli> and no --profile (bare-CLI mode)."
-        )
+    return cli
 
 
 def resume_backend_flags(cli: str = "", profile: str = "") -> list[str]:

@@ -239,9 +239,8 @@ back to the top-level tables could otherwise run unattended on the wrong models.
   `cli` field, lowercased and wrapped in a single-element list, or `[]` when the profile
   has no valid `cli` field. A profile is for one CLI under v2 — the per-backend model
   tables v1 enumerated are gone — so the list is either empty or a singleton. The list
-  shape is preserved because workhorse's `_check_profile_resolves` iterates over the
-  result, and a misspelled CLI is reported through the same boundary that always reported
-  it. **Nothing is validated here**: core knows no backend registry, so a misspelling is
+  shape is preserved for callers that iterate over the result. A misspelled CLI is
+  reported by workhorse's profile validation, the boundary that always reported it. **Nothing is validated here**: core knows no backend registry, so a misspelling is
   reported at the boundary that resolves the adapter, where every other bad backend name
   already is.
 - `profile_has_backend(profile, backend) -> bool` — whether the profile is for `backend`.

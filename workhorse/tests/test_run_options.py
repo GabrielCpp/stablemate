@@ -7,12 +7,10 @@ import tempfile
 from pathlib import Path
 from unittest.mock import patch
 
-from workhorse._vendor.stablemate_core import config as cfgmod
 from workhorse.pyflow import Registry
 
 cli_mod = importlib.import_module("workhorse.cli")
 run_cmd = importlib.import_module("workhorse.cli.run")
-profile_mod = importlib.import_module("workhorse.profile")
 
 
 class _StubRegistry(Registry):
@@ -152,21 +150,12 @@ def _run_profiled(argv: list[str], config: Path) -> dict:
         captured["backend"] = invocation.config.backend.name
         return 0
 
-    real_select_active_profile = profile_mod.select_active_profile
-
-    def spy_select_active_profile(cfg, **kwargs):
-        result = real_select_active_profile(cfg, **kwargs)
-        captured["profile_table"] = result
-        return result
-
     with tempfile.TemporaryDirectory() as tmp:
         launch = Path(tmp) / "repo"
         launch.mkdir()
         env = {k: v for k, v in os.environ.items() if k != "AGENT_CLI"}
         with patch.dict(os.environ, env, clear=True), patch.object(
             run_cmd, "run_pyflow", fake_run_pyflow
-        ), patch.object(
-            profile_mod, "select_active_profile", spy_select_active_profile
         ), patch.object(run_cmd.Path, "cwd", staticmethod(lambda: launch)):
             _main(["run", "--config", str(config), *argv])
     return captured
@@ -178,16 +167,10 @@ def _profiles_config(tmp_path: Path) -> Path:
     return path
 
 
-def test_bare_cli_auto_selects_the_profile_keyed_to_that_cli(tmp_path):
-    """`--cli claude` with no `--profile` is not "no profile" — `[profiles.claude]` (key matches the `cli` field) is auto-selected, exactly as if `--profile claude` had been passed."""
+def test_a_bare_cli_run_carries_no_profile(tmp_path):
     captured = _run_profiled(["--cli", "claude"], _profiles_config(tmp_path))
 
-    assert captured["profile"] == ""
-    assert captured["backend"] == "claude"
-    assert captured["profile_table"].get("cli") == "claude"
-
-    power = cfgmod.resolve_power("high", "claude", captured["profile_table"])
-    assert (power.model, power.effort) == ("opus", "high")
+    assert (captured["profile"], captured["backend"]) == ("", "claude")
 
 
 def test_profile_travels_to_the_run_and_carries_its_default_cli(tmp_path):
