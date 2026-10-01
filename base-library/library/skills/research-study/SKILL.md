@@ -158,10 +158,33 @@ from what the system records, or add the recording first. A total says something
 A breakdown says one fixture runs 400 times, or one turn reads the whole corpus. The
 hypotheses come from the breakdown.
 
+Every timed reading stores the script that took it and the script's hash beside the
+number, with the machine's load at the start and the end. A reading whose script changed
+after it was taken is void until it is retaken under the new hash. A reading assembled from two scripts names both. A reading that stored no script hash, or no
+load at its start and end, is void as well, and this step retakes it. A record that keeps an
+old rule's figure beside the figure in force marks the old one superseded, or drops it.
+
+On a machine another process shares, one reading is not a rate. The other process's demand
+moves from minute to minute, and one rate read twenty minutes apart can differ thirtyfold.
+This step takes repeated short readings spread across a window as long as the work they
+price, each with its own load, and records the lowest, the median and the highest. A long
+reading and a short one of the same rate are both kept, and the spread covers both. Every
+break-even is placed against the whole spread, never against one reading inside it. A rate
+the study cannot read at idle while the other process runs stays unread at idle, and the
+record says so. It is not filled from an earlier reading that stored no script.
+
 Before tuning a stage, compute its roof: the fastest the hardware allows for the work it
 does. Model decode on a CPU streams every weight once per token, so its roof is memory
 bandwidth divided by weight bytes, however many threads run. A stage already near its roof
 needs less work, not more tuning.
+
+Measure here every rate that decides whether a verdict can be read, when one timed unit on
+the machine at hand reads it in minutes: a training step, a decoded token at the batch and
+context the run will use, one judge run on one case, one sub-check the judge runs. Record
+the rate, the unit that read it, its method and its date. Framings cite the measure. A
+range stands in for such a rate only when no unit can run before the study's date. A
+throughput derived from a peak figure is a deciding rate until a run on the machine reads
+it.
 
 Done when the top cost items are named with their share of the total.
 
@@ -237,7 +260,11 @@ one vocabulary, so every value on them varies one literal reading:
    covers any output. The rank of a right output, found by judging candidates in order, is
    a pass rate at k, and every rule for an untrained pass rate governs it. A comparison
    whose reference arm may read zero names the anchor that stops it, and no row drops
-   that anchor. A probability or a rank a prior gives the one recorded answer credits only
+   that anchor. Before rows are drawn, a verdict that matches against a reference arm is
+   tested against this rule over the range the row predicts for that arm. A verdict
+   that reads a share of the gap between two reference arms passes the proxy test only
+   when the predicted ranges of the two arms cannot meet. Otherwise the row states the
+   smallest gap it reads and how it reads a gap at or below it. A probability or a rank a prior gives the one recorded answer credits only
    that answer. It passes the proxy test only when a different right answer cannot score
    worse, or when the verdict rests on a judged output. A judged output reported beside a
    verdict that does not rest on it does not count. A control that draws its
@@ -252,7 +279,27 @@ one vocabulary, so every value on them varies one literal reading:
    measure that reads zero before any training. A row agent never rules its own defect
    harmless. An argument that a defect affects every arm alike, or that a direction still
    holds if an assumption fails, rules it harmless. It passes only when the defect's rate
-   is measured and reported. A pass with conditions is a repair, and the value goes back. A return claims
+   is measured and reported. A pass with conditions is a repair, and the value goes back. A row states
+   each bound under which its pass holds as a break-even: the value of the rate at which
+   the verdict stops holding. A break-even inside the range the record or the price list
+   allows for that rate returns the row. A break-even outside that whole range returns
+   nothing. It becomes the kill result of the first timed unit that reads the rate, and
+   the schedule runs that unit before the spending it guards. A rate one timed unit on
+   things that exist today can read is read in step 4, and it returns no row. A rule that
+   returns every row with an unbuilt part makes the question unsolvable by construction.
+   The row computes each break-even itself, with a script it names and hashes, by one
+   stated method. A break-even the row did not compute is no break-even, whether another
+   row, the axis list or the brief supplied it. Two phases that overlap in time on one
+   machine count once only when the measured load of each is stated. Otherwise they are
+   priced in series. Every unread rate a pass depends on carries a break-even, whether or
+   not the record gives it a range. A rate with no range is read at its first timed unit,
+   before the spending it guards. A heading
+   that claims no return does not override a break-even inside the range.
+   A rate the verdict itself reads is no condition. A rate that decides whether the
+   verdict can be read at all, such as a run time, a writer's pace or a judge's error
+   rate, is a condition unless the card shows the check passes across the whole range the
+   record allows for it. The card states that range and its source. A rate step 4 could
+   measure is measured there, and the card cites the measure instead of a range. A return claims
    the value cannot work, and it carries the same burden as a pass. Before returning, the
    agent names the obstacle and asks whether it is real: whether a premise or another
    value of the row already handles it with no value changed. A part the operator
@@ -261,7 +308,15 @@ one vocabulary, so every value on them varies one literal reading:
    return to the same test. Agents that share a model
    and repair alone reach the same repair, so five repaired rows converge on one yardstick.
    The axis agent drops or corrects the value for every row, redraws the rows, and the
-   failed rows are written again.
+   failed rows are written again. Before any row receives a value, the axis agent tests
+   the value's own text against every gate 2 check, and fixes or withdraws a value that
+   breaks one. The axis agent also checks each brief clause that names a rate, a range or a
+   rung against the price list before rows run, and two clauses that disagree are a brief
+   fault. A value the brief states and the row omits is a row fault, and the row goes
+   back. Every total the axis list states equals the sum of the parts it lists, and
+   the checker recounts each total before tabling rows against it. A schedule rule that
+   leaves an assigned component with no input is a narrowing, and the axis list reconciles
+   the two before rows receive them.
 
 Four rules hold for every framing agent:
 
@@ -278,7 +333,11 @@ Four rules hold for every framing agent:
   dropped goes back to the briefer, and the value stands. The brief
   carries nothing the briefer concluded. A sentence such as "the
   task here means X" in a brief is the briefer's framing, and every agent that reads it
-  inherits it. A premise the briefer paraphrased is the briefer's framing too,
+  inherits it. A premise the briefer paraphrased is the briefer's framing too. The
+  brief quotes in full every decision and clause that asks each row to report a figure,
+  never in paraphrase, and ends with them as a checklist. The row answers each item by
+  name. The checker ticks each row against the decisions themselves, not against the
+  brief's list,
 - anything the loop or its agents made earlier counts as study output: a roadmap line, a
   hypothesis, a result, and also code, a benchmark, a judge or a testbed. A framing agent
   reads study output for facts it can check, never for goals, bars or verdicts. An artifact
@@ -402,7 +461,11 @@ Each check asks whether the method can succeed when everything uncertain goes it
   repeat stays the same instance. Its content can be restored after. Only the parts the
   method decides need a source it can read. Check the training pairs and each test set the
   verdict reads, one at a time. A test set on which a decided part has no source fails,
-  whatever the other sets show. A guess rate is a ceiling, never a source. When the missing part sits in a designed input, the repair is to
+  whatever the other sets show. A guess rate is a ceiling, never a source. The check
+  covers every stream that changes the method's state during the run, such as per-case
+  updates or a growing memory, and not only its training pairs. Each stream feeds a case
+  only material that existed before that case and that the case could have seen. An
+  earlier case's output that names a later case is a leak through that stream. When the missing part sits in a designed input, the repair is to
   change the input's format so it carries the part. Accepting the loss is a choice the card
   must argue for, and a designed input never loses a fact by default.
   A test input written after its answer existed may leak it, and one written from the
@@ -412,7 +475,12 @@ Each check asks whether the method can succeed when everything uncertain goes it
   historical test case. A historical case replayed against today's environment reads the
   state after the change, and that is a leak. A writer who fills a designed test input
   from linked material reads that material as it stood before the answer existed, and the
-  card names the version it reads.
+  card names the version it reads. A writer of training inputs reads no state in which a
+  held-out request or its material is already visible. A split never puts two cases that
+  share one answer on opposite sides. The axis list counts both before any row receives
+  the split, and a screen that reads held-out answers while training data is made is a
+  leak, not a repair. The card states whether a component that builds from the project at
+  test time, per case, counts as a writer of inputs under this rule.
 - **Train equals test.** The training task has the same input and the same output as the
   measured task. A model trained to edit one artifact into another is not trained to write
   the second from a description. When the input form is designed, each training source
@@ -429,8 +497,15 @@ Each check asks whether the method can succeed when everything uncertain goes it
   that picks between them compares against a reference, and the same count applies.
 - **The judge rejects wrong answers.** Name a wrong output the judge would pass, such as
   an output that passes checks the method wrote for itself. A judge that passes it credits
-  the method for grading itself. The first wrong output to try is the unchanged state. A
-  recorded output enters a set of known wrong outputs only after a later record names what
+  the method for grading itself. The first wrong output to try is the unchanged state. A judge that runs checks at a
+  past state reads them before the change first. A check counts against the change only
+  when it passes before the change and fails after it. A check that defines success
+  counts for the change only when it fails before and passes after. A judge that reads a
+  check already failing before the change as a rejection rejects every output at that
+  state, the unchanged one included. A count of recorded outputs marked failed reads each
+  record whole, its title and its body, and counts a mark only when it names that
+  record's own case. Every clause that counts failed cases uses that count, and a wider
+  count is reported apart under its own name. A recorded output enters a set of known wrong outputs only after a later record names what
   was wrong with it. A status label alone does not qualify. Read each member, and count the
   ones whose label named something else. A
   judge built from the input the method reads cannot check a fact that another value
@@ -441,7 +516,9 @@ Each check asks whether the method can succeed when everything uncertain goes it
   wrong output to try does what was asked and
   also something that was not asked. A judge with no reader of the request shows how it
   rejects that output. A case the judge cannot score stays in the denominator as a
-  failure, and the count of such cases reports beside the rate.
+  failure, and the count of such cases reports beside the rate. A part of an answer that a
+  tool generates and the judge reads needs a stated author before the ceiling counts that
+  case. Regenerating it from the output under test makes the check vacuous.
 - **Method fidelity.** Every defining part of the named method is built, or the verdict
   names the gap. A result from a method missing its defining parts is a result about
   another method, and it cannot close the named one.
@@ -461,7 +538,21 @@ Each check asks whether the method can succeed when everything uncertain goes it
   and the date the set reaches the resolution floor, and price the wait. A set that starts
   empty and grows only if someone changes how they work states that change as an
   assumption, with its current rate. A verdict whose floor date falls after the study's
-  date returns the value that sets the test form.
+  date returns the value that sets the test form. The study's date and every pace it
+  sets for itself are values too, and the same checks apply to them. A date or a pace
+  under which no framing reads its verdict by its cheapest path makes the question
+  unsolvable by construction. Re-derive it once, before any row runs, from the operator's
+  words and the operator's record, never from what a row needs, and record both versions.
+  A floor date uses the rate the record shows for whoever writes the test input, counted
+  in the units that writer produces. It never uses the rate of outputs from a system that
+  writer directs. When several rows draw on one writer, split the rate among them first. A
+  rate above the writer's record is a condition, and the value that needs it returns.
+  Before returning it, read the operator's words for who may write that input. A writer
+  the operator named, the study included, is a source, and its rate is what that writer
+  can produce. A form of input the operator's words call for is part of the question,
+  never a smaller question. A writer of training inputs is priced the same way: at its
+  record, in the units that carry the volume this check needs. A pace and a volume that
+  disagree are a contradiction.
 - **The compute fits the claim.** Estimate what the method needs to learn the task at all,
   from the size of the output space and from published results. A budget short by orders
   of magnitude makes the run measure the budget. This check is the exception to the rule
@@ -470,10 +561,32 @@ Each check asks whether the method can succeed when everything uncertain goes it
   unless the budget is resized or the verdict states that it measures that budget. Price it on the hardware the run will
   use, checked on the machine and named on the card. Price memory as well as time: the
   largest input one step holds, at the precision the device supports, against device
-  memory. Name whether the software stack supports the device. When that support is
+  memory. Price generation at the bound that limits it, memory traffic or arithmetic, and
+  name which. A price per output is computed over distinct outputs. When several cases
+  share one output, a per-case mean understates the output's size. Every sub-check the
+  judge runs carries a per-run time in the run price, and a sub-check with no recorded
+  time is a deciding rate. For each such sub-check the row states one of two things: the
+  bound it is priced at with its break-even, or that it returns as a condition. Assuming zero, leaving it out
+  and staying silent are not allowed. Name whether the software stack supports the device. When that support is
   unconfirmed, price the time on the fallback device too. Every hour spent building a
   component the prior or the method needs counts in the cost the verdict reads, and a
-  component that does not exist yet is priced before the verdict is read. A row never
+  component that does not exist yet is priced before the verdict is read. Every
+  reference arm a verdict reads has a builder, an input and a price in the build list. A
+  definition alone is no arm. Price build work
+  at the pace the operator's own record shows for that kind of work, and name the builder.
+  A pace taken from a builder the operator does not use is an assumption, and it is stated
+  as one. When the build and a test source draw on one limited resource, such as people,
+  sessions or machines, price them together, and move the floor date by the time the
+  build holds it. A budget in machine days counts from the time the row's inputs are
+  ready, not from the study's start. A row whose verdict lands after the study's date
+  fails the date check even when its machine days fit. Under a serial schedule the row
+  states whether the next case may start while the current one waits on a step that uses
+  no local machine time. If it may not, the row prices that wait on the calendar. A budget the operator's words fix, such as a named machine, is never a
+  reason to call the question unanswerable. When the estimate exceeds that budget, the
+  verdict reads the lever at several budgets up to it, and states the smallest budget at
+  which the oracle control separates from the random one, or that none does. When per-case updates run inside every arm, each
+  budget rung reads as the rung plus that stream. A rung smaller than the stream is no
+  distinct rung, and the smallest-budget reading moves to the first rung that exceeds it. A row never
   narrows a clause measure's cost ledger, and the checker compares it item by item. When
   the verdict reads no cost, the build hours report beside it as its price.
 - **The ceiling covers the workload.** Sample the operator's real work, such as its
@@ -495,7 +608,12 @@ Each check asks whether the method can succeed when everything uncertain goes it
   quotes the operator's words that fix it. A framing that passes with a cap from an open
   axis answers a smaller question than the one asked. The ceiling counts the work a value
   serves at run time. How many past cases exist to test a value is a resolution question
-  for step 3, never a ceiling. A framing that claims more than a fixed axis allows has
+  for step 3, never a ceiling. When the operator names more than one body of work, the
+  card states for each whether the verdict reads it. A body on which no test source can
+  reach the resolution floor under the test-input rules is a finding with its count. The
+  verdict then says it does not speak for that body, and the ceiling still counts it. A
+  rule that demands a verdict on that body makes the question unsolvable there, and it
+  returns no row. A framing that claims more than a fixed axis allows has
   widened that axis, and it fails gate 1.
 - **The operator's levers are used.** When the question names a lever, such as a preset,
   a prior, a representation or a budget, the card says how the method uses it. A method
@@ -523,7 +641,14 @@ and names any two framings that share their input, output and role. A card or a 
 fails goes back to repair. When two counts of one fact disagree, it states both with the
 method behind each. A count by text search does not overturn a count by reading the
 artifacts. A framing that relies on a class count names the cases in it. The checker
-recounts the class by a stated method and reports the framing's cases beside its own.
+recounts the class by a stated method and reports the framing's cases beside its own. A
+component or a definition a row adds with no value behind it goes back to the axis
+agent. A framing whose statements about one date or count disagree fails that check
+until the axis agent reconciles them. Machine facts are read once, on the day of the
+check, and every row cites that reading. Before the checker proposes a rule that returns
+every row, it asks whether the rule makes the question unsolvable by construction. Such a
+rule is a finding about the checker, and it goes to the study with the operator's words
+it contradicts.
 
 Done when at least three framings survive in `FRAMINGS.md` or the rest died on paper,
 every candidate about to be probed has a card that passed both gates in writing, and a
