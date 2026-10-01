@@ -9,7 +9,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-from ostler import model
+from ostler import index, model
 from ostler.qa.attribution import Cause
 from ostler.qa.plan_source import is_probe
 from ostler.qa.runbook import select_stack
@@ -129,8 +129,13 @@ def compile_scenarios(root: Path, service: str, spec: Path, targets: Sequence[st
 
 
 def stack_pages(root: Path, service: str) -> tuple[str, ...]:
-    """The runbook pages `bring_up` starts the service's stack from, or none when the book names no single stack."""
-    return tuple(node.id for node in select_stack(model.load(find_docs_root("", str(root))), near=book_dir(root, service)).runbooks)
+    """The runbook pages `bring_up` starts the service's stack from, or none when the book names no single stack.
+
+    The pages parse through ostler's index, so a turn's later checks reparse only the pages written since.
+    """
+    with index.session(root):
+        graph = model.load(find_docs_root("", str(root)))
+    return tuple(node.id for node in select_stack(graph, near=book_dir(root, service)).runbooks)
 
 
 def bring_up(logger: logging.Logger, root: Path, service: str) -> StackReadiness:

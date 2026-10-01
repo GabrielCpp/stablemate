@@ -2,14 +2,16 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Generator
+from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
+from ostler import index
 
 from workhorse_workflows.kit.qa import runner
 from workhorse_workflows.okf_book.shared import book_run
-from workhorse_workflows.okf_book.shared.book_run import bring_up, compile_scenarios, release, run_plan, with_app_logs
+from workhorse_workflows.okf_book.shared.book_run import bring_up, compile_scenarios, release, run_plan, stack_pages, with_app_logs
 from ostler.qa.attribution import Cause, Signature
 from ostler.qa.verdict import Verdict
 from workhorse_workflows.okf_book.shared.scenarios import FailedCheck, RunSummary, Scenario, ScenarioOutcome
@@ -257,3 +259,27 @@ def test_a_run_of_named_scenarios_probes_nothing(monkeypatch: pytest.MonkeyPatch
     _ = run_plan(tmp_path, tmp_path / "spec", (), True, only=("docs-a-from-the-book",))
 
     assert asked == [("docs-a-from-the-book",)]
+
+
+def test_a_second_look_at_an_unchanged_book_reads_its_stack_from_the_index(
+    app: Callable[[str], Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = app("globex")
+    monkeypatch.setenv("OSTLER_INDEX_DIR", str(tmp_path / "index"))
+    first = stack_pages(repo, "api-service")
+    stores: list[index.IndexStore] = []
+    opened = index.session
+
+    @contextmanager
+    def _session(root: Path) -> Generator[index.IndexStore]:
+        with opened(root) as store:
+            stores.append(store)
+            yield store
+
+    monkeypatch.setattr(index, "session", _session)
+
+    second = stack_pages(repo, "api-service")
+
+    assert second == first
+    assert stores[0].hits
+    assert stores[0].misses == 0
