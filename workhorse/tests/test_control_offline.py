@@ -8,6 +8,7 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -247,15 +248,28 @@ def test_wait_gone_returns_once_the_pid_is_gone_and_fails_while_it_lives(capsys)
 
 
 
-def test_resume_line_swaps_the_backend_flags_for_the_named_cli() -> None:
+def test_resume_line_swaps_a_profile_for_another_cli_and_says_so(capsys) -> None:
     record = LaunchRecord(
         resume_argv=["workhorse-demo", "run", "--profile", "cheap", "--cli=claude", "--auto"]
     )
+    cfg = {"profiles": {"cheap": {"cli": "claude"}}}
 
-    assert offline.resume_line(record, "opencode") == [
-        "workhorse-demo", "run", "--auto", "--cli", "opencode",
-    ]
+    with patch("workhorse.profile.load_config", lambda: cfg):
+        assert offline.resume_line(record, "opencode") == [
+            "workhorse-demo", "run", "--auto", "--cli", "opencode",
+        ]
+    assert "dropping profile 'cheap'" in capsys.readouterr().out
     assert offline.resume_line(record, "") == list(record.resume_argv)
+
+
+def test_resume_line_keeps_a_profile_that_names_the_cli() -> None:
+    record = LaunchRecord(resume_argv=["workhorse-demo", "run", "--profile=cheap", "--auto"])
+    cfg = {"profiles": {"cheap": {"cli": "opencode"}}}
+
+    with patch("workhorse.profile.load_config", lambda: cfg):
+        assert offline.resume_line(record, "opencode") == [
+            "workhorse-demo", "run", "--auto", "--profile", "cheap",
+        ]
 
 
 def _launch(run_dir: Path, argv: list[str], *, container: bool = False) -> None:

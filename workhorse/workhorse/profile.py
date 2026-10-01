@@ -27,6 +27,7 @@ from workhorse.records import parse_run_record
 from workhorse.runner.backends.registry import backend_names, get_backend
 
 if TYPE_CHECKING:
+    from workhorse.artifacts import ArtifactWriter
     from workhorse.runner.backends import AgentBackend
     from workhorse.runner.ladder import AgentRunner
 
@@ -34,6 +35,8 @@ if TYPE_CHECKING:
 class ProfileError(Exception):
     """A profile or CLI choice a run cannot start on."""
 
+
+_BACKEND_FLAGS = ("--cli", "--profile")
 
 _warned_missing_profile: set[str] = set()
 
@@ -162,6 +165,60 @@ def _check_profile_resolves(name: str, profile: dict[str, Any], backend: str) ->
             f"table or a [profiles.{name}.default] entry, or run with --cli "
             f"<this-cli> and no --profile (bare-CLI mode)."
         )
+
+
+def resume_backend_flags(cli: str = "", profile: str = "") -> list[str]:
+    """The flags that resume a run onto ``cli`` and ``profile``: the CLI wins, and keeps a profile that names it."""
+    if profile and (not cli or _profile_names_cli(profile, cli)):
+        return ["--profile", profile]
+    if profile:
+        print(
+            f"[workhorse] resume: dropping profile {profile!r}, which does not name cli {cli!r}",
+            flush=True,
+        )
+    return ["--cli", cli] if cli else []
+
+
+def with_backend_flags(argv: list[str], *, cli: str = "", profile: str = "") -> list[str]:
+    """``argv`` with its backend flags replaced by the ones that resume onto ``cli`` and ``profile``."""
+    kept: list[str] = []
+    skip = False
+    for token in argv:
+        if skip:
+            skip = False
+            continue
+        if token in _BACKEND_FLAGS:
+            skip = True
+            continue
+        if any(token.startswith(f"{flag}=") for flag in _BACKEND_FLAGS):
+            continue
+        kept.append(token)
+    return [*kept, *resume_backend_flags(cli, profile)]
+
+
+def flag_value(argv: list[str], flag: str) -> str:
+    """The value ``argv`` gives ``flag``, in either spelling, or ``""``."""
+    for i, token in enumerate(argv):
+        if token == flag and i + 1 < len(argv):
+            return argv[i + 1]
+        if token.startswith(f"{flag}="):
+            return token.removeprefix(f"{flag}=")
+    return ""
+
+
+def _profile_names_cli(profile: str, cli: str) -> bool:
+    try:
+        return profile_has_backend(select_profile(load_config(), profile), cli)
+    except (UnknownProfileError, ConfigError):
+        return False
+
+
+def record_switch(writer: ArtifactWriter, name: str) -> None:
+    """Point the run's records at the profile a live switch moved it onto, so a resume comes back on it."""
+    writer.record_profile(name, resolved_profile(name))
+    record = writer.launch_record()
+    if record is not None:
+        writer.record_resume_argv(with_backend_flags(record.resume_argv, profile=name))
 
 
 def recorded_profile(run_dir: Path) -> str:

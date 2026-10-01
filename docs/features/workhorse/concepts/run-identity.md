@@ -24,9 +24,10 @@ The resolver accepts a path, a full directory name, or the id that named the dir
 ### resume_argv
 - sig: `resume_argv(program: str, run_dir: Path, *, cli: str = "", profile: str = "", config_path: str = "") -> list[str]`
 - does: builds `<program> run --resume-run <run_dir>` without replaying the original launch arguments
-- does: appends `--cli`, `--profile`, and `--config` only when their values are non-empty
+- does: appends the backend flags the resume rule picks: an explicit `--cli` wins, a profile that names that CLI is kept as `--profile` alone, and a profile that names another CLI is dropped with a log line
+- does: appends `--config` only when its value is non-empty
 - returns: an argv suitable for resuming the existing run directory
-- code: `workhorse/workhorse/rundir.py::resume_argv` @bb4e00c20441
+- code: `workhorse/workhorse/rundir.py::resume_argv` @aa85ef04e897
 
 ### auto_resolve
 - sig: `auto_resolve(runs_dir: Path, workflow_name: str, run_id: str | None = None) -> tuple[str, Path | None]`

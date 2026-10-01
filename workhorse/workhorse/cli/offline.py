@@ -13,6 +13,7 @@ from pydantic import ValidationError
 
 from workhorse import control
 from workhorse.artifacts import ArtifactWriter
+from workhorse.profile import flag_value, with_backend_flags
 from workhorse.pyflow.registry import Registry
 from workhorse.records import (
     LaunchRecord,
@@ -24,8 +25,6 @@ from workhorse.records import (
 from workhorse.rewind import RewindError, rewind
 
 RESUME_LOG = "resume.log"
-
-_BACKEND_FLAGS = ("--cli", "--profile")
 
 _POLL_S = 0.5
 
@@ -131,22 +130,11 @@ def run_rewind(
 
 
 def resume_line(record: LaunchRecord, cli: str) -> list[str]:
-    """The recorded resume argv, with the backend flags swapped for `--cli CLI`."""
+    """The recorded resume argv, moved onto `--cli CLI` by the one resume flag rule."""
     if not cli:
         return list(record.resume_argv)
-    argv: list[str] = []
-    skip = False
-    for token in record.resume_argv:
-        if skip:
-            skip = False
-            continue
-        if token in _BACKEND_FLAGS:
-            skip = True
-            continue
-        if any(token.startswith(f"{flag}=") for flag in _BACKEND_FLAGS):
-            continue
-        argv.append(token)
-    return [*argv, "--cli", cli]
+    recorded = flag_value(record.resume_argv, "--profile")
+    return with_backend_flags(record.resume_argv, cli=cli, profile=recorded)
 
 
 def _tail(path: Path, lines: int = 30) -> str:

@@ -11,6 +11,7 @@ from typing import Any
 from pydantic import ValidationError
 
 from workhorse.artifacts import ArtifactWriter
+from workhorse.profile import resume_backend_flags
 from workhorse.records import RunRecord, parse_run_record
 
 
@@ -33,11 +34,7 @@ def resume_argv(
     config_path: str = "",
 ) -> list[str]:
     """The argv that resumes ``run_dir`` — rebuilt, never the original one replayed."""
-    argv = [program, "run", "--resume-run", str(run_dir)]
-    if cli and not profile:
-        argv += ["--cli", cli]
-    if profile:
-        argv += ["--profile", profile]
+    argv = [program, "run", "--resume-run", str(run_dir), *resume_backend_flags(cli, profile)]
     if config_path:
         argv += ["--config", config_path]
     return argv

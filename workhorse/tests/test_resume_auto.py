@@ -9,6 +9,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from _fakes import present
+from workhorse._vendor.stablemate_core.config import CONFIG_PATH_ENV
 from workhorse.pyflow import Registry
 from workhorse.rundir import (
     auto_resolve,
@@ -242,10 +243,11 @@ def test_the_recorded_resume_command_of_a_profiled_run_is_accepted_by_the_cli():
         cfg.write_text(
             '[profiles.cheap]\ncli = "codex"\n[profiles.cheap.default]\nmodel = "m"\n'
         )
-        argv = resume_argv(
-            "workhorse-research", run_dir,
-            cli="codex", profile="cheap", config_path=str(cfg),
-        )
+        with patch.dict("os.environ", {CONFIG_PATH_ENV: str(cfg)}):
+            argv = resume_argv(
+                "workhorse-research", run_dir,
+                cli="codex", profile="cheap", config_path=str(cfg),
+            )
         run_dir.mkdir(parents=True)
         (run_dir / "checkpoint.json").write_text(json.dumps({"state": "s", "params": {}}))
         resumed = _invocation(argv[1:])

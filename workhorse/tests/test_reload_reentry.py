@@ -20,14 +20,17 @@ from _fakes import FakeBackend, RecordingTelemetry  # noqa: E402
 from workhorse._vendor.stablemate_core.config import CONFIG_PATH_ENV  # noqa: E402
 from workhorse import control, otel, reload  # noqa: E402
 from workhorse.artifacts import ArtifactWriter  # noqa: E402
+from workhorse.cli import offline  # noqa: E402
 from workhorse.config_run import RunConfig  # noqa: E402
 from workhorse.pyflow import run as run_mod  # noqa: E402
 from workhorse.pyflow.driver import drive  # noqa: E402
 from workhorse.pyflow.engine import RunEnv  # noqa: E402
 from workhorse.pyflow.registry import Registry  # noqa: E402
 from workhorse.pyflow.run import RunInvocation, run_pyflow  # noqa: E402
+from workhorse.profile import recorded_profile  # noqa: E402
 from workhorse.pyflow.transitions import Done, Transition  # noqa: E402
 from workhorse.pyflow.workflow import Workflow  # noqa: E402
+from workhorse.rundir import resume_argv  # noqa: E402
 from workhorse.runner import ladder  # noqa: E402
 
 
@@ -191,6 +194,33 @@ def test_a_profile_switch_the_run_refuses_is_reported_as_a_refusal():
         runner = env.agent_runner
         assert runner is not None and runner.profile.name == ""
         assert channel.replies and channel.replies[0]["ok"] is False
+
+
+def test_a_run_switched_onto_a_profile_resumes_on_it():
+    """`control resume` replays the launch record and a bare `--resume-run` reads `run.json`, so both follow the switch."""
+
+    class Quiet(Workflow):
+        def start(self) -> Transition:
+            return Done("finished")
+
+    cfg = {"profiles": {"base": {"cli": "fake"}, "cheap": {"cli": "fake"}}}
+    with tempfile.TemporaryDirectory() as tmp, patch("workhorse.profile.load_config", lambda: cfg):
+        env = dataclasses.replace(
+            _env(tmp), agent_runner=ladder.AgentRunner(backend=FakeBackend(None))
+        )
+        run_dir = env.writer.run_dir
+        launched = resume_argv("workhorse-stub", run_dir, cli="fake", profile="base")
+        env.writer.record_launch(["workhorse-stub", "run"], launched, tmp)
+        request = control.Request(action=reload.SWITCH_PROFILE, profile="cheap")
+        with _Armed(request):
+            assert drive(Quiet(), env) == "finished"
+
+        record = env.writer.launch_record()
+        assert record is not None
+        assert offline.resume_line(record, "") == [
+            "workhorse-stub", "run", "--resume-run", str(run_dir), "--profile", "cheap",
+        ]
+        assert recorded_profile(run_dir) == "cheap"
 
 
 def test_an_unarmed_run_never_stops_at_a_boundary():
@@ -383,6 +413,31 @@ def test_a_re_exec_carries_the_live_profile_and_the_config_file_it_is_reading():
         script, "run", "--resume-run", "/runs/stub-t",
         "--profile", "cheap", "--config", "/etc/stablemate.toml",
     ]], calls
+
+
+def test_a_cli_switch_keeps_the_live_profile_only_when_it_names_that_cli(capsys):
+    calls: list[list[str]] = []
+
+    def fake_execv(path: str, argv: list[str]) -> None:
+        calls.append(list(argv))
+        raise OSError("no such image")
+
+    cfg = {"profiles": {"cheap": {"cli": "opencode"}}}
+    script = "/nonexistent/bin/workhorse-stub"
+    with (
+        patch.object(run_mod.os, "execv", fake_execv),
+        patch.object(run_mod.sys, "argv", [script, "run"]),
+        patch("workhorse.profile.load_config", lambda: cfg),
+        _no_config_env(),
+    ):
+        run_mod._exec_reload("stub", Path("/runs/stub-t"), cli="opencode", profile="cheap")
+        run_mod._exec_reload("stub", Path("/runs/stub-t"), cli="claude", profile="cheap")
+
+    assert calls == [
+        [script, "run", "--resume-run", "/runs/stub-t", "--profile", "cheap"],
+        [script, "run", "--resume-run", "/runs/stub-t", "--cli", "claude"],
+    ], calls
+    assert "dropping profile 'cheap'" in capsys.readouterr().out
 
 
 def test_a_switch_is_a_core_reload_even_when_nobody_asked_for_one():

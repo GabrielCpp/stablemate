@@ -43,9 +43,9 @@ is the single source of recovery flags.
 
 - code: `workhorse/workhorse/runner/ladder.py::AgentRunner` @3d905316475c
 - code: `workhorse/workhorse/runner/ladder.py::AgentRunner.run` @3d905316475c
-- code: `workhorse/workhorse/profile.py::ProfileSelection` @89a9c91ee163
-- code: `workhorse/workhorse/profile.py::resolved_profile` @89a9c91ee163
-- code: `workhorse/workhorse/profile.py::switch_profile` @89a9c91ee163
+- code: `workhorse/workhorse/profile.py::ProfileSelection` @1d0f50919efa
+- code: `workhorse/workhorse/profile.py::resolved_profile` @1d0f50919efa
+- code: `workhorse/workhorse/profile.py::switch_profile` @1d0f50919efa
 - tests: `workhorse/tests/test_agent_recovery.py::test_success_on_first_attempt_returns_outputs`,
   `workhorse/tests/test_agent_recovery.py::test_rendered_prompt_is_written_and_only_path_is_printed`,
   `workhorse/tests/test_agent_recovery.py::test_empty_result_then_reframe_succeeds`,
@@ -114,7 +114,7 @@ once rather than moving silently to the machine's top-level models.
 - returns: the exact profile tables used for the run's profile provenance record
 - consistency: profile-config — the returned profile tables are recorded verbatim in the run's profile provenance
 - verify: json_path(path="$.profile_config.power.high.claude.model", equals="sonnet")
-- code: `workhorse/workhorse/profile.py::resolved_profile` @89a9c91ee163
+- code: `workhorse/workhorse/profile.py::resolved_profile` @1d0f50919efa
 - verify: persists(subject="run.json profile_config")
 - tests: `workhorse/tests/test_artifacts_fresh.py::test_the_profile_and_what_it_held_are_recorded_on_the_run`
 
@@ -131,7 +131,7 @@ once rather than moving silently to the machine's top-level models.
 - verify: json_path(path="$.ok", equals=false)
 - returns: `{ok: true, profile: name, was: previous_name}` after acceptance
 - returns: `{ok: false, error: message}` after refusal
-- code: `workhorse/workhorse/profile.py::switch_profile` @89a9c91ee163
+- code: `workhorse/workhorse/profile.py::switch_profile` @1d0f50919efa
 - verify: json_path(path="$.ok", equals=true)
 - verify: json_path(path="$.profile", equals="cheap")
 - tests: `workhorse/tests/test_model_resolution.py::test_a_switch_is_one_assignment_that_the_next_turn_reads`, `workhorse/tests/test_model_resolution.py::test_an_unknown_profile_is_refused_rather_than_applied`, `workhorse/tests/test_model_resolution.py::test_a_profile_that_maps_nothing_for_this_runs_backend_is_refused`, `workhorse/tests/test_model_resolution.py::test_a_profile_carrying_no_models_at_all_is_allowed_through`, `workhorse/tests/test_model_resolution.py::test_a_run_that_drives_no_agent_is_told_so_rather_than_crashing`, `workhorse/tests/test_reload_reentry.py::test_a_profile_switch_is_applied_in_place_and_the_run_carries_on`, `workhorse/tests/test_reload_reentry.py::test_a_profile_switch_the_run_refuses_is_reported_as_a_refusal`

@@ -19,6 +19,7 @@ from workhorse.records import (
     RepoObservation,
     RunRecord,
     parse_checkpoint,
+    parse_launch_record,
     parse_run_record,
 )
 from workhorse.runner.usage import TurnUsage, as_record, from_record
@@ -420,6 +421,24 @@ class ArtifactWriter:
             resume_generation=turnkey.read_generation(self.run_dir),
             container=Path("/.dockerenv").exists(),
         )
+        try:
+            (self.run_dir / "launch.json").write_text(record.model_dump_json(indent=2))
+        except OSError:
+            pass
+
+    def launch_record(self) -> LaunchRecord | None:
+        """What ``launch.json`` says started this process, or None before it is written."""
+        try:
+            return parse_launch_record((self.run_dir / "launch.json").read_text())
+        except (OSError, ValidationError):
+            return None
+
+    def record_resume_argv(self, resume_argv: list[str]) -> None:
+        """Point the recorded resume line at ``resume_argv``, keeping the rest of the launch."""
+        record = self.launch_record()
+        if record is None:
+            return
+        record.resume_argv = list(resume_argv)
         try:
             (self.run_dir / "launch.json").write_text(record.model_dump_json(indent=2))
         except OSError:

@@ -376,6 +376,7 @@ def drive(
         if boundary is not None and boundary.action == reload.SWITCH_PROFILE:
             reply = profile.switch_profile(env.agent_runner, boundary.profile)
             if reply.get("ok"):
+                profile.record_switch(env.writer, boundary.profile)
                 env.log.info(
                     "[workhorse] profile → '%s' from the next turn on", boundary.profile
                 )

@@ -235,11 +235,11 @@ while budget, interrupt, and unavailable-backend stops retain a resumable checkp
 - does: rebuilds the resume command rather than replaying the original invocation
 - does: uses the same `resume_argv` builder a supervisor re-spawns off `launch.json`, so the line this process re-execs with and the line a supervisor would re-spawn it with cannot drift apart
 - does: replaces the current process image with the resume command when executable resolution succeeds
-- does: carry the requested `--cli` when one was named, because CLI is the one thing a resume cannot read off the checkpoint
+- does: carry the requested `--cli` when one was named, because CLI is the one thing a resume cannot read off the checkpoint, and keep the live profile in its place when that profile names the requested CLI
 - does: print a resumable error and return the reserved reload exit code when re-exec fails
 - verify: exit_status(code=3)
-- code: `workhorse/workhorse/pyflow/run.py::_exec_reload` @c2e0103710e1
-- tests: `workhorse/tests/test_reload_reentry.py::test_the_re_exec_argv_is_the_resume_spelling_not_the_original_one`, `workhorse/tests/test_reload_reentry.py::test_moving_a_run_onto_another_cli_re_execs_naming_it`, `workhorse/tests/test_reload_reentry.py::test_a_re_exec_builds_its_argv_with_the_same_function_the_launch_record_does`, `workhorse/tests/test_reload_reentry.py::test_a_re_exec_carries_the_live_profile_and_the_config_file_it_is_reading`
+- code: `workhorse/workhorse/pyflow/run.py::_exec_reload` @ad9f8644aba0
+- tests: `workhorse/tests/test_reload_reentry.py::test_the_re_exec_argv_is_the_resume_spelling_not_the_original_one`, `workhorse/tests/test_reload_reentry.py::test_moving_a_run_onto_another_cli_re_execs_naming_it`, `workhorse/tests/test_reload_reentry.py::test_a_re_exec_builds_its_argv_with_the_same_function_the_launch_record_does`, `workhorse/tests/test_reload_reentry.py::test_a_re_exec_carries_the_live_profile_and_the_config_file_it_is_reading`, `workhorse/tests/test_reload_reentry.py::test_a_cli_switch_keeps_the_live_profile_only_when_it_names_that_cli`
 
 ### _reloadable_roots
 - sig: `_reloadable_roots(entry_module: str) -> list[str]`

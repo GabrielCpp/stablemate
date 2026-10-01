@@ -372,9 +372,9 @@ def _drive_reloadable(
                     "[workhorse] reload: --core — re-executing this run from '%s'",
                     pending_resume.state,
                 )
-                if exc.cli:
-                    raise _CoreReloadRequested(exc.cli) from exc
                 live = env.agent_runner.profile.name if env.agent_runner else ""
+                if exc.cli:
+                    raise _CoreReloadRequested(exc.cli, profile=live) from exc
                 backend = env.config.backend.name
                 if live:
                     raise _CoreReloadRequested(profile=live) from exc
