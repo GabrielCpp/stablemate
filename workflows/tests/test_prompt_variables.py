@@ -8,14 +8,14 @@ import pytest
 from jinja2 import Environment, nodes
 from jinja2.meta import find_undeclared_variables
 
-from workhorse.templates import _farrier_globals
+from workhorse.templates import template_globals
 import workhorse_workflows
 
 PACKAGE = Path(workhorse_workflows.__file__).parent
 
 WORKFLOWS = ("author", "coder", "research")
 
-AMBIENT = set(_farrier_globals({}, PACKAGE, quiet=True)) | {
+AMBIENT = set(template_globals({}, quiet=True)) | {
     "template",
     "repo",
     "vars",

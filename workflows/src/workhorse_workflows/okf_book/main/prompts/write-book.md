@@ -27,7 +27,7 @@ gives relative to the repository starts there.
 - The book is the folder you run from. Some pages may already be there. Keep what is right,
   fix what is wrong, and add what is missing.
 - The format is the `ostler-okf` skill. Load it first and hold the book to its bar:
-  {{ skill_load_ref("ostler-okf", skill_dir() + "/ostler-okf/SKILL.md") }}
+  {{ skill_command("ostler-okf") }}
 - The book's root is `entries.md`, in the folder you run from. It has frontmatter `type: entries`, `slug:
   entries` and `title: {{ service }}`, then one `- [title](page.md)` line per entry page. Every
   other page must be reachable by links from an entry page.

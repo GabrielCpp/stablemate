@@ -80,3 +80,15 @@ def drive_book(tmp_path: Path) -> Callable[[OkfBook, ScriptedRunner], object]:
 
     return _run
 
+
+
+@pytest.fixture
+def ostler_okf_skill(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    home = tmp_path / "home"
+    skill = home / ".claude/skills/ostler-okf/SKILL.md"
+    skill.parent.mkdir(parents=True)
+    _ = skill.write_text("---\nname: ostler-okf\nmetadata:\n  name: ostler-okf\n---\n", encoding="utf-8")
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("AGENT_CLI", "claude")
+    monkeypatch.chdir(tmp_path)
+    return skill

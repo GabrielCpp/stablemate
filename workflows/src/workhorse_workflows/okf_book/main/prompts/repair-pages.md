@@ -23,7 +23,7 @@ gives relative to the repository starts there.
   ```
 
 - The format is the `ostler-okf` skill. Load it first and hold every page you touch to its bar:
-  {{ skill_load_ref("ostler-okf", skill_dir() + "/ostler-okf/SKILL.md") }}
+  {{ skill_command("ostler-okf") }}
 {% if operator_answer %}
 - The operator read the last run's report and the app's log, and answered. Their answer names
   causes a failed check does not show, such as a token another fixture revoked or a fixture a

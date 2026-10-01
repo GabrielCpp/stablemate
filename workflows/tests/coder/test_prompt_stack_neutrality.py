@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import TypedDict
 
 import pytest
+from workhorse._vendor.stablemate_core.skill_refs import MissingSkill
 from workhorse.templates import render
 
 import workhorse_workflows
@@ -65,14 +66,18 @@ STACKS: dict[str, _Stack] = {
 SCHEMA_VOCABULARY = re.compile(r"`[a-z0-9-]+`|\"[a-z0-9-]+\"")
 
 
-def _context(stack: str) -> dict[str, object]:
-    """A farrier manifest holding exactly one stack's skills, and nothing else's."""
-    skills: dict[str, tuple[str, ...]] = STACKS[stack]["skills"]
-    return {
-        "_instructions": {name: f".claude/skills/{name}/SKILL.md" for name in skills},
-        "_instruction_tags": {name: list(tags) for name, tags in skills.items()},
-        "_prompts": {},
-    }
+def _context(stack: str, root: Path) -> dict[str, object]:
+    """A repo holding exactly one stack's skills and the docs skill, and nothing else's."""
+    skills: dict[str, tuple[str, ...]] = {**STACKS[stack]["skills"], "ostler-okf": ("docs",)}
+    (root / ".git").mkdir(parents=True)
+    for name, tags in skills.items():
+        skill = root / ".claude/skills" / f"acme-{name}" / "SKILL.md"
+        skill.parent.mkdir(parents=True)
+        skill.write_text(
+            f"---\nname: acme-{name}\nmetadata:\n  name: {name}\n  tags: [{', '.join(tags)}]\n---\n",
+            encoding="utf-8",
+        )
+    return {"_node_cwd": str(root)}
 
 
 def _foreign_words(stack: str) -> tuple[str, ...]:
@@ -83,30 +88,23 @@ def _foreign_words(stack: str) -> tuple[str, ...]:
 
 @pytest.mark.parametrize("prompt", PROMPTS, ids=_id)
 @pytest.mark.parametrize("stack", sorted(STACKS))
-def test_each_prompt_is_neutral_for_the_stack_that_renders_it(stack: str, prompt: Path) -> None:
-    """Render once, then enforce all three stack-neutrality contracts."""
-    rendered = render(prompt, _context(stack), CODER)
+def test_each_prompt_is_neutral_for_the_stack_that_renders_it(
+    stack: str, prompt: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Render once for a repo of one stack, and require no other stack's words or skills."""
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("AGENT_CLI", "claude")
+    try:
+        rendered = render(prompt, _context(stack, tmp_path / "acme"), CODER)
+    except MissingSkill as exc:
+        pytest.fail(
+            f"{prompt.name} requires the {exc.name!r} skill of a {stack}-only repo, a skill "
+            f"no repo is obliged to install. Ask for it by tag with `find_by_tags(...)` and "
+            f"a `| default(...)`, or guard it with `has_skill`"
+        )
     prose = SCHEMA_VOCABULARY.sub("", rendered)
     for word in _foreign_words(stack):
         assert word not in prose, (
             f"{prompt.name} rendered for a {stack}-only repo still says {word!r}; "
             f"gate that prose on the matching `find_by_tags(...)` variable"
         )
-    for other, spec in STACKS.items():
-        if other == stack:
-            continue
-        for skill in spec["skills"]:
-            assert f"generated {skill} instruction file" not in rendered, (
-                f"{prompt.name} requires the {skill!r} skill of a {stack}-only repo; "
-                f"ask for it by tag with `find_by_tags(...)` or guard it"
-            )
-    missing = sorted(set(PLACEHOLDER.findall(rendered)))
-    assert not missing, (
-        f"{prompt.name} requires {', '.join(missing)} — a skill no repo is obliged to "
-        f"install, so the prompt names a file that may not exist. Ask for it by tag with "
-        f"`find_by_tags(...)` and a `| default(...)`, or guard it with "
-        f"`isUsingInstruction`"
-    )
-
-
-PLACEHOLDER = re.compile(r"generated (\S+) instruction file when installed")

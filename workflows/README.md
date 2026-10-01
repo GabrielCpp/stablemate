@@ -235,28 +235,32 @@ than raising. Agent *output* is different — a CLI's log line has no grammar, a
 what reads it. The boundary, the parser for each format, and how to declare an exemption
 are in the `stablemate-structured-parsing` skill; `make check-parsers` enforces it.
 
-## A prompt does not name a skill (load-bearing)
+## A prompt does not name a stack's skill (load-bearing)
 
 **Which skill teaches a subject is the repo's answer, asked for by tag.** A prompt in here
 has never met the repo it will run against, so it may not write
-`instruction_refs("go-testing", "flutter-testing", "react-router-testing", …)` — the menu
+`skill_link("go-testing")`, `skill_link("flutter-testing")`, … — the menu
 of every stack the author happened to think of. It asks for the capability instead:
 
 ```jinja
 {% raw %}{{ find_by_tags("web", "tests") }}{% endraw %}
 ```
 
-The query is an AND over the `tags:` in each installed skill's front matter, it renders the
-matching skills' paths (backticked, comma-joined) and it renders **nothing** when the repo
+The query is an AND over the `metadata.tags` in each installed skill's front matter, it renders
+the matching skills as links (comma-joined) and it renders **nothing** when the repo
 installs no match — so the sentence around it carries a `| default("(none installed — …)",
 true)`, or the whole paragraph sits behind `{% raw %}{% if %}{% endraw %}`.
 
 The hand-listed menu was wrong in both directions. A repo with a stack the list forgot got
 no guidance at all, and — the defect that cost a run — a repo with only a web app and no
-mobile code rendered `plan-story` with ten mentions of Flutter and Dart, because the helper
-correctly dropped the unresolvable names while the prose around it still enumerated them.
+mobile code rendered `plan-story` with ten mentions of Flutter and Dart, because the old helper
+dropped the unresolvable names while the prose around it still enumerated them.
 `tests/coder/test_prompt_stack_neutrality.py` renders every coder prompt against a
-one-stack manifest and holds that line.
+one-stack skill catalog and holds that line.
+
+A skill the workflow itself needs in every repo, such as the `ostler-okf` format a docs turn
+writes to, is named outright with `{% raw %}{{ skill_command("ostler-okf") }}{% endraw %}`. A
+repo without it fails the turn, and the run warns about it before the first state.
 
 The vocabulary the coder prompts query is `runbook`, `standards`, `tests`, `qa` and
 `codegen`, each combined with a layer — `backend`, `cli`, `web`, `mobile`, `infra`. It is

@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from okf_book.main.tally import TALLY
 
 from workhorse import gates, templates
@@ -49,6 +51,7 @@ def test_an_empty_answer_clears_the_last(tmp_path: Path) -> None:
     assert read_answer(tmp_path) == ""
 
 
+@pytest.mark.usefixtures("ostler_okf_skill")
 def test_the_repair_prompt_carries_the_answer(tmp_path: Path) -> None:
     request = WriterRequest(
         surface=TALLY,

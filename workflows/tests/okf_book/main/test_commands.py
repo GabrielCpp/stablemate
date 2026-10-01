@@ -98,6 +98,7 @@ def test_the_writer_waits_on_an_exercise_past_the_cli_default_and_inside_the_sil
     assert 120 < limit < AgentResilience().silence_timeout_s
 
 
+@pytest.mark.usefixtures("ostler_okf_skill")
 def test_a_repair_of_a_failed_run_is_told_the_stack_the_run_starts(tmp_path: Path) -> None:
     request = WriterRequest(
         surface=Surface(service="tally", kind=SurfaceKind.HTTP, entry="tally-api"),
