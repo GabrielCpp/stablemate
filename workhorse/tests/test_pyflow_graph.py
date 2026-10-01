@@ -31,10 +31,10 @@ from workhorse.pyflow.graph import (  # noqa: E402
     Edge,
     StateNode,
     Step,
-    preflight,
     registry_graphs,
     state_graph,
 )
+from workhorse.pyflow.preflight import preflight  # noqa: E402
 
 
 class RegistryAt(Registry):

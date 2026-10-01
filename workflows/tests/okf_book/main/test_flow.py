@@ -25,7 +25,8 @@ from okf_book.main.tally import (
 from okf_book.support import ScriptedRunner, commits, git
 from workhorse.pyflow import WorkflowFailed
 from workhorse.pyflow import park as pyflow_park
-from workhorse.pyflow.graph import preflight, registry_graphs, state_graph
+from workhorse.pyflow.graph import registry_graphs, state_graph
+from workhorse.pyflow.preflight import preflight
 from workhorse.runner.failure import BackendInvocationError
 
 from workhorse_workflows.okf_book.main import exercise_book_flow, flow, repair_book_flow, root_book_flow, write_book_flow

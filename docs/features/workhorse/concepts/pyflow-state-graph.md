@@ -28,7 +28,7 @@ is data the driver reads rather than a call it makes, so cross-state combination
 explored.
 
 - code: `workhorse/workhorse/pyflow/graph.py::state_graph` @85ed8cfdfe51
-- code: `workhorse/workhorse/pyflow/graph.py::preflight` @85ed8cfdfe51
+- code: `workhorse/workhorse/pyflow/preflight.py::preflight` @3460fa12f550
 - code: `workhorse/workhorse/pyflow/dot.py::to_dot` @869a7a37a1ef
 - tests: [state graph tests](../../../../workhorse/tests/test_pyflow_graph.py)
 
@@ -94,7 +94,7 @@ explored.
 - does: reports missing start states, terminal paths, opaque sources, dangling transitions, unreachable states, and missing prompts
 - returns: problem strings, empty when static checks pass
 - verify: count(subject="preflight problems for a valid workflow", equals=0)
-- code: `workhorse/workhorse/pyflow/graph.py::preflight` @85ed8cfdfe51
+- code: `workhorse/workhorse/pyflow/preflight.py::preflight` @3460fa12f550
 - code: `workhorse/tests/test_pyflow_graph.py::test_preflight_reports_an_unreachable_state`
 - tests: `workhorse/tests/test_pyflow_graph.py::test_preflight_is_quiet_when_every_prompt_resolves`, `workhorse/tests/test_pyflow_graph.py::test_preflight_names_the_prompt_that_does_not_exist`, `workhorse/tests/test_pyflow_graph.py::test_preflight_reports_an_unreachable_state`, `workhorse/tests/test_pyflow_graph.py::test_preflight_reports_a_machine_that_cannot_terminate`, `workhorse/tests/test_pyflow_graph.py::test_preflight_reports_a_transition_to_something_that_is_not_a_state`
 

@@ -29,7 +29,8 @@ from workhorse.pyflow.errors import (
     RunBudgetExceeded,
     WorkflowFailed,
 )
-from workhorse.pyflow.graph import preflight, registry_graphs
+from workhorse.pyflow.graph import registry_graphs
+from workhorse.pyflow.preflight import preflight
 from workhorse.pyflow.registry import Registry
 from workhorse.pyflow.workflow import Workflow
 from workhorse.pyflow.worktree import WorktreeError
