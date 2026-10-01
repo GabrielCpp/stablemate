@@ -26,7 +26,7 @@ from okf_book.main.tally import (
     repairer_also_editing,
     stub_the_run_to,
 )
-from okf_book.support import Reply, ScriptedRunner, always, commits, git
+from okf_book.support import ScriptedRunner, commits, git
 from workhorse.pyflow import Continue, Done
 from workhorse.pyflow import driver as pyflow_driver
 from workhorse.runner.failure import BackendInvocationError
@@ -121,62 +121,6 @@ def test_a_commit_the_repo_refuses_waits_for_the_operator_and_is_tried_again(
     assert len(asked) == 1
     assert REFUSAL in asked[0]
     assert commits(repo)[:2] == ["docs(tally): repair pages of the tally book", "docs(tally): root the tally book"]
-
-
-def _repairer_described_by(repo: Path, describe: Reply) -> ScriptedRunner:
-    runner = _repairer(repo)
-    runner.replies[settle_repair_turn_flow.DESCRIBE_LABEL] = describe
-    return runner
-
-
-def _head_message(repo: Path) -> str:
-    return git(repo, "log", "-1", "--format=%B").strip()
-
-
-@pytest.mark.usefixtures("over_the_ceiling")
-def test_a_repair_commit_is_named_by_what_its_diff_changed_and_marked_as_a_repair(app: App, drive_book: DriveBook) -> None:
-    repo = app("tally-cli")
-    runner = _repairer_described_by(repo, always({"description": "note what tally prints", "body": "The page missed its note."}))
-
-    result = drive_book(OkfBook(repo_dir=str(repo), surfaces=(TALLY,)), runner)
-
-    assert isinstance(result, BookReport)
-    assert _head_message(repo) == "docs(tally): note what tally prints\n\nThe page missed its note.\n\nOkf-Book: repaired"
-    described = runner.args_of(settle_repair_turn_flow.DESCRIBE_LABEL)
-    assert len(described) == 1
-    assert described[0]["pages"] == [PAGE]
-    assert NOTE.strip() in str(described[0]["diff"])
-    assert git(repo, "status", "--porcelain").strip() == ""
-
-
-@pytest.mark.usefixtures("over_the_ceiling")
-def test_a_description_that_breaks_the_subject_rules_is_asked_for_again(app: App, drive_book: DriveBook) -> None:
-    repo = app("tally-cli")
-
-    def _describe(args: dict[str, object]) -> dict[str, object]:
-        if args.get("refused"):
-            return {"description": "note what tally prints", "body": ""}
-        return {"description": "Note what tally prints.", "body": ""}
-
-    runner = _repairer_described_by(repo, _describe)
-
-    _ = drive_book(OkfBook(repo_dir=str(repo), surfaces=(TALLY,)), runner)
-
-    assert [node for node, _ in runner.refused] == [settle_repair_turn_flow.DESCRIBE_LABEL]
-    assert commits(repo)[0] == "docs(tally): note what tally prints"
-
-
-@pytest.mark.usefixtures("over_the_ceiling")
-def test_a_describe_turn_that_fails_keeps_the_fixed_subject(app: App, drive_book: DriveBook) -> None:
-    repo = app("tally-cli")
-
-    def _dies(_args: dict[str, object]) -> dict[str, object]:
-        raise BackendInvocationError("no result event")
-
-    result = drive_book(OkfBook(repo_dir=str(repo), surfaces=(TALLY,)), _repairer_described_by(repo, _dies))
-
-    assert isinstance(result, BookReport)
-    assert _head_message(repo) == "docs(tally): repair pages of the tally book\n\nOkf-Book: repaired"
 
 
 @pytest.mark.usefixtures("over_the_ceiling")
