@@ -13,7 +13,7 @@ Section type. A `### <id>` under the runbook's `## Steps` heading. Its id is `pa
 
 | key | required | what it does |
 | --- | --- | --- |
-| `kind` | **yes** | `prepare` \| `service` \| `seed` \| `run` \| `health` \| `verify` \| `drive` \| `teardown` |
+| `kind` | **yes** | `prepare` \| `service` \| `seed` \| `run` \| `health` \| `verify` \| `probe` \| `drive` \| `teardown`. A `probe` belongs on a fixture step, where it asks whether the stack has a capability. |
 | `code` | no | link, **owns** its file — the implementation this step exercises |
 | `run` | no | the exact bounded command |
 | `working-directory` | no | cwd, when not the repo root — or `scenario:`, on a **fixture** step only, for that scenario's own directory |

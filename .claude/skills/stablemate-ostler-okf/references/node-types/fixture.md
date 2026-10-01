@@ -31,7 +31,7 @@ same shape as a boot step.
 | `args:` | no | The parameters this fixture takes, space-separated names. A `fixture:` bullet elsewhere passes them as `name=value` pairs; passing a name not in this list is `fixture-arg-mismatch`. An arg this fixture's own `needs:` bindings already supply need not also be passed by a `fixture:` caller — and if a caller passes it anyway, that is `fixture-arg-mismatch` too (two sources for one arg). |
 | `provides:` | no | Nested, one child per fact — the keys a `@<this-fixture>.<key>` reference on another node may read. Each child states where its fact comes from with its own `from:`/`read:` or `is:` children (below); an entry stating neither, or both, is `undetermined-provided-fact`. A reference naming a key not listed here is `fixture-undeclared-provides`. |
 | `needs:` | no | Nested, `link`. Another fixture this one composes on top of, referenced as a markdown link to that fixture's file. Runtime runs the needs target once per scenario with no args, then binds the binding's own `name=value` tokens into *this* fixture's env — so a binding's names must be names *this* fixture declares under its own `args:`, not the target's, and are `fixture-arg-mismatch` otherwise. A `needs:` chain that cycles is `fixture-needs-cycle`. A needs target that itself declares `args:` is `fixture-needs-target-args`, because runtime can never pass it anything. |
-| `secrets:` | no | Nested. Environment-variable NAMES this fixture's steps read — never a value or a mint recipe. The harness resolves each from its own environment at run time; a name that is not a valid environment-variable identifier is `fixture-secret-name`, and a name absent from the harness's environment at run time is an environment fault, not a book/code defect, because the step never got to run. |
+| `secrets:` | no | Nested. Environment-variable NAMES this fixture's steps read — never a value or a mint recipe. The harness resolves each from its own environment at run time; a name that is not a valid environment-variable identifier is `fixture-secret-name`, and a name absent from the harness's environment at run time is a capability fault, not a book/code defect, because the step never got to run. Every claim that needs the fixture is gapped. |
 | `code:` | no | Link, **owns** its file — the script or program this fixture's steps call, whether or not it is one of the seven types whose own profile lists the key. |
 
 `provides:` is optional in the grammar and load-bearing in practice. A `fixture:` bullet on a
@@ -83,12 +83,20 @@ parameter list is not a relation.
 ## `## Steps`
 
 Each step under a fixture's `## Steps` carries a `kind:` narrower than a runbook step's: only
-`seed`, `run`, `verify` are legal here (`fixture-step-kind`), because a fixture's job is to put
+`seed`, `run`, `verify`, `probe` are legal here (`fixture-step-kind`), because a fixture's job is to put
 data in place and confirm it landed — not to boot a stack, which is the runbook's job.
 
 A fixture confirms it landed with a `kind: verify` step whose `run:` exits non-zero when the
 arrangement did not take. The harness runs that step. A fixture carries no `verify:` bullet,
 because no runner performs one on a fixture and `ostler doctor` raises `unknown-bullet` on it.
+
+A fixture asks whether the stack has a capability with a `kind: probe` step. Its `run:` exits
+non-zero when an outside service the claims need is absent, such as a payment provider with no
+key. The harness then gaps every claim that needs the fixture. A gapped claim reads
+`gapped: <capability> absent`, where the capability is the fixture's stem with its dashes as
+spaces. A writer never sees a gapped claim, because only a person can supply the capability.
+The claims pass on a stack that has it. Name the fixture after the capability, so
+`payment-provider.md` gaps its claims as `gapped: payment provider absent`.
 
 A step's `run:` is a command bash runs from the repository root, with the fixture's args and
 secrets in its environment. Each fact the fixture provides is in the environment of every step
