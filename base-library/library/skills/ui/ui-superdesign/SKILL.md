@@ -47,7 +47,7 @@ relevant.
 ## Codex
 
 Codex receives Superdesign guidance through generated skills under
-`.codex/skills/` after `farrier` renders the selected packs. Ask Codex to use
+`.agents/skills/` after `farrier` renders the selected packs. Ask Codex to use
 the generated superdesign skill for design exploration or for applying a
 Superdesign handoff.
 
