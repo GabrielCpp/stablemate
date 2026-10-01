@@ -220,11 +220,8 @@ def config_strings(table: Mapping[str, object], key: str) -> tuple[str, ...] | N
 
 def load_settings(repo: Path) -> Settings:
     path = repo / CONFIG
-    table: object = (
-        tomllib.loads(path.read_text(encoding="utf-8")).get(TABLE, {})
-        if path.is_file()
-        else {}
-    )
+    document = tomllib.loads(path.read_text(encoding="utf-8")) if path.is_file() else {}
+    table = document.get(TABLE, {})
     if not isinstance(table, dict):
         raise ConfigError(f"{CONFIG} [{TABLE}] must be a table")
     extensions = config_strings(table, "extensions")
