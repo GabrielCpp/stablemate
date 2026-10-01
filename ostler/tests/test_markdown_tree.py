@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from ostler import markdown
 
 DOC = """---
@@ -178,6 +180,27 @@ def test_a_link_label_that_wraps_reads_as_one_link():
     assert list(markdown.iter_links(text)) == [
         ("app/console cache:clear --env=prod", "/console.md", 1),
     ]
+
+
+@pytest.mark.parametrize("text", [
+    "[a](b)", "[](b)", "[a]()", "[ a ](b)", "[a (b)](c)", "[a](b)(c)", "x [a](b) y [c](d)", "[a][b](c)",
+    "[a]: b", "# [a](b)", "> [a](b)", "1. [a](b)", "| [a](b) |", "[a](HTTP://EXAMPLE.com/A)", "[a](%zz)",
+    "[a](%2F)", "[a](JavaScript:x)", "[a](data:x)", "*[a](b)*", "[a](b_c)", "~~~ [a](b)", "    [a](b)",
+    "[a](b) [", "[a]( b )", "[a](b \"t\")", "[a](é)", "`[a](b)`", "[a](b) `x`", "[`x`](b)", "[a`](b)`",
+    "`x[`](y)", "a\n[b](c)", "a\n- [b](c)", "a\n# [b](c)", "a\n\n    [b](c)", "a `x\n# y` [b](c)",
+    "[a\nb](c)", "a |b\n:-|-\n[c](d)", "a\n2. [b](c)", "a  \n[b](c)", "`a\\` [b](c)", "<x `>` [b](c)",
+    "`` a ` `` [b](c)", "x\n  [b](c)\n   [d](e)", "a\n=", "`&amp;` [a](b)", "x `y [a](b)",
+])
+def test_the_plain_link_shortcut_agrees_with_the_parser(text: str):
+    """The shortcut answers only where it reads the text as the parser does, and leaves every other text to it."""
+    shortcut = markdown._plain_links(text)
+    assert shortcut is None or shortcut == tuple(markdown._scan_links(text))
+
+
+def test_a_wrapped_bullet_value_with_code_takes_the_plain_link_shortcut():
+    """Most bullet values read like this one, and the shortcut is what keeps a whole book's graph cheap."""
+    text = "calls `Load(ctx)` through the [loader](loader.md)\nand records `id`-free [rows](rows.md#kept)"
+    assert markdown._plain_links(text) == (("loader", "loader.md", 1), ("rows", "rows.md#kept", 2))
 
 
 def test_frontmatter_survives_crlf():

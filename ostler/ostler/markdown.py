@@ -63,7 +63,36 @@ _CACHED_TEXTS = 1 << 16
 def _links(text: str) -> tuple[tuple[str, str, int], ...]:
     if "[" not in text and "<" not in text:
         return ()
-    return tuple(_scan_links(text))
+    plain = _plain_links(text)
+    return plain if plain is not None else tuple(_scan_links(text))
+
+
+_PLAIN_LINK = re.compile(r"\[([^\[\]*_\n]*)\]\(([A-Za-z0-9\-._~:/?#@$'+,;=%]*)\)")
+_NOT_ONE_PARAGRAPH = re.compile(r"\r|\t|``|^[ ~]|^\[[^\]]*\]:|\n *(?:$|\n|[#>\-+*=_~|:<]|\d+[.)])")
+_CODE_SPAN = re.compile(r"`[^`]*`")
+_NOT_PLAIN = re.compile(r"[`\\<&!]")
+_REFUSED_HREF = re.compile(r"^(?:javascript|vbscript|file|data):|%(?![0-9A-Fa-f]{2})", re.IGNORECASE)
+
+
+def _plain_links(text: str) -> tuple[tuple[str, str, int], ...] | None:
+    """The links of a one-paragraph *text* whose every bracket outside code opens a plain ``[label](href)``; ``None`` when the parser must decide."""
+    if _NOT_ONE_PARAGRAPH.search(text):
+        return None
+    masked = _CODE_SPAN.sub(lambda span: "*" * len(span[0]), text)
+    if _NOT_PLAIN.search(masked):
+        return None
+    found: list[tuple[str, str, int]] = []
+    last = 0
+    for match in _PLAIN_LINK.finditer(masked):
+        if _bracketed(masked[last:match.start()]) or _REFUSED_HREF.search(match[2]):
+            return None
+        found.append((match[1], match[2], text.count("\n", 0, match.start()) + 1))
+        last = match.end()
+    return None if _bracketed(masked[last:]) else tuple(found)
+
+
+def _bracketed(text: str) -> bool:
+    return "[" in text or "]" in text
 
 
 def _scan_links(text: str) -> Iterator[tuple[str, str, int]]:

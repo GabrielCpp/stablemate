@@ -31,11 +31,14 @@ def _edge_sources(node: UINode) -> list[str]:
     """For each of ``node.links``, in the same order, the bullet key that owns its line."""
     starts = sorted(node.bullet_lines.items(), key=lambda pair: pair[1])
     key_by_index = {idx: key for key, _raw, idx in node.bullet_order}
+    held: dict[str, set[tuple[str, str]]] = {}
 
     def _held(key: str) -> set[tuple[str, str]]:
-        value = node.meta.get(key, "")
-        items = value if isinstance(value, list) else [value]
-        return {pair for item in items for pair in markdown.extract_refs(str(item)).links}
+        if key not in held:
+            value = node.meta.get(key, "")
+            items = value if isinstance(value, list) else [value]
+            held[key] = {pair for item in items for pair in markdown.extract_refs(str(item)).links}
+        return held[key]
 
     def _via(line: int, text: str, href: str) -> str:
         for pos, (idx, start) in enumerate(starts):
