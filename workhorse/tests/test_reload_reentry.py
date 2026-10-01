@@ -162,7 +162,7 @@ def test_a_profile_switch_is_applied_in_place_and_the_run_carries_on():
         request = control.Request(action=reload.SWITCH_PROFILE, profile="cheap")
         with (
             _Armed(request) as channel,
-            patch("workhorse.runner.ladder.load_config", lambda: cfg),
+            patch("workhorse.profile.load_config", lambda: cfg),
         ):
             assert drive(Quiet(), env) == "finished"
 
@@ -184,7 +184,7 @@ def test_a_profile_switch_the_run_refuses_is_reported_as_a_refusal():
         request = control.Request(action=reload.SWITCH_PROFILE, profile="gone")
         with (
             _Armed(request) as channel,
-            patch("workhorse.runner.ladder.load_config", lambda: {}),
+            patch("workhorse.profile.load_config", lambda: {}),
         ):
             assert drive(Quiet(), env) == "finished"
 

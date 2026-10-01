@@ -305,7 +305,7 @@ the workflow.
 
 Resolves the active backend name to the
 [`[profiles.<name>].default`](#profiles) table — the configurable counterpart of a backend's
-hardcoded `default_model`. Consumed by `_resolve_power_settings` as the last config-side
+hardcoded `default_model`. Consumed by `resolve_power_settings` as the last config-side
 fallback: it fills whatever the node's power tier (or the absence of one) left unset, so
 power-less nodes stop silently falling through to the harness's own auto-picked model. The
 `cfg` is the narrowed profile when one is active — the table `select_active_profile` returned,

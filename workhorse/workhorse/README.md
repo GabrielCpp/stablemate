@@ -17,6 +17,7 @@ The import package of the engine that drives an agent CLI through a checkpointed
 - `manifest.py`: the farrier context manifest of a repo, projected onto the render context a prompt sees.
 - `otel.py`: every span, metric and log a run exports, and the rule that telemetry never fails a run.
 - `packaged.py`: where a workflow package's own files sit on disk.
+- `profile.py`: which agent CLI and model profile a run is on, and the models a power resolves to under it.
 - `pyflow/`: the Python state machine: its base class, transitions, registry, driver and static graph.
 - `records.py`: the typed shapes of the records a run writes and reads back: checkpoint, `run.json`, `launch.json` and events.
 - `references.py`: the preflight that finds skill and prompt references a workflow's prompts make that will not resolve.

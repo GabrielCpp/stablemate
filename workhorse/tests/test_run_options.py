@@ -12,6 +12,7 @@ from workhorse.pyflow import Registry
 
 cli_mod = importlib.import_module("workhorse.cli")
 run_cmd = importlib.import_module("workhorse.cli.run")
+profile_mod = importlib.import_module("workhorse.profile")
 
 
 class _StubRegistry(Registry):
@@ -151,7 +152,7 @@ def _run_profiled(argv: list[str], config: Path) -> dict:
         captured["backend"] = invocation.config.backend.name
         return 0
 
-    real_select_active_profile = run_cmd.select_active_profile
+    real_select_active_profile = profile_mod.select_active_profile
 
     def spy_select_active_profile(cfg, **kwargs):
         result = real_select_active_profile(cfg, **kwargs)
@@ -165,7 +166,7 @@ def _run_profiled(argv: list[str], config: Path) -> dict:
         with patch.dict(os.environ, env, clear=True), patch.object(
             run_cmd, "run_pyflow", fake_run_pyflow
         ), patch.object(
-            run_cmd, "select_active_profile", spy_select_active_profile
+            profile_mod, "select_active_profile", spy_select_active_profile
         ), patch.object(run_cmd.Path, "cwd", staticmethod(lambda: launch)):
             _main(["run", "--config", str(config), *argv])
     return captured

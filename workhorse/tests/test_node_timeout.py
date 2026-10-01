@@ -8,6 +8,7 @@ from unittest.mock import patch
 
 from _fakes import FakeBackend, FakeClock
 from workhorse._vendor.stablemate_core.config import PowerMapping
+from workhorse import profile
 from workhorse.config_run import AgentResilience
 from workhorse.runner import ladder
 from workhorse.context import WorkflowContext
@@ -120,7 +121,7 @@ def _scaled(scale: float | None):
     """Pin both power resolvers, so no test reads the developer's own config."""
     mapping = PowerMapping(timeout_scale=scale)
     return patch.multiple(
-        ladder,
+        profile,
         resolve_power=lambda *a, **k: mapping,
         resolve_backend_default=lambda *a, **k: PowerMapping(),
     )
@@ -162,8 +163,8 @@ def test_the_tier_scale_beats_the_backend_default_scale():
     tier = PowerMapping(timeout_scale=2.0)
     default = PowerMapping(timeout_scale=5.0)
     with (
-        patch.object(ladder, "resolve_power", lambda *a, **k: tier),
-        patch.object(ladder, "resolve_backend_default", lambda *a, **k: default),
+        patch.object(profile, "resolve_power", lambda *a, **k: tier),
+        patch.object(profile, "resolve_backend_default", lambda *a, **k: default),
     ):
         _, invoke_timeout = _run_capturing(_node(timeout=300))
 
@@ -173,8 +174,8 @@ def test_the_tier_scale_beats_the_backend_default_scale():
 def test_the_backend_default_scale_applies_when_the_tier_omits_one():
     default = PowerMapping(timeout_scale=5.0)
     with (
-        patch.object(ladder, "resolve_power", lambda *a, **k: PowerMapping()),
-        patch.object(ladder, "resolve_backend_default", lambda *a, **k: default),
+        patch.object(profile, "resolve_power", lambda *a, **k: PowerMapping()),
+        patch.object(profile, "resolve_backend_default", lambda *a, **k: default),
     ):
         _, invoke_timeout = _run_capturing(_node(timeout=300))
 

@@ -45,7 +45,7 @@ from workhorse.rundir import (
 from workhorse.runner import process as agent_process
 from workhorse.runner import transcript
 from workhorse.runner.failure import BackendInvocationError
-from workhorse.runner.ladder import resolved_profile
+from workhorse.profile import resolved_profile
 from workhorse.templates import turn_catalog
 
 

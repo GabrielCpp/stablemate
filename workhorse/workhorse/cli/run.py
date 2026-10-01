@@ -8,34 +8,23 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
-from pydantic import ValidationError
-
 from workhorse import otel
 from workhorse._vendor.stablemate_core.config import (
     CONFIG_PATH_ENV,
-    ConfigError,
-    UnknownProfileError,
-    config_path,
     get_config_value,
     load_config,
-    profile_backends,
-    profile_has_backend,
-    resolve_default_cli,
-    select_active_profile,
-    select_profile,
 )
 from workhorse._vendor.stablemate_core.discovery import base_library_dir
 from workhorse.cli.params import load_params
 from workhorse.config_run import RunConfig
 from workhorse.manifest import load_context_manifest as _load_context_manifest
 from workhorse.packaged import PackagedWorkflowError
+from workhorse.profile import ProfileError, recorded_profile, select_backend
 from workhorse.pyflow.registry import Registry
 from workhorse.pyflow.run import RunInvocation, run_pyflow
-from workhorse.records import parse_run_record
 from workhorse.rundir import find_latest_resumable as _find_latest_resumable
 from workhorse.rundir import resolve_run_dir
 from workhorse.runner.backends import AgentBackend
-from workhorse.runner.backends.registry import backend_names, get_backend
 
 NAME = "run"
 HELP = "Execute a workflow (default)"
@@ -205,7 +194,7 @@ def invocation(args: argparse.Namespace) -> RunInvocation:
 
     profile_name = (getattr(args, "profile", None) or "").strip()
     if not profile_name and not args.cli and resume_run_dir is not None:
-        profile_name = _recorded_profile(resume_run_dir)
+        profile_name = recorded_profile(resume_run_dir)
     cfg = load_config()
     backend = _select_backend(cfg, profile_name, args.cli)
 
@@ -255,73 +244,9 @@ def backend_for_profile(config_path: str | None, profile_name: str, cli: str | N
 def _select_backend(cfg: dict[str, Any], profile_name: str, cli: str | None) -> AgentBackend:
     """The backend a named profile, or else a bare CLI, selects; a bad pick exits with its fix."""
     try:
-        if profile_name:
-            profile = select_profile(cfg, profile_name)
-            resolved_cli = _profile_cli_or_raise(profile, profile_name)
-        else:
-            active_cli = _resolve_active_cli(cli, cfg)
-            profile = select_active_profile(cfg, active_cli=active_cli)
-            resolved_cli = active_cli
-    except UnknownProfileError as exc:
+        return select_backend(cfg, profile_name, cli)
+    except ProfileError as exc:
         print(f"error: {exc}", file=sys.stderr)
-        sys.exit(1)
-    except ConfigError as exc:
-        print(f"error: {exc}", file=sys.stderr)
-        sys.exit(1)
-
-    os.environ["AGENT_CLI"] = resolved_cli
-
-    try:
-        backend = get_backend()
-    except ValueError as e:
-        print(f"error: {e}", file=sys.stderr)
-        sys.exit(1)
-
-    _check_profile_resolves(profile_name, profile, backend.name)
-    return backend
-
-
-def _resolve_active_cli(cli: str | None, cfg: dict[str, Any]) -> str:
-    """Resolve the active CLI for a non-`--profile` run: --cli → $AGENT_CLI → config."""
-    return (
-        cli
-        or os.environ.get("AGENT_CLI")
-        or resolve_default_cli(cfg)
-    ).strip().lower()
-
-
-def _profile_cli_or_raise(profile: dict[str, Any], name: str) -> str:
-    """The CLI a `--profile`-selected profile declares, stripped and lowercased."""
-    cli = profile.get("cli")
-    if not isinstance(cli, str) or not cli.strip():
-        raise ConfigError(f"[profiles.{name}] has no cli field")
-    return cli.strip().lower()
-
-
-def _check_profile_resolves(name: str, profile: dict[str, Any], backend: str) -> None:
-    """Refuse a selected profile whose `cli` field names a backend workhorse does not drive."""
-    if not name:
-        return
-    consulted = f"(in {config_path()})"
-
-    unknown = [n for n in profile_backends(profile) if n not in backend_names()]
-    if unknown:
-        print(
-            f"error: profile {name!r} declares cli = {unknown[0]!r} {consulted}; that "
-            f"is not a backend this build of workhorse drives. Known backends: "
-            f"{', '.join(backend_names())}",
-            file=sys.stderr,
-        )
-        sys.exit(1)
-
-    if not profile_has_backend(profile, backend):
-        print(
-            f"error: profile {name!r} declares cli = {backend!r} but carries no "
-            f"models for it {consulted}. Add a [profiles.{name}.powers.<tier>] "
-            f"table or a [profiles.{name}.default] entry, or run with --cli "
-            f"<this-cli> and no --profile (bare-CLI mode).",
-            file=sys.stderr,
-        )
         sys.exit(1)
 
 
@@ -334,14 +259,6 @@ def apply_config_path(raw: str | None) -> None:
         print(f"error: --config {raw}: no such file", file=sys.stderr)
         sys.exit(1)
     os.environ[CONFIG_PATH_ENV] = str(path.resolve())
-
-
-def _recorded_profile(run_dir: Path) -> str:
-    """The profile a run was started under, read back off its `run.json`."""
-    try:
-        return parse_run_record((run_dir / "run.json").read_text()).profile
-    except (OSError, ValidationError):
-        return ""
 
 
 def _resume_run_dir(

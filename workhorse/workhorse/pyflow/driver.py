@@ -18,7 +18,7 @@ from workhorse.pyflow.errors import RunBudgetExceeded, WorkflowFailed
 from workhorse.pyflow.transitions import Await, Continue, Done
 from workhorse.pyflow.workflow import Workflow
 from workhorse.records import Checkpoint, PyflowCheckpoint, parse_checkpoint
-from workhorse.runner import ladder
+from workhorse import profile
 from workhorse._vendor.stablemate_core.clock import SYSTEM_CLOCK, Clock
 
 logger = logging.getLogger("workhorse.engine")
@@ -374,7 +374,7 @@ def drive(
             )
         boundary = reload.boundary_requested()
         if boundary is not None and boundary.action == reload.SWITCH_PROFILE:
-            reply = ladder.switch_profile(env.agent_runner, boundary.profile)
+            reply = profile.switch_profile(env.agent_runner, boundary.profile)
             if reply.get("ok"):
                 env.log.info(
                     "[workhorse] profile → '%s' from the next turn on", boundary.profile

@@ -1,4 +1,4 @@
-"""Tests for power-tier model resolution (runner/ladder.py:_resolve_power_settings)."""
+"""Tests for power-tier model resolution (profile.py:resolve_power_settings)."""
 from __future__ import annotations
 
 import io
@@ -6,9 +6,9 @@ from contextlib import contextmanager, redirect_stdout
 from unittest.mock import patch
 
 from workhorse._vendor.stablemate_core.config import resolve_backend_default, resolve_power
-from workhorse import otel
+from workhorse import otel, profile
 from workhorse.runner import ladder
-from workhorse.runner.ladder import _resolve_power_settings
+from workhorse.profile import resolve_power_settings
 
 from _fakes import FakeBackend, FakeClock, RecordingTelemetry
 
@@ -26,10 +26,10 @@ CONFIG = {
 
 @contextmanager
 def _config(cfg):
-    """Route both config lookups in the ladder module at ``cfg`` (never the real file)."""
+    """Route both config lookups in the profile module at ``cfg`` (never the real file)."""
     with (
-        patch("workhorse.runner.ladder.resolve_power") as power,
-        patch("workhorse.runner.ladder.resolve_backend_default") as default,
+        patch("workhorse.profile.resolve_power") as power,
+        patch("workhorse.profile.resolve_backend_default") as default,
     ):
         power.side_effect = lambda p, b, c=None: resolve_power(p, b, cfg if c is None else c)
         default.side_effect = lambda b, c=None: resolve_backend_default(b, cfg if c is None else c)
@@ -38,7 +38,7 @@ def _config(cfg):
 
 def _model_effort(*args):
     """The resolved (model, effort), dropping the third member of the triple."""
-    return _resolve_power_settings(*args)[:2]
+    return resolve_power_settings(*args)[:2]
 
 
 def test_none_power_yields_the_profile_default_and_no_override():
@@ -116,8 +116,8 @@ _NARROWABLE = {
 
 @contextmanager
 def _file(cfg):
-    """Stand in for the config on disk, which the ladder re-reads every turn."""
-    with patch("workhorse.runner.ladder.load_config", lambda: cfg):
+    """Stand in for the config on disk, which the profile module re-reads every turn."""
+    with patch("workhorse.profile.load_config", lambda: cfg):
         yield
 
 
@@ -131,14 +131,14 @@ def test_a_profile_replaces_the_top_level_tables():
 
 def test_without_a_profile_nothing_is_narrowed():
     """No profile hands the resolvers None, i.e."""
-    with patch("workhorse.runner.ladder.load_config") as load:
-        assert ladder._profile_config("") is None
+    with patch("workhorse.profile.load_config") as load:
+        assert profile._profile_config("") is None
         assert not load.called
 
 
 def test_a_profile_deleted_mid_run_resolves_empty_rather_than_raising():
     """Fail-soft: a config read must never be what ends a week-long run — and falling back to the top level would silently move the run onto the machine's model set."""
-    ladder._warned_missing_profile.discard("gone")
+    profile._warned_missing_profile.discard("gone")
     noise = io.StringIO()
     with _file(_NARROWABLE), redirect_stdout(noise):
         assert _model_effort("high", "claude", None, "gone") == (None, None)
@@ -164,7 +164,7 @@ def test_a_switch_is_one_assignment_that_the_next_turn_reads():
     """The whole mechanism: the profile is re-narrowed every turn, so moving a run onto another model set is a name and nothing else — no reload, no re-exec."""
     runner = _runner()
     with _file(_SWITCHABLE):
-        assert ladder.switch_profile(runner, "cheap") == {
+        assert profile.switch_profile(runner, "cheap") == {
             "ok": True, "profile": "cheap", "was": ""
         }
         assert runner.profile.name == "cheap"
@@ -180,8 +180,8 @@ def test_a_switch_re_stamps_the_run_span_so_telemetry_says_what_it_spent_on():
     previous = otel.install(otel.TelemetryHost(active=fake))
     try:
         with _file(_SWITCHABLE):
-            ladder.switch_profile(runner, "cheap")
-            ladder.switch_profile(runner, "nosuch")
+            profile.switch_profile(runner, "cheap")
+            profile.switch_profile(runner, "nosuch")
     finally:
         otel.install(previous)
 
@@ -193,7 +193,7 @@ def test_the_box_is_shared_so_a_sub_flow_cannot_put_the_parent_back():
     runner = _runner()
     child = runner
     with _file(_SWITCHABLE):
-        ladder.switch_profile(child, "cheap")
+        profile.switch_profile(child, "cheap")
     assert runner.profile.name == "cheap"
 
 
@@ -201,7 +201,7 @@ def test_an_unknown_profile_is_refused_rather_than_applied():
     """Refused *and said so*: a switch read as landed when it did not would leave a week-long run spending on the models nobody chose."""
     runner = _runner()
     with _file(_SWITCHABLE):
-        reply = ladder.switch_profile(runner, "nope")
+        reply = profile.switch_profile(runner, "nope")
     assert reply["ok"] is False and "nope" in str(reply["error"])
     assert runner.profile.name == ""
 
@@ -210,7 +210,7 @@ def test_a_profile_that_maps_nothing_for_this_runs_backend_is_refused():
     """It would not fail — it would quietly resolve through the opencode-profile's `default` to the wrong models, which is the substitution profiles exist to prevent."""
     runner = _runner()
     with _file(_SWITCHABLE):
-        reply = ladder.switch_profile(runner, "elsewhere")
+        reply = profile.switch_profile(runner, "elsewhere")
     assert reply["ok"] is False and "fake" in str(reply["error"])
     assert runner.profile.name == ""
 
@@ -219,11 +219,11 @@ def test_a_profile_carrying_no_models_at_all_is_allowed_through():
     """The check is "has models, but none for this backend"."""
     runner = _runner()
     with _file(_SWITCHABLE):
-        assert ladder.switch_profile(runner, "bare")["ok"] is True
+        assert profile.switch_profile(runner, "bare")["ok"] is True
 
 
 def test_a_run_that_drives_no_agent_is_told_so_rather_than_crashing():
-    assert ladder.switch_profile(None, "cheap")["ok"] is False
+    assert profile.switch_profile(None, "cheap")["ok"] is False
 
 
 if __name__ == "__main__":

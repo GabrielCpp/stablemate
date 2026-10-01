@@ -8,7 +8,7 @@ One agent turn: the process that runs it, how its end is classified, and the fai
 - `caps.py`: how long to wait out a scheduled-reset cap, and the visible sleep through it.
 - `extract.py`: recovering a node's declared outputs from an agent's free-form reply.
 - `failure.py`: how a finished turn is classified: the failure markers, the typed errors and the one classifier.
-- `ladder.py`: the recovery ladder of retry, cap wait, compact, reframe and stop, and the live run's model profile.
+- `ladder.py`: the recovery ladder: retry, cap wait, compact, reframe and stop.
 - `process.py`: spawning the agent CLI in its own process group, the silence watchdog and the stream loop.
 - `redact.py`: removing known secret values and secret shapes from CLI output before it is stored.
 - `reframe.py`: the corrective prompts the ladder sends in place of the node's own.

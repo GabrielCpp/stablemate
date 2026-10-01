@@ -106,7 +106,7 @@ so pointing one run at cheaper models no longer means editing the file every oth
      [agent turn](../formats/workflow-format.md#the-agent-turn) a state reaches is driven by
      [`AgentRunner.run`](../concepts/run-agent.md).
   7. **Resolve this turn's power to a concrete model/effort/clock scale.** Inside `AgentRunner.run`'s setup
-     (before the resilience ladder), `_resolve_power_settings(node.power, backend.name,
+     (before the resilience ladder), `resolve_power_settings(node.power, backend.name,
      model_override, profile)` loads the config, narrows it through
      [`select_profile`](../concepts/config.md#profiles) when a profile is set, and maps the
      turn's `power` tier through [`resolve_power`](../concepts/config.md#resolve_power) against the

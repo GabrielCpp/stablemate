@@ -11,6 +11,6 @@ The command line a workflow's console script binds. Each subcommand is one modul
 - `params.py`: merging `--params` and `--params-file` into the map a workflow is built from.
 - `parser.py`: the table of subcommands and the one parser built from it.
 - `replay.py`: the `replay` subcommand that reruns one recorded agent turn from the tree it started on.
-- `run.py`: the `run` subcommand's arguments, and which backend, profile and config a run uses.
+- `run.py`: the `run` subcommand's arguments and the invocation they build.
 - `target.py`: which run directory an operator command means, by name or through groom's live list.
 - `version.py`: the `version` subcommand that prints the installed engine version.
