@@ -104,11 +104,6 @@ class _ServicesContext(BaseModel):
     available: bool
     obligations: tuple[_Obligation, ...]
 
-    def scoped_to(self, services: Iterable[str]) -> _ServicesContext:
-        books = tuple(f"{(FEATURES_DIR / service).as_posix()}/" for service in services)
-        kept = tuple(obligation for obligation in self.obligations if obligation_page(obligation.id).startswith(books))
-        return self.model_copy(update={"obligations": kept})
-
     def write(self, spec: Path) -> None:
         _ = write_context(self.model_dump(mode="json"), spec)
 
@@ -134,11 +129,11 @@ def compile_services(root: Path, services: Iterable[str], spec: Path | None = No
     """
     sources = {service: sorted(production_files(root, service)) for service in services}
     with index.session(root):
-        packet = book_context(root, source_roots=sources)
+        packet = book_context(root, source_roots=sources, books=[(FEATURES_DIR / service).as_posix() for service in sources])
     problems = validate_context(packet)
     if problems:
         raise ValueError(f"the books' QA context is malformed: {'; '.join(problems)}")
-    context = _ServicesContext.model_validate(packet).scoped_to(sources)
+    context = _ServicesContext.model_validate(packet)
     if spec is not None:
         context.write(spec)
     return context.compile()
