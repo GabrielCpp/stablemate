@@ -12,6 +12,7 @@ from ostler.qa.session import QaSession
 from ostler.qa.verdict import Verdict, merged
 
 CLAIMS = ["okf:docs/a.md#orders:does:1", "okf:docs/a.md#orders:does:2", "okf:docs/a.md#orders:does:3"]
+GAP_FAULT = {"fault_class": "capability", "fixture": "payment-provider", "page": "docs/fixtures/payment-provider.md"}
 
 
 def _driver(repo: Path) -> PythonDriver:
@@ -76,6 +77,27 @@ def test_a_claim_keeps_its_worst_verdict_across_scenarios() -> None:
     claim = CLAIMS[0]
     assert merged([{claim: Verdict.PASS}, {claim: Verdict.UNREACHED}]) == {claim: Verdict.UNREACHED}
     assert merged([{claim: Verdict.FAIL}, {claim: Verdict.UNREACHED}]) == {claim: Verdict.FAIL}
+    assert merged([{claim: Verdict.FAIL}, {claim: Verdict.GAPPED}]) == {claim: Verdict.GAPPED}
+
+
+def test_a_scenario_stopped_by_an_absent_capability_gaps_the_claims_it_did_not_reach(repo: Path) -> None:
+    stopped = {"type": "scenario", "id": "s-1", "status": "errored", "assertions": 0, "failures": 0,
+               "error": "RuntimeError: probe failed", "stop": {"fault": GAP_FAULT, "raised": "RuntimeError"}}
+
+    result = _driver(repo)._grade("s-1", CLAIMS, [stopped], "", 1, timed_out=False)
+
+    assert set(result.verdicts.values()) == {Verdict.GAPPED}
+    [check] = result.failed_checks
+    assert (check.cause, check.gap) == (Cause.ENVIRONMENT, "payment provider")
+
+
+def test_a_check_failed_by_an_absent_capability_gaps_its_claim(repo: Path) -> None:
+    failed = {**_assert(CLAIMS[0], passed=False), "fault": GAP_FAULT}
+    records = [failed, {"type": "scenario", "id": "s-1", "status": "failed", "assertions": 1, "failures": 1}]
+
+    result = _driver(repo)._grade("s-1", CLAIMS[:1], records, "", 1, timed_out=False)
+
+    assert result.verdicts == {CLAIMS[0]: Verdict.GAPPED}
 
 
 def test_a_run_gives_every_covered_claim_a_verdict_and_a_scenario_it_never_ran_leaves_its_claims_unreached() -> None:

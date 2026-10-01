@@ -58,6 +58,8 @@ RECORD_PATH_ENV = "OSTLER_QA_RECORD_PATH"
 
 _SHELL = shutil.which("bash") or "/bin/sh"
 
+PROBE_STEP = "probe"
+
 _NODE_REF = re.compile(r"(?<![\w.])@([a-zA-Z0-9][a-zA-Z0-9_-]*)\.([a-zA-Z0-9][a-zA-Z0-9_-]*)")
 _CAPTURE_REF = re.compile(r"(?<![\w.])\$([a-zA-Z0-9][a-zA-Z0-9_-]*)")
 
@@ -971,7 +973,8 @@ class Qa:
                 else f"exit {result.exit_code}"
             )
             detail = f"{prefix}: {body}"
-            self._fault(fixture, index, kind, "defect", detail)
+            fault_class = "capability" if kind == PROBE_STEP else "defect"
+            self._fault(fixture, index, kind, fault_class, detail)
             raise RuntimeError(f"qa fixture {fixture!r} step {index} ({kind}) failed ({detail})")
         return result
 
@@ -1086,7 +1089,7 @@ class Qa:
         for secret_name in secrets:
             value = os.environ.get(secret_name)
             if value is None:
-                self._fault(name, -1, "secret", "environment",
+                self._fault(name, -1, "secret", "capability",
                             f"secret {secret_name!r} is not set in the harness's own environment")
                 raise RuntimeError(
                     f"qa fixture {name!r} needs secret {secret_name!r}, which is not set — the "

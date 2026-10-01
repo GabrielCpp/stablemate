@@ -6,14 +6,18 @@ from enum import StrEnum
 
 
 class Verdict(StrEnum):
-    """How one claim ended a run: its checks held, one of them did not, or its scenario never reached them."""
+    """How one claim ended a run: its checks held, one of them did not, its scenario never reached them, or a capability it needs is absent from the stack.
+
+    A gapped claim outweighs every other verdict, because a claim whose capability is absent is never failed.
+    """
 
     PASS = "pass"
     FAIL = "fail"
     UNREACHED = "unreached"
+    GAPPED = "gapped"
 
 
-_WEIGHT = {Verdict.PASS: 0, Verdict.UNREACHED: 1, Verdict.FAIL: 2}
+_WEIGHT = {Verdict.PASS: 0, Verdict.UNREACHED: 1, Verdict.FAIL: 2, Verdict.GAPPED: 3}
 
 
 def judge(verdicts: dict[str, Verdict], claims: Iterable[str], verdict: Verdict) -> None:

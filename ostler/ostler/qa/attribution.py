@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict
 
 UNREACHABLE = "could not connect"
 SAMPLE_CHARS = 300
+CAPABILITY_FAULT = "capability"
 
 
 class Cause(StrEnum):
@@ -23,12 +24,13 @@ class Cause(StrEnum):
 
 @dataclass(frozen=True)
 class Attribution:
-    """A failed check's cause, the precondition page it blames, the reply status it saw and the route shape it asked."""
+    """A failed check's cause, the precondition page it blames, the reply status it saw, the route shape it asked, and the capability the stack lacks when that is why it failed."""
 
     cause: Cause
     precondition: str = ""
     status: str = ""
     shape: str = ""
+    gap: str = ""
 
 
 NO_ATTRIBUTION = Attribution(Cause.UNATTRIBUTED)
@@ -90,6 +92,8 @@ def attribute(evidence: CheckEvidence) -> Attribution:
     """The cause of one failed harness check, by the first rule its evidence meets; no rule met leaves it unattributed."""
     fault = evidence.fault
     if fault is not None:
+        if fault.fault_class == CAPABILITY_FAULT:
+            return Attribution(Cause.ENVIRONMENT, fault.page or fault.fixture, gap=fault.fixture.replace("-", " "))
         if fault.fault_class == "environment":
             return Attribution(Cause.ENVIRONMENT, fault.page or fault.fixture)
         if fault.page:
@@ -123,7 +127,7 @@ def _expects_success(expected: tuple[int, ...] | None) -> bool:
 
 @dataclass(frozen=True)
 class Signature:
-    """Every failed check that shares one cause, precondition, status and route shape, with how many there are and one of them."""
+    """Every failed check that shares one cause, precondition, status, route shape and absent capability, with how many there are and one of them."""
 
     cause: Cause
     precondition: str
@@ -131,9 +135,12 @@ class Signature:
     shape: str
     count: int
     sample: str
+    gap: str = ""
 
     def text(self) -> str:
         """The signature as one line an attendant reads."""
+        if self.gap:
+            return f"gapped: {self.gap} absent"
         where = self.precondition or self.shape or "no request"
         status = f" answered {self.status}" if self.status else ""
         return f"{self.cause.value}: {where}{status}"
@@ -141,13 +148,12 @@ class Signature:
 
 def signatures(failures: Iterable[tuple[Attribution, str]]) -> list[Signature]:
     """Group attributed failures by their key, most frequent first, keeping the first failure's text as the sample."""
-    counts: dict[tuple[Cause, str, str, str], int] = {}
-    samples: dict[tuple[Cause, str, str, str], str] = {}
+    counts: dict[Attribution, int] = {}
+    samples: dict[Attribution, str] = {}
     for attribution, text in failures:
-        key = (attribution.cause, attribution.precondition, attribution.status, attribution.shape)
-        counts[key] = counts.get(key, 0) + 1
-        _ = samples.setdefault(key, text)
+        counts[attribution] = counts.get(attribution, 0) + 1
+        _ = samples.setdefault(attribution, text)
     return sorted(
-        (Signature(*key, count=count, sample=samples[key]) for key, count in counts.items()),
+        (Signature(key.cause, key.precondition, key.status, key.shape, count, samples[key], key.gap) for key, count in counts.items()),
         key=lambda signature: (-signature.count, signature.cause.value, signature.precondition, signature.shape, signature.status),
     )

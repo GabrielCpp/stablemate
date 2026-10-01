@@ -110,7 +110,7 @@ def test_a_book_fixture_bullet_naming_no_fixture_node_is_unknown_book_fixture(re
     assert [(f.severity, f.ref) for f in found] == [("error", "no-such-fixture")]
 
 
-def test_a_fixture_steps_kind_outside_seed_run_verify_is_an_error(repo: Path) -> None:
+def test_a_fixture_steps_kind_outside_seed_run_verify_probe_is_an_error(repo: Path) -> None:
     _stack(repo)
     write(repo / "docs/features/acme/fixtures/seeded-acme.md",
           _fixture_book(args="id", provides="id — the seeded account's id", step_kind="prepare"))
@@ -118,10 +118,11 @@ def test_a_fixture_steps_kind_outside_seed_run_verify_is_an_error(repo: Path) ->
     assert [(f.severity, f.ref) for f in found] == [("error", "prepare")]
 
 
-def test_a_fixture_steps_kind_of_seed_is_clean(repo: Path) -> None:
+@pytest.mark.parametrize("step_kind", ["seed", "probe"])
+def test_a_fixture_steps_kind_of_seed_or_probe_is_clean(repo: Path, step_kind: str) -> None:
     _stack(repo)
     write(repo / "docs/features/acme/fixtures/seeded-acme.md",
-          _fixture_book(args="id", provides="id — the seeded account's id", step_kind="seed"))
+          _fixture_book(args="id", provides="id — the seeded account's id", step_kind=step_kind))
     assert _findings(repo, "fixture-step-kind") == []
 
 

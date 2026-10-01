@@ -56,10 +56,17 @@ def test_a_fixture_that_broke_inside_a_claim_blames_its_page() -> None:
     assert attribute(CheckEvidence.model_validate(record)) == Attribution(Cause.ARRANGEMENT, SIGNED_IN)
 
 
-def test_a_missing_secret_is_the_environment_s_even_on_a_book_fixture() -> None:
+def test_an_environment_fault_is_the_environment_s_even_on_a_book_fixture() -> None:
     record = {"label": "a check", "passed": False, "fault": {"fault_class": "environment", "fixture": "signed-in", "page": SIGNED_IN}}
 
     assert attribute(CheckEvidence.model_validate(record)).cause is Cause.ENVIRONMENT
+
+
+def test_an_absent_capability_is_the_environment_s_and_names_the_gap() -> None:
+    page = "docs/features/billing/fixtures/payment-provider.md"
+    record = {"label": "a check", "passed": False, "fault": {"fault_class": "capability", "fixture": "payment-provider", "page": page}}
+
+    assert attribute(CheckEvidence.model_validate(record)) == Attribution(Cause.ENVIRONMENT, page, gap="payment provider")
 
 
 def test_a_fault_outside_the_book_s_fixtures_falls_through_to_the_reply() -> None:
@@ -81,3 +88,12 @@ def test_failures_sharing_a_key_are_one_signature_with_their_count() -> None:
 
     assert [(s.cause, s.count, s.sample) for s in grouped] == [(Cause.APP, 3, "first 500"), (Cause.ARRANGEMENT, 1, "a 401")]
     assert grouped[1].text() == f"arrangement: {SIGNED_IN} answered 401"
+
+
+def test_failures_on_one_absent_capability_are_one_gapped_signature() -> None:
+    gap = Attribution(Cause.ENVIRONMENT, "docs/features/billing/fixtures/payment-provider.md", gap="payment provider")
+
+    grouped = signatures([(gap, "no key"), (gap, "no key again")])
+
+    assert [(s.count, s.gap) for s in grouped] == [(2, "payment provider")]
+    assert grouped[0].text() == "gapped: payment provider absent"

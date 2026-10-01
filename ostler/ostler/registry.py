@@ -183,7 +183,7 @@ class UINodeType:
 
 
 SCENARIO_FRAME_TOKEN = "scenario:"
-STEP_KIND_VALUES = ("prepare", "service", "seed", "health", "run", "verify", "drive", "teardown")
+STEP_KIND_VALUES = ("prepare", "service", "seed", "health", "run", "verify", "probe", "drive", "teardown")
 
 CODE_GROUNDING_KEYS = frozenset({"code"})
 RELATION_KEYS = ("on", "parent", "extends", "same-as", "steps", "presents", "detail",
@@ -736,7 +736,7 @@ UI_TYPES: tuple[UINodeType, ...] = (
         name="fixture", kind="file", context="fixtures",
         required_sections=(SectionSpec("Steps", filled=True),),
         step_bullets=(
-            BulletKey("kind", required=True, values=("run", "seed", "verify")),
+            BulletKey("kind", required=True, values=("run", "seed", "verify", "probe")),
             BulletKey("working-directory", values=(SCENARIO_FRAME_TOKEN,),
                       value_kind="checkout-path"),
         ),

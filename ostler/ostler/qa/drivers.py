@@ -98,6 +98,7 @@ class FailedCheck:
     precondition: str = ""
     status: str = ""
     shape: str = ""
+    gap: str = ""
 
     @classmethod
     def of(
@@ -115,10 +116,11 @@ class FailedCheck:
             attribution.precondition,
             attribution.status,
             attribution.shape,
+            attribution.gap,
         )
 
     def attribution(self) -> Attribution:
-        return Attribution(self.cause, self.precondition, self.status, self.shape)
+        return Attribution(self.cause, self.precondition, self.status, self.shape, self.gap)
 
     def sample(self) -> str:
         """The check as one line a signature shows for every check it groups."""
@@ -143,8 +145,9 @@ class _Tally:
         self.failures += 1
         self.failed_checks.append(check)
 
-    def judge(self, claims: Sequence[str], passed: bool) -> None:
-        judge(self.verdicts, claims, Verdict.PASS if passed else Verdict.FAIL)
+    def judge(self, claims: Sequence[str], passed: bool, attribution: Attribution = NO_ATTRIBUTION) -> None:
+        """Judge *claims* by one check: held, failed, or gapped when the check failed because the stack lacks a capability."""
+        judge(self.verdicts, claims, Verdict.PASS if passed else Verdict.GAPPED if attribution.gap else Verdict.FAIL)
 
 
 @dataclass
@@ -453,16 +456,17 @@ class PythonDriver(QaDriver):
         if not aborted:
             tally.judge(covers, True)
         elif unreached or not tally.failed_checks:
+            stopped_by = attribute(_evidence((terminal or {}).get("stop") or {}))
             if unreached:
-                judge(tally.verdicts, unreached, Verdict.UNREACHED)
+                judge(tally.verdicts, unreached, Verdict.GAPPED if stopped_by.gap else Verdict.UNREACHED)
             else:
-                tally.judge(covers, False)
+                tally.judge(covers, False, stopped_by)
             tally.count_failure(FailedCheck.of(
                 f"scenario '{scenario_id}' stopped before it reached what it claims",
                 "every step runs and the scenario grades itself as passed",
                 message or f"scenario '{scenario_id}' did not finish",
                 covers=unreached or covers,
-                attribution=attribute(_evidence((terminal or {}).get("stop") or {})),
+                attribution=stopped_by,
             ))
         status = "passed"
         failures = tally.failures
@@ -502,12 +506,16 @@ class PythonDriver(QaDriver):
             declared=_declared(record),
             step=step,
         )
-        tally.judge([str(claim) for claim in record.get("covers") or []], passed)
-        if not passed:
-            evidence = _evidence(record)
-            tally.count_failure(FailedCheck.of(
-                str(record.get("label", "")), record.get("expected"), record.get("actual"),
-                evidence.command_ending, [str(claim) for claim in record.get("covers") or []], attribute(evidence)))
+        covers = [str(claim) for claim in record.get("covers") or []]
+        if passed:
+            tally.judge(covers, True)
+            return
+        evidence = _evidence(record)
+        attribution = attribute(evidence)
+        tally.judge(covers, False, attribution)
+        tally.count_failure(FailedCheck.of(
+            str(record.get("label", "")), record.get("expected"), record.get("actual"),
+            evidence.command_ending, covers, attribution))
 
     def _grade_vet_and_list_problems(
         self,

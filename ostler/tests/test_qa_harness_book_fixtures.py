@@ -136,7 +136,7 @@ def needs_a_secret(qa: Qa) -> None:
 '''
 
 
-def test_a_missing_secret_is_an_environment_fault(tmp_path: Path) -> None:
+def test_a_missing_secret_is_a_capability_fault(tmp_path: Path) -> None:
     script = tmp_path / "seed.sh"
     _seed_step(script, '#!/bin/sh\necho \'{}\'\n')
     module = _write(tmp_path, SECRET_SCENARIO)
@@ -149,7 +149,7 @@ def test_a_missing_secret_is_an_environment_fault(tmp_path: Path) -> None:
     code, stdout, records = _run(module, "needs-a-secret", tmp_path, book_fixtures=book_fixtures)
     assert code != 0
     [fault] = [r for r in records if r.get("type") == "fixture_fault"]
-    assert fault["fault_class"] == "environment"
+    assert fault["fault_class"] == "capability"
     assert fault["fixture"] == "seeded-acme"
     dumped = "\n".join(json.dumps(r) for r in records)
     assert "MISSING_API_TOKEN" in dumped
@@ -183,6 +183,22 @@ def test_a_nonzero_exit_is_a_defect(tmp_path: Path) -> None:
     assert code != 0
     [fault] = [r for r in records if r.get("type") == "fixture_fault"]
     assert fault["fault_class"] == "defect"
+
+
+def test_a_failed_probe_step_is_a_capability_fault(tmp_path: Path) -> None:
+    script = tmp_path / "probe.sh"
+    _seed_step(script, "#!/bin/sh\nexit 1\n")
+    module = _write(tmp_path, SECRET_SCENARIO)
+    book_fixtures = {
+        "seeded-acme": {
+            "steps": [{"kind": "probe", "id": "probe-it", "command": str(script), "cwd": str(tmp_path)}],
+            "args": [], "provides": [], "needs": [], "secrets": [],
+        }
+    }
+    code, _stdout, records = _run(module, "needs-a-secret", tmp_path, book_fixtures=book_fixtures)
+    assert code != 0
+    [fault] = [r for r in records if r.get("type") == "fixture_fault"]
+    assert fault["fault_class"] == "capability"
 
 
 def test_a_failed_step_keeps_the_end_of_its_output_where_the_error_is_named(tmp_path: Path) -> None:
