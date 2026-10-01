@@ -1,6 +1,8 @@
 """The messages a book is committed under, which tell a rerun whether this workflow finished it."""
 from __future__ import annotations
 
+import re
+
 
 def book_commit_subject(service: str) -> str:
     """The subject of a book this workflow's writer finished."""
@@ -20,6 +22,7 @@ def rooted_book_commit_subject(service: str) -> str:
 BOOK_TRAILER = "Okf-Book"
 REPAIRED = "repaired"
 SUBJECT_LIMIT = 72
+_TYPE_PREFIX = re.compile(r"^[a-z]+(\([^)]*\))?!?: ")
 
 
 def repaired_book_commit_subject(service: str) -> str:
@@ -39,14 +42,15 @@ def repaired_book_commit_message(service: str, description: str = "", body: str 
 def repair_description_refusal(service: str, description: str) -> str:
     """Why *description* cannot follow `docs(<service>): ` in a repair subject, or "" when it can."""
     subject = f"docs({service}): {description}"
-    if not description.strip() or "\n" in description:
-        return "the description is one non-empty line"
-    if description != description.strip():
-        return "the description has no leading or trailing spaces"
-    if description[0].isupper():
-        return "the description starts lowercase"
-    if description.endswith("."):
-        return "the description ends without a period"
-    if len(subject) > SUBJECT_LIMIT:
-        return f"the subject {subject!r} is {len(subject)} characters, over {SUBJECT_LIMIT}"
-    return ""
+    refusals = (
+        (not description.strip() or "\n" in description, "the description is one non-empty line"),
+        (description != description.strip(), "the description has no leading or trailing spaces"),
+        (
+            bool(_TYPE_PREFIX.match(description)),
+            f"the description leaves out the type prefix, since the subject already starts with `docs({service}): `",
+        ),
+        (description[:1].isupper(), "the description starts lowercase"),
+        (description.endswith("."), "the description ends without a period"),
+        (len(subject) > SUBJECT_LIMIT, f"the subject {subject!r} is {len(subject)} characters, over {SUBJECT_LIMIT}"),
+    )
+    return next((reason for refused, reason in refusals if refused), "")

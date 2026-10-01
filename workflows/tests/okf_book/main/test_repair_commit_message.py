@@ -52,13 +52,14 @@ def test_a_repair_commit_is_named_by_what_its_diff_changed_and_marked_as_a_repai
 
 
 @pytest.mark.usefixtures("over_the_ceiling")
-def test_a_description_that_breaks_the_subject_rules_is_asked_for_again(app: App, drive_book: DriveBook) -> None:
+@pytest.mark.parametrize("broken", ["Note what tally prints.", "docs(tally): note what tally prints"])
+def test_a_description_that_breaks_the_subject_rules_is_asked_for_again(app: App, drive_book: DriveBook, broken: str) -> None:
     repo = app("tally-cli")
 
     def _describe(args: dict[str, object]) -> dict[str, object]:
         if args.get("refused"):
             return {"description": "note what tally prints", "body": ""}
-        return {"description": "Note what tally prints.", "body": ""}
+        return {"description": broken, "body": ""}
 
     runner = _repairer_described_by(repo, _describe)
 
