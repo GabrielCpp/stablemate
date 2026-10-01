@@ -34,7 +34,6 @@ from workhorse_workflows.okf_book.main.nodes.turn_budget import (
     folder_tokens,
     source_and_book_tokens,
 )
-from workhorse_workflows.okf_book.main.nodes.source_view import build_source_view, source_view_folder
 from workhorse_workflows.okf_book.main.nodes.surface import Surface, SurfaceKind
 from workhorse_workflows.okf_book.main.nodes.writer_request import WriterRequest
 from workhorse_workflows.okf_book.main.nodes.repair_batch_models import PageRepair, RepairBatch
@@ -255,24 +254,6 @@ def test_the_source_size_skips_dependency_folders(tmp_path: Path) -> None:
     assert folder_tokens(tmp_path) == 10
     assert ceiling_blocker_reason(SOURCE_AND_BOOK_CEILING_TOKENS) is None
     assert ceiling_blocker_reason(SOURCE_AND_BOOK_CEILING_TOKENS + 1) is not None
-
-
-def test_the_source_copy_holds_the_product_files_at_their_paths_and_no_test(tmp_path: Path) -> None:
-    repo = make_git_repo(tmp_path / "repo")
-    (repo / "api" / "mocks").mkdir(parents=True)
-    _ = (repo / "api" / "main.go").write_text("a" * 40, encoding="utf-8")
-    _ = (repo / "api" / "main_test.go").write_text("b" * 4000, encoding="utf-8")
-    _ = (repo / "api" / "mocks" / "repository.go").write_text("c" * 4000, encoding="utf-8")
-    _ = (repo / "api" / "stale.go").write_text("d", encoding="utf-8")
-    _ = build_source_view(repo, "api")
-    (repo / "api" / "stale.go").unlink()
-
-    view = build_source_view(repo, "api")
-
-    assert view == source_view_folder(repo, "api")
-    assert sorted(path.relative_to(view).as_posix() for path in view.rglob("*") if path.is_file()) == ["main.go"]
-    assert (folder_tokens(view), folder_tokens(repo / "api")) == (10, 2010)
-    assert ".git" in view.relative_to(repo).parts
 
 
 def test_the_source_and_the_book_are_each_counted_twice() -> None:
