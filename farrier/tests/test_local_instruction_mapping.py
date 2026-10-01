@@ -46,7 +46,8 @@ def _render(
     root = _library(tmp_path)
     set_layers(root)
     repo = _repo(tmp_path, mapping, codex)
-    from farrier.frontmatter import local_instructions, read_yaml
+    from farrier.frontmatter import read_yaml
+    from farrier.local_instructions import local_instructions
 
     config = read_yaml(repo / "agents.yml")
 
@@ -158,7 +159,8 @@ def test_codex_only_repo_gets_no_claude_pointer(tmp_path):
         '  - skill: ostler\n    paths: ["."]\n    includeReadme: false\n',
         encoding="utf-8",
     )
-    from farrier.frontmatter import local_instructions, read_yaml
+    from farrier.frontmatter import read_yaml
+    from farrier.local_instructions import local_instructions
 
     config = read_yaml(repo / "agents.yml")
 
@@ -264,7 +266,8 @@ def test_text_is_written_after_the_library_sources_and_before_the_readme(tmp_pat
         "      - `api/`: the HTTP surface.\n",
     )
     (repo / "README.md").write_text("# Demo\n\nThe readme.\n", encoding="utf-8")
-    from farrier.frontmatter import local_instructions, read_yaml
+    from farrier.frontmatter import read_yaml
+    from farrier.local_instructions import local_instructions
 
     config = read_yaml(repo / "agents.yml")
     body = render_expected(config, repo, local_instructions(config))[repo / "AGENTS.md"]

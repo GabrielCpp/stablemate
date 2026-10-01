@@ -25,12 +25,11 @@ from farrier._vendor.stablemate_core.config import (
 )
 from farrier._vendor.stablemate_core.profiles import UnknownProfileError, select_profile
 from farrier.frontmatter import (
-    LOCAL_INSTRUCTION_FILES,
     banner_sources,
     frontmatter_metadata,
-    local_instructions,
     read_yaml,
 )
+from farrier.local_instructions import LOCAL_INSTRUCTION_FILES, local_instructions
 from farrier.hook_managers import (
     configured_manager,
     install_manager,

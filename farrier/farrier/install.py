@@ -22,12 +22,14 @@ from farrier.frontmatter import (
     banner_sources,
     first_heading,
     frontmatter_metadata,
+    read_yaml,
+    split_front_matter,
+)
+from farrier.local_instructions import (
     mapping_include_readme,
     mapping_policy_names,
     mapping_prompt_names,
     mapping_skill_names,
-    read_yaml,
-    split_front_matter,
 )
 from farrier.launcher import (
     LAUNCHER_AGENTS_MK,

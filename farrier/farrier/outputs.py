@@ -8,7 +8,8 @@ from pathlib import Path
 from typing import Any
 
 from farrier.drift import Drifted, report
-from farrier.frontmatter import LocalInstruction, frontmatter_mapping
+from farrier.frontmatter import frontmatter_mapping
+from farrier.local_instructions import LocalInstruction
 from farrier.hook_managers import (
     HOOK_RUNNER,
     LEFTHOOK_INCLUDE,

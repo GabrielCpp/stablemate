@@ -7,7 +7,8 @@ from pathlib import Path
 import pytest
 
 from farrier.drift import Drifted, attribute, report, sources_for
-from farrier.frontmatter import local_instructions, read_yaml
+from farrier.frontmatter import read_yaml
+from farrier.local_instructions import local_instructions
 from farrier.install import check_outputs, install_outputs, render_expected, set_layers
 
 SKILL_BODY = "House rules.\n\nThe repo is linted with ruff."

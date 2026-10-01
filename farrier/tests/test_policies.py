@@ -6,7 +6,8 @@ from pathlib import Path
 import pytest
 
 from farrier._vendor.stablemate_core import discovery
-from farrier.frontmatter import local_instructions, mapping_policy_names, read_yaml
+from farrier.frontmatter import read_yaml
+from farrier.local_instructions import local_instructions, mapping_policy_names
 from farrier.install import main, render_expected, set_layers
 
 POLICY = (

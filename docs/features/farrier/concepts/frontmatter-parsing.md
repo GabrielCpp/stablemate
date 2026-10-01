@@ -21,7 +21,7 @@ instruction files (`AGENTS.md` and `CLAUDE.md`) that source lookup recognizes.
 - required: true
 - semantics: the generated instruction filenames accepted by source lookup
 - verify: count(subject="local instruction filenames", equals=2)
-- code: `farrier/farrier/frontmatter.py::LOCAL_INSTRUCTION_FILES` @525c0e8d7c4b
+- code: `farrier/farrier/local_instructions.py::LOCAL_INSTRUCTION_FILES` @031879ad8cf2
 
 ## Methods
 
@@ -65,7 +65,7 @@ instruction files (`AGENTS.md` and `CLAUDE.md`) that source lookup recognizes.
 - verify: count(subject="skills selected by a localInstructions mapping", equals=1)
 - returns: stringified selected skill names, or an empty list when neither key selects a skill
 - verify: count(subject="skills selected by a localInstructions mapping", equals=1)
-- code: `farrier/farrier/frontmatter.py::mapping_skill_names` @525c0e8d7c4b
+- code: `farrier/farrier/local_instructions.py::mapping_skill_names` @031879ad8cf2
 - tests: `farrier/tests/test_local_instruction_mapping.py::test_claude_repo_writes_only_agents_md_by_default`
 
 ### mapping_policy_names
@@ -74,7 +74,7 @@ instruction files (`AGENTS.md` and `CLAUDE.md`) that source lookup recognizes.
 - verify: count(subject="policies selected by a localInstructions mapping", equals=2)
 - returns: stringified selected policy names, or an empty list when neither key selects a policy
 - verify: count(subject="policies selected by a localInstructions mapping", equals=2)
-- code: `farrier/farrier/frontmatter.py::mapping_policy_names` @525c0e8d7c4b
+- code: `farrier/farrier/local_instructions.py::mapping_policy_names` @031879ad8cf2
 - tests: `farrier/tests/test_policies.py::test_mapping_policy_names_reads_both_spellings`
 
 ### mapping_prompt_names
@@ -83,7 +83,7 @@ instruction files (`AGENTS.md` and `CLAUDE.md`) that source lookup recognizes.
 - verify: count(subject="prompts selected by a localInstructions mapping", equals=1)
 - returns: stringified selected prompt names, or an empty list when neither key selects a prompt
 - verify: count(subject="prompts selected by a localInstructions mapping", equals=1)
-- code: `farrier/farrier/frontmatter.py::mapping_prompt_names` @525c0e8d7c4b
+- code: `farrier/farrier/local_instructions.py::mapping_prompt_names` @031879ad8cf2
 - tests: `farrier/tests/test_local_instruction_mapping.py::test_prompt_only_mapping_needs_no_skill`
 
 ### mapping_include_readme
@@ -99,7 +99,7 @@ instruction files (`AGENTS.md` and `CLAUDE.md`) that source lookup recognizes.
 - verify: json_path(path="$.includeReadme", equals=true)
 - returns: the compatibility value `none` as false
 - verify: json_path(path="$.includeReadme", equals=false)
-- code: `farrier/farrier/frontmatter.py::mapping_include_readme` @525c0e8d7c4b
+- code: `farrier/farrier/local_instructions.py::mapping_include_readme` @031879ad8cf2
 - tests: `farrier/tests/test_local_instruction_mapping.py::test_legacy_include_readme_spellings_still_map_onto_the_boolean`
 
 ### split_front_matter
