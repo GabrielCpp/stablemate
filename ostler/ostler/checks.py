@@ -505,6 +505,8 @@ def _unwrap(value: str, fold: str = " ") -> str:
 
 def _string_edge_broken_by_soft_break(value: str, folded_call: Call) -> str | None:
     """The string argument a soft line break opens or closes, as markdown folds it, or `None` if there is none."""
+    if "\n" not in value:
+        return None
     double_space_call = parse_call(_unwrap(value, fold="  "))
     if not isinstance(double_space_call, Call):
         return None
