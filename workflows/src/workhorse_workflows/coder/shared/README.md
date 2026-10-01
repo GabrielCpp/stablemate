@@ -11,7 +11,7 @@ What more than one coder lane needs. Code that only one lane calls belongs in th
 - `commits.py`: the Conventional Commit subject and trailers of every commit the coder writes.
 - `contract.py`: the one rule for what counts as a service the planner can target.
 - `conversation.py`: the story's backbone session chain, recycled when it is full.
-- `dev.py`: the dev lane's work: each service's declared gates, the story's status and sources, and the operator's answer file.
+- `dev.py`: the dev lane's work: the story's status and sources, and the operator's answer file.
 - `docs.py`: the docs lane's work: whether a book exists, which doc nodes a diff touches, and the fail-closed grounding gate.
 - `escalation.py`: the body a coder lane writes when it stops and asks a human.
 - `failure.py`: the one failure shape the repair role reads, whatever gate produced it.
@@ -25,6 +25,7 @@ What more than one coder lane needs. Code that only one lane calls belongs in th
 - `roles.py`: which prompt body and model a role resolves to, with the repo's own prompts ahead of the base library.
 - `scenarios.py`: the plan's Test Scenarios list, and which of its scenarios fall to the QA lane.
 - `schemas/`: the reply and return models every coder lane validates against.
+- `service_gates.py`: each service's declared gate commands, in order, and running them.
 - `story.py`: which story a run is on, its workspace dirs and its spec stamps.
 - `story_commit.py`: the clean-tree check, the commit that records a passed story, and its stamp.
 - `story_status.py`: the story's Status line. It is the single place the coder records an outcome.

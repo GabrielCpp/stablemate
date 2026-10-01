@@ -5,7 +5,8 @@ title: Coder shared development helpers
 ---
 # Coder shared development helpers
 
-- code: `workflows/src/workhorse_workflows/coder/shared/dev.py::__all__` @11eaf0e506a5
+- code: `workflows/src/workhorse_workflows/coder/shared/dev.py::__all__` @0652ddfc43e9
+- code: `workflows/src/workhorse_workflows/coder/shared/service_gates.py::__all__` @2473c5163f54
 - code: `workflows/src/workhorse_workflows/coder/shared/plan.py::__all__` @428bdccd7106
 - code: `workflows/tests/coder/shared/test_gates.py::repo`
 - detail: [coder development flow](../flows/coder-dev.md)
@@ -13,8 +14,8 @@ title: Coder shared development helpers
 
 The shared development modules are the deterministic boundary between a story plan and the Coder
 development flow. `plan.py` projects a checkpointed plan into `plan-context.json`, resolves dispatch and
-QA context and selects layers in implementation order. `dev.py`
-discovers service-owned gate commands, executes those gates, reports story-owned changes,
+QA context and selects layers in implementation order. `service_gates.py`
+discovers service-owned gate commands and executes those gates. `dev.py` reports story-owned changes
 and consumes operator answers. Neither decides implementation content. Each returns typed values
 that the flow routes.
 
@@ -26,7 +27,7 @@ that the flow routes.
 - required: true
 - semantics: failed gate output is retained from its final 4000 characters, prefixed as truncated when longer
 - verify: count(subject="gate output limit", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/dev.py::MAX_GATE_OUTPUT` @11eaf0e506a5
+- code: `workflows/src/workhorse_workflows/coder/shared/service_gates.py::MAX_GATE_OUTPUT` @2473c5163f54
 
 ### GATE_TIMEOUT
 - type: `int`
@@ -34,7 +35,7 @@ that the flow routes.
 - required: true
 - semantics: a declared gate command is allowed 600 seconds before it is reported dirty for timeout
 - verify: count(subject="gate timeout", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/dev.py::GATE_TIMEOUT` @11eaf0e506a5
+- code: `workflows/src/workhorse_workflows/coder/shared/service_gates.py::GATE_TIMEOUT` @2473c5163f54
 
 ### GATE_ORDER
 - type: `tuple[str, str]`
@@ -42,7 +43,7 @@ that the flow routes.
 - required: true
 - semantics: declared development gates are resolved and run in lint-then-test order
 - verify: count(subject="development gate order", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/dev.py::GATE_ORDER` @11eaf0e506a5
+- code: `workflows/src/workhorse_workflows/coder/shared/service_gates.py::GATE_ORDER` @2473c5163f54
 
 ### AWAITING
 - type: `str`
@@ -170,7 +171,7 @@ that the flow routes.
 - does: derives lookup keys from the complete dispatch id, its path, the path basename, and the service type
 - returns: unique non-empty keys in narrowest-first order
 - verify: count(subject="service declaration lookup keys", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/dev.py::service_keys` @11eaf0e506a5
+- code: `workflows/src/workhorse_workflows/coder/shared/service_gates.py::service_keys` @2473c5163f54
 - tests: `workflows/tests/coder/shared/test_gates.py::test_the_dispatch_id_is_decomposed_into_the_keys_a_repo_actually_writes`
 
 ### service_declaration
@@ -179,7 +180,7 @@ that the flow routes.
 - does: returns the first dictionary found by service, path, basename, then service type
 - returns: the selected gate declaration or an empty mapping
 - verify: count(subject="service declaration selection", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/dev.py::service_declaration` @11eaf0e506a5
+- code: `workflows/src/workhorse_workflows/coder/shared/service_gates.py::service_declaration` @2473c5163f54
 - tests: `workflows/tests/coder/shared/test_gates.py::test_a_service_name_beats_its_type`
 
 ### service_dir
@@ -188,7 +189,7 @@ that the flow routes.
 - does: falls back to the supplied checkout for a root service, a missing path, or a non-directory
 - returns: the directory in which that service's gate command runs
 - verify: count(subject="service gate working directories", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/dev.py::service_dir` @11eaf0e506a5
+- code: `workflows/src/workhorse_workflows/coder/shared/service_gates.py::service_dir` @2473c5163f54
 - tests: `workflows/tests/coder/shared/test_gates.py::test_a_services_gate_runs_in_the_service_directory_not_the_repo_root`
 
 ### gate_command
@@ -198,7 +199,7 @@ that the flow routes.
 - does: falls back to `make <gate>` only when the service Makefile defines that target
 - returns: the selected command or an empty string when the gate is not adopted
 - verify: count(subject="resolved service gate commands", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/dev.py::gate_command` @11eaf0e506a5
+- code: `workflows/src/workhorse_workflows/coder/shared/service_gates.py::gate_command` @2473c5163f54
 - tests: `workflows/tests/coder/shared/test_gates.py::test_a_makefile_target_is_the_last_resort`
 
 ### declared_gates
@@ -207,7 +208,7 @@ that the flow routes.
 - does: reports `(nothing declared)` when no gate is adopted
 - returns: gate names, commands, and their execution-directory annotation
 - verify: count(subject="declared gate summaries", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/dev.py::declared_gates` @11eaf0e506a5
+- code: `workflows/src/workhorse_workflows/coder/shared/service_gates.py::declared_gates` @2473c5163f54
 - tests: `workflows/tests/coder/shared/test_gates.py::test_declared_gates_renders_the_commands_that_will_run`
 
 ### declared_markers
@@ -215,7 +216,7 @@ that the flow routes.
 - does: reads each workspace repository's declared service marker files
 - returns: one repository line per repository with markers, or blank text when none are declared
 - verify: count(subject="declared service markers", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/dev.py::declared_markers` @11eaf0e506a5
+- code: `workflows/src/workhorse_workflows/coder/shared/service_gates.py::declared_markers` @2473c5163f54
 - tests: `workflows/tests/coder/shared/test_gates.py::test_the_planner_is_told_the_markers_this_workspace_declares`
 
 ### run_gate
@@ -226,7 +227,7 @@ that the flow routes.
 - does: returns `dirty` for a non-zero exit, timeout, or truncated combined output
 - returns: the gate name, status, command, output, and reason
 - verify: count(subject="executed development gates", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/dev.py::run_gate` @11eaf0e506a5
+- code: `workflows/src/workhorse_workflows/coder/shared/service_gates.py::run_gate` @2473c5163f54
 - tests: `workflows/tests/coder/shared/test_gates.py::test_a_failing_command_is_dirty_and_carries_its_output`
 
 ### check_story_status

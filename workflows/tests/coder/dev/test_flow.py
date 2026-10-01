@@ -28,7 +28,8 @@ from workhorse_workflows.coder.shared.plan import (
     record_plan,
     resolve_impl_context,
 )
-from workhorse_workflows.coder.shared.dev import read_operator_context, run_gate
+from workhorse_workflows.coder.shared.dev import read_operator_context
+from workhorse_workflows.coder.shared.service_gates import run_gate
 
 STORY = "STORY-1"
 EPIC = "EPIC-1"

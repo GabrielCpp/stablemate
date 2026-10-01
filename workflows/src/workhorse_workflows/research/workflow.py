@@ -8,7 +8,7 @@ from typing import Any, ClassVar
 from workhorse.cli import console_script
 from workhorse.pyflow import Await, Continue, Done, Registry, Workflow
 from workhorse_workflows.coder.shared.blueprint import blueprint as gate_blueprint
-from workhorse_workflows.coder.shared.dev import GATE_ORDER, run_gate
+from workhorse_workflows.coder.shared.service_gates import GATE_ORDER, run_gate
 from workhorse_workflows.kit import commit_paths, set_identity
 from workhorse_workflows.research.nodes import (
     append_history,

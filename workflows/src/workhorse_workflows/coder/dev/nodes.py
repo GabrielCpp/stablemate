@@ -13,7 +13,7 @@ from workhorse_workflows.coder.shared.plan import (
     resolve_impl_context,
     select_next_layer,
 )
-from workhorse_workflows.coder.shared.dev import declared_gates
+from workhorse_workflows.coder.shared.service_gates import declared_gates
 from workhorse_workflows.coder.shared.escalation import context_path, escalation
 from workhorse_workflows.coder.shared.resolution import RESOLVER_POWER, resolver_args
 from workhorse_workflows.coder.shared.schemas._base import CoderResult, Finding

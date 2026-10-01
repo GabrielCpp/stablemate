@@ -15,13 +15,11 @@ from workhorse_workflows.coder.shared.plan import (
 )
 from workhorse_workflows.coder.shared.branches import branch_code_repos
 from workhorse_workflows.coder.shared.dev import (
-    GATE_ORDER,
     changed_files,
     check_story_status,
-    declared_markers,
     read_operator_context,
-    run_gate,
 )
+from workhorse_workflows.coder.shared.service_gates import GATE_ORDER, declared_markers, run_gate
 from workhorse_workflows.coder.shared.failure import from_findings, from_gate
 from workhorse_workflows.coder.shared.resolution import answered
 from workhorse_workflows.coder.shared.story import (

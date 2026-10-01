@@ -27,7 +27,7 @@ ALLOWLIST: dict[str, str] = {
         "same lane: the doctor's warnings name the marker files it looked for, which is the "
         "whole content of the warning"
     ),
-    "workflows/src/workhorse_workflows/coder/shared/dev.py": (
+    "workflows/src/workhorse_workflows/coder/shared/service_gates.py": (
         "the documented compat shim: a gate with no `services` entry falls back to "
         "`make <gate>` only when the Makefile really defines that target, so repos that "
         "predate the `services` block keep their gates instead of silently losing them"

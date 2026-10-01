@@ -14,12 +14,8 @@ from workhorse_workflows.coder.shared.backlog import (
 )
 from workhorse_workflows.coder.shared.conversation import story_chain
 from workhorse_workflows.coder.shared.plan import plan_summary
-from workhorse_workflows.coder.shared.dev import (
-    GATE_ORDER,
-    changed_files,
-    read_operator_context,
-    run_gate,
-)
+from workhorse_workflows.coder.shared.dev import changed_files, read_operator_context
+from workhorse_workflows.coder.shared.service_gates import GATE_ORDER, run_gate
 from workhorse_workflows.coder.shared.escalation import context_path, escalation
 from workhorse_workflows.coder.shared.failure import from_gate
 from workhorse_workflows.coder.shared.story_commit import commit_story

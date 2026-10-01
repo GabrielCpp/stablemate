@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Literal, NamedTuple
 
 from workhorse_workflows.coder.shared.blueprint import blueprint
-from workhorse_workflows.coder.shared.dev import gate_command
+from workhorse_workflows.coder.shared.service_gates import gate_command
 from workhorse_workflows.coder.shared.plan import load_plan_context
 from workhorse_workflows.coder.shared.schemas.qa import (
     FailureAttribution,
