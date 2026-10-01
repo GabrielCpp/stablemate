@@ -2,10 +2,14 @@ from __future__ import annotations
 
 import json
 import subprocess
+from collections.abc import Mapping
 from pathlib import Path
 
+import pytest
+
 from ostler import registry
-from ostler.model import load
+from ostler.model import Graph, load
+from ostler.qa import context as context_mod
 from ostler.qa.owners import ChangedUnit, book_relative
 from ostler.qa.context import (
     CONTEXT_HEADING,
@@ -3034,6 +3038,27 @@ def test_a_features_root_absent_at_base_is_an_empty_graph_not_an_error(tmp_path:
     graph = _graph_at_revision(tmp_path, base, "docs/features")
 
     assert graph.ui_nodes == []
+
+
+def test_a_whole_book_reads_the_worktree_once(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """The empty tree holds no page, so the base side borrows the worktree's org and doc roots instead of reading the whole book a second time."""
+    (tmp_path / "docs/features/demo").mkdir(parents=True)
+    (tmp_path / "docs/features/demo/ledger.md").write_text(
+        "---\ntype: concept\nslug: ledger\ntitle: Ledger\n---\n# Ledger\n\nA ledger holds a trip's expenses.\n",
+        encoding="utf-8",
+    )
+    _git(tmp_path, "init")
+    roots: list[Path | None] = []
+
+    def _load(cwd: Path | None = None, *, root_overrides: Mapping[str, str | Path] | None = None) -> Graph:
+        roots.append(cwd)
+        return load(cwd, root_overrides=root_overrides)
+
+    monkeypatch.setattr(context_mod, "load", _load)
+
+    _ = book_context(tmp_path)
+
+    assert roots == [tmp_path]
 
 
 def test_a_listed_path_with_no_readable_blob_raises_instead_of_shrinking(tmp_path: Path):

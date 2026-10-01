@@ -370,8 +370,8 @@ def build_context(
 def _book_snapshot(root: Path, base: str, head: str, features_root: str) -> _BookSnapshot:
     """The book at *base* and at *head*, merged so a node either side holds is in it."""
     current = load(root, root_overrides={"features": features_root})
-    base_graph = _graph_at_revision(root, base, features_root)
-    head_graph = current if head == "WORKTREE" else _graph_at_revision(root, head, features_root)
+    base_graph = _graph_at_revision(root, base, features_root, current)
+    head_graph = current if head == "WORKTREE" else _graph_at_revision(root, head, features_root, current)
     base_nodes, base_edges, base_ends, base_scopes, base_details = _serialized_graph(base_graph)
     head_nodes, head_edges, head_ends, head_scopes, head_details = _serialized_graph(head_graph)
     nodes_by_id = _merge_snapshot_nodes(base_nodes, head_nodes)
@@ -955,9 +955,9 @@ def _revision_path_arg(revision: str, path: str) -> str:
     return f"{revision}:./{path}"
 
 
-def _graph_at_revision(root: Path, revision: str, features_root: str) -> Graph:
-    """The base-side graph at `revision`, built from every `.md` file under `features_root`."""
-    current = load(root)
+def _graph_at_revision(root: Path, revision: str, features_root: str, current: Graph | None = None) -> Graph:
+    """The base-side graph at `revision`, built from every `.md` file under `features_root`, on the org, profile and doc roots of `current`, the worktree's graph, which is loaded when not given."""
+    current = current if current is not None else load(root)
     graph = Graph(
         root=root,
         org_name=current.org_name,
