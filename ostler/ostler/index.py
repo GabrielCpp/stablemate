@@ -237,6 +237,7 @@ class IndexStore:
         self.hits = 0
         self.misses = 0
         self._epoch: str | None = None
+        self._real_root: str | None = None
 
     def stats(self) -> dict:
         """The hit/miss line, as it appears under ``index`` in ``--json`` output."""
@@ -257,10 +258,19 @@ class IndexStore:
         """The repo-name-qualified repo-relative name of *path*."""
         target = Path(path)
         try:
-            relative = target.resolve().relative_to(self.root.resolve())
-        except (OSError, ValueError):
+            real = os.path.realpath(target)
+            if self._real_root is None:
+                self._real_root = os.path.realpath(self.root)
+        except OSError:
             return str(target)
-        return f"{self.root.resolve().name}/{relative.as_posix()}"
+        root = self._real_root
+        name = os.path.basename(root)
+        if real == root:
+            return f"{name}/."
+        prefix = root.rstrip(os.sep) + os.sep
+        if not real.startswith(prefix):
+            return str(target)
+        return f"{name}/{real[len(prefix):].replace(os.sep, '/')}"
 
     def key(self, path: Path, *, sha: str | None = None) -> str | None:
         """The entry key for *path*, or ``None`` when its bytes cannot be read."""

@@ -221,6 +221,20 @@ def test_two_worktrees_of_one_repo_resolve_to_one_entry(tmp_path):
     assert store(second, directory).get(second / "docs/features/area/rec.md") == PAYLOAD
 
 
+def test_an_entry_is_named_by_the_real_path_under_the_real_root(tmp_path, monkeypatch):
+    """A page reached through a link or a relative spelling keys the same entry; a path outside the root keys by its own spelling."""
+    root = make_repo(tmp_path / "checkouts/acme")
+    (tmp_path / "linked").symlink_to(root)
+    outside = tmp_path / "elsewhere.md"
+    monkeypatch.chdir(root)
+    named = store(tmp_path / "linked", tmp_path / "index").entry_name
+
+    assert named(root / "docs/features/area/rec.md") == "acme/docs/features/area/rec.md"
+    assert named(Path("docs/features/../features/area/rec.md")) == "acme/docs/features/area/rec.md"
+    assert named(tmp_path / "linked") == "acme/."
+    assert named(outside) == str(outside)
+
+
 def test_the_same_bytes_at_a_different_path_do_not_collide(tmp_path):
     root = make_repo(tmp_path / "acme")
     original = root / "docs/features/area/rec.md"
