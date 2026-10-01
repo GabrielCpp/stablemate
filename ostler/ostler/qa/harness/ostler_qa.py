@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import ast
+import gc
 import inspect
 import json
+import linecache
 import os
 import re
 import shutil
@@ -20,7 +22,7 @@ from contextlib import contextmanager
 from dataclasses import asdict, dataclass, field
 from functools import lru_cache
 from pathlib import Path
-from types import FunctionType
+from types import CodeType, FunctionType
 from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -369,10 +371,11 @@ def scenario(
 
 
 def _definition_line(func: Callable[..., None]) -> int:
-    try:
-        return inspect.getsourcelines(func)[1]
-    except (OSError, TypeError):
+    """The line a scenario's definition opens on, its first decorator; ``0`` when its source is gone."""
+    code = getattr(inspect.unwrap(func), "__code__", None)
+    if code is None or not linecache.getlines(code.co_filename):
         return 0
+    return code.co_firstlineno
 
 
 
@@ -1768,9 +1771,15 @@ class _ParsedPlan:
 
 
 @lru_cache(maxsize=1)
+def _tree(source: str) -> ast.Module:
+    """The plan source's syntax tree, parsed once for both the import and the extractors."""
+    return ast.parse(source)
+
+
+@lru_cache(maxsize=1)
 def _parsed(source: str) -> _ParsedPlan:
     """The plan source parsed once, so every extractor reading the same plan shares one parse and one walk."""
-    tree = ast.parse(source)
+    tree = _tree(source)
     return _ParsedPlan(_module_constants(tree), _reachable_calls(tree))
 
 
@@ -2032,9 +2041,9 @@ def _literal(node: ast.expr) -> Any:
 
 
 def _describe(module_path: Path) -> dict[str, Any]:
-    _load(module_path)
-    data = REGISTRY.as_json()
     source = module_path.read_text(encoding="utf-8")
+    _load(module_path, compile(_tree(source), str(module_path), "exec", dont_inherit=True))
+    data = REGISTRY.as_json()
     counts = count_checks(source)
     check_covers = extract_check_covers(source)
     check_calls = extract_check_calls(source)
@@ -2051,8 +2060,8 @@ def _describe(module_path: Path) -> dict[str, Any]:
     return data
 
 
-def _load(module_path: Path) -> None:
-    """Import the plan module by path, with its own directory and the spec root importable."""
+def _load(module_path: Path, code: CodeType | None = None) -> None:
+    """Import the plan module by path, with its own directory and the spec root importable, running *code* when the caller compiled it already."""
     import importlib.util
 
     sys.path.insert(0, str(module_path.parent.parent))
@@ -2062,7 +2071,10 @@ def _load(module_path: Path) -> None:
         raise ImportError(f"{module_path} is not an importable Python module")
     module = importlib.util.module_from_spec(spec)
     sys.modules["qa_plan"] = module
-    spec.loader.exec_module(module)
+    if code is None:
+        spec.loader.exec_module(module)
+    else:
+        exec(code, module.__dict__)
 
 
 
@@ -2208,7 +2220,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         raise SystemExit("usage: ostler_qa (describe <module> | run <module> <scenario>)")
     mode, args = args[0], args[1:]
     if mode == "describe":
-        json.dump(_describe(Path(args[0]).resolve()), sys.stdout, indent=2)
+        gc.disable()
+        json.dump(_describe(Path(args[0]).resolve()), sys.stdout)
         sys.stdout.write("\n")
         return 0
     if mode == "run":

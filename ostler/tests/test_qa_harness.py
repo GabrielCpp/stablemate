@@ -157,6 +157,13 @@ def test_describe_carries_covers_and_the_docstring_objective(tmp_path: Path) -> 
     assert described["scenarios"][1]["checkpoints"] == ["the banner shows"]
 
 
+def test_describe_places_each_scenario_at_its_decorator_line(tmp_path: Path) -> None:
+    """The line points a writer at the scenario in the plan, so it is where the definition opens, its decorator."""
+    described = _describe(_write(tmp_path))
+    decorators = [n for n, text in enumerate(PLAN.splitlines(), start=1) if text.startswith("@scenario")]
+    assert [s["line"] for s in described["scenarios"]] == decorators
+
+
 def test_describe_counts_the_assertions_statically(tmp_path: Path) -> None:
     described = _describe(_write(tmp_path))
     counts = {s["id"]: s["checks"] for s in described["scenarios"]}
