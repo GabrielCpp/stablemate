@@ -38,6 +38,7 @@ from farrier.skill_hooks import SkillHook, hooks_for
 from farrier.sources import (
     Source,
     collect_selection,
+    library_name,
     load_layered_sources,
     public_name,
     selected_sources,
@@ -219,8 +220,30 @@ def check_selection(
         raise SystemExit("\n\n".join(reports))
 
 
+def home_duplicate_notices(
+    skills: Sequence[Source],
+    home_skills: dict[str, list[Source]],
+    agents: dict[str, Any],
+) -> list[str]:
+    """One info line per selected skill that the user library also installs for an enabled harness."""
+    at_home = {
+        library_name(source)
+        for harness, sources in home_skills.items()
+        if agents.get(harness)
+        for source in sources
+    }
+    return [
+        f"info: skill {name!r} installs both in this repo and from the user library "
+        "at home. The repo copy is the one every contributor gets."
+        for name in sorted({library_name(source) for source in skills} & at_home)
+    ]
+
+
 def render_expected(
-    config: dict[str, Any], repo: Path, instructions: Sequence[LocalInstruction]
+    config: dict[str, Any],
+    repo: Path,
+    instructions: Sequence[LocalInstruction],
+    notices: list[str] | None = None,
 ) -> dict[Path, str]:
     repo_config = config.get("repo") or {}
     prefix = repo_prefix(repo)
@@ -262,6 +285,14 @@ def render_expected(
             )
         raise SystemExit(f"Selected packs did not match any skills or prompts. {catalog}")
 
+    home_skills = {
+        harness: selected
+        for harness, (selected, _prompts) in user_selections(
+            read_config(), all_skills, all_prompts
+        ).items()
+    }
+    if notices is not None:
+        notices.extend(home_duplicate_notices(skills, home_skills, agents))
     renderer = Renderer(
         repo,
         prefix,
@@ -270,12 +301,7 @@ def render_expected(
         skills,
         prompts,
         all_policies,
-        home_skills={
-            harness: skills
-            for harness, (skills, _prompts) in user_selections(
-                read_config(), all_skills, all_prompts
-            ).items()
-        },
+        home_skills=home_skills,
     )
     outputs = renderer.render(agents, roots)
 

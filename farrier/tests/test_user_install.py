@@ -366,3 +366,40 @@ def test_a_repo_check_never_writes_the_user_library(
     assert install_repo(repo, home, library, "--check") == 0
 
     assert not home.exists()
+
+
+def test_a_repo_install_names_each_skill_the_home_also_installs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    library = make_library(tmp_path)
+    write_config(tmp_path, monkeypatch, '[user_library.claude]\nskills = ["stablemate/*"]\n')
+
+    assert install_repo(tmp_path / "acme", tmp_path / "home", library) == 0
+
+    notices = [line for line in capsys.readouterr().out.splitlines() if "user library" in line]
+    assert len(notices) == 1
+    assert "'cache'" in notices[0]
+
+
+def test_a_home_copy_for_a_harness_the_repo_does_not_enable_is_no_duplicate(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    library = make_library(tmp_path)
+    write_config(tmp_path, monkeypatch, '[user_library.codex]\nskills = ["stablemate/*"]\n')
+
+    assert install_repo(tmp_path / "acme", tmp_path / "home", library) == 0
+
+    assert "user library" not in capsys.readouterr().out
+
+
+def test_a_repo_check_prints_no_duplicate_notice(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    library = make_library(tmp_path)
+    write_config(tmp_path, monkeypatch, '[user_library.claude]\nskills = ["stablemate/*"]\n')
+    assert install_repo(tmp_path / "acme", tmp_path / "home", library) == 0
+    _ = capsys.readouterr()
+
+    assert install_repo(tmp_path / "acme", tmp_path / "home", library, "--check") == 0
+
+    assert "user library" not in capsys.readouterr().out

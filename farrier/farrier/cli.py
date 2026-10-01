@@ -175,9 +175,10 @@ def _run_install(args: argparse.Namespace) -> int:
         )
     config = read_yaml(config_path)
     manager = configured_manager(config, repo)
+    notices: list[str] = []
     try:
         instructions = local_instructions(config)
-        outputs = render_expected(config, repo, instructions)
+        outputs = render_expected(config, repo, instructions, notices)
     except SystemExit as exc:
         if not (args.check and getattr(args, "skip_unresolvable", False)):
             raise
@@ -186,6 +187,8 @@ def _run_install(args: argparse.Namespace) -> int:
     managed = repo_managed_with_claude_pointers(instructions)
     if args.check:
         return check_outputs(repo, outputs, manager, managed)
+    for line in notices:
+        print(line)
     install_outputs(repo, outputs, manager, managed)
     print(f"Installed {len(outputs)} generated files into {repo}")
     if user_library_tables(read_config()):
