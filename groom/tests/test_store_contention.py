@@ -22,7 +22,7 @@ def _lock_held() -> Iterator[None]:
     release = threading.Event()
 
     def hold() -> None:
-        with store._STORE.lock:
+        with store.STORE.lock:
             holding.set()
             release.wait(HOLD_S)
 

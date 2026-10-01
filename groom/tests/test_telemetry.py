@@ -344,6 +344,21 @@ def test_promoted_columns_are_added_to_a_database_that_predates_them():
         assert rows["old"]["output_tokens"] is None
 
 
+def test_a_table_registered_after_the_store_opened_lands_on_the_open_connection():
+    with _TelemetryEnv():
+        conn = store._connection()
+        store.register_table(
+            "late_ledger",
+            "CREATE TABLE IF NOT EXISTS late_ledger (item_id TEXT PRIMARY KEY);",
+            (("note", "TEXT NOT NULL DEFAULT ''"),),
+        )
+        try:
+            columns = {row["name"] for row in conn.execute("PRAGMA table_info(late_ledger)")}
+            assert columns == {"item_id", "note"}
+        finally:
+            store._TABLES.pop("late_ledger")
+
+
 def _turn(
     node: str, work_id: str, cost: float, span_id: str, start: float = 1000.0
 ) -> dict:
@@ -2056,7 +2071,7 @@ def test_a_failed_write_leaves_no_open_transaction():
     """A write that raises mid-transaction is the thing that used to strand one."""
     with _TelemetryEnv():
         try:
-            with store._STORE.writing() as conn:  # noqa: SLF001 - the unit under test
+            with store.STORE.writing() as conn:
                 conn.execute(
                     "INSERT INTO metrics (run_id, name, ts, value, attrs_json)"
                     " VALUES ('run-1', 'doomed', 1.0, 1.0, '{}')"

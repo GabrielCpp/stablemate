@@ -50,7 +50,7 @@ The instance attributes set in [`__init__`](#init) and read/mutated by the metho
 
 - type: `threading.RLock`
 - default: a fresh `threading.RLock()` instance
-- required: true — every write goes through `@_resilient` which takes this lock
+- required: true — every write goes through `@resilient` which takes this lock
 - semantics: `threading.RLock()` serializing every write and connection-state mutation
 - idempotency: write-nesting — reentrant so write operations can nest without deadlock
 
@@ -177,7 +177,7 @@ The trio of wall-clock timestamps [`health()`](#health) reads into the matching 
 - type: `float` — wall-clock seconds since the epoch, from `time.time()`
 - default: `0.0`
 - required: false — `0.0` is the "no successful statement yet" sentinel; [`health()`](#health)'s `ok = _last_error_ts <= _last_ok_ts` is True when both timestamps are zero, which is the boot state
-- semantics: stamped by [`note_ok()`](#note_ok) from both the `_resilient` wrapper's success branch and the `_reading` wrapper's success branch — every wrapped call that ran to completion, not just writes, leaves a fresh timestamp
+- semantics: stamped by [`note_ok()`](#note_ok) from both the `resilient` wrapper's success branch and the `reading` wrapper's success branch — every wrapped call that ran to completion, not just writes, leaves a fresh timestamp
 - semantics: stamped unconditionally (not inside `_Store.lock`) because each call replaces the value rather than mutating it, and the timestamp feeds a health display, not a correctness check
 - semantics: read by [`health()`](#health) as the upper bound against which `ok = _last_error_ts <= _last_ok_ts` is computed — a failure older than the last successful call has been healed; one newer has not
 - semantics: surfaced through `StoreHealth.last_ok_ts` so the operator dashboard can show how long ago the store last answered
@@ -255,7 +255,7 @@ The single bit the WAL-checkpoint tick records so a dashboard reader can see whe
 - verify: json_path(path="$.result_type", equals="sqlite3.Connection")
 - does: close the previous connection via [`_close_quietly()`](#_close_quietly) and reopen if `db_path()` has changed (tests switch $GROOM_DB between cases)
 - verify: created(subject="connection to new database path")
-- raises: sqlite3.Error if [`_open()`](#_open) fails (caught and retried by caller's @_resilient wrapper)
+- raises: sqlite3.Error if [`_open()`](#_open) fails (caught and retried by caller's @resilient wrapper)
 - verify: json_path(path="$.exception_type", equals="sqlite3.Error")
 - returns: the write connection, opened at the path stored in [`_path`](#_path) in autocommit mode
 - verify: json_path(path="$.isolation_level", absent=true)
@@ -277,9 +277,11 @@ The single bit the WAL-checkpoint tick records so a dashboard reader can see whe
 - verify: json_path(path="synchronous", equals=2)
 - does: set `PRAGMA busy_timeout=5000` (wait 5s for lock contention from concurrent processes)
 - verify: json_path(path="busy_timeout", equals=5000)
-- does: apply schema (`CREATE TABLE IF NOT EXISTS` for spans, metrics, logs, turns, attend_sessions and their indexes) via `conn.executescript(_SCHEMA)`
+- does: apply the telemetry schema (`CREATE TABLE IF NOT EXISTS` for spans, metrics, logs, turns and their indexes) via `conn.executescript(_SCHEMA)`
 - verify: created(subject="spans table")
-- does: run column migrations via `_migrate(conn)` — `ALTER TABLE ADD COLUMN` for backfilled columns in `_ADDED_SPAN_COLUMNS`, `_ADDED_LOG_COLUMNS`, `_ADDED_ATTEND_COLUMNS` (currently a no-op since the three tuples are empty, but the call is what makes adding a column a one-line change)
+- does: run column migrations via `_migrate(conn)`: `ALTER TABLE ADD COLUMN` for backfilled columns in `_ADDED_SPAN_COLUMNS` and `_ADDED_LOG_COLUMNS`
+- does: create every table a ledger registered through `register_table`, and add the columns it declared since
+- verify: created(subject="attend_sessions table")
 - raises: sqlite3.Error if CREATE/ALTER fails
 - verify: json_path(path="exception_type", equals="sqlite3.Error")
 - returns: the opened and initialized connection
@@ -302,12 +304,12 @@ The single bit the WAL-checkpoint tick records so a dashboard reader can see whe
 - verify: persists(subject="the metrics row inserted inside writing(), observed from a fresh sqlite3 connection after the context exits")
 - does: stamp [_last_write_ts](#_last_write_ts) on successful exit
 - verify: json_path(path="$._last_write_ts", matches="^[0-9]+(\\.[0-9]+)?$")
-- raises: any exception from the called statements (wrapped by @_resilient caller)
+- raises: any exception from the called statements (wrapped by @resilient caller)
 - verify: json_path(path="$.exception_type", equals="RuntimeError")
 - returns: the connection yielded to the caller for statement execution
 - verify: json_path(path="$.yielded_type", equals="sqlite3.Connection")
 - code: `groom/groom/store.py::_Store.writing`
-- tests: `groom/tests/test_telemetry.py::test_a_failed_write_leaves_no_open_transaction` — the one test that drives `_STORE.writing()` directly, asserting the connection is no longer `in_transaction` after a raised `RuntimeError` and that the row the doomed call inserted is not in a fresh connection afterwards
+- tests: `groom/tests/test_telemetry.py::test_a_failed_write_leaves_no_open_transaction` — the one test that drives `STORE.writing()` directly, asserting the connection is no longer `in_transaction` after a raised `RuntimeError` and that the row the doomed call inserted is not in a fresh connection afterwards
 - consistency: writes — all writes to the store go through this one context, so every write is serialized and atomic
 - verify: conflict_on_stale(subject="concurrent writing() attempt", token="writing() context open")
 - consistency: transaction — caller executes all statements within the same transaction
@@ -316,7 +318,7 @@ The single bit the WAL-checkpoint tick records so a dashboard reader can see whe
 ### recycle
 
 - sig: `recycle(self, exc: BaseException, where: str) -> None`
-- abstract: close the write connection due to a transient or permanent failure, enforcing a cooldown to prevent retry storms when the file itself is the problem. The RLock is reentrant; callers via @_resilient that already hold the lock will not deadlock.
+- abstract: close the write connection due to a transient or permanent failure, enforcing a cooldown to prevent retry storms when the file itself is the problem. The RLock is reentrant; callers via @resilient that already hold the lock will not deadlock.
 - does: close the connection via [`_close_quietly()`](#_close_quietly) and mark it for reopening the next time connect() is called
 - verify: absent(subject="_conn")
 - does: increment `_reopens` and update failure tracking
@@ -419,7 +421,7 @@ The single bit the WAL-checkpoint tick records so a dashboard reader can see whe
 - raises: none — the body never raises (`sqlite3.Error` from closing the retired handle is suppressed inside [`retire_reader()`](#retire_reader))
 - verify: json_path(path="$.exception", absent=true)
 - code: `groom/groom/store.py::_Store.recycle_reader`
-- tests: `groom/tests/test_store_reads.py::test_a_broken_read_handle_is_retired_without_disturbing_the_writer` — closes the cached read handle so the next query raises, exercises the [`_reading`](#method-_reading) wrapper's catch path that calls `recycle_reader()`, and asserts the writer handle is the same object afterwards
+- tests: `groom/tests/test_store_reads.py::test_a_broken_read_handle_is_retired_without_disturbing_the_writer` — closes the cached read handle so the next query raises, exercises the [`reading`](#method-reading) wrapper's catch path that calls `recycle_reader()`, and asserts the writer handle is the same object afterwards
 - concurrency: reader-path-unlocked — none of the writes happen under `_Store.lock`, because the writer lock is what a read exists to avoid and taking it to record a number is exactly the wait this path was built to avoid
 - concurrency: increment-may-race-with-recycle — `self._failures += 1` is a read-modify-write that can lose increments when a [`recycle()`](#recycle) and a `recycle_reader()` interleave on the same `_Store`
 - concurrency: accept-lost-increment — a lost increment under a race is the cheaper of the two waits
@@ -427,13 +429,13 @@ The single bit the WAL-checkpoint tick records so a dashboard reader can see whe
 ### note_ok
 
 - sig: `note_ok(self) -> None`
-- abstract: stamp a successful statement (used by @_resilient and @_reading)
+- abstract: stamp a successful statement (used by @resilient and @reading)
 - does: update [_last_ok_ts](#_last_ok_ts) to current wall time
 - verify: json_path(path="$._last_ok_ts", matches="^[0-9]+(\\.[0-9]+)?$")
 - raises: none
 - verify: json_path(path="$.exception", absent=true)
 - code: `groom/groom/store.py::_Store.note_ok`
-- tests: `groom/tests/test_telemetry.py::test_store_health_rides_the_state_payload` — drives an `insert_spans` through the `_resilient` wrapper (so [`_resilient`](#method-_resilient)'s post-success branch calls `_STORE.note_ok()`), breaks the handle, drives a second call that fails and is recycled (so [`_last_error_ts`](#_last_error_ts) is stamped), then drives a third call that succeeds and is again stamped by `note_ok()`; asserts `health["ok"] is True`, which only holds when the final `note_ok()` left [`_last_ok_ts`](#_last_ok_ts) newer than [`_last_error_ts`](#_last_error_ts)
+- tests: `groom/tests/test_telemetry.py::test_store_health_rides_the_state_payload` — drives an `insert_spans` through the `resilient` wrapper (so [`resilient`](#method-resilient)'s post-success branch calls `STORE.note_ok()`), breaks the handle, drives a second call that fails and is recycled (so [`_last_error_ts`](#_last_error_ts) is stamped), then drives a third call that succeeds and is again stamped by `note_ok()`; asserts `health["ok"] is True`, which only holds when the final `note_ok()` left [`_last_ok_ts`](#_last_ok_ts) newer than [`_last_error_ts`](#_last_error_ts)
 
 `_last_ok_ts` is the upper bound against which [`health()`](#health) compares `_last_error_ts`: a failure older than the last good call has been healed; one newer has not.
 
@@ -496,7 +498,7 @@ reporting the `-wal` sibling `health()` stats alongside it, both of which a pres
 The frozen dataclass returned by [`_Store.health()`](#health) on every call — a complete
 snapshot of the connection and resilience state at that moment. Eleven attributes, all
 positional, all required; the class holds no defaults. Constructed fresh per call and never
-mutated afterwards; consumed verbatim by [`_STORE.health()`](#health)'s sibling
+mutated afterwards; consumed verbatim by [`STORE.health()`](#health)'s sibling
 [`health_dict()`](groom-store.md#health-and-health_dict), which `asdict`s the same fields
 into the JSON shape under the `store` key of [dashboard state payload](../formats/dashboard-state-payload.md#field-store),
 so a viewer of `/api/state` reads this object as one mapping of the same eleven fields.
@@ -517,11 +519,11 @@ counters `reopens` / `failures`, the most recent exception text `last_error`, an
 - type: frozen dataclass with eleven positional attributes
 - semantics: a snapshot, never mutating — the runner must call [health()](#health) again to see new state
 - semantics: shaped for the dashboard, not for in-process use — same fields surface through [`health_dict()`](groom-store.md#health-and-health_dict) as JSON
-- semantics: `_resilient`-decorated callers do not read this type — `_Store.health()` runs on the operator dashboard path, not on the ingest path
+- semantics: `resilient`-decorated callers do not read this type — `_Store.health()` runs on the operator dashboard path, not on the ingest path
 - code: `groom/groom/store.py::StoreHealth`
 - code: `groom/groom/store.py::_Store.health`
 - detail: [_store-class](_store-class.md)
-- tests: `groom/tests/test_telemetry.py::test_store_health_rides_the_state_payload` — closes the writer mid-test, retries through `_resilient`, and reads `state_message([])["store"]["ok"] is True` against the snapshot the next [health()](#health) returns
+- tests: `groom/tests/test_telemetry.py::test_store_health_rides_the_state_payload` — closes the writer mid-test, retries through `resilient`, and reads `state_message([])["store"]["ok"] is True` against the snapshot the next [health()](#health) returns
 
 #### field: ok
 
@@ -549,7 +551,7 @@ counters `reopens` / `failures`, the most recent exception text `last_error`, an
 - type: `float` (epoch seconds, `time.time()` units — wall-clock so it is comparable to `last_write_ts` and `last_prune_ts`)
 - default: `0.0` — the "no successful statement has run" sentinel on a fresh `_Store` and after [`reset()`](#reset)
 - required: true
-- semantics: wall-clock instant of the most recent successful wrapped statement, stamped by [`note_ok()`](#note_ok) inside `_resilient` after the wrapped function returns
+- semantics: wall-clock instant of the most recent successful wrapped statement, stamped by [`note_ok()`](#note_ok) inside `resilient` after the wrapped function returns
 - semantics: used as the upper bound in the `ok` comparison, so `ok = last_ok_ts >= last_error_ts`
 - code: `groom/groom/store.py::StoreHealth.last_ok_ts`
 - code: `groom/groom/store.py::_Store.note_ok`
@@ -564,7 +566,7 @@ counters `reopens` / `failures`, the most recent exception text `last_error`, an
 - semantics: a recycle suppressed by the cooldown gate raises instead of closing and leaves the count where it was — the counter measures success, not attempts
 - code: `groom/groom/store.py::StoreHealth.reopens`
 - verify: count(subject="_reopens", equals=1)
-- tests: `groom/tests/test_telemetry.py::test_a_closed_connection_heals_on_the_next_write` — closes the writer mid-test, retries through `_resilient`, asserts `store.health().reopens == 1`
+- tests: `groom/tests/test_telemetry.py::test_a_closed_connection_heals_on_the_next_write` — closes the writer mid-test, retries through `resilient`, asserts `store.health().reopens == 1`
 
 #### field: failures
 
@@ -649,47 +651,47 @@ counters `reopens` / `failures`, the most recent exception text `last_error`, an
 
 The module-level wrappers that wrap store calls in retry-and-heal semantics. They are decorators of the same name in `groom/groom/store.py` (defined adjacent to the `_Store` class they wrap); the wrappers are what `_Store`-decorated methods call before touching the connection, and the contract here is the one those wrapped methods inherit.
 
-### method: _resilient
+### method: resilient
 
 The decorator used by every write-side store call (`insert_spans`, `_write_metrics`, `insert_logs`, `apply_estimates`, `_delete_chunk`, `purge_test_runs`, `insert_turns`, `attend_*`, `_write_metrics`, `checkpoint`, `recycle`-backed writers). Decorate leaf functions only: a decorated function that calls another decorated one multiplies attempts.
 
-- sig: `_resilient(fn: Callable[_P, _T]) -> Callable[_P, _T]`
+- sig: `resilient(fn: Callable[_P, _T]) -> Callable[_P, _T]`
 - abstract: serialize a store call under the lock, and heal the connection under it exactly once
-- concurrency: write-connection — takes `_STORE.lock` for the duration of the wrapped call, so a second call blocks until the first releases it rather than interleaving statements on the same connection
-- verify: conflict_on_stale(subject="concurrent _resilient call", token="_STORE.lock held by first call")
-- consistency rule: write-connection — on `sqlite3.Error`, calls `_STORE.recycle()` and retries the undecorated function body exactly once, so a wedged connection is healed within the one call instead of propagating to the caller
-- verify: count(subject="function body invocations through _resilient wrapper after a sqlite3.Error", equals=2)
-- consistency rule: store-health — on eventual success, calls `_STORE.note_ok()` before returning, clearing the failure state that `health().ok` reads
-- verify: count(subject="_STORE.note_ok() calls after a successful _resilient call", equals=1)
-- raises: the original sqlite3.Error when `_STORE.recycle()` raises (file is the problem — the wrapper does not wrap or replace it)
+- concurrency: write-connection — takes `STORE.lock` for the duration of the wrapped call, so a second call blocks until the first releases it rather than interleaving statements on the same connection
+- verify: conflict_on_stale(subject="concurrent resilient call", token="STORE.lock held by first call")
+- consistency rule: write-connection — on `sqlite3.Error`, calls `STORE.recycle()` and retries the undecorated function body exactly once, so a wedged connection is healed within the one call instead of propagating to the caller
+- verify: count(subject="function body invocations through resilient wrapper after a sqlite3.Error", equals=2)
+- consistency rule: store-health — on eventual success, calls `STORE.note_ok()` before returning, clearing the failure state that `health().ok` reads
+- verify: count(subject="STORE.note_ok() calls after a successful resilient call", equals=1)
+- raises: the original sqlite3.Error when `STORE.recycle()` raises (file is the problem — the wrapper does not wrap or replace it)
 - verify: json_path(path="$.exception_type", equals="sqlite3.OperationalError")
 - raises: any non-sqlite3 exception from the wrapped function unchanged (the wrapper's `except` only catches `sqlite3.Error`)
 - verify: json_path(path="$.exception_type", equals="ValueError")
-- code: `groom/groom/store.py::_resilient`
-- tests: `groom/tests/test_telemetry.py::test_a_closed_connection_heals_on_the_next_write` — closes the writer handle mid-test, drives `insert_spans` (decorated with `_resilient`) through `_STORE.connect()`, and asserts both the row lands and `reopens == 1`, which only holds if the wrapper retried the undecorated body once after `recycle()` reopened
-- tests: `groom/tests/test_telemetry.py::test_store_health_rides_the_state_payload` — drives an `insert_spans` through the `_resilient` wrapper, breaks the handle, drives a second call that fails and is recycled, then drives a third call that succeeds; asserts `health["ok"] is True`, which only holds when the final successful call left `_last_ok_ts` newer than `_last_error_ts` via `_STORE.note_ok()`
+- code: `groom/groom/store.py::resilient`
+- tests: `groom/tests/test_telemetry.py::test_a_closed_connection_heals_on_the_next_write` — closes the writer handle mid-test, drives `insert_spans` (decorated with `resilient`) through `STORE.connect()`, and asserts both the row lands and `reopens == 1`, which only holds if the wrapper retried the undecorated body once after `recycle()` reopened
+- tests: `groom/tests/test_telemetry.py::test_store_health_rides_the_state_payload` — drives an `insert_spans` through the `resilient` wrapper, breaks the handle, drives a second call that fails and is recycled, then drives a third call that succeeds; asserts `health["ok"] is True`, which only holds when the final successful call left `_last_ok_ts` newer than `_last_error_ts` via `STORE.note_ok()`
 - semantics: retry calls the *undecorated* body so depth is bounded at two by construction; the wrapper's return value is whatever the wrapped function returned
 
-### method: _reading
+### method: reading
 
-The decorator used by every read-side store call (`query_logs`, `unpriced_models`, `reprice`, `_estimable_turns`, `unpriceable_turns`, `node_costs`, `run_profile`, `query_spans`, `run_summaries`, `archive_page`, `_test_run_ids`, `_expired_run_ids`, `_profile_turn_summary` collaborators, `unarchived_row_counts`, `query_turns`, `run_directories`, `run_bounds`, `test_run_ids`). It is `_resilient` without the lock: same one-retry contract, but readers already serialize through the per-thread `_Reader` handle and do not contend with the writer. Decorate leaf functions only.
+The decorator used by every read-side store call (`query_logs`, `unpriced_models`, `reprice`, `_estimable_turns`, `unpriceable_turns`, `node_costs`, `run_profile`, `query_spans`, `run_summaries`, `archive_page`, `_test_run_ids`, `_expired_run_ids`, `_profile_turn_summary` collaborators, `unarchived_row_counts`, `query_turns`, `run_directories`, `run_bounds`, `test_run_ids`). It is `resilient` without the lock: same one-retry contract, but readers already serialize through the per-thread `_Reader` handle and do not contend with the writer. Decorate leaf functions only.
 
-- sig: `_reading(fn: Callable[_P, _T]) -> Callable[_P, _T]`
+- sig: `reading(fn: Callable[_P, _T]) -> Callable[_P, _T]`
 - abstract: heal the connection once on a read failure, and take no lock doing it
-- does: call the wrapped function without acquiring `_STORE.lock`, so concurrent reads do not serialize on a writer behind a held lock
-- verify: persists(subject="query result through _reading wrapper while another thread holds _STORE.lock")
-- does: on `sqlite3.Error`, call `_STORE.recycle_reader(exc, name)` and retry the undecorated function body exactly once
-- verify: count(subject="function body invocations through _reading wrapper after a sqlite3.Error", equals=2)
-- does: on success, call `_STORE.note_ok()` and return the wrapped function's result
-- verify: count(subject="_STORE.note_ok() calls after a successful _reading call", equals=1)
+- does: call the wrapped function without acquiring `STORE.lock`, so concurrent reads do not serialize on a writer behind a held lock
+- verify: persists(subject="query result through reading wrapper while another thread holds STORE.lock")
+- does: on `sqlite3.Error`, call `STORE.recycle_reader(exc, name)` and retry the undecorated function body exactly once
+- verify: count(subject="function body invocations through reading wrapper after a sqlite3.Error", equals=2)
+- does: on success, call `STORE.note_ok()` and return the wrapped function's result
+- verify: count(subject="STORE.note_ok() calls after a successful reading call", equals=1)
 - raises: any non-sqlite3 exception from the wrapped function unchanged (the wrapper's `except` only catches `sqlite3.Error`)
 - verify: json_path(path="$.exception_type", equals="ValueError")
-- code: `groom/groom/store.py::_reading`
-- consistency: recycle-reader-suppresses-close-error — the error closing the retired handle is suppressed inside [`_STORE.retire_reader()`](#retire_reader), so a `sqlite3.Error` from `close()` does not surface through `_STORE.recycle_reader()` and the wrapper's retry path is reached
+- code: `groom/groom/store.py::reading`
+- consistency: recycle-reader-suppresses-close-error — the error closing the retired handle is suppressed inside [`STORE.retire_reader()`](#retire_reader), so a `sqlite3.Error` from `close()` does not surface through `STORE.recycle_reader()` and the wrapper's retry path is reached
 - verify: json_path(path="$.exception_type", absent=true)
-- tests: `groom/tests/test_store_reads.py::test_the_dashboard_queries_answer_while_the_write_lock_is_held` — warms each thread's read handle outside the measurement, holds `_STORE.lock` from another thread for two seconds, then asserts every dashboard read (`query_spans`, `run_summaries`, `query_logs`, `query_turns`, `run_profile`) returned inside a 250 ms budget; the reads answer because the wrapper does not acquire the writer's lock
-- tests: `groom/tests/test_store_reads.py::test_a_broken_read_handle_is_retired_without_disturbing_the_writer` — closes the cached read handle so the next query raises, exercises the `_reading` wrapper's catch path that calls `recycle_reader()`, and asserts the writer handle is the same object afterwards, which only holds if `recycle_reader()` retired the read handle without recycling the writer
-- semantics: same one-retry contract as `_resilient` because a read hits the same disposable handle; decorate leaf functions only
+- tests: `groom/tests/test_store_reads.py::test_the_dashboard_queries_answer_while_the_write_lock_is_held` — warms each thread's read handle outside the measurement, holds `STORE.lock` from another thread for two seconds, then asserts every dashboard read (`query_spans`, `run_summaries`, `query_logs`, `query_turns`, `run_profile`) returned inside a 250 ms budget; the reads answer because the wrapper does not acquire the writer's lock
+- tests: `groom/tests/test_store_reads.py::test_a_broken_read_handle_is_retired_without_disturbing_the_writer` — closes the cached read handle so the next query raises, exercises the `reading` wrapper's catch path that calls `recycle_reader()`, and asserts the writer handle is the same object afterwards, which only holds if `recycle_reader()` retired the read handle without recycling the writer
+- semantics: same one-retry contract as `resilient` because a read hits the same disposable handle; decorate leaf functions only
 
 ## concept: Design rationale
 
@@ -700,8 +702,8 @@ The five load-bearing design choices behind `_Store`, the process's one SQLite h
 - code: `groom/groom/store.py::_Store._open`
 - code: `groom/groom/store.py::_Store.recycle`
 - code: `groom/groom/store.py::_Store.read_connection`
-- code: `groom/groom/store.py::_resilient`
-- code: `groom/groom/store.py::_reading`
+- code: `groom/groom/store.py::resilient`
+- code: `groom/groom/store.py::reading`
 
 **Autocommit mode** (`isolation_level=None`) removes the failure mode where an exception between an implicit BEGIN and commit leaves the connection inside a transaction. Every later SELECT would re-pin the read snapshot, and every later write would die of SQLITE_BUSY_SNAPSHOT forever because nothing reopened.
 

@@ -35,7 +35,7 @@ Four main tables with indices for the common queries:
 - **turns**: index of archived transcript files, keyed by visit (generation, seq, session) for replay order
 - **attend_sessions**: dispatch log for the operator gate attendant, one row per run needing rescue
 
-Schema is versioned via `_ADDED_*_COLUMNS` so a new groom can backfill columns on an existing store without migration tooling.
+Schema is versioned via `_ADDED_*_COLUMNS`, and a ledger table by the columns it passes to `register_table`, so a new groom can backfill columns on an existing store without migration tooling.
 
 ## Methods
 
@@ -424,11 +424,11 @@ Input to any recovery that goes looking outside the span for what the model real
 
 The module maintains **one writer, many readers**:
 
-- `_STORE`: process-wide singleton `_Store` object holding the write connection and RLock
+- `STORE`: process-wide singleton `_Store` object holding the write connection and RLock
 - `_Store.connect()` opens or returns the write connection; the locking contract is documented on [connect](_store-class.md#connect)
 - `_Store.read_connection()` returns a thread-local read-only handle; the lock-free fast path and per-thread sync contract are documented on [read_connection](_store-class.md#read_connection)
-- `_resilient`: decorator that serializes store calls under the lock and retries once on sqlite3.Error
-- `_reading`: decorator that retries once on sqlite3.Error without locking (reads already serialize through the thread-local handle)
+- `resilient`: decorator that serializes store calls under the lock and retries once on sqlite3.Error
+- `reading`: decorator that retries once on sqlite3.Error without locking (reads already serialize through the thread-local handle)
 
 ### Autocommit mode and transaction discipline
 
@@ -439,7 +439,7 @@ The module maintains **one writer, many readers**:
 
 ### Resilience and error recovery
 
-- `_resilient` and `_reading` decorators catch `sqlite3.Error` (base class covering transient wedges, permanent corruption, and mismatches)
+- `resilient` and `reading` decorators catch `sqlite3.Error` (base class covering transient wedges, permanent corruption, and mismatches)
 - On first failure: recycle the connection (close and mark `_generation` incremented so read handles detect stale snapshots), then retry the statement once
 - On second failure within `REOPEN_COOLDOWN_S` (5s): raise the exception — the file itself is the problem and retrying will not help
 - `health()` surfaces failure counts, last error, and ok flag for operator visibility

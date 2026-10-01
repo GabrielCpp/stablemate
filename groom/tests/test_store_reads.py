@@ -24,7 +24,7 @@ def _lock_held() -> Iterator[None]:
     release = threading.Event()
 
     def hold() -> None:
-        with store._STORE.lock:
+        with store.STORE.lock:
             holding.set()
             release.wait(HOLD_S)
 
@@ -99,19 +99,19 @@ def test_a_read_still_answers_after_the_writer_is_recycled_underneath_it():
     with _DB():
         store.insert_spans([_span("R1", "plan", 100.0)])
         assert len(store.query_spans(run="R1")) == 1
-        store._STORE.recycle(sqlite3.OperationalError("wedged"), "test")
+        store.STORE.recycle(sqlite3.OperationalError("wedged"), "test")
         assert len(store.query_spans(run="R1")) == 1
 
 
 def test_each_thread_gets_its_own_handle_and_it_is_not_the_writers():
     with _DB():
         store.insert_spans([_span("R1", "plan", 100.0)])
-        mine = store._read_connection()
-        assert mine is store._read_connection()
+        mine = store.read_connection()
+        assert mine is store.read_connection()
         assert mine is not store._connection()
 
         theirs: list[sqlite3.Connection] = []
-        thread = threading.Thread(target=lambda: theirs.append(store._read_connection()))
+        thread = threading.Thread(target=lambda: theirs.append(store.read_connection()))
         thread.start()
         thread.join(HOLD_S)
         assert theirs and theirs[0] is not mine
@@ -122,14 +122,14 @@ def test_a_write_sent_down_the_read_path_is_refused():
     with _DB():
         store.insert_spans([_span("R1", "plan", 100.0)])
         with pytest.raises(sqlite3.OperationalError, match="readonly"):
-            store._read_connection().execute("DELETE FROM spans")
+            store.read_connection().execute("DELETE FROM spans")
 
 
 def test_a_broken_read_handle_is_retired_without_disturbing_the_writer():
     with _DB():
         store.insert_spans([_span("R1", "plan", 100.0)])
         writer = store._connection()
-        store._read_connection().close()
+        store.read_connection().close()
 
         assert len(store.query_spans(run="R1")) == 1
         assert store._connection() is writer
@@ -139,10 +139,10 @@ def test_reset_retires_the_calling_threads_handle():
     """Otherwise a test's handle outlives its database file into the next case."""
     with _DB():
         store.insert_spans([_span("R1", "plan", 100.0)])
-        stale = store._read_connection()
+        stale = store.read_connection()
     with _DB():
         store.insert_spans([_span("R2", "plan", 100.0)])
-        assert store._read_connection() is not stale
+        assert store.read_connection() is not stale
         assert [s["run_id"] for s in store.query_spans()] == ["R2"]
 
 

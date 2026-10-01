@@ -129,41 +129,6 @@ CREATE TABLE IF NOT EXISTS turns (
 );
 CREATE INDEX IF NOT EXISTS turns_visit ON turns(run_id, node, generation, seq);
 CREATE INDEX IF NOT EXISTS turns_session ON turns(session_id);
-CREATE TABLE IF NOT EXISTS attend_sessions (
-    job_id         TEXT PRIMARY KEY,
-    run_id         TEXT NOT NULL DEFAULT '',
-    workflow       TEXT NOT NULL DEFAULT '',
-    run_dir        TEXT NOT NULL DEFAULT '',
-    workspace      TEXT NOT NULL DEFAULT '',
-    kind           TEXT NOT NULL DEFAULT '',
-    reason         TEXT NOT NULL DEFAULT '',
-    node           TEXT NOT NULL DEFAULT '',
-    gate_path      TEXT NOT NULL DEFAULT '',
-    status         TEXT NOT NULL DEFAULT 'running',
-    session_ids    TEXT NOT NULL DEFAULT '',
-    pid            INTEGER,
-    exit_code      INTEGER,
-    started_at     REAL NOT NULL DEFAULT 0,
-    ended_at       REAL,
-    released_state TEXT NOT NULL DEFAULT ''
-);
-CREATE INDEX IF NOT EXISTS attend_recent ON attend_sessions(started_at DESC);
-CREATE INDEX IF NOT EXISTS attend_run ON attend_sessions(run_id, status);
-CREATE TABLE IF NOT EXISTS dispatch_items (
-    item_id       TEXT PRIMARY KEY,
-    queue         TEXT NOT NULL DEFAULT '',
-    command       TEXT NOT NULL DEFAULT '',
-    params        TEXT NOT NULL DEFAULT '',
-    status        TEXT NOT NULL DEFAULT 'pending',
-    run_id        TEXT NOT NULL DEFAULT '',
-    pid           INTEGER,
-    exit_code     INTEGER,
-    enqueued_at   REAL NOT NULL DEFAULT 0,
-    started_at    REAL,
-    ended_at      REAL
-);
-CREATE INDEX IF NOT EXISTS dispatch_queue_status ON dispatch_items(queue, status);
-CREATE INDEX IF NOT EXISTS dispatch_recent ON dispatch_items(enqueued_at DESC);
 """
 
 
@@ -274,22 +239,35 @@ def _estimated(model: str, tokens: dict[str, Any]) -> float | None:
     )
 
 
-_ADDED_ATTEND_COLUMNS: tuple[tuple[str, str], ...] = ()
-
-_ADDED_DISPATCH_COLUMNS: tuple[tuple[str, str], ...] = ()
+def _add_columns(conn: sqlite3.Connection, table: str, added: tuple[tuple[str, str], ...]) -> None:
+    existing = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})")}
+    for column, decl in added:
+        if column not in existing:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")  # noqa: S608
 
 
 def _migrate(conn: sqlite3.Connection) -> None:
     for table, added in (
         ("spans", _ADDED_SPAN_COLUMNS),
         ("logs", _ADDED_LOG_COLUMNS),
-        ("attend_sessions", _ADDED_ATTEND_COLUMNS),
-        ("dispatch_items", _ADDED_DISPATCH_COLUMNS),
     ):
-        existing = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})")}
-        for column, decl in added:
-            if column not in existing:
-                conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")  # noqa: S608
+        _add_columns(conn, table, added)
+
+
+@dataclass(frozen=True, slots=True)
+class _Table:
+    """A table outside the telemetry schema, created by the module that owns it."""
+
+    name: str
+    ddl: str
+    added: tuple[tuple[str, str], ...]
+
+    def create(self, conn: sqlite3.Connection) -> None:
+        conn.executescript(self.ddl)
+        _add_columns(conn, self.name, self.added)
+
+
+_TABLES: dict[str, _Table] = {}
 
 
 _P = ParamSpec("_P")
@@ -355,7 +333,15 @@ class _Store:
         conn.execute("PRAGMA busy_timeout=5000")
         conn.executescript(_SCHEMA)
         _migrate(conn)
+        for table in _TABLES.values():
+            table.create(conn)
         return conn
+
+    def install(self, table: _Table) -> None:
+        """Create a table registered after the connection opened."""
+        with self.lock:
+            if self._conn is not None:
+                table.create(self._conn)
 
     @contextmanager
     def writing(self) -> Iterator[sqlite3.Connection]:
@@ -494,33 +480,33 @@ class _Reader:
     path: Path
 
 
-_STORE = _Store()
+STORE = _Store()
 
 
-def _resilient(fn: Callable[_P, _T]) -> Callable[_P, _T]:
+def resilient(fn: Callable[_P, _T]) -> Callable[_P, _T]:
     """Serialize a store call, and heal the connection under it exactly once."""
 
     name = getattr(fn, "__name__", "store call")
 
     @functools.wraps(fn)
     def wrapper(*args: _P.args, **kwargs: _P.kwargs) -> _T:
-        with _STORE.lock:
+        with STORE.lock:
             try:
                 result = fn(*args, **kwargs)
             except sqlite3.Error as exc:
-                _STORE.recycle(exc, name)
+                STORE.recycle(exc, name)
             else:
-                _STORE.note_ok()
+                STORE.note_ok()
                 return result
             result = fn(*args, **kwargs)
-            _STORE.note_ok()
+            STORE.note_ok()
             return result
 
     return wrapper
 
 
-def _reading(fn: Callable[_P, _T]) -> Callable[_P, _T]:
-    """:func:`_resilient` for a query: heal once, and take no lock doing it."""
+def reading(fn: Callable[_P, _T]) -> Callable[_P, _T]:
+    """:func:`resilient` for a query: heal once, and take no lock doing it."""
     name = getattr(fn, "__name__", "store read")
 
     @functools.wraps(fn)
@@ -528,19 +514,19 @@ def _reading(fn: Callable[_P, _T]) -> Callable[_P, _T]:
         try:
             result = fn(*args, **kwargs)
         except sqlite3.Error as exc:
-            _STORE.recycle_reader(exc, name)
+            STORE.recycle_reader(exc, name)
         else:
-            _STORE.note_ok()
+            STORE.note_ok()
             return result
         result = fn(*args, **kwargs)
-        _STORE.note_ok()
+        STORE.note_ok()
         return result
 
     return wrapper
 
 
 def _noop_on_empty(zero: Any) -> Callable[[Callable[_P, _T]], Callable[_P, _T]]:
-    """Answer a batch with nothing in it *before* :func:`_resilient` takes the lock."""
+    """Answer a batch with nothing in it *before* :func:`resilient` takes the lock."""
 
     def decorate(fn: Callable[_P, _T]) -> Callable[_P, _T]:
         @functools.wraps(fn)
@@ -555,35 +541,43 @@ def _noop_on_empty(zero: Any) -> Callable[[Callable[_P, _T]], Callable[_P, _T]]:
 
 
 def _connection() -> sqlite3.Connection:
-    return _STORE.connect()
+    return STORE.connect()
 
 
-def _read_connection() -> sqlite3.Connection:
-    return _STORE.read_connection()
+def read_connection() -> sqlite3.Connection:
+    return STORE.read_connection()
+
+
+def register_table(name: str, ddl: str, added: tuple[tuple[str, str], ...] = ()) -> None:
+    """Have every connection the store opens create this table, and the open one too."""
+    with STORE.lock:
+        table = _Table(name, ddl, added)
+        _TABLES[name] = table
+        STORE.install(table)
 
 
 def reset() -> None:
     """Close the module connection so the next call reopens (tests switch GROOM_DB between cases)."""
-    _STORE.reset()
+    STORE.reset()
 
 
 def health() -> StoreHealth:
     """Whether the collector is still storing what it is told, and since when."""
-    return _STORE.health()
+    return STORE.health()
 
 
 def health_dict() -> dict[str, Any]:
     """:func:`health` as JSON for the dashboard state payload."""
-    return asdict(_STORE.health())
+    return asdict(STORE.health())
 
 
 @_noop_on_empty(None)
-@_resilient
+@resilient
 def insert_spans(spans: list[dict[str, Any]]) -> None:
     """Upsert decoded spans (see groom.otlp.parse_traces)."""
     if not spans:
         return
-    with _STORE.writing() as conn:
+    with STORE.writing() as conn:
         promoted = ", ".join(_SPAN_VALUE_COLUMNS)
         placeholders = ", ".join("?" * len(_SPAN_VALUE_COLUMNS))
         conn.executemany(
@@ -622,10 +616,10 @@ def insert_metrics(points: list[dict[str, Any]]) -> None:
     _write_metrics(points)
 
 
-@_resilient
+@resilient
 def _write_metrics(points: list[dict[str, Any]]) -> None:
     """Store already-filtered, non-empty metric points."""
-    with _STORE.writing() as conn:
+    with STORE.writing() as conn:
         conn.executemany(
             "INSERT INTO metrics (run_id, name, ts, value, attrs_json) VALUES (?, ?, ?, ?, ?)",
             [
@@ -648,12 +642,12 @@ def _log_attribute(attrs: dict[str, Any], key: str) -> str | None:
 
 
 @_noop_on_empty(None)
-@_resilient
+@resilient
 def insert_logs(records: list[dict[str, Any]]) -> None:
     """Append decoded log records (see groom.otlp.parse_logs)."""
     if not records:
         return
-    with _STORE.writing() as conn:
+    with STORE.writing() as conn:
         conn.executemany(
             "INSERT INTO logs (run_id, workflow, run_dir, node, logger, severity, body,"
             " ts, trace_id, attrs_json, head, workspace, vcs, origin, branch, repositories)"
@@ -686,7 +680,7 @@ def insert_logs(records: list[dict[str, Any]]) -> None:
 _SEVERITY_ORDER = ("FATAL", "ERROR", "WARNING", "INFO", "DEBUG", "TRACE")
 
 
-@_reading
+@reading
 def query_logs(
     run: str = "",
     node: str = "",
@@ -716,7 +710,7 @@ def query_logs(
         where.append("ts < ?")
         params.append(float(before_ts))
     clause = f"WHERE {' AND '.join(where)}" if where else ""
-    conn = _read_connection()
+    conn = read_connection()
     rows = conn.execute(
         f"SELECT run_id, workflow, run_dir, node, logger, severity, body, ts, trace_id,"  # noqa: S608
         f" attrs_json, head, workspace, vcs, origin, branch, repositories"
@@ -749,7 +743,7 @@ _ESTIMABLE = (
 )
 
 
-@_reading
+@reading
 def unpriced_models(run: str = "") -> dict[str, int]:
     """Models with turns the rate card cannot price, and how many turns each has."""
     clauses = [_ESTIMABLE]
@@ -757,7 +751,7 @@ def unpriced_models(run: str = "") -> dict[str, int]:
     if run:
         clauses.append("run_id = ?")
         params.append(run)
-    conn = _read_connection()
+    conn = read_connection()
     rows = conn.execute(
         "SELECT COALESCE(priced_model, json_extract(attrs_json, '$.model')) AS model,"  # noqa: S608
         f" COUNT(*) AS turns FROM spans WHERE {' AND '.join(clauses)} GROUP BY model",
@@ -799,11 +793,11 @@ def reprice(run: str = "", missing_only: bool = True) -> dict[str, Any]:
     }
 
 
-@_reading
+@reading
 def _estimable_turns(clauses: list[str], params: list[Any]) -> list[sqlite3.Row]:
     """Turns matching `clauses`, with everything pricing one needs already coalesced."""
     return (
-        _read_connection()
+        read_connection()
         .execute(
             "SELECT span_id, priced_model,"  # noqa: S608
             " json_extract(attrs_json, '$.model') AS model,"
@@ -818,7 +812,7 @@ def _estimable_turns(clauses: list[str], params: list[Any]) -> list[sqlite3.Row]
     )
 
 
-@_reading
+@reading
 def unpriceable_turns(run: str = "") -> list[dict[str, Any]]:
     """Turns with tokens, no estimate, and a model no rate covers."""
     clauses = [_ESTIMABLE, "est_cost_usd IS NULL"]
@@ -833,10 +827,10 @@ def unpriceable_turns(run: str = "") -> list[dict[str, Any]]:
     ]
 
 
-@_resilient
+@resilient
 def apply_estimates(updates: list[tuple[float, str, str]]) -> int:
     """Write `(est_cost_usd, priced_model, span_id)` triples; rows touched."""
-    with _STORE.writing() as conn:
+    with STORE.writing() as conn:
         conn.executemany(
             "UPDATE spans SET est_cost_usd = ?, priced_model = ? WHERE span_id = ?",
             updates,
@@ -844,14 +838,14 @@ def apply_estimates(updates: list[tuple[float, str, str]]) -> int:
     return len(updates)
 
 
-@_reading
+@reading
 def node_costs(run: str = "", limit: int = 100) -> list[dict[str, Any]]:
     """Per-node agent spend for a run: where the money and the rework went."""
     clauses, params = ["name = 'agent_turn'"], []
     if run:
         clauses.append("run_id = ?")
         params.append(run)
-    conn = _read_connection()
+    conn = read_connection()
     rows = conn.execute(
         "SELECT node,"  # noqa: S608 — clauses are literals; every value is bound
         " COUNT(*) AS turns,"
@@ -900,7 +894,7 @@ class Lap:
     est: float | None
 
 
-@_reading
+@reading
 def loop_convergence(
     run: str = "",
     workflow: str = "",
@@ -923,7 +917,7 @@ def loop_convergence(
         clauses.append("start_ts >= ?")
         params.append(float(since_ts))
     rows = (
-        _read_connection()
+        read_connection()
         .execute(
             "SELECT node, run_id,"  # noqa: S608 — clauses are literals; every value is bound
             " json_extract(attrs_json, '$.work_id') AS work_id,"
@@ -1193,13 +1187,13 @@ def _profile_time_partition(
     }
 
 
-@_reading
+@reading
 def run_profile(run: str) -> dict[str, Any] | None:
     """Partition one run's retained wall time and aggregate its agent rework."""
     if not run:
         return None
     rows = (
-        _read_connection()
+        read_connection()
         .execute(
             f"SELECT {_SPAN_COLUMNS}, duration_ms AS profile_duration_ms,"  # noqa: S608
             f" {_cost} AS profile_cost_usd, {_output} AS profile_output_tokens,"
@@ -1212,7 +1206,7 @@ def run_profile(run: str) -> dict[str, Any] | None:
         {**dict(row), "attrs": json.loads(row["attrs_json"] or "{}")} for row in rows
     ]
     metric_bounds = (
-        _read_connection()
+        read_connection()
         .execute(
             "SELECT MIN(ts) AS first_ts, MAX(ts) AS last_ts FROM metrics WHERE run_id = ?",
             (run,),
@@ -1252,7 +1246,7 @@ _SPAN_COLUMNS = (
 )
 
 
-@_reading
+@reading
 def query_spans(
     run: str = "",
     node: str = "",
@@ -1284,7 +1278,7 @@ def query_spans(
         params.append(float(since_ts))
     params.append(max(1, min(int(limit), 1000)))
     rows = (
-        _read_connection()
+        read_connection()
         .execute(
             f"SELECT {_SPAN_COLUMNS} FROM spans WHERE {' AND '.join(clauses)}"  # noqa: S608 - literals
             " ORDER BY start_ts DESC LIMIT ?",
@@ -1295,10 +1289,10 @@ def query_spans(
     return [dict(row) for row in rows]
 
 
-@_reading
+@reading
 def detail_metrics(run: str, limit: int = 60) -> list[dict[str, Any]]:
     """Recent persisted metrics for a pane's initial history snapshot."""
-    rows = _read_connection().execute(
+    rows = read_connection().execute(
         "SELECT name, ts, value, attrs_json FROM metrics"
         " WHERE run_id = ? ORDER BY ts DESC, rowid DESC LIMIT ?",
         (run, limit),
@@ -1310,10 +1304,10 @@ def detail_metrics(run: str, limit: int = 60) -> list[dict[str, Any]]:
     ]
 
 
-@_reading
+@reading
 def detail_spans(run: str) -> list[dict[str, Any]]:
     """Compact span identities for an open pane's snapshot and idempotent updates."""
-    rows = _read_connection().execute(
+    rows = read_connection().execute(
         "SELECT span_id, node, name, start_ts, end_ts, status FROM spans"
         " WHERE run_id = ?",
         (run,),
@@ -1321,7 +1315,7 @@ def detail_spans(run: str) -> list[dict[str, Any]]:
     return [dict(row) for row in rows]
 
 
-@_reading
+@reading
 def run_summaries(
     limit: int = 50, now: float | None = None, run: str = ""
 ) -> list[dict[str, Any]]:
@@ -1334,7 +1328,7 @@ def run_summaries(
         params.append(run)
     params.append(max(1, min(int(limit), 500)))
     rows = (
-        _read_connection()
+        read_connection()
         .execute(
             "SELECT run_id, MAX(workflow) AS workflow, MAX(repo) AS repo,"
             " MIN(start_ts) AS first_ts, MAX(end_ts) AS last_ts,"
@@ -1377,10 +1371,10 @@ def is_scratch_run_dir(run_dir: str) -> bool:
     return False
 
 
-@_reading
+@reading
 def _test_run_ids() -> set[str]:
     """The run ids whose run dir says they were throwaway (:func:`is_scratch_run_dir`)."""
-    conn = _read_connection()
+    conn = read_connection()
     pairs: set[tuple[str, str]] = set()
     for table in ("spans", "logs"):
         pairs.update(
@@ -1394,7 +1388,7 @@ def _test_run_ids() -> set[str]:
     }
 
 
-@_reading
+@reading
 def test_run_ids() -> set[str]:
     """:func:`_test_run_ids`, with the store's heal-and-retry around it."""
     return _test_run_ids()
@@ -1403,7 +1397,7 @@ def test_run_ids() -> set[str]:
 _PURGE_CHUNK = 500
 
 
-@_resilient
+@resilient
 def purge_test_runs(dry_run: bool = False, vacuum: bool = True) -> dict[str, int]:
     """Delete every span/metric/log belonging to a test run."""
     run_ids = sorted(_test_run_ids())
@@ -1423,21 +1417,21 @@ def purge_test_runs(dry_run: bool = False, vacuum: bool = True) -> dict[str, int
     if dry_run:
         sweep(_connection())
         return counts
-    with _STORE.writing() as conn:
+    with STORE.writing() as conn:
         sweep(conn)
     if vacuum and counts["runs"]:
-        with _STORE.lock:
+        with STORE.lock:
             _connection().execute("VACUUM")
     return counts
 
 
 @_noop_on_empty(0)
-@_resilient
+@resilient
 def insert_turns(rows: list[dict[str, Any]]) -> int:
     """Index archived turn records; how many rows the index gained or replaced."""
     if not rows:
         return 0
-    with _STORE.writing() as conn:
+    with STORE.writing() as conn:
         conn.executemany(
             "INSERT OR REPLACE INTO turns (run_id, workflow, flow, node, session_id,"
             " generation, seq, ts, backend, source, path, bytes, sha256, head)"
@@ -1465,7 +1459,7 @@ def insert_turns(rows: list[dict[str, Any]]) -> int:
     return len(rows)
 
 
-@_reading
+@reading
 def query_turns(
     run: str = "",
     node: str = "",
@@ -1487,7 +1481,7 @@ def query_turns(
             params.append(value)
     where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
     params.append(max(1, limit))
-    rows = _read_connection().execute(
+    rows = read_connection().execute(
         "SELECT run_id, workflow, flow, node, session_id, generation, seq, ts, backend,"
         f" source, path, bytes, sha256, head FROM turns {where}"  # noqa: S608 - bound values
         " ORDER BY run_id, generation, seq LIMIT ?",
@@ -1496,12 +1490,12 @@ def query_turns(
     return [dict(row) for row in rows]
 
 
-@_reading
+@reading
 def run_directories() -> list[dict[str, Any]]:
     """Every run telemetry has seen a directory for: run_id, run_dir, workflow."""
     return [
         dict(row)
-        for row in _read_connection().execute(
+        for row in read_connection().execute(
             "SELECT DISTINCT run_id, run_dir, workflow FROM spans"
             " WHERE run_dir != '' AND run_id != ''"
         )
@@ -1513,10 +1507,10 @@ _PRUNE_CHUNK = 50_000
 _NEVER_ARCHIVED_METRICS = UNARCHIVED_DELETABLE_METRICS + LIVENESS_METRICS
 
 
-@_resilient
+@resilient
 def _delete_chunk(table: str, clause: str, params: tuple[Any, ...]) -> int:
     """One ``_PRUNE_CHUNK``-row DELETE, in its own transaction; rows removed."""
-    with _STORE.writing() as conn:
+    with STORE.writing() as conn:
         return conn.execute(
             f"DELETE FROM {table} WHERE rowid IN"  # noqa: S608 - literal table/clause, bound values
             f" (SELECT rowid FROM {table} WHERE {clause} LIMIT ?)",
@@ -1534,10 +1528,10 @@ def _chunked_delete(table: str, clause: str, params: tuple[Any, ...]) -> int:
             return removed
 
 
-@_reading
+@reading
 def _expired_run_ids(cutoff: float) -> set[str]:
     """Run ids still holding at least one row older than ``cutoff``."""
-    conn = _read_connection()
+    conn = read_connection()
     found: set[str] = set()
     for sql in (
         "SELECT DISTINCT run_id FROM spans WHERE end_ts < ?",
@@ -1577,7 +1571,7 @@ def prune(
         removed += _chunked_delete("metrics", "run_id = ? AND ts < ?", (run_id, cutoff))
 
     _checkpoint()
-    _STORE.note_prune()
+    STORE.note_prune()
     return removed
 
 
@@ -1617,10 +1611,10 @@ class RunBounds:
         return self.spans + self.logs + self.metrics
 
 
-@_reading
+@reading
 def run_bounds() -> dict[str, RunBounds]:
     """Per-run timestamp bounds, archivable row counts and identity."""
-    conn = _read_connection()
+    conn = read_connection()
     span: dict[str, tuple[float, float, int]] = {}
     log: dict[str, tuple[float, float, int]] = {}
     metric: dict[str, tuple[float, float, int]] = {}
@@ -1679,10 +1673,10 @@ def run_bounds() -> dict[str, RunBounds]:
     return bounds
 
 
-@_reading
+@reading
 def recent_runs(limit: int = 10, workflow: str = "") -> list[RecentRun]:
     """Top runs ordered by most-recent activity, alive or dead."""
-    conn = _read_connection()
+    conn = read_connection()
 
     sql_spans = (
         "SELECT run_id, MAX(MAX(start_ts, end_ts)) AS max_ts,"
@@ -1746,10 +1740,10 @@ def recent_runs(limit: int = 10, workflow: str = "") -> list[RecentRun]:
     return out
 
 
-@_reading
+@reading
 def unarchived_row_counts() -> dict[str, int]:
     """What is in the store that :func:`prune` may delete with no archive behind it."""
-    conn = _read_connection()
+    conn = read_connection()
     placeholders = ",".join("?" * len(_NEVER_ARCHIVED_METRICS))
     counts = {
         "never_archived_metrics": conn.execute(
@@ -1774,7 +1768,7 @@ _ARCHIVE_STREAMS: dict[str, tuple[str, str]] = {
 }
 
 
-@_reading
+@reading
 def archive_page(
     run_id: str,
     kind: str,
@@ -1790,7 +1784,7 @@ def archive_page(
         params.extend(ARCHIVED_METRICS)
     stamp, rowid = after
     params.extend((stamp, stamp, rowid, limit))
-    rows = _read_connection().execute(
+    rows = read_connection().execute(
         f"SELECT rowid AS _rowid, {ts_col} AS _ts, * FROM {table}"  # noqa: S608 - literal table/column
         f" WHERE run_id = ?{clause} AND ({ts_col} > ? OR ({ts_col} = ? AND rowid > ?))"
         f" ORDER BY {ts_col}, rowid LIMIT ?",
@@ -1812,13 +1806,13 @@ def delete_run_telemetry(run_id: str) -> int:
 def _checkpoint() -> None:
     """Fold the write-ahead log back into the database file, and truncate it."""
     try:
-        with _STORE.lock:
+        with STORE.lock:
             row = _connection().execute("PRAGMA wal_checkpoint(TRUNCATE)").fetchone()
     except sqlite3.Error as exc:
         logger.warning("groom: WAL checkpoint declined: %s", exc)
         return
     busy = int(row[0]) if row else 0
-    _STORE.note_checkpoint(busy)
+    STORE.note_checkpoint(busy)
     if busy:
         logger.info(
             "groom: WAL checkpoint found a reader in the way; %s frames left in place",
@@ -1826,12 +1820,36 @@ def _checkpoint() -> None:
         )
 
 
-@_resilient
+@resilient
 def checkpoint() -> None:
     """:func:`_checkpoint`, healing the connection if the PRAGMA itself cannot run."""
     _checkpoint()
 
 
+_ATTEND_DDL = """
+CREATE TABLE IF NOT EXISTS attend_sessions (
+    job_id         TEXT PRIMARY KEY,
+    run_id         TEXT NOT NULL DEFAULT '',
+    workflow       TEXT NOT NULL DEFAULT '',
+    run_dir        TEXT NOT NULL DEFAULT '',
+    workspace      TEXT NOT NULL DEFAULT '',
+    kind           TEXT NOT NULL DEFAULT '',
+    reason         TEXT NOT NULL DEFAULT '',
+    node           TEXT NOT NULL DEFAULT '',
+    gate_path      TEXT NOT NULL DEFAULT '',
+    status         TEXT NOT NULL DEFAULT 'running',
+    session_ids    TEXT NOT NULL DEFAULT '',
+    pid            INTEGER,
+    exit_code      INTEGER,
+    started_at     REAL NOT NULL DEFAULT 0,
+    ended_at       REAL,
+    released_state TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS attend_recent ON attend_sessions(started_at DESC);
+CREATE INDEX IF NOT EXISTS attend_run ON attend_sessions(run_id, status);
+"""
+
+register_table("attend_sessions", _ATTEND_DDL)
 
 ATTEND_RUNNING, ATTEND_COMPLETED = "running", "completed"
 
@@ -1850,7 +1868,7 @@ def _attend_row(row: sqlite3.Row) -> dict[str, Any]:
     return record
 
 
-@_resilient
+@resilient
 def attend_start(
     job_id: str,
     *,
@@ -1867,7 +1885,7 @@ def attend_start(
     started_at: float | None = None,
 ) -> None:
     """Record a dispatch as ``running``, before the attendant's first byte of output."""
-    with _STORE.writing() as conn:
+    with STORE.writing() as conn:
         conn.execute(
             "INSERT OR REPLACE INTO attend_sessions (job_id, run_id, workflow, run_dir,"
             " workspace, kind, reason, node, gate_path, status, session_ids, pid,"
@@ -1891,10 +1909,10 @@ def attend_start(
         )
 
 
-@_resilient
+@resilient
 def attend_append_session(job_id: str, session_id: str, pid: int | None = None) -> None:
     """Re-arm an existing row with a fresh session and pid, keeping its history."""
-    with _STORE.writing() as conn:
+    with STORE.writing() as conn:
         row = conn.execute(
             "SELECT session_ids FROM attend_sessions WHERE job_id = ?", (job_id,)
         ).fetchone()
@@ -1915,7 +1933,7 @@ def attend_append_session(job_id: str, session_id: str, pid: int | None = None) 
         )
 
 
-@_resilient
+@resilient
 def attend_finish(
     job_id: str,
     *,
@@ -1924,7 +1942,7 @@ def attend_finish(
     ended_at: float | None = None,
 ) -> None:
     """Flip a row to ``completed``."""
-    with _STORE.writing() as conn:
+    with STORE.writing() as conn:
         conn.execute(
             "UPDATE attend_sessions SET status = ?, exit_code = ?, ended_at = ?,"
             " released_state = ? WHERE job_id = ?",
@@ -1938,11 +1956,11 @@ def attend_finish(
         )
 
 
-@_reading
+@reading
 def attend_running_for_run(run_id: str) -> dict[str, Any] | None:
     """The attendant currently on this run, if there is one."""
     row = (
-        _read_connection()
+        read_connection()
         .execute(
             "SELECT * FROM attend_sessions WHERE run_id = ? AND status = ?"
             " ORDER BY started_at DESC LIMIT 1",
@@ -1953,11 +1971,11 @@ def attend_running_for_run(run_id: str) -> dict[str, Any] | None:
     return _attend_row(row) if row is not None else None
 
 
-@_reading
+@reading
 def attend_latest_for_run(run_id: str) -> dict[str, Any] | None:
     """The most recent attendant on this run, running or not — the pane's one link."""
     row = (
-        _read_connection()
+        read_connection()
         .execute(
             "SELECT * FROM attend_sessions WHERE run_id = ? ORDER BY started_at DESC LIMIT 1",
             (run_id,),
@@ -1967,10 +1985,10 @@ def attend_latest_for_run(run_id: str) -> dict[str, Any] | None:
     return _attend_row(row) if row is not None else None
 
 
-@_reading
+@reading
 def attend_latest_by_run() -> dict[str, dict[str, Any]]:
     """The latest attendance per run, for the projection that links a blocked row to it."""
-    rows = _read_connection().execute(
+    rows = read_connection().execute(
         "SELECT * FROM attend_sessions ORDER BY started_at ASC"
     )
     latest: dict[str, dict[str, Any]] = {}
@@ -1982,46 +2000,65 @@ def attend_latest_by_run() -> dict[str, dict[str, Any]]:
     return latest
 
 
-@_reading
+@reading
 def attend_recent(limit: int = 200) -> list[dict[str, Any]]:
     """The latest attendances, newest first."""
-    rows = _read_connection().execute(
+    rows = read_connection().execute(
         "SELECT * FROM attend_sessions ORDER BY started_at DESC LIMIT ?",
         (max(1, limit),),
     )
     return [_attend_row(row) for row in rows]
 
 
-@_reading
+@reading
 def attend_get(job_id: str) -> dict[str, Any] | None:
     row = (
-        _read_connection()
+        read_connection()
         .execute("SELECT * FROM attend_sessions WHERE job_id = ?", (job_id,))
         .fetchone()
     )
     return _attend_row(row) if row is not None else None
 
 
-@_reading
+@reading
 def attend_by_session(session_id: str) -> dict[str, Any] | None:
     """The attendance a session id belongs to — the pane routes on the session, not the job."""
-    for row in _read_connection().execute("SELECT * FROM attend_sessions"):
+    for row in read_connection().execute("SELECT * FROM attend_sessions"):
         record = _attend_row(row)
         if session_id in record["session_ids"]:
             return record
     return None
 
 
-@_reading
+@reading
 def attend_orphans() -> list[dict[str, Any]]:
     """Every row still claiming to be ``running`` — what boot recovery re-checks."""
-    rows = _read_connection().execute(
+    rows = read_connection().execute(
         "SELECT * FROM attend_sessions WHERE status = ? ORDER BY started_at ASC",
         (ATTEND_RUNNING,),
     )
     return [_attend_row(row) for row in rows]
 
 
+_DISPATCH_DDL = """
+CREATE TABLE IF NOT EXISTS dispatch_items (
+    item_id       TEXT PRIMARY KEY,
+    queue         TEXT NOT NULL DEFAULT '',
+    command       TEXT NOT NULL DEFAULT '',
+    params        TEXT NOT NULL DEFAULT '',
+    status        TEXT NOT NULL DEFAULT 'pending',
+    run_id        TEXT NOT NULL DEFAULT '',
+    pid           INTEGER,
+    exit_code     INTEGER,
+    enqueued_at   REAL NOT NULL DEFAULT 0,
+    started_at    REAL,
+    ended_at      REAL
+);
+CREATE INDEX IF NOT EXISTS dispatch_queue_status ON dispatch_items(queue, status);
+CREATE INDEX IF NOT EXISTS dispatch_recent ON dispatch_items(enqueued_at DESC);
+"""
+
+register_table("dispatch_items", _DISPATCH_DDL)
 
 DISPATCH_PENDING = "pending"
 DISPATCH_RUNNING = "running"
@@ -2041,7 +2078,7 @@ def _dispatch_row(row: sqlite3.Row) -> dict[str, Any]:
     return record
 
 
-@_resilient
+@resilient
 def dispatch_enqueue(
     item_id: str,
     *,
@@ -2051,7 +2088,7 @@ def dispatch_enqueue(
     enqueued_at: float | None = None,
 ) -> None:
     """Record a new item as ``pending``."""
-    with _STORE.writing() as conn:
+    with STORE.writing() as conn:
         conn.execute(
             "INSERT OR REPLACE INTO dispatch_items (item_id, queue, command, params,"
             " status, run_id, pid, exit_code, enqueued_at, started_at, ended_at)"
@@ -2067,7 +2104,7 @@ def dispatch_enqueue(
         )
 
 
-@_resilient
+@resilient
 def dispatch_start(
     item_id: str,
     *,
@@ -2076,7 +2113,7 @@ def dispatch_start(
     started_at: float | None = None,
 ) -> None:
     """Flip a `pending` row to `running` — called by the thread launching the process."""
-    with _STORE.writing() as conn:
+    with STORE.writing() as conn:
         conn.execute(
             "UPDATE dispatch_items SET status = ?, run_id = ?, pid = ?, started_at = ?"
             " WHERE item_id = ?",
@@ -2090,7 +2127,7 @@ def dispatch_start(
         )
 
 
-@_resilient
+@resilient
 def dispatch_finish(
     item_id: str,
     *,
@@ -2099,7 +2136,7 @@ def dispatch_finish(
     ended_at: float | None = None,
 ) -> bool:
     """Flip a row to a terminal state (`done` / `failed` / `cancelled`) — but only if it is not terminal already."""
-    with _STORE.writing() as conn:
+    with STORE.writing() as conn:
         cursor = conn.execute(
             "UPDATE dispatch_items SET status = ?, exit_code = ?, ended_at = ?"
             " WHERE item_id = ? AND status IN (?, ?)",
@@ -2115,10 +2152,10 @@ def dispatch_finish(
         return cursor.rowcount > 0
 
 
-@_resilient
+@resilient
 def dispatch_cancel_pending(item_id: str) -> bool:
     """Cancel a still-`pending` item without ever spawning a process."""
-    with _STORE.writing() as conn:
+    with STORE.writing() as conn:
         cursor = conn.execute(
             "UPDATE dispatch_items SET status = ?, ended_at = ?"
             " WHERE item_id = ? AND status = ?",
@@ -2127,50 +2164,50 @@ def dispatch_cancel_pending(item_id: str) -> bool:
         return cursor.rowcount > 0
 
 
-@_reading
+@reading
 def dispatch_get(item_id: str) -> dict[str, Any] | None:
     row = (
-        _read_connection()
+        read_connection()
         .execute("SELECT * FROM dispatch_items WHERE item_id = ?", (item_id,))
         .fetchone()
     )
     return _dispatch_row(row) if row is not None else None
 
 
-@_reading
+@reading
 def dispatch_list(queue: str, limit: int = 200) -> list[dict[str, Any]]:
     """Every item in this queue, newest first."""
-    rows = _read_connection().execute(
+    rows = read_connection().execute(
         "SELECT * FROM dispatch_items WHERE queue = ? ORDER BY enqueued_at DESC LIMIT ?",
         (queue, max(1, limit)),
     )
     return [_dispatch_row(row) for row in rows]
 
 
-@_reading
+@reading
 def dispatch_pending_for_queue(queue: str) -> list[dict[str, Any]]:
     """This queue's `pending` items, oldest first — the order they are launched in."""
-    rows = _read_connection().execute(
+    rows = read_connection().execute(
         "SELECT * FROM dispatch_items WHERE queue = ? AND status = ? ORDER BY enqueued_at ASC",
         (queue, DISPATCH_PENDING),
     )
     return [_dispatch_row(row) for row in rows]
 
 
-@_reading
+@reading
 def dispatch_running_for_queue(queue: str) -> list[dict[str, Any]]:
     """This queue's `running` items — its current occupancy."""
-    rows = _read_connection().execute(
+    rows = read_connection().execute(
         "SELECT * FROM dispatch_items WHERE queue = ? AND status = ? ORDER BY started_at ASC",
         (queue, DISPATCH_RUNNING),
     )
     return [_dispatch_row(row) for row in rows]
 
 
-@_reading
+@reading
 def dispatch_orphans() -> list[dict[str, Any]]:
     """Every row still claiming to be `running`, across every queue — what boot recovery re-checks (§3.5)."""
-    rows = _read_connection().execute(
+    rows = read_connection().execute(
         "SELECT * FROM dispatch_items WHERE status = ? ORDER BY started_at ASC",
         (DISPATCH_RUNNING,),
     )
