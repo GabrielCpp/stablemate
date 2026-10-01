@@ -71,6 +71,7 @@ _PLAIN_LINK = re.compile(r"\[([^\[\]*_\n]*)\]\(([A-Za-z0-9\-._~:/?#@$'+,;=%]*)\)
 _NOT_ONE_PARAGRAPH = re.compile(r"\r|\t|``|^[ ~]|^\[[^\]]*\]:|\n *(?:$|\n|[#>\-+*=_~|:<]|\d+[.)])")
 _CODE_SPAN = re.compile(r"`[^`]*`")
 _NOT_PLAIN = re.compile(r"[`\\<&!]")
+_LITERAL_BRACKETS = re.compile(r"\[[^\[\]]*\](?![(\[])")
 _REFUSED_HREF = re.compile(r"^(?:javascript|vbscript|file|data):|%(?![0-9A-Fa-f]{2})", re.IGNORECASE)
 
 
@@ -81,6 +82,7 @@ def _plain_links(text: str) -> tuple[tuple[str, str, int], ...] | None:
     masked = _CODE_SPAN.sub(lambda span: "*" * len(span[0]), text)
     if _NOT_PLAIN.search(masked):
         return None
+    masked = _LITERAL_BRACKETS.sub(lambda group: "*" * len(group[0]), masked)
     found: list[tuple[str, str, int]] = []
     last = 0
     for match in _PLAIN_LINK.finditer(masked):

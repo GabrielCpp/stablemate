@@ -190,6 +190,9 @@ def test_a_link_label_that_wraps_reads_as_one_link():
     "`x[`](y)", "a\n[b](c)", "a\n- [b](c)", "a\n# [b](c)", "a\n\n    [b](c)", "a `x\n# y` [b](c)",
     "[a\nb](c)", "a |b\n:-|-\n[c](d)", "a\n2. [b](c)", "a  \n[b](c)", "`a\\` [b](c)", "<x `>` [b](c)",
     "`` a ` `` [b](c)", "x\n  [b](c)\n   [d](e)", "a\n=", "`&amp;` [a](b)", "x `y [a](b)",
+    "[x]", "[x] [a](b)", "[a](b) [x]", "[x][a](b)", "[a][x]", "[x][]", "[a [x] b](c)", "[a](b[x])",
+    "[x [a](b)]", "[[x]]", "[x](a b)", "[x]\n[a](b)", "[x\ny] [a](b)", "f(path=\"[x].y\")", "a[0][1]",
+    "[x]: y", "[a](b)[x](c)", "[x] (a)",
 ])
 def test_the_plain_link_shortcut_agrees_with_the_parser(text: str):
     """The shortcut answers only where it reads the text as the parser does, and leaves every other text to it."""
@@ -201,6 +204,12 @@ def test_a_wrapped_bullet_value_with_code_takes_the_plain_link_shortcut():
     """Most bullet values read like this one, and the shortcut is what keeps a whole book's graph cheap."""
     text = "calls `Load(ctx)` through the [loader](loader.md)\nand records `id`-free [rows](rows.md#kept)"
     assert markdown._plain_links(text) == (("loader", "loader.md", 1), ("rows", "rows.md#kept", 2))
+
+
+def test_a_value_with_literal_brackets_takes_the_plain_link_shortcut():
+    """Paths and selectors carry brackets that open no link, and they are most of what used to reach the parser."""
+    text = 'json_path(path="return.rows[first].id") beside [loader](loader.md) and a[href$=\'/v\']'
+    assert markdown._plain_links(text) == (("loader", "loader.md", 1),)
 
 
 def test_frontmatter_survives_crlf():
