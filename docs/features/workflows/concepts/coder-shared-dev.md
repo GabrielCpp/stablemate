@@ -5,7 +5,8 @@ title: Coder shared development helpers
 ---
 # Coder shared development helpers
 
-- code: `workflows/src/workhorse_workflows/coder/shared/dev.py::__all__` @0652ddfc43e9
+- code: `workflows/src/workhorse_workflows/coder/shared/dev.py::__all__` @9b78ee9ed6fb
+- code: `workflows/src/workhorse_workflows/coder/shared/provenance.py::__all__` @85eef7ecc7cf
 - code: `workflows/src/workhorse_workflows/coder/shared/service_gates.py::__all__` @2473c5163f54
 - code: `workflows/src/workhorse_workflows/coder/shared/plan.py::__all__` @428bdccd7106
 - code: `workflows/tests/coder/shared/test_gates.py::repo`
@@ -15,8 +16,8 @@ title: Coder shared development helpers
 The shared development modules are the deterministic boundary between a story plan and the Coder
 development flow. `plan.py` projects a checkpointed plan into `plan-context.json`, resolves dispatch and
 QA context and selects layers in implementation order. `service_gates.py`
-discovers service-owned gate commands and executes those gates. `dev.py` reports story-owned changes
-and consumes operator answers. Neither decides implementation content. Each returns typed values
+discovers service-owned gate commands and executes those gates. `provenance.py` reports story-owned changes.
+`dev.py` checks the story's status and consumes operator answers. None of them decides implementation content. Each returns typed values
 that the flow routes.
 
 ## Fields
@@ -246,7 +247,7 @@ that the flow routes.
 - does: includes paths from commits matching the exact story id or slug trailer
 - returns: sorted unique changed paths and an empty result for an unusable checkout or failed git query
 - verify: count(subject="story changed-file reports", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/dev.py::changed_files` @11eaf0e506a5
+- code: `workflows/src/workhorse_workflows/coder/shared/provenance.py::changed_files` @85eef7ecc7cf
 - tests: `workflows/tests/coder/shared/test_gates.py::test_a_new_file_is_in_the_diff_the_gates_read`
 
 ### resolve_story_sources
@@ -255,7 +256,7 @@ that the flow routes.
 - does: deduplicates repeated repository, surface, and service-root entries
 - returns: valid story source provenance, or invalid errors for missing story identity, missing source repositories, conflicting checkouts, or absent story commits
 - verify: count(subject="story source provenance", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/dev.py::resolve_story_sources` @11eaf0e506a5
+- code: `workflows/src/workhorse_workflows/coder/shared/provenance.py::resolve_story_sources` @85eef7ecc7cf
 
 ### read_operator_context
 - sig: `read_operator_context(logger: logging.Logger, story_path: str = "") -> OperatorAnswer`

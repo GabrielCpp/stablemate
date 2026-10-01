@@ -10,7 +10,7 @@ from ostler import Ostler, crud
 from ostler.model import load
 
 from workhorse_workflows import coder
-from workhorse_workflows.coder.shared.dev import changed_files, resolve_story_sources
+from workhorse_workflows.coder.shared.provenance import changed_files, resolve_story_sources
 from workhorse_workflows.coder.shared.schemas.dev import DispatchEntry
 from workhorse_workflows.coder.shared.story import _story_id
 

@@ -9,7 +9,8 @@ from workhorse.pyflow import AgentTimeout, Await, Continue, Done, Workflow, Work
 from workhorse_workflows.coder.shared.plan import plan_summary, resolve_impl_context
 from workhorse_workflows.kit import find_docs_root
 from workhorse_workflows.coder.shared import paths, roles
-from workhorse_workflows.coder.shared.dev import read_operator_context, resolve_story_sources
+from workhorse_workflows.coder.shared.dev import read_operator_context
+from workhorse_workflows.coder.shared.provenance import resolve_story_sources
 from workhorse_workflows.coder.shared.docs import (
     MAX_PROMPT_NOTE_CHARS,
     classify_documentation_context,

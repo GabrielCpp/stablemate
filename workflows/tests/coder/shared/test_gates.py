@@ -6,7 +6,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
-from workhorse_workflows.coder.shared.dev import changed_files
+from workhorse_workflows.coder.shared.provenance import changed_files
 from workhorse_workflows.coder.shared.service_gates import (
     GATE_ORDER,
     declared_gates,

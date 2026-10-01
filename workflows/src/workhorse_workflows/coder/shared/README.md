@@ -11,13 +11,14 @@ What more than one coder lane needs. Code that only one lane calls belongs in th
 - `commits.py`: the Conventional Commit subject and trailers of every commit the coder writes.
 - `contract.py`: the one rule for what counts as a service the planner can target.
 - `conversation.py`: the story's backbone session chain, recycled when it is full.
-- `dev.py`: the dev lane's work: the story's status and sources, and the operator's answer file.
+- `dev.py`: a story's status and the operator's answer file.
 - `docs.py`: the docs lane's work: whether a book exists, which doc nodes a diff touches, and the fail-closed grounding gate.
 - `escalation.py`: the body a coder lane writes when it stops and asks a human.
 - `failure.py`: the one failure shape the repair role reads, whatever gate produced it.
 - `okf.py`: the diff-to-OKF obligation packet, its check, and the memo that skips a rebuild when its inputs have not changed.
 - `paths.py`: where every coder artifact lives: repo roots, epics, the backlog, the feature book and operator context files.
 - `plan.py`: a story's plan context: loading `plan-context.json`, projecting it, and the dispatch order.
+- `provenance.py`: which commits and files belong to a story.
 - `qa_support.py`: a re-export of `kit/qa/support.py` for older coder call sites. New code imports the kit module.
 - `queue.py`: the epic and story queue: which epic and story run next, and what is set aside.
 - `resolution.py`: the resolver half of an operator gate, which tries to answer a block before the run parks on it.

@@ -14,11 +14,8 @@ from workhorse_workflows.coder.shared.plan import (
     select_next_layer,
 )
 from workhorse_workflows.coder.shared.branches import branch_code_repos
-from workhorse_workflows.coder.shared.dev import (
-    changed_files,
-    check_story_status,
-    read_operator_context,
-)
+from workhorse_workflows.coder.shared.dev import check_story_status, read_operator_context
+from workhorse_workflows.coder.shared.provenance import changed_files
 from workhorse_workflows.coder.shared.service_gates import GATE_ORDER, declared_markers, run_gate
 from workhorse_workflows.coder.shared.failure import from_findings, from_gate
 from workhorse_workflows.coder.shared.resolution import answered
